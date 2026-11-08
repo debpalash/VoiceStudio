@@ -362,6 +362,16 @@ def _heartbeat_while_resolving(engine_id: str):
         t.join()
 
 
+def bootstrap_python_hint(bootstrap) -> Optional[Path]:
+    """Return only an interpreter chosen by the bootstrap's import checks.
+
+    Candidate paths can exist but fail imports. Inventory must not select a
+    candidate itself or execute a potentially expensive bootstrap probe.
+    """
+    resolved = getattr(bootstrap, "_resolved_python", None)
+    return Path(resolved) if resolved is not None else None
+
+
 class SubprocessBackend(TTSBackend):
     """Long-lived sidecar-process TTS backend. Subclasses provide
     ``venv_python()`` and ``sidecar_script()``; the base class owns
@@ -394,6 +404,8 @@ class SubprocessBackend(TTSBackend):
     # ── instance state (initialised in __init__) ───────────────────────────
 
     def __init__(self) -> None:
+        from services.sidecar_revisions import current
+        self._sidecar_revision = current(self.id)
         self._proc: Optional[subprocess.Popen] = None
         # A failed bounded reap must retain ownership and forbid reuse. This
         # lock is separate from _lock: the receive owner joins its watchdog.
@@ -473,6 +485,40 @@ class SubprocessBackend(TTSBackend):
         return False
 
     @classmethod
+    def sidecar_python_hint(cls) -> Optional[Path]:
+        """The interpreter the sidecar would run, if it can be told cheaply.
+
+        Used only for routing metadata, so it must never spawn, probe or
+        bootstrap a venv (unlike some ``venv_python()`` implementations).
+        ``None`` means unknown. Subclasses with a cheap lookup override it.
+        """
+        return None
+
+    @classmethod
+    def _sidecar_torch_lacks_hip(cls) -> Optional[bool]:
+        """Return True for non-HIP Torch, or None when GPU execution is unverified."""
+        from services.sidecar_rocm_metadata import sidecar_torch_lacks_hip
+        return sidecar_torch_lacks_hip(cls)
+
+    @classmethod
+    def runtime_compute_profile(cls, caps) -> dict:
+        """Report unknown until separate sidecar GPU execution is verified."""
+        profile = super().runtime_compute_profile(caps)
+        compat = tuple(profile["gpu_compat"])
+        if caps.family == "rocm" and "rocm" in compat:
+            lacks_hip = cls._sidecar_torch_lacks_hip()
+            if lacks_hip is None:
+                profile.update(effective_device="unknown", routing_status="unknown",
+                               routing_reason=None, runtime_device_verified=False)
+            elif lacks_hip:
+                from services.engine_routing import resolve_routing
+                compat = tuple(c for c in compat if c != "rocm")
+                profile.update(gpu_compat=compat, **resolve_routing(
+                    compat, caps, profile["min_vram_gb"], parent_torch=False,
+                ))
+        return profile
+
+    @classmethod
     def sidecar_script(cls) -> Path:
         """Path to the sidecar entrypoint (`backend/engines/<id>/main.py`)."""
         raise NotImplementedError
@@ -486,8 +532,15 @@ class SubprocessBackend(TTSBackend):
             raise RuntimeError(
                 f"{self.id} sidecar is still stopping after a timeout; retry once it exits"
             )
+        from services.sidecar_revisions import current
+        revision = current(self.id)
         if self._proc is not None and self._proc.poll() is None:
-            return  # already up
+            if self._sidecar_revision == revision:
+                return  # already up with the selected installation
+            self.shutdown()  # caller holds the request lock; no operation is interrupted
+        # Capture before resolving/spawning: a concurrent promotion must cause
+        # this process to be replaced on the next request, not lost in a race.
+        self._sidecar_revision = revision
 
         # Env forwarding contract (Locked Decision D5):
         #   - Inherit the parent's full env via os.environ.copy().

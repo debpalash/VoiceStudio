@@ -503,6 +503,22 @@ class TTSBackend(ABC):
         """Expose the declared keys using their default picker text."""
         return tuple(cls.cloning_model_keys)
 
+    #: Whether this engine honors the diffusion quality knobs
+    #: (``num_step``, ``guidance_scale``). Engines whose runtime has no such
+    #: options set these False, and /v1/audio/speech rejects explicit values
+    #: with a 400 instead of silently returning default-quality audio
+    #: (#3654). Default True — False is set only where reading the generate
+    #: chain proves the knob is dropped.
+    supports_num_step: bool = True
+    supports_guidance_scale: bool = True
+
+    #: Inclusive (min, max) bound for ``num_step`` when
+    #: :attr:`supports_num_step` holds. ``None`` = unbounded. Engines that
+    #: silently clamp (supertonic3 → [5, 12], VoxCPM2 → [1, 64]) declare it
+    #: so /v1/audio/speech rejects out-of-range explicit values instead of
+    #: returning audio built from a different step count (#3654).
+    num_step_range: tuple[int, int] | None = None
+
     #: GPU/accelerator targets the engine can run on. Surfaced via the
     #: Engine Compatibility Matrix (Plan 02-04 / ENGINE-06) so users can
     #: tell at a glance which engines will use their hardware. Defaults to
@@ -2195,7 +2211,10 @@ class VoxCPM2Backend(TTSBackend):
     max_ref_seconds = _VOXCPM_REF_MAX_S
     ref_strategy = "head"
     applies_own_mastering = True  # Native studio-grade 48 kHz needs no apply_mastering().
-    gpu_compat = ("cuda", "mps", "cpu")
+    # generation_kwargs() clamps inference_timesteps to [1, 64] — an explicit
+    # value outside that range would silently render as the edge (#3654).
+    num_step_range: tuple[int, int] = (1, 64)
+    gpu_compat = ("cuda", "rocm", "mps", "cpu")
 
     def __init__(self):
         self._model = None
@@ -2338,7 +2357,10 @@ class MossTTSNanoBackend(TTSBackend):
     id = "moss-tts-nano"
     display_name = "MOSS-TTS-Nano (20 langs, CPU realtime, 48 kHz)"
     supports_voice_design = False  # strictly reference-cloning
-    gpu_compat = ("cuda", "cpu")
+    # generate() forwards text + prompt_audio_path only (#3654).
+    supports_num_step = False
+    supports_guidance_scale = False
+    gpu_compat = ("cuda", "rocm", "cpu")
 
     def __init__(self):
         self._model = None
@@ -2464,6 +2486,10 @@ class KittenTTSBackend(TTSBackend):
     # instruct is ignored too, so a Voice Design take would always be the same
     # preset voice whatever the details or seed (#3413).
     supports_voice_design = False
+    # The ONNX graph takes voice/speed only — quality knobs have nowhere to
+    # go, so explicit values 400 at /v1/audio/speech (#3654).
+    supports_num_step = False
+    supports_guidance_scale = False
 
     PRESET_VOICES = [
         "expr-voice-2-m", "expr-voice-2-f",
@@ -2973,6 +2999,46 @@ class MLXAudioBackend(TTSBackend):
         ),
     }
 
+    # Kokoro preset voices (#3802). These are the 54 voice packs shipped by
+    # hexgrad/Kokoro-82M (``voices/*.pt``), the default curated model above;
+    # each id is "<lang><gender>_<name>" where the first letter is Kokoro's
+    # own lang_code (a=American English, b=British, e=Spanish, f=French,
+    # h=Hindi, i=Italian, j=Japanese, p=Portuguese, z=Chinese).
+    # Declaring them is what makes /engines list them and /generate keep a
+    # chosen preset_voice instead of dropping it ("engine has no presets:
+    # ignore"). Without them Kokoro always fell back to af_heart, so
+    # Portuguese text was spoken with an American-English voice. Other
+    # curated models have no preset voices; a pick is only meaningful
+    # while Kokoro is the active model, and the other pipelines ignore a
+    # `voice` kwarg they do not use.
+    PRESET_VOICES = [
+        "af_alloy", "af_aoede", "af_bella", "af_heart", "af_jessica",
+        "af_kore", "af_nicole", "af_nova", "af_river", "af_sarah", "af_sky",
+        "am_adam", "am_echo", "am_eric", "am_fenrir", "am_liam", "am_michael",
+        "am_onyx", "am_puck", "am_santa",
+        "bf_alice", "bf_emma", "bf_isabella", "bf_lily",
+        "bm_daniel", "bm_fable", "bm_george", "bm_lewis",
+        "ef_dora", "em_alex", "em_santa",
+        "ff_siwis",
+        "hf_alpha", "hf_beta", "hm_omega", "hm_psi",
+        "if_sara", "im_nicola",
+        "jf_alpha", "jf_gongitsune", "jf_nezumi", "jf_tebukuro", "jm_kumo",
+        "pf_dora", "pm_alex", "pm_santa",
+        "zf_xiaobei", "zf_xiaoni", "zf_xiaoxiao", "zf_xiaoyi",
+        "zm_yunjian", "zm_yunxi", "zm_yunxia", "zm_yunyang",
+    ]
+    DEFAULT_VOICE = "af_heart"
+
+    # One Kokoro voice per language, used when the caller picks no preset
+    # (#3802): Portuguese text defaults to pf_dora instead of af_heart.
+    # Keyed by the single-letter lang_code resolve_kokoro_lang_code()
+    # returns, so a voice id always starts with its language's letter.
+    KOKORO_DEFAULT_VOICE_BY_LANG_CODE = {
+        "a": "af_heart", "b": "bf_alice", "e": "ef_dora", "f": "ff_siwis",
+        "h": "hf_alpha", "i": "if_sara", "j": "jf_alpha", "p": "pf_dora",
+        "z": "zf_xiaobei",
+    }
+
     def __init__(self):
         self._model = None
         self._sr = 24000  # most mlx-audio engines emit 24 kHz mono
@@ -2985,6 +3051,7 @@ class MLXAudioBackend(TTSBackend):
     @classmethod
     def configured_identity(cls) -> str:
         from core import prefs
+        from services.local_model_paths import get as local_model_path
         key = prefs.resolve(
             "mlx_audio_model_id",
             env="OMNIVOICE_MLX_AUDIO_MODEL",
@@ -2992,6 +3059,16 @@ class MLXAudioBackend(TTSBackend):
         )
         # Accept either a curated key ("kokoro") or a full HF repo id
         # ("mlx-community/Kokoro-82M-bf16") — flexibility for power users.
+        # An explicit environment override remains authoritative. Otherwise a
+        # validated local folder wins over the curated HF repo selection.
+        if not os.environ.get("OMNIVOICE_MLX_AUDIO_MODEL"):
+            local = local_model_path("tts", "mlx-audio")
+            if local:
+                # Return the saved identity unvalidated: /engines builds the
+                # backend to read capabilities, and a folder that vanished must
+                # not turn that listing into an error that hides the controls
+                # to clear it. _ensure_loaded validates before loading.
+                return local
         return cls.CURATED_MODELS.get(key, key)
 
     def built_identity(self) -> Optional[str]:
@@ -3059,6 +3136,11 @@ class MLXAudioBackend(TTSBackend):
     def _ensure_loaded(self):
         if self._model is not None:
             return
+        from services.local_model_paths import get as local_model_path, validate
+        if (not os.environ.get("OMNIVOICE_MLX_AUDIO_MODEL", "").strip()
+                and self._model_id
+                and self._model_id == local_model_path("tts", "mlx-audio")):
+            validate("tts", "mlx-audio", self._model_id)
         if self._curated_key() == "melotts":
             _ensure_melotts_text_frontend()
         elif self._curated_key() == "kokoro":
@@ -3149,6 +3231,13 @@ class MLXAudioBackend(TTSBackend):
                 # (#977). Resolve against the authoritative installed table
                 # instead of guessing via `language[:2]`.
                 kwargs["lang_code"] = resolve_kokoro_lang_code(language)
+                if not voice:
+                    # No preset picked: speak with a voice of the requested
+                    # language instead of Kokoro's American-English default
+                    # (#3802). An explicit preset_voice always wins.
+                    kwargs["voice"] = self.KOKORO_DEFAULT_VOICE_BY_LANG_CODE.get(
+                        kwargs["lang_code"], self.DEFAULT_VOICE
+                    )
             else:
                 # `lang_code`-as-2-letter-truncation is Kokoro's own
                 # convention, not mlx-audio's in general — other curated
@@ -3174,6 +3263,17 @@ class MLXAudioBackend(TTSBackend):
                         kwargs["lang_code"] = mapped_language
                 elif code is not None:
                     kwargs["lang_code"] = code
+
+        if (
+            "lang_code" not in kwargs
+            and voice
+            and self._model_id == self.CURATED_MODELS.get("kokoro")
+            and voice[:1] in self.KOKORO_DEFAULT_VOICE_BY_LANG_CODE
+        ):
+            # Language Auto with a preset like "pf_dora": Kokoro's first letter
+            # is the voice's language, so derive lang_code from it instead of
+            # phonemizing Portuguese text as American English.
+            kwargs["lang_code"] = voice[0]
 
         # mlx samples from its own RNG, which torch.manual_seed never touches,
         # so a new seed would otherwise give the same take (#3413).
@@ -3268,10 +3368,14 @@ class CosyVoiceBackend(TTSBackend):
     display_name = "CosyVoice 3 (9 langs, zero-shot, instruct, Apache-2.0)"
     # instruct + reference → inference_instruct2 (emotion, dialect, pace).
     instruct_directs_delivery = True
+    # generate() calls explicit inference_* entry points with no quality
+    # knobs in their signatures (#3654).
+    supports_num_step = False
+    supports_guidance_scale = False
     inline_tags = COSYVOICE_INLINE_TAGS
     # CosyVoice's official inference path expects CUDA; CPU works but slow.
     # MPS support not verified upstream — flagged for Phase 6 confirmation.
-    gpu_compat = ("cuda", "cpu")
+    gpu_compat = ("cuda", "rocm", "cpu")
 
     # CosyVoice language tags used for cross-lingual synthesis.
     LANG_TAGS = {
@@ -3464,6 +3568,9 @@ class GPTSoVITSBackend(TTSBackend):
     id = "gpt-sovits"
     display_name = "GPT-SoVITS (5 langs, zero-shot, RTF 0.014, MIT)"
     supports_voice_design = False  # api_v2 needs a reference clip for every request
+    # The api_v2 body carries text/lang/ref/speed only — no quality knobs (#3654).
+    supports_num_step = False
+    supports_guidance_scale = False
     # Server-side; whichever device GPT-SoVITS itself uses (CUDA preferred).
     gpu_compat = ("cuda", "cpu")
 
@@ -3669,6 +3776,9 @@ class SherpaOnnxBackend(TTSBackend):
     gpu_compat = ("cuda", "cpu")
     supports_cloning = False  # VITS speaker-id only; no ref_audio support
     supports_voice_design = False  # speaker ids only; instruct is never read (#3413)
+    # generate() calls VITS generate(text, sid, speed) — no knobs (#3654).
+    supports_num_step = False
+    supports_guidance_scale = False
 
     def __init__(self):
         self._tts = None
@@ -4332,14 +4442,15 @@ def language_options(backend_id: str) -> Optional[list[str]]:
     Adapter constructors configure references only. Never load weights or call
     get_active_tts_backend here: discovery must not switch or unload an engine.
     """
-    from omnivoice.utils.lang_map import LANG_NAME_TO_ID
+    from omnivoice.utils.lang_map import APP_LANGUAGE_NAMES, LANG_NAME_TO_ID
     from core.language_variants import with_variant_names
 
     backend = None
     try:
-        # The native OmniVoice adapters use this exact vocabulary at inference.
+        # The native OmniVoice adapters use this exact vocabulary at inference,
+        # plus the app picker names it resolves ("Arabic" for dub, #3651).
         if backend_id in {"omnivoice", "omnivoice-subprocess", "omnivoice-gguf"}:
-            return with_variant_names(sorted(LANG_NAME_TO_ID))
+            return with_variant_names(sorted(set(LANG_NAME_TO_ID) | set(APP_LANGUAGE_NAMES)))
         backend = get_backend_class(backend_id)()
         if backend_id == "mlx-audio" and backend.model_identity() == backend.CURATED_MODELS.get("kokoro"):
             return with_variant_names(_installed_kokoro_language_options())

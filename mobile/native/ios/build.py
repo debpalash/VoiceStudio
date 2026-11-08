@@ -148,7 +148,7 @@ def macos_sherpa():
     sherpa, _ = source(**{k: PINS['sherpa-onnx']['source'][k] for k in ('repo', 'commit')})
     prepare_headers(sherpa, None, None)
     library = next(output.glob('*/lib/libsherpa-onnx-c-api.dylib'))
-    (BUILD / 'macos/sherpa-path.txt').write_text(str(library))
+    (BUILD / 'macos/sherpa-path.txt').write_text(str(library), encoding='utf-8')
     print('SHERPA_ONNX_LIBRARY=' + str(library))
     return str(library)
 

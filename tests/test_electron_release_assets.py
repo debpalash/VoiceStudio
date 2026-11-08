@@ -34,7 +34,8 @@ def _release(
             f"  - url: {artifact}\n"
             f"    sha512: {'a' * 88}\n"
             "    size: 1234\n"
-            f"path: {artifact}\n"
+            + ("    blockMapSize: 4321\n" if extension == ".AppImage" else "")
+            + f"path: {artifact}\n"
             f"sha512: {'a' * 88}\n"
             "releaseDate: '2026-09-14T00:00:00.000Z'\n"
         ).encode()
@@ -49,7 +50,7 @@ def _release(
                 {"name": artifact, "size": 1234, "digest": "sha256:payload"},
             ]
         )
-        if target.startswith("win32-"):
+        if extension != ".AppImage":
             assets.append({"name": f"{artifact}.blockmap", "size": 10, "digest": "sha256:map"})
     return {
         "tagName": f"v{version}",
@@ -179,4 +180,46 @@ def test_windows_arm64_payload_without_a_manifest_is_rejected(tmp_path: Path, su
         }
     )
     with pytest.raises(ReleaseContractError, match="missing downloaded manifest"):
+        verify_release(release, tmp_path, channel="stable", version="0.5.3")
+
+
+@pytest.mark.parametrize("target", ["darwin-arm64", "darwin-x64", "win32-x64"])
+def test_a_payload_without_its_blockmap_fails_closed(tmp_path: Path, target: str):
+    """Without `<payload>.blockmap` electron-updater cannot patch; every update is full."""
+    release = _release(tmp_path)
+    _, os_token, arch, extension = TARGETS[target]
+    blockmap = f"VoiceStudio-0.5.3-{os_token}-{arch}{extension}.blockmap"
+    release["assets"] = [a for a in release["assets"] if a["name"] != blockmap]
+    with pytest.raises(ReleaseContractError, match="differential blockmap"):
+        verify_release(release, tmp_path, channel="stable", version="0.5.3")
+
+
+def test_an_appimage_manifest_without_blockmapsize_fails_closed(tmp_path: Path):
+    release = _release(tmp_path)
+    manifest = tmp_path / "electron-stable-linux-x64-linux.yml"
+    body = manifest.read_text(encoding="utf-8").replace("    blockMapSize: 4321\n", "").encode()
+    manifest.write_bytes(body)
+    for asset in release["assets"]:
+        if asset["name"] == manifest.name:
+            asset.update(size=len(body), digest=f"sha256:{hashlib.sha256(body).hexdigest()}")
+    with pytest.raises(ReleaseContractError, match="blockMapSize"):
+        verify_release(release, tmp_path, channel="stable", version="0.5.3")
+
+
+def test_blockmapsize_on_another_entry_does_not_count_for_the_appimage(tmp_path: Path):
+    """The deb entry carrying blockMapSize must not vouch for the AppImage."""
+    release = _release(tmp_path)
+    manifest = tmp_path / "electron-stable-linux-x64-linux.yml"
+    body = manifest.read_text(encoding="utf-8").replace("    blockMapSize: 4321\n", "")
+    body = body.replace(
+        "path: ",
+        "  - url: VoiceStudio-0.5.3-linux-x64.deb\n"
+        f"    sha512: {'b' * 88}\n    size: 99\n    blockMapSize: 7\npath: ",
+        1,
+    ).encode()
+    manifest.write_bytes(body)
+    for asset in release["assets"]:
+        if asset["name"] == manifest.name:
+            asset.update(size=len(body), digest=f"sha256:{hashlib.sha256(body).hexdigest()}")
+    with pytest.raises(ReleaseContractError, match="blockMapSize"):
         verify_release(release, tmp_path, channel="stable", version="0.5.3")

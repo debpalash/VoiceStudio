@@ -137,7 +137,7 @@ def test_an_unreadable_result_file_just_tests_again(monkeypatch, tmp_path):
     (tmp_path / "gpu_self_test.json").write_text("{nope", encoding="utf-8")
     monkeypatch.setattr(subprocess, "run", _child(STARTED + gpu_self_test.PASSED_MARK))
     assert gpu_self_test.evaluate(_torch()).status == "passed"
-    assert json.loads((tmp_path / "gpu_self_test.json").read_text())["status"] == "passed"
+    assert json.loads((tmp_path / "gpu_self_test.json").read_text(encoding="utf-8"))["status"] == "passed"
 
 
 def test_the_real_script_gives_a_real_answer(monkeypatch):

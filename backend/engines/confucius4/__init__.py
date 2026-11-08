@@ -29,6 +29,8 @@ import math
 import os
 from typing import TYPE_CHECKING
 
+from pathlib import Path
+
 from services.subprocess_backend import SubprocessBackend
 
 if TYPE_CHECKING:
@@ -61,6 +63,9 @@ class Confucius4Backend(SubprocessBackend):
         "Confucius4-TTS (LLM, 14 langs, cross-lingual zero-shot clone, Apache-2.0)"
     )
     supports_voice_design = False  # timbre comes from a reference clip
+    # The sidecar reads text/ref_audio/language only (#3654).
+    supports_num_step = False
+    supports_guidance_scale = False
     # Upstream vocoder rate (config target_sample_rate) — confirmed 22 050 Hz by
     # a live run (2026-07-02); still re-read from the sidecar's ready/audio frames.
     _DEFAULT_SAMPLE_RATE = 22050
@@ -95,6 +100,14 @@ class Confucius4Backend(SubprocessBackend):
     def venv_python(cls):
         from engines.confucius4.bootstrap import resolve_confucius4_venv
         return resolve_confucius4_venv()
+
+    @classmethod
+    def sidecar_python_hint(cls) -> "Path | None":
+        """Expose only the bootstrap-selected interpreter for routing metadata."""
+        from services.subprocess_backend import bootstrap_python_hint
+
+        from engines.confucius4 import bootstrap
+        return bootstrap_python_hint(bootstrap)
 
     @classmethod
     def sidecar_script(cls):

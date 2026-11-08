@@ -78,7 +78,7 @@ bash scripts/build-omnivoice-tts.sh --platform "$PLATFORM" --commit-sha aaaaaaaa
                             capture_output=True, text=True, timeout=30,
                             check=False)
     assert result.returncode == 0, result.stdout + result.stderr
-    log = (tmp_path / "cmake.log").read_text()
+    log = (tmp_path / "cmake.log").read_text(encoding="utf-8")
     if mode == "absent":
         assert "GGML_VULKAN=ON" not in log
     elif mode == "success":

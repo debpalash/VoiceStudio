@@ -1,5 +1,6 @@
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { renameSyncWithRetry } from '../rename-retry';
 
 export interface SafeStorageLike {
   isEncryptionAvailable(): boolean;
@@ -74,7 +75,7 @@ export class RefreshTokenStore {
     const record = JSON.stringify({ refreshToken: token, accountId: this.identity });
     const body = { v: 2, token: this.safe.encryptString(record).toString('base64') };
     writeFileSync(temporary, JSON.stringify(body), { encoding: 'utf8', mode: 0o600 });
-    renameSync(temporary, this.path);
+    renameSyncWithRetry(temporary, this.path);
   }
 
   clear(): void {

@@ -498,9 +498,11 @@ def _safety_filters(text: str) -> str:
 #
 # Language passes must never rewrite `[…]` spans: `[pause 300ms]` /
 # `[rate 0.9]` / `[voice:NAME]` are grammar, and `[[term|replacement]]`
-# belongs to the pronunciation layer. Bounded repetition keeps it linear.
+# belongs to the pronunciation layer. Its accepted 256-character grammar
+# includes newlines. Single-bracket content excludes both delimiters, so an
+# unbounded run cannot rescan nested opens and remains linear.
 
-_BRACKET_SPAN_RE = re.compile(r"\[[^\][\n]{0,128}\]")
+_BRACKET_SPAN_RE = re.compile(r"\[\[[^\]]{0,256}\]\]|\[[^\][\n]*\]")
 
 
 def _outside_brackets(text: str, fn: Callable[[str], str]) -> str:
@@ -649,9 +651,9 @@ _PT_TIME_RE = re.compile(
     r"(?<![\w:.,/$%+-])([01]?\d|2[0-3])(?:[hH]([0-5]\d)?|:([0-5]\d))(?![\w:/%+-])(?![.,]\d)"
 )
 
-# Brazilian Real: R$ 1.250,00, R$ 1 250,00, R$ 50,00, R$ 5. Standard '.' or ' ' thousands grouping and ',' cents.
+# Brazilian Real: R$ 1.250,00, R$ 50,00, R$ 5. '.' (or space/NBSP) thousands grouping and ',' cents.
 _BRL_CURRENCY_RE = re.compile(
-    r"(?<![\w.,:/$%+-])R\$\s*(\d{1,3}(?:\.\d{3})+|\d{1,3}(?: \d{3})+|\d{1,6})(?:,(\d{2}))?(?![\w:/%+-])(?![.,]\d)(?!\s+\d)"
+    r"(?<![\w.,:/$%+-])R\$\s*(\d{1,3}(?:[.\u00a0\u202f ]\d{3})+|\d{1,6})(?:,(\d{2}))?(?![\w:/%+-])(?![.,]\d)"
 )
 
 _PERCENT_RE = re.compile(r"(?<![\w.,:/$%+-])(\d{1,6}(?:\.\d{1,4})?)\s?%(?![\w:/%+-])(?![.,]\d)")
@@ -694,7 +696,18 @@ _SPACE_GROUP_RE = re.compile(
 )
 
 
+# English reads "2 100 meters" as two numbers, so only a run whose groups are
+# all "000" ("10 000", "1 000 000", "12 000%") is kept whole there: a "000"
+# group never starts a number of its own, and the integer rule used to speak
+# the leading group and leave the zeros behind ("ten 000").
+_EN_SPACE_GROUP_RE = re.compile(
+    r"(?<![\w.,:/$%-])-?\d{1,3}(?: 000)+(?:\s?%)?(?![\w:/%-])(?![.,]\d)"
+)
+
+
 def _grouped_spans(text: str, lang: str) -> list[tuple[int, int]]:
+    if lang == "en":
+        return [g.span() for g in _EN_SPACE_GROUP_RE.finditer(text)]
     if lang not in _COMMA_DECIMAL_LANGS:
         return []
     return [g.span() for g in _SPACE_GROUP_RE.finditer(text)]
@@ -818,7 +831,7 @@ def _numbers_to_words(text: str, lang: str, locale: Optional[str] = None) -> str
         text = _PT_TIME_RE.sub(lambda m: _safe(m, _pt_time, clock=True), text)
 
         def _brl_currency(m: re.Match) -> str:
-            raw_whole = m.group(1).replace(".", "").replace(" ", "")
+            raw_whole = re.sub(r"[.\s\u00a0\u202f]", "", m.group(1))
             if _leading_zero(raw_whole):
                 return m.group(0)
             reais = int(raw_whole)

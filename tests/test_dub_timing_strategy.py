@@ -76,7 +76,8 @@ def test_filter_graph_single_segment_no_pre_or_tail():
     assert "split=1" in graph
     assert "trim=start=0.0000:end=5.0000" in graph
     assert "setpts=1.200000*PTS" in graph
-    assert "concat=n=1:v=1:a=0[vstretched]" in graph
+    assert ("concat=n=1:v=1:a=0[vcat];[vcat]"
+            "pad=ceil(iw/2)*2:ceil(ih/2)*2[vstretched]") in graph
 
 
 def test_filter_graph_pre_roll_gap_and_tail_all_at_native_rate():
@@ -89,7 +90,8 @@ def test_filter_graph_pre_roll_gap_and_tail_all_at_native_rate():
     assert label == "[vstretched]"
     # Chunks: [0,1]@1.0 (pre-roll), [1,3]@1.25, [3,4]@1.0 (gap), [4,6]@1.10, [6,8]@1.0 (tail)
     assert "split=5" in graph
-    assert "concat=n=5:v=1:a=0[vstretched]" in graph
+    assert ("concat=n=5:v=1:a=0[vcat];[vcat]"
+            "pad=ceil(iw/2)*2:ceil(ih/2)*2[vstretched]") in graph
     # Native-rate chunks are emitted with setpts=1.000000 so the graph stays uniform.
     assert graph.count("setpts=1.000000*PTS") == 3
     assert "setpts=1.250000*PTS" in graph

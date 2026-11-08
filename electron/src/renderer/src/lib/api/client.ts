@@ -306,6 +306,12 @@ export function audioUrl(filename: string): string {
   return `${API_BASE}/audio/${encodeURIComponent(filename)}`;
 }
 
+/** MP3 export of a generated take, or undefined when the path is not a backend render. */
+export function audioMp3Url(filename: string): string | undefined {
+  const id = /^([0-9a-f]{8})\.wav$/.exec(filename)?.[1];
+  return id ? `${API_BASE}/audio/${id}.mp3` : undefined;
+}
+
 /**
  * Playable URL for a saved voice's reference clip. Pass the profile's
  * `audio_url` when available: its version token changes whenever the clip is

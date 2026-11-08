@@ -9,7 +9,7 @@ import pytest
 
 pytest_plugins = ["whisper_cpp_fixtures"]
 
-_SAMPLE_WHISPER_CPP_JSON = json.loads((Path(__file__).parent / "fixtures/whisper_cpp.json").read_text())
+_SAMPLE_WHISPER_CPP_JSON = json.loads((Path(__file__).parent / "fixtures/whisper_cpp.json").read_text(encoding="utf-8"))
 def test_transcribe_success(tmp_path, monkeypatch, m):
     fake_audio = tmp_path / "test.wav"
     fake_audio.write_text("RIFFdummyWAVE")

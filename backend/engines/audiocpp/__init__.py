@@ -194,6 +194,9 @@ class AudioCPPBackend(TTSBackend):
     # sees the parent's torch RNG, so /generate must forward it (#3413).
     supports_generation_seed = True
     applies_own_mastering = True  # model-decoded 24 kHz studio output
+    # The server payload carries guidance_scale but no step count — explicit
+    # num_step 400s instead of silently doing nothing (#3654).
+    supports_num_step = False
     gpu_compat = ("cpu",)
     runs_out_of_process = True
     # Same marker SubprocessBackend sets: this engine lives in another OS
@@ -625,6 +628,10 @@ class AudioCPPDotsBackend(AudioCPPBackend):
     _DEFAULT_SAMPLE_RATE = 48000
     #: Upstream default for dots.tts SOAR (``model_specs`` guidance_scale).
     _DEFAULT_GUIDANCE_SCALE = 1.2
+    # _request_options always returns the upstream default — caller-supplied
+    # knobs never reach the server, so explicit values 400 (#3654).
+    supports_num_step = False
+    supports_guidance_scale = False
 
     @property
     def supported_languages(self) -> list[str]:

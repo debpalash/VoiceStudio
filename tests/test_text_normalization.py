@@ -107,6 +107,8 @@ _CHANGE_CASES = [
     ("Spanish", "el Sr. García", "el Señor García"),
     # Portuguese currency and clock times (#3803)
     ("Portuguese", "O orçamento ficou em R$ 1.250,00", "O orçamento ficou em mil, duzentos e cinquenta reais"),
+    ("Portuguese", "custa R$ 1 250", "custa mil, duzentos e cinquenta reais"),
+    ("Portuguese", "custa R$ 1\u00a0250,00", "custa mil, duzentos e cinquenta reais"),
     ("Portuguese", "custa R$ 1", "custa um real"),
     ("Portuguese", "custa R$ 1,00", "custa um real"),
     ("Portuguese", "apenas R$ 0,50", "apenas cinquenta centavos"),
@@ -263,6 +265,9 @@ _UNCHANGED_CASES = [
     # (language, input) — ambiguous constructs keep their digits/shape
     ("English", "version v2 shipped"),          # digit glued to a letter
     ("English", "order 1,000 units"),           # thousands separator: ambiguous
+    ("English", "The crowd was 10 000 strong."),  # space-grouped: zeros never start a number
+    ("English", "up 12 000% on the year"),
+    ("English", "worth 1 000 000 dollars"),
     ("English", "It costs $1,000."),            # a dollar amount with a separator
     ("English", "It costs $5.5."),              # one decimal digit: not cents
     ("English", "pages 3-5 tonight"),           # range

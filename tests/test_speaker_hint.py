@@ -307,5 +307,5 @@ def test_cli_exposes_speakers_flag(capsys):
     assert "--speakers" in capsys.readouterr().out
 
     # Wiring-level: the flag is forwarded as the num_speakers query param.
-    src = cli_path.read_text()
+    src = cli_path.read_text(encoding="utf-8")
     assert "num_speakers={args.speakers}" in src

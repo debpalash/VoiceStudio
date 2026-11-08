@@ -23,7 +23,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_setuptools_pinned():
-    data = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text())
+    data = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     deps = data["project"]["dependencies"]
     matches = [d for d in deps if d.startswith("setuptools")]
     assert matches, (

@@ -79,3 +79,51 @@ def test_short_flush_ends_the_first_flush_window():
     clause = "However, the remaining answer keeps going for quite a while, and then"
     assert chunker.push(clause) == []
     assert chunker.flush() == [clause]
+
+
+@pytest.mark.parametrize("text", ["Ready 2!", "Ready 2?", "Ready 2。", "नमस्ते।", "مرحبا؟", "ሰላም።", "Ready 2؟"])
+def test_short_unambiguous_sentences_emit_before_stream_finishes(text):
+    chunker = SentenceChunker()
+    assert chunker.push(text[:-1]) == []
+    assert chunker.push(text[-1]) == [text]
+    assert chunker.flush() == []
+
+
+@pytest.mark.parametrize("text", ["Value 2.", "U.S.", "Dr."])
+def test_short_ambiguous_periods_keep_waiting_for_continuation(text):
+    chunker = SentenceChunker()
+    assert chunker.push(text) == []
+    assert chunker.flush() == [text]
+
+
+@pytest.mark.parametrize('tokens', [['２．', '５'], ['Value ２．', '５']])
+def test_short_full_width_decimals_wait_for_fractional_digits(tokens):
+    from services.sentence_chunker import SentenceChunker
+
+    chunker = SentenceChunker()
+    for token in tokens:
+        assert chunker.push(token) == []
+    assert chunker.flush() == [''.join(tokens)]
+
+
+@pytest.mark.parametrize("language", ["en", "ar"])
+@pytest.mark.parametrize("aggressive_first_flush", [False, True])
+@pytest.mark.parametrize("tokens", [["نعم؛", " ثم"], ["نعم", "؛ ", "ثم"]])
+def test_short_arabic_semicolon_keeps_continuing_clause_buffered(
+    language: str, aggressive_first_flush: bool, tokens: list[str]
+) -> None:
+    chunker = SentenceChunker(
+        language=language, aggressive_first_flush=aggressive_first_flush
+    )
+    for token in tokens:
+        assert chunker.push(token) == []
+    assert chunker.push(" نتابع؟") == ["نعم؛ ثم نتابع؟"]
+    assert chunker.flush() == []
+
+
+@pytest.mark.parametrize("terminator", list("।॥؟۔؏։፧።។៕။༎༏"))
+def test_short_non_latin_endings_still_flush_immediately(terminator: str) -> None:
+    chunker = SentenceChunker()
+    assert chunker.push("Ready 2") == []
+    assert chunker.push(terminator) == ["Ready 2" + terminator]
+    assert chunker.flush() == []

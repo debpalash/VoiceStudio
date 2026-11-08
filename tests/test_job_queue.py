@@ -114,6 +114,52 @@ async def test_failure_isolated_next_job_still_runs(queue):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("child_task", [False, True])
+async def test_job_cancellation_does_not_stop_the_shared_worker(queue, child_task):
+    async def cancelled_work(job):
+        if child_task:
+            child = asyncio.create_task(asyncio.sleep(60))
+            child.cancel()
+            await child
+        raise asyncio.CancelledError()
+
+    async def next_work(job):
+        return "next job completed"
+
+    cancelled = await queue.submit("cancelled", cancelled_work)
+    following = await queue.submit("following", next_work)
+    first = await queue.wait(cancelled.id, timeout=1)
+    assert first.state == JobState.CANCELLED
+    second = await queue.wait(following.id, timeout=1)
+    assert second.state == JobState.DONE
+    assert second.result == "next job completed"
+
+
+@pytest.mark.asyncio
+async def test_stopping_queue_cancels_running_worker_without_starting_next_job():
+    queue = JobQueue(name="shutdown")
+    entered = asyncio.Event()
+    following_called = []
+
+    async def running(job):
+        entered.set()
+        await asyncio.Event().wait()
+
+    async def following(job):
+        following_called.append(True)
+
+    await queue.start()
+    first = await queue.submit("running", running)
+    second = await queue.submit("following", following)
+    await asyncio.wait_for(entered.wait(), 1)
+    await asyncio.wait_for(queue.stop(), 1)
+    assert first.state == JobState.CANCELLED
+    assert first.done_event.is_set()
+    assert following_called == []
+    assert second.state == JobState.QUEUED
+
+
+@pytest.mark.asyncio
 async def test_position_reports_zero_for_next_up(queue):
     block = asyncio.Event()
 

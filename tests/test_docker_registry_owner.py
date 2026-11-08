@@ -31,7 +31,7 @@ def resolved_env(tmp_path, owner, job="build-and-push"):
              "GITHUB_ENV": exported.as_posix(), "GITHUB_OUTPUT": output.as_posix()},
         capture_output=True, text=True, timeout=15, check=False)
     assert result.returncode == 0, result.stdout + result.stderr
-    values = dict(line.split("=", 1) for line in exported.read_text().splitlines())
+    values = dict(line.split("=", 1) for line in exported.read_text(encoding="utf-8").splitlines())
     return values
 
 

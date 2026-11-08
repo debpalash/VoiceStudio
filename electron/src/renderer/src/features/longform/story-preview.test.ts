@@ -30,6 +30,35 @@ it('assembles canonical voice, pause and speed spans for auditions', async () =>
   expect(result.durationSec).toBe(2.5);
   expect(close).toHaveBeenCalledOnce();
 });
+it('passes a line emotion to its chunk only where it is set (#3422)', async () => {
+  vi.stubGlobal(
+    'AudioContext',
+    class {
+      sampleRate = 10;
+      close = vi.fn();
+      async decodeAudioData() {
+        return { length: 10, getChannelData: () => new Float32Array(10) };
+      }
+    },
+  );
+  const chunks = vi.fn(async (..._args: unknown[]) => new Blob(['audio']));
+  await exportStoryAudio(
+    [{ text: 'Calm. [emotion:scared] Run!' }],
+    () => ({ profileId: 'narrator', speed: null }),
+    chunks,
+  );
+  expect(chunks.mock.calls).toEqual([
+    ['Calm.', 'narrator', null],
+    ['Run!', 'narrator', null, 'scared'],
+  ]);
+  const draft = { ...blankLongformDraft(), voice: 'narrator' };
+  const profiles = [{ id: 'narrator' }];
+  expect(storyChunkBody(draft, 'Run!', null, null, profiles, 'scared').get('emotion')).toBe(
+    'scared',
+  );
+  expect(storyChunkBody(draft, 'Calm.', null, null, profiles).has('emotion')).toBe(false);
+});
+
 it('preserves default longform steps and resolves named inline voices', () => {
   const draft = { ...blankLongformDraft(), voice: 'narrator', voiceCast: { Mara: 'actor' } };
   const body = storyChunkBody(draft, 'Hello', 'Mara', 0.8, [{ id: 'actor' }]);

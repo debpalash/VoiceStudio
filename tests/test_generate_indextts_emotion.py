@@ -204,3 +204,57 @@ def test_emotion_is_passed_when_cloning_a_saved_voice(client, engine):
             conn.execute("DELETE FROM generation_history WHERE profile_id=?", (pid,))
             conn.execute("DELETE FROM voice_profiles WHERE id=?", (pid,))
         os.remove(path)
+
+
+# #3422: a Stories line's [emotion:] reaches /generate (previews and stems) and
+# is applied exactly as the full render applies it.
+def test_span_emotion_replaces_book_emotion_on_a_graded_engine(client, engine):
+    res = client.post("/generate", data={
+        "text": "Did you hear that?", "engine": engine.id,
+        "emo_text": "calm narration", "emotion": "quietly terrified",
+    })
+    assert res.status_code == 200, res.text
+    kw = engine.calls[0][1]
+    assert kw["emo_text"] == "quietly terrified"
+    assert kw["emo_alpha"] == 0.6
+
+
+def test_span_emotion_keeps_the_requested_strength(client, engine):
+    res = client.post("/generate", data={
+        "text": "Sad.", "engine": engine.id, "emo_text": "calm", "emo_alpha": "0.3",
+        "emotion": "sad",
+    })
+    assert res.status_code == 200, res.text
+    assert engine.calls[0][1]["emo_alpha"] == 0.3
+
+
+@pytest.mark.parametrize("attrs, instruct", [
+    ({"supports_emotion": False, "instruct_directs_delivery": True}, "sad"),
+    ({"supports_emotion": False}, None),
+])
+def test_span_emotion_directs_or_is_ignored(client, engine, monkeypatch, attrs, instruct):
+    """Direction engines get it as their instruct; others ignore it, without a 422."""
+    from services import tts_backend
+
+    other = type("OtherEngine", (engine,), {"id": "span-emotion-other", "calls": [], **attrs})
+    monkeypatch.setitem(tts_backend._REGISTRY, other.id, other)
+    res = client.post("/generate", data={"text": "Sad.", "engine": other.id, "emotion": "sad"})
+    assert res.status_code == 200, res.text
+    kw = other.calls[0][1]
+    assert kw.get("instruct") == instruct
+    assert "emo_text" not in kw
+
+
+def test_span_emotion_takes_a_strength_without_a_book_description(client, engine):
+    res = client.post("/generate", data={
+        "text": "Sad.", "engine": engine.id, "emo_alpha": "0.3", "emotion": "sad",
+    })
+    assert res.status_code == 200, res.text
+    assert engine.calls[0][1]["emo_text"] == "sad"
+    assert engine.calls[0][1]["emo_alpha"] == 0.3
+
+
+def test_span_emotion_is_bounded_like_the_parser(client, engine):
+    res = client.post("/generate", data={"text": "x", "engine": engine.id, "emotion": "a" * 201})
+    assert res.status_code == 422
+    assert engine.calls == []

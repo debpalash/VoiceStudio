@@ -78,7 +78,7 @@ def test_beta_release_uses_beta_notes_and_skips_sunset_feeds(release_module, mon
 
     assert seen["channel"] == "beta"
     assert seen["release"]["isPrerelease"] is True
-    assert (assets / "RELEASE_NOTES.md").read_text() == "- Beta fix\n"
+    assert (assets / "RELEASE_NOTES.md").read_text(encoding="utf-8") == "- Beta fix\n"
 
 
 def test_prepare_rejects_a_tag_that_is_not_the_package_version(release_module, monkeypatch, tmp_path):

@@ -195,8 +195,10 @@ def chapter_cache_key(
 ) -> str:
     """Deterministic content hash for a chapter's rendered audio.
 
-    ``spans`` is an ordered list of ``(voice_id, text, pause_ms_after[, speed[, join]])``
-    (speed optional, defaults to None; join only where inline markup split a line). Same inputs → same key → reuse the
+    ``spans`` is an ordered list of ``(voice_id, text, pause_ms_after[, speed[, *extras]])``
+    (speed optional, defaults to None). ``extras`` are the span's ``join`` (only where
+    inline markup split a line) and ``{"emotion": ...}`` (only where one is set,
+    #3422) — the dict form keeps an emotion from ever hashing like a join. Same inputs → same key → reuse the
     cached chapter WAV on a re-run (resume); any change (text, voice, order,
     pauses, speed, sample rate, engine, or a voice's resolved signature) → new
     key → re-render. ``voice_sig`` maps each voice id to a stable signature
@@ -206,11 +208,11 @@ def chapter_cache_key(
     payload = {
         "sr": int(sample_rate),
         "engine": engine_id or "",
-        # A 5th element is the span's ``join`` ("continue"/"paragraph") — it picks
-        # the silence after the span, so it must move the key. Appended only when
-        # present: a plan without one hashes exactly as it always has.
+        # Elements after speed — ``join`` ("continue"/"paragraph", it picks the
+        # silence after the span) and ``{"emotion": ...}`` — move the key only
+        # when present: a plan without them hashes exactly as it always has.
         "spans": [[s[0], s[1], int(s[2]), (s[3] if len(s) > 3 else None)]
-                  + ([s[4]] if len(s) > 4 and s[4] else []) for s in spans],
+                  + [x for x in s[4:] if x] for s in spans],
         "voices": {k: voice_sig[k] for k in sorted(voice_sig)} if voice_sig else {},
     }
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False)
@@ -420,6 +422,7 @@ def segment_cache_key(
     speed: Optional[float] = None,
     extra_sig: str = "",
     nonce: int = 0,
+    emotion: Optional[str] = None,
 ) -> str:
     """Deterministic content hash for ONE rendered segment (a single spoken
     span). Same dimensions as :func:`chapter_cache_key` minus span order and
@@ -446,6 +449,9 @@ def segment_cache_key(
         # Absent when 0 so the derivation is byte-identical to pre-#1208 for
         # every normal (non-vary_repeats) render.
         payload["nonce"] = int(nonce)
+    if emotion:
+        # A per-span ``[emotion:]`` (#3422); absent otherwise for the same reason.
+        payload["emotion"] = emotion
     raw = json.dumps(payload, sort_keys=True, ensure_ascii=False)
     # Content-addressing only — not a security digest (see chapter_cache_key).
     return hashlib.sha1(raw.encode("utf-8"), usedforsecurity=False).hexdigest()[:20]
@@ -518,6 +524,7 @@ class SegmentCache:
             speed=getattr(span, "speed", None),
             extra_sig=self._extra_sig_for(span),
             nonce=nonce if self.vary_repeats else 0,
+            emotion=getattr(span, "emotion", None),
         )
         path = os.path.join(self.dir, f"{key}.wav")
         return self.lease.hold(path) if self.lease is not None else path
@@ -547,7 +554,8 @@ class SegmentCache:
         for span in spans:
             if not span.text:
                 continue
-            key = (span.voice_id, span.text, getattr(span, "speed", None))
+            key = (span.voice_id, span.text, getattr(span, "speed", None),
+                   getattr(span, "emotion", None))
             nonce = occurrences[key]
             occurrences[key] += 1
             self._path(span, nonce)

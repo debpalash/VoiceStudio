@@ -192,7 +192,13 @@ class JobQueue:
                         job.result = result
                 except asyncio.CancelledError:
                     job.state = JobState.CANCELLED
-                    raise
+                    job.cancel_event.set()
+                    # Awaiting a cancelled child raises here without cancelling
+                    # this worker. Only stop the lane when the worker itself
+                    # received cancellation (e.g. during queue shutdown).
+                    worker = asyncio.current_task()
+                    if worker is None or worker.cancelling():
+                        raise
                 except Exception as e:
                     logger.exception("Job %s (%s) failed", job.id, job.label)
                     job.state = JobState.FAILED
