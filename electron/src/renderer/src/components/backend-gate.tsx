@@ -52,6 +52,7 @@ import { getBridge, isMac } from './bridge';
 import { ExternalLink } from './external-link';
 import {
   MODEL_HEADROOM_GIB,
+  SetupHardware,
   SetupHelpLinks,
   SetupUpdateNotice,
   SetupVersion,
@@ -481,6 +482,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                           {t('setup.models_space')}
                         </p>
                       ) : null}
+                      <SetupHardware hardware={status.setupHardware} />
                       {status.runtimeStorage && (
                         <dl className="mt-2 space-y-0.5 text-xs text-muted-foreground">
                           {(['data', 'models', 'temp'] as const).map((kind) => (

@@ -26,6 +26,7 @@ import {
   type RuntimeRegion,
   runtimeRequiredGib,
 } from './runtime-project';
+import { detectSetupHardware, type SetupHardware } from './setup-hardware';
 import { collectHostSnapshot, freeGb, type HostSnapshot } from './host-snapshot';
 import { collectTrustFacts, programBasename, runProbe, type TrustFacts } from './install-doctor';
 import {
@@ -1107,6 +1108,8 @@ export class BackendSupervisor extends EventEmitter<{
   private diagnosis: BackendStatus['diagnosis'];
   private setupIssue: BackendStatus['setupIssue'];
   private setupRequiredGib: number | undefined;
+  private setupHardware: SetupHardware | undefined;
+  private setupHardwareProbed = false;
   /** Free GiB on the drive that will hold the runtime; probed once per location during setup. */
   private runtimeFreeGib: number | undefined;
   private freeProbeRoot: string | undefined;
@@ -1271,6 +1274,15 @@ export class BackendSupervisor extends EventEmitter<{
       status.setupRequiredGib = this.setupRequiredGib ?? runtimeRequiredGib();
     if (this.stage === 'setup_required' && app.isPackaged && this.runtimeFreeGib !== undefined)
       status.runtimeFreeGib = this.runtimeFreeGib;
+    if (this.stage === 'setup_required' && app.isPackaged) {
+      if (!this.setupHardwareProbed) {
+        this.setupHardwareProbed = true;
+        void detectSetupHardware().then((found) => {
+          this.setupHardware = found;
+        });
+      }
+      if (this.setupHardware && !this.setupIssue) status.setupHardware = this.setupHardware;
+    }
     if (this.stage === 'setup_required' && this.runtimeInterrupted)
       status.runtimeInterrupted = true;
     if (this.stage === 'setup_required' && this.runtimeRepairFailed)

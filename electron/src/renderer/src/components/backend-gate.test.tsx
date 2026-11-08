@@ -42,6 +42,7 @@ beforeEach(() => {
   delete backendStatus.message;
   delete backendStatus.diagnosis;
   delete backendStatus.setupIssue;
+  delete backendStatus.setupHardware;
   backendStatus.setupRequiredGib = 9;
   delete backendStatus.runtimeFreeGib;
   delete backendStatus.setupPhase;
@@ -795,4 +796,33 @@ it('offers a newer app before the runtime download', async () => {
   await waitFor(() =>
     expect((bridgeStub.current as { updates: { download: () => void } }).updates.download).toHaveBeenCalled(),
   );
+});
+
+it.each([
+  [{ gpu: 'Apple M3 Pro', build: 'metal' }, 'setup.hardware_metal', { gpu: 'Apple M3 Pro' }],
+  [{ gpu: 'NVIDIA GeForce RTX 4070', build: 'cuda' }, 'setup.hardware_cuda', { gpu: 'NVIDIA GeForce RTX 4070' }],
+  [{ build: 'cuda' }, 'setup.hardware_cuda_unnamed', {}],
+  [{ build: 'rocm' }, 'setup.hardware_rocm', {}],
+  [{ build: 'cpu', reason: 'no_nvidia' }, 'setup.hardware_cpu_no_nvidia', {}],
+  [{ build: 'cpu', reason: 'windows_arm' }, 'setup.hardware_cpu_windows_arm', {}],
+  [{ build: 'cpu', reason: 'explicit' }, 'setup.hardware_cpu_explicit', {}],
+] as const)('shows the detected hardware build %#', (hardware, key, vars) => {
+  backendStatus.setupHardware = hardware as BackendStatus['setupHardware'];
+  render(
+    <BackendGate>
+      <div>workspace</div>
+    </BackendGate>,
+  );
+  expect(screen.getByTestId('setup-hardware')).toHaveTextContent(i18n.t(key, vars));
+  delete backendStatus.setupHardware;
+});
+
+it('shows no hardware line when none was detected', () => {
+  delete backendStatus.setupHardware;
+  render(
+    <BackendGate>
+      <div>workspace</div>
+    </BackendGate>,
+  );
+  expect(screen.queryByTestId('setup-hardware')).not.toBeInTheDocument();
 });
