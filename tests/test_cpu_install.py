@@ -46,9 +46,9 @@ def test_frozen_torch_graph_on_supported_platforms(group, python_version, tmp_pa
                     if req.marker is None or req.marker.evaluate(env)}
         native = platform == "darwin" or machine == "aarch64"
         suffix = "" if native else "+cpu" if group == "cpu" else "+cu128"
-        assert selected["torch"] == f"==2.8.0{suffix}"
-        assert selected["torchaudio"] == f"==2.8.0{suffix}"
-        assert selected["torchvision"] == f"==0.23.0{suffix}"
+        assert selected["torch"] == f"==2.10.0{suffix}"
+        assert selected["torchaudio"] == f"==2.10.0{suffix}"
+        assert selected["torchvision"] == f"==0.25.0{suffix}"
         gpu_libs = {name for name in selected if name == "triton" or
                     (name.startswith("nvidia-") and "-cu" in name)}
         if group == "cpu" or native:

@@ -2516,7 +2516,22 @@
     "continue_ok": "Todo bien - continúa",
     "check_arch_label": "Windows en ARM",
     "check_arch_detail": "PC con Windows ARM64: el backend de IA se ejecuta como x64 bajo la emulación de Windows, solo en CPU (sin aceleración de GPU/NPU).",
-    "check_arch_fix": "La generación de voz funciona, pero es más lenta. Prefiere un motor de voz ligero (KittenTTS, Supertonic-3, PocketTTS) y un modelo Whisper pequeño."
+    "check_arch_fix": "La generación de voz funciona, pero es más lenta. Prefiere un motor de voz ligero (KittenTTS, Supertonic-3, PocketTTS) y un modelo Whisper pequeño.",
+    "update_first": "Actualiza primero para que el entorno que descargues coincida con la versión más reciente de la app.",
+    "models_space": "Deja espacio también para los modelos de voz: cada uno ocupa unos pocos GB.",
+    "hardware_metal": "{{gpu}} · GPU (Metal)",
+    "hardware_metal_unnamed": "GPU (Metal)",
+    "hardware_cuda": "{{gpu}} · CUDA",
+    "hardware_cuda_unnamed": "GPU NVIDIA · CUDA",
+    "hardware_rocm": "GPU AMD · ROCm",
+    "hardware_cpu_no_nvidia": "No se encontró GPU NVIDIA · versión CPU (descarga más pequeña)",
+    "hardware_cpu_windows_arm": "Windows en Arm · versión CPU",
+    "hardware_cpu_explicit": "Versión CPU (elegida por ti)",
+    "use_other_computer": "Usar VoiceStudio en otro ordenador",
+    "help_label": "Ayuda con la configuración",
+    "help_install": "Guía de instalación",
+    "help_troubleshooting": "Solución de problemas",
+    "help_report": "Informar de un problema"
   },
   "consent": {
     "title": "¿Ayudar a mejorar VoiceStudio?",

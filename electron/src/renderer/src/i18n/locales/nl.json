@@ -2514,7 +2514,22 @@
     "continue_ok": "Alles goed - ga door",
     "check_arch_label": "Windows op ARM",
     "check_arch_detail": "ARM64-Windows-pc: de AI-backend draait als x64 onder Windows-emulatie, alleen op de CPU (geen GPU-/NPU-versnelling).",
-    "check_arch_fix": "Spraakgeneratie werkt, maar is trager. Kies een lichte spraakengine (KittenTTS, Supertonic-3, PocketTTS) en een klein Whisper-model."
+    "check_arch_fix": "Spraakgeneratie werkt, maar is trager. Kies een lichte spraakengine (KittenTTS, Supertonic-3, PocketTTS) en een klein Whisper-model.",
+    "update_first": "Werk eerst bij, zodat de runtime die je downloadt bij de nieuwste app past.",
+    "models_space": "Houd ook ruimte vrij voor stemmodellen: elk neemt een paar GB in beslag.",
+    "hardware_metal": "{{gpu}} · GPU (Metal)",
+    "hardware_metal_unnamed": "GPU (Metal)",
+    "hardware_cuda": "{{gpu}} · CUDA",
+    "hardware_cuda_unnamed": "NVIDIA-GPU · CUDA",
+    "hardware_rocm": "AMD-GPU · ROCm",
+    "hardware_cpu_no_nvidia": "Geen NVIDIA-GPU gevonden · CPU-versie (kleinere download)",
+    "hardware_cpu_windows_arm": "Windows op Arm · CPU-versie",
+    "hardware_cpu_explicit": "CPU-versie (door jou ingesteld)",
+    "use_other_computer": "VoiceStudio in plaats daarvan op een andere computer gebruiken",
+    "help_label": "Hulp bij installatie",
+    "help_install": "Installatiehandleiding",
+    "help_troubleshooting": "Problemen oplossen",
+    "help_report": "Probleem melden"
   },
   "consent": {
     "title": "Helpen VoiceStudio te verbeteren?",

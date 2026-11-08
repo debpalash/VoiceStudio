@@ -609,16 +609,16 @@ describe('packaged runtime setup', () => {
       'torchaudio',
       '--reinstall-package',
       'torchvision',
-      'torch==2.8.0+rocm6.4',
-      'torchaudio==2.8.0+rocm6.4',
-      'torchvision==0.23.0+rocm6.4',
+      'torch==2.10.0+rocm7.1',
+      'torchaudio==2.10.0+rocm7.1',
+      'torchvision==0.25.0+rocm7.1',
       '--extra-index-url',
       ROCM_TORCH_INDEX,
       '--index-strategy',
       'unsafe-best-match',
     ]);
     // A mirror without a rocm-style name keeps the bare pins.
-    expect(rocmTorchInstallArgs('https://mirror.invalid/rocm/')).toContain('torch==2.8.0');
+    expect(rocmTorchInstallArgs('https://mirror.invalid/rocm/')).toContain('torch==2.10.0');
   });
   it('leaves macOS on its native stack when ROCm is requested', async () => {
     forcePlatform('darwin');

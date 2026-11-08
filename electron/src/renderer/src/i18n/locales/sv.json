@@ -2514,7 +2514,22 @@
     "continue_ok": "Allt bra - fortsätt",
     "check_arch_label": "Windows på ARM",
     "check_arch_detail": "Windows-dator med ARM64: AI-backend körs som x64 under Windows-emulering, endast på CPU (ingen GPU-/NPU-acceleration).",
-    "check_arch_fix": "Röstgenerering fungerar men är långsammare. Välj en lätt röstmotor (KittenTTS, Supertonic-3, PocketTTS) och en liten Whisper-modell."
+    "check_arch_fix": "Röstgenerering fungerar men är långsammare. Välj en lätt röstmotor (KittenTTS, Supertonic-3, PocketTTS) och en liten Whisper-modell.",
+    "update_first": "Uppdatera först, så att körmiljön du laddar ner passar den senaste appen.",
+    "models_space": "Lämna plats för röstmodeller också: varje modell tar några GB.",
+    "hardware_metal": "{{gpu}} · GPU (Metal)",
+    "hardware_metal_unnamed": "GPU (Metal)",
+    "hardware_cuda": "{{gpu}} · CUDA",
+    "hardware_cuda_unnamed": "NVIDIA-GPU · CUDA",
+    "hardware_rocm": "AMD-GPU · ROCm",
+    "hardware_cpu_no_nvidia": "Inget NVIDIA-GPU hittades · CPU-version (mindre nedladdning)",
+    "hardware_cpu_windows_arm": "Windows på Arm · CPU-version",
+    "hardware_cpu_explicit": "CPU-version (vald av dig)",
+    "use_other_computer": "Använd VoiceStudio på en annan dator i stället",
+    "help_label": "Hjälp med installationen",
+    "help_install": "Installationsguide",
+    "help_troubleshooting": "Felsökning",
+    "help_report": "Rapportera ett problem"
   },
   "consent": {
     "title": "Hjälpa till att förbättra VoiceStudio?",

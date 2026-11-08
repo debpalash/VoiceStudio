@@ -2514,7 +2514,22 @@
     "continue_ok": "大丈夫です — 続けてください",
     "check_arch_label": "ARM 版 Windows",
     "check_arch_detail": "ARM64 の Windows PC です。AI バックエンドは Windows のエミュレーション上で x64 として動作し、CPU のみを使用します（GPU/NPU による高速化はありません）。",
-    "check_arch_fix": "音声生成は動作しますが、速度は遅くなります。軽量な音声エンジン（KittenTTS、Supertonic-3、PocketTTS）と小さな Whisper モデルをおすすめします。"
+    "check_arch_fix": "音声生成は動作しますが、速度は遅くなります。軽量な音声エンジン（KittenTTS、Supertonic-3、PocketTTS）と小さな Whisper モデルをおすすめします。",
+    "update_first": "先にアップデートすると、ダウンロードするランタイムが最新のアプリに合わせられます。",
+    "models_space": "音声モデル用の空き容量も残してください。モデルごとに数 GB 必要です。",
+    "hardware_metal": "{{gpu}} · GPU（Metal）",
+    "hardware_metal_unnamed": "GPU（Metal）",
+    "hardware_cuda": "{{gpu}} · CUDA",
+    "hardware_cuda_unnamed": "NVIDIA GPU · CUDA",
+    "hardware_rocm": "AMD GPU · ROCm",
+    "hardware_cpu_no_nvidia": "NVIDIA GPU が見つかりません · CPU 版（ダウンロードが小さめ）",
+    "hardware_cpu_windows_arm": "Windows on Arm · CPU 版",
+    "hardware_cpu_explicit": "CPU 版（設定による）",
+    "use_other_computer": "代わりに別のコンピューターで VoiceStudio を使う",
+    "help_label": "セットアップのヘルプ",
+    "help_install": "インストールガイド",
+    "help_troubleshooting": "トラブルシューティング",
+    "help_report": "問題を報告"
   },
   "consent": {
     "title": "VoiceStudio の改善に協力しますか？",

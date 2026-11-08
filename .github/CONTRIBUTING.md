@@ -37,7 +37,7 @@ Read it before opening a proposal; the licence check in particular ends most of 
 
 - [Git](https://git-scm.com/)
 - `curl` (used by the Bun / uv / rustup install one-liners on macOS and Linux)
-- [Node.js 22.12.0 or newer](https://nodejs.org/) (Electron development and validation scripts)
+- [Node.js 22](https://nodejs.org/), 22.12.0 or newer (Electron development and validation scripts). CI runs Node 22 and `.nvmrc` pins it for nvm, fnm and Volta; newer majors change some error messages and fail tests that pass on CI.
 - [Bun](https://bun.sh/) (frontend package manager)
 - [uv](https://docs.astral.sh/uv/) (Python environment manager)
 - [ffmpeg](https://ffmpeg.org/) (audio/video processing)
@@ -591,6 +591,11 @@ test-only PR. Docker Hub overview edits still publish through the small
     switching account features off sends one best-effort token revocation and
     always forgets the session on this device, even offline (sign-out waits at
     most 5 seconds for the network).
+    While signed in with account features on, the app also sends a periodic
+    check-in (`POST appapi.voicestudio.sh/v1/account/app-check`: app name,
+    app version and operating system only) so the server knows which app and
+    version you use; it grants nothing, and it stops at once on sign-out or
+    when account features are switched off.
   - Bug reports as prefilled GitHub Issue URLs opened in the user's browser.
   - **Phone content reports, only when the user taps Send** in a generated
     result's Report sheet: `appapi.voicestudio.sh/v1/content-reports` with the

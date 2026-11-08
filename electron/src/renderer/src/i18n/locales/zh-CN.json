@@ -2510,7 +2510,22 @@
     "recheck": "重新检查",
     "still_needed": "仍需：",
     "system_check": "系统检查",
-    "system_preflight": "系统预检"
+    "system_preflight": "系统预检",
+    "update_first": "请先更新，这样下载的运行环境会与最新版应用匹配。",
+    "models_space": "也请为语音模型预留空间：每个模型需要几 GB。",
+    "hardware_metal": "{{gpu}} · GPU（Metal）",
+    "hardware_metal_unnamed": "GPU（Metal）",
+    "hardware_cuda": "{{gpu}} · CUDA",
+    "hardware_cuda_unnamed": "NVIDIA GPU · CUDA",
+    "hardware_rocm": "AMD GPU · ROCm",
+    "hardware_cpu_no_nvidia": "未找到 NVIDIA GPU · CPU 版（下载更小）",
+    "hardware_cpu_windows_arm": "Arm 版 Windows · CPU 版",
+    "hardware_cpu_explicit": "CPU 版（由你设定）",
+    "use_other_computer": "改为在另一台电脑上使用 VoiceStudio",
+    "help_label": "安装帮助",
+    "help_install": "安装指南",
+    "help_troubleshooting": "故障排除",
+    "help_report": "报告问题"
   },
   "consent": {
     "title": "帮助改进 VoiceStudio？",

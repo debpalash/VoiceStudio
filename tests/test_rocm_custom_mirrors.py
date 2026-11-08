@@ -23,8 +23,8 @@ def test_shared_stack_mirror_without_named_tail_requires_hip_wheel(monkeypatch):
     monkeypatch.setattr(si, "_host_family", lambda: "rocm")
     monkeypatch.setenv("OMNIVOICE_TORCH_INDEX", "https://mirror.example/simple")
     args = si._spec_rocm_torch_args(si.get_spec("indextts2"))
-    assert "torch==2.8.0+rocm6.4" in args
-    assert "torchaudio==2.8.0+rocm6.4" in args
+    assert "torch==2.10.0+rocm7.1" in args
+    assert "torchaudio==2.10.0+rocm7.1" in args
 
 
 @pytest.mark.parametrize("engine", ["cosyvoice", "moss-tts-nano", "confucius4-tts"])

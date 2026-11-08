@@ -62,9 +62,9 @@ def _render(model, text: str, language: str, instruct: str, out: Path, sample_ra
     audio = audio.to(torch.float32).cpu()
     if sample_rate != VIDEO_SAMPLE_RATE:
         audio = torchaudio.functional.resample(audio, sample_rate, VIDEO_SAMPLE_RATE)
-    torchaudio.save(
-        str(out), audio, VIDEO_SAMPLE_RATE, encoding="PCM_S", bits_per_sample=16
-    )
+    from services.audio_io import _safe_torchaudio_save
+
+    _safe_torchaudio_save(str(out), audio, VIDEO_SAMPLE_RATE, bits_per_sample=16)
     # Level-match the tracks: a dub demo where switching language also changes
     # the volume reads as a bug in the dubbing, not in the demo assets. See
     # render_demos_omnivoice.py for why the output rate has to be pinned.

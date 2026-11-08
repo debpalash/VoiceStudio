@@ -364,8 +364,9 @@ def test_nvidia_never_gets_an_hsa_override():
 
 # ── #3418: RDNA4 (RX 9060 / 9070, gfx1200 / gfx1201) ────────────────────
 
-# torch 2.8.0's ROCm wheels (the pinned rocm6.4 index) are built with
-# PYTORCH_ROCM_ARCH including gfx1200;gfx1201 (.ci/docker/manywheel/build.sh).
+# torch 2.10.0's ROCm wheels (the pinned rocm7.1 index) are built with
+# PYTORCH_ROCM_ARCH including gfx1200;gfx1201 (.ci/docker/manywheel/build.sh),
+# a superset of 2.8.0's rocm6.4 list, so no GPU lost kernels in the move.
 ROCM64_ARCHS = ["gfx900", "gfx906", "gfx908", "gfx90a", "gfx942", "gfx1030",
                 "gfx1100", "gfx1101", "gfx1102", "gfx1200", "gfx1201"]
 PRE_RDNA4_ARCHS = ["gfx900", "gfx906", "gfx90a", "gfx1030", "gfx1100"]
@@ -407,7 +408,7 @@ def test_rdna4_on_an_old_build_is_a_mismatch_with_no_remap_advice(monkeypatch):
     assert compatible is False
     assert "11.0.0" not in warning
     assert "No HSA_OVERRIDE_GFX_VERSION remap can help" in warning
-    assert "gfx1201" in warning and "rocm6.4" in warning
+    assert "gfx1201" in warning and "rocm7.1" in warning
 
 
 def test_remap_advice_names_a_same_generation_target_the_build_ships(monkeypatch):

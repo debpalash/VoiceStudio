@@ -2514,7 +2514,22 @@
     "continue_ok": "Alles gut – weiter",
     "check_arch_label": "Windows auf ARM",
     "check_arch_detail": "ARM64-Windows-PC – das KI-Backend läuft als x64 unter der Windows-Emulation, nur auf der CPU (keine GPU-/NPU-Beschleunigung).",
-    "check_arch_fix": "Die Sprachgenerierung funktioniert, ist aber langsamer. Bevorzugen Sie eine leichtgewichtige Sprach-Engine (KittenTTS, Supertonic-3, PocketTTS) und ein kleines Whisper-Modell."
+    "check_arch_fix": "Die Sprachgenerierung funktioniert, ist aber langsamer. Bevorzugen Sie eine leichtgewichtige Sprach-Engine (KittenTTS, Supertonic-3, PocketTTS) und ein kleines Whisper-Modell.",
+    "update_first": "Zuerst aktualisieren, damit die heruntergeladene Laufzeitumgebung zur neuesten App passt.",
+    "models_space": "Lass auch Platz für Stimmmodelle: Jedes braucht einige GB.",
+    "hardware_metal": "{{gpu}} · GPU (Metal)",
+    "hardware_metal_unnamed": "GPU (Metal)",
+    "hardware_cuda": "{{gpu}} · CUDA",
+    "hardware_cuda_unnamed": "NVIDIA-GPU · CUDA",
+    "hardware_rocm": "AMD-GPU · ROCm",
+    "hardware_cpu_no_nvidia": "Keine NVIDIA-GPU gefunden · CPU-Version (kleinerer Download)",
+    "hardware_cpu_windows_arm": "Windows on Arm · CPU-Version",
+    "hardware_cpu_explicit": "CPU-Version (von dir festgelegt)",
+    "use_other_computer": "VoiceStudio stattdessen auf einem anderen Computer verwenden",
+    "help_label": "Hilfe zur Einrichtung",
+    "help_install": "Installationsanleitung",
+    "help_troubleshooting": "Fehlerbehebung",
+    "help_report": "Problem melden"
   },
   "consent": {
     "title": "VoiceStudio verbessern helfen?",

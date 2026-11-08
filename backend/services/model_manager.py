@@ -1581,8 +1581,8 @@ def _rocm_arch_remedy(device_arch: str, arch_list) -> str:
 
     install = (
         f"Install a ROCm PyTorch build that lists {device_arch}: "
-        "OMNIVOICE_TORCH_VARIANT=rocm setup installs torch 2.8.0 from the "
-        "rocm6.4 index, which includes gfx1200/gfx1201 (RX 9000 series)."
+        "OMNIVOICE_TORCH_VARIANT=rocm setup installs torch 2.10.0 from the "
+        "rocm7.1 index, which includes gfx1200/gfx1201 (RX 9000 series)."
     )
     if "HSA_OVERRIDE_GFX_VERSION" in device_arch:
         return "Remove or correct HSA_OVERRIDE_GFX_VERSION, or " + install[0].lower() + install[1:]

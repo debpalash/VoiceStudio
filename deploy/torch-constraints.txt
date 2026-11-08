@@ -22,16 +22,15 @@
 # tests/test_torch_constraints_are_applied.py fails if they drift, or if either
 # install path stops passing --constraint.
 #
-# The versions carry no local segment on purpose: PEP 440 matches `==2.8.0`
-# against `2.8.0+cu128` and the ROCm 7.2.4 base's `2.8.0+rocm7.2.4...` build
+# The versions carry no local segment on purpose: PEP 440 matches `==2.10.0`
+# against `2.10.0+cu128` and the ROCm 7.2.4 base's `2.8.0+rocm7.2.4...` build
 # alike, so one file serves the CUDA image, the ROCm image, and Colab without
 # clobbering a vendor build.
 #
-# Side effect, deliberate: torch 2.8.0 publishes no cp314 wheels, so on Python
-# 3.14 the install now FAILS with an unsatisfiable-resolution message instead
-# of quietly picking a newer, mismatched trio. Loud beats broken -- but it does
-# mean these pins have to be bumped when the supported Python floor moves.
-# Colab is 3.12 and both Docker bases are pinned, so nothing ships on 3.14 yet.
-torch==2.8.0
-torchaudio==2.8.0
-torchvision==0.23.0
+# Side effect, deliberate: the trio is pinned exactly, so a Python without wheels
+# for it FAILS with an unsatisfiable-resolution message instead of quietly
+# picking a newer, mismatched trio. Loud beats broken -- but it does mean these
+# pins have to be bumped when the supported Python floor moves.
+torch==2.10.0
+torchaudio==2.10.0
+torchvision==0.25.0

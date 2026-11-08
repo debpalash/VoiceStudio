@@ -91,7 +91,7 @@ jobs:
   package:
     needs: [validate, omnivoice-tts]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    timeout-minutes: 75  # three macOS build attempts when Apple drops a connection
     continue-on-error: ${{ matrix.experimental == true }}
     strategy:
       fail-fast: false
@@ -149,7 +149,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.RELEASE_REF }}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -235,14 +235,22 @@ jobs:
             # Discovery is limited to that imported keychain, not the runner's.
             export CSC_IDENTITY_AUTO_DISCOVERY=true
           fi
-          # Apple's ticket server can drop the staple lookup after notarization
-          # succeeded (error 68, v0.5.7-beta.2); only that failure builds again.
+          # Apple's notary and ticket services drop connections: the staple
+          # lookup after a successful notarization (error 68, v0.5.7-beta.2 and
+          # twice in a row on v0.5.8-beta.1) and the notarization upload itself
+          # (abortedUpload). Only those transient failures build again (of the
+          # NSURLErrorDomain codes: timed out -1001, cannot connect -1004,
+          # connection lost -1005, offline -1009; never trust errors such as
+          # -1202), up to three attempts with a growing pause; a rejected
+          # notarization or a signing error fails at once.
           set -o pipefail
           attempt=1
+          retry_delay="${APPLE_RETRY_DELAY_SECONDS:-60}"
           until bun x electron-builder --config electron-builder.config.mjs ${{ matrix.flags }} "${mac_notarization_args[@]}" --publish never 2>&1 | tee "$RUNNER_TEMP/electron-builder.log"; do
-            if [ "$attempt" -ge 2 ] || ! grep -q "Failed to staple" "$RUNNER_TEMP/electron-builder.log"; then exit 1; fi
+            if [ "$attempt" -ge 3 ] || ! grep -Eq "Failed to staple|abortedUpload|NSURLErrorDomain Code=-10(01|04|05|09)([^0-9]|$)|The network connection was lost" "$RUNNER_TEMP/electron-builder.log"; then exit 1; fi
+            echo "::warning::Apple's notarization service dropped the connection (attempt $attempt); building again in $((retry_delay * attempt))s"
+            sleep $((retry_delay * attempt))
             attempt=$((attempt + 1))
-            echo "::warning::Stapling the notarization ticket failed; building again"
           done
           if [ "$RUNNER_OS" = Linux ]; then
             node scripts/embed-appimage-update.mjs
@@ -442,6 +450,9 @@ jobs:
           test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true || { echo "Refusing to replace a published release"; exit 1; }
           gh release edit "$TAG" --prerelease="$PRERELEASE" --notes-file release-assets/RELEASE_NOTES.md
           find release-assets -maxdepth 1 -type f ! -name RELEASE_NOTES.md -print0 | xargs -0 gh release upload "$TAG" --clobber
+          # A reused draft keeps assets from earlier runs that --clobber never
+          # removes, so check what the draft actually carries.
+          gh release view "$TAG" --json assets --jq '.assets[].name' | python3 scripts/check_electron_release_assets.py --foreign-feeds "$CHANNEL"
       - name: Publish only when explicitly requested
         id: publish_release
         if: github.event_name == 'workflow_dispatch' && inputs.publish == true
@@ -450,6 +461,21 @@ jobs:
             gh release edit "$TAG" --draft=false --prerelease=true --latest=false
           else
             gh release edit "$TAG" --draft=false --prerelease=false --latest
+          fi
+          # Prove where `latest` points now: stable users follow `latest/download`,
+          # so a beta there would update every stable install onto it.
+          latest="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
+          case "$latest" in *-beta.*)
+            echo "::error::Beta $latest is the latest release; stable users would update onto it"
+            exit 1;;
+          esac
+          if [ "$CHANNEL" = beta ] && [ "$latest" = "$TAG" ]; then
+            echo "::error::Beta $TAG became the latest release; stable users would update onto it"
+            exit 1
+          fi
+          if [ "$CHANNEL" = stable ] && [ "$latest" != "$TAG" ]; then
+            echo "::error::Stable $TAG is not the latest release (latest is $latest)"
+            exit 1
           fi
       # GITHUB_TOKEN publication does not emit another workflow's release event.
       - name: Update the Android repository after stable publication
