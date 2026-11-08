@@ -9,7 +9,7 @@
    setup checks locally and requires manual installation instead.
 
 2. **CUDA: cuDNN 8 compat** — Ensures cuDNN 8 libraries are available for
-   CTranslate2 (faster-whisper / WhisperX) alongside PyTorch 2.8+'s cuDNN 9.
+   CTranslate2 (faster-whisper / WhisperX) alongside PyTorch 2.10+'s cuDNN 9.
 
 3. **ROCm torch for AMD GPUs (opt-in)** — setting `OMNIVOICE_TORCH_VARIANT=rocm`
    makes this script exchange the lockfile's CUDA build of torch for ROCm
@@ -50,8 +50,8 @@ for _stream in (sys.stdout, sys.stderr):
 
 # Keep this index and these pins in step with Electron's runtime-project.ts
 # and with [tool.uv.constraint-dependencies] in pyproject.toml.
-ROCM_TORCH_INDEX = "https://download.pytorch.org/whl/rocm6.4"
-ROCM_TORCH_PINS = ("torch==2.8.0", "torchaudio==2.8.0", "torchvision==0.23.0")
+ROCM_TORCH_INDEX = "https://download.pytorch.org/whl/rocm7.1"
+ROCM_TORCH_PINS = ("torch==2.10.0", "torchaudio==2.10.0", "torchvision==0.25.0")
 
 
 def _rocm_opt_in(environ=os.environ):

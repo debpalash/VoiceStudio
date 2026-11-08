@@ -119,7 +119,7 @@ services:
     #   context: ..
     #   dockerfile: deploy/Dockerfile
     #   args:
-    #     BASE_IMAGE: rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_2.8.0
+    #     BASE_IMAGE: rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_2.10.0
     #     GPU_FLAVOR: rocm
     container_name: omnivoice-studio-rocm
     profiles: ["rocm"]

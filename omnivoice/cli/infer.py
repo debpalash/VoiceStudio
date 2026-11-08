@@ -23,7 +23,7 @@ import argparse
 import logging
 
 import torch
-import torchaudio
+from omnivoice.utils.audio import save_audio
 
 from omnivoice.models.omnivoice import OmniVoice
 from omnivoice.utils.common import str2bool
@@ -152,7 +152,7 @@ def main():
         class_temperature=args.class_temperature,
     )
 
-    torchaudio.save(args.output, audios[0], model.sampling_rate)
+    save_audio(args.output, audios[0], model.sampling_rate)
     logging.info(f"Saved to {args.output}")
 
 

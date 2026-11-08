@@ -67,6 +67,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 import torchaudio
+from omnivoice.utils.audio import read_audio
 import webdataset as wds
 from torch.utils.data import DataLoader, IterableDataset
 from tqdm.auto import tqdm
@@ -208,7 +209,7 @@ def serialise_numpy(key: str, tokens: np.ndarray) -> dict:
 def _load_aug_audio(data, sample_rate=24000):
     """Simple audio loader for augmentation files."""
     with io.BytesIO(data) as b:
-        wav, sr = torchaudio.load(b)
+        wav, sr = read_audio(b)
     if wav.shape[0] > 1:
         wav = wav.mean(dim=0, keepdim=True)
     if sr != sample_rate:
