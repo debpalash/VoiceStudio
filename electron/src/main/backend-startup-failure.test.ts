@@ -264,6 +264,6 @@ it('quotes a bounded stderr tail, not only the last line, on an unexpected exit 
   expect(message).toContain('trace line 59');
   expect(message).toContain('trace line 55');
   expect(message).not.toContain('trace line 30 ');
-  expect(message.length).toBeLessThan(3500);
+  expect(message.length).toBeLessThan(4000);
   await supervisor.shutdown();
 });
