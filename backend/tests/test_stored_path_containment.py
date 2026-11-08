@@ -282,3 +282,16 @@ def test_profile_upload_rejects_unusable_extensions(profiles_client):
     assert client.get("/profiles").json() == []
     voices = tmp_path / "voices"
     assert not voices.exists() or not any(voices.iterdir())
+
+
+def test_clone_profile_upload_is_size_capped_and_leaves_no_file(profiles_client, monkeypatch):
+    from api.routers import profiles
+
+    client, tmp_path = profiles_client
+    monkeypatch.setattr(profiles, "_MAX_REF_AUDIO_BYTES", 1024)
+    response = client.post("/profiles", data={"name": "Big"}, files={
+        "ref_audio": ("clip.wav", io.BytesIO(b"RIFF" + bytes(4096)), "audio/wav"),
+    })
+    assert response.status_code == 413
+    voices = tmp_path / "voices"
+    assert not voices.exists() or not list(voices.glob("*"))

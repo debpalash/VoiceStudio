@@ -233,8 +233,15 @@ async def create_profile(
         audio_path = os.path.join(VOICES_DIR, audio_filename)
         # Storage can be removed after startup; recover before persisting uploads.
         os.makedirs(VOICES_DIR, exist_ok=True)
-        with open(audio_path, "wb") as f:
-            f.write(await ref_audio.read())
+        # Stream with the same cap the replace-audio route enforces: this
+        # route is open to PIN-paired consumers, so an unbounded read would
+        # let one request exhaust memory/disk.
+        try:
+            await _save_upload(ref_audio, audio_path)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.remove(audio_path)
+            raise
         # A clone needs speech to copy: refuse a reference with no audio
         # stream (a silent screen recording, a video-only WebM) at save time
         # instead of failing every later generation with it.
