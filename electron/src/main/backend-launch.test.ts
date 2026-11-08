@@ -9,6 +9,15 @@ const state = vi.hoisted(() => ({
   checkout: true,
   bundledOnly: false,
   bundledManifestMissing: false,
+  selected: null as string | null,
+}));
+const validateSelected = vi.hoisted(() =>
+  vi.fn(async (pythonPath: string, _cwd: string) => ({ ok: true, pythonPath })),
+);
+vi.mock('./runtime-python-selection', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./runtime-python-selection')>()),
+  selectedPythonPath: () => state.selected,
+  validatePythonRuntime: validateSelected,
 }));
 vi.mock('./distribution', () => ({
   runtimeSetupSupported: () => !state.bundledOnly,
@@ -78,6 +87,8 @@ afterEach(() => {
   state.checkout = true;
   state.bundledOnly = false;
   state.bundledManifestMissing = false;
+  state.selected = null;
+  validateSelected.mockClear();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
@@ -133,6 +144,20 @@ it('keeps host diagnostics available when a store package has no local interpret
   expect(facts.os).toEqual(expect.any(String));
   expect(facts.ramGb).toBeGreaterThan(0);
   expect(facts.runtime.pythonPresent).toBeNull();
+});
+it('runs a selected interpreter against bundled resources, never the absent managed project', async () => {
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
+  state.packaged = true;
+  state.selected = '/existing/bin/python';
+  const original = process.resourcesPath;
+  Object.defineProperty(process, 'resourcesPath', { configurable: true, value: '/packaged/resources' });
+  try {
+    const plan = await resolveSpawnPlan(3912, '/missing/managed/project');
+    expect(plan).toMatchObject({ cwd: '/packaged/resources' });
+    expect(validateSelected).toHaveBeenCalledWith('/existing/bin/python', '/packaged/resources');
+  } finally {
+    Object.defineProperty(process, 'resourcesPath', { configurable: true, value: original });
+  }
 });
 it.each(['darwin', 'win32', 'linux'] as const)(
   'leaves China downloads eligible for automatic failover on %s',
