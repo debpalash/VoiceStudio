@@ -484,6 +484,18 @@ def _handle_synthesize(msg: dict, stdout) -> None:
     # has already done any vector-vs-audio-vs-text emotion priority
     # arbitration; we just forward whichever keys it sent.
     infer_kw = _build_infer_kwargs(msg, ref_audio, is_v25=_model_version == "2.5")
+    if msg.get("seed") is not None:
+        # The parent's RNG state does not cross the process boundary. Seed
+        # after model loading so initialization cannot consume this request's RNG.
+        import random
+
+        import numpy as np
+        import torch
+
+        seed = int(msg["seed"])
+        random.seed(seed)
+        np.random.seed(seed % 2**32)
+        torch.manual_seed(seed)
 
     # IndexTTS2.infer() writes to a file; we route through tempfile so
     # cleanup is automatic on success and on exit.
