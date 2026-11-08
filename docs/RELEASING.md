@@ -218,7 +218,7 @@ type the tag name.
 - **Two runs, because `main` only changes through pull requests.** The first
   run bumps the three version files in lockstep, runs `uv lock`, writes the
   `CHANGELOG.md` section from `[Unreleased]` (a stable release renames it; a
-  beta copies it), runs the version guards, commits on `release/vX.Y.Z[-beta.N]`
+  beta copies it, pointing its download links at the beta's own release files), runs the version guards, commits on `release/vX.Y.Z[-beta.N]`
   and opens its pull request. Once that merges, run the helper again with the
   same version: `main` already has it, so it changes nothing and only tags.
 - **Draft:** the tag push builds a draft release; nothing is public.
