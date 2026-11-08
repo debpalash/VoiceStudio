@@ -105,7 +105,27 @@ jobs:
       # detects it through VULKAN_SDK. Desktop releases require the Vulkan
       # module so AMD/Intel users do not silently receive a CPU-only runtime.
       - name: Vulkan SDK (Windows GPU backend)
+        id: vulkan_sdk_1
         if: matrix.platform == 'windows-x86_64'
+        # Transient download failures retry below; only the final attempt fails the build.
+        continue-on-error: true
+        uses: jakoch/install-vulkan-sdk-action@d17de7e2f5e50efb5d2123efed18497d3c58c533 # v1.7.0
+        with:
+          vulkan_version: 1.4.309.0
+          cache: true
+
+      - name: Retry Vulkan SDK download
+        id: vulkan_sdk_2
+        if: matrix.platform == 'windows-x86_64' && steps.vulkan_sdk_1.outcome == 'failure'
+        continue-on-error: true
+        uses: jakoch/install-vulkan-sdk-action@d17de7e2f5e50efb5d2123efed18497d3c58c533 # v1.7.0
+        with:
+          vulkan_version: 1.4.309.0
+          cache: true
+
+      - name: Final Vulkan SDK download attempt
+        id: vulkan_sdk_3
+        if: matrix.platform == 'windows-x86_64' && steps.vulkan_sdk_2.outcome == 'failure'
         uses: jakoch/install-vulkan-sdk-action@d17de7e2f5e50efb5d2123efed18497d3c58c533 # v1.7.0
         with:
           vulkan_version: 1.4.309.0
