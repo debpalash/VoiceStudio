@@ -189,10 +189,9 @@ send_uninstall_ping() {
   # opted-in user without python3 on PATH is not silently skipped.
   local py
   py=$(command -v python3 2>/dev/null || true)
-  if [ -z "$py" ]; then
-    for candidate in "${ELECTRON_RUNTIME:-$electron_user_data/runtime}/project/.venv/bin/python"; do
-      [ -x "$candidate" ] && py=$candidate
-    done
+  local runtime_python="${ELECTRON_RUNTIME:-$electron_user_data/runtime}/project/.venv/bin/python"
+  if [ -z "$py" ] && [ -x "$runtime_python" ]; then
+    py=$runtime_python
   fi
   [ -n "$py" ] || return 0
   local prepared host agent origin body
