@@ -450,6 +450,9 @@ jobs:
           test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true || { echo "Refusing to replace a published release"; exit 1; }
           gh release edit "$TAG" --prerelease="$PRERELEASE" --notes-file release-assets/RELEASE_NOTES.md
           find release-assets -maxdepth 1 -type f ! -name RELEASE_NOTES.md -print0 | xargs -0 gh release upload "$TAG" --clobber
+          # A reused draft keeps assets from earlier runs that --clobber never
+          # removes, so check what the draft actually carries.
+          gh release view "$TAG" --json assets --jq '.assets[].name' | python3 scripts/check_electron_release_assets.py --foreign-feeds "$CHANNEL"
       - name: Publish only when explicitly requested
         id: publish_release
         if: github.event_name == 'workflow_dispatch' && inputs.publish == true
@@ -458,6 +461,21 @@ jobs:
             gh release edit "$TAG" --draft=false --prerelease=true --latest=false
           else
             gh release edit "$TAG" --draft=false --prerelease=false --latest
+          fi
+          # Prove where `latest` points now: stable users follow `latest/download`,
+          # so a beta there would update every stable install onto it.
+          latest="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
+          case "$latest" in *-beta.*)
+            echo "::error::Beta $latest is the latest release; stable users would update onto it"
+            exit 1;;
+          esac
+          if [ "$CHANNEL" = beta ] && [ "$latest" = "$TAG" ]; then
+            echo "::error::Beta $TAG became the latest release; stable users would update onto it"
+            exit 1
+          fi
+          if [ "$CHANNEL" = stable ] && [ "$latest" != "$TAG" ]; then
+            echo "::error::Stable $TAG is not the latest release (latest is $latest)"
+            exit 1
           fi
       # GITHUB_TOKEN publication does not emit another workflow's release event.
       - name: Update the Android repository after stable publication
