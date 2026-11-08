@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider, onlineManager } from '@tanstack/react-query';
 import { beforeEach, expect, it, vi } from 'vitest';
 import i18n from '@/i18n';
@@ -795,4 +795,90 @@ it('offers a newer app before the runtime download', async () => {
   await waitFor(() =>
     expect((bridgeStub.current as { updates: { download: () => void } }).updates.download).toHaveBeenCalled(),
   );
+});
+
+it('links development builds to the release list, not a tag of the same version', async () => {
+  const { releaseNotesUrl } = await import('./setup-extras');
+  expect(releaseNotesUrl('0.5.8-beta.1', false)).toMatch(/\/releases\/tag\/v0\.5\.8-beta\.1$/);
+  expect(releaseNotesUrl('0.5.8-beta.1', true)).toMatch(/\/releases$/);
+  expect(releaseNotesUrl('0.5.8-dev', false)).toMatch(/\/releases$/);
+});
+
+it('keeps install help visible after a setup failure', () => {
+  backendStatus.message = 'uv sync failed';
+  backendStatus.runtimeInterrupted = false;
+  render(
+    <BackendGate>
+      <div>workspace</div>
+    </BackendGate>,
+  );
+  expect(screen.getByTestId('setup-help-links')).toHaveTextContent(i18n.t('setup.help_troubleshooting'));
+  backendStatus.runtimeInterrupted = true;
+});
+
+function updateBridge(snapshot: unknown, extra: Record<string, unknown> = {}) {
+  const listeners: ((s: unknown) => void)[] = [];
+  let resolveSnapshot: (s: unknown) => void = () => {};
+  bridgeStub.current = {
+    updates: {
+      getState: vi.fn(() => new Promise((resolve) => (resolveSnapshot = resolve))),
+      onState: (cb: (s: unknown) => void) => (listeners.push(cb), () => {}),
+      download: vi.fn(async () => ({})),
+      check: vi.fn(async () => ({ status: 'available' })),
+      ...extra,
+    },
+    backend: new Proxy({}, { get: () => vi.fn(async () => ({})) }),
+    app: { platform: 'linux', isDev: false },
+  };
+  return {
+    emit: (s: unknown) => listeners.forEach((cb) => cb(s)),
+    resolveSnapshot: () => resolveSnapshot(snapshot),
+  };
+}
+
+it('a failed update download keeps the notice with Retry', async () => {
+  const bridge = updateBridge({
+    status: 'error',
+    currentVersion: '0.5.8-beta.1',
+    availableVersion: '0.5.8-beta.2',
+    error: 'HTTP 503',
+    progress: 0,
+  });
+  render(
+    <BackendGate>
+      <div>workspace</div>
+    </BackendGate>,
+  );
+  bridge.resolveSnapshot();
+  const notice = await screen.findByTestId('setup-update-notice');
+  expect(notice).toHaveTextContent(i18n.t('update.error_network'));
+  fireEvent.click(screen.getByRole('button', { name: i18n.t('update.retry') }));
+  await waitFor(() =>
+    expect((bridgeStub.current as { updates: { check: () => void } }).updates.check).toHaveBeenCalled(),
+  );
+});
+
+it('an update event that arrives before the initial snapshot is not overwritten', async () => {
+  const bridge = updateBridge({
+    status: 'available',
+    currentVersion: '0.5.8-beta.1',
+    availableVersion: '0.5.8-beta.2',
+    progress: 0,
+  });
+  render(
+    <BackendGate>
+      <div>workspace</div>
+    </BackendGate>,
+  );
+  await act(async () => {
+    bridge.emit({
+      status: 'downloaded',
+      currentVersion: '0.5.8-beta.1',
+      availableVersion: '0.5.8-beta.2',
+      progress: 100,
+    });
+  });
+  await act(async () => bridge.resolveSnapshot());
+  expect(await screen.findByRole('button', { name: i18n.t('update.restart') })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: i18n.t('update.download') })).not.toBeInTheDocument();
 });

@@ -641,7 +641,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
           {(installing || setupFailed || (setup && status.runtimeInterrupted)) && (
             <SetupSupport key={`${status.stage}:${status.message ?? ''}`} status={status} />
           )}
-          {(setup && !setupFailed) || installing ? <SetupHelpLinks /> : null}
+          {setup || installing ? <SetupHelpLinks /> : null}
           {failed && <ReportBug error={status.message} />}
           {failed && <CrashDetails />}
           <ConfirmDialog
