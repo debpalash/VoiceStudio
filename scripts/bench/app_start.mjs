@@ -54,7 +54,17 @@ const isLocal = (url) =>
   !/^(https?|wss?):$/.test(url.protocol) || ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname);
 
 async function launch(profile, seed) {
-  const { ELECTRON_RUN_AS_NODE: _runAsNode, ...inherited } = process.env;
+  // Same isolation as bench.py's isolated_env: none of this machine's app or
+  // proxy settings may redirect the data folder or the network.
+  const inherited = Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([key]) =>
+        key !== 'ELECTRON_RUN_AS_NODE' &&
+        !key.toUpperCase().endsWith('_PROXY') &&
+        !key.startsWith('OMNIVOICE_') &&
+        !key.startsWith('VOICESTUDIO_'),
+    ),
+  );
   const startedAt = Date.now();
   const app = await electron.launch({
     executablePath: packaged ?? devElectron(),
