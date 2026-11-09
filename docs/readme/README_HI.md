@@ -325,12 +325,14 @@ chmod +x VoiceStudio-*-linux-x64.AppImage
 <details>
 <summary>निक्स / निक्सओएस · स्रोत वातावरण</summary>
 
-रिपॉजिटरी का FHS विकास वातावरण दर्ज करें, फिर स्रोत से चलाएँ:
+रिपॉजिटरी का विकास वातावरण दर्ज करें, फिर स्रोत से चलाएँ:
 
 ```sh
 git clone https://github.com/debpalash/VoiceStudio.git
 cd VoiceStudio
-nix develop .#fhs
+nix develop
+bun install
+bun run setup:api
 bun run dev
 ```
 

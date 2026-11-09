@@ -325,12 +325,14 @@ chmod +x VoiceStudio-*-linux-x64.AppImage
 <details>
 <summary>Nix / NixOS · ambiente de origem</summary>
 
-Entre no ambiente de desenvolvimento FHS do repositório e execute a partir do código-fonte:
+Entre no ambiente de desenvolvimento do repositório e execute a partir do código-fonte:
 
 ```sh
 git clone https://github.com/debpalash/VoiceStudio.git
 cd VoiceStudio
-nix develop .#fhs
+nix develop
+bun install
+bun run setup:api
 bun run dev
 ```
 

@@ -182,10 +182,12 @@ installs. Model and Python runtime setup remain explicit in the app.
 
 ### Nix / NixOS
 
-A community-maintained Nix flake provides development shells and an FHS environment for running from source (not tested in CI). See the [Nix / NixOS guide](nix.md):
+A community-maintained Nix flake provides development shells for running from source (not tested in CI). See the [Nix / NixOS guide](nix.md):
 
 ```bash
-nix develop .#fhs   # recommended for NixOS
+nix develop
+bun install
+bun run setup:api
 bun run dev
 ```
 
@@ -210,7 +212,7 @@ To build and install the app itself:
 
 ```bash
 nix build          # the unpacked Linux app
-nix run voicestudio
+nix run .          # launch it straight from the flake
 ```
 
 Two differences from the AppImage are worth knowing:

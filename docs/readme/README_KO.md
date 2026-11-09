@@ -326,12 +326,14 @@ chmod +x VoiceStudio-*-linux-x64.AppImage
 <details>
 <summary>Nix / NixOS · 소스 실행 환경</summary>
 
-저장소의 FHS 개발 환경에 들어간 뒤 소스에서 실행하세요:
+저장소의 개발 환경에 들어간 뒤 소스에서 실행하세요:
 
 ```sh
 git clone https://github.com/debpalash/VoiceStudio.git
 cd VoiceStudio
-nix develop .#fhs
+nix develop
+bun install
+bun run setup:api
 bun run dev
 ```
 

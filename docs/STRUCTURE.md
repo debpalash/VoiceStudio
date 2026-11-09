@@ -19,8 +19,9 @@ VoiceStudio/
 ├── bun.lock                     ⟵ JS lockfile — repo-root, covers the electron/ workspace
 ├── turbo.json                   ⟵ turborepo pipeline
 │
-├── flake.nix / flake.lock       ⟵ NixOS dev shell + a Nix-built Linux app; `nix flake check`
-│                                   gates the packaged resources and the helper's libxdo link
+├── flake.nix / flake.lock       ⟵ NixOS dev shells + a Nix-built Linux app; `nix flake check`
+│                                   gates the packaged resources, the helper's libxdo link and
+│                                   the pruned runtime node_modules
 │
 ├── .coderabbit.yaml             ⟵ CodeRabbit PR review config (fed CLAUDE.md)
 ├── greptile.json                ⟵ Greptile PR review config (fed CLAUDE.md)
@@ -38,16 +39,17 @@ VoiceStudio/
 ├── backend/                     ⟵ FastAPI server
 │   ├── main.py                  the one entry point; its boot order is load-bearing —
 │   │                            read the comments before reordering anything
-│   ├── api/routers/             42 routers, auto-included; thin HTTP/WS surface
+│   ├── api/routers/             44 routers, auto-included; thin HTTP/WS surface
 │   │   └── setup/               first-run wizard, model download
 │   ├── core/                    config, db, job queue, event bus, auth/CSRF, path security,
 │   │                            opt-in analytics, version, diagnostics
-│   ├── services/                99 modules of business logic — TTS, dubbing pipeline,
+│   ├── services/                121 modules of business logic — TTS, dubbing pipeline,
 │   │                            audio DSP, GPU gateway, engine routing, model lifecycle
 │   ├── engines/                 per-engine adapters: indextts, supertonic3, confucius4,
 │   │                            dots_tts, moss_tts_v15, pockettts, audiocpp,
 │   │                            omnivoice_gguf, omnivoice_subprocess, _asr_sidecar, _echo,
-│   │                            voxcpm2_subprocess, moss_tts_nano_subprocess, cosyvoice_subprocess
+│   │                            voxcpm2_subprocess, moss_tts_nano_subprocess, cosyvoice_subprocess,
+│   │                            cosyvoice_gguf, whisper_cpp
 │   ├── worker/                  remote / distributed workers — scheduler, pool, routing,
 │   │                            breaker, capacity, plus protocol/ and inbound/
 │   ├── mcp_shim/                MCP server entry point (docs/mcp.md)
@@ -96,6 +98,7 @@ VoiceStudio/
 │   ├── install.sh / install.ps1 shell + PowerShell installers served at voicestudio.sh/install
 │   ├── dev-backend.mjs          `bun run dev:api` backend supervisor
 │   ├── setup.py                 `bun run setup:api` post-sync platform setup (incl. ROCm opt-in)
+│   ├── prune-runtime-node-modules.mjs   Nix build: ships only main-process runtime deps
 │   ├── electron-smoke-test.mjs  `bun run smoke-test` packaged-app launch check
 │   ├── prepare_electron_release.py, check_electron_release_assets.py   release asset gates
 │   ├── check-docs-drift.py      the docs-drift.yml checker (docs/features.yaml is canonical)
