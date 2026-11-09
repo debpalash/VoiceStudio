@@ -2,7 +2,7 @@ import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { startHealthBackend } from './fake-health-backend.mjs';
 import { routesForShard } from './crawler-shards.mjs';
-import { waitForQuietRequests } from './crawler-settle.mjs';
+import { tracksRequest, waitForQuietRequests } from './crawler-settle.mjs';
 
 /**
  * Clicks every enabled button on every static route, once per backend fault mode, and fails on
@@ -15,7 +15,8 @@ import { waitForQuietRequests } from './crawler-settle.mjs';
  *    new toast or alert, no changed text), so the user sees a button that "does nothing"
  *  - crash: an uncaught exception or unhandled promise rejection
  *  - console: a console.error the click caused
- *  - unsettled: API traffic never gives the UI a full quiet grace within the request budget
+ *  - unsettled: same-origin traffic (API reads and lazily loaded code) never gives the UI a full
+ *    quiet grace within the request budget
  *  - frozen: the renderer stops answering after the click
  *
  * Fault modes apply to API writes (anything but GET/HEAD) issued after the click, so every button
@@ -37,6 +38,7 @@ import { waitForQuietRequests } from './crawler-settle.mjs';
  */
 
 const BASE = process.env.VOICESTUDIO_UI_URL || 'http://localhost:3912';
+const ORIGIN = new URL(BASE).origin;
 const MODES = ['fixture', 'http-500', 'network-error', 'bad-json'];
 const modes = (process.env.VOICESTUDIO_CRAWL_MODES || MODES.join(',')).split(',').filter(Boolean);
 const routeFilter = (process.env.VOICESTUDIO_CRAWL_ROUTES || '').split(',').filter(Boolean);
@@ -44,7 +46,7 @@ const [shard, shards] = (process.env.VOICESTUDIO_CRAWL_SHARD || '1/1').split('/'
 assert.ok(shard >= 1 && shard <= shards, 'VOICESTUDIO_CRAWL_SHARD must look like 1/3');
 const verbose = process.env.VOICESTUDIO_CRAWL_VERBOSE === '1';
 
-/** Longest a click's API traffic may stay in flight before the button is judged stuck. */
+/** Longest a click's traffic may stay in flight before the button is judged stuck. */
 const REQUEST_BUDGET_MS = 8_000;
 /** Grace after the traffic settles for React to drop its loading state. */
 const SETTLE_MS = 400;
@@ -118,7 +120,7 @@ async function openSession(browser, mode) {
   });
   page.on('requestfailed', countFailure);
   page.on('request', (request) => {
-    if (isApi(request) && request.resourceType() !== 'eventsource') {
+    if (tracksRequest(request.url(), request.resourceType(), ORIGIN)) {
       state.inflight.add(request);
       state.activity += 1;
       recent.push(request);
@@ -230,7 +232,7 @@ async function openSession(browser, mode) {
         : 'renderer did not answer within 5s' }];
     }
     if (!observation.settled)
-      problems.push({ kind: 'unsettled', detail: `API traffic did not stay quiet within ${REQUEST_BUDGET_MS}ms (${observation.pending} request(s) pending${describeTraffic()})` });
+      problems.push({ kind: 'unsettled', detail: `traffic did not stay quiet within ${REQUEST_BUDGET_MS}ms (${observation.pending} request(s) pending${describeTraffic()})` });
     const after = observation.snapshot;
     if (observation.settled && after > before && new URL(page.url()).hash === `#${route}`)
       problems.push({
