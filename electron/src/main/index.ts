@@ -29,6 +29,7 @@ import { startAccount } from './account';
 import { installAppIdentity, installMacApplicationMenu } from './app-identity';
 import { APP_ID, PRODUCT_NAME } from '../../../config/app-config.mjs';
 import { restoreSecurityScopedDirectories } from './security-scoped-files';
+import { devInstanceFile, recordDevInstance, waitForPreviousDevInstance } from './dev-lock-handoff';
 
 // Packaged GUI launches can inherit a short-lived terminal pipe. When that
 // launcher exits, diagnostic console writes emit EPIPE asynchronously and can
@@ -247,9 +248,15 @@ async function openOutside(url: string): Promise<void> {
   }
 }
 
-if (process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1' && !app.requestSingleInstanceLock()) {
+const singleInstance = process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1';
+// A dev restart starts the new Electron before the old one has let go of the lock.
+const devInstance =
+  singleInstance && !app.isPackaged ? devInstanceFile(app.getPath('userData')) : null;
+if (devInstance) waitForPreviousDevInstance({ file: devInstance });
+if (singleInstance && !app.requestSingleInstanceLock()) {
   app.quit();
 } else {
+  if (devInstance) recordDevInstance(devInstance);
   app.on('second-instance', () => {
     activateLiveWindow(mainWindow);
   });

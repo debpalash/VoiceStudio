@@ -17,6 +17,7 @@ import { describe, expect, it, vi } from 'vitest';
 // This is a Node launcher shared with the package script, so it intentionally
 // remains plain ESM rather than being compiled into Electron's main process.
 import {
+  MAC_TOOLS,
   createMacDevBundlePlan,
   launchElectronVite,
   prepareMacDevElectron,
@@ -197,10 +198,37 @@ describe('macOS development bundle branding', () => {
   });
 });
 
+it('calls the macOS system tools by absolute path, never whatever PATH finds first (#3813)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'vs-dev-tools-'));
+  try {
+    const icon = join(dir, 'icon.icns');
+    writeFileSync(icon, 'icon');
+    const commands: string[] = [];
+    prepareMacDevElectron({
+      electronExecutable: join(dir, 'src', 'Electron.app', 'Contents', 'MacOS', 'Electron'),
+      electronVersion: '44.3.0',
+      appVersion: '0.5.6',
+      iconPath: icon,
+      cacheRoot: join(dir, 'cache'),
+      runCommand(command: string, args: string[]) {
+        commands.push(command);
+        if (command !== MAC_TOOLS.cp) return;
+        const target = args[args.length - 1];
+        mkdirSync(join(target, 'Contents', 'MacOS'), { recursive: true });
+        mkdirSync(join(target, 'Contents', 'Resources'), { recursive: true });
+        writeFileSync(join(target, 'Contents', 'MacOS', 'Electron'), 'binary');
+      },
+    });
+    expect(new Set(commands)).toEqual(new Set(['/bin/cp', '/usr/bin/plutil', '/usr/bin/codesign']));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 describe('macOS development bundle cache repair', () => {
   // cp/plutil/codesign are macOS tools; the fake runner materialises the same layout.
   const fakeRun = (command: string, args: string[]) => {
-    if (command !== 'cp') return;
+    if (command !== MAC_TOOLS.cp) return;
     const target = args[args.length - 1];
     mkdirSync(join(target, 'Contents', 'MacOS'), { recursive: true });
     mkdirSync(join(target, 'Contents', 'Resources'), { recursive: true });
@@ -326,7 +354,7 @@ it('reports asynchronous Vite spawn failure and removes signal forwarding', () =
 
 describe.skipIf(process.platform !== 'darwin')('macOS bundle lifetime coordination', () => {
   const fakeRun = (command: string, args: string[]) => {
-    if (command !== 'cp') return;
+    if (command !== MAC_TOOLS.cp) return;
     const target = args[args.length - 1];
     mkdirSync(join(target, 'Contents', 'MacOS'), { recursive: true });
     mkdirSync(join(target, 'Contents', 'Resources'), { recursive: true });
@@ -376,7 +404,7 @@ describe.skipIf(process.platform !== 'darwin')('macOS bundle lifetime coordinati
         const session = prepareMacDevSession({
           ...${JSON.stringify({ ...options, appVersion })},
           runCommand(command, args) {
-            if(command !== 'cp') return;
+            if(command !== ${JSON.stringify(MAC_TOOLS.cp)}) return;
             process.send({phase:'preparing'});
             if(${paused}) {
               const deadline = Date.now() + 10000;
