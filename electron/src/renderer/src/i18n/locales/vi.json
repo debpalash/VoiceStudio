@@ -2629,6 +2629,10 @@
     "retry": "Thử lại",
     "refresh": "Làm mới",
     "manage_profile": "Quản lý hồ sơ",
+    "change_photo": "Đổi ảnh trên trang hồ sơ của bạn",
+    "edit_name": "Sửa tên",
+    "name_label": "Tên hiển thị",
+    "rename_failed": "Không lưu được tên. Hãy thử lại.",
     "manage_plan": "Quản lý gói"
   },
   "cloudsync": {

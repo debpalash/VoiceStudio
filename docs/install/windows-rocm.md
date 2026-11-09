@@ -34,7 +34,7 @@ Torch/audio **2.9.1+rocm7.2.1**, vision **0.24.1+rocm7.2.1** and the exact HIP
 CTranslate2 **4.8.2** archive/wheel/DLL hashes. RDNA 1 and 2 use ROCm **10.0.0**,
 Torch **2.13.0+rocm10.0.0**, audio **2.11.0.2+rocm10.0.0** and vision
 **0.28.0+rocm10.0.0**; RDNA 2 adds the expanded-target HIP CTranslate2 **4.8.4**
-described below once its in-repository build is published. Setup identifies the GPU by PCI ID and installs only that
+described below. Setup identifies the GPU by PCI ID and installs only that
 architecture's Torch, vision and SDK device packages, with native kernels and no
 `HSA_OVERRIDE_GFX_VERSION`. Mixed AMD architectures are refused because selecting
 the wrong device package would be unsafe. Windows ARM64, Windows 10 and other
@@ -79,11 +79,12 @@ OpenNMT/CTranslate2 release archive. RDNA 2 uses an expanded-target HIP
 CTranslate2 4.8.4 that this repository builds from pinned upstream
 OpenNMT/CTranslate2 source (`.github/workflows/ct2-rocm-windows.yml`: commit
 `78b1e17` plus upstream #2142, which adds the `gfx1031`/`gfx1032` targets) and
-publishes as a prerelease asset of this repository's GitHub Releases. Until that
-build is published and its hashes are pinned in the recipe, RDNA 2 — like RDNA 1
-(`gfx1010`) — downloads no CTranslate2 archive: setup installs the project's
-locked CPU build through the normal package index, and speech recognition and
-diarization run on the CPU. Every file has a SHA-256 in the recipe, and setup
+publishes as the prerelease
+[`ct2-rocm-4.8.4-78b1e17`](https://github.com/debpalash/VoiceStudio/releases/tag/ct2-rocm-4.8.4-78b1e17);
+the recipe pins that archive's size and SHA-256, the wheel's and the native
+DLL's, and setup on RDNA 2 downloads only that archive for CTranslate2. RDNA 1
+(`gfx1010`) downloads no CTranslate2 archive: setup installs the project's
+locked CPU build through the normal package index. Every file has a SHA-256 in the recipe, and setup
 refuses a file whose bytes differ. Every other package keeps the version your
 environment already has, so the overlay never quietly upgrades dependencies.
 
@@ -168,8 +169,8 @@ model folder and an existing PCM speech WAV:
 The smoke test never resolves a remote model ID or downloads assets. It consumes
 GPU/float16 inference and requires nonempty speech segments with finite times;
 the report omits transcripts and user paths. Model-free readiness and local CT2
-inference are reported as different scopes. On RDNA 1 (`gfx1010`), and on RDNA 2
-until its in-repository build is pinned, there is no verified HIP CTranslate2, so
+inference are reported as different scopes. On RDNA 1 (`gfx1010`) there is no
+verified HIP CTranslate2, so
 the speech-scope smoke is unavailable and the model-free report says so with
 `ct2_supported: false`.
 ## Engine boundaries
@@ -178,7 +179,7 @@ the speech-scope smoke is unavailable and the model-free report says so with
 | --- | --- |
 | Main Torch TTS and voice-cloning audio input | Uses the matched main environment. Historical RX 6700 XT results reported on 2026-11-02 (illustrative, not certification of the current revision or other Radeon hardware): native OmniVoice TTS and synthetic-reference cloning on GPU/fp16 at 16 steps, plus CPU/fp32 TTS at four steps with four Torch threads. Reference audio retains explicit soundfile compatibility on torchaudio 2.9 and later. Speaker similarity and other engines need their own tests. |
 | PyTorch Whisper | The matched opt-in Windows Torch recipe advertises ROCm independently of CT2. Historical RX 6700 XT results reported on 2026-11-02 (illustrative, not certification of the current revision or other Radeon hardware): both transcription APIs passed on GPU/fp16 and CPU/fp32 using tiny.en; runtime evidence reports the actual pipeline device and dtype. English-only checkpoints accept English transcription without pretending to support translation. |
-| Faster-whisper, including the crash-isolated worker | GPU is admitted only for the pinned HIP binary plus bounded local verification; on RDNA 1 (`gfx1010`), and on RDNA 2 until its in-repository build is pinned, it runs on the CPU. ROCm 10 runs normal faster-whisper in a separate inference process for both GPU and CPU, preserving CPU selection and memory fallback without mixing Torch's LLVM OpenMP with CT2's Intel OpenMP. Model, VAD, timestamps and decode/request options are preserved. |
+| Faster-whisper, including the crash-isolated worker | GPU is admitted only for the pinned HIP binary plus bounded local verification; on RDNA 1 (`gfx1010`) it runs on the CPU. ROCm 10 runs normal faster-whisper in a separate inference process for both GPU and CPU, preserving CPU selection and memory fallback without mixing Torch's LLVM OpenMP with CT2's Intel OpenMP. Model, VAD, timestamps and decode/request options are preserved. |
 | WhisperX transcription | ROCm 10 refuses this in-process CT2 path before imports or cached pipeline use because its CPU execution/fallback mixes incompatible OpenMP runtimes. Use faster-whisper or PyTorch Whisper. The ROCm 7 recipe retains its existing CPU path; GPU execution remains unverified. |
 | Argos offline translation | ROCm 10 refuses Argos before `argostranslate.translate` is imported, both when listing translation engines and when translating, because it runs CTranslate2 inside the backend process beside Torch. Choose NLLB (local) or an online provider. The ROCm 7 recipe is unchanged. |
 | pyannote speaker detection, wav2vec2 alignment | GPU execution is gated before imports/cached pipelines: MIOpen Unicode-path and SDK-header compatibility is unverified. CPU selection retains the existing Torch pipeline; it is separate from WhisperX's CT2 transcription and is not certified by the basic-ASR tests. |

@@ -318,9 +318,18 @@ for `VoiceStudio-Electron-*-linux-x64.AppImage.zsync`, so AppImageUpdate cannot
 move them to a renamed release; they update through the in-app updater. Verify both update paths
 against the final downloaded artifact, not the pre-publish build.
 
-Windows ROCm RDNA 2 GPU speech needs the in-repo HIP CTranslate2: run the
-**CTranslate2 ROCm (Windows)** workflow once, then pin its printed hashes in
-`rocm10.ctranslate2` of `scripts/windows-rocm-recipe.json`.
+Windows ROCm RDNA 2 GPU speech uses the in-repo HIP CTranslate2 pinned in
+`rocm10.ctranslate2` of `scripts/windows-rocm-recipe.json` (release
+`ct2-rocm-4.8.4-78b1e17`). It is a dependency asset, not part of a release:
+releases reuse it unchanged. To rebuild (new upstream source or targets), edit the workflow's source pins
+(`CT2_BASE`, `CT2_TARGETS`, `CT2_TREE`, `CT2_VERSION`) and the recipe's target
+list, and set a new `RELEASE_TAG` in `.github/workflows/ct2-rocm-windows.yml`
+(the publish job fails if the tag already exists, since the recipe pins its
+bytes and `gh release create` would otherwise reuse the old tag). Add the new
+archive URL to `_SOURCES` in `backend/core/windows_rocm/ct2_recipe.py`, run the
+**CTranslate2 ROCm (Windows)** workflow, verify the downloaded archive's size and
+SHA-256 independently, then copy the run's printed pins (`pins.json`) into the
+recipe and update the exact-pin test in `tests/test_windows_rocm_rocm10.py`.
 
 Electron update manifests use platform and architecture channels. Confirm every
 manifest names an uploaded installer, reports the tagged version, and matches the
@@ -349,6 +358,8 @@ Do not move or recreate an existing tag.
 With "Require branches to be up to date" on, every merge to `main` puts every other open PR behind, and each needs an update plus a full CI run. The merge queue replaces that: a PR that passes its checks joins the queue, GitHub builds a temporary commit of `main` plus the queued PRs, runs CI once on it, and merges.
 
 The workflows are ready: `ci.yml` runs on `merge_group`, and `merge-queue-checks.yml` reports the PR-level required checks ("CLA gate", "Commit identities", "CLA", "Commit identity policy") on the queue's commit, because they cannot run there. `tests/test_merge_queue.py` keeps those names equal to the ruleset's required list; change both together.
+
+On the queue commit, `ci.yml` compares the commit with its base to decide the documentation-only and Electron scopes, as it does for a pull request. The pass cache (see `.github/CONTRIBUTING.md` → Quality gates) lets a queued job skip when its inputs match a green run on `main`, so jobs whose inputs the queued pull requests did not touch do not run again. Pushes to `main` always run in full.
 
 To turn it on (Settings → Rules → Rulesets → `main`):
 

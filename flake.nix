@@ -39,6 +39,32 @@
           && !(lib.hasPrefix "result-" name);
       };
 
+      # Only what `bun install` reads: the root manifest and lockfile, each
+      # workspace's package.json, the patches named in patchedDependencies and
+      # any bun/npm config. The node-deps fixed-output derivation is built from
+      # this, so ordinary source edits cannot reach its pinned hash. Both lists
+      # are read from package.json, so a new workspace or patch is picked up
+      # without touching this file.
+      rootManifest = lib.importJSON ./package.json;
+      nodeDepsSrc = lib.fileset.toSource {
+        root = ./.;
+        fileset = lib.fileset.unions (
+          [
+            ./package.json
+            ./bun.lock
+            (lib.fileset.maybeMissing ./bunfig.toml)
+            (lib.fileset.maybeMissing ./.npmrc)
+          ]
+          ++ map (
+            ws:
+            assert lib.assertMsg (!lib.hasInfix "*" ws)
+              "flake.nix: workspace glob \"${ws}\" in package.json; list workspaces explicitly.";
+            ./. + "/${ws}/package.json"
+          ) (rootManifest.workspaces or [ ])
+          ++ map (patch: ./. + "/${patch}") (lib.attrValues (rootManifest.patchedDependencies or { }))
+        );
+      };
+
       # ── libxdo ───────────────────────────────────────────────────────────
       # enigo (a dependency of the Rust dictation helper) enables its default
       # `xdo` feature, whose src/linux/xdo.rs declares `#[link(name = "xdo")]`,
@@ -316,23 +342,50 @@
               pkgs.nodejs_22
             ];
             outputHashMode = "recursive";
-            outputHash = "sha256-7g57Klg6Ru2AklMzz60IH4n4w/v5wJb3IqLyoClR0FQ=";
+            outputHash = "sha256-jH4D5OAS4yeJsFIUywQzm3NpXyH2Y1kJ1+5WyZvvXIE=";
             sourceProvenance = null;
           } ''
           export HOME=$TMPDIR
           export BUN_INSTALL="$TMPDIR/.bun"
           export PATH="$BUN_INSTALL/bin:$PATH"
 
-          cp -r ${src} ./source
-          chmod -R u+w ./source
-          cd ./source
-
           # Skip the electron postinstall: this build uses nixpkgs' electron
           # runtime, and the download is both redundant and a network call we
           # would rather not make.
           export ELECTRON_SKIP_BINARY_DOWNLOAD=1
 
-          bun install --frozen-lockfile
+          # Install into ./source from the dependency manifests alone, then
+          # drop what bun does not write deterministically:
+          #   * the .cache tree (timestamps and generated binaries);
+          #   * the per-package .bin directories inside the isolated store
+          #     (node_modules/.bun/<pkg>/node_modules/.bin). bun links them
+          #     concurrently, and for peer-dependency cycles (vite-plus and
+          #     oxlint/oxfmt, vitest and @vitest/ui) which links exist varies
+          #     from run to run on identical input, which flipped this
+          #     derivation's hash between PRs. Nothing here runs a dependency
+          #     through them; every consumer calls entrypoints by path.
+          # The top-level node_modules/.bin trees are deterministic and kept.
+          install_deps() {
+            cp -r ${nodeDepsSrc} ./source
+            chmod -R u+w ./source
+            (cd ./source && bun install --frozen-lockfile)
+            rm -rf source/node_modules/.cache source/electron/node_modules/.cache
+            find source/node_modules/.bun -type d -name .bin -prune -exec rm -rf {} +
+          }
+
+          # Install twice and require identical trees, so any new
+          # nondeterminism fails here with the differing paths instead of as
+          # an unexplained hash mismatch on some later, unrelated PR.
+          install_deps
+          mv source first
+          install_deps
+          if ! diff -r --no-dereference first source > $TMPDIR/determinism.diff 2>&1; then
+            echo "bun install is not deterministic; differing paths:" >&2
+            head -50 $TMPDIR/determinism.diff >&2
+            exit 1
+          fi
+          rm -rf first
+          cd ./source
 
           # bun writes .bin entries as absolute symlinks into the build tree.
           # Copy, then re-point any absolute symlink so the result is
@@ -343,10 +396,6 @@
           # into the root node_modules, so renaming either tree breaks them.
           cp -r node_modules $out/node_modules
           cp -r electron/node_modules $out/electron/node_modules
-
-          # bun writes a .cache tree with timestamps and generated binaries;
-          # leaving it in would make the output hash differ on every build.
-          rm -rf $out/node_modules/.cache $out/electron/node_modules/.cache
 
           chmod -R u+w $out
 
@@ -395,6 +444,19 @@
                   echo "rewritten symlink does not resolve: $link -> $target" >&2
                   exit 1
                 fi
+                ;;
+            esac
+          done
+
+          # Every link must stay inside the two dependency trees. A link to a
+          # workspace package would resolve to its manifest-only stub here
+          # rather than to the checkout, so fail instead of shipping it.
+          find $out -type l | while read -r link; do
+            case "$(realpath -m "$link")" in
+              "$out"/node_modules | "$out"/node_modules/* | "$out"/electron/node_modules | "$out"/electron/node_modules/*) ;;
+              *)
+                echo "symlink leaves the dependency trees: $link -> $(readlink "$link")" >&2
+                exit 1
                 ;;
             esac
           done

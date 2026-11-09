@@ -1,7 +1,6 @@
 import { AudioLinesIcon, PauseIcon, PlayIcon, XIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
-import { WaveformPlayer } from '@/components/waveform-player';
 import { stopActivePlayback, usePlaybackSource } from '@/lib/audio/playback';
 import { clipTitle, playbackKindLabelKey } from '@/lib/audio/playback-kind';
 import {
@@ -12,6 +11,7 @@ import {
   useNowPlaying,
   type NowPlaying,
 } from '@/lib/store/now-playing';
+import { LazyBoundary, retryableLazy } from '@/lib/lazy-boundary';
 import { cn } from '@/lib/utils';
 
 /**
@@ -19,6 +19,16 @@ import { cn } from '@/lib/utils';
  * the same waveform player as Latest take, so playback keeps going while the
  * user moves between pages.
  */
+// The app shell mounts the dock on every page, so the player (Vidstack and
+// WaveSurfer) loads with the first clip played, not at startup.
+const WaveformPlayer = retryableLazy(
+  () =>
+    import('@/components/waveform-player').then((m) => ({
+      default: m.WaveformPlayer,
+    })),
+  <div className="min-w-0 flex-1" />,
+);
+
 /** What fits the 15rem title column, so the word-boundary cut wins over the CSS one. */
 const DOCK_TITLE_CHARS = 32;
 
@@ -37,19 +47,30 @@ export function NowPlayingDock() {
         <AudioLinesIcon className="size-4" aria-hidden="true" />
       </span>
       <div className="w-60 min-w-0 shrink" title={clip.title + ' · ' + label}>
-        <p className="truncate text-sm leading-5 font-medium">{clipTitle(clip.title, DOCK_TITLE_CHARS)}</p>
+        <p className="truncate text-sm leading-5 font-medium">
+          {clipTitle(clip.title, DOCK_TITLE_CHARS)}
+        </p>
         <p className="truncate text-xs leading-4 text-muted-foreground">{label}</p>
       </div>
-      <WaveformPlayer
+      <LazyBoundary
         key={clip.nonce}
-        src={clip.src}
-        source={dockSource(clip.source)}
-        durationHint={clip.duration ?? undefined}
-        autoPlay
-        compact
-        height={32}
-        className="min-w-0 flex-1 bg-transparent px-0"
-      />
+        fallback={
+          <p role="status" className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+            {t('player.unavailable')}
+          </p>
+        }
+      >
+        <WaveformPlayer
+          key={clip.nonce}
+          src={clip.src}
+          source={dockSource(clip.source)}
+          durationHint={clip.duration ?? undefined}
+          autoPlay
+          compact
+          height={32}
+          className="min-w-0 flex-1 bg-transparent px-0"
+        />
+      </LazyBoundary>
       <Button
         variant="ghost"
         size="icon-sm"

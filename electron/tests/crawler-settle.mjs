@@ -38,3 +38,13 @@ export async function waitForQuietRequests(
     await wait(Math.min(50, deadline - time, quietSince === null ? 50 : graceMs - (time - quietSince)));
   }
 }
+
+/**
+ * Whether a request counts toward the quiet window: every same-origin load except event
+ * streams, which stay open by design. Not only `/api/`: lazily loaded code shares the browser's
+ * six connections per host with the API, so a screen still downloading modules after the crawler
+ * leaves it queues the next screen's API reads behind them and fails that screen's clicks.
+ */
+export function tracksRequest(url, resourceType, origin) {
+  return resourceType !== 'eventsource' && new URL(url).origin === origin;
+}

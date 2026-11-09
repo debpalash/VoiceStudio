@@ -23,7 +23,7 @@ import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { formatClock } from '@/components/waveform-player';
+import { formatClock } from '@/components/media-clock';
 import {
   useClearHistory,
   useDeleteHistoryItem,

@@ -40,8 +40,13 @@ function setup(state: Partial<typeof base>) {
     signIn: vi.fn(async () => {}),
     cancelSignIn: vi.fn(async () => {}),
     signOut: vi.fn(async () => {}),
+    updateProfile: vi.fn(async (p: { display_name: string }) => ({
+      ...base,
+      ...state,
+      profile: { ...(state.profile as object), displayName: p.display_name },
+    })),
   };
-  mock.bridge = { account };
+  mock.bridge = { account, files: { openExternal: vi.fn(async () => {}) } };
   render(<AccountSettings />);
   return { account, push: (s: Partial<typeof base>) => act(() => push({ ...base, ...s })) };
 }
@@ -92,7 +97,7 @@ it('signed in: shows the name and Sign out, and never any token-like text', asyn
     signedIn: true,
     profile: { email: 'ana@example.com', displayName: 'Ana', avatarUrl: null, organizations: [] },
   });
-  fireEvent.click(await screen.findByText('account.sign_out'));
+  fireEvent.click(await screen.findByRole('button', { name: 'account.sign_out' }));
   expect(account.signOut).toHaveBeenCalled();
   expect(document.body.textContent).not.toMatch(/Bearer|eyJ/);
 });
@@ -251,7 +256,7 @@ it('with a profile, the account card is the one place for the identity and Sign 
   });
   expect(await screen.findByText('ana@example.com')).toBeInTheDocument();
   expect(screen.getAllByText('ana@example.com')).toHaveLength(1);
-  expect(screen.getAllByText('account.sign_out')).toHaveLength(1);
+  expect(screen.getAllByRole('button', { name: 'account.sign_out' })).toHaveLength(1);
   expect(screen.queryByText(/account\.signed_in_as/)).toBeNull();
 });
 
@@ -283,4 +288,91 @@ it('collapses the sync list while Cloud sync is off and passes the plan link whe
     'data-plan-url',
     'https://plan.example',
   );
+});
+
+const ana = {
+  email: 'ana@example.com',
+  displayName: 'Ana Lima',
+  avatarUrl: null as string | null,
+  organizations: [],
+};
+const links = {
+  profile: 'https://cloud.example/profile',
+  plan: 'https://cloud.example/plan',
+  deletion: 'd',
+};
+const planOf = (pro: boolean) => ({
+  planCode: pro ? 'pro' : 'free',
+  planName: pro ? 'Pro' : 'Free',
+  storageUsedBytes: 0,
+  storageLimitBytes: 1024 ** 3,
+  settingsSync: true,
+  proDesktop: pro,
+});
+
+it.each([
+  [false, 'free'],
+  [true, 'pro'],
+])('shows the plan as a badge (Pro: %s)', async (pro, kind) => {
+  setup({ signedIn: true, profile: ana, plan: planOf(pro), links } as never);
+  const badge = await screen.findByTestId('account-plan-badge');
+  expect(badge).toHaveAttribute('data-plan', kind);
+  expect(badge).toHaveTextContent(pro ? 'Pro' : 'Free');
+  expect(badge.querySelector('svg')).not.toBeNull();
+});
+
+it('shows the photo when there is one, and initials otherwise', async () => {
+  setup({ signedIn: true, profile: { ...ana, avatarUrl: 'data:image/png;base64,AAAA' } } as never);
+  const photo = (await screen.findByTestId('account-avatar')).querySelector('img');
+  expect(photo).toHaveAttribute('src', 'data:image/png;base64,AAAA');
+  cleanup();
+  setup({ signedIn: true, profile: ana } as never);
+  expect(await screen.findByTestId('account-avatar')).toHaveTextContent('AL');
+});
+
+it('the avatar opens the profile page to change the photo, so it syncs', async () => {
+  setup({ signedIn: true, profile: ana, links } as never);
+  fireEvent.click(await screen.findByRole('button', { name: 'account.change_photo' }));
+  const files = (mock.bridge as { files: { openExternal: ReturnType<typeof vi.fn> } }).files;
+  expect(files.openExternal).toHaveBeenCalledWith('https://cloud.example/profile');
+});
+
+it('without a profile link the avatar is not a button', async () => {
+  setup({ signedIn: true, profile: ana } as never);
+  expect(await screen.findByTestId('account-avatar')).not.toHaveRole('button');
+  expect(screen.queryByRole('button', { name: 'account.change_photo' })).toBeNull();
+});
+
+it('edits the display name inline and saves it to the account', async () => {
+  const { account } = setup({ signedIn: true, profile: ana, links } as never);
+  fireEvent.click(await screen.findByRole('button', { name: 'account.edit_name' }));
+  const input = screen.getByRole('textbox', { name: 'account.name_label' });
+  expect(input).toHaveValue('Ana Lima');
+  fireEvent.change(input, { target: { value: '  Ana   Souza ' } });
+  fireEvent.submit(input.closest('form')!);
+  await waitFor(() =>
+    expect(account.updateProfile).toHaveBeenCalledWith({ display_name: 'Ana Souza' }),
+  );
+  expect(await screen.findByText('Ana Souza')).toBeInTheDocument();
+  expect(screen.queryByRole('textbox', { name: 'account.name_label' })).toBeNull();
+});
+
+it('Escape cancels editing, an empty name cannot be saved, and a failure says so', async () => {
+  const { account } = setup({ signedIn: true, profile: ana, links } as never);
+  fireEvent.click(await screen.findByRole('button', { name: 'account.edit_name' }));
+  fireEvent.keyDown(screen.getByRole('textbox', { name: 'account.name_label' }), {
+    key: 'Escape',
+  });
+  expect(screen.queryByRole('textbox', { name: 'account.name_label' })).toBeNull();
+
+  fireEvent.click(screen.getByRole('button', { name: 'account.edit_name' }));
+  const input = screen.getByRole('textbox', { name: 'account.name_label' });
+  fireEvent.change(input, { target: { value: '   ' } });
+  expect(screen.getByRole('button', { name: 'common.save' })).toBeDisabled();
+
+  account.updateProfile.mockRejectedValueOnce(new Error('422'));
+  fireEvent.change(input, { target: { value: 'Ana' } });
+  fireEvent.click(screen.getByRole('button', { name: 'common.save' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('account.rename_failed');
+  expect(screen.getByRole('textbox', { name: 'account.name_label' })).toHaveValue('Ana');
 });

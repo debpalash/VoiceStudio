@@ -29,11 +29,11 @@
       "gpu_architectures": ["gfx1030", "gfx1031", "gfx1032"],
       "version": "4.8.4",
       "archive_url": "https://github.com/debpalash/VoiceStudio/releases/download/ct2-rocm-4.8.4-78b1e17/rocm-python-wheels-Windows.zip",
-      "archive_size": null,
-      "archive_sha256": null,
+      "archive_size": 21865556,
+      "archive_sha256": "ef69c6d68628996faa2eec16007cdba1ec2f670ef914ddee883663e18bf7d8be",
       "wheel_member": "ctranslate2-4.8.4-cp312-cp312-win_amd64.whl",
-      "wheel_sha256": null,
-      "binary_sha256": null,
+      "wheel_sha256": "87b06d60c994afbce73c360f8117a5905884e65c06935c864c074261d3016625",
+      "binary_sha256": "43d4ee10347f78b1be91c1cc715d698bc6d67c1b0a0f6d7f25c206d83e43013c",
       "required_dlls": ["hipblas.dll", "amdhip64_7.dll"]
     },
     "torch": {
