@@ -108,10 +108,10 @@ def test_ci_verifies_intel_mac_as_the_documented_remote_only_host():
     # command made an unrelated CI hardening change (routing every sync through
     # scripts/uv-sync-retry.sh) look like a broken Intel-Mac contract.
     assert re.search(
-        r"if: matrix\.backend_supported\n        run: .*--extra pockettts", workflow
+        r"if: (steps\.pass\.outputs\.hit != 'true' && )?matrix\.backend_supported\n        run: .*--extra pockettts", workflow
     ), "the pockettts extra must be installed only on backend_supported legs"
     assert re.search(
-        r"if: matrix\.backend_supported\n        run: uv run .*pytest tests/smoke/", workflow
+        r"if: (steps\.pass\.outputs\.hit != 'true' && )?matrix\.backend_supported\n        run: uv run .*pytest tests/smoke/", workflow
     ), "the smoke suite must run only on backend_supported legs"
     assert "HF_HUB_CACHE: ${{ runner.temp }}/pockettts-empty-hf-cache" in workflow
 

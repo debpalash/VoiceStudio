@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { ROUTE_WEIGHTS, routesForShard } from './crawler-shards.mjs';
-import { waitForQuietRequests } from './crawler-settle.mjs';
+import { tracksRequest, waitForQuietRequests } from './crawler-settle.mjs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -133,4 +133,30 @@ test('a snapshot completed after the deadline is still unresponsive', async () =
     snapshot: async () => { time = 1001; return 0; },
   });
   assert.deepEqual(result, { settled: false, pending: 0, unresponsive: true });
+});
+
+test('lazily loaded code counts toward the quiet window, event streams do not', () => {
+  // A screen still downloading modules holds the connections the next screen's API reads need,
+  // so module loads must settle before the crawler moves on (/settings/openapi -> /sharing).
+  const origin = 'http://localhost:3912';
+  assert.ok(tracksRequest(`${origin}/api/system/info`, 'fetch', origin));
+  assert.ok(tracksRequest(`${origin}/@fs/repo/node_modules/@scalar/icons/x.js`, 'script', origin));
+  assert.ok(tracksRequest(`${origin}/src/features/settings/a.css`, 'stylesheet', origin));
+  assert.equal(tracksRequest(`${origin}/api/events`, 'eventsource', origin), false);
+  assert.equal(tracksRequest('https://tailscale.com/download', 'document', origin), false);
+});
+
+test('dev servers proxy /api itself, not app paths that start with it', () => {
+  // Settings > API (Scalar) moves the page to /api-reference/...; a bare '/api' proxy prefix sent
+  // the next reload of that page to the backend, which answered with a 404 instead of the app.
+  for (const config of ['../electron.vite.config.ts', '../vite.web.config.ts', 'renderer-smoke.vite.config.mjs']) {
+    const source = readFileSync(join(dir, config), 'utf8');
+    assert.doesNotMatch(source, /^\s*'\/api': \{/m, config);
+    const key = source.match(/^\s*'(\^\/api[^']*)': \{/m)?.[1];
+    assert.ok(key, `${config} has no /api proxy`);
+    const proxied = new RegExp(key);
+    for (const url of ['/api', '/api/engines', '/api?x=1']) assert.match(url, proxied, `${config} ${url}`);
+    for (const url of ['/api-reference/description/introduction', '/apis', '/src/api/client.ts'])
+      assert.doesNotMatch(url, proxied, `${config} ${url}`);
+  }
 });

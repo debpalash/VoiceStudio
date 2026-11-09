@@ -11,6 +11,8 @@ from pathlib import Path
 
 import yaml
 
+PASS_GATE = "steps.pass.outputs.hit != 'true'"  # .github/actions/ci-pass skips the whole job
+
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -38,4 +40,5 @@ def test_python_suite_installs_electron_dependencies_before_packaging_tests():
     pytest = next(i for i, step in enumerate(steps)
                   if "pytest tests/" in step.get("run", ""))
     assert install < pytest, "Packaging regressions load the installed electron-builder during pytest"
-    assert "if" not in steps[install], "A clean runner must always install Electron dependencies"
+    # Only the pass cache, which skips the whole job, may gate it.
+    assert steps[install].get("if") in (None, PASS_GATE), "A clean runner must always install Electron dependencies"

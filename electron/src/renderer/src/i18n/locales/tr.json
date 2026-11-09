@@ -2629,6 +2629,10 @@
     "retry": "Tekrar dene",
     "refresh": "Yenile",
     "manage_profile": "Profili yönet",
+    "change_photo": "Fotoğrafı profil sayfanızda değiştirin",
+    "edit_name": "Adı düzenle",
+    "name_label": "Görünen ad",
+    "rename_failed": "Adınız kaydedilemedi. Tekrar deneyin.",
     "manage_plan": "Planı yönet"
   },
   "cloudsync": {

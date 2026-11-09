@@ -2629,6 +2629,10 @@
     "retry": "重試",
     "refresh": "重新整理",
     "manage_profile": "管理個人資料",
+    "change_photo": "在個人資料頁更換照片",
+    "edit_name": "編輯名稱",
+    "name_label": "顯示名稱",
+    "rename_failed": "無法儲存名稱，請再試一次。",
     "manage_plan": "管理方案"
   },
   "cloudsync": {

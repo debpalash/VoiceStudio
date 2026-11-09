@@ -19,3 +19,5 @@ def test_native_carbon_shortcut_event_delivery():
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "PASS: Carbon application hotkey dispatch and idle pump" in result.stdout
+    # #3924: the helper sleeps in the run loop and must wake for commands.
+    assert "PASS: run-loop sleep ends on the cross-thread wake" in result.stdout

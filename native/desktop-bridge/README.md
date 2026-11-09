@@ -43,11 +43,19 @@ cover shortcut recording/save, early hold release, toggle and disabling registra
 On macOS, the helper pumps Core Foundation sources and explicitly drains and
 dispatches Carbon events on the registration thread. Core Foundation alone
 does not deliver the queued application hotkeys used by `global-hotkey`.
-Each tick drains at most 64 events without waiting, so shortcut traffic cannot
+Each pass drains at most 64 events without waiting, so shortcut traffic cannot
 starve registration changes or shutdown.
+
+Between events the shortcut thread sleeps in each OS's own wait instead of
+polling (#3924): the macOS main run loop, the Windows thread message queue, or
+the Linux command channel. Commands and off-thread hotkey events (Windows
+release detection, the X11 thread, the Wayland portal) wake it explicitly, so
+it never wakes while no shortcut is set and only every 500 ms as a backstop
+while one is.
 
 `cargo run --locked --manifest-path native/desktop-bridge/Cargo.toml --example macos-shortcut-pump-smoke`
 posts an application hotkey event and verifies dispatch through the production
-pump. It sends no OS keystrokes, changes no global shortcut registration and
+pump, then checks that a run-loop sleep honours its limit and ends on the
+helper's cross-thread wake. It sends no OS keystrokes, changes no global shortcut registration and
 requires no Accessibility permission. CI runs it in the Apple Silicon backend smoke job; it can also be run
 manually on an Intel Mac without installing the Python backend.
