@@ -26,10 +26,17 @@ export function ExistingPythonSettings({ onlyWhenSelected = false }: { onlyWhenS
 
   const refresh = async () => {
     const backend = getBridge()?.backend;
-    if (!backend) return;
-    const result = await backend.getPythonRuntime();
-    setSelection(result.selection);
-    setOverrideActive(result.overrideActive);
+    // Browser mode, older preloads and partial test bridges lack this IPC;
+    // a missing method or a failed read must not crash the gate or settings.
+    if (typeof backend?.getPythonRuntime !== 'function') return;
+    try {
+      const result = await backend.getPythonRuntime();
+      setSelection(result.selection);
+      setOverrideActive(result.overrideActive);
+    } catch {
+      setSelection(null);
+      setOverrideActive(false);
+    }
   };
   useEffect(() => { void refresh(); }, []);
 

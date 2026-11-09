@@ -249,3 +249,18 @@ it('cancelling the manual picker adds no validation error', async () => {
   await waitFor(() => expect(backend.choosePythonRuntime).toHaveBeenCalled());
   expect(screen.queryByText('settings.python_runtime_invalid')).toBeNull();
 });
+it('renders without crashing when the runtime read fails or the bridge lacks it', async () => {
+  backend.getPythonRuntime.mockRejectedValue(new Error('no handler'));
+  render(<ExistingPythonSettings />);
+  await waitFor(() => expect(backend.getPythonRuntime).toHaveBeenCalled());
+  expect(screen.getByTestId('python-runtime-quick-search')).toBeVisible();
+  cleanup();
+  const original = backend.getPythonRuntime;
+  (backend as Record<string, unknown>).getPythonRuntime = undefined;
+  try {
+    render(<ExistingPythonSettings />);
+    expect(screen.getByTestId('python-runtime-quick-search')).toBeVisible();
+  } finally {
+    backend.getPythonRuntime = original;
+  }
+});
