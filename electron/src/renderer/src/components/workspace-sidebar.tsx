@@ -144,7 +144,9 @@ export function SecondarySidebar({
     // Called from the event handler, not a state updater, so StrictMode cannot fire it twice.
     onCollapsedChange?.(resolved);
   };
-  const headerTabs = tabsInHeader && library != null;
+  // macOS traffic lights take ~90px of the header; two tabs beside them and the
+  // collapse button truncate to "D…" / "S…", so they move to their own row there.
+  const headerTabs = tabsInHeader && library != null && !lightsInset;
   const tabList = (className: string) => (
     <div
       role="tablist"
@@ -188,6 +190,7 @@ export function SecondarySidebar({
           aria-selected={view === value}
           tabIndex={view === value ? 0 : -1}
           onClick={() => chooseView(value)}
+          title={label}
           className={cn(
             'h-7 min-w-0 flex-1 truncate rounded-md px-2 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring',
             view === value

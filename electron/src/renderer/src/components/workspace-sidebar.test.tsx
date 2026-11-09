@@ -170,6 +170,24 @@ describe('macOS traffic lights', () => {
     columnStartingAt(300);
     expect(header().style.paddingInlineStart).toBe('');
   });
+
+  it('moves header tabs to their own row beside the lights so labels stay readable', () => {
+    platform.mac = true;
+    vi.stubGlobal('ResizeObserver', NoopObserver);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 64 } as DOMRect);
+    render(pane({ tabsInHeader: true, libraryLabel: 'Saved', library: <p>lib</p> }));
+    const list = screen.getByRole('tablist');
+    expect(header().contains(list)).toBe(false);
+    expect(screen.getByRole('tab', { name: 'Saved' })).toHaveAttribute('title', 'Saved');
+  });
+
+  it('keeps header tabs in the header far from the lights', () => {
+    platform.mac = true;
+    vi.stubGlobal('ResizeObserver', NoopObserver);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 300 } as DOMRect);
+    render(pane({ tabsInHeader: true, libraryLabel: 'Saved', library: <p>lib</p> }));
+    expect(header().contains(screen.getByRole('tablist'))).toBe(true);
+  });
 });
 
 it('collapses to one expand control, leaving the titlebar row empty', () => {
