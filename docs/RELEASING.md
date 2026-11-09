@@ -321,10 +321,12 @@ against the final downloaded artifact, not the pre-publish build.
 Windows ROCm RDNA 2 GPU speech uses the in-repo HIP CTranslate2 pinned in
 `rocm10.ctranslate2` of `scripts/windows-rocm-recipe.json` (release
 `ct2-rocm-4.8.4-78b1e17`). It is a dependency asset, not part of a release:
-releases reuse it unchanged. To rebuild (new upstream source or targets), set a
-new `RELEASE_TAG` in `.github/workflows/ct2-rocm-windows.yml` (the publish job
-refuses an existing tag, since the recipe pins its bytes), add the new archive
-URL to `_SOURCES` in `backend/core/windows_rocm/ct2_recipe.py`, run the
+releases reuse it unchanged. To rebuild (new upstream source or targets), edit the workflow's source pins
+(`CT2_BASE`, `CT2_TARGETS`, `CT2_TREE`, `CT2_VERSION`) and the recipe's target
+list, and set a new `RELEASE_TAG` in `.github/workflows/ct2-rocm-windows.yml`
+(the publish job fails if the tag already exists, since the recipe pins its
+bytes and `gh release create` would otherwise reuse the old tag). Add the new
+archive URL to `_SOURCES` in `backend/core/windows_rocm/ct2_recipe.py`, run the
 **CTranslate2 ROCm (Windows)** workflow, verify the downloaded archive's size and
 SHA-256 independently, then copy the run's printed pins (`pins.json`) into the
 recipe and update the exact-pin test in `tests/test_windows_rocm_rocm10.py`.

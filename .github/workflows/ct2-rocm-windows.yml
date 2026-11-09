@@ -144,12 +144,16 @@ jobs:
         with:
           name: ct2-rocm-windows
 
-      # Fails if the tag already exists: a published asset is never replaced,
-      # because the recipe pins its bytes.
+      # `gh release create` silently reuses an existing tag and ignores
+      # --target, so refuse an existing tag explicitly: a published asset is
+      # never replaced, because the recipe pins its bytes.
       - name: Create prerelease
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          if git ls-remote --exit-code --tags "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "::error::tag $RELEASE_TAG already exists; set a new RELEASE_TAG"; exit 1
+          fi
           gh release create "$RELEASE_TAG" "$ARCHIVE" pins.json \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --prerelease --latest=false \
