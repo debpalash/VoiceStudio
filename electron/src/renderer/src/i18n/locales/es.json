@@ -2584,7 +2584,9 @@
     "help_label": "Ayuda con la configuración",
     "help_install": "Guía de instalación",
     "help_troubleshooting": "Solución de problemas",
-    "help_report": "Informar de un problema"
+    "help_report": "Informar de un problema",
+    "options": "Opciones",
+    "more_fixes": "Más soluciones"
   },
   "consent": {
     "title": "¿Ayudar a mejorar VoiceStudio?",

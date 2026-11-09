@@ -132,8 +132,12 @@ Prerequisites:
   sudo pacman -S --needed base-devel alsa-lib xdotool libxtst libx11 libxkbcommon wayland openssl
   ```
 
-  `bun run dist` also needs `readelf` (binutils) and `zsyncmake` (zsync) to
-  embed AppImage update information.
+  `bun run dist` also needs `readelf` (binutils) and `zsyncmake` (part of the
+  `zsync` package) to embed AppImage update information.
+
+  The dictation helper links the shared `libxdo` (through `enigo`'s default
+  `xdo` feature). nixpkgs' `xdotool` ships no shared `libxdo`, so the Nix flake
+  builds it — see [Nix / NixOS](#nix--nixos) below.
 
 Then, from a clone of the repository:
 
@@ -188,12 +192,19 @@ installs. Model and Python runtime setup remain explicit in the app.
 
 ### Nix / NixOS
 
-A community-maintained Nix flake provides development shells and an FHS environment for running from source (not tested in CI). See the [Nix / NixOS guide](nix.md):
+A community-maintained Nix flake (built by a non-blocking CI check) provides development shells,
+an FHS environment for NixOS and a Nix-built Linux x64 app. See the
+[Nix / NixOS guide](nix.md):
 
 ```bash
-nix develop .#fhs   # recommended for NixOS
+nix develop .#fhs   # recommended for NixOS; `nix develop` for the plain shell
 bun run dev
 ```
+
+`nix run .` launches the Nix-built app from a checkout. Its first run installs
+uv's managed Python like the AppImage does, which on NixOS needs
+[nix-ld](https://github.com/nix-community/nix-ld). Its launcher sets
+`VOICESTUDIO_DISABLE_UPDATER=1`; update it with Nix.
 
 ## ChromeOS, iPad and other devices
 

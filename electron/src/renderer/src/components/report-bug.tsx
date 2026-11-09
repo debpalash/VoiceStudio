@@ -79,7 +79,16 @@ function reachabilitySection(
   return lines;
 }
 
-export function ReportBug({ error, setup = false }: { error?: Error | string; setup?: boolean }) {
+export function ReportBug({
+  error,
+  setup = false,
+  variant = 'outline',
+}: {
+  error?: Error | string;
+  setup?: boolean;
+  /** `ghost` when it sits in a row of plain help links. */
+  variant?: 'outline' | 'ghost';
+}) {
   const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -319,7 +328,7 @@ export function ReportBug({ error, setup = false }: { error?: Error | string; se
     <>
       <div className="space-y-2">
         <Button
-          variant="outline"
+          variant={variant}
           size="sm"
           disabled={busy}
           title={t('reportBug.title')}

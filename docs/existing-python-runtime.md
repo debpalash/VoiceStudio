@@ -12,7 +12,7 @@ VoiceStudio can use an existing local Python interpreter instead of installing i
 
 ## Selecting an interpreter
 
-On the first-run backend screen, choose **Choose interpreter**, or use **Settings → Performance → Python runtime**. Select the interpreter itself (for example, `.venv/bin/python` or `.venv\\Scripts\\python.exe`). VoiceStudio validates it before saving:
+On the first-run backend screen, open **Options** and choose **Choose interpreter**, or use **Settings → Performance → Python runtime**. Select the interpreter itself (for example, `.venv/bin/python` or `.venv\\Scripts\\python.exe`). VoiceStudio validates it before saving:
 
 1. It checks the path and Python version.
 2. It runs the import probe with offline model/download settings.
@@ -25,7 +25,7 @@ Use **Use managed runtime** to remove the selection and restart with the bundled
 
 ## Quick search
 
-First-run setup and Settings also provide **Quick search**. It searches common PATH/system installations, pyenv/Conda/uv locations and bounded project folders. It lists absolute interpreter paths and versions when environment metadata provides them. Discovery does not run Python or install packages; a listed interpreter is not yet known to be compatible. Click a result to validate it; the saved selection and backend remain unchanged until **Confirm use and continue**.
+First-run setup (under **Options**) and Settings also provide **Quick search**. It searches common PATH/system installations, pyenv/Conda/uv locations and bounded project folders. It lists absolute interpreter paths and versions when environment metadata provides them. Discovery does not run Python or install packages; a listed interpreter is not yet known to be compatible. Click a result to validate it; the saved selection and backend remain unchanged until **Confirm use and continue**.
 
 The search is not a full-disk inventory. A four-second deadline, directory/depth limits and excluded dependency/cache folders keep it responsive. Results are marked potentially incomplete when access is denied, another filesystem error occurs or scan limits are reached. Missing optional search roots are not errors. For permission-denied locations, allow access in the operating system if appropriate, or use **Choose interpreter** to select the file directly. Manual selection remains available even when no candidates are found.
 

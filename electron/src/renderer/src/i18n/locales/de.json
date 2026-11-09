@@ -2582,7 +2582,9 @@
     "help_label": "Hilfe zur Einrichtung",
     "help_install": "Installationsanleitung",
     "help_troubleshooting": "Fehlerbehebung",
-    "help_report": "Problem melden"
+    "help_report": "Problem melden",
+    "options": "Optionen",
+    "more_fixes": "Weitere Lösungen"
   },
   "consent": {
     "title": "VoiceStudio verbessern helfen?",
