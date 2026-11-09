@@ -501,7 +501,7 @@ Atualizando da versão 0.5.3 ou anterior (o aplicativo Tauri)? [Instale o novo a
 | Ajuda de configuração | [Solução de problemas](../../docs/install/troubleshooting.md) · [Downloads de modelos](../../docs/downloading-models.md) |
 | Guias | [Dublagem com vários falantes](../../docs/dubbing/multi-speaker-guide.md) · [Fala expressiva](../../docs/expressive-speech.md) · [Exportar dublagens](../../docs/dubbing/export.md) |
 | Modelos e qualidade | [Guias de mecanismo](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [Benchmarks](../../docs/benchmarks.md) |
-| Integrações | [API local](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [Exemplos](../../examples/README.md) |
+| Integrações | [CLI](../../docs/install/script.md#terminal-command) · [API local](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [Exemplos](../../examples/README.md) |
 | Aplicativos de telefone | [iOS e Android](../../docs/mobile.md) |
 | Desenvolvimento | [Contribuindo](../../.github/CONTRIBUTING.md) ([assine o CLA](../../.github/CONTRIBUTING.md#contribution-licensing) antes de seu primeiro PR) · [Changelog](../../CHANGELOG.md) |
 

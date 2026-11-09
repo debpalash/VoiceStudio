@@ -7,9 +7,10 @@
  * launch reaches the running instance through Electron's single-instance lock
  * and only opens a window in it.
  */
-import { renameSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
+import { rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { BackendStage } from '../preload/index.d';
+import { renameSyncWithRetry } from './rename-retry';
 
 export const HEADLESS_FLAG = '--voicestudio-background';
 export const STOP_FLAG = '--voicestudio-stop';
@@ -149,7 +150,7 @@ export function writeDiscovery(directory: string, record: DiscoveryRecord): void
   const target = join(directory, DISCOVERY_FILE);
   const temporary = `${target}.${record.pid}.tmp`;
   writeFileSync(temporary, JSON.stringify(record) + '\n', { mode: 0o600 });
-  renameSync(temporary, target);
+  renameSyncWithRetry(temporary, target);
 }
 
 /** Remove the record only while it is still this process's. */

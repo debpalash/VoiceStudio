@@ -501,7 +501,7 @@ Nâng cấp từ phiên bản 0.5.3 trở xuống (ứng dụng Tauri)? [Cài ri
 | Trợ giúp cài đặt | [Khắc phục sự cố](../../docs/install/troubleshooting.md) · [Tải xuống mô hình](../../docs/downloading-models.md) |
 | Hướng dẫn | [Lồng tiếng cho nhiều người nói](../../docs/dubbing/multi-speaker-guide.md) · [Giọng nói biểu cảm](../../docs/expressive-speech.md) · [Xuất âm thanh lồng tiếng](../../docs/dubbing/export.md) |
 | Mô hình và chất lượng | [Hướng dẫn các công cụ](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [Đo hiệu năng](../../docs/benchmarks.md) |
-| Tích hợp | [API cục bộ](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [Ví dụ](../../examples/README.md) |
+| Tích hợp | [CLI](../../docs/install/script.md#terminal-command) · [API cục bộ](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [Ví dụ](../../examples/README.md) |
 | Ứng dụng điện thoại | [iOS và Android](../../docs/mobile.md) |
 | Phát triển | [Đóng góp](../../.github/CONTRIBUTING.md) ([ký CLA](../../.github/CONTRIBUTING.md#contribution-licensing) trước PR đầu tiên) · [Nhật ký thay đổi](../../CHANGELOG.md) |
 

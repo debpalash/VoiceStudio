@@ -504,7 +504,7 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 | セットアップのヘルプ | [トラブルシューティング](../../docs/install/troubleshooting.md) · [モデルのダウンロード](../../docs/downloading-models.md) |
 | ガイド | [複数話者の吹き替え](../../docs/dubbing/multi-speaker-guide.md) · [表現豊かな音声](../../docs/expressive-speech.md) · [吹き替えの書き出し](../../docs/dubbing/export.md) |
 | モデルと音質 | [エンジンガイド](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [ベンチマーク](../../docs/benchmarks.md) |
-| 連携 | [ローカル API](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [サンプル](../../examples/README.md) |
+| 連携 | [CLI](../../docs/install/script.md#terminal-command) · [ローカル API](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [サンプル](../../examples/README.md) |
 | スマートフォンアプリ | [iOS と Android](../../docs/mobile.md) |
 | 開発 | [コントリビューション](../../.github/CONTRIBUTING.md)（初めての PR の前に [CLA への署名](../../.github/CONTRIBUTING.md#contribution-licensing)が必要です）· [変更履歴](../../CHANGELOG.md) |
 

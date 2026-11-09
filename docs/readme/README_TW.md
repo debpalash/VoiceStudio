@@ -503,7 +503,7 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 | 安裝幫助 | [故障排查](../../docs/install/troubleshooting.md) · [模型下載](../../docs/downloading-models.md) |
 | 指南 | [多說話人配音](../../docs/dubbing/multi-speaker-guide.md) · [富有表現力的語音](../../docs/expressive-speech.md) · [匯出配音](../../docs/dubbing/export.md) |
 | 模型與音質 | [引擎指南](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [效能基準](../../docs/benchmarks.md) |
-| 整合 | [本地 API](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [示例](../../examples/README.md) |
+| 整合 | [CLI](../../docs/install/script.md#terminal-command) · [本地 API](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [示例](../../examples/README.md) |
 | 手機應用 | [iOS 與 Android](../../docs/mobile.md) |
 | 開發 | [參與貢獻](../../.github/CONTRIBUTING.md)（首次提交 PR 前請[簽署 CLA](../../.github/CONTRIBUTING.md#contribution-licensing)）· [更新日誌](../../CHANGELOG.md) |
 

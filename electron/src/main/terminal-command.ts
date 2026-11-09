@@ -190,13 +190,30 @@ export function setUpTerminalCommand(
   options: TerminalCommandOptions,
   stateFile: string,
 ): TerminalCommandStatus {
-  if (linkTerminalCommand(options) !== 'linked' || existsSync(stateFile))
+  if (linkTerminalCommand(options) !== 'linked' || setupRecorded(stateFile))
     return terminalCommandStatus(options);
   // Profiles are (re)written unless new shells already search ~/.local/bin; the
   // state file is written only after every profile write succeeded.
   const next = onSearchPath(options)
     ? terminalCommandStatus(options)
     : addTerminalCommandToPath(options);
-  writeFileSync(stateFile, `${JSON.stringify({ schema: 1, configured: true })}\n`);
+  try {
+    // Exclusive create: a second instance that finished first already recorded it.
+    writeFileSync(stateFile, `${JSON.stringify({ schema: 1, configured: true })}\n`, {
+      flag: 'wx',
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+  }
   return next;
+}
+
+/** Whether first-launch setup already ran; any state other than "absent" counts. */
+function setupRecorded(stateFile: string): boolean {
+  try {
+    readFileSync(stateFile);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== 'ENOENT';
+  }
 }

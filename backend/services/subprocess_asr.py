@@ -9,6 +9,12 @@ from services.subprocess_asr_base import (
     ASR_RECV_TIMEOUT_S, SubprocessASRBackend, SubprocessBackend,
 )
 
+# Re-exported for callers that still import the base classes from here.
+__all__ = [
+    "ASR_RECV_TIMEOUT_S", "RECV_TIMEOUT_S",
+    "IsolatedFasterWhisperBackend", "SubprocessASRBackend", "SubprocessBackend",
+]
+
 
 class IsolatedFasterWhisperBackend(SubprocessASRBackend):
     """faster-whisper (CTranslate2) in a child process — opt-in.

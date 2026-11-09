@@ -501,7 +501,7 @@ Mengupgrade dari 0.5.3 atau lebih lama (aplikasi Tauri)? [Instal aplikasi baru s
 | Bantuan pengaturan | [Pemecahan Masalah](../../docs/install/troubleshooting.md) · [Unduhan model](../../docs/downloading-models.md) |
 | Panduan | [Sulih suara multi-pembicara](../../docs/dubbing/multi-speaker-guide.md) · [Ucapan ekspresif](../../docs/expressive-speech.md) · [Mengekspor sulih suara](../../docs/dubbing/export.md) |
 | Model & kualitas | [Panduan mesin](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [Tolok ukur](../../docs/benchmarks.md) |
-| Integrasi | [API Lokal](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [Contoh](../../examples/README.md) |
+| Integrasi | [CLI](../../docs/install/script.md#terminal-command) · [API Lokal](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [Contoh](../../examples/README.md) |
 | Aplikasi telepon | [iOS dan Android](../../docs/mobile.md) |
 | Perkembangan | [Berkontribusi](../../.github/CONTRIBUTING.md) ([menandatangani CLA](../../.github/CONTRIBUTING.md#contribution-licensing) sebelum PR pertama Anda) · [Changelog](../../CHANGELOG.md) |
 

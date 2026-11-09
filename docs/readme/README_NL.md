@@ -501,7 +501,7 @@ Upgraden vanaf 0.5.3 of ouder (de Tauri-app)? [Installeer de nieuwe app afzonder
 | Hulp bij het instellen | [Problemen oplossen](../../docs/install/troubleshooting.md) · [Modeldownloads](../../docs/downloading-models.md) |
 | Gidsen | [Nasynchronisatie met meerdere sprekers](../../docs/dubbing/multi-speaker-guide.md) · [Expressieve spraak](../../docs/expressive-speech.md) · [Nasynchronisaties exporteren](../../docs/dubbing/export.md) |
 | Modellen & kwaliteit | [Enginehandleidingen](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [Benchmarks](../../docs/benchmarks.md) |
-| Integraties | [Lokale API](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [Voorbeelden](../../examples/README.md) |
+| Integraties | [CLI](../../docs/install/script.md#terminal-command) · [Lokale API](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [Voorbeelden](../../examples/README.md) |
 | Telefoon-apps | [iOS en Android](../../docs/mobile.md) |
 | Ontwikkeling | [Bijdragen](../../.github/CONTRIBUTING.md) ([teken de CLA](../../.github/CONTRIBUTING.md#contribution-licensing) vóór uw eerste PR) · [Changelog](../../CHANGELOG.md) |
 

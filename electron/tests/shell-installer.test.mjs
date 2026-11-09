@@ -122,6 +122,7 @@ if [ "$1 $2" = 'run electron-builder' ]; then printf '${payload}' > release/Voic
 `,
   );
   shim('cargo', 'exit 0\n');
+  shim('uv', 'exit 0\n');
   shim('readelf', 'exit 0\n');
   shim('zsyncmake', 'exit 0\n');
   shim('pgrep', options.linuxRunning

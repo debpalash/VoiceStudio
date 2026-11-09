@@ -501,7 +501,7 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 | सेटअप सहायता | [समस्या निवारण](../../docs/install/troubleshooting.md) · [मॉडल डाउनलोड](../../docs/downloading-models.md) |
 | गाइड | [कई वक्ताओं की डबिंग](../../docs/dubbing/multi-speaker-guide.md) · [भावपूर्ण आवाज़](../../docs/expressive-speech.md) · [डब किए गए ऑडियो का निर्यात](../../docs/dubbing/export.md) |
 | मॉडल और गुणवत्ता | [इंजन गाइड](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [बेंचमार्क](../../docs/benchmarks.md) |
-| एकीकरण | [स्थानीय एपीआई](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [उदाहरण](../../examples/README.md) |
+| एकीकरण | [CLI](../../docs/install/script.md#terminal-command) · [स्थानीय एपीआई](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [उदाहरण](../../examples/README.md) |
 | फ़ोन ऐप्स | [आईओएस और एंड्रॉइड](../../docs/mobile.md) |
 | विकास | [योगदान](../../.github/CONTRIBUTING.md) ([अपने पहले पीआर से पहले CLA पर हस्ताक्षर करें](../../.github/CONTRIBUTING.md#contribution-licensing)) · [Changelog](../../CHANGELOG.md) |
 

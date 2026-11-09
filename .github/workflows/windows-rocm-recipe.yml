@@ -75,9 +75,10 @@ jobs:
 
       # An explicit file list, not a glob: the exclusions are the modules that
       # need a real torch/numpy/soundfile stack or the whole app import graph
-      # (`asr_runtime`, `runtime_boundaries`, `indextts_optin`). The main CI job
-      # runs those with the project's real dependencies, so nothing is dropped
-      # from CI overall — this job only owns the recipe and probe contracts.
+      # (`asr_runtime`, `runtime_boundaries`, `indextts_optin`, `guards`). The
+      # main CI job runs those with the project's real dependencies, so nothing
+      # is dropped from CI overall — this job only owns the recipe and probe
+      # contracts. tests/test_windows_rocm_recipe_job.py keeps this list light.
       - name: Windows ROCm recipe tests
         env:
           PYTHONPATH: backend
@@ -92,7 +93,6 @@ jobs:
             tests/test_windows_rocm_native_integrity.py \
             tests/test_windows_rocm_sdk_integrity.py \
             tests/test_windows_rocm_failure_policy.py \
-            tests/test_windows_rocm_guards.py \
             tests/test_windows_rocm_heavy_gates.py \
             tests/test_windows_rocm_import_exceptions.py \
             tests/test_windows_rocm_native_imports.py \

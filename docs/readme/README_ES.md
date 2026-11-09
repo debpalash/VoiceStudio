@@ -501,7 +501,7 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 | Ayuda de configuración | [Solución de problemas](../../docs/install/troubleshooting.md) · [Descargas de modelos](../../docs/downloading-models.md) |
 | Guías | [Doblaje con varias voces](../../docs/dubbing/multi-speaker-guide.md) · [Voz expresiva](../../docs/expressive-speech.md) · [Exportar doblajes](../../docs/dubbing/export.md) |
 | Modelos y calidad | [Guías del motor](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [Puntos de referencia](../../docs/benchmarks.md) |
-| Integraciones | [API local](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [Ejemplos](../../examples/README.md) |
+| Integraciones | [CLI](../../docs/install/script.md#terminal-command) · [API local](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [Ejemplos](../../examples/README.md) |
 | Aplicaciones de teléfono | [iOS y Android](../../docs/mobile.md) |
 | Desarrollo | [Contribuyendo](../../.github/CONTRIBUTING.md) ([firma el CLA](../../.github/CONTRIBUTING.md#contribution-licensing) antes de tu primer PR) · [Registro de cambios](../../CHANGELOG.md) |
 

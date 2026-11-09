@@ -501,7 +501,7 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 | مساعدة الإعداد | [استكشاف الأخطاء وإصلاحها](../../docs/install/troubleshooting.md) · [تنزيلات النماذج](../../docs/downloading-models.md) |
 | أدلة | [دبلجة متعددة المتحدثين](../../docs/dubbing/multi-speaker-guide.md) · [كلام معبّر](../../docs/expressive-speech.md) · [تصدير الدبلجة](../../docs/dubbing/export.md) |
 | النماذج والجودة | [أدلة المحرك](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [المعايير](../../docs/benchmarks.md) |
-| التكامل | [واجهة API المحلية](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [أمثلة](../../examples/README.md) |
+| التكامل | [CLI](../../docs/install/script.md#terminal-command) · [واجهة API المحلية](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [أمثلة](../../examples/README.md) |
 | تطبيقات الهاتف | [iOS وAndroid](../../docs/mobile.md) |
 | تطوير | [المساهمة](../../.github/CONTRIBUTING.md) ([قم بالتوقيع على CLA](../../.github/CONTRIBUTING.md#contribution-licensing) قبل العلاقات العامة الأولى) · [سجل التغيير](../../CHANGELOG.md) |
 

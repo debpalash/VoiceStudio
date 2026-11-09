@@ -501,7 +501,7 @@ Vous effectuez une mise à niveau à partir de la version 0.5.3 ou antérieure (
 | Aide à la configuration | [Dépannage](../../docs/install/troubleshooting.md) · [Téléchargements de modèles](../../docs/downloading-models.md) |
 | Guides | [Doublage avec plusieurs locuteurs](../../docs/dubbing/multi-speaker-guide.md) · [Voix expressive](../../docs/expressive-speech.md) · [Exporter les doublages](../../docs/dubbing/export.md) |
 | Modèles & qualité | [Guides du moteur](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [Benchmarks](../../docs/benchmarks.md) |
-| Intégrations | [API locale](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [Exemples](../../examples/README.md) |
+| Intégrations | [CLI](../../docs/install/script.md#terminal-command) · [API locale](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [Exemples](../../examples/README.md) |
 | Applications téléphoniques | [iOS et Android](../../docs/mobile.md) |
 | Développement | [Contribuer](../../.github/CONTRIBUTING.md) ([signez le CLA](../../.github/CONTRIBUTING.md#contribution-licensing) avant votre premier PR) · [Changelog](../../CHANGELOG.md) |
 
