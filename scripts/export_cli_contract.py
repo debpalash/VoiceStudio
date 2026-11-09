@@ -13,7 +13,7 @@ from voicestudio_cli.registry import COMMANDS
 
 
 def build_contract():
-    schema = json.loads((ROOT / 'mobile/contract/openapi.json').read_text())
+    schema = json.loads((ROOT / 'mobile/contract/openapi.json').read_text(encoding='utf-8'))
     result = {}
     def shape(path):
         return re.sub(r'\{[^}]+\}', '{}', path)
@@ -24,13 +24,18 @@ def build_contract():
             continue
         path = next(p for p in schema['paths'] if shape(p) == shape(command.route))
         operation = schema['paths'][path][command.method.lower()]
-        content = operation.get('requestBody', {}).get('content', {})
+        request = operation.get('requestBody', {})
+        content = request.get('content', {})
         encoding = next(iter(content), '')
         body = content.get(encoding, {}).get('schema', {})
+        # An optional body (`Optional[Model] = None`) is `anyOf: [$ref, null]`;
+        # its fields still bind whenever a body is sent.
+        body = next((option for option in body.get('anyOf', []) if '$ref' in option), body)
         if '$ref' in body:
             body = schema['components']['schemas'][body['$ref'].rsplit('/', 1)[-1]]
         result[command.name] = {
             'encoding': encoding,
+            'body_required': bool(request.get('required')),
             'required': body.get('required', []),
             'fields': list(body.get('properties', {})),
             'query': [p['name'] for p in operation.get('parameters', []) if p['in'] == 'query'],
@@ -42,4 +47,4 @@ def build_contract():
 
 if __name__ == '__main__':
     target = ROOT / 'cli/voicestudio_cli/contracts.json'
-    target.write_text(json.dumps(build_contract(), indent=2, sort_keys=True) + '\n')
+    target.write_text(json.dumps(build_contract(), indent=2, sort_keys=True) + '\n', encoding='utf-8')

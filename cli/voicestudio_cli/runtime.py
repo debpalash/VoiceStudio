@@ -147,7 +147,7 @@ def stop_backend(default_url):
     try:
         desktop_process([STOP_FLAG]).wait(timeout=30)
     except subprocess.TimeoutExpired:
-        pass
+        pass  # still running; the health poll below reports the timeout
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
         if not healthy(url):

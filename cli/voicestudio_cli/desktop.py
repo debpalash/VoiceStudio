@@ -134,9 +134,9 @@ def desktop_candidates():
                                         location = winreg.QueryValueEx(entry, 'InstallLocation')[0]
                                         candidates.insert(0, Path(location) / 'VoiceStudio.exe')
                             except OSError:
-                                pass
+                                pass  # an unreadable uninstall entry is skipped
                 except OSError:
-                    pass
+                    pass  # no per-user uninstall registry; other locations follow
         return candidates
     candidates = [home / '.local/bin/VoiceStudio']
     for root in [Path('/opt/VoiceStudio'), Path('/opt/voicestudio-electron')]:

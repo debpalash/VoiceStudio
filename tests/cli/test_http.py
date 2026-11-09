@@ -92,7 +92,7 @@ class HTTPTests(base.CommandTests):
 
     def test_registry_success_and_http_failures(self):
         """Every declarative command traverses the real parser, HTTP client and output handler."""
-        contracts = json.loads((ROOT / 'cli/voicestudio_cli/contracts.json').read_text())
+        contracts = json.loads((ROOT / 'cli/voicestudio_cli/contracts.json').read_text(encoding='utf-8'))
         _, nodes = build_parser()
         for spec in COMMANDS:
             parser = nodes[tuple(spec.name.split())]
@@ -187,6 +187,19 @@ class HTTPTests(base.CommandTests):
         self.assertEqual(r.returncode, 2)
         self.assertIn('name', json.loads(r.stderr)['error']['message'])
         self.assertTrue(self.requests.empty())
+
+    def test_optional_body_is_omitted_without_fields(self):
+        """Cleaning the saved transcript sends no body; given segments are sent as JSON."""
+        r = self.run_cli('dub', 'transcript', 'clean', 'job1', '--json')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        method, path, headers, body = self.requests.get(timeout=1)
+        self.assertEqual((method, urlsplit(path).path, body), ('POST', '/dub/cleanup-segments/job1', b''))
+        segments = Path(self.temp.name) / 'segments.json'
+        segments.write_text(json.dumps({'segments': [{'text': 'hi'}]}), encoding='utf-8')
+        r = self.run_cli('dub', 'transcript', 'clean', 'job1', '--file', str(segments), '--json')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        body = self.requests.get(timeout=1)[3]
+        self.assertEqual(json.loads(body), {'segments': [{'text': 'hi'}]})
 
     def test_delete_requires_confirmation_without_http(self):
         r = self.run_cli('history', 'clear', '--json')
@@ -384,7 +397,7 @@ class HTTPTests(base.CommandTests):
         target = Path(self.temp.name) / 'status.json'
         result = self.run_cli('status', '-o', str(target), '--json')
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads(target.read_text())['status'], 'ok')
+        self.assertEqual(json.loads(target.read_text(encoding='utf-8'))['status'], 'ok')
 
     def test_metadata_output_to_stdout_is_not_silent(self):
         result = self.run_cli('version', '-o', '-', '--json')

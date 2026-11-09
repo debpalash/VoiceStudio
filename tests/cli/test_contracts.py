@@ -15,17 +15,35 @@ class ContractTests(unittest.TestCase):
     def test_request_contract_has_not_drifted(self):
         spec = importlib.util.spec_from_file_location('cli_contract_export', ROOT / 'scripts/export_cli_contract.py')
         module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
-        self.assertEqual(module.build_contract(), json.loads((ROOT / 'cli/voicestudio_cli/contracts.json').read_text()))
+        self.assertEqual(module.build_contract(), json.loads((ROOT / 'cli/voicestudio_cli/contracts.json').read_text(encoding='utf-8')))
+
+    def test_package_smoke_startup_rules_hold_for_the_source_tree(self):
+        """The wheel smoke's startup check must import names the CLI still defines."""
+        import os
+        import subprocess
+        spec = importlib.util.spec_from_file_location('cli_package_smoke', ROOT / 'scripts/cli_package_smoke.py')
+        module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+        env = {**os.environ, 'PYTHONPATH': str(ROOT / 'cli')}
+        result = subprocess.run([sys.executable, '-c', module.STARTUP_RULES_CHECK], env=env,
+                                capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_optional_request_bodies_keep_their_fields(self):
+        """`Optional[Model] = None` bodies export their fields and stay optional."""
+        contracts = json.loads((ROOT / 'cli/voicestudio_cli/contracts.json').read_text(encoding='utf-8'))
+        clean = contracts['dub transcript clean']
+        self.assertFalse(clean['body_required'])
+        self.assertEqual(clean['required'], ['segments'])
 
     def test_upload_fields_match_real_backend_openapi(self):
-        contracts = json.loads((ROOT / 'cli/voicestudio_cli/contracts.json').read_text())
+        contracts = json.loads((ROOT / 'cli/voicestudio_cli/contracts.json').read_text(encoding='utf-8'))
         for command in COMMANDS:
             if command.upload and command.upload != '@raw':
                 with self.subTest(command=command.name):
                     self.assertIn(command.upload, contracts[command.name]['fields'])
 
     def test_settings_write_fields_match_backend(self):
-        schema = json.loads((ROOT / 'mobile/contract/openapi.json').read_text())
+        schema = json.loads((ROOT / 'mobile/contract/openapi.json').read_text(encoding='utf-8'))
         for route, field in SETTINGS.values():
             with self.subTest(route=route):
                 body = schema['paths']['/api/settings/' + route]['put']['requestBody']['content']['application/json']['schema']

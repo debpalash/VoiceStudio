@@ -206,7 +206,7 @@ class InstallTests(unittest.TestCase):
                 install.install('./cli', replace_launcher=True)
             self.assertEqual(run.call_args_list[0].args[0], ['uv', 'tool', 'install', '--force', './cli'])
             self.assertEqual(run.call_args_list[1].args[0], ['uv', 'tool', 'update-shell'])
-        manifest = json.loads(desktop.launcher_config().read_text())
+        manifest = json.loads(desktop.launcher_config().read_text(encoding='utf-8'))
         backup = Path(manifest['executable'])
         self.assertEqual(backup.read_bytes(), self.wrapper)
         self.assertTrue(os.access(backup, os.X_OK))
@@ -245,7 +245,7 @@ class InstallTests(unittest.TestCase):
             with self.assertRaises(CLIError):
                 install.install('./cli', replace_launcher=True)
         self.assertEqual(self.target.read_bytes(), self.wrapper)
-        self.assertEqual(json.loads(desktop.launcher_config().read_text()), {'executable': 'previous'})
+        self.assertEqual(json.loads(desktop.launcher_config().read_text(encoding='utf-8')), {'executable': 'previous'})
         self.assertFalse(desktop.launcher_config().with_name('desktop-launcher').exists())
 
     def test_symlink_migration_keeps_real_desktop_in_place(self):
@@ -254,7 +254,7 @@ class InstallTests(unittest.TestCase):
         _symlink_or_skip(self, self.target, app)
         with patch.object(install.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)):
             install.install('./cli', replace_launcher=True, update_shell=False)
-        self.assertEqual(json.loads(desktop.launcher_config().read_text())['executable'], str(app))
+        self.assertEqual(json.loads(desktop.launcher_config().read_text(encoding='utf-8'))['executable'], str(app))
         self.assertEqual(app.read_bytes(), b'fixture native desktop')
 
     def test_native_binary_is_not_moved_away_from_its_resources(self):

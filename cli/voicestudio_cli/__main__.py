@@ -795,7 +795,7 @@ def generic(client, args):
     spec = args.spec
     if spec.binary and not getattr(args, 'output', None):
         raise CLIError('usage_error', 'This command needs --output', exit_code=2)
-    contracts = json.loads(Path(__file__).with_name('contracts.json').read_text())
+    contracts = json.loads(Path(__file__).with_name('contracts.json').read_text(encoding='utf-8'))
     contract = contracts.get(spec.name, {})
     if args.file == '-' and spec.upload and args.input == '-':
         raise CLIError('usage_error', 'JSON fields and upload cannot both read stdin', exit_code=2)
@@ -814,7 +814,10 @@ def generic(client, args):
         if required not in query:
             raise CLIError('usage_error', f'Missing query parameter {required}; use --query {required}=VALUE', exit_code=2)
     files = {spec.upload: args.input} if spec.upload and spec.upload != '@raw' else {}
-    for required in contract.get('required', []):
+    # An optional body is omitted when nothing was given (the route then acts on
+    # stored state); an empty object would fail the body's own required fields.
+    send_body = bool(fields or files) or contract.get('body_required', True)
+    for required in contract.get('required', []) if send_body else []:
         if required not in fields and required not in files:
             raise CLIError('usage_error', f'Missing request field {required}; use --file or --field {required}=VALUE', exit_code=2)
     route = spec.route.format(**{param: quote(getattr(args, param), safe='') for param in spec.params})
@@ -824,6 +827,8 @@ def generic(client, args):
     kwargs = {'query': query}
     if spec.upload == '@raw':
         kwargs['raw_file'] = args.input
+    elif not send_body:
+        pass
     elif files or encoding in {'multipart/form-data', 'application/x-www-form-urlencoded'}:
         kwargs.update(form=fields, files=files)
     elif fields or encoding == 'application/json':
@@ -881,7 +886,7 @@ def main(argv=None):
             for line in complete(argv[1:]):
                 print(line)
         except Exception:
-            pass
+            pass  # completion must never print errors into the shell
         return 0
     json_errors = '--json' in argv
     secrets = [os.environ.get('OMNIVOICE_API_KEY', '')]
@@ -943,7 +948,7 @@ def main(argv=None):
             finally:
                 os.close(sink)
         except (OSError, io.UnsupportedOperation):
-            pass
+            pass  # stdout is already gone; nothing left to protect
         return 1
     except (OSError, UnicodeError) as exc:
         code, message = 'file_error', scrub(str(exc), secrets)

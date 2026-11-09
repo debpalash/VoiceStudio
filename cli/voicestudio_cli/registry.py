@@ -231,7 +231,7 @@ add('dub transcribe', 'POST', '/dub/transcribe/{id}', 'Transcribe a dubbing job'
 add('dub subtitles import', 'POST', '/dub/import-srt/{id}', 'Import subtitles', ['id'], upload='file')
 add('dub transcript get', 'GET', '/dub/segments-text/{id}', 'Read transcript segments', ['id'])
 add('dub transcript set', 'POST', '/dub/sync-transcript/{id}', 'Save segments from --file JSON', ['id'], body=True)
-add('dub transcript clean', 'POST', '/dub/cleanup-segments/{id}', 'Clean segments from --file JSON', ['id'], body=True)
+add('dub transcript clean', 'POST', '/dub/cleanup-segments/{id}', 'Clean the saved transcript, or segments from --file JSON', ['id'], body=True)
 add('dub translate', 'POST', '/dub/translate', 'Translate segments from --file JSON', body=True)
 add('dub fit', 'POST', '/dub/agent-fit', 'Fit translated segments from --file JSON', body=True)
 add('dub generate', 'POST', '/dub/generate/{id}', 'Generate dubbed speech from --file JSON', ['id'], body=True, stream=True)

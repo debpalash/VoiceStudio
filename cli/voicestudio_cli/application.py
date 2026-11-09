@@ -99,7 +99,7 @@ def appimage_metadata(path):
                 VERSION.fullmatch(metadata['version'])):
             return metadata
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
-        pass
+        pass  # unreadable metadata: no version from this source
     with tempfile.TemporaryDirectory(prefix='voicestudio-metadata-') as work:
         result = subprocess.run([str(path), '--appimage-extract', 'resources/app.asar'],
                                 cwd=work, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
@@ -126,7 +126,7 @@ def appimage_metadata(path):
             try:
                 Path(temporary).unlink(missing_ok=True)
             except OSError:
-                pass
+                pass  # best-effort cleanup of the extracted temporary file
     return metadata
 
 
