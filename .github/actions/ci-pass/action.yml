@@ -1,0 +1,118 @@
+# Pass cache: skip a job whose inputs already passed.
+#
+# The key hashes the git index entries (mode, blob id and path) of the job's
+# inputs, plus the calling workflow file and this action. A job that succeeded
+# saves an empty marker under that key as its last step; a later pull request or
+# merge-queue run with the same inputs finds it and skips every step after this
+# one, so the job (and any required check that depends on it) still succeeds.
+#
+# Index entries, not hashFiles(): hashFiles() hashes contents only, so a rename,
+# a deletion that keeps the sort order, or an executable-bit change could keep
+# the same key.
+#
+# Never skips on push, workflow_dispatch, schedule or release: those always run
+# in full, and main's runs save the markers every pull request can read (GitHub
+# lets a run restore caches from its own ref and the default branch). Merge-queue
+# runs never save: no other run can read their ref's caches. A marker that
+# already exists is not saved again.
+# tests/test_ci_pass_cache.py checks that every step after this one is gated and
+# that the marker is saved last.
+
+name: CI pass cache
+description: Skip a job whose inputs are unchanged since a green run.
+
+inputs:
+  job:
+    description: Unique job and matrix name for the key.
+    required: true
+  content:
+    description: >-
+      Git pathspecs whose file contents are inputs, one group per line. An
+      ":(exclude)path" applies to its own line only (git excludes apply to every
+      other spec in the same call), so a later line can add back part of an
+      excluded tree. Defaults to the whole tree.
+    default: "."
+  names:
+    description: >-
+      Pathspec groups whose file names and modes (not contents) are inputs, for
+      checks that only test that files exist.
+    default: ""
+
+outputs:
+  hit:
+    description: "'true' when these inputs already passed and this event may skip; later steps skip."
+    value: ${{ steps.key.outputs.skip == 'true' && steps.lookup.outputs.cache-hit == 'true' && 'true' || 'false' }}
+  record:
+    description: "'true' when the job should save its marker on success (none yet, not a merge group)."
+    value: ${{ steps.key.outputs.record == 'true' && steps.lookup.outputs.cache-hit != 'true' && 'true' || 'false' }}
+  key:
+    description: Marker cache key.
+    value: ${{ steps.key.outputs.key }}
+  path:
+    description: Marker path (restore and save must use the same path).
+    value: ${{ steps.key.outputs.path }}
+
+runs:
+  using: composite
+  steps:
+    - id: key
+      shell: bash
+      working-directory: ${{ github.workspace }}
+      env:
+        JOB: ${{ inputs.job }}
+        CONTENT: ${{ inputs.content }}
+        NAMES: ${{ inputs.names }}
+        EVENT: ${{ github.event_name }}
+        MARKER: ${{ runner.temp }}/ci-pass
+      run: |
+        set -euo pipefail
+        workflow=${GITHUB_WORKFLOW_REF#*/*/}
+        workflow=${workflow%%@*}
+        list() {
+          # $1: ls-files format; $2: newline-separated pathspec groups.
+          local line
+          local -a specs
+          while IFS= read -r line; do
+            set -f
+            specs=($line)
+            set +f
+            [ "${#specs[@]}" -eq 0 ] || git ls-files --format="$1" -- "${specs[@]}"
+          done <<< "$2"
+        }
+        digest=$(
+          {
+            echo "content"
+            list '%(objectmode) %(objectname) %(path)' "$CONTENT"$'\n'"$workflow .github/actions/ci-pass"
+            echo "names"
+            list '%(objectmode) %(path)' "$NAMES"
+          } | git hash-object --stdin
+        )
+        mkdir -p "$MARKER"
+        : > "$MARKER/passed"
+        case "$EVENT" in
+          pull_request|merge_group) skip=true ;;
+          *) skip=false ;;
+        esac
+        record=true
+        [ "$EVENT" != merge_group ] || record=false
+        {
+          echo "key=ci-pass-v1-$JOB-$RUNNER_OS-$digest"
+          echo "path=$MARKER"
+          echo "skip=$skip"
+          echo "record=$record"
+        } >> "$GITHUB_OUTPUT"
+        echo "Inputs digest: $digest (may skip: $skip)"
+
+    # Every event looks up, so a run that must not skip still knows whether to save.
+    - id: lookup
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.key.outputs.path }}
+        key: ${{ steps.key.outputs.key }}
+        lookup-only: true
+
+    - if: steps.key.outputs.skip == 'true' && steps.lookup.outputs.cache-hit == 'true'
+      shell: bash
+      env:
+        JOB: ${{ inputs.job }}
+      run: echo "::notice::$JOB passed with these exact inputs before; skipping its remaining steps."

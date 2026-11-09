@@ -51,8 +51,10 @@ jobs:
   # if detection fails for any reason everything runs (`!= 'false'` below).
   # Other workflow files are on the allowlist (they cannot change what these jobs
   # do); ci.yml and electron-*.yml are not. pyproject.toml is not either (the
-  # packaging contract parses its `readme =` key), and neither is backend/assets/
-  # (the renderer smokes play its sample WAV).
+  # packaging contract parses its `readme =` key), nor uv.lock (the main process
+  # bundles it and its tests read the real lock), nor backend/assets/ (the
+  # renderer smokes play its sample WAV). Merge-queue runs use the same rule
+  # against the queue commit's base.
   changes:
     name: Changed paths
     needs: approve-external
@@ -80,6 +82,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           EVENT: ${{ github.event_name }}
           PR: ${{ github.event.pull_request.number }}
+          BASE: ${{ github.event.merge_group.base_sha }}
+          HEAD: ${{ github.event.merge_group.head_sha }}
           REPO: ${{ github.repository }}
         run: |
           # Any doubt means "true". Only an explicit "nothing outside the allowlist"
@@ -88,29 +92,37 @@ jobs:
           # producer die of SIGPIPE, which `pipefail` reports as a failure and, on a
           # large file list, silently turned "a file was deleted" into "no match".
           electron=true
+          rows=
+          cap=3000
           if [ "$EVENT" = pull_request ]; then
-            if rows=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[] | [.status, .filename] | @tsv') && [ -n "$rows" ]; then
-              total=$(printf '%s\n' "$rows" | wc -l)
-              status_rc=0
-              printf '%s\n' "$rows" | cut -f1 | sort -u | grep -v -x -E 'added|modified' > /dev/null || status_rc=$?
-              if [ "$total" -ge 3000 ]; then
-                echo "3000+ files (the API truncates here): running everything"
-              elif [ "$status_rc" -ne 1 ]; then
-                # Only plain edits and additions are safe. Electron checks assert that some
-                # root files exist, and a rename out of electron/ lists only the new path.
-                echo "a file was deleted, renamed, copied or changed type (status check rc=$status_rc): running everything"
+            rows=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[] | [.status, .filename] | @tsv') || rows=
+          elif [ "$EVENT" = merge_group ] && [[ "$BASE" =~ ^[0-9a-f]{40}$ && "$HEAD" =~ ^[0-9a-f]{40}$ ]]; then
+            # The queue commit against its base: main plus the pull requests queued
+            # ahead of it. The compare API lists at most 300 files.
+            cap=300
+            rows=$(gh api "repos/$REPO/compare/$BASE...$HEAD" --jq '.files[] | [.status, .filename] | @tsv') || rows=
+          fi
+          if [ -n "$rows" ]; then
+            total=$(printf '%s\n' "$rows" | wc -l)
+            status_rc=0
+            printf '%s\n' "$rows" | cut -f1 | sort -u | grep -v -x -E 'added|modified' > /dev/null || status_rc=$?
+            if [ "$total" -ge "$cap" ]; then
+              echo "$cap+ files (the API truncates here): running everything"
+            elif [ "$status_rc" -ne 1 ]; then
+              # Only plain edits and additions are safe. Electron checks assert that some
+              # root files exist, and a rename out of electron/ lists only the new path.
+              echo "a file was deleted, renamed, copied or changed type (status check rc=$status_rc): running everything"
+            else
+              rc=0
+              outside=$(printf '%s\n' "$rows" | cut -f2 | grep -v -P '^(backend/(?!assets/)|omnivoice/|docs/|mobile/|\.github/ISSUE_TEMPLATE/|\.github/scripts/|\.github/[^/]+\.md$|tests/.*\.py$|scripts/[^/]+\.py$|[^/]+\.md$|Makefile$|\.github/workflows/(?!(ci|electron-[a-z-]+)\.yml$)[^/]+\.yml$)') || rc=$?
+              if [ "$rc" -eq 1 ]; then
+                electron=false
+              elif [ "$rc" -eq 0 ]; then
+                echo "Electron jobs run because of (first 5):"
+                # Indented so a hostile file name can never start a workflow command.
+                printf '%s\n' "$outside" | sed -n '1,5s/^/    /p'
               else
-                rc=0
-                outside=$(printf '%s\n' "$rows" | cut -f2 | grep -v -P '^(backend/(?!assets/)|omnivoice/|docs/|mobile/|\.github/ISSUE_TEMPLATE/|\.github/scripts/|\.github/[^/]+\.md$|tests/.*\.py$|scripts/[^/]+\.py$|[^/]+\.md$|Makefile$|uv\.lock$|\.github/workflows/(?!(ci|electron-[a-z-]+)\.yml$)[^/]+\.yml$)') || rc=$?
-                if [ "$rc" -eq 1 ]; then
-                  electron=false
-                elif [ "$rc" -eq 0 ]; then
-                  echo "Electron jobs run because of (first 5):"
-                  # Indented so a hostile file name can never start a workflow command.
-                  printf '%s\n' "$outside" | sed -n '1,5s/^/    /p'
-                else
-                  echo "path matching failed (grep exit $rc): running everything"
-                fi
+                echo "path matching failed (grep exit $rc): running everything"
               fi
             fi
           fi
@@ -162,7 +174,17 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Inputs: the whole tree (tests/ reads docs, workflows and Electron catalogs).
+      # Skip the rest when these inputs already passed (.github/actions/ci-pass).
+      - id: pass
+        uses: ./.github/actions/ci-pass
+        with:
+          job: test-python
+          content: |
+            .
+
       - name: Setup Python 3.11
+        if: steps.pass.outputs.hit != 'true'
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.11"
@@ -170,6 +192,7 @@ jobs:
       # enable-cache persists ~/.cache/uv across runs, keyed on uv.lock —
       # turns `uv sync` from ~45 s cold to ~5 s warm.
       - name: Install uv
+        if: steps.pass.outputs.hit != 'true'
         uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
         with:
           enable-cache: true
@@ -178,23 +201,27 @@ jobs:
       # Node 22 is needed for --experimental-strip-types so node:test can
       # import .ts files directly from electron/src/shared/api/*.
       - name: Setup Node 22
+        if: steps.pass.outputs.hit != 'true'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
 
       - name: Setup Bun
+        if: steps.pass.outputs.hit != 'true'
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: '1.4.2'
 
       # Cache the resolved .debs for media and Snap artifact tests.
       - name: System deps (ffmpeg and squashfs-tools)
+        if: steps.pass.outputs.hit != 'true'
         uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
         with:
           packages: ffmpeg squashfs-tools
           version: 1.0
 
       - name: Install Python deps
+        if: steps.pass.outputs.hit != 'true'
         # `--all-extras` installs optional engine deps (e.g. `supertonic`)
         # so their tests can exercise the real import path, not the
         # "package not installed" fallback. Smoke job below stays on bare
@@ -211,6 +238,7 @@ jobs:
       # Cache ~/.bun/install/cache keyed on bun.lock — `bun install` drops
       # from ~15 s cold to near-instant on warm cache.
       - name: Cache bun deps
+        if: steps.pass.outputs.hit != 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
@@ -219,6 +247,7 @@ jobs:
             ${{ runner.os }}-bun-
 
       - name: Install Electron deps
+        if: steps.pass.outputs.hit != 'true'
         # --frozen-lockfile so an Electron workspace change that forgets to
         # regenerate the root bun.lock fails HERE (fast) instead of only in the
         # Docker build (deploy/Dockerfile), which is what reddened main on #485.
@@ -238,6 +267,7 @@ jobs:
       # stays serial: one test there depends on another's leftover state and
       # fails when run in isolation, which parallel scheduling exposes.
       - name: Run pytest
+        if: steps.pass.outputs.hit != 'true'
         run: uv run --no-sync pytest tests/ -q --tb=short -n 6
         env:
           HF_HUB_OFFLINE: "1"
@@ -247,17 +277,26 @@ jobs:
       # longer stubs sys.modules, so mixed sessions with tests/ are safe;
       # the separate session is kept for cheaper, clearer CI output.
       - name: Run pytest (backend/tests, isolated)
+        if: steps.pass.outputs.hit != 'true'
         run: uv run --no-sync pytest backend/tests/ -q --tb=short
         env:
           HF_HUB_OFFLINE: "1"  # same no-silent-downloads guard as tests/
 
       # Check the generated mobile files explicitly as well as through pytest.
       - name: Mobile theme tokens match Electron
+        if: steps.pass.outputs.hit != 'true'
         run: bun --no-install scripts/export-mobile-tokens.ts --check
 
       - name: Mobile maintainer cards match Electron
+        if: steps.pass.outputs.hit != 'true'
         run: bun --no-install scripts/export-mobile-contributors.ts --check
 
+      # Last: record that these inputs passed, for later runs to skip.
+      - if: steps.pass.outputs.hit != 'true' && steps.pass.outputs.record == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pass.outputs.path }}
+          key: ${{ steps.pass.outputs.key }}
 
   # Electron checks run beside the Python job instead of after it (~16 min serial
   # -> the longer of the two). They need no Python: every backend they touch is a
@@ -270,18 +309,34 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Inputs: everything but the phone apps, Python tests and changelog fragments;
+      # of backend/ and omnivoice/, only the files Electron reads, plus which files exist.
+      # Skip the rest when these inputs already passed (.github/actions/ci-pass).
+      - id: pass
+        uses: ./.github/actions/ci-pass
+        with:
+          job: test-electron
+          content: |
+            . :(exclude)mobile :(exclude)backend :(exclude)omnivoice :(exclude,glob)tests/**/*.py :(exclude)changelog.d
+            backend/assets backend/core/windows_rocm backend/engines/omnivoice_gguf backend/main.py
+          names: |
+            backend omnivoice :(exclude)backend/tests
+
       - name: Setup Node 22
+        if: steps.pass.outputs.hit != 'true'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
 
       - name: Setup Bun
+        if: steps.pass.outputs.hit != 'true'
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: '1.4.2'
 
       # Cache the resolved .debs for media and Snap artifact tests.
       - name: System deps (ffmpeg and squashfs-tools)
+        if: steps.pass.outputs.hit != 'true'
         uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
         with:
           packages: ffmpeg squashfs-tools
@@ -290,6 +345,7 @@ jobs:
       # Cache ~/.bun/install/cache keyed on bun.lock — `bun install` drops
       # from ~15 s cold to near-instant on warm cache.
       - name: Cache bun deps
+        if: steps.pass.outputs.hit != 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
@@ -298,6 +354,7 @@ jobs:
             ${{ runner.os }}-bun-
 
       - name: Install Electron deps
+        if: steps.pass.outputs.hit != 'true'
         # --frozen-lockfile so an Electron workspace change that forgets to
         # regenerate the root bun.lock fails HERE (fast) instead of only in the
         # Docker build (deploy/Dockerfile), which is what reddened main on #485.
@@ -306,6 +363,7 @@ jobs:
       # node:test suites for shared renderer modules (tests/frontend/*.test.mjs).
       # Node 22 strips TypeScript types natively; imports need explicit `.ts`.
       - name: Frontend unit tests
+        if: steps.pass.outputs.hit != 'true'
         run: |
           node --test electron/tests/node-version.test.mjs
           bun run test:frontend
@@ -314,10 +372,19 @@ jobs:
       # preload and packaging regressions could pass the required PR gate.
       # Keep this command shared with electron-release.yml through the root script.
       - name: Electron typecheck, tests and production contract
+        if: steps.pass.outputs.hit != 'true'
         run: bun run check:electron
 
       - name: Snap artifact repair regression
+        if: steps.pass.outputs.hit != 'true'
         run: node --test electron/tests/snap-artifact-verification.test.mjs electron/tests/snap-launcher.test.mjs electron/tests/snap-store-packaging.test.mjs electron/tests/omnivoice-tts-bundle.test.mjs
+
+      # Last: record that these inputs passed, for later runs to skip.
+      - if: steps.pass.outputs.hit != 'true' && steps.pass.outputs.record == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pass.outputs.path }}
+          key: ${{ steps.pass.outputs.key }}
 
   # Split from Tests (Electron) so the two ~7 minute halves run side by side.
   # The browser workflow smokes need only the checked-out sources.
@@ -329,18 +396,34 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Inputs: everything but the phone apps, Python tests and changelog fragments;
+      # of backend/ and omnivoice/, only the files Electron reads, plus which files exist.
+      # Skip the rest when these inputs already passed (.github/actions/ci-pass).
+      - id: pass
+        uses: ./.github/actions/ci-pass
+        with:
+          job: electron-smokes
+          content: |
+            . :(exclude)mobile :(exclude)backend :(exclude)omnivoice :(exclude,glob)tests/**/*.py :(exclude)changelog.d
+            backend/assets backend/core/windows_rocm backend/engines/omnivoice_gguf backend/main.py
+          names: |
+            backend omnivoice :(exclude)backend/tests
+
       - name: Setup Node 22
+        if: steps.pass.outputs.hit != 'true'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
 
       - name: Setup Bun
+        if: steps.pass.outputs.hit != 'true'
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: '1.4.2'
 
       # Cache the resolved .debs for media and Snap artifact tests.
       - name: System deps (ffmpeg and squashfs-tools)
+        if: steps.pass.outputs.hit != 'true'
         uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
         with:
           packages: ffmpeg squashfs-tools
@@ -349,6 +432,7 @@ jobs:
       # Cache ~/.bun/install/cache keyed on bun.lock — `bun install` drops
       # from ~15 s cold to near-instant on warm cache.
       - name: Cache bun deps
+        if: steps.pass.outputs.hit != 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
@@ -357,6 +441,7 @@ jobs:
             ${{ runner.os }}-bun-
 
       - name: Install Electron deps
+        if: steps.pass.outputs.hit != 'true'
         # --frozen-lockfile so an Electron workspace change that forgets to
         # regenerate the root bun.lock fails HERE (fast) instead of only in the
         # Docker build (deploy/Dockerfile), which is what reddened main on #485.
@@ -364,8 +449,10 @@ jobs:
 
       # Browser workflow smokes exercise the maintained Electron renderer.
       - name: Install Playwright chromium
+        if: steps.pass.outputs.hit != 'true'
         run: bunx playwright install --with-deps chromium
       - name: Electron renderer workflow smokes
+        if: steps.pass.outputs.hit != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -393,6 +480,13 @@ jobs:
           node --test electron/tests/smoke-inventory.test.mjs electron/tests/ui-crawler.test.mjs
           # Runs every offline renderer smoke; it serves /api from a fake backend on $OMNIVOICE_PORT.
           node electron/tests/run-renderer-smokes.mjs
+
+      # Last: record that these inputs passed, for later runs to skip.
+      - if: steps.pass.outputs.hit != 'true' && steps.pass.outputs.record == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pass.outputs.path }}
+          key: ${{ steps.pass.outputs.key }}
 
   # The required check. Its name is what branch protection matches, so it stays
   # "Tests (backend + frontend)" even though the work now runs in two jobs.
@@ -446,17 +540,33 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Inputs: everything but the phone apps, Python tests and changelog fragments;
+      # of backend/ and omnivoice/, only the files Electron reads, plus which files exist.
+      # Skip the rest when these inputs already passed (.github/actions/ci-pass).
+      - id: pass
+        uses: ./.github/actions/ci-pass
+        with:
+          job: ui-crawler-${{ matrix.shard }}
+          content: |
+            . :(exclude)mobile :(exclude)backend :(exclude)omnivoice :(exclude,glob)tests/**/*.py :(exclude)changelog.d
+            backend/assets backend/core/windows_rocm backend/engines/omnivoice_gguf backend/main.py
+          names: |
+            backend omnivoice :(exclude)backend/tests
+
       - name: Setup Node 22
+        if: steps.pass.outputs.hit != 'true'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
 
       - name: Setup Bun
+        if: steps.pass.outputs.hit != 'true'
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: '1.4.2'
 
       - name: Cache bun deps
+        if: steps.pass.outputs.hit != 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
@@ -465,12 +575,15 @@ jobs:
             ${{ runner.os }}-bun-
 
       - name: Install Electron deps
+        if: steps.pass.outputs.hit != 'true'
         run: bun install --frozen-lockfile
 
       - name: Install Playwright chromium
+        if: steps.pass.outputs.hit != 'true'
         run: bunx playwright install --with-deps chromium
 
       - name: Crawl every button
+        if: steps.pass.outputs.hit != 'true'
         shell: bash
         env:
           OMNIVOICE_PORT: '3999'
@@ -491,6 +604,13 @@ jobs:
           }
           node electron/tests/ui-crawler.mjs
 
+      # Last: record that these inputs passed, for later runs to skip.
+      - if: steps.pass.outputs.hit != 'true' && steps.pass.outputs.record == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pass.outputs.path }}
+          key: ${{ steps.pass.outputs.key }}
+
   linux-native-package:
     name: Linux native package
     needs: changes
@@ -498,24 +618,51 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Inputs: everything but the phone apps, Python tests and changelog fragments;
+      # of backend/ and omnivoice/, only the files Electron reads, plus which files exist.
+      # Skip the rest when these inputs already passed (.github/actions/ci-pass).
+      - id: pass
+        uses: ./.github/actions/ci-pass
+        with:
+          job: linux-native-package
+          content: |
+            . :(exclude)mobile :(exclude)backend :(exclude)omnivoice :(exclude,glob)tests/**/*.py :(exclude)changelog.d
+            backend/assets backend/core/windows_rocm backend/engines/omnivoice_gguf backend/main.py
+          names: |
+            backend omnivoice :(exclude)backend/tests
+
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.pass.outputs.hit != 'true'
         with:
           node-version: '22'
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        if: steps.pass.outputs.hit != 'true'
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: steps.pass.outputs.hit != 'true'
         with:
           workspaces: native/desktop-bridge -> target
           key: linux-native-package
       - name: Install native build dependencies
+        if: steps.pass.outputs.hit != 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y libxdo-dev libxtst-dev libx11-dev libxkbcommon-dev libwayland-dev libssl-dev pkg-config
       - name: Verify relocation without build-time libraries
+        if: steps.pass.outputs.hit != 'true'
         run: node --test electron/tests/native-linux-libraries.test.mjs
       - name: Build and validate real Linux native package
+        if: steps.pass.outputs.hit != 'true'
         run: |
           cargo build --locked --release --manifest-path native/desktop-bridge/Cargo.toml
           node electron/tests/native-linux-package.mjs
+
+      # Last: record that these inputs passed, for later runs to skip.
+      - if: steps.pass.outputs.hit != 'true' && steps.pass.outputs.record == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pass.outputs.path }}
+          key: ${{ steps.pass.outputs.key }}
 
   # ── Desktop UI (real Electron app on every OS) ───────────────────────────
   # Launches the unpackaged app with Playwright against a fake backend and runs
@@ -541,17 +688,33 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Inputs: everything but the phone apps, Python tests and changelog fragments;
+      # of backend/ and omnivoice/, only the files Electron reads, plus which files exist.
+      # Skip the rest when these inputs already passed (.github/actions/ci-pass).
+      - id: pass
+        uses: ./.github/actions/ci-pass
+        with:
+          job: desktop-ui-${{ matrix.label }}
+          content: |
+            . :(exclude)mobile :(exclude)backend :(exclude)omnivoice :(exclude,glob)tests/**/*.py :(exclude)changelog.d
+            backend/assets backend/core/windows_rocm backend/engines/omnivoice_gguf backend/main.py
+          names: |
+            backend omnivoice :(exclude)backend/tests
+
       - name: Setup Node 22
+        if: steps.pass.outputs.hit != 'true'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
 
       - name: Setup Bun
+        if: steps.pass.outputs.hit != 'true'
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: '1.4.2'
 
       - name: Cache bun deps
+        if: steps.pass.outputs.hit != 'true'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.bun/install/cache
@@ -560,31 +723,35 @@ jobs:
             ${{ runner.os }}-bun-
 
       - name: Install Electron deps
+        if: steps.pass.outputs.hit != 'true'
         run: bun install --frozen-lockfile
 
       # Main-process unit tests on every OS: the release workflow runs them on
       # Windows and macOS, so a POSIX-only path assumption must fail here first
       # (v0.5.8-beta.3's Windows package failed on #3701's discovery tests).
       - name: Main-process unit tests
-        if: runner.os != 'Linux'
+        if: steps.pass.outputs.hit != 'true' && runner.os != 'Linux'
         working-directory: electron
         run: bunx --no-install vp test --run src/main
 
       - name: Build Electron app
+        if: steps.pass.outputs.hit != 'true'
         run: bun run --cwd electron build
 
       # `bun install` does not run Electron's postinstall here, so fetch the binary the tests launch.
       - name: Download Electron binary
+        if: steps.pass.outputs.hit != 'true'
         run: node electron/node_modules/electron/install.js
 
       # Ubuntu 24.04 restricts unprivileged user namespaces, which stops
       # Electron's sandbox from starting. Relax it on the runner; the app
       # itself is never launched with --no-sandbox.
       - name: Allow Electron sandbox (Linux)
-        if: runner.os == 'Linux'
+        if: steps.pass.outputs.hit != 'true' && runner.os == 'Linux'
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 
       - name: Desktop UI tests
+        if: steps.pass.outputs.hit != 'true'
         run: |
           # The output is kept in the failure artifact: a crashed run's log is otherwise
           # unavailable until the whole workflow finishes.
@@ -596,12 +763,19 @@ jobs:
           fi
 
       - name: Upload failure artifacts
-        if: failure()
+        if: failure() && steps.pass.outputs.hit != 'true'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: desktop-ui-${{ matrix.label }}
           path: electron/test-results/
           if-no-files-found: ignore
+
+      # Last: record that these inputs passed, for later runs to skip.
+      - if: steps.pass.outputs.hit != 'true' && steps.pass.outputs.record == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pass.outputs.path }}
+          key: ${{ steps.pass.outputs.key }}
 
   # ── Cross-platform Python runtime smoke (Phase 0 GATE-02) ───────────────
   # Loads the frozen tests/fixtures/omnivoice_data/ fixture and boots the
@@ -658,12 +832,23 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # Inputs: everything but Electron code no Python test reads, Android and changelog fragments.
+      # Skip the rest when these inputs already passed (.github/actions/ci-pass).
+      - id: pass
+        uses: ./.github/actions/ci-pass
+        with:
+          job: smoke-${{ matrix.label }}
+          content: |
+            . :(exclude)electron/src/main :(exclude)electron/src/preload :(exclude)electron/tests :(exclude)electron/src/renderer/src/features :(exclude)electron/src/renderer/src/routes :(exclude)electron/src/renderer/src/hooks :(exclude)electron/src/renderer/src/lib :(exclude)electron/src/renderer/src/styles :(exclude)mobile/android :(exclude)changelog.d
+
       - name: Setup Python 3.11
+        if: steps.pass.outputs.hit != 'true'
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.11"
 
       - name: Install uv
+        if: steps.pass.outputs.hit != 'true'
         uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
         with:
           enable-cache: true
@@ -673,11 +858,11 @@ jobs:
       # though the silence WAV doesn't decode anything heavy — keeps test
       # collection from import-erroring on optional audio modules.
       - name: System deps (macOS)
-        if: runner.os == 'macOS' && matrix.backend_supported
+        if: steps.pass.outputs.hit != 'true' && runner.os == 'macOS' && matrix.backend_supported
         run: brew install ffmpeg libsndfile || true
 
       - name: System deps (Windows)
-        if: runner.os == 'Windows' && matrix.backend_supported
+        if: steps.pass.outputs.hit != 'true' && runner.os == 'Windows' && matrix.backend_supported
         shell: bash
         run: |
           # The community chocolatey feed 50x's intermittently (broke PR runs on
@@ -718,7 +903,7 @@ jobs:
           ffmpeg -version
 
       - name: System deps (Linux)
-        if: runner.os == 'Linux' && matrix.backend_supported
+        if: steps.pass.outputs.hit != 'true' && runner.os == 'Linux' && matrix.backend_supported
         uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
         with:
           packages: ffmpeg libsndfile1
@@ -729,11 +914,11 @@ jobs:
         # proves that the same dependency set resolves on every supported local
         # backend host. The Intel-Mac leg separately pins the documented
         # unsupported contract: its UI is a remote-backend client only (#889).
-        if: matrix.backend_supported
+        if: steps.pass.outputs.hit != 'true' && matrix.backend_supported
         run: bash scripts/uv-sync-retry.sh --extra pockettts
 
       - name: Verify the documented Intel Mac contract
-        if: ${{ !matrix.backend_supported }}
+        if: steps.pass.outputs.hit != 'true' && !matrix.backend_supported
         shell: bash
         run: |
           python3 - <<'PY'
@@ -755,7 +940,7 @@ jobs:
 
       - name: Run smoke tests
         # Exercise credential paths and the Windows accept guard natively.
-        if: matrix.backend_supported
+        if: steps.pass.outputs.hit != 'true' && matrix.backend_supported
         run: uv run --no-sync pytest tests/smoke/ tests/test_hf_token_cache_paths.py tests/test_win_accept_guard.py tests/test_ios_testflight.py -q --tb=short
         env:
           HF_HUB_OFFLINE: "1"  # same no-silent-downloads guard as the main pytest job
@@ -770,14 +955,21 @@ jobs:
       # lost every time. All four were invisible to CI and hit every Windows
       # contributor on their first `pytest` run. Forty seconds closes the class.
       - name: Isolated backend session (Windows)
-        if: runner.os == 'Windows' && matrix.backend_supported
+        if: steps.pass.outputs.hit != 'true' && runner.os == 'Windows' && matrix.backend_supported
         run: uv run --no-sync pytest backend/tests/ -q --tb=short
         env:
           HF_HUB_OFFLINE: "1"
 
       - name: Media-tool installation and lock recovery
-        if: matrix.backend_supported
+        if: steps.pass.outputs.hit != 'true' && matrix.backend_supported
         run: uv run --no-sync pytest tests/test_media_tools.py -q --tb=short
         env:
           HF_HUB_OFFLINE: "1"
           HF_HUB_CACHE: ${{ runner.temp }}/media-tools-empty-hf-cache
+
+      # Last: record that these inputs passed, for later runs to skip.
+      - if: steps.pass.outputs.hit != 'true' && steps.pass.outputs.record == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pass.outputs.path }}
+          key: ${{ steps.pass.outputs.key }}
