@@ -21,5 +21,12 @@
     ${EndIf}
     nsExec::ExecToLog '"$SYSDIR\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$INSTDIR\resources\cli\path.ps1" -Action Uninstall -Scope $0'
     Pop $0
+    ; Downloaded runtime and models are not user data, but they are gigabytes
+    ; (#3911). Ask, default No (also for a silent /S uninstall). Voices and
+    ; projects live in %APPDATA%\OmniVoice and are never touched here.
+    MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "Also delete VoiceStudio's downloaded runtime and models to free disk space?$\r$\n$\r$\nThis removes $APPDATA\VoiceStudio\runtime and $LOCALAPPDATA\OmniVoice\hf_cache. Your voices and projects are kept.$\r$\n$\r$\nChoose No to keep them (for example, to reinstall without downloading again)." /SD IDNO IDNO voicestudio_keep_downloads
+      RMDir /r "$APPDATA\VoiceStudio\runtime"
+      RMDir /r "$LOCALAPPDATA\OmniVoice\hf_cache"
+    voicestudio_keep_downloads:
   ${EndIf}
 !macroend
