@@ -148,7 +148,9 @@ function publishDiscovery(): void {
     writeDiscovery(DISCOVERY_DIR, record);
     publishedDiscovery = serialized;
   } catch (error) {
-    console.warn('[headless] Could not publish the backend address:', error);
+    // Filesystem errors embed the userData path (and so the account name): log the code only.
+    const code = (error as NodeJS.ErrnoException | null)?.code ?? 'unknown';
+    console.warn(`[headless] Could not publish the backend address (${code})`);
   }
 }
 
