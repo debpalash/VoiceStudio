@@ -208,6 +208,8 @@ Intel Mac 可运行应用界面；请连接另一台电脑上的 VoiceStudio 后
 <details>
 <summary><img src="../../docs/assets/platforms/windows.svg" alt="" width="20" height="20" /> <strong>Windows</strong> · PowerShell · EXE</summary>
 
+实验性的 [Windows ROCm 设置](../../docs/install/windows-rocm.md)支持目标为 `gfx1030`、`gfx1031` 或 `gfx1032` 的部分 RDNA 2 RX 6000 显卡，不包括 RX 6500 XT（`gfx1034`）。单独固定版本的 CTranslate2 构建包含用于 RX 6700 XT 转录的原生 `gfx1031` 内核；设置过程会检查 GPU 内核的实际执行。RX 6700 XT 测试还涵盖原生 Torch 语音生成和 PyTorch Whisper。ROCm 10 的 faster-whisper 使用独立的推理进程，以安全地选择 CPU 或回退到 CPU。其他显卡和工作负载仍受指南中验证范围的限制。性能预设在保存已更改的引擎选择前，会通过离线子进程验证运行时就绪状态，并在已安装的运行时失败时保留回退方案。
+
 <blockquote>
 
 **稳定版 · x64**<br />Windows 10/11 x64 · NVIDIA CUDA · AMD ROCm（需主动启用）· CPU。
@@ -502,7 +504,7 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 | 安装帮助 | [故障排查](../../docs/install/troubleshooting.md) · [模型下载](../../docs/downloading-models.md) |
 | 指南 | [多说话人配音](../../docs/dubbing/multi-speaker-guide.md) · [富有表现力的语音](../../docs/expressive-speech.md) · [导出配音](../../docs/dubbing/export.md) |
 | 模型与音质 | [引擎指南](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [性能基准](../../docs/benchmarks.md) |
-| 集成 | [本地 API](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [示例](../../examples/README.md) |
+| 集成 | [CLI](../../docs/install/script.md#terminal-command) · [本地 API](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [示例](../../examples/README.md) |
 | 手机应用 | [iOS 与 Android](../../docs/mobile.md) |
 | 开发 | [参与贡献](../../.github/CONTRIBUTING.md)（首次提交 PR 前请[签署 CLA](../../.github/CONTRIBUTING.md#contribution-licensing)）· [更新日志](../../CHANGELOG.md) |
 

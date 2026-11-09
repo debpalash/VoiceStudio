@@ -121,6 +121,14 @@ app_targets=()
 
 # ── Optional: the prebuilt app installed by `curl … | sh` (default mode) ────
 if [ "$REMOVE_APP" -eq 1 ]; then
+  command_path="$HOME/.local/bin/voicestudio"
+  if [ -L "$command_path" ]; then
+    command_target="$(readlink "$command_path")"
+    case "$command_target" in
+      "$HOME/.local/bin/VoiceStudio"|"/Applications/VoiceStudio.app/Contents/Resources/cli/voicestudio"|"$HOME/Applications/VoiceStudio.app/Contents/Resources/cli/voicestudio")
+        app_targets+=("$command_path") ;;
+    esac
+  fi
   case "$OS" in
     Darwin)
       for app_dir in "/Applications/VoiceStudio.app" "$HOME/Applications/VoiceStudio.app"; do

@@ -15,13 +15,20 @@ def current_modules(monkeypatch):
     profiles = importlib.import_module("services.performance_profiles")
     inventory = importlib.import_module("services.performance_inventory")
     monkeypatch.setattr(importlib.import_module("services"), "performance_profiles", profiles)
+    monkeypatch.setattr(profiles, "active_asr_selection", lambda:
+                        importlib.import_module("services.asr_backend").active_backend_id())
+    monkeypatch.setattr(profiles, "selection_ready", lambda *args: True)
 
 
 @pytest.fixture
 def local_inventory(monkeypatch):
+    """Provide a deterministic installed-model inventory with no environment overrides."""
     from api.routers.setup import models
     from core import prefs
     from services import tts_backend, engine_routing, sherpa_dictation, translation_engines, diarization_runtime
+    readiness = importlib.import_module("services.performance_readiness")
+    monkeypatch.setattr(readiness, "package_available", lambda name: True)
+    monkeypatch.setattr(inventory, "package_available", readiness.package_available)
 
     for key in ("OMNIVOICE_TTS_BACKEND", "OMNIVOICE_MODEL", "OMNIVOICE_KITTENTTS_MODEL",
                 "OMNIVOICE_ASR_BACKEND", "OMNIVOICE_SHERPA_ASR_MODEL", "OMNIVOICE_DIARIZATION_BACKEND"):
@@ -91,10 +98,8 @@ def test_incomplete_omni_is_not_selected(local_inventory, monkeypatch):
     assert entry["reason"] == "installed"
 
 
-def test_unavailable_omni_runtime_is_not_selected(local_inventory, monkeypatch):
-    from services import tts_backend
-    monkeypatch.setattr(tts_backend, "get_backend_class", lambda engine: SimpleNamespace(
-        is_available=lambda: (engine == "kittentts", "missing")))
+def test_missing_omni_package_is_not_selected(local_inventory, monkeypatch):
+    monkeypatch.setattr(inventory, "tts_installed", lambda engine: engine == "kittentts")
     assert inventory.profile_plan("max", {}, local_inventory)["families"]["tts"]["selection"]["engine"] == "kittentts"
 
 
