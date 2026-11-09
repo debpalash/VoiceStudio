@@ -29,14 +29,15 @@ HAS_GREP_P = subprocess.run(["grep", "-P", "x"], input=b"", capture_output=True)
 pytestmark = pytest.mark.skipif(not HAS_GREP_P, reason="needs GNU grep -P, as on the Actions runner")
 
 
-def _detect(tmp_path: Path, rows, *, event="pull_request", gh_exit=0, gh_output_then_fail=False, grep_exit=None):
+def _detect(tmp_path: Path, rows, *, event="pull_request", gh_exit=0, gh_output_then_fail=False, grep_exit=None,
+            base="a" * 40, head="b" * 40):
     """rows: iterable of (status, filename) as `gh api ... --jq` prints them (TSV)."""
     listing = "\n".join(f"{status}\t{name}" for status, name in rows)
     gh = tmp_path / "gh"
     if gh_exit:
         body = f"echo boom >&2; exit {gh_exit}"
     else:
-        body = f"cat <<'LIST'\n{listing}\nLIST" + ("\nexit 1" if gh_output_then_fail else "")
+        body = f"echo \"$*\" >> '{tmp_path}/gh-args'\ncat <<'LIST'\n{listing}\nLIST" + ("\nexit 1" if gh_output_then_fail else "")
     gh.write_text(f"#!/bin/sh\n{body}\n", encoding="utf-8")
     gh.chmod(gh.stat().st_mode | stat.S_IEXEC)
     if grep_exit is not None:  # a grep that is broken on this runner (e.g. BSD grep without -P)
@@ -46,7 +47,7 @@ def _detect(tmp_path: Path, rows, *, event="pull_request", gh_exit=0, gh_output_
     out = tmp_path / "output"
     out.write_text("", encoding="utf-8")
     env = dict(os.environ, PATH=f"{tmp_path}:{os.environ['PATH']}", GITHUB_OUTPUT=str(out),
-               EVENT=event, PR="1", REPO="o/r", GH_TOKEN="x")
+               EVENT=event, PR="1", REPO="o/r", GH_TOKEN="x", BASE=base, HEAD=head)
     # `shell: bash` in Actions is: bash --noprofile --norc -eo pipefail {0}
     proc = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", SCRIPT],
                           env=env, capture_output=True, text=True)
@@ -65,7 +66,7 @@ def test_the_step_uses_the_pipefail_shell():
 @pytest.mark.parametrize("files", [
     ["backend/api/routers/dub_export.py", "tests/test_dub_export.py"],
     ["CHANGELOG.md", "docs/RELEASING.md", "README.md", "LICENSE-NOTICE.md"],   # edits only
-    ["omnivoice/utils/text.py", "uv.lock"],
+    ["omnivoice/utils/text.py", "backend/core/config.py"],
     ["scripts/release.py", "tests/backend/api/test_x.py"],
     ["mobile/android/app/build.gradle.kts", "mobile/contract/openapi.json"],
     [".github/ISSUE_TEMPLATE/bug.yml", "Makefile"],
@@ -82,6 +83,7 @@ def test_python_docs_and_mobile_edits_skip_the_electron_jobs(tmp_path, files):
     ["native/desktop-bridge/src/lib.rs"],
     ["package.json"], ["bun.lock"], ["config/app.json"], ["config/account.json"],
     ["pyproject.toml"],                                         # the contract parses its `readme =` key
+    ["uv.lock"], ["backend/x.py", "uv.lock"],                   # main bundles it; its tests read it
     ["tests/fixtures/longform_parser_cases.json"],              # shared with the JS suite
     ["tests/frontend/ssml.test.mjs"],
     [".github/workflows/ci.yml"], [".github/workflows/electron-release.yml"],
@@ -185,6 +187,25 @@ def test_hostile_file_names_cannot_start_a_workflow_command(tmp_path):
 @pytest.mark.parametrize("event", ["push", "workflow_dispatch"])
 def test_legacy_electron_scope_remains_conservative_off_pull_requests(tmp_path, event):
     assert _detect(tmp_path, _mod("docs/only.md"), event=event)[0] == "electron=true"
+
+
+def test_a_merge_group_is_compared_with_its_base(tmp_path):
+    assert _detect(tmp_path, _mod("backend/x.py", "docs/a.md"), event="merge_group")[0] == "electron=false"
+    assert (tmp_path / "gh-args").read_text(encoding="utf-8").split()[:2] == ["api", f"repos/o/r/compare/{'a' * 40}...{'b' * 40}"]
+    assert _detect(tmp_path, _mod("electron/src/main/updater.ts"), event="merge_group")[0] == "electron=true"
+    assert _detect(tmp_path, [("removed", "README.md")], event="merge_group")[0] == "electron=true"
+
+
+@pytest.mark.parametrize("base, head", [("", "b" * 40), ("a" * 40, "main"), ("a" * 40, "$(touch x)" + "b" * 31)])
+def test_a_merge_group_without_valid_shas_runs_everything(tmp_path, base, head):
+    assert _detect(tmp_path, _mod("docs/a.md"), event="merge_group", base=base, head=head)[0] == "electron=true"
+    assert not (tmp_path / "gh-args").exists()
+
+
+def test_300_files_is_the_compare_cap_so_a_merge_group_runs_everything(tmp_path):
+    rows = _mod(*[f"docs/page{i}.md" for i in range(300)])
+    assert _detect(tmp_path, rows, event="merge_group")[0] == "electron=true"
+    assert _detect(tmp_path, rows[:299], event="merge_group")[0] == "electron=false"
 
 
 def test_a_failed_partial_or_empty_lookup_runs_everything(tmp_path):

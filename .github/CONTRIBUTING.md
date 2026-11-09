@@ -494,12 +494,25 @@ test-only PR. Docker Hub overview edits still publish through the small
   package, and `Tests (Electron)` plus `Electron renderer smokes`, the Electron halves of `Tests (backend + frontend)`) are skipped on a
   pull request whose every changed file is an *edit or addition* under `backend/`
   (except `backend/assets/`), `omnivoice/`, `docs/` or `mobile/`, a Python file under `tests/` or `scripts/`,
-  a root `*.md`, `Makefile`, `uv.lock`, or a workflow other than `ci.yml` and
-  `electron-*.yml`. Any other path (including `pyproject.toml`, `package.json`,
+  a root `*.md`, `Makefile`, or a workflow other than `ci.yml` and
+  `electron-*.yml`. Any other path (including `pyproject.toml`, `uv.lock`, `package.json`,
   `bun.lock` and shared test fixtures), any file that is not a plain edit or addition (**deleted, renamed**, copied or type-changed), 3,000 or
   more files, and every push to `main` run the full matrix; so does a failed
-  detection. Skipped jobs show as skipped in the PR. The rule is the `changes`
-  job in `.github/workflows/ci.yml`.
+  detection. Skipped jobs show as skipped in the PR. A merge-queue run applies
+  the same rule to the queue commit against its base (300 files or more run
+  everything). The rule is the `changes` job in `.github/workflows/ci.yml`.
+- **Pass cache:** the heavy jobs in `ci.yml` (Python tests, the Electron jobs,
+  UI crawler, Desktop UI, smokes) and in `mobile.yml` (iOS, Android and their
+  inference tests) skip their steps, and still pass, when their exact inputs
+  already passed. Each job hashes the git entries (mode, content and path) of
+  the files it reads, plus its workflow file and `.github/actions/ci-pass`; a
+  green run saves an empty cache marker under that key as its last step. Only
+  pull-request and merge-queue runs skip; pushes to `main`, manual runs,
+  releases and the CLA, identity and security checks always run in full, and
+  `main`'s runs save the markers pull requests reuse. Each job lists its
+  inputs next to its `ci-pass` step; when a job starts reading a new file
+  outside them, add it there. To force a full run, use **Run workflow** on the
+  branch. `tests/test_ci_pass_cache.py` checks the gating.
   The `Security` workflow works the same way: CodeQL, bandit and the dependency
   audits are skipped for a PR that only edits files under `docs/` or `mobile/` or
   Markdown, while the secret scan always runs (rule: its own `changes` job).
