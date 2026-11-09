@@ -1,0 +1,1 @@
+Updates now download in the background and install when you quit, with a compact title-bar pill for progress, Restart and Retry, clearer error messages and a restart prompt when work is running (#0)
