@@ -2582,7 +2582,9 @@
     "help_label": "Hulp bij installatie",
     "help_install": "Installatiehandleiding",
     "help_troubleshooting": "Problemen oplossen",
-    "help_report": "Probleem melden"
+    "help_report": "Probleem melden",
+    "options": "Opties",
+    "more_fixes": "Meer oplossingen"
   },
   "consent": {
     "title": "Helpen VoiceStudio te verbeteren?",

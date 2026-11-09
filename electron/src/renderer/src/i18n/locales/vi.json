@@ -2582,7 +2582,9 @@
     "help_label": "Trợ giúp thiết lập",
     "help_install": "Hướng dẫn cài đặt",
     "help_troubleshooting": "Khắc phục sự cố",
-    "help_report": "Báo cáo sự cố"
+    "help_report": "Báo cáo sự cố",
+    "options": "Tùy chọn",
+    "more_fixes": "Cách khắc phục khác"
   },
   "consent": {
     "title": "Giúp cải thiện VoiceStudio?",
