@@ -446,6 +446,7 @@ def test_stream_timeout_names_the_cpu_remedy_only_on_cpu(
     assert ("CPU budget" in err["detail"]) is expect_cpu_copy
 
 
+@pytest.mark.usefixtures("cpu_host")
 def test_stream_native_model_path(client, monkeypatch, tmp_path):
     """The native OmniVoice model path streams too (per-chunk generate calls
     with duration=None), and its saved take matches the classic render."""

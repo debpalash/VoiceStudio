@@ -1290,7 +1290,7 @@ def _run_inference(
 
         sr = model.sampling_rate if hasattr(model, 'sampling_rate') else 24000
 
-        from services.tts_backend import generate_with_cached_ref
+        from services.tts_backend import generate_with_cached_ref, seed_engine_call
 
         def _gen(gen_text, gen_duration):
             """One generate call for this request's voice, reference encoded once."""
@@ -1319,10 +1319,9 @@ def _run_inference(
         if has_pause:
             def _gen_span(span_text, chunk_index=None):
                 # Per-span duration is left to the model; an explicit overall
-                # `duration` can't be meaningfully split across spans. Chunks
-                # of a long span get the no-pause path's per-chunk seed.
-                if chunk_index is not None and used_seed is not None:
-                    torch.manual_seed(used_seed + chunk_index)
+                # `duration` can't be meaningfully split across spans. Every
+                # span and chunk restarts from the take's seed (#3730).
+                seed_engine_call(used_seed)
                 return _gen(span_text, None)[0]
             audio_out = _render_with_pauses(
                 _gen_span, segments, sr, trim_spans=_wants_edge_trim(effect_preset),
@@ -1335,11 +1334,10 @@ def _run_inference(
             text_chunks = split_text_into_chunks(text, _max_chars)
             if len(text_chunks) > 1:
                 parts = []
-                for i, chunk_text in enumerate(text_chunks):
-                    # Vary the seed per chunk (deterministically) to avoid
-                    # correlated RNG artifacts across chunk boundaries.
-                    if used_seed is not None:
-                        torch.manual_seed(used_seed + i)
+                for chunk_text in text_chunks:
+                    # One take, one voice: each chunk restarts from the take's
+                    # seed instead of an advancing one (#3730).
+                    seed_engine_call(used_seed)
                     parts.append(_gen(chunk_text, None)[0])
                     _note_generate_progress()
                 audio_out = concatenate_audio_chunks(parts, sr, _xfade_ms,
@@ -1366,10 +1364,9 @@ def _run_inference(
 
 def _backend_supports_seed(backend) -> bool:
     """Whether this adapter accepts per-request seed controls."""
-    return bool(
-        getattr(backend, "supports_native_omnivoice_controls", False)
-        or getattr(backend, "supports_generation_seed", False)
-    )
+    from services.tts_backend import backend_accepts_seed
+
+    return backend_accepts_seed(backend)
 
 
 def _run_backend_inference(
@@ -1390,6 +1387,7 @@ def _run_backend_inference(
     narrower protocol unchanged.
     """
     import torch
+    from services.tts_backend import seed_engine_call
     try:
         if used_seed is not None:
             torch.manual_seed(used_seed)
@@ -1409,7 +1407,6 @@ def _run_backend_inference(
         native_proxy = bool(
             getattr(backend, "supports_native_omnivoice_controls", False)
         )
-        forwards_seed = _backend_supports_seed(backend)
         if native_proxy:
             gen_kwargs.update({
                 key: value for key, value in {
@@ -1435,21 +1432,12 @@ def _run_backend_inference(
         _xfade_ms = DEFAULT_CROSSFADE_MS if crossfade_ms is None else crossfade_ms
 
         if has_pause:
-            first_span = True
-
             def _gen_span(span_text, chunk_index=None):
-                nonlocal first_span
                 # Per-span duration is left to the engine; an explicit overall
-                # `duration` can't be meaningfully split across spans. Chunks
-                # of a long span get the no-pause path's per-chunk seed.
-                span_kwargs = dict(gen_kwargs)
-                if chunk_index is not None and used_seed is not None:
-                    torch.manual_seed(used_seed + chunk_index)
-                    if forwards_seed:
-                        span_kwargs["seed"] = used_seed + chunk_index
-                elif forwards_seed and first_span and used_seed is not None:
-                    span_kwargs["seed"] = used_seed
-                first_span = False
+                # `duration` can't be meaningfully split across spans. Every
+                # span and chunk gets the take's seed, forwarded to engines
+                # that accept one on every call, not only the first (#3730).
+                span_kwargs = {**gen_kwargs, **seed_engine_call(used_seed, backend)}
                 return trace_call("synthesis", backend.generate, span_text, duration=None, **span_kwargs)
             audio_out = _render_with_pauses(
                 _gen_span, segments, sr, trim_spans=_wants_edge_trim(effect_preset),
@@ -1460,12 +1448,8 @@ def _run_backend_inference(
             text_chunks = split_text_into_chunks(text, _max_chars)
             if len(text_chunks) > 1:
                 parts = []
-                for i, chunk_text in enumerate(text_chunks):
-                    if used_seed is not None:
-                        torch.manual_seed(used_seed + i)
-                    chunk_kwargs = dict(gen_kwargs)
-                    if forwards_seed and used_seed is not None:
-                        chunk_kwargs["seed"] = used_seed + i
+                for chunk_text in text_chunks:
+                    chunk_kwargs = {**gen_kwargs, **seed_engine_call(used_seed, backend)}
                     parts.append(trace_call("synthesis", backend.generate,
                         chunk_text, duration=None, **chunk_kwargs
                     ))
@@ -1474,8 +1458,7 @@ def _run_backend_inference(
                                                      texts=text_chunks,
                                                      sink=dropped_sink)
             else:
-                if forwards_seed and used_seed is not None:
-                    gen_kwargs["seed"] = used_seed
+                gen_kwargs.update(seed_engine_call(used_seed, backend))
                 audio_out = trace_call("synthesis", backend.generate, text, duration=duration, **gen_kwargs)
 
         return _apply_effect_chain(
@@ -2399,16 +2382,16 @@ async def generate_speech(
             """One text chunk → (raw engine tensor, preview-DSP tensor, sr).
 
             Runs on the GPU pool. Mirrors ONE iteration of the multi-chunk
-            loop in _run_inference/_run_backend_inference exactly (per-chunk
-            deterministic seed, same generate kwargs), so concatenating the
+            loop in _run_inference/_run_backend_inference exactly (the take's
+            seed, same generate kwargs), so concatenating the
             raw parts afterwards reproduces the non-streaming output. The
             preview copy gets the same effect chain the final file will get,
             so what the user hears mid-stream matches the saved take.
             """
-            import torch
+            from services.tts_backend import seed_engine_call
             try:
-                if used_seed is not None:
-                    torch.manual_seed(used_seed + i)
+                # Same seed for every chunk of the take (#3730).
+                seed_kwargs = seed_engine_call(used_seed, _backend)
                 if _backend is not None:
                     _lang = None if (language and language.lower() == "auto") else language
                     raw = trace_call("synthesis", _backend.generate,
@@ -2428,7 +2411,7 @@ async def generate_speech(
                         } if getattr(
                             _backend, "supports_native_omnivoice_controls", False
                         ) else {}),
-                        **({"seed": used_seed + i} if used_seed is not None and _backend_supports_seed(_backend) else {}),
+                        **seed_kwargs,
                     )
                     sr = _backend.sample_rate
                     skip = getattr(_backend, "applies_own_mastering", False)

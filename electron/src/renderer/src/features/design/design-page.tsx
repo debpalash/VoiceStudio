@@ -555,6 +555,7 @@ export function DesignPage() {
             // in flight does not hold them back.
             ready={Boolean(draft.text.trim()) && (freeform || !mapper.pending)}
             engineName={activeEngine?.display_name ?? ''}
+            text={draft.text}
             onSynthesize={() =>
               void generation.generateDesign({
                 text: draft.text,

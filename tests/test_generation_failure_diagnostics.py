@@ -69,6 +69,7 @@ def client():
     return TestClient(app, client=("127.0.0.1", 50000), raise_server_exceptions=False)
 
 
+@pytest.mark.usefixtures("cpu_host")
 def test_500_body_carries_exception_type_and_topic(client, monkeypatch):
     import api.routers.generation as gen
 

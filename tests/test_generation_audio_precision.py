@@ -103,7 +103,7 @@ def test_sidecar_receives_seed_for_each_chunk(native_controls):
                            'English', None, None, None, None, 32, 2, 1, True, True,
                            42, 'raw', max_chunk_chars=30, crossfade_ms=0)
     assert len(calls) == 2
-    assert [call['seed'] for call in calls] == [42, 43]
+    assert [call['seed'] for call in calls] == [42, 42]  # one take, one voice (#3730)
     assert [call['num_step'] for call in calls] == [32, 32]
 
 

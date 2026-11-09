@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { EngineLanguagePicker } from '@/features/clone/engine-language-picker';
 import { QualityControls } from '@/features/clone/quality-controls';
 import { VoiceControls } from '@/features/clone/action-bar';
+import { QualityOffer } from '@/features/clone/quality-offer';
 import type { DesignBlocker, UseGenerateClone } from '@/hooks/use-generate';
 import { cn } from '@/lib/utils';
 
@@ -26,6 +27,7 @@ export function DesignComposer({
   blocker,
   ready,
   engineName,
+  text = '',
   onSynthesize,
 }: {
   generation: UseGenerateClone;
@@ -33,6 +35,8 @@ export function DesignComposer({
   /** The draft has what a render needs (script, mapped description). */
   ready: boolean;
   engineName: string;
+  /** The script, for the render-time estimate. */
+  text?: string;
   onSynthesize: () => void;
 }) {
   const { t } = useTranslation();
@@ -179,6 +183,9 @@ export function DesignComposer({
           </div>
         )}
       </div>
+      {!needsSetup && (
+        <QualityOffer text={text} isGenerating={isGenerating} className="mt-2 justify-end px-1" />
+      )}
     </div>
   );
 }

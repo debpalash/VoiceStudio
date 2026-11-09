@@ -23,6 +23,7 @@ from services.model_manager import _gpu_pool, run_on_gpu_pool_guarded
 from services.srt_parser import vouch_cue_source
 from services.tts_backend import (
     TTSBackend, active_backend_id, ensure_active_engine_licence, resolve_generation_backend,
+    seed_engine_call,
 )
 from services.dub_batching import batch_timeout_s, native_batch_width
 from services.audio_dsp import apply_mastering, normalize_audio, apply_effects_chain, get_effect_chain, trim_speech_padding
@@ -1113,6 +1114,8 @@ async def dub_generate(job_id: str, req: DubRequest):
                     }
 
                 try:
+                    # The profile's seed reaches engines that take one, so
+                    # a designed voice stays one speaker (#3730).
                     audio_out = backend.generate(
                         text=text, language=lang if lang != "Auto" else None,
                         ref_audio=ref_audio, ref_text=ref_text,
@@ -1120,6 +1123,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                         instruct=instruct_str if instruct_str else None,
                         duration=dur_s, num_step=nstep, guidance_scale=cfg,
                         speed=spd, denoise=True, postprocess_output=_job_postprocess,
+                        **seed_engine_call(used_seed, backend),
                     )
                     sr = backend.sample_rate
 
@@ -1161,6 +1165,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                             instruct=instruct_str if instruct_str else None,
                             duration=dur_s, num_step=retry_steps, guidance_scale=cfg,
                             speed=spd, denoise=True, postprocess_output=_job_postprocess,
+                            **seed_engine_call(used_seed, backend),
                         )
                         sr = backend.sample_rate
 

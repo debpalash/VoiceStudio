@@ -1,8 +1,9 @@
 # Audio quality in Clone and Design
 
 The **Audio quality** controls apply to the next generated take. Existing files
-stay unchanged. Normal defaults remain 16-bit WAV, 16 sampling steps and
-broadcast mastering; model-specific limits still apply.
+stay unchanged. Defaults are 16-bit WAV, broadcast mastering and each engine's
+**best-quality** voice refinement (see the table below); model-specific limits
+still apply.
 
 The compact slider sits below the script in Clone and Design. **More options**
 reveals voice refinement (sampling steps), volume balancing and format guidance.
@@ -33,17 +34,45 @@ sample rate, channels and sample format. Export precision cannot add information
 that an engine has already discarded or improve voice identity by itself.
 The WAV slider does not change model weights, quantization or sample rate.
 
-**Voice refinement** controls model computation separately. More steps take longer,
-without increasing WAV size or guaranteeing better speech. The slider appears
-only for adapters that forward this setting:
+**Voice refinement** controls model computation separately. More passes sound
+cleaner but take longer, without increasing WAV size. Until you move the slider
+it follows the active engine's best-quality value, shown with a **Best quality**
+badge. Below that value the composer pill shows **Faster**, and **Restore best
+quality** returns to it. The slider appears only for adapters that forward this
+setting:
 
-| Engine | Sampling slider | Export controls |
-| --- | --- | --- |
-| OmniVoice, including subprocess mode | 8–64 steps | 16/24/32-bit WAV |
-| VoxCPM2 | 8–64 steps | 16/24/32-bit WAV, native 48 kHz |
-| dots.tts | 8–64 steps | 16/24/32-bit WAV |
-| Supertonic-3 | 5–12 steps, matching its adapter limits | 16/24/32-bit WAV |
-| Other TTS engines | Engine manages sampling; no ineffective slider | 16/24/32-bit WAV |
+| Engine | Sampling slider | Best quality (default) | Export controls |
+| --- | --- | ---: | --- |
+| OmniVoice, including subprocess mode | 8–64 steps | 32 | 16/24/32-bit WAV |
+| VoxCPM2 | 8–64 steps | 32 | 16/24/32-bit WAV, native 48 kHz |
+| dots.tts | 8–64 steps | 32 | 16/24/32-bit WAV |
+| Supertonic-3 | 5–12 steps, matching its adapter limits | 12 | 16/24/32-bit WAV |
+| Other TTS engines | Engine manages sampling; no ineffective slider | — | 16/24/32-bit WAV |
+
+Settings saved by an earlier version that still hold the old fast default (16)
+move to best quality once, on the first start of this version on that computer;
+any other value you chose is kept, and values Cloud sync brings in later are
+never migrated.
+
+### Faster settings when a take is slow
+
+After each take the app remembers, on this computer only, the script length,
+audio length, render time and refinement used, per engine and device. Nothing
+is sent anywhere. From those measurements it estimates the next take. When the
+estimate is at least 45 seconds, or at least 15 seconds and three times longer
+than the audio, a note by **Generate** shows the expected time and a faster
+option, for example "About 2 min at best quality · Faster: about 40 s ·
+Refinement 32 → 16". The same note follows a take that was that slow.
+
+The faster option halves refinement (32 → 16 → 8; Supertonic-3 12 → 6 → 5) and
+picks the mildest step that ends the slow wait, using the measured scaling of
+your own renders. It is offered only when it saves at least a quarter of the
+time and five seconds. Volume balancing, cleanup and export format are never
+lowered. Settings change only when you click **Use faster settings**; **Keep
+best quality** hides the note for this session and **Don't ask again** turns it
+off for that engine. Takes that waited for a model to load are not measured.
+Resetting UI preferences (Reset & remove) clears the measurements and the
+don't-ask choices.
 
 **Even out volume** adds the app's processing chain: the gentle mastering
 pre-stage, then a slow leveler that brings quiet and loud passages closer
@@ -91,7 +120,8 @@ signal warnings. Offline Whisper large-v3 recovered all 13 words in each of the
 for these trials, not a perceptual ranking across voices or languages.
 
 The sweep exposed seed propagation gaps in the explicit OmniVoice and VoxCPM2
-sidecars. Those now receive per-chunk seeds, with a fresh sweep after the fix.
+sidecars. Those now receive the take's seed with every chunk, with a fresh sweep
+after the fix.
 On the seeded VoxCPM2 clone trial, 16/32/64 steps took approximately 9.7/14.1/27.2
 seconds; increasing sampling effort has a measurable time cost.
 

@@ -182,6 +182,7 @@ def _record_manual_seed(monkeypatch):
     return seeds
 
 
+@pytest.mark.usefixtures("cpu_host")
 def test_omnivoice_default_opts_reproduce_todays_synth_args(monkeypatch):
     import asyncio
 
@@ -219,6 +220,7 @@ def test_omnivoice_default_opts_reproduce_todays_synth_args(monkeypatch):
         assert k not in kw
 
 
+@pytest.mark.usefixtures("cpu_host")
 def test_omnivoice_overrides_reach_model_but_emotion_never_does(monkeypatch):
     import asyncio
 

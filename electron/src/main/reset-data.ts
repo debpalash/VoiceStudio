@@ -46,17 +46,18 @@ async function stat(path: string) {
   }
 }
 
-export async function directorySize(path: string): Promise<number> {
+export async function directorySize(path: string, exclude: string | null = null): Promise<number> {
   let physical: string;
   try {
     physical = await realpath(path);
   } catch {
     return 0;
   }
-  return directorySizePhysical(physical);
+  return directorySizePhysical(physical, exclude);
 }
 
-async function directorySizePhysical(path: string): Promise<number> {
+async function directorySizePhysical(path: string, exclude: string | null): Promise<number> {
+  if (exclude && within(path, exclude)) return 0;
   const info = await stat(path);
   if (!info || info.isSymbolicLink()) return 0;
   if (info.isFile()) return info.size;
@@ -69,7 +70,7 @@ async function directorySizePhysical(path: string): Promise<number> {
   }
   const sizes = await Promise.all(
     children.map((entry) =>
-      entry.isSymbolicLink() ? 0 : directorySizePhysical(join(path, entry.name)),
+      entry.isSymbolicLink() ? 0 : directorySizePhysical(join(path, entry.name), exclude),
     ),
   );
   return sizes.reduce((sum, size) => sum + size, 0);
@@ -213,11 +214,22 @@ export async function isValidVoiceStudioRoot(
   );
 }
 
+/** Strictly inside, never the same folder: a folder that IS both roles is not owned by either. */
+export function strictlyWithin(path: string, root: string): boolean {
+  return within(path, root) && normalized(path) !== normalized(root);
+}
+
+/**
+ * The model cache is VoiceStudio's own only when it is a dedicated folder strictly inside
+ * a valid app data root. The same folder reached under two roles (data and models pointed
+ * at one cache, through a symlink, junction, case or trailing-slash alias) or a cache that
+ * contains the data folder stays shared, so deleting it is always an explicit opt-in (#3512).
+ */
 export async function modelsAreShared(models: string, data: string): Promise<boolean> {
   const [physicalModels, physicalData] = await Promise.all([canonical(models), canonical(data)]);
   if (!physicalModels || !physicalData) return true;
   if (!(await isValidVoiceStudioRoot(physicalData))) return true;
-  return !within(physicalModels, physicalData);
+  return !strictlyWithin(physicalModels, physicalData);
 }
 
 async function scopeTargets(key: DiskResetScope, roots: ResetRoots): Promise<string[]> {
@@ -285,6 +297,25 @@ async function authorizedTarget(
   return allowed ? physicalTarget : null;
 }
 
+/**
+ * One physical folder can fill two roles. Removing it for one scope must never take the
+ * other with it: the Models scope cannot remove a folder that is, or holds, the app data or
+ * logs, and no other scope can remove a folder that is, or holds, the model cache unless
+ * Models was selected too (#3512).
+ */
+function keepsOtherRoles(
+  key: DiskResetScope,
+  physicalTarget: string,
+  wanted: DiskResetScope[],
+  physicalModels: string | null,
+  physicalAppRoots: Array<string | null>,
+): boolean {
+  if (key === 'models') {
+    return physicalAppRoots.every((root) => !root || !within(root, physicalTarget));
+  }
+  return wanted.includes('models') || !physicalModels || !within(physicalModels, physicalTarget);
+}
+
 export async function scanResetScopes(roots: ResetRoots): Promise<ResetScope[]> {
   const scopes: ResetScope[] = FRONTEND_RESET_SCOPES.map((key) => ({
     key,
@@ -294,11 +325,15 @@ export async function scanResetScopes(roots: ResetRoots): Promise<ResetScope[]> 
     shared: false,
     needs_restart: false,
   }));
+  // A model cache nested inside another scope's folder is counted once, under Models.
+  const physicalModels = await canonical(roots.models);
   for (const key of DISK_RESET_SCOPES) {
     const targets = await scopeTargets(key, roots);
     const present: string[] = [];
     for (const target of targets) if (await stat(target)) present.push(target);
-    const sizes = await Promise.all(present.map(directorySize));
+    const sizes = await Promise.all(
+      present.map((target) => directorySize(target, key === 'models' ? null : physicalModels)),
+    );
     scopes.push({
       key,
       paths: present,
@@ -324,11 +359,19 @@ export async function purgeResetScopes(
     restarted: false,
   };
   const wanted = DISK_RESET_SCOPES.filter((key) => requested.includes(key));
+  const [physicalModels, physicalData, physicalLogs] = await Promise.all([
+    canonical(roots.models),
+    canonical(roots.data),
+    roots.logs ? canonical(roots.logs) : Promise.resolve(null),
+  ]);
   for (const key of wanted) {
     for (const target of await scopeTargets(key, roots)) {
       if (!(await stat(target))) continue;
       const physicalTarget = await authorizedTarget(key, target, roots, home);
-      if (!physicalTarget) {
+      if (
+        !physicalTarget ||
+        !keepsOtherRoles(key, physicalTarget, wanted, physicalModels, [physicalData, physicalLogs])
+      ) {
         report.refused.push(target);
         continue;
       }

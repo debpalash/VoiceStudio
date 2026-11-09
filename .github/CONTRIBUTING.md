@@ -109,7 +109,15 @@ On macOS, development launches coordinate bundle preparation and retain each
 active dev server’s branded Electron bundle across main-process restarts.
 Unused bundles are removed on later launches; cleanup failures do not prevent
 a valid cached bundle from starting. Native OS locks release automatically when
-all holders exit, including after a crash.
+all holders exit, including after a crash. The launcher calls `/bin/cp`,
+`/usr/bin/plutil` and `/usr/bin/codesign` by full path, so GNU coreutils ahead
+of `/bin` on `PATH` does not break it, and the app asks the Keychain only when a
+saved account sign-in exists or account features are on.
+
+Editing a main-process file restarts Electron. Each dev instance records its
+process ID in its user-data folder, and the replacement waits up to 20 seconds
+for the previous one to exit before taking the single-instance lock, so the
+restart does not end the dev session. Packaged builds never wait.
 
 Product builds read the app name, application ID, and the backend/web/Electron
 development ports from `config/app.json`. Change that manifest instead of
@@ -548,6 +556,10 @@ test-only PR. Docker Hub overview edits still publish through the small
     and the optional local-model smoke test never acquire models or use the network.
     The VC++ Redistributable is a manual prerequisite; opted-in Windows ROCm
     source setup checks it locally and stops when it is missing.
+  - **Dependency repair for an existing Python the user selected**
+    (owner-approved 2026-11-09): after the user reviews the plan and confirms,
+    `pip install` of the listed missing packages from PyPI into that
+    interpreter (`electron/src/main/ipc.ts`).
   - **Optional engine installs the user starts** (owner-approved 2026-11-07):
     clicking Install or Repair on an optional engine fetches its upstream
     source from GitHub (a shallow clone of the branch tip, then the reviewed
@@ -572,8 +584,10 @@ test-only PR. Docker Hub overview edits still publish through the small
     (`backend/api/routers/community.py`); the voice-preview gallery's signed
     downloads from `omnivoice-gallery` GitHub Releases, only after it is turned
     on in Settings (`backend/services/gallery.py`).
-  - **Packaged-app update checks** against GitHub Releases; downloads wait for
-    the user (`electron/src/main/updater.ts`).
+  - **Packaged-app update checks** against GitHub Releases, and the background
+    download of a found update from the same release (on by default; Settings
+    → Updates → Download updates automatically turns it off, so downloads wait
+    for the user) (`electron/src/main/updater.ts`).
   - **yt-dlp updates** from PyPI, only when the user clicks update
     (`backend/services/media_tools.py`).
   - **VoiceStudio Cloud account features, only after the user turns them on**

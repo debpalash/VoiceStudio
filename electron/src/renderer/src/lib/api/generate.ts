@@ -9,7 +9,9 @@ import {
   generateBudgetSettled,
   reportedGenerateBudget,
 } from './generate-budget';
-import type { CloneGenerateInput, GenerateResult } from './types';
+import type { CloneGenerateInput, EnginesResponse, GenerateResult } from './types';
+import { effectiveSamplingSteps } from '@/lib/audio/quality';
+import { queryClient, queryKeys } from '@/lib/query';
 import { beginAppActivity } from '@/lib/app-activity';
 import { createStreamingPreview } from '@/lib/audio/streaming-preview';
 
@@ -137,15 +139,24 @@ function instructField(input: CloneGenerateInput): string {
     : sanitizeInstruct(written).instruct;
 }
 
-/** Multipart body for `POST /generate` (classic whole-file path). */
-export function toGenerateForm(input: CloneGenerateInput): FormData {
+/** Multipart body for `POST /generate` (classic whole-file path).
+ *
+ * Steps resolve against `engineId` (default: the active TTS engine), so every
+ * caller sends the engine's best quality unless the user chose a value.
+ */
+export function toGenerateForm(
+  input: CloneGenerateInput,
+  engineId: string | null | undefined = queryClient.getQueryData<EnginesResponse>(
+    queryKeys.engines,
+  )?.tts?.active,
+): FormData {
   const form = new FormData();
   form.append('text', input.text);
   if (input.seed !== undefined && Number.isInteger(input.seed))
     form.append('seed', String(input.seed));
   // Auto must be explicit: omission inherits the saved profile's default.
   if (input.language) form.append('language', input.language);
-  form.append('num_step', String(input.steps));
+  form.append('num_step', String(effectiveSamplingSteps(input.steps, engineId)));
   form.append('wav_bits', String(input.wavBits ?? 16));
   form.append('effect_preset', input.effectPreset ?? 'broadcast');
   if (input.presetVoice) form.append('preset_voice', input.presetVoice);

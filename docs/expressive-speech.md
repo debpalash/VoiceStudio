@@ -83,8 +83,9 @@ lists the reaction tags its tokenizer renders.
   [generation-parameters.md](generation-parameters.md)). This is the most
   reliable expressive control in the app.
 - **Pronunciation overrides** — `[[Nuh-VAD-uh]]` inline, or the pronunciation
-  dictionary. Not expression, but often what a "it says this weirdly" problem
-  actually needs.
+  dictionary. An inline override always wins: the dictionary never rewrites
+  inside its brackets, in Generate and in audiobook chapters alike. Not
+  expression, but often what a "it says this weirdly" problem actually needs.
 
 Pronunciation dictionary matching uses Unicode case-insensitive literal matches. Each matched term uses its own respelling; distinct terms such as Straße and STRASSE can have different respellings. Longer terms win overlaps, and later equal-length case variants retain precedence. Because that precedence follows entry order, reordering such variants re-renders cached longform chapters; reordering unrelated entries does not.
 
@@ -117,9 +118,11 @@ parentheses; details in [generation-parameters.md](generation-parameters.md)):
 - `position_temperature` (5.0) and `class_temperature` (0.0) — 0 is greedy;
   higher is more random, which means more expressive variation *and* more
   artifacts.
-- `num_step` — the Voice page defaults to 16 (fast); Audiobook renders default
-  to 32 (cleaner), overridable in the Audiobook panel. Fewer steps = rougher,
-  occasionally more "human-sounding" edges.
+- `num_step` — Voice and Design default to the engine's best quality (32 for
+  OmniVoice, see [audio-quality.md](audio-quality.md)) and offer faster settings
+  only when a take is measured to be slow; Audiobook renders default to 32,
+  overridable in the Audiobook panel. Fewer steps = rougher, occasionally more
+  "human-sounding" edges.
 - **Seed** — unpinned by default, so every render differs. The history rail
   shows the seed each take used; "Keep this seed" (Design tab) or locking a
   profile from history pins reference + seed, making the voice

@@ -9,6 +9,7 @@ import type {
   VoiceStudioBridge,
   RepairAgentEvent,
   AccountPublicState,
+  PythonDiscoveryResult,
 } from './index.d';
 
 function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
@@ -53,6 +54,9 @@ const bridge: VoiceStudioBridge = {
     dismiss: () => ipcRenderer.invoke('updates:dismiss') as Promise<UpdateState>,
     setChannel: (channel) =>
       ipcRenderer.invoke('updates:setChannel', channel) as Promise<UpdateState>,
+    setAutoDownload: (enabled) =>
+      ipcRenderer.invoke('updates:setAutoDownload', enabled) as Promise<UpdateState>,
+    later: () => ipcRenderer.invoke('updates:later') as Promise<UpdateState>,
     install: () => ipcRenderer.invoke('updates:install') as Promise<void>,
     listReleases: () => ipcRenderer.invoke('updates:listReleases') as Promise<UpdateReleaseInfo[]>,
     onState: (cb) => subscribe<UpdateState>('updates:state', cb),
@@ -106,6 +110,19 @@ const bridge: VoiceStudioBridge = {
     setRuntimeRegion: (region) => ipcRenderer.invoke('backend:setRuntimeRegion', region),
     chooseRuntimeLocation: (title) => ipcRenderer.invoke('backend:chooseRuntimeLocation', title),
     useDefaultRuntimeLocation: () => ipcRenderer.invoke('backend:useDefaultRuntimeLocation'),
+    getPythonRuntime: () => ipcRenderer.invoke('backend:getPythonRuntime') as Promise<{
+      selection: { pythonPath: string } | null;
+      overrideActive: boolean;
+    }>,
+    choosePythonRuntime: (title) => ipcRenderer.invoke('backend:choosePythonRuntime', title),
+    confirmPythonRuntime: (token) => ipcRenderer.invoke('backend:confirmPythonRuntime', token),
+    planPythonRepair: (pythonPath) => ipcRenderer.invoke('backend:planPythonRepair', pythonPath),
+    installPythonRepair: (request) => ipcRenderer.invoke('backend:installPythonRepair', request),
+    onPythonRepairProgress: (callback) => subscribe('backend:pythonRepairProgress', callback),
+    useManagedPython: () => ipcRenderer.invoke('backend:useManagedPython'),
+    discoverPythonRuntimes: () => ipcRenderer.invoke('backend:discoverPythonRuntimes') as Promise<PythonDiscoveryResult>,
+    useDiscoveredPythonRuntime: (pythonPath) =>
+      ipcRenderer.invoke('backend:useDiscoveredPythonRuntime', pythonPath),
     restart: () => ipcRenderer.invoke('backend:restart') as Promise<void>,
     getConnection: () => ipcRenderer.invoke('backend:getConnection'),
     getHostSnapshot: () => ipcRenderer.invoke('backend:hostSnapshot'),

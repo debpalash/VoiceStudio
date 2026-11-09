@@ -29,6 +29,9 @@ import pytest
 
 from services import asr_backend as ab
 
+# Selection must not depend on the machine running the suite (#3549).
+pytestmark = pytest.mark.usefixtures("neutral_asr_host")
+
 
 @pytest.fixture(autouse=True)
 def _clear_align_cache(monkeypatch):

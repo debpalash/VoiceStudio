@@ -29,6 +29,7 @@ import { startAccount } from './account';
 import { installAppIdentity, installMacApplicationMenu } from './app-identity';
 import { APP_ID, PRODUCT_NAME } from '../../../config/app-config.mjs';
 import { restoreSecurityScopedDirectories } from './security-scoped-files';
+import { devInstanceFile, recordDevInstance, waitForPreviousDevInstance } from './dev-lock-handoff';
 
 // Packaged GUI launches can inherit a short-lived terminal pipe. When that
 // launcher exits, diagnostic console writes emit EPIPE asynchronously and can
@@ -66,6 +67,9 @@ let closeRepairAgents: (() => void) | null = null;
 let closeAccount: (() => void) | null = null;
 let closeDirectoryScopes: (() => void) | null = null;
 let quitPreparation: Promise<void> | null = null;
+// False for quits that must not install a downloaded update: a relaunch, or
+// the uninstall exit. Read when the updater is torn down.
+let installUpdateOnQuit = true;
 
 const PERSISTENCE_FLUSH_REQUEST = 'app:flush-persistence';
 const PERSISTENCE_FLUSHED = 'app:persistence-flushed';
@@ -196,6 +200,7 @@ function createWindow(): BrowserWindow {
     process.env.ELECTRON_RENDERER_URL,
     async () => {
       await win.webContents.session.clearCache();
+      installUpdateOnQuit = false;
       app.relaunch();
       // The independent fallback has no mounted persistence handler to flush.
       await beginOrderlyQuit(false);
@@ -243,9 +248,15 @@ async function openOutside(url: string): Promise<void> {
   }
 }
 
-if (process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1' && !app.requestSingleInstanceLock()) {
+const singleInstance = process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1';
+// A dev restart starts the new Electron before the old one has let go of the lock.
+const devInstance =
+  singleInstance && !app.isPackaged ? devInstanceFile(app.getPath('userData')) : null;
+if (devInstance) waitForPreviousDevInstance({ file: devInstance });
+if (singleInstance && !app.requestSingleInstanceLock()) {
   app.quit();
 } else {
+  if (devInstance) recordDevInstance(devInstance);
   app.on('second-instance', () => {
     activateLiveWindow(mainWindow);
   });
@@ -277,6 +288,7 @@ if (process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1' && !app.requestSing
         () => mainWindow,
         async () => {
           quitting = true;
+          installUpdateOnQuit = false;
           await tearDownNativeResources();
           app.exit(0);
         },
@@ -329,6 +341,9 @@ if (process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1' && !app.requestSing
         return check;
       });
       closeUpdates = () => {
+        // A downloaded update installs as the app quits (electron-updater's
+        // autoInstallOnAppQuit, on the "quit" event after this teardown).
+        updater.prepareForQuit(installUpdateOnQuit);
         stopUpdateChecks();
         closeUpdateIpc();
       };

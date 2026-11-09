@@ -46,7 +46,7 @@ function ctl(over: Partial<ConstructorParameters<typeof AccountController>[0]> =
       avatar: async () => null,
       entitlements: async () => null,
     } as never,
-    remembered: true,
+    remembered: () => true,
     links: {
       profile: 'https://app.example/app/settings/profile',
       plan: 'https://app.example/app/settings/plan',
@@ -89,6 +89,17 @@ it('does not fetch the profile while account features are off', async () => {
   await c.setSwitches({ accountEnabled: false });
   await c.publicState();
   expect(get).not.toHaveBeenCalled();
+});
+
+it('asks the keyring whether sign-in is remembered only with account features on (#3813)', async () => {
+  const remembered = vi.fn(() => true);
+  const c = ctl({ remembered });
+  await c.setSwitches({ accountEnabled: false });
+  expect((await c.publicState()).remembered).toBe(false);
+  expect(remembered).not.toHaveBeenCalled();
+  await c.setSwitches({ accountEnabled: true });
+  expect((await c.publicState()).remembered).toBe(true);
+  expect(remembered).toHaveBeenCalled();
 });
 
 it('setSwitches validates input and always marks the prompt as answered', async () => {

@@ -23,4 +23,4 @@ def test_nonstream_generation_forwards_seed_per_chunk():
         32, 2, 1, True, True, 42, "raw",
         max_chunk_chars=30, crossfade_ms=0,
     )
-    assert [call["seed"] for call in calls] == [42, 43]
+    assert [call["seed"] for call in calls] == [42, 42]  # one take, one voice (#3730)

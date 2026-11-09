@@ -11,6 +11,7 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, vars?: Record<string, unknown>) =>
       vars ? `${key} ${JSON.stringify(vars)}` : key,
+    i18n: { resolvedLanguage: 'en', language: 'en' },
   }),
 }));
 
@@ -46,7 +47,11 @@ const baseStatus = {
   },
 };
 
-function show(status: Record<string, unknown>, devices: unknown[] = []) {
+function show(
+  status: Record<string, unknown>,
+  devices: unknown[] = [],
+  props: { planUrl?: string | null } = {},
+) {
   mock.api.mockImplementation(async (path: string) => {
     if (path === '/api/cloud-sync/status')
       return {
@@ -61,7 +66,7 @@ function show(status: Record<string, unknown>, devices: unknown[] = []) {
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
-      <CloudSyncPanel />
+      <CloudSyncPanel {...props} />
     </QueryClientProvider>,
   );
 }
@@ -184,4 +189,70 @@ it('lists each device with its OS and last-seen date, and removes only other dev
   expect(screen.getByText(/macOS 15\.1/)).toBeInTheDocument();
   expect(screen.getByText(/Linux 6\.12/)).toBeInTheDocument();
   expect(screen.getAllByText('cloudsync.remove_device')).toHaveLength(1);
+});
+
+it('marks Pro-only collections with a badge, locks their switch and upsells once', async () => {
+  show(
+    {
+      collections: [
+        ...baseStatus.collections,
+        { name: 'takes', entitled: false, enabled: true },
+        { name: 'transcriptions', entitled: true, enabled: true },
+      ],
+    },
+    [],
+    { planUrl: 'https://voicestudio.example/plan' },
+  );
+  expect(await screen.findByRole('switch', { name: 'cloudsync.voices' })).toHaveAttribute(
+    'aria-disabled',
+    'true',
+  );
+  // Two locked collections, two badges, one upsell with one plan link.
+  expect(screen.getAllByTestId('sync-pro-badge')).toHaveLength(2);
+  expect(screen.getAllByTestId('sync-pro-upsell')).toHaveLength(1);
+  expect(screen.getByRole('link', { name: 'supportPlans.get_pro' })).toHaveAttribute(
+    'href',
+    'https://voicestudio.example/plan',
+  );
+  expect(screen.getByRole('switch', { name: 'cloudsync.voices' })).toHaveAttribute(
+    'aria-describedby',
+    'sync-pro-upsell',
+  );
+  // An entitled collection carries no Pro badge or lock description.
+  expect(screen.getByRole('switch', { name: 'cloudsync.dictation_history' })).not.toHaveAttribute(
+    'aria-describedby',
+  );
+  // The free collections stay usable.
+  expect(screen.getByRole('switch', { name: 'cloudsync.settings' })).not.toHaveAttribute(
+    'aria-disabled',
+    'true',
+  );
+});
+
+it('shows no upsell when every listed collection is on the plan', async () => {
+  show({ collections: [{ name: 'voices', entitled: true, enabled: true }] });
+  expect(await screen.findByText('cloudsync.voices')).toBeInTheDocument();
+  expect(screen.queryByTestId('sync-pro-badge')).toBeNull();
+  expect(screen.queryByTestId('sync-pro-upsell')).toBeNull();
+});
+
+it('formats a device row with a This device badge, its OS and a relative last-active time', async () => {
+  const twoDaysAgo = new Date(Date.now() - 2 * 86_400_000).toISOString();
+  show({}, [
+    {
+      id: 'DvLocal000000001',
+      name: 'Studio PC',
+      platform: 'windows',
+      os_version: 'Windows 10.0.26100',
+      current: true,
+      last_seen_at: twoDaysAgo,
+    },
+  ]);
+  expect(await screen.findByText('Studio PC')).toBeInTheDocument();
+  expect(screen.getByText('cloudsync.this_device')).toBeInTheDocument();
+  const meta = screen.getByText(/Windows 10\.0\.26100/);
+  expect(meta).toHaveTextContent('cloudsync.last_active {"time":"2 days ago"}');
+  // No locale-specific absolute date such as 11/7/2026.
+  expect(meta.textContent).not.toMatch(/\d+\/\d+\/\d{4}/);
+  expect(screen.queryByText('cloudsync.remove_device')).toBeNull();
 });

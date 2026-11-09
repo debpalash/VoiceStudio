@@ -64,7 +64,7 @@ vi.mock('react-i18next', () => ({
 import { SystemNotifications } from './system-notifications';
 import { publishLongformActivity } from '@/lib/longform-activity';
 
-describe('SystemNotifications desktop updates', () => {
+describe('SystemNotifications', () => {
   beforeEach(() => {
     downloads.items = [];
     downloads.active = 0;
@@ -83,31 +83,16 @@ describe('SystemNotifications desktop updates', () => {
     publishLongformActivity(null, null);
   });
 
-  test('keeps an available update actionable while the Python backend is offline', async () => {
-    render(
-      <QueryClientProvider client={new QueryClient()}>
-        <SystemNotifications enabled={false} />
-      </QueryClientProvider>,
-    );
-
-    const trigger = await screen.findByRole('button', { name: /update\.available 0\.5\.3/ });
-    expect(trigger).toBeEnabled();
-    fireEvent.click(trigger);
-    fireEvent.click(await screen.findByText('update.download'));
-    await waitFor(() => expect(mocks.download).toHaveBeenCalledOnce());
-    expect(mocks.navigate).not.toHaveBeenCalled();
-  });
-
-  test('a downloaded update restarts from the bell', async () => {
+  test('leaves desktop updates to the title-bar update pill', async () => {
     mocks.state = { ...mocks.state, status: 'downloaded' } as UpdateState;
     render(
       <QueryClientProvider client={new QueryClient()}>
         <SystemNotifications enabled={false} />
       </QueryClientProvider>,
     );
-    fireEvent.click(await screen.findByRole('button', { name: /update\.ready 0\.5\.3/ }));
-    fireEvent.click(await screen.findByText('update.restart'));
-    await waitFor(() => expect(mocks.install).toHaveBeenCalledOnce());
+    fireEvent.click(await screen.findByRole('button', { name: 'modelSettings.unavailable' }));
+    expect(await screen.findByText('modelSettings.unavailable')).toBeVisible();
+    expect(screen.queryByText(/update\.ready/)).not.toBeInTheDocument();
   });
 
   test('shows unavailable instead of endless loading when the backend is offline', async () => {

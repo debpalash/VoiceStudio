@@ -142,3 +142,41 @@ def test_alias_tables_only_map_to_supported_dub_codes():
     for table in (_CODE_ALIASES, _NAME_ALIASES):
         for alias, code in table.items():
             assert code in DUB_SOURCE_LANG_CODES, f"{alias!r} -> {code!r}"
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        # #3825 / #3821: names the bundled picker vocabulary spells another
+        # way, and the retired Yiddish code, resolve instead of staying unknown.
+        ("kirghiz", "ky"),
+        ("panjabi", "pa"),
+        ("pushto", "ps"),
+        ("norwegian nynorsk", "nn"),
+        ("moroccan arabic", "ar"),
+        ("Portuguese (Brazil)", "pt"),
+        ("ji", "yi"),
+        # A vocabulary language dubbing does not know stays unknown.
+        ("judeo-moroccan arabic", None),
+        ("esperanto", None),
+    ],
+)
+def test_vocabulary_names_resolve_without_guessing(value, expected):
+    assert detected_source_language(value) == expected
+
+
+def test_every_vocabulary_name_resolves_to_its_own_language_or_unknown():
+    """A whole vocabulary name never lands on a neighbouring language: each
+    dub code is reached by the names of one language only (Arabic varieties
+    and the two Norwegian standards excepted)."""
+    from collections import defaultdict
+    from omnivoice.utils.lang_map import LANG_NAME_TO_ID
+
+    names = defaultdict(set)
+    for name, code in LANG_NAME_TO_ID.items():
+        resolved = detected_source_language(name)
+        if resolved is not None:
+            assert resolved in DUB_SOURCE_LANG_CODES
+            names[resolved].add(code)
+    shared = {dub: codes for dub, codes in names.items() if len(codes) > 1}
+    assert set(shared) <= {"ar", "no"}, shared

@@ -10,7 +10,8 @@ const STARS_URL = 'https://api.github.com/repos/debpalash/VoiceStudio';
 const REFRESH_MS = 20 * 60 * 1000;
 // The last bundled count remains visible when GitHub cannot be reached.
 const BUNDLED_STARS = 43_638;
-const formatCount = new Intl.NumberFormat('en');
+const formatCount = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
+const formatExact = new Intl.NumberFormat('en');
 
 async function fetchStarCount(signal: AbortSignal): Promise<number> {
   const response = await fetch(STARS_URL, {
@@ -65,7 +66,7 @@ export function GithubStar() {
         <span className="github-star-count">{formatCount.format(stars.data ?? BUNDLED_STARS)}</span>
       </TooltipTrigger>
       <TooltipContent surface="theme" side="bottom">
-        {t('support.star_github')}
+        {t('support.star_github')} · {formatExact.format(stars.data ?? BUNDLED_STARS)}
       </TooltipContent>
     </Tooltip>
   );
