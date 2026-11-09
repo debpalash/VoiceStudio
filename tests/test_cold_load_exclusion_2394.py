@@ -382,11 +382,13 @@ def test_an_abandoned_load_that_later_fails_does_not_strand_the_backend(mm, monk
     although nothing was stuck any more.
     """
     wedged, release = threading.Event(), threading.Event()
-    calls = []
 
     def _loader():
-        calls.append(1)
-        if len(calls) == 1:
+        # Wedge every load until the test releases it, rather than only the
+        # first call: a worker still running from an earlier test can reach
+        # this module-level stub first, and a call count then let the test's
+        # own load succeed immediately (flaky on slow CI runners).
+        if not release.is_set():
             wedged.set()
             release.wait(30)
             raise RuntimeError("late native load failure")
