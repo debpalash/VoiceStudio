@@ -2,13 +2,11 @@ import {
   CameraIcon,
   CheckIcon,
   CloudIcon,
-  CrownIcon,
   LogOutIcon,
   MailIcon,
   MinusIcon,
   PencilIcon,
   RefreshCwIcon,
-  SproutIcon,
   UserRoundCogIcon,
   XIcon,
 } from 'lucide-react';
@@ -21,23 +19,16 @@ import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { ExternalLink } from '@/components/external-link';
+import {
+  initials,
+  planLook,
+  storageShare,
+  storageSize as size,
+} from '@/features/account/account-format';
 import { cn } from '@/lib/utils';
 import type { AccountPublicState } from '../../../../preload/index.d';
 
-function size(bytes: number): string {
-  if (bytes < 1024 * 1024) return `${Math.max(0, Math.round(bytes / 1024))} KB`;
-  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
-  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-}
-
-export function initials(name: string): string {
-  const words = name.includes('@') ? [name] : name.trim().split(/\s+/);
-  return words
-    .slice(0, 2)
-    .map((w) => w[0] ?? '')
-    .join('')
-    .toUpperCase();
-}
+export { initials } from '@/features/account/account-format';
 
 /** The longest display name the account service accepts (main checks it too). */
 export const DISPLAY_NAME_MAX = 200;
@@ -116,12 +107,8 @@ export function AccountDetails({
   if (!state.signedIn || !profile) return null;
   const name = profile.displayName || profile.email || '';
   const plan = state.plan;
-  const pro = plan?.proDesktop === true;
-  const PlanIcon = pro ? CrownIcon : SproutIcon;
-  const share =
-    plan && plan.storageLimitBytes > 0
-      ? Math.min(100, (plan.storageUsedBytes / plan.storageLimitBytes) * 100)
-      : 0;
+  const { pro, PlanIcon } = planLook(plan);
+  const share = plan ? storageShare(plan) : 0;
   const features =
     plan && plan.settingsSync !== null && plan.proDesktop !== null
       ? [
