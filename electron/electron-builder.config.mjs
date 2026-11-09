@@ -8,6 +8,8 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { packageNativeHelper } from './native-helper-build.mjs';
+import { packageCli } from './cli-bundle.mjs';
+import { debMaintainerScripts } from './packaging/deb-scripts.mjs';
 import { finalizeOmnivoiceTts, omnivoiceTtsResources, signMac } from './omnivoice-tts-bundle.mjs';
 import { repairSnapArtifacts } from './snap-template-payload.mjs';
 import { signMasRuntime } from './mas-runtime-bundle.mjs';
@@ -90,6 +92,7 @@ export function distributionPackaging(target = DISTRIBUTION_TARGET) {
   }
   return {
     linuxTargets: ['AppImage', 'deb'],
+    linuxExecutableName: 'voicestudio',
     publish: {
       provider: 'generic',
       url: updateUrl,
@@ -215,6 +218,7 @@ export default {
   ],
   asar: true,
   afterPack: async (context) => {
+    await packageCli(context);
     await packageNativeHelper(context);
     finalizeOmnivoiceTts(context);
   },
@@ -230,6 +234,7 @@ export default {
     target: ['nsis'],
   },
   nsis: {
+    include: 'packaging/cli-installer.nsh',
     oneClick: false,
     allowToChangeInstallationDirectory: true,
     perMachine: false,
@@ -244,11 +249,7 @@ export default {
     ...(adhocSignMac ? { identity: '-' } : {}),
     // Signs the bundled GGUF runtime and refreshes its checksum manifest
     // before the bundle seal (electron/omnivoice-tts-bundle.mjs).
-    ...(isMacAppStore
-      ? { sign: signMasRuntime }
-      : bundledOmnivoiceTtsResources.length
-        ? { sign: signMac }
-        : {}),
+    ...(isMacAppStore ? { sign: signMasRuntime } : { sign: signMac }),
     notarize: notarizeMac,
     extendInfo: {
       NSMicrophoneUsageDescription: readFileSync(resolve(here, 'build/Info.plist'), 'utf8')
@@ -274,6 +275,16 @@ export default {
     target: packaging.linuxTargets,
     ...(packaging.linuxExecutableName ? { executableName: packaging.linuxExecutableName } : {}),
     category: 'Audio',
+  },
+  deb: {
+    appArmorProfile: 'packaging/cli-apparmor-profile.tpl',
+    // Generated on first read, so importing this config stays side-effect free.
+    get afterInstall() {
+      return debMaintainerScripts().afterInstall;
+    },
+    get afterRemove() {
+      return debMaintainerScripts().afterRemove;
+    },
   },
   ...(packaging.snapcraft ? { snapcraft: packaging.snapcraft } : {}),
   publish: packaging.publish,

@@ -8,8 +8,11 @@ from services import asr_backend as ab
 
 @pytest.fixture
 def windows_hip(monkeypatch):
-    from core.windows_rocm import pipelines
+    from core.windows_rocm import isolation_policy, pipelines
 
+    # This cohort covers the original ROCm 7 MIOpen gate. ROCm 10's
+    # distinct OpenMP refusal has its own WhisperX isolation regressions.
+    monkeypatch.setattr(isolation_policy, "isolation_required", lambda: False)
     monkeypatch.setattr(pipelines, "windows_hip_installed", lambda: True)
     monkeypatch.setattr(ab, "_LAST_ERRORS", {})
     caps = SimpleNamespace(family="rocm")
