@@ -202,6 +202,25 @@ def _normalize_arch(tag: str) -> str:
     return str(tag).split(":")[0].strip().lower()
 
 
+def _installed_rocm_arches(version: str) -> set[str]:
+    """TheRock wheels list targets even when their kernel packages are absent."""
+    from importlib import metadata
+
+    result = set()
+    for dist in metadata.distributions():
+        name = str(dist.metadata.get("Name", "")).lower().replace("_", "-")
+        prefix = "amd-torch-device-gfx"
+        if not name.startswith(prefix) or dist.version != version:
+            continue
+        arch = "gfx" + name[len(prefix):]
+        try:
+            if metadata.version(f"rocm-sdk-device-{arch}") == "10.0.0":
+                result.add(arch)
+        except metadata.PackageNotFoundError:
+            continue  # A Torch device wheel alone does not provide the SDK kernels.
+    return result
+
+
 def build_arch_list(torch) -> list[str]:
     """This torch build's compiled architecture list, or ``[]`` if unknown.
 
@@ -212,9 +231,18 @@ def build_arch_list(torch) -> list[str]:
         fn = getattr(torch.cuda, name, None)
         if callable(fn):
             try:
-                return [str(a) for a in (fn() or [])]
+                arches = [str(a) for a in (fn() or [])]
             except Exception:
                 return []
+            version = str(getattr(torch, "__version__", ""))
+            if sys.platform == "win32" and version == "2.13.0+rocm10.0.0":
+                try:
+                    installed = _installed_rocm_arches(version)
+                except Exception:  # noqa: BLE001 - unknown kernel packages must not authorize the GPU
+                    installed = set()
+                # A nonempty sentinel makes absence fail closed in arch_unsupported.
+                return [a for a in arches if _normalize_arch(a) in installed] or ["no-installed-kernels"]
+            return arches
     return []
 
 

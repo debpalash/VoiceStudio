@@ -12,7 +12,7 @@ test('names direct downloads VoiceStudio-<version>-<os>-<arch> without an Electr
 test('keeps direct Linux packaging and its updater unchanged', () => {
   const packaging = distributionPackaging('direct');
   assert.deepEqual(packaging.linuxTargets, ['AppImage', 'deb']);
-  assert.equal(packaging.linuxExecutableName, undefined);
+  assert.equal(packaging.linuxExecutableName, 'voicestudio');
   assert.equal(packaging.snapcraft, undefined);
   assert.deepEqual(packaging.publish, {
     provider: 'generic',

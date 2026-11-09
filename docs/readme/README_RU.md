@@ -208,6 +208,8 @@ curl -fsSL https://voicestudio.sh/install | sh
 <details>
 <summary><img src="../../docs/assets/platforms/windows.svg" alt="" width="20" height="20" /> <strong>Windows</strong> · PowerShell · EXE</summary>
 
+Экспериментальная [настройка Windows ROCm](../../docs/install/windows-rocm.md) поддерживает отдельные GPU RDNA 2 RX 6000 с целевыми архитектурами `gfx1030`, `gfx1031` или `gfx1032`; RX 6500 XT (`gfx1034`) не поддерживается. Отдельно закреплённая сборка CTranslate2 включает нативные ядра `gfx1031` для транскрипции на RX 6700 XT; настройка проверяет фактическое выполнение ядер на GPU. Тесты RX 6700 XT также охватывают нативную генерацию речи Torch и PyTorch Whisper. В ROCm 10 faster-whisper использует отдельный процесс инференса для безопасного выбора CPU и возврата к нему при сбое. Для других карт и нагрузок сохраняются ограничения проверки из руководства. Профили производительности проверяют изменённый выбор движков в автономном дочернем процессе перед сохранением, сохраняя запасной вариант при сбое установленной среды выполнения.
+
 <blockquote>
 
 **Стабильная · x64**<br />Windows 10/11 x64 · NVIDIA CUDA · AMD ROCm (по выбору) · CPU.
@@ -502,7 +504,7 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 | Проблемы при установке | [Решение проблем](../../docs/install/troubleshooting.md) · [Скачивание моделей](../../docs/downloading-models.md) |
 | Пошаговые инструкции | [Дубляж с несколькими дикторами](../../docs/dubbing/multi-speaker-guide.md) · [Выразительная речь](../../docs/expressive-speech.md) · [Экспорт дубляжа](../../docs/dubbing/export.md) |
 | Движки и качество | [Обзор движков](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [Бенчмарки](../../docs/benchmarks.md) |
-| Связка с другими инструментами | [API речевой платформы](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [Образцы кода](../../examples/README.md) |
+| Связка с другими инструментами | [CLI](../../docs/install/script.md#terminal-command) · [API речевой платформы](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [Образцы кода](../../examples/README.md) |
 | Мобильные приложения | [Android и iOS](../../docs/mobile.md) |
 | Для разработчиков | [Правила для контрибьюторов](../../.github/CONTRIBUTING.md) ([подпишите CLA](../../.github/CONTRIBUTING.md#contribution-licensing) перед первым PR) · [История версий](../../CHANGELOG.md) |
 

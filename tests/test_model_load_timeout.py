@@ -13,6 +13,11 @@ import threading
 
 import pytest
 
+# The timed-out load's worker publishes the module-global `model` when it
+# wakes; it must do so before this test's patches are undone, not after.
+pytestmark = pytest.mark.usefixtures("join_test_threads")
+
+
 @pytest.fixture
 def model_manager(fresh_model_manager, monkeypatch):
     manager = fresh_model_manager()

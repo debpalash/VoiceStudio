@@ -283,6 +283,16 @@ def _bf16_probe() -> bool:
     return proc.returncode == 0
 
 
+def _rocm_rdna2(torch):
+    """RDNA 2 bf16 GEMM can crash rocBLAS even when Torch claims support (#2372)."""
+    if not getattr(getattr(torch, "version", None), "hip", None):
+        return False
+    try:
+        return str(torch.cuda.get_device_properties(0).gcnArchName).lower().startswith("gfx103")
+    except Exception:  # noqa: BLE001 - unknown ROCm architecture uses safe precision
+        return True
+
+
 def _torch_bf16_supported() -> bool:
     """Return whether this sidecar can safely enable IndexTTS 2.5 BF16."""
     try:
@@ -292,6 +302,8 @@ def _torch_bf16_supported() -> bool:
         if not (torch.cuda.is_available() and supported and supported()):
             return False
         if getattr(torch.version, "hip", None):
+            if _rocm_rdna2(torch):
+                return False
             # ROCm: the claim is necessary but not sufficient — verify it in
             # a child so a Tensile segfault fails only the probe (#2372) and
             # the model falls back to fp32 (the verified workaround was

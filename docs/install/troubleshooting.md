@@ -89,7 +89,7 @@ The connection dropped during a runtime download, as in `peer closed connection 
 
 ### `DISK_FULL`
 
-The drive holding the runtime is full. Free space or choose another folder, then retry.
+The drive holding the runtime is full. The setup screen shows the free and needed space beside the runtime folder and offers **Choose another folder** as its main action; or free space and press **Retry**.
 
 ### `RUNTIME_FOLDER_DENIED`
 
@@ -117,7 +117,7 @@ This source checkout's `.venv` is missing or incomplete. Run `bun run setup:api`
 
 ### `BROKEN_VENV`
 
-The managed Python environment is damaged and automatic repair did not fix it. Use **Clean & Retry** on the setup screen.
+The managed Python environment is damaged and automatic repair did not fix it. Use **Clean & Retry** under **More fixes** on the setup screen.
 
 ### `NATIVE_ACCESS_VIOLATION`
 
@@ -729,7 +729,7 @@ nor the **China** download region redirects it: PyTorch's index has no mirror.
 
 **Fix, in order:**
 
-1. **Clean & Retry.** Large downloads frequently succeed on a second attempt —
+1. **Clean & Retry** (under **More fixes**). Large downloads frequently succeed on a second attempt —
    VoiceStudio already retries each request 5× with long timeouts, and a fresh
    attempt reuses every file that finished downloading. The CUDA `torch` wheel
    downloads over several connections and resumes from the parts it already
@@ -1300,8 +1300,8 @@ VoiceStudio now tries, in order: the default GitHub host → a gh-proxy mirror �
    tick *"Add Python to PATH"*), then relaunch — VoiceStudio will use it.
 2. **Point at a reachable mirror** for the Python download:
    - `UV_PYTHON_INSTALL_MIRROR=https://gh-proxy.com/https://github.com/astral-sh/python-build-standalone/releases/download`
-3. **In China, keep Auto-detect or pick the China download region** on the
-   setup screen. Auto-detect uses the Aliyun mirror when a quick speed check
+3. **In China, keep Auto-detect or pick the China download region** under
+   **Options** on the setup screen. Auto-detect uses the Aliyun mirror when a quick speed check
    finds it faster; China always uses it. Packaged setup then downloads the PyPI wheels pinned in `uv.lock` from the Aliyun
    PyPI mirror (`mirrors.aliyun.com`). PyTorch wheels still come from
    `download-r2.pytorch.org`.
@@ -1383,7 +1383,7 @@ normally.
    downloads. Setup picks it when no NVIDIA driver is found; set
    `OMNIVOICE_TORCH_VARIANT=cpu` to choose it.
 
-The **download region** choice on the setup screen changes where the Python
+The **download region** choice (under **Options** on the setup screen) changes where the Python
 interpreter downloads from. With **China** selected, setup also downloads the
 `files.pythonhosted.org` wheels from the Aliyun PyPI mirror
 (`mirrors.aliyun.com`), which serves the same files: each one is still checked
@@ -1439,9 +1439,12 @@ Credentials, signed URL query strings and home-directory usernames are redacted.
 The retained history is bounded: when full, it keeps the initial context and
 latest lines, marking omitted content. Review the file before attaching it.
 
-After **five minutes without download progress**, setup offers **Report a bug**,
-**Get help on Discord**, and **Check download connection**. These also appear
-immediately after an installation failure. The warning clears when progress
+The setup screen keeps one help row: **Download setup log**, the install guide,
+troubleshooting, **Report a problem** and **Get help on Discord**. After **five
+minutes without download progress**, setup shows a stalled-download notice with
+**Check download connection**, and the report link becomes a prefilled **Report a
+bug**. After an installation failure the same report appears immediately and the
+connection check is under **More fixes**. The warning clears when progress
 resumes; it does not cancel the installation. GitHub opens a prefilled report
 for you to review and submit; attach the downloaded log manually. Discord opens
 the official server. No report or log is submitted automatically.

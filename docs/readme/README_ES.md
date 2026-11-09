@@ -207,6 +207,8 @@ La interfaz de usuario de la aplicación se ejecuta en Intel; conéctelo a un ba
 <details>
 <summary><img src="../../docs/assets/platforms/windows.svg" alt="" width="20" height="20" /> <strong>Windows</strong> · PowerShell · EXE</summary>
 
+La [configuración experimental de Windows ROCm](../../docs/install/windows-rocm.md) admite determinadas GPU RDNA 2 RX 6000 con objetivos `gfx1030`, `gfx1031` o `gfx1032`; la RX 6500 XT (`gfx1034`) queda excluida. La compilación de CTranslate2 con versión fijada por separado incluye kernels nativos `gfx1031` para transcribir en la RX 6700 XT; la configuración comprueba su ejecución real en la GPU. Las pruebas de la RX 6700 XT también cubren la generación de voz nativa con Torch y PyTorch Whisper. En ROCm 10, faster-whisper usa un proceso de inferencia separado para seleccionar la CPU o recurrir a ella con seguridad. Otras tarjetas y cargas de trabajo conservan los límites de validación de la guía. Los perfiles de rendimiento validan los cambios de motor en un proceso secundario sin conexión antes de guardarlos, manteniendo la alternativa si falla un entorno instalado.
+
 <blockquote>
 
 **Estable · x64**<br />Windows 10/11 x64 · NVIDIA CUDA · AMD ROCm (opcional) · CPU.
@@ -499,7 +501,7 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 | Ayuda de configuración | [Solución de problemas](../../docs/install/troubleshooting.md) · [Descargas de modelos](../../docs/downloading-models.md) |
 | Guías | [Doblaje con varias voces](../../docs/dubbing/multi-speaker-guide.md) · [Voz expresiva](../../docs/expressive-speech.md) · [Exportar doblajes](../../docs/dubbing/export.md) |
 | Modelos y calidad | [Guías del motor](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [Puntos de referencia](../../docs/benchmarks.md) |
-| Integraciones | [API local](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [Ejemplos](../../examples/README.md) |
+| Integraciones | [CLI](../../docs/install/script.md#terminal-command) · [API local](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [Ejemplos](../../examples/README.md) |
 | Aplicaciones de teléfono | [iOS y Android](../../docs/mobile.md) |
 | Desarrollo | [Contribuyendo](../../.github/CONTRIBUTING.md) ([firma el CLA](../../.github/CONTRIBUTING.md#contribution-licensing) antes de tu primer PR) · [Registro de cambios](../../CHANGELOG.md) |
 
