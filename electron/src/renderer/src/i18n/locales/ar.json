@@ -2696,9 +2696,11 @@
     "dub_projects": "مشاريع الدبلجة",
     "dictation_history": "سجل الإملاء",
     "pro": "Pro",
+    "pro_upsell": "العناصر المميزة بـ Pro تتم مزامنتها مع VoiceStudio Pro.",
     "use_choices_of": "استخدام اختيارات {{device}} نفسها",
     "devices": "الأجهزة",
     "this_device": "هذا الجهاز",
+    "last_active": "آخر نشاط: {{time}}",
     "remove_device": "إزالة"
   },
   "firstrun": {
