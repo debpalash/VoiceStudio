@@ -1,6 +1,7 @@
 // @vitest-environment node
 import {
   existsSync,
+  linkSync,
   mkdtempSync,
   mkdirSync,
   writeFileSync,
@@ -222,4 +223,18 @@ test('a Linux zsh user without .zshrc gets one; other Linux shells do not', () =
   expect(existsSync(join(f.home, '.zshrc'))).toBe(false);
   addTerminalCommandToPath({ ...f, platform: 'linux', appImage, shell: '/usr/bin/zsh' });
   expect(readFileSync(join(f.home, '.zshrc'), 'utf8')).toContain('.local/bin');
+});
+
+test('an AppImage that already is the command (case-insensitive disk) counts as linked', () => {
+  const f = fixture();
+  // The shell installer's ~/.local/bin/VoiceStudio; a hard link stands in for
+  // the case-insensitive name match so the test runs on every filesystem.
+  const appImage = join(f.home, 'VoiceStudio-app.AppImage');
+  writeFileSync(appImage, 'fixture AppImage');
+  mkdirSync(join(f.home, '.local/bin'), { recursive: true });
+  linkSync(appImage, join(f.home, '.local/bin/voicestudio'));
+  const linux = { ...f, platform: 'linux' as const, appImage };
+  expect(linkTerminalCommand(linux)).toBe('linked');
+  expect(readFileSync(join(f.home, '.local/bin/voicestudio'), 'utf8')).toBe('fixture AppImage');
+  expect(addTerminalCommandToPath(linux)).toMatchObject({ linked: true, onPath: true });
 });

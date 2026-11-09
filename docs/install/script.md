@@ -70,7 +70,10 @@ Linux and configure PATH for Bash, Zsh, POSIX and Fish shells.
 No separate Python installation is required. An existing custom launcher is
 preserved: conflicting ownership stops installation before replacing the app;
 see [Terminal command](#terminal-command). A command already
-owned by the Python CLI package is retained.
+owned by the Python CLI package is retained. On a case-insensitive filesystem,
+where `voicestudio` and `VoiceStudio` are the same file, the AppImage itself is the
+command; a Python CLI command there stops installation instead of being
+overwritten (choose another `VOICESTUDIO_INSTALL_DIR`).
 Current Electron source builds also read archived setup configuration for custom
 data/model folders and portable storage; explicit launch environment overrides
 still win. The backend retains its existing durable Settings precedence. No files

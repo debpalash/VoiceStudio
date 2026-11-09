@@ -134,6 +134,9 @@ if [ "$1 $2" = 'run electron-builder' ]; then printf '${payload}' > release/Voic
     home,
     root,
     settings,
+    // macOS and Windows disks ignore case: ~/.local/bin/voicestudio is then
+    // ~/.local/bin/VoiceStudio, the Linux install location.
+    caseInsensitive: existsSync(join(home, '.LOCAL/BIN')),
     run(args = []) {
       return spawnSync('sh', [installer, ...args], {
         encoding: 'utf8',
@@ -167,8 +170,13 @@ for (const mac of [false, true]) {
     assert.equal(f.run().status, 0);
     const target = mac ? join(f.home, 'Applications/VoiceStudio.app/Contents/Resources/cli/voicestudio')
       : join(f.home, '.local/bin/VoiceStudio');
-    assert.equal(readlinkSync(command), target);
+    // Where both names are one file, the AppImage itself answers to `voicestudio`.
+    const check = () => !mac && f.caseInsensitive
+      ? assert.equal(readFileSync(command, 'utf8'), payload)
+      : assert.equal(readlinkSync(command), target);
+    check();
     assert.equal(f.run().status, 0);
+    check();
     const profile = readFileSync(join(f.home, '.bashrc'), 'utf8');
     assert(profile.startsWith('# my settings\n'));
     assert.equal(profile.match(/# VoiceStudio terminal command/g).length, 1);
@@ -179,6 +187,8 @@ for (const mac of [false, true]) {
 
 test('command collisions preserve the existing app and launcher', (t) => {
   const f = fixture(t);
+  // Two files differing only by case cannot coexist there; nothing to collide.
+  if (f.caseInsensitive) return t.skip('case-insensitive filesystem');
   const command = join(f.home, '.local/bin/voicestudio');
   const app = join(f.home, '.local/bin/VoiceStudio');
   writeFileSync(app, 'old app');
@@ -195,7 +205,14 @@ test('desktop installation preserves a command already owned by the CLI package'
   const command = join(f.home, '.local/bin/voicestudio');
   const cli = '#!/usr/bin/python3\nfrom voicestudio_cli.__main__ import main\nmain()\n';
   writeFileSync(command, cli);
-  assert.equal(f.run().status, 0);
+  const result = f.run();
+  if (f.caseInsensitive) {
+    // The AppImage would overwrite the command: refuse instead, changing nothing.
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /VOICESTUDIO_INSTALL_DIR/);
+  } else {
+    assert.equal(result.status, 0, result.stderr);
+  }
   assert.equal(readFileSync(command, 'utf8'), cli);
 });
 

@@ -5,6 +5,7 @@ import {
   mkdirSync,
   readFileSync,
   readlinkSync,
+  statSync,
   symlinkSync,
   unlinkSync,
   writeFileSync,
@@ -89,6 +90,21 @@ function commandPath(home: string): string {
   return join(home, '.local/bin', 'voicestudio');
 }
 
+/**
+ * The command already runs `target` without a link of ours: on a
+ * case-insensitive disk `~/.local/bin/voicestudio` is the shell installer's
+ * `~/.local/bin/VoiceStudio` AppImage, whose entry point is this command.
+ */
+function isSameFile(command: string, target: string): boolean {
+  try {
+    const a = statSync(command);
+    const b = statSync(target);
+    return a.dev === b.dev && a.ino === b.ino;
+  } catch {
+    return false;
+  }
+}
+
 /** A dangling link left by a moved or replaced VoiceStudio, never someone else's command. */
 function isStaleOwnLink(command: string): boolean {
   // A relative target is relative to the link's folder, not the working directory.
@@ -115,6 +131,7 @@ export function linkTerminalCommand(
   try {
     const stat = lstatSync(command);
     if (stat.isSymbolicLink() && readlinkSync(command) === target) return 'linked';
+    if (isSameFile(command, target)) return 'linked';
     // Never replace uv's command, a user's launcher or another installation.
     if (!stat.isSymbolicLink() || !isStaleOwnLink(command)) return 'existing';
     unlinkSync(command);
@@ -134,6 +151,7 @@ export function terminalCommandStatus(options: TerminalCommandOptions): Terminal
   } catch {
     linked = false;
   }
+  linked ||= Boolean(target) && isSameFile(command, target as string);
   // Every profile must carry the block: a setup that stopped halfway is not done.
   const configured = profilesToConfigure(options).every(profileConfigured);
   return {

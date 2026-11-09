@@ -148,9 +148,14 @@ check_command_target() {
     command_path="$HOME/.local/bin/voicestudio"
     if [ -e "$command_path" ] || [ -L "$command_path" ]; then
         if [ -f "$command_path" ] && grep -q 'from voicestudio_cli.__main__ import main' "$command_path"; then
+            # On a case-insensitive filesystem the app would overwrite this command.
+            [ ! "$command_path" -ef "$1" ] ||
+                die "$command_path is the voicestudio command installed with pip or uv, and this filesystem cannot keep it beside the app (names differ only by case). Set VOICESTUDIO_INSTALL_DIR to another directory. No app files were changed."
             KEEP_COMMAND=1
             return
         fi
+        # Case-insensitive filesystem: the command already is this app (see install_command).
+        [ ! "$command_path" -ef "$1" ] || return 0
         [ -L "$command_path" ] && [ "$(readlink "$command_path")" = "$1" ] ||
             die "Existing command $command_path belongs to another installation. Preserve/migrate it with the CLI installer before installing here. No app files were changed."
     fi
@@ -161,7 +166,11 @@ install_command() {
     command_path="$HOME/.local/bin/voicestudio"
     mkdir -p "$HOME/.local/bin"
     # The installer owns only this symlink; the command implementation lives in the package.
-    ln -sf "$1" "$command_path"
+    # On a case-insensitive filesystem (macOS, Windows, casefolded ext4)
+    # ~/.local/bin/voicestudio IS ~/.local/bin/VoiceStudio: the AppImage, whose
+    # entry point is this command. Linking there would replace the app with a
+    # link to itself.
+    [ "$command_path" -ef "$1" ] || ln -sf "$1" "$command_path"
     for profile in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc"; do
         if ! grep -q '^# VoiceStudio terminal command$' "$profile" 2>/dev/null; then
             cat >> "$profile" <<'COMMAND_PATH'
