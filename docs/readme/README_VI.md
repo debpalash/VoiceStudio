@@ -325,12 +325,14 @@ chmod +x VoiceStudio-*-linux-x64.AppImage
 <details>
 <summary>Nix / NixOS · môi trường nguồn</summary>
 
-Nhập môi trường phát triển FHS của kho lưu trữ, sau đó chạy từ nguồn:
+Nhập môi trường phát triển của kho lưu trữ, sau đó chạy từ nguồn:
 
 ```sh
 git clone https://github.com/debpalash/VoiceStudio.git
 cd VoiceStudio
-nix develop .#fhs
+nix develop
+bun install
+bun run setup:api
 bun run dev
 ```
 

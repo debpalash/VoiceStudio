@@ -326,12 +326,14 @@ chmod +x VoiceStudio-*-linux-x64.AppImage
 <details>
 <summary>Nix / NixOS · ソース実行環境</summary>
 
-リポジトリの FHS 開発環境に入り、ソースから起動します：
+リポジトリの開発環境に入り、ソースから起動します：
 
 ```sh
 git clone https://github.com/debpalash/VoiceStudio.git
 cd VoiceStudio
-nix develop .#fhs
+nix develop
+bun install
+bun run setup:api
 bun run dev
 ```
 

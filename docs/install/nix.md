@@ -1,6 +1,6 @@
 # VoiceStudio — Running and Developing with Nix / NixOS
 
-The repository includes a community-maintained Nix flake (`flake.nix`) with development shells and, on Linux, an FHS environment that provides the native libraries VoiceStudio needs. It is a way to build and run from source; it is not exercised by CI, and the release installers remain the supported install path.
+The repository includes a community-maintained Nix flake (`flake.nix`) with development shells for building and running from source. It is not exercised by CI, and the release installers remain the supported install path.
 
 ## Prerequisites
 
@@ -8,48 +8,37 @@ The repository includes a community-maintained Nix flake (`flake.nix`) with deve
 
 ## Getting Started
 
-### 1. NixOS / FHS Environment (Recommended for NixOS)
-
-On NixOS, dynamically loaded Python packages (such as the PyTorch and WhisperX wheels `uv` installs) expect standard Linux filesystem paths (`/lib64`, `/usr/lib`). The flake's FHS environment (Linux only) provides them, and makes `uv` use its own managed CPython:
+### Development Shell
 
 ```bash
 # Clone the repository
 git clone https://github.com/debpalash/VoiceStudio.git
 cd VoiceStudio
 
-# Enter the FHS development environment
-nix develop .#fhs
-# or enter directly via nix run:
-nix run .#fhs
-
-# Inside the environment, install dependencies and launch the app
-bun run dev
-```
-
-### 2. Standard Development Shell (macOS or Linux with nix-ld)
-
-If you are developing on macOS or Linux with `nix-ld` configured:
-
-```bash
-# Clone the repository
-git clone https://github.com/debpalash/VoiceStudio.git
-cd VoiceStudio
-
-# Enter the standard development shell
+# Enter the development shell
 nix develop
 
-# Install dependencies and launch the app
+# Install dependencies, create the Python venv, and launch the app
+bun install
+bun run setup:api
 bun run dev
 ```
 
 The `nix develop` shell provides:
-- **Toolchains**: `bun`, `nodejs_22`, `uv`, `rustc`, `cargo`, `pkg-config`.
-- **System & multimedia libraries**: `alsa-lib`, `xdotool`, `libxtst`, `libx11`, `libxkbcommon`, `wayland`, `openssl`, and `ffmpeg`.
-- Preconfigured `LD_LIBRARY_PATH` and `PKG_CONFIG_PATH` hooks for native compilations.
+- **Toolchains**: `bun`, `nodejs_22`, `uv`, `python311`, `rustc`, `cargo`, `clang`, `cmake`, `pkg-config`.
+- **Libraries**: `alsa-lib`, `libxdo` (built from xdotool's sources), `libXtst`, `libx11`, `libxkbcommon`, `wayland`, `openssl`, `ffmpeg`, plus the Electron runtime libraries (`libGL`, `nss`, `at-spi2-atk`, `libdrm`, `libgbm`, `libpulseaudio`, `libjack2`, `dbus`).
+- Preconfigured `LD_LIBRARY_PATH` (GCC runtime) and `NIX_LDFLAGS` (libxdo) for native compilations.
+
+A backend-only shell is available as `nix develop .#backend`.
+
+On NixOS, dynamically loaded Python wheels (PyTorch, WhisperX) may look for
+libraries in standard paths such as `/lib64` and `/usr/lib`. The shell puts the
+GCC runtime on `LD_LIBRARY_PATH`; if a wheel still fails to load a library, add
+that library's path there or run the backend in Docker.
 
 ## Building and Testing
 
-Inside either shell, you can compile and test the native components:
+Inside the development shell, you can compile and test the native components:
 
 ```bash
 # Run tests for the native Rust desktop bridge
