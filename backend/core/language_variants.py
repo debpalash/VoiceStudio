@@ -39,7 +39,32 @@ VARIANT_CODES: dict[str, str] = {
 #: Base language names (lowercase) that carry a default dialect.
 _BASE_NAMES: dict[str, str] = {"portuguese": "pt", "pt": "pt", "por": "pt"}
 
+#: ISO 639-1 macrolanguage -> its ISO 639-3 individual languages (SIL's
+#: macrolanguage mappings). The pickers name the varieties ("Standard
+#: Arabic" = ``arb``, "Egyptian Arabic" = ``arz``), while engines and dubbing
+#: declare the macrolanguage ``ar``; a variety is spoken as that language
+#: (#3816). Chinese is deliberately absent: ``cmn`` / ``yue`` / ``nan`` are
+#: different spoken languages to different engines (#2104), and the app's
+#: own Chinese script choices are resolved by name instead.
+MACROLANGUAGE_MEMBERS: dict[str, frozenset[str]] = {
+    "ar": frozenset({
+        "aao", "abh", "abv", "acm", "acq", "acw", "acx", "acy", "adf", "aeb",
+        "aec", "afb", "ajp", "apc", "apd", "arb", "arq", "ars", "ary", "arz",
+        "auz", "avl", "ayh", "ayl", "ayn", "ayp", "bbz", "pga", "shu", "ssh",
+    }),
+}
+
+_MACROLANGUAGE_OF: dict[str, str] = {
+    member: macro for macro, members in MACROLANGUAGE_MEMBERS.items() for member in members
+}
+
 _TAG_RE = re.compile(r"^([a-z]{2,3})[-_]([a-z]{2})$")
+
+
+def macrolanguage_of(code: object) -> Optional[str]:
+    """The ISO 639-1 macrolanguage of an individual-language code
+    (``"arb"`` / ``"arz"`` -> ``"ar"``), or ``None`` when it has none here."""
+    return _MACROLANGUAGE_OF.get(_key(code))
 
 
 def _key(language: object) -> str:

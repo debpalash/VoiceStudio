@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { mkdtemp, mkdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import { createUninstallPlan, scanUninstallTargets, type UninstallRoots } from './uninstall-data';
 
@@ -125,4 +125,26 @@ it('counts overlapping parent and child targets only once in the deletion plan',
     expect(plan.paths).toEqual([parent]);
     expect(plan.size_bytes).toBe(5);
   }
+});
+
+it('keeps a model cache opt-in when data and models are one folder (#3512)', async () => {
+  const roots = await fixture();
+  await writeFile(join(roots.data, 'prefs.json'), 'prefs');
+  const alias = join(roots.root, 'models-alias');
+  await symlink(roots.data, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  for (const models of [alias, `${roots.data}${sep}`]) {
+    const targets = await scanUninstallTargets({ ...roots, models });
+    const model = targets.find((target) => target.key === 'models');
+    expect(model).toMatchObject({ shared: true, path: roots.data });
+    expect(targets.filter((target) => target.path === roots.data)).toHaveLength(1);
+    expect((await createUninstallPlan(targets, false, null)).paths).not.toContain(roots.data);
+    expect((await createUninstallPlan(targets, true, null)).paths).toContain(roots.data);
+  }
+});
+
+it('keeps a model cache opt-in when it is the runtime folder itself (#3512)', async () => {
+  const roots = await fixture();
+  const targets = await scanUninstallTargets({ ...roots, models: roots.environment });
+  expect(targets.find((target) => target.key === 'models')).toMatchObject({ shared: true });
+  expect((await createUninstallPlan(targets, false, null)).paths).not.toContain(roots.environment);
 });

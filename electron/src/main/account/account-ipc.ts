@@ -38,7 +38,8 @@ export class AccountController {
       switches: CloudSwitchStore;
       session: AccountSession;
       api: AccountApi;
-      remembered: boolean;
+      /** Whether a sign-in survives a restart; asks the OS keyring, so only read when shown. */
+      remembered: () => boolean;
       /** The dashboard pages for managing the profile and the plan (opened in the browser). */
       links: { profile: string; plan: string; deletion: string };
     },
@@ -107,7 +108,8 @@ export class AccountController {
     return {
       available,
       ...sw,
-      remembered,
+      // Shown only with account features on; never touch the keyring otherwise (#3813).
+      remembered: available && sw.accountEnabled ? remembered() : false,
       ...s,
       signedIn,
       accountId,

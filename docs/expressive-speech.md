@@ -83,8 +83,9 @@ lists the reaction tags its tokenizer renders.
   [generation-parameters.md](generation-parameters.md)). This is the most
   reliable expressive control in the app.
 - **Pronunciation overrides** — `[[Nuh-VAD-uh]]` inline, or the pronunciation
-  dictionary. Not expression, but often what a "it says this weirdly" problem
-  actually needs.
+  dictionary. An inline override always wins: the dictionary never rewrites
+  inside its brackets, in Generate and in audiobook chapters alike. Not
+  expression, but often what a "it says this weirdly" problem actually needs.
 
 Pronunciation dictionary matching uses Unicode case-insensitive literal matches. Each matched term uses its own respelling; distinct terms such as Straße and STRASSE can have different respellings. Longer terms win overlaps, and later equal-length case variants retain precedence. Because that precedence follows entry order, reordering such variants re-renders cached longform chapters; reordering unrelated entries does not.
 

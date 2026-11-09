@@ -120,7 +120,8 @@ signal warnings. Offline Whisper large-v3 recovered all 13 words in each of the
 for these trials, not a perceptual ranking across voices or languages.
 
 The sweep exposed seed propagation gaps in the explicit OmniVoice and VoxCPM2
-sidecars. Those now receive per-chunk seeds, with a fresh sweep after the fix.
+sidecars. Those now receive the take's seed with every chunk, with a fresh sweep
+after the fix.
 On the seeded VoxCPM2 clone trial, 16/32/64 steps took approximately 9.7/14.1/27.2
 seconds; increasing sampling effort has a measurable time cost.
 

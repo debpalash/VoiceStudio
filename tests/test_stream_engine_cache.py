@@ -111,6 +111,7 @@ def test_override_matching_active_reuses_it(tts, engines, monkeypatch):
     assert engines.a not in tts._ENGINE_INSTANCES
 
 
+@pytest.mark.usefixtures("cpu_host")
 def test_explicit_omnivoice_override_never_loads_the_shared_model(tts, monkeypatch):
     from services import model_manager
 

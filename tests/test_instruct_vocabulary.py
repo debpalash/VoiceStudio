@@ -1,6 +1,8 @@
 """Engines declare how their ``instruct`` text is read ("tags" vs "freeform")."""
 import os
 
+import pytest
+
 os.environ.setdefault("OMNIVOICE_MODEL", "test")
 os.environ.setdefault("OMNIVOICE_DISABLE_FILE_LOG", "1")
 
@@ -18,6 +20,7 @@ def test_catalogue_reports_vocabulary_per_engine():
     assert cat["mlx-audio"]["instruct_vocabulary"] == "freeform"
 
 
+@pytest.mark.usefixtures("cpu_host")
 def test_every_omnivoice_entry_is_tags():
     entries = [e for bid, e in _catalogue().items() if bid.startswith("omnivoice")]
     assert len(entries) >= 3

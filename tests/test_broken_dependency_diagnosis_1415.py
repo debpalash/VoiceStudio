@@ -150,6 +150,7 @@ def test_a_genuinely_missing_omnivoice_still_triggers_the_fallback(mm, monkeypat
 
 # ── a non-fatal preload failure is still visible ──────────────────────────
 
+@pytest.mark.usefixtures("cpu_host")
 def test_a_failed_preload_shows_up_in_the_status(mm, monkeypatch):
     """Fail-before: the status stayed "idle" with no error, so the app looked
     healthy and produced nothing until a generation failed much later."""
@@ -177,6 +178,7 @@ def test_a_failed_preload_shows_up_in_the_status(mm, monkeypatch):
     assert "transformers" in status["error"].lower()
 
 
+@pytest.mark.usefixtures("cpu_host")
 def test_a_successful_preload_clears_a_previous_failure(mm, monkeypatch):
     """Driven through `preload_model()` rather than `_set_loading`, so it can
     only pass if the real success path actually clears the error a previous
@@ -218,6 +220,7 @@ def test_unloaded_model_does_not_publish_stale_ready_detail(mm, monkeypatch):
         mm._set_loading("", "")
 
 
+@pytest.mark.usefixtures("cpu_host")
 def test_preload_oom_status_is_actionable_and_does_not_publish_allocator_details(
     mm, monkeypatch,
 ):
@@ -245,6 +248,7 @@ def test_preload_oom_status_is_actionable_and_does_not_publish_allocator_details
     assert "/home/alice" not in status["error"]
 
 
+@pytest.mark.usefixtures("cpu_host")
 def test_the_fallback_detail_does_not_leak_a_path(mm, monkeypatch):
     """If building the classified failure itself fails, what lands on the
     status must not be the raw exception — those carry absolute paths, i.e.
