@@ -97,7 +97,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-24.04
+          # Jammy (glibc 2.35) so the native helper and its bundled libraries also run
+          # on the Snap base core22, which repackages this .deb (#3879).
+          - runner: ubuntu-22.04
             platform: linux
             arch: x64
             target: x86_64-unknown-linux-gnu
@@ -329,6 +331,9 @@ jobs:
           retention-days: 14
           if-no-files-found: error
           path: electron/release-signing/signing-*.json
+      - name: Bundled native code must run on the Snap base (glibc <= 2.35)
+        if: matrix.platform == 'linux'
+        run: python3 scripts/check_glibc_floor.py electron/release/linux-unpacked/resources/native
       - name: Packaged startup smoke test
         working-directory: electron
         run: |
