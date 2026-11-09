@@ -20,7 +20,7 @@ import {
   type MediaPlayerInstance,
 } from './media-player';
 import { Button } from './ui/button';
-import { formatClock } from './waveform-player';
+import { formatClock } from './media-clock';
 import {
   publishPlaybackClock,
   resetPlaybackClock,
