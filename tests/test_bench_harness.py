@@ -95,7 +95,7 @@ def test_bundle_check_fails_only_on_large_growth(tmp_path):
 
 
 def test_recorded_bundle_baseline_has_every_checked_metric():
-    baseline = json.loads((ROOT / "scripts/bench/bundle-baseline.json").read_text())
+    baseline = json.loads((ROOT / "scripts/bench/bundle-baseline.json").read_text(encoding="utf-8"))
     for key in ("eager_gzip", "js_gzip", "css_gzip", "largest_eager_gzip"):
         assert baseline[key] > 0, key
 
@@ -113,5 +113,13 @@ def test_loopback_checks_ignore_proxy_settings(monkeypatch):
     )
     bench = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(bench)
-    handlers = [h for h in bench._LOCAL_OPENER.handlers if isinstance(h, urllib.request.ProxyHandler)]
-    assert handlers and all(h.proxies == {} for h in handlers)
+    # The default opener would add a ProxyHandler built from HTTP_PROXY; the
+    # loopback opener must route nothing through a proxy.
+    assert urllib.request.build_opener().handlers  # sanity: default opener has handlers
+    assert not any(
+        isinstance(h, urllib.request.ProxyHandler) and h.proxies for h in bench._LOCAL_OPENER.handlers
+    )
+    assert any(
+        isinstance(h, urllib.request.ProxyHandler) and h.proxies.get("http")
+        for h in urllib.request.build_opener().handlers
+    )  # with HTTP_PROXY set, the default opener WOULD proxy
