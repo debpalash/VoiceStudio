@@ -198,6 +198,7 @@ def test_generate_cpu_only_host_emits_no_routing_header(client, monkeypatch, no_
     assert "x-omnivoice-routing" not in {k.lower() for k in res.headers}
 
 
+@pytest.mark.usefixtures("cpu_host")
 def test_generate_default_path_still_runs_omnivoice(client, monkeypatch, tmp_path):
     """No selection + no override → the OmniVoice model path, unchanged."""
     # Neutralize any persisted Settings pick so the default resolution applies.

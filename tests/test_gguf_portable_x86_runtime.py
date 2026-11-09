@@ -8,32 +8,20 @@ typed, actionable error and stays unavailable until the file changes.
 """
 from __future__ import annotations
 
-import os
-import shutil
-import subprocess
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from build_script_stubs import run_build
 from gguf_cache_fixtures import gguf_binary, gguf_cache, gguf_engine
 
 __all__ = ["gguf_binary", "gguf_cache", "gguf_engine"]
 
-REPO = Path(__file__).resolve().parents[1]
-BASH = shutil.which("bash") if os.name != "nt" else "C:/Program Files/Git/bin/bash.exe"
 PORTABLE = ("-DGGML_NATIVE=OFF", "-DGGML_CPU_ALL_VARIANTS=ON", "-DGGML_BACKEND_DL=ON",
             "-DBUILD_SHARED_LIBS=ON")
 
 
 @pytest.mark.parametrize("platform", ["linux-x86_64", "windows-x86_64", "darwin-x86_64"])
 def test_x86_cpu_build_is_portable(tmp_path, platform):
-    if not BASH or not Path(BASH).is_file():
-        pytest.skip("POSIX bash required for the build script")
-    scripts = tmp_path / "scripts"
-    shutil.copytree(REPO / "scripts/lib", scripts / "lib")
-    shutil.copy2(REPO / "scripts/build-omnivoice-tts.sh", scripts)
-    fake = tmp_path / "fake-bin"
-    fake.mkdir()
     tools = {
         # Clone target is the last argument; buildcpu.sh would be a native build.
         "git": 'if [[ "$1" == clone ]]; then for d in "$@"; do :; done; mkdir -p "$d";'
@@ -44,22 +32,13 @@ def test_x86_cpu_build_is_portable(tmp_path, platform):
                  ' printf rt > build/omnivoice-tts; printf rt > build/Release/omnivoice-tts.exe;'
                  ' printf lib > build/libggml-cpu-haswell.so; fi',
     }
-    for name, body in tools.items():
-        (fake / name).write_text("#!/usr/bin/env bash\nset -euo pipefail\n" + body + "\n")
-        (fake / name).chmod(0o755)
     log = tmp_path / "cmake.log"
     msvc = tmp_path / "msvc"
     msvc.mkdir()
     for dll in ("msvcp140.dll", "vcruntime140.dll"):
         (msvc / dll).write_text("crt")
-    env = {**os.environ, "PATH": f"{fake}:/usr/bin:/bin", "CMAKE_LOG": str(log),
-           "OMNIVOICE_MSVC_RUNTIME_DIR": msvc.as_posix()}
-    env.pop("VULKAN_SDK", None)
-    result = subprocess.run(
-        [BASH, str(scripts / "build-omnivoice-tts.sh"), "--platform", platform,
-         "--commit-sha", "a" * 40],
-        env=env, cwd=tmp_path, capture_output=True, text=True, timeout=60, check=False,
-    )
+    result = run_build(tmp_path, platform, tools=tools, env={
+        "CMAKE_LOG": log.as_posix(), "OMNIVOICE_MSVC_RUNTIME_DIR": msvc.as_posix()})
     assert result.returncode == 0, result.stdout + result.stderr
     configure = [line for line in log.read_text(encoding="utf-8").splitlines() if line.startswith("-B build")]
     assert configure, log.read_text(encoding="utf-8")

@@ -85,4 +85,7 @@ it('does not double-count a nested shared cache in the estimate', () => {
   ];
   expect(uninstallBytes(overlapping, false)).toBe(0);
   expect(uninstallBytes(overlapping, true)).toBe(10_000);
+  // The same folder listed twice counts once, not zero times (#3512).
+  const duplicate = [overlapping[0], { ...overlapping[0], key: 'env' as const, shared: false }];
+  expect(uninstallBytes(duplicate, true)).toBe(10_000);
 });

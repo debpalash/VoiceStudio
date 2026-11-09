@@ -1239,14 +1239,19 @@ UnicodeDecodeError: 'gbk' codec can't decode byte 0x80 in position 11: illegal m
 **Cause:** Python 3.11's `site` module opens every `.pth` file in
 `site-packages` using the ANSI code page — even with `PYTHONUTF8=1` set. When
 the managed environment lives under a Windows user profile whose account name
-contains non-ASCII characters (most commonly CJK), `uv sync`'s editable
-install `.pth` embeds that path in UTF-8, which is rarely a valid byte
-sequence in the active ANSI code page (`gbk`, `shift_jis`, etc.), and the
-interpreter can never start (#1783).
+contains non-ASCII characters (most commonly CJK), or a source checkout sits in
+a non-ASCII folder (for example a Thai folder name on a `cp874` system),
+`uv sync`'s editable install `.pth` embeds that path in UTF-8, which is rarely
+a valid byte sequence in the active ANSI code page (`gbk`, `shift_jis`,
+`cp874`, etc.), and the interpreter can never start (#1783). In a source
+checkout, `bun run dev` and `bun run setup:api` fail with
+``Querying Python at `…\.venv\Scripts\python.exe` failed``.
 
 **Fix:** VoiceStudio now rewrites those `.pth` entries to ASCII-only paths after
 each runtime install and before each launch, so existing environments recover
-on the next start. If the backend still cannot start, keep the app
+on the next start. Source checkouts get the same repair: `bun run setup:api`
+heals `.venv` before every `uv` step, and `bun run dev` / `bun run dev:api`
+heal it before starting the backend, so a manual `uv sync` is covered too. If the backend still cannot start, keep the app
 environment on an ASCII-only path. On the first-run
 setup screen, press **Change…** beside **App environment** and pick a folder
 such as `C:\VoiceStudio` before setup starts. An environment that cannot start

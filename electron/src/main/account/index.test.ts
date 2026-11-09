@@ -8,6 +8,7 @@ const h = vi.hoisted(() => ({
   dir: '',
   safeThrows: false,
   keyring: false,
+  keyringAsks: 0,
   setBackendOnlyEnv: vi.fn(),
   bridgeFails: false,
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
@@ -22,6 +23,7 @@ vi.mock('electron', () => ({
   },
   safeStorage: {
     isEncryptionAvailable: () => {
+      h.keyringAsks += 1;
       if (h.safeThrows) throw new Error('keychain locked');
       return h.keyring;
     },
@@ -59,6 +61,7 @@ afterEach(() => {
   h.packaged = false;
   h.safeThrows = false;
   h.keyring = false;
+  h.keyringAsks = 0;
   h.bridgeFails = false;
   h.setBackendOnlyEnv.mockClear();
   vi.useRealTimers();
@@ -77,6 +80,13 @@ it('hands the bridge to the backend spawn only, never to process.env', async () 
     VOICESTUDIO_ACCOUNT_BRIDGE_URL: undefined,
     VOICESTUDIO_ACCOUNT_BRIDGE_TOKEN: undefined,
   });
+});
+
+it('starts without asking the keyring when no account is saved (#3813)', async () => {
+  h.keyring = true;
+  h.dir = mkdtempSync(join(tmpdir(), 'vs-account-'));
+  (await startAccount(opts))();
+  expect(h.keyringAsks).toBe(0);
 });
 
 it('starts no bridge when the environment has no client to sign in with', async () => {
