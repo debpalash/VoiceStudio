@@ -381,6 +381,50 @@ def asr_model_installed(monkeypatch, request):
         monkeypatch.setattr(mod, "asr_model_missing_error", lambda **_kw: None)
 
 
+def _asr_backend_targets(request):
+    """The canonical ``services.asr_backend`` plus any stale module-typed alias
+    the test module holds (see ``asr_model_installed``)."""
+    import importlib
+    import types
+
+    canonical = importlib.import_module("services.asr_backend")
+    targets = {id(canonical): canonical}
+    for val in vars(getattr(request, "module", None) or types.SimpleNamespace()).values():
+        if isinstance(val, types.ModuleType) and getattr(val, "__name__", "") == "services.asr_backend":
+            targets[id(val)] = val
+    return list(targets.values())
+
+
+@pytest.fixture
+def neutral_asr_host(monkeypatch, request):
+    """A CPU-only host for ASR selection tests, whatever machine runs them.
+
+    ``_auto_detect`` reads MPS, CUDA, ROCm-Torch and the Windows HIP install
+    before any test stub of ``_probe_available`` matters, so a selection test
+    that pins only some of them passes on a plain runner and fails on an Apple
+    Silicon or Windows ROCm host (#3549). Every predicate starts False here;
+    a test opts back in to the hardware it is about. The Windows HIP checks
+    are imported lazily by the code under test from ``sys.modules``, so they
+    are patched on the module that is canonical NOW, not on an alias an
+    earlier ``sys.modules`` purge left behind. The warm transcription instance
+    is released on both sides so a cached engine never outlives its stubs
+    (with an explicit clock: a test may have stubbed ``time.monotonic``).
+    """
+    import importlib
+
+    hip = importlib.import_module("core.windows_rocm.ct2")
+    monkeypatch.setattr(hip, "windows_hip_installed", lambda: False)
+    monkeypatch.setattr(hip, "hip_ct2_available", lambda: False)
+    targets = _asr_backend_targets(request)
+    for mod in targets:
+        for name in ("_mps_available", "_cuda_reported_available", "_rocm_torch"):
+            monkeypatch.setattr(mod, name, lambda: False)
+        mod.release_transcription_backend(0.0, now=float("inf"))
+    yield
+    for mod in targets:
+        mod.release_transcription_backend(0.0, now=float("inf"))
+
+
 _MODEL_MANAGER_TEST_REPO = "test/checkpoint"
 
 

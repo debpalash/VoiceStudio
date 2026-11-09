@@ -6,7 +6,8 @@ import pytest
 
 
 @pytest.fixture
-def m():
+def m(neutral_asr_host):
+    """Backend seams on a CPU-only host: a test opts in to its hardware (#3549)."""
     bootstrap = importlib.import_module('engines.whisper_cpp.bootstrap')
     backend = importlib.import_module('engines.whisper_cpp.backend')
     namespace = {

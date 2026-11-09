@@ -1,28 +1,16 @@
 """Execute optional Vulkan build paths with hermetic compiler stand-ins."""
-import os
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
+from build_script_stubs import run_bash, stage_build_script
 
 REPO = Path(__file__).resolve().parents[1]
-BASH = (shutil.which("bash") if os.name != "nt" else
-        "C:/Program Files/Git/bin/bash.exe")
 
 
 @pytest.mark.parametrize("platform", ["windows-x86_64", "linux-x86_64", "linux-aarch64"])
 @pytest.mark.parametrize("mode", ["absent", "configure-fails", "build-fails", "success"])
 def test_vulkan_build_and_cpu_fallback(tmp_path, platform, mode):
-    if not BASH or not Path(BASH).is_file():
-        pytest.skip("POSIX bash required for the build script")
-    scripts = tmp_path / "scripts"
-    scripts.mkdir()
-    shutil.copy2(REPO / "scripts/build-omnivoice-tts.sh", scripts)
-    if (REPO / "scripts/lib").exists():
-        shutil.copytree(REPO / "scripts/lib", scripts / "lib")
-    fake = tmp_path / "fake-bin"
-    fake.mkdir()
+    stage_build_script(tmp_path)
     tools = {
         "git": 'if [[ "${1:-}" == clone ]]; then for d in "$@"; do :; done; mkdir -p "$d"; fi',
         "c++": "exit 0",
@@ -47,14 +35,8 @@ fi
     }
     if mode != "absent":
         tools["glslc"] = "exit 0"
-    for name, body in tools.items():
-        tool = fake / name
-        tool.write_text("#!/usr/bin/env bash\nset -euo pipefail\n" + body + "\n")
-        tool.chmod(0o755)
-    launcher = tmp_path / "run.sh"
-    launcher.write_text('''#!/usr/bin/env bash
-set -euo pipefail
-cd "$(dirname "$0")"
+    script = (tmp_path / "run.sh")
+    script.write_bytes(b'''set -euo pipefail
 unset VULKAN_SDK
 # System utilities remain available; only the optional compiler probe is masked.
 command() {
@@ -64,7 +46,6 @@ command() {
     builtin command "$@"
 }
 export -f command
-export PATH="$PWD/fake-bin:/usr/bin:/bin"
 export CMAKE_LOG="$PWD/cmake.log" VULKAN_ATTEMPT="$PWD/vulkan-attempt" FAILED="$PWD/failed"
 bash scripts/build-omnivoice-tts.sh --platform "$PLATFORM" --commit-sha aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 ''')
@@ -72,11 +53,8 @@ bash scripts/build-omnivoice-tts.sh --platform "$PLATFORM" --commit-sha aaaaaaaa
     msvc.mkdir()
     for dll in ("msvcp140.dll", "vcruntime140.dll"):
         (msvc / dll).write_text("crt")
-    env = {**os.environ, "MODE": mode, "PLATFORM": platform,
-           "OMNIVOICE_MSVC_RUNTIME_DIR": msvc.as_posix()}
-    result = subprocess.run([BASH, launcher.as_posix()], env=env,
-                            capture_output=True, text=True, timeout=30,
-                            check=False)
+    result = run_bash(tmp_path, [script.name], tools=tools, timeout=30, env={
+        "MODE": mode, "PLATFORM": platform, "OMNIVOICE_MSVC_RUNTIME_DIR": msvc.as_posix()})
     assert result.returncode == 0, result.stdout + result.stderr
     log = (tmp_path / "cmake.log").read_text(encoding="utf-8")
     if mode == "absent":
