@@ -7,6 +7,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Looper
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
@@ -163,6 +164,35 @@ class PhoneCloneUiTest {
         await {vm.phone.state.value.progress==null&&vm.phone.state.value.voices.any {it.name=="My clone"}}
         assertFalse(vm.phone.state.value.interrupted)
         compose.runOnIdle {assertFalse(anyKeepsScreenOn(compose.activity.window.decorView))}
+    }
+    @Test fun rotationDuringACloneKeepsTheInterruptedNoticeSampleAndNameForRetry() {
+        val l=com.voicestudio.mobile.l10n.L10n.load(ApplicationProvider.getApplicationContext<Application>(),"en")
+        decodeGate.complete(Unit);transcriptGate.complete(Unit);await {vm.phone.state.value.progress==.65f}
+        compose.activityRule.scenario.recreate()
+        await {cancelled&&vm.phone.state.value.progress==null}
+        assertTrue("Screen teardown on a configuration change must keep the interrupted notice",vm.phone.state.value.interrupted)
+        compose.runOnUiThread {compose.activity.setContent {StudioApp(vm)}}
+        await {compose.onAllNodesWithText(l.t("mobile.android.clone_interrupted")).fetchSemanticsNodes().isNotEmpty()}
+        compose.onNodeWithText(l.t("mobile.android.sample_ready")).assertExists()
+        compose.onNodeWithText("My clone").assertExists()
+        cloneGate.complete(Unit)
+        compose.onNode(hasText(l.t("mobile.simple.retry")) and hasClickAction()).assertIsEnabled().performClick()
+        await {vm.phone.state.value.progress==null&&vm.phone.state.value.voices.any {it.name=="My clone"}}
+        assertFalse(vm.phone.state.value.interrupted)
+    }
+    @Test fun retryIsDisabledWhileANewSampleIsRecording() {
+        val app=ApplicationProvider.getApplicationContext<Application>()
+        val l=com.voicestudio.mobile.l10n.L10n.load(app,"en")
+        decodeGate.complete(Unit);transcriptGate.complete(Unit);await {vm.phone.state.value.progress==.65f}
+        compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+        await {cancelled&&vm.phone.state.value.progress==null}
+        compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+        val retry=hasText(l.t("mobile.simple.retry")) and hasClickAction()
+        compose.onNode(retry).assertIsEnabled()
+        shadowOf(app).grantPermissions(android.Manifest.permission.RECORD_AUDIO)
+        compose.onNodeWithText(l.t("mobile.voices.record")).performScrollTo().performClick()
+        await {compose.onAllNodesWithText(l.t("common.stop")).fetchSemanticsNodes().isNotEmpty()}
+        compose.onNode(retry).assertIsNotEnabled()
     }
     @Test fun outOfMemoryDuringCloneBecomesAnInferenceFailureInsteadOfCrashing() {
         failure=OutOfMemoryError("test")

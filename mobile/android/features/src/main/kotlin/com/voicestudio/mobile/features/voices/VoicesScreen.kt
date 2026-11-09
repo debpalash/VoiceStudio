@@ -42,6 +42,7 @@ import java.io.File
     val context=LocalContext.current
     val scope=rememberCoroutineScope()
     val lifecycle=LocalLifecycleOwner.current
+    val activity=remember(context) {generateSequence(context) {(it as? android.content.ContextWrapper)?.baseContext}.firstNotNullOfOrNull {it as? android.app.Activity}}
     var cloning by rememberSaveable {mutableStateOf(initialCreating)}
     var more by rememberSaveable {mutableStateOf(false)}
     var query by rememberSaveable {mutableStateOf("")}
@@ -59,7 +60,12 @@ import java.io.File
     DisposableEffect(lifecycle) {
         val observer=LifecycleEventObserver {_,event -> if(event==Lifecycle.Event.ON_STOP) {vm.phone.interruptInference();if(cloning) vm.cancelClone();if(recording) {recorder.discard();recording=false;sample=null}}}
         lifecycle.lifecycle.addObserver(observer)
-        onDispose {lifecycle.lifecycle.removeObserver(observer);if(cloning) vm.cancelClone();cloning=false;if(recording) recorder.discard();sample?.let {File(it).delete()};sample=null;vm.phone.cancelInference()}
+        onDispose {
+            lifecycle.lifecycle.removeObserver(observer);if(cloning) vm.cancelClone();if(recording) recorder.discard()
+            // Rotation and other configuration changes recreate the screen: keep the saved draft and the interrupted notice for Retry.
+            if(activity?.isChangingConfigurations==true) vm.phone.interruptInference()
+            else {cloning=false;sample?.let {File(it).delete()};sample=null;vm.phone.cancelInference()}
+        }
     }
     val view=LocalView.current
     DisposableEffect(view,phone.progress!=null) {
@@ -85,7 +91,7 @@ import java.io.File
             }
             if(phone.interrupted) {
                 ErrorMessage("mobile.android.clone_interrupted")
-                Action("mobile.simple.retry",permission&&sample!=null&&name.isNotBlank()&&!running&&asr!=null&&model!=null) {
+                Action("mobile.simple.retry",permission&&sample?.let {File(it).isFile}==true&&name.isNotBlank()&&!running&&!recording&&cloneReady) {
                     vm.phone.clone(name,File(sample!!),asr!!,model!!,permission) {sample=null;name="";permission=false;cloning=false;onCreated()}
                 }
             }

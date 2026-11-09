@@ -133,8 +133,10 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
         catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}
     }}
     fun saveProductionDraft(project: ProductionProject) {scope.launch {try {production.save(project)} catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}}}
+    /** A user cancel: stops on-device work and clears any interrupted notice. */
     fun cancelInference() {inference?.cancel();mutable.update {it.copy(interrupted=false)}}
-    /** Leaving the foreground stops on-device work; unlike a user cancel it is reported so the task can be retried. */
+    /** Leaving the foreground or tearing the screen down stops on-device work; unlike a user cancel it never clears the
+     *  interrupted notice, so the task can be retried after the screen returns or is recreated. */
     fun interruptInference() {
         if(mutable.value.progress==null) return
         val job=inference?.takeIf {it.isActive} ?: return
