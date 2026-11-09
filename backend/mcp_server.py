@@ -96,11 +96,38 @@ def _sniff_audio_ext(raw: bytes) -> str:
 _ERROR_DETAIL_MAX_CHARS = 1000
 
 
-def _public_error_text(text: object) -> str:
-    """``text`` with credentials and home paths redacted, length-capped."""
+def _scrubbed(value):
+    """``value`` with every string in it, keys included, passed through ``scrub_text``.
+
+    Structured values must be scrubbed *before* JSON encoding: ``json.dumps``
+    doubles each backslash, and a Windows home path written as
+    ``C:\\\\Users\\\\alice`` no longer matches the scrubber's patterns."""
     from core.scrub import scrub_text
 
-    cleaned = scrub_text(str(text)).strip()
+    if isinstance(value, str):
+        return scrub_text(value)
+    if isinstance(value, list):
+        return [_scrubbed(item) for item in value]
+    if isinstance(value, dict):
+        return {_scrubbed(key): _scrubbed(item) for key, item in value.items()}
+    return value
+
+
+def _public_error_text(text: object) -> str:
+    """``text`` with credentials and home paths redacted, length-capped.
+
+    A JSON body (a plain-text fallback that is really JSON) is scrubbed value
+    by value and re-encoded, for the same backslash reason as ``_scrubbed``."""
+    from core.scrub import scrub_text
+
+    text = str(text)
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        parsed = None
+    if isinstance(parsed, (dict, list)):
+        text = json.dumps(_scrubbed(parsed))
+    cleaned = scrub_text(text).strip()
     if len(cleaned) > _ERROR_DETAIL_MAX_CHARS:
         cleaned = cleaned[:_ERROR_DETAIL_MAX_CHARS].rstrip() + "…"
     return cleaned
@@ -111,20 +138,32 @@ def _backend_error_detail(response) -> "str | None":
 
     FastAPI errors carry ``detail`` as a string, a structured object (typed
     errors such as ``model_licence_required`` put the readable text in
-    ``message``) or a list of validation errors (each with a ``msg``)."""
+    ``message``) or a list of validation errors (each with a ``msg``). Only a
+    non-empty string counts as readable text; any other shape is rendered as
+    JSON rather than a Python repr. The value came from ``response.json()``,
+    so ``json.dumps`` always accepts it."""
     try:
         body = response.json()
     except ValueError:
         return None
     detail = body.get("detail") if isinstance(body, dict) else None
-    if isinstance(detail, dict):
-        detail = detail.get("message") or json.dumps(detail)
+    if not detail:
+        return None
+    if isinstance(detail, str):
+        text = detail
     elif isinstance(detail, list):
-        detail = "; ".join(
-            str(item.get("msg") or item) if isinstance(item, dict) else str(item)
-            for item in detail
-        )
-    return _public_error_text(detail) if detail else None
+        text = "; ".join(_readable(item, "msg") for item in detail)
+    else:
+        text = _readable(detail, "message")
+    return _public_error_text(text) or None
+
+
+def _readable(value, text_key: str) -> str:
+    """``value[text_key]`` when it is a non-empty string, else ``value`` as JSON."""
+    text = value.get(text_key) if isinstance(value, dict) else value
+    if isinstance(text, str) and text:
+        return text
+    return json.dumps(_scrubbed(value))
 
 
 def _raise_for_backend_status(response) -> None:
@@ -148,6 +187,50 @@ def _raise_for_backend_status(response) -> None:
         request=response.request,
         response=response,
     )
+
+
+# A JSON error detail is a few hundred bytes; anything past this is a proxy
+# or HTML error page, not worth holding in the agent process.
+_MAX_ERROR_BODY_BYTES = 64 * 1024
+
+
+async def _buffered_error_response(response):
+    """A buffered copy of a failed *streamed* response, safe to read ``detail`` from.
+
+    Reads at most ``_MAX_ERROR_BODY_BYTES`` of the body. A larger body is
+    dropped (the copy is empty), so ``_raise_for_backend_status`` falls back to
+    the plain status message instead of buffering an unbounded error page.
+    Only the content type is carried over: the chunks are already decoded, so
+    the original Content-Encoding/Length would no longer describe them."""
+    import httpx
+
+    body = bytearray()
+    async for chunk in response.aiter_bytes():
+        body += chunk
+        if len(body) > _MAX_ERROR_BODY_BYTES:
+            body.clear()
+            break
+    headers = {}
+    if content_type := response.headers.get("content-type"):
+        headers["content-type"] = content_type
+    return httpx.Response(
+        response.status_code,
+        headers=headers,
+        content=bytes(body),
+        request=response.request,
+    )
+
+
+async def _raise_for_streamed_status(response) -> None:
+    """``_raise_for_backend_status`` for a *streamed* response.
+
+    Only a 4xx/5xx body can hold a ``detail``, so only those are buffered
+    (bounded). Anything else that is not a 2xx, such as a redirect, is raised
+    on the original response without touching its body, so a slow body
+    cannot stall the call and the ``Location`` header stays available."""
+    if response.is_error:
+        _raise_for_backend_status(await _buffered_error_response(response))
+    _raise_for_backend_status(response)
 
 
 # ── Output mode + the base path boundary ─────────────────────────────────
@@ -688,9 +771,7 @@ def create_mcp_server(app=None):
             # buffering another full audio copy in the agent process.
             async with _client(300) as c:
                 async with c.stream("GET", f"/audio/{audio_id}.{format}") as encoded:
-                    if encoded.is_error:
-                        await encoded.aread()  # an error body is small JSON
-                    _raise_for_backend_status(encoded)
+                    await _raise_for_streamed_status(encoded)
 
         return json.dumps(await _speech_result(
             audio_id, gen_time, duration, r.content, _api_base(), format

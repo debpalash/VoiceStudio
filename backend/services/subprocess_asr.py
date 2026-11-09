@@ -57,12 +57,17 @@ class IsolatedFasterWhisperBackend(SubprocessASRBackend):
         if not ok:
             return False, f"faster-whisper cannot load CTranslate2: {detail}"
         try:
+            from core import import_probe
             from core.windows_rocm.ct2 import prepare_import
 
             prepare_import()
-            import faster_whisper  # noqa: F401
-        except Exception as e:
+            import_probe.ensure_importable(
+                "faster_whisper", prepare="core.windows_rocm.ct2:prepare_import"
+            )
+        except ImportError as e:
             return False, f"faster-whisper not installed: {e}"
+        except Exception as e:  # noqa: BLE001 - native load failure / probe crash
+            return False, f"faster-whisper failed to load ({type(e).__name__}): {e}"
         if not cls.sidecar_script().is_file():
             return False, f"ASR sidecar script missing at {cls.sidecar_script()}"
         # Same CTranslate2 engine, same cuDNN 8 requirement (#1371). Crash

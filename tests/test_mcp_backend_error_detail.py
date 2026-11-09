@@ -12,6 +12,7 @@ import asyncio
 import base64
 import json
 
+import httpx
 import pytest
 
 pytest.importorskip("mcp")
@@ -148,6 +149,91 @@ def test_redirect_is_a_failure_not_empty_audio():
     assert raised.value.response is redirect
 
 
+@pytest.mark.parametrize(
+    ("detail", "expected"),
+    [
+        ("Plain reason", "Plain reason"),
+        ({"code": "x", "message": "Readable"}, "Readable"),
+        ({"code": "x", "message": {"nested": 1}}, '{"code": "x", "message": {"nested": 1}}'),
+        ({"code": "x", "message": ""}, '{"code": "x", "message": ""}'),
+        ([{"msg": "First"}, {"msg": 2}, "bare"], 'First; {"msg": 2}; bare'),
+        ({"count": 3}, '{"count": 3}'),
+    ],
+)
+def test_detail_shapes_render_as_text_or_json_never_a_repr(detail, expected):
+    """Non-string messages come out as JSON, not Python reprs like ``{'nested': 1}``."""
+    import mcp_server
+
+    request = httpx.Request("GET", "http://127.0.0.1/x")
+    response = httpx.Response(400, json={"detail": detail}, request=request)
+    assert mcp_server._backend_error_detail(response) == expected
+
+
+def test_missing_or_empty_detail_is_none():
+    """No detail to add means the caller keeps httpx's own message."""
+    import mcp_server
+
+    request = httpx.Request("GET", "http://127.0.0.1/x")
+    for body in ({"detail": ""}, {"detail": None}, {"other": 1}, ["detail"]):
+        assert mcp_server._backend_error_detail(
+            httpx.Response(400, json=body, request=request)
+        ) is None
+
+
+class _CountingStream(httpx.AsyncByteStream):
+    """An async byte stream that records how many chunks were pulled from it."""
+
+    def __init__(self, chunks):
+        """Serve ``chunks`` in order."""
+        self.chunks, self.pulled = chunks, 0
+
+    async def __aiter__(self):
+        """Yield each chunk, counting as it goes."""
+        for chunk in self.chunks:
+            self.pulled += 1
+            yield chunk
+
+    async def aclose(self):
+        """Nothing to release."""
+
+
+def _streamed(status, chunks, content_type="application/json"):
+    """A streamed httpx response, as ``client.stream()`` hands it over."""
+    import httpx
+
+    stream = _CountingStream(chunks)
+    request = httpx.Request("GET", "http://127.0.0.1/audio/a1.opus")
+    return httpx.Response(
+        status, headers={"content-type": content_type}, stream=stream, request=request
+    ), stream
+
+
+def test_streamed_error_keeps_a_small_json_detail():
+    """A streamed 4xx still surfaces the backend's detail."""
+    import httpx
+    import mcp_server
+
+    body = json.dumps({"detail": "Encoder unavailable"}).encode()
+    response, _stream = _streamed(503, [body[:10], body[10:]])
+    buffered = asyncio.run(mcp_server._buffered_error_response(response))
+    with pytest.raises(httpx.HTTPStatusError, match="Encoder unavailable"):
+        mcp_server._raise_for_backend_status(buffered)
+
+
+def test_streamed_error_body_is_read_only_up_to_the_cap():
+    """A huge error page is cut off at the cap and dropped, not buffered whole."""
+    import httpx
+    import mcp_server
+
+    chunk = b"x" * 16 * 1024
+    response, stream = _streamed(502, [chunk] * 640, content_type="text/html")  # 10 MiB
+    buffered = asyncio.run(mcp_server._buffered_error_response(response))
+    assert buffered.content == b""
+    assert stream.pulled * len(chunk) <= mcp_server._MAX_ERROR_BODY_BYTES + len(chunk)
+    with pytest.raises(httpx.HTTPStatusError, match="502 Bad Gateway"):
+        mcp_server._raise_for_backend_status(buffered)
+
+
 def test_passed_on_detail_hides_secrets_and_home_paths():
     """The agent may be a hosted model: an echoed token or home path in the
     backend's detail must not reach it, and a huge body is capped."""
@@ -189,3 +275,85 @@ def test_clone_voice_plain_text_error_is_scrubbed(monkeypatch):
     server = mcp_server.create_mcp_server(app=backend)
     result = _result(server, "clone_voice", name="me", ref_audio_base64=AUDIO)
     assert result == {"error": "disk full at ~/omnivoice_data"}
+
+
+HOME_PATHS = {
+    "windows": (r"C:\Users\alice\clips\ref.wav", r"~\clips\ref.wav"),
+    "macos": ("/Users/alice/clips/ref.wav", "~/clips/ref.wav"),
+    "linux": ("/home/alice/clips/ref.wav", "~/clips/ref.wav"),
+}
+STRUCTURED_SHAPES = {
+    "nested message": lambda p: {"code": "x", "message": {"path": p}},
+    "validation msg": lambda p: [{"msg": {"path": p}}],
+    "dict key": lambda p: {"code": "x", "message": {p: "missing"}},
+}
+
+
+@pytest.mark.parametrize("platform", sorted(HOME_PATHS))
+@pytest.mark.parametrize("shape", sorted(STRUCTURED_SHAPES))
+def test_structured_detail_hides_home_paths_on_every_platform(platform, shape):
+    """Strings inside a non-string detail are scrubbed before JSON encoding.
+
+    json.dumps doubles backslashes, so a Windows home path scrubbed only after
+    encoding slipped through while macOS and Linux paths were caught."""
+    import mcp_server
+
+    raw, scrubbed = HOME_PATHS[platform]
+    request = httpx.Request("GET", "http://127.0.0.1/x")
+    response = httpx.Response(
+        400, json={"detail": STRUCTURED_SHAPES[shape](raw)}, request=request
+    )
+    text = mcp_server._backend_error_detail(response)
+    assert text is not None
+    assert "alice" not in text
+    assert json.dumps(scrubbed)[1:-1] in text
+
+
+@pytest.mark.parametrize("platform", sorted(HOME_PATHS))
+def test_plain_text_json_fallback_hides_home_paths(platform, monkeypatch):
+    """A JSON body without ``detail`` (the raw-text fallback) is scrubbed the same way."""
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import mcp_server
+
+    raw, scrubbed = HOME_PATHS[platform]
+    backend = FastAPI()
+
+    @backend.post("/profiles")
+    async def create_profile():
+        """Fail with a JSON body that has no ``detail`` key but quotes a home path."""
+        return JSONResponse({"error": f"cannot read {raw}"}, status_code=500)
+
+    monkeypatch.delenv("OMNIVOICE_API_URL", raising=False)
+    server = mcp_server.create_mcp_server(app=backend)
+    error = _result(server, "clone_voice", name="me", ref_audio_base64=AUDIO)["error"]
+    assert "alice" not in error
+    assert json.loads(error) == {"error": f"cannot read {scrubbed}"}
+
+
+def test_streamed_redirect_raises_without_reading_the_body():
+    """A streamed 3xx fails at once on the original response: no body read
+    (a slow one would stall the call) and its ``Location`` header is kept."""
+    import mcp_server
+
+    response, stream = _streamed(302, [b"x" * 1024] * 4, content_type="text/html")
+    response.headers["Location"] = "https://proxy.example/login"
+    with pytest.raises(httpx.HTTPStatusError) as raised:
+        asyncio.run(mcp_server._raise_for_streamed_status(response))
+    assert stream.pulled == 0
+    assert raised.value.response is response
+    assert raised.value.response.headers["Location"] == "https://proxy.example/login"
+
+
+def test_streamed_success_passes_and_streamed_error_keeps_its_detail():
+    """A streamed 2xx passes untouched; a streamed 4xx/5xx still carries its detail."""
+    import mcp_server
+
+    ok, ok_stream = _streamed(200, [b"OggS"])
+    asyncio.run(mcp_server._raise_for_streamed_status(ok))
+    assert ok_stream.pulled == 0
+
+    body = json.dumps({"detail": "Encoder unavailable"}).encode()
+    failed, _stream = _streamed(503, [body])
+    with pytest.raises(httpx.HTTPStatusError, match="Encoder unavailable"):
+        asyncio.run(mcp_server._raise_for_streamed_status(failed))
