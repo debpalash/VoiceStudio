@@ -11,7 +11,7 @@ const executablePath =
       ? 'electron/release/win-unpacked/VoiceStudio.exe'
       : process.platform === 'darwin'
         ? 'electron/release/mac/VoiceStudio.app/Contents/MacOS/VoiceStudio'
-        : 'electron/release/linux-unpacked/voicestudio-electron',
+        : 'electron/release/linux-unpacked/voicestudio-desktop',
   );
 const profile = mkdtempSync(join(tmpdir(), 'voicestudio-packaged-repair-'));
 const app = await electron.launch({

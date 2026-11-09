@@ -207,6 +207,8 @@ Interfejs aplikacji działa na platformie Intel; podłącz go do backendu VoiceS
 <details>
 <summary><img src="../../docs/assets/platforms/windows.svg" alt="" width="20" height="20" /> <strong>Windows</strong> · PowerShell · EXE</summary>
 
+Eksperymentalna [konfiguracja Windows ROCm](../../docs/install/windows-rocm.md) obsługuje wybrane układy RDNA 2 RX 6000 z architekturą docelową `gfx1030`, `gfx1031` lub `gfx1032`; RX 6500 XT (`gfx1034`) nie jest obsługiwany. Oddzielnie przypięta wersja CTranslate2 zawiera natywne jądra `gfx1031` do transkrypcji na RX 6700 XT; konfiguracja sprawdza ich rzeczywiste wykonanie na GPU. Testy RX 6700 XT obejmują także natywne generowanie mowy w Torch i PyTorch Whisper. W ROCm 10 faster-whisper korzysta z osobnego procesu wnioskowania, zapewniając bezpieczny wybór CPU i przełączenie awaryjne na CPU. Inne karty i obciążenia podlegają ograniczeniom weryfikacji opisanym w przewodniku. Profile wydajności sprawdzają zmienione wybory silników w procesie potomnym offline przed ich zapisaniem, zachowując rozwiązanie zapasowe, gdy zainstalowane środowisko wykonawcze zawiedzie.
+
 <blockquote>
 
 **Stabilny · x64**<br />Windows 10/11 x64 · NVIDIA CUDA · AMD ROCm (opcja) · Procesor.
@@ -499,7 +501,7 @@ Aktualizujesz wersję 0.5.3 lub starszą (aplikacja Tauri)? [Zainstaluj nową ap
 | Pomoc w konfiguracji | [Rozwiązywanie problemów](../../docs/install/troubleshooting.md) · [Pobieranie modelu](../../docs/downloading-models.md) |
 | Przewodniki | [Dubbing z wieloma mówcami](../../docs/dubbing/multi-speaker-guide.md) · [Ekspresyjna mowa](../../docs/expressive-speech.md) · [Eksport dubbingu](../../docs/dubbing/export.md) |
 | Modele i jakość | [Przewodniki po silniku](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [Benchmarki](../../docs/benchmarks.md) |
-| Integracje | [Lokalny interfejs API](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [Przykłady](../../examples/README.md) |
+| Integracje | [CLI](../../docs/install/script.md#terminal-command) · [Lokalny interfejs API](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [Przykłady](../../examples/README.md) |
 | Aplikacje na telefon | [iOS i Android](../../docs/mobile.md) |
 | Rozwój | [Contributing](../../.github/CONTRIBUTING.md) ([podpisz umowę CLA](../../.github/CONTRIBUTING.md#contribution-licensing) przed pierwszym PR) · [Dziennik zmian](../../CHANGELOG.md) |
 

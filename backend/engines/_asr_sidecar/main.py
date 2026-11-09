@@ -24,7 +24,6 @@ import sys
 import traceback
 
 MAX_FRAME_BYTES = 64 * 1024 * 1024
-_model = None
 
 # The parent's cuDNN 8 preload lives in the parent PROCESS, and this is a child
 # with its own clean import path — so without this, an install whose side-loaded
@@ -43,6 +42,7 @@ except Exception:  # noqa: BLE001 — best-effort; never block the ready handsha
 
 
 def _send(stream, obj):
+    """Write one flushed JSON frame to the dedicated protocol stream."""
     body = json.dumps(obj, separators=(",", ":")).encode("utf-8")
     stream.write(struct.pack("!I", len(body)))
     stream.write(body)
@@ -50,6 +50,7 @@ def _send(stream, obj):
 
 
 def _recv(stream):
+    """Read one bounded request frame or return None at clean EOF."""
     header = stream.read(4)
     if len(header) < 4:
         return None
@@ -65,131 +66,21 @@ def _recv(stream):
     return json.loads(bytes(body).decode("utf-8"))
 
 
-# NOTE: keep this compute_type fallback in lockstep with
-# services/asr_backend.py:_compute_type_candidates / _is_compute_type_error.
-# This sidecar runs in a child proc with a clean import path, so we duplicate a
-# tiny copy rather than cross-importing the heavy services package (#551).
-def _ct_candidates(device):
-    override = os.environ.get("ASR_COMPUTE_TYPE")
-    if override:
-        return [override]
-    return ["float16", "int8_float16", "int8"] if device == "cuda" else ["int8", "float32"]
+# Keep these names at the entrypoint for existing integrations and tests.
+from engines._asr_sidecar.runtime import get_model as _get_model
+from engines._asr_sidecar.decoding import transcribe as _decode
+from engines._asr_sidecar.runtime import execution_evidence
 
 
-def _is_ct_error(msg):
-    low = msg.lower()
-    return "compute type" in low or "efficient float16" in low
-
-
-def _get_model():
-    global _model
-    if _model is None:
-        from core.execstack import ensure_ctranslate2_loadable
-
-        loadable, detail = ensure_ctranslate2_loadable()
-        if not loadable:
-            raise ImportError(f"CTranslate2 is unavailable to faster-whisper: {detail}")
-        from core.windows_rocm.ct2 import prepare_import
-
-        prepare_import()
-        from faster_whisper import WhisperModel
-        # Same weights as in-process faster-whisper: ASR_MODEL_FASTER selects
-        # for BOTH variants, ASR_MODEL_FW stays as a sidecar-only override.
-        # Before this, the sidecar read only ASR_MODEL_FW while the download
-        # preflight read ASR_MODEL_FASTER — set one and the other variant (or
-        # the preflight) quietly used a different model.
-        name = (
-            os.environ.get("ASR_MODEL_FW")
-            or os.environ.get("ASR_MODEL_FASTER")
-            or "large-v3"
-        )
-        try:
-            # The probe honors the user compute-device override and the
-            # pinned Windows HIP CT2 boundary — the child must agree with
-            # the parent's device decision, not re-derive its own.
-            from core.windows_rocm.ct2 import gpu_device_available
-            device = "cuda" if gpu_device_available() else "cpu"
-        except Exception:
-            # Fail SAFE: guessing "cuda" from torch here would bypass a cpu
-            # override and hand CTranslate2 HIP-flavoured cuda on ROCm
-            # (#1529). CPU always works; say why in the sidecar log.
-            print("asr-sidecar: device probe failed — using cpu", file=sys.stderr, flush=True)
-            device = "cpu"
-        # Degrade fp16 → int8 rather than crash on GPUs without efficient fp16
-        # (older Maxwell/Pascal, GTX 16xx, CTranslate2/cuDNN mismatch) (#551).
-        last_err = None
-        for compute in _ct_candidates(device):
-            try:
-                _model = WhisperModel(name, device=device, compute_type=compute)
-                break
-            except (ValueError, RuntimeError) as e:
-                last_err = e
-                if _is_ct_error(str(e)):
-                    continue
-                raise
-        else:
-            raise last_err
-    return _model
-
-
-def _request_options(request_options):
-    """Validate per-request Whisper options (OpenAI-route language, prompt,
-    temperature, task). Strictly typed like the decode options: the parent is
-    trusted, but a malformed frame must fail loudly, not decode wrongly."""
-    options = request_options or {}
-    if not isinstance(options, dict):
-        raise ValueError("Invalid ASR request options")
-    for key, value in options.items():
-        if key == "language":
-            ok = isinstance(value, str) and 0 < len(value) <= 32
-        elif key == "initial_prompt":
-            ok = isinstance(value, str) and len(value) <= 4096
-        elif key == "temperature":
-            ok = type(value) in (int, float) and 0 <= value <= 1
-        elif key == "task":
-            ok = value in ("transcribe", "translate")
-        else:
-            ok = False
-        if not ok:
-            raise ValueError("Invalid ASR request options")
-    return options
-
-
-def _transcribe(audio_path, word_timestamps, decode_options=None, request_options=None):
-    options = decode_options or {}
-    if not isinstance(options, dict) or any(
-        key not in {"beam_size", "best_of"}
-        or type(value) is not int or not 1 <= value <= 8
-        for key, value in options.items()
-    ):
-        raise ValueError("Invalid ASR decoding options")
-    extra = _request_options(request_options)
-    model = _get_model()
-    segments, info = model.transcribe(
-        audio_path, word_timestamps=word_timestamps,
-        # Same as services.asr_backend.WHISPER_LONG_FORM_OPTIONS: decode each
-        # 30 s window on its own so one bad window cannot repeat to the end.
-        condition_on_previous_text=False,
-        **options, **extra,
-    )
-    out = []
-    for s in segments:
-        seg = {"start": float(s.start), "end": float(s.end), "text": s.text}
-        if word_timestamps and getattr(s, "words", None):
-            seg["words"] = [
-                {"word": w.word, "start": float(w.start), "end": float(w.end),
-                 "probability": float(getattr(w, "probability", 0.0))}
-                for w in s.words
-            ]
-        out.append(seg)
-    return {
-        "segments": out,
-        "text": " ".join(s["text"].strip() for s in out).strip(),
-        "language": getattr(info, "language", "unknown"),
-    }
+def _transcribe(audio_path, word_timestamps, decode_options=None,
+                request_options=None, configuration=None):
+    """Decode one frame through the shared, replaceable model loader."""
+    return _decode(_get_model, audio_path, word_timestamps, decode_options,
+                   request_options, configuration)
 
 
 def main() -> int:
+    """Serve ASR requests while keeping native stdout outside protocol frames."""
     stdin = sys.stdin.buffer
     # Frames go down a PRIVATE fd, and fd 1 is pointed at stderr (#1428).
     #
@@ -225,9 +116,10 @@ def main() -> int:
             elif op == "transcribe":
                 result = _transcribe(
                     msg.get("audio_path"), bool(msg.get("word_timestamps", True)),
-                    msg.get("decode_options"), msg.get("request_options"),
+                    msg.get("decode_options"), msg.get("request_options"), msg.get("configuration"),
                 )
-                _send(stdout, {"op": "segments", "result": result})
+                _send(stdout, {"op": "segments", "result": result,
+                               **({"execution": execution_evidence()} if msg.get("configuration") is not None else {})})
             elif op == "shutdown":
                 return 0
             else:

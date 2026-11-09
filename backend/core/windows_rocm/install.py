@@ -12,11 +12,13 @@ from pathlib import Path
 
 from .artifacts import checked_wheel, download_archive
 from .failures import VerificationFailure, failure_report
-from .recipe import load_recipe, recipe_identity, validate_target
+from .recipe import ct2_supported, load_recipe, recipe_identity, validate_target
+from .repair_selection import validate_repair_selection
 from .verify import PROJECT_ROOT, verify_environment
 
 #: Packages the overlay replaces; everything else stays at its installed version.
-_OVERLAID = ("torch", "torchaudio", "torchvision", "ctranslate2", "rocm", "triton")
+_OVERLAID = ("torch", "torchaudio", "torchvision", "ctranslate2", "rocm", "triton",
+             "amd-torch", "amd-torchvision")
 
 
 def _normalized(name):
@@ -83,22 +85,97 @@ def run_install(command):
         raise RuntimeError(f"Windows ROCm package installation failed: {exc}") from exc
 
 
+def _cpu_ct2_missing():
+    """Whether this environment has no CTranslate2 at all.
+
+    A device without a pinned HIP CT2 (gfx1010) installs none, so readiness can be
+    true while ``ctranslate2`` is absent — and then ``faster-whisper`` cannot
+    import, so ASR and the CPU fallback are both gone. Metadata only; no import.
+    """
+    try:
+        metadata.version("ctranslate2")
+        return False
+    except metadata.PackageNotFoundError:
+        return True
+
+
+def locked_ct2_requirement(uv):
+    """The lockfile's CTranslate2 requirement lines, with markers and artifact hashes.
+
+    Asking ``uv export`` keeps environment-marker evaluation in uv's hands
+    instead of reimplementing it here (this module is stdlib-only), and keeps
+    the artifact on the lockfile's supply-chain review instead of whatever PyPI
+    serves today: the returned ``--hash`` options make uv reject any file the
+    lock did not record. A bare ``ctranslate2`` would install the current release.
+    """
+    try:
+        result = subprocess.run(
+            [str(uv), "export", "--frozen", "--no-dev", "--format", "requirements-txt"],
+            cwd=PROJECT_ROOT, capture_output=True, text=True, errors="replace",
+            check=True, timeout=600,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError(f"Windows ROCm could not read the locked CTranslate2 version: {exc}") from exc
+    # Keep every marker branch: uv evaluates the markers for this interpreter at
+    # install time, so this module never has to.
+    entries = [" ".join(line.split()) for line in result.stdout.replace("\\\n", " ").splitlines()
+               if line.startswith("ctranslate2==")]
+    if any("--hash=sha256:" not in entry for entry in entries):
+        raise RuntimeError("The locked CTranslate2 pin carries no artifact hashes")
+    if entries:
+        return "\n".join(entries)
+    raise RuntimeError("The lockfile pins no CTranslate2 the CPU fallback could install")
+
+
+def _install_locked_cpu_ct2(uv, folder, constraints):
+    """Install exactly the locked, hash-checked CPU CTranslate2, nothing else.
+
+    The overlay excludes ctranslate2 from the frozen sync along with its HIP
+    replacement, so a recipe without a HIP build owes the environment this one
+    package; its dependencies stay at their installed versions via constraints.
+    """
+    requirements = Path(folder) / "cpu-ctranslate2.txt"
+    requirements.write_text(locked_ct2_requirement(uv) + "\n", encoding="utf-8")
+    run_install(install_command(uv, ["-r", str(requirements)], ["ctranslate2"], constraints))
+
+
 def provision(uv):
     """Reuse strictly verified installs; repair only confirmed package failures."""
     validate_target()
+    recipe = load_recipe()
+    # A recipe that pins no HIP CTranslate2 still owes the environment a working
+    # CPU one: the frozen sync skipped ctranslate2 along with its HIP replacement.
+    # This has to happen BEFORE the healthy-runtime early return below, otherwise
+    # an existing gfx1010 overlay that verifies clean keeps no CTranslate2 at all
+    # and every faster-whisper path stays unusable. An environment that already
+    # has the package is left untouched, so a healthy install still mutates nothing.
+    cpu_ct2_missing = not ct2_supported(recipe) and _cpu_ct2_missing()
     try:
+        report = verify_environment()
+        if not cpu_ct2_missing:
+            return report
+        # The overlay itself is healthy; only the CPU speech dependency is absent.
+        # Reinstalling AMD wheels here would be an unnecessary multi-GB download,
+        # so repair exactly the one missing package and re-verify.
+        with tempfile.TemporaryDirectory(prefix="voicestudio-windows-rocm-") as temporary:
+            constraints = Path(temporary) / "constraints.txt"
+            constraints.write_text(constraints_text(), encoding="utf-8")
+            _install_locked_cpu_ct2(uv, temporary, constraints)
         return verify_environment()
     except VerificationFailure as exc:
         if not exc.repairable:
             raise
-    recipe = load_recipe()
+    validate_repair_selection(recipe)
     # Verify CT2 before changing any package, and discard downloads on any failure.
+    # A device without a pinned HIP CTranslate2 (gfx1010) has nothing to pre-verify.
     with tempfile.TemporaryDirectory(prefix="voicestudio-windows-rocm-") as temporary:
         folder = Path(temporary)
-        archive = folder / "ctranslate2.zip"
-        ct2 = recipe["ctranslate2"]
-        download_archive(ct2["archive_url"], archive, ct2["archive_size"])
-        wheel = checked_wheel(archive, folder, ct2)
+        wheel = None
+        if ct2_supported(recipe):
+            archive = folder / "ctranslate2.zip"
+            ct2 = recipe["ctranslate2"]
+            download_archive(ct2["archive_url"], archive, ct2["archive_size"])
+            wheel = checked_wheel(archive, folder, ct2)
         constraints = folder / "constraints.txt"
         constraints.write_text(constraints_text(), encoding="utf-8")
         requirements = folder / "rocm-requirements.txt"
@@ -108,9 +185,14 @@ def provision(uv):
             uv, ["-r", str(requirements)], [pin.split("==")[0] for pin in pins], constraints,
             build_isolation_off=("rocm",),
         ))
-        # The CT2 wheel was hash-checked by checked_wheel; its dependencies stay
-        # at their installed versions through the same constraints.
-        run_install(install_command(uv, [str(wheel)], ["ctranslate2"], constraints))
+        if wheel is not None:
+            # The CT2 wheel was hash-checked by checked_wheel; its dependencies stay
+            # at their installed versions through the same constraints.
+            run_install(install_command(uv, [str(wheel)], ["ctranslate2"], constraints))
+        else:
+            # No HIP CT2 for this device; without the locked CPU build faster-whisper
+            # cannot import and even the CPU fallback is gone.
+            _install_locked_cpu_ct2(uv, folder, constraints)
     return verify_environment()
 
 

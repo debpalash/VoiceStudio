@@ -4,14 +4,15 @@ from __future__ import annotations
 import os
 
 from services.performance_budget import Candidate, hardware_snapshot, make_plan
+from services.performance_readiness import package_available, tts_installed
 
 
 def profile_plan(choice: str, overrides: dict, selections: dict) -> dict:
+    """Plan installed model selections within hardware budgets and explicit overrides."""
     from core import prefs
 
     from services import (
         diarization_runtime,
-        sherpa_dictation,
         translation_engines,
         tts_backend,
     )
@@ -66,7 +67,7 @@ def profile_plan(choice: str, overrides: dict, selections: dict) -> dict:
             if engine == "kittentts" and os.environ.get("OMNIVOICE_KITTENTTS_MODEL"):
                 continue
             cls = tts_backend.get_backend_class(engine)
-            if not cls.is_available()[0]:
+            if not tts_installed(engine):
                 continue
             routing = runtime_compute_profile(cls, detect_host_caps())
             if routing["routing_status"] == "unavailable":
@@ -116,7 +117,7 @@ def profile_plan(choice: str, overrides: dict, selections: dict) -> dict:
     if os.environ.get("OMNIVOICE_SHERPA_ASR_MODEL") or not prefs.get("dictation.enabled", True):
         if "dictation" in current:
             fixed["dictation"] = current["dictation"]
-    elif sherpa_dictation.sherpa_available()[0]:
+    elif package_available("sherpa_onnx"):
         inventory["dictation"] = [
             Candidate(m.kind, m.id, 4 if "parakeet-tdt-v3" in m.id else
                       3 if "parakeet" in m.id else 2 if "bilingual" in m.id else 1,

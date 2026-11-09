@@ -1,0 +1,28 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "voicestudio-cli"
+dynamic = ["version"]
+description = "Unified VoiceStudio desktop launcher and HTTP command-line client"
+requires-python = ">=3.11"
+license = "AGPL-3.0-only"
+dependencies = []
+
+[project.scripts]
+voicestudio = "voicestudio_cli.__main__:main"
+
+[tool.hatch.metadata.hooks.custom]
+
+[tool.hatch.build.targets.wheel]
+packages = ["voicestudio_cli"]
+
+[tool.hatch.build.hooks.custom]
+
+[tool.hatch.build.targets.sdist]
+include = ["voicestudio_cli", "frozen_main.py", "hatch_build.py", "pyproject.toml", "package.json", "LICENSE"]
+
+[tool.hatch.build.targets.sdist.force-include]
+"../package.json" = "package.json"
+"../LICENSE" = "LICENSE"

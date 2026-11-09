@@ -85,7 +85,7 @@ package() {
   cat > "$pkgdir/usr/bin/voicestudio" <<'EOF'
 #!/bin/sh
 export VOICESTUDIO_DISABLE_UPDATER=1
-exec /opt/VoiceStudio/voicestudio-electron "$@"
+exec /opt/VoiceStudio/voicestudio "$@"
 EOF
   chmod 755 "$pkgdir/usr/bin/voicestudio"
 
