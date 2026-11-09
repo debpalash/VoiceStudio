@@ -539,8 +539,11 @@ test-only PR. Docker Hub overview edits still publish through the small
     proxy, bounded to 15 seconds, with no upload; and Hugging Face model downloads
     (gated on install state or an explicit user action).
   - **Windows ROCm setup the user explicitly selects** (owner-approved
-    2026-10-26): the matched AMD SDK and PyTorch wheels from `repo.radeon.com`,
-    and the pinned HIP CTranslate2 archive from OpenNMT/CTranslate2 GitHub
+    2026-10-26; extended 2026-11-09): the matched AMD SDK and PyTorch wheels
+    from `repo.radeon.com` and `stable.repo.amd.com/rocm/whl-next/`, the pinned
+    HIP CTranslate2 archive from OpenNMT/CTranslate2 GitHub Releases, and the
+    HIP CTranslate2 wheels this repository builds with
+    `.github/workflows/ct2-rocm-windows.yml` and publishes on its own GitHub
     Releases. Every artifact is SHA-256 pinned in
     `scripts/windows-rocm-recipe.json` and verified before use. This opt-in
     installer keeps every other package at its installed (locked) version and
