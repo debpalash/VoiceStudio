@@ -1,0 +1,169 @@
+# Recipe contracts for the opt-in Windows ROCm installer.
+#
+# What this can and cannot prove, stated up front so a green run is never read
+# as hardware validation:
+#
+#   * It CAN prove, on a plain Linux runner, that `scripts/windows-rocm-recipe.json`
+#     still parses under the same loader the installer uses, that every AMD
+#     artifact a selected overlay would install carries a 64-hex SHA-256 pin,
+#     that overlay sources stay on the two approved AMD hosts, and that a GPU
+#     PCI id maps to the architecture whose device wheels it names.
+#   * It CANNOT prove that any GPU runs a kernel. There is no Windows runner with
+#     an AMD GPU in hosted CI, so `--verify-only`, the model-free probe and the
+#     real TTS render stay a documented local gate (docs/install/windows-rocm.md),
+#     not a CI claim.
+#
+# The reason this exists at all is failure mode #1 for this file: a device wheel
+# added without its hash, or a recipe whose `gpu_architectures` no longer matches
+# the `devices` it ships. Both are platform-independent data errors that would
+# otherwise only surface on a user's Windows machine after a ~1.5 GB download.
+
+name: Windows ROCm recipe
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - scripts/windows-rocm-recipe.json
+      - backend/core/windows_rocm/**
+      - backend/core/device_caps.py
+      - tests/test_windows_rocm_*.py
+      - docs/install/windows-rocm.md
+      - .github/workflows/windows-rocm-recipe.yml
+  push:
+    branches: [main]
+    paths:
+      - scripts/windows-rocm-recipe.json
+      - backend/core/windows_rocm/**
+      - backend/core/device_caps.py
+      - tests/test_windows_rocm_*.py
+      - docs/install/windows-rocm.md
+      - .github/workflows/windows-rocm-recipe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-rocm-recipe-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  contracts:
+    name: Recipe contracts (no GPU)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+
+      # Only pytest (and PyYAML, which some guards import) is needed. These
+      # tests import the recipe/installer modules and never import torch, so no
+      # ROCm or CUDA wheel is installed on the runner. The two ignored modules
+      # need a real torch/numpy and are covered by the main CI job instead.
+      - name: Install test dependencies
+        run: python -m pip install --disable-pip-version-check pytest pyyaml numpy
+
+      # An explicit file list, not a glob: the exclusions are the modules that
+      # need a real torch/numpy/soundfile stack or the whole app import graph
+      # (`asr_runtime`, `runtime_boundaries`, `indextts_optin`). The main CI job
+      # runs those with the project's real dependencies, so nothing is dropped
+      # from CI overall — this job only owns the recipe and probe contracts.
+      - name: Windows ROCm recipe tests
+        env:
+          PYTHONPATH: backend
+          PYTHONUTF8: "1"
+        run: |
+          python -m pytest \
+            tests/test_windows_rocm_gfx1010.py \
+            tests/test_windows_rocm_rocm10.py \
+            tests/test_windows_rocm_install.py \
+            tests/test_windows_rocm_provision.py \
+            tests/test_windows_rocm_verification.py \
+            tests/test_windows_rocm_native_integrity.py \
+            tests/test_windows_rocm_sdk_integrity.py \
+            tests/test_windows_rocm_failure_policy.py \
+            tests/test_windows_rocm_guards.py \
+            tests/test_windows_rocm_heavy_gates.py \
+            tests/test_windows_rocm_import_exceptions.py \
+            tests/test_windows_rocm_native_imports.py \
+            tests/test_windows_rocm_prerequisites.py \
+            tests/test_windows_rocm_smoke_local.py \
+            -q --tb=short
+
+      # A separate, explicit assertion rather than only the test suite, so the
+      # invariant is visible in the job log when it breaks: every overlay the
+      # recipe declares must be fully hash-pinned and internally consistent.
+      - name: Every declared overlay is hash-pinned and consistent
+        env:
+          PYTHONPATH: backend
+          PYTHONUTF8: "1"
+        run: |
+          python - <<'PY'
+          import json
+          import re
+          import sys
+
+          from core.windows_rocm import install, recipe as recipes
+
+          data = json.loads(recipes.RECIPE_PATH.read_text(encoding="utf-8"))
+          variant = data["rocm10"]
+          archs = set(variant["devices"])
+          failures = []
+          if not archs:
+              failures.append("rocm10 overlay declares no devices")
+
+          for arch in sorted(archs):
+              selected = recipes.load_recipe(architecture=arch)
+              if selected["gpu_architectures"] != [arch]:
+                  failures.append(f"{arch}: selection returned {selected['gpu_architectures']}")
+              for line in install.hashed_requirements(selected).splitlines():
+                  url, digest = line.split(" --hash=sha256:")
+                  if not re.fullmatch(r"[0-9a-f]{64}", digest):
+                      failures.append(f"{arch}: unpinned artifact {url}")
+                  if not url.startswith("https://stable.repo.amd.com/rocm/whl-next/"):
+                      failures.append(f"{arch}: unexpected source {url}")
+              foreign = [
+                  pin for pin in selected["runtime"]["packages"]
+                  if re.search(r"(rocm-sdk-device|amd-torch-device|amd-torchvision-device)-", pin)
+                  and f"-{arch}==" not in pin
+              ]
+              if foreign:
+                  failures.append(f"{arch}: foreign device packages {foreign}")
+              print(f"{arch}: {len(selected['runtime']['packages'])} pinned runtime packages, "
+                    f"ct2={recipes.ct2_supported(selected)}")
+
+          # The stock 7.2.1 matrix must not silently gain an overlay architecture.
+          # Read it from the JSON, not through load_recipe(None): that call
+          # auto-detects the host GPU, so on an RDNA 1 machine it would return
+          # the overlay and the check would compare the overlay with itself.
+          overlap = archs & set(data["gpu_architectures"])
+          if overlap:
+              failures.append(f"overlay architectures also in the 7.2.1 matrix: {sorted(overlap)}")
+
+          if failures:
+              print("\n".join(failures), file=sys.stderr)
+              raise SystemExit(1)
+          print("every declared overlay is hash-pinned, single-architecture and sourced from AMD")
+          PY
+
+      - name: Docs mention the recipes they describe
+        run: |
+          set -euo pipefail
+          doc=docs/install/windows-rocm.md
+          test -f "$doc"
+          # A recipe change that leaves the install guide describing another
+          # architecture is the drift this repo has hit before.
+          for arch in gfx1010 gfx1030 gfx1031 gfx1032; do
+            grep -q "$arch" "$doc" || { echo "::error::$doc does not mention $arch"; exit 1; }
+          done
+          grep -q "ct2_supported" "$doc" || { echo "::error::$doc must state the CTranslate2 boundary"; exit 1; }

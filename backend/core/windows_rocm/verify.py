@@ -7,13 +7,14 @@ import sys
 from pathlib import Path
 
 from .failures import VerificationFailure
-from .recipe import expected_versions, load_recipe
+from .recipe import ct2_supported, expected_versions, load_recipe
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 def validate_report(report, recipe):
     """Do not infer readiness from exit zero, CPU fallback, or stale versions."""
+    verified_ct2 = ct2_supported(recipe)
     requirements = (
         report.get("ready") is True,
         report.get("scope") == "model-free",
@@ -26,9 +27,17 @@ def validate_report(report, recipe):
         report.get("torch_gpu") is True,
         report.get("gpu_architecture") in recipe["gpu_architectures"],
         report.get("kernel_result") == 4.0,
-        isinstance(report.get("ct2_gpu_count"), int) and report["ct2_gpu_count"] > 0,
-        "float16" in report.get("ct2_compute_types", []),
-        report.get("ct2_binary_sha256") == recipe["ctranslate2"]["binary_sha256"],
+        # The ROCm 10 recipe ships no verified HIP CTranslate2, so it must report
+        # that (and none) rather than leave the CT2 fields to chance. A recipe
+        # that does pin one keeps the strict CT2 requirements unchanged; the
+        # field itself is optional there so a 7.2.1-era probe stays valid.
+        report.get("ct2_supported", verified_ct2) is verified_ct2,
+        (isinstance(report.get("ct2_gpu_count"), int) and report["ct2_gpu_count"] > 0
+         and "float16" in report.get("ct2_compute_types", [])
+         and report.get("ct2_binary_sha256") == recipe["ctranslate2"]["binary_sha256"])
+        if verified_ct2 else
+        (report.get("ct2_gpu_count") == 0 and report.get("ct2_compute_types") == []
+         and report.get("ct2_binary_sha256") is None),
     )
     if not all(requirements):
         raise VerificationFailure(
