@@ -2655,9 +2655,11 @@
     "dub_projects": "Nasynchronisatieprojecten",
     "dictation_history": "Dicteergeschiedenis",
     "pro": "Pro",
+    "pro_upsell": "Items met Pro worden gesynchroniseerd met VoiceStudio Pro.",
     "use_choices_of": "Dezelfde keuzes gebruiken als {{device}}",
     "devices": "Apparaten",
     "this_device": "Dit apparaat",
+    "last_active": "Laatst actief: {{time}}",
     "remove_device": "Verwijderen"
   },
   "firstrun": {

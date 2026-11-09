@@ -2655,9 +2655,11 @@
     "dub_projects": "配音專案",
     "dictation_history": "聽寫記錄",
     "pro": "Pro",
+    "pro_upsell": "標有 Pro 的項目需 VoiceStudio Pro 才能同步。",
     "use_choices_of": "使用與 {{device}} 相同的選擇",
     "devices": "裝置",
     "this_device": "此裝置",
+    "last_active": "最近活動：{{time}}",
     "remove_device": "移除"
   },
   "firstrun": {

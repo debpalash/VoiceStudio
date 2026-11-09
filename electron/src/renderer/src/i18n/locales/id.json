@@ -2655,9 +2655,11 @@
     "dub_projects": "Proyek sulih suara",
     "dictation_history": "Riwayat dikte",
     "pro": "Pro",
+    "pro_upsell": "Item bertanda Pro disinkronkan dengan VoiceStudio Pro.",
     "use_choices_of": "Gunakan pilihan yang sama dengan {{device}}",
     "devices": "Perangkat",
     "this_device": "Perangkat ini",
+    "last_active": "Terakhir aktif: {{time}}",
     "remove_device": "Hapus"
   },
   "firstrun": {

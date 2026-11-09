@@ -2736,9 +2736,11 @@
     "dub_projects": "Dubbing projects",
     "dictation_history": "Dictation history",
     "pro": "Pro",
+    "pro_upsell": "Items marked Pro sync with VoiceStudio Pro.",
     "use_choices_of": "Use the same choices as {{device}}",
     "devices": "Devices",
     "this_device": "This device",
+    "last_active": "Last active: {{time}}",
     "remove_device": "Remove"
   },
   "firstrun": {

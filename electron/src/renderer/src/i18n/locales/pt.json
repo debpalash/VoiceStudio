@@ -2657,9 +2657,11 @@
     "dub_projects": "Projetos de dobragem",
     "dictation_history": "Histórico de ditado",
     "pro": "Pro",
+    "pro_upsell": "Os itens marcados como Pro sincronizam com o VoiceStudio Pro.",
     "use_choices_of": "Usar as mesmas escolhas de {{device}}",
     "devices": "Dispositivos",
     "this_device": "Este dispositivo",
+    "last_active": "Última atividade: {{time}}",
     "remove_device": "Remover"
   },
   "firstrun": {

@@ -10,7 +10,11 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-vi.mock('./cloud-sync-panel', () => ({ CloudSyncPanel: () => <div>sync-panel</div> }));
+vi.mock('./cloud-sync-panel', () => ({
+  CloudSyncPanel: ({ planUrl }: { planUrl?: string | null }) => (
+    <div data-plan-url={planUrl ?? ''}>sync-panel</div>
+  ),
+}));
 
 import { AccountSettings } from './account-settings';
 
@@ -24,6 +28,7 @@ const base = {
   signingIn: false,
   notice: null as string | null,
   profile: null as unknown,
+  links: null as { profile: string; plan: string; deletion: string } | null,
 };
 function setup(state: Partial<typeof base>) {
   let push: (s: unknown) => void = () => {};
@@ -263,4 +268,19 @@ it('notices render as padded callouts outside the settings panel', async () => {
   expect(notice.closest('section')).toBeNull();
   expect(notice.className).toMatch(/px-4/);
   expect(screen.getByText('account.not_remembered').closest('section')).toBeNull();
+});
+
+it('collapses the sync list while Cloud sync is off and passes the plan link when on', async () => {
+  const { push } = setup({ signedIn: true, syncEnabled: false });
+  expect(await screen.findByRole('switch', { name: 'account.sync' })).not.toBeChecked();
+  expect(screen.queryByText('sync-panel')).toBeNull();
+  push({
+    signedIn: true,
+    syncEnabled: true,
+    links: { profile: 'p', plan: 'https://plan.example', deletion: 'd' },
+  });
+  expect(await screen.findByText('sync-panel')).toHaveAttribute(
+    'data-plan-url',
+    'https://plan.example',
+  );
 });

@@ -2655,9 +2655,11 @@
     "dub_projects": "吹き替えプロジェクト",
     "dictation_history": "音声入力の履歴",
     "pro": "Pro",
+    "pro_upsell": "Pro と表示された項目は VoiceStudio Pro で同期されます。",
     "use_choices_of": "{{device}} と同じ選択を使う",
     "devices": "デバイス",
     "this_device": "このデバイス",
+    "last_active": "最終アクティブ: {{time}}",
     "remove_device": "削除"
   },
   "firstrun": {
