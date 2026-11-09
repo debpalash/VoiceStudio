@@ -40,6 +40,10 @@ microphone interface; if VoiceStudio cannot hear you, connect it once:
 sudo snap connect voicestudio:audio-record
 ```
 
+The snap runs through XWayland by default because native Wayland crashed it on
+some GNOME releases. To try native Wayland, launch it with
+`VOICESTUDIO_SNAP_OZONE_PLATFORM=wayland voicestudio`.
+
 <a id="install-appimage"></a>
 
 Download a package from the
