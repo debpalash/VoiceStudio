@@ -36,6 +36,7 @@ from services.dub_batching import (
 )
 from services.tts_backend import (
     active_backend_id, ensure_active_engine_licence, resolve_generation_backend,
+    seed_engine_call,
 )
 
 router = APIRouter(dependencies=[Depends(require_consumer_reads_admin_writes)])
@@ -614,8 +615,8 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
                 try:
                     if backend is None:
                         raise RuntimeError("the local TTS fallback was not prepared")
-                    if voice["seed"] is not None:
-                        torch.manual_seed(voice["seed"] + i)
+                    # The voice's seed, as on the native batch path: one
+                    # designed speaker across every segment (#3730).
                     audio_out = backend.generate(
                         text=text, language=lang,
                         ref_audio=voice["ref_audio"], ref_text=voice["ref_text"],
@@ -623,6 +624,7 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
                         duration=dur, num_step=_batch_num_step,
                         guidance_scale=2.0, speed=1.0,
                         denoise=True, postprocess_output=_batch_postprocess,
+                        **seed_engine_call(voice["seed"], backend),
                     )
                     if not getattr(backend, "applies_own_mastering", False):
                         audio_out = apply_mastering(audio_out, sample_rate=sr)
