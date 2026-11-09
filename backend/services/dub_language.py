@@ -64,6 +64,7 @@ def asr_source_language(source_language: str | None, backend_id: str | None) -> 
 _CODE_ALIASES = {
     "fil": "tl",
     "iw": "he",
+    "ji": "yi",
     "jv": "jw",
     "in": "id",
     "ara": "ar",
@@ -291,7 +292,7 @@ def detected_source_language(value: str | None) -> str | None:
     # A name with spaces ("standard arabic", "haitian creole") is a name,
     # never a code: resolve it whole, or admit it is unknown.
     if " " in text:
-        return _NAME_ALIASES.get(text)
+        return _NAME_ALIASES.get(text) or _vocabulary_language(text)
     code = text.replace("_", "-")
     if code in _UNKNOWN_VALUES:
         return None
@@ -327,4 +328,20 @@ def detected_source_language(value: str | None) -> str | None:
         if alias is not None:
             return alias
     # Names match whole: "myanmar-english" is English, not Burmese.
-    return _NAME_ALIASES.get(code)
+    return _NAME_ALIASES.get(code) or _vocabulary_language(code)
+
+
+def _vocabulary_language(name: str) -> str | None:
+    """A whole language name from the bundled picker vocabulary ("kirghiz",
+    "panjabi", "moroccan arabic", "portuguese (brazil)") as its dub code,
+    or ``None``. Only a code that is, or explicitly means, a dub language
+    counts, so a known name never turns into a neighbouring language."""
+    from core.language_variants import VARIANT_CODES
+    from omnivoice.utils.lang_map import LANG_NAME_TO_ID
+
+    code = VARIANT_CODES.get(name) or LANG_NAME_TO_ID.get(name)
+    if code is None:
+        return None
+    if code in DUB_SOURCE_LANG_CODES:
+        return code
+    return _CODE_ALIASES.get(code) or macrolanguage_of(code)
