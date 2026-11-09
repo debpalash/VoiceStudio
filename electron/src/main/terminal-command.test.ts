@@ -33,6 +33,12 @@ function fixture() {
   return { home, resources, path: '/usr/bin', platform: 'darwin' as const };
 }
 
+// The terminal command is a macOS/Linux feature (Windows installers own PATH,
+// and `terminalCommandStatus` reports Windows unsupported). These cases check
+// POSIX symlink text and `:`-separated PATH on the real filesystem, so they
+// run on POSIX hosts only.
+const posixTest = test.skipIf(process.platform === 'win32');
+
 test('startup links the bundled CLI without touching shell profiles', () => {
   const f = fixture();
   writeFileSync(join(f.home, '.zshrc'), '# existing preferences\n');
@@ -74,7 +80,7 @@ test('macOS gets a zsh profile even when the user has none', () => {
   );
 });
 
-test('preserves custom wrappers and commands belonging to uv or another installation', () => {
+posixTest('preserves custom wrappers and commands belonging to uv or another installation', () => {
   const f = fixture();
   mkdirSync(join(f.home, '.local/bin'), { recursive: true });
   const command = join(f.home, '.local/bin/voicestudio');
@@ -120,7 +126,7 @@ test('AppImage links the persistent image, rather than its temporary mount', () 
   expect(terminalCommandStatus({ ...f, platform: 'win32' }).supported).toBe(false);
 });
 
-test('a live relative link is kept, whatever the working directory', () => {
+posixTest('a live relative link is kept, whatever the working directory', () => {
   const f = fixture();
   const appImage = join(f.home, 'Apps/VoiceStudio-new.AppImage');
   mkdirSync(join(f.home, 'Apps'));
@@ -162,7 +168,7 @@ test('first launch makes the command work in new terminals, like the installers 
   expect(existsSync(state)).toBe(true);
 });
 
-test('first launch leaves profiles alone when new shells already find the command', () => {
+posixTest('first launch leaves profiles alone when new shells already find the command', () => {
   const f = { ...fixture(), path: '' };
   f.path = `/usr/bin:${join(f.home, '.local/bin')}`;
   const state = join(f.home, 'terminal-command.json');
