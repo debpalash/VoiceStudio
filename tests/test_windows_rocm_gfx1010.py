@@ -6,19 +6,26 @@ What this suite pins down, and why each case exists:
   ``rocm_agent_enumerator`` rather than guessed from a product name;
 * that the gfx1010 device wheels are pinned by content like every other
   artifact, and that a gfx1030 id does not leak a gfx1030 wheel into it;
-* that the ROCm 10 overlay reports the absence of a verified HIP CTranslate2
-  instead of inheriting the 7.2.1 one. This is the load-bearing difference:
+* that gfx1010 reports the absence of a verified HIP CTranslate2 instead of
+  inheriting the 7.2.1 one or the RDNA 2 expanded-target build. This is the load-bearing difference:
   the 7.2.1 HIP binary *loads* on ROCm 10 and reports float16, but cannot
   launch a kernel (verified on an RX 5700: ``hipErrorInvalidImage``), so a
   recipe that assumed CT2 worked would advertise GPU ASR and then fail it.
 """
+import importlib
 import json
 import re
 from pathlib import Path
 
 import pytest
 
-from core.windows_rocm import install, recipe
+
+@pytest.fixture(autouse=True)
+def application_modules():
+    """Bind canonical modules for each test after any sys.modules replacement."""
+    global install, recipe
+    install = importlib.import_module("core.windows_rocm.install")
+    recipe = importlib.import_module("core.windows_rocm.recipe")
 
 
 GFX1010_PCI_IDS = ("7310", "7312", "7318", "7319", "731a", "731b", "731e", "731f")
