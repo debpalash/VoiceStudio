@@ -2,6 +2,7 @@ import {
   Component,
   useEffect,
   useState,
+  useSyncExternalStore,
   type ComponentProps,
   type ComponentType,
   type ErrorInfo,
@@ -48,30 +49,38 @@ export function retryableLazy<C extends ComponentType<any>>(
 ): (props: ComponentProps<C>) => ReactNode {
   let loaded: C | null = null;
   let pending: Promise<C> | null = null;
+  const listeners = new Set<() => void>();
+  const subscribe = (listener: () => void) => {
+    listeners.add(listener);
+    return () => void listeners.delete(listener);
+  };
+  const getSnapshot = () => loaded;
   const request = () =>
     (pending ??= load().then(
-      (module) => (loaded = module.default),
+      (module) => {
+        loaded = module.default;
+        listeners.forEach((listener) => listener());
+        return loaded;
+      },
       (error: unknown) => {
         pending = null;
         throw error;
       },
     ));
   return function RetryableLazy(props: ComponentProps<C>) {
-    const [, setReady] = useState(false);
+    // A shared store, so every mounted instance re-renders when the module
+    // resolves, including one that resolved between this render and its effect.
+    const Loaded = useSyncExternalStore(subscribe, getSnapshot) as ComponentType<any> | null;
     const [failure, setFailure] = useState<{ error: unknown } | null>(null);
     useEffect(() => {
-      if (loaded) return;
+      if (getSnapshot()) return;
       let live = true;
-      request().then(
-        () => live && setReady(true),
-        (error: unknown) => live && setFailure({ error }),
-      );
+      request().catch((error: unknown) => live && setFailure({ error }));
       return () => {
         live = false;
       };
     }, []);
     if (failure) throw failure.error; // the enclosing LazyBoundary renders its fallback
-    const Loaded = loaded as ComponentType<any> | null;
     return Loaded ? <Loaded {...props} /> : placeholder;
   };
 }

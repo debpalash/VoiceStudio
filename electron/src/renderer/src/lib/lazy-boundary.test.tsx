@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from '@testing-library/react';
-import { type ReactElement } from 'react';
+import { type ReactElement, useLayoutEffect } from 'react';
+import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
 import { LazyBoundary, retryableLazy } from './lazy-boundary';
 
@@ -57,4 +58,41 @@ it('mounts the loaded component in one commit, without suspending', async () => 
   cleanup();
   render(<Player />); // already loaded: renders on the first pass
   expect(screen.getByTestId('ok')).toBeTruthy();
+});
+
+it('shows a player whose module resolves between its render and its effect', async () => {
+  let resolve!: (module: { default: () => ReactElement }) => void;
+  const Player = retryableLazy<() => ReactElement>(
+    () => new Promise((done) => (resolve = done)),
+    <i data-testid="placeholder" />,
+  );
+  const host = document.createElement('div');
+  document.body.append(host);
+  const root = createRoot(host);
+  const env = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+  env.IS_REACT_ACT_ENVIRONMENT = false; // let passive effects run after microtasks
+  try {
+    root.render(<Player />);
+    await new Promise((done) => setTimeout(done, 20)); // first instance is loading
+    // The layout effect runs in the commit, before passive effects: the module
+    // resolves after the second instance rendered but before its effect runs.
+    const Resolve = () => {
+      useLayoutEffect(() => resolve({ default: () => <b data-testid="ok" /> }), []);
+      return null;
+    };
+    root.render(
+      <>
+        <Player />
+        <Player />
+        <Resolve />
+      </>,
+    );
+    await new Promise((done) => setTimeout(done, 50));
+    expect(host.querySelectorAll('[data-testid="ok"]').length).toBe(2);
+    expect(host.querySelector('[data-testid="placeholder"]')).toBeNull();
+  } finally {
+    root.unmount();
+    host.remove();
+    env.IS_REACT_ACT_ENVIRONMENT = true;
+  }
 });
