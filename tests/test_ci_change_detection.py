@@ -191,7 +191,7 @@ def test_legacy_electron_scope_remains_conservative_off_pull_requests(tmp_path, 
 
 def test_a_merge_group_is_compared_with_its_base(tmp_path):
     assert _detect(tmp_path, _mod("backend/x.py", "docs/a.md"), event="merge_group")[0] == "electron=false"
-    assert (tmp_path / "gh-args").read_text().split()[:2] == ["api", f"repos/o/r/compare/{'a' * 40}...{'b' * 40}"]
+    assert (tmp_path / "gh-args").read_text(encoding="utf-8").split()[:2] == ["api", f"repos/o/r/compare/{'a' * 40}...{'b' * 40}"]
     assert _detect(tmp_path, _mod("electron/src/main/updater.ts"), event="merge_group")[0] == "electron=true"
     assert _detect(tmp_path, [("removed", "README.md")], event="merge_group")[0] == "electron=true"
 

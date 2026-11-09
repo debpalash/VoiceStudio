@@ -119,7 +119,7 @@ def _key(repo: Path, event: str = "pull_request", content: str = ".", names: str
                           cwd=repo, env=env, capture_output=True, text=True)
     assert proc.returncode == 0, proc.stderr
     assert (repo.parent / "marker/passed").exists()
-    return dict(line.split("=", 1) for line in output.read_text().splitlines())
+    return dict(line.split("=", 1) for line in output.read_text(encoding="utf-8").splitlines())
 
 
 @needs_git
