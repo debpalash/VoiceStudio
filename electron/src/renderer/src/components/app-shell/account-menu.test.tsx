@@ -34,8 +34,9 @@ function bridgeFor(state: Record<string, unknown>) {
     signIn: vi.fn(async () => {}),
     signOut: vi.fn(async () => {}),
   };
-  mock.bridge = { account };
-  return account;
+  const files = { openExternal: vi.fn(async () => {}) };
+  mock.bridge = { account, files };
+  return Object.assign(account, { files });
 }
 async function show(state: Record<string, unknown>) {
   const account = bridgeFor(state);
@@ -76,6 +77,58 @@ it('the menu opens Account settings in the app, or signs out', async () => {
   fireEvent.click(screen.getByRole('button', { name: /Ana Lima/ }));
   fireEvent.click(await screen.findByText('account.sign_out'));
   expect(account.signOut).toHaveBeenCalled();
+});
+
+const withPlan = {
+  ...signedIn,
+  plan: {
+    planCode: 'free',
+    planName: 'Free',
+    planOrigin: 'default',
+    planEndsAt: null,
+    storageUsedBytes: 25 * 1024 * 1024,
+    storageLimitBytes: 100 * 1024 * 1024,
+    settingsSync: true,
+    proDesktop: false,
+  },
+  links: {
+    profile: 'https://voicestudio.example/settings/profile',
+    plan: 'https://voicestudio.example/settings/plan',
+    deletion: 'https://voicestudio.example/settings/delete',
+  },
+};
+
+it('the menu opens with an account card: photo, name, email, plan and storage', async () => {
+  await show({
+    ...withPlan,
+    profile: { ...withPlan.profile, avatarUrl: 'data:image/png;base64,AAAA' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Ana Lima' }));
+  const card = await screen.findByText('ana@example.com');
+  expect(card).toHaveAttribute('data-slot', 'account-email');
+  // The trigger and the card both show the cloud photo.
+  expect(document.querySelectorAll('img[src="data:image/png;base64,AAAA"]')).toHaveLength(2);
+  expect(screen.getByText('Free').closest('[data-plan]')).toHaveAttribute('data-plan', 'free');
+  expect(screen.getByText('account.storage_used')).toBeInTheDocument();
+  expect(screen.getByRole('progressbar', { name: 'account.storage' })).toHaveAttribute(
+    'aria-valuenow',
+    '25',
+  );
+});
+
+it('Manage plan opens the plan page in the browser', async () => {
+  const { account } = await show(withPlan);
+  fireEvent.click(screen.getByRole('button', { name: 'Ana Lima' }));
+  fireEvent.click(await screen.findByText('account.manage_plan'));
+  expect(account.files.openExternal).toHaveBeenCalledWith(withPlan.links.plan);
+});
+
+it('without plan details the card shows only the identity, and no Manage plan', async () => {
+  await show(signedIn);
+  fireEvent.click(screen.getByRole('button', { name: 'Ana Lima' }));
+  await screen.findByText('ana@example.com');
+  expect(document.querySelector('[data-slot="account-plan"]')).toBeNull();
+  expect(screen.queryByText('account.manage_plan')).toBeNull();
 });
 
 it('signed out: an icon-only Sign in button that starts the browser sign-in', async () => {
