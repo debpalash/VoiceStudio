@@ -1114,4 +1114,3 @@ export function registerUpdateIpc(
       .forEach((channel) => ipcMain.removeHandler(channel));
   };
 }
-// nix determinism probe
