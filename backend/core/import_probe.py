@@ -53,7 +53,8 @@ try:
     __import__(module)
 except BaseException as exc:
     out = {"ok": False, "type": type(exc).__name__, "message": str(exc),
-           "name": getattr(exc, "name", None)}
+           "name": getattr(exc, "name", None),
+           "mro": [c.__module__ + "." + c.__qualname__ for c in type(exc).__mro__]}
 else:
     out = {"ok": True}
 # fd 1 directly: works even where sys.stdout is None or was replaced on import.
@@ -136,12 +137,33 @@ def _run_child(module: str, prepare: str) -> dict | None:
     }
 
 
+def _builtin_type(verdict: dict) -> type | None:
+    """The nearest builtin exception class in the child's exception MRO.
+
+    A third-party subclass of ``ImportError``/``OSError``/``RuntimeError`` is
+    re-raised as that builtin, so callers' ``except`` clauses keep matching.
+    The bare ``Exception`` base does not count: it would match nothing useful.
+    """
+    mro = verdict.get("mro") or [f"builtins.{verdict.get('type') or ''}"]
+    for i, qualified in enumerate(mro):
+        module, _, name = str(qualified).rpartition(".")
+        if module != "builtins":
+            continue
+        exc_type = getattr(builtins, name, None)
+        if not (isinstance(exc_type, type) and issubclass(exc_type, Exception)):
+            continue
+        if exc_type is Exception and i > 0:
+            continue
+        return exc_type
+    return None
+
+
 def _raise(verdict: dict, module: str) -> None:
     kind, message = verdict.get("type") or "", verdict.get("message") or ""
-    exc_type = getattr(builtins, kind, None)
-    if isinstance(exc_type, type) and issubclass(exc_type, ImportError):
+    exc_type = _builtin_type(verdict)
+    if exc_type is not None and issubclass(exc_type, ImportError):
         raise exc_type(message, name=verdict.get("name") or module)
-    if isinstance(exc_type, type) and issubclass(exc_type, Exception):
+    if exc_type is not None:
         try:
             exc = exc_type(message)
         except Exception:  # noqa: BLE001 - a builtin needing other arguments

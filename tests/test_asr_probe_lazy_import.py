@@ -167,3 +167,35 @@ def test_verdicts_survive_a_reimport_of_the_module(fake_packages, monkeypatch):
     assert fresh is not import_probe
     monkeypatch.setattr(fresh, "_run_child", lambda *a: pytest.fail("spawned a child"))
     fresh.ensure_importable("vs_probe_reimport")
+
+
+def test_custom_exception_subclasses_keep_their_builtin_base(fake_packages):
+    """Third-party subclasses must stay catchable as the builtin they extend."""
+    fake_packages(
+        vs_probe_custom_import=(
+            "class Boom(ImportError):\n    pass\nraise Boom('dep missing', name='dep')\n"
+        ),
+        vs_probe_custom_os="class Boom(OSError):\n    pass\nraise Boom('dll refused')\n",
+        vs_probe_custom_plain="class Boom(Exception):\n    pass\nraise Boom('odd')\n",
+    )
+    with pytest.raises(ImportError, match="dep missing") as info:
+        import_probe.ensure_importable("vs_probe_custom_import")
+    assert info.value.name == "dep"
+    with pytest.raises(OSError, match="dll refused"):
+        import_probe.ensure_importable("vs_probe_custom_os")
+    with pytest.raises(import_probe.ImportProbeError, match="odd"):
+        import_probe.ensure_importable("vs_probe_custom_plain")
+
+
+@pytest.mark.parametrize("backend", [ab.NeMoASRBackend, ab.FunASRBackend])
+def test_probe_crash_never_escapes_is_available(monkeypatch, backend):
+    import types
+
+    monkeypatch.setitem(sys.modules, "torch", types.ModuleType("torch"))
+    monkeypatch.setattr(
+        import_probe,
+        "ensure_importable",
+        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("importing x crashed the interpreter")),
+    )
+    ok, reason = backend.is_available()
+    assert not ok and "crashed" in reason

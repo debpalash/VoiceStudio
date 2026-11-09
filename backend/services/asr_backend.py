@@ -1858,6 +1858,8 @@ class NeMoASRBackend(ASRBackend):
             return True, "ready"
         except ImportError as e:
             return False, f"nemo_toolkit[asr] not installed: {e}"
+        except Exception as e:  # noqa: BLE001 - native load failure / probe crash
+            return False, f"nemo_toolkit[asr] failed to load ({type(e).__name__}): {e}"
 
     def _ensure_model(self):
         if self._model is not None:
@@ -2408,6 +2410,8 @@ class FunASRBackend(ASRBackend):
             return True, "ready"
         except ImportError:
             return False, "funasr not installed. Install with: uv pip install funasr"
+        except Exception as e:  # noqa: BLE001 - native load failure / probe crash
+            return False, f"funasr failed to load ({type(e).__name__}): {e}"
 
     def _ensure_model(self):
         if self._model is not None:
