@@ -166,3 +166,21 @@ test('discovery is replaced atomically and cleared only by its owner', () => {
   clearDiscovery(directory, 100);
   expect(readFileSync(join(directory, DISCOVERY_FILE), 'utf8')).toBe('not json');
 });
+
+test('a relaunch keeps the current profile and launcher switches', () => {
+  const current = [
+    '/snap/voicestudio/1/voicestudio-desktop',
+    '--no-sandbox',
+    '--user-data-dir',
+    '/home/u/profile b',
+    '--ozone-platform=wayland',
+    '--original-process-start-time=1',
+  ];
+  expect(relaunchArguments(parseLaunchIntent(['x', '--voicestudio-background']), current)).toEqual([
+    '--no-sandbox',
+    '--user-data-dir=/home/u/profile b',
+    '--ozone-platform=wayland',
+    '--voicestudio-background',
+  ]);
+  expect(relaunchArguments(parseLaunchIntent(['x', '--voicestudio-stop']), current)).toEqual([]);
+});

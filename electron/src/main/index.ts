@@ -226,7 +226,8 @@ function beginOrderlyQuit(flushPersistence = true): Promise<void> {
     if (relaunchIntent) {
       // A launch arrived while this instance was stopping: start it afresh.
       // An AppImage's mount disappears with this process, so relaunch the image.
-      const args = relaunchArguments(relaunchIntent);
+      // Keep this process's profile and launcher switches (e.g. Snap's --no-sandbox).
+      const args = relaunchArguments(relaunchIntent, process.argv);
       app.relaunch(process.env.APPIMAGE ? { execPath: process.env.APPIMAGE, args } : { args });
     }
     app.quit();

@@ -31,9 +31,31 @@ export function parseLaunchIntent(argv: readonly string[]): LaunchIntent {
  * flags survive: Chromium adds its own switches to a second instance's argv,
  * and a Linux relaunch passes through the public command's argument parser.
  */
-export function relaunchArguments(intent: LaunchIntent): string[] {
+const KEPT_VALUE_SWITCHES = ['--user-data-dir', '--ozone-platform', '--force-device-scale-factor'];
+const KEPT_FLAGS = new Set(['--no-sandbox']);
+
+/**
+ * Launch settings of the current process that a relaunch must keep: the
+ * profile (`--user-data-dir`) and the launcher switches the terminal command
+ * and Snap rely on. Values are normalised to `--name=value`.
+ */
+export function keptLaunchSwitches(argv: readonly string[]): string[] {
+  const kept: string[] = [];
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (KEPT_FLAGS.has(arg)) kept.push(arg);
+    for (const name of KEPT_VALUE_SWITCHES) {
+      if (arg.startsWith(`${name}=`) && arg.length > name.length + 1) kept.push(arg);
+      else if (arg === name && argv[i + 1] && !argv[i + 1].startsWith('--')) kept.push(`${name}=${argv[++i]}`);
+    }
+  }
+  return [...new Set(kept)];
+}
+
+export function relaunchArguments(intent: LaunchIntent, currentArgv: readonly string[] = []): string[] {
   if (intent.stop) return [];
   return [
+    ...keptLaunchSwitches(currentArgv),
     ...(intent.headless ? [HEADLESS_FLAG] : []),
     ...(intent.checkUpdates ? [CHECK_UPDATES_FLAG] : []),
   ];
