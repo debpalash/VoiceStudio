@@ -34,6 +34,7 @@ class PhoneCloneUiTest {
     private val transcriptGate=CompletableDeferred<Unit>()
     private val cloneGate=CompletableDeferred<Unit>()
     private var cancelled=false
+    private var failure: Throwable?=null
     private lateinit var vm: StudioViewModel
     private lateinit var installed: List<File>
     private val audio=LocalAudio(FloatArray(12000) {.1f},24000)
@@ -64,6 +65,7 @@ class PhoneCloneUiTest {
             override suspend fun clone(model:PhoneModel,text:String,reference:LocalAudio,referenceText:String,progress:(Float)->Unit):LocalAudio {
                 assertEquals("Reference transcript",referenceText)
                 progress(.3f)
+                failure?.let {throw it}
                 try {cloneGate.await()} catch(e:CancellationException) {cancelled=true;throw e}
                 return audio
             }
@@ -98,6 +100,7 @@ class PhoneCloneUiTest {
         compose.onNode(hasText("Clone a voice") and hasClickAction()).assertIsDisplayed().assertIsEnabled().performClick()
         await {vm.phone.state.value.progress==0f}
     }
+    private fun anyKeepsScreenOn(view:android.view.View):Boolean=view.keepScreenOn||(view as? android.view.ViewGroup)?.let {g ->(0 until g.childCount).any {anyKeepsScreenOn(g.getChildAt(it))}}==true
     private fun await(predicate:()->Boolean) {compose.waitUntil(15000) {shadowOf(Looper.getMainLooper()).idle();predicate()}}
     private fun assertProgress(value:Float) {
         compose.onNodeWithContentDescription("Progress").assertIsDisplayed().assert(
@@ -142,6 +145,36 @@ class PhoneCloneUiTest {
         compose.onNodeWithContentDescription("Progress").assertDoesNotExist()
         compose.onNodeWithText("Choose audio file").assertIsEnabled()
         compose.onNodeWithText("Record").assertIsEnabled()
+    }
+    @Test fun leavingTheForegroundReportsAnInterruptedCloneAndRetryKeepsTheSampleAndName() {
+        val l=com.voicestudio.mobile.l10n.L10n.load(ApplicationProvider.getApplicationContext<Application>(),"en")
+        decodeGate.complete(Unit);transcriptGate.complete(Unit);await {vm.phone.state.value.progress==.65f}
+        compose.runOnIdle {assertTrue(anyKeepsScreenOn(compose.activity.window.decorView))}
+        compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
+        await {cancelled&&vm.phone.state.value.progress==null}
+        assertTrue(vm.phone.state.value.interrupted)
+        assertTrue(runBlocking {vm.phone.voices.list()}.isEmpty())
+        compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+        compose.onNodeWithText(l.t("mobile.android.clone_interrupted")).assertIsDisplayed()
+        compose.onNodeWithText(l.t("mobile.android.sample_ready")).assertExists()
+        compose.onNodeWithText("My clone").assertExists()
+        cloneGate.complete(Unit)
+        compose.onNode(hasText(l.t("mobile.simple.retry")) and hasClickAction()).assertIsEnabled().performClick()
+        await {vm.phone.state.value.progress==null&&vm.phone.state.value.voices.any {it.name=="My clone"}}
+        assertFalse(vm.phone.state.value.interrupted)
+        compose.runOnIdle {assertFalse(anyKeepsScreenOn(compose.activity.window.decorView))}
+    }
+    @Test fun outOfMemoryDuringCloneBecomesAnInferenceFailureInsteadOfCrashing() {
+        failure=OutOfMemoryError("test")
+        decodeGate.complete(Unit);transcriptGate.complete(Unit)
+        await {vm.state.value.error?.key=="mobile.local.inference_failed"}
+        assertNull(vm.phone.state.value.progress)
+        assertTrue(runBlocking {vm.phone.voices.list()}.isEmpty())
+    }
+    @Test fun userCancelIsNotReportedAsInterrupted() {
+        decodeGate.complete(Unit);transcriptGate.complete(Unit);await {vm.phone.state.value.progress==.65f}
+        vm.phone.cancelInference();await {cancelled&&vm.phone.state.value.progress==null}
+        assertFalse(vm.phone.state.value.interrupted)
     }
     @After fun cleanup() {
         if(::vm.isInitialized) vm.viewModelScope.cancel()

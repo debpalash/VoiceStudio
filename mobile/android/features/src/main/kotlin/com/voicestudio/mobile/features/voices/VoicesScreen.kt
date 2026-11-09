@@ -18,6 +18,7 @@ import com.voicestudio.mobile.designsystem.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -56,9 +57,14 @@ import java.io.File
     val recorder=remember {SampleRecorder(context)}
     LaunchedEffect(Unit) {sample?.let {if(!File(it).exists()) sample=null}}
     DisposableEffect(lifecycle) {
-        val observer=LifecycleEventObserver {_,event -> if(event==Lifecycle.Event.ON_STOP) {vm.phone.cancelInference();if(cloning) vm.cancelClone();if(recording) {recorder.discard();recording=false;sample=null}}}
+        val observer=LifecycleEventObserver {_,event -> if(event==Lifecycle.Event.ON_STOP) {vm.phone.interruptInference();if(cloning) vm.cancelClone();if(recording) {recorder.discard();recording=false;sample=null}}}
         lifecycle.lifecycle.addObserver(observer)
         onDispose {lifecycle.lifecycle.removeObserver(observer);if(cloning) vm.cancelClone();cloning=false;if(recording) recorder.discard();sample?.let {File(it).delete()};sample=null;vm.phone.cancelInference()}
+    }
+    val view=LocalView.current
+    DisposableEffect(view,phone.progress!=null) {
+        view.keepScreenOn=phone.progress!=null
+        onDispose {view.keepScreenOn=false}
     }
     LaunchedEffect(recording) {seconds=0;while(recording) {
         delay(1000);seconds++
@@ -76,6 +82,12 @@ import java.io.File
             Action("mobile.voices.new_clone",permission&&sample!=null&&name.isNotBlank()&&!running&&!recording&&(location==RunLocation.COMPUTER||cloneReady)) {
                 if(location==RunLocation.COMPUTER) vm.clone(name,File(sample!!),hasConsent={permission&&cloning}) {if(cloning) {sample=null;name="";permission=false;cloning=false;onCreated()}}
                 else vm.phone.clone(name,File(sample!!),asr!!,model!!,permission) {sample=null;name="";permission=false;cloning=false;onCreated()}
+            }
+            if(phone.interrupted) {
+                ErrorMessage("mobile.android.clone_interrupted")
+                Action("mobile.simple.retry",permission&&sample!=null&&name.isNotBlank()&&!running&&asr!=null&&model!=null) {
+                    vm.phone.clone(name,File(sample!!),asr!!,model!!,permission) {sample=null;name="";permission=false;cloning=false;onCreated()}
+                }
             }
             phone.progress?.let {p ->
                 LinearProgressIndicator(progress={p},modifier=Modifier.fillMaxWidth().semantics {contentDescription=progressLabel})

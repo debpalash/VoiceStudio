@@ -1,3 +1,8 @@
 {
-  "mobile": {}
+  "mobile": {
+    "android": {
+      "clone_interrupted": "Cloning stopped because VoiceStudio left the screen. Keep the app open while it runs. Your sample and name are kept, so tap Retry to start again.",
+      "operation_busy": "Another task is still running. Wait for it to finish or cancel it first."
+    }
+  }
 }
