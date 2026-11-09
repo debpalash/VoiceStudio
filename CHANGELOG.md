@@ -35,6 +35,7 @@ metadata and the backend fallback mirror it.
 
 ### Changed
 
+- Updates now download in the background and install when you quit, with a compact title-bar pill for progress, Restart and Retry, clearer error messages and a restart prompt when work is running (#3928)
 - The top bar is more compact: the account button is just your profile photo, or a person icon when signed out, and the GitHub star count is shortened (#3922).
 - Product analytics moved from PostHog to Supermetry, still only after a yes at the first-run prompt, and now also records which engine ran each generation and transcription. (#3902)
 - Restyled Settings → VoiceStudio account to match the home page: one account card with your plan and storage, the email shown once, and a storage bar visible at 0%. (#3885)
@@ -51,6 +52,7 @@ metadata and the backend fallback mirror it.
 
 ### Added
 
+- Clone and Design now render at each engine's best quality by default, and offer faster settings with a time estimate only when a take is measured to be slow on your computer (#3929)
 - Add GUI selection and bounded discovery of existing Python environments with explicit confirmation and consent-gated dependency repair. (#3701) — thanks @EriconYu!
 - While signed in with account features on, the app sends a periodic check-in with its name, version and operating system; it stops on sign-out or when account features are off. (#3892)
 - The first-run setup screen shows the detected GPU and whether the install uses Metal, CUDA, ROCm or the CPU build. (#3891)
@@ -320,6 +322,7 @@ metadata and the backend fallback mirror it.
 
 ### CI
 
+- Main-process tests now run on macOS and Windows for every pull request, so platform-specific failures surface before a release (#3927)
 - Releases are refused if they carry another channel's update feed, and publishing checks that a beta never becomes the latest release. (#3898)
 - CI actions updated: setup-node 7, setup-java 6, deploy-pages 5, CodeQL 4.39.3 everywhere, Vulkan SDK and Docker login actions. (#3893, #3894, #3895, #3896, #3897)
 - Release builds retry macOS packaging when Apple's notarization service drops a connection, instead of failing the release. (#3889)
@@ -362,7 +365,7 @@ metadata and the backend fallback mirror it.
 
 **AMD and Intel GPUs now speed up OmniVoice, and setup gets far more forgiving.** OmniVoice GGUF runs on AMD, Intel and NVIDIA GPUs through Vulkan on Windows and Linux, dots.tts arrives on Windows with no Python setup, and a failing PyTorch download or a broken GPU no longer leaves you without a working app.
 
-**New since beta.2:** you can run VoiceStudio on a Python you already have, with discovery, a confirmation step and guided dependency repair; model licence warnings now clear once you accept the terms; and a more compact top bar with an icon-only account button.
+**New since beta.2:** updates now download in the background and install when you quit, with a title-bar pill for progress, Restart and Retry; Clone and Design render at best quality by default and offer faster settings only when a take is measured to be slow; you can run VoiceStudio on a Python you already have; model licence warnings clear once you accept the terms; and a more compact top bar.
 
 **Download**
 
@@ -389,6 +392,7 @@ metadata and the backend fallback mirror it.
 
 ### Changed
 
+- Updates now download in the background and install when you quit, with a compact title-bar pill for progress, Restart and Retry, clearer error messages and a restart prompt when work is running (#3928)
 - The top bar is more compact: the account button is just your profile photo, or a person icon when signed out, and the GitHub star count is shortened (#3922).
 - Product analytics moved from PostHog to Supermetry, still only after a yes at the first-run prompt, and now also records which engine ran each generation and transcription. (#3902)
 - Restyled Settings → VoiceStudio account to match the home page: one account card with your plan and storage, the email shown once, and a storage bar visible at 0%. (#3885)
@@ -405,6 +409,7 @@ metadata and the backend fallback mirror it.
 
 ### Added
 
+- Clone and Design now render at each engine's best quality by default, and offer faster settings with a time estimate only when a take is measured to be slow on your computer (#3929)
 - Add GUI selection and bounded discovery of existing Python environments with explicit confirmation and consent-gated dependency repair. (#3701) — thanks @EriconYu!
 - While signed in with account features on, the app sends a periodic check-in with its name, version and operating system; it stops on sign-out or when account features are off. (#3892)
 - The first-run setup screen shows the detected GPU and whether the install uses Metal, CUDA, ROCm or the CPU build. (#3891)
@@ -674,6 +679,7 @@ metadata and the backend fallback mirror it.
 
 ### CI
 
+- Main-process tests now run on macOS and Windows for every pull request, so platform-specific failures surface before a release (#3927)
 - Releases are refused if they carry another channel's update feed, and publishing checks that a beta never becomes the latest release. (#3898)
 - CI actions updated: setup-node 7, setup-java 6, deploy-pages 5, CodeQL 4.39.3 everywhere, Vulkan SDK and Docker login actions. (#3893, #3894, #3895, #3896, #3897)
 - Release builds retry macOS packaging when Apple's notarization service drops a connection, instead of failing the release. (#3889)
