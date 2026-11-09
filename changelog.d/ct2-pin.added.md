@@ -1,0 +1,1 @@
+Windows ROCm setup on RDNA 2 (RX 6000) GPUs now installs a hash-pinned HIP CTranslate2 build, so faster-whisper transcription runs on the GPU instead of the CPU (#0)
