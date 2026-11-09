@@ -9,12 +9,14 @@ from importlib import metadata
 from .artifacts import sha256
 from .failures import VerificationFailure, failure_report
 from .native import import_native
+from .ct2_kernel import verify_ct2_kernel
 from .recipe import ct2_supported, expected_versions, load_recipe, validate_target
 from .runtime import initialize_dll_search, package_root
 from .verify import validate_report
 
 
 def probe():
+    """Verify the pinned ROCm installation and execute its native GPU probes."""
     validate_target()
     recipe = load_recipe()
     if (any(arch in recipe["rocm10"]["devices"] for arch in recipe["gpu_architectures"])
@@ -30,7 +32,7 @@ def probe():
         raise VerificationFailure(
             "package_version", "Installed packages differ from the pinned Windows ROCm recipe; rerun setup"
         )
-    # A recipe without a verified HIP CTranslate2 (ROCm 10) pins none, so its
+    # A device without a verified HIP CTranslate2 (gfx1010) pins none, so its
     # probe must not demand one either — it would fail a healthy PyTorch overlay
     # over an ASR path this recipe deliberately leaves on CPU.
     binary_hash = None
@@ -87,6 +89,8 @@ def probe():
             "ct2_gpu_count": ctranslate2.get_cuda_device_count() if ctranslate2 else 0,
             "ct2_compute_types": sorted(ctranslate2.get_supported_compute_types("cuda")) if ctranslate2 else [],
             "ct2_binary_sha256": binary_hash,
+            # Discovery alone passes when the wheel lacks this GPU's kernels.
+            "ct2_kernel_result": verify_ct2_kernel(ctranslate2) if ctranslate2 else None,
         }
         # A second kernel family from the same wheel: TTS reaches convolutions
         # long before it reaches a matmul-only path, so a matmul-only probe can

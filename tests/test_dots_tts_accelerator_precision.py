@@ -42,6 +42,7 @@ def test_precision_probe_failure_uses_safe_default_or_explicit_override(monkeypa
 
 @pytest.mark.parametrize("override", [None, "bfloat16", " BF16 "])
 def test_rdna2_never_selects_bf16(monkeypatch, override):
+    """Keep RDNA 2 inference away from unsupported BF16 under every override."""
     from engines.dots_tts import main
 
     fake = SimpleNamespace(

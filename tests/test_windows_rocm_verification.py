@@ -20,6 +20,7 @@ def good_report():
         "torch_gpu": True, "kernel_result": 4.0, "gpu_architecture": "gfx1100",
         "ct2_gpu_count": 1, "ct2_compute_types": ["float16"],
         "ct2_binary_sha256": recipe.load_recipe()["ctranslate2"]["binary_sha256"],
+        "ct2_kernel_result": [1.25, -2.5, 0.0, 8.0],
     }
 
 
@@ -44,6 +45,7 @@ def test_probe_timeout_or_crash_is_failure(monkeypatch, error):
     ("python", "/another/python"), ("ct2_binary_sha256", "stock"),
     ("packages", {"torch": "2.9.1+cu128"}), ("ready", False),
     ("gpu_architecture", "gfx1031"),
+    ("ct2_kernel_result", None), ("ct2_kernel_result", [0.0, 0.0, 0.0, 0.0]),
 ])
 def test_probe_rejects_cpu_fallback_wrong_abi_and_unpinned_packages(monkeypatch, field, value):
     verify = module("verify")

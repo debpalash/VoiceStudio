@@ -1,5 +1,7 @@
 """The same checked-in Windows recipe is consumed by every bootstrap path."""
 
+from __future__ import annotations
+
 import hashlib
 import json
 import re
@@ -7,8 +9,14 @@ import sys
 import sysconfig
 from pathlib import Path, PurePosixPath
 from urllib.parse import unquote
+from collections.abc import Iterable
+from typing import Any, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..gpu_inventory import HostGPU
 
 from .failures import VerificationFailure
+from .ct2_recipe import validate_ct2_recipe
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _ALLOWED_SOURCES = frozenset({
@@ -33,13 +41,14 @@ _RDNA_PCI_IDS = {
 RECIPE_PATH = Path(__file__).resolve().parents[3] / "scripts" / "windows-rocm-recipe.json"
 
 
-def detected_rdna_arch():
+def detected_rdna_arch(*, inventory: Iterable[HostGPU] | None = None) -> str | None:
     """Select the native overlay from PCI metadata, before Torch is installed."""
     if sys.platform != "win32":
         return None
     from ..gpu_inventory import detect_host_gpus
 
-    amd = [gpu for gpu in detect_host_gpus() if gpu.vendor == "amd"]
+    gpus = detect_host_gpus() if inventory is None else inventory
+    amd = [gpu for gpu in gpus if gpu.vendor == "amd"]
     arches = [next((arch for arch, ids in _RDNA_PCI_IDS.items()
                     if gpu.pci_device_id.lower().removeprefix("0x") in ids), None) for gpu in amd]
     found = {arch for arch in arches if arch}
@@ -49,6 +58,7 @@ def detected_rdna_arch():
 
 
 def _validate_artifacts(section):
+    """Reject unsafe artifact paths and incomplete or malformed SHA-256 pins."""
     hashes = section.get("wheel_sha256") or {}
     files = section["wheel_files"]
     if set(files) != set(hashes):
@@ -64,12 +74,16 @@ def _validate_artifacts(section):
             raise RuntimeError(f"Windows ROCm recipe has no valid sha256 for {name}")
 
 
-def load_recipe(path=None, *, architecture=None):
+def load_recipe(path: str | Path | None = None, *, architecture: str | None = None) -> dict[str, Any]:
     """Load, validate, and select an overlay without network or native imports."""
     recipe = json.loads(Path(path or RECIPE_PATH).read_text(encoding="utf-8"))
     if recipe["schema_version"] != 1:
         raise RuntimeError("Unsupported Windows ROCm recipe schema")
     variant = recipe["rocm10"]
+    for config in (recipe["ctranslate2"], variant["ctranslate2"]):
+        validate_ct2_recipe(config)
+    if not set(variant["ctranslate2"]["gpu_architectures"]) <= set(variant["devices"]):
+        raise RuntimeError("Windows ROCm recipe pins a CT2 build for an undeclared device")
     for torch in (recipe["torch"], variant["torch"]):
         if torch["find_links"] not in _ALLOWED_SOURCES:
             raise RuntimeError("Windows ROCm recipe has an unapproved source")
@@ -83,8 +97,23 @@ def load_recipe(path=None, *, architecture=None):
         selected_runtime = {key: common[key] + device[key] for key in ("packages", "wheel_files")}
         selected_runtime["wheel_sha256"] = common["wheel_sha256"] | device["wheel_sha256"]
         return {**recipe, "gpu_architectures": [arch], "torch": variant["torch"],
-                "runtime": selected_runtime, "ctranslate2": variant["ctranslate2"]}
+                "runtime": selected_runtime, "ctranslate2": _device_ct2(variant["ctranslate2"], arch)}
     return recipe
+
+
+def _device_ct2(config, arch):
+    """The overlay's HIP CTranslate2 only for the architectures it was built and verified for.
+
+    The ROCm 7.2.1 HIP binary loads on ROCm 10 but launches no kernel
+    (hipErrorInvalidImage on gfx1010), so any other overlay device gets an
+    explicit "unsupported" entry: no CT2 is downloaded or verified, and every
+    CT2-backed path (ASR, diarization) stays on CPU instead of claiming GPU
+    readiness it never proved.
+    """
+    if arch in config["gpu_architectures"]:
+        return {key: value for key, value in config.items() if key != "gpu_architectures"}
+    return {"supported": False,
+            "reason": f"No verified ROCm 10 HIP CTranslate2 covers {arch}; ASR and diarization stay on CPU."}
 
 
 def recipe_identity(path=None):
@@ -105,19 +134,13 @@ def validate_target(platform=None, version=None, architecture=None):
 
 
 def ct2_supported(recipe):
-    """Whether this recipe pins a verified HIP CTranslate2 build.
-
-    The ROCm 10 Windows overlay has no published, verified HIP CTranslate2, so
-    its recipe marks ``ctranslate2.supported`` false: the overlay then neither
-    installs nor verifies one, and every CT2-backed path (ASR, diarization)
-    stays on CPU instead of claiming GPU readiness it never proved.
-    """
+    """Whether the selected recipe pins a verified HIP CTranslate2 build."""
     return (recipe.get("ctranslate2") or {}).get("supported", True)
 
 
 def expected_versions(recipe):
     pins = recipe["torch"]["packages"] + recipe["runtime"]["packages"]
     pinned = dict(pin.split("==", 1) for pin in pins)
-    # A recipe without a verified HIP CT2 must not pin whatever CPU build the
+    # A device without a verified HIP CT2 must not pin whatever CPU build the
     # environment happens to carry: its version is the sync's business, not ours.
     return pinned | {"ctranslate2": recipe["ctranslate2"]["version"]} if ct2_supported(recipe) else pinned

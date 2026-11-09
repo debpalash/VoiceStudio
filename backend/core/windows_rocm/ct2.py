@@ -36,7 +36,7 @@ def hip_ct2_available():
     try:
         validate_target()
         recipe = load_recipe()
-        # The ROCm 10 overlay pins no HIP CTranslate2 because the ROCm 7.2.1
+        # gfx1010 pins no HIP CTranslate2 because the ROCm 7.2.1
         # binary loads but cannot launch kernels on ROCm 10 (verified on gfx1010:
         # hipErrorInvalidImage). Device discovery alone would report float16 and
         # GPU readiness, then fail every real transcription, so refuse here.
@@ -92,7 +92,7 @@ def prepare_import():
 def recipe_has_hip_ct2():
     """Whether the selected recipe pins a HIP CTranslate2 at all.
 
-    False for the ROCm 10 overlay, which installs the locked CPU build instead.
+    False for gfx1010 on the ROCm 10 overlay, which installs the locked CPU build instead.
     Callers use this to tell "this recipe never promised GPU CT2" apart from
     "GPU CT2 was promised and failed", because only the second is a failure.
     """

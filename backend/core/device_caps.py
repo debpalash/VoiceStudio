@@ -217,7 +217,7 @@ def _installed_rocm_arches(version: str) -> set[str]:
             if metadata.version(f"rocm-sdk-device-{arch}") == "10.0.0":
                 result.add(arch)
         except metadata.PackageNotFoundError:
-            pass
+            continue  # A Torch device wheel alone does not provide the SDK kernels.
     return result
 
 

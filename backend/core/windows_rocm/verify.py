@@ -27,17 +27,18 @@ def validate_report(report, recipe):
         report.get("torch_gpu") is True,
         report.get("gpu_architecture") in recipe["gpu_architectures"],
         report.get("kernel_result") == 4.0,
-        # The ROCm 10 recipe ships no verified HIP CTranslate2, so it must report
+        # A device without a verified HIP CTranslate2 (gfx1010) must report
         # that (and none) rather than leave the CT2 fields to chance. A recipe
         # that does pin one keeps the strict CT2 requirements unchanged; the
         # field itself is optional there so a 7.2.1-era probe stays valid.
         report.get("ct2_supported", verified_ct2) is verified_ct2,
         (isinstance(report.get("ct2_gpu_count"), int) and report["ct2_gpu_count"] > 0
          and "float16" in report.get("ct2_compute_types", [])
-         and report.get("ct2_binary_sha256") == recipe["ctranslate2"]["binary_sha256"])
+         and report.get("ct2_binary_sha256") == recipe["ctranslate2"]["binary_sha256"]
+         and report.get("ct2_kernel_result") == [1.25, -2.5, 0.0, 8.0])
         if verified_ct2 else
         (report.get("ct2_gpu_count") == 0 and report.get("ct2_compute_types") == []
-         and report.get("ct2_binary_sha256") is None),
+         and report.get("ct2_binary_sha256") is None and report.get("ct2_kernel_result") is None),
     )
     if not all(requirements):
         raise VerificationFailure(

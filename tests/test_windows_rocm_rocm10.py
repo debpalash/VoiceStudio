@@ -1,12 +1,20 @@
-"""Windows ROCm 10 uses pinned native kernels and safe precision."""
+"""Windows ROCm 10 (RDNA 1 and 2) uses pinned native kernels and safe precision."""
+
+import importlib
 import json
 import re
 import types
 
 import pytest
 
-from core import device_caps
-from core.windows_rocm import install, recipe
+
+@pytest.fixture(autouse=True)
+def application_modules():
+    """Bind canonical modules for each test after any sys.modules replacement."""
+    global device_caps, install, recipe
+    device_caps = importlib.import_module("core.device_caps")
+    install = importlib.import_module("core.windows_rocm.install")
+    recipe = importlib.import_module("core.windows_rocm.recipe")
 
 
 def test_recipe_has_a_native_windows_rocm10_variant():
@@ -32,6 +40,32 @@ def test_missing_overlay_hash_is_rejected(tmp_path):
     path = tmp_path / "recipe.json"
     path.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(RuntimeError, match="sha256"):
+        recipe.load_recipe(path, architecture="gfx1031")
+
+
+@pytest.mark.parametrize("gfx", ["gfx1030", "gfx1031", "gfx1032"])
+def test_rdna2_devices_receive_the_overlay_hip_ct2(gfx):
+    selected = recipe.load_recipe(architecture=gfx)
+    assert recipe.ct2_supported(selected)
+    assert selected["ctranslate2"]["version"] == "4.8.4"
+    assert "gpu_architectures" not in selected["ctranslate2"]
+    assert recipe.expected_versions(selected)["ctranslate2"] == "4.8.4"
+
+
+def test_gfx1010_shares_the_overlay_but_not_its_hip_ct2():
+    """The RDNA 2 CT2 build has no gfx1010 kernels; RDNA 1 keeps CT2 on the CPU."""
+    selected = recipe.load_recipe(architecture="gfx1010")
+    assert selected["torch"] == recipe.load_recipe(architecture="gfx1031")["torch"]
+    assert not recipe.ct2_supported(selected)
+    assert "ctranslate2" not in recipe.expected_versions(selected)
+
+
+def test_a_ct2_build_for_an_undeclared_device_is_rejected(tmp_path):
+    data = json.loads(recipe.RECIPE_PATH.read_text(encoding="utf-8"))
+    data["rocm10"]["ctranslate2"]["gpu_architectures"].append("gfx1012")
+    path = tmp_path / "recipe.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(RuntimeError, match="undeclared device"):
         recipe.load_recipe(path, architecture="gfx1031")
 
 

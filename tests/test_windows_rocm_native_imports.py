@@ -9,6 +9,12 @@ from pathlib import Path
 
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def native_import_test_without_host_selection(monkeypatch):
+    module = importlib.import_module("core.windows_rocm.install")
+    monkeypatch.setattr(module, "validate_repair_selection", lambda recipe: None)
+
 ROOT = Path(__file__).resolve().parents[1]
 PROBE_FIXTURE = r"""
 import builtins
@@ -25,6 +31,7 @@ probe.package_root = lambda name: __import__('pathlib').Path('unused')
 probe.sha256 = lambda path: recipe['ctranslate2']['binary_sha256']
 probe.ct2_supported = lambda selected: True
 probe.initialize_dll_search = lambda: None
+probe.verify_ct2_kernel = lambda ct2: [1.25, -2.5, 0.0, 8.0]
 probe.sysconfig.get_platform = lambda: 'win-amd64'
 
 class Tensor:
