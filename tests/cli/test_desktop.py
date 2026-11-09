@@ -131,6 +131,16 @@ class DesktopTests(unittest.TestCase):
                 self.assertEqual(run.call_args.args[0], [str(path), '--user-data-dir', 'profile with spaces'])
                 self.assertEqual(run.call_args.kwargs['env']['CLI_TEST_SETTING'], 'value with spaces')
 
+    def test_foreground_launch_opens_the_selected_profile(self):
+        path = self.executable('app')
+        profile = self.root / 'chosen profile'
+        with patch.dict(os.environ, {'VOICESTUDIO_DESKTOP_APP': str(path), 'VOICESTUDIO_USER_DATA': str(profile)}):
+            with patch.object(desktop.subprocess, 'run', return_value=subprocess.CompletedProcess([], 0)) as run:
+                self.assertEqual(desktop.launch_desktop(), 0)
+                self.assertEqual(run.call_args.args[0], [str(path), '--user-data-dir=' + str(profile)])
+                desktop.launch_desktop(['--user-data-dir', 'explicit'])  # an explicit profile wins
+                self.assertEqual(run.call_args.args[0], [str(path), '--user-data-dir', 'explicit'])
+
     def test_launch_failure_is_actionable(self):
         with patch.object(desktop, 'resolve_desktop', return_value=['fixture']):
             with patch.object(desktop.subprocess, 'run', side_effect=OSError('permission denied')):

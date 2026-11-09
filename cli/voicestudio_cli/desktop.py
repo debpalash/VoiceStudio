@@ -206,11 +206,19 @@ def _direct_command(command):
     return command
 
 
+def _with_profile(arguments):
+    """Add the selected profile (VOICESTUDIO_USER_DATA) unless the arguments already name one."""
+    arguments = list(arguments)
+    user_data = os.environ.get('VOICESTUDIO_USER_DATA')
+    if user_data and not any(a == '--user-data-dir' or a.startswith('--user-data-dir=') for a in arguments):
+        arguments.append('--user-data-dir=' + str(Path(user_data).expanduser()))
+    return arguments
+
+
 def desktop_process(arguments, *, detached=False):
     """Start the desktop app with ownership switches; it may hand them to a running instance."""
     command = _direct_command(resolve_desktop())
-    if user_data := os.environ.get('VOICESTUDIO_USER_DATA'):
-        arguments = [*arguments, '--user-data-dir=' + str(Path(user_data).expanduser())]
+    arguments = _with_profile(arguments)
     options = {'stdin': subprocess.DEVNULL, 'stdout': subprocess.DEVNULL, 'stderr': subprocess.DEVNULL}
     if detached:
         options.update({'creationflags': subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
@@ -226,7 +234,8 @@ def launch_desktop(arguments=()):
     env = desktop_environment()
     try:
         # Wait so AppImage's mount stays alive while Electron uses its resources.
-        result = subprocess.run([*command, *arguments], env=env)
+        # The same profile as background launches, so bare `voicestudio` opens that app.
+        result = subprocess.run([*command, *_with_profile(arguments)], env=env)
     except OSError as exc:
         raise CLIError('desktop_launch_failed', f'Could not launch VoiceStudio: {exc}') from None
     if result.returncode:
