@@ -61,7 +61,9 @@ export default defineConfig({
           });
         },
       },
-      '/api': {
+      // Exactly /api or /api/...: a bare '/api' prefix also proxies app paths such as
+      // /api-reference/..., where Settings > API (Scalar) leaves the page, so a reload broke.
+      '^/api(?:[/?]|$)': {
         target: `http://127.0.0.1:${backendPort}`,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
