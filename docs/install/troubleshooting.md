@@ -81,7 +81,7 @@ The runtime folder is on a drive mounted with `noexec`. Choose a folder on anoth
 
 ### `RUNTIME_DOWNLOAD_STALLED`
 
-A runtime download received no data for a long time. Retry keeps finished packages and resumes large multi-connection downloads, but other partial downloads start again. Try another network, turn off your VPN or choose another download region.
+A runtime download received no data for a long time. Setup stops a download that gets no data for 2 minutes, and repeats the install up to twice by itself after a stall or a temporary server error (such as 504 Gateway Timeout) before it shows this. Retry keeps finished packages and resumes large multi-connection downloads, but other partial downloads start again. Try another network, turn off your VPN or choose another download region.
 
 ### `RUNTIME_DOWNLOAD_INTERRUPTED`
 

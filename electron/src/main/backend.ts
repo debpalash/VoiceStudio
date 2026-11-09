@@ -1691,7 +1691,8 @@ export class BackendSupervisor extends EventEmitter<{
                 { code: 'DOWNLOAD_STALLED' },
               );
               this.pushLog('err', stallError.message);
-              void this.killChild(true);
+              // Not a backend shutdown: setup's uv has no server to tell.
+              void this.killChild();
             }, 5_000);
             let capturedStdout = '';
             let capturedStderr = '';

@@ -1463,14 +1463,20 @@ export async function installRuntime(
     requiredBytes,
     downloads,
   );
-  await syncLockedWithMirror(
-    project,
-    mirror,
+  // A mirror failure falls back to the origin first; only when that also hits a
+  // temporary server or network fault does the whole sync repeat.
+  await retryTransientDownload(
     () =>
-      retryTransientDownload(() => run(uv!, syncArgs, project, env), signal, downloads.log),
+      syncLockedWithMirror(
+        project,
+        mirror,
+        () => run(uv!, syncArgs, project, env),
+        signal,
+        downloads,
+        localUrls,
+      ),
     signal,
-    downloads,
-    localUrls,
+    downloads.log,
   );
   signal.throwIfAborted();
   // The sync succeeded, so uv has every wheel now: prefetched copies and any
