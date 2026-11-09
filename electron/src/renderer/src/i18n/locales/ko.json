@@ -1244,6 +1244,8 @@
     "llmp_key_stored": "저장됨 — 입력하면 교체됩니다",
     "llmp_key_paste": "API 키를 붙여넣으세요",
     "llmp_base_url": "기본 URL",
+    "llmp_plain_http": "내 LAN에서 일반 HTTP 허용",
+    "llmp_plain_http_desc": "API 키가 암호화되지 않고 전송됩니다. 사설 네트워크의 신뢰할 수 있는 서버에 IP 주소(예: 192.168.1.20)로 연결할 때만 사용하세요. 공개 호스트와 도메인 이름은 계속 거부됩니다.",
     "llmp_model": "모델",
     "llmp_model_placeholder": "모델 이름",
     "llmp_fetch_models": "모델 가져오기",

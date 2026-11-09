@@ -1282,6 +1282,8 @@
     "llmp_key_stored": "kayıtlı — değiştirmek için yazın",
     "llmp_key_paste": "API anahtarınızı yapıştırın",
     "llmp_base_url": "Temel URL",
+    "llmp_plain_http": "LAN’ımda düz HTTP’ye izin ver",
+    "llmp_plain_http_desc": "API anahtarı şifresiz gönderilir. Yalnızca özel ağdaki güvendiğiniz bir sunucu için, IP adresiyle (ör. 192.168.1.20) kullanın. Genel ana bilgisayarlar ve alan adları yine reddedilir.",
     "llmp_model": "Model",
     "llmp_model_placeholder": "model adı",
     "llmp_fetch_models": "Modelleri getir",

@@ -1282,6 +1282,8 @@
     "llmp_key_stored": "opgeslagen — typ om te vervangen",
     "llmp_key_paste": "plak je API-sleutel",
     "llmp_base_url": "Basis-URL",
+    "llmp_plain_http": "Gewone HTTP op mijn LAN toestaan",
+    "llmp_plain_http_desc": "Verstuurt de API-sleutel onversleuteld. Alleen gebruiken voor een vertrouwde server in een privénetwerk, via het IP-adres (zoals 192.168.1.20). Openbare hosts en namen blijven geweigerd.",
     "llmp_model": "Model",
     "llmp_model_placeholder": "modelnaam",
     "llmp_fetch_models": "Modellen ophalen",

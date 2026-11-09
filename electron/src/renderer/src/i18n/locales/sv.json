@@ -1282,6 +1282,8 @@
     "llmp_key_stored": "lagrad — skriv för att ersätta",
     "llmp_key_paste": "klistra in din API-nyckel",
     "llmp_base_url": "Bas-URL",
+    "llmp_plain_http": "Tillåt vanlig HTTP på mitt LAN",
+    "llmp_plain_http_desc": "Skickar API-nyckeln okrypterad. Använd bara för en betrodd server i ett privat nätverk, angiven med IP-adress (till exempel 192.168.1.20). Publika värdar och namn nekas fortfarande.",
     "llmp_model": "Modell",
     "llmp_model_placeholder": "modellnamn",
     "llmp_fetch_models": "Hämta modeller",

@@ -1488,6 +1488,8 @@
     "llmp_key_stored": "stored — type to replace",
     "llmp_key_paste": "paste your API key",
     "llmp_base_url": "Base URL",
+    "llmp_plain_http": "Allow plain HTTP on my LAN",
+    "llmp_plain_http_desc": "Sends the API key unencrypted. Use only for a server you trust on a private network, addressed by its IP (such as 192.168.1.20). Public hosts and names are still refused.",
     "llmp_model": "Model",
     "llmp_model_placeholder": "model name",
     "llmp_fetch_models": "Fetch models",

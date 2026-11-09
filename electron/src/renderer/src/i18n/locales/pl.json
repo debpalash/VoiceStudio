@@ -1296,6 +1296,8 @@
     "llmp_key_stored": "zapisany — wpisz, aby zastąpić",
     "llmp_key_paste": "wklej swój klucz API",
     "llmp_base_url": "Bazowy adres URL",
+    "llmp_plain_http": "Zezwól na zwykły HTTP w mojej sieci LAN",
+    "llmp_plain_http_desc": "Wysyła klucz API bez szyfrowania. Używaj tylko dla zaufanego serwera w sieci prywatnej, podając jego adres IP (np. 192.168.1.20). Hosty publiczne i nazwy domen nadal są odrzucane.",
     "llmp_model": "Model",
     "llmp_model_placeholder": "nazwa modelu",
     "llmp_fetch_models": "Pobierz modele",

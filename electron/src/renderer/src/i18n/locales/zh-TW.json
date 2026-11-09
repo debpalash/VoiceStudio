@@ -1282,6 +1282,8 @@
     "llmp_key_stored": "已儲存，輸入即可取代",
     "llmp_key_paste": "貼上你的 API 金鑰",
     "llmp_base_url": "基礎 URL",
+    "llmp_plain_http": "允許在我的區域網路使用明文 HTTP",
+    "llmp_plain_http_desc": "API 金鑰將未加密傳送。僅用於私有網路中可信的伺服器，並使用其 IP 位址（如 192.168.1.20）。公開主機與網域名稱仍會被拒絕。",
     "llmp_model": "模型",
     "llmp_model_placeholder": "模型名稱",
     "llmp_fetch_models": "取得模型",

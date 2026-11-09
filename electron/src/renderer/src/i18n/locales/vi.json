@@ -1282,6 +1282,8 @@
     "llmp_key_stored": "đã lưu — gõ để thay thế",
     "llmp_key_paste": "dán khóa API của bạn",
     "llmp_base_url": "URL cơ sở",
+    "llmp_plain_http": "Cho phép HTTP thường trong mạng LAN của tôi",
+    "llmp_plain_http_desc": "Khóa API được gửi không mã hóa. Chỉ dùng cho máy chủ đáng tin cậy trong mạng riêng, địa chỉ bằng IP (ví dụ 192.168.1.20). Máy chủ công cộng và tên miền vẫn bị từ chối.",
     "llmp_model": "Mô hình",
     "llmp_model_placeholder": "tên mô hình",
     "llmp_fetch_models": "Lấy danh sách mô hình",

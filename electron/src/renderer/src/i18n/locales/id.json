@@ -1282,6 +1282,8 @@
     "llmp_key_stored": "tersimpan — ketik untuk mengganti",
     "llmp_key_paste": "tempel kunci API Anda",
     "llmp_base_url": "URL dasar",
+    "llmp_plain_http": "Izinkan HTTP biasa di LAN saya",
+    "llmp_plain_http_desc": "Mengirim kunci API tanpa enkripsi. Gunakan hanya untuk server tepercaya di jaringan pribadi, dengan alamat IP (misalnya 192.168.1.20). Host publik dan nama domain tetap ditolak.",
     "llmp_model": "Model",
     "llmp_model_placeholder": "nama model",
     "llmp_fetch_models": "Ambil model",

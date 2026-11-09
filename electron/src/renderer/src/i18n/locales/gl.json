@@ -1488,6 +1488,8 @@
     "llmp_key_stored": "almacenado: escriba para substituír",
     "llmp_key_paste": "pega a túa clave API",
     "llmp_base_url": "URL base",
+    "llmp_plain_http": "Permitir HTTP sen cifrar na miña LAN",
+    "llmp_plain_http_desc": "Envía a chave de API sen cifrar. Úsao só cun servidor de confianza nunha rede privada, indicado pola súa IP (como 192.168.1.20). Os hosts públicos e os nomes seguen bloqueados.",
     "llmp_model": "Modelo",
     "llmp_model_placeholder": "nome do modelo",
     "llmp_fetch_models": "Busca modelos",

@@ -1282,6 +1282,8 @@
     "llmp_key_stored": "保存済み — 入力すると置き換えます",
     "llmp_key_paste": "API キーを貼り付け",
     "llmp_base_url": "ベース URL",
+    "llmp_plain_http": "LAN 内での平文 HTTP を許可",
+    "llmp_plain_http_desc": "API キーが暗号化されずに送信されます。プライベートネットワーク上の信頼できるサーバーで、IP アドレス（例: 192.168.1.20）を指定する場合のみ使用してください。公開ホストやホスト名は引き続き拒否されます。",
     "llmp_model": "モデル",
     "llmp_model_placeholder": "モデル名",
     "llmp_fetch_models": "モデルを取得",
