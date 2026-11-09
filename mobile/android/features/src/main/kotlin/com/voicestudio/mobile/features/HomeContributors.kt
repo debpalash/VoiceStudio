@@ -45,7 +45,7 @@ import kotlin.math.min
 
 /** Human contributors and portraits mirror Electron's bundled contributor snapshot. */
 object HomeContributors {
-    val logins = listOf("debpalash", "velixio", "kevin9327", "jaketame", "psiberfunk", "rudycelekli", "paoloantinori", "Chang-Jin-Lee", "swadhinbiswas", "BichengWang", "nirmalchatur", "Shivendra-Coherent", "marreiradigital", "nvtoan0201-swe")
+    val logins = listOf("debpalash", "velixio", "kevin9327", "rudycelekli", "jaketame", "psiberfunk", "paoloantinori", "swadhinbiswas", "RerankerGuo", "Chang-Jin-Lee", "BichengWang", "adrianchen91", "nirmalchatur", "Shivendra-Coherent", "sidmax7", "alvig060121-afk", "EriconYu", "dutch2005", "marreiradigital", "mvanhorn", "nvtoan0201-swe", "XiaoPuOuO")
     val coreMaintainers = setOf("debpalash", "velixio")
     const val REPOSITORY = "https://github.com/debpalash/VoiceStudio"
     fun rows(items: List<String>): List<List<String>> {
