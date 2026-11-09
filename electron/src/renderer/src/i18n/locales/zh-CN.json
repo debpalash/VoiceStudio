@@ -2625,6 +2625,10 @@
     "retry": "重试",
     "refresh": "刷新",
     "manage_profile": "管理个人资料",
+    "change_photo": "在个人资料页更换照片",
+    "edit_name": "编辑名称",
+    "name_label": "显示名称",
+    "rename_failed": "无法保存名称，请重试。",
     "manage_plan": "管理方案"
   },
   "cloudsync": {

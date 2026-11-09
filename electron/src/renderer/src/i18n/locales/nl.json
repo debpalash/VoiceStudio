@@ -2629,6 +2629,10 @@
     "retry": "Opnieuw proberen",
     "refresh": "Vernieuwen",
     "manage_profile": "Profiel beheren",
+    "change_photo": "Foto wijzigen op je profielpagina",
+    "edit_name": "Naam bewerken",
+    "name_label": "Weergavenaam",
+    "rename_failed": "Je naam kon niet worden opgeslagen. Probeer het opnieuw.",
     "manage_plan": "Abonnement beheren"
   },
   "cloudsync": {

@@ -4,6 +4,7 @@ import importlib
 import json
 import re
 import types
+from pathlib import Path
 
 import pytest
 
@@ -52,18 +53,43 @@ def _recipe_with_ct2(tmp_path, **fields):
 
 
 _PINS = dict(archive_size=1, archive_sha256="a" * 64, wheel_sha256="b" * 64, binary_sha256="c" * 64)
+# A synthetic recipe whose in-repo build is not published yet: the real recipe is
+# pinned, but a future rebuild (new tag) passes through this state again.
+_UNPINNED = dict.fromkeys(_PINS)
+# The build published by .github/workflows/ct2-rocm-windows.yml and pinned in the recipe.
+_PUBLISHED = dict(
+    archive_url="https://github.com/debpalash/VoiceStudio/releases/download/ct2-rocm-4.8.4-78b1e17/rocm-python-wheels-Windows.zip",
+    archive_size=21865556,
+    archive_sha256="ef69c6d68628996faa2eec16007cdba1ec2f670ef914ddee883663e18bf7d8be",
+    wheel_member="ctranslate2-4.8.4-cp312-cp312-win_amd64.whl",
+    wheel_sha256="87b06d60c994afbce73c360f8117a5905884e65c06935c864c074261d3016625",
+    binary_sha256="43d4ee10347f78b1be91c1cc715d698bc6d67c1b0a0f6d7f25c206d83e43013c",
+)
+_RDNA2 = ["gfx1030", "gfx1031", "gfx1032"]
 
 
-@pytest.mark.parametrize("gfx", ["gfx1030", "gfx1031", "gfx1032"])
-def test_rdna2_keeps_cpu_ct2_until_the_in_repo_build_is_pinned(gfx):
-    """An unpublished build (pins unset) must route like gfx1010, never download."""
+@pytest.mark.parametrize("gfx", _RDNA2)
+def test_rdna2_selects_the_pinned_in_repo_hip_ct2(gfx):
+    """The real recipe routes RDNA 2 to the published HIP build with its exact pins."""
     selected = recipe.load_recipe(architecture=gfx)
+    assert recipe.ct2_supported(selected)
+    ct2 = selected["ctranslate2"]
+    assert {key: ct2[key] for key in _PUBLISHED} == _PUBLISHED
+    assert ct2["version"] == "4.8.4"
+    assert "gpu_architectures" not in ct2
+    assert recipe.expected_versions(selected)["ctranslate2"] == "4.8.4"
+
+
+@pytest.mark.parametrize("gfx", _RDNA2)
+def test_rdna2_keeps_cpu_ct2_while_the_in_repo_build_is_unpinned(tmp_path, gfx):
+    """An unpublished build (pins unset) must route like gfx1010, never download."""
+    selected = recipe.load_recipe(_recipe_with_ct2(tmp_path, **_UNPINNED), architecture=gfx)
     assert not recipe.ct2_supported(selected)
     assert "ctranslate2" not in recipe.expected_versions(selected)
     assert "not published" in selected["ctranslate2"]["reason"]
 
 
-@pytest.mark.parametrize("gfx", ["gfx1030", "gfx1031", "gfx1032"])
+@pytest.mark.parametrize("gfx", _RDNA2)
 def test_rdna2_devices_receive_the_overlay_hip_ct2_once_pinned(tmp_path, gfx):
     selected = recipe.load_recipe(_recipe_with_ct2(tmp_path, **_PINS), architecture=gfx)
     assert recipe.ct2_supported(selected)
@@ -72,8 +98,15 @@ def test_rdna2_devices_receive_the_overlay_hip_ct2_once_pinned(tmp_path, gfx):
     assert recipe.expected_versions(selected)["ctranslate2"] == "4.8.4"
 
 
-def test_partially_pinned_ct2_build_is_rejected(tmp_path):
-    path = _recipe_with_ct2(tmp_path, archive_sha256="a" * 64)
+@pytest.mark.parametrize("unset", list(_PINS))
+def test_partially_pinned_ct2_build_is_rejected(tmp_path, unset):
+    path = _recipe_with_ct2(tmp_path, **{unset: None})
+    with pytest.raises(RuntimeError, match="CT2 recipe"):
+        recipe.load_recipe(path, architecture="gfx1031")
+
+
+def test_partially_pinned_unpublished_ct2_build_is_rejected(tmp_path):
+    path = _recipe_with_ct2(tmp_path, **{**_UNPINNED, "archive_sha256": "a" * 64})
     with pytest.raises(RuntimeError, match="CT2 recipe"):
         recipe.load_recipe(path, architecture="gfx1031")
 
@@ -84,9 +117,9 @@ def test_ct2_build_must_come_from_this_repository(tmp_path):
         recipe.load_recipe(_recipe_with_ct2(tmp_path, archive_url=fork, **_PINS), architecture="gfx1031")
 
 
-def test_unpinned_rdna2_installs_the_locked_cpu_ct2_without_downloading(monkeypatch):
+def _repair(monkeypatch, selected, downloads):
+    """Run provision() for ``selected`` with a repairable failure and no real I/O."""
     failures = importlib.import_module("core.windows_rocm.failures")
-    selected = recipe.load_recipe(architecture="gfx1031")
     monkeypatch.setattr(install, "validate_target", lambda: None)
     monkeypatch.setattr(install, "load_recipe", lambda: selected)
     monkeypatch.setattr(install, "validate_repair_selection", lambda recipe: None)
@@ -95,13 +128,41 @@ def test_unpinned_rdna2_installs_the_locked_cpu_ct2_without_downloading(monkeypa
         raise failures.VerificationFailure("package_missing", "missing")
 
     monkeypatch.setattr(install, "verify_environment", verify)
-    monkeypatch.setattr(install, "download_archive", lambda *a: pytest.fail("unpinned CT2 downloaded"))
+    monkeypatch.setattr(install, "download_archive", lambda *args: downloads.append(args))
+    monkeypatch.setattr(install, "checked_wheel", lambda archive, folder, ct2: Path(folder) / ct2["wheel_member"])
     monkeypatch.setattr(install, "locked_ct2_requirement", lambda uv: "ctranslate2==4.4.0 --hash=sha256:" + "a" * 64)
     commands = []
     monkeypatch.setattr(install, "run_install", lambda command: commands.append(command))
     with pytest.raises(failures.VerificationFailure):
         install.provision("uv-custom")
+    return commands
+
+
+def test_unpinned_rdna2_installs_the_locked_cpu_ct2_without_downloading(monkeypatch, tmp_path):
+    selected = recipe.load_recipe(_recipe_with_ct2(tmp_path, **_UNPINNED), architecture="gfx1031")
+    downloads = []
+    commands = _repair(monkeypatch, selected, downloads)
+    assert downloads == []
     assert len(commands) == 2
+    assert str(commands[1][-1]).endswith("cpu-ctranslate2.txt")
+
+
+@pytest.mark.parametrize("gfx", _RDNA2)
+def test_pinned_rdna2_installs_the_in_repo_hip_ct2(monkeypatch, gfx):
+    selected = recipe.load_recipe(architecture=gfx)
+    downloads = []
+    commands = _repair(monkeypatch, selected, downloads)
+    assert [(url, size) for url, _, size in downloads] == [(_PUBLISHED["archive_url"], _PUBLISHED["archive_size"])]
+    assert len(commands) == 2
+    assert any(str(part).endswith(_PUBLISHED["wheel_member"]) for part in commands[1])
+    assert not any(str(part).endswith("cpu-ctranslate2.txt") for command in commands for part in command)
+
+
+def test_gfx1010_installs_the_locked_cpu_ct2_without_downloading(monkeypatch):
+    """The pinned RDNA 2 build has no gfx1010 kernels and is never fetched for it."""
+    downloads = []
+    commands = _repair(monkeypatch, recipe.load_recipe(architecture="gfx1010"), downloads)
+    assert downloads == []
     assert str(commands[1][-1]).endswith("cpu-ctranslate2.txt")
 
 
