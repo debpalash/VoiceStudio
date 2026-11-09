@@ -91,6 +91,21 @@ def _sniff_audio_ext(raw: bytes) -> str:
 # for url http://127.0.0.1/transcribe" instead of what to do about it.
 
 
+# Error text goes to an LLM agent, which may be a hosted model: strip secrets
+# and home paths the backend echoed, and cap a proxy's HTML error page.
+_ERROR_DETAIL_MAX_CHARS = 1000
+
+
+def _public_error_text(text: object) -> str:
+    """``text`` with credentials and home paths redacted, length-capped."""
+    from core.scrub import scrub_text
+
+    cleaned = scrub_text(str(text)).strip()
+    if len(cleaned) > _ERROR_DETAIL_MAX_CHARS:
+        cleaned = cleaned[:_ERROR_DETAIL_MAX_CHARS].rstrip() + "…"
+    return cleaned
+
+
 def _backend_error_detail(response) -> "str | None":
     """The backend's own explanation of a failed response, or None.
 
@@ -109,7 +124,7 @@ def _backend_error_detail(response) -> "str | None":
             str(item.get("msg") or item) if isinstance(item, dict) else str(item)
             for item in detail
         )
-    return str(detail) if detail else None
+    return _public_error_text(detail) if detail else None
 
 
 def _raise_for_backend_status(response) -> None:
@@ -835,7 +850,8 @@ def create_mcp_server(app=None):
             # short, quality gate) — surface the backend's own detail as the
             # structured error the agent expects, not a framework traceback.
             detail = _backend_error_detail(exc.response)
-            return json.dumps({"error": detail or exc.response.text
+            return json.dumps({"error": detail
+                                        or _public_error_text(exc.response.text)
                                         or f"HTTP {exc.response.status_code}"})
         except (httpx.HTTPError, ValueError) as exc:
             # Transport failures + non-JSON success bodies (proxy error page).
@@ -913,7 +929,7 @@ def create_mcp_server(app=None):
         except httpx.HTTPStatusError as status_error:
             explanation = (
                 _backend_error_detail(status_error.response)
-                or status_error.response.text
+                or _public_error_text(status_error.response.text)
                 or f"HTTP {status_error.response.status_code}"
             )
             return json.dumps({"error": explanation})

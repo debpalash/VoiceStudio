@@ -146,3 +146,46 @@ def test_redirect_is_a_failure_not_empty_audio():
     with pytest.raises(httpx.HTTPStatusError) as raised:
         mcp_server._raise_for_backend_status(redirect)
     assert raised.value.response is redirect
+
+
+def test_passed_on_detail_hides_secrets_and_home_paths():
+    """The agent may be a hosted model: an echoed token or home path in the
+    backend's detail must not reach it, and a huge body is capped."""
+    import httpx
+    import mcp_server
+
+    token = "hf_" + "A" * 34
+    request = httpx.Request("POST", "http://127.0.0.1/profiles")
+    response = httpx.Response(
+        400,
+        json={"detail": f"Cannot read /Users/alice/clips/ref.wav with token {token}"},
+        request=request,
+    )
+    with pytest.raises(httpx.HTTPStatusError) as raised:
+        mcp_server._raise_for_backend_status(response)
+    message = str(raised.value)
+    assert "Cannot read ~/clips/ref.wav" in message
+    assert "alice" not in message and token not in message
+
+    huge = httpx.Response(500, text="x" * 50_000, request=request)
+    capped = mcp_server._public_error_text(huge.text)
+    assert len(capped) <= mcp_server._ERROR_DETAIL_MAX_CHARS + 1
+
+
+def test_clone_voice_plain_text_error_is_scrubbed(monkeypatch):
+    """The raw-body fallback (no JSON detail) is scrubbed the same way."""
+    from fastapi import FastAPI
+    from fastapi.responses import PlainTextResponse
+    import mcp_server
+
+    backend = FastAPI()
+
+    @backend.post("/profiles")
+    async def create_profile():
+        """Fail with a plain-text body that quotes a home path."""
+        return PlainTextResponse("disk full at /home/bob/omnivoice_data", status_code=507)
+
+    monkeypatch.delenv("OMNIVOICE_API_URL", raising=False)
+    server = mcp_server.create_mcp_server(app=backend)
+    result = _result(server, "clone_voice", name="me", ref_audio_base64=AUDIO)
+    assert result == {"error": "disk full at ~/omnivoice_data"}
