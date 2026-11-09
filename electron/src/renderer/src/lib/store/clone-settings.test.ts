@@ -89,13 +89,76 @@ describe('parsePersistedCloneSettings', () => {
   });
 });
 
+describe('quality-first sampling steps', () => {
+  it('defaults to best quality (null) for a fresh install', async () => {
+    const { DEFAULT_CLONE_SETTINGS, parsePersistedCloneSettings } = await loadModule();
+    expect(DEFAULT_CLONE_SETTINGS.steps).toBeNull();
+    expect(parsePersistedCloneSettings(null).steps).toBeNull();
+  });
+
+  it('moves the old untouched default to best quality but keeps explicit choices', async () => {
+    const { parsePersistedCloneSettings } = await loadModule();
+    // Before quality-first every payload stored 16, chosen or not.
+    expect(parsePersistedCloneSettings('{"steps":16,"speed":1.2}')).toMatchObject({
+      steps: null,
+      speed: 1.2,
+    });
+    expect(parsePersistedCloneSettings('{"steps":24}').steps).toBe(24);
+    expect(parsePersistedCloneSettings('{"steps":8}').steps).toBe(8);
+    expect(parsePersistedCloneSettings('{"steps":64}').steps).toBe(64);
+  });
+
+  it('keeps a 16 chosen after the migration, and a stored best-quality null', async () => {
+    const { parsePersistedCloneSettings, serializeCloneSettings, DEFAULT_CLONE_SETTINGS } =
+      await loadModule();
+    const chosen = serializeCloneSettings({ ...DEFAULT_CLONE_SETTINGS, steps: 16 });
+    expect(parsePersistedCloneSettings(chosen).steps).toBe(16);
+    expect(parsePersistedCloneSettings('{"steps":null,"schema":2}').steps).toBeNull();
+    expect(parsePersistedCloneSettings('{"steps":"16"}').steps).toBeNull();
+  });
+
+  it('rewrites a migrated payload so the next start does not migrate it again', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ steps: 16, language: 'French' }));
+    const { cloneSettingsStore, setCloneSetting } = await loadModule();
+    expect(cloneSettingsStore.state.steps).toBeNull();
+    setCloneSetting('steps', 16);
+    await vi.advanceTimersByTimeAsync(300);
+    const { cloneSettingsStore: reloaded } = await loadModule();
+    expect(reloaded.state).toMatchObject({ steps: 16, language: 'French' });
+  });
+
+  it('keeps an explicit 16 pulled by Cloud sync, which carries only the generation fields', async () => {
+    // A fresh device: nothing stored yet, so the pulled object has no schema marker.
+    const { cloneSettingsStore } = await loadModule();
+    const { notifyStorageKey } = await import('@/lib/storage-events');
+    localStorage.setItem(KEY, JSON.stringify({ steps: 16, speed: 1.1 }));
+    notifyStorageKey(KEY);
+    expect(cloneSettingsStore.state).toMatchObject({ steps: 16, speed: 1.1 });
+  });
+
+  it('migrates a legacy payload only once per device, even if a later start reads it unmarked', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ steps: 16 }));
+    expect((await loadModule()).cloneSettingsStore.state.steps).toBeNull();
+    // The marked write never happened (quota, crash) and a synced 16 lands unmarked.
+    localStorage.setItem(KEY, JSON.stringify({ steps: 16 }));
+    expect((await loadModule()).cloneSettingsStore.state.steps).toBe(16);
+  });
+
+  it('resetAudioQuality returns steps to best quality', async () => {
+    const { cloneSettingsStore, patchCloneSettings, resetAudioQuality } = await loadModule();
+    patchCloneSettings({ steps: 8 });
+    resetAudioQuality();
+    expect(cloneSettingsStore.state.steps).toBeNull();
+  });
+});
+
 describe('cloneSettingsStore persistence', () => {
   it('hydrates from localStorage on module init', async () => {
     localStorage.setItem(KEY, JSON.stringify({ language: 'French', showOverrides: true }));
     const { cloneSettingsStore } = await loadModule();
     expect(cloneSettingsStore.state.language).toBe('French');
     expect(cloneSettingsStore.state.showOverrides).toBe(true);
-    expect(cloneSettingsStore.state.steps).toBe(16);
+    expect(cloneSettingsStore.state.steps).toBeNull();
   });
 
   it('survives malformed stored JSON', async () => {
@@ -156,7 +219,10 @@ describe('cloneSettingsStore persistence', () => {
     resetVoiceControls();
     expect(cloneSettingsStore.state).toEqual({ ...DEFAULT_CLONE_SETTINGS, ...preserved });
     await vi.advanceTimersByTimeAsync(300);
-    expect(JSON.parse(localStorage.getItem(KEY) ?? '{}')).toEqual(cloneSettingsStore.state);
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '{}')).toEqual({
+      ...cloneSettingsStore.state,
+      schema: 2,
+    });
   });
 
   it('setCloneSetting is a no-op for an unchanged value', async () => {

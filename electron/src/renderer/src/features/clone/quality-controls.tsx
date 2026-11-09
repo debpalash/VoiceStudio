@@ -2,12 +2,19 @@ import { useId, useRef, type KeyboardEvent } from 'react';
 import { AudioWaveformIcon, CheckIcon, ChevronDownIcon, RotateCcwIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/popover';
+import { Badge } from '@/components/ui/badge';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { useEngines } from '@/hooks/use-engines';
-import { effectiveSamplingSteps, samplingStepRange } from '@/lib/audio/quality';
+import {
+  belowBestQuality,
+  bestSamplingSteps,
+  effectiveSamplingSteps,
+  samplingStepRange,
+} from '@/lib/audio/quality';
 import { resetAudioQuality, setCloneSetting, useCloneSettings } from '@/lib/store/clone-settings';
+import { restoreBestQuality } from '@/lib/store/quality-offer';
 import { cn } from '@/lib/utils';
 
 const precisions = [16, 24, 32] as const;
@@ -34,6 +41,8 @@ export function QualityControls({
       : null;
   const stepRange = samplingStepRange(activeTts?.id);
   const steps = effectiveSamplingSteps(settings.steps, activeTts?.id);
+  const bestSteps = bestSamplingSteps(activeTts?.id);
+  const faster = belowBestQuality(settings.steps, activeTts?.id);
   const mastering = settings.effectPreset === 'broadcast';
 
   const choose = (index: number) => {
@@ -60,7 +69,9 @@ export function QualityControls({
   return (
     <Popover>
       <PopoverTrigger
-        aria-label={`${t('cloneQuality.title')}: ${t(`cloneQuality.preset${bits}`)}`}
+        aria-label={`${t('cloneQuality.title')}: ${t(`cloneQuality.preset${bits}`)}${
+          faster ? ` · ${t('cloneQuality.faster')}` : ''
+        }`}
         className={cn(
           buttonVariants({ variant: 'ghost', size }),
           'gap-1.5 font-normal text-muted-foreground hover:text-foreground data-popup-open:bg-secondary data-popup-open:text-foreground',
@@ -68,6 +79,11 @@ export function QualityControls({
       >
         <AudioWaveformIcon aria-hidden="true" />
         <span className="max-w-28 truncate">{t(`cloneQuality.preset${bits}`)}</span>
+        {faster && (
+          <Badge variant="secondary" aria-hidden="true" className="h-4 px-1.5 text-[10px]">
+            {t('cloneQuality.faster')}
+          </Badge>
+        )}
         {mastering && (
           <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-primary" />
         )}
@@ -151,11 +167,27 @@ export function QualityControls({
         <div className="space-y-4 border-t border-border/50 px-4 py-3.5">
           {stepRange && (
             <div className="space-y-2">
-              <div className="flex justify-between gap-2 text-xs">
+              <div className="flex items-center justify-between gap-2 text-xs">
                 <span id={`${id}-steps`} className="font-medium">
                   {t('cloneQuality.effort')}
                 </span>
-                <output className="text-primary tabular-nums">{steps}</output>
+                <span className="flex items-center gap-2">
+                  {faster ? (
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      disabled={disabled}
+                      onClick={restoreBestQuality}
+                    >
+                      {t('cloneQuality.restore')}
+                    </Button>
+                  ) : (
+                    <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">
+                      {t('cloneQuality.best')}
+                    </Badge>
+                  )}
+                  <output className="text-primary tabular-nums">{steps}</output>
+                </span>
               </div>
               <Slider
                 thumbProps={{
@@ -172,7 +204,7 @@ export function QualityControls({
                 }
               />
               <p id={`${id}-effort`} className="text-[11px] text-muted-foreground">
-                {t('cloneQuality.effortHint')}
+                {t('cloneQuality.effortHint', { best: bestSteps })}
               </p>
             </div>
           )}

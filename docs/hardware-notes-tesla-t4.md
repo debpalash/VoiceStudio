@@ -27,7 +27,7 @@ Two ways around it:
 
 `/v1/audio/speech` has no `num_step` or `guidance_scale` fields. If you send them they are dropped without an error (the pydantic model ignores extra fields). The multipart `POST /generate` endpoint accepts both.
 
-The app's default `num_step` is 16, while the model's own documentation suggests 32 (see [generation-parameters.md](generation-parameters.md)). In other words the default is already the "fast" preset.
+The app's Voice and Design pages default `num_step` to 32, the model's documented quality preset (see [generation-parameters.md](generation-parameters.md)). When a take is measured to be slow, the app offers a lower value such as 16; it never lowers it on its own (see [audio-quality.md](audio-quality.md)). A multipart `POST /generate` that omits `num_step` uses the steps of the Speed / quality preset chosen under Settings -> Performance & Device (Fast 8, Balanced 16, Quality 32, Max 64; OmniVoice engines only), or 16 when no preset is chosen or the engine has none.
 
 ## Speed checklist
 
