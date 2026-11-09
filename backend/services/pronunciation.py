@@ -110,6 +110,14 @@ def _compile(lexicon: dict[str, str]) -> tuple[Optional[re.Pattern], dict[str, s
     return pattern, lookup
 
 
+def _lexicon_matcher(lexicon: Optional[dict]):
+    """``text -> text`` applying ``lexicon`` in one pass, or ``None`` when empty."""
+    pattern, lookup = _compile(normalize_lexicon(lexicon))
+    if pattern is None:
+        return None
+    return lambda text: pattern.sub(lambda m: lookup[m.lastgroup], text)
+
+
 def apply_lexicon(text: str, lexicon: Optional[dict]) -> str:
     """Replace whole-word occurrences of each lexicon key with its respelling.
 
@@ -123,15 +131,8 @@ def apply_lexicon(text: str, lexicon: Optional[dict]) -> str:
     """
     if not text:
         return text or ""
-    clean = normalize_lexicon(lexicon)
-    pattern, lookup = _compile(clean)
-    if pattern is None:
-        return text
-
-    def _repl(m: re.Match) -> str:
-        return lookup[m.lastgroup]
-
-    return pattern.sub(_repl, text)
+    matcher = _lexicon_matcher(lexicon)
+    return matcher(text) if matcher is not None else text
 
 
 def _precedence_keys(lexicon: dict[str, str]) -> list[list[str]]:
@@ -430,6 +431,16 @@ def inert_entries_for_language(entries, language: str | None) -> list[dict]:
 _INLINE_RE = re.compile(r"\[\[([^\]]{0,256})\]\]")
 
 
+def _inline_replacement(m: re.Match) -> str:
+    inner = m.group(1)
+    return inner.split("|", 1)[1] if "|" in inner else inner
+
+
+def has_inline_override(text: Optional[str]) -> bool:
+    """True when ``text`` carries a ``[[…]]`` override (cache keys use this)."""
+    return bool(text) and "[[" in text and _INLINE_RE.search(text) is not None
+
+
 def apply_inline_overrides(text: str) -> str:
     """Resolve ``[[…]]`` one-off pronunciation overrides to plain spoken text.
 
@@ -441,14 +452,32 @@ def apply_inline_overrides(text: str) -> str:
     """
     if not text or "[[" not in text:
         return text or ""
+    return _INLINE_RE.sub(_inline_replacement, text)
 
-    def _repl(m: re.Match) -> str:
-        inner = m.group(1)
-        if "|" in inner:
-            inner = inner.split("|", 1)[1]
-        return inner
 
-    return _INLINE_RE.sub(_repl, text)
+def apply_lexicon_and_overrides(text: str, lexicon: Optional[dict]) -> str:
+    """Apply ``lexicon`` around inline ``[[…]]`` overrides, then resolve them.
+
+    The dictionary only rewrites text outside the brackets, so an explicit
+    ``[[route|route]]`` or ``[[route]]`` is spoken exactly as written even
+    when a saved entry respells ``route`` (#3561). Text without an override
+    is the plain ``apply_lexicon`` result. Every synthesis path — /generate
+    and each longform chapter span — goes through this one function.
+    """
+    if not text:
+        return text or ""
+    matcher = _lexicon_matcher(lexicon)
+    if matcher is None:
+        return apply_inline_overrides(text)
+    if "[[" not in text:
+        return matcher(text)
+    out, last = [], 0
+    for m in _INLINE_RE.finditer(text):
+        out.append(matcher(text[last:m.start()]))
+        out.append(_inline_replacement(m))
+        last = m.end()
+    out.append(matcher(text[last:]))
+    return "".join(out)
 
 
 def apply_pronunciation(
@@ -466,7 +495,8 @@ def apply_pronunciation(
          matching the audiobook layering). Both go through one ``apply_lexicon``
          pass (longest-term-first, word-boundary aware, idempotent).
       2. Inline ``[[…]]`` one-off overrides resolved last, so an inline override
-         always wins over any dictionary entry for that occurrence.
+         always wins over any dictionary entry for that occurrence — the
+         dictionary never rewrites inside the brackets (#3561).
 
     A falsy ``text`` / empty dictionary / no inline markers is a pass-through, so
     legacy plain text is byte-identical.
@@ -477,8 +507,7 @@ def apply_pronunciation(
     if lexicon:
         # Project-local JSON overlays the DB defaults; project wins on conflict.
         merged.update(normalize_lexicon(lexicon))
-    out = apply_lexicon(text, merged) if merged else text
-    return apply_inline_overrides(out)
+    return apply_lexicon_and_overrides(text, merged)
 
 
 # ── DB load/save ──────────────────────────────────────────────────────────────

@@ -588,9 +588,15 @@ def _emotion_key(span) -> tuple:
 
 
 def _span_key_extras(span) -> tuple:
-    """Chapter-key elements after speed: ``join`` then emotion, each only when set."""
+    """Chapter-key elements after speed: ``join``, emotion, then an inline
+    ``[[…]]`` override marker, each only when set."""
+    from services.pronunciation import has_inline_override
+
     join = getattr(span, "join", None)
-    return ((join,) if join else ()) + _emotion_key(span)
+    # Chapters with an inline override were rendered with the brackets (and
+    # a dictionary rewriting inside them) before #3561: re-key only those.
+    inline = ({"inline_overrides": 1},) if has_inline_override(span.text) else ()
+    return ((join,) if join else ()) + _emotion_key(span) + inline
 
 
 def _ensure_active_engine_licence() -> None:
@@ -825,12 +831,12 @@ def _chapter_cache_inputs(chapter, sr, engine_id, resolve, cache_dir, lexicon=No
         paragraph_ms = int((opts or ExpressiveOptions()).join_kwargs().get("paragraph_gap_ms") or 0)
         if paragraph_ms > 0:
             from services.chunked_tts import split_paragraphs
-            from services.pronunciation import apply_lexicon
+            from services.pronunciation import apply_lexicon_and_overrides
 
             def gap_spans(span) -> bool:
                 # Same text synthesize_chapter splits: after the lexicon,
                 # which can insert a paragraph break.
-                text = apply_lexicon(span.text, lexicon) if span.text else ""
+                text = apply_lexicon_and_overrides(span.text, lexicon) if span.text else ""
                 return len(split_paragraphs(text)) > 1
 
             gap_sig = f"pausefill={pause_fill}"
