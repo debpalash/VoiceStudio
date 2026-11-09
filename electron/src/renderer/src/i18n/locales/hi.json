@@ -2650,9 +2650,11 @@
     "dub_projects": "डबिंग प्रोजेक्ट",
     "dictation_history": "डिक्टेशन इतिहास",
     "pro": "Pro",
+    "pro_upsell": "Pro चिह्नित आइटम VoiceStudio Pro के साथ सिंक होते हैं।",
     "use_choices_of": "{{device}} जैसे ही विकल्प इस्तेमाल करें",
     "devices": "डिवाइस",
     "this_device": "यह डिवाइस",
+    "last_active": "अंतिम सक्रियता: {{time}}",
     "remove_device": "हटाएँ"
   },
   "firstrun": {

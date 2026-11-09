@@ -2650,9 +2650,11 @@
     "dub_projects": "더빙 프로젝트",
     "dictation_history": "받아쓰기 기록",
     "pro": "Pro",
+    "pro_upsell": "Pro 표시 항목은 VoiceStudio Pro에서 동기화됩니다.",
     "use_choices_of": "{{device}}와(과) 같은 선택 사용",
     "devices": "기기",
     "this_device": "이 기기",
+    "last_active": "마지막 활동: {{time}}",
     "remove_device": "삭제"
   },
   "firstrun": {

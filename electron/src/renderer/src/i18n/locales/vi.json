@@ -2650,9 +2650,11 @@
     "dub_projects": "Dự án lồng tiếng",
     "dictation_history": "Lịch sử đọc chính tả",
     "pro": "Pro",
+    "pro_upsell": "Các mục có nhãn Pro được đồng bộ với VoiceStudio Pro.",
     "use_choices_of": "Dùng cùng lựa chọn với {{device}}",
     "devices": "Thiết bị",
     "this_device": "Thiết bị này",
+    "last_active": "Hoạt động gần nhất: {{time}}",
     "remove_device": "Xóa"
   },
   "firstrun": {

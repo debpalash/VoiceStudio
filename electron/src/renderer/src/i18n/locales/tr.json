@@ -2650,9 +2650,11 @@
     "dub_projects": "Dublaj projeleri",
     "dictation_history": "Dikte geçmişi",
     "pro": "Pro",
+    "pro_upsell": "Pro olarak işaretli öğeler VoiceStudio Pro ile eşitlenir.",
     "use_choices_of": "{{device}} ile aynı seçimleri kullan",
     "devices": "Cihazlar",
     "this_device": "Bu cihaz",
+    "last_active": "Son etkinlik: {{time}}",
     "remove_device": "Kaldır"
   },
   "firstrun": {

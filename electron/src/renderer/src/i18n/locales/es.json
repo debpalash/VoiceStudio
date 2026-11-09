@@ -2652,9 +2652,11 @@
     "dub_projects": "Proyectos de doblaje",
     "dictation_history": "Historial de dictado",
     "pro": "Pro",
+    "pro_upsell": "Los elementos marcados como Pro se sincronizan con VoiceStudio Pro.",
     "use_choices_of": "Usar las mismas opciones que {{device}}",
     "devices": "Dispositivos",
     "this_device": "Este dispositivo",
+    "last_active": "Última actividad: {{time}}",
     "remove_device": "Quitar"
   },
   "firstrun": {

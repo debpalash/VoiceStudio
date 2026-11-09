@@ -2674,9 +2674,11 @@
     "dub_projects": "Проекты дубляжа",
     "dictation_history": "История диктовки",
     "pro": "Pro",
+    "pro_upsell": "Элементы с отметкой Pro синхронизируются в VoiceStudio Pro.",
     "use_choices_of": "Использовать те же настройки, что на {{device}}",
     "devices": "Устройства",
     "this_device": "Это устройство",
+    "last_active": "Последняя активность: {{time}}",
     "remove_device": "Удалить"
   },
   "firstrun": {

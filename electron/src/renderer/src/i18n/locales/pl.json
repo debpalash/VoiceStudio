@@ -2674,9 +2674,11 @@
     "dub_projects": "Projekty dubbingu",
     "dictation_history": "Historia dyktowania",
     "pro": "Pro",
+    "pro_upsell": "Elementy oznaczone jako Pro są synchronizowane w VoiceStudio Pro.",
     "use_choices_of": "Użyj tych samych wyborów co {{device}}",
     "devices": "Urządzenia",
     "this_device": "To urządzenie",
+    "last_active": "Ostatnia aktywność: {{time}}",
     "remove_device": "Usuń"
   },
   "firstrun": {

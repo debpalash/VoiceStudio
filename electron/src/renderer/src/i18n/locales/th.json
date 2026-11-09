@@ -2650,9 +2650,11 @@
     "dub_projects": "โปรเจกต์พากย์เสียง",
     "dictation_history": "ประวัติการบอกให้พิมพ์",
     "pro": "Pro",
+    "pro_upsell": "รายการที่มีป้าย Pro จะซิงค์เมื่อใช้ VoiceStudio Pro",
     "use_choices_of": "ใช้ตัวเลือกเดียวกับ {{device}}",
     "devices": "อุปกรณ์",
     "this_device": "อุปกรณ์นี้",
+    "last_active": "ใช้งานล่าสุด: {{time}}",
     "remove_device": "นำออก"
   },
   "firstrun": {
