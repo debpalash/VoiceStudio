@@ -3,45 +3,39 @@ name: Nix flake
 # The community flake (flake.nix, docs/install/nix.md) is not part of the
 # required gate, but it must still evaluate and build: fixed-output hashes,
 # nixpkgs attribute names and the packaged resource contract drift silently
-# otherwise. Path filters keep it off unrelated PRs; merge_group ignores
-# `paths`, so the first step skips the work when the queued diff has no
-# flake inputs.
+# otherwise. Path filters keep it off docs/test/mobile-only PRs; merge_group
+# ignores `paths`, so the first step applies the same scope itself.
 
 on:
   pull_request:
     paths:
-      - 'flake.nix'
-      - 'flake.lock'
-      - 'nix/**'
+      # The package is built from the whole checkout (electron/src, backend,
+      # omnivoice, scripts, config, lockfiles), and its checks exist to catch
+      # source changes such as a new main-process import missing from the
+      # prune roots. So run on everything except what cannot reach the build.
+      - '**'
+      - '!**/*.md'
+      - '!docs/**'
+      - '!mobile/**'
+      - '!tests/**'
+      - '!backend/tests/**'
+      - '!changelog.d/**'
+      - '!.github/**'
       - 'docs/install/nix.md'
-      - 'package.json'
-      - 'bun.lock'
-      - 'electron/package.json'
-      - 'config/**'
-      - 'native/desktop-bridge/Cargo.lock'
-      - 'backend/engines/omnivoice_gguf/quant_map.json'
-      - 'electron/build/icons/**'
-      - 'scripts/prune-runtime-node-modules.mjs'
-      - 'scripts/windows-rocm-recipe.json'
-      - 'scripts/smoke_windows_rocm.py'
       - '.github/workflows/nix.yml'
   push:
     branches: [main]
     paths:
-      - 'flake.nix'
-      - 'flake.lock'
-      - 'nix/**'
+      # Same scope as pull_request.
+      - '**'
+      - '!**/*.md'
+      - '!docs/**'
+      - '!mobile/**'
+      - '!tests/**'
+      - '!backend/tests/**'
+      - '!changelog.d/**'
+      - '!.github/**'
       - 'docs/install/nix.md'
-      - 'package.json'
-      - 'bun.lock'
-      - 'electron/package.json'
-      - 'config/**'
-      - 'native/desktop-bridge/Cargo.lock'
-      - 'backend/engines/omnivoice_gguf/quant_map.json'
-      - 'electron/build/icons/**'
-      - 'scripts/prune-runtime-node-modules.mjs'
-      - 'scripts/windows-rocm-recipe.json'
-      - 'scripts/smoke_windows_rocm.py'
       - '.github/workflows/nix.yml'
   merge_group:
 
@@ -74,12 +68,12 @@ jobs:
             exit 0
           fi
           git fetch --no-tags --depth=1 origin "$BASE_SHA"
-          changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- \
-            flake.nix flake.lock nix docs/install/nix.md package.json bun.lock \
-            electron/package.json config native/desktop-bridge/Cargo.lock \
-            backend/engines/omnivoice_gguf/quant_map.json electron/build/icons \
-            scripts/prune-runtime-node-modules.mjs scripts/windows-rocm-recipe.json \
-            scripts/smoke_windows_rocm.py .github/workflows/nix.yml)
+          # Same scope as the pull_request filter above.
+          changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" | {
+            grep -Ev '\.md$|^(docs|mobile|tests|backend/tests|changelog\.d|\.github)/' || true
+          })
+          changed="$changed$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- \
+            docs/install/nix.md .github/workflows/nix.yml)"
           if [ -n "$changed" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else

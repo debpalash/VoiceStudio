@@ -128,6 +128,33 @@ for (const [name, entry] of names) {
   fs.symlinkSync(path.relative(path.dirname(link), target), link);
 }
 
+// bun links each package's peer dependencies inside its store entry, so a
+// package that peers on a skipped one (@electron-toolkit/utils on electron)
+// keeps a link to an entry that is not shipped. Drop exactly those; any other
+// dangling link means the walk above missed a package, which must fail here.
+function pointsAtSkipped(target) {
+  const parts = target.split(/[\\/]/);
+  return [...skip].some((name) => parts.includes(name));
+}
+
+function dropSkippedLinks(dir) {
+  for (const child of fs.readdirSync(dir, { withFileTypes: true })) {
+    const childPath = path.join(dir, child.name);
+    if (child.isSymbolicLink()) {
+      if (fs.existsSync(childPath)) continue;
+      const target = fs.readlinkSync(childPath);
+      if (!pointsAtSkipped(target)) {
+        throw new Error(`dangling symlink in the runtime node_modules: ${childPath} -> ${target}`);
+      }
+      fs.unlinkSync(childPath);
+    } else if (child.isDirectory()) {
+      dropSkippedLinks(childPath);
+    }
+  }
+}
+
+dropSkippedLinks(outDir);
+
 console.log(
   `pruned runtime node_modules: ${entries.size} packages, ${names.size} top-level entries`,
 );

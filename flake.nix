@@ -379,20 +379,22 @@
           done
 
           # bun records absolute symlinks into the build tree; make any that
-          # survived the copy relative to $out so it stays relocatable.
+          # survived the copy relative to $out so it stays relocatable. The
+          # source tree's node_modules and electron/node_modules sit at the
+          # same relative paths under $out, so map the target there and link
+          # to it relative to the link's own directory (-s keeps the logical
+          # path bun's layout relies on instead of resolving through links).
           prefix=$PWD
           find $out -type l | while read -r link; do
             target=$(readlink "$link")
-            rel=$target
-            case "$rel" in
+            case "$target" in
               "$prefix"/*)
-                rel=.
-                rest=$target
-                while [ "$rest" != "$prefix" ] && [ "$rest" != "/" ]; do
-                  rest=$(dirname "$rest")
-                  rel=$rel/..
-                done
-                ln -sfn "$rel/$(basename "$target")" "$link"
+                mapped="$out/''${target#"$prefix"/}"
+                ln -sfn "$(realpath -ms --relative-to="$(dirname "$link")" "$mapped")" "$link"
+                if [ ! -e "$link" ]; then
+                  echo "rewritten symlink does not resolve: $link -> $target" >&2
+                  exit 1
+                fi
                 ;;
             esac
           done
@@ -674,6 +676,10 @@
             # The shell wrapper, for its --run hook (the NixOS-only GCC
             # runtime path below); the binary wrapper has no equivalent.
             pkgs.makeShellWrapper
+            # nixpkgs' electron_44-bin launcher passes wrapGAppsHook3's
+            # environment (GSettings schemas, GIO modules, pixbuf loaders,
+            # XDG_DATA_DIRS); without it GTK file dialogs can abort the app.
+            pkgs.wrapGAppsHook3
             pkgs.patchelf
             pkgs.installShellFiles
             pkgs.desktop-file-utils
@@ -710,6 +716,18 @@
           # its own buildRustPackage, and the wrapper created below is a shell
           # script. mimeinfo.cache is stripped separately.
           dontFixup = true;
+
+          # What electron_44-bin's own wrapper builds its GApps arguments
+          # from; gsettings-desktop-schemas supplies the schemas GTK reads.
+          buildInputs = [
+            pkgs.glib
+            pkgs.gtk3
+            pkgs.gtk4
+            pkgs.gsettings-desktop-schemas
+          ];
+          # The wrapper is written by hand below (fixup is off), with the
+          # arguments the hook collects.
+          dontWrapGApps = true;
 
           dontConfigure = true;
           dontBuild = true;
@@ -875,7 +893,10 @@
               )$out/libexec/electron" \
               "$out/libexec/electron/chrome_crashpad_handler"
 
+            # dontFixup skips the preFixup hook that normally collects these.
+            gappsWrapperArgsHook
             makeShellWrapper "$out/libexec/electron/voicestudio" "$out/bin/voicestudio" \
+              "''${gappsWrapperArgs[@]}" \
               --prefix PATH : ${lib.makeBinPath [
                 pkgs.ffmpeg
                 pkgs.ripgrep
@@ -1114,6 +1135,12 @@
               exit 1
             fi
 
+            # GTK dialogs need the schemas nixpkgs' electron wrapper provides.
+            if ! grep -q 'gsettings-schemas' ${app}/bin/voicestudio; then
+              echo "bin/voicestudio does not pass the GSettings schemas (wrapGAppsHook3)"
+              exit 1
+            fi
+
             # Nix owns updates for this read-only store path.
             if ! grep -q VOICESTUDIO_DISABLE_UPDATER ${app}/bin/voicestudio; then
               echo "bin/voicestudio does not disable the in-app updater"
@@ -1170,6 +1197,19 @@
               for (const spec of specifiers) requireFromApp.resolve(spec);
               console.log("resolved " + specifiers.size + " runtime module specifiers");
             '
+            touch $out
+          '';
+
+          # Every symlink the package ships must resolve: the pruned runtime
+          # node_modules and the dist are relocated copies, and a dangling
+          # link there is a module that fails to load at runtime.
+          symlinksResolve = pkgs.runCommand "voicestudio-check-symlinks" { } ''
+            dangling=$(find ${app}/ -xtype l)
+            if [ -n "$dangling" ]; then
+              echo "dangling symlinks in the package:"
+              echo "$dangling"
+              exit 1
+            fi
             touch $out
           '';
 
