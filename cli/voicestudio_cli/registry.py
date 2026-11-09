@@ -14,6 +14,11 @@ class Command:
     binary: bool = False
     destructive: bool = False
     stream: bool = False
+    # The route answers {task_id} at once and works in the background; the CLI
+    # follows /tasks/stream/{task_id} to the end. `task_output` is downloaded to
+    # --output afterwards (`{id}` = the command's id, `lang` = the task's language).
+    task: bool = False
+    task_output: str = ''
 
 
 COMMANDS: list[Command] = []
@@ -225,8 +230,8 @@ for name, route, stream in [('plan', '/audiobook/plan', False), ('preview', '/au
 add('audiobook jobs', 'GET', '/audiobook/jobs', 'List audiobook jobs')
 add('audiobook resume', 'POST', '/audiobook/resume/{id}', 'Resume an audiobook', ['id'], stream=True)
 
-add('dub upload', 'POST', '/dub/upload', 'Upload video to create a dubbing job', upload='video')
-add('dub ingest', 'POST', '/dub/ingest-url', 'Import a media URL from --file JSON', body=True)
+add('dub upload', 'POST', '/dub/upload', 'Upload video to create a dubbing job', upload='video', task=True)
+add('dub ingest', 'POST', '/dub/ingest-url', 'Import a media URL from --file JSON', body=True, task=True)
 add('dub transcribe', 'POST', '/dub/transcribe/{id}', 'Transcribe a dubbing job', ['id'])
 add('dub subtitles import', 'POST', '/dub/import-srt/{id}', 'Import subtitles', ['id'], upload='file')
 add('dub transcript get', 'GET', '/dub/segments-text/{id}', 'Read transcript segments', ['id'])
@@ -234,7 +239,8 @@ add('dub transcript set', 'POST', '/dub/sync-transcript/{id}', 'Save segments fr
 add('dub transcript clean', 'POST', '/dub/cleanup-segments/{id}', 'Clean the saved transcript, or segments from --file JSON', ['id'], body=True)
 add('dub translate', 'POST', '/dub/translate', 'Translate segments from --file JSON', body=True)
 add('dub fit', 'POST', '/dub/agent-fit', 'Fit translated segments from --file JSON', body=True)
-add('dub generate', 'POST', '/dub/generate/{id}', 'Generate dubbed speech from --file JSON', ['id'], body=True, stream=True)
+add('dub generate', 'POST', '/dub/generate/{id}', 'Generate dubbed speech from --file JSON', ['id'], body=True,
+    task=True, task_output='/dub/download-audio/{id}')
 add('dub preview', 'POST', '/dub/preview-segment/{id}', 'Preview a segment from --file JSON', ['id'], body=True)
 add('dub tracks', 'GET', '/dub/tracks/{id}', 'List language tracks', ['id'])
 add('dub quality', 'POST', '/dub/qc/{id}', 'Check dubbing quality', ['id'], body=True)

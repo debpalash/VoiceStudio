@@ -147,6 +147,12 @@ same. While it runs in the background it shows its tray (menu bar) icon.
   starting it.
 - If setup is not finished or the backend cannot start, the command says so and
   asks you to open VoiceStudio, instead of waiting.
+- Background work (`dub upload`, `dub ingest`, `dub generate`) runs to the end:
+  progress goes to stderr, a failed or cancelled task exits 1, and Ctrl+C also
+  stops the task. `dub generate --output FILE` saves the dubbed audio track.
+- `models install` and `models license accept` list every licence the model
+  needs (OmniVoice also needs the Higgs audio tokenizer's) and accept them all
+  only with `--accept-license`.
 
 The app publishes its backend address in `backend.json` in its user-data folder,
 so commands also find it on a fallback port. An explicit `--url`, `VOICESTUDIO_URL`

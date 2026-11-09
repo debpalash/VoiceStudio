@@ -114,7 +114,10 @@ class HTTPTests(base.CommandTests):
                     args.append('--yes')
                 output = Path(self.temp.name) / 'result.bin'
                 output.unlink(missing_ok=True)
-                if spec.binary:
+                if spec.task:
+                    type(self).response = (200, 'application/json', b'{"task_id":"t1"}', {})
+                    type(self).routes = {'/tasks/stream/t1': (200, 'text/event-stream', b'data: {"type":"done"}\n\n', {})}
+                elif spec.binary:
                     args += ['-o', str(output)]
                     type(self).response = (200, 'audio/wav', b'RIFF-output', {})
                 elif spec.stream:
@@ -131,6 +134,8 @@ class HTTPTests(base.CommandTests):
                 if spec.binary:
                     self.assertEqual(output.read_bytes(), b'RIFF-output')
                     output.unlink()
+                if spec.task:
+                    self.assertEqual(urlsplit(self.requests.get(timeout=1)[1]).path, '/tasks/stream/t1')
                 type(self).response = (409, 'application/json', b'{"detail":"operation conflict"}', {})
                 result = self.run_cli(*args, '--json')
                 self.assertEqual(result.returncode, 1, result.stdout)
@@ -278,6 +283,77 @@ class HTTPTests(base.CommandTests):
         requests = [self.requests.get_nowait() for _ in range(self.requests.qsize())]
         self.assertEqual([r[1] for r in requests][-2:], ['/models/licenses/accept', '/models/install'])
         self.assertEqual(json.loads(requests[-2][3])['fingerprint'], 'v2:example')
+
+    def test_license_accept_covers_every_licence_the_engine_needs(self):
+        """OmniVoice also needs the Higgs tokenizer's licence, which has no catalogue row (#3855)."""
+        model = {'repo_id': 'k2-fsa/OmniVoice', 'installed': True, 'supported': True,
+                 'license_dependencies_complete': True,
+                 'license_dependencies': [{'repo_id': 'eustlb/higgs-audio-v2-tokenizer', 'required': True,
+                                           'accepted': False, 'fingerprint': 'v2:higgs'}]}
+        type(self).routes = {
+            '/models': (200, 'application/json', json.dumps({'models': [model]}).encode(), {}),
+            '/models/licenses/acceptance/k2-fsa%2FOmniVoice': (200, 'application/json',
+                b'{"required":true,"accepted":true,"fingerprint":"v2:omni"}', {}),
+            '/models/licenses/details/eustlb%2Fhiggs-audio-v2-tokenizer': (200, 'application/json', json.dumps({
+                'info': {'license': 'Higgs licence', 'source_url': 'https://example.test/higgs'},
+                'acceptance': {'fingerprint': 'v2:higgs'}}).encode(), {}),
+        }
+        r = self.run_cli('models', 'license', 'accept', 'k2-fsa/OmniVoice')
+        self.assertEqual(r.returncode, 1)
+        self.assertIn(b'eustlb/higgs-audio-v2-tokenizer', r.stderr)
+        self.assertIn(b'https://example.test/higgs', r.stderr)
+        paths = [self.requests.get_nowait()[1] for _ in range(self.requests.qsize())]
+        self.assertNotIn('/models/licenses/accept', paths)
+        r = self.run_cli('models', 'license', 'accept', 'k2-fsa/OmniVoice', '--accept-license', '--json')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        accepted = [json.loads(body) for _, path, _, body in
+                    [self.requests.get_nowait() for _ in range(self.requests.qsize())]
+                    if path == '/models/licenses/accept']
+        self.assertEqual(accepted, [{'repo_id': 'eustlb/higgs-audio-v2-tokenizer',
+                                     'fingerprint': 'v2:higgs', 'accepted': True}])
+
+    def test_incomplete_licence_list_is_never_accepted_as_the_whole_set(self):
+        type(self).routes = {'/models': (200, 'application/json', json.dumps({'models': [
+            {'repo_id': 'k2-fsa/OmniVoice', 'supported': True, 'license_dependencies_complete': False}]}).encode(), {})}
+        r = self.run_cli('models', 'license', 'accept', 'k2-fsa/OmniVoice', '--accept-license', '--json')
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual(json.loads(r.stderr)['error']['code'], 'license_lookup_failed')
+
+    def test_dub_generate_follows_the_task_and_saves_the_track(self):
+        type(self).routes = {
+            '/dub/generate/job1': (200, 'application/json', b'{"task_id":"dub_job1_1"}', {}),
+            '/tasks/stream/dub_job1_1': (200, 'text/event-stream',
+                b'data: {"type":"progress","current":1,"total":2}\n\n'
+                b'data: {"type":"done","language_code":"es","tracks":["es"]}\n\n', {}),
+            '/dub/download-audio/job1': (200, 'audio/wav', b'RIFF-dubbed', {}),
+        }
+        plan = Path(self.temp.name) / 'plan.json'; plan.write_text('{"segments":[]}', encoding='utf-8')
+        output = Path(self.temp.name) / 'dubbed.wav'
+        r = self.run_cli('dub', 'generate', 'job1', '--file', str(plan), '-o', str(output), '--json')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(output.read_bytes(), b'RIFF-dubbed')
+        paths = [self.requests.get_nowait()[1] for _ in range(self.requests.qsize())]
+        self.assertEqual([urlsplit(p).path for p in paths],
+                         ['/dub/generate/job1', '/tasks/stream/dub_job1_1', '/dub/download-audio/job1'])
+        self.assertEqual(urlsplit(paths[-1]).query, 'lang=es')
+
+    def test_failed_or_cancelled_dub_task_is_a_failure_and_writes_nothing(self):
+        plan = Path(self.temp.name) / 'plan.json'; plan.write_text('{"segments":[]}', encoding='utf-8')
+        output = Path(self.temp.name) / 'dubbed.wav'
+        for events, code in [(b'data: {"type":"error","error":"The speech does not fit its time slot."}\n\n',
+                              'backend_error'),
+                             (b'data: {"type":"cancelled"}\n\n', 'cancelled')]:
+            with self.subTest(code=code):
+                type(self).routes = {
+                    '/dub/generate/job1': (200, 'application/json', b'{"task_id":"dub_job1_1"}', {}),
+                    '/tasks/stream/dub_job1_1': (200, 'text/event-stream', events, {}),
+                }
+                r = self.run_cli('dub', 'generate', 'job1', '--file', str(plan), '-o', str(output), '--json')
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertEqual(json.loads(r.stderr)['error']['code'], code)
+                self.assertFalse(output.exists())
+                while not self.requests.empty():
+                    self.requests.get_nowait()
 
     def test_existing_output_prevents_generation(self):
         output = Path(self.temp.name) / 'speech.wav'; output.write_bytes(b'original')

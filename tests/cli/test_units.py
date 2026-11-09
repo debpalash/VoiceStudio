@@ -167,3 +167,22 @@ class PlatformOutputTests(unittest.TestCase):
         with patch.object(terminal, 'os', SimpleNamespace(name='nt')), \
                 patch.object(terminal, '_windows_console', lambda fd: True):
             self.assertTrue(terminal.is_terminal(Nul()))
+
+
+class TaskFollowTests(unittest.TestCase):
+    def test_ctrl_c_while_following_cancels_the_backend_task(self):
+        from types import SimpleNamespace
+        calls = []
+
+        class Interrupted:
+            def open(self, method, path, **kwargs):
+                calls.append((method, path))
+                raise KeyboardInterrupt
+
+            def json(self, method, path, **kwargs):
+                calls.append((method, path))
+                return {'cancelled': True}
+
+        with self.assertRaises(KeyboardInterrupt):
+            command_module.follow_task(Interrupted(), 'dub_job/1', SimpleNamespace(json=True))
+        self.assertEqual(calls, [('GET', '/tasks/stream/dub_job%2F1'), ('POST', '/tasks/cancel/dub_job%2F1')])

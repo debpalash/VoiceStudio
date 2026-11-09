@@ -490,7 +490,51 @@ def stream_events(response, *, quiet=False):
     return last
 
 
-def response_result(client, method, path, args, *, binary=False, stream=False, **kwargs):
+TASK_FINISHED = {'done', 'ready', 'complete', 'completed'}
+
+
+def follow_task(client, task_id, args):
+    """Wait for a background task, printing its progress to stderr.
+
+    Ctrl+C cancels the task on the backend too, so nothing keeps rendering
+    for a command the user stopped.
+    """
+    try:
+        with client.open('GET', '/tasks/stream/' + quote(task_id, safe='')) as response:
+            final = stream_events(response, quiet=getattr(args, 'json', False))
+    except KeyboardInterrupt:
+        try:
+            client.json('POST', '/tasks/cancel/' + quote(task_id, safe=''))
+        except (CLIError, OSError):
+            pass  # Best effort: the interrupt is reported either way.
+        raise
+    kind = final.get('type')
+    if kind == 'cancelled':
+        raise CLIError('cancelled', 'The task was cancelled before it finished.')
+    if kind not in TASK_FINISHED:
+        raise CLIError('incomplete_response', 'The task ended without finishing; see `voicestudio jobs events '
+                       + task_id + '`.')
+    return final
+
+
+def finish_task(client, started, args):
+    task_id = started.get('task_id') if isinstance(started, dict) else None
+    if not isinstance(task_id, str) or not task_id:
+        raise CLIError('invalid_response', 'Backend did not return a task to follow')
+    final = follow_task(client, task_id, args)
+    result = {**started, **{k: v for k, v in final.items() if k != 'type'}, 'status': final['type']}
+    spec = getattr(args, 'spec', None)
+    if getattr(args, 'output', None):
+        if spec is not None and spec.task_output:
+            route = spec.task_output.format(**{param: quote(getattr(args, param), safe='') for param in spec.params})
+            language = final.get('language_code')
+            return response_result(client, 'GET', route, args, binary=True,
+                                   query={'lang': language} if language else None)
+        return write_json(result, args)
+    return result
+
+
+def response_result(client, method, path, args, *, binary=False, stream=False, task=False, **kwargs):
     output = getattr(args, 'output', None)
     with client.open(method, path, **kwargs) as response:
         ct = response.headers.get('Content-Type', '')
@@ -514,6 +558,8 @@ def response_result(client, method, path, args, *, binary=False, stream=False, *
                 result = json.loads(raw) if raw else {'ok': True}
             except ValueError:
                 raise CLIError('invalid_response', 'Backend returned invalid JSON') from None
+            if task:
+                return finish_task(client, result, args)
             if binary:
                 if isinstance(result, dict) and result.get('audio_url') and output:
                     return response_result(client, 'GET', result['audio_url'], args, binary=True)
@@ -767,6 +813,46 @@ def speak(client, args):
     return response_result(client, 'POST', '/generate', args, form=form, binary=True)
 
 
+def accept_model_licences(client, args, model):
+    """Accept every licence the model's engine needs, as the app's licence dialog does.
+
+    A model can need more than its own terms: OmniVoice also loads the Higgs
+    audio tokenizer, which has no catalogue row (#3855). The backend lists
+    those in ``license_dependencies``; each is shown and accepted explicitly.
+    """
+    if model.get('license_dependencies_complete') is False:
+        raise CLIError('license_lookup_failed', 'VoiceStudio could not list every licence this model needs. '
+                       'Try again, or accept them in Settings > Models.')
+    terms = client.json('GET', '/models/licenses/acceptance/' + quote(args.id, safe=''))
+    own = terms.get('acceptance', terms)
+    pending = [args.id] if own.get('required') and not own.get('accepted') else []
+    pending += [dependency['repo_id'] for dependency in model.get('license_dependencies') or []
+                if dependency.get('required') and not dependency.get('accepted')]
+    if not pending:
+        return
+    shown = [client.json('GET', '/models/licenses/details/' + quote(repo, safe='')) for repo in pending]
+    if not getattr(args, 'json', False):
+        for details in shown:
+            print(scrub(json.dumps(details, ensure_ascii=False, indent=2)), file=sys.stderr)
+        print(f'{args.id} needs {len(pending)} licence(s):', file=sys.stderr)
+        for repo, details in zip(pending, shown):
+            info = (details.get('info') if isinstance(details, dict) else None) or {}
+            link = info.get('source_url') or info.get('evidence_url')
+            print(f'  - {repo}: {info.get("license") or "licence"}' + (f' ({link})' if link else ''), file=sys.stderr)
+    if not args.accept_license:
+        names = ', '.join(pending)
+        raise CLIError('license_required', f'Review the terms of {names}, then rerun with --accept-license '
+                       'to accept all of them explicitly.', details=shown[0] if len(shown) == 1 else shown)
+    for repo, details in zip(pending, shown):
+        # Record exactly the terms that were displayed above.
+        acceptance = (details.get('acceptance') if isinstance(details, dict) else None) or {}
+        fingerprint = acceptance.get('fingerprint') or (own.get('fingerprint') if repo == args.id else None)
+        if not fingerprint:
+            raise CLIError('invalid_response', f'The backend did not return the terms of {repo}')
+        client.json('POST', '/models/licenses/accept', payload={'repo_id': repo,
+                    'fingerprint': fingerprint, 'accepted': True})
+
+
 def model_operation(client, args):
     if args.handler == 'models install-cancel':
         return client.json('POST', '/models/install/cancel', payload={'repo_id': args.id})
@@ -777,16 +863,7 @@ def model_operation(client, args):
         return {'message': 'Model is already installed', 'id': args.id}
     if not model.get('supported', True):
         raise CLIError('unsupported_model', 'This model is unsupported on the backend host')
-    terms = client.json('GET', '/models/licenses/acceptance/' + quote(args.id, safe=''))
-    acceptance = terms.get('acceptance', terms)
-    if acceptance.get('required') and not acceptance.get('accepted'):
-        details = client.json('GET', '/models/licenses/details/' + quote(args.id, safe=''))
-        if not getattr(args, 'json', False):
-            print(scrub(json.dumps(details, ensure_ascii=False, indent=2)), file=sys.stderr)
-        if not args.accept_license:
-            raise CLIError('license_required', 'Review the model terms, then rerun with --accept-license to accept them explicitly.', details=details)
-        client.json('POST', '/models/licenses/accept', payload={'repo_id': args.id,
-                    'fingerprint': acceptance['fingerprint'], 'accepted': True})
+    accept_model_licences(client, args, model)
     if args.handler == 'models license accept':
         return {'id': args.id, 'accepted': True}
     return client.json('POST', '/models/install', payload={'repo_id': args.id, 'target': 'local'})
@@ -840,8 +917,10 @@ def generic(client, args):
                 kwargs['raw_file'] = uploaded
             else:
                 kwargs['files'] = {spec.upload: uploaded}
-            return response_result(client, spec.method, route, args, binary=spec.binary, stream=spec.stream, **kwargs)
-    return response_result(client, spec.method, route, args, binary=spec.binary, stream=spec.stream, **kwargs)
+            return response_result(client, spec.method, route, args, binary=spec.binary, stream=spec.stream,
+                                   task=spec.task, **kwargs)
+    return response_result(client, spec.method, route, args, binary=spec.binary, stream=spec.stream,
+                                   task=spec.task, **kwargs)
 
 
 def emit(result, args):
