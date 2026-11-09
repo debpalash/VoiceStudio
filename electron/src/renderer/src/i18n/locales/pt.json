@@ -2631,6 +2631,10 @@
     "retry": "Tentar novamente",
     "refresh": "Atualizar",
     "manage_profile": "Gerenciar perfil",
+    "change_photo": "Alterar a foto na sua página de perfil",
+    "edit_name": "Editar nome",
+    "name_label": "Nome de exibição",
+    "rename_failed": "Não foi possível salvar seu nome. Tente novamente.",
     "manage_plan": "Gerenciar plano"
   },
   "cloudsync": {

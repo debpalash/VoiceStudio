@@ -2710,6 +2710,10 @@
     "retry": "Retry",
     "refresh": "Refresh",
     "manage_profile": "Manage profile",
+    "change_photo": "Change photo on your profile page",
+    "edit_name": "Edit name",
+    "name_label": "Display name",
+    "rename_failed": "Couldn’t save your name. Try again.",
     "manage_plan": "Manage plan"
   },
   "cloudsync": {

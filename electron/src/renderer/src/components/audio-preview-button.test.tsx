@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 type Handlers = Record<string, (() => void) | undefined> & { src: { src: string } };
 const players = vi.hoisted(() => ({ mounted: [] as Handlers[], live: null as Handlers | null }));
@@ -28,44 +28,48 @@ afterEach(() => {
   players.live = null;
 });
 const fire = (name: string) => act(() => players.live?.[name]?.());
-it('mounts no player until the first click', () => {
+// The player is a lazy chunk: wait for it to mount after the click that starts it.
+const start = async (button: HTMLElement) => {
+  const mounted = players.mounted.length;
+  fireEvent.click(button);
+  await waitFor(() => expect(players.mounted).toHaveLength(mounted + 1));
+};
+it('mounts no player until the first click', async () => {
   render(<AudioPreviewButton src="/a" source="s" />);
   expect(players.mounted).toHaveLength(0);
-  fireEvent.click(screen.getByRole('button', { name: 'clone.preview_voice' }));
-  expect(players.mounted).toHaveLength(1);
+  await start(screen.getByRole('button', { name: 'clone.preview_voice' }));
   expect(screen.getByRole('button', { name: 'common.loading · common.cancel' })).toBeEnabled();
 });
-it('lets a slow load be cancelled instead of freezing the button', () => {
+it('lets a slow load be cancelled instead of freezing the button', async () => {
   render(<AudioPreviewButton src="/a" source="s" />);
-  fireEvent.click(screen.getByRole('button'));
+  await start(screen.getByRole('button'));
   fireEvent.click(screen.getByRole('button', { name: 'common.loading · common.cancel' }));
   expect(players.live).toBeNull();
   expect(screen.getByRole('button', { name: 'clone.preview_voice' })).toBeEnabled();
 });
-it('retries an errored preview with a fresh request', () => {
+it('retries an errored preview with a fresh request', async () => {
   render(<AudioPreviewButton src="/a" source="s" />);
-  fireEvent.click(screen.getByRole('button'));
+  await start(screen.getByRole('button'));
   fire('onError');
   const retry = screen.getByRole('button', { name: 'player.unavailable · common.retry' });
   expect(retry).toBeEnabled();
-  fireEvent.click(retry);
-  expect(players.mounted).toHaveLength(2);
+  await start(retry);
   fire('onPlaying');
   expect(screen.getByRole('button', { name: 'player.pause' })).toBeInTheDocument();
 });
-it('falls back once before reporting an error', () => {
+it('falls back once before reporting an error', async () => {
   render(<AudioPreviewButton src="/a" fallbackSrc="/a?local" source="s" />);
-  fireEvent.click(screen.getByRole('button'));
+  await start(screen.getByRole('button'));
   fire('onError');
   expect(players.live?.src.src).toBe('/a?local');
   expect(screen.getByRole('button', { name: 'common.loading · common.cancel' })).toBeVisible();
   fire('onError');
   expect(screen.getByRole('button', { name: 'player.unavailable · common.retry' })).toBeVisible();
 });
-it('defers onReady until playback stops so a refetch cannot cut the clip', () => {
+it('defers onReady until playback stops so a refetch cannot cut the clip', async () => {
   const onReady = vi.fn();
   render(<AudioPreviewButton src="/a" source="s" onReady={onReady} />);
-  fireEvent.click(screen.getByRole('button'));
+  await start(screen.getByRole('button'));
   fire('onPlaying');
   expect(onReady).not.toHaveBeenCalled();
   fire('onEnded');

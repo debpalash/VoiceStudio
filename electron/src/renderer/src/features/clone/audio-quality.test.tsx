@@ -6,7 +6,7 @@ vi.mock('@/lib/api/client', () => ({ apiJson: mocks.api }));
 vi.mock('@/lib/audio/playback-clock', () => ({
   requestPlaybackSeek: mocks.seek,
 }));
-vi.mock('@/components/waveform-player', () => ({
+vi.mock('@/components/media-clock', () => ({
   formatClock: (value: number) => String(value),
 }));
 vi.mock('react-i18next', () => ({

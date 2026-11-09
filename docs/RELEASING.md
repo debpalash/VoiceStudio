@@ -359,6 +359,8 @@ With "Require branches to be up to date" on, every merge to `main` puts every ot
 
 The workflows are ready: `ci.yml` runs on `merge_group`, and `merge-queue-checks.yml` reports the PR-level required checks ("CLA gate", "Commit identities", "CLA", "Commit identity policy") on the queue's commit, because they cannot run there. `tests/test_merge_queue.py` keeps those names equal to the ruleset's required list; change both together.
 
+On the queue commit, `ci.yml` compares the commit with its base to decide the documentation-only and Electron scopes, as it does for a pull request. The pass cache (see `.github/CONTRIBUTING.md` → Quality gates) lets a queued job skip when its inputs match a green run on `main`, so jobs whose inputs the queued pull requests did not touch do not run again. Pushes to `main` always run in full.
+
 To turn it on (Settings → Rules → Rulesets → `main`):
 
 1. Add **Require merge queue**: method *Merge commit*, build concurrency 1–3, minimum group size 1, wait time 0–5 minutes, status check timeout 60 minutes.
