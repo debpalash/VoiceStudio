@@ -450,6 +450,14 @@ def cpu_host(monkeypatch):
     return caps
 
 
+def threads_to_join(before, pool_before, pool_now, current):
+    """Threads a test must join: everything it started, plus GPU-pool workers
+    that were live before it but whose pool it reset (no longer live)."""
+    retired = set(pool_before) - set(pool_now)
+    exempt = (set(before) - retired) | set(pool_now)
+    return [t for t in current if t not in exempt]
+
+
 @pytest.fixture
 def join_test_threads(monkeypatch):
     """Join every thread the test started before its state is torn down.
@@ -481,9 +489,7 @@ def join_test_threads(monkeypatch):
     pool_now = _live_gpu_pool_workers()
     # A GPU worker that existed before the test but whose pool the test reset
     # (e.g. after a load timeout) is no longer live: join it like any other.
-    retired = pool_before - pool_now
-    exempt = (before - retired) | pool_now
-    started = [t for t in threading.enumerate() if t not in exempt]
+    started = threads_to_join(before, pool_before, pool_now, threading.enumerate())
     deadline = time.monotonic() + 35.0  # test stubs park on bounded 30 s waits
     for thread in started:
         thread.join(timeout=max(0.0, deadline - time.monotonic()))
