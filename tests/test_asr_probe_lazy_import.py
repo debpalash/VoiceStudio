@@ -200,3 +200,20 @@ def test_probe_crash_never_escapes_is_available(monkeypatch, backend):
     )
     ok, reason = backend.is_available()
     assert not ok and "crashed" in reason
+
+
+@pytest.mark.usefixtures("probe_gates_open")
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ("os._exit(3)", "faster-whisper failed to load (RuntimeError):"),
+        ("raise ImportError('nope')", "faster-whisper not installed:"),
+    ],
+)
+def test_subprocess_asr_probe_separates_crash_from_missing(fake_packages, monkeypatch, body, expected):
+    from services.subprocess_asr import IsolatedFasterWhisperBackend as SubprocessASRBackend
+
+    monkeypatch.setattr("core.windows_rocm.asr_isolation.availability_status", lambda *a, **k: None)
+    fake_packages(faster_whisper=f"import os\n{body}\n")
+    ok, reason = SubprocessASRBackend.is_available()
+    assert not ok and reason.startswith(expected), reason
