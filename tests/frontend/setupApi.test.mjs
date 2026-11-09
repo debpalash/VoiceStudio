@@ -310,3 +310,29 @@ test("NVIDIA probe errors and empty GPU lists fall back to CPU", async () => {
     );
   }
 });
+
+test("setup heals the checkout .venv before every uv call and survives a failed heal (#1783)", async () => {
+  const order = [];
+  let heals = 0;
+  assert.equal(
+    await setupApi({
+      platform: "linux",
+      arch: "x64",
+      selectVariant: async () => "cpu",
+      log: () => {},
+      repairNativeLibraries: async () => {},
+      healPthFiles: async (venv) => {
+        assert.match(venv, /[\\/]\.venv$/);
+        order.push("heal");
+        if (++heals === 2) throw new Error("read-only");
+        return [];
+      },
+      run: (_cmd, args) => {
+        order.push(args[0]);
+        return { status: 0 };
+      },
+    }),
+    0,
+  );
+  assert.deepEqual(order, ["heal", "sync", "heal", "run"]);
+});

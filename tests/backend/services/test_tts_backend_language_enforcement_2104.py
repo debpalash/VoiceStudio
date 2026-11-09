@@ -89,7 +89,10 @@ def _StubBackend():
         # BCP-47 / region suffix → first 2 alpha chars of the head (BCP-47
         # form: language[-region[-script]]; the head is the language).
         ("zh-CN", "zh"),
-        ("cmn-Hans", "cmn"),  # 3-letter base — preserved for engine-side match
+        # The app's own Chinese script tag is Chinese (#3685); a bare
+        # 3-letter "cmn" below stays exact.
+        ("cmn-Hans", "zh"),
+        ("Chinese (Traditional)", "zh"),
         ("ZH_CN", "zh"),       # underscore separator, not BCP-47 — noise
         # Display-name → ISO (the picker sometimes sends the label).
         ("English", "en"),

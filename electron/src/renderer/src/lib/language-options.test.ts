@@ -35,6 +35,14 @@ it('does not infer support for regional variants, missing lists or a different m
   expect(languageSupported('German', [])).toBe(false);
   expect(languageSupported('de', ['german'])).toBe(true);
 });
+it('matches the Chinese script tags dub segments store against the engine names (#3685)', () => {
+  const engine = ['chinese', 'chinese (simplified)', 'chinese (traditional)', 'english'];
+  for (const language of ['Chinese (Simplified)', 'cmn-Hans', 'cmn-hans', 'cmn-Hant', 'CMN-HANT'])
+    expect(languageSupported(language, engine)).toBe(true);
+  // The two scripts stay distinct.
+  expect(languageSupported('cmn-Hant', ['chinese (simplified)'])).toBe(false);
+  expect(languageSupported('cmn-Hans', ['english'])).toBe(false);
+});
 
 it('blocks persisted incompatible local selections while metadata is current', async () => {
   const client = new QueryClient();

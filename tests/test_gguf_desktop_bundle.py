@@ -9,17 +9,14 @@ the packaged layout matches the backend's lookup.
 """
 from __future__ import annotations
 
-import os
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
 import yaml
+from build_script_stubs import run_build
 
 REPO = Path(__file__).resolve().parents[1]
 WORKFLOWS = REPO / ".github" / "workflows"
-BASH = shutil.which("bash") if os.name != "nt" else "C:/Program Files/Git/bin/bash.exe"
 
 # What backend/engines/omnivoice_gguf/backend.py::_platform_slug() returns on
 # each installer target. Windows on ARM runs the emulated x64 Python runtime.
@@ -99,37 +96,21 @@ def test_packaged_layout_matches_the_backend_lookup():
 
 
 def _run_windows_build(tmp_path: Path, runtime: dict[str, str]):
-    scripts = tmp_path / "scripts"
-    shutil.copytree(REPO / "scripts/lib", scripts / "lib")
-    shutil.copy2(REPO / "scripts/build-omnivoice-tts.sh", scripts)
-    fake = tmp_path / "fake-bin"
-    fake.mkdir()
     tools = {
         "git": 'if [[ "$1" == clone ]]; then for d in "$@"; do :; done; mkdir -p "$d"; fi',
         "cmake": 'if [[ "$1" == --build ]]; then mkdir -p build/Release;'
                  ' printf rt > build/Release/omnivoice-tts.exe;'
                  ' printf lib > build/Release/ggml-cpu-haswell.dll; fi',
     }
-    for name, body in tools.items():
-        (fake / name).write_text("#!/usr/bin/env bash\nset -euo pipefail\n" + body + "\n")
-        (fake / name).chmod(0o755)
     msvc = tmp_path / "msvc"
     msvc.mkdir()
     for dll, body in runtime.items():
         (msvc / dll).write_text(body)
-    env = {**os.environ, "PATH": f"{fake}:/usr/bin:/bin",
-           "OMNIVOICE_MSVC_RUNTIME_DIR": msvc.as_posix()}
-    env.pop("VULKAN_SDK", None)
-    return subprocess.run(
-        [BASH, str(scripts / "build-omnivoice-tts.sh"), "--platform", "windows-x86_64",
-         "--commit-sha", "a" * 40],
-        env=env, cwd=tmp_path, capture_output=True, text=True, timeout=60, check=False,
-    )
+    return run_build(tmp_path, "windows-x86_64", tools=tools,
+                     env={"OMNIVOICE_MSVC_RUNTIME_DIR": msvc.as_posix()})
 
 
 def test_windows_build_ships_its_cpp_runtime_with_checksums(tmp_path):
-    if not BASH or not Path(BASH).is_file():
-        pytest.skip("POSIX bash required for the build script")
     result = _run_windows_build(tmp_path, {
         "msvcp140.dll": "msvcp", "vcruntime140.dll": "vcrt",
         "vcruntime140_1.dll": "vcrt1", "vcomp140.dll": "omp",
@@ -143,8 +124,6 @@ def test_windows_build_ships_its_cpp_runtime_with_checksums(tmp_path):
 
 
 def test_windows_build_fails_without_the_cpp_runtime(tmp_path):
-    if not BASH or not Path(BASH).is_file():
-        pytest.skip("POSIX bash required for the build script")
     result = _run_windows_build(tmp_path, {"vcruntime140.dll": "vcrt"})
     assert result.returncode != 0
     assert "Visual C++ runtime DLLs not found" in result.stderr

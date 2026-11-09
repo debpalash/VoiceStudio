@@ -5,6 +5,7 @@ import {
   isValidVoiceStudioRoot,
   modelsAreShared,
   normalized,
+  strictlyWithin,
   within,
 } from './reset-data';
 
@@ -98,8 +99,15 @@ export async function scanUninstallTargets(roots: UninstallRoots): Promise<Unins
     });
   }
   const model = targets.find((target) => target.key === 'models');
-  const environment = targets.find((target) => target.key === 'env' && target.exists);
-  if (model?.exists && environment && within(model.path, environment.path)) model.shared = false;
+  // Owned only when strictly inside a runtime folder the app created; whichever runtime
+  // entry holds it, and never because the cache and the runtime are one folder (#3512).
+  if (
+    model?.exists &&
+    targets.some(
+      (target) => target.key === 'env' && target.exists && strictlyWithin(model.path, target.path),
+    )
+  )
+    model.shared = false;
   if (model?.exists && model.shared) {
     for (const target of targets) {
       if (

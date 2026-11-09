@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { renameSyncWithRetry } from '../rename-retry';
 
@@ -9,9 +9,16 @@ export interface SafeStorageLike {
   decryptString(encrypted: Buffer): string;
 }
 
-/** The refresh token lives only in Electron main; never as plain text on disk. */
+/**
+ * The refresh token lives only in Electron main; never as plain text on disk.
+ *
+ * safeStorage is consulted only when there is a saved token to read or a new one
+ * to write. On macOS asking it opens the Keychain, and a re-signed development
+ * bundle gets an access prompt that blocks the main process before the backend
+ * starts — on every launch, even with account features off (#3813).
+ */
 export class RefreshTokenStore {
-  readonly persistent: boolean;
+  private encryption: boolean | null = null;
   private memory: string | null = null;
   private identity: string | null = null;
   private loaded = false;
@@ -19,15 +26,31 @@ export class RefreshTokenStore {
   constructor(
     private readonly path: string,
     private readonly safe: SafeStorageLike,
-    platform: NodeJS.Platform = process.platform,
-  ) {
-    this.persistent =
-      safe.isEncryptionAvailable() &&
-      !(platform === 'linux' && safe.getSelectedStorageBackend?.() === 'basic_text');
+    private readonly platform: NodeJS.Platform = process.platform,
+  ) {}
+
+  /** Whether the token survives a restart. The first read asks the OS keyring. */
+  get persistent(): boolean {
+    if (this.encryption === null) {
+      try {
+        this.encryption =
+          this.safe.isEncryptionAvailable() &&
+          !(this.platform === 'linux' && this.safe.getSelectedStorageBackend?.() === 'basic_text');
+      } catch {
+        this.encryption = false; // A locked or broken keyring keeps the session in memory only.
+      }
+    }
+    return this.encryption;
   }
 
   load(): string | null {
-    if (this.loaded || !this.persistent) return this.memory;
+    if (this.loaded) return this.memory;
+    // Nothing saved: no keyring access (this process writes the file itself on sign-in).
+    if (!existsSync(this.path)) {
+      this.loaded = true;
+      return this.memory;
+    }
+    if (!this.persistent) return this.memory;
     this.loaded = true;
     try {
       const { v, token } = JSON.parse(readFileSync(this.path, 'utf8'));

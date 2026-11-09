@@ -446,4 +446,5 @@ def test_unreadable_entry_marks_other_incomplete(roots, monkeypatch):
     r = _build(roots)
     other = next(c for c in _cat(r, "data")["children"] if c["id"] == "other")
     assert other["complete"] is False and other["bytes"] == 7 + 3
-    assert any(w["reason"] == "permission" for w in r["warnings"])
+    # Filter by kind: a nearly full test machine adds a real low_disk warning (#3695).
+    assert any(w["kind"] == "unreadable" and w["reason"] == "permission" for w in r["warnings"])
