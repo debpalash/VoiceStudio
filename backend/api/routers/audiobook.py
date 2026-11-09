@@ -1169,12 +1169,13 @@ async def _render_longform_sse(
             except Exception:
                 pass  # best-effort job history
 
-    def _emit(payload: dict, *, persist: bool = True) -> str:
+    def _emit(payload: dict, *, persist: bool = True, completed_chapter: int | None = None) -> str:
         # `progress` events (#3417) are live-only: one per chunk would flood
         # job history, and a reader of it needs only the chapter outcomes.
         if persist and job_store is not None:
             try:
-                job_store.append_event(job_id, json.dumps(payload))
+                job_store.append_event(job_id, json.dumps(payload),
+                                       completed_chapter=completed_chapter)
             except Exception:
                 pass  # best-effort job history; never block the stream
         return f"data: {json.dumps(payload)}\n\n"
@@ -1363,7 +1364,7 @@ async def _render_longform_sse(
                 # reuse inside a re-rendered chapter.
                 ev["segments"] = seg_stats["total"]
                 ev["cached_segments"] = seg_stats["cached"]
-            yield _emit(ev)
+            yield _emit(ev, completed_chapter=i)
             tracker.finish_chapter(i)
             yield _progress_event(i)
 
@@ -1662,18 +1663,12 @@ async def longform_render(req: LongformRenderRequest, request: Request = None):
 
 
 def _chapters_done(job_id: str) -> int:
-    """Count chapters that finished rendering, from the job's persisted events.
+    """Count chapters that finished rendering — the job's durable record, not
+    its capped event tail, so a long book does not stop at 500 (#3562).
     Best-effort (0 if unavailable) — used only to show resume progress."""
     try:
         from core import job_store
-        n = 0
-        for ev in job_store.events_since(job_id, 0, limit=100_000):
-            try:
-                if json.loads(ev["payload"]).get("type") == "chapter":
-                    n += 1
-            except (ValueError, KeyError, TypeError):
-                continue
-        return n
+        return len(job_store.completed_chapters(job_id))
     except Exception:
         return 0
 
