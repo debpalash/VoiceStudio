@@ -155,7 +155,8 @@ def _fields(mapping, *, tty, width, depth):
 def render(result, *, tty=None, width=None, depth=0):
     if tty is None:
         import sys
-        tty = sys.stdout.isatty()
+        from .terminal import is_terminal
+        tty = is_terminal(sys.stdout)
     if width is None:
         width = shutil.get_terminal_size((100, 24)).columns
     if isinstance(result, str):

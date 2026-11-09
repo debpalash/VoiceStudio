@@ -14,6 +14,7 @@ from urllib.parse import urlencode, urlsplit
 
 from .config import loopback, normalize_url
 from .errors import CLIError, scrub
+from .terminal import is_terminal
 
 CHUNK = 64 * 1024
 MAX_JSON = 16 * 1024 * 1024
@@ -153,7 +154,7 @@ def multipart(fields: dict, files: dict):
 def download(response, destination: str, *, overwrite: bool = False) -> dict:
     import sys
     if destination == '-':
-        if sys.stdout.isatty():
+        if is_terminal(sys.stdout):
             raise CLIError('usage_error', 'Refusing binary output to a terminal; use --output <file>', exit_code=2)
         while chunk := response.read(CHUNK):
             sys.stdout.buffer.write(chunk)

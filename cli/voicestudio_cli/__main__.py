@@ -20,6 +20,7 @@ from .transport import Client, download
 from . import updates
 from .desktop import launch_desktop, launcher_targets, remember_launcher_arguments, split_arguments
 from .render import render
+from .terminal import is_terminal
 
 
 class Parser(argparse.ArgumentParser):
@@ -432,7 +433,7 @@ def document(path):
 def confirm(args, description):
     if getattr(args, 'yes', False):
         return
-    if not sys.stdin.isatty():
+    if not is_terminal(sys.stdin):
         raise CLIError('confirmation_required', description + '. Rerun with --yes to confirm.')
     print(description + ' [y/N] ', end='', file=sys.stderr, flush=True)
     if sys.stdin.readline().strip().lower() not in {'y', 'yes'}:
@@ -871,11 +872,15 @@ def remember_secrets(value, secrets):
 
 
 def main(argv=None):
-    # Piped text has the same encoding on Windows, macOS and Linux.
+    # Output is byte-identical on Windows, macOS and Linux: UTF-8 with LF line
+    # endings, so pipes, files and scripts see the same text everywhere.
     for stream in [sys.stdin, sys.stdout, sys.stderr]:
         if hasattr(stream, 'reconfigure'):
             try:
-                stream.reconfigure(encoding='utf-8')
+                if stream is sys.stdin:
+                    stream.reconfigure(encoding='utf-8')
+                else:
+                    stream.reconfigure(encoding='utf-8', newline='\n')
             except (OSError, ValueError):
                 pass  # Embedders may already have read from a text stream.
     argv = list(sys.argv[1:] if argv is None else argv)

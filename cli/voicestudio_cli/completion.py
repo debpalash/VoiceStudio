@@ -129,7 +129,8 @@ complete -c voicestudio -a '(voicestudio __complete (commandline -opc)[2..-1] (c
 '''
 
 POWERSHELL = r'''# VoiceStudio Tab completion for PowerShell: voicestudio completion powershell | Out-String | Invoke-Expression
-Register-ArgumentCompleter -Native -CommandName voicestudio -ScriptBlock {
+# Windows resolves the command to voicestudio.exe (installer) or a .cmd shim.
+Register-ArgumentCompleter -Native -CommandName voicestudio, voicestudio.exe, voicestudio.cmd -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
     $words = @($commandAst.CommandElements | Select-Object -Skip 1 |
         Where-Object { $_.Extent.EndOffset -le $cursorPosition } | ForEach-Object { $_.ToString() })

@@ -81,9 +81,13 @@ def run_shell(shell, script, env):
 def shell_env(tmp_path):
     bin_dir = tmp_path / 'bin'
     bin_dir.mkdir()
-    launcher = bin_dir / 'voicestudio'
-    launcher.write_text(f'#!/bin/sh\nexec "{sys.executable}" -m voicestudio_cli "$@"\n')
-    launcher.chmod(0o755)
+    if os.name == 'nt':
+        # Windows runs commands by extension; an extensionless script is opened, not run.
+        (bin_dir / 'voicestudio.cmd').write_text(f'@"{sys.executable}" -m voicestudio_cli %*\r\n', encoding='utf-8')
+    else:
+        launcher = bin_dir / 'voicestudio'
+        launcher.write_text(f'#!/bin/sh\nexec "{sys.executable}" -m voicestudio_cli "$@"\n', encoding='utf-8')
+        launcher.chmod(0o755)
     return {**os.environ, 'PATH': f'{bin_dir}{os.pathsep}{os.environ["PATH"]}',
             'PYTHONPATH': str(ROOT / 'cli'), 'HOME': str(tmp_path)}
 

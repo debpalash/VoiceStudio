@@ -133,3 +133,37 @@ class IsolationTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class PlatformOutputTests(unittest.TestCase):
+    """Output and prompts behave the same on Windows as on macOS and Linux."""
+
+    def test_output_uses_lf_even_where_the_platform_default_is_crlf(self):
+        raw = io.BytesIO()
+        windows_stdout = io.TextIOWrapper(raw, encoding='cp1252', newline='\r\n')
+        with patch.object(sys, 'stdout', windows_stdout):
+            self.assertEqual(main(['completion', 'bash']), 0)
+            windows_stdout.flush()
+        self.assertIn(b'\n', raw.getvalue())
+        self.assertNotIn(b'\r\n', raw.getvalue())
+
+    def test_windows_nul_device_is_not_a_terminal(self):
+        from types import SimpleNamespace
+        import voicestudio_cli.terminal as terminal
+
+        class Nul(io.StringIO):
+            def isatty(self):
+                return True  # What Windows reports for NUL.
+            def fileno(self):
+                return 0
+        with patch.object(terminal, 'os', SimpleNamespace(name='nt')), \
+                patch.object(terminal, '_windows_console', lambda fd: False):
+            self.assertFalse(terminal.is_terminal(Nul()))
+            with patch.object(sys, 'stdin', Nul()), patch.object(sys, 'stderr', io.StringIO()) as err:
+                with self.assertRaises(CLIError) as raised:
+                    command_module.confirm(SimpleNamespace(yes=False), 'Confirm clearing')
+                self.assertEqual(raised.exception.code, 'confirmation_required')
+                self.assertEqual(err.getvalue(), '')  # no prompt nobody can answer
+        with patch.object(terminal, 'os', SimpleNamespace(name='nt')), \
+                patch.object(terminal, '_windows_console', lambda fd: True):
+            self.assertTrue(terminal.is_terminal(Nul()))
