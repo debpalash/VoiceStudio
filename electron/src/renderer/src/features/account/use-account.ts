@@ -36,6 +36,11 @@ export function useAccount() {
       const next = await account.refresh().catch(() => undefined);
       if (next) setState(next);
     },
+    /** Saves a new display name to VoiceStudio Cloud; throws when the server refuses it. */
+    updateProfile: async (patch: { display_name: string }) => {
+      if (!account) return;
+      setState(await account.updateProfile(patch));
+    },
     signIn: () => account?.signIn(),
     cancelSignIn: () => account?.cancelSignIn(),
     signOut: () => account?.signOut(),

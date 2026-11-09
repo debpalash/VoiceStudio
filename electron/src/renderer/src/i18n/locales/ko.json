@@ -2627,6 +2627,10 @@
     "plan_ends": "{{date}}까지",
     "details_failed": "계정 정보를 불러오지 못했습니다({{reason}}).",
     "manage_profile": "프로필 관리",
+    "change_photo": "프로필 페이지에서 사진 변경",
+    "edit_name": "이름 편집",
+    "name_label": "표시 이름",
+    "rename_failed": "이름을 저장하지 못했습니다. 다시 시도하세요.",
     "manage_plan": "요금제 관리",
     "retry": "다시 시도",
     "refresh": "새로고침"

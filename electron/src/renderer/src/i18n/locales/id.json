@@ -2629,6 +2629,10 @@
     "retry": "Coba lagi",
     "refresh": "Muat ulang",
     "manage_profile": "Kelola profil",
+    "change_photo": "Ganti foto di halaman profil Anda",
+    "edit_name": "Ubah nama",
+    "name_label": "Nama tampilan",
+    "rename_failed": "Nama Anda tidak dapat disimpan. Coba lagi.",
     "manage_plan": "Kelola paket"
   },
   "cloudsync": {
