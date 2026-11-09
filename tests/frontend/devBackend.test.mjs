@@ -79,6 +79,7 @@ function supervisorHarness(overrides = {}) {
     exit: (code) => exits.push(code),
     report: (message) => reports.push(message),
     dataDir: () => '/missing-test-data',
+    healPthFiles: () => [],
     ...overrides,
   });
 
@@ -375,4 +376,23 @@ test('a nonzero taskkill reload exit starts a replacement without crash handling
   assert.equal(rig.children.length, 2);
   assert.equal(rig.reports.filter((entry) => entry.includes('BACKEND DIED')).length, 0);
   assert.deepEqual(rig.exits, []);
+});
+
+test('every launch heals the checkout .venv first, and a failed heal never blocks it (#1783)', () => {
+  const order = [];
+  let fail = false;
+  const harness = supervisorHarness({
+    healPthFiles: () => {
+      order.push('heal');
+      if (fail) throw new Error('read-only');
+      return [];
+    },
+  });
+  harness.supervisor.start();
+  order.push(`spawn${harness.children.length}`);
+  fail = true;
+  harness.children[0].emit('exit', 1, null);
+  harness.runNextTimer();
+  order.push(`spawn${harness.children.length}`);
+  assert.deepEqual(order, ['heal', 'spawn1', 'heal', 'spawn2']);
 });

@@ -60,6 +60,8 @@ vi.mock('./runtime-project', async (importOriginal) => ({
     return state.ready;
   }),
 }));
+const healPth = vi.hoisted(() => vi.fn(async (_venv: string): Promise<string[]> => []));
+vi.mock('./pth-ascii', () => ({ asciiSafePthFiles: healPth }));
 vi.mock('./legacy-storage', () => ({
   legacyStorageEnv: () => ({
     OMNIVOICE_DATA_DIR: '/legacy/data',
@@ -89,6 +91,8 @@ afterEach(() => {
   state.bundledManifestMissing = false;
   state.selected = null;
   validateSelected.mockClear();
+  healPth.mockReset();
+  healPth.mockResolvedValue([]);
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
@@ -185,6 +189,19 @@ it('launches the prepared source interpreter without syncing or downloading depe
   );
   expect(plan.argv.slice(1, 3)).toEqual(['-m', 'uvicorn']);
   expect(plan.argv.slice(-2)).toEqual(['--port', '3912']);
+});
+it('heals a source checkout .venv before probing it, and tolerates a failed heal (#1783)', async () => {
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
+  const { runtimeDependenciesReady } = await import('./runtime-project');
+  const probe = vi.mocked(runtimeDependenciesReady);
+  probe.mockClear();
+  await resolveSpawnPlan(3912);
+  expect(healPth).toHaveBeenCalledWith(join(resolve('/repo'), '.venv'));
+  if (probe.mock.calls.length) {
+    expect(healPth.mock.invocationCallOrder[0]).toBeLessThan(probe.mock.invocationCallOrder[0]);
+  }
+  healPth.mockRejectedValueOnce(new Error('read-only'));
+  expect(await resolveSpawnPlan(3912)).toHaveProperty('argv');
 });
 it('requires explicit source setup when no environment exists, even with uv installed', async () => {
   vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
