@@ -427,7 +427,7 @@
             owner = "ServeurpersoCom";
             repo = "ggml";
             rev = omnivoiceGgmlRev;
-            hash = "sha256-qACf1TNsoCK/ekM9vwSbdjgknV3q1u1+cpGIHNttTq0=";
+            hash = "sha256-C3pmL0NFFHTlnfeRWzS5EVz1bDW3cPO5Q6CSLXnLP3M=";
           };
         in
         pkgs.stdenv.mkDerivation {
@@ -438,7 +438,7 @@
             owner = "ServeurpersoCom";
             repo = "omnivoice.cpp";
             rev = omnivoiceRuntimeRev;
-            hash = "sha256-brw2LnalGCm7lDBksW2IDs6+XFiDhvbGv1xfhBerpe4=";
+            hash = "sha256-apD4EVVNiuCC11iTP4dtFaMOLlEi86102WSDBx6ac/g=";
           };
 
           # GitHub archives leave the ggml submodule as an empty directory.
