@@ -476,8 +476,13 @@ def join_test_threads(monkeypatch):
         return set(getattr(getattr(wrapper, "_pool", None), "_threads", ()))
 
     before = set(threading.enumerate())
+    pool_before = _live_gpu_pool_workers()
     yield
-    exempt = before | _live_gpu_pool_workers()
+    pool_now = _live_gpu_pool_workers()
+    # A GPU worker that existed before the test but whose pool the test reset
+    # (e.g. after a load timeout) is no longer live: join it like any other.
+    retired = pool_before - pool_now
+    exempt = (before - retired) | pool_now
     started = [t for t in threading.enumerate() if t not in exempt]
     deadline = time.monotonic() + 35.0  # test stubs park on bounded 30 s waits
     for thread in started:
