@@ -43,13 +43,66 @@ def test_missing_overlay_hash_is_rejected(tmp_path):
         recipe.load_recipe(path, architecture="gfx1031")
 
 
+def _recipe_with_ct2(tmp_path, **fields):
+    data = json.loads(recipe.RECIPE_PATH.read_text(encoding="utf-8"))
+    data["rocm10"]["ctranslate2"].update(fields)
+    path = tmp_path / "recipe.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return path
+
+
+_PINS = dict(archive_size=1, archive_sha256="a" * 64, wheel_sha256="b" * 64, binary_sha256="c" * 64)
+
+
 @pytest.mark.parametrize("gfx", ["gfx1030", "gfx1031", "gfx1032"])
-def test_rdna2_devices_receive_the_overlay_hip_ct2(gfx):
+def test_rdna2_keeps_cpu_ct2_until_the_in_repo_build_is_pinned(gfx):
+    """An unpublished build (pins unset) must route like gfx1010, never download."""
     selected = recipe.load_recipe(architecture=gfx)
+    assert not recipe.ct2_supported(selected)
+    assert "ctranslate2" not in recipe.expected_versions(selected)
+    assert "not published" in selected["ctranslate2"]["reason"]
+
+
+@pytest.mark.parametrize("gfx", ["gfx1030", "gfx1031", "gfx1032"])
+def test_rdna2_devices_receive_the_overlay_hip_ct2_once_pinned(tmp_path, gfx):
+    selected = recipe.load_recipe(_recipe_with_ct2(tmp_path, **_PINS), architecture=gfx)
     assert recipe.ct2_supported(selected)
     assert selected["ctranslate2"]["version"] == "4.8.4"
     assert "gpu_architectures" not in selected["ctranslate2"]
     assert recipe.expected_versions(selected)["ctranslate2"] == "4.8.4"
+
+
+def test_partially_pinned_ct2_build_is_rejected(tmp_path):
+    path = _recipe_with_ct2(tmp_path, archive_sha256="a" * 64)
+    with pytest.raises(RuntimeError, match="CT2 recipe"):
+        recipe.load_recipe(path, architecture="gfx1031")
+
+
+def test_ct2_build_must_come_from_this_repository(tmp_path):
+    fork = "https://github.com/dutch2005/VoiceStudio/releases/download/ct2-rocm-4.8.4-9a7a074/rocm-python-wheels-Windows.zip"
+    with pytest.raises(RuntimeError, match="unapproved source"):
+        recipe.load_recipe(_recipe_with_ct2(tmp_path, archive_url=fork, **_PINS), architecture="gfx1031")
+
+
+def test_unpinned_rdna2_installs_the_locked_cpu_ct2_without_downloading(monkeypatch):
+    failures = importlib.import_module("core.windows_rocm.failures")
+    selected = recipe.load_recipe(architecture="gfx1031")
+    monkeypatch.setattr(install, "validate_target", lambda: None)
+    monkeypatch.setattr(install, "load_recipe", lambda: selected)
+    monkeypatch.setattr(install, "validate_repair_selection", lambda recipe: None)
+
+    def verify():
+        raise failures.VerificationFailure("package_missing", "missing")
+
+    monkeypatch.setattr(install, "verify_environment", verify)
+    monkeypatch.setattr(install, "download_archive", lambda *a: pytest.fail("unpinned CT2 downloaded"))
+    monkeypatch.setattr(install, "locked_ct2_requirement", lambda uv: "ctranslate2==4.4.0 --hash=sha256:" + "a" * 64)
+    commands = []
+    monkeypatch.setattr(install, "run_install", lambda command: commands.append(command))
+    with pytest.raises(failures.VerificationFailure):
+        install.provision("uv-custom")
+    assert len(commands) == 2
+    assert str(commands[1][-1]).endswith("cpu-ctranslate2.txt")
 
 
 def test_gfx1010_shares_the_overlay_but_not_its_hip_ct2():

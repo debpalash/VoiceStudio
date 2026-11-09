@@ -144,8 +144,9 @@ Everything above is free, runs on your own hardware and needs no account. Pro an
 
 ## Platforms
 
-Experimental [Windows ROCm setup](docs/install/windows-rocm.md) supports selected RDNA 2 RX 6000 GPUs with targets `gfx1030`, `gfx1031` or `gfx1032`; RX 6500 XT (`gfx1034`) is excluded. Its separately pinned CTranslate2 build includes native
-`gfx1031` kernels for RX 6700 XT transcription; setup checks actual GPU kernel
+Experimental [Windows ROCm setup](docs/install/windows-rocm.md) supports selected RDNA 2 RX 6000 GPUs with targets `gfx1030`, `gfx1031` or `gfx1032`; RX 6500 XT (`gfx1034`) is excluded. GPU transcription uses a CTranslate2 build with native
+`gfx1031` kernels that this repository builds from upstream source; until it is
+published, transcription runs on the CPU, and setup checks actual GPU kernel
 execution. RX 6700 XT tests also cover native Torch speech generation and
 PyTorch Whisper. ROCm 10 faster-whisper uses a separate inference process to
 preserve safe CPU selection and fallback. Other cards and workloads retain the qualification limits in the guide.

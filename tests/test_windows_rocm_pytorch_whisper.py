@@ -16,7 +16,7 @@ def hip(monkeypatch, request):
     ct2 = importlib.import_module("core.windows_rocm.ct2")
     selected = recipe.load_recipe(architecture="gfx1031")
     pins = recipe.expected_versions(selected)
-    pins.pop("ctranslate2")
+    pins.pop("ctranslate2", None)  # Torch readiness never depends on CT2.
     monkeypatch.setattr(recipe.sys, "platform", "win32")
     monkeypatch.setenv("OMNIVOICE_TORCH_VARIANT", "rocm")
     monkeypatch.setattr(recipe, "load_recipe", lambda: selected)

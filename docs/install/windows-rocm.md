@@ -34,7 +34,7 @@ Torch/audio **2.9.1+rocm7.2.1**, vision **0.24.1+rocm7.2.1** and the exact HIP
 CTranslate2 **4.8.2** archive/wheel/DLL hashes. RDNA 1 and 2 use ROCm **10.0.0**,
 Torch **2.13.0+rocm10.0.0**, audio **2.11.0.2+rocm10.0.0** and vision
 **0.28.0+rocm10.0.0**; RDNA 2 adds the expanded-target HIP CTranslate2 **4.8.4**
-described below. Setup identifies the GPU by PCI ID and installs only that
+described below once its in-repository build is published. Setup identifies the GPU by PCI ID and installs only that
 architecture's Torch, vision and SDK device packages, with native kernels and no
 `HSA_OVERRIDE_GFX_VERSION`. Mixed AMD architectures are refused because selecting
 the wrong device package would be unsafe. Windows ARM64, Windows 10 and other
@@ -75,15 +75,15 @@ kernels. The recipe therefore pins no HIP CTranslate2 for `gfx1010` and reports
 
 Setup downloads from AMD's `repo.radeon.com` for the existing recipe or
 `stable.repo.amd.com` for RDNA 1 and 2. The existing recipe uses the
-OpenNMT/CTranslate2 release archive. RDNA 2 uses the
-[expanded-target dependency mirror](https://github.com/dutch2005/VoiceStudio/releases/tag/ct2-rocm-4.8.4-9a7a074),
-which preserves the unmodified bytes from OpenNMT maintainer `jordimas`'s
-[build at `9a7a074`](https://github.com/jordimas/CTranslate2/actions/runs/41108554536).
-The mirror is public and requires no GitHub account or token; it avoids depending
-on an expiring Actions artifact. This is an experimental dependency, not an
-official OpenNMT or VoiceStudio release. RDNA 1 (`gfx1010`) downloads no
-CTranslate2 archive and instead installs the project's locked CPU build through
-the normal package index. Every file has a SHA-256 in the recipe, and setup
+OpenNMT/CTranslate2 release archive. RDNA 2 uses an expanded-target HIP
+CTranslate2 4.8.4 that this repository builds from pinned upstream
+OpenNMT/CTranslate2 source (`.github/workflows/ct2-rocm-windows.yml`: commit
+`78b1e17` plus upstream #2142, which adds the `gfx1031`/`gfx1032` targets) and
+publishes as a prerelease asset of this repository's GitHub Releases. Until that
+build is published and its hashes are pinned in the recipe, RDNA 2 — like RDNA 1
+(`gfx1010`) — downloads no CTranslate2 archive: setup installs the project's
+locked CPU build through the normal package index, and speech recognition and
+diarization run on the CPU. Every file has a SHA-256 in the recipe, and setup
 refuses a file whose bytes differ. Every other package keeps the version your
 environment already has, so the overlay never quietly upgrades dependencies.
 
@@ -92,7 +92,7 @@ detect an RX 6700 XT and load a model yet fail at inference with
 `hipErrorInvalidImage`. The expanded build contains the missing kernels.
 Changing the version number alone or bypassing binary checks is insufficient.
 See the [hardware report](https://github.com/OpenNMT/CTranslate2/issues/2137#issuecomment-6572396042)
-for provenance, hashes and the limits of the short-clip tests.
+for the validated build of the same source and the limits of the short-clip tests.
 
 Before this release, `OMNIVOICE_TORCH_VARIANT=rocm` was ignored on Windows. It
 now selects this stack. If it is already set on a machine with a working CUDA
@@ -168,16 +168,17 @@ model folder and an existing PCM speech WAV:
 The smoke test never resolves a remote model ID or downloads assets. It consumes
 GPU/float16 inference and requires nonempty speech segments with finite times;
 the report omits transcripts and user paths. Model-free readiness and local CT2
-inference are reported as different scopes. On RDNA 1 (`gfx1010`) there is no
-verified HIP CTranslate2, so the speech-scope smoke is unavailable and the
-model-free report says so with `ct2_supported: false`.
+inference are reported as different scopes. On RDNA 1 (`gfx1010`), and on RDNA 2
+until its in-repository build is pinned, there is no verified HIP CTranslate2, so
+the speech-scope smoke is unavailable and the model-free report says so with
+`ct2_supported: false`.
 ## Engine boundaries
 
 | Path | Windows ROCm behavior |
 | --- | --- |
 | Main Torch TTS and voice-cloning audio input | Uses the matched main environment. Historical RX 6700 XT results reported on 2026-11-02 (illustrative, not certification of the current revision or other Radeon hardware): native OmniVoice TTS and synthetic-reference cloning on GPU/fp16 at 16 steps, plus CPU/fp32 TTS at four steps with four Torch threads. Reference audio retains explicit soundfile compatibility on torchaudio 2.9 and later. Speaker similarity and other engines need their own tests. |
 | PyTorch Whisper | The matched opt-in Windows Torch recipe advertises ROCm independently of CT2. Historical RX 6700 XT results reported on 2026-11-02 (illustrative, not certification of the current revision or other Radeon hardware): both transcription APIs passed on GPU/fp16 and CPU/fp32 using tiny.en; runtime evidence reports the actual pipeline device and dtype. English-only checkpoints accept English transcription without pretending to support translation. |
-| Faster-whisper, including the crash-isolated worker | GPU is admitted only for the pinned HIP binary plus bounded local verification; on RDNA 1 (`gfx1010`) it always runs on the CPU because no verified HIP CTranslate2 covers that GPU. ROCm 10 runs normal faster-whisper in a separate inference process for both GPU and CPU, preserving CPU selection and memory fallback without mixing Torch's LLVM OpenMP with CT2's Intel OpenMP. Model, VAD, timestamps and decode/request options are preserved. |
+| Faster-whisper, including the crash-isolated worker | GPU is admitted only for the pinned HIP binary plus bounded local verification; on RDNA 1 (`gfx1010`), and on RDNA 2 until its in-repository build is pinned, it runs on the CPU. ROCm 10 runs normal faster-whisper in a separate inference process for both GPU and CPU, preserving CPU selection and memory fallback without mixing Torch's LLVM OpenMP with CT2's Intel OpenMP. Model, VAD, timestamps and decode/request options are preserved. |
 | WhisperX transcription | ROCm 10 refuses this in-process CT2 path before imports or cached pipeline use because its CPU execution/fallback mixes incompatible OpenMP runtimes. Use faster-whisper or PyTorch Whisper. The ROCm 7 recipe retains its existing CPU path; GPU execution remains unverified. |
 | pyannote speaker detection, wav2vec2 alignment | GPU execution is gated before imports/cached pipelines: MIOpen Unicode-path and SDK-header compatibility is unverified. CPU selection retains the existing Torch pipeline; it is separate from WhisperX's CT2 transcription and is not certified by the basic-ASR tests. |
 | Unavailable forced alignment | Keeps the transcript and native word timestamps; alignment precision can be lower. It does not discard requested speech or translation content. |
@@ -254,9 +255,9 @@ native kernels and verification rejects an override. Do not delete voices, proje
 optional-engine environments to repair the main runtime.
 
 Only explicitly started installation downloads AMD packages and the pinned
-OpenNMT/CTranslate2 GitHub release (7.2.1 recipe) or the pinned expanded-target
-dependency mirror (RDNA 2), with normal dependency resolution through package
-indexes. Verification and local smoke are offline. This installation
+OpenNMT/CTranslate2 GitHub release (7.2.1 recipe) or, once pinned, this
+repository's expanded-target CTranslate2 release (RDNA 2), with normal dependency
+resolution through package indexes. Verification and local smoke are offline. This installation
 work incorporates focused contributions from
 [#2600](https://github.com/debpalash/VoiceStudio/pull/2600) and
 [#2607](https://github.com/debpalash/VoiceStudio/pull/2607); it does not absorb

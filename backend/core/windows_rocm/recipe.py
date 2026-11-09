@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from ..gpu_inventory import HostGPU
 
 from .failures import VerificationFailure
-from .ct2_recipe import validate_ct2_recipe
+from .ct2_recipe import ct2_pinned, validate_ct2_recipe
 
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _ALLOWED_SOURCES = frozenset({
@@ -80,8 +80,8 @@ def load_recipe(path: str | Path | None = None, *, architecture: str | None = No
     if recipe["schema_version"] != 1:
         raise RuntimeError("Unsupported Windows ROCm recipe schema")
     variant = recipe["rocm10"]
-    for config in (recipe["ctranslate2"], variant["ctranslate2"]):
-        validate_ct2_recipe(config)
+    validate_ct2_recipe(recipe["ctranslate2"])
+    validate_ct2_recipe(variant["ctranslate2"], allow_unpinned=True)
     if not set(variant["ctranslate2"]["gpu_architectures"]) <= set(variant["devices"]):
         raise RuntimeError("Windows ROCm recipe pins a CT2 build for an undeclared device")
     for torch in (recipe["torch"], variant["torch"]):
@@ -108,12 +108,17 @@ def _device_ct2(config, arch):
     (hipErrorInvalidImage on gfx1010), so any other overlay device gets an
     explicit "unsupported" entry: no CT2 is downloaded or verified, and every
     CT2-backed path (ASR, diarization) stays on CPU instead of claiming GPU
-    readiness it never proved.
+    readiness it never proved. A build listed for this device but not yet
+    published (pins unset) is treated the same way.
     """
-    if arch in config["gpu_architectures"]:
-        return {key: value for key, value in config.items() if key != "gpu_architectures"}
-    return {"supported": False,
-            "reason": f"No verified ROCm 10 HIP CTranslate2 covers {arch}; ASR and diarization stay on CPU."}
+    if arch not in config["gpu_architectures"]:
+        return {"supported": False,
+                "reason": f"No verified ROCm 10 HIP CTranslate2 covers {arch}; ASR and diarization stay on CPU."}
+    if not ct2_pinned(config):
+        # The in-repo build is not published and pinned yet: same CPU path as gfx1010.
+        return {"supported": False,
+                "reason": "The ROCm 10 HIP CTranslate2 build is not published yet; ASR and diarization stay on CPU."}
+    return {key: value for key, value in config.items() if key != "gpu_architectures"}
 
 
 def recipe_identity(path=None):

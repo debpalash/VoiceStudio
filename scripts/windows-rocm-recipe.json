@@ -28,12 +28,12 @@
     "ctranslate2": {
       "gpu_architectures": ["gfx1030", "gfx1031", "gfx1032"],
       "version": "4.8.4",
-      "archive_url": "https://github.com/dutch2005/VoiceStudio/releases/download/ct2-rocm-4.8.4-9a7a074/rocm-python-wheels-Windows.zip",
-      "archive_size": 194373107,
-      "archive_sha256": "430fbf0aa7c4cddcaf17e432c18f937b1f80f3c73353b89f90e528f5b8125827",
+      "archive_url": "https://github.com/debpalash/VoiceStudio/releases/download/ct2-rocm-4.8.4-78b1e17/rocm-python-wheels-Windows.zip",
+      "archive_size": null,
+      "archive_sha256": null,
       "wheel_member": "ctranslate2-4.8.4-cp312-cp312-win_amd64.whl",
-      "wheel_sha256": "15f057c53c2e4a9911504995ff783bd8db494c177701aba64dc467379bb8e452",
-      "binary_sha256": "dd4092e29b5dcf4337c2f6e8d4f9aece377b19c46ff11a8d7ec1a76608b150fa",
+      "wheel_sha256": null,
+      "binary_sha256": null,
       "required_dlls": ["hipblas.dll", "amdhip64_7.dll"]
     },
     "torch": {

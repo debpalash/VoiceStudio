@@ -1,24 +1,35 @@
 """CT2 discovery must not certify a binary whose GPU kernels cannot run."""
 import importlib
+import json
 import sys
 from types import SimpleNamespace
 
 import pytest
 
 
-def test_rdna2_selects_the_verified_expanded_target_binary():
+def _pinned_rdna2(tmp_path, recipe):
+    """The RDNA 2 selection once the in-repo build's pins are filled in."""
+    data = json.loads(recipe.RECIPE_PATH.read_text(encoding="utf-8"))
+    data["rocm10"]["ctranslate2"].update(
+        archive_size=1, archive_sha256="a" * 64, wheel_sha256="b" * 64, binary_sha256="c" * 64)
+    path = tmp_path / "recipe.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return recipe.load_recipe(path, architecture="gfx1031")
+
+
+def test_rdna2_selects_the_expanded_target_binary_once_pinned(tmp_path):
     recipe = importlib.import_module("core.windows_rocm.recipe")
-    rdna2 = recipe.load_recipe(architecture="gfx1031")
+    rdna2 = _pinned_rdna2(tmp_path, recipe)
     base = recipe.load_recipe(architecture="gfx1150")
     assert recipe.expected_versions(rdna2)["ctranslate2"] == "4.8.4"
-    assert rdna2["ctranslate2"]["binary_sha256"] == "dd4092e29b5dcf4337c2f6e8d4f9aece377b19c46ff11a8d7ec1a76608b150fa"
+    assert rdna2["ctranslate2"]["binary_sha256"] == "c" * 64
     assert base["ctranslate2"]["version"] == "4.8.2"
 
 
-def test_discovery_only_report_is_rejected():
+def test_discovery_only_report_is_rejected(tmp_path):
     recipe = importlib.import_module("core.windows_rocm.recipe")
     verify = importlib.import_module("core.windows_rocm.verify")
-    selected = recipe.load_recipe(architecture="gfx1031")
+    selected = _pinned_rdna2(tmp_path, recipe)
     report = dict(ready=True, scope="model-free", python=sys.executable,
                   architecture="win-amd64", abi="cp312", hip="7.15.26333",
                   packages=recipe.expected_versions(selected), torch_gpu=True,
