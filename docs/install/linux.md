@@ -181,7 +181,7 @@ installs. Model and Python runtime setup remain explicit in the app.
 
 ### Nix / NixOS
 
-A community-maintained Nix flake (not tested in CI) provides development shells,
+A community-maintained Nix flake (built by a non-blocking CI check) provides development shells,
 an FHS environment for NixOS and a Nix-built Linux x64 app. See the
 [Nix / NixOS guide](nix.md):
 

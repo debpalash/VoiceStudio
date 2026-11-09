@@ -1,6 +1,6 @@
 # VoiceStudio — Running and Developing with Nix / NixOS
 
-The repository includes a community-maintained Nix flake (`flake.nix`) with development shells for Linux and Apple Silicon, an FHS environment for NixOS, and a Nix-built Linux x64 app. It is not exercised by CI, and the release installers remain the supported install path.
+The repository includes a community-maintained Nix flake (`flake.nix`) with development shells for Linux and Apple Silicon, an FHS environment for NixOS, and a Nix-built Linux x64 app. The non-blocking `Nix flake` CI workflow (`.github/workflows/nix.yml`) evaluates it and builds the Linux app when flake inputs change; the release installers remain the supported install path.
 
 ## Prerequisites
 
