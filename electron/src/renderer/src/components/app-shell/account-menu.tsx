@@ -39,9 +39,10 @@ const ITEM =
   'flex cursor-default items-center gap-2 rounded-md px-3 py-2 text-sm outline-none data-highlighted:bg-accent';
 
 /**
- * The account control in the window's top-right corner: the profile photo (or
- * initials) and name, with a menu for Account settings and Sign out; signed out,
- * a Sign in button. Nothing shows unless the user turned account features on.
+ * The account control in the window's top-right corner, icon only: the profile
+ * photo (or initials), whose menu shows the name, Account settings and Sign out;
+ * signed out, a person icon that starts sign-in. The name or action is the
+ * tooltip and accessible label. Nothing shows unless account features are on.
  */
 export function AccountMenu({ className }: { className?: string }) {
   const { t } = useTranslation();
@@ -50,16 +51,19 @@ export function AccountMenu({ className }: { className?: string }) {
   if (!state?.available || !state.accountEnabled) return null;
 
   if (!state.signedIn) {
+    const label = t(state.signingIn ? 'account.continue_in_browser' : 'account.sign_in');
     return (
       <Button
         type="button"
-        size="sm"
-        variant="outline"
+        size="icon-sm"
+        variant="ghost"
         disabled={state.signingIn}
         onClick={() => void signIn()}
-        className={cn('h-7 rounded-full', className)}
+        aria-label={label}
+        title={label}
+        className={cn('shrink-0 rounded-full text-muted-foreground hover:text-foreground', className)}
       >
-        {t(state.signingIn ? 'account.continue_in_browser' : 'account.sign_in')}
+        <UserRoundIcon className="size-4" aria-hidden="true" />
       </Button>
     );
   }
@@ -69,18 +73,23 @@ export function AccountMenu({ className }: { className?: string }) {
     <Menu.Root>
       <Menu.Trigger
         aria-label={name || t('account.menu_settings')}
+        title={name || undefined}
         data-slot="account-menu"
         className={cn(
-          'flex h-8 max-w-56 min-w-0 items-center gap-2 rounded-full border border-border/60 bg-background/80 py-0.5 pr-3 pl-0.5 shadow-xs outline-none backdrop-blur-xl hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring',
+          'grid size-8 shrink-0 place-items-center rounded-full outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring',
           className,
         )}
       >
         <Avatar name={name} url={state.profile?.avatarUrl ?? null} />
-        {name && <span className="min-w-0 truncate text-sm font-medium">{name}</span>}
       </Menu.Trigger>
       <Menu.Portal>
         <Menu.Positioner sideOffset={6} align="end" className="z-50">
           <Menu.Popup className="min-w-52 rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-lg outline-none">
+            {name && (
+              <div className="truncate px-2 py-1.5 text-sm font-medium" data-slot="account-name">
+                {name}
+              </div>
+            )}
             <Menu.Item
               className={ITEM}
               onClick={() =>
