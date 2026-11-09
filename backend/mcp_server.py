@@ -96,11 +96,38 @@ def _sniff_audio_ext(raw: bytes) -> str:
 _ERROR_DETAIL_MAX_CHARS = 1000
 
 
-def _public_error_text(text: object) -> str:
-    """``text`` with credentials and home paths redacted, length-capped."""
+def _scrubbed(value):
+    """``value`` with every string in it, keys included, passed through ``scrub_text``.
+
+    Structured values must be scrubbed *before* JSON encoding: ``json.dumps``
+    doubles each backslash, and a Windows home path written as
+    ``C:\\\\Users\\\\alice`` no longer matches the scrubber's patterns."""
     from core.scrub import scrub_text
 
-    cleaned = scrub_text(str(text)).strip()
+    if isinstance(value, str):
+        return scrub_text(value)
+    if isinstance(value, list):
+        return [_scrubbed(item) for item in value]
+    if isinstance(value, dict):
+        return {_scrubbed(key): _scrubbed(item) for key, item in value.items()}
+    return value
+
+
+def _public_error_text(text: object) -> str:
+    """``text`` with credentials and home paths redacted, length-capped.
+
+    A JSON body (a plain-text fallback that is really JSON) is scrubbed value
+    by value and re-encoded, for the same backslash reason as ``_scrubbed``."""
+    from core.scrub import scrub_text
+
+    text = str(text)
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        parsed = None
+    if isinstance(parsed, (dict, list)):
+        text = json.dumps(_scrubbed(parsed))
+    cleaned = scrub_text(text).strip()
     if len(cleaned) > _ERROR_DETAIL_MAX_CHARS:
         cleaned = cleaned[:_ERROR_DETAIL_MAX_CHARS].rstrip() + "…"
     return cleaned
@@ -136,7 +163,7 @@ def _readable(value, text_key: str) -> str:
     text = value.get(text_key) if isinstance(value, dict) else value
     if isinstance(text, str) and text:
         return text
-    return json.dumps(value)
+    return json.dumps(_scrubbed(value))
 
 
 def _raise_for_backend_status(response) -> None:

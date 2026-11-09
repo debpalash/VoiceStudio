@@ -275,3 +275,56 @@ def test_clone_voice_plain_text_error_is_scrubbed(monkeypatch):
     server = mcp_server.create_mcp_server(app=backend)
     result = _result(server, "clone_voice", name="me", ref_audio_base64=AUDIO)
     assert result == {"error": "disk full at ~/omnivoice_data"}
+
+
+HOME_PATHS = {
+    "windows": (r"C:\Users\alice\clips\ref.wav", r"~\clips\ref.wav"),
+    "macos": ("/Users/alice/clips/ref.wav", "~/clips/ref.wav"),
+    "linux": ("/home/alice/clips/ref.wav", "~/clips/ref.wav"),
+}
+STRUCTURED_SHAPES = {
+    "nested message": lambda p: {"code": "x", "message": {"path": p}},
+    "validation msg": lambda p: [{"msg": {"path": p}}],
+    "dict key": lambda p: {"code": "x", "message": {p: "missing"}},
+}
+
+
+@pytest.mark.parametrize("platform", sorted(HOME_PATHS))
+@pytest.mark.parametrize("shape", sorted(STRUCTURED_SHAPES))
+def test_structured_detail_hides_home_paths_on_every_platform(platform, shape):
+    """Strings inside a non-string detail are scrubbed before JSON encoding.
+
+    json.dumps doubles backslashes, so a Windows home path scrubbed only after
+    encoding slipped through while macOS and Linux paths were caught."""
+    import mcp_server
+
+    raw, scrubbed = HOME_PATHS[platform]
+    request = httpx.Request("GET", "http://127.0.0.1/x")
+    response = httpx.Response(
+        400, json={"detail": STRUCTURED_SHAPES[shape](raw)}, request=request
+    )
+    text = mcp_server._backend_error_detail(response)
+    assert "alice" not in text
+    assert json.dumps(scrubbed)[1:-1] in text
+
+
+@pytest.mark.parametrize("platform", sorted(HOME_PATHS))
+def test_plain_text_json_fallback_hides_home_paths(platform, monkeypatch):
+    """A JSON body without ``detail`` (the raw-text fallback) is scrubbed the same way."""
+    from fastapi import FastAPI
+    from fastapi.responses import JSONResponse
+    import mcp_server
+
+    raw, scrubbed = HOME_PATHS[platform]
+    backend = FastAPI()
+
+    @backend.post("/profiles")
+    async def create_profile():
+        """Fail with a JSON body that has no ``detail`` key but quotes a home path."""
+        return JSONResponse({"error": f"cannot read {raw}"}, status_code=500)
+
+    monkeypatch.delenv("OMNIVOICE_API_URL", raising=False)
+    server = mcp_server.create_mcp_server(app=backend)
+    error = _result(server, "clone_voice", name="me", ref_audio_base64=AUDIO)["error"]
+    assert "alice" not in error
+    assert json.loads(error) == {"error": f"cannot read {scrubbed}"}
