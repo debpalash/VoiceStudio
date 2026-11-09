@@ -633,6 +633,40 @@ describe('DesktopUpdater', () => {
       }),
     );
   });
+
+  test('checks only after the installed-download cleanup, so it never races a download', async () => {
+    let locate!: (helper: { cacheDirForPendingUpdate: string }) => void;
+    const getOrCreateDownloadHelper = vi.fn(
+      () => new Promise<{ cacheDirForPendingUpdate: string }>((resolve) => (locate = resolve)),
+    );
+    Object.assign(mocks.autoUpdater, { getOrCreateDownloadHelper });
+    try {
+      const updater = new DesktopUpdater();
+      expect(getOrCreateDownloadHelper).toHaveBeenCalledTimes(1);
+      const check = updater.check();
+      await Promise.resolve();
+      expect(mocks.autoUpdater.checkForUpdates).not.toHaveBeenCalled();
+      locate({ cacheDirForPendingUpdate: '/nonexistent/voicestudio-updater-test/pending' });
+      await check;
+      expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
+    } finally {
+      delete (mocks.autoUpdater as { getOrCreateDownloadHelper?: unknown })
+        .getOrCreateDownloadHelper;
+    }
+  });
+
+  test('skips the installed-download cleanup when updates are unsupported', () => {
+    const getOrCreateDownloadHelper = vi.fn();
+    Object.assign(mocks.autoUpdater, { getOrCreateDownloadHelper });
+    mocks.app.isPackaged = false;
+    try {
+      new DesktopUpdater();
+      expect(getOrCreateDownloadHelper).not.toHaveBeenCalled();
+    } finally {
+      delete (mocks.autoUpdater as { getOrCreateDownloadHelper?: unknown })
+        .getOrCreateDownloadHelper;
+    }
+  });
 });
 
 describe('release-download outage fallback', () => {
