@@ -19,16 +19,16 @@ function initials(name: string): string {
 function Avatar({ name, url }: { name: string; url: string | null }) {
   if (!url && !name)
     return (
-      <span className="grid size-7 shrink-0 place-items-center rounded-full bg-primary/15 text-primary">
+      <span className="grid size-6 shrink-0 place-items-center rounded-full bg-primary/15 text-primary">
         <UserRoundIcon className="size-4" aria-hidden="true" />
       </span>
     );
   return url ? (
-    <img src={url} alt="" className="size-7 shrink-0 rounded-full object-cover" />
+    <img src={url} alt="" className="size-6 shrink-0 rounded-full object-cover" />
   ) : (
     <span
       aria-hidden="true"
-      className="grid size-7 shrink-0 place-items-center rounded-full bg-primary/15 text-[11px] font-semibold text-primary"
+      className="grid size-6 shrink-0 place-items-center rounded-full bg-primary/15 text-[11px] font-semibold text-primary"
     >
       {initials(name)}
     </span>
@@ -76,7 +76,7 @@ export function AccountMenu({ className }: { className?: string }) {
         title={name || undefined}
         data-slot="account-menu"
         className={cn(
-          'grid size-8 shrink-0 place-items-center rounded-full outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring',
+          'grid size-7 shrink-0 place-items-center rounded-full outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring',
           className,
         )}
       >
