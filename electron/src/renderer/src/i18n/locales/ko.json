@@ -1364,6 +1364,7 @@
     "updater_desktop": "업데이터는 데스크톱 앱에서만 실행됩니다.",
     "updater_development": "개발 빌드에서는 업데이트를 사용할 수 없습니다.",
     "updater_package_manager": "업데이트는 패키지 관리자를 통해 제공됩니다.",
+    "updater_no_config": "이 빌드는 스스로 업데이트할 수 없습니다. 업데이트를 받으려면 GitHub의 릴리스 빌드를 설치하세요.",
     "updater_store": "업데이트는 앱 스토어를 통해 제공됩니다.",
     "mcp_title": "MCP 음성 연결",
     "mcp_desc": "각 MCP 에이전트의 클라이언트 ID를 음성 프로필에 연결해 고유한 음성을 지정하세요.",

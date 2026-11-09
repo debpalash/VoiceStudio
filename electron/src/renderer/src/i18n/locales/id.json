@@ -1427,6 +1427,7 @@
     "updater_desktop": "Updater hanya berjalan di aplikasi desktop.",
     "updater_development": "Pembaruan tidak tersedia di build pengembangan.",
     "updater_package_manager": "Pembaruan datang dari pengelola paket Anda.",
+    "updater_no_config": "Build ini tidak dapat memperbarui dirinya sendiri. Pasang build rilis dari GitHub untuk mendapatkan pembaruan.",
     "updater_store": "Pembaruan datang dari toko aplikasi.",
     "mcp_title": "Pengikatan suara MCP",
     "mcp_desc": "Berikan setiap agen MCP suaranya sendiri dengan mengikat ID klien ke profil suara.",

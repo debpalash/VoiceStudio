@@ -1429,6 +1429,7 @@
     "updater_desktop": "El actualizador solo se ejecuta en la aplicación de escritorio.",
     "updater_development": "Las actualizaciones no están disponibles en compilaciones de desarrollo.",
     "updater_package_manager": "Las actualizaciones llegan desde tu gestor de paquetes.",
+    "updater_no_config": "Esta versión no puede actualizarse sola. Instala una versión de lanzamiento desde GitHub para recibir actualizaciones.",
     "updater_store": "Las actualizaciones llegan desde la tienda de aplicaciones.",
     "mcp_title": "Asignaciones de voz MCP",
     "mcp_desc": "Da a cada agente MCP su propia voz vinculando su ID de cliente a un perfil de voz.",

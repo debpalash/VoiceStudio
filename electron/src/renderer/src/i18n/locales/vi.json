@@ -1427,6 +1427,7 @@
     "updater_desktop": "Trình cập nhật chỉ chạy trong ứng dụng dành cho máy tính để bàn.",
     "updater_development": "Bản cập nhật không có trong bản dựng phát triển.",
     "updater_package_manager": "Bản cập nhật đến từ trình quản lý gói của bạn.",
+    "updater_no_config": "Bản dựng này không thể tự cập nhật. Hãy cài bản phát hành từ GitHub để nhận cập nhật.",
     "updater_store": "Bản cập nhật đến từ cửa hàng ứng dụng.",
     "mcp_title": "Liên kết giọng nói MCP",
     "mcp_desc": "Cấp cho mỗi tác nhân MCP một giọng riêng bằng cách liên kết ID máy khách với hồ sơ giọng nói.",

@@ -1427,6 +1427,7 @@
     "updater_desktop": "Updater läuft nur in der Desktop-App.",
     "updater_development": "Updates sind in Entwicklungs-Builds nicht verfügbar.",
     "updater_package_manager": "Updates kommen über deinen Paketmanager.",
+    "updater_no_config": "Diese Version kann sich nicht selbst aktualisieren. Installiere für Updates eine Release-Version von GitHub.",
     "updater_store": "Updates kommen aus dem App Store.",
     "mcp_title": "MCP-Stimmzuordnungen",
     "mcp_desc": "Gib jedem MCP-Agenten eine eigene Stimme, indem du seine Client-ID einem Stimmprofil zuordnest.",

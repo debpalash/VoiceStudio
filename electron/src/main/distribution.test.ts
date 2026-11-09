@@ -9,6 +9,7 @@ import {
   applicationUpdatesSupported,
   applicationUpdatesUnsupportedReason,
   runtimeSetupSupported,
+  updateConfigPresent,
 } from './distribution';
 
 describe('distribution contract', () => {
@@ -50,6 +51,19 @@ describe('distribution contract', () => {
     expect(applicationUpdatesSupported(true, 'snap-store', false)).toBe(false);
     expect(applicationUpdatesSupported(true, 'mac-app-store', false)).toBe(false);
     expect(applicationUpdatesSupported(false, 'direct', false)).toBe(false);
+  });
+
+  test('a packaged build without app-update.yml cannot self-update (#3814)', () => {
+    expect(applicationUpdatesUnsupportedReason(true, 'direct', false, false)).toBe(
+      'no-update-config',
+    );
+    expect(applicationUpdatesUnsupportedReason(true, 'direct', false, () => true)).toBeNull();
+    expect(applicationUpdatesUnsupportedReason(false, 'direct', false, false)).toBe('development');
+    expect(applicationUpdatesUnsupportedReason(true, 'direct', true, false)).toBe(
+      'package-manager',
+    );
+    expect(updateConfigPresent(undefined)).toBe(true);
+    expect(updateConfigPresent('/nonexistent-voicestudio-resources')).toBe(false);
   });
 
   test('names why updates are unsupported, development first', () => {

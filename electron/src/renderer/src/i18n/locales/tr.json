@@ -1427,6 +1427,7 @@
     "updater_desktop": "Güncelleyici yalnızca masaüstü uygulamasında çalışır.",
     "updater_development": "Geliştirme sürümlerinde güncellemeler kullanılamaz.",
     "updater_package_manager": "Güncellemeler paket yöneticinizden gelir.",
+    "updater_no_config": "Bu derleme kendini güncelleyemez. Güncelleme almak için GitHub’dan bir sürüm derlemesi yükleyin.",
     "updater_store": "Güncellemeler uygulama mağazasından gelir.",
     "mcp_title": "MCP ses bağları",
     "mcp_desc": "İstemci kimliğini bir ses profiline bağlayarak her MCP aracısına kendi sesini verin.",

@@ -1689,6 +1689,7 @@
     "updater_desktop": "Updater only runs in the desktop app.",
     "updater_development": "Updates aren't available in development builds.",
     "updater_package_manager": "Updates come from your package manager.",
+    "updater_no_config": "This build cannot update itself. Install a release build from GitHub to get updates.",
     "updater_store": "Updates come from the app store.",
     "mcp_title": "MCP voice bindings",
     "mcp_desc": "Give each MCP agent its own voice by binding its client ID to a voice profile.",

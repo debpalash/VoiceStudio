@@ -1429,6 +1429,7 @@
     "updater_desktop": "Il programma di aggiornamento viene eseguito solo nell'app desktop.",
     "updater_development": "Gli aggiornamenti non sono disponibili nelle build di sviluppo.",
     "updater_package_manager": "Gli aggiornamenti arrivano dal tuo gestore di pacchetti.",
+    "updater_no_config": "Questa build non può aggiornarsi da sola. Installa una build di rilascio da GitHub per ricevere gli aggiornamenti.",
     "updater_store": "Gli aggiornamenti arrivano dall'app store.",
     "mcp_title": "Associazioni vocali MCP",
     "mcp_desc": "Assegna una voce a ogni agente MCP collegando il suo ID client a un profilo vocale.",

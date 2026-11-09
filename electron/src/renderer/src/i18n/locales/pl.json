@@ -1441,6 +1441,7 @@
     "updater_desktop": "Updater działa tylko w aplikacji komputerowej.",
     "updater_development": "Aktualizacje nie są dostępne w wersjach deweloperskich.",
     "updater_package_manager": "Aktualizacje dostarcza menedżer pakietów.",
+    "updater_no_config": "Ta kompilacja nie potrafi sama się aktualizować. Zainstaluj wydanie z GitHub, aby otrzymywać aktualizacje.",
     "updater_store": "Aktualizacje dostarcza sklep z aplikacjami.",
     "mcp_title": "Powiązania głosowe MCP",
     "mcp_desc": "Nadaj każdemu agentowi MCP własny głos, wiążąc jego identyfikator klienta z profilem głosu.",

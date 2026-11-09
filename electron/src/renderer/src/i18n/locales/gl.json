@@ -1689,6 +1689,7 @@
     "updater_desktop": "Updater só se executa na aplicación de escritorio.",
     "updater_development": "As actualizacións non están dispoñibles nas compilacións de desenvolvemento.",
     "updater_package_manager": "As actualizacións veñen do teu xestor de paquetes.",
+    "updater_no_config": "Esta versión non pode actualizarse soa. Instala unha versión de lanzamento desde GitHub para recibir actualizacións.",
     "updater_store": "As actualizacións veñen da tenda de aplicacións.",
     "mcp_title": "Vinculacións de voz MCP",
     "mcp_desc": "Dálle a cada axente MCP a súa propia voz vinculando o seu ID de cliente a un perfil de voz.",

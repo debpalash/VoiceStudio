@@ -1427,6 +1427,7 @@
     "updater_desktop": "Updater werkt alleen in de desktop-app.",
     "updater_development": "Updates zijn niet beschikbaar in ontwikkelbuilds.",
     "updater_package_manager": "Updates komen via je pakketbeheerder.",
+    "updater_no_config": "Deze build kan zichzelf niet bijwerken. Installeer een releasebuild van GitHub om updates te krijgen.",
     "updater_store": "Updates komen via de app store.",
     "mcp_title": "MCP-stemkoppelingen",
     "mcp_desc": "Geef elke MCP-agent een eigen stem door de client-ID aan een stemprofiel te koppelen.",

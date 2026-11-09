@@ -1427,6 +1427,7 @@
     "updater_desktop": "更新程式僅在桌面應用程式中運行。",
     "updater_development": "開發版本中無法使用更新。",
     "updater_package_manager": "更新由你的套件管理員提供。",
+    "updater_no_config": "此建置無法自行更新。請從 GitHub 安裝發行版本以取得更新。",
     "updater_store": "更新由應用程式商店提供。",
     "mcp_title": "MCP 語音綁定",
     "mcp_desc": "將用戶端 ID 綁定至語音設定檔，讓每個 MCP 代理使用自己的聲音。",

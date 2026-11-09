@@ -1427,6 +1427,7 @@
     "updater_desktop": "Updater körs bara i skrivbordsappen.",
     "updater_development": "Uppdateringar är inte tillgängliga i utvecklingsversioner.",
     "updater_package_manager": "Uppdateringar kommer från din pakethanterare.",
+    "updater_no_config": "Den här bygget kan inte uppdatera sig själv. Installera ett releasebygge från GitHub för att få uppdateringar.",
     "updater_store": "Uppdateringar kommer från appbutiken.",
     "mcp_title": "MCP-röstkopplingar",
     "mcp_desc": "Ge varje MCP-agent en egen röst genom att koppla klient-ID:t till en röstprofil.",
