@@ -11,7 +11,7 @@ import {
   TriangleAlertIcon,
 } from 'lucide-react';
 import { buttonVariants } from '@/components/ui/button';
-import { formatClock } from '@/components/waveform-player';
+import { formatClock } from '@/components/media-clock';
 import { cn } from '@/lib/utils';
 import { ConfirmDialog } from '../clone/confirm-dialog';
 import { DUB_INPUT_ISSUE_KEYS, type DubInputIssue } from './dub-input-issue';

@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { apiJson } from '@/lib/api/client';
 import { requestPlaybackSeek } from '@/lib/audio/playback-clock';
-import { formatClock } from '@/components/waveform-player';
+import { formatClock } from '@/components/media-clock';
 
 interface QualityReport {
   truncated: boolean;

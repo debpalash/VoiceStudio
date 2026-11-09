@@ -10,7 +10,7 @@ import {
   type MediaPlayerInstance,
 } from '@/components/media-player';
 import { Button } from '@/components/ui/button';
-import { formatClock } from '@/components/waveform-player';
+import { formatClock } from '@/components/media-clock';
 import { cn } from '@/lib/utils';
 import {
   activeWordIndex,
