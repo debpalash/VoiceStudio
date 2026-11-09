@@ -28,4 +28,5 @@ it('keeps the dock and shell mounted when the player chunk fails to load', async
   expect(await screen.findByRole('region', { name: 'player.now_playing' })).toBeTruthy();
   expect(screen.getByText('shell')).toBeTruthy();
   expect(screen.queryByTestId('waveform')).toBeNull();
+  expect(await screen.findByText('player.unavailable')).toBeTruthy();
 });

@@ -52,7 +52,14 @@ export function NowPlayingDock() {
         </p>
         <p className="truncate text-xs leading-4 text-muted-foreground">{label}</p>
       </div>
-      <LazyBoundary key={clip.nonce} fallback={<div className="min-w-0 flex-1" />}>
+      <LazyBoundary
+        key={clip.nonce}
+        fallback={
+          <p role="status" className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+            {t('player.unavailable')}
+          </p>
+        }
+      >
         <WaveformPlayer
           key={clip.nonce}
           src={clip.src}
