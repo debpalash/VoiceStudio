@@ -742,7 +742,7 @@ jobs:
       # Fails the step (not the job) when startup or total gzip size grows >10% over
       # scripts/bench/bundle-baseline.json; refresh it with --write-baseline when intended.
       - name: Renderer bundle budget
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && steps.pass.outputs.hit != 'true'
         continue-on-error: true
         run: node scripts/bench/bundle.mjs --check
 
