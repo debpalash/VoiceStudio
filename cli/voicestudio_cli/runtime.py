@@ -50,7 +50,7 @@ def discovery():
     from urllib.parse import urlsplit
     try:
         parsed = urlsplit(record['url'])
-        parsed.port
+        _ = parsed.port  # raises ValueError for an invalid port
     except ValueError:
         return None
     if not record.get('remote') and (parsed.scheme != 'http' or not loopback(parsed.hostname)):

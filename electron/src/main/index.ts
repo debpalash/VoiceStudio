@@ -177,6 +177,7 @@ function terminalCommandOptions(): TerminalCommandOptions {
     appImage: process.env.APPIMAGE,
     snap: process.env.SNAP,
     path: process.env.PATH,
+    shell: process.env.SHELL,
   };
 }
 
@@ -421,7 +422,11 @@ if (process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1' && !app.requestSing
             join(app.getPath('userData'), TERMINAL_COMMAND_STATE),
           );
         } catch (error) {
-          console.warn('[terminal-command] Could not set up the terminal command:', error);
+          // Only the error code: filesystem messages carry the user's home path.
+          console.warn(
+            '[terminal-command] Could not set up the terminal command:',
+            (error as NodeJS.ErrnoException)?.code ?? 'unknown error',
+          );
         }
       }
       if (headlessOwner && process.platform === 'darwin') app.dock?.hide();

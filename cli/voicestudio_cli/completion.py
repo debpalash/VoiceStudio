@@ -101,8 +101,11 @@ def complete(words):
 
 BASH = r'''# VoiceStudio Tab completion for bash: eval "$(voicestudio completion bash)"
 _voicestudio() {
+    # Slice before changing IFS: bash 3.2 (macOS /bin/bash) joins a sliced
+    # array into one word when IFS has no space.
+    local words=("${COMP_WORDS[@]:1:COMP_CWORD}")
     local IFS=$'\n'
-    COMPREPLY=($(voicestudio __complete "${COMP_WORDS[@]:1:COMP_CWORD}" 2>/dev/null | cut -f1))
+    COMPREPLY=($(voicestudio __complete "${words[@]}" 2>/dev/null | cut -f1))
 }
 complete -o default -F _voicestudio voicestudio
 '''

@@ -10,7 +10,7 @@ import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import unittest
-from urllib.parse import urlsplit, parse_qs
+from urllib.parse import urlsplit
 
 import test_cli as base
 ROOT = base.ROOT

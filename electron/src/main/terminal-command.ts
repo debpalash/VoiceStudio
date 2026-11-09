@@ -18,6 +18,8 @@ export type TerminalCommandOptions = {
   appImage?: string;
   snap?: string;
   path?: string;
+  /** The user's login shell (`$SHELL`), so a zsh user without `.zshrc` still gets one. */
+  shell?: string;
 };
 
 export type TerminalCommandStatus = {
@@ -31,11 +33,11 @@ export type TerminalCommandStatus = {
 };
 
 const PROFILE_MARKER = '# VoiceStudio terminal command\n';
-const PROFILE_LINES =
-  '\n' +
+const PROFILE_BLOCK =
   PROFILE_MARKER +
   'case ":$PATH:" in\n    *":$HOME/.local/bin:"*) ;;\n' +
   '    *) export PATH="$HOME/.local/bin:$PATH" ;;\nesac\n';
+const FISH_LINE = 'fish_add_path --path "$HOME/.local/bin"\n';
 // Bash login shells read .bash_profile instead of .profile when it exists.
 const PROFILES = ['.profile', '.bash_profile', '.bashrc', '.zshrc'];
 
@@ -61,12 +63,22 @@ function profilesToConfigure(options: TerminalCommandOptions): string[] {
       // Do not create a profile for a shell the user does not use, except the
       // POSIX login profile and, on macOS, zsh's (its default shell skips .profile).
       file === '.profile' ||
-      (options.platform === 'darwin' && file === '.zshrc') ||
+      (file === '.zshrc' &&
+        (options.platform === 'darwin' || basename(options.shell ?? '') === 'zsh')) ||
       existsSync(join(options.home, file)),
   ).map((file) => join(options.home, file));
   if (existsSync(join(options.home, '.config/fish')))
     files.push(join(options.home, '.config/fish/conf.d/voicestudio.fish'));
   return files;
+}
+
+/** The profile puts `~/.local/bin` on PATH: a marker left by an interrupted write does not. */
+function profileConfigured(file: string): boolean {
+  try {
+    return readFileSync(file, 'utf8').includes(file.endsWith('.fish') ? FISH_LINE : PROFILE_BLOCK);
+  } catch {
+    return false;
+  }
 }
 
 function onSearchPath(options: TerminalCommandOptions): boolean {
@@ -123,15 +135,13 @@ export function terminalCommandStatus(options: TerminalCommandOptions): Terminal
     linked = false;
   }
   // Every profile must carry the block: a setup that stopped halfway is not done.
-  const configured = profilesToConfigure(options).every((file) => {
-    try {
-      const text = readFileSync(file, 'utf8');
-      return file.endsWith('.fish') || text.includes(PROFILE_MARKER);
-    } catch {
-      return false;
-    }
-  });
-  return { supported: Boolean(target), linked, onPath: configured || onSearchPath(options), command };
+  const configured = profilesToConfigure(options).every(profileConfigured);
+  return {
+    supported: Boolean(target),
+    linked,
+    onPath: configured || onSearchPath(options),
+    command,
+  };
 }
 
 /** The user's explicit "add to my terminal" action: idempotent profile lines. */
@@ -139,11 +149,13 @@ export function addTerminalCommandToPath(options: TerminalCommandOptions): Termi
   if (linkTerminalCommand(options) !== 'linked') return terminalCommandStatus(options);
   // Idempotent: a run that failed halfway is completed by the next one.
   for (const profile of profilesToConfigure(options)) {
+    if (profileConfigured(profile)) continue;
     if (profile.endsWith('.fish')) {
+      // VoiceStudio owns this conf.d file; rewrite an empty or truncated one.
       mkdirSync(dirname(profile), { recursive: true });
-      if (!existsSync(profile)) writeFileSync(profile, 'fish_add_path --path "$HOME/.local/bin"\n');
-    } else if (!existsSync(profile) || !readFileSync(profile, 'utf8').includes(PROFILE_MARKER)) {
-      appendFileSync(profile, PROFILE_LINES);
+      writeFileSync(profile, FISH_LINE);
+    } else {
+      appendFileSync(profile, '\n' + PROFILE_BLOCK);
     }
   }
   return terminalCommandStatus(options);

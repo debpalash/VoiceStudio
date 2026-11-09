@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 import sys
 import tempfile
-import hashlib
 import unittest
 from unittest.mock import patch
 
@@ -16,7 +15,6 @@ from voicestudio_cli.errors import CLIError, scrub
 from voicestudio_cli.transport import download, multipart, Client
 import voicestudio_cli.__main__ as command_module
 from voicestudio_cli.__main__ import main, stream_events
-from voicestudio_cli import updates
 
 
 class Response(io.BytesIO):

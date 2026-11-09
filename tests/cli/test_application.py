@@ -1,5 +1,4 @@
 """Installed app metadata is independent of the Python distribution version."""
-import io
 import json
 import os
 from pathlib import Path

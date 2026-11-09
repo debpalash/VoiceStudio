@@ -33,7 +33,8 @@ def cli_backend(tmp_path, monkeypatch):
         from fastapi.responses import JSONResponse
         return JSONResponse({'status': 'ok', 'version': 'test'}, headers={'X-OmniVoice-Backend': 'test'})
 
-    with TestClient(app) as client:
+    # The CLI reaches the backend over loopback; routers authorize that client as local.
+    with TestClient(app, client=('127.0.0.1', 50000)) as client:
         class Bridge(BaseHTTPRequestHandler):
             def log_message(self, *_):
                 pass

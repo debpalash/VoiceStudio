@@ -185,9 +185,41 @@ test('a setup that failed halfway is finished on the next launch, not marked don
   const f = fixture();
   const state = join(f.home, 'terminal-command.json');
   // The first launch wrote .profile, then failed before .zshrc.
-  writeFileSync(join(f.home, '.profile'), '\n# VoiceStudio terminal command\nexport PATH\n');
+  addTerminalCommandToPath(f);
+  rmSync(join(f.home, '.zshrc'));
   expect(terminalCommandStatus(f).onPath).toBe(false); // Settings offers the repair
   expect(setUpTerminalCommand(f, state)).toMatchObject({ onPath: true });
   expect(readFileSync(join(f.home, '.zshrc'), 'utf8')).toContain('.local/bin');
   expect(readFileSync(join(f.home, '.profile'), 'utf8').match(/# VoiceStudio/g)).toHaveLength(1);
+});
+
+test('a marker without its PATH lines, or an empty fish file, is repaired, not trusted', () => {
+  const f = { ...fixture(), platform: 'linux' as const };
+  const appImage = join(f.home, 'VoiceStudio.AppImage');
+  writeFileSync(appImage, 'fixture');
+  const linux = { ...f, appImage };
+  // An interrupted write left only the marker; fish's conf.d file is empty.
+  writeFileSync(join(f.home, '.profile'), '# mine\n# VoiceStudio terminal command\n');
+  mkdirSync(join(f.home, '.config/fish/conf.d'), { recursive: true });
+  writeFileSync(join(f.home, '.config/fish/conf.d/voicestudio.fish'), '');
+  linkTerminalCommand(linux);
+  expect(terminalCommandStatus(linux).onPath).toBe(false);
+  expect(addTerminalCommandToPath(linux).onPath).toBe(true);
+  expect(readFileSync(join(f.home, '.profile'), 'utf8')).toContain(
+    'export PATH="$HOME/.local/bin:$PATH"',
+  );
+  expect(readFileSync(join(f.home, '.profile'), 'utf8')).toContain('# mine\n');
+  expect(readFileSync(join(f.home, '.config/fish/conf.d/voicestudio.fish'), 'utf8')).toContain(
+    'fish_add_path',
+  );
+});
+
+test('a Linux zsh user without .zshrc gets one; other Linux shells do not', () => {
+  const f = fixture();
+  const appImage = join(f.home, 'VoiceStudio.AppImage');
+  writeFileSync(appImage, 'fixture');
+  addTerminalCommandToPath({ ...f, platform: 'linux', appImage, shell: '/bin/bash' });
+  expect(existsSync(join(f.home, '.zshrc'))).toBe(false);
+  addTerminalCommandToPath({ ...f, platform: 'linux', appImage, shell: '/usr/bin/zsh' });
+  expect(readFileSync(join(f.home, '.zshrc'), 'utf8')).toContain('.local/bin');
 });

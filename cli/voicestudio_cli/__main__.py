@@ -131,7 +131,7 @@ def build_parser(only=None):
         """The public path, plus the hidden former path of a renamed command."""
         description = DESCRIPTIONS.get(name) or next(spec.description for spec in COMMANDS if spec.name == name)
         if name in HIDDEN:
-            yield name, f'Former command; run voicestudio --help for current names', True
+            yield name, 'Former command; run voicestudio --help for current names', True
             return
         yield RENAMED.get(name, name), description, False
         if name in RENAMED:
