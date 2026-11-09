@@ -3,6 +3,7 @@ import { windowsRocmInstalled, windowsRocmRequested } from './runtime-windows-ro
 import { runtimeProjectReady } from './runtime-readiness';
 import { cpuSetupOffered, rememberTorchVariant, saveTorchVariant } from './torch-choice';
 import { runRuntimeProbe } from './runtime-probe';
+import { needsManagedRuntime, selectedPythonPath, validatePythonRuntime } from './runtime-python-selection';
 import { RuntimeLaunchRefusedError } from './runtime-launch-refusal';
 import { pypiFilesHost } from './pypi-mirror';
 import { SetupLog, scrubSetupText } from './setup-log';
@@ -564,6 +565,22 @@ export async function resolveSpawnPlan(
   }
   const override = parseBackendCmdOverride(process.env.OMNIVOICE_BACKEND_CMD);
   if (override) return { argv: override, cwd: root };
+  const selectedPython = selectedPythonPath();
+  if (selectedPython) {
+    // The external interpreter uses bundled sources; no managed project exists yet.
+    const project = root;
+    const validation = await validatePythonRuntime(selectedPython, project);
+    if (!validation.ok) {
+      const missing = validation.missingModules?.length
+        ? ` Missing modules: ${validation.missingModules.join(', ')}.`
+        : '';
+      return {
+        error: `The selected Python runtime is not compatible${validation.version ? ` (Python ${validation.version})` : ''}.${missing} ${validation.detail ?? 'Validation failed.'} Select another interpreter or return to the managed runtime.`,
+      };
+    }
+    // -B: never write bytecode into the app's bundled sources.
+    return { argv: [selectedPython, '-B', '-m', ...UVICORN_ARGS, '--port', String(port)], cwd: project };
+  }
   if (app.isPackaged) {
     const project = packagedProject ?? join(defaultRuntimeRoot(), 'project');
     // Heals runtimes installed before #1783 was fixed without a repair run.
@@ -1396,9 +1413,12 @@ export class BackendSupervisor extends EventEmitter<{
       }
 
       if (
-        app.isPackaged &&
-        runtimeSetupSupported() &&
-        !parseBackendCmdOverride(process.env.OMNIVOICE_BACKEND_CMD)
+        needsManagedRuntime(
+          app.isPackaged,
+          runtimeSetupSupported(),
+          selectedPythonPath(),
+          Boolean(parseBackendCmdOverride(process.env.OMNIVOICE_BACKEND_CMD)),
+        )
       ) {
         const { project, ready } = await this.resolveRuntimeProject();
         if (!ready) {

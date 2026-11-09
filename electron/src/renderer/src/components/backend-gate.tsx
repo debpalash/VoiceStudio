@@ -34,6 +34,7 @@ import {
 import { Spinner } from '@/components/ui/spinner';
 import { ConfirmDialog } from '@/features/clone/confirm-dialog';
 import { RemoteBackendSettings } from '@/features/settings/remote-backend-settings';
+import { ExistingPythonSettings } from '@/features/settings/existing-python-settings';
 import { useBackendStatus } from '@/hooks/use-backend-status';
 import { isBackendBusy } from '@shared/utils/backendStage';
 import { backendCauseAction } from '@shared/utils/backendHint';
@@ -359,6 +360,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                 </p>
               ) : null}
               <SetupAnalyticsConsent analyticsDisabled={status.analyticsDisabled} />
+              {!unsupportedPlatform && !wrongArchitecture ? <ExistingPythonSettings /> : null}
               {wrongArchitecture ? (
                 <p className="max-w-sm text-sm text-muted-foreground">
                   {t('backend.setup_wrong_architecture')}
@@ -644,6 +646,9 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
             <SetupSupport key={`${status.stage}:${status.message ?? ''}`} status={status} />
           )}
           {setup || installing ? <SetupHelpLinks /> : null}
+          {/* A saved interpreter that broke later fails the launch, not setup: keep
+              the way back to the managed runtime (or another interpreter) here. */}
+          {failed && !status.remote ? <ExistingPythonSettings onlyWhenSelected /> : null}
           {failed && <ReportBug error={status.message} />}
           {failed && <CrashDetails />}
           <ConfirmDialog
