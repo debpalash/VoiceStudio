@@ -13,12 +13,24 @@ import { captureException } from '@shared/utils/analytics';
 const MODULE_RETRY_PREFIX = 'voicestudio.moduleRetry:';
 const reloadRenderer = () => window.location.reload();
 
-// A failed dynamic import (a lazy route or the lazy setup wizard) is cached by
-// the module loader and by React.lazy, so only a full renderer reload can
-// request the chunk again; resetting the boundary would replay the rejection.
 function isModuleLoadError(message: string): boolean {
   return /(?:failed to fetch dynamically imported module|error loading dynamically imported module|importing a module script failed)/i.test(
     message,
+  );
+}
+
+// Try Again resets the boundary first, which keeps unsaved work. A failed
+// dynamic import that React.lazy or the module loader has cached (a lazy route,
+// the lazy setup wizard) replays the same rejection at once; only a full
+// renderer reload can request that chunk again, so a replay triggers one.
+const RESET_REPLAY_MS = 2000;
+let moduleErrorReset: { message: string; at: number } | null = null;
+
+function resetReplayedModuleError(message: string): boolean {
+  return (
+    isModuleLoadError(message) &&
+    moduleErrorReset?.message === message &&
+    Date.now() - moduleErrorReset.at < RESET_REPLAY_MS
   );
 }
 
@@ -46,6 +58,11 @@ export function ErrorRecovery({
   const { t } = useTranslation();
   const failure = error instanceof Error ? error : new Error(String(error));
   useEffect(() => {
+    if (resetReplayedModuleError(failure.message)) {
+      reload();
+      return;
+    }
+    moduleErrorReset = null; // the last reset ended in a different outcome
     const retryKey = claimModuleRetry(failure.message);
     if (retryKey) {
       // A failed dynamic-import promise is cached by the module loader. Resetting
@@ -78,7 +95,15 @@ export function ErrorRecovery({
           </pre>
         </details>
         <div className="flex flex-wrap items-start gap-2">
-          <Button size="sm" onClick={isModuleLoadError(failure.message) ? reload : reset}>
+          <Button
+            size="sm"
+            onClick={() => {
+              moduleErrorReset = isModuleLoadError(failure.message)
+                ? { message: failure.message, at: Date.now() }
+                : null;
+              reset();
+            }}
+          >
             {t('errors.tryAgain')}
           </Button>
           <Button

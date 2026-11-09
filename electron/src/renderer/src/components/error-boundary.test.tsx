@@ -86,9 +86,26 @@ it('reloads a transient dynamic module once in Strict Mode, then asks an agent o
     />,
   );
   expect(listener).toHaveBeenCalledOnce();
-  // Try Again must reload too: resetting would replay the cached rejected import.
-  fireEvent.click(screen.getByRole('button', { name: 'errors.tryAgain' }));
-  expect(reload).toHaveBeenCalledTimes(2);
-  expect(reset).not.toHaveBeenCalled();
   window.removeEventListener('voicestudio:repair-agent-open', listener);
+});
+
+it('Try Again keeps the renderer when the module recovers, and reloads when it replays', () => {
+  const error = new Error('Failed to fetch dynamically imported module: setup-wizard.tsx');
+  sessionStorage.setItem('voicestudio.moduleRetry:' + error.message, 'attempted');
+  const reset = vi.fn();
+  const reload = vi.fn();
+  // Recovered: the boundary resets and nothing reloads.
+  render(<ErrorRecovery error={error} reset={reset} reload={reload} />);
+  fireEvent.click(screen.getByRole('button', { name: 'errors.tryAgain' }));
+  expect(reset).toHaveBeenCalledOnce();
+  cleanup();
+  render(<ErrorRecovery error={new Error('Unrelated failure')} reset={reset} reload={reload} />);
+  expect(reload).not.toHaveBeenCalled();
+  cleanup();
+  // Replayed: React.lazy's cached rejection comes straight back, so reload.
+  render(<ErrorRecovery error={error} reset={reset} reload={reload} />);
+  fireEvent.click(screen.getByRole('button', { name: 'errors.tryAgain' }));
+  cleanup();
+  render(<ErrorRecovery error={error} reset={reset} reload={reload} />);
+  expect(reload).toHaveBeenCalledOnce();
 });
