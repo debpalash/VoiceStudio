@@ -2629,6 +2629,10 @@
     "retry": "Försök igen",
     "refresh": "Uppdatera",
     "manage_profile": "Hantera profil",
+    "change_photo": "Byt foto på din profilsida",
+    "edit_name": "Redigera namn",
+    "name_label": "Visningsnamn",
+    "rename_failed": "Det gick inte att spara namnet. Försök igen.",
     "manage_plan": "Hantera abonnemang"
   },
   "cloudsync": {

@@ -390,3 +390,31 @@ it('validates signup options before invoking the browser session', async () => {
     expect(() => invoke({}, options)).toThrow('Invalid sign-in options');
   expect(signIn).toHaveBeenCalledTimes(2);
 });
+
+it('saves a new display name through the account API and refuses invalid names', async () => {
+  const patch = vi.fn(async (changes: { display_name: string }) => ({
+    email: 'ana@example.com',
+    displayName: changes.display_name,
+    avatarUrl: null,
+    organizations: [],
+  }));
+  const c = ctl({
+    api: {
+      get: async () => ({
+        email: 'ana@example.com',
+        displayName: 'Ana',
+        avatarUrl: null,
+        organizations: [],
+      }),
+      patch,
+      avatar: async () => null,
+      entitlements: async () => null,
+    } as never,
+  });
+  const s = await c.updateProfile({ display_name: 'Ana Souza' });
+  expect(patch).toHaveBeenCalledWith({ display_name: 'Ana Souza' });
+  expect(s.profile?.displayName).toBe('Ana Souza');
+  await expect(c.updateProfile({ display_name: 'x'.repeat(201) })).rejects.toThrow();
+  await expect(c.updateProfile({ display_name: 42 })).rejects.toThrow();
+  expect(patch).toHaveBeenCalledTimes(1);
+});

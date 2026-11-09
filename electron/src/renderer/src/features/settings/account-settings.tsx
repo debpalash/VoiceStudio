@@ -12,7 +12,8 @@ const CALLOUT =
 
 export function AccountSettings() {
   const { t } = useTranslation();
-  const { supported, state, setSwitches, signIn, cancelSignIn, signOut, refresh } = useAccount();
+  const { supported, state, setSwitches, signIn, cancelSignIn, signOut, refresh, updateProfile } =
+    useAccount();
   if (!supported || !state?.available) return null;
   const who = state.profile?.displayName ?? state.profile?.email ?? '';
   const enabled = state.accountEnabled;
@@ -26,6 +27,7 @@ export function AccountSettings() {
           state={state}
           onRetry={refresh}
           onSignOut={card ? () => void signOut() : undefined}
+          onRename={card ? (name) => updateProfile({ display_name: name }) : undefined}
         />
       )}
       <SettingsSection icon={UserRoundIcon} title={t('account.title')}>

@@ -2710,6 +2710,10 @@
     "retry": "Volve tentar",
     "refresh": "Actualizar",
     "manage_profile": "Xestionar o perfil",
+    "change_photo": "Cambiar a foto na túa páxina de perfil",
+    "edit_name": "Editar nome",
+    "name_label": "Nome visible",
+    "rename_failed": "Non se puido gardar o teu nome. Téntao de novo.",
     "manage_plan": "Xestionar o plan"
   },
   "cloudsync": {
