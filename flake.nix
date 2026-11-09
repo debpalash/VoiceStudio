@@ -323,16 +323,40 @@
           export BUN_INSTALL="$TMPDIR/.bun"
           export PATH="$BUN_INSTALL/bin:$PATH"
 
-          cp -r ${src} ./source
-          chmod -R u+w ./source
-          cd ./source
-
           # Skip the electron postinstall: this build uses nixpkgs' electron
           # runtime, and the download is both redundant and a network call we
           # would rather not make.
           export ELECTRON_SKIP_BINARY_DOWNLOAD=1
 
-          bun install --frozen-lockfile
+          # DIAGNOSTIC (temporary): install from several source trees and diff.
+          manifest() {
+            ( cd "$1"
+              find node_modules electron/node_modules -name .cache -prune -o -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum
+              find node_modules electron/node_modules -name .cache -prune -o -type l -printf 'L %p -> %l\n' | LC_ALL=C sort
+              find node_modules electron/node_modules -name .cache -prune -o -type f -perm -u+x -printf 'X %p\n' | LC_ALL=C sort
+              find node_modules electron/node_modules -name .cache -prune -o -type d -empty -printf 'D %p\n' | LC_ALL=C sort
+            )
+          }
+          diaginstall() {
+            bun install --frozen-lockfile > /dev/null 2>&1
+            cd ..
+            manifest source > "$TMPDIR/m-$1"
+            echo "DIAG $1 $(sha256sum < "$TMPDIR/m-$1" | cut -c1-16) lines=$(wc -l < "$TMPDIR/m-$1")"
+            mv source "run-$1"
+          }
+          cp -r ${src} ./source; chmod -R u+w ./source; cd ./source; diaginstall full1
+          cp -r ${src} ./source; chmod -R u+w ./source; cd ./source; diaginstall full2
+          cp -r ${src} ./source; chmod -R u+w ./source; echo '# probe' >> source/backend/mcp_server.py; cd ./source; diaginstall fullmod
+          mkdir -p source/electron source/patches
+          cp ${src}/package.json ${src}/bun.lock source/; cp ${src}/patches/* source/patches/; cp ${src}/electron/package.json source/electron/
+          cd ./source; diaginstall min
+          for v in full2 fullmod min; do echo "DIAG diff full1 vs $v:"; diff "$TMPDIR/m-full1" "$TMPDIR/m-$v" | head -80 || true; done
+          echo "DIAG files mentioning the build dir:"; grep -rlI -- "$PWD/source" run-full1/node_modules run-full1/electron/node_modules 2>/dev/null | head -20 || true
+          echo "DIAG absolute symlinks:"; grep -c ' -> /' "$TMPDIR/m-full1" || true; grep ' -> /' "$TMPDIR/m-full1" | head -20 || true
+          rm -rf run-full2 run-fullmod run-min
+          mv run-full1 source
+          cd ./source
+          false
 
           # bun writes .bin entries as absolute symlinks into the build tree.
           # Copy, then re-point any absolute symlink so the result is
