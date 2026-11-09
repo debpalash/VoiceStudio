@@ -36,10 +36,21 @@ _CHANGE_CASES = [
     ("English", "It is 3:30 now", "It is three thirty now"),
     ("English", "At 3:00 sharp", "At three o'clock sharp"),
     ("English", "At 12:05 sharp", "At twelve oh five sharp"),
+    # A 24-hour time on the hour is read in hundreds, not with "o'clock".
+    ("English", "Dinner at 19:00 sharp", "Dinner at nineteen hundred sharp"),
+    ("English", "Closes at 0:00 tonight", "Closes at zero hundred tonight"),
+    ("English", "At 12:00 sharp", "At twelve o'clock sharp"),
+    ("English", "At 18:30 sharp", "At eighteen thirty sharp"),
     ("English", "the 21st of May", "the twenty-first of May"),
     ("English", "It costs $5", "It costs five dollars"),
     ("English", "Just $1 more", "Just one dollar more"),
     ("English", "It costs $5.99 now", "It costs five dollars, ninety-nine cents now"),
+    # a zero part is not spoken
+    ("English", "only $0.50 now", "only fifty cents now"),
+    ("English", "just $0.01 more", "just one cent more"),
+    ("English", "it costs $5.00 now", "it costs five dollars now"),
+    ("English", "only $1.00.", "only one dollar."),
+    ("English", "it was $0.00 then", "it was zero dollars then"),
     # Sentence punctuation after an amount is not part of it: the lookahead
     # used to reject any period or comma, so these reached the engine as digits.
     ("English", "It costs $5.", "It costs five dollars."),
@@ -48,10 +59,20 @@ _CHANGE_CASES = [
     ("English", "$12.34, $56.78, and $9.",
      "twelve dollars, thirty-four cents, fifty-six dollars, seventy-eight cents, and nine dollars."),
     ("English", "rated 3.5 stars", "rated three point five stars"),
+    # The written trailing zeros are spoken, not dropped by the float.
+    ("English", "version 3.0 ships", "version three point zero ships"),
+    ("English", "it weighs 2.50 kg", "it weighs two point five zero kg"),
+    ("German", "Version 3.0 kommt", "Version drei Komma null kommt"),
+    ("English", "version \uff13.\uff10 ships", "version three point zero ships"),
+    ("Portuguese", "valor 3.0", "valor três vírgula zero"),
     # English writes decimals with a period, so three digits after it are a
     # decimal here (the same digits are a thousands group in German, below).
     ("English", "pi is 3.141 here", "pi is three point one four one here"),
     ("English", "battery at 50%", "battery at fifty percent"),
+    # ...and so are the ones written in a percentage.
+    ("English", "rates rose 2.50% today", "rates rose two point five zero percent today"),
+    ("English", "inflation was 3.0%", "inflation was three point zero percent"),
+    ("German", "etwa 3.50%", "etwa drei Komma fünf null Prozent"),
     ("English", "back in 1984", "back in nineteen eighty-four"),
     ("English", "I have 3.", "I have three."),
     # EN abbreviations (guards: titles need a following capitalized word)
@@ -62,6 +83,10 @@ _CHANGE_CASES = [
     ("English", "fruit, e.g. apples", "fruit, for example apples"),
     ("English", "good vs. evil", "good versus evil"),
     ("English", "exhibit No. 5", "exhibit number five"),
+    # a number glued to the abbreviation is still spoken as one
+    ("English", "exhibit No.5", "exhibit number five"),
+    ("German", "Nr.5 gewinnt", "Nummer fünf gewinnt"),
+    ("French", "le n°5 gagne", "le numéro cinq gagne"),
     # ISO-ish codes resolve like display names
     ("en", "I have 2 cats", "I have two cats"),
     ("en-US", "I have 2 cats", "I have two cats"),
@@ -71,48 +96,127 @@ _CHANGE_CASES = [
     ("German", "Nr. 5 gewinnt", "Nummer fünf gewinnt"),
     ("German", "etwa 50%", "etwa fünfzig Prozent"),
     ("German", "etwa 3.5 Kilo", "etwa drei Komma fünf Kilo"),
+    # The day of a date keeps its digits; the year still speaks. A number
+    # that ends a sentence before any other word still speaks.
+    ("German", "Am 3. Mai 2024", "Am 3. Mai zweitausendvierundzwanzig"),
+    ("German", "Ich habe 3. Dann 4.", "Ich habe drei. Dann vier."),
+    ("German", "Kapitel 3. Der Anfang.", "Kapitel drei. Der Anfang."),
+    # A month name glued to a digit is not a month token.
+    ("German", "Am 3. Mai2 war es", "Am drei. Mai2 war es"),
     ("Spanish", "tengo 42 gatos", "tengo cuarenta y dos gatos"),
     ("Spanish", "el Sr. García", "el Señor García"),
+    # Portuguese currency and clock times (#3803)
+    ("Portuguese", "O orçamento ficou em R$ 1.250,00", "O orçamento ficou em mil, duzentos e cinquenta reais"),
+    ("Portuguese", "custa R$ 1 250", "custa mil, duzentos e cinquenta reais"),
+    ("Portuguese", "custa R$ 1\u00a0250,00", "custa mil, duzentos e cinquenta reais"),
+    ("Portuguese", "custa R$ 1", "custa um real"),
+    ("Portuguese", "custa R$ 1,00", "custa um real"),
+    ("Portuguese", "apenas R$ 0,50", "apenas cinquenta centavos"),
+    ("Portuguese", "apenas R$ 0,01", "apenas um centavo"),
+    ("Portuguese", "custa R$ 5,99", "custa cinco reais e noventa e nove centavos"),
+    ("Portuguese", "reunião às 14h30", "reunião às catorze e trinta"),
+    ("Portuguese", "sai às 14h", "sai às catorze horas"),
+    ("Portuguese", "sai às 14:30", "sai às catorze e trinta"),
+    ("Portuguese", "sai às 14:00", "sai às catorze horas"),
+    ("Portuguese", "sai à 1h", "sai à uma hora"),
+    ("Portuguese", "sai às 2h", "sai às duas horas"),
+    ("Portuguese", "sai à 1h30", "sai à uma e trinta"),
+    ("Portuguese", "sai às 14h05", "sai às catorze e cinco"),
+    ("Portuguese", "sai às 14h01", "sai às catorze e um"),
+    ("Portuguese", "sai às 0h", "sai às zero horas"),
+    ("Portuguese", "sai às 21h", "sai às vinte e uma horas"),
+    ("Portuguese", "sai às 21h30", "sai às vinte e uma e trinta"),
+    ("Portuguese", "sai às 22h", "sai às vinte e duas horas"),
+    ("Portuguese", "sai às 22h15", "sai às vinte e duas e quinze"),
+    ("Portuguese", "ganhou R$ 1.000.000,00", "ganhou um milhão de reais"),
+    ("Portuguese", "ganhou R$ 2.000.000,00", "ganhou dois milhões de reais"),
+    ("pt-BR", "reunião às 14h30", "reunião às catorze e trinta"),
+    ("pt-PT", "O orçamento ficou em R$ 1.250,00", "O orçamento ficou em mil duzentos e cinquenta reais"),
     ("French", "il a 42 chats", "il a quarante-deux chats"),
     ("French", "Mme Dupont arrive", "Madame Dupont arrive"),
+    # Numbers around a space-grouped amount still speak; the group itself
+    # keeps its digits.
+    ("French", "2 colis de 1 234 pièces", "deux colis de 1 234 pièces"),
+    # A year is not a leading group: four digits never start one.
+    ("French", "en 2024 500 personnes", "en deux mille vingt-quatre cinq cents personnes"),
+    # Narrow and no-break spaces (what French keyboards and word processors
+    # insert) collapse to a plain space, and the group stays whole.
+    ("French", "soit 1\u202f234\u00a0567 euros", "soit 1 234 567 euros"),
+    # English keeps reading separate numbers: "2 100" is not a group there.
+    ("English", "room 2 100 meters away", "room two one hundred meters away"),
     ("Russian", "у меня 42 кота", "у меня сорок два кота"),
-    # Malayalam goes through the native verbalizer (num2words has no ml
-    # locale): cardinals with sandhi, years as plain cardinals, Indian
-    # lakh grouping, percent and decimal. Display name and ISO code agree.
-    ("Malayalam", "എനിക്ക് 2 പൂച്ചകൾ ഉണ്ട്", "എനിക്ക് രണ്ട് പൂച്ചകൾ ഉണ്ട്"),
-    ("Malayalam", "അവിടെ 42 പേർ വന്നു", "അവിടെ നാൽപത്തിരണ്ട് പേർ വന്നു"),
-    ("Malayalam", "വില 150 രൂപ", "വില നൂറ്റിയൻപത് രൂപ"),
-    ("Malayalam", "2026 ൽ", "രണ്ടായിരത്തി ഇരുപത്തിയാറ് ൽ"),
-    ("Malayalam", "1984 ലെ കഥ", "ആയിരത്തി തൊള്ളായിരത്തിയെൺപത്തിനാല് ലെ കഥ"),
-    ("Malayalam", "150000 രൂപ", "ഒരു ലക്ഷത്തി അൻപതിനായിരം രൂപ"),
-    ("Malayalam", "ഏകദേശം 50%", "ഏകദേശം അൻപത് ശതമാനം"),
-    ("Malayalam", "3.5 കിലോമീറ്റർ", "മൂന്ന് ദശാംശം അഞ്ച് കിലോമീറ്റർ"),
-    ("ml", "എനിക്ക് 2 പൂച്ചകൾ ഉണ്ട്", "എനിക്ക് രണ്ട് പൂച്ചകൾ ഉണ്ട്"),
-    ("ml-IN", "25000 രൂപ", "ഇരുപത്തയ്യായിരം രൂപ"),
-    # Digits inside bracket grammar are masked; the rest still verbalizes.
-    ("Malayalam", "[pause 300ms] 42 [voice:Anu]", "[pause 300ms] നാൽപത്തിരണ്ട് [voice:Anu]"),
-    # Native Malayalam digits are digits too.
-    ("Malayalam", "൪൨ പേർ", "നാൽപത്തിരണ്ട് പേർ"),
-    # Digit ranges: the tilde has to be SPOKEN or the engine mashes the two
-    # numbers into one ("20~30초" was read as "이십삼"). Spacing is part of the
-    # per-language form — a Korean postposition binds to its numeral, Japanese
-    # and Chinese set no spaces, English needs them.
-    ("Korean", "대략 20~30초짜리", "대략 20에서 30초짜리"),
-    ("Korean", "가격은 20~30만원", "가격은 20에서 30만원"),
-    ("ko", "20~30초", "20에서 30초"),
-    ("Japanese", "20〜30分ぐらい", "20から30分ぐらい"),          # wave dash U+301C
-    ("Japanese", "20～30分ぐらい", "20から30分ぐらい"),          # fullwidth U+FF5E
-    ("Chinese", "大约需要20～30秒", "大约需要20到30秒"),
-    # EN runs the range through num2words afterwards, as it does any digit
-    ("English", "It takes 20~30 seconds", "It takes twenty to thirty seconds"),
+    # Malayalam: no num2words locale, so these go through number_words_ml.
+    ("Malayalam", "എനിക്ക് 5 പൂച്ചകൾ", "എനിക്ക് അഞ്ച് പൂച്ചകൾ"),
+    ("Malayalam", "വീട് നമ്പർ 21", "വീട് നമ്പർ ഇരുപത്തിയൊന്ന്"),
+    ("Malayalam", "ആകെ 150 പേർ", "ആകെ നൂറ്റിയൻപത് പേർ"),
+    ("Malayalam", "വർഷം 2026 ആണ്", "വർഷം രണ്ടായിരത്തി ഇരുപത്തിയാറ് ആണ്"),
+    ("Malayalam", "വില 150000 ആണ്", "വില ഒരു ലക്ഷത്തി അൻപതിനായിരം ആണ്"),
+    ("Malayalam", "വില 100000 ആണ്", "വില ഒരു ലക്ഷം ആണ്"),
+    ("Malayalam", "ഫലം 50% ആണ്", "ഫലം അൻപത് ശതമാനം ആണ്"),
+    ("Malayalam", "അളവ് 3.14 ആണ്", "അളവ് മൂന്ന് ദശാംശം ഒന്ന് നാല് ആണ്"),
+    ("ml", "എനിക്ക് 5 പൂച്ചകൾ", "എനിക്ക് അഞ്ച് പൂച്ചകൾ"),
+    ("ml-IN", "എനിക്ക് 5 പൂച്ചകൾ", "എനിക്ക് അഞ്ച് പൂച്ചകൾ"),
+    ("Malayalam", "[pause 300ms] 7 പേർ", "[pause 300ms] ഏഴ് പേർ"),
+    ("Malayalam", "[voice:A3] 7 പേർ", "[voice:A3] ഏഴ് പേർ"),
+    ("Malayalam", "എനിക്ക് ൫ പൂച്ചകൾ", "എനിക്ക് അഞ്ച് പൂച്ചകൾ"),
+    # Urdu goes through the native verbalizer too (num2words has no ur
+    # locale): an irregular 0-99 table, سو / ہزار / لاکھ, and 1100-1999 read in
+    # hundreds the way Urdu speakers say years ("انیس سو چھپن", not the
+    # "انیس سو سپنس" OmniVoice produced from raw digits).
+    ("Urdu", "سن 1956 میں 10 لوگ", "سن انیس سو چھپن میں دس لوگ"),
+    ("Urdu", "عمر 55 سال", "عمر پچپن سال"),
+    ("Urdu", "قیمت 150 روپے", "قیمت ایک سو پچاس روپے"),
+    ("Urdu", "سال 2026 میں", "سال دو ہزار چھبیس میں"),
+    ("Urdu", "سال 2000 تک", "سال دو ہزار تک"),
+    ("Urdu", "1000 لوگ", "ایک ہزار لوگ"),
+    ("Urdu", "150000 روپے", "ایک لاکھ پچاس ہزار روپے"),
+    ("Urdu", "تقریباً 50%", "تقریباً پچاس فیصد"),
+    ("Urdu", "3.5 کلومیٹر", "تین اعشاریہ پانچ کلومیٹر"),
+    ("ur", "عمر 55 سال", "عمر پچپن سال"),
+    ("ur-PK", "عمر 55 سال", "عمر پچپن سال"),
+    ("Urdu", "[pause 300ms] 42 [voice:Ali]", "[pause 300ms] بیالیس [voice:Ali]"),
+    # Urdu (Extended Arabic-Indic) digits are digits too.
+    ("Urdu", "سن ۱۹۵۶ میں", "سن انیس سو چھپن میں"),
+    # Tilde between two numbers is spoken instead of being swallowed.
+    ("Korean", "사과 3~5개 주세요", "사과 3에서 5개 주세요"),
+    ("Korean", "가격은 1000~2000원입니다", "가격은 1000에서 2000원입니다"),
+    ("ko", "기온 -5 ~ 3도", "기온 -5에서 3도"),
+    ("Japanese", "参加者は10\u301c20人", "参加者は10から20人"),
+    ("Japanese", "気温は15\uff5e25度", "気温は15から25度"),
+    ("Chinese", "需要3\uff5e4天", "需要3到4天"),
+    ("English", "Open 20~30 minutes", "Open twenty to thirty minutes"),
+    ("ko", "[pause 300ms] 1.5~2.5배", "[pause 300ms] 1.5에서 2.5배"),
     # Universal safety filters (language-independent)
-    (None, "hello​ ‍world", "hello world"),
+    (None, "hello\u200b \u200dworld", "hello \u200dworld"),
     (None, "too   many\t spaces", "too many spaces"),
     (None, "wow!!!!!!!!", "wow!!!"),
     (None, "wait.........", "wait..."),
     (None, "a�b", "ab"),
     (None, "Tom &amp; Jerry", "Tom & Jerry"),
     (None, "one&nbsp;space", "one space"),
+    # Markdown emphasis delimiters are stripped, not spoken (#3197)
+    ("English", "Say **bold** word", "Say bold word"),
+    ("English", "Say __bold__ word", "Say bold word"),
+    ("English", "Say *italic* word", "Say italic word"),
+    ("English", "Say _italic_ word", "Say italic word"),
+    ("English", "**bold** and **more** here", "bold and more here"),
+    # Digits still verbalize around a surviving arithmetic asterisk
+    ("English", "2 * 3 = 6", "two * three = six"),
+    ("English", "2 * 3 * 4 equals", "two * three * four equals"),
+    # Emphasis spans soft line breaks
+    ("English", "Say **first line\nsecond line** now", "Say first line\nsecond line now"),
+    # Emphasis around a speech control strips; the control survives
+    ("English", "**Hello [pause 300ms] world**", "Hello [pause 300ms] world"),
+    # Asterisks open inside words (CommonMark); underscores do not
+    ("English", "un**believ**able now", "unbelievable now"),
+    ("English", "pre*fix* this", "prefix this"),
+    ("English", "___bold___ here", "bold here"),
+    # Nested spans resolve fully, so a second pass is a no-op
+    ("English", "**outer **inner** outer**", "outer inner outer"),
+    # Escaped markers are literal text and stay put
+    (None, "\\*literal\\* word", "\\*literal\\* word"),
+    # Removing markers must not leave punctuation above the repeat cap
+    (None, "wow!*!*!*!*!", "wow!!!"),
 ]
 
 
@@ -129,7 +233,9 @@ def test_unsafe_control_filter_has_exact_boundaries():
         0x0C,
         *range(0x0E, 0x20),
         *range(0x7F, 0xA0),
-        *range(0x200B, 0x2010),
+        0x200B,
+        0x200E,
+        0x200F,
         *range(0x202A, 0x202F),
         *range(0x2060, 0x2065),
         0xFEFF,
@@ -151,6 +257,11 @@ _UNCHANGED_CASES = [
     # (language, input) — ambiguous constructs keep their digits/shape
     ("English", "version v2 shipped"),          # digit glued to a letter
     ("English", "order 1,000 units"),           # thousands separator: ambiguous
+    ("English", "The crowd was 10 000 strong."),  # space-grouped: zeros never start a number
+    ("English", "up 12 000% on the year"),
+    ("English", "worth 12 345 000 dollars"),    # the whole run, not just "345 000"
+    ("English", "only 5 000 left of 12 345 000"),
+    ("English", "worth 1 000 000 dollars"),
     ("English", "It costs $1,000."),            # a dollar amount with a separator
     ("English", "It costs $5.5."),              # one decimal digit: not cents
     ("English", "pages 3-5 tonight"),           # range
@@ -158,6 +269,9 @@ _UNCHANGED_CASES = [
     ("English", "see 3.5.1 in the docs"),       # version string
     ("English", "call 5551234567 now"),         # 7+ digits: an ID, not a number
     ("English", "12:34:56 elapsed"),            # H:MM:SS duration, not a time
+    ("Portuguese", "código R$ 007"),            # leading-zero code
+    ("Portuguese", "duração 14:30:00"),         # H:MM:SS duration, not a time
+    ("English", "O orçamento ficou em R$ 1.250,00"),  # Portuguese currency not spoken in English
     ("English", "the ratio is 1/2 there"),      # fraction: ambiguous
     ("English", "MP3 files and A4 paper"),      # alphanumeric tokens
     ("English", "I met her. I agree."),         # "I" is a pronoun, not a numeral
@@ -174,28 +288,62 @@ _UNCHANGED_CASES = [
     ("German", "etwa 12.500%"),                  # the percent rule shares it
     ("Spanish", "más de 1.000 personas"),
     ("French", "plus de 1.000 personnes"),
-    # Malayalam native path keeps the same conservative boundaries
-    ("Malayalam", "1,000 രൂപ"),                  # thousands separator
-    ("Malayalam", "പേജ് 3-5 വായിക്കുക"),           # range
-    ("Malayalam", "കോഡ് 007"),                    # leading-zero code
-    ("Malayalam", "1234567 എന്ന നമ്പർ"),           # 7+ digits: an ID
-    ("Malayalam", "[pause 300ms] ശബ്ദം [rate 0.9]"),  # bracket grammar untouched
-    # Python's \w misses combining marks: a number glued to a vowel sign or
-    # virama is part of a word ("10ാം" = 10th), never spliced into it.
-    ("Malayalam", "10ാം ക്ലാസ്"),
-    ("Malayalam", "ക്ലാസ്10 ജയിച്ചു"),
-    ("Malayalam", "കോടി150"),
-    ("Malayalam", "കോഡ് ൦൦൭"),                    # native leading-zero code
-    ("ar", "الرمز ٠٠٧"),                         # same class on the num2words path
-    # Digit ranges: only the tilde family is a range mark. Everything else that
-    # sits between digits means something other than "to".
-    ("Korean", "대략 20-30초"),                   # ASCII hyphen: also dates/phones
-    ("Korean", "2026-09-05 회의"),                # date
-    ("Korean", "010-1234-5678"),                 # phone number
-    ("Korean", "AB20~30CD"),                     # product code, not a range
-    ("Japanese", "そうですね〜"),                   # tilde not between digits
-    ("Vietnamese", "20~30 giây"),                # no verified spoken form
-    (None, "20~30초"),                           # no language given
+    # "3. Mai" is an ordinal date where a period marks ordinals; its spoken
+    # form inflects ("am dritten", "der dritte"), so the day stays as
+    # written for the engine. The integer rule used to speak the cardinal
+    # and leave the period behind as a sentence break ("drei. Mai").
+    ("German", "Am 3. Mai"),
+    ("German", "Der 1. Januar ist frei."),
+    ("German", "am 21. dezember"),
+    ("German", "Am 3. Mrz. und am 5. Jun."),      # abbreviated months
+    ("German", "Am 3. Mär. geschlossen"),
+    ("German", "bis 1. Jul. offen"),
+    ("Danish", "Den 3. maj"),
+    ("Norwegian", "Den 17. mai"),
+    ("Finnish", "3. toukokuuta"),
+    ("Czech", "3. května"),
+    ("Polish", "3. maja"),
+    # A space between a 1-3 digit group and 3-digit groups is the other
+    # thousands separator in those locales ("1 234", "10 000"): kept whole,
+    # digits and all. The integer rule used to read the leading group on
+    # its own ("un 234,5", "dix 000 habitants").
+    ("French", "Il a 1 234,5 euros."),
+    ("French", "Population : 10 000 habitants."),
+    ("German", "Das sind 1 234 Euro."),
+    ("Russian", "Это 1 234 рубля."),
+    ("French", "soit 12 500% du total"),         # the percent rule shares it
+    ("French", "soit 1 234 % du total"),
+    ("French", "une baisse de -1 234% du total"),  # a sign stays on the run
+    ("French", "soit -12 500 euros"),
+    # Malayalam / native-digit boundaries: all stay as written.
+    ("Malayalam", "വില 1,000 ആണ്"),
+    ("Malayalam", "പേജ് 3-5 കാണുക"),
+    ("Malayalam", "കോഡ് 007 ആണ്"),
+    ("Malayalam", "കോഡ് ൦൦൭ ആണ്"),
+    ("Malayalam", "ഐഡി 1234567 ആണ്"),
+    ("Malayalam", "[pause 300ms]"),
+    ("Malayalam", "[voice:A3]"),
+    ("Malayalam", "5ാം ദിവസം"),            # vowel sign glued after the digits
+    ("Malayalam", "ക്5 ദിവസം"),             # virama glued before the digits
+    ("Malayalam", "ദിവസം5 കഴിഞ്ഞു"),         # consonant + digits word
+    # Urdu native path keeps the same conservative boundaries
+    ("Urdu", "1,000 روپے"),                       # thousands separator
+    ("Urdu", "صفحہ 3-5 پڑھیں"),                   # range
+    ("Urdu", "کوڈ 007"),                          # leading-zero code
+    ("Urdu", "کوڈ ۰۰۷"),                          # native leading-zero code
+    ("Urdu", "1234567 نمبر"),                     # 7+ digits: an ID
+    ("Urdu", "ورژن 3.5.1"),                       # version string
+    # Arabic num2words must preserve zero-prefixed identifiers.
+    ("ar", "رقم الطلب ٠٠٤٢ محفوظ"),
+    # Digit-range rule: only a clean tilde between two numbers is rewritten.
+    ("Korean", "서울-부산 3-5일 걸려요"),         # hyphen is never a range mark
+    ("Korean", "마감일은 2025-03-14 입니다"),     # ISO date
+    ("Korean", "전화 010-1234-5678 로 연락"),    # phone-shaped
+    ("Korean", "모델 AB12~34CD 재고"),            # letters touching the digits
+    ("Korean", "1~2~3 순서"),                    # malformed chain
+    ("Japanese", "また明日~"),                    # trailing tilde, no digits
+    ("Vietnamese", "Khoảng 20~30 người"),        # no verified form
+    (None, "about 20~30 people"),
     # Unsupported languages keep every digit (num2words unmapped)
     ("Japanese", "42 cats and 3.5 stars at 3:30"),
     ("Thai", "42 cats"),
@@ -214,6 +362,14 @@ _UNCHANGED_CASES = [
     # Bracket grammar is never rewritten
     ("English", "[pause 300ms] then [rate 0.9] speech [voice:Alice]"),
     ("English", "[[term|5]] stays bracket-managed"),
+    # Unpaired markers and non-delimiter uses survive (#3197)
+    ("English", "use snake_case names"),
+    ("English", "foo__bar__baz here"),
+    ("English", "имя_файла_здесь test"),
+    ("English", "a lone * stays"),
+    # Unspaced arithmetic keeps its multiplication signs
+    (None, "2*3*4 and 10**2"),
+    ("English", "[**bold**] markers inside brackets stay untouched"),
     # Plain text is byte-identical
     ("English", "The quick brown fox jumps."),
     (None, "already clean text"),
@@ -260,24 +416,90 @@ def test_cjk_passthrough_untouched():
         assert normalize_text(s, None) == s
 
 
-def test_native_verbalizer_covers_full_integer_range():
-    """Every integer the conservative regex can match (≤ 6 digits) must render
-    without digits and without raising — the ml module has no num2words
-    fallback to hide a table gap."""
-    from services import number_words_ml as ml
+def test_malayalam_cardinal_covers_whole_range():
+    from services import number_words_ml
+
     for n in range(1_000_000):
-        word = ml.cardinal(n)
-        assert word and not any(ch.isdigit() for ch in word), n
+        words = number_words_ml.cardinal(n)
+        assert words
+        assert not any(ch.isdigit() for ch in words)
+        assert "\u200d" not in words and "\u200c" not in words
 
 
-def test_native_language_is_outside_num2words_gate():
-    """ml resolves to the native path, never to num2words (no ml locale)."""
+def test_malayalam_cardinal_rejects_bad_input():
+    from services import number_words_ml
+
+    for bad in (-1, 1_000_000):
+        with pytest.raises(ValueError):
+            number_words_ml.cardinal(bad)
+    for bad in (True, 1.5, "3"):
+        with pytest.raises(TypeError):
+            number_words_ml.cardinal(bad)
+
+
+def test_native_language_resolution():
+    assert text_normalization._native_lang("Malayalam") == "ml"
+    assert text_normalization._native_lang("ml-IN") == "ml"
+    assert text_normalization._native_lang("English") is None
+    assert text_normalization._num2words_lang("Malayalam") is None
+    assert text_normalization._num2words_lang("ml") is None
+
+
+def test_urdu_cardinal_spells_every_supported_integer():
+    """Every supported Urdu cardinal is words-only and uses Urdu glyphs."""
+    from services import number_words_ur
+
+    arabic_lookalikes = {"\u064a", "\u0643", "\u0647", "\u0649"}
+    failures = []
+    for number in range(1_000_000):
+        words = number_words_ur.cardinal(number)
+        if (
+            not words
+            or any(character.isdigit() for character in words)
+            or arabic_lookalikes.intersection(words)
+        ):
+            failures.append((number, words))
+    assert failures == []
+
+
+@pytest.mark.parametrize("n,expected", [
+    (0, "صفر"), (19, "انیس"), (29, "انتیس"), (49, "انچاس"), (55, "پچپن"),
+    (56, "چھپن"), (59, "انسٹھ"), (69, "انہتر"), (79, "اناسی"), (89, "نواسی"),
+    (99, "ننانوے"), (100, "ایک سو"), (999, "نو سو ننانوے"),
+    (1001, "ایک ہزار ایک"), (1099, "ایک ہزار ننانوے"),
+    (1100, "گیارہ سو"), (1947, "انیس سو سینتالیس"), (1999, "انیس سو ننانوے"),
+    (2001, "دو ہزار ایک"), (10_500, "دس ہزار پانچ سو"),
+    (100_000, "ایک لاکھ"), (101_956, "ایک لاکھ ایک ہزار نو سو چھپن"),
+    (999_999, "نو لاکھ ننانوے ہزار نو سو ننانوے"),
+])
+def test_urdu_cardinal_spot_checks(n, expected):
+    from services import number_words_ur as ur
+    assert ur.cardinal(n) == expected
+
+
+def test_urdu_decimal_and_percent():
+    from services import number_words_ur as ur
+    assert ur.decimal(0, "05") == "صفر اعشاریہ صفر پانچ"
+    assert ur.percent("2.5") == "دو اعشاریہ پانچ فیصد"
+    assert ur.percent("100") == "ایک سو فیصد"
+
+
+def test_urdu_language_is_outside_num2words_gate():
+    """ur resolves to the native path, never to num2words (no ur locale)."""
     from services.text_normalization import _native_lang, _num2words_lang
-    assert _num2words_lang("Malayalam") is None
-    assert _num2words_lang("ml") is None
-    assert _native_lang("Malayalam") == "ml"
-    assert _native_lang("ml-IN") == "ml"
-    assert _native_lang("English") is None
+    assert _num2words_lang("Urdu") is None
+    assert _num2words_lang("ur") is None
+    assert _native_lang("Urdu") == "ur"
+    assert _native_lang("ur-PK") == "ur"
+
+
+def test_urdu_normalize_for_tts_leaves_no_digits():
+    # Resolved at run time: other suites purge and reload services.* modules.
+    from services.text_normalization import normalize_for_tts
+
+    out = normalize_for_tts("سن 1956 میں 10 لوگ", "ur")
+    assert out == "سن انیس سو چھپن میں دس لوگ"
+    assert not any(ch.isdigit() for ch in out)
 
 
 # ── Idempotency: f(f(x)) == f(x) for every table case ───────────────────────
@@ -296,6 +518,40 @@ def test_idempotent_double_encoded_entity():
     # "&amp;nbsp;" must not decode one layer per pass.
     once = normalize_text("bad &amp;nbsp; soup", None)
     assert normalize_text(once, None) == once
+
+
+def test_many_unmatched_openers_stay_fast_and_untouched():
+    """Linear scan (#3205 P1): 25k unmatched ``**`` openers must not stall
+    synthesis. The lazy-regex version took ~16 s here; the scanner takes ms.
+    The 10 s bound has 700x headroom and only trips on quadratic blowup."""
+    import time
+    from services.text_normalization import _strip_markdown_emphasis
+    raw = "**a " * 25000
+    start = time.perf_counter()
+    assert _strip_markdown_emphasis(raw) == raw
+    assert time.perf_counter() - start < 10
+
+
+def test_many_matched_pairs_stay_fast():
+    """One-join assembly (#3205 P1): per-span string rebuilds are quadratic
+    on matched pairs (~22 s at this size); retained-slice join takes ms."""
+    import time
+    from services.text_normalization import _strip_markdown_emphasis
+    raw = "**a** " * 300000
+    start = time.perf_counter()
+    assert _strip_markdown_emphasis(raw) == "a " * 300000
+    assert time.perf_counter() - start < 10
+
+
+@pytest.mark.parametrize("raw", ["__**__**" * 25000, "[pause 300ms] x " * 20000])
+def test_long_runs_and_many_controls_stay_fast(raw):
+    """Run bounds are saved at tokenization and bracket spans restore in one
+    pass; per-token run rescans and per-span replaces were quadratic (#3205)."""
+    import time
+    from services.text_normalization import _strip_markdown_emphasis
+    start = time.perf_counter()
+    _strip_markdown_emphasis(raw)
+    assert time.perf_counter() - start < 10
 
 
 # ── Toggle: default ON + env override ────────────────────────────────────────
@@ -553,3 +809,47 @@ def test_pronunciation_switch_is_env_only(monkeypatch, env, expected):
     # A never-written pref must not change the outcome.
     monkeypatch.setattr(prefs_mod, "get", lambda key, default=None: False)
     assert pronunciation_enabled() is expected
+
+
+# ── Plain language-code resolver & range chain guard ────────────────────────
+
+from services.text_normalization import _plain_lang_code, _speak_number_ranges  # noqa: E402
+
+
+@pytest.mark.parametrize("language,expected", [
+    ("Korean", "ko"),
+    ("Mandarin Chinese", "zh"),
+    ("ja", "ja"),
+    ("ko-KR", "ko"),
+    ("vi", "vi"),
+    ("kk", "kz"),
+    ("auto", None),
+    ("AUTO", None),
+    ("", None),
+    ("   ", None),
+    (None, None),
+    ("!!", None),
+])
+def test_plain_lang_code(language, expected):
+    assert _plain_lang_code(language) == expected
+
+
+@pytest.mark.parametrize("raw", [
+    "1~2~3",
+    "1 ~ 2 ~ 3",
+    "1~2 ~3",
+    "1~2~ 3",
+    "~1~2",
+])
+def test_range_chain_is_never_partially_rewritten(raw):
+    assert _speak_number_ranges(raw, "ko") == raw
+
+
+def test_range_rewrite_is_idempotent():
+    once = normalize_text("3~5개", "Korean")
+    assert normalize_text(once, "Korean") == once
+
+
+def test_range_unknown_form_language_untouched():
+    assert _speak_number_ranges("3~5", "vi") == "3~5"
+    assert _speak_number_ranges("3~5", None) == "3~5"

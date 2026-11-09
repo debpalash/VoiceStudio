@@ -5,11 +5,8 @@
 #    docker compose -f deploy/docker-compose.yml --profile cpu up    # CPU mode
 #    docker compose -f deploy/docker-compose.yml --profile gpu up    # NVIDIA GPU
 #    docker compose -f deploy/docker-compose.yml --profile rocm up   # AMD GPU (ROCm)
-#    docker compose -f deploy/docker-compose.yml --profile worker-gpu up   # NVIDIA worker
-#    docker compose -f deploy/docker-compose.yml --profile worker-rocm up  # AMD worker
 #
 #  The Studio services publish the UI on loopback and the authenticated TLS
-#  worker control plane on 7443. Worker-only services publish no host port.
 #
 #  First run downloads ~4 GB of models. Progress is shown in logs.
 #  Open http://localhost:3900 once the health check passes.
@@ -38,7 +35,6 @@ services:
     profiles: ["cpu"]
     ports:
       - "127.0.0.1:3900:3900"
-      - "${OMNIVOICE_WORKER_PUBLISH_HOST:-127.0.0.1}:${OMNIVOICE_WORKER_PORT:-7443}:${OMNIVOICE_WORKER_PORT:-7443}"
     volumes:
       - omnivoice-data:/app/omnivoice_data
     environment:
@@ -60,8 +56,6 @@ services:
       # Required for server-mode settings, diagnostics, and other admin
       # mutations because Docker NAT cannot prove a browser is loopback.
       - OMNIVOICE_API_KEY=${OMNIVOICE_API_KEY:?export a long random OMNIVOICE_API_KEY before starting a Studio profile}
-      - OMNIVOICE_WORKER_PORT=${OMNIVOICE_WORKER_PORT:-7443}
-      - OMNIVOICE_WORKER_ENDPOINT_HOST=${OMNIVOICE_WORKER_ENDPOINT_HOST:-}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:3900/health"]
       interval: 30s
@@ -81,7 +75,6 @@ services:
     profiles: ["gpu"]
     ports:
       - "127.0.0.1:3900:3900"
-      - "${OMNIVOICE_WORKER_PUBLISH_HOST:-127.0.0.1}:${OMNIVOICE_WORKER_PORT:-7443}:${OMNIVOICE_WORKER_PORT:-7443}"
     volumes:
       - omnivoice-data:/app/omnivoice_data
     environment:
@@ -97,8 +90,6 @@ services:
       # headless Docker deployment (issue #261). Set to 0 to re-enable it.
       - OMNIVOICE_SERVER_MODE=1
       - OMNIVOICE_API_KEY=${OMNIVOICE_API_KEY:?export a long random OMNIVOICE_API_KEY before starting a Studio profile}
-      - OMNIVOICE_WORKER_PORT=${OMNIVOICE_WORKER_PORT:-7443}
-      - OMNIVOICE_WORKER_ENDPOINT_HOST=${OMNIVOICE_WORKER_ENDPOINT_HOST:-}
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:3900/health"]
       interval: 30s
@@ -128,13 +119,12 @@ services:
     #   context: ..
     #   dockerfile: deploy/Dockerfile
     #   args:
-    #     BASE_IMAGE: rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_2.8.0
+    #     BASE_IMAGE: rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_2.10.0
     #     GPU_FLAVOR: rocm
     container_name: omnivoice-studio-rocm
     profiles: ["rocm"]
     ports:
       - "127.0.0.1:3900:3900"
-      - "${OMNIVOICE_WORKER_PUBLISH_HOST:-127.0.0.1}:${OMNIVOICE_WORKER_PORT:-7443}:${OMNIVOICE_WORKER_PORT:-7443}"
     devices:
       - /dev/kfd
       - /dev/dri
@@ -150,11 +140,10 @@ services:
       # headless Docker deployment.
       - OMNIVOICE_SERVER_MODE=1
       - OMNIVOICE_API_KEY=${OMNIVOICE_API_KEY:?export a long random OMNIVOICE_API_KEY before starting a Studio profile}
-      - OMNIVOICE_WORKER_PORT=${OMNIVOICE_WORKER_PORT:-7443}
-      - OMNIVOICE_WORKER_ENDPOINT_HOST=${OMNIVOICE_WORKER_ENDPOINT_HOST:-}
       # RDNA3 consumer cards (RX 7900 XTX/XT and friends, gfx1100): if the
       # GPU is not detected, uncomment the override below. The backend
-      # auto-sets it for known consumer GFX IDs, so try without it first.
+      # auto-sets a same-generation value when the build lacks your card, so
+      # try without it first. Never set it on RX 9000 (RDNA4) cards.
       # - HSA_OVERRIDE_GFX_VERSION=11.0.0
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:3900/health"]
@@ -164,79 +153,5 @@ services:
       start_period: 180s
     restart: unless-stopped
 
-  # ── Worker-only NVIDIA GPU mode
-  # Generate a join code on the control plane, then start with:
-  #   OMNIVOICE_WORKER_TOKEN='ovw_…' docker compose \
-  #     -f deploy/docker-compose.yml --profile worker-gpu up -d
-  # No port is published: uvicorn only hosts the application lifespan that
-  # owns the outbound worker agent. The browser UI is not needed or exposed.
-  omnivoice-worker-gpu:
-    image: ghcr.io/debpalash/voicestudio:stable
-    # build:
-    #   context: ..
-    #   dockerfile: deploy/Dockerfile
-    container_name: omnivoice-worker-gpu
-    profiles: ["worker-gpu"]
-    entrypoint: ["python3", "-m", "uvicorn"]
-    command: ["backend.main:app", "--host", "127.0.0.1", "--port", "3900"]
-    volumes:
-      - omnivoice-worker-data:/app/omnivoice_data
-    environment:
-      - HF_HOME=/app/omnivoice_data/huggingface
-      - HF_TOKEN=${HF_TOKEN:-}
-      - OMNIVOICE_DATA_DIR=/app/omnivoice_data
-      - PYTHONPATH=/app/backend
-      - PYTHONUNBUFFERED=1
-      - OMNIVOICE_SERVER_MODE=0
-      - OMNIVOICE_WORKER_MODE=1
-      - OMNIVOICE_WORKER_TOKEN=${OMNIVOICE_WORKER_TOKEN:-}
-      - OMNIVOICE_WORKER_ENDPOINT=${OMNIVOICE_WORKER_ENDPOINT:-}
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3900/workers/agent/readiness"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 180s
-    restart: unless-stopped
-
-  # ── Worker-only AMD GPU (ROCm) mode
-  omnivoice-worker-rocm:
-    image: ghcr.io/debpalash/voicestudio:stable-rocm
-    container_name: omnivoice-worker-rocm
-    profiles: ["worker-rocm"]
-    entrypoint: ["python3", "-m", "uvicorn"]
-    command: ["backend.main:app", "--host", "127.0.0.1", "--port", "3900"]
-    devices:
-      - /dev/kfd
-      - /dev/dri
-    volumes:
-      - omnivoice-worker-rocm-data:/app/omnivoice_data
-    environment:
-      - HF_HOME=/app/omnivoice_data/huggingface
-      - HF_TOKEN=${HF_TOKEN:-}
-      - OMNIVOICE_DATA_DIR=/app/omnivoice_data
-      - PYTHONPATH=/app/backend
-      - PYTHONUNBUFFERED=1
-      - OMNIVOICE_SERVER_MODE=0
-      - OMNIVOICE_WORKER_MODE=1
-      - OMNIVOICE_WORKER_TOKEN=${OMNIVOICE_WORKER_TOKEN:-}
-      - OMNIVOICE_WORKER_ENDPOINT=${OMNIVOICE_WORKER_ENDPOINT:-}
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3900/workers/agent/readiness"]
-      interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 180s
-    restart: unless-stopped
-
 volumes:
   omnivoice-data:
-  omnivoice-worker-data:
-  omnivoice-worker-rocm-data:

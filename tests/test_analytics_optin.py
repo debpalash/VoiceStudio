@@ -4,9 +4,9 @@ OmniVoice is local-first, so an analytics SDK gets held to a higher bar. These
 tests exist so the guarantees can't quietly rot:
 
   1. OFF unless the user says yes (default False; silence is not consent).
-  2. NO exception autocapture — the SDK's own default would ship raw tracebacks
-     carrying home paths and, in this codebase, Hugging Face tokens out of
-     exception messages, bypassing core.failure.sanitize() entirely.
+  2. NO exception autocapture — raw tracebacks carry home paths and, in this
+     codebase, Hugging Face tokens, bypassing core.failure.sanitize(). Only
+     coarse classes and stages are ever sent.
   3. Metadata ONLY, enforced by allowlist — so no future caller can leak the text
      of a take, a file path, or a voice name by adding a property.
 """
@@ -22,40 +22,39 @@ import pytest
 from core import analytics
 
 
+SENT: list[dict] = []
+
+
+class _FakeTransport:
+    """Records what would be sent; the real transport opens a thread and a socket."""
+
+    def __init__(self, destination, should_send):
+        self.destination = destination
+        self.should_send = should_send
+
+    def capture(self, event, properties, profile_id=None, traits=None, path="/backend"):
+        SENT.append({"event": event, "props": properties, "profile_id": profile_id, "path": path})
+        return True
+
+    def shutdown(self):
+        pass
+
+
 @pytest.fixture(autouse=True)
 def _isolate(monkeypatch, tmp_path):
-    """Fresh prefs + isolated DATA_DIR + no token + no kill switch, per test.
-
-    Also pre-installs an inert fake `posthog` module: set_opted_in(True) now
-    fires the one-shot install ping (lifecycle events), which builds the client
-    eagerly — tests must never construct the real SDK (background queue threads
-    + network attempts). Tests that inspect client construction install their
-    own fake BEFORE opting in."""
-    import sys
-    import types
-
+    """Fresh prefs + isolated DATA_DIR + no override + no kill switch, per test,
+    with a fake transport so no test opens a socket."""
     from core import config, prefs
 
     monkeypatch.setattr(prefs, "_PREFS_PATH", str(tmp_path / "prefs.json"))
     monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
-    monkeypatch.delenv("POSTHOG_PROJECT_TOKEN", raising=False)
+    monkeypatch.delenv("SUPERMETRY_SITE_ID", raising=False)
+    monkeypatch.delenv("SUPERMETRY_HOST", raising=False)
     monkeypatch.delenv("OMNIVOICE_ANALYTICS_DISABLED", raising=False)
     monkeypatch.delenv("OMNIVOICE_INSTALL_CHANNEL", raising=False)
     monkeypatch.delenv("OMNIVOICE_SERVER_MODE", raising=False)
-
-    class _InertPosthog:
-        def __init__(self, *a, **k):
-            pass
-
-        def capture(self, *a, **k):
-            pass
-
-        def shutdown(self):
-            pass
-
-    fake = types.ModuleType("posthog")
-    fake.Posthog = _InertPosthog
-    monkeypatch.setitem(sys.modules, "posthog", fake)
+    monkeypatch.setattr(analytics, "SupermetryTransport", _FakeTransport)
+    SENT.clear()
 
     analytics.shutdown()
     yield
@@ -65,36 +64,33 @@ def _isolate(monkeypatch, tmp_path):
 # ── Rule 1: off unless the user says yes ────────────────────────────────────
 
 
-def test_off_by_default_even_when_the_build_ships_a_token(monkeypatch):
+def test_off_by_default_even_when_the_build_ships_a_destination(monkeypatch):
     """The whole promise: a default install transmits nothing."""
-    monkeypatch.setenv("POSTHOG_PROJECT_TOKEN", "phc_test")
     assert analytics.user_opted_in() is False
     assert analytics.enabled() is False
 
 
 def test_source_builds_have_a_destination_via_the_in_repo_default(monkeypatch):
-    """#1193: with no env/baked token, the committed publishable key is the
-    fallback — so source builds get the SAME consent flow as installers. Consent
-    is still the gate: available ≠ enabled."""
-    assert analytics.token_configured() is True  # no env token set by _isolate
+    """With no override, the committed public site id is the destination, so
+    source builds get the SAME consent flow as installers. Consent is still the
+    gate: available ≠ enabled."""
+    assert analytics.token_configured() is True  # no override set by _isolate
     assert analytics.enabled() is False          # …but silence is still not consent
     analytics.set_opted_in(True)
     assert analytics.enabled() is True
 
 
-def test_the_env_token_beats_the_in_repo_default(monkeypatch):
-    """Release builds bake a token through the shell env; developers set their
-    own. Either must override the committed default."""
-    monkeypatch.setenv("POSTHOG_PROJECT_TOKEN", "  phc_env_wins  ")
-    assert analytics._resolved_token() == "phc_env_wins"
-    monkeypatch.delenv("POSTHOG_PROJECT_TOKEN")
-    assert analytics._resolved_token() == analytics._PUBLIC_PROJECT_TOKEN
+def test_the_env_site_beats_the_shared_config(monkeypatch):
+    """A developer's own site overrides the committed one."""
+    assert analytics._destination()["site"] == "oxxxnwyfwhx4"
+    monkeypatch.setenv("SUPERMETRY_SITE_ID", "devsite12345")
+    assert analytics._destination()["site"] == "devsite12345"
 
 
 def test_opting_in_without_any_token_still_cannot_transmit(monkeypatch):
-    """A build with no destination at all (env absent AND in-repo default
-    blanked) — the toggle must not pretend otherwise."""
-    monkeypatch.setattr(analytics, "_PUBLIC_PROJECT_TOKEN", "")
+    """A build with no destination (the site blanked) — the toggle must not
+    pretend otherwise."""
+    monkeypatch.setenv("SUPERMETRY_SITE_ID", "")
     analytics.set_opted_in(True)
     assert analytics.user_opted_in() is True
     assert analytics.token_configured() is False
@@ -102,20 +98,17 @@ def test_opting_in_without_any_token_still_cannot_transmit(monkeypatch):
 
 
 def test_enabled_only_when_BOTH_gates_are_true(monkeypatch):
-    monkeypatch.setenv("POSTHOG_PROJECT_TOKEN", "phc_test")
     analytics.set_opted_in(True)
     assert analytics.enabled() is True
 
 
 def test_kill_switch_outranks_everything(monkeypatch):
-    monkeypatch.setenv("POSTHOG_PROJECT_TOKEN", "phc_test")
     analytics.set_opted_in(True)
     monkeypatch.setenv("OMNIVOICE_ANALYTICS_DISABLED", "1")
     assert analytics.enabled() is False
 
 
 def test_withdrawing_consent_takes_effect_immediately(monkeypatch):
-    monkeypatch.setenv("POSTHOG_PROJECT_TOKEN", "phc_test")
     analytics.set_opted_in(True)
     assert analytics.enabled() is True
     analytics.set_opted_in(False)
@@ -161,7 +154,6 @@ def test_prompted_never_enables_anything(monkeypatch):
     from core import prefs
 
     prefs.set_("analytics_prompted", True)
-    monkeypatch.setenv("POSTHOG_PROJECT_TOKEN", "phc_test")
     assert analytics.user_opted_in() is False
     assert analytics.enabled() is False
 
@@ -248,53 +240,52 @@ def test_frontend_allowlist_mirrors_backend():
 # ── Rule 2: no exception autocapture ────────────────────────────────────────
 
 
-def test_client_is_built_with_exception_autocapture_OFF(monkeypatch):
-    """The SDK's own default ships raw tracebacks — home paths, and in this
-    codebase HF tokens out of exception messages — bypassing the redaction in
-    core.failure.sanitize(). It must be explicitly disabled."""
-    captured_kwargs = {}
-
-    class FakePosthog:
-        def __init__(self, token, **kwargs):
-            captured_kwargs.update(kwargs)
-
-        def capture(self, *a, **k):
-            pass
-
-        def shutdown(self):
-            pass
-
-    import sys
-    import types
-
-    fake_mod = types.ModuleType("posthog")
-    fake_mod.Posthog = FakePosthog
-    # Installed BEFORE opting in: set_opted_in(True) builds the client eagerly
-    # (one-shot install ping), and that construction is what's under test.
-    monkeypatch.setitem(sys.modules, "posthog", fake_mod)
-
-    monkeypatch.setenv("POSTHOG_PROJECT_TOKEN", "phc_test")
+def test_events_carry_an_opaque_install_profile_and_only_allowlisted_props():
+    """The destination sees a random install_ profile and metadata only: never
+    a traceback, a path, or the take's text."""
     analytics.set_opted_in(True)
+    SENT.clear()
+    analytics.capture("speech_generated", {"engine_id": "omnivoice", "text": "private script"})
+    assert len(SENT) == 1
+    sent = SENT[0]
+    assert sent["props"] == {"engine_id": "omnivoice"}
+    assert sent["profile_id"].startswith("install_") and len(sent["profile_id"]) == len("install_") + 32
+    assert "private" not in repr(sent)
+
+
+def test_nothing_is_sent_without_consent():
     analytics.capture("speech_generated", {"engine_id": "omnivoice"})
+    assert SENT == []
 
-    assert captured_kwargs.get("enable_exception_autocapture") is False
 
-
-def test_capture_never_raises_even_if_the_sdk_explodes(monkeypatch):
+def test_capture_never_raises_even_if_the_transport_explodes(monkeypatch):
     class Boom:
         def __init__(self, *a, **k):
             raise RuntimeError("network on fire")
 
-    import sys
-    import types
-
-    fake_mod = types.ModuleType("posthog")
-    fake_mod.Posthog = Boom
-    monkeypatch.setitem(sys.modules, "posthog", fake_mod)
-
-    monkeypatch.setenv("POSTHOG_PROJECT_TOKEN", "phc_test")
+    monkeypatch.setattr(analytics, "SupermetryTransport", Boom)
     analytics.set_opted_in(True)  # builds the client eagerly — must not raise
-    analytics.capture("speech_generated", {"engine_id": "omnivoice"})  # must not raise
+    assert analytics.capture("speech_generated", {"engine_id": "omnivoice"}) is False
+
+
+def test_ui_events_are_gated_and_pageviews_use_fixed_paths():
+    assert analytics.capture_from_ui("pageview", {}, "view:home") is False  # not opted in
+    analytics.set_opted_in(True)
+    SENT.clear()
+    assert analytics.capture_from_ui("pageview", {}, "view:home") is True
+    assert SENT[-1]["path"] == "/home" and SENT[-1]["event"] == "pageview"
+    for bad in ("view:../../etc", "view:clone/123", "home", "view:settings/secret"):
+        assert analytics.capture_from_ui("pageview", {}, bad) is False
+    assert analytics.capture_from_ui("identify", {}) is False
+    assert analytics.capture_from_ui("bad name!", {}) is False
+
+
+def test_engine_id_must_look_like_an_engine_identifier():
+    """engine_id is for our engine keys only; a path or a typed name is dropped."""
+    for bad in ("My Cool Voice", "/home/me/model.bin", "C:\\Users\\me", "a b", "", "x" * 41):
+        assert "engine_id" not in analytics.sanitize_properties({"engine_id": bad})
+    for good in ("omnivoice", "indextts2", "cosyvoice-3", "faster_whisper", "qwen3.tts"):
+        assert analytics.sanitize_properties({"engine_id": good}) == {"engine_id": good}
 
 
 def test_installation_id_is_random_not_derived_from_the_machine():

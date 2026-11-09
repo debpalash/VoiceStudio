@@ -90,14 +90,29 @@ async function mount() {
       <ProjectsPage />
     </QueryClientProvider>,
   );
-  await screen.findByRole('checkbox', { name: 'Select Exported audio' });
+  await screen.findByRole('checkbox', { name: 'Select Dub project' });
 }
+const showFilter = (name: RegExp) => fireEvent.click(screen.getByRole('button', { name }));
 function deletions() {
   return mocks.api.mock.calls.filter(([, options]) => options?.method === 'DELETE');
 }
 
+it('lists projects under All projects and keeps exports in their own list', async () => {
+  await mount();
+  expect(screen.getByRole('checkbox', { name: 'Select Saved story' })).toBeTruthy();
+  expect(screen.queryByRole('checkbox', { name: 'Select Exported audio' })).toBeNull();
+  expect(screen.getByRole('button', { name: /^All projects\s*2$/ })).toBeTruthy();
+  expect(screen.getByText('Library')).toBeTruthy();
+  // The type label already names the kind; no "Stories Stories".
+  expect(screen.getAllByText('Stories').length).toBe(2);
+  showFilter(/^Exports/);
+  expect(await screen.findByRole('checkbox', { name: 'Select Exported audio' })).toBeTruthy();
+  expect(screen.queryByRole('checkbox', { name: 'Select Dub project' })).toBeNull();
+});
+
 it('confirms single export deletion, supports cancellation, and refreshes the list', async () => {
   await mount();
+  showFilter(/^Exports/);
   fireEvent.click(screen.getByRole('button', { name: 'Delete Exported audio' }));
   let dialog = screen.getByRole('dialog');
   expect(within(dialog).getByText(/Exported files.*kept/)).toBeTruthy();
@@ -111,6 +126,7 @@ it('confirms single export deletion, supports cancellation, and refreshes the li
     expect(screen.queryByRole('checkbox', { name: 'Select Exported audio' })).toBeNull(),
   );
   expect(deletions().map(([path]) => path)).toEqual(['/export/history/same']);
+  showFilter(/^All projects/);
   expect(screen.getByRole('checkbox', { name: 'Select Dub project' })).toBeTruthy();
 });
 
@@ -119,17 +135,17 @@ it('bulk deletion retains failures for retry and does not repeat successful dele
   const original = mocks.api.getMockImplementation()!;
   let fail = true;
   mocks.api.mockImplementation(async (...args) => {
-    if (args[0] === '/export/history/same' && args[1]?.method === 'DELETE' && fail)
+    if (args[0] === '/projects/same' && args[1]?.method === 'DELETE' && fail)
       throw new Error('Disk unavailable');
     return original(...args);
   });
   fireEvent.click(screen.getByRole('checkbox', { name: 'Select Dub project' }));
-  fireEvent.click(screen.getByRole('checkbox', { name: 'Select Exported audio' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select Saved story' }));
   fireEvent.click(screen.getByRole('button', { name: 'Delete selected (2)' }));
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }));
   await screen.findByRole('alert');
   expect(screen.getByRole('alert').textContent).toContain('Disk unavailable');
-  expect(within(screen.getByRole('dialog')).queryByText('Dub project')).toBeNull();
+  expect(within(screen.getByRole('dialog')).queryByText('Saved story')).toBeNull();
   fail = false;
   await waitFor(() =>
     expect(
@@ -138,20 +154,23 @@ it('bulk deletion retains failures for retry and does not repeat successful dele
   );
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Retry' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-  expect(deletions().filter(([path]) => path === '/projects/same')).toHaveLength(1);
+  expect(mocks.remove).toHaveBeenCalledTimes(1);
+  expect(deletions().filter(([path]) => path === '/projects/same')).toHaveLength(2);
+  expect(mocks.detach).toHaveBeenCalledTimes(1);
   expect(mocks.detach).toHaveBeenCalledWith('same');
 });
 
 it('clears hidden selections when searching and selects only visible rows', async () => {
   await mount();
   fireEvent.click(screen.getByRole('checkbox', { name: 'Select Dub project' }));
-  fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Exported' } });
+  fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'Saved' } });
   expect(screen.queryByRole('button', { name: /Delete selected/ })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Select visible' }));
   fireEvent.click(screen.getByRole('button', { name: 'Delete selected (1)' }));
   fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Delete' }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-  expect(deletions().map(([path]) => path)).toEqual(['/export/history/same']);
+  expect(mocks.remove).toHaveBeenCalledWith('book');
+  expect(deletions()).toHaveLength(0);
 });
 
 it('detaches deleted longform drafts and blocks deletion during generation', async () => {

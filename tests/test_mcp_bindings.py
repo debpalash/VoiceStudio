@@ -16,28 +16,27 @@ os.environ.setdefault("OMNIVOICE_DISABLE_FILE_LOG", "1")
 
 @pytest.fixture
 def db(tmp_path, monkeypatch):
-    monkeypatch.setenv("OMNIVOICE_DATA_DIR", str(tmp_path))
+    """The bindings service on this test's tmp DB, via fresh module copies.
+
+    Reloading core.config/core.db in place swapped functions other modules
+    had imported by name (``services.dub_pipeline.db_conn``), so later tests
+    in a combined run saw two different ``db_conn`` objects. Import the
+    backend tree fresh under the tmp env and restore the untouched originals
+    afterwards instead (tests/backend_module_state.py).
+    """
     import importlib
-    import core.config as _cfg
-    importlib.reload(_cfg)
-    import core.db as _db
-    importlib.reload(_db)
-    _db.init_db()
-    import services.mcp_bindings as mb
-    importlib.reload(mb)
+
+    from backend_module_state import purge, restore, snapshot
+
+    before = snapshot()
+    monkeypatch.setenv("OMNIVOICE_DATA_DIR", str(tmp_path))
+    purge()
     try:
-        yield mb
+        importlib.import_module("core.db").init_db()
+        yield importlib.import_module("services.mcp_bindings")
     finally:
-        # Mirror the `client` fixture below: importlib.reload mutates the
-        # module objects IN PLACE, so without this teardown every later test
-        # in a combined run — even one holding a collection-time reference —
-        # keeps reading DB/voices paths bound to this test's dead tmp_path
-        # (it broke backend/tests personas/audiobook in full-suite runs).
-        # Restore the env first, then re-reload under the restored value.
         monkeypatch.undo()
-        importlib.reload(_cfg)
-        importlib.reload(_db)
-        importlib.reload(mb)
+        restore(before)
 
 
 def test_upsert_creates_then_updates(db):
@@ -216,38 +215,35 @@ def test_migration_0004_downgrade_drops_table(tmp_path):
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
-    monkeypatch.setenv("OMNIVOICE_DATA_DIR", str(tmp_path))
+    """A fresh app on this test's data dir, without touching shared modules.
+
+    Earlier versions reloaded core.config/core.db/main in place and purged
+    api.*/services.* afterwards. In-place reloads swap functions that other
+    modules imported by name (``services.dub_pipeline.db_conn``), and the
+    purge left fresh copies in sys.modules while earlier-collected test
+    modules kept the originals, so later tests patched one copy while the
+    code ran in the other (#3466 CI: test_network_share_self_check,
+    test_backend_module_state). Now the backend tree is imported fresh under
+    the tmp env and the untouched originals are restored afterwards
+    (tests/backend_module_state.py).
+    """
     import importlib
-    for m in ("core.config", "core.db", "services.mcp_bindings"):
-        if m in sys.modules:
-            importlib.reload(importlib.import_module(m))
-    import core.db as _db
-    _db.init_db()
-    import main as _main
-    importlib.reload(_main)
-    from fastapi.testclient import TestClient
-    # No `with` — running the lifespan rebinds module-level event-bus queues
-    # to this loop and contaminates later lifespan tests (Wave 0.2 footgun).
+
+    from backend_module_state import purge, restore, snapshot
+
+    before = snapshot()
+    monkeypatch.setenv("OMNIVOICE_DATA_DIR", str(tmp_path))
+    purge()
     try:
+        importlib.import_module("core.db").init_db()
+        _main = importlib.import_module("main")
+        from fastapi.testclient import TestClient
+        # No `with` — running the lifespan rebinds module-level event-bus queues
+        # to this loop and contaminates later lifespan tests (Wave 0.2 footgun).
         yield TestClient(_main.app, client=("127.0.0.1", 50000))
     finally:
-        # Reloading main above poisons the global module for any later test
-        # that does `from main import …`. Reload once more with the default
-        # (project) data dir restored so the shared module is clean again.
-        # The api.*/services.* trees must be PURGED first, not merely left
-        # cached: `import main` above (re)imported them under this test's
-        # tmp_path env, and modules like api.routers.profiles keep
-        # value-copies of core.config paths (`from core.config import
-        # VOICES_DIR`) that an in-place reload of core.config alone cannot
-        # heal — later personas/profiles requests then wrote voice files
-        # into this test's dead tmp_path in combined full-suite runs.
         monkeypatch.undo()
-        importlib.reload(importlib.import_module("core.config"))
-        importlib.reload(importlib.import_module("core.db"))
-        for m in list(sys.modules):
-            if m in ("api", "services") or m.startswith(("api.", "services.")):
-                sys.modules.pop(m, None)
-        importlib.reload(_main)
+        restore(before)
 
 
 def test_rest_crud_roundtrip(client):

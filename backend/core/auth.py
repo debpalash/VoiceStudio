@@ -106,6 +106,97 @@ def is_loopback(host: str | None) -> bool:
     return host in _LOOPBACK_HOSTS
 
 
+# Docker opt-in (#3003): the host's own browser reaches a published port
+# through Docker's proxy, so it arrives from the container's default gateway
+# (the bridge gateway, e.g. 172.17.0.1), never from 127.0.0.1. With this set,
+# requests from exactly that address skip the share PIN, and nothing more.
+TRUST_HOST_LOOPBACK_ENV = "OMNIVOICE_TRUST_HOST_LOOPBACK"
+_TRUTHY = frozenset({"1", "true", "yes", "on"})
+_PROC_ROUTE_V4 = "/proc/net/route"
+_PROC_ROUTE_V6 = "/proc/net/ipv6_route"
+
+
+def _env_truthy(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in _TRUTHY
+
+
+def _default_gateways() -> frozenset[ipaddress.IPv4Address | ipaddress.IPv6Address]:
+    """The kernel's default-route gateways, read from /proc (Linux only).
+
+    Read on every call so a container moved to another network is never
+    matched against a stale address. Any read or parse failure yields no
+    gateway, so the opt-in fails closed.
+    """
+    gateways: set[ipaddress.IPv4Address | ipaddress.IPv6Address] = set()
+    try:
+        with open(_PROC_ROUTE_V4, encoding="ascii") as handle:
+            next(handle, None)  # header
+            for line in handle:
+                fields = line.split()
+                if len(fields) < 4 or fields[1] != "00000000":
+                    continue
+                if not int(fields[3], 16) & 0x2:  # RTF_GATEWAY
+                    continue
+                packed = int(fields[2], 16).to_bytes(4, "little")
+                address = ipaddress.IPv4Address(packed)
+                if not address.is_unspecified:
+                    gateways.add(address)
+    except (OSError, ValueError):
+        pass
+    try:
+        with open(_PROC_ROUTE_V6, encoding="ascii") as handle:
+            for line in handle:
+                fields = line.split()
+                if len(fields) < 10 or fields[0] != "0" * 32 or fields[1] != "00":
+                    continue
+                address = ipaddress.IPv6Address(int(fields[4], 16))
+                if not address.is_unspecified:
+                    gateways.add(address)
+    except (OSError, ValueError):
+        pass
+    return frozenset(gateways)
+
+
+def _arrived_on_share_listener(connection) -> bool:
+    """Whether the request came in on the LAN-share listener, not the main port."""
+    scope = getattr(connection, "scope", None)
+    server = scope.get("server") if isinstance(scope, dict) else None
+    if not server or len(server) < 2:
+        return False
+    app = getattr(connection, "app", None)
+    if app is None and isinstance(scope, dict):
+        app = scope.get("app")
+    state = getattr(app, "state", None) if app is not None else None
+    share = getattr(state, "network_share", None) if state is not None else None
+    share_port = getattr(share, "share_port", None) if share is not None else None
+    return share_port is not None and server[1] == share_port
+
+
+def is_trusted_host_loopback(connection) -> bool:
+    """Whether a request is the Docker host's own traffic and may skip the PIN.
+
+    Off unless both the Docker image's ``OMNIVOICE_SERVER_MODE`` and the
+    explicit ``OMNIVOICE_TRUST_HOST_LOOPBACK`` opt-in are set. The client must
+    then be exactly the container's default gateway as seen on the socket
+    (``scope["client"]``); forwarded headers are never read here, and Uvicorn
+    only rewrites the client from them for peers in ``FORWARDED_ALLOW_IPS``.
+    Requests on the LAN-share listener never qualify, because Docker Desktop
+    presents every published-port client from the same gateway address.
+    """
+    if not (_env_truthy("OMNIVOICE_SERVER_MODE") and _env_truthy(TRUST_HOST_LOOPBACK_ENV)):
+        return False
+    host = _client_host(connection)
+    try:
+        address = ipaddress.ip_address(host)
+    except (TypeError, ValueError):
+        return False
+    if getattr(address, "ipv4_mapped", None):
+        address = address.ipv4_mapped
+    if address not in _default_gateways():
+        return False
+    return not _arrived_on_share_listener(connection)
+
+
 def is_local_host(host: str | None) -> bool:
     if is_loopback(host):
         return True
@@ -412,7 +503,11 @@ def resolve_principal(
             connection,
             AuthPrincipal(PrincipalKind.TRUSTED_NETWORK, CONSUME_CAPABILITIES),
         )
-    if _valid_pin(connection):
+    if _valid_pin(connection) or (
+        _configured_pin(connection) and is_trusted_host_loopback(connection)
+    ):
+        # The host opt-in stands in for the PIN only: it grants the PIN's
+        # consumption rights, never the API-key or admin tier.
         return _attach_principal(
             connection,
             AuthPrincipal(

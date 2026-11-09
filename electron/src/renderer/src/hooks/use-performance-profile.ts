@@ -5,6 +5,8 @@ import { isBackendReachable } from '@shared/utils/backendStage';
 import { IDLE_STATUS_POLL_MS, relaxWhenBackendBusy } from '@/lib/status-polling';
 
 export const performanceTiers = ['fast', 'balanced', 'quality', 'max'] as const;
+// All mounted controls share one draft mirror; a delayed import cannot apply an older preset.
+let cloneMirrorGeneration = 0;
 export type PerformanceTier = (typeof performanceTiers)[number];
 export type PerformanceChoice = PerformanceTier | 'auto';
 export type PerformanceFamily = 'tts' | 'asr' | 'dictation' | 'diarisation' | 'translation' | 'llm';
@@ -94,10 +96,13 @@ export function usePerformanceProfile() {
         method: 'PUT',
         body: JSON.stringify({ tier, family }),
       });
+      const mirrorGeneration = ++cloneMirrorGeneration;
       const target = state.targets.tts;
       if (
         // Backends before 0.5.7 don't report the list; they tier only OmniVoice.
-        (state.tts_tiered_engines ?? ['omnivoice', 'omnivoice-subprocess']).includes(state.selections.tts.engine) &&
+        (state.tts_tiered_engines ?? ['omnivoice', 'omnivoice-subprocess']).includes(
+          state.selections.tts.engine,
+        ) &&
         typeof target.steps === 'number' &&
         typeof target.postprocess === 'boolean'
       ) {
@@ -105,10 +110,12 @@ export function usePerformanceProfile() {
         // draft only keeps its visible override controls in sync; a chunk-load
         // failure must not turn an already-applied backend change into a failed
         // mutation.
-        await import('@/lib/store/clone-settings')
-          .then(({ patchCloneSettings }) =>
-            patchCloneSettings({ steps: target.steps!, postprocess: target.postprocess! }),
-          )
+        void import('@/lib/store/clone-settings')
+          .then(({ patchCloneSettings }) => {
+            if (mirrorGeneration === cloneMirrorGeneration) {
+              return patchCloneSettings({ steps: target.steps!, postprocess: target.postprocess! });
+            }
+          })
           .catch(() => {});
       }
       // Dubbing omits unset steps so the backend applies this preset. Keep any

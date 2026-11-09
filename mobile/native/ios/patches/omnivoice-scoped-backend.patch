@@ -1,0 +1,74 @@
+--- a/src/backend.h
++++ b/src/backend.h
+@@ -67,8 +67,12 @@
+ // Subsequent calls reuse the same backend (single VMM pool). Returns a
+ // BackendPair with .backend == NULL when initialisation fails; the caller
+ // must check this before passing it to any pipeline_*_load.
+-static BackendPair backend_init(const char * label) {
++static BackendPair backend_init(const char * label, const char * requested_backend = nullptr) {
+     if (g_backend_refs > 0) {
++        // A scoped CPU request must never reuse an already loaded GPU backend.
++        if (requested_backend && std::strcmp(requested_backend, ggml_backend_name(g_backend_cache.backend)) != 0) {
++            return BackendPair{};
++        }
+         g_backend_refs++;
+         ov_log(OV_LOG_INFO, "[Load] %s backend: %s (shared)", label, ggml_backend_name(g_backend_cache.backend));
+         return g_backend_cache;
+@@ -79,7 +83,7 @@
+ 
+     // GGML_BACKEND env var: force a specific device instead of auto-best.
+     // Device names: CUDA0, Vulkan0, CPU, BLAS (see ggml_backend_dev_name).
+-    const char * force_backend = std::getenv("GGML_BACKEND");
++    const char * force_backend = requested_backend ? requested_backend : std::getenv("GGML_BACKEND");
+     if (force_backend) {
+         bp.backend = ggml_backend_init_by_name(force_backend, nullptr);
+         if (!bp.backend) {
+--- a/src/omnivoice.h
++++ b/src/omnivoice.h
+@@ -123,6 +123,11 @@
+ // owns its GGML backend pair and must be released with ov_free.
+ OV_API struct ov_context * ov_init(const struct ov_init_params * params);
+ 
++// VoiceStudio: task-scoped backend choice, without changing process environment.
++// NULL preserves ov_init defaults; "CPU" explicitly disables GPU allocation.
++// Existing contexts using a different backend must be released first.
++OV_API struct ov_context * ov_init_with_backend(const struct ov_init_params * params, const char * backend);
++
+ // Release every module owned by the handle and free the handle itself.
+ // Safe on NULL.
+ OV_API void ov_free(struct ov_context * ov);
+--- a/src/omnivoice.cpp
++++ b/src/omnivoice.cpp
+@@ -205,7 +205,7 @@
+     p->on_chunk_user_data      = nullptr;
+ }
+ 
+-struct ov_context * ov_init(const struct ov_init_params * params) {
++static struct ov_context * ov_init_internal(const struct ov_init_params * params, const char * backend) {
+     if (!params || !params->model_path) {
+         ov_set_error("ov_init: params or model_path is NULL");
+         ov_log(OV_LOG_ERROR, "[OmniVoice] ov_init requires a model_path");
+@@ -234,7 +234,7 @@
+     // ov_free, which is idempotent on partial state (NULL-safe sched, NULL
+     // GGUF handles, refcount-correct backend release).
+     try {
+-        ov->bp = backend_init("LM");
++        ov->bp = backend_init("LM", backend);
+         if (!ov->bp.backend) {
+             ov_throw("ov_init: backend_init failed (no GGML backend available)");
+         }
+@@ -265,6 +265,14 @@
+     }
+ 
+     return ov;
++}
++
++struct ov_context * ov_init(const struct ov_init_params * params) {
++    return ov_init_internal(params, nullptr);
++}
++
++struct ov_context * ov_init_with_backend(const struct ov_init_params * params, const char * backend) {
++    return ov_init_internal(params, backend);
+ }
+ 
+ void ov_free(struct ov_context * ov) {

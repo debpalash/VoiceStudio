@@ -1,0 +1,4 @@
+module VSNative {
+    header "VSNative.h"
+    export *
+}

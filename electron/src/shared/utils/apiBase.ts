@@ -1,3 +1,5 @@
+import { DEFAULT_BACKEND_PORT } from '../app-config.ts';
+
 /**
  * Centralised API base URL resolver.
  *
@@ -37,7 +39,7 @@ declare global {
 
 /** Backend port — kept here as a single constant so we never grep-replace
  *  hard-coded `3900` across the codebase again. */
-export const BACKEND_PORT = 3900;
+export const BACKEND_PORT = DEFAULT_BACKEND_PORT;
 
 /** True when the current execution context is a Tauri webview. */
 export function isTauriContext(): boolean {

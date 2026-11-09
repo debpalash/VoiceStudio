@@ -10,10 +10,16 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, act, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-const { backendData, notificationData } = vi.hoisted(() => ({
-  backendData: { lines: [] },
-  notificationData: { current: [] },
-}));
+// What the mocked backends currently serve. Tests call feed.set(...); the
+// beforeEach below calls feed.reset(). `notes: undefined` means "use NOTES".
+const feed = vi.hoisted(() => {
+  const state = { lines: [], notes: undefined };
+  return {
+    state,
+    set: (next) => Object.assign(state, next),
+    reset: () => Object.assign(state, { lines: [], notes: undefined }),
+  };
+});
 
 const NOTES = [
   {
@@ -45,8 +51,12 @@ vi.mock('../api/hooks', async (importOriginal) => {
   const real = await importOriginal();
   return {
     ...real,
-    useSystemLogs: () => ({ data: backendData, refetch: vi.fn() }),
-    useTauriLogs: () => ({ data: null, refetch: vi.fn() }),
+    useSystemLogs: () => ({
+      data: feed.state.lines.length ? { lines: feed.state.lines } : null,
+      isSuccess: true,
+      refetch: vi.fn(),
+    }),
+    useTauriLogs: () => ({ data: null, isSuccess: true, refetch: vi.fn() }),
   };
 });
 vi.mock('../api/system', async (importOriginal) => ({
@@ -56,7 +66,7 @@ vi.mock('../api/system', async (importOriginal) => ({
   clearSystemLogs: vi.fn(),
   clearTauriLogs: vi.fn(),
   // The poll behind useNotifications — the filter under test runs REAL.
-  systemNotifications: vi.fn(async () => ({ notifications: notificationData.current })),
+  systemNotifications: vi.fn(async () => ({ notifications: feed.state.notes ?? NOTES })),
 }));
 // NetworkToggle fetches /system/network/state on mount — out of scope here.
 vi.mock('../components/NetworkToggle', () => ({ default: () => null }));
@@ -89,8 +99,7 @@ const dismissBtnIn = (row) => row.querySelector('button[aria-label]');
 
 beforeEach(() => {
   localStorage.clear();
-  backendData.lines = [];
-  notificationData.current = NOTES;
+  feed.reset();
   useAppStore.setState({ dismissedNotificationIds: [] });
 });
 
@@ -101,16 +110,15 @@ describe('LogsFooter notifications tab — dismissals', () => {
       screen.queryByRole('button', { name: 'Footer engine switcher' }),
     ).not.toBeInTheDocument();
   });
-  it('does not claim all clear when raw logs contain an error', async () => {
-    backendData.lines = ['ERROR failed to load the selected model'];
-    notificationData.current = [];
+
+  it('keeps the all-clear text away when only the raw log reveals a failure', async () => {
+    feed.set({ lines: ['2026-03-04 08:15:00 ERROR synthesis worker died'], notes: [] });
     renderFooter();
     openNotificationsTab();
 
-    expect(
-      await screen.findByRole('button', { name: 'Backend logs, 1 errors' }),
-    ).toBeInTheDocument();
-    expect(screen.queryByText('✅ All clear — no issues detected')).toBeNull();
+    const sourceButton = await screen.findByLabelText('Backend logs, 1 errors');
+    expect(sourceButton.tagName).toBe('BUTTON');
+    expect(document.body.textContent).not.toMatch(/all clear/i);
   });
 
   it('shows both notes; only the info note offers a dismiss button', async () => {

@@ -1,0 +1,16 @@
+# Findings gitleaks may skip. Each line is one exact commit-pinned fingerprint
+# (commit:path:rule:line), so an entry can never hide a new commit.
+#
+# Retired PostHog EU project token (public, write-only; replaced 2026-09-26).
+# It stays in history, which the weekly full-history scan reads.
+23f1767e3c4f971cc5d8e4c8b84fb17337b69bc5:backend/core/analytics.py:generic-api-key:57
+23f1767e3c4f971cc5d8e4c8b84fb17337b69bc5:frontend/src/utils/analytics.ts:generic-api-key:44
+#
+# RFC 6455 sample Sec-WebSocket-Key in the fake backend test (not a secret).
+f6d634e19902c0fd0e64947e635359d5bc1f85de:electron/tests/fake-health-backend.test.mjs:generic-api-key:59
+
+# Phone API curl documentation uses the literal YOUR_TOKEN placeholder, not a credential.
+97ee0f37079c06a8e2e80eb3625bc60885bc8a27:docs/mobile.md:curl-auth-header:114
+
+# The Crockford base32 alphabet that generates the report idempotency key, not a credential.
+4dab817e78d54b055967860581687eeb5bb77472:mobile/android/core/network/src/main/kotlin/com/voicestudio/mobile/network/ContentReports.kt:generic-api-key:38

@@ -1,18 +1,16 @@
 import { useSyncExternalStore } from 'react';
+import { onStorageKey } from '@/lib/storage-events';
 
 const STORAGE_KEY = 'voicestudio.dictation-settings.v1';
 let aecEnabled = read();
 const listeners = new Set<() => void>();
 
-if (typeof window !== 'undefined') {
-  window.addEventListener('storage', (event) => {
-    if (event.key !== STORAGE_KEY) return;
-    const next = read();
-    if (next === aecEnabled) return;
-    aecEnabled = next;
-    listeners.forEach((listener) => listener());
-  });
-}
+onStorageKey(STORAGE_KEY, () => {
+  const next = read();
+  if (next === aecEnabled) return;
+  aecEnabled = next;
+  listeners.forEach((listener) => listener());
+});
 
 function read(): boolean {
   if (typeof localStorage === 'undefined') return false;

@@ -23,6 +23,15 @@ logger = logging.getLogger("omnivoice.settings_store")
 _TOKEN_KEY = "hf_token"
 
 
+def _store_not_created(exc: BaseException) -> bool:
+    """A fresh install reads settings before ``init_db`` creates the table.
+
+    Startup restores saved preferences first, because they can move the data
+    directory, so "no table yet" means nothing is stored rather than a failure.
+    """
+    return isinstance(exc, sqlite3.OperationalError) and "no such table: settings" in str(exc)
+
+
 def _fernet():
     """Build a Fernet instance from the derived per-install key.
 
@@ -68,7 +77,9 @@ def get_hf_token() -> Optional[str]:
                 "Falling back to env/HF-CLI sources."
             )
             return None
-    except Exception:
+    except Exception as exc:
+        if _store_not_created(exc):
+            return None
         # SQLite errors must not break the resolver — return None and let
         # the resolver cascade.
         logger.exception("settings_store.get_hf_token: SQLite read failed")
@@ -160,7 +171,9 @@ def get_secret(name: str) -> Optional[str]:
                 "machines or salt tampered) — falling back to env/default."
             )
             return None
-    except sqlite3.Error:
+    except sqlite3.Error as exc:
+        if _store_not_created(exc):
+            return None
         # This path may hold plaintext/ciphertext secret values in locals.
         # Keep the record fixed-shape; never attach exception state or traceback.
         logger.error("settings_store.get_secret: SQLite read failed")
@@ -208,7 +221,9 @@ def list_secret_names() -> list[str]:
                 (f"{_SECRET_PREFIX}%",),
             ).fetchall()
         return [r[0][len(_SECRET_PREFIX):] for r in rows if r and r[0]]
-    except Exception:
+    except Exception as exc:
+        if _store_not_created(exc):
+            return []
         logger.exception("settings_store.list_secret_names: SQLite read failed")
         return []
 
@@ -247,6 +262,8 @@ def get_text(key: str, default: Optional[str] = None) -> Optional[str]:
             return default
         return str(row[0])
     except Exception as exc:
+        if _store_not_created(exc):
+            return default
         logger.error(
             "settings_store.get_text(%s): SQLite read failed: %s",
             log_safe(key), log_safe(exc),
@@ -297,6 +314,13 @@ def set_text(key: str, value: str) -> None:
             "VALUES (?, ?, ?)",
             (key, value, time.time()),
         )
+    _announce(key)
+
+
+def _announce(key: str) -> None:
+    from core import change_hooks
+
+    change_hooks.notify("settings", key)
 
 
 def clear_text(key: str) -> None:
@@ -310,6 +334,7 @@ def clear_text(key: str) -> None:
 
     with db_conn() as conn:
         conn.execute("DELETE FROM settings WHERE key = ?", (key,))
+    _announce(key)
 
 
 # ── Phase 4 Plan 04-01 (GGUF-04): per-engine quant override ────────────────

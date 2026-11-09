@@ -8,7 +8,7 @@
  * navigation at all (the rail isn't rendered either).
  */
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
 
@@ -24,8 +24,13 @@ vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => windowActions
 
 const originalPlatformDescriptor = Object.getOwnPropertyDescriptor(navigator, 'platform');
 
-function setPlatform(value) {
-  Object.defineProperty(navigator, 'platform', { value, configurable: true });
+// Pretend to run on a given OS (navigator.platform is a prototype getter, so a
+// getter spy is enough) and optionally inside the desktop shell.
+let platformSpy;
+function pretendToRun(platform, { shell = false } = {}) {
+  platformSpy?.mockRestore();
+  platformSpy = vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform);
+  if (shell) window.__TAURI_INTERNALS__ = {};
 }
 
 afterEach(() => {
@@ -35,6 +40,7 @@ afterEach(() => {
   } else {
     delete navigator.platform;
   }
+  platformSpy?.mockRestore();
   vi.clearAllMocks();
   vi.useRealTimers();
 });
@@ -126,37 +132,53 @@ describe('Header — rail mode (default)', () => {
     expect(container.textContent).toMatch(/Dub/);
   });
 
-  it('uses the app header for native window controls on Windows/Linux', async () => {
-    setPlatform('Win32');
-    window.__TAURI_INTERNALS__ = {};
-    renderHeader({});
+  describe('window chrome per platform', () => {
+    const controls = () => screen.queryByTestId('window-controls');
 
-    fireEvent.click(screen.getByRole('button', { name: 'Minimize window' }));
-    await waitFor(() => expect(windowActions.minimize).toHaveBeenCalledOnce());
-
-    fireEvent.click(screen.getByRole('button', { name: 'Maximize or restore window' }));
-    await waitFor(() => expect(windowActions.toggleMaximize).toHaveBeenCalledOnce());
-    expect(screen.getByTestId('window-controls')).toBeInTheDocument();
-  });
-
-  it('hides the custom window controls on macOS — the OS already draws the traffic lights', () => {
-    setPlatform('MacIntel');
-    window.__TAURI_INTERNALS__ = {};
-    renderHeader({});
-
-    expect(screen.queryByTestId('window-controls')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Minimize window' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Close window' })).toBeNull();
-  });
-
-  it.each(['MacIntel', 'Win32', 'Linux x86_64'])(
-    'never offers desktop window actions in a %s browser',
-    (platform) => {
-      setPlatform(platform);
+    it('Windows shell: custom controls drive the window API', async () => {
+      pretendToRun('Win32', { shell: true });
       renderHeader({});
-      expect(screen.queryByTestId('window-controls')).toBeNull();
-    },
-  );
+      const bar = within(controls());
+      expect(bar.getAllByRole('button')).toHaveLength(3);
+
+      fireEvent.click(bar.getByRole('button', { name: 'Minimize window' }));
+      await waitFor(() => expect(windowActions.minimize).toHaveBeenCalledTimes(1));
+      fireEvent.click(bar.getByRole('button', { name: 'Maximize or restore window' }));
+      await waitFor(() => expect(windowActions.toggleMaximize).toHaveBeenCalledTimes(1));
+      expect(windowActions.close).not.toHaveBeenCalled();
+    });
+
+    it('macOS shell: native traffic lights replace the custom controls', () => {
+      pretendToRun('MacIntel', { shell: true });
+      renderHeader({});
+      expect(controls()).toBeNull();
+      expect(screen.queryAllByRole('button', { name: /(minimize|close) window/i })).toHaveLength(0);
+    });
+
+    it.each([['MacIntel'], ['Win32'], ['Linux x86_64']])(
+      'plain browser on %s has no window controls',
+      (platform) => {
+        pretendToRun(platform);
+        renderHeader({});
+        expect(controls()).toBeNull();
+      },
+    );
+
+    it('only macOS gets the traffic-light inset on the breadcrumb block', () => {
+      const insetOn = (platform) => {
+        pretendToRun(platform, { shell: true });
+        const view = renderHeader({});
+        const found = view.container.querySelector('.header-area__lead--mac-inset') !== null;
+        view.unmount();
+        return found;
+      };
+      expect({
+        mac: insetOn('MacIntel'),
+        win: insetOn('Win32'),
+        linux: insetOn('Linux x86_64'),
+      }).toEqual({ mac: true, win: false, linux: false });
+    });
+  });
 });
 
 describe('Header — titlebar tabs mode', () => {

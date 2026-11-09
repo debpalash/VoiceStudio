@@ -8,7 +8,6 @@ network needed.
 """
 from __future__ import annotations
 
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -36,50 +35,6 @@ def _ids(payload: dict) -> set[str]:
 def test_required_models_is_tts_only():
     from api.routers.setup.models import REQUIRED_MODELS
     assert [rid for rid, _ in REQUIRED_MODELS] == ["k2-fsa/OmniVoice"]
-
-
-def test_platform_tags_follow_selected_worker_not_control_plane(monkeypatch):
-    from api.routers.setup import models as setup_models
-
-    monkeypatch.setattr(setup_models, "_target_host", lambda: {
-        "os": "linux", "arch": "x86_64", "gpus": [{"backend": "cuda"}],
-    })
-    assert setup_models._current_platform_tags() == ["linux", "linux-x86_64", "cuda"]
-
-
-def test_recommendations_use_selected_worker_install_state(monkeypatch):
-    from api.routers.setup import models as setup_models
-
-    monkeypatch.setattr(
-        setup_models,
-        "_target_repo_inventory",
-        lambda: ("gpu2", {"k2-fsa/OmniVoice"}),
-    )
-    monkeypatch.setattr(
-        setup_models,
-        "_current_platform_tags",
-        lambda: ["linux", "linux-x86_64", "cuda"],
-    )
-
-    payload = setup_models.recommendations()
-
-    assert payload["target"] == "gpu2"
-    required = next(row for row in payload["models"] if row["repo_id"] == "k2-fsa/OmniVoice")
-    assert required["installed"] is True
-
-
-def test_target_repo_inventory_uses_connected_worker_contract(monkeypatch):
-    from api.routers.setup import models as setup_models
-
-    live = SimpleNamespace(
-        worker_id="gpu2",
-        record=SimpleNamespace(
-            capabilities=[{"downloaded": True, "repo_ids": ["org/model"]}],
-        ),
-    )
-    monkeypatch.setattr(setup_models, "_target_worker", lambda: live)
-
-    assert setup_models._target_repo_inventory() == ("gpu2", {"org/model"})
 
 
 def test_mac_arm_curates_mlx_whisper_not_ct2(client):

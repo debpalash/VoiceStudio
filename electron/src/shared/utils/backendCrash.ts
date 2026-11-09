@@ -1,6 +1,8 @@
 import { abortableDelay } from './abortableDelay.ts';
+import { DEFAULT_BACKEND_PORT } from '../app-config.ts';
 import { deploymentMode, type DeploymentMode } from './deploymentMode.ts';
-import { isNativeFaultExit } from './nativeExit.ts';
+import { isBrokenEnvironmentOutput } from './backendOutput.ts';
+import { hasFaultEvidence, isExternalKillExit, isNativeFaultExit } from './nativeExit.ts';
 /**
  * backendCrash — frontend bridge to the desktop shell's crash forensics
  * (#941, src-tauri/src/crash.rs).
@@ -291,18 +293,6 @@ export function describeCrashExit(
  * misattributed). Everything else keeps the small-GPU VRAM guidance, which is
  * the dominant cause for real GPU aborts.
  */
-/**
- * True when the process died of a NATIVE fault — a segfault/illegal
- * instruction/abort — rather than memory pressure or an orderly exit.
- *
- * POSIX reports these as signals. Windows has no signals here: the shell sees
- * the raw NTSTATUS as an exit code, and the two shells disagree on how to read
- * it — Rust as a negative i32, Node as the unsigned DWORD. The table used to
- * live here in Rust's representation, so the same access violation was a fault
- * from Tauri and an ordinary non-zero exit from Electron (#2250). It now lives
- * in `utils/nativeExit`, which normalises before matching, and both shells ask
- * the same question of the same table.
- */
 export function isNativeFault(marker: Pick<BackendCrashMarker, 'exit_code' | 'signal'>): boolean {
   return isNativeFaultExit({ exitCode: marker.exit_code, signal: marker.signal });
 }
@@ -313,48 +303,23 @@ export function isNativeFault(marker: Pick<BackendCrashMarker, 'exit_code' | 'si
  *
  * Reported repeatedly (#1282: `import torchaudio` → `from torch.hub import …`
  * exploding 4 s after launch; #1376: transformers' lazy module raising
- * `ModuleNotFoundError: Could not import module 'GenerationMixin'` 28 s in).
- * Both fell through to the VRAM default, which told users whose venv was
- * half-installed to go flush a TTS model. Nothing about the exit code
- * distinguishes these — the traceback is the only evidence, and it was sitting
- * unread in the marker.
+ * `ModuleNotFoundError: Could not import module 'GenerationMixin'` 28 s in;
+ * #3058: `Could not find module '…libtorchaudio.pyd' (or one of its
+ * dependencies)` on Windows). All fell through to the VRAM default, which
+ * told users whose venv was half-installed to go flush a TTS model. Nothing
+ * about the exit code distinguishes these — the traceback is the only
+ * evidence, and it was sitting unread in the marker.
  *
- * Deliberately narrow: an ImportError *plus* one of the packages the app
- * cannot run without. A model file that fails to import mid-request is a
- * different animal, and a generic "ImportError" match would swallow it.
+ * The markers themselves live in `shared/utils/backendOutput` so the Electron
+ * main process can classify the same output when the backend dies during
+ * startup (#3058) and there is no crash marker to read.
  */
-const _IMPORT_FAILURE_MARKERS = [
-  'modulenotfounderror',
-  'importerror',
-  'dll load failed',
-  'undefined symbol',
-];
-const _CORE_DEPENDENCIES = [
-  'torch',
-  'torchaudio',
-  'torchvision',
-  'transformers',
-  'soundfile',
-  'numpy',
-];
-
-// How much of the captured tail is treated as "this run". backend_err.log is
-// appended across runs and the shell captures its last ~40 lines, so a process
-// that died before writing 40 lines of its own carries the PREVIOUS run's
-// output above its own (greptile). An import traceback stranded up there must
-// not diagnose the crash that happened after it — restricting the match to the
-// most recent lines means a stale one only counts when the current run wrote
-// almost nothing, which is itself the startup death this classifies.
-const _RECENT_TAIL_LINES = 20;
-
 export function isBrokenEnvironmentCrash(
   marker: Partial<Pick<BackendCrashMarker, 'last_stderr'>>,
 ): boolean {
-  const raw = (marker.last_stderr || '').trim();
-  if (!raw) return false;
-  const tail = raw.split('\n').slice(-_RECENT_TAIL_LINES).join('\n').toLowerCase();
-  if (!_IMPORT_FAILURE_MARKERS.some((m) => tail.includes(m))) return false;
-  return _CORE_DEPENDENCIES.some((d) => tail.includes(d));
+  const raw = marker.last_stderr || '';
+  if (!raw.trim()) return false;
+  return isBrokenEnvironmentOutput(raw.split('\n'));
 }
 
 export function crashCauseHint(
@@ -368,7 +333,7 @@ export function crashCauseHint(
   if (marker.exit_code === 78) {
     return i18next.t('errors.crash_port_in_use', {
       defaultValue:
-        'The backend could not start because port 3900 is already in use — another copy of ' +
+        `The backend could not start because port ${DEFAULT_BACKEND_PORT} is already in use — another copy of ` +
         'VoiceStudio (or an app that claimed that port) is holding it. Quit the other instance ' +
         'and relaunch; if nothing is visibly running, an orphaned backend from a previous ' +
         'session is still holding the port.',
@@ -423,6 +388,18 @@ export function crashCauseHint(
         'for synthesis, "Faster-Whisper (crash-isolated subprocess)" for transcription. Those ' +
         'run the model in a separate process, so a crash like this takes down that process ' +
         'instead of the whole backend.',
+    });
+  }
+  // 0xFFFFFFFF / -1: the process was ended from outside the app — security
+  // software, an OS policy, or another program — rather than by a fault in the
+  // backend itself. Only claim that when the captured tail does not already
+  // carry a fault dump or traceback (those keep their existing explanation).
+  if (isExternalKillExit(marker.exit_code) && !hasFaultEvidence(marker.last_stderr || '')) {
+    return i18next.t('errors.crash_external_kill', {
+      defaultValue:
+        'The backend process was ended from outside the app — most often security software, an OS ' +
+        'policy, or another program — not by a fault in VoiceStudio. Check your ' +
+        'antivirus and any app-control or system policy that may have stopped it, then relaunch.',
     });
   }
   return i18next.t('errors.crash_vram_default', {
@@ -491,6 +468,7 @@ export async function streamDropError(
     intervalMs?: number;
     sleep?: (ms: number) => Promise<void>;
     probeAlive?: () => Promise<boolean>;
+    // Overrides the detected deployment mode (tests).
     mode?: DeploymentMode;
   } = {},
 ): Promise<Error> {
@@ -519,21 +497,18 @@ export async function streamDropError(
     // out the SSE connection.
     const probeAlive = opts.probeAlive ?? _probeBackendAlive;
     if (await probeAlive()) {
-      // #2108: the proxy diagnosis below is only possible where a proxy can
-      // exist. The desktop webview and `bun run dev` talk to 127.0.0.1
-      // directly; a drop there is the local connection dying under a step
-      // that went byte-silent for minutes — and the backend kept going (the
-      // reporter's transcript was saved 20 min after the UI gave up). Say
-      // that, and where to look, instead of handing out nginx advice.
+      // A reverse proxy can only sit in front of a served page. The desktop
+      // webview and `bun run dev` talk to 127.0.0.1 directly, so proxy or
+      // buffering advice would send those users after something that does not
+      // exist.
       if ((opts.mode ?? deploymentMode()) !== 'server') {
         return new Error(
           i18next.t('errors.stream_cut_backend_alive_local', {
             defaultValue:
-              'The stream ended early, but the backend is still running — so it did not crash. ' +
-              'The app lost its connection to the backend mid-job; that happens when a long step ' +
-              'goes quiet for minutes, and the backend usually finishes the job anyway. Give it a ' +
-              'few minutes and reopen the job from its history, or check the backend log ' +
-              '(Settings → Logs → Backend) for what it was doing.',
+              'Wait a few minutes, then reopen the job from its history; if it is not there, read the ' +
+              'backend log under Settings → Logs → Backend. The connection dropped mid-job after a long ' +
+              'quiet step, but the backend is still running and normally completes the work, so this ' +
+              'was not a crash.',
           }),
         );
       }

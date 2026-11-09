@@ -570,7 +570,7 @@ export default function ExportModal({
                 <PkgCard
                   icon={<Music size={14} />}
                   title={t('exportModal.pkg_audio_title')}
-                  body={t('exportModal.pkg_audio_body', { count: (dubTracks || []).length })}
+                  body={t('exportModal.pkg_audio_body', { count: selectedDubs.length })}
                   onClick={() => setTab('audio')}
                   cta={t('exportModal.pkg_audio_cta')}
                   ghost

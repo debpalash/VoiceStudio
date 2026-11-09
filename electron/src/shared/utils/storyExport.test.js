@@ -84,6 +84,11 @@ describe('chapter helpers', () => {
       ]),
     ).toBe('00:00:00\tIntro\n00:01:05\tTwo');
   });
+  it('collapses every field and line break in titles', () => {
+    expect(buildCueSheet([{ time: 0, title: ' A\t\n\r\v\f\u0085\u2028\u2029B ' }])).toBe(
+      '00:00:00\tA B',
+    );
+  });
 });
 
 describe('tracksByCharacter', () => {
@@ -99,180 +104,79 @@ describe('tracksByCharacter', () => {
     expect(groups[1].tracks).toHaveLength(1);
   });
 });
-
 describe('cuesFromChapters', () => {
-  it('starts at zero and accumulates each chapter duration', () => {
-    expect(
-      cuesFromChapters([
-        { title: 'Intro', duration_s: 65 },
-        { title: 'Two', duration_s: 120.5 },
-        { title: 'Three', duration_s: 10 },
-      ]),
-    ).toEqual([
-      { time: 0, title: 'Intro' },
-      { time: 65, title: 'Two' },
-      { time: 185.5, title: 'Three' },
+  it('places each heading at the accumulated millisecond boundary', () => {
+    const result = cuesFromChapters([
+      { title: 'Lighthouse', duration_ms: 2345 },
+      { title: 'Low Tide', duration_ms: 655 },
+      { title: 'Open Water' },
     ]);
+    expect(result.map(({ time }) => time)).toEqual([0, 2.345, 3]);
+    expect(result.map(({ title }) => title)).toEqual(['Lighthouse', 'Low Tide', 'Open Water']);
   });
-
-  it('never goes backwards, whatever the durations say', () => {
-    // A missing, negative, NaN or non-numeric duration contributes zero rather
-    // than shifting every later chapter out of step with the audio.
-    const cues = cuesFromChapters([
-      { title: 'A', duration_s: 10 },
-      { title: 'B', duration_s: -5 },
-      { title: 'C' },
-      { title: 'D', duration_s: Number.NaN },
-      { title: 'E', duration_s: 'nonsense' },
-      { title: 'F', duration_s: 7 },
-    ]);
-    expect(cues.map((c) => c.time)).toEqual([0, 10, 10, 10, 10, 10]);
-    for (let i = 1; i < cues.length; i += 1) {
-      expect(cues[i].time).toBeGreaterThanOrEqual(cues[i - 1].time);
-      expect(Number.isFinite(cues[i].time)).toBe(true);
-    }
-  });
-
-  it('treats an infinite duration as zero', () => {
-    const cues = cuesFromChapters([
-      { title: 'A', duration_s: 5 },
-      { title: 'B', duration_s: Infinity },
-      { title: 'C', duration_s: -Infinity },
-      { title: 'D', duration_ms: Infinity },
-      { title: 'E' },
-    ]);
-    expect(cues.map((c) => c.time)).toEqual([0, 5, 5, 5, 5]);
-  });
-
-  it('does not drift below a whole second from float addition', () => {
-    // Ten 0.1 s chapters summed as float seconds give 0.9999999999999999,
-    // which floors to 00:00:00 — a second early. Whole milliseconds cannot.
-    const tenths = Array.from({ length: 10 }, (_, i) => ({ title: `c${i}`, duration_s: 0.1 }));
-    const last = cuesFromChapters([...tenths, { title: 'end' }]).at(-1);
-    expect(last.time).toBe(1);
-    expect(buildCueSheet([last])).toBe('00:00:01\tend');
-  });
-
-  it('prefers the exact duration_ms the m4b chapters were built from', () => {
-    expect(
-      cuesFromChapters([{ title: 'A', duration_s: 60, duration_ms: 59996 }, { title: 'B' }])[1]
-        .time,
-    ).toBe(59.996);
-    // Older backends send only duration_s.
-    expect(cuesFromChapters([{ title: 'A', duration_s: 12.34 }, { title: 'B' }])[1].time).toBe(
-      12.34,
+  it('treats unusable lengths as zero rather than corrupting later offsets', () => {
+    const malformed = [-4, NaN, 'unknown', Infinity].map((duration_s) => ({ duration_s }));
+    malformed.push({ duration_ms: -Infinity });
+    const offsets = cuesFromChapters([...malformed, { title: 'Safe shore' }]).map(
+      (cue) => cue.time,
     );
+    expect(new Set(offsets)).toEqual(new Set([0]));
+    expect(offsets.every(Number.isFinite)).toBe(true);
   });
-
-  it('matches cumulative millisecond START offsets past 24 hours', () => {
-    // 30 chapters of 59:59.999 each — the same ms the backend sums into START.
-    const long = Array.from({ length: 30 }, (_, i) => ({ title: `c${i}`, duration_ms: 3_599_999 }));
-    const cues = cuesFromChapters([...long, { title: 'end' }]);
-    expect(cues.at(-1).time).toBe((30 * 3_599_999) / 1000);
-    expect(formatTimecode(cues.at(-1).time)).toBe('29:59:59');
-    expect(formatTimecode(100 * 3600)).toBe('100:00:00');
+  it('accumulates fractional seconds through integer milliseconds', () => {
+    const sequence = Array.from({ length: 8 }, () => ({ duration_s: 0.125 }));
+    const finalCue = cuesFromChapters([...sequence, { title: 'Exactly one second' }]).at(-1);
+    expect(finalCue).toEqual({ time: 1, title: 'Exactly one second' });
+    expect(buildCueSheet([finalCue])).toBe('00:00:01\tExactly one second');
   });
-
-  it('accepts a numeric string duration', () => {
-    expect(cuesFromChapters([{ title: 'A', duration_s: '12.5' }, { title: 'B' }])[1].time).toBe(
-      12.5,
+  it('chooses exact milliseconds before legacy seconds', () => {
+    const result = cuesFromChapters([
+      { duration_ms: '2750', duration_s: 100 },
+      { duration_ms: '', duration_s: '1.5' },
+      { duration_ms: null, duration_s: 0.25 },
+      { title: 'Checkpoint' },
+    ]);
+    expect(result.at(-1)?.time).toBe(4.5);
+  });
+  it('allows an audiobook timeline to pass the 24-hour boundary', () => {
+    const later = cuesFromChapters([{ duration_ms: 93_600_875 }, { title: 'Day two' }])[1];
+    expect(later.time).toBe(93_600.875);
+    expect(buildCueSheet([later])).toBe('26:00:00\tDay two');
+  });
+  it('normalizes supplied headings and delegates missing names', () => {
+    const named = cuesFromChapters(
+      [{ title: '  Dawn  ' }, {}, { title: 'North\nStar' }],
+      (position) => `Segment-${position}`,
     );
+    expect(named.map((cue) => cue.title)).toEqual(['Dawn', 'Segment-2', 'North Star']);
+    expect(cuesFromChapters([{}])).toMatchObject([{ title: 'Chapter 1' }]);
   });
-
-  it('falls back to duration_s when duration_ms is blank', () => {
-    for (const blank of ['', '  ', null, undefined]) {
-      const cues = cuesFromChapters([
-        { title: 'A', duration_s: 12.5, duration_ms: blank },
-        { title: 'B' },
-      ]);
-      expect(cues[1].time).toBe(12.5);
-    }
+  it.each([null, undefined, []])('accepts empty input %j', (value) => {
+    expect(cuesFromChapters(value)).toEqual([]);
   });
-
-  it('names a blank title through the caller-supplied fallback', () => {
-    expect(cuesFromChapters([{ title: '' }], (n) => `Capítulo ${n}`)[0].title).toBe('Capítulo 1');
-  });
-
-  it('falls back to the chapter position when the title is blank', () => {
-    expect(
-      cuesFromChapters([{ title: '   ', duration_s: 1 }, { duration_s: 1 }, { title: null }]).map(
-        (c) => c.title,
-      ),
-    ).toEqual(['Chapter 1', 'Chapter 2', 'Chapter 3']);
-  });
-
-  it('trims a padded title', () => {
-    expect(cuesFromChapters([{ title: '  Prologue  ' }])[0].title).toBe('Prologue');
-  });
-
-  it('keeps one line and two fields per cue when a title holds tabs or line breaks', () => {
-    const cues = cuesFromChapters([
-      { title: 'Part\tOne', duration_s: 5 },
-      { title: 'Two\r\nlines\u2028here', duration_s: 5 },
-      { title: '\t\n\r' },
-    ]);
-    expect(cues.map((c) => c.title)).toEqual(['Part One', 'Two lines here', 'Chapter 3']);
-    expect(buildCueSheet(cues).split('\n')).toEqual([
-      '00:00:00\tPart One',
-      '00:00:05\tTwo lines here',
-      '00:00:10\tChapter 3',
-    ]);
-    // The format boundary also holds for cues not built by cuesFromChapters.
-    expect(buildCueSheet([{ time: 0, title: 'A\tB\nC\vD\fE\u0085F\u2029G' }])).toBe(
-      '00:00:00\tA B C D E F G',
-    );
-  });
-
-  it('is total — empty, null and undefined all give no cues', () => {
-    expect(cuesFromChapters([])).toEqual([]);
-    expect(cuesFromChapters(null)).toEqual([]);
-    expect(cuesFromChapters(undefined)).toEqual([]);
-    expect(buildCueSheet(cuesFromChapters([]))).toBe('');
-  });
-
-  it('matches the embedded chapter offsets when a chapter is left out', () => {
-    // The backend appends to chapters_meta — the source of the m4b's embedded
-    // chapters — only on success, so a failed chapter must never contribute a
-    // cue. Filtering happens at the call site; this pins what the helper does
-    // with the filtered list: the following chapters keep the earlier offsets.
-    const all = [
-      { title: 'A', duration_s: 10, status: 'done' },
-      { title: 'B', duration_s: 999, status: 'failed' },
-      { title: 'C', duration_s: 20, status: 'done' },
-    ];
-    const rendered = all.filter((c) => c.status !== 'failed');
-    expect(cuesFromChapters(rendered)).toEqual([
-      { time: 0, title: 'A' },
-      { time: 10, title: 'C' },
-    ]);
+  it('needs no placeholders for chapters already removed by its caller', () => {
+    const deliveredOnly = [{ title: 'Before', duration_ms: 875 }, { title: 'After' }];
+    expect(cuesFromChapters(deliveredOnly).at(-1)).toEqual({ time: 0.875, title: 'After' });
   });
 });
 
 describe('cueSheetFilename', () => {
   it.each([
-    ['audiobook_abc.m4b', 'audiobook_abc.txt'],
-    ['story_abc.mp3', 'story_abc.txt'],
-    ['/outputs/story_abc.m4b', 'story_abc.txt'],
-    ['X.M4B', 'X.txt'],
-    ['C:\\outputs\\story_abc.mp3', 'story_abc.txt'],
-  ])('%s -> %s', (output, expected) => {
-    expect(cueSheetFilename(output)).toBe(expected);
+    ['/tmp/sea-story.m4b', 'sea-story.txt'],
+    ['C:\\audio\\episode-07.MP3', 'episode-07.txt'],
+    ['ARCHIVE.M4B', 'ARCHIVE.txt'],
+    ['mixdown.wav', 'cuesheet.txt'],
+    ['extensionless', 'cuesheet.txt'],
+    ['', 'cuesheet.txt'],
+    [null, 'cuesheet.txt'],
+  ])('maps %j to %s', (input, expected) => {
+    expect(cueSheetFilename(input)).toBe(expected);
   });
-
-  it.each(['weird.wav', 'report.tar.gz', 'noextension', '', null, undefined])(
-    'falls back to cuesheet.txt for %s',
-    (output) => {
-      // Deliberately not "strip whatever extension is there" — that would turn
-      // report.tar.gz into report.tar.txt.
-      expect(cueSheetFilename(output)).toBe('cuesheet.txt');
-    },
-  );
-
-  it('returns promptly on a hostile length', () => {
-    // Both patterns are anchored with fixed alternations, so a long input
-    // cannot make them backtrack.
+  it('handles a hostile-length name without nonlinear work', () => {
+    const stem = 'z'.repeat(80_000);
+    const name = `${stem}.mp3`;
     const started = performance.now();
-    expect(cueSheetFilename('a'.repeat(100000) + '.m4b')).toMatch(/^a+\.txt$/);
+    expect(cueSheetFilename(name)).toBe(`${stem}.txt`);
     expect(performance.now() - started).toBeLessThan(1000);
   });
 });

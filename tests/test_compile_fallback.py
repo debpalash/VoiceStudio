@@ -5,14 +5,11 @@ Dynamo/FX/Inductor (an AssertionError out of torch/_inductor/cudagraph_trees.py)
 and must not be mislabeled as an OOM. Unsupported architectures are rejected
 by should_torch_compile() before compilation; they do not reach this path.
 
-Blackwell sm_120 was the reported case and is no longer an example: the pinned
-torch 2.8.0+cu128 lists sm_120, and compile, Triton 3.4.0 and the
-cudagraph_trees path all run correctly there (checked on an sm_120 device,
-compiled output matching eager). #278 also quotes "Detected that you are using
-FX to symbolically trace a dynamo-optimized function" — that one is not an arch
-symptom at all; Dynamo raises it whenever FX traces a compiled function, CPU
-included.
-
+The original #278 report came from a Blackwell (sm_120) card, but the pinned
+torch 2.8.0+cu128 lists sm_120 and torch.compile, Triton and cudagraph trees
+work there, so it is no longer an example of an unsupported architecture. The
+FX-tracing message quoted in #278 is not an architecture symptom either:
+Dynamo raises it on any device.
 These tests pin the contract: compile is an optimization, never a point of
 failure — a compile-stack error during generation triggers a one-shot eager
 retry, disables compile for the session, and genuine model errors (real OOM,

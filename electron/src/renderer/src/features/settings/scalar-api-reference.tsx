@@ -14,6 +14,9 @@ export default function ScalarApiReference({ spec }: { spec: Record<string, unkn
       withDefaultFonts: false,
       proxyUrl: '',
       darkMode: theme === 'dark',
+      // The app theme drives the reference; Scalar's own unlabelled colour toggle would only
+      // fall out of step with it (and screen readers announce it as an unnamed button).
+      hideDarkModeToggle: true,
       agent: { disabled: true },
       showDeveloperTools: 'never' as const,
       // Scalar uses the bare URL hash for section navigation by default,

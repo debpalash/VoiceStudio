@@ -1,0 +1,104 @@
+[
+  {
+    "name": "sherpa-onnx",
+    "source": "https://github.com/k2-fsa/sherpa-onnx/tree/11afbd009a7f8c08f4bcf2fc1b265d0df4670fbf",
+    "source_sha256": "0a8db6c55dd318f4a688faba85f7760b99a6c92e8ef8864479d418531bee1ac2",
+    "notice_sha256": "d4fab8a41f5bb1f7f0df1e8f38bb05da11d6a04368cb308914f5036fb60ba43e"
+  },
+  {
+    "name": "omnivoice.cpp",
+    "source": "https://github.com/ServeurpersoCom/omnivoice.cpp/tree/886fc079838ca7400cb2b42b36e2a65aa1daabe8",
+    "source_sha256": "db7898b061692c2c8a83a43bf9af64ac4419b14a8bc44584aae497fc40cbced5",
+    "notice_sha256": "39170a56e1de354d1e60cba242855bee8b81812ec1520bc0823ffeda4df9d440"
+  },
+  {
+    "name": "omnivoice-ggml",
+    "source": "https://github.com/ServeurpersoCom/ggml/tree/f3bc6505c4e2ede83a193e0fb4695938ff3804fd",
+    "source_sha256": "git-tree-verified",
+    "notice_sha256": "0fa38f8cd0f5acd4a05a6dbe137286983bf57e02ef71cff47fba9e5b3a44362f"
+  },
+  {
+    "name": "llama.cpp",
+    "source": "https://github.com/ggml-org/llama.cpp/tree/797de63b2fa7396dcc8caca76834c699ac84e1c3",
+    "source_sha256": "9bd5be5bc2ab0e0f5146bc6fbdd3a4a834383aaffa105faeeada119e83d51f3e",
+    "notice_sha256": "12ef087d9481007aaa1c8eb2a282e399b9657d23fa00bbc18d88790dbe55afd9"
+  },
+  {
+    "name": "llama-ggml",
+    "source": "https://github.com/ggml-org/llama.cpp/tree/797de63b2fa7396dcc8caca76834c699ac84e1c3/ggml",
+    "source_sha256": "git-tree-verified",
+    "notice_sha256": "16930b4b113376b6a814a0217c580dabda9a461b9fd0ad86c3cc7ecaa6e4b7f8"
+  },
+  {
+    "name": "espeak-ng-for-piper",
+    "source": "https://github.com/csukuangfj/espeak-ng/archive/ed530aa113046142eb5115cf2fc9157854d0ffe1.zip",
+    "source_sha256": "e4e262cbe34f7fe21f91f1ba3397f2728e1f30eafbae7853f2b753a9ed13f0dd",
+    "notice_sha256": "d87e45ed43020f3a0846427e033d1db8751fb2962740ef40ac5d77c3f4630564"
+  },
+  {
+    "name": "piper-phonemize",
+    "source": "https://github.com/csukuangfj/piper-phonemize/archive/f3ff95afc03640bc1399e113e83361192a2fafb4.zip",
+    "source_sha256": "d9cca4e2bdc7d6dd8dffb96a4668283dbd3f77a9c194a3e530c1e8eba9406a5d",
+    "notice_sha256": "4ae3a823befa973a314c9efe7b02933f74eeae2890d6cec735d5594e62320665"
+  },
+  {
+    "name": "kaldi-native-fbank",
+    "source": "https://github.com/csukuangfj/kaldi-native-fbank/archive/refs/tags/v1.22.3.tar.gz",
+    "source_sha256": "9176cc66fc7ce1edf85cf355b06e320c57db6297df74277f575183468893cf61",
+    "notice_sha256": "57d8bae7d6caa796f0adb4eeec037d8828cc9c1b1f2e155e05c5fd383dd181c2"
+  },
+  {
+    "name": "kissfft",
+    "source": "https://github.com/mborgerding/kissfft/archive/febd4caeed32e33ad8b2e0bb5ea77542c40f18ec.zip",
+    "source_sha256": "497103e664168ebe39580b757adbe616f6cf85a16572af581ca7bc42d0ab13fd",
+    "notice_sha256": "2e533500e0eeb6a8fa2b2086d1dc8671ef74a50c1efa24bff311f010a2800562"
+  },
+  {
+    "name": "kaldi-decoder",
+    "source": "https://github.com/k2-fsa/kaldi-decoder/archive/refs/tags/v0.3.0.tar.gz",
+    "source_sha256": "b9f34cfb4fd3b1344100eead79ef4d37aa15962274b9e3056de345021f76a1b0",
+    "notice_sha256": "5dcb6878e118ccc24a443b5ce8faab1e45b9373e9a24fd4b245769c555b27bd7"
+  },
+  {
+    "name": "eigen",
+    "source": "https://gitlab.com/libeigen/eigen/-/archive/5.0.1/eigen-5.0.1.tar.gz",
+    "source_sha256": "e9c326dc8c05cd1e044c71f30f1b2e34a6161a3b6ecf445d56b53ff1669e3dec",
+    "notice_sha256": "363070b197c621158ebdc39bd94aa23fc183f505a37c3fe38a78dbad234c0c5a"
+  },
+  {
+    "name": "kaldifst",
+    "source": "https://github.com/k2-fsa/kaldifst/archive/refs/tags/v1.8.0.tar.gz",
+    "source_sha256": "3f247b7e5a2409071202f5e2bc6200060f66728c0a3443c03923ad2723e040b3",
+    "notice_sha256": "7e09a71204d285b5333cac521cfdd6cfcc1fe5779c5b8afeb915b8acba4e7cf6"
+  },
+  {
+    "name": "openfst",
+    "source": "https://github.com/csukuangfj/openfst/archive/refs/tags/v1.8.5-2026-07-09.tar.gz",
+    "source_sha256": "2ff712a32952fcb01d351121a6bc8ccf4fdc6b2aa06ce8df2b3095dedd518c0e",
+    "notice_sha256": "16ba8592a6b01be206a2d6d9fff24308b29536f82139ca371a79e32c50a180db"
+  },
+  {
+    "name": "simple-sentencepiece",
+    "source": "https://github.com/pkufool/simple-sentencepiece/archive/refs/tags/v0.7.tar.gz",
+    "source_sha256": "1748a822060a35baa9f6609f84efc8eb54dc0e74b9ece3d82367b7119fdc75af",
+    "notice_sha256": "42a99318e12c88881e719963f524a2a102b9b65b9fba7366b10d7aad7bbfac66"
+  },
+  {
+    "name": "json",
+    "source": "https://github.com/nlohmann/json/archive/refs/tags/v3.12.0.tar.gz",
+    "source_sha256": "4b92eb0c06d10683f7447ce9406cb97cd4b453be18d7279320f7b2f025c10187",
+    "notice_sha256": "261714a3aed6a9fb231b1f8f535134cde3810c6408911f0911511c15da1ef506"
+  },
+  {
+    "name": "hclust-cpp",
+    "source": "https://github.com/csukuangfj/hclust-cpp/archive/refs/tags/2026-02-25.tar.gz",
+    "source_sha256": "8f14e024c709d73afb40ae69cb22de4b73dba67cbce40f2e518813da8139ab56",
+    "notice_sha256": "5a32b0e8039f46caa5244c0684c2f024a5182214ae020f132703083ade10241a"
+  },
+  {
+    "name": "onnxruntime",
+    "source": "https://github.com/microsoft/onnxruntime/tree/v1.28.2",
+    "source_sha256": "2f07c72751aed99790b8a4869cf2311df85a860b22ded05fa22803587a48922c",
+    "notice_sha256": "41c9bfd924df1ba7f79735358c96c35123ec899528f2584c0449699c9348b7de"
+  }
+]

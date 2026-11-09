@@ -217,7 +217,7 @@ try {
       }),
     );
   }
-  await toolbar.getByRole('button', { name: 'Back to Studio', exact: true }).click();
+  await toolbar.getByRole('button', { name: 'Return to the studio', exact: true }).click();
   await toolbar.locator('.site-browser-page').waitFor({ state: 'detached' });
   assert.equal(parent.url(), originalUrl);
   assert.equal(await parent.locator('#smoke-draft').inputValue(), 'Unsaved workspace');

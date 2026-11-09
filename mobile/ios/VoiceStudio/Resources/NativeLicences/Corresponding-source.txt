@@ -1,0 +1,26 @@
+VoiceStudio native runtime corresponding sources
+
+eSpeak NG is GPL-3.0. Its complete pinned upstream source archive,
+including its build scripts, is listed below. The pinned sherpa-onnx
+source and VoiceStudio mobile/native/ios/build.py and build.sh contain
+the build configuration used to combine these dependencies.
+VoiceStudio source: https://github.com/debpalash/VoiceStudio
+Runtime pins: mobile/native/pins.json
+
+sherpa-onnx: https://github.com/k2-fsa/sherpa-onnx/tree/11afbd009a7f8c08f4bcf2fc1b265d0df4670fbf
+omnivoice.cpp: https://github.com/ServeurpersoCom/omnivoice.cpp/tree/886fc079838ca7400cb2b42b36e2a65aa1daabe8
+omnivoice-ggml: https://github.com/ServeurpersoCom/ggml/tree/f3bc6505c4e2ede83a193e0fb4695938ff3804fd
+llama.cpp: https://github.com/ggml-org/llama.cpp/tree/797de63b2fa7396dcc8caca76834c699ac84e1c3
+llama-ggml: https://github.com/ggml-org/llama.cpp/tree/797de63b2fa7396dcc8caca76834c699ac84e1c3/ggml
+espeak-ng-for-piper: https://github.com/csukuangfj/espeak-ng/archive/ed530aa113046142eb5115cf2fc9157854d0ffe1.zip
+piper-phonemize: https://github.com/csukuangfj/piper-phonemize/archive/f3ff95afc03640bc1399e113e83361192a2fafb4.zip
+kaldi-native-fbank: https://github.com/csukuangfj/kaldi-native-fbank/archive/refs/tags/v1.22.3.tar.gz
+kissfft: https://github.com/mborgerding/kissfft/archive/febd4caeed32e33ad8b2e0bb5ea77542c40f18ec.zip
+kaldi-decoder: https://github.com/k2-fsa/kaldi-decoder/archive/refs/tags/v0.3.0.tar.gz
+eigen: https://gitlab.com/libeigen/eigen/-/archive/5.0.1/eigen-5.0.1.tar.gz
+kaldifst: https://github.com/k2-fsa/kaldifst/archive/refs/tags/v1.8.0.tar.gz
+openfst: https://github.com/csukuangfj/openfst/archive/refs/tags/v1.8.5-2026-07-09.tar.gz
+simple-sentencepiece: https://github.com/pkufool/simple-sentencepiece/archive/refs/tags/v0.7.tar.gz
+json: https://github.com/nlohmann/json/archive/refs/tags/v3.12.0.tar.gz
+hclust-cpp: https://github.com/csukuangfj/hclust-cpp/archive/refs/tags/2026-02-25.tar.gz
+onnxruntime: https://github.com/microsoft/onnxruntime/tree/v1.28.2

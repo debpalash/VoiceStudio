@@ -47,9 +47,7 @@ def compile_friendly_env(monkeypatch):
     monkeypatch.setattr("services.settings_store.get_text", lambda key, default="0": "0")
     monkeypatch.setattr(engine_env, "_compile_runtime_failure", None)
     monkeypatch.delenv("OMNIVOICE_FORCE_TORCH_COMPILE", raising=False)
-    # #2135: these now gate compile, so a developer (or CI runner) with one
-    # exported would otherwise silently flip every test below to "skipped".
-    for name in engine_env._COMPILE_DISABLE_ENVS:
+    for name in ("TORCH_COMPILE_DISABLE", "TORCHDYNAMO_DISABLE", "TORCHINDUCTOR_DISABLE"):
         monkeypatch.delenv(name, raising=False)
 
 
@@ -124,47 +122,47 @@ def test_skips_after_runtime_failure_marked(monkeypatch, compile_friendly_env):
     engine_env.mark_compile_runtime_failure("AssertionError: cudagraph_trees")
     assert engine_env.should_torch_compile("cuda") is False
 
+@pytest.mark.parametrize(
+    ("variable", "setting"),
+    [
+        ("TORCH_COMPILE_DISABLE", " TRUE "),
+        ("TORCHDYNAMO_DISABLE", "on"),
+        ("TORCHINDUCTOR_DISABLE", "1"),
+    ],
+)
+def test_any_supported_environment_opt_out_wins(
+    monkeypatch, compile_friendly_env, variable, setting
+):
+    _fake_torch(monkeypatch, _FakeCuda(capability=(8, 9)))
+    monkeypatch.setenv(variable, setting)
+    assert engine_env.compile_opt_out_name() == variable
+    assert not engine_env.should_torch_compile("cuda")
 
-# ── #2135: the environment escape hatch must work on every platform ─────────
-# The reporter exported TORCH_COMPILE_DISABLE=1 (the variable this app's own
-# docs and win32 startup path use) on a Linux/CUDA host and still got
-# "torch.compile applied" — the gate never read it. Each of these fails before
-# the fix: the fixture is otherwise fully compile-friendly, so a True here
-# means the user's opt-out was ignored.
 
-
-@pytest.mark.parametrize("var", ["TORCH_COMPILE_DISABLE", "TORCHDYNAMO_DISABLE",
-                                 "TORCHINDUCTOR_DISABLE"])
-def test_env_var_disables_compile(monkeypatch, compile_friendly_env, var):
+def test_non_opt_out_values_leave_compilation_available(monkeypatch, compile_friendly_env):
     _fake_torch(monkeypatch, _FakeCuda(capability=(9, 0)))
-    assert engine_env.should_torch_compile("cuda") is True
-    monkeypatch.setenv(var, "1")
-    assert engine_env.should_torch_compile("cuda") is False
+    for variable, setting in zip(
+        ("TORCH_COMPILE_DISABLE", "TORCHDYNAMO_DISABLE", "TORCHINDUCTOR_DISABLE"),
+        ("off", "0", "not-enabled"),
+    ):
+        monkeypatch.setenv(variable, setting)
+    assert engine_env.compile_opt_out_name() is None
+    assert engine_env.should_torch_compile("cuda")
 
 
-@pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on"])
-def test_env_var_truthy_spellings(monkeypatch, compile_friendly_env, value):
+@pytest.mark.parametrize(
+    ("setting", "opted_out"),
+    [(value, True) for value in ("1", "true", "TRUE", "yes", "on")]
+    + [(value, False) for value in ("", "0", "false", "no", "off")],
+)
+def test_primary_switch_parsing(monkeypatch, compile_friendly_env, setting, opted_out):
     _fake_torch(monkeypatch, _FakeCuda(capability=(9, 0)))
-    monkeypatch.setenv("TORCH_COMPILE_DISABLE", value)
-    assert engine_env.should_torch_compile("cuda") is False
+    monkeypatch.setenv("TORCH_COMPILE_DISABLE", setting)
+    assert (not engine_env.should_torch_compile("cuda")) is opted_out
 
 
-@pytest.mark.parametrize("value", ["", "0", "false", "no", "off"])
-def test_env_var_falsey_spellings_keep_compile(monkeypatch, compile_friendly_env, value):
-    """An explicitly *disabled* opt-out must not disable compile."""
-    _fake_torch(monkeypatch, _FakeCuda(capability=(9, 0)))
-    monkeypatch.setenv("TORCH_COMPILE_DISABLE", value)
-    assert engine_env.should_torch_compile("cuda") is True
-
-
-def test_env_var_beats_force_flag(monkeypatch, compile_friendly_env):
-    """An explicit "off" outranks the arch-gate override.
-
-    OMNIVOICE_FORCE_TORCH_COMPILE only overrides the *automatic* arch/link
-    gates; it must not resurrect compile for a user who turned it off by hand,
-    or the opt-out has no reliable meaning.
-    """
-    _fake_torch(monkeypatch, _FakeCuda(capability=(12, 0)))
-    monkeypatch.setenv("OMNIVOICE_FORCE_TORCH_COMPILE", "1")
-    monkeypatch.setenv("TORCH_COMPILE_DISABLE", "1")
-    assert engine_env.should_torch_compile("cuda") is False
+def test_compile_disable_env_outranks_force(monkeypatch, compile_friendly_env):
+    _fake_torch(monkeypatch, _FakeCuda(capability=(12, 1)))
+    monkeypatch.setenv("OMNIVOICE_FORCE_TORCH_COMPILE", "yes")
+    monkeypatch.setenv("TORCHDYNAMO_DISABLE", "true")
+    assert not engine_env.should_torch_compile("cuda")

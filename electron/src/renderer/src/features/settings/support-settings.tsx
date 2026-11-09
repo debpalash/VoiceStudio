@@ -6,6 +6,7 @@ import {
   CreditCardIcon,
   GemIcon,
   Globe2Icon,
+  HeartIcon,
   LightbulbIcon,
   MailIcon,
   MessagesSquareIcon,
@@ -20,7 +21,7 @@ import { brandIcon } from '@/lib/brand';
 import { DonationGoal } from './donation-goal';
 import { ReportBug } from '@/components/report-bug';
 import { ExternalLink } from '@/components/external-link';
-import { KOFI_URL, PAYPAL_URL } from '@shared/utils/donateLinks';
+import { GITHUB_SPONSORS_URL, KOFI_URL, PAYPAL_URL } from '@shared/utils/donateLinks';
 import {
   SPONSORS,
   SPONSOR_TIERS,
@@ -87,6 +88,10 @@ export function SupportSettings() {
             ))}
           </div>
           <div className="support-payments" role="group" aria-label={t('donate.choose_method')}>
+            <ExternalLink href={GITHUB_SPONSORS_URL}>
+              <HeartIcon aria-hidden="true" />
+              GitHub Sponsors
+            </ExternalLink>
             <ExternalLink href={KOFI_URL}>
               <CoffeeIcon aria-hidden="true" />
               Ko-fi
@@ -147,6 +152,7 @@ export function SupportSettings() {
             </div>
           ))}
           <div className="support-tile-actions">
+            <ExternalLink href={SPONSOR_CONTACT.githubSponsors}>GitHub Sponsors</ExternalLink>
             <ExternalLink href={SPONSOR_CONTACT.githubIssue}>
               {t('support.sponsors_become')}
             </ExternalLink>

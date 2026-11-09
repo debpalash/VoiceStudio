@@ -56,17 +56,6 @@ try {
       },
     }),
   );
-  await page.route('**/api/workers/target**', (route) =>
-    route.fulfill({
-      json: {
-        target: 'local',
-        op: 'clone',
-        active: { remote: false, label: 'Local device', reason: '' },
-        remote_operations: [],
-        targets: [],
-      },
-    }),
-  );
   await page.route('**/api/profiles', (route) => route.fulfill({ json: [profile] }));
   const audio = (route) =>
     route.fulfill({

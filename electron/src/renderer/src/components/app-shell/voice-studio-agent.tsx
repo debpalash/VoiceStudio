@@ -19,11 +19,12 @@ import openCodeIcon from '@lobehub/icons-static-svg/icons/opencode.svg';
 import piIcon from '@lobehub/icons-static-svg/icons/pi.svg';
 import { getBridge } from '@/components/bridge';
 import { Button } from '@/components/ui/button';
+import { ExternalLink } from '@/components/external-link';
 import { cn } from '@/lib/utils';
 import { getFrontendLogs } from '@shared/utils/consoleBuffer';
 import { agentFeatures, type AgentFeature } from '@shared/agent-workspace';
 import { useBackendStatus } from '@/hooks/use-backend-status';
-import type { RepairAgentId, RepairAgentInfo } from '../../../../preload/index.d';
+import type { RepairAgentId, RepairAgentInfo, RepairAgentState } from '../../../../preload/index.d';
 import {
   DEFAULT_REPAIR_AGENT_KEY,
   REPAIR_AGENT_OPEN_EVENT,
@@ -43,6 +44,10 @@ import { TranslationAgentDock } from './translation-agent-dock';
 import { AgentDockFrame } from './agent-dock-frame';
 import './voice-studio-agent.css';
 
+const REPAIR_DOCS_URL =
+  'https://github.com/debpalash/VoiceStudio/blob/main/docs/electron-repair.md#source-checkout';
+const CLONE_COMMAND = 'git clone https://github.com/debpalash/VoiceStudio.git';
+type WorkspaceProblem = NonNullable<RepairAgentState['workspaceError']>;
 const icons = { codex: codexIcon, claude: claudeIcon, opencode: openCodeIcon, pi: piIcon };
 const labels: Record<AgentFeature, string> = {
   repair: 'agentWorkspace.repair',
@@ -80,6 +85,7 @@ export function VoiceStudioAgent() {
   const [features, setFeatures] = useState<AgentFeature[]>([]);
   const [source, setSource] = useState(false);
   const [workspace, setWorkspace] = useState({ available: false, path: '' });
+  const [workspaceProblem, setWorkspaceProblem] = useState<WorkspaceProblem | null>(null);
   const [details, setDetails] = useState(false);
   const [error, setError] = useState('');
   const [pending, setPending] = useState<RepairAgentRequest | null>(null);
@@ -233,8 +239,11 @@ export function VoiceStudioAgent() {
     try {
       const state = await bridge.repair.chooseWorkspace();
       setWorkspace({ available: state.workspaceAvailable, path: state.workspacePath ?? '' });
-    } catch {
-      setError(t('repairAgent.noSource'));
+      setWorkspaceProblem(state.workspaceError ?? null);
+    } catch (reason) {
+      // The raw filesystem error stays in the logs; the user gets a next step.
+      console.error('[repair] choosing the source folder failed', reason);
+      setError(t('repairAgent.chooseFailed'));
     }
   }
   async function stop() {
@@ -254,7 +263,11 @@ export function VoiceStudioAgent() {
         aria-label={t('repairAgent.title')}
         title={t('repairAgent.title')}
         onClick={() => setOpen(true)}
-        className="fixed right-3 top-1/2 z-40 size-11 -translate-y-1/2 rounded-full border border-sidebar-border bg-sidebar text-sidebar-foreground shadow-lg"
+        data-slot="agent-launcher"
+        // A slim tab in the window's edge gutter: a floating round button here
+        // covered whatever a right-hand pane showed at mid-height (take
+        // details, settings rows). It widens to the full button on hover/focus.
+        className="fixed right-0 top-1/2 z-40 h-12 w-2.5 -translate-y-1/2 justify-start overflow-hidden rounded-l-lg rounded-r-none border border-r-0 border-sidebar-border bg-sidebar px-0 text-sidebar-foreground opacity-80 shadow-lg transition-[width,opacity] duration-150 hover:w-10 hover:opacity-100 focus-visible:w-10 focus-visible:opacity-100 motion-reduce:transition-none [&>svg]:ml-2.5 [&>svg]:shrink-0"
       >
         <BotIcon />
         {running && <span className="absolute right-1 top-1 size-2 rounded-full bg-primary" />}
@@ -411,9 +424,30 @@ export function VoiceStudioAgent() {
                   <FolderOpenIcon />
                   {t('settings.models_dir_choose')}
                 </Button>
-                <span className="truncate" title={workspace.path}>
-                  {workspace.path || t('repairAgent.noSource')}
-                </span>
+                {workspace.path && (
+                  <span className="truncate" title={workspace.path}>
+                    {workspace.path}
+                  </span>
+                )}
+              </div>
+            )}
+            {source && workspaceProblem && (
+              <p role="alert" className="text-xs text-destructive">
+                {
+                  {
+                    installed_app: t('repairAgent.sourceRejected.installed_app'),
+                    not_git: t('repairAgent.sourceRejected.not_git'),
+                    not_voicestudio: t('repairAgent.sourceRejected.not_voicestudio'),
+                    read_only: t('repairAgent.sourceRejected.read_only'),
+                  }[workspaceProblem]
+                }
+              </p>
+            )}
+            {source && !workspace.available && (
+              <div className="flex flex-col items-start gap-1 text-xs">
+                <p>{t('repairAgent.noSource')}</p>
+                <code className="select-all break-all">{CLONE_COMMAND}</code>
+                <ExternalLink href={REPAIR_DOCS_URL}>{t('common.learn_more')}</ExternalLink>
               </div>
             )}
             <details>
@@ -497,6 +531,7 @@ export function VoiceStudioAgent() {
         )}
         <div className="agent-workspace-input">
           <textarea
+            dir="auto"
             aria-label={t('agentWorkspace.placeholder')}
             placeholder={t('agentWorkspace.placeholder')}
             value={conversation.draft}

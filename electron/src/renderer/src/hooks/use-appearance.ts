@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { onStorageKey } from '@/lib/storage-events';
 
 type Appearance = { font: 'inter' | 'system'; scale: number; glass: boolean };
 export const appearanceScales = [90, 100, 110, 125] as const;
@@ -31,6 +32,15 @@ function apply() {
   );
 }
 apply();
+onStorageKey(key, () => {
+  try {
+    current = parseAppearance(localStorage.getItem(key));
+  } catch {
+    return;
+  }
+  apply();
+  listeners.forEach((listener) => listener());
+});
 function subscribe(listener: () => void) {
   listeners.add(listener);
   return () => {

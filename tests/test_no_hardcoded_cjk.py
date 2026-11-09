@@ -1,169 +1,156 @@
-"""Hard rule: no hardcoded non-English (CJK) *user-facing* text outside the
-translation layer.
+"""Keep CJK user-facing text in translation catalogs.
 
-UI strings must go through i18n (``electron/src/shared/i18n/locales/*.json`` via
-``t('...')``); native language names live in ``electron/src/shared/i18n/index.ts``.
-This guards against contributors hardcoding Chinese/Japanese/Korean display
-strings in component or app code (see CLAUDE.md > Conventions).
-
-Functional CJK is permitted and tracked in ``_ALLOWED_FILES`` below:
-text-processing regexes, model/engine vocabulary & identifiers, localized
-error matching, demo/eval data, and test fixtures. To add a new legitimate
-functional-CJK file, extend ``_ALLOWED_FILES`` with a one-line justification.
+UI copy must use i18n ``t('...')`` keys backed by locale JSON. Native language
+names belong in ``electron/src/shared/i18n/index.ts``. Functional CJK may be
+allowlisted below, with a justification for every file.
 """
+from __future__ import annotations
+
 import os
-import re
 from pathlib import Path
+import re
+import subprocess
 
 import pytest
 
-_REPO = Path(__file__).resolve().parents[1]
-
-# CJK punctuation, kana, CJK Ext-A, CJK unified ideographs, hangul, and
-# fullwidth forms. (This enforcement file lives under tests/, which is
-# allowlisted, so its own range literals don't trip the check.)
-_CJK = re.compile(
-    "[　-〿぀-ヿ㐀-䶿一-鿿가-힯＀-￯]"
-)
-
-_SKIP_DIRS = {
-    ".git", "node_modules", "dist", "build", "__pycache__",
-    ".venv", "venv", "target", ".specify", ".claude", ".pytest_cache",
-}
-_SKIP_EXT = {
+_ROOT = Path(__file__).resolve().parents[1]
+_CJK = re.compile(r"[\u3000-\u303f\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af\uff00-\uffef]")
+_SKIP_EXTENSIONS = {
+    # images
     ".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp", ".svg",
-    ".woff", ".woff2", ".ttf", ".otf", ".pdf", ".mp3", ".wav",
-    ".mp4", ".lock", ".bin", ".onnx", ".safetensors",
+    # fonts
+    ".woff", ".woff2", ".ttf", ".otf",
+    # documents
+    ".pdf",
+    # audio / video
+    ".mp3", ".wav", ".mp4",
+    # lockfiles
+    ".lock",
+    # model weights
+    ".bin", ".onnx", ".safetensors",
 }
-
-# The translation layer: locale JSON + native language names (LANGUAGES).
-# Plus design-spec docs under docs/specs/, which legitimately quote functional
-# CJK (test-fixture descriptions, model/engine identifiers like CosyVoice
-# speaker IDs, multilingual sample text) — they are documentation, not shipped
-# UI strings, so they belong on the same footing as the allowlisted docs below.
-_ALLOWED_PREFIXES = ("electron/src/shared/i18n/", "electron/src/renderer/src/i18n/", "docs/specs/")
-
-# Functional / data / documentation files where CJK is intentional and required.
+_SKIP_DIRECTORIES = {
+    ".git", "node_modules", "dist", "build", "__pycache__", ".venv", "venv",
+    "target", ".specify", ".claude", ".pytest_cache",
+}
+_ALLOWED_PREFIXES = (
+    "electron/src/shared/i18n/",
+    "electron/src/renderer/src/i18n/",
+    "docs/specs/",
+    "docs/readme/",  # translated READMEs and their native language-switcher links
+)
 _ALLOWED_FILES = {
-    "electron/src/main/blank-window-guard.ts",
-    # Documentation & translated docs
-    "README.md",                                  # native language-switcher link
-    "README_CN.md",                               # Chinese README (a translation)
-    "README_JA.md",                               # Japanese README (a translation)
-    "docs/data_preparation.md",                   # multilingual example payloads
-    "docs/voice-design.md",                       # EN/CJK attribute mapping table
-    "docs/engines/omnivoice.md",                  # pinyin pronunciation-control example (functional CJK)
-    "docs/superpowers/specs/2026-05-31-voice-gallery-design.md",  # Chinese-dialect taxonomy reference table
-    "examples/README.md",                         # multilingual example payloads
-    # Text-processing (CJK punctuation inside sentence/clause-splitting regexes)
-    "backend/services/segmentation.py",
-    "backend/services/sentence_chunker.py",       # streaming-TTS terminator tables (Patter port, Wave 1.4)
-    "backend/services/subtitle_segmenter.py",
-    "backend/services/text_normalization.py",  # spoken range word per language ("20~30" must not read as one number)
-    "backend/core/http_headers.py",               # docstring quotes the CJK filename that 500'd the header (#1262)
-    "electron/src/shared/components/DubSegmentRow.jsx",
-    "electron/src/shared/components/StoriesEditor.jsx",
-    "electron/src/shared/utils/voiceInstruct.js",
-    "omnivoice/utils/text.py",
-    # Model / engine vocabulary & identifiers (the model/engine requires these)
-    "backend/services/tts_backend.py",            # CosyVoice speaker IDs
-    "backend/core/personalities.py",              # Chinese-dialect showcase preset
-    "backend/core/archetypes.py",                 # Chinese-dialect + JA/KO multilingual preview sample text
-    "backend/core/describe_voice.py",             # pinyin → Chinese-dialect token mapping (model vocabulary, #317)
-    "electron/src/shared/utils/constants.js",            # Chinese-dialect picker names
-    "omnivoice/models/omnivoice.py",              # instruct-mode vocabulary
-    "omnivoice/utils/duration.py",
-    "omnivoice/utils/voice_design.py",            # EN/CJK attribute maps
-    "backend/migrations/versions/0007_rebuild_poisoned_design_instruct.py",  # frozen CJK dialect-tag snapshot for the instruct heal (#564)
-    # Localized error matching (classify OS errors reported in Chinese, #72)
-    "electron/src/shared/utils/errorDocsMap.ts",
-    # WER evaluation data
-    "omnivoice/eval/wer/fleurs.py",
-    "omnivoice/eval/wer/punctuations.lst",
-    # CLI demo (bilingual demo labels; not the shipped app)
-    "omnivoice/cli/demo.py",
-    # Demo-audio generation scripts (multilingual TTS sample text)
-    "scripts/build_demos.sh",
-    "scripts/build_dub_demo.sh",
-    "scripts/dub_demo_scripts.json",              # the five dub paragraphs + their native language labels
-    # Rendered dubbing-demo bundle: the demo IS a dub into Chinese and
-    # Japanese, so its subtitles and manifest carry that text as data. Not UI
-    # strings — nothing here is translated, it is the content being shown.
-    "backend/assets/samples/demo/dubbing/dubbed_zh.srt",
-    "backend/assets/samples/demo/dubbing/dubbed_ja.srt",
-    "backend/assets/samples/demo/dubbing/manifest.json",
+    "mobile/contract/tts/zipvoice-lexicon.txt",  # Pinned multilingual pronunciation data, not UI copy.
+    "electron/src/main/blank-window-guard.ts",  # Matches localized window text.
+    "README.md",  # Presents translated project copy.
+    "docs/data_preparation.md",  # Includes multilingual data examples.
+    "docs/voice-design.md",  # Documents multilingual voice prompts.
+    "docs/engines/omnivoice.md",  # Documents engine vocabulary.
+    "docs/superpowers/specs/2026-05-31-voice-gallery-design.md",  # Preserves design examples.
+    "examples/README.md",  # Contains multilingual examples.
+    "backend/services/segmentation.py",  # CJK-aware segmentation rules.
+    "backend/services/sentence_chunker.py",  # CJK sentence-boundary logic.
+    "backend/services/subtitle_segmenter.py",  # CJK subtitle segmentation.
+    "backend/services/text_normalization.py",  # CJK normalization patterns.
+    "backend/core/http_headers.py",  # Parses localized HTTP filenames.
+    "electron/src/shared/components/DubSegmentRow.jsx",  # Functional language-name data.
+    "electron/src/shared/components/StoriesEditor.jsx",  # Functional multilingual samples.
+    "electron/src/shared/utils/voiceInstruct.js",  # CJK instruction vocabulary.
+    "omnivoice/utils/text.py",  # Core multilingual text processing.
+    "backend/services/tts_backend.py",  # Engine speaker vocabulary.
+    "backend/core/personalities.py",  # Model prompt vocabulary.
+    "backend/core/archetypes.py",  # Voice archetype vocabulary.
+    "backend/core/describe_voice.py",  # Voice-description vocabulary.
+    "electron/src/shared/utils/constants.js",  # Engine language constants.
+    "omnivoice/models/omnivoice.py",  # Model language tokens.
+    "omnivoice/utils/duration.py",  # CJK duration rules.
+    "omnivoice/utils/voice_design.py",  # Voice-design model vocabulary.
+    "backend/migrations/versions/0007_rebuild_poisoned_design_instruct.py",  # Migrates model prompts.
+    "electron/src/shared/utils/errorDocsMap.ts",  # Recognizes localized errors.
+    "omnivoice/eval/wer/fleurs.py",  # Multilingual evaluation data.
+    "omnivoice/eval/wer/punctuations.lst",  # Evaluation punctuation corpus.
+    "omnivoice/cli/demo.py",  # Multilingual demo content.
+    "scripts/build_demos.sh",  # Builds multilingual demos.
+    "scripts/build_dub_demo.sh",  # Builds localized dub samples.
+    "scripts/dub_demo_scripts.json",  # Stores multilingual demo scripts.
+    "backend/assets/samples/demo/dubbing/dubbed_zh.srt",  # Chinese demo subtitles.
+    "backend/assets/samples/demo/dubbing/dubbed_ja.srt",  # Japanese demo subtitles.
+    "backend/assets/samples/demo/dubbing/manifest.json",  # Multilingual demo metadata.
 }
 
 
 def _is_allowed(rel: str) -> bool:
-    if rel in _ALLOWED_FILES:
-        return True
-    if any(rel.startswith(p) for p in _ALLOWED_PREFIXES):
-        return True
-    base = os.path.basename(rel)
-    # Test fixtures legitimately carry multilingual sample text.
-    if ".test." in base or base.startswith("test_") or base.endswith("_test.py"):
-        return True
-    parts = rel.split("/")
-    if "tests" in parts or "test" in parts:
-        return True
-    return False
+    path = Path(rel)
+    basename = path.name
+    return (
+        rel in _ALLOWED_FILES
+        or rel.startswith(_ALLOWED_PREFIXES)
+        or ".test." in basename
+        or basename.startswith("test_")
+        or basename.endswith("_test.py")
+        or any(part in {"tests", "test"} for part in path.parts)
+    )
 
 
-def _iter_source_files():
-    # Scan only git-TRACKED files: the rule governs the committed codebase,
-    # not local untracked/vendored experiments (which also never reach CI).
-    import subprocess
+def _tracked_files() -> list[str]:
     try:
-        out = subprocess.run(
-            ["git", "ls-files", "-z"],
-            cwd=str(_REPO), capture_output=True, text=True, timeout=30, check=True,
-        ).stdout
-        names = [n for n in out.split("\0") if n]
-        if names:
-            for n in names:
-                if os.path.splitext(n)[1].lower() in _SKIP_EXT:
-                    continue
-                yield _REPO / n
-            return
-    except Exception:
+        result = subprocess.run(
+            ["git", "ls-files", "-z"], cwd=_ROOT, capture_output=True,
+            check=True, timeout=30,
+        )
+        files = [item.decode() for item in result.stdout.split(b"\0") if item]
+        if files:
+            return files
+    except (OSError, subprocess.SubprocessError, UnicodeDecodeError):
         pass
-    # Fallback (not a git checkout): filesystem walk.
-    for dirpath, dirnames, filenames in os.walk(_REPO):
-        dirnames[:] = [d for d in dirnames if d not in _SKIP_DIRS]
-        for name in filenames:
-            if os.path.splitext(name)[1].lower() in _SKIP_EXT:
-                continue
-            yield Path(dirpath) / name
+
+    files = []
+    for root, dirs, names in os.walk(_ROOT):
+        dirs[:] = [name for name in dirs if name not in _SKIP_DIRECTORIES]
+        base = Path(root)
+        files.extend(str((base / name).relative_to(_ROOT)) for name in names)
+    return files
 
 
 def test_no_hardcoded_cjk_outside_locales():
-    offenders = {}
-    for path in _iter_source_files():
-        rel = path.relative_to(_REPO).as_posix()
-        if _is_allowed(rel):
+    offenders: dict[str, list[tuple[int, str]]] = {}
+    for rel in _tracked_files():
+        path = _ROOT / rel
+        if _is_allowed(rel) or path.suffix.lower() in _SKIP_EXTENSIONS:
             continue
         try:
             text = path.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
+        except (OSError, UnicodeDecodeError):
             continue
         hits = [
-            (i + 1, line.strip()[:80])
-            for i, line in enumerate(text.splitlines())
+            (number, line.strip()[:80])
+            for number, line in enumerate(text.splitlines(), 1)
             if _CJK.search(line)
         ]
         if hits:
             offenders[rel] = hits
 
-    if offenders:
-        msg = [
-            "Hardcoded non-English (CJK) text found outside the translation layer.",
-            "Move user-facing strings into electron/src/shared/i18n/locales/*.json (or use English).",
-            "If functional CJK (regex/model-vocab/data/fixture), add the file to _ALLOWED_FILES here.",
-            "",
-        ]
-        for rel, hits in sorted(offenders.items()):
-            msg.append(f"  {rel}:")
-            for ln, snippet in hits[:3]:
-                msg.append(f"    L{ln}: {snippet}")
-        pytest.fail("\n".join(msg))
+    details = [
+        "Hardcoded CJK was found outside the translation layer.",
+        "Move user-facing strings into the locale JSON catalogs.",
+        "For functional CJK, extend _ALLOWED_FILES with a justification.",
+    ]
+    for rel in sorted(offenders):
+        details.append(rel)
+        details.extend(f"  L{line}: {snippet}" for line, snippet in offenders[rel][:3])
+    assert not offenders, "\n".join(details)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "electron/src/shared/i18n/locales/zh-CN.json",
+        "widget.test.ts",
+        "test_widget.py",
+        "widget_test.py",
+        "pkg/tests/widget.py",
+        "pkg/test/widget.py",
+    ],
+)
+def test_is_allowed_patterns(path):
+    assert _is_allowed(path)

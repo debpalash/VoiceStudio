@@ -1,5 +1,5 @@
-import { SponsorFooter } from './sponsor-footer';
 import { WorkspaceSidebar } from './workspace-sidebar';
+import { ContextSidebar } from './context-sidebar';
 import { CommandPalette } from '@/components/command-palette';
 import { Outlet, useRouterState } from '@tanstack/react-router';
 import { BackendGate } from '../backend-gate';
@@ -8,7 +8,8 @@ import { isMac } from '../bridge';
 import { cn } from '@/lib/utils';
 import { useBackendStatus } from '@/hooks/use-backend-status';
 import { isBackendReachable } from '@shared/utils/backendStage';
-import { SystemNotifications } from './system-notifications';
+import { AccountCorner } from './account-corner';
+import { NowPlayingDock } from '@/components/now-playing-dock';
 
 export function AppShell() {
   const backend = useBackendStatus();
@@ -16,7 +17,10 @@ export function AppShell() {
     select: (state) => state.location.pathname,
   });
   const shellOnly = pathname.startsWith('/settings') || pathname === '/pro';
-  const macWorkspace = isMac() && !shellOnly;
+  // Settings pads its own header (account-corner-safe); every other page, /pro
+  // included, gets the shared clearance so its search button never sits under
+  // the account corner and notifications bell.
+  const macWorkspace = isMac() && !pathname.startsWith('/settings');
   const SettingsWorkspace = pathname === '/settings/openapi' ? 'div' : 'main';
   return (
     <div
@@ -29,8 +33,6 @@ export function AppShell() {
         {shellOnly ? (
           <>
             <CommandPalette />
-            {/* The main sidebar (navigation, library, status) stays where it is
-                on Settings too, so the app never swaps its left column. */}
             <WorkspaceSidebar />
             <SettingsWorkspace
               data-slot="workspace-content"
@@ -47,6 +49,7 @@ export function AppShell() {
           <BackendGate repairDock={<RepairAgentDock />}>
             <CommandPalette />
             <WorkspaceSidebar />
+            <ContextSidebar />
             <main
               data-slot="workspace-content"
               className="@container relative flex min-w-0 flex-1 flex-col overflow-hidden"
@@ -54,22 +57,16 @@ export function AppShell() {
               <div className="min-h-0 flex-1 overflow-hidden">
                 <Outlet />
               </div>
-              <SponsorFooter />
               <RepairAgentDock />
             </main>
           </BackendGate>
         )}
       </div>
-      {/* Native drag-region hit testing follows document order. Keep this
-          no-drag control after every workspace titlebar, outside BackendGate. */}
-      {macWorkspace && (
-        <div
-          data-slot="macos-system-notifications"
-          className="app-no-drag fixed top-3.5 right-3.5 z-50"
-        >
-          <SystemNotifications enabled={isBackendReachable(backend.stage)} titlebar />
-        </div>
-      )}
+      <NowPlayingDock />
+      {/* Native drag-region hit testing follows document order. Keep these
+          no-drag controls after every workspace titlebar, outside BackendGate. */}
+      {/* Top-right corner on every page and platform: account, then the notifications bell. */}
+      <AccountCorner notificationsEnabled={isBackendReachable(backend.stage)} />
     </div>
   );
 }

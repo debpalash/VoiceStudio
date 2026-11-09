@@ -14,13 +14,14 @@ Design / safety
   validated against the engine's taxonomy and *dropped* if invalid (so a bad
   community entry can't reproduce issue #89). Audio URLs are restricted to an
   allow-list of hosts (jsDelivr / GitHub) — no arbitrary SSRF target.
-* **Reuse.** "Use a preset" renders through the same path as archetypes
-  (one TTS code path).
+* **Deferred synthesis.** "Use a preset" stores its validated recipe without
+  loading a model; preview and generation keep the single TTS code path.
 """
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import datetime
 import hashlib
 import json
 import logging
@@ -59,6 +60,8 @@ _SOURCE_RE = re.compile(
 )  # owner/repo only
 _ITEM_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_MAX_CREDIT_CHARS = 120
 
 # A gallery open may touch this loader several times (grid, preview, use). Keep
 # a successful response for six hours, then revalidate it once. On a network
@@ -232,6 +235,18 @@ def validate_item(raw: dict) -> Optional[dict]:
         facets.setdefault("whisper", False)
         facets.setdefault("lang", it["language"])
     it["facets"] = facets
+    # Credit fields are rendered and string-matched by every client; a remote
+    # number or object here must not reach them as anything but absent.
+    for key in ("author", "license"):
+        value = it.pop(key, None)
+        if isinstance(value, str) and value.strip():
+            it[key] = value.strip()[:_MAX_CREDIT_CHARS]
+    # ``added_at`` drives the gallery's "new" badge. It is remote text, so it
+    # survives only as a real ISO date; anything else is dropped, not guessed.
+    added_at = it.pop("added_at", None)
+    if isinstance(added_at, str) and _DATE_RE.fullmatch(added_at):
+        with contextlib.suppress(ValueError):
+            it["added_at"] = datetime.date.fromisoformat(added_at).isoformat()
     it.setdefault("icon", archetypes._USE_ICON.get(it["use_case"], "Sparkles"))
     it["is_community"] = it.get("source") != "starter"
     it["preview_url"] = f"/community/items/{it['id']}/preview"
@@ -371,6 +386,32 @@ def _fetch_manifest(
         return None
 
 
+def _pack_index(packs: list) -> dict[str, dict]:
+    """Packs the gallery can offer as filters, keyed by pack id.
+
+    Manifest packs are remote and unvalidated: only a string id and name
+    survive, membership is ``(source repo, item id)`` so a pack can only claim
+    items from its own repo, and a pack id two sources share stays one choice.
+    """
+    out: dict[str, dict] = {}
+    for p in packs:
+        pid, name = p.get("id"), p.get("name")
+        if not (isinstance(pid, str) and _ITEM_ID_RE.fullmatch(pid)):
+            continue
+        if not (isinstance(name, str) and name.strip()):
+            continue
+        entry = out.setdefault(pid, {"id": pid, "name": name.strip()[:80], "members": set()})
+        refs = p.get("item_ids")
+        if isinstance(refs, list):
+            entry["members"].update(
+                (p.get("_source_repo"), ref) for ref in refs if isinstance(ref, str)
+            )
+        description = p.get("description")
+        if isinstance(description, str) and description.strip():
+            entry.setdefault("description", description.strip()[:300])
+    return out
+
+
 def _load(refresh: bool) -> tuple[list[str], list, list, bool]:
     srcs = configured_sources()
     manifests = [(s, _fetch_manifest(s, refresh)) for s in srcs]
@@ -399,14 +440,30 @@ def community_items(
     item_type: Optional[str] = Query(None, alias="type"),
     lang: Optional[str] = None,
     q: Optional[str] = None,
+    pack: Optional[str] = None,
     limit: int = Query(60, ge=1, le=500),
     offset: int = Query(0, ge=0),
     refresh: bool = Query(False),
 ):
-    _, items, _, _ = _load(refresh)
+    _, items, raw_packs, _ = _load(refresh)
+    loaded = {(it.get("_source_repo"), it["id"]) for it in items}
+    packs = _pack_index(raw_packs)
+    for entry in packs.values():
+        entry["members"] &= loaded
+    # Facets describe the whole catalogue, not the filtered page, so the
+    # filter controls never lose their own options.
+    pack_options = [
+        {key: value for key, value in entry.items() if key != "members"}
+        | {"count": len(entry["members"])}
+        for entry in packs.values() if entry["members"]
+    ]
+    languages = sorted({it["language"] for it in items if it.get("language")})
+    members = packs[pack]["members"] if pack in packs else set()
 
     def keep(it: dict) -> bool:
         f = it.get("facets", {})
+        if pack and (it.get("_source_repo"), it["id"]) not in members:
+            return False
         if use_case and it.get("use_case") != use_case:
             return False
         if gender and f.get("gender") != gender:
@@ -420,7 +477,11 @@ def community_items(
         return True
 
     items = [it for it in items if keep(it)]
-    return {"total": len(items), "limit": limit, "offset": offset, "items": items[offset:offset + limit]}
+    return {
+        "total": len(items), "limit": limit, "offset": offset,
+        "items": items[offset:offset + limit],
+        "packs": pack_options, "languages": languages,
+    }
 
 
 @router.get("/community/submit-url")
@@ -752,7 +813,9 @@ def _is_materialized_community_row(row, item: dict) -> bool:
     return bool(
         row["kind"] == "design"
         and row["seed"] == 42
-        and row["ref_audio_path"] == _community_profile_audio_filename(row["id"], item)
+        and row["ref_audio_path"] in (
+            None, "", _community_profile_audio_filename(row["id"], item),
+        )
         and row["instruct"] == item["instruct"]
         and row["language"] == item.get("language", "Auto")
         and row["ref_text"] == (item.get("sample_script") or "")
@@ -799,7 +862,8 @@ def _existing_community_profile(conn, item: dict, personality: str):
 
 
 def _heal_existing_profile(
-    conn, row, item: dict, ref_text: str, personality: str, audio_filename: str,
+    conn, row, item: dict, ref_text: str, personality: str,
+    audio_filename: Optional[str],
 ) -> None:
     kind, instruct, vd_states, seed = _profile_fields(item)
     conn.execute(
@@ -812,13 +876,58 @@ def _heal_existing_profile(
     )
 
 
+def _save_community_preset(item: dict, name: Optional[str]) -> dict:
+    """Persist a design recipe without loading the synthesis model."""
+    from core import event_bus
+    from core.db import db_conn
+
+    personality = _community_personality(item)
+    ref_text = item.get("sample_script") or ""
+    profile_name = (name or item["name"]).strip() or item["name"]
+    with db_conn() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        existing = _existing_community_profile(conn, item, personality)
+        if existing is not None:
+            legacy_audio_is_current = (
+                existing["ref_audio_path"] == f"{existing['id']}.wav"
+                and is_playable_wav(_stored_profile_audio(existing["ref_audio_path"]))
+            )
+            audio_filename = (
+                existing["ref_audio_path"]
+                if _community_audio_is_current(existing, item, ref_text)
+                or legacy_audio_is_current
+                else None
+            )
+            _heal_existing_profile(
+                conn, existing, item, ref_text, personality, audio_filename,
+            )
+            result = {"profile_id": existing["id"], "name": existing["name"]}
+            action = "updated"
+        else:
+            profile_id = str(uuid.uuid4())[:8]
+            kind, instruct, vd_states, seed = _profile_fields(item)
+            conn.execute(
+                "INSERT INTO voice_profiles "
+                "(id, name, ref_audio_path, ref_text, instruct, language, seed, personality, "
+                "created_at, kind, vd_states) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    profile_id, profile_name, ref_text, instruct,
+                    item.get("language", "Auto"), seed, personality,
+                    time.time(), kind, vd_states,
+                ),
+            )
+            result = {"profile_id": profile_id, "name": profile_name}
+            action = "created"
+    event_bus.emit("profiles", {"action": action, "id": result["profile_id"]})
+    return result
+
+
 @router.post("/community/items/{item_id}/use")
 async def community_use(item_id: str, name: Optional[str] = Query(None)):
     """Materialize a community item into a reusable voice profile.
 
-    Preset → render through the archetype engine. Voice → download the
-    (host-allow-listed, SHA-256-verified) reference clip. Both create a
-    ``voice_profiles`` row usable everywhere voices are picked.
+    Preset → save its recipe without synthesis. Voice → download the
+    (host-allow-listed, SHA-256-verified) reference clip.
     """
     _, items, _, _ = await asyncio.to_thread(_load, False)
     item = _find_item(items, item_id)
@@ -826,7 +935,9 @@ async def community_use(item_id: str, name: Optional[str] = Query(None)):
     canonical = _canonical_archetype(item)
     if canonical is not None:
         from api.routers.archetypes import use_archetype
-        return await use_archetype(canonical["id"], name)
+        return await asyncio.to_thread(use_archetype, canonical["id"], name)
+    if item["type"] == "preset":
+        return await asyncio.to_thread(_save_community_preset, item, name)
 
     from core import event_bus
     from core.db import db_conn

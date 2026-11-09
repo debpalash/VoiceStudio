@@ -1,8 +1,8 @@
-import { isChapterLine } from './storyExport';
-
 // Sentence-aware splitter for the "Paste & auto-split" panel. Walks the text
 // and breaks at the closest sentence boundary that keeps each chunk under
 // `maxChars`. Falls back to whitespace, then to the hard cap.
+import { isChapterLine } from './storyExport';
+
 export function splitIntoChunks(text, maxChars) {
   const out = [];
   const clean = String(text || '')
@@ -40,54 +40,56 @@ export function splitIntoChunks(text, maxChars) {
   return out.filter(Boolean);
 }
 
-// Split presets for the Paste & Split panel. A storybook read by one narrator
-// wants far coarser lines than a screenplay: every line is an independent
-// generation (prosody resets, a join in the render), so "one line per
-// sentence" is what makes a book feel like a string of separate takes.
-//   sentences  — the sentence-aware splitter above, capped at `maxChars`.
-//   paragraphs — one line per paragraph (blank-line separated; falls back to
-//                single newlines when the text has no blank lines).
-//   chapters   — one line per chapter body, split only at `# ` headings; the
-//                heading itself stays its own line so it renders as a chapter
-//                marker. Paragraph breaks inside a body are kept (the renderer
-//                turns them into paragraph gaps).
-// A chapter heading is always its own line in every mode. "Heading" means what
-// the renderer means (`isChapterLine`: a non-empty H1) — `## Scene` or a bare
-// `#` is body text there, so it must stay body text here.
 export const SPLIT_MODES = ['sentences', 'paragraphs', 'chapters'];
 export const DEFAULT_SPLIT_MODE = 'paragraphs';
+// Character cap per produced line, by mode.
 export const DEFAULT_SPLIT_MAX = { sentences: 180, paragraphs: 500, chapters: 500 };
 
-function splitHeadings(text) {
-  // → [{ heading: string|null, body: string }]
-  const sections = [];
-  let current = { heading: null, body: [] };
-  for (const line of String(text || '').split(/\r\n|\r|\n/)) {
-    if (isChapterLine(line)) {
-      sections.push(current);
-      current = { heading: line.trim(), body: [] };
-    } else {
-      current.body.push(line);
+// Trim each piece and keep only the ones with something left.
+function keepFilled(pieces) {
+  return pieces.map((piece) => piece.trim()).filter((piece) => piece.length > 0);
+}
+
+// Walk the lines once, starting a fresh block at every chapter heading.
+// Each block is { heading, body } where body is the trimmed text under it.
+function toBlocks(text) {
+  const lines = String(text || '').split(/\r\n|\r|\n/);
+  const blocks = [];
+  let open = { heading: null, rows: [] };
+  for (const row of lines) {
+    if (!isChapterLine(row)) {
+      open.rows.push(row);
+      continue;
     }
+    blocks.push(open);
+    open = { heading: row.trim(), rows: [] };
   }
-  sections.push(current);
-  return sections.map((sec) => ({ heading: sec.heading, body: sec.body.join('\n').trim() }));
+  blocks.push(open);
+  return blocks.map(({ heading, rows }) => ({ heading, body: rows.join('\n').trim() }));
 }
 
-function splitParagraphs(body) {
-  let parts = body.split(/\n[ \t]*\n+/);
-  if (parts.length === 1 && body.includes('\n')) parts = body.split('\n');
-  return parts.map((part) => part.trim()).filter(Boolean);
+// Blank-line paragraphs; a lone block with hard line breaks degrades to one entry per line.
+function byParagraph(body) {
+  const paras = keepFilled(body.split(/\n[ \t]*\n+/));
+  return paras.length === 1 && body.indexOf('\n') >= 0 ? keepFilled(body.split('\n')) : paras;
 }
 
+const BODY_SPLITTERS = {
+  chapters: (body) => [body],
+  paragraphs: byParagraph,
+};
+
+/**
+ * Turn pasted text into script lines for a preset: 'sentences' (size-capped),
+ * 'paragraphs' (the default) or 'chapters' (a whole chapter body per entry).
+ * A chapter heading always becomes a line of its own.
+ */
 export function splitStoryText(text, mode = DEFAULT_SPLIT_MODE, maxChars) {
-  const out = [];
-  for (const { heading, body } of splitHeadings(text)) {
-    if (heading) out.push(heading);
-    if (!body) continue;
-    if (mode === 'chapters') out.push(body);
-    else if (mode === 'paragraphs') out.push(...splitParagraphs(body));
-    else out.push(...splitIntoChunks(body, maxChars ?? DEFAULT_SPLIT_MAX.sentences));
-  }
-  return out;
+  const splitBody =
+    BODY_SPLITTERS[mode] ??
+    ((body) => splitIntoChunks(body, maxChars ?? DEFAULT_SPLIT_MAX.sentences));
+  return toBlocks(text).flatMap(({ heading, body }) => [
+    ...(heading ? [heading] : []),
+    ...(body ? splitBody(body) : []),
+  ]);
 }

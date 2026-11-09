@@ -17,9 +17,10 @@ pins `transformers>=5.3` — the same isolation primitive used by
 ## Platform support
 
 - **Linux / macOS only.** dots.tts's upstream package declares Linux and
-  macOS classifiers and has **no Windows install path**. On Windows the
-  engine reports itself unavailable in **Model Catalogue** with a clear
-  reason — run VoiceStudio under WSL2 or use a Linux/macOS host.
+  macOS classifiers and has **no Windows install path**. On Windows this
+  engine reports itself unavailable in **Model Catalogue**; use the
+  [audio.cpp dots.tts engine](audio-cpp.md#dotstts) (`audiocpp-dots`)
+  instead, which runs the same model natively on Windows, macOS and Linux.
 - **No MPS.** Upstream device selection is CUDA-or-CPU with no Metal branch,
   so on Apple Silicon the official package runs on **CPU** (slow but
   correct). A faster Apple-Silicon path exists only via community MLX ports,
@@ -147,7 +148,8 @@ reference audio whenever a transcript is given, so VoiceStudio drops a stray
 
 ### `dots.tts is not supported on Windows ...`
 
-Upstream is Linux/macOS only. Use WSL2 or a Linux/macOS host.
+Upstream is Linux/macOS only. Use the [audio.cpp dots.tts engine](audio-cpp.md#dotstts),
+which runs natively on Windows.
 
 ### `dots.tts venv not found. Set OMNIVOICE_DOTS_TTS_DIR ...`
 
@@ -165,7 +167,9 @@ which conflicts with the parent's `transformers>=5.3`). For why that adds
 disk and how uv keeps the cost down, see
 [Engine venvs & disk usage](disk-usage.md).
 
-The upstream runtime selects CUDA or CPU internally. Automatic precision follows
+The upstream runtime selects CUDA or CPU internally; a ROCm (HIP) torch in the
+sidecar venv counts as CUDA, so on Linux ROCm the one-click install takes the
+ROCm build of the torch version upstream's constraints pin. Automatic precision follows
 that selection: bfloat16 on CUDA, float32 otherwise, including XPU/NPU/MPS hosts
 where this runtime executes on CPU. `OMNIVOICE_DOTS_TTS_PRECISION` remains an
 explicit override. If the CUDA availability probe raises, the automatic precision

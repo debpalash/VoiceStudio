@@ -19,7 +19,7 @@ def render_dub(monkeypatch, tmp_path):
     events = []
     generated = []
     async def resolve():
-        return 'omnivoice', SimpleNamespace(target='local', remote=False), backend
+        return 'omnivoice', backend
     def generate(**kwargs):
         generated.append(kwargs)
         return output[0]()

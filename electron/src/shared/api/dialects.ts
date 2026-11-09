@@ -50,3 +50,41 @@ export function dialectLabel(dialect: string, uiLocale: string = 'en'): string {
     return region;
   }
 }
+
+/** The fields of a `/dub/translate` reply that decide whether the dialect counted. */
+export interface DialectOutcome {
+  dialect?: string;
+  dialect_applied?: boolean;
+  /** The variant the engine wrote instead, when it has only one (#3143). */
+  dialect_used?: string;
+  cinematic_skipped?: string;
+}
+
+/**
+ * True when the user asked for a dialect and the translation did not honour it.
+ *
+ * The engine decides this, not the client: a dialect is a prompt instruction,
+ * so only an LLM-backed path can act on it. A neural MT model has one code per
+ * language — NLLB's `por_Latn` is simply "Portuguese", with no European variant
+ * to select — so asking it for pt-PT returns whatever its training favoured and
+ * the backend reports `dialect_applied: false` (#2752).
+ *
+ * `=== false` rather than a falsy check on purpose: a backend older than the
+ * flag omits the field, and an absent answer is not a "no".
+ *
+ * The `cinematic_skipped` suppression is the #372 rule. Both notices at once
+ * sends the user in a circle — "pick Cinematic" then "Cinematic needs an LLM" —
+ * so the quality notice, which names the same remedy, speaks for both.
+ *
+ * Shared because the two shells answered this differently: the browser app
+ * raised it and Electron typed the field but never read it, so a dub on the
+ * desktop app silently ignored the dialect the user had picked. One rule, one
+ * place, so they cannot drift apart again.
+ */
+export function dialectWasIgnored(outcome: DialectOutcome | null | undefined): boolean {
+  return (
+    Boolean(outcome?.dialect) &&
+    outcome?.dialect_applied === false &&
+    outcome?.cinematic_skipped !== 'no-llm-configured'
+  );
+}

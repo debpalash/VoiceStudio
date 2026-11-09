@@ -4,10 +4,7 @@ import { useGenerateClone } from '@/hooks/use-generate';
 import { router } from '@/router';
 import { readDraft, replaceRecipe, writeDraft } from '@/features/design/design-draft';
 import defaults from '@shared/utils/firstSound.json';
-import {
-  instructToVdStates,
-  mergeDescribedAttrs,
-} from '@shared/utils/voiceInstruct';
+import { instructToVdStates, mergeDescribedAttrs } from '@shared/utils/voiceInstruct';
 import { pickDesignSeed } from '@shared/utils/seed';
 import { FIRST_SOUND_EVENT } from '@/lib/first-sound';
 

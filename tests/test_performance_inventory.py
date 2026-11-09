@@ -42,12 +42,13 @@ def local_inventory(monkeypatch):
     monkeypatch.setattr(profiles, "_installed_ct2_models", lambda: [
         {"repo_id": "Systran/faster-whisper-tiny"}, {"repo_id": "Systran/faster-whisper-large-v3"},
     ])
+    monkeypatch.setattr(profiles, "_installed_mlx_whisper_model", lambda: None)
     monkeypatch.setattr(sherpa_dictation, "sherpa_available", lambda: (True, "ready"))
     monkeypatch.setattr(profiles, "_installed_dictation_models", lambda: [
         SimpleNamespace(id="sherpa-whisper-tiny", kind="offline-whisper", label="Whisper Tiny"),
         SimpleNamespace(id="sherpa-parakeet-tdt-v3", kind="offline-transducer", label="Parakeet v3"),
     ])
-    monkeypatch.setattr(translation_engines, "is_ready", lambda engine: False)
+    monkeypatch.setattr(translation_engines, "is_ready", lambda engine, **_kw: False)
     monkeypatch.setattr(diarization_runtime, "installed_backends", lambda: set())
     selections = {family: {"engine": "inactive", "model": None} for family in profiles._PERFORMANCE_FAMILIES}
     selections["tts"] = {"engine": "kittentts", "model": "kittentts"}
@@ -59,6 +60,18 @@ def test_real_inventory_prioritizes_omni_and_upgrades_dictation(local_inventory)
     assert plan["families"]["tts"]["selection"]["engine"] == "omnivoice"
     assert plan["families"]["asr"]["selection"]["model"].endswith("tiny")
     assert plan["families"]["dictation"]["selection"]["model"] == "sherpa-parakeet-tdt-v3"
+
+
+def test_metal_host_plans_gpu_whisper_over_its_cpu_only_copy(local_inventory, monkeypatch):
+    monkeypatch.setattr(inventory, "hardware_snapshot", lambda: {
+        "device": "mps", "ram_gb": 32, "vram_gb": 0, "cpu_threads": 12, "probe_ok": True,
+    })
+    monkeypatch.setattr(profiles, "_installed_mlx_whisper_model", lambda: {
+        "repo_id": "mlx-community/whisper-large-v3-mlx",
+    })
+    entry = inventory.profile_plan("quality", {}, local_inventory)["families"]["asr"]
+    assert entry["selection"]["engine"] == "mlx-whisper"
+    assert entry["selection"]["model"] == "mlx-community/whisper-large-v3-mlx"
 
 
 def test_auto_quality_does_not_strand_tts_or_dictation_on_the_smallest_model(local_inventory):
@@ -115,7 +128,7 @@ def test_preserves_selected_omnivoice_isolation(local_inventory, runtime, monkey
 def test_preserves_working_nllb_language_coverage(local_inventory, monkeypatch):
     from services import translation_engines
     local_inventory["translation"] = {"engine": "nllb", "model": "facebook/nllb-200-distilled-600M"}
-    monkeypatch.setattr(translation_engines, "is_ready", lambda engine: engine in {"argos", "nllb"})
+    monkeypatch.setattr(translation_engines, "is_ready", lambda engine, **_kw: engine in {"argos", "nllb"})
     entry = inventory.profile_plan("fast", {}, local_inventory)["families"]["translation"]
     assert entry["reason"] == "kept"
     assert entry["selection"]["engine"] == "nllb"
@@ -180,3 +193,88 @@ def test_runtime_defaults_use_resolved_auto_without_probing(monkeypatch):
     })
     assert profiles.tts_defaults() == {"num_step": 64, "postprocess_output": True}
     assert profiles.asr_decode_defaults() == {"beam_size": 1, "best_of": 1}
+
+
+@pytest.mark.parametrize("verified,expected", [(True, 5), (False, 0)])
+def test_verified_windows_hip_asr_reserves_vram(local_inventory, monkeypatch, verified, expected):
+    monkeypatch.setattr(inventory, "hardware_snapshot", lambda: {
+        "device": "rocm", "ram_gb": 32, "vram_gb": 16, "cpu_threads": 16, "probe_ok": True,
+    })
+    monkeypatch.setattr("core.windows_rocm.ct2.hip_ct2_available", lambda: verified)
+    captured = {}
+    def capture(choice, hardware, candidates, *args, **kwargs):
+        captured.update(candidates)
+        return {"status": "ready"}
+    monkeypatch.setattr(inventory, "make_plan", capture)
+    inventory.profile_plan("max", {}, local_inventory)
+    assert captured["asr"][-1].vram == expected
+
+
+@pytest.mark.parametrize("engine", ["mlx-whisper", "parakeet-mlx", "moonshine"])
+def test_gpu_or_user_picked_asr_engine_is_kept(local_inventory, engine):
+    # Apple Silicon auto-detects MLX Whisper on the GPU; a preset must not pin
+    # CPU faster-whisper over it (or over any engine the user picked).
+    local_inventory["asr"] = {"engine": engine, "model": engine}
+    entry = inventory.profile_plan("max", {}, local_inventory)["families"]["asr"]
+    assert entry["reason"] == "kept"
+    assert entry["selection"]["engine"] == engine
+
+
+def test_ct2_asr_engine_still_follows_the_preset(local_inventory):
+    local_inventory["asr"] = {"engine": "whisperx", "model": "whisperx"}
+    entry = inventory.profile_plan("max", {}, local_inventory)["families"]["asr"]
+    assert entry["reason"] != "kept"
+    assert entry["selection"]["engine"] == "faster-whisper"
+
+
+def test_family_preset_does_not_pin_faster_whisper_over_mlx(monkeypatch):
+    from core import prefs
+    from services import asr_backend
+
+    monkeypatch.delenv("OMNIVOICE_ASR_BACKEND", raising=False)
+    monkeypatch.setattr(prefs, "is_env_shadowed", lambda key: False)
+    monkeypatch.setattr(asr_backend, "active_backend_id", lambda: "mlx-whisper")
+    pinned = Mock()
+    monkeypatch.setattr(prefs, "set_", pinned)
+    monkeypatch.setattr(profiles, "_installed_ct2_models", lambda: [
+        {"repo_id": "Systran/faster-whisper-large-v3", "size_gb": 3.1},
+    ])
+    monkeypatch.setattr(profiles, "_faster_whisper_backend", lambda: "faster-whisper")
+    assert profiles._activate_asr_model("max") is None
+    pinned.assert_not_called()
+
+
+def test_mac_on_mlx_whisper_never_drops_to_cpu_whisper_for_a_small_tier(local_inventory, monkeypatch):
+    # #3349 lets presets pick MLX Whisper; a Mac already on it must not be moved
+    # to the smaller CPU-only CTranslate2 model by the Fast tier.
+    monkeypatch.setattr(inventory, "hardware_snapshot", lambda: {
+        "device": "mps", "ram_gb": 32, "vram_gb": 0, "cpu_threads": 12, "probe_ok": True,
+    })
+    monkeypatch.setattr(profiles, "_installed_mlx_whisper_model", lambda: {
+        "repo_id": "mlx-community/whisper-large-v3-mlx",
+    })
+    local_inventory["asr"] = {"engine": "mlx-whisper", "model": "mlx-community/whisper-large-v3-mlx"}
+    entry = inventory.profile_plan("fast", {}, local_inventory)["families"]["asr"]
+    assert entry["selection"]["engine"] == "mlx-whisper"
+
+
+def test_family_preset_on_mlx_keeps_to_mlx_models(monkeypatch):
+    from core import prefs
+    from services import asr_backend
+
+    monkeypatch.delenv("OMNIVOICE_ASR_BACKEND", raising=False)
+    monkeypatch.setattr(prefs, "is_env_shadowed", lambda key: False)
+    monkeypatch.setattr(asr_backend, "active_backend_id", lambda: "mlx-whisper")
+    pinned = Mock()
+    monkeypatch.setattr(prefs, "set_", pinned)
+    monkeypatch.setattr(profiles, "_installed_ct2_models", lambda: [
+        {"repo_id": "Systran/faster-whisper-base", "size_gb": 0.15},
+    ])
+    monkeypatch.setattr(profiles, "_faster_whisper_backend", lambda: "faster-whisper")
+    monkeypatch.setattr(profiles, "_installed_mlx_whisper_model", lambda: {
+        "repo_id": "mlx-community/whisper-large-v3-mlx", "size_gb": 3.0,
+    })
+    assert profiles._activate_asr_model("fast") == {
+        "engine": "mlx-whisper", "model": "mlx-community/whisper-large-v3-mlx",
+    }
+    pinned.assert_not_called()

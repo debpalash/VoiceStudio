@@ -478,7 +478,8 @@ def test_isolated_sidecar_validates_request_options(monkeypatch):
     monkeypatch.setattr(sidecar, "_get_model", lambda: _Model())
     sidecar._transcribe("/a.wav", False, {}, {"language": "de", "initial_prompt": "p",
                                              "temperature": 0.2, "task": "translate"})
-    assert calls[-1] == {"word_timestamps": False, "language": "de", "initial_prompt": "p",
+    assert calls[-1] == {"word_timestamps": False, "condition_on_previous_text": False,
+                         "language": "de", "initial_prompt": "p",
                          "temperature": 0.2, "task": "translate"}
     for bad in ({"task": "summarise"}, {"temperature": 3}, {"beam_size": 5}, {"language": ""}):
         with pytest.raises(ValueError):

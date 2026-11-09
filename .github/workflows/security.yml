@@ -1,4 +1,6 @@
-# Security scanning — runs on every PR, on push to main, and weekly.
+# Security scanning — runs on PRs, on push to main, and weekly. The secret scan
+# runs on every PR; CodeQL, bandit and the dependency audits are skipped for PRs
+# that only touch docs/, mobile/ or Markdown (see the `changes` job).
 #
 # Complements the CodeRabbit + Greptile app reviews (which fire on PR creation)
 # with deterministic checks:
@@ -42,6 +44,53 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
+  # A pull request whose every changed file is documentation or mobile-only source
+  # cannot change what CodeQL (Python, JS/TS), bandit or the dependency audits
+  # analyse, so those four jobs are skipped for it. The secret scan always runs,
+  # and every push to main, the weekly schedule and manual runs scan everything.
+  # Any doubt (API failure, deleted/renamed file, 3000+ files) means "true".
+  changes:
+    name: Changed paths
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      code: ${{ steps.detect.outputs.code }}
+      runtime: ${{ steps.scope.outputs.runtime }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/ci_scope.py
+      - id: detect
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          code=true
+          if [ "$EVENT" = pull_request ]; then
+            if rows=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[] | [.status, .filename] | @tsv') && [ -n "$rows" ]; then
+              total=$(printf '%s\n' "$rows" | wc -l)
+              status_rc=0
+              printf '%s\n' "$rows" | cut -f1 | sort -u | grep -v -x -E 'added|modified' > /dev/null || status_rc=$?
+              if [ "$total" -lt 3000 ] && [ "$status_rc" -eq 1 ]; then
+                rc=0
+                outside=$(printf '%s\n' "$rows" | cut -f2 | grep -v -P '^(docs/|mobile/|\.github/ISSUE_TEMPLATE/|\.github/[^/]+\.md$|[^/]+\.md$)') || rc=$?
+                [ "$rc" -eq 1 ] && code=false
+              fi
+            fi
+          fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "code jobs: $code"
+
   # ── Secret scanning (gating) ─────────────────────────────────────────────
   # Full-history scan on push to main; PR-diff scan on pull_request (faster,
   # and the action picks the right mode from the event automatically).
@@ -49,14 +98,14 @@ jobs:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # gitleaks needs full history to scan all commits on push events.
           fetch-depth: 0
           # No authed git needed after clone; don't persist GITHUB_TOKEN.
           persist-credentials: false
       - name: gitleaks
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # GITLEAKS_LICENSE is only required for GitHub *organizations*; this is
@@ -65,6 +114,8 @@ jobs:
   # ── CodeQL SAST (Python + JS/TS) ─────────────────────────────────────────
   codeql:
     name: CodeQL (${{ matrix.language }})
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && needs.changes.outputs.runtime != 'false' }}
     runs-on: ubuntu-22.04
     permissions:
       contents: read
@@ -74,12 +125,12 @@ jobs:
       matrix:
         language: [python, javascript-typescript]
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@1190a975f95ce23525efb6a3fc21ea29567c1b52 # v3.38.2
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           languages: ${{ matrix.language }}
           # Both targets are interpreted — no compiled build step needed.
@@ -106,24 +157,26 @@ jobs:
               - "**/*.test.tsx"
 
       - name: Analyze
-        uses: github/codeql-action/analyze@1190a975f95ce23525efb6a3fc21ea29567c1b52 # v3.38.2
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           category: "/language:${{ matrix.language }}"
 
   # ── Python SAST (bandit → SARIF) ─────────────────────────────────────────
   bandit:
     name: Python SAST (bandit)
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && needs.changes.outputs.runtime != 'false' }}
     runs-on: ubuntu-22.04
     permissions:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Setup Python 3.11
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.11"
 
@@ -143,7 +196,7 @@ jobs:
       # continue-on-error: this job is reporting-only. If bandit can't write a
       # SARIF for any reason (no findings dir, pipx hiccup), don't fail the job.
       - name: Upload bandit SARIF
-        uses: github/codeql-action/upload-sarif@1190a975f95ce23525efb6a3fc21ea29567c1b52 # v3.38.2
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         if: always()
         continue-on-error: true
         with:
@@ -153,9 +206,11 @@ jobs:
   # ── Dependency advisories (reporting) ────────────────────────────────────
   dependencies:
     name: Dependency audit
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' && needs.changes.outputs.runtime != 'false' }}
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -166,7 +221,7 @@ jobs:
           cache-dependency-glob: "uv.lock"
 
       - name: Setup Python 3.11
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.11"
 

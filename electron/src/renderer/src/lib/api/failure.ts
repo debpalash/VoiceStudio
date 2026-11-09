@@ -1,5 +1,6 @@
 import i18next from 'i18next';
 import { generationFailureMessage } from '@shared/utils/generationFailureMessage.ts';
+import { ApiError } from './client';
 export interface PublicFailure {
   reason: string;
   errorClass?: string;
@@ -39,4 +40,25 @@ export function publicFailureFromEvent(
     docsUrl: text(event.docs_url),
     diagnostic: text(event.diagnostic),
   };
+}
+
+/**
+ * The remediation a classified API failure carries — the localized message for a
+ * known `docs_topic`/`code`, else the backend's VoiceStudio-owned `hint` — or
+ * undefined for an unclassified failure. Surfaces that show a short title and
+ * tuck the raw detail behind "Technical details" render this visibly, so a
+ * diagnosed cause (a full disk, a missing ffmpeg) is never hidden.
+ */
+export function apiFailureGuidance(error: unknown): string | undefined {
+  if (!(error instanceof ApiError) || !error.payload) return undefined;
+  // A classified HTTPException carries its diagnosis under `detail` (/generate 400).
+  const { detail } = error.payload;
+  const nested =
+    detail && typeof detail === 'object' ? (detail as Record<string, unknown>) : undefined;
+  return (
+    generationFailureMessage(error.payload, i18next.t) ||
+    generationFailureMessage(nested, i18next.t) ||
+    text(error.payload.hint) ||
+    text(nested?.hint)
+  );
 }

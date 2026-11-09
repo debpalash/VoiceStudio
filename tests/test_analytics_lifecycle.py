@@ -1,7 +1,7 @@
 """Lifecycle analytics events (owner-sanctioned 2026-07-16) — the guarantees, pinned.
 
 install / update / crash / error events ride the SAME rails as everything else
-in core.analytics: the dual gate (build token AND explicit consent), the
+in core.analytics: the dual gate (a configured site AND explicit consent), the
 property allowlist, and never-raises. These tests pin the event-specific
 guarantees on top:
 
@@ -31,12 +31,12 @@ from core import analytics
 
 @pytest.fixture()
 def sent(monkeypatch, tmp_path):
-    """Isolated prefs + DATA_DIR + a fake posthog module recording captures."""
+    """Isolated prefs + DATA_DIR + a fake transport recording captures."""
     from core import config, prefs
 
     monkeypatch.setattr(prefs, "_PREFS_PATH", str(tmp_path / "prefs.json"))
     monkeypatch.setattr(config, "DATA_DIR", str(tmp_path))
-    monkeypatch.delenv("POSTHOG_PROJECT_TOKEN", raising=False)
+    monkeypatch.delenv("SUPERMETRY_SITE_ID", raising=False)
     monkeypatch.delenv("OMNIVOICE_ANALYTICS_DISABLED", raising=False)
     monkeypatch.delenv("OMNIVOICE_INSTALL_CHANNEL", raising=False)
     monkeypatch.delenv("OMNIVOICE_SERVER_MODE", raising=False)
@@ -45,19 +45,19 @@ def sent(monkeypatch, tmp_path):
 
     events: list[tuple[str, dict]] = []
 
-    class FakePosthog:
-        def __init__(self, token, **kwargs):
+    class FakeTransport:
+        def __init__(self, destination, should_send):
             pass
 
-        def capture(self, event, distinct_id=None, properties=None):
-            events.append((event, dict(properties or {})))
+        def capture(self, event, properties, profile_id=None, traits=None, path="/backend"):
+            if event != "identify":  # the profile handshake is not a product event
+                events.append((event, dict(properties or {})))
+            return True
 
         def shutdown(self):
             pass
 
-    fake = types.ModuleType("posthog")
-    fake.Posthog = FakePosthog
-    monkeypatch.setitem(sys.modules, "posthog", fake)
+    monkeypatch.setattr(analytics, "SupermetryTransport", FakeTransport)
     yield events
     analytics.shutdown()
     analytics._reset_error_events_for_tests()
@@ -68,7 +68,6 @@ def _consent(monkeypatch, *, install_already_recorded=True):
     tests about OTHER events aren't polluted by the opt-in's install ping."""
     from core import prefs
 
-    monkeypatch.setenv("POSTHOG_PROJECT_TOKEN", "phc_test")
     if install_already_recorded:
         prefs.set_("analytics_install_recorded", True)
     analytics.set_opted_in(True)
@@ -99,7 +98,6 @@ def test_installed_never_fires_without_consent_but_is_not_swallowed(sent, monkey
     must not send anything, and must not burn the install marker either."""
     from core import prefs
 
-    monkeypatch.setenv("POSTHOG_PROJECT_TOKEN", "phc_test")
     analytics.record_startup_lifecycle(None)
     assert sent == []
     assert not prefs.get("analytics_install_recorded")
@@ -110,7 +108,7 @@ def test_installed_never_fires_without_consent_but_is_not_swallowed(sent, monkey
 
 def test_installed_never_fires_without_any_token(sent, monkeypatch):
     # No destination at all: env absent AND the in-repo default (#1193) blanked.
-    monkeypatch.setattr(analytics, "_PUBLIC_PROJECT_TOKEN", "")
+    monkeypatch.setenv("SUPERMETRY_SITE_ID", "")
     analytics.set_opted_in(True)  # consent but no destination
     analytics.record_startup_lifecycle(None)
     assert sent == []
@@ -140,7 +138,6 @@ def test_an_unconsented_update_is_never_replayed_after_opt_in(sent, monkeypatch)
     reports what happens AFTER consent — no retroactive history."""
     from core import prefs
 
-    monkeypatch.setenv("POSTHOG_PROJECT_TOKEN", "phc_test")
     prefs.set_("analytics_last_version", "0.0.1-test")
     analytics.record_startup_lifecycle(None)  # not opted in: sends nothing…
     assert sent == []
@@ -197,7 +194,6 @@ def test_no_crash_record_means_no_crash_event(sent, monkeypatch):
 
 
 def test_crash_event_never_fires_without_consent(sent, monkeypatch):
-    monkeypatch.setenv("POSTHOG_PROJECT_TOKEN", "phc_test")
     analytics.record_startup_lifecycle(dict(CRASH_RECORD))
     assert sent == []
 
@@ -252,7 +248,6 @@ def test_error_events_hard_cap_per_session(sent, monkeypatch):
 
 
 def test_error_event_never_fires_without_consent(sent, monkeypatch):
-    monkeypatch.setenv("POSTHOG_PROJECT_TOKEN", "phc_test")
     analytics.record_error_event("GPU_OOM", "fp1", stage="generate")
     assert sent == []
 
@@ -323,36 +318,35 @@ def test_uninstall_ping_info_written_when_enabled_and_removed_when_not(
 ):
     info = tmp_path / analytics.UNINSTALL_PING_INFO_BASENAME
     # Not consented → no file (and startup keeps it that way).
-    monkeypatch.setenv("POSTHOG_PROJECT_TOKEN", "phc_test")
     analytics.record_startup_lifecycle(None)
     assert not info.exists()
 
     analytics.set_opted_in(True)
     assert info.exists()
-    payload = json.loads(info.read_text())
-    assert payload["token"] == "phc_test"
-    assert payload["host"] == "https://us.i.posthog.com"
-    assert payload["distinct_id"] == analytics.installation_id()
+    payload = json.loads(info.read_text(encoding="utf-8"))
+    assert payload["site"] == "oxxxnwyfwhx4"
+    assert payload["host"] == "https://app.supermetry.com"
+    assert payload["profile_id"] == analytics.profile_id()
     assert payload["app_version"] == analytics._app_version()
     # Consent withdrawn → the file goes with it.
     analytics.set_opted_in(False)
     assert not info.exists()
 
 
-def test_uninstall_ping_info_written_for_a_source_build_with_the_default_token(
+def test_uninstall_ping_info_written_for_a_source_build_with_the_shared_site(
     sent, monkeypatch, tmp_path
 ):
-    """#1193: a consented source build has a destination (the in-repo default),
-    so the uninstall ping must work there too."""
-    analytics.set_opted_in(True)  # no env token → in-repo default
+    """A consented source build has a destination (the shared config), so the
+    uninstall ping must work there too."""
+    analytics.set_opted_in(True)  # no override → shared config
     info = tmp_path / analytics.UNINSTALL_PING_INFO_BASENAME
     assert info.exists()
-    payload = json.loads(info.read_text())
-    assert payload["token"] == analytics._PUBLIC_PROJECT_TOKEN
-    assert payload["host"] == "https://us.i.posthog.com"
+    payload = json.loads(info.read_text(encoding="utf-8"))
+    assert payload["site"] == analytics._destination()["site"]
+    assert payload["host"] == "https://app.supermetry.com"
 
 
-def test_uninstall_ping_info_never_written_without_any_token(sent, monkeypatch, tmp_path):
-    monkeypatch.setattr(analytics, "_PUBLIC_PROJECT_TOKEN", "")  # destination-less build
+def test_uninstall_ping_info_never_written_without_any_site(sent, monkeypatch, tmp_path):
+    monkeypatch.setenv("SUPERMETRY_SITE_ID", "")  # destination-less build
     analytics.set_opted_in(True)
     assert not (tmp_path / analytics.UNINSTALL_PING_INFO_BASENAME).exists()

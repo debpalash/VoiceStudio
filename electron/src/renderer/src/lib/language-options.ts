@@ -1,29 +1,42 @@
 import languageCodes from '@shared/language-codes.json';
 import languageRegions from '@shared/language-regions.json';
 import { LANG_CODES } from '@shared/utils/languages';
-import { normalizeSearch, type SearchOption } from '@shared/components/VirtualSearchableSelect';
+import { TARGET_ONLY_LANGUAGES } from './translation-targets';
+import { normalizeSearch, type SearchOption } from './language-search';
 import type { QueryClient } from '@tanstack/react-query';
 import type { EnginesResponse } from './api/types';
-import type { ComputeTargetState } from '@/hooks/use-compute-target';
+import { LANGUAGE_VARIANTS } from './language-variants';
 
 const codes: Record<string, string> = {
   ...languageCodes,
   ...Object.fromEntries(LANG_CODES.map((item) => [item.label.toLowerCase(), item.code])),
+  ...Object.fromEntries(TARGET_ONLY_LANGUAGES.map((item) => [item.label.toLowerCase(), item.code])),
+  // #3143: regional choices carry their BCP-47 tag for names, flags and search.
+  ...Object.fromEntries(
+    Object.entries(LANGUAGE_VARIANTS).map(([name, variant]) => [
+      name.toLowerCase(),
+      variant.dialect,
+    ]),
+  ),
 };
-const codeValues = new Set(Object.values(codes));
+// Codes compare case-insensitively: dub segments store picker tags such as
+// "cmn-Hans", which must meet the engine's "chinese (simplified)" (#3685).
+const codeValues = new Set(Object.values(codes).map((code) => code.toLowerCase()));
 // These display names are accepted by the backend; keep persisted values unchanged.
 export function languageCode(name: string) {
   return codes[name.toLowerCase()] || '';
 }
 
 export function languageSupported(name: string, supported?: readonly string[] | null) {
-  if (name.toLowerCase() === 'auto' || supported == null) return true;
-  const code = languageCode(name) || (codeValues.has(name.toLowerCase()) ? name.toLowerCase() : '');
-  return supported.some(
-    (candidate) =>
-      candidate.toLowerCase() === name.toLowerCase() ||
-      Boolean(code && (languageCode(candidate) || candidate.toLowerCase()) === code),
-  );
+  const key = name.toLowerCase();
+  if (key === 'auto' || supported == null) return true;
+  const code = languageCode(name).toLowerCase() || (codeValues.has(key) ? key : '');
+  return supported.some((candidate) => {
+    const other = candidate.toLowerCase();
+    return (
+      other === key || Boolean(code && (languageCode(candidate).toLowerCase() || other) === code)
+    );
+  });
 }
 
 /** Shared guard for persisted selections after an engine switch. Unknown metadata remains open. */
@@ -46,12 +59,9 @@ export function ttsLanguagesSupported(
 
 export function cachedTtsLanguagesSupported(
   client: QueryClient,
-  operation: string,
+  _operation: string,
   languages: string[],
 ) {
-  const target = client.getQueryData<ComputeTargetState>(['workers', 'target', operation]);
-  // Unknown worker metadata must not incorrectly block a capable remote model.
-  if (!target || target.active.remote) return true;
   const state = client.getQueryState(['engines']);
   if (state?.status === 'error' || state?.isInvalidated) return true;
   return ttsLanguagesSupported(client.getQueryData<EnginesResponse>(['engines']), languages);
@@ -109,12 +119,24 @@ export function languageOptions(
             String.fromCodePoint(...[...region].map((char) => char.charCodeAt(0) + 127397)),
           ]
         : [];
+    // Regional/script variants (pt-BR, cmn-Hant) group under their primary language.
+    const family = code.includes('-') ? code.split('-')[0] : undefined;
+    let familyLabel = '';
+    if (family) {
+      try {
+        familyLabel = display.of(family) || '';
+      } catch {
+        /* Fall back to the canonical name's base below. */
+      }
+      familyLabel ||= value.replace(/\s*\(.*\)$/, '');
+    }
     const aliases = code === 'zh' ? ['mandarin'] : code === 'tl' ? ['tagalog'] : [];
     const option = {
       value,
       label,
       code,
       native,
+      ...(family ? { family, familyLabel } : {}),
       search: [
         ...new Set(
           [value, label, native, code, ...flagAliases, ...aliases]

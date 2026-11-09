@@ -86,37 +86,42 @@ def test_set_prefs_persists_and_validates(client):
     assert client.post("/dictation/prefs", json={"model_id": "nope"}).status_code == 400
 
 
-def test_prompt_round_trips_trimmed_and_clears(client):
-    r = client.post("/dictation/prefs", json={"prompt": "  Kubernetes, gRPC  "})
-    assert r.status_code == 200
-    assert r.json()["prompt"] == "Kubernetes, gRPC"
-    assert client.get("/dictation/prefs").json()["prompt"] == "Kubernetes, gRPC"
-    # Omitting the field leaves it alone; an empty string clears it.
-    assert client.post("/dictation/prefs", json={"mode": "hold"}).json()["prompt"] == "Kubernetes, gRPC"
-    assert client.post("/dictation/prefs", json={"prompt": ""}).json()["prompt"] == ""
+def _hint(client):
+    return client.get("/dictation/prefs").json()["prompt"]
 
 
-def test_prompt_length_is_bounded(client):
+def test_hint_is_trimmed_kept_through_other_updates_and_blankable(client):
+    posted = client.post("/dictation/prefs", json={"prompt": "\tNakamura, PostgreSQL  "})
+    assert posted.json()["prompt"] == "Nakamura, PostgreSQL"
+    client.post("/dictation/prefs", json={"enabled": False})
+    assert _hint(client) == "Nakamura, PostgreSQL"
+    client.post("/dictation/prefs", json={"prompt": " \n "})
+    assert _hint(client) == ""
+
+
+@pytest.mark.parametrize(("extra", "status"), [(0, 200), (1, 400)])
+def test_hint_length_boundary(client, extra, status):
     from api.routers import dictation as dr
 
-    too_long = "x" * (dr.MAX_PROMPT_CHARS + 1)
-    assert client.post("/dictation/prefs", json={"prompt": too_long}).status_code == 400
-    assert dr.PREF_PROMPT not in client._store
-    ok = "x" * dr.MAX_PROMPT_CHARS
-    assert client.post("/dictation/prefs", json={"prompt": ok}).json()["prompt"] == ok
+    client.post("/dictation/prefs", json={"prompt": "keep me"})
+    res = client.post("/dictation/prefs", json={"prompt": "x" * (dr.MAX_PROMPT_CHARS + extra)})
+    assert res.status_code == status
+    if status == 400:
+        assert str(dr.MAX_PROMPT_CHARS) in res.json()["detail"]
+        assert _hint(client) == "keep me"
+    else:
+        assert len(_hint(client)) == dr.MAX_PROMPT_CHARS
 
 
-def test_prompt_only_update_keeps_loaded_capture_engine(client, monkeypatch):
-    """The prompt is read per transcription; editing it must not unload the
-    capture model (a multi-GB Whisper reload on the next dictation)."""
+def test_only_non_hint_updates_unload_the_capture_engine(client):
     from services import asr_backend
 
-    loaded = object()
-    monkeypatch.setattr(asr_backend, "_capture_backend", loaded)
-    assert client.post("/dictation/prefs", json={"prompt": "gRPC"}).status_code == 200
-    assert asr_backend._capture_backend is loaded
-    assert client.post("/dictation/prefs", json={"mode": "hold"}).status_code == 200
-    assert asr_backend._capture_backend is None
+    marker = object()
+    for body, unloaded in (({"prompt": "terms"}, False), ({"mode": "hold"}, True)):
+        asr_backend._capture_backend = marker
+        assert client.post("/dictation/prefs", json=body).status_code == 200
+        assert (asr_backend._capture_backend is None) is unloaded
+    asr_backend._capture_backend = None
 
 
 def test_set_prefs_accepts_repo_id_and_normalizes(client):

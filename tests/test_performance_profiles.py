@@ -1,6 +1,17 @@
 from services import performance_profiles as profiles
 from types import SimpleNamespace
 
+import pytest
+
+_installed_mlx_whisper_model = profiles._installed_mlx_whisper_model
+
+MLX_LARGE = {"repo_id": "mlx-community/whisper-large-v3-mlx", "size_gb": 3.0}
+
+
+@pytest.fixture(autouse=True)
+def no_metal_whisper(monkeypatch):
+    monkeypatch.setattr(profiles, "_installed_mlx_whisper_model", lambda: None)
+
 
 def test_diarisation_is_applicable_only_with_a_real_runtime_choice(monkeypatch):
     from core import prefs
@@ -255,3 +266,122 @@ def test_tier_applies_to_the_omnivoice_sidecar(monkeypatch):
     assert "tts" in state["applicable_families"]
     assert state["selections"]["tts"]["model"] == "k2-fsa/OmniVoice"
     assert state["tts_tiered_engines"] == ["omnivoice", "omnivoice-subprocess"]
+
+
+@pytest.fixture
+def metal_host(monkeypatch):
+    from api.routers.setup import models
+    from services import asr_backend
+
+    monkeypatch.delenv("ASR_MODEL", raising=False)
+    monkeypatch.setattr(asr_backend, "_mps_available", lambda: True)
+    monkeypatch.setattr(asr_backend, "_probe_available", lambda cls: True)
+    monkeypatch.setattr(models, "_model_supported", lambda model: True)
+    monkeypatch.setattr(models, "is_cached", lambda repo: True)
+    monkeypatch.setattr(models, "cache_is_complete", lambda model: True)
+    return models
+
+
+def test_metal_whisper_is_the_installed_model_the_mlx_backend_loads(metal_host):
+    assert _installed_mlx_whisper_model()["repo_id"] == "mlx-community/whisper-large-v3-mlx"
+
+
+def test_metal_whisper_needs_a_metal_host(metal_host, monkeypatch):
+    from services import asr_backend
+
+    monkeypatch.setattr(asr_backend, "_mps_available", lambda: False)
+    assert _installed_mlx_whisper_model() is None
+
+
+@pytest.mark.parametrize("missing", ["unknown", "unsupported", "uncached", "incomplete"])
+def test_metal_whisper_must_be_a_complete_supported_download(metal_host, monkeypatch, missing):
+    if missing == "unknown":
+        monkeypatch.setenv("ASR_MODEL", "someone/custom-whisper")
+    else:
+        attr = {"unsupported": "_model_supported", "uncached": "is_cached",
+                "incomplete": "cache_is_complete"}[missing]
+        monkeypatch.setattr(metal_host, attr, lambda _value: False)
+    assert _installed_mlx_whisper_model() is None
+
+
+def test_metal_whisper_replaces_its_cpu_only_copy(monkeypatch):
+    tiny = {"repo_id": "Systran/faster-whisper-tiny", "size_gb": 0.08}
+    monkeypatch.setattr(profiles, "_faster_whisper_backend", lambda: "faster-whisper")
+    monkeypatch.setattr(profiles, "_installed_ct2_models", lambda: [
+        tiny, {"repo_id": "Systran/faster-whisper-large-v3", "size_gb": 2.9},
+    ])
+    monkeypatch.setattr(profiles, "_installed_mlx_whisper_model", lambda: MLX_LARGE)
+
+    assert profiles._installed_asr_models() == [("faster-whisper", tiny), ("mlx-whisper", MLX_LARGE)]
+
+
+def test_metal_whisper_is_offered_without_a_ctranslate2_runtime(monkeypatch):
+    monkeypatch.setattr(profiles, "_faster_whisper_backend", lambda: None)
+    monkeypatch.setattr(profiles, "_installed_mlx_whisper_model", lambda: MLX_LARGE)
+
+    assert profiles._installed_asr_models() == [("mlx-whisper", MLX_LARGE)]
+
+
+def test_asr_preset_selects_metal_whisper_instead_of_pinning_the_cpu(monkeypatch):
+    from core import prefs
+    from services import asr_backend
+
+    writes = []
+    selected = []
+    monkeypatch.delenv("OMNIVOICE_ASR_BACKEND", raising=False)
+    monkeypatch.setattr(prefs, "is_env_shadowed", lambda _key: False)
+    monkeypatch.setattr(profiles, "_faster_whisper_backend", lambda: "faster-whisper")
+    monkeypatch.setattr(profiles, "_installed_ct2_models", lambda: [
+        {"repo_id": "Systran/faster-whisper-large-v3", "size_gb": 2.9},
+    ])
+    monkeypatch.setattr(profiles, "_installed_mlx_whisper_model", lambda: MLX_LARGE)
+    monkeypatch.setattr(asr_backend, "select_faster_whisper_model", selected.append)
+    monkeypatch.setattr(asr_backend, "active_backend_id", lambda: "faster-whisper")
+    monkeypatch.setattr(prefs, "set_", lambda key, value: writes.append((key, value)))
+
+    assert profiles.activate_performance_tier("max", "asr") == {
+        "asr": {"engine": "mlx-whisper", "model": "mlx-community/whisper-large-v3-mlx"}
+    }
+    assert selected == []
+    assert writes == [("asr_backend", "mlx-whisper")]
+
+
+def test_shared_plan_applies_metal_whisper_without_a_ctranslate2_selection(monkeypatch):
+    from core import prefs
+    from services import asr_backend
+
+    writes = []
+    selected = []
+    pick = {"engine": "mlx-whisper", "model": "mlx-community/whisper-large-v3-mlx"}
+    monkeypatch.setattr(profiles, "profile_state", lambda tier=None: {
+        "effective": {"asr": "max"},
+        "plan": {"families": {"asr": {"selection": pick, "reason": "fits"}}},
+    })
+    monkeypatch.setattr(asr_backend, "select_faster_whisper_model", selected.append)
+    monkeypatch.setattr(prefs, "set_", lambda key, value: writes.append((key, value)))
+    monkeypatch.setattr(prefs, "update_mapping", lambda *_args: None)
+
+    assert profiles.activate_performance_tier("max") == {"asr": pick}
+    assert selected == []
+    assert writes == [("asr_backend", "mlx-whisper")]
+
+
+def test_metal_whisper_advertises_no_decoding_effort_it_cannot_apply(monkeypatch):
+    from core import prefs
+    from services import asr_backend, diarization_runtime, tts_backend
+
+    values = {"performance_profile": {"global": "max"}}
+    monkeypatch.setattr(prefs, "get", lambda key, default=None: values.get(key, default))
+    monkeypatch.setattr(tts_backend, "active_backend_id", lambda: "omnivoice")
+    monkeypatch.setattr(diarization_runtime, "installed_backends", lambda: set())
+    monkeypatch.setattr(asr_backend, "active_backend_id", lambda: "mlx-whisper")
+    monkeypatch.delenv("ASR_MODEL", raising=False)
+
+    state = profiles.profile_state()
+
+    assert "asr" in state["applicable_families"]
+    assert state["targets"]["asr"] == {"engine": "mlx-whisper"}
+    assert state["selections"]["asr"] == {
+        "engine": "mlx-whisper",
+        "model": "mlx-community/whisper-large-v3-mlx",
+    }

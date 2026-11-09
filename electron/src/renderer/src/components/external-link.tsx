@@ -2,15 +2,20 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ExternalLinkIcon } from 'lucide-react';
 import { buttonVariants } from './ui/button';
+import { cn } from '@/lib/utils';
 import { getBridge } from './bridge';
 export function ExternalLink({
   href,
   children,
   showIcon = true,
+  variant = 'outline',
+  className,
 }: {
   href: string;
   children: React.ReactNode;
   showIcon?: boolean;
+  variant?: 'outline' | 'ghost' | 'secondary' | 'link';
+  className?: string;
 }) {
   const { t } = useTranslation();
   const [failed, setFailed] = useState(false);
@@ -20,7 +25,7 @@ export function ExternalLink({
         href={href}
         target="_blank"
         rel="noreferrer"
-        className={buttonVariants({ variant: 'outline', size: 'sm' })}
+        className={cn(buttonVariants({ variant, size: 'sm' }), className)}
         onClick={(event) => {
           const bridge = getBridge();
           if (!bridge) return;

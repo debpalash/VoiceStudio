@@ -79,6 +79,7 @@ function supervisorHarness(overrides = {}) {
     exit: (code) => exits.push(code),
     report: (message) => reports.push(message),
     dataDir: () => '/missing-test-data',
+    healPthFiles: () => [],
     ...overrides,
   });
 
@@ -313,44 +314,85 @@ test('failure to spawn uv exits immediately instead of looping', () => {
   assert.match(reports[0], /could not start uv: uv is missing/);
 });
 
-// Windows has no signals: killing the spawned `uv` left the uvicorn grandchild
-// alive on port 3900, so every restart failed to bind and the supervisor tore
-// the stack down after three "crashes".
-test('a backend is stopped by process tree on windows and by signal elsewhere', () => {
-  const child = { pid: 4242, killedWith: null, kill(sig) { this.killedWith = sig; } };
-  const calls = [];
-  const run = (exe, args) => {
-    calls.push([exe, ...args].join(' '));
-    return { status: 0 };
-  };
+test('process tree shutdown chooses the platform-specific mechanism', () => {
+  const windows = { pid: 43210, signals: [], kill(signal) { this.signals.push(signal); } };
+  const launches = [];
+  const windowsResult = killProcessTree(windows, 'SIGINT', {
+    platform: 'win32',
+    run(command, args, options) {
+      launches.push({ command, args, options });
+      return { status: 0, error: null };
+    },
+  });
+  assert.deepEqual(
+    { result: windowsResult, directSignals: windows.signals, launch: launches[0] },
+    {
+      result: 'taskkill',
+      directSignals: [],
+      launch: {
+        command: 'taskkill',
+        args: ['/pid', '43210', '/T', '/F'],
+        options: { stdio: 'ignore' },
+      },
+    },
+  );
 
-  assert.equal(killProcessTree(child, 'SIGTERM', { platform: 'win32', run }), 'taskkill');
-  assert.deepEqual(calls, ['taskkill /pid 4242 /T /F']);
-  assert.equal(child.killedWith, null, 'must not also signal the direct child');
-
-  assert.equal(killProcessTree(child, 'SIGTERM', { platform: 'linux', run }), 'signal');
-  assert.equal(calls.length, 1, 'POSIX must not shell out');
-  assert.equal(child.killedWith, 'SIGTERM');
+  const posixSignals = [];
+  const posixResult = killProcessTree(
+    { pid: 91, kill: (signal) => posixSignals.push(signal) },
+    'SIGHUP',
+    { platform: 'darwin', run: () => assert.fail('taskkill must not run') },
+  );
+  assert.deepEqual([posixResult, posixSignals], ['signal', ['SIGHUP']]);
 });
 
-test('a failed taskkill falls back to signalling the direct child', () => {
-  const child = { pid: 4242, killedWith: null, kill(sig) { this.killedWith = sig; } };
-  const run = () => ({ status: 128 });
-  assert.equal(killProcessTree(child, 'SIGTERM', { platform: 'win32', run }), 'fallback');
-  assert.equal(child.killedWith, 'SIGTERM');
+test('an unavailable taskkill path delegates to ChildProcess.kill', () => {
+  for (const failedResult of [{ status: 7 }, { status: 0, error: new Error('missing') }, undefined]) {
+    const seen = [];
+    const method = killProcessTree(
+      { pid: 314, kill: (signal) => seen.push(signal) },
+      'SIGTERM',
+      { platform: 'win32', run: () => failedResult },
+    );
+    assert.deepEqual({ method, seen }, { method: 'fallback', seen: ['SIGTERM'] });
+  }
 });
 
-test('a forced tree-kill reload restarts instead of reporting a crash', () => {
-  const harness = supervisorHarness({ killBackend: () => 'taskkill' });
+test('a nonzero taskkill reload exit starts a replacement without crash handling', () => {
+  const treeKills = [];
+  const rig = supervisorHarness({
+    killBackend(process, signal) {
+      treeKills.push([process, signal]);
+      return 'taskkill';
+    },
+  });
+  rig.supervisor.start();
+  rig.watchers[0].onChange('backend/routes/catalogue.py');
+  rig.runNextTimer();
+  const original = rig.children[0];
+  original.emit('exit', 5, null);
+
+  assert.equal(treeKills[0][1], 'SIGTERM');
+  assert.equal(rig.children.length, 2);
+  assert.equal(rig.reports.filter((entry) => entry.includes('BACKEND DIED')).length, 0);
+  assert.deepEqual(rig.exits, []);
+});
+
+test('every launch heals the checkout .venv first, and a failed heal never blocks it (#1783)', () => {
+  const order = [];
+  let fail = false;
+  const harness = supervisorHarness({
+    healPthFiles: () => {
+      order.push('heal');
+      if (fail) throw new Error('read-only');
+      return [];
+    },
+  });
   harness.supervisor.start();
-  harness.watchers[0].onChange('main.py');
-  harness.runNextTimer();
-
-  // taskkill /F reports a non-zero exit and no signal — that is the reload we
-  // asked for, not a crash.
+  order.push(`spawn${harness.children.length}`);
+  fail = true;
   harness.children[0].emit('exit', 1, null);
-
-  assert.doesNotMatch(harness.reports.join('\n'), /BACKEND DIED/);
-  assert.equal(harness.children.length, 2);
-  assert.deepEqual(harness.exits, []);
+  harness.runNextTimer();
+  order.push(`spawn${harness.children.length}`);
+  assert.deepEqual(order, ['heal', 'spawn1', 'heal', 'spawn2']);
 });

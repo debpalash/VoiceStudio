@@ -22,6 +22,8 @@ export function NetworkSettings() {
   useEffect(() => {
     if (!dirty.current) setValue(query.data?.proxy_url || '');
   }, [query.data]);
+  // Save only a real change; clearing has its own button.
+  const changed = Boolean(value.trim()) && value.trim() !== (query.data?.proxy_url || '');
   const save = (next: string) =>
     action.run(async () => {
       await saveProxyPreference(next, (key, value) =>
@@ -42,7 +44,7 @@ export function NetworkSettings() {
           className="flex flex-wrap gap-2"
           onSubmit={(event) => {
             event.preventDefault();
-            if (value.trim()) void save(value);
+            if (changed) void save(value);
           }}
         >
           <Input
@@ -57,7 +59,7 @@ export function NetworkSettings() {
               action.reset();
             }}
           />
-          <Button type="submit" size="sm" disabled={action.busy || !value.trim()}>
+          <Button type="submit" size="sm" disabled={action.busy || !changed}>
             {t('common.save')}
           </Button>
           <Button

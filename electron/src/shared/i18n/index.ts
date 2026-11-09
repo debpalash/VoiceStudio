@@ -30,6 +30,7 @@ const LOADERS: Record<string, () => Promise<{ default: Record<string, unknown> }
   uk: () => import('./locales/uk.json'),
   ar: () => import('./locales/ar.json'),
   'zh-TW': () => import('./locales/zh-TW.json'),
+  gl: () => import('./locales/gl.json'),
 };
 
 const loading = new Set<string>();
@@ -95,9 +96,7 @@ if (i18n.language) {
   if (i18n.language !== 'en') void loadLocale(i18n.language);
 }
 
-// Selectable UI languages. Native language names live here, in the i18n
-// layer — never hardcoded in component code (see the "no hardcoded
-// non-English UI text outside locale files" rule in CLAUDE.md).
+// Native language names belong here rather than in individual components.
 export const LANGUAGES = [
   { code: 'en', label: 'English' },
   { code: 'zh-CN', label: '简体中文' },
@@ -120,6 +119,7 @@ export const LANGUAGES = [
   { code: 'uk', label: 'Українська' },
   { code: 'ar', label: 'العربية' },
   { code: 'zh-TW', label: '繁體中文' },
+  { code: 'gl', label: 'Galego' },
 ];
 
 export default i18n;

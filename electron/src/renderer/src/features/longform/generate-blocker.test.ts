@@ -1,31 +1,51 @@
-import { expect, it } from 'vitest';
-import { generateBlocker } from './generate-blocker';
+import { describe, expect, it } from 'vitest';
+import { generateBlocker, type GenerateBlockerInput } from './generate-blocker';
 
-const ready = {
-  mode: 'stories' as const,
+const allClear = (mode: GenerateBlockerInput['mode']): GenerateBlockerInput => ({
+  mode,
   busyElsewhere: false,
   importing: false,
   tts: null,
   usable: true,
   voicesReady: true,
   duplicateLexicon: false,
-};
-
-it('is null only when everything Generate needs is in place', () => {
-  expect(generateBlocker(ready)).toBeNull();
 });
 
-it('names the most fundamental reason first', () => {
-  expect(generateBlocker({ ...ready, usable: false, voicesReady: false })).toBe('no_lines');
-  expect(generateBlocker({ ...ready, mode: 'audiobook', usable: false })).toBe('no_script');
-  expect(generateBlocker({ ...ready, voicesReady: false })).toBe('voice');
-  expect(generateBlocker({ ...ready, tts: 'engine', voicesReady: false })).toBe('engine');
-  expect(generateBlocker({ ...ready, tts: 'loading' })).toBe('engine_loading');
-  expect(generateBlocker({ ...ready, importing: true, tts: 'engine' })).toBe('importing');
-  expect(generateBlocker({ ...ready, busyElsewhere: true, importing: true })).toBe('busy');
+describe.each(['stories', 'audiobook'] as const)('%s', (mode) => {
+  const ask = (changes: Partial<GenerateBlockerInput>) =>
+    generateBlocker({ ...allClear(mode), ...changes });
+
+  it('is free to run when nothing is wrong', () => {
+    expect(ask({})).toBeNull();
+  });
+
+  it('puts the engine before content problems', () => {
+    expect(ask({ tts: 'engine', usable: false, voicesReady: false })).toBe('engine');
+    expect(ask({ tts: 'loading', usable: false })).toBe('engine_loading');
+  });
+
+  it('reports a missing voice only when there is something to speak', () => {
+    expect(ask({ voicesReady: false })).toBe('voice');
+    expect(ask({ voicesReady: false, usable: false })).toBe(
+      mode === 'stories' ? 'no_lines' : 'no_script',
+    );
+  });
+
+  it('lets another render and an import outrank everything below them', () => {
+    expect(ask({ importing: true, tts: 'loading' })).toBe('importing');
+    expect(ask({ busyElsewhere: true, importing: true, tts: 'engine' })).toBe('busy');
+  });
 });
 
-it('a duplicated pronunciation word only blocks the audiobook', () => {
-  expect(generateBlocker({ ...ready, duplicateLexicon: true })).toBeNull();
-  expect(generateBlocker({ ...ready, mode: 'audiobook', duplicateLexicon: true })).toBe('lexicon');
+it.each([
+  ['stories', null],
+  ['audiobook', 'lexicon'],
+] as const)('a repeated lexicon word in %s gives %s', (mode, expected) => {
+  expect(generateBlocker({ ...allClear(mode), duplicateLexicon: true })).toBe(expected);
+});
+
+it('shows the voice problem before the lexicon one', () => {
+  expect(
+    generateBlocker({ ...allClear('audiobook'), duplicateLexicon: true, voicesReady: false }),
+  ).toBe('voice');
 });

@@ -74,6 +74,30 @@ describe('parseBlocks (notes → headings/bullets/paragraphs)', () => {
     ]);
   });
 
+  it('drops download tables, their label and images; links keep their label', () => {
+    const md = [
+      'The headline.',
+      '',
+      '**Download**',
+      '',
+      '| Platform | Installer |',
+      '| --- | --- |',
+      '| Windows x64 | [Installer](https://example.test/a.exe) |',
+      '',
+      '![shot](https://example.test/a.png)',
+      '',
+      'Follow the [migration guide](https://example.test/guide).',
+    ].join('\n');
+    const blocks = parseBlocks(md);
+    expect(blocks).toEqual([
+      { type: 'para', text: 'The headline.' },
+      { type: 'para', text: 'Follow the [migration guide](https://example.test/guide).' },
+    ]);
+    expect(inlineSegments(blocks[1].text)).toEqual([
+      { type: 'text', text: 'Follow the migration guide.' },
+    ]);
+  });
+
   it('returns [] for empty/nullish input', () => {
     expect(parseBlocks('')).toEqual([]);
     expect(parseBlocks(null)).toEqual([]);

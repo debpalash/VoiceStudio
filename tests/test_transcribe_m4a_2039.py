@@ -76,7 +76,7 @@ def test_the_transcribe_route_accepts_an_m4a_upload(monkeypatch):
     app = FastAPI()
     app.include_router(capture.router)
 
-    r = TestClient(app).post(
+    r = TestClient(app, client=("127.0.0.1", 50000)).post(
         "/transcribe", files={"audio": ("memo.m4a", M4A_BYTES, "audio/mp4")}
     )
 

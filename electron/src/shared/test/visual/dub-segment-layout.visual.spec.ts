@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import en from '../../i18n/locales/en.json' with { type: 'json' };
 
 for (const width of [620, 360]) {
   test(`bulk segment menus fit and escape clipping at ${width}px`, async ({ page }) => {
@@ -8,22 +9,25 @@ for (const width of [620, 360]) {
     await expect(toolbar).toBeVisible();
     expect(await toolbar.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
     await page.screenshot({ path: `/tmp/dub-selection-${width}.png` });
-    await page.getByRole('button', { name: 'Set voice…' }).click();
+    await page.getByRole('button', { name: en.dub.set_voice }).click();
     const menu = page.getByRole('listbox');
-    await expect(menu.getByRole('option', { name: 'VoiceStudio Demo Voice' })).toBeVisible();
-    expect(await menu.evaluate((el) => el.parentElement === document.body)).toBe(true);
+    await expect(menu.getByRole('option', { name: 'Demo Voice' })).toBeVisible();
+    const portal = menu.locator('..');
+    expect(await portal.evaluate((el) => el.parentElement === document.body)).toBe(true);
+    const voiceSearch = page.getByRole('combobox', { name: en.dub.set_voice, exact: true });
     await page.screenshot({ path: `/tmp/dub-selection-voices-${width}.png` });
-    await menu.getByRole('textbox').fill('Speaker 2');
+    await voiceSearch.fill('Speaker 2');
     await expect(menu.getByRole('option')).toHaveCount(1);
-    await menu.getByRole('textbox').press('Enter');
+    await voiceSearch.press('Enter');
     await expect(menu).toHaveCount(0);
-    await page.getByRole('button', { name: 'Set lang…' }).click();
-    await menu.getByRole('textbox').fill('Bengali');
+    await page.getByRole('button', { name: en.dub.set_lang }).click();
+    const languageSearch = page.getByRole('combobox', { name: en.dub.set_lang, exact: true });
+    await languageSearch.fill('Bengali');
     await expect(menu.getByRole('option', { name: /Bengali/ })).toBeVisible();
-    const bounds = (await menu.boundingBox())!;
+    const bounds = (await portal.boundingBox())!;
     expect(bounds.x).toBeGreaterThanOrEqual(0);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
-    await menu.getByRole('textbox').press('Escape');
+    await languageSearch.press('Escape');
     await expect(menu).toHaveCount(0);
   });
 }

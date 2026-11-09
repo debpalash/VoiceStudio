@@ -13,6 +13,7 @@ export function WorkspacePane({
   collapsible = false,
   layout = 'inspector',
   icon: Icon,
+  className,
 }: {
   title: string;
   children: ReactNode;
@@ -20,6 +21,8 @@ export function WorkspacePane({
   collapsible?: boolean;
   layout?: 'inspector' | 'editor';
   icon?: LucideIcon;
+  /** Extra layout classes, e.g. a page that overlays the pane as a drawer when narrow. */
+  className?: string;
 }) {
   const { t } = useTranslation();
   const editor = layout === 'editor';
@@ -38,7 +41,10 @@ export function WorkspacePane({
       data-slot="workspace-pane"
       data-layout={layout}
       style={{ width, maxWidth: 'calc(100% - 3rem)' }}
-      className="workspace-pane relative flex h-full min-h-0 shrink-0 flex-col border-l border-border/55 bg-[color-mix(in_oklab,var(--muted)_13%,var(--background))] shadow-[inset_1px_0_0_color-mix(in_oklab,var(--foreground)_2%,transparent)]"
+      className={cn(
+        'workspace-pane relative flex h-full min-h-0 shrink-0 flex-col border-l border-border/55 bg-[color-mix(in_oklab,var(--muted)_13%,var(--background))] shadow-[inset_1px_0_0_color-mix(in_oklab,var(--foreground)_2%,transparent)]',
+        className,
+      )}
     >
       <div
         {...separatorProps}

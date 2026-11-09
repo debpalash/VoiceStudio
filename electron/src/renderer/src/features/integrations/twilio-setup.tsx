@@ -239,7 +239,9 @@ export function TwilioSetup({ hero, rail }: IntegrationPanelProps) {
     staleTime: 60_000,
   });
   const readiness = useQuery({
-    queryKey: ['calls', 'readiness'],
+    // Not the Calls page's ['calls', 'readiness']: that cache holds getReadiness()'s normalised
+    // list, this one the optional raw body, and a shared key handed one page the other's shape.
+    queryKey: ['calls', 'readiness', 'setup'],
     queryFn: ({ signal }) =>
       optionalJson<ReadinessItem[] | { checklist?: ReadinessItem[] }>(CALLS_READINESS_PATH, signal),
     retry: false,

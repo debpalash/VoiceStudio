@@ -14,11 +14,18 @@ export interface BatchJob {
   docs_topic?: string | null;
   attempts?: number;
   retry_ready?: boolean;
-  setup_required?: {
-    kind: 'argos_packs';
-    source_lang: string;
-    target_langs: string[];
-  };
+  setup_required?:
+    | {
+        kind: 'argos_packs';
+        source_lang: string;
+        target_langs: string[];
+      }
+    | {
+        kind: 'model_licence_required';
+        code?: string;
+        message?: string;
+        models?: { repo_id: string; license?: string | null; category?: string; fingerprint: string }[];
+      };
   progress?: {
     stage: string;
     percent: number;

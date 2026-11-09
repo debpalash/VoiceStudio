@@ -36,7 +36,7 @@ service root: `http://localhost:3900/.well-known/voicestudio-speech`.
 | `WS /v1/audio/transcriptions/stream` | Live partial/final STT from PCM or WebM. |
 | `GET /v1/models`, `GET /v1/models/{id}` | OpenAI's model list: the OpenAI aliases above, every installed TTS engine, and the active STT engine. |
 | `GET /.well-known/voicestudio-speech` | Machine-readable transport discovery. |
-| `GET /v1/audio/voices` | List available voices (VoiceStudio extension). Each profile has its `voice_id` and `name`; `addressable_by_name: true` means the name works as `voice`. A profile named like an OpenAI voice or `default` keeps that word's built-in meaning, so call it by id. |
+| `GET /v1/audio/voices` | List available voices (VoiceStudio extension). Each voice has its `voice_id` (also as `id`, the field Open WebUI reads) and `name`; `addressable_by_name: true` means the name works as `voice`. A profile named like an OpenAI voice, `default`, or exactly like another profile's id keeps that meaning, so call it by id. |
 
 Speech `response_format` returns exactly the format asked for:
 

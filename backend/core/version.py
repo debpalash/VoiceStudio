@@ -15,7 +15,10 @@ Resolution order:
 """
 from __future__ import annotations
 
+import os
 import re
+import subprocess
+from functools import lru_cache
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
@@ -23,7 +26,7 @@ from pathlib import Path
 # tests/test_app_version.py::test_all_version_files_in_lockstep and bumped by
 # the owner-approved release bump, so it stays equal to
 # pyproject.toml and the root package.json.
-_FALLBACK_VERSION = "0.5.7"
+_FALLBACK_VERSION = "0.5.8-beta.3"
 
 
 def _fallback_version() -> str:
@@ -49,3 +52,34 @@ try:
     APP_VERSION = version("omnivoice")
 except PackageNotFoundError:  # frozen build w/o metadata, or non-installed checkout
     APP_VERSION = _fallback_version()
+
+
+_COMMIT = re.compile(r"[0-9a-f]{7,40}", re.IGNORECASE)
+
+
+@lru_cache(maxsize=1)
+def build_commit() -> str:
+    """The commit this backend was built from (9 characters), or ``"unknown"``.
+
+    A version string cannot tell two builds of one version apart, so bug reports
+    carry this too. ``OMNIVOICE_BUILD_COMMIT`` is set by the desktop app and the
+    Docker image; a source checkout falls back to its own git HEAD. Only hex
+    commit ids are accepted, so a stray value never reaches a report.
+    """
+    candidates = [os.environ.get("OMNIVOICE_BUILD_COMMIT", "")]
+    root = Path(__file__).resolve().parents[2]
+    if (root / ".git").exists():
+        try:
+            candidates.append(
+                subprocess.run(
+                    ["git", "rev-parse", "HEAD"], cwd=root, capture_output=True,
+                    text=True, errors="replace", timeout=5, check=False,
+                ).stdout
+            )
+        except (OSError, subprocess.SubprocessError):
+            pass
+    for candidate in candidates:
+        value = candidate.strip()
+        if _COMMIT.fullmatch(value):
+            return value[:9].lower()
+    return "unknown"

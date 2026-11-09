@@ -1,0 +1,14 @@
+{
+  "mobile": {
+    "host": {
+      "capabilities_hint": "Expose only the installed models and voice you choose. Speech, transcription and translation run on this phone while this screen stays open.",
+      "allow_speech": "Allow speech generation",
+      "allow_transcription": "Allow transcription",
+      "allow_translation": "Allow translation",
+      "voice_source": "Voice source",
+      "preset": "Preset voices",
+      "saved": "Saved voices",
+      "audio_hint": "Transcription accepts base64 PCM16 mono WAV, 8–24 kHz, up to 30 seconds."
+    }
+  }
+}

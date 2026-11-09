@@ -43,37 +43,27 @@ def test_every_repo_id_is_well_formed():
         assert rid and _REPO_RE.match(rid), f"malformed repo_id: {rid!r}"
 
 
-def test_config_only_entries_declare_the_files_that_complete_them():
-    """A ``config_only`` repo carries no weights of its own, so the install
-    validator judges it by ``config_required_files`` instead of a weight floor.
-    Declare none and the entry is permanently uninstallable: the completeness
-    check returns False and the install fails with a message whose list of
-    required files is empty. That is the shape #2163 reported, so it is a
-    catalogue invariant rather than something a user should discover.
-    """
-    for m in _models():
-        if not m.get("config_only"):
-            continue
-        required = m.get("config_required_files")
-        assert isinstance(required, list) and required, f"{m['repo_id']}: config_only needs a nonempty config_required_files list"
-        assert all(
-            isinstance(name, str) and name.strip() for name in required
-        ), f"{m['repo_id']}: blank entry in config_required_files"
+def _non_blank_list(value):
+    return (
+        isinstance(value, list) and bool(value)
+        and all(isinstance(x, str) and x.strip() for x in value)
+    )
 
 
-def test_dependency_declarations_are_installable():
-    """Every declared dependency needs an id and the files that prove it landed
-    — the installer rejects a dependency snapshot that lacks them."""
+def test_config_only_entries_name_their_required_files():
     for m in _models():
-        for dependency in m.get("dependencies") or ():
-            rid = dependency.get("repo_id")
-            assert rid and _REPO_RE.match(rid), f"malformed dependency repo_id: {rid!r}"
-            required = dependency.get("required_files")
-            assert isinstance(required, list) and required and all(
-                isinstance(name, str) and name.strip() for name in required
-            ), (
-                f"{m['repo_id']} → {rid}: dependency needs required_files"
+        if m.get("config_only"):
+            assert _non_blank_list(m.get("config_required_files")), (
+                f"{m.get('repo_id')!r} is config_only but lists no config_required_files"
             )
+
+
+def test_dependency_entries_are_well_formed():
+    for m in _models():
+        for dep in m.get("dependencies") or []:
+            where = f"{m.get('repo_id')!r} dependency {dep!r}"
+            assert _REPO_RE.match(str(dep.get("repo_id") or "")), where
+            assert _non_blank_list(dep.get("required_files")), where
 
 
 def test_required_fields_present():

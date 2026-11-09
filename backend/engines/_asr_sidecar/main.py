@@ -85,9 +85,13 @@ def _get_model():
     global _model
     if _model is None:
         from core.execstack import ensure_ctranslate2_loadable
-        ok, detail = ensure_ctranslate2_loadable()
-        if not ok:
-            raise ImportError(f"faster-whisper cannot load CTranslate2: {detail}")
+
+        loadable, detail = ensure_ctranslate2_loadable()
+        if not loadable:
+            raise ImportError(f"CTranslate2 is unavailable to faster-whisper: {detail}")
+        from core.windows_rocm.ct2 import prepare_import
+
+        prepare_import()
         from faster_whisper import WhisperModel
         # Same weights as in-process faster-whisper: ASR_MODEL_FASTER selects
         # for BOTH variants, ASR_MODEL_FW stays as a sidecar-only override.
@@ -101,10 +105,10 @@ def _get_model():
         )
         try:
             # The probe honors the user compute-device override and the
-            # ROCm/CT2 incompatibility (#1529) — the child must agree with
+            # pinned Windows HIP CT2 boundary — the child must agree with
             # the parent's device decision, not re-derive its own.
-            from core.device_caps import detect_host_caps
-            device = "cuda" if detect_host_caps().family == "cuda" else "cpu"
+            from core.windows_rocm.ct2 import gpu_device_available
+            device = "cuda" if gpu_device_available() else "cpu"
         except Exception:
             # Fail SAFE: guessing "cuda" from torch here would bypass a cpu
             # override and hand CTranslate2 HIP-flavoured cuda on ROCm
@@ -162,7 +166,11 @@ def _transcribe(audio_path, word_timestamps, decode_options=None, request_option
     extra = _request_options(request_options)
     model = _get_model()
     segments, info = model.transcribe(
-        audio_path, word_timestamps=word_timestamps, **options, **extra,
+        audio_path, word_timestamps=word_timestamps,
+        # Same as services.asr_backend.WHISPER_LONG_FORM_OPTIONS: decode each
+        # 30 s window on its own so one bad window cannot repeat to the end.
+        condition_on_previous_text=False,
+        **options, **extra,
     )
     out = []
     for s in segments:

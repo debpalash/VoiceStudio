@@ -63,10 +63,11 @@ _OPT_OUT_VALUES = {"manual", "off", "0", "false", "no"}
 
 # prefs keys (core.prefs conventions: env > prefs.json > default).
 _MODE_PREF = "hf_endpoint_mode"          # "auto" | "manual"; absent → default
-_DECISION_PREF = "hf_endpoint_auto"      # cached decision dict (see race())
+_DECISION_PREF = "hf_endpoint_auto_metadata_v2"  # revalidate old root-only decisions
 
 DECISION_MAX_AGE_S = 7 * 24 * 3600.0     # re-race a decision older than 7 days
-PROBE_TIMEOUT_S = 8.0                    # high-latency / China paths often need >3s
+# Generous enough that a slow but working route is not mistaken for a dead one.
+PROBE_TIMEOUT_S = 8.0
 MIRROR_SPEEDUP_FACTOR = 3.0              # mirror must be ≥3× faster to win
 
 # Small, stable, long-lived public file for the optional ranged-GET
@@ -119,38 +120,55 @@ def _classify_probe_error(exc: Exception) -> str:
     import socket
     import ssl
 
-    if isinstance(exc, (socket.timeout, TimeoutError)):
-        return "timeout"
-    if isinstance(exc, ssl.SSLError):
-        return "tls"
-    reason = getattr(exc, "reason", None)
-    if isinstance(reason, socket.gaierror):
-        return "dns"
-    if isinstance(reason, (socket.timeout, TimeoutError)):
-        return "timeout"
-    if isinstance(reason, ssl.SSLError):
-        return "tls"
-    if isinstance(exc, ConnectionRefusedError) or isinstance(reason, ConnectionRefusedError):
-        return "refused"
+    timeout_types = (socket.timeout, TimeoutError)
+    try:
+        from httpx import TimeoutException
+    except ImportError:
+        pass  # Still classify stdlib failures in a partial installation.
+    else:
+        timeout_types += (TimeoutException,)
+    pending, seen = [exc], set()
+    while pending:
+        current = pending.pop()
+        if not isinstance(current, BaseException) or id(current) in seen:
+            continue
+        seen.add(id(current))
+        if isinstance(current, timeout_types):
+            return "timeout"
+        if isinstance(current, ssl.SSLError):
+            return "tls"
+        reason = getattr(current, "reason", None)
+        if isinstance(current, socket.gaierror) or isinstance(reason, socket.gaierror):
+            return "dns"
+        if isinstance(reason, timeout_types):
+            return "timeout"
+        if isinstance(reason, ssl.SSLError):
+            return "tls"
+        if isinstance(current, ConnectionRefusedError) or isinstance(reason, ConnectionRefusedError):
+            return "refused"
+        # HTTPX/httpcore wrap native transport failures in exception chains;
+        # urllib uses reason. Traverse all links and refuse cycles.
+        pending.extend((getattr(current, "__context__", None),
+                        getattr(current, "__cause__", None), reason))
     return "unreachable"
 
 
 def probe_endpoint(endpoint: str, timeout: float = PROBE_TIMEOUT_S) -> ProbeResult:
-    """HTTPS reachability + latency: one HEAD to the endpoint root.
+    """Metadata reachability + latency using the same client as downloads.
 
-    Any HTTP response (even an error status) counts as reachable — the probe
-    measures whether the network path works, not whether a specific resource
-    exists. Never raises."""
+    A root page or redirect is insufficient: hub downloads need etag, commit
+    and size headers. No credentials are sent to either public probe. Never raises.
+    """
     if not _is_allowed_probe_endpoint(endpoint):
         return ProbeResult(endpoint=endpoint, reachable=False, error="invalid_endpoint")
-    url = endpoint.rstrip("/") + "/"
-    req = urllib.request.Request(url, method="HEAD", headers={"User-Agent": "VoiceStudio-endpoint-probe"})
     start = time.monotonic()
     try:
-        with urllib.request.urlopen(req, timeout=timeout):  # nosec B310 -- fixed HTTPS allowlist above
-            pass
-    except urllib.error.HTTPError:
-        pass  # the server answered → reachable
+        from huggingface_hub import get_hf_file_metadata, hf_hub_url
+
+        url = hf_hub_url("openai-community/gpt2", "config.json", endpoint=endpoint)
+        metadata = get_hf_file_metadata(url, token=False, timeout=timeout)
+        if not metadata.etag or not metadata.commit_hash or metadata.size is None:
+            return ProbeResult(endpoint=endpoint, reachable=False, error="invalid_metadata")
     except Exception as exc:
         return ProbeResult(endpoint=endpoint, reachable=False, error=_classify_probe_error(exc))
     return ProbeResult(

@@ -105,12 +105,6 @@ def test_failure_payload_is_actionable_and_terminal():
     assert detail["code"] == "no_audio_track"
 
 
-def test_worker_protocol_treats_no_audio_as_terminal():
-    from worker import errors
-
-    assert errors.from_reason(NO_AUDIO_TRACK_MESSAGE).error_class.value == "terminal"
-
-
 def test_http_surfaces_route_no_audio_track_to_a_structured_422():
     source = (Path(__file__).resolve().parents[1] / "backend" / "main.py").read_text(encoding="utf-8")
     assert "@app.exception_handler(NoAudioTrackError)" in source

@@ -11,9 +11,16 @@ import argparse
 import hashlib
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
+
+# Stable is `X.Y.Z`; Beta is `X.Y.Z-beta.N`. Nothing else is an update channel.
+CHANNEL_VERSION = {
+    "stable": re.compile(r"\d+\.\d+\.\d+"),
+    "beta": re.compile(r"\d+\.\d+\.\d+-beta\.\d+"),
+}
 
 TARGETS = {
     # electron-updater's Provider.getCustomChannelName appends an OS suffix
@@ -31,6 +38,15 @@ TARGETS = {
 OPTIONAL_TARGETS = {
     "win32-arm64": ("win32-arm64", "win", "arm64", ".exe"),
 }
+
+
+def artifact_name(version: str, os_token: str, arch: str, extension: str) -> str:
+    """Direct-download name (electron-builder.config.mjs `artifactName`).
+
+    Releases up to v0.5.7-beta.3 were `VoiceStudio-Electron-*`; they are built
+    and verified from their own tags, so only the current name is checked here.
+    """
+    return f"VoiceStudio-{version}-{os_token}-{arch}{extension}"
 
 
 class ReleaseContractError(RuntimeError):
@@ -54,21 +70,41 @@ def _asset_map(release: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return mapped
 
 
+def _foreign_feed(name: str, channel: str) -> bool:
+    """True for an updater feed that belongs to a channel other than `channel`."""
+    if name.startswith("electron-") and name.endswith(".yml"):
+        return not name.startswith(f"electron-{channel}-")
+    # electron-builder's default feeds: this project publishes only channel feeds.
+    if re.fullmatch(r"(latest|beta|alpha)(-[a-z0-9]+)*\.yml", name):
+        return True
+    # The archived Tauri sunset feeds ride on Stable only.
+    return channel != "stable" and name in {"latest.json", "latest-user.json"}
+
+
 def verify_release(
     release: dict[str, Any], manifest_dir: Path, *, channel: str, version: str
 ) -> list[str]:
-    # Stable is the only Electron update feed; there is no `preview` release.
-    if channel != "stable":
+    if channel not in CHANNEL_VERSION:
         raise ReleaseContractError(f"unsupported channel: {channel}")
-    if re.fullmatch(r"\d+\.\d+\.\d+", version) is None:
+    if CHANNEL_VERSION[channel].fullmatch(version) is None:
         raise ReleaseContractError(f"{channel} version has the wrong shape: {version}")
-    if release.get("isPrerelease"):
+    # Beta ships as a GitHub prerelease so it can never become `latest`.
+    if bool(release.get("isPrerelease")) != (channel == "beta"):
         raise ReleaseContractError(f"{channel} prerelease flag does not match the channel")
     expected_tag = f"v{version}"
     if release.get("tagName") != expected_tag:
         raise ReleaseContractError(f"{channel} release tag does not match {expected_tag}")
 
     assets = _asset_map(release)
+    # A feed of the other channel on this release would move its users: a
+    # stable feed on a beta pulls stable users onto the beta's payloads (and
+    # Tauri's latest*.json is served only through `latest/download`, which a
+    # prerelease never answers), a beta feed on stable is unreachable noise.
+    forbidden = [name for name in assets if _foreign_feed(name, channel)]
+    if forbidden:
+        raise ReleaseContractError(
+            f"{channel} release carries another channel's update feed: {', '.join(sorted(forbidden))}"
+        )
     verified: list[str] = []
     for target, (manifest_target, os_token, arch, extension) in {
         **TARGETS,
@@ -79,7 +115,7 @@ def verify_release(
         if target in OPTIONAL_TARGETS:
             # Skip only when NOTHING of this target is published: an installer
             # or blockmap without its manifest is an incomplete release.
-            payload = f"VoiceStudio-Electron-{version}-{os_token}-{arch}{extension}"
+            payload = artifact_name(version, os_token, arch, extension)
             traces = (manifest_name, payload, f"{payload}.blockmap")
             if not manifest_path.is_file() and not any(name in assets for name in traces):
                 continue
@@ -108,7 +144,7 @@ def verify_release(
             raise ReleaseContractError(
                 f"{manifest_name} has version {declared_version}, expected {version}"
             )
-        expected_artifact = f"VoiceStudio-Electron-{version}-{os_token}-{arch}{extension}"
+        expected_artifact = artifact_name(version, os_token, arch, extension)
         if artifact != expected_artifact or legacy_path != artifact:
             raise ReleaseContractError(f"{manifest_name} points at unexpected artifact {artifact}")
         if legacy_sha != file_sha or len(file_sha) < 80:
@@ -121,17 +157,43 @@ def verify_release(
             raise ReleaseContractError(f"published size does not match {artifact}")
         if not str(artifact_asset.get("digest") or "").startswith("sha256:"):
             raise ReleaseContractError(f"published payload has no GitHub digest: {artifact}")
-        if target.startswith("win32-") and f"{artifact}.blockmap" not in assets:
+        # Patch updates: electron-updater fetches `<payload>.blockmap` for the
+        # NSIS installer and the macOS zip, and reads the AppImage's embedded
+        # blockmap through `blockMapSize`. Without them every update is a full
+        # download, silently.
+        if extension == ".AppImage":
+            # Only the AppImage's own entry counts (the deb entry has none).
+            entry = re.search(
+                rf"^\s+- url:\s*['\"]?{re.escape(artifact)}['\"]?\s*$(.*?)(?=^\s+- url:|^\S|\Z)",
+                manifest,
+                re.MULTILINE | re.DOTALL,
+            )
+            if not entry or not re.search(r"^\s{4}blockMapSize:\s*[1-9]\d*$", entry.group(1), re.MULTILINE):
+                raise ReleaseContractError(
+                    f"{manifest_name} has no blockMapSize, so AppImage patch updates are off"
+                )
+        elif f"{artifact}.blockmap" not in assets:
             raise ReleaseContractError(f"release is missing differential blockmap: {artifact}.blockmap")
         verified.append(f"{manifest_name} -> {artifact}")
     return verified
 
 
+def foreign_feeds_main(channel: str, names: list[str]) -> int:
+    """Exit non-zero when asset names (one per line on stdin) include another channel's feed."""
+    forbidden = sorted(name for name in names if name and _foreign_feed(name, channel))
+    if forbidden:
+        print(f"{channel} release carries another channel's update feed: {', '.join(forbidden)}")
+        return 1
+    return 0
+
+
 def main() -> int:
+    if len(sys.argv) == 3 and sys.argv[1] == "--foreign-feeds":
+        return foreign_feeds_main(sys.argv[2], sys.stdin.read().split("\n"))
     parser = argparse.ArgumentParser()
     parser.add_argument("--release-json", type=Path, required=True)
     parser.add_argument("--manifest-dir", type=Path, required=True)
-    parser.add_argument("--channel", choices=("stable",), required=True)
+    parser.add_argument("--channel", choices=tuple(CHANNEL_VERSION), required=True)
     parser.add_argument("--version", required=True)
     args = parser.parse_args()
     release = json.loads(args.release_json.read_text(encoding="utf-8"))

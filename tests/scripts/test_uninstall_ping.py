@@ -47,9 +47,12 @@ def _run(tmp_path, *args, consented=True, with_info=True):
         (data / "analytics_info.json").write_text(
             json.dumps(
                 {
-                    "token": "phc_test_token",
-                    "host": "https://eu.i.posthog.com",
-                    "distinct_id": "11111111-2222-3333-4444-555555555555",
+                    "site": "testsite12345",
+                    "host": "https://app.supermetry.com",
+                    "appUrl": "https://app.voicestudio.sh",
+                    "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 VoiceStudio/1.0",
+                    "policy": "opt-in",
+                    "profile_id": "install_11111111222233334444555555555555",
                     "app_version": "0.3.23",
                     "platform": "macos",
                 },
@@ -77,7 +80,7 @@ def _run(tmp_path, *args, consented=True, with_info=True):
     proc = subprocess.run(
         ["bash", SH, *args], capture_output=True, text=True, env=env, timeout=60
     )
-    curl_args = curl_log.read_text() if curl_log.exists() else ""
+    curl_args = curl_log.read_text(encoding="utf-8") if curl_log.exists() else ""
     return proc, curl_args
 
 
@@ -89,11 +92,11 @@ def test_consented_delete_sends_one_honest_ping(tmp_path):
     proc, curl = _run(tmp_path, "--yes")
     assert proc.returncode == 0, proc.stderr
     assert "Sending anonymous uninstall ping (you opted in to analytics)." in proc.stdout
-    # One capture call, to the host from analytics_info.json, with the ping.
-    assert "https://eu.i.posthog.com/capture/" in curl
+    # One call, to the host from analytics_info.json, with the ping.
+    assert "https://app.supermetry.com/api/public/v1/events" in curl
     assert curl.count("app_uninstalled") == 1
-    assert "phc_test_token" in curl
-    assert "11111111-2222-3333-4444-555555555555" in curl
+    assert "testsite12345" in curl
+    assert "install_11111111222233334444555555555555" in curl
     assert '"app_version":"0.3.23"' in curl.replace(" ", "")
     # Best-effort timeout is on the call.
     assert re.search(r"^-m\n2$", curl, re.M)
@@ -152,13 +155,13 @@ def test_ps1_ping_is_consent_gated_and_best_effort():
     assert src.index("exit 0") < src.index("app_uninstalled")
 
 
-def test_ps1_and_sh_carry_no_baked_token():
-    """The scripts are generic: the token comes from the backend-written info
-    file, never from a literal in the repo (the secret scanner would agree)."""
+def test_ps1_and_sh_carry_no_baked_site():
+    """The scripts are generic: the destination comes from the backend-written
+    info file, never from a literal in the repo."""
     for path in (SH, PS1):
         with open(path, encoding="utf-8") as f:
             src = f.read()
-        assert not re.search(r"phc_[A-Za-z0-9]{16,}", src), path
+        assert "oxxxnwyfwhx4" not in src, path
 
 
 def test_shellcheck_clean_if_available():

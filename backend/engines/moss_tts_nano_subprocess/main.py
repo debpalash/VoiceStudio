@@ -14,8 +14,10 @@ from __future__ import annotations
 
 import base64
 import contextlib
+import inspect
 import json
 import os
+from pathlib import Path
 import re
 import struct
 import sys
@@ -23,6 +25,7 @@ import tempfile
 import threading
 import time
 import traceback
+import weakref
 
 # Mirrors services/subprocess_backend.py::MAX_FRAME_BYTES.
 MAX_FRAME_BYTES = 64 * 1024 * 1024
@@ -71,8 +74,11 @@ def _recv(stream):
 
 def _measure_vram_mb() -> float:
     try:
-        import torch  # noqa: PLC0415
-
+        # A ping must stay cheap: importing torch here can take a long time on a cold
+        # start (#2837). Until the model has loaded, nothing is allocated.
+        torch = sys.modules.get("torch")
+        if torch is None:
+            return 0.0
         if torch.cuda.is_available():
             return float(torch.cuda.memory_allocated()) / (1024 * 1024)
     except Exception:  # noqa: BLE001 — a probe, never fatal
@@ -121,6 +127,50 @@ def _heartbeat(stdout, stage: str):
         thread.join(timeout=_HEARTBEAT_S + 1)
 
 
+def _configure_tokenizer_cache(model):
+    """Keep cache roots stable and reuse a usable legacy tokenizer at load time."""
+    if getattr(model, "_voicestudio_tokenizer_cache_configured", False):
+        return model
+    from huggingface_hub.constants import HF_HUB_CACHE  # noqa: PLC0415
+
+    model._resolve_hf_cache_dir = lambda: HF_HUB_CACHE
+    model._patch_hf_dynamic_module_cache_dir = lambda cache_dir: None
+    legacy_cache = Path(inspect.getfile(type(model))).parent / ".cache" / "huggingface"
+    if legacy_cache.is_dir() and callable(getattr(model, "_load_resolved_text_tokenizer", None)):
+        # A strong reference to the bound loader would keep discarded GPU models
+        # alive until cyclic GC runs. The active caller already owns the model.
+        original_loader = weakref.WeakMethod(model._load_resolved_text_tokenizer)
+        use_fast = bool(getattr(getattr(model, "config", None), "tokenizer_use_fast", True))
+
+        def load_tokenizer_with_cache_fallback(resolved_path, cache_dir):
+            """Try existing Hub caches offline before the usual first-use loader."""
+            if not os.path.exists(os.path.expanduser(resolved_path)):
+                from transformers import AutoTokenizer  # noqa: PLC0415
+
+                for candidate in (cache_dir, str(legacy_cache)):
+                    try:
+                        tokenizer = AutoTokenizer.from_pretrained(
+                            resolved_path, cache_dir=candidate, use_fast=use_fast,
+                            trust_remote_code=True, local_files_only=True,
+                        )
+                        # Some backends construct an empty vocabulary from
+                        # metadata alone; that cannot tokenize Nano's input.
+                        if tokenizer.vocab_size > 0:
+                            return tokenizer
+                    except Exception:  # noqa: BLE001 — cache probes are best-effort
+                        # The original loader below retains the normal failure
+                        # and first-use download behavior if neither cache works.
+                        pass
+            loader = original_loader()
+            if loader is None:
+                raise RuntimeError("MOSS-TTS-Nano model has been unloaded")
+            return loader(resolved_path=resolved_path, cache_dir=cache_dir)
+
+        model._load_resolved_text_tokenizer = load_tokenizer_with_cache_fallback
+    model._voicestudio_tokenizer_cache_configured = True
+    return model
+
+
 def _load_service(stdout):
     global _SERVICE
     if _SERVICE is not None:
@@ -142,6 +192,19 @@ def _load_service(stdout):
             # install folder (and see _handle_synthesize: one file, reused).
             output_dir=tempfile.mkdtemp(prefix="moss-tts-nano-"),
         )
+        # Upstream's text-tokenizer loader creates another HF cache beside its
+        # dynamically imported model file, then relocates HF_MODULES_CACHE into
+        # it. This defeats the app's short Windows cache path (#3137) and makes
+        # the tokenizer miss files already downloaded into the shared Hub cache.
+        # Keep both cache roots chosen by Hugging Face, including user overrides.
+        load_model = service._load_model_locked
+
+        def load_model_with_shared_cache():
+            """Preserve cache roots for every model instance, including reloads."""
+            return _configure_tokenizer_cache(load_model())
+
+        # Inference errors and dtype recovery can discard and reload the model.
+        service._load_model_locked = load_model_with_shared_cache
         _with_retries(lambda: service.preload(load_model=True))
         _SERVICE = service
     _send(stdout, {"op": "progress", "stage": "loading_model", "percent": 100})

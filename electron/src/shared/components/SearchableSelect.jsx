@@ -1,8 +1,15 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useId,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { Search, ChevronDown, Check, Star, Clock } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { VirtualSearchableSelect } from './VirtualSearchableSelect';
 
 const MAX_DISPLAY = 200;
 
@@ -28,14 +35,10 @@ const normalize = (s) => (s || '').toString().toLowerCase();
 // Migrated `.ss-group-label` — used for both the pinned header and lazy group
 // headers, so share one string.
 const GROUP_LABEL_CLS =
-  'pt-[4px] px-[10px] pb-[2px] text-[0.55rem] uppercase tracking-[0.06em] text-[color:var(--text-secondary)] opacity-70 flex items-center gap-[4px]';
+  'pt-[4px] px-[10px] pb-[2px] text-[0.55rem] uppercase tracking-[0.06em] text-[color:var(--text-secondary,var(--muted-foreground))] opacity-70 flex items-center gap-[4px]';
 
 export default function SearchableSelect(props) {
-  return props.virtualized ? (
-    <VirtualSearchableSelect {...props} />
-  ) : (
-    <ClassicSearchableSelect {...props} />
-  );
+  return <ClassicSearchableSelect {...props} />;
 }
 
 function ClassicSearchableSelect({
@@ -83,6 +86,7 @@ function ClassicSearchableSelect({
   const listRef = useRef(null);
   const inputRef = useRef(null);
   const menuRef = useRef(null);
+  const listboxId = useId();
   const [menuPos, setMenuPos] = useState(null);
 
   const getVal = useCallback((o) => (typeof o === 'string' ? o : o?.value), []);
@@ -209,8 +213,8 @@ function ClassicSearchableSelect({
 
   useEffect(() => {
     if (open) {
-      setHighlight(0);
-      setTimeout(() => inputRef.current?.focus(), 0);
+      const timer = setTimeout(() => inputRef.current?.focus(), 0);
+      return () => clearTimeout(timer);
     } else {
       setQuery('');
     }
@@ -280,24 +284,39 @@ function ClassicSearchableSelect({
         type="button"
         className={`${buttonClassName} flex items-center justify-between gap-[6px] w-full text-left cursor-pointer [font-family:inherit] disabled:cursor-not-allowed disabled:opacity-50 ${triggerSizeCls}`}
         style={buttonStyle}
-        onClick={() => !disabled && setOpen((o) => !o)}
+        onClick={() => {
+          if (disabled) return;
+          if (!open) {
+            setHighlight(
+              Math.max(
+                0,
+                flatItems.findIndex(({ o }) => getVal(o) === value),
+              ),
+            );
+          }
+          setOpen(!open);
+        }}
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-controls={open ? listboxId : undefined}
         aria-label={ariaLabel}
         title={currentLabel}
       >
-        <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[color:var(--text-primary)]">
+        <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-[color:var(--text-primary,var(--foreground))]">
           {currentLabel}
         </span>
-        <ChevronDown size={12} className="text-[color:var(--text-secondary)] shrink-0" />
+        <ChevronDown
+          size={12}
+          className="text-[color:var(--text-secondary,var(--muted-foreground))] shrink-0"
+        />
       </button>
 
       {open &&
         wrapMenu(
           <div
             ref={menuRef}
-            className={`${menuClassName} z-[1000] bg-[var(--color-bg)] border-0 rounded-lg shadow-xl overflow-hidden max-w-[calc(100vw-16px)] ${
+            className={`${menuClassName} z-[1000] bg-[var(--color-bg,var(--popover))] border-0 rounded-lg shadow-xl overflow-hidden max-w-[calc(100vw-16px)] ${
               menuPortal ? 'fixed' : 'absolute top-[calc(100%+4px)] left-0 right-0'
             }`}
             style={
@@ -309,17 +328,23 @@ function ClassicSearchableSelect({
                   }
                 : undefined
             }
-            role="listbox"
           >
             <div className="relative p-3 flex items-center gap-2">
               <Search
                 size={12}
-                className="absolute left-5 top-1/2 -translate-y-1/2 text-[var(--chrome-fg-muted)] pointer-events-none"
+                className="absolute left-5 top-1/2 -translate-y-1/2 text-[var(--chrome-fg-muted,var(--muted-foreground))] pointer-events-none"
               />
               <input
                 ref={inputRef}
-                className="flex-1 min-w-0 w-full min-h-10 bg-[var(--chrome-hover-bg)] border-0 rounded-md py-2 pr-3 pl-8 text-sm text-[var(--chrome-fg)] focus-visible:outline-2 focus-visible:outline-[var(--chrome-accent)] [font-family:inherit]"
-                aria-label={t('common.search')}
+                className="flex-1 min-w-0 w-full min-h-10 bg-[var(--chrome-hover-bg,var(--accent))] border-0 rounded-md py-2 pr-3 pl-8 text-sm text-[var(--chrome-fg,var(--foreground))] focus-visible:outline-2 focus-visible:outline-[var(--chrome-accent,var(--primary))] [font-family:inherit]"
+                role="combobox"
+                aria-expanded="true"
+                aria-autocomplete="list"
+                aria-controls={listboxId}
+                aria-activedescendant={
+                  flatItems[highlight] ? `${listboxId}-option-${highlight}` : undefined
+                }
+                aria-label={ariaLabel || t('common.search')}
                 placeholder={t('common.search')}
                 value={query}
                 onChange={(e) => {
@@ -332,11 +357,14 @@ function ClassicSearchableSelect({
 
             <div
               ref={listRef}
+              role="listbox"
+              id={listboxId}
+              aria-label={ariaLabel || placeholder}
               className="max-h-[280px] overflow-y-auto py-[2px] [&::-webkit-scrollbar]:w-[6px] [&::-webkit-scrollbar-thumb]:bg-[rgba(255,255,255,0.1)] [&::-webkit-scrollbar-thumb]:rounded-[3px]"
               style={menuPortal && menuPos ? { maxHeight: menuPos.listMax } : undefined}
             >
               {flatItems.length === 0 && (
-                <div className="py-[8px] px-[10px] text-[0.65rem] text-[color:var(--text-secondary)] italic text-center">
+                <div className="py-[8px] px-[10px] text-[0.65rem] text-[color:var(--text-secondary,var(--muted-foreground))] italic text-center">
                   {t('common.no_matches')}
                 </div>
               )}
@@ -377,6 +405,7 @@ function ClassicSearchableSelect({
                       {showHeader && <div className={GROUP_LABEL_CLS}>{it.o.groupLabel}</div>}
                       <div
                         data-idx={idx}
+                        id={`${listboxId}-option-${idx}`}
                         // Migrated `.ss-option`/`.ss-hl`/`.ss-sel` cascade. Selected
                         // wins its color/weight; selected+highlighted gets the
                         // stronger amber wash; highlight (and hover, when neither
@@ -384,17 +413,17 @@ function ClassicSearchableSelect({
                         className={[
                           'flex min-h-10 items-center gap-2 py-2 px-3 mx-2 my-1 rounded-md text-sm cursor-pointer select-none',
                           selected
-                            ? 'text-[var(--chrome-accent)] font-medium'
+                            ? 'text-[var(--chrome-accent,var(--primary))] font-medium'
                             : highlighted
-                              ? 'text-[var(--chrome-accent)]'
-                              : 'text-[var(--chrome-fg)] hover:text-[var(--chrome-accent)]',
+                              ? 'text-[var(--chrome-accent,var(--primary))]'
+                              : 'text-[var(--chrome-fg,var(--foreground))] hover:text-[var(--chrome-accent,var(--primary))]',
                           selected && highlighted
-                            ? 'bg-[var(--chrome-accent-bg)]'
+                            ? 'bg-[var(--chrome-accent-bg,var(--accent))]'
                             : selected
-                              ? 'bg-[var(--chrome-accent-bg)]'
+                              ? 'bg-[var(--chrome-accent-bg,var(--accent))]'
                               : highlighted
-                                ? 'bg-[var(--chrome-accent-bg)]'
-                                : 'hover:bg-[var(--chrome-accent-bg)]',
+                                ? 'bg-[var(--chrome-accent-bg,var(--accent))]'
+                                : 'hover:bg-[var(--chrome-accent-bg,var(--accent))]',
                         ].join(' ')}
                         onMouseEnter={() => setHighlight(idx)}
                         onMouseDown={(e) => {
@@ -405,10 +434,16 @@ function ClassicSearchableSelect({
                         aria-selected={selected}
                       >
                         {it.kind === 'recent' && (
-                          <Clock size={9} className="text-[color:var(--text-secondary)] shrink-0" />
+                          <Clock
+                            size={9}
+                            className="text-[color:var(--text-secondary,var(--muted-foreground))] shrink-0"
+                          />
                         )}
                         {it.kind === 'popular' && (
-                          <Star size={9} className="text-[color:var(--text-secondary)] shrink-0" />
+                          <Star
+                            size={9}
+                            className="text-[color:var(--text-secondary,var(--muted-foreground))] shrink-0"
+                          />
                         )}
                         <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
                           {renderOption ? renderOption(it.o) : getLabel(it.o)}
@@ -417,7 +452,7 @@ function ClassicSearchableSelect({
                           <Check
                             size={14}
                             aria-hidden="true"
-                            className="text-[var(--chrome-accent)] shrink-0"
+                            className="text-[var(--chrome-accent,var(--primary))] shrink-0"
                           />
                         )}
                       </div>
@@ -427,7 +462,7 @@ function ClassicSearchableSelect({
               })()}
 
               {!query && filtered.length > MAX_DISPLAY && (
-                <div className="py-[8px] px-[10px] text-[0.65rem] text-[color:var(--text-secondary)] italic text-center [border-top:1px_solid_rgba(255,255,255,0.04)]">
+                <div className="py-[8px] px-[10px] text-[0.65rem] text-[color:var(--text-secondary,var(--muted-foreground))] italic text-center [border-top:1px_solid_rgba(255,255,255,0.04)]">
                   {t('common.showing_of', { shown: MAX_DISPLAY, total: filtered.length })}
                 </div>
               )}

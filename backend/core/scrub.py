@@ -71,6 +71,11 @@ _HOME_PATTERNS = (
     re.compile(r"[A-Za-z]:\\Users\\[^\\\s\"']+", re.IGNORECASE),  # Windows, backslashes
 )
 
+# Lookahead that ends this machine's home path: the next character must not
+# continue the directory name. A dot only continues it when a name character
+# follows (`/Users/john.doe`); a trailing dot is sentence punctuation.
+_HOME_NAME_ENDS = r"(?![\w\-]|\.[\w\-])"
+
 # Values shorter than this are too entropy-poor to be real secrets and too
 # likely to shred unrelated text (e.g. PASSWORD_MIN_LENGTH=8 would otherwise
 # turn every "8" in the report into ***REDACTED***).
@@ -120,11 +125,13 @@ def scrub_text(text: str | None) -> str:
     # 3. This process's real home dir (covers symlinked/nonstandard homes
     #    the generic patterns miss), then the per-OS shapes. Boundary-aware so
     #    a home of `/Users/john` doesn't rewrite `/Users/johnny` to `~ny`
-    #    (leaking the fragment + mangling the path).
+    #    (leaking the fragment + mangling the path). Only a character that
+    #    continues the name blocks the match, so sentence punctuation after
+    #    the home (`.../alice.` `.../alice,` `(.../alice)`) is still redacted.
     try:
         home = os.path.expanduser("~")
         if home and home not in ("/", "~"):
-            s = re.sub(re.escape(home) + r"(?=[/\\\s\"']|$)", "~", s)
+            s = re.sub(re.escape(home) + _HOME_NAME_ENDS, "~", s)
     except Exception:
         return REDACTED
     for pat in _HOME_PATTERNS:

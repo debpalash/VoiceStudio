@@ -30,8 +30,18 @@ setup creates a separate runtime in Electron’s default location instead of
 modifying or taking ownership of the existing environment.
 
 A new custom runtime destination remains selectable. Setup creates and owns it
-only when that directory does not already exist; existing unowned roots stay
-untouched even if their `project` subdirectory is missing.
+when that directory does not exist yet or is empty, such as a folder just
+created in the folder picker (file-manager metadata like `.DS_Store` or
+`desktop.ini` does not count). Unowned roots recorded by older builds that hold
+other files stay untouched even if their `project` subdirectory is missing.
+
+A folder chosen on the setup screen is always kept, even when it already holds
+files such as a runtime moved there by hand. Setup installs into it, reuses any
+downloads in its `.uv-cache` and never redirects to the system drive. Clean & Retry
+and uninstall skip runtime folders (`project`, `.uv-cache`, `.python`, `.tmp`, `tmp`,
+`.wheel-prefetch`) that were already there when the folder was picked, so remove
+those by hand if you no longer need them. Clean & Retry repairs such a `project`
+in place, which can replace VoiceStudio's own files and its `.venv` inside it.
 
 Dependency checks ignore inherited `PYTHONPATH` and `PYTHONHOME`, matching backend
 startup. If repair switches away from an unowned environment and a healthy

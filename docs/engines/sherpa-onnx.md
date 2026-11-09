@@ -33,8 +33,13 @@ TTS model directory.
 4. Select the engine via **Model Catalogue** (TTS tab → **Use**) or
    `OMNIVOICE_TTS_BACKEND=sherpa-onnx`.
 
-The directory must contain `model.onnx` and `tokens.txt`. Sherpa-ONNX ships
-no bundled default model, so the engine reports unavailable — with the
+The selected directory must contain `tokens.txt` and one model: either
+`model.onnx`, or the voice-named `.onnx` file found in a Piper archive. When
+present, `espeak-ng-data/` is used for Piper phonemization and `lexicon.txt` is
+used by lexicon-driven VITS models such as MeloTTS and Chinese voices; neither
+requires another setting.
+
+Sherpa-ONNX has no bundled default model, so the engine reports unavailable — with the
 reason — until `OMNIVOICE_SHERPA_MODEL` points at a valid directory. (Before
 this gate, selecting the engine unconfigured produced a failure mislabeled
 as out-of-memory —
@@ -44,7 +49,25 @@ as out-of-memory —
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `OMNIVOICE_SHERPA_MODEL` | (unset) | Directory containing `model.onnx` + `tokens.txt` |
+| `OMNIVOICE_SHERPA_MODEL` | unset | Path to the unpacked directory containing `tokens.txt` and either `model.onnx` or one voice-named `.onnx` file. |
+
+### Example: a US English Piper voice
+
+```bash
+curl -LO https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-lessac-medium.tar.bz2
+tar xjf vits-piper-en_US-lessac-medium.tar.bz2
+export OMNIVOICE_SHERPA_MODEL="$PWD/vits-piper-en_US-lessac-medium"
+```
+
+Any other Piper voice is set up identically; just swap in its archive name and
+the folder it unpacks to.
+
+## Licences
+
+Models supplied through this directory remain subject to their own licence
+terms. Because VoiceStudio does not provide or catalogue this model, its
+catalogue licence prompt does not cover it. Read the model card included in
+the unpacked folder before using or distributing generated audio.
 
 ## Behaviour notes
 
@@ -67,7 +90,11 @@ as out-of-memory —
 
 - "OMNIVOICE_SHERPA_MODEL not set" / "No model.onnx in …": follow Setup
   above — the variable must point at the *unpacked* model directory, not
-  the archive.
+  the downloaded archive. A folder with multiple `.onnx` files and no exact
+  `model.onnx` is also rejected because the intended voice is unclear.
+- Number reading depends on whether the model language has a supported text
+  normalizer. Comma decimals such as `2,5` reach the voice as digits; write
+  them as words (for example, “two point five”) for more reliable speech.
 - Other issues: [install/troubleshooting.md](../install/troubleshooting.md).
 
 See also: [benchmarks.md](../benchmarks.md),

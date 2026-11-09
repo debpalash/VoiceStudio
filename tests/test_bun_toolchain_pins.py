@@ -96,7 +96,11 @@ def test_workspace_manifests_agree_on_shared_dependency_ranges():
 def test_the_required_test_job_runs_the_frontend_node_tests():
     """`bun run test:frontend` ran in no workflow, so its suites rotted unseen."""
     ci = yaml.safe_load((_WORKFLOWS / "ci.yml").read_text(encoding="utf-8"))
-    job = next(j for j in ci["jobs"].values() if j.get("name") == "Tests (backend + frontend)")
+    # The required check `Tests (backend + frontend)` gates on the Electron job
+    # (ci.yml `test` needs `test-electron`), which is where the suites run.
+    gate = next(j for j in ci["jobs"].values() if j.get("name") == "Tests (backend + frontend)")
+    assert "test-electron" in gate["needs"]
+    job = ci["jobs"]["test-electron"]
     runs = [str(step.get("run", "")) for step in job["steps"]]
     assert any("bun run test:frontend" in run for run in runs)
     assert "test:frontend" in _PACKAGE["scripts"]

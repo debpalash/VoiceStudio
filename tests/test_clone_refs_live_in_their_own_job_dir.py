@@ -19,7 +19,6 @@ The fix is one argument: clones are written into the CURRENT job's own dir.
 from __future__ import annotations
 
 import ast
-import importlib
 import os
 import sys
 
@@ -34,43 +33,104 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 sf = pytest.importorskip("soundfile")
 
 
-def _extraction_call():
-    """The ``extract_speaker_clones(...)`` call node in dub_core, by AST —
-    a comment mentioning the right directory must not satisfy this."""
-    src = open(
-        os.path.join(os.path.dirname(__file__), "..", "backend", "api",
-                     "routers", "dub_core.py"),
-        encoding="utf-8",
-    ).read()
-    for node in ast.walk(ast.parse(src)):
-        if (isinstance(node, ast.Call)
-                and getattr(node.func, "id", getattr(node.func, "attr", None))
-                == "extract_speaker_clones"):
-            return node, src
-    raise AssertionError("extract_speaker_clones call not found in dub_core.py")
+def _source_tree():
+    from pathlib import Path
+    return ast.parse((Path(__file__).parent.parent / "backend/api/routers/dub_core.py").read_text(encoding="utf-8"))
 
 
-def test_the_out_dir_is_not_derived_from_the_vocals_path():
-    """The bug, stated directly: ``os.path.dirname(vocals_for_clone)`` follows
-    the vocals into whichever job dir the cache resolved them from."""
-    call, _ = _extraction_call()
-    out_dir_arg = ast.unparse(call.args[2])
-    assert "dirname" not in out_dir_arg, (
-        f"the clone out_dir is again derived from the vocals path "
-        f"({out_dir_arg!r}) — on a cache hit that is an OLDER job's directory, "
-        f"and deleting that job orphans this one's clone references (#1331)"
-    )
+def _assert_job_owned_outputs(tree):
+    """Follow each output variable in its own lexical scope, not its spelling.
+
+    The normal transcription helper is checked behaviorally below; direct
+    refresh paths must resolve through new_reference_run_dir(_safe_job_dir(job_id)).
+    Unknown expressions fail closed so a newly introduced path needs coverage.
+    """
+    parents = {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+
+    def scope(node):
+        while node in parents:
+            node = parents[node]
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                return node
+        return tree
+
+    def owned(expr, seen=()):
+        if isinstance(expr, ast.Name):
+            assert expr.id not in seen, "cyclic output directory assignment"
+            assignments = [node for node in ast.walk(scope(expr))
+                           if isinstance(node, ast.Assign) and scope(node) is scope(expr)
+                           and node.lineno < expr.lineno
+                           and any(isinstance(target, ast.Name) and target.id == expr.id
+                                   for target in node.targets)]
+            assert assignments, f"unresolved output directory: {expr.id}"
+            latest = max(assignments, key=lambda node: node.lineno)
+            return owned(latest.value, (*seen, expr.id))
+        assert isinstance(expr, ast.Call), f"unverified output directory: {ast.unparse(expr)}"
+        name = ast.unparse(expr.func)
+        if name == "_safe_job_dir":
+            assert len(expr.args) == 1 and ast.unparse(expr.args[0]) == "job_id"
+        elif name == "dub_pipeline.new_reference_run_dir":
+            assert len(expr.args) == 1
+            owned(expr.args[0], seen)
+        elif name == "_ref_run_dir":
+            # Execute the actual helper, including its job-id lookup and
+            # fallback choice, in test_reference_run_helper_prefers_current_job.
+            definitions = [node for node in ast.walk(scope(expr))
+                           if isinstance(node, ast.FunctionDef) and node.name == name
+                           and scope(node) is scope(expr)]
+            assert len(definitions) == 1
+        else:
+            raise AssertionError(f"unverified output directory: {ast.unparse(expr)}")
+
+    for call in _all_extraction_calls(tree):
+        owned(call.args[2])
 
 
-def test_the_out_dir_comes_from_the_jobs_own_id():
-    call, src = _extraction_call()
-    out_dir_arg = ast.unparse(call.args[2])
-    # The argument is a variable; its assignment must resolve via the job id.
-    assert "_clone_dir" in out_dir_arg
-    assert "_safe_job_dir(job_id)" in src.split("fut_clones")[0].rsplit(
-        "extract_speaker_clones", 2)[0][-2000:] or "_safe_job_dir(job_id)" in src, (
-        "the clone out_dir is no longer anchored to this job's own directory"
-    )
+def test_the_out_dirs_come_from_the_jobs_own_id():
+    _assert_job_owned_outputs(_source_tree())
+
+
+@pytest.mark.parametrize("bad_expression", [
+    "os.path.dirname(vocals_for_clone)",
+    "_safe_job_dir(old_job_id)",
+    "dub_pipeline.new_reference_run_dir(os.path.dirname(vocals_for_clone))",
+])
+def test_ownership_guard_rejects_foreign_directory_at_every_call(bad_expression):
+    # Each newly added extraction must be guarded, even if another call and
+    # unrelated text elsewhere still mention the correct current-job path.
+    tree = _source_tree()
+    for call in _all_extraction_calls(tree):
+        original = call.args[2]
+        call.args[2] = ast.copy_location(ast.parse(bad_expression, mode="eval").body, original)
+        with pytest.raises(AssertionError):
+            _assert_job_owned_outputs(tree)
+        call.args[2] = original
+
+
+def test_reference_run_helper_prefers_current_job(tmp_path):
+    from services import dub_pipeline
+
+    tree = _source_tree()
+    helpers = [node for node in ast.walk(tree)
+               if isinstance(node, ast.FunctionDef) and node.name == "_ref_run_dir"]
+    assert len(helpers) == 1
+    own = tmp_path / "current-job"
+    foreign = tmp_path / "cached-source-job"
+    calls = []
+
+    def job_dir(job_id):
+        calls.append(job_id)
+        assert job_id == "current-job"
+        return str(own)
+
+    namespace = {"_ref_run": {"dir": None}, "_safe_job_dir": job_dir,
+                 "job_id": "current-job", "dub_pipeline": dub_pipeline}
+    exec(compile(ast.Module(body=helpers, type_ignores=[]), "dub_core_path_helper", "exec"), namespace)
+    result = namespace["_ref_run_dir"](str(foreign))
+    assert os.path.commonpath([str(own), result]) == str(own)
+    assert os.path.isdir(result)
+    assert calls == ["current-job"]
+    assert namespace["_ref_run_dir"](str(foreign)) == result
 
 
 def test_extraction_honours_an_out_dir_away_from_the_vocals(tmp_path):
@@ -112,23 +172,15 @@ def test_extraction_honours_an_out_dir_away_from_the_vocals(tmp_path):
         assert os.path.isfile(info["ref_audio"])
 
 
-def _all_extraction_calls():
-    """BOTH extraction call sites in dub_core — the per-speaker one and the
-    per-segment one (the default). The first version of this fix covered only
-    the former; both reviewers caught the latter, which is how the class
-    survives a spot fix. Sweeping every call keeps a third copy honest too."""
-    src = open(
-        os.path.join(os.path.dirname(__file__), "..", "backend", "api",
-                     "routers", "dub_core.py"),
-        encoding="utf-8",
-    ).read()
+def _all_extraction_calls(tree=None):
+    """Every pooled-speaker and per-segment extraction, including refreshes."""
     calls = [
-        node for node in ast.walk(ast.parse(src))
+        node for node in ast.walk(tree if tree is not None else _source_tree())
         if isinstance(node, ast.Call)
         and getattr(node.func, "id", getattr(node.func, "attr", None))
         in ("extract_speaker_clones", "extract_segment_refs")
     ]
-    assert len(calls) >= 2, "expected both extraction call sites in dub_core"
+    assert len(calls) >= 3, "expected normal and refresh extraction call sites"
     return calls
 
 

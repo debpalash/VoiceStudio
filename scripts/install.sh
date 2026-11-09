@@ -151,6 +151,17 @@ install_app() {
             mv "$DEST" "$BACKUP"
         fi
         mv "$STAGED/VoiceStudio.app" "$DEST"
+        # Releases without a Developer ID are only ad-hoc signed, and some were
+        # shipped with a bundle signature that no longer matches (#2763, #2829,
+        # #2681), which macOS reports as "damaged". Clear any quarantine flag and
+        # repair an invalid signature in place; a valid or notarized app is left
+        # untouched. Both steps are best effort and never abort the install.
+        xattr -dr com.apple.quarantine "$DEST" >/dev/null 2>&1 || true
+        if have codesign && ! codesign --verify --deep --strict "$DEST" >/dev/null 2>&1; then
+            codesign --force --deep --sign - "$DEST" >/dev/null 2>&1 \
+                && printf 'Repaired the app signature locally (ad-hoc) so macOS opens it.\n' \
+                || printf 'Warning: could not repair the app signature; see docs/install/macos.md#gatekeeper-quarantine.\n' >&2
+        fi
         lsregister -f "$DEST" || printf 'Warning: macOS registration failed; open the installed app directly.\n' >&2
     else
         DEST_DIR=${VOICESTUDIO_INSTALL_DIR:-"$HOME/.local/bin"}
@@ -164,6 +175,9 @@ install_app() {
     printf 'Installed Electron: %s\n' "$DEST"
     printf 'Open VoiceStudio to configure its local backend and choose models. Existing data is preserved.\n'
     if [ "$OS" = mac ]; then printf 'Launch the installed app: open "%s"\n' "$DEST"; fi
+    if [ "$OS" = mac ] && [ "$ARCH" = x64 ]; then
+        printf 'Note: this is an Intel Mac. The app UI runs, but the local backend needs Apple Silicon; connect to a backend on another machine (docs/install/macos.md).\n'
+    fi
 }
 
 if [ "$MODE" = main ]; then
@@ -205,9 +219,15 @@ else
     fi
     PACKAGE_DIR="$WORK"
 fi
+# Releases up to v0.5.7-beta.3 named their packages VoiceStudio-Electron-*;
+# keep pinned installs of those versions working.
+case "$VS_VERSION" in
+    0.[0-4].*|0.5.[0-6]|0.5.[0-6]-*|0.5.7-beta.[1-3]) ASSET_PREFIX=VoiceStudio-Electron ;;
+    *) ASSET_PREFIX=VoiceStudio ;;
+esac
 case "$OS" in
-    mac) ASSET="VoiceStudio-Electron-$VS_VERSION-mac-$ARCH.dmg" ;;
-    linux) ASSET="VoiceStudio-Electron-$VS_VERSION-linux-x64.AppImage" ;;
+    mac) ASSET="$ASSET_PREFIX-$VS_VERSION-mac-$ARCH.dmg" ;;
+    linux) ASSET="$ASSET_PREFIX-$VS_VERSION-linux-x64.AppImage" ;;
 esac
 PACKAGE="$PACKAGE_DIR/$ASSET"
 if [ "$MODE" = binary ]; then
@@ -227,7 +247,7 @@ fi
 if [ "$OS" = mac ]; then
     MOUNT="$WORK/mount"
     mkdir "$MOUNT"
-    hdiutil attach -readonly -nobrowse -mountpoint "$MOUNT" "$PACKAGE"
+    hdiutil attach -readonly -nobrowse -mountpoint "$MOUNT" "$PACKAGE" >/dev/null || die "Could not open the disk image $ASSET (checksum was verified). Free some disk space and retry."
     [ -d "$MOUNT/VoiceStudio.app" ] || die 'VoiceStudio.app is missing from the disk image.'
     install_app "$MOUNT/VoiceStudio.app"
 else

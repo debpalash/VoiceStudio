@@ -25,50 +25,61 @@ import { CheckCircle2, KeyRound, RefreshCw, Save, Trash2, XCircle } from 'lucide
 import { apiJson, apiPost, apiFetch, API } from '../../api/client';
 import { SettingsSection, InfoHint } from './primitives';
 
+// i18n keys + English fallbacks for each token source, keyed by source id.
+const SOURCE_TEXT = {
+  app: {
+    label: ['settings.hf_source_app_label', 'In-app store (encrypted, recommended)'],
+    help: [
+      'settings.hf_source_app_help',
+      'Kept encrypted on this computer. You can set or remove it here.',
+    ],
+  },
+  env: {
+    label: ['settings.hf_source_env_label', 'Environment variable'],
+    help: [
+      'settings.hf_source_env_help',
+      'Taken from HF_TOKEN in the shell that launched the app. It cannot be edited here.',
+    ],
+  },
+  'hf-cli': {
+    label: ['settings.hf_source_cli_label', 'Hugging Face CLI'],
+    help: [
+      'settings.hf_source_cli_help',
+      'Saved when you signed in with the Hugging Face command-line tool. It cannot be edited here.',
+    ],
+  },
+};
+
+const BTN =
+  'inline-flex items-center gap-[var(--space-2)] rounded-[var(--chrome-radius-pill)] px-[var(--space-4)] py-[var(--space-2)] text-[length:var(--text-sm)] disabled:cursor-not-allowed disabled:opacity-50';
+const BTN_SUBTLE = `${BTN} bg-[var(--chrome-hover-bg)] text-[var(--chrome-fg)]`;
+const BTN_DANGER = `${BTN} bg-[var(--chrome-severity-err)] text-[var(--chrome-bg)]`;
+
 export default function ApiKeysPanel() {
   const { t } = useTranslation();
-  const SOURCE_LABELS = {
-    app: t('settings.hf_source_app_label', {
-      defaultValue: 'VoiceStudio (encrypted, recommended)',
-    }),
-    env: t('settings.hf_source_env_label', { defaultValue: 'Environment variable' }),
-    'hf-cli': t('settings.hf_source_cli_label', { defaultValue: 'HuggingFace CLI' }),
-  };
-  const SOURCE_HELP = {
-    app: t('settings.hf_source_app_help', {
-      defaultValue: "Stored encrypted in VoiceStudio's local SQLite store. Set or clear here.",
-    }),
-    env: t('settings.hf_source_env_help', {
-      defaultValue: 'Set via HF_TOKEN in your shell. Read-only from the UI.',
-    }),
-    'hf-cli': t('settings.hf_source_cli_help', {
-      defaultValue: 'Written by `huggingface-cli login`. Read-only from the UI.',
-    }),
-  };
-  // null until the first GET lands — the panel renders a "checking" placeholder
-  // instead of flashing a false amber "not set" verdict for every source.
   const [state, setState] = useState(null);
   const [loading, setLoading] = useState(false);
   const [tokenInput, setTokenInput] = useState('');
   const [saving, setSaving] = useState(false);
-  const [clearOpen, setClearOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [alsoClearCli, setAlsoClearCli] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState('');
 
-  // Ordinary reads are local. `fresh` explicitly validates tokens for "Test now" so it
-  // really re-runs whoami instead of echoing a cached (possibly stale) verdict.
-  // Plain mounts/refreshes read local presence without contacting Hugging Face.
+  const tt = useCallback(([key, fallback]) => t(key, { defaultValue: fallback }), [t]);
+
   const refresh = useCallback(
     async ({ fresh = false } = {}) => {
       setLoading(true);
-      setError(null);
+      setError('');
       try {
-        const data = await apiJson(`/api/settings/hf-token/state${fresh ? '?fresh=1' : ''}`);
-        setState(data);
+        const path = `/api/settings/hf-token/state${fresh ? '?fresh=1' : ''}`;
+        setState(await apiJson(path));
       } catch (e) {
         setError(
           e?.message ||
-            t('settings.hf_token_load_error', { defaultValue: 'Failed to load token state' }),
+            t('settings.hf_token_load_error', {
+              defaultValue: 'Could not read the token status.',
+            }),
         );
       } finally {
         setLoading(false);
@@ -81,241 +92,243 @@ export default function ApiKeysPanel() {
     refresh();
   }, [refresh]);
 
-  const onSave = async () => {
-    // `saving` mirrors the button's disabled state for the input's Enter path,
-    // closing the double-submit hole (Enter fired POSTs while one was in flight).
-    if (saving) return;
+  const save = async () => {
     const token = tokenInput.trim();
-    if (!token) return;
+    if (saving || !token) return;
     setSaving(true);
-    setError(null);
+    setError('');
     try {
       await apiPost('/api/settings/hf-token', { token });
       setTokenInput('');
       await refresh();
     } catch (e) {
       setError(
-        e?.message || t('settings.hf_token_save_error', { defaultValue: 'Failed to save token' }),
+        e?.message ||
+          t('settings.hf_token_save_error', { defaultValue: 'Could not store the token.' }),
       );
     } finally {
       setSaving(false);
     }
   };
 
-  const onClear = async () => {
+  const clear = async () => {
     setSaving(true);
-    setError(null);
+    setError('');
     try {
-      const qs = alsoClearCli ? '?also_clear_hf_cli=true' : '';
-      const url = `${API}/api/settings/hf-token${qs}`;
-      await apiFetch(url, { method: 'DELETE' });
-      setClearOpen(false);
+      const query = alsoClearCli ? '?also_clear_hf_cli=true' : '';
+      await apiFetch(`${API}/api/settings/hf-token${query}`, { method: 'DELETE' });
+      setConfirmOpen(false);
       setAlsoClearCli(false);
       await refresh();
     } catch {
+      // The raw server message may echo paths; show only the generic text.
       setError(t('common.error', { defaultValue: 'Something went wrong' }));
     } finally {
       setSaving(false);
     }
   };
 
+  const closeConfirm = () => {
+    setConfirmOpen(false);
+    setAlsoClearCli(false);
+  };
+
   const testNowLabel = t('settings.hf_token_test_now', { defaultValue: 'Test now' });
+
+  const verification = (row) => {
+    if (row.whoami_ok == null) {
+      return (
+        <span className="text-[var(--chrome-fg-muted)]">
+          {t('settings.hf_token_not_checked', { defaultValue: 'Not checked yet' })}
+        </span>
+      );
+    }
+    if (row.whoami_ok) {
+      return (
+        <span className="inline-flex items-center gap-[var(--space-1)] text-[var(--color-success)]">
+          <CheckCircle2 size={12} aria-hidden="true" />
+          {row.whoami_user || t('settings.hf_token_verified', { defaultValue: 'confirmed' })}
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-[var(--space-1)] text-[var(--chrome-severity-err)]">
+        <XCircle size={12} aria-hidden="true" />
+        {t('settings.hf_token_whoami_failed', { defaultValue: 'account check failed' })}
+      </span>
+    );
+  };
+
+  const renderRow = (row) => {
+    const text = SOURCE_TEXT[row.source];
+    const active = state.active === row.source;
+    const setLabel = t('settings.hf_token_set', { defaultValue: 'present' });
+    return (
+      <div
+        key={row.source}
+        role="listitem"
+        data-source={row.source}
+        className={`apikeys-row${active ? ' apikeys-row--active' : ''} flex flex-col gap-[var(--space-3)] rounded-[var(--chrome-radius-pill)] bg-[var(--chrome-accent-bg)] p-[var(--space-4)]`}
+      >
+        <div className="flex flex-wrap items-center gap-[var(--space-3)]">
+          <span className="font-semibold">{text ? tt(text.label) : row.source}</span>
+          {text && <InfoHint>{tt(text.help)}</InfoHint>}
+          {active && (
+            <span className="apikeys-badge apikeys-badge--active rounded-[var(--chrome-radius-pill)] bg-[color-mix(in_srgb,var(--color-success)_14%,transparent)] px-[var(--space-2)] text-[length:var(--text-xs)] text-[var(--color-success)]">
+              {t('settings.hf_token_active', { defaultValue: 'In use' })}
+            </span>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-[var(--space-3)] text-[length:var(--text-sm)]">
+          {row.set ? (
+            <>
+              <span
+                aria-label={setLabel}
+                className="inline-flex items-center gap-[var(--space-1)] text-[var(--color-success)]"
+              >
+                <CheckCircle2 size={12} aria-hidden="true" />
+                {setLabel}
+              </span>
+              {row.masked && <code className="font-mono">{row.masked}</code>}
+              {verification(row)}
+            </>
+          ) : (
+            <span className="inline-flex items-center gap-[var(--space-1)] text-[var(--chrome-severity-warn)]">
+              <XCircle size={12} aria-hidden="true" />
+              {t('settings.hf_token_not_set', { defaultValue: 'missing' })}
+            </span>
+          )}
+        </div>
+        {row.source === 'app' && (
+          <div className="flex flex-wrap items-center gap-[var(--space-3)]">
+            <input
+              type="password"
+              className="min-w-0 flex-1 rounded-[var(--chrome-radius-pill)] bg-[var(--chrome-bg)] px-[var(--space-3)] py-[var(--space-2)] font-mono text-[length:var(--text-sm)]"
+              placeholder="hf_…"
+              aria-label={t('settings.hf_token_input', {
+                defaultValue: 'Hugging Face access token',
+              })}
+              autoComplete="off"
+              spellCheck={false}
+              value={tokenInput}
+              onChange={(e) => setTokenInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') save();
+              }}
+            />
+            <button
+              type="button"
+              className={BTN_SUBTLE}
+              onClick={save}
+              disabled={saving || !tokenInput.trim()}
+            >
+              <Save size={12} aria-hidden="true" />
+              {t('common.save', { defaultValue: 'Save' })}
+            </button>
+            {row.set && (
+              <button
+                type="button"
+                className={BTN_SUBTLE}
+                onClick={() => setConfirmOpen(true)}
+                disabled={saving}
+              >
+                <Trash2 size={12} aria-hidden="true" />
+                {t('settings.hf_token_clear_short', { defaultValue: 'Clear' })}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <SettingsSection
       className="apikeys-panel"
       icon={KeyRound}
-      title={t('settings.hf_token_title', { defaultValue: 'HuggingFace token' })}
+      title={t('settings.hf_token_title', { defaultValue: 'Hugging Face token' })}
       description={t('settings.hf_token_desc', {
-        defaultValue: 'Resolved across three sources in priority order — App, Env, HF CLI.',
+        defaultValue: 'Looked up in three places, first match wins: App, then Env, then HF CLI.',
       })}
       actions={
         <button
           type="button"
-          className="inline-flex cursor-pointer items-center gap-[5px] rounded-[var(--chrome-radius-pill)] [border:1px_solid_var(--chrome-border)] bg-transparent px-[var(--space-4)] py-[var(--space-2)] text-[length:var(--text-sm)] font-medium text-[var(--chrome-fg)] hover:enabled:bg-[var(--chrome-hover-bg)] disabled:cursor-not-allowed disabled:opacity-50"
-          onClick={() => refresh({ fresh: true })}
-          disabled={loading}
+          className={BTN_SUBTLE}
           aria-label={testNowLabel}
           title={t('settings.hf_token_test_now_title', {
-            defaultValue: 'Re-run whoami for every source',
+            defaultValue: 'Check every source against Hugging Face again',
           })}
+          onClick={() => refresh({ fresh: true })}
+          disabled={loading}
         >
-          <RefreshCw size={12} /> {testNowLabel}
+          <RefreshCw size={12} aria-hidden="true" />
+          {testNowLabel}
         </button>
       }
     >
-      {error && (
-        <div
-          className="mb-[var(--space-4)] rounded-[var(--chrome-radius-pill)] [border:1px_solid_color-mix(in_srgb,var(--chrome-severity-err)_35%,transparent)] bg-[color-mix(in_srgb,var(--chrome-severity-err)_12%,transparent)] px-[var(--space-4)] py-[var(--space-3)] text-[length:var(--text-sm)] text-[var(--chrome-severity-err)]"
-          role="alert"
-        >
-          {error}
-        </div>
-      )}
-
-      {!state ? (
-        // First load still in flight (or failed — the banner above explains and
-        // "Test now" doubles as retry). Never show a wrong "not set" verdict.
-        <div
-          className="py-[var(--space-4)] text-[length:var(--text-sm)] text-[var(--chrome-fg-muted)]"
-          role="status"
-          data-testid="hf-token-loading"
-        >
-          {loading && t('settings.hf_token_checking', { defaultValue: 'Checking token sources…' })}
-        </div>
-      ) : (
-        /* Visually a stack of cards, not a data grid — list semantics are the
-         valid ARIA fit (the old role="table" had rows with no cells). */
-        <div
-          className="flex flex-col gap-[var(--space-3)]"
-          role="list"
-          aria-label={t('settings.hf_token_sources', { defaultValue: 'HF token sources' })}
-        >
-          {state.sources.map((row) => {
-            const isActive = state.active === row.source;
-            return (
-              <div
-                key={row.source}
-                className={`apikeys-row ${isActive ? 'apikeys-row--active' : ''}`}
-                role="listitem"
-                data-source={row.source}
-              >
-                <div className="flex items-center justify-between gap-[var(--space-3)]">
-                  <span className="inline-flex items-center gap-[var(--space-2)] text-[length:var(--text-md)] font-medium text-[var(--chrome-fg)]">
-                    {SOURCE_LABELS[row.source]}
-                    <InfoHint>{SOURCE_HELP[row.source]}</InfoHint>
-                  </span>
-                  {isActive && (
-                    <span className="apikeys-badge apikeys-badge--active">
-                      {t('settings.hf_token_active', { defaultValue: 'Active' })}
-                    </span>
-                  )}
-                </div>
-                <div className="flex flex-wrap items-center gap-[var(--space-3)] text-[length:var(--text-sm)] text-[var(--chrome-fg-muted)]">
-                  {row.set ? (
-                    <>
-                      <span
-                        className="inline-flex items-center gap-[4px] text-[var(--chrome-severity-ok)]"
-                        aria-label={t('settings.hf_token_set', { defaultValue: 'set' })}
-                      >
-                        <CheckCircle2 size={12} />{' '}
-                        {t('settings.hf_token_set', { defaultValue: 'set' })}
-                      </span>
-                      {row.masked && (
-                        <code className="rounded-[4px] bg-[var(--chrome-hover-bg)] px-[6px] py-[1px] font-mono text-[length:var(--text-xs)]">
-                          {row.masked}
-                        </code>
-                      )}
-                      {row.whoami_ok == null ? (
-                        <span>{t('settings.hf_token_not_checked')}</span>
-                      ) : row.whoami_ok ? (
-                        <span className="inline-flex items-center gap-[4px] text-[var(--chrome-severity-ok)]">
-                          <CheckCircle2 size={12} />{' '}
-                          {row.whoami_user ||
-                            t('settings.hf_token_verified', { defaultValue: 'verified' })}
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-[4px] text-[var(--chrome-severity-err)]">
-                          <XCircle size={12} />{' '}
-                          {t('settings.hf_token_whoami_failed', { defaultValue: 'whoami failed' })}
-                        </span>
-                      )}
-                    </>
-                  ) : (
-                    <span className="inline-flex items-center gap-[4px] text-[var(--chrome-severity-warn)]">
-                      <XCircle size={12} />{' '}
-                      {t('settings.hf_token_not_set', { defaultValue: 'not set' })}
-                    </span>
-                  )}
-                </div>
-                {row.source === 'app' && (
-                  <div className="mt-[var(--space-2)] flex flex-wrap items-center gap-[var(--space-3)]">
-                    <input
-                      type="password"
-                      className="box-border min-w-0 max-w-full flex-[1_1_220px] rounded-[var(--chrome-radius-pill)] [border:1px_solid_var(--chrome-border)] bg-[var(--chrome-hover-bg)] px-[var(--space-3)] py-[var(--space-2)] font-mono text-[length:var(--text-sm)] text-[var(--chrome-fg)] focus:border-[var(--chrome-accent)] focus:outline-none"
-                      placeholder="hf_…"
-                      aria-label={t('settings.hf_token_input', {
-                        defaultValue: 'HuggingFace token',
-                      })}
-                      value={tokenInput}
-                      onChange={(e) => setTokenInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') onSave();
-                      }}
-                      autoComplete="off"
-                      spellCheck={false}
-                    />
-                    <button
-                      type="button"
-                      className="inline-flex cursor-pointer items-center gap-[5px] rounded-[var(--chrome-radius-pill)] [border:1px_solid_var(--chrome-accent)] bg-[color-mix(in_srgb,var(--chrome-accent)_25%,var(--chrome-bg))] px-[var(--space-4)] py-[var(--space-2)] text-[length:var(--text-sm)] font-medium text-[var(--chrome-fg)] hover:enabled:bg-[var(--chrome-hover-bg)] disabled:cursor-not-allowed disabled:opacity-50"
-                      onClick={onSave}
-                      disabled={!tokenInput.trim() || saving}
-                    >
-                      <Save size={12} /> {t('common.save')}
-                    </button>
-                    {row.set && (
-                      <button
-                        type="button"
-                        className="inline-flex cursor-pointer items-center gap-[5px] rounded-[var(--chrome-radius-pill)] [border:1px_solid_color-mix(in_srgb,var(--chrome-severity-err)_35%,var(--chrome-border))] bg-[var(--chrome-bg)] px-[var(--space-4)] py-[var(--space-2)] text-[length:var(--text-sm)] font-medium text-[var(--chrome-severity-err)] hover:enabled:bg-[var(--chrome-hover-bg)] disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() => setClearOpen(true)}
-                        disabled={saving}
-                      >
-                        <Trash2 size={12} />{' '}
-                        {t('settings.hf_token_clear_short', { defaultValue: 'Clear' })}
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {clearOpen && (
-        <div
-          className="mt-[var(--space-3)] flex flex-col gap-[var(--space-3)] rounded-[var(--chrome-radius-pill)] [border:1px_solid_color-mix(in_srgb,var(--chrome-severity-err)_35%,var(--chrome-border))] bg-[color-mix(in_srgb,var(--chrome-severity-err)_6%,var(--chrome-bg))] px-[var(--space-4)] py-[var(--space-4)]"
-          role="dialog"
-          aria-label={t('settings.hf_token_clear_dialog', { defaultValue: 'Clear token' })}
-        >
-          <p className="m-0 text-[length:var(--text-md)]">
-            {t('settings.hf_token_clear_confirm', {
-              defaultValue: 'Clear the App-source HuggingFace token?',
-            })}
-          </p>
-          <label className="inline-flex items-center gap-[5px] text-[length:var(--text-sm)] text-[var(--chrome-fg-muted)]">
-            <input
-              type="checkbox"
-              checked={alsoClearCli}
-              onChange={(e) => setAlsoClearCli(e.target.checked)}
-            />{' '}
-            {t('settings.hf_token_also_clear', {
-              defaultValue: 'Also clear saved HuggingFace CLI token files',
-            })}
-          </label>
-          <div className="flex justify-end gap-[var(--space-3)]">
-            <button
-              type="button"
-              className="inline-flex cursor-pointer items-center gap-[5px] rounded-[var(--chrome-radius-pill)] [border:1px_solid_var(--chrome-border)] bg-transparent px-[var(--space-4)] py-[var(--space-2)] text-[length:var(--text-sm)] font-medium text-[var(--chrome-fg)] hover:enabled:bg-[var(--chrome-hover-bg)] disabled:cursor-not-allowed disabled:opacity-50"
-              onClick={() => {
-                setClearOpen(false);
-                setAlsoClearCli(false);
-              }}
-            >
-              {t('settings.cancel', { defaultValue: 'Cancel' })}
-            </button>
-            <button
-              type="button"
-              className="inline-flex cursor-pointer items-center gap-[5px] rounded-[var(--chrome-radius-pill)] [border:1px_solid_color-mix(in_srgb,var(--chrome-severity-err)_35%,var(--chrome-border))] bg-[var(--chrome-bg)] px-[var(--space-4)] py-[var(--space-2)] text-[length:var(--text-sm)] font-medium text-[var(--chrome-severity-err)] hover:enabled:bg-[var(--chrome-hover-bg)] disabled:cursor-not-allowed disabled:opacity-50"
-              onClick={onClear}
-              disabled={saving}
-            >
-              <Trash2 size={12} />{' '}
-              {t('settings.hf_token_clear_btn', { defaultValue: 'Clear token' })}
-            </button>
+      <div className="flex flex-col gap-[var(--space-4)]">
+        {error && (
+          <div
+            role="alert"
+            className="rounded-[var(--chrome-radius-pill)] bg-[color-mix(in_srgb,var(--chrome-severity-err)_10%,transparent)] p-[var(--space-3)] text-[length:var(--text-sm)] text-[var(--chrome-severity-err)]"
+          >
+            {error}
           </div>
-        </div>
-      )}
+        )}
+
+        {state === null ? (
+          <div
+            role="status"
+            data-testid="hf-token-loading"
+            className="text-[length:var(--text-sm)] text-[var(--chrome-fg-muted)]"
+          >
+            {loading
+              ? t('settings.hf_token_checking', { defaultValue: 'Looking for tokens…' })
+              : null}
+          </div>
+        ) : (
+          <div
+            role="list"
+            aria-label={t('settings.hf_token_sources', { defaultValue: 'Token sources' })}
+            className="flex flex-col gap-[var(--space-3)]"
+          >
+            {(state.sources ?? []).map(renderRow)}
+          </div>
+        )}
+
+        {confirmOpen && (
+          <div
+            role="dialog"
+            aria-label={t('settings.hf_token_clear_dialog', { defaultValue: 'Remove token' })}
+            className="flex flex-col gap-[var(--space-3)] rounded-[var(--chrome-radius-pill)] bg-[var(--chrome-hover-bg)] p-[var(--space-4)]"
+          >
+            <p className="m-0">
+              {t('settings.hf_token_clear_confirm', {
+                defaultValue: 'Remove the token kept in the app store?',
+              })}
+            </p>
+            <label className="inline-flex items-center gap-[var(--space-2)] text-[length:var(--text-sm)]">
+              <input
+                type="checkbox"
+                checked={alsoClearCli}
+                onChange={(e) => setAlsoClearCli(e.target.checked)}
+              />
+              {t('settings.hf_token_also_clear', {
+                defaultValue: 'Also delete the token files the Hugging Face CLI saved',
+              })}
+            </label>
+            <div className="flex flex-wrap justify-end gap-[var(--space-3)]">
+              <button type="button" className={BTN_SUBTLE} onClick={closeConfirm}>
+                {t('settings.cancel', { defaultValue: 'Cancel' })}
+              </button>
+              <button type="button" className={BTN_DANGER} onClick={clear} disabled={saving}>
+                <Trash2 size={12} aria-hidden="true" />
+                {t('settings.hf_token_clear_btn', { defaultValue: 'Remove token' })}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </SettingsSection>
   );
 }

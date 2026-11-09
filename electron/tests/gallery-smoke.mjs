@@ -7,6 +7,9 @@ const browser = await chromium.launch({
 });
 try {
   const page = await browser.newPage();
+  await page.addInitScript(() => {
+    localStorage.setItem('voicestudio.setup.complete.v1', '1');
+  });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   const item = {
@@ -94,14 +97,16 @@ try {
   await page.getByRole('button', { name: 'Use voice', exact: true }).first().click();
   await page.waitForURL('**/#/design');
   assert.equal(uses, 1);
-  assert.equal(await page.getByRole('spinbutton').inputValue(), '1234');
+  // The seed field lives in the collapsed "Details" section of the design page.
+  await page.locator('summary').filter({ hasText: 'Details' }).click();
+  assert.equal(await page.getByRole('spinbutton', { name: 'Seed' }).inputValue(), '1234');
   await page.goto(base + '/#/gallery');
   await page.getByRole('heading', { name: item.name }).waitFor();
   await page.route('**/api/archetypes/warm/preview', (route) =>
     route.fulfill({ status: 404, body: 'missing' }),
   );
   await page.getByRole('button', { name: 'Preview voice', exact: true }).first().click();
-  await page.getByRole('button', { name: 'Playback unavailable', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Playback unavailable · Retry', exact: true }).waitFor();
   let release;
   const pending = new Promise((resolve) => {
     release = resolve;
@@ -115,12 +120,18 @@ try {
   await page.getByRole('button', { name: 'Use voice', exact: true }).first().click();
   await page.waitForTimeout(100);
   assert(started);
-  await page.locator('header a').click();
+  const cloneLink = page.getByRole('link', { name: 'Clone', exact: true });
+  if (!(await cloneLink.isVisible())) await page.getByRole('button', { name: 'Voice', exact: true }).click();
+  await cloneLink.click();
+  await page.waitForURL('**/#/clone');
+  await page.getByRole('button', { name: 'Use voice', exact: true }).first().waitFor({ state: 'detached' });
+  // React flushes the unmount cleanup (which aborts the pending save) just after the page detaches.
+  await page.waitForTimeout(100);
   release();
   await page.waitForTimeout(250);
   assert(
     page.url().endsWith('/#/clone'),
-    'Late save must not navigate away from the chosen workspace',
+    'Late save must not navigate away from the chosen workspace ' + page.url(),
   );
   assert.deepEqual(errors, []);
   console.log(

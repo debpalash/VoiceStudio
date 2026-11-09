@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 const mock = vi.hoisted(() => ({ open: vi.fn().mockResolvedValue(undefined), navigate: vi.fn() }));
 vi.mock('@/components/bridge', () => ({
@@ -30,6 +30,13 @@ it('opens only the explicit destination and applies selected amounts only to Pay
     'href',
     'https://ko-fi.com/debpalash',
   );
+  const sponsors = screen.getAllByRole('link', { name: 'GitHub Sponsors' });
+  expect(sponsors).toHaveLength(2);
+  for (const link of sponsors)
+    expect(link).toHaveAttribute('href', 'https://github.com/sponsors/debpalash');
+  expect(
+    within(screen.getByRole('group', { name: 'donate.choose_method' })).getAllByRole('link')[0],
+  ).toBe(sponsors[0]);
   fireEvent.click(paypal);
   expect(mock.open).toHaveBeenCalledOnce();
   expect(mock.open).toHaveBeenCalledWith('https://paypal.me/palashCoder/20');

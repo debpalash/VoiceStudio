@@ -1,10 +1,10 @@
-import { useNavigate } from '@tanstack/react-router';
-import { AudioPreviewButton } from '@/components/audio-preview-button';
+import { useNavigate, useRouterState } from '@tanstack/react-router';
+import { PlayInDockButton } from '@/components/now-playing-dock';
+import { takePlaybackKind } from '@/lib/audio/playback-kind';
 import { ProfileAvatar } from '@/components/profile-avatar';
 import { setWorkspace } from '@/lib/store/workspace';
 import { openTake, reuseTake, useSelectedTake } from '@/lib/store/takes';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useQueryClient } from '@tanstack/react-query';
 import {
   FingerprintIcon,
   PencilIcon,
@@ -14,6 +14,7 @@ import {
   StarIcon,
   Trash2Icon,
   WandSparklesIcon,
+  UsersRoundIcon,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -30,11 +31,10 @@ import {
   useToggleStarred,
 } from '@/hooks/use-history';
 import { useDeleteProfile, useProfiles } from '@/hooks/use-profiles';
-import { audioUrl, profileAudioUrl } from '@/lib/api/client';
+import { audioUrl } from '@/lib/api/client';
 import type { HistoryItem, Profile } from '@/lib/api/types';
 import { setCloneSetting, useCloneSetting } from '@/lib/store/clone-settings';
 import { selectCloneProfile } from '@/lib/store/reference';
-import { queryKeys } from '@/lib/query';
 import { cn } from '@/lib/utils';
 import { runRendererTask } from '@/lib/global-error-recovery';
 import { ConfirmDialog } from './confirm-dialog';
@@ -47,47 +47,15 @@ import {
   restoreDesignProfile,
   writeDraft,
 } from '@/features/design/design-draft';
-import { useTtsReadiness, type TtsReadinessBlocker } from '@/hooks/use-tts-readiness';
-
-const VIRTUALIZE_ABOVE = 30;
-
-export function profileListPresentation(
-  count: number,
-  library: boolean,
-): 'grid' | 'list' | 'virtual' {
-  if (library) return 'grid';
-  return count > VIRTUALIZE_ABOVE ? 'virtual' : 'list';
-}
+import { useTtsReadiness } from '@/hooks/use-tts-readiness';
+import {
+  PreviewButton,
+  VIRTUALIZE_ABOVE,
+  profileListPresentation,
+  selectedVoiceId,
+} from './saved-voice-parts';
 
 // ── Saved voices ────────────────────────────────────────────────────────────
-
-function PreviewButton({
-  profile,
-  ttsBlocker,
-  disabledLabel,
-}: {
-  profile: Profile;
-  ttsBlocker: TtsReadinessBlocker;
-  disabledLabel: string;
-}) {
-  const client = useQueryClient();
-  const pendingIdentity =
-    profile.kind === 'design' && !profile.ref_audio_path && !profile.locked_audio_path;
-  return (
-    <AudioPreviewButton
-      src={profileAudioUrl(profile.id, profile.audio_url)}
-      source={'profile-' + profile.id}
-      activity={pendingIdentity ? 'synthesis' : undefined}
-      disabled={pendingIdentity && Boolean(ttsBlocker)}
-      disabledLabel={disabledLabel}
-      onReady={
-        pendingIdentity
-          ? () => void client.invalidateQueries({ queryKey: queryKeys.profiles })
-          : undefined
-      }
-    />
-  );
-}
 
 export function SavedVoices({
   onSelected,
@@ -105,6 +73,9 @@ export function SavedVoices({
   const deleteProfile = useDeleteProfile();
   const selectedProfileId = useCloneSetting('selectedProfileId');
   const [selectedDesignId, setSelectedDesignId] = useState(() => readDraft().profileId);
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  // One selected voice at a time: the one the current workspace is using.
+  const activeId = selectedVoiceId(pathname, selectedProfileId, selectedDesignId);
   const [pendingDelete, setPendingDelete] = useState<Profile | null>(null);
   const [query, setQuery] = useState('');
   const [kind, setKind] = useState<'all' | Profile['kind']>('all');
@@ -144,6 +115,7 @@ export function SavedVoices({
     return () => window.removeEventListener(DESIGN_DRAFT_EVENT, sync);
   }, []);
 
+  /** Restore a saved design's complete recipe or select a clone reference. */
   const select = async (profile: Profile) => {
     if (profile.kind === 'design') {
       const current = readDraft();
@@ -153,6 +125,9 @@ export function SavedVoices({
           attrs: restored.attrs,
           seed: restored.seed,
           profileId: restored.profileId,
+          description: restored.description,
+          picks: restored.picks,
+          mapped: restored.mapped,
         }),
       );
       setCloneSetting('language', restored.language);
@@ -290,7 +265,7 @@ export function SavedVoices({
             : items.map((profile) => ({ profile, row: null }))
           ).map(({ profile, row }) => {
             const design = profile.kind === 'design';
-            const active = profile.id === (design ? selectedDesignId : selectedProfileId);
+            const active = profile.id === activeId;
             return (
               <li
                 key={profile.id}
@@ -305,7 +280,7 @@ export function SavedVoices({
               >
                 <button
                   type="button"
-                  className="absolute inset-y-0 left-0 right-24 z-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="absolute inset-0 z-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   title={profile.name + ' · ' + formatRelative(profile.created_at, i18n.language)}
                   aria-label={profile.name}
                   aria-pressed={active}
@@ -336,7 +311,7 @@ export function SavedVoices({
                     </p>
                   )}
                 </div>
-                <div className="absolute right-2 z-20 flex items-center gap-0.5 rounded-md bg-sidebar-accent/90 p-0.5 opacity-0 shadow-sm ring-1 ring-sidebar-border/50 backdrop-blur-xl transition-opacity duration-150 group-hover/profile:opacity-100 group-focus-within/profile:opacity-100">
+                <div className="absolute right-2 z-20 flex items-center gap-0.5 rounded-md bg-sidebar bg-[linear-gradient(var(--sidebar-accent),var(--sidebar-accent))] p-0.5 opacity-0 shadow-sm ring-1 ring-sidebar-border/50 transition-opacity duration-150 group-hover/profile:opacity-100 group-focus-within/profile:opacity-100">
                   {profile.ref_audio_path ||
                   profile.locked_audio_path ||
                   profile.kind === 'design' ? (
@@ -450,9 +425,15 @@ function TakeRow({ item, onStar, onReuse, onDelete }: TakeRowProps) {
         )}
         <span className="truncate">{displayTitle(item.text)}</span>
       </button>
-      <div className="pointer-events-none absolute right-1 z-10 flex items-center gap-0.5 rounded-md bg-sidebar-accent/95 p-0.5 opacity-0 backdrop-blur-xl transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
+      <div className="pointer-events-none absolute right-1 z-10 flex items-center gap-0.5 rounded-md bg-sidebar bg-[linear-gradient(var(--sidebar-accent),var(--sidebar-accent))] p-0.5 opacity-0 shadow-sm ring-1 ring-sidebar-border/50 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100">
         {item.audio_path && (
-          <AudioPreviewButton src={audioUrl(item.audio_path)} source={'take-' + item.id} />
+          <PlayInDockButton
+            src={audioUrl(item.audio_path)}
+            source={'take-' + item.id}
+            title={displayTitle(item.text)}
+            kind={takePlaybackKind(item.mode)}
+            duration={item.duration_seconds}
+          />
         )}
         <Button
           variant="ghost"
@@ -654,6 +635,8 @@ export function VoicesSidebar({
 }) {
   const { t } = useTranslation();
   const [tab, setTab] = useState<'voices' | 'takes'>(initialTab);
+  // The tab can also be chosen from outside (command palette, shortcuts) without remounting the list.
+  useEffect(() => setTab(initialTab), [initialTab]);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   return (
@@ -675,33 +658,19 @@ export function VoicesSidebar({
               value="voices"
               title={t('clone.saved_profiles')}
               aria-label={t('clone.saved_profiles')}
-              className="min-w-0 flex-none data-active:flex-1 @[300px]/library:flex-1 rounded-lg text-sidebar-foreground/60 hover:bg-sidebar-accent/50 data-active:bg-[var(--sidebar-row-active)] data-active:text-sidebar-foreground dark:data-active:border-transparent dark:data-active:bg-[var(--sidebar-row-active)] dark:data-active:text-sidebar-foreground"
+              className="min-w-0 flex-1 rounded-lg text-sidebar-foreground/60 hover:bg-sidebar-accent/50 data-active:bg-[var(--sidebar-row-active)] data-active:text-sidebar-foreground dark:data-active:border-transparent dark:data-active:bg-[var(--sidebar-row-active)] dark:data-active:text-sidebar-foreground"
             >
-              <FingerprintIcon data-icon="inline-start" />
-              <span
-                className={cn(
-                  'min-w-0 truncate',
-                  tab !== 'voices' && 'hidden @[300px]/library:inline',
-                )}
-              >
-                {t('clone.saved_profiles')}
-              </span>
+              <UsersRoundIcon aria-hidden="true" />
+              <span className="min-w-0 truncate">{t('clone.savedTab')}</span>
             </TabsTrigger>
             <TabsTrigger
               value="takes"
               title={t('clone.history_title')}
               aria-label={t('clone.history_title')}
-              className="min-w-0 flex-none data-active:flex-1 @[300px]/library:flex-1 rounded-lg text-sidebar-foreground/60 hover:bg-sidebar-accent/50 data-active:bg-[var(--sidebar-row-active)] data-active:text-sidebar-foreground dark:data-active:border-transparent dark:data-active:bg-[var(--sidebar-row-active)] dark:data-active:text-sidebar-foreground"
+              className="min-w-0 flex-1 rounded-lg text-sidebar-foreground/60 hover:bg-sidebar-accent/50 data-active:bg-[var(--sidebar-row-active)] data-active:text-sidebar-foreground dark:data-active:border-transparent dark:data-active:bg-[var(--sidebar-row-active)] dark:data-active:text-sidebar-foreground"
             >
-              <HistoryIcon data-icon="inline-start" />
-              <span
-                className={cn(
-                  'min-w-0 truncate',
-                  tab !== 'takes' && 'hidden @[300px]/library:inline',
-                )}
-              >
-                {t('clone.history_title')}
-              </span>
+              <HistoryIcon aria-hidden="true" />
+              <span className="min-w-0 truncate">{t('clone.recentsTab')}</span>
             </TabsTrigger>
           </TabsList>
         </div>

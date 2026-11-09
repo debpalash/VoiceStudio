@@ -1,22 +1,14 @@
 /**
  * Settings → Performance panel (Wave 2 INST-12 UI half).
  *
- * Toggles the `Disable torch.compile` setting that backend engine
- * launchers read via `services.engine_env.build_engine_env()`.
- *
- * Usable on every platform since #2135. It was previously disabled
- * outside Windows on the theory that torch.compile only misbehaves
- * there (issue #65, the Triton kernel-cache OOM). #2135 is the
- * counter-example: a Linux/CUDA host whose engine was killed by
- * torch.compile, where the one control that would have stopped it was
- * greyed out. A toggle the affected user cannot reach is not a
- * safeguard.
+ * Toggles the `Disable torch.compile` setting read by
+ * `services.engine_env.build_engine_env()`, on every platform since #2135.
  *
  * Endpoints:
  *   GET /api/settings/perf/torch-compile-disabled
  *     → {"enabled": bool, "platform": "darwin"|"linux"|"win32"}
  *   PUT /api/settings/perf/torch-compile-disabled
- *     body {"enabled": bool}  (loopback-only)
+ *     body {"enabled": bool}  (loopback-only; GET returns enabled + platform)
  */
 import React, { useCallback, useEffect, useState } from 'react';
 import { Cpu } from 'lucide-react';
@@ -75,7 +67,7 @@ export default function PerformancePanel() {
   };
 
   const toggleLabel = t('settings.perf_torch_compile', {
-    defaultValue: 'Disable torch.compile (Windows)',
+    defaultValue: 'Disable torch.compile',
   });
 
   return (
@@ -94,15 +86,14 @@ export default function PerformancePanel() {
           </>
         }
         note={t('settings.perf_torch_compile_note', {
-          defaultValue: 'Falls back to eager mode — fixes Triton OOM on <16 GB GPUs.',
+          defaultValue: 'Uses eager execution to avoid compiler and GPU graph failures.',
         })}
         hint={
           <Trans
             i18nKey="settings.perf_torch_compile_hint"
-            defaults="Falls back to eager mode by setting <code>TORCH_COMPILE_DISABLE=1</code> on the engine. Turn this on if model load or generation fails with a Triton / <code>torch.compile</code> error, or if the backend dies mid-generation — see <issueLink>#65</issueLink> (Windows OOM on GPUs under 16 GB) and <crashLink>#2135</crashLink> (CUDA-graph crash on older NVIDIA GPUs). Slower, but it always works."
+            defaults="Sets <code>TORCH_COMPILE_DISABLE=1</code> for the engine and uses slower, dependable eager mode. Enable it when loading or generation reports Triton / <code>torch.compile</code> errors, or when the backend exits during generation. See <issueLink>#65</issueLink> for Windows OOMs below 16 GB VRAM and <crashLink>#2135</crashLink> for CUDA-graph crashes on older NVIDIA GPUs."
             components={{
-              // Trans injects each link's text ("#65" / "#2135") from the
-              // translation string.
+              // Trans injects the link text ("#65") from the translation string.
               issueLink: (
                 <a
                   href="https://github.com/debpalash/VoiceStudio/issues/65"

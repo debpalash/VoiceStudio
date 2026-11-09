@@ -1,5 +1,6 @@
 """Unit tests for dub_translate — no network, pure helpers + monkeypatched translator."""
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
@@ -12,45 +13,33 @@ def test_translate_codes_cover_popular_iso():
         assert code in TRANSLATE_CODES, f"{code} missing from TRANSLATE_CODES"
 
 
-@pytest.mark.parametrize("raw,expected", [
-    # Already-normal ISO 639-1 codes pass through.
-    ("zh", "zh"),
-    ("en", "en"),
-    # BCP-47 tags with a region/script suffix strip to the base language.
-    ("zh-CN", "zh"),
-    ("cmn-Hans", "zh"),
-    # Human / display names from the dub UI's own label list.
-    ("Chinese", "zh"),
-    ("Chinese (Simplified)", "zh"),
-    ("Mandarin", "zh"),
-    # Three-letter ISO 639-2 / bibliographic codes used by some asset pipelines.
-    ("zho", "zh"),
-    # Legacy / deprecated ISO 639-1 codes still seen in older corpora.
-    ("in", "id"),  # Indonesian: pre-1989 code 'in' → modern 'id'.
-    ("iw", "he"),  # Hebrew: pre-1989 code 'iw' → modern 'he'.
-    # ISO 639-2/T for Tagalog, frequently shipped under the 'fil' label.
-    ("fil", "tl"),
-    # Leading / trailing whitespace is stripped before lookup, mirroring how
-    # the function tolerates the trailing space some clients append.
-    ("  zh  ", "zh"),
-    ("\ncmn-Hans\t", "zh"),
-])
-def test_argos_lang_code_normalizes_names_and_bcp47(raw, expected):
-    from services.translation_engines import argos_lang_code
-    assert argos_lang_code(raw) == expected
+_ARGOS_CASES = {
+    "plain codes": [("en", "en"), ("zh", "zh"), ("ja", "ja")],
+    "region or script tags": [("pt-BR", "pt"), ("zh-CN", "zh"), ("cmn-Hans", "zh"), ("EN-gb", "en")],
+    "ui names": [("Chinese", "zh"), ("chinese (simplified)", "zh"), ("MANDARIN", "zh")],
+    "iso 639-3": [("zho", "zh"), ("cmn", "zh")],
+    "retired codes": [("in", "id"), ("iw", "he"), ("fil", "tl")],
+    "padding": [(" de ", "de"), ("\tfr\n", "fr"), ("\n es-MX \t", "es")],
+}
 
 
-@pytest.mark.parametrize("raw", ["", " ", "\t\n", "Chinese ("])
-def test_argos_lang_code_rejects_invalid_inputs(raw):
+@pytest.mark.parametrize(
+    "raw,want",
+    [pair for group in _ARGOS_CASES.values() for pair in group],
+)
+def test_argos_lang_code_maps_to_base_code(raw, want):
     from services.translation_engines import argos_lang_code
-    # Two distinct input shapes both fail user-facing validation:
-    #   - empty / whitespace-only -> nothing left after strip() -> regex rejects
-    #   - "Chinese ("             -> looks like a label, not a code -> regex rejects
-    # In both cases the caller should see the actionable error message instead
-    # of a silently-empty language token that would later produce a confusing
-    # "no Argos package available for en -> " failure (the bug #2140 reports).
-    with pytest.raises(ValueError, match="Choose a valid source and target language"):
+
+    assert argos_lang_code(raw) == want
+
+
+@pytest.mark.parametrize("raw", ["", " \t\n", "Chinese (", "q", "12", "en us", "english!"])
+def test_argos_lang_code_rejects_what_is_not_a_language(raw):
+    from services.translation_engines import argos_lang_code
+
+    with pytest.raises(ValueError) as caught:
         argos_lang_code(raw)
+    assert str(caught.value) == "Choose a valid source and target language"
 
 
 def test_flores_codes_cover_core_languages():
@@ -249,6 +238,57 @@ def test_resolve_source_lang_priority(monkeypatch):
     # No job, no explicit → default en
     assert dub_translate._resolve_source_lang(Req()) == 'en'
     assert dub_translate._resolve_source_lang(Req(jid='missing')) == 'en'
+
+
+def test_source_language_request_and_job_precedence(monkeypatch):
+    from api.routers import dub_translate
+
+    job = {
+        'source_lang_override': 'pt',
+        'source_lang': 'de',
+        'source_lang_detection_missing': True,
+    }
+    monkeypatch.setattr(dub_translate, '_get_job', lambda _: job)
+
+    request = SimpleNamespace(source_lang=None, job_id='dub-1', segments=[])
+    assert dub_translate._resolve_source_lang(request) == 'pt'
+    request.source_lang = 'fr'
+    assert dub_translate._resolve_source_lang(request) == 'fr'
+
+    request.source_lang = None
+    job['source_lang_override'] = None
+    job['source_lang'] = None
+    assert dub_translate._resolve_source_lang(request) is None
+
+
+@pytest.mark.parametrize(
+    'text, expected',
+    [
+        ('\u304b\u306a\u4ea4\u3058\u308a', 'ja'),
+        ('\ud55c\uae00 \ubb38\uc7a5', 'ko'),
+        ('\u4e2d\u6587\u53e5\u5b50', 'zh'),
+        ('Пример текста', 'ru'),
+        ('نص عربي', 'ar'),
+        ('ordinary Latin words', 'en'),
+    ],
+)
+def test_source_language_script_fallback(text, expected):
+    from api.routers import dub_translate
+
+    request = SimpleNamespace(segments=[SimpleNamespace(text=text)])
+    assert dub_translate._resolve_source_lang(request) == expected
+
+
+def test_source_language_guess_checks_only_first_eight_segments():
+    from api.routers import dub_translate
+
+    request = SimpleNamespace(
+        segments=[SimpleNamespace(text='plain') for _ in range(8)]
+        + [SimpleNamespace(text='Кириллица')]
+    )
+    assert dub_translate._resolve_source_lang(request) == 'en'
+    request.segments = []
+    assert dub_translate._resolve_source_lang(request) == 'en'
 
 
 class _FakeSeg:
@@ -909,16 +949,21 @@ async def test_argos_native_loader_error_does_not_expose_paths(monkeypatch):
     assert json.loads(response.body)['detail']['code'] == 'argos_runtime_unavailable'
 
 
-@pytest.mark.parametrize("raw", ["Chinese (Traditional)", "zh-TW", "zh-Hant", "cmn-Hant", "zho_Hant", "zh-HK", "zh-MO"])
-def test_argos_does_not_silently_change_chinese_script(raw):
+@pytest.mark.parametrize("raw", [
+    "chinese (traditional)", "Chinese (Traditional)", "zh-Hant-TW", "zh_Hant", "ZH-tw",
+    "cmn-Hant", "zho-HK", "zh_MO",
+])
+def test_argos_lang_code_points_traditional_chinese_to_nllb(raw):
     from services.translation_engines import argos_lang_code
+
     with pytest.raises(ValueError, match="Traditional Chinese.*NLLB"):
         argos_lang_code(raw)
 
 
-@pytest.mark.parametrize("raw", ["zh_CN", "cmn_Hans", "zho_CN"])
-def test_argos_underscore_locales(raw):
+@pytest.mark.parametrize("raw", ["zh_CN", "zh_Hans", "cmn_Hans", "zho_CN"])
+def test_argos_lang_code_underscore_simplified_locales_are_chinese(raw):
     from services.translation_engines import argos_lang_code
+
     assert argos_lang_code(raw) == "zh"
 
 

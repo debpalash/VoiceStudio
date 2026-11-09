@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "doc": "Native runtimes for on-device inference (mobile/contract/SPEC.md M2). Both apps build from exactly these pins; build scripts verify every download against its sha256 and never commit binaries.",
+  "sherpa-onnx": {
+    "version": "1.13.8",
+    "source": {"repo": "https://github.com/k2-fsa/sherpa-onnx", "tag": "v1.13.8", "commit": "11afbd009a7f8c08f4bcf2fc1b265d0df4670fbf"},
+    "android_aar": {"url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar", "sha256": "633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96"},
+    "macos_arm64_shared": {"url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-osx-arm64-shared-lib.tar.bz2", "sha256": "ae77050cdae565496059d96f5ab33d77b397a0864282a4e4a26e3b3b3effb948"},
+    "macos_x64_shared": {"url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-osx-x64-shared-lib.tar.bz2", "sha256": "0f88371565a06372889c76266e253abd1b415fcc6f98232cabd968933efb0711"},
+    "ios": "built from source at the commit above with its build-ios.sh (needs Xcode; CI macOS runner)"
+  },
+  "omnivoice.cpp": {
+    "source": {"repo": "https://github.com/ServeurpersoCom/omnivoice.cpp", "commit": "886fc079838ca7400cb2b42b36e2a65aa1daabe8", "submodules": true},
+    "licence": "MIT",
+    "note": "Same commit as the desktop engine (backend/engines/omnivoice_gguf/quant_map.json runtime_commit_sha). Built from source: iOS via CMake + Xcode toolchain (Metal), Android via NDK CMake (arm64-v8a, x86_64)."
+  },
+  "llama.cpp": {
+    "source": {"repo": "https://github.com/ggml-org/llama.cpp", "tag": "b11716", "commit": "797de63b2fa7396dcc8caca76834c699ac84e1c3"},
+    "licence": "MIT",
+    "ios_xcframework": {"url": "https://github.com/ggml-org/llama.cpp/releases/download/b11716/llama-b11716-xcframework.zip", "sha256": "f294aab72b5fba3888d9fe1e127275d928ead3cd690610989320a0eee474da6a"},
+    "android": "built from source at the commit above via NDK CMake (arm64-v8a, x86_64)"
+  }
+}

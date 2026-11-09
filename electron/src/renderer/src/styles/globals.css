@@ -4,7 +4,6 @@
 @import './t3-theme.css';
 
 @source '../../../shared/components/SearchableSelect.jsx';
-@source '../../../shared/components/VirtualSearchableSelect.tsx';
 @source '../../../shared/components/LanguageFlag.jsx';
 @source '../../../shared/components/VoiceSelector.jsx';
 
@@ -72,6 +71,10 @@
 }
 
 :root {
+  /* Native iOS content geometry; exported alongside the shared mobile palette. */
+  --ios-card-radius: 1.5rem;
+  --ios-field-radius: 1rem;
+  --ios-home-wordmark-size: 1.75rem;
   --workspace-footer-height: 40px;
   --control-radius: 0.5rem;
   --workspace-gap: 1rem;
@@ -130,6 +133,39 @@
   html {
     @apply font-sans;
   }
+  /* One disclosure look: a summary that draws no toggle of its own (no list-none)
+     gets the same turning chevron as the custom ones instead of the native ▶. */
+  summary:not(.list-none) {
+    list-style: none;
+  }
+  summary:not(.list-none)::-webkit-details-marker {
+    display: none;
+  }
+  summary:not(.list-none)::before {
+    content: '';
+    display: inline-block;
+    flex-shrink: 0;
+    width: 0.875em;
+    height: 0.875em;
+    margin-inline-end: 0.375em;
+    vertical-align: -0.125em;
+    background-color: currentColor;
+    opacity: 0.7;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18 6-6-6-6'/%3E%3C/svg%3E")
+      center / contain no-repeat;
+    transition: rotate 150ms ease;
+  }
+  [dir='rtl'] summary:not(.list-none)::before {
+    scale: -1 1;
+  }
+  details[open] > summary:not(.list-none)::before {
+    rotate: 90deg;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    summary:not(.list-none)::before {
+      transition: none;
+    }
+  }
   /* Electron: the whole window is a drag region except interactive bits. */
   .app-drag {
     -webkit-app-region: drag;
@@ -179,10 +215,12 @@
   -webkit-app-region: no-drag;
 }
 .native-controls-right {
-  padding-right: 148px;
+  /* + the top-right corner (account and notifications, account-corner.tsx). */
+  padding-right: calc(148px + var(--corner-space, 0px));
 }
-.macos-notification-safe-area main .workspace-titlebar {
-  padding-right: 3.5rem;
+.macos-notification-safe-area main .workspace-titlebar,
+.account-corner-safe {
+  padding-right: calc(0.875rem + var(--corner-space, 0px));
 }
 
 /* Keep the Lucide family visually consistent across controls and pane headings. */
@@ -209,19 +247,6 @@
 .secondary-sidebar,
 .workspace-pane {
   color: color-mix(in srgb, var(--foreground) 94%, var(--muted-foreground));
-}
-.secondary-sidebar::after,
-.workspace-pane::after {
-  position: absolute;
-  z-index: 0;
-  pointer-events: none;
-  content: '';
-  inset: 0;
-  background: linear-gradient(
-    155deg,
-    color-mix(in srgb, var(--primary) 3.5%, transparent),
-    transparent 28%
-  );
 }
 .secondary-sidebar > *,
 .workspace-pane > * {
@@ -351,13 +376,12 @@
 .secondary-sidebar[data-variant='controls']
   [data-slot='secondary-sidebar-content']
   > :is(section, form, details, div.rounded-xl) {
+  /* Sections are outlined, not filled: one flat pane colour throughout. */
   overflow: clip;
-  border-color: color-mix(in srgb, var(--border) 88%, transparent);
-  background: color-mix(in srgb, var(--card) 54%, transparent);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--foreground) 3%, transparent),
-    0 1px 2px color-mix(in srgb, var(--background) 45%, transparent);
-  transition-property: border-color, background-color, box-shadow;
+  border-color: color-mix(in srgb, var(--border) 70%, transparent);
+  background: transparent;
+  box-shadow: none;
+  transition-property: border-color;
   transition-duration: 150ms;
 }
 .secondary-sidebar[data-variant='controls']
@@ -401,7 +425,6 @@
   [data-slot='secondary-sidebar-content']
   > :is(section, form, details, div.rounded-xl):hover {
   border-color: color-mix(in srgb, var(--border) 76%, var(--foreground));
-  background-color: color-mix(in srgb, var(--card) 60%, transparent);
 }
 .secondary-sidebar[data-variant='controls']
   [data-slot='secondary-sidebar-content']
@@ -663,4 +686,11 @@ html[data-theme-id='heritage'] {
   [data-slot='switch'].app-switch {
     transition: none;
   }
+}
+
+/* macOS draws its traffic lights over the web content. The tabs layout reserves
+   64px from the window edge for them; the breadcrumb layout reaches the same
+   total by adding whatever the header's own start padding (12px) leaves over. */
+.header-area__lead--mac-inset {
+  margin-inline-start: calc(64px - var(--header-area-pad-x, 12px));
 }

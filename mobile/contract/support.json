@@ -1,0 +1,56 @@
+{
+  "donations": [
+    {
+      "id": "github",
+      "name": "GitHub Sponsors",
+      "url": "https://github.com/sponsors/debpalash",
+      "detailKey": "donate.github_desc"
+    },
+    {
+      "id": "kofi",
+      "name": "Ko-fi",
+      "url": "https://ko-fi.com/debpalash",
+      "detailKey": "donate.coffee_desc"
+    },
+    {
+      "id": "paypal",
+      "name": "PayPal",
+      "url": "https://paypal.me/palashCoder",
+      "detailKey": "donate.paypal_desc"
+    }
+  ],
+  "projects": [
+    {
+      "id": "opengtm",
+      "name": "OpenGTM",
+      "url": "https://github.com/debpalash/OpenGTM",
+      "detailKey": "mobile.support.opengtm",
+      "tierKey": "support.sponsors_tier_strategic",
+      "artwork": "opengtm.png"
+    },
+    {
+      "id": "opal",
+      "name": "Opal",
+      "url": "https://github.com/debpalash/Opal",
+      "detailKey": "mobile.support.opal",
+      "tierKey": "support.sponsors_tier_strategic",
+      "artwork": "opal.png"
+    },
+    {
+      "id": "supermetry",
+      "name": "Supermetry",
+      "url": "https://github.com/velixio/supermetry",
+      "detailKey": "mobile.support.supermetry",
+      "tierKey": "support.sponsors_tier_strategic",
+      "artwork": "supermetry.png"
+    },
+    {
+      "id": "spicrawl",
+      "name": "Spicrawl",
+      "url": "https://spicrawl.com",
+      "detailKey": "mobile.support.spicrawl",
+      "tierKey": "mobile.support.special_sponsor",
+      "artwork": "spicrawl.png"
+    }
+  ]
+}

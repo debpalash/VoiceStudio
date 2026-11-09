@@ -1,12 +1,15 @@
 # Bundled binaries
 
-This directory holds platform-specific binaries that ship inside the
-VoiceStudio installer. Today:
+This directory holds the paths for platform-specific native binaries. The files
+in git are zero-byte placeholders; CI builds the real binaries
+(`.github/workflows/build-omnivoice-tts.yml`), and the desktop installers ship
+them under `resources/bin/` (#2780; not on Intel Macs, which cannot run the
+local backend). Today:
 
 | File | Built from | Purpose |
 |------|------------|---------|
 | `omnivoice-tts-darwin-arm64` | `ServeurpersoCom/omnivoice.cpp` @ pinned SHA | GGUF inference runtime — Apple Silicon |
-| `omnivoice-tts-darwin-x86_64` | same | Intel Mac |
+| `omnivoice-tts-darwin-x86_64` | same | Intel Mac (local builds only; not shipped) |
 | `omnivoice-tts-linux-x86_64` | same | Linux (x86_64) |
 | `omnivoice-tts-linux-aarch64` | same | Linux ARM64 — Apple Silicon under Asahi; built with GGML Vulkan where the toolchain supports it, so the Honeykrisp driver can accelerate generation |
 | `omnivoice-tts-windows-x86_64.exe` | same | Windows |

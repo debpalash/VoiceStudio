@@ -1,0 +1,20 @@
+{
+  "mobile": {
+    "handoff": {
+      "title": "Project handoff and backup",
+      "hint": "Back up editable projects and move them between phones and computers. Imports create new copies.",
+      "permission": "I have permission to use the bundled voice recordings.",
+      "inbox": "Received projects",
+      "receive": "Receive",
+      "imported": "Project imported",
+      "failed": "Project transfer failed.",
+      "invalid": "Unsupported or damaged project archive.",
+      "too_large": "Archive limit: 1 GB total, 512 MB per file.",
+      "voices_required": "Confirm permission before importing or sending voice recordings.",
+      "compatibility": "This device renders with compatible installed models. Engine-specific settings and foreign render caches stay in the archive.",
+      "import": "Import",
+      "export": "Export",
+      "send": "Send"
+    }
+  }
+}

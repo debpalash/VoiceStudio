@@ -133,7 +133,24 @@ def chunk_text_punctuation(
 
     tokens_list = list(text)
 
-    for token in tokens_list:
+    def _ends_token(i: int) -> bool:
+        # #3062: ASCII punctuation is only a boundary when the token really
+        # ends there. "3,5" (decimal comma), "3.5", "site.com" and "e.g" were
+        # split mid-token, and a chunk edge landing on that split made each
+        # half render as its own utterance (an extra/wrong word at the join).
+        # Fullwidth punctuation is used in no-space scripts, so it always ends.
+        if not tokens_list[i].isascii() or i + 1 == len(tokens_list):
+            return True
+        nxt = tokens_list[i + 1]
+        # A run ("...", "!?") ends at its last mark: splitting after the first
+        # would leave the rest glued to the next word ("wait...what").
+        if nxt in SPLIT_PUNCTUATION:
+            return False
+        # Chinese/Japanese text often follows ASCII "!" or "?" with the next
+        # sentence directly, no space: a non-ASCII letter starts a new token.
+        return nxt.isspace() or nxt in CLOSING_MARKS or not nxt.isascii()
+
+    for index, token in enumerate(tokens_list):
         # If the first token of current sentence is punctuation,
         # append it to the end of the previous sentence.
         if (
@@ -147,7 +164,7 @@ def chunk_text_punctuation(
             current_sentence.append(token)
 
             # Split the sentence in positions of punctuations.
-            if token in SPLIT_PUNCTUATION:
+            if token in SPLIT_PUNCTUATION and _ends_token(index):
                 is_abbreviation = False
 
                 if token == ".":

@@ -80,6 +80,17 @@ def test_default_model_revision_matches_the_central_reviewed_pin():
     assert main._DEFAULT_REVISION == revision_for(main._DEFAULT_REPO)
 
 
+def test_codec_revision_matches_its_separate_central_pin():
+    """The independently loaded codec is tracked as a pinned model dependency."""
+    from engines.moss_tts_v15 import main
+    from services.hf_revisions import revision_for
+    from services.model_licenses import load_registry
+
+    assert main._CODEC_REVISION == revision_for(main._CODEC_REPO)
+    row = next(row for row in load_registry()["models"] if row["id"] == main._DEFAULT_REPO)
+    assert main._CODEC_REPO in row["required_components"]
+
+
 def test_custom_remote_code_is_rejected_without_explicit_opt_in(monkeypatch):
     from engines.moss_tts_v15 import main
     monkeypatch.setenv("OMNIVOICE_MOSS_TTS_V15_MODEL", "someone/custom-model")
@@ -105,6 +116,70 @@ def test_audited_custom_remote_code_requires_both_opt_ins(monkeypatch):
     monkeypatch.setenv("OMNIVOICE_MOSS_TTS_V15_TRUST_REMOTE_CODE", "true")
     monkeypatch.setenv("OMNIVOICE_MOSS_TTS_V15_REVISION", revision)
     assert main._model_source() == ("someone/custom-model", revision)
+
+
+@pytest.mark.parametrize("custom", [False, True])
+def test_loader_resolves_model_and_codec_revisions_before_loading(monkeypatch, tmp_path, custom):
+    """#2690: upstream forwards processor kwargs to the codec and its constructor."""
+    import io
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    from engines.moss_tts_v15 import main
+
+    repo, revision = main._DEFAULT_REPO, main._DEFAULT_REVISION
+    if custom:
+        repo, revision = "someone/audited-model", "b" * 40
+        monkeypatch.setenv("OMNIVOICE_MOSS_TTS_V15_MODEL", repo)
+        monkeypatch.setenv("OMNIVOICE_MOSS_TTS_V15_TRUST_REMOTE_CODE", "1")
+        monkeypatch.setenv("OMNIVOICE_MOSS_TTS_V15_REVISION", revision)
+    else:
+        monkeypatch.delenv("OMNIVOICE_MOSS_TTS_V15_MODEL", raising=False)
+    monkeypatch.delenv("OMNIVOICE_MOSS_TTS_V15_ATTN", raising=False)
+
+    codec_repo = "OpenMOSS-Team/MOSS-Audio-Tokenizer"
+    codec_revision = "3cd226ba2947efa357ef453bcad111b6eafba782"
+    snapshots = {
+        (repo, revision): str(tmp_path / "model"),
+        (codec_repo, codec_revision): str(tmp_path / "codec"),
+    }
+    hub = Mock(side_effect=lambda repo_id, revision: snapshots[(repo_id, revision)])
+    monkeypatch.setattr(main, "_snapshot_path", hub)
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(
+        cuda=SimpleNamespace(is_available=lambda: False), float32="fp32",
+    ))
+    processor = Mock()
+    processor.model_config.sampling_rate = 24000
+    processor.audio_tokenizer.to.return_value = processor.audio_tokenizer
+
+    def load_processor(path, *, trust_remote_code, codec_path):
+        """Reject leaked revisions and require each component's own local path."""
+        # The real ProcessorMixin rejects revision; the codec must also use
+        # its own snapshot rather than the TTS repository's commit.
+        assert path == snapshots[(repo, revision)]
+        assert codec_path == snapshots[(codec_repo, codec_revision)]
+        assert trust_remote_code is True
+        return processor
+
+    model = Mock()
+    model.to.return_value = model
+    factory = Mock(return_value=model)
+    monkeypatch.setitem(sys.modules, "transformers", SimpleNamespace(
+        AutoProcessor=SimpleNamespace(from_pretrained=load_processor),
+        AutoModel=SimpleNamespace(from_pretrained=factory),
+    ))
+    monkeypatch.setattr(main, "_state", None)
+    state = main._load_model(io.BytesIO())
+
+    assert state == (processor, model, "cpu", 24000)
+    assert [call.args for call in hub.call_args_list] == list(snapshots)
+    factory.assert_called_once_with(
+        snapshots[(repo, revision)], trust_remote_code=True,
+        attn_implementation="sdpa", torch_dtype="fp32",
+    )
+    model.eval.assert_called_once_with()
+    # Subsequent requests reuse the loaded state without contacting the Hub.
+    assert main._load_model(io.BytesIO()) is state
+    assert hub.call_count == 2
 
 
 # ── hardware honesty (cross-platform rule) ─────────────────────────────────
@@ -242,6 +317,7 @@ def test_loader_device_matches_routing(monkeypatch, family, legacy, probe_raises
         AutoModel=factory,
         AutoProcessor=SimpleNamespace(from_pretrained=lambda *a, **kw: processor),
     ))
+    monkeypatch.setattr(main, '_snapshot_path', Mock(return_value='local-fixture'))
     monkeypatch.setattr(main, '_state', None)
     monkeypatch.setattr(main, '_model_source', lambda: ('local-fixture', 'a' * 40))
     state = main._load_model(io.BytesIO())
@@ -286,6 +362,63 @@ def test_bootstrap_install_names_the_pytorch_cuda_index(monkeypatch, tmp_path):
     assert tuple(pip[i:i + len(UV_PIP_CU128_ARGS)]) == UV_PIP_CU128_ARGS
     venv_python = bootstrap._venv_python_path(tmp_path / ".venv")
     assert pip[pip.index("--python") + 1] == str(venv_python)
+    _assert_cpu_torchcodec_constraint(pip)
+
+
+def _assert_cpu_torchcodec_constraint(args):
+    """The CPU version is admitted while the CUDA local version is excluded."""
+    from packaging.requirements import Requirement
+
+    requirements = [Requirement(arg) for arg in args if arg.startswith("torchcodec")]
+    assert len(requirements) == 1
+    versions = requirements[0].specifier
+    assert "0.8.1" in versions
+    assert "0.8.1+cu128" not in versions
+
+
+def test_managed_install_excludes_cuda_torchcodec():
+    """CUDA TorchCodec requires NPP even though MOSS only decodes CPU audio."""
+    from services.sidecar_install import SPECS
+
+    _assert_cpu_torchcodec_constraint(SPECS["moss-tts-v15"].install_args)
+
+
+@pytest.mark.parametrize('platform', ['linux', 'darwin', 'win32'])
+def test_bootstrap_requires_managed_decoder_upgrade_but_preserves_external_venv(monkeypatch, tmp_path, platform):
+    """A stale managed recipe cannot bypass repair through the legacy probe."""
+    from engines.moss_tts_v15 import bootstrap
+    from services import sidecar_install as si
+
+    bootstrap.invalidate()
+    monkeypatch.setattr(bootstrap.sys, 'platform', platform)
+    monkeypatch.setattr(si, 'DATA_DIR', str(tmp_path / 'data'))
+    monkeypatch.setattr(bootstrap, '_ENGINES_VENV_DIR', tmp_path / 'owned-venv')
+    monkeypatch.setattr(bootstrap, '_resolved_python', None)
+    spec = si.SPECS['moss-tts-v15']
+    checkout = si.managed_checkout(spec)
+    py = bootstrap._venv_python_path(checkout / '.venv')
+    py.parent.mkdir(parents=True)
+    py.write_text('#!fake\n')
+    marker = checkout / si._INSTALL_COMPLETE_MARKER
+    marker.write_text(spec.probe_module + '\n')
+    monkeypatch.setenv(spec.env_var, str(checkout))
+    monkeypatch.setattr(bootstrap, '_venv_can_import_moss', lambda p: 'yes')
+
+    assert not bootstrap.is_moss_tts_v15_installed()
+    with pytest.raises(RuntimeError, match='Model Catalogue'):
+        bootstrap.resolve_moss_tts_v15_venv()
+    marker.write_text(f'{spec.probe_module}\n{spec.install_revision}\n')
+    assert bootstrap.is_moss_tts_v15_installed()
+    assert bootstrap.resolve_moss_tts_v15_venv() == py
+
+    bootstrap.invalidate()
+    external = tmp_path / 'external'
+    external_py = bootstrap._venv_python_path(external / '.venv')
+    external_py.parent.mkdir(parents=True)
+    external_py.write_text('#!manual\n')
+    monkeypatch.setenv(spec.env_var, str(external))
+    assert bootstrap.is_moss_tts_v15_installed()
+    assert bootstrap.resolve_moss_tts_v15_venv() == external_py
 
 
 def test_bootstrap_install_failure_reports_uvs_error_not_a_host_guess(monkeypatch, tmp_path):

@@ -1,109 +1,107 @@
-"""Malayalam (ml) number verbalization — a native backend for text_normalization.
+"""Malayalam number words (cardinals, decimals, percentages).
 
-``num2words`` has no Malayalam locale (it ships bn/kn/te but not ml, hi or ta),
-so a Malayalam dub or audiobook reached the TTS engine with raw digits, which
-OmniVoice reads in English or garbles. This module renders integers, decimals
-and percentages the way a Malayalam news reader says them, with the sandhi
-rules that make the compounds pronounceable:
+``num2words`` has no Malayalam (``ml``) locale, so without this module
+Malayalam text would reach the TTS engine with raw digits. The rendering here
+is pure Python with no dependencies and is deliberately narrow, matching the
+conservative scope of :mod:`services.text_normalization`: integers up to six
+digits (Indian grouping with ``laksham``; crore-scale is out), decimals read
+digit by digit, and percentages.
 
-  * tens/hundreds prefixes end in ``ി`` and take a glide ``യ`` before a
-    vowel-initial word: ഇരുപത്തി + ഒന്ന് → ഇരുപത്തിയൊന്ന്, നൂറ്റി + അൻപത് →
-    നൂറ്റിയൻപത്;
-  * a following hard consonant (പ, ത) geminates: നൂറ്റി + പത്ത് → നൂറ്റിപ്പത്ത്,
-    നൂറ്റി + തൊണ്ണൂറ് → നൂറ്റിത്തൊണ്ണൂറ്;
-  * thousands and lakhs take the linking form ``-ത്തി`` and are written as
-    separate words: 2026 → രണ്ടായിരത്തി ഇരുപത്തിയാറ്, 1,50,000 →
-    ഒരു ലക്ഷത്തി അൻപതിനായിരം (Indian grouping: 10^5 = ലക്ഷം).
-
-Scope matches the conservative rules of :mod:`services.text_normalization`:
-integers 0–999999 (six digits, so crores are out of scope), decimals read as
-"<int> ദശാംശം <digit> <digit>…", percentages as "<number> ശതമാനം". Years are
-plain cardinals in Malayalam (no "nineteen eighty-four" form), so no special
-year handling is needed.
-
-Pure Python, no dependencies; output contains no digits, ZWJ or ZWNJ.
+Output is Malayalam script only, words separated by single ASCII spaces, in
+modern atomic-chillu spelling, with no digits and no joiner characters.
 """
-
 from __future__ import annotations
 
-# ── Tables ───────────────────────────────────────────────────────────────────
-
-_UNITS = [
-    "പൂജ്യം", "ഒന്ന്", "രണ്ട്", "മൂന്ന്", "നാല്", "അഞ്ച്", "ആറ്", "ഏഴ്", "എട്ട്", "ഒൻപത്",
-]
+_ZERO = "പൂജ്യം"
+_UNITS = ["", "ഒന്ന്", "രണ്ട്", "മൂന്ന്", "നാല്", "അഞ്ച്", "ആറ്", "ഏഴ്", "എട്ട്", "ഒൻപത്"]
 _TEENS = [
-    "പത്ത്", "പതിനൊന്ന്", "പന്ത്രണ്ട്", "പതിമൂന്ന്", "പതിനാല്", "പതിനഞ്ച്",
-    "പതിനാറ്", "പതിനേഴ്", "പതിനെട്ട്", "പത്തൊൻപത്",
+    "പത്ത്", "പതിനൊന്ന്", "പന്ത്രണ്ട്", "പതിമൂന്ന്", "പതിനാല്",
+    "പതിനഞ്ച്", "പതിനാറ്", "പതിനേഴ്", "പതിനെട്ട്", "പത്തൊൻപത്",
 ]
-# Standalone tens (20, 30, …) and the prefix form used before a unit.
-_TENS = [None, None, "ഇരുപത്", "മുപ്പത്", "നാൽപത്", "അൻപത്", "അറുപത്", "എഴുപത്", "എൺപത്", "തൊണ്ണൂറ്"]
-_TENS_PREFIX = [
-    None, None, "ഇരുപത്തി", "മുപ്പത്തി", "നാൽപത്തി", "അൻപത്തി", "അറുപത്തി",
-    "എഴുപത്തി", "എൺപത്തി", "തൊണ്ണൂറ്റി",
-]
-# Standalone hundreds and their prefix form before a remainder.
-_HUNDREDS = [
-    None, "നൂറ്", "ഇരുനൂറ്", "മുന്നൂറ്", "നാനൂറ്", "അഞ്ഞൂറ്", "അറുനൂറ്", "എഴുനൂറ്",
-    "എണ്ണൂറ്", "തൊള്ളായിരം",
-]
+# Indexed by the tens digit (2..9); entries 0 and 1 are unused.
+_TENS = ["", "", "ഇരുപത്", "മുപ്പത്", "നാൽപത്", "അൻപത്", "അറുപത്", "എഴുപത്", "എൺപത്", "തൊണ്ണൂറ്"]
+_TENS_PREFIX = ["", "", "ഇരുപത്തി", "മുപ്പത്തി", "നാൽപത്തി", "അൻപത്തി", "അറുപത്തി", "എഴുപത്തി", "എൺപത്തി", "തൊണ്ണൂറ്റി"]
+# Indexed by the hundreds digit (1..9).
+_HUNDREDS = ["", "നൂറ്", "ഇരുനൂറ്", "മുന്നൂറ്", "നാനൂറ്", "അഞ്ഞൂറ്", "അറുനൂറ്", "എഴുനൂറ്", "എണ്ണൂറ്", "തൊള്ളായിരം"]
 _HUNDREDS_PREFIX = [
-    None, "നൂറ്റി", "ഇരുനൂറ്റി", "മുന്നൂറ്റി", "നാനൂറ്റി", "അഞ്ഞൂറ്റി", "അറുനൂറ്റി",
-    "എഴുനൂറ്റി", "എണ്ണൂറ്റി", "തൊള്ളായിരത്തി",
+    "", "നൂറ്റി", "ഇരുനൂറ്റി", "മുന്നൂറ്റി", "നാനൂറ്റി", "അഞ്ഞൂറ്റി",
+    "അറുനൂറ്റി", "എഴുനൂറ്റി", "എണ്ണൂറ്റി", "തൊള്ളായിരത്തി",
 ]
-# N × 1000 for N = 1..19 (irregular), then whole tens of thousands.
+# "N thousand" for N = 1..19 (irregular, so tabulated; index 0 unused).
 _THOUSANDS_SMALL = [
-    None, "ആയിരം", "രണ്ടായിരം", "മൂവായിരം", "നാലായിരം", "അയ്യായിരം", "ആറായിരം",
+    "", "ആയിരം", "രണ്ടായിരം", "മൂവായിരം", "നാലായിരം", "അയ്യായിരം", "ആറായിരം",
     "ഏഴായിരം", "എണ്ണായിരം", "ഒൻപതിനായിരം", "പതിനായിരം", "പതിനൊന്നായിരം",
     "പന്ത്രണ്ടായിരം", "പതിമൂന്നായിരം", "പതിനാലായിരം", "പതിനയ്യായിരം",
     "പതിനാറായിരം", "പതിനേഴായിരം", "പതിനെട്ടായിരം", "പത്തൊൻപതിനായിരം",
 ]
-_TENS_THOUSAND = [
-    None, None, "ഇരുപതിനായിരം", "മുപ്പതിനായിരം", "നാൽപതിനായിരം", "അൻപതിനായിരം",
+# Whole tens of thousands, indexed by the tens digit (2..9).
+_THOUSANDS_TENS = [
+    "", "", "ഇരുപതിനായിരം", "മുപ്പതിനായിരം", "നാൽപതിനായിരം", "അൻപതിനായിരം",
     "അറുപതിനായിരം", "എഴുപതിനായിരം", "എൺപതിനായിരം", "തൊണ്ണൂറായിരം",
 ]
-# Unit-thousand forms that follow a tens prefix (21000 = ഇരുപത്തി + ഒന്നായിരം).
-_UNIT_THOUSAND_COMPOUND = [
-    None, "ഒന്നായിരം", "രണ്ടായിരം", "മൂവായിരം", "നാലായിരം", "അയ്യായിരം",
+# "unit thousand" after a tens prefix, indexed by the unit digit (1..9).
+_THOUSANDS_AFTER_TENS = [
+    "", "ഒന്നായിരം", "രണ്ടായിരം", "മൂവായിരം", "നാലായിരം", "അയ്യായിരം",
     "ആറായിരം", "ഏഴായിരം", "എട്ടായിരം", "ഒൻപതിനായിരം",
 ]
+_LAKH = "ലക്ഷം"
+_ONE_BEFORE_LAKH = "ഒരു"
+_DECIMAL_POINT = "ദശാംശം"
+_PERCENT = "ശതമാനം"
 
-LAKH = "ലക്ഷം"
-DECIMAL_WORD = "ദശാംശം"
-PERCENT_WORD = "ശതമാനം"
+_MAX = 999_999
 
-# Independent vowel → dependent vowel sign, for the യ-glide sandhi.
-_VOWEL_SIGN = {
-    "അ": "", "ആ": "ാ", "ഇ": "ി", "ഈ": "ീ", "ഉ": "ു", "ഊ": "ൂ",
-    "എ": "െ", "ഏ": "േ", "ഐ": "ൈ", "ഒ": "ൊ", "ഓ": "ോ", "ഔ": "ൗ",
+_I_SIGN = "\u0d3f"  # vowel sign i, the tail of every prefix form
+_VIRAMA = "\u0d4d"
+_GLIDE = "\u0d2f"  # ya
+_FIVE_THOUSAND = "\u0d05\u0d2f\u0d4d\u0d2f\u0d3e\u0d2f\u0d3f\u0d30\u0d02"  # ayyayiram
+_ANUSVARA = "\u0d02"
+_LINK_TAIL = "\u0d24\u0d4d\u0d24\u0d3f"  # tthi
+
+# Independent vowel letter -> dependent sign it becomes after the ya glide.
+# The inherent-a vowel needs no sign at all.
+_VOWEL_TO_SIGN = {
+    "\u0d05": "",
+    "\u0d06": "\u0d3e",
+    "\u0d07": "\u0d3f",
+    "\u0d08": "\u0d40",
+    "\u0d09": "\u0d41",
+    "\u0d0a": "\u0d42",
+    "\u0d0b": "\u0d43",
+    "\u0d0e": "\u0d46",
+    "\u0d0f": "\u0d47",
+    "\u0d10": "\u0d48",
+    "\u0d12": "\u0d4a",
+    "\u0d13": "\u0d4b",
+    "\u0d14": "\u0d57",
 }
-_GEMINATE = {"പ", "ത", "ക", "ച"}
-_VIRAMA = "്"
+# Stops that geminate after a prefix form: pa, ta, ka, ca.
+_GEMINATING = frozenset("\u0d2a\u0d24\u0d15\u0d1a")
 
 
-# ── Sandhi ───────────────────────────────────────────────────────────────────
-
-def _join(prefix: str, word: str) -> str:
-    """Attach ``word`` to a prefix ending in ``ി`` with Malayalam sandhi."""
-    first = word[0]
-    if word.startswith("അയ്യായിരം"):
-        # ഇരുപത്തി + അയ്യായിരം → ഇരുപത്തയ്യായിരം (the ി is absorbed).
-        return prefix[:-1] + word[1:]
-    if first in _VOWEL_SIGN:
-        return prefix + "യ" + _VOWEL_SIGN[first] + word[1:]
-    if first in _GEMINATE:
-        return prefix + first + _VIRAMA + word
-    return prefix + word
-
-
-def _linking(word: str) -> str:
-    """ആയിരം → ആയിരത്തി, ലക്ഷം → ലക്ഷത്തി (final anusvara → -ത്തി)."""
-    return word[:-1] + "ത്തി"
+def _fuse(head: str, tail: str) -> str:
+    """Join a prefix form (ending in the i-sign) with the word that follows it."""
+    if not head.endswith(_I_SIGN) or not tail:
+        return head + tail
+    if tail.startswith(_FIVE_THOUSAND):
+        return head[:-1] + tail[1:]
+    first = tail[0]
+    if first in _VOWEL_TO_SIGN:
+        return head + _GLIDE + _VOWEL_TO_SIGN[first] + tail[1:]
+    if first in _GEMINATING:
+        return head + first + _VIRAMA + tail
+    return head + tail
 
 
-# ── Building blocks ──────────────────────────────────────────────────────────
+def _chain_form(word: str) -> str:
+    """Form a group word takes when another group comes after it."""
+    if word.endswith(_ANUSVARA):
+        return word[:-1] + _LINK_TAIL
+    return word
 
-def _below_hundred(n: int) -> str:
-    """0-99: units, teens, round tens, or tens-prefix + unit with sandhi."""
+
+def _two_digit(n: int) -> str:
+    """Words for 1..99 as one compound."""
     if n < 10:
         return _UNITS[n]
     if n < 20:
@@ -111,64 +109,73 @@ def _below_hundred(n: int) -> str:
     tens, unit = divmod(n, 10)
     if unit == 0:
         return _TENS[tens]
-    return _join(_TENS_PREFIX[tens], _UNITS[unit])
+    return _fuse(_TENS_PREFIX[tens], _UNITS[unit])
 
 
-def _below_thousand(n: int) -> str:
-    """0-999: hundreds joined to the remainder as one word (നൂറ്റിയൻപത്)."""
-    if n < 100:
-        return _below_hundred(n)
+def _three_digit(n: int) -> str:
+    """Words for 1..999 as one compound."""
     hundreds, rest = divmod(n, 100)
+    if hundreds == 0:
+        return _two_digit(rest)
     if rest == 0:
         return _HUNDREDS[hundreds]
-    return _join(_HUNDREDS_PREFIX[hundreds], _below_hundred(rest))
+    return _fuse(_HUNDREDS_PREFIX[hundreds], _two_digit(rest))
 
 
-def _thousands(n: int) -> str:
-    """N × 1000 for 1 ≤ N ≤ 99."""
-    if n < 20:
-        return _THOUSANDS_SMALL[n]
-    tens, unit = divmod(n, 10)
+def _thousand_word(k: int) -> str:
+    """Single word for k thousand, k in 1..99."""
+    if k < 20:
+        return _THOUSANDS_SMALL[k]
+    tens, unit = divmod(k, 10)
     if unit == 0:
-        return _TENS_THOUSAND[tens]
-    return _join(_TENS_PREFIX[tens], _UNIT_THOUSAND_COMPOUND[unit])
+        return _THOUSANDS_TENS[tens]
+    return _fuse(_TENS_PREFIX[tens], _THOUSANDS_AFTER_TENS[unit])
 
-
-# ── Public API ───────────────────────────────────────────────────────────────
 
 def cardinal(n: int) -> str:
-    """Render an integer 0 ≤ n ≤ 999999 as Malayalam words."""
+    """Malayalam words for an integer in 0..999999."""
     if isinstance(n, bool) or not isinstance(n, int):
-        raise TypeError("cardinal() expects an int")
-    if n < 0 or n > 999_999:
-        raise ValueError("cardinal() supports 0..999999")
-    if n < 1000:
-        return _below_thousand(n)
-    lakhs, rest = divmod(n, 100_000)
-    parts: list[str] = []
+        raise TypeError(f"Malayalam cardinal expects a plain int, received {type(n).__name__}")
+    if n < 0 or n > _MAX:
+        raise ValueError(f"Malayalam cardinal supports 0 to {_MAX}; {n} is outside that span")
+    if n == 0:
+        return _ZERO
+
+    lakhs = n // 100_000
+    thousands = (n // 1000) % 100
+    low = n % 1000
+
+    groups: list[str] = []
     if lakhs:
-        head = "ഒരു" if lakhs == 1 else _below_hundred(lakhs)
-        parts.append(f"{head} {_linking(LAKH) if rest else LAKH}")
-    thousands, units = divmod(rest, 1000)
+        lead = _ONE_BEFORE_LAKH if lakhs == 1 else cardinal(lakhs)
+        lakh_word = _chain_form(_LAKH) if (thousands or low) else _LAKH
+        groups.append(f"{lead} {lakh_word}")
     if thousands:
-        word = _thousands(thousands)
-        parts.append(_linking(word) if units else word)
-    if units:
-        parts.append(_below_thousand(units))
-    return " ".join(parts)
+        word = _thousand_word(thousands)
+        groups.append(_chain_form(word) if low else word)
+    if low:
+        groups.append(_three_digit(low))
+    return " ".join(groups)
+
+
+def _digit_word(ch: str) -> str:
+    if len(ch) != 1 or ch not in "0123456789":
+        raise ValueError(f"fractional part may hold only ASCII digits, found {ch!r}")
+    d = int(ch)
+    return _ZERO if d == 0 else _UNITS[d]
 
 
 def decimal(int_part: int, frac_digits: str) -> str:
-    """3.14 → മൂന്ന് ദശാംശം ഒന്ന് നാല് (fraction digits are read one by one)."""
-    digits = " ".join(_UNITS[int(d)] for d in frac_digits)
-    return f"{cardinal(int_part)} {DECIMAL_WORD} {digits}"
+    """Integer part as a cardinal, the point word, then each fraction digit."""
+    words = [cardinal(int_part), _DECIMAL_POINT]
+    words.extend(_digit_word(ch) for ch in frac_digits)
+    return " ".join(words)
 
 
 def percent(raw: str) -> str:
-    """'50' → അൻപത് ശതമാനം; '2.5' → രണ്ട് ദശാംശം അഞ്ച് ശതമാനം."""
-    if "." in raw:
-        a, b = raw.split(".", 1)
-        body = decimal(int(a), b)
-    else:
-        body = cardinal(int(raw))
-    return f"{body} {PERCENT_WORD}"
+    """Read a digit string (optionally with one '.') followed by the percent word."""
+    whole, dot, frac = raw.partition(".")
+    if not whole.isdigit() or not whole.isascii():
+        raise ValueError(f"percentage needs ASCII digits before any point, got {raw!r}")
+    number = decimal(int(whole), frac) if (dot and frac) else cardinal(int(whole))
+    return f"{number} {_PERCENT}"

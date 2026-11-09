@@ -210,91 +210,72 @@ def test_route_survives_leaked_module_world_purge(monkeypatch):
     )
 
 
-# ── Render summary: a finished render says what it is ────────────────────────
+def _library_item(done_extra: dict) -> dict:
+    job_id = _uid("sum")
+    _seed_done(job_id, type="story",
+               done_payload={"type": "done", "output": f"{job_id}.m4b", "chapters": 1,
+                             "duration_s": 5.0, **done_extra})
+    items = [i for i in build_longform_library(job_store.list_jobs, job_store.events_since)
+             if i["job_id"] == job_id]
+    assert len(items) == 1
+    return items[0]
 
 
-def test_library_carries_the_title_and_summary_the_done_event_recorded():
-    jid = _uid("story_sum")
-    summary = {"engine": "gpt-sovits", "voices": [{"id": "v1", "name": "Jake"}],
-               "speeds": [0.95], "lines": 12, "words": 1564, "options": {"seed": 7}}
-    _seed_done(jid, type="story", done_payload={
-        "type": "done", "output": "story_sum.mp3", "chapters": 9, "duration_s": 3460.0,
-        "title": "The Super Sloth", "summary": summary})
-    item = next(j for j in build_longform_library(job_store.list_jobs, job_store.events_since, limit=500)
-                if j["job_id"] == jid)
-    assert item["title"] == "The Super Sloth"
-    assert item["summary"] == {**summary, "language": "", "format": "", "chapter_titles": []}
+def test_library_passes_a_clean_summary_through_and_omits_a_missing_one():
+    summary = {"engine": "omnivoice", "voices": [{"id": "v1", "name": "Mara"}],
+               "language": "en", "format": "m4b", "lines": 4, "words": 20,
+               "speeds": [1.0, 1.25], "options": {"seed": 0, "vary_repeats": False},
+               "chapter_titles": ["One"]}
+    assert _library_item({"summary": summary})["summary"] == summary
+    assert "summary" not in _library_item({})
+    assert "summary" not in _library_item({"summary": "text"})
 
 
-def test_library_tolerates_renders_without_or_with_a_malformed_summary():
-    old, bad = _uid("story_old"), _uid("story_bad")
-    _seed_done(old, type="story", done_payload={"type": "done", "output": "old.mp3"})
-    _seed_done(bad, type="story", done_payload={"type": "done", "output": "bad.mp3", "summary": "nope"})
-    jobs = {j["job_id"]: j for j in build_longform_library(job_store.list_jobs, job_store.events_since, limit=500)}
-    assert "summary" not in jobs[old] and "summary" not in jobs[bad]
+def test_clean_summary_drops_malformed_and_non_finite_entries():
+    from api.routers.longform_jobs import _clean_summary
+
+    assert _clean_summary(None) is None and _clean_summary([1]) is None
+    cleaned = _clean_summary({
+        "engine": None, "voices": ["x", {"id": 7, "name": None}], "language": 5,
+        "format": "mp3", "lines": "3", "words": "many",
+        "speeds": [True, "1", float("nan"), float("inf"), 1.234, 2],
+        "options": {"a": 1, "b": float("inf"), "c": [1], "d": False, 9: "x", "e": None},
+        "chapter_titles": ["ok", 3, None],
+    })
+    assert cleaned == {
+        "engine": "", "voices": [{"id": "7", "name": ""}], "language": "5",
+        "format": "mp3", "lines": 3, "words": 0, "speeds": [1.23, 2.0],
+        "options": {"a": 1, "d": False, "9": "x"}, "chapter_titles": ["ok"],
+    }
+    wrong = _clean_summary({"voices": 1, "speeds": 1, "options": 1, "chapter_titles": 1})
+    assert wrong["voices"] == [] and wrong["speeds"] == []
+    assert wrong["options"] == {} and wrong["chapter_titles"] == []
 
 
-def test_render_summary_is_settings_and_counts_never_script_text():
+def test_render_summary_counts_content_free_facts():
     from types import SimpleNamespace as NS
-
     from services.longform_render import render_summary
 
     chapters = [
-        NS(title="Chapter One", spans=[NS(text="Zoe raced along the path.", speed=0.95),
-                                       NS(text="", speed=None)]),          # pause-only span
-        NS(title="Chapter Two", spans=[NS(text="Morning came early.", speed=None)]),
+        NS(title="One", spans=[NS(text="hello there world", speed=None),
+                               NS(text="   ", speed=0.5),
+                               NS(text="again", speed=1.256)]),
+        NS(title="Two", spans=[NS(text="more", speed=0), NS(text="nan", speed=float("nan"))]),
     ]
-    out = render_summary(chapters, voices=[{"id": "v1", "name": "Jake"}], engine_id="gpt-sovits",
-                         language="English", fmt="mp3",
-                         options={"seed": 7, "num_step": None, "vary_repeats": False, "line_gap_ms": 250})
-    assert out["voices"] == [{"id": "v1", "name": "Jake"}] and out["engine"] == "gpt-sovits"
-    assert out["lines"] == 2 and out["words"] == 8
-    assert out["speeds"] == [0.95, 1.0]                     # unset speed = engine default
-    # The caller pre-filters to non-default options; explicit falsy values stay.
-    assert out["options"] == {"seed": 7, "vary_repeats": False, "line_gap_ms": 250}
-    assert out["chapter_titles"] == ["Chapter One", "Chapter Two"]
-    assert "Zoe" not in json.dumps(out)                        # content-free
-
-
-def test_a_summary_with_malformed_nested_fields_degrades_instead_of_reaching_clients():
-    jid = _uid("story_nested")
-    _seed_done(jid, type="story", done_payload={
-        "type": "done", "output": "nested.mp3",
-        "summary": {"engine": 7, "voices": "v1", "speeds": ["fast", 0.95, True], "lines": "12",
-                    "words": None, "options": {"seed": 0, "bad": {"x": 1}}, "chapter_titles": [1, "One"]}})
-    item = next(j for j in build_longform_library(job_store.list_jobs, job_store.events_since, limit=500)
-                if j["job_id"] == jid)
-    assert item["summary"] == {
-        "engine": "7", "voices": [], "language": "", "format": "", "lines": 12, "words": 0,
-        "speeds": [0.95], "options": {"seed": 0}, "chapter_titles": ["One"]}
-
-
-@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
-def test_nonfinite_persisted_values_keep_the_library_json_safe(value):
-    jid = _uid("story_nonfinite")
-    _seed_done(jid, type="story", done_payload={
-        "type": "done", "output": "ok.mp3", "duration_s": value,
-        "chapters": value,
-        "summary": {"speeds": [value, 1.0], "lines": value,
-                    "options": {"bad": value, "seed": 0}},
-    })
-    item = next(j for j in build_longform_library(job_store.list_jobs, job_store.events_since, limit=500)
-                if j["job_id"] == jid)
-    json.dumps(item, allow_nan=False)
-    assert item["duration_s"] == 0
-    assert item["summary"]["speeds"] == [1.0]
-    assert item["summary"]["options"] == {"seed": 0}
-
-
-@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
-def test_summary_sanitizes_nested_nonfinite_settings(value):
-    from types import SimpleNamespace as NS
-    from services.longform_render import render_summary
-    result = render_summary([NS(title="One", spans=[NS(text="hello", speed=value)])],
-                            voices=[], options={"emo_vector": [0, value], "nested": {"value": value}})
-    json.dumps(result, allow_nan=False)
-    assert result["speeds"] == []
-    assert result["options"]["emo_vector"] == [0, None]
+    out = render_summary(chapters, voices=[{"id": "v", "name": None}, {"id": "w"}],
+                         engine_id="eng", language=None, fmt="mp3",
+                         options={"seed": 0, "flag": False, "gone": None,
+                                  "nested": {"x": float("nan")}})
+    assert out["engine"] == "eng" and out["language"] == "" and out["format"] == "mp3"
+    assert out["lines"] == 4 and out["words"] == 3 + 1 + 1 + 1
+    assert out["speeds"] == [1.0, 1.26]
+    assert out["voices"] == [{"id": "v", "name": ""}, {"id": "w", "name": ""}]
+    assert out["options"] == {"seed": 0, "flag": False, "nested": {"x": None}}
+    assert out["chapter_titles"] == ["One", "Two"]
+    many = [NS(title=f"T{i}", spans=[]) for i in range(100)]
+    assert len(render_summary(many, voices=[])["chapter_titles"]) == 60
+    assert set(out) == {"engine", "voices", "language", "format", "lines", "words",
+                        "speeds", "options", "chapter_titles"}
 
 
 @pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
@@ -324,3 +305,41 @@ def test_summary_records_effective_tier_settings(monkeypatch):
 def test_summary_oversized_speed_is_ignored():
     from api.routers.longform_jobs import _clean_summary
     assert _clean_summary({"speeds": [10 ** 1000, 1.2]})["speeds"] == [1.2]
+
+
+def test_summary_voice_rows_resolve_names_in_first_use_order(monkeypatch):
+    import contextlib
+    import sqlite3
+    from types import SimpleNamespace as NS
+    from api.routers import audiobook as router
+
+    mem = sqlite3.connect(":memory:")
+    mem.execute("CREATE TABLE voice_profiles (id TEXT, name TEXT)")
+    mem.execute("INSERT INTO voice_profiles VALUES ('p2', 'Second'), ('p1', 'First')")
+
+    @contextlib.contextmanager
+    def fake_conn():
+        yield mem
+
+    monkeypatch.setattr("core.db.db_conn", fake_conn)
+    monkeypatch.setattr(router, "_map_span_voice", lambda vid, default, vmap: vid or default)
+    chapters = [NS(spans=[NS(voice_id="p1"), NS(voice_id=None), NS(voice_id="ghost")]),
+                NS(spans=[NS(voice_id="p2"), NS(voice_id="p1")])]
+    rows = router._summary_voice_rows(chapters, "p2", None)
+    assert rows == [{"id": "p1", "name": "First"}, {"id": "p2", "name": "Second"},
+                    {"id": "ghost", "name": ""}]
+    assert router._summary_voice_rows([], None, None) == []
+
+
+def test_summary_drops_non_scalar_text_fields():
+    """A persisted summary is untrusted: a dict or list must not reach the client as its repr."""
+    from api.routers.longform_jobs import _clean_summary
+
+    out = _clean_summary({
+        "engine": {"name": "x"},
+        "language": ["en"],
+        "format": True,
+        "voices": [{"id": ["v"], "name": "Narrator"}, {"id": 7, "name": None}],
+    })
+    assert out["engine"] == "" and out["language"] == "" and out["format"] == ""
+    assert out["voices"] == [{"id": "", "name": "Narrator"}, {"id": "7", "name": ""}]

@@ -16,6 +16,56 @@ For another device on the same network — e.g. opening the web UI on your phone
 
 You can also drive this from **Settings → Sharing & Remote Access**.
 
+The address list is ordered best first: the address of your active Wi-Fi or
+Ethernet connection (even when a VPN owns the default route), then other physical
+adapters, then virtual ones (Docker,
+WSL/Hyper-V, VirtualBox/VMware), then VPN and Tailscale addresses. Adapters
+that are down are left out.
+
+### "Could not connect" from the other device
+
+While sharing is on, **Settings → Sharing & Remote Access** shows a self-check:
+the address and port the share listener is bound to (`0.0.0.0:<port>`, every
+interface) and, for each listed address, whether it answers from this
+computer. Use the refresh button after changing networks; the URLs and QR
+codes follow the new address.
+
+- **An address shows a warning:** the listener is not answering on it. Stop
+  and restart sharing; if it persists, another program holds the port, so set
+  a different **LAN share port** under **Ports**.
+- **Every address answers but the other device still cannot connect:** the
+  connection is blocked between the two devices. The self-check runs on this
+  computer, so it cannot see these:
+  - **Different network.** Both devices must be on the same Wi-Fi or LAN.
+    Guest networks and routers with *client* or *AP isolation* block
+    device-to-device traffic. A phone on mobile data cannot reach a LAN
+    address.
+  - **Wrong address.** Use the first address in the list. Addresses such as
+    `172.17.x.x` (Docker), `172.2x.x.x` (WSL/Hyper-V), `192.168.56.x`
+    (VirtualBox) or a VPN address are only reachable from this computer.
+  - **Windows Defender Firewall.** The first time sharing starts, Windows asks
+    whether to allow the VoiceStudio backend (`python.exe` from the
+    VoiceStudio install) on networks. Allow it on **Private networks**, and
+    set your Wi-Fi to **Private** (Settings → Network & internet → Wi-Fi →
+    your network → *Private network*); on a Public network, Windows blocks
+    inbound connections. If you dismissed the prompt, open *Windows Security →
+    Firewall & network protection → Allow an app through firewall* and tick
+    **Private** for that `python.exe`.
+  - **macOS firewall.** If System Settings → Network → Firewall is on, allow
+    incoming connections for the VoiceStudio backend when macOS asks, or add it
+    under **Options**. *Block all incoming connections* must be off.
+  - **Linux firewall.** Allow the share port, for example
+    `sudo ufw allow 3901/tcp` or
+    `sudo firewall-cmd --add-port=3901/tcp`.
+  - **VPN on either device.** A VPN with *block local network* (or kill
+    switch) settings stops LAN traffic. Allow local network access or turn
+    the VPN off.
+- **The page opens but asks for a PIN:** enter the PIN from the panel, or scan
+  the QR code, which includes it. A new PIN is made every time sharing starts.
+
+For access from outside your network, use Tailscale (below) instead of opening
+ports on your router.
+
 Desktop installers include the web interface used by the LAN address; another
 device does not need VoiceStudio installed and the host does not need a source
 checkout or a separate frontend development server. The backend serves the web
@@ -31,7 +81,7 @@ to `localhost`, because on that device it is not VoiceStudio.
 ### How the PIN works
 - A fresh 6-digit PIN is generated each time you enable sharing; it is never written to disk.
 - The QR encodes the PIN (`…/?pin=######`) so scanning connects in one step. Typing the bare URL instead prompts for the PIN.
-- Requests from other devices must present the PIN (sent automatically once entered/scanned); requests from this machine never need it.
+- Requests from other devices must present the PIN (sent automatically once entered/scanned); requests from this machine never need it. In Docker the host's own browser does not count as this machine and needs the PIN unless you opt in with `OMNIVOICE_TRUST_HOST_LOOPBACK=1` (see [Docker install](install/docker.md#trust-host-loopback)).
 
 ### Security model
 - **Loopback-only is the default on every launch** — you must explicitly enable sharing each session; it never auto-exposes.
@@ -48,7 +98,8 @@ If you have [Tailscale](https://tailscale.com/download) installed and signed in,
 3. Otherwise, **Enable** publishes this backend over your tailnet via `tailscale serve`. The panel shows your `<machine>.<tailnet>` URL with copy / open / QR.
    - By default this serves over **HTTP** on the tailnet (`tailscale serve --http=80`) — which works on any tailnet, because the WireGuard tunnel already encrypts the traffic. No certificate needed.
    - If your tailnet has **HTTPS Certificates** enabled (admin console → DNS → *HTTPS Certificates*), it serves over **HTTPS** instead and you get an `https://…ts.net` URL. (Forcing HTTPS without that feature is what produces the `error enabling https feature: 404` — so we detect it and fall back to HTTP automatically.)
-4. Open that URL from any device signed in to the same tailnet. **Disable** runs `tailscale serve reset`.
+   - Tailscale serve settings are shared by every app on the machine, so VoiceStudio does not replace another app's share. If another service occupies the default port (80 for HTTP or 443 for HTTPS), VoiceStudio tries port **10000** and includes it in the address, such as `http://<machine>.<tailnet>:10000`. If that port is also occupied, VoiceStudio leaves the configuration unchanged and reports an error.
+4. Open the displayed URL on any device signed in to the same tailnet. **Disable** removes only serve handlers that target this VoiceStudio backend, using `tailscale serve --http=<port> off`; it preserves every other app's share and never runs `tailscale serve reset`.
 
 Tailscale proxies the loopback backend directly, so — like LAN sharing — it never restarts the backend or drops the loaded model.
 

@@ -60,8 +60,8 @@ export default function BatchAddDialog({
       }
       footer={
         <>
-          <span className="flex-1 font-mono text-[0.68rem] text-[var(--chrome-fg-dim)]">
-            {files.length > 0 && langs.length > 0
+          <span className="flex-1 font-mono text-[0.75rem] text-[var(--chrome-fg-dim)]">
+            {files.length && langs.length
               ? t('batch.estimate', {
                   videos: files.length,
                   langs: langs.length,
@@ -78,7 +78,7 @@ export default function BatchAddDialog({
             onClick={handleSubmit}
             disabled={!files.length || !langs.length || submitting}
             loading={submitting}
-            leading={!submitting && <Plus size={10} />}
+            leading={submitting ? null : <Plus size={12} />}
           >
             {t('batch.add_to_queue')}
           </Button>

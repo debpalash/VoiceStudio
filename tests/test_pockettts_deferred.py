@@ -160,9 +160,10 @@ def test_every_locale_discloses_hugging_face_model_access():
     import json
     from pathlib import Path
 
-    locales = Path(__file__).resolve().parents[1] / "electron/src/shared/i18n/locales"
-    paths = sorted(locales.glob("*.json"))
-    assert len(paths) == 21
+    root = Path(__file__).resolve().parents[1] / "electron/src"
+    paths = sorted((root / "shared/i18n/locales").glob("*.json"))
+    renderer = {p.name for p in (root / "renderer/src/i18n/locales").glob("*.json")}
+    assert {p.name for p in paths} == renderer and "en.json" in renderer
     for path in paths:
         strings = json.loads(path.read_text("utf-8"))
         footer = strings["license"]["pockettts_footer"]

@@ -1,0 +1,21 @@
+{
+  "mobile": {
+    "calls": {
+      "remote_control": "Allow paired call control",
+      "remote_control_hint": "Allow API-key-authenticated phones to place and manage calls. Call settings stay on this computer.",
+      "hint": "Calls run through your paired computer and its configured Twilio number. Enable paired call control on that computer first.",
+      "authentication": "Pair using the computer’s API key to control calls. A sharing PIN cannot authorize calls.",
+      "billing": "Twilio call charges apply.",
+      "clone_hint": "Whisper transcribes your sample. A separate cloning model generates a cloned preview before saving; both models are required."
+    },
+    "host": {
+      "title": "Phone speech API",
+      "hint": "Serve the selected installed voice through an OpenAI-style speech endpoint and MCP (2025-11-25). Runs only while this screen is open and the app is active.",
+      "lan": "Allow local network",
+      "lan_hint": "Off: this phone only. On: devices on your network can connect using the temporary bearer token. Keep the token private.",
+      "start": "Start server",
+      "copy": "Copy bearer token",
+      "running": "Server running"
+    }
+  }
+}

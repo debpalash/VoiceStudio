@@ -51,8 +51,8 @@ function withI18n(node) {
 
 /** Walk the wizard from the system step to the step after models. */
 async function advancePastModels() {
-  fireEvent.click(await screen.findByText(/All good — continue/i));
-  fireEvent.click(await screen.findByText(/Required models ready/i));
+  fireEvent.click(await screen.findByText('Continue'));
+  fireEvent.click(await screen.findByText(/Required models are ready/i));
 }
 
 beforeEach(() => {
@@ -105,7 +105,7 @@ describe('SetupWizard analytics consent step', () => {
     });
     expect(enableAnalytics).toHaveBeenCalled();
     // Advanced to the dictation act.
-    expect(await screen.findByText(/Enter studio/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Enter the studio/i)).toBeInTheDocument();
   });
 
   it('NO persists enabled:false, keeps the SDK off, and advances all the same', async () => {
@@ -130,7 +130,7 @@ describe('SetupWizard analytics consent step', () => {
     });
     expect(disableAnalytics).toHaveBeenCalled();
     expect(enableAnalytics).not.toHaveBeenCalled();
-    expect(await screen.findByText(/Enter studio/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Enter the studio/i)).toBeInTheDocument();
   });
 
   it('shows NO consent step when the build has no analytics destination', async () => {
@@ -142,7 +142,7 @@ describe('SetupWizard analytics consent step', () => {
     render(withI18n(<SetupWizard onReady={() => {}} />));
     await advancePastModels();
     // Straight from models to dictation — an unanswerable ask would be a lie.
-    expect(await screen.findByText(/Enter studio/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Enter the studio/i)).toBeInTheDocument();
     expect(screen.queryByText(/Help improve VoiceStudio\?/i)).not.toBeInTheDocument();
     expect(apiFetch).not.toHaveBeenCalled();
     // The dictation step's rail label renders exactly once, and it's a
@@ -163,7 +163,7 @@ describe('SetupWizard analytics consent step', () => {
     });
     render(withI18n(<SetupWizard onReady={() => {}} />));
     await advancePastModels();
-    expect(await screen.findByText(/Enter studio/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Enter the studio/i)).toBeInTheDocument();
     expect(screen.queryByTestId('analytics-consent-yes')).not.toBeInTheDocument();
   });
 
@@ -171,7 +171,7 @@ describe('SetupWizard analytics consent step', () => {
     apiJson.mockRejectedValue(new Error('backend down'));
     render(withI18n(<SetupWizard onReady={() => {}} />));
     await advancePastModels();
-    expect(await screen.findByText(/Enter studio/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Enter the studio/i)).toBeInTheDocument();
     expect(apiFetch).not.toHaveBeenCalled();
     expect(enableAnalytics).not.toHaveBeenCalled();
   });

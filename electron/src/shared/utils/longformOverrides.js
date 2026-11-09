@@ -8,11 +8,17 @@ export const DEFAULT_OVERRIDES = {
   varyRepeats: false,
   emoText: '',
   emoAlpha: null,
-  // Seamless joins: null = the server default (zero gaps / trim off, preserving legacy renders).
   lineGapMs: null,
   paragraphGapMs: null,
   trimEdges: null,
 };
+
+// Override field -> request field, for the join settings.
+const JOIN_FIELDS = [
+  ['lineGapMs', 'line_gap_ms'],
+  ['paragraphGapMs', 'paragraph_gap_ms'],
+  ['trimEdges', 'trim_edges'],
+];
 
 /**
  * Lower the persisted overrides (+ language) into the snake_case request fields
@@ -36,8 +42,9 @@ export function overridesToRequest(overrides, language) {
     body.emo_text = emo;
     if (o.emoAlpha != null) body.emo_alpha = o.emoAlpha;
   }
-  if (o.lineGapMs != null) body.line_gap_ms = o.lineGapMs;
-  if (o.paragraphGapMs != null) body.paragraph_gap_ms = o.paragraphGapMs;
-  if (o.trimEdges != null) body.trim_edges = o.trimEdges;
+  for (const [field, wire] of JOIN_FIELDS) {
+    // `0` and `false` are deliberate; only an unset (null/undefined) knob is skipped.
+    if (o[field] !== null && o[field] !== undefined) body[wire] = o[field];
+  }
   return body;
 }

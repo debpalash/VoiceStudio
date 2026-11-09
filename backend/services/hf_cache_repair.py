@@ -27,8 +27,10 @@ Conservative by design, repairing STATE rather than chasing one cause:
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
+import struct
 
 logger = logging.getLogger("omnivoice.hf_cache_repair")
 
@@ -121,6 +123,64 @@ def find_dangling_entries(repo_cache_dir: str) -> list[str]:
     return broken
 
 
+_SAFETENSORS_MAX_HEADER = 100 * 1024 * 1024  # the format's own sanity cap
+
+
+def is_truncated_safetensors(path: str) -> bool:
+    """True when a ``.safetensors`` file is shorter than its own header says.
+
+    A cut-off download (killed app, full disk, antivirus quarantine) leaves a
+    file whose header promises more tensor bytes than exist. transformers
+    memory-maps it and the first read past EOF is not a Python exception: on
+    Windows it is an access violation (0xC0000005) that kills the whole
+    backend mid-load, below anything ``except`` can catch (#3015, #2960,
+    #2957, #2382, #2250). Reading only the 8-byte length prefix and the JSON
+    header is enough to know, so this costs a few KB per file. Anything this
+    cannot parse as safetensors is reported truncated too: it would not load.
+    Never raises.
+    """
+    try:
+        size = os.path.getsize(path)
+        with open(path, "rb") as fh:
+            prefix = fh.read(8)
+            if len(prefix) < 8:
+                return True
+            (header_len,) = struct.unpack("<Q", prefix)
+            if header_len <= 0 or header_len > _SAFETENSORS_MAX_HEADER or 8 + header_len > size:
+                return True
+            header = json.loads(fh.read(header_len))
+        end = 0
+        for name, info in header.items():
+            if name == "__metadata__":
+                continue
+            end = max(end, int(info["data_offsets"][1]))
+        return size < 8 + header_len + end
+    except OSError:
+        return False  # unreadable right now is not evidence of truncation
+    except (ValueError, KeyError, TypeError, IndexError, AttributeError):
+        return True
+
+
+def find_truncated_weights(root: str) -> list[str]:
+    """Truncated ``.safetensors`` files under ``root`` (a ``snapshots/`` tree
+    or a local checkpoint directory). Dangling links are skipped (they have
+    their own heal). Never raises."""
+    found: list[str] = []
+    try:
+        for dirpath, _dirs, files in os.walk(root, followlinks=False):
+            for name in files:
+                path = os.path.join(dirpath, name)
+                if (
+                    name.lower().endswith(".safetensors")
+                    and os.path.exists(path)
+                    and is_truncated_safetensors(path)
+                ):
+                    found.append(path)
+    except OSError:  # pragma: no cover - defensive
+        pass
+    return found
+
+
 def _force_copy_mode(cache_root: str) -> bool:
     """Best-effort: make huggingface_hub materialize snapshot entries as real
     file COPIES instead of symlinks for the rest of this process.
@@ -190,6 +250,8 @@ def repair_repo_cache(repo_id: str, cache_dir: str | None = None) -> dict:
         repo_dir = repo_cache_dir(repo_id, cache_root)
         summary["repo_dir"] = repo_dir
         broken = find_dangling_entries(repo_dir)
+        truncated = find_truncated_weights(os.path.join(repo_dir, "snapshots"))
+        broken += [p for p in truncated if p not in broken]
         summary["found"] = len(broken)
         if not broken:
             summary["ok"] = True  # nothing broken → nothing to do
@@ -231,6 +293,16 @@ def repair_repo_cache(repo_id: str, cache_dir: str | None = None) -> dict:
                     )
             return n
 
+        # The cut-off bytes live in blobs/; hub trusts a blob that already
+        # exists, so it must go too or the restore would be a no-op.
+        blobs_dir = os.path.realpath(os.path.join(repo_dir, "blobs"))
+        for path in truncated:
+            target = os.path.realpath(path)
+            if os.path.dirname(target) == blobs_dir:
+                try:
+                    os.remove(target)
+                except OSError as rm_err:
+                    logger.warning("could not remove truncated blob %s: %s", target, rm_err)
         summary["removed"] = _remove(broken)
         if summary["removed"] == 0:
             summary["error"] = "broken entries could not be removed"

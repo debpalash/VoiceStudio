@@ -13,6 +13,12 @@
 
 /** `[label](url)` → `label`; keeps notes readable without linkifying. */
 const LINK_RE = /\[([^\]]*)\]\(([^)\s]*)\)/g;
+/** `![alt](src)` images are dropped: notes never load remote media. */
+const IMAGE_RE = /!\[[^\]]*\]\([^)\s]*\)/g;
+/** A `| a | b |` table row (header, divider or body). */
+const TABLE_ROW_RE = /^\|.*\|$/;
+/** A label-only paragraph such as `**Download**` that introduces a table. */
+const TABLE_LABEL_RE = /^\*\*[^*]+\*\*:?$/;
 
 /**
  * Tokenize one line into inline segments: `{ type: 'text'|'bold'|'code', text }`.
@@ -22,7 +28,9 @@ const LINK_RE = /\[([^\]]*)\]\(([^)\s]*)\)/g;
  * - everything else (raw HTML included) → inert text
  */
 export function inlineSegments(line) {
-  const src = String(line ?? '').replace(LINK_RE, '$1');
+  const src = String(line ?? '')
+    .replace(IMAGE_RE, '')
+    .replace(LINK_RE, '$1');
   const segments = [];
   const push = (type, text) => {
     if (text) segments.push({ type, text });
@@ -48,6 +56,9 @@ export function inlineSegments(line) {
  * `{ type: 'heading', level, text }` | `{ type: 'bullet', text }` |
  * `{ type: 'para', text }`.
  * Bullet/paragraph continuation lines (hard-wrapped sources) are joined.
+ * Tables (release download grids) and images are dropped, along with a
+ * bold-only label paragraph that introduces a table: they are installer
+ * links for the release page, not readable notes.
  */
 export function parseBlocks(md) {
   const blocks = [];
@@ -58,6 +69,13 @@ export function parseBlocks(md) {
       open = null;
       continue;
     }
+    if (TABLE_ROW_RE.test(line)) {
+      const last = blocks[blocks.length - 1];
+      if (last?.type === 'para' && TABLE_LABEL_RE.test(last.text)) blocks.pop();
+      open = null;
+      continue;
+    }
+    if (!line.replace(IMAGE_RE, '').trim()) continue;
     const heading = /^(#{1,6})\s+(.*\S)\s*$/.exec(line);
     if (heading) {
       blocks.push({ type: 'heading', level: heading[1].length, text: heading[2] });

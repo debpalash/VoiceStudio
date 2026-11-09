@@ -135,6 +135,71 @@ def test_spell_out_strips_and_joins_whitespace():
     assert spell_out("") == ""
 
 
+def test_spell_out_keeps_combining_marks_with_their_base():
+    # NFD input (e + combining acute) must spell as "c a f é", with the
+    # combining mark kept on the base character rather than spoken alone.
+    # Mirrors the JS-side fix in 55f3d58 (electron/src/shared/ssmlLite).
+    import unicodedata
+
+    nfd = unicodedata.normalize("NFD", "café")
+    assert spell_out(nfd) == "c a f é"
+    assert spell_out(unicodedata.normalize("NFD", "Zürich")) == "Z ü r i c h"
+
+
+def test_spell_out_collapses_nfd_hangul_jamo_to_one_unit():
+    # Hangul syllables in NFD are 2-3 conjoining jamo per syllable; NFC
+    # normalization collapses each syllable to one code point, which is the
+    # unit we want to space.
+    import unicodedata
+
+    composed = "한글"
+    jamo = unicodedata.normalize("NFD", composed)
+    assert spell_out(composed) == "한 글"
+    assert spell_out(jamo) == "한 글"
+
+
+def test_spell_out_handles_precomposed_unicode_letters():
+    # Each precomposed accented letter is a single code point; this is the
+    # case the old code already handled and the new code must not regress.
+    assert spell_out("naïve") == "n a ï v e"
+    assert spell_out("piñata") == "p i ñ a t a"
+
+
+def test_spell_out_keeps_devanagari_vowel_sign_with_its_base():
+    # Devanagari vowel signs are category Mc (spacing combining mark) and
+    # report unicodedata.combining() == 0, so a check on combining() alone
+    # would split the base consonant from its vowel sign. The category
+    # check (Mn/Mc/Me) keeps the pair together.
+    assert spell_out("का") == "का"  # k + aa vowel sign
+    # हिंदी = ह (Lo) + ि (Mc) + ं (Mn) + द (Lo) + ी (Mc)
+    # → two graphemes: हिं and दी
+    assert spell_out("हिंदी") == "हिं दी"
+
+
+def test_spell_out_long_combining_run_is_linear_time():
+    # A run of combining marks must stay O(n): quadrupling the input may not
+    # cost much more than ~4x (repeated ``units[-1] += ch`` costs ~16x).
+    import time
+
+    def best(n):
+        payload = "a" + "े" * n
+        runs = []
+        for _ in range(3):
+            t0 = time.perf_counter()
+            out = spell_out(payload)
+            runs.append(time.perf_counter() - t0)
+        assert out == payload  # one base, all marks attached: a single unit
+        return min(runs)
+
+    small, large = best(100_000), best(400_000)
+    assert large < max(small, 0.005) * 9, (small, large)
+
+
+def test_spell_out_does_not_fuse_separate_tokens():
+    # Whitespace separates tokens: two lone conjoining jamo stay two units.
+    assert spell_out("\u1100 \u1161") == "\u1100 \u1161"
+
+
 def test_redos_safe_on_adversarial_input():
     # Many bracket-like fragments must not blow up (linear-time guarantee).
     import time

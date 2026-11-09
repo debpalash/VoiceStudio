@@ -10,21 +10,25 @@
   "high-vram": {
     "base": "omnivoice-base-BF16.gguf",
     "tokenizer": "omnivoice-tokenizer-BF16.gguf",
+    "approx_size_mb": 1600,
     "rationale": "12 GB+ VRAM — quality-first; ~1.6 GB total VRAM use"
   },
   "mid-vram": {
     "base": "omnivoice-base-Q8_0.gguf",
     "tokenizer": "omnivoice-tokenizer-Q8_0.gguf",
+    "approx_size_mb": 945,
     "rationale": "4-12 GB VRAM — recommended balance; ~945 MB VRAM use"
   },
   "low-vram": {
     "base": "omnivoice-base-Q4_K_M.gguf",
     "tokenizer": "omnivoice-tokenizer-Q4_K_M.gguf",
+    "approx_size_mb": 659,
     "rationale": "1-4 GB VRAM — minimal footprint; ~659 MB VRAM use"
   },
   "cpu": {
     "base": "omnivoice-base-Q4_K_M.gguf",
     "tokenizer": "omnivoice-tokenizer-Q4_K_M.gguf",
+    "approx_size_mb": 659,
     "rationale": "CPU-only — Q4_K_M keeps latency tolerable on RAM-bound inference"
   },
   "_extras": {
@@ -32,6 +36,7 @@
     "f32": {
       "base": "omnivoice-base-F32.gguf",
       "tokenizer": "omnivoice-tokenizer-F32.gguf",
+      "approx_size_mb": 3200,
       "rationale": "Override-only — bit-exact reference output; ~3.2 GB total."
     }
   }

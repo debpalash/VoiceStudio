@@ -27,13 +27,15 @@ it('changes the global preset without replacing Dubbing production overrides', a
   });
   expect(mocks.clone).toHaveBeenCalledWith({ steps: 32, postprocess: true });
   expect(mocks.dub).not.toHaveBeenCalled();
-  expect(mocks.api.mock.calls.filter(([, init]) => init?.method === 'PUT')).toEqual([[
-    '/api/settings/performance-profile',
-    {
-    method: 'PUT',
-    body: JSON.stringify({ tier: 'quality', family: null }),
-    },
-  ]]);
+  expect(mocks.api.mock.calls.filter(([, init]) => init?.method === 'PUT')).toEqual([
+    [
+      '/api/settings/performance-profile',
+      {
+        method: 'PUT',
+        body: JSON.stringify({ tier: 'quality', family: null }),
+      },
+    ],
+  ]);
   unmount();
   client.clear();
 });
@@ -54,7 +56,9 @@ it('keeps an applied backend preset successful when the clone draft chunk cannot
     ),
   });
 
-  await expect(act(async () => result.current.setTier({ tier: 'fast', family: 'tts' }))).resolves.toEqual(
+  await expect(
+    act(async () => result.current.setTier({ tier: 'fast', family: 'tts' })),
+  ).resolves.toEqual(
     expect.objectContaining({ targets: { tts: { steps: 8, postprocess: false } } }),
   );
   expect(mocks.api).toHaveBeenCalledWith('/api/settings/performance-profile', {
@@ -87,6 +91,41 @@ it('finishes saving before dependent catalogue refreshes complete', async () => 
     await vi.waitFor(() => expect(saved).toBe(true));
   });
 
+  unmount();
+  client.clear();
+});
+
+it('finishes saving before the clone draft mirror completes', async () => {
+  let finishMirror: (() => void) | undefined;
+  mocks.clone.mockImplementationOnce(
+    () =>
+      new Promise<void>((resolve) => {
+        finishMirror = resolve;
+      }),
+  );
+  mocks.api.mockResolvedValue({
+    targets: { tts: { steps: 16, postprocess: true } },
+    selections: { tts: { engine: 'omnivoice' } },
+    tts_tiered_engines: ['omnivoice', 'omnivoice-subprocess'],
+  });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const { result, unmount } = renderHook(() => usePerformanceProfile(), {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+
+  await expect(
+    act(async () => result.current.setTier({ tier: 'balanced', family: null })),
+  ).resolves.toEqual(
+    expect.objectContaining({ targets: { tts: { steps: 16, postprocess: true } } }),
+  );
+  await act(async () => {
+    await vi.dynamicImportSettled();
+  });
+  expect(mocks.clone).toHaveBeenCalled();
+
+  finishMirror?.();
   unmount();
   client.clear();
 });

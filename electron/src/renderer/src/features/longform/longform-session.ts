@@ -16,7 +16,9 @@ import { tr } from '@/lib/i18n-text';
 import { consumeLongformStream } from '@shared/utils/longformStream';
 import { storyToSpans } from '@shared/utils/storyToSpans';
 import { beginAppActivity } from '@/lib/app-activity';
+import { publishLongformActivity } from '@/lib/longform-activity';
 import { publicFailureFromEvent, type PublicFailure } from '@/lib/api/failure';
+import { parseProgressEvent, type RenderProgressSnapshot } from './render-eta';
 export type Mode = 'stories' | 'audiobook';
 export interface Character {
   id: string;
@@ -34,7 +36,6 @@ export interface AudiobookRenderChapter {
   title: string;
   status: string;
   duration_s?: number;
-  /** Exact length in the embedded m4b chapters; sent by newer backends only. */
   duration_ms?: number;
   error?: string;
 }
@@ -69,6 +70,12 @@ interface Session {
   storageError: boolean;
   chapters: AudiobookRenderChapter[];
   stopped: boolean;
+  /** Latest per-chunk `progress` event (#3417); null on older backends. */
+  progress: RenderProgressSnapshot | null;
+  /** `Date.now()` of `started`, kept here so leaving the page keeps the clock. */
+  startedAt: number | null;
+  /** `Date.now()` of the last sign of life — the stall detector's baseline. */
+  lastActivityAt: number | null;
 }
 export const blankLongformDraft = (): Draft => ({
   projectId: null,
@@ -156,11 +163,39 @@ export const longformSession = new Store<Session>({
   storageError: false,
   chapters: [],
   stopped: false,
+  progress: null,
+  startedAt: null,
+  lastActivityAt: null,
 });
 export const useLongformSession = () => useStore(longformSession);
 /** Fences document imports that finish after a new dub replaces the Stories draft. */
 export const storiesImportEpoch = { current: 0 };
 const patch = (value: Partial<Session>) => longformSession.setState((s) => ({ ...s, ...value }));
+const optionalFiniteNumber = (value: unknown): number | undefined => {
+  if (value === null || value === undefined) return undefined;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : undefined;
+};
+/** Mirror the live render into the app-wide activity store (notifications, other page). */
+function publishActivity() {
+  const s = longformSession.state;
+  publishLongformActivity(
+    s.active
+      ? {
+          mode: s.active,
+          title: s.drafts[s.active].title,
+          stage: s.stage,
+          completed: s.completed,
+          total: s.total,
+          percent: Math.round(
+            s.progress ? s.progress.fraction * 100 : s.total ? (s.completed / s.total) * 100 : 0,
+          ),
+        }
+      : null,
+    s.active ? stopLongform : null,
+  );
+}
+const unsubscribeActivity = longformSession.subscribe(publishActivity);
 export function editLongform(mode: Mode, value: Partial<Draft>) {
   if (longformSession.state.active) return;
   updateDraft(mode, value);
@@ -177,6 +212,7 @@ if (import.meta.hot)
   import.meta.hot.dispose(() => {
     storage.flushPendingWrites();
     removeLifecycle();
+    unsubscribeActivity.unsubscribe();
     controller?.abort();
   });
 function updateDraft(mode: Mode, value: Partial<Draft>) {
@@ -239,6 +275,9 @@ export async function renderLongform(mode: Mode, resumeId?: string) {
     failure: null,
     chapters: [],
     stopped: false,
+    progress: null,
+    startedAt: Date.now(),
+    lastActivityAt: Date.now(),
   });
   let done = false;
   let outputChapters: AudiobookRenderChapter[] = [];
@@ -284,6 +323,8 @@ export async function renderLongform(mode: Mode, resumeId?: string) {
           }));
           patch({
             stage: 'rendering',
+            startedAt: Date.now(),
+            lastActivityAt: Date.now(),
             total: Number(event.chapters) || 0,
             chapters: outputChapters.map((chapter, index) => ({
               ...chapter,
@@ -291,17 +332,19 @@ export async function renderLongform(mode: Mode, resumeId?: string) {
             })),
           });
         }
+        if (event.type === 'progress') {
+          const progress = parseProgressEvent(event, Date.now());
+          if (progress) patch({ progress, lastActivityAt: progress.receivedAt });
+        }
         if (event.type === 'chapter' || event.type === 'chapter_error') {
           const index = Number(event.index);
-          if (Number.isInteger(index) && index >= 0 && index < outputChapters.length)
-            outputChapters[index] = {
+          if (Number.isInteger(index) && index >= 0 && index < outputChapters.length) {
+            const exactMilliseconds = optionalFiniteNumber(event.duration_ms);
+            const chapterUpdate: AudiobookRenderChapter = {
               title: typeof event.title === 'string' ? event.title : '',
               status: event.type === 'chapter_error' ? 'failed' : event.cached ? 'cached' : 'done',
               ...(Number.isFinite(Number(event.duration_s))
                 ? { duration_s: Number(event.duration_s) }
-                : {}),
-              ...(event.duration_ms != null && Number.isFinite(Number(event.duration_ms))
-                ? { duration_ms: Number(event.duration_ms) }
                 : {}),
               ...(event.type === 'chapter_error'
                 ? {
@@ -314,7 +357,11 @@ export async function renderLongform(mode: Mode, resumeId?: string) {
                   }
                 : {}),
             };
+            if (exactMilliseconds !== undefined) chapterUpdate.duration_ms = exactMilliseconds;
+            outputChapters[index] = chapterUpdate;
+          }
           patch({
+            lastActivityAt: Date.now(),
             completed: Number(event.index) + 1,
             chapters: outputChapters.map((chapter, chapterIndex) => ({
               ...chapter,

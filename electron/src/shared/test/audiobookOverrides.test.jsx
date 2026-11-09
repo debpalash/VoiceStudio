@@ -32,15 +32,18 @@ describe('overridesToRequest — only touched values reach the wire (#1208 D2/D3
     expect(overridesToRequest(DEFAULT_OVERRIDES, 'Auto')).toEqual({});
   });
 
-  it('seamless-join gaps ride along only once touched, and 0 / off are real values', () => {
-    expect(
-      overridesToRequest({ ...DEFAULT_OVERRIDES, lineGapMs: 0, trimEdges: false }, 'Auto'),
-    ).toEqual({
+  it('join overrides are sent only once touched; zero and off are real values', () => {
+    expect(overridesToRequest({ ...DEFAULT_OVERRIDES, lineGapMs: 0 }, 'Auto')).toEqual({
       line_gap_ms: 0,
-      trim_edges: false,
     });
-    expect(overridesToRequest({ ...DEFAULT_OVERRIDES, paragraphGapMs: 900 }, 'Auto')).toEqual({
-      paragraph_gap_ms: 900,
+    expect(
+      overridesToRequest(
+        { ...DEFAULT_OVERRIDES, lineGapMs: 250, paragraphGapMs: 0, trimEdges: false },
+        'Auto',
+      ),
+    ).toEqual({ line_gap_ms: 250, paragraph_gap_ms: 0, trim_edges: false });
+    expect(overridesToRequest({ ...DEFAULT_OVERRIDES, trimEdges: true }, 'Auto')).toEqual({
+      trim_edges: true,
     });
   });
 
@@ -111,6 +114,18 @@ describe('AudiobookOverrides panel — renders, labels, persists (#1208 D2)', ()
     expect(screen.getByLabelText(en.audiobook.paragraph_gap).value).toBe('0');
     expect(screen.getByLabelText(en.audiobook.trim_edges).checked).toBe(false);
     expect(overridesToRequest(DEFAULT_OVERRIDES, 'Auto')).toEqual({});
+  });
+
+  it('the join controls report patches for gaps and trimming', () => {
+    const onChange = open();
+    fireEvent.change(screen.getByLabelText(en.audiobook.line_gap), { target: { value: '250' } });
+    expect(onChange).toHaveBeenCalledWith({ lineGapMs: 250 });
+    fireEvent.change(screen.getByLabelText(en.audiobook.paragraph_gap), {
+      target: { value: '1500' },
+    });
+    expect(onChange).toHaveBeenCalledWith({ paragraphGapMs: 1500 });
+    fireEvent.click(screen.getByLabelText(en.audiobook.trim_edges));
+    expect(onChange).toHaveBeenCalledWith({ trimEdges: true });
   });
 
   it('exposes the labelled sampling controls and persists an edit', () => {

@@ -21,6 +21,7 @@ import { SettingsRow, SettingsSection } from './settings-layout';
 function relocationError(t: (key: string) => string, error: unknown): string {
   const detail = describeError(error);
   for (const code of [
+    'rollback_incomplete',
     'target_not_empty',
     'nested_path',
     'insufficient_space',

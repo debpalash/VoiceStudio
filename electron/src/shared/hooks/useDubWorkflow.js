@@ -14,7 +14,7 @@ import {
   DUB_COOKIE_TRANSPORT_ERROR,
   DUB_COOKIE_SIZE_ERROR,
 } from '../api/dub';
-import { dialectMatchesLang } from '../api/dialects';
+import { dialectMatchesLang, dialectWasIgnored } from '../api/dialects';
 import {
   segmentGenInputs,
   applySpeakerCloneDefaults,
@@ -1067,11 +1067,7 @@ export default function useDubWorkflow({
         // (Argos/NLLB/Google in Fast mode). Tell them how to make it count.
         // #372: skip when the cinematic toast above already fired — both at once
         // sent users in a circle ("pick Cinematic" ↔ "Cinematic needs an LLM").
-        if (
-          data.dialect &&
-          data.dialect_applied === false &&
-          data.cinematic_skipped !== 'no-llm-configured'
-        ) {
+        if (dialectWasIgnored(data)) {
           toast(t('dub_workflow.dialect_not_applied'), { icon: 'ℹ️', duration: 8000 });
         }
         if (errors.length) {

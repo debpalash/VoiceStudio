@@ -24,7 +24,6 @@ export function relaxWhenBackendBusy(ms: number, stage: string = currentStage): 
 }
 
 export const IDLE_STATUS_POLL_MS = 30_000;
-export const IDLE_COMPUTE_TARGET_POLL_MS = 15_000;
 
 export function modelStatusPollMs(activityCount: number, status?: string): number {
   return relaxWhenBackendBusy(
@@ -38,8 +37,4 @@ export function batchStatusPollMs(jobCount: number): number {
 
 export function loadedModelsPollMs(active: boolean): number {
   return relaxWhenBackendBusy(active ? ACTIVE_STATUS_POLL_MS : IDLE_STATUS_POLL_MS);
-}
-
-export function computeTargetPollMs(activeTasks: number | undefined): number {
-  return relaxWhenBackendBusy(activeTasks ? ACTIVE_STATUS_POLL_MS : IDLE_COMPUTE_TARGET_POLL_MS);
 }

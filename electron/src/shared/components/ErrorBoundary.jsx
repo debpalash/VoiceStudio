@@ -6,35 +6,30 @@ import { openExternal } from '../api/external';
 import { buildIssueSearchUrl, openBugReport } from '../utils/bugReport';
 import { Button } from '../ui';
 
-// ── Stale module graph recovery ───────────────────────────────────────────
-// A lazy chunk that fails to import means the module graph THIS tab was built
-// against is gone: in dev the server restarted or re-optimized deps (editing
-// vite.config.js is enough), in prod a new build shipped under an open tab.
-// Nothing in the app is broken — the tab is stale — but every Suspense
-// boundary throws at once, so the user gets a wall of
-// "Importing a module script failed" cards and no way out but a manual reload.
-// Reload once instead, guarded for the lifetime of this tab so a genuinely broken chunk
-// cannot put the tab in a reload loop.
-// Safari / Chrome / Firefox wordings for the same event, plus Chrome's message
-// when the SPA fallback answers a missing chunk URL with text/html.
-const STALE_CHUNK_RE =
-  /importing a module script failed|failed to fetch dynamically imported module|error loading dynamically imported module|failed to load module script/i;
-// sessionStorage, not localStorage: the guard is per-tab and must die with it.
-// Registered in utils/prefKeys.js (PRESERVED_KEYS) like the other session keys.
-const STALE_CHUNK_RELOAD_KEY = 'ov_stale_chunk_reload';
+const RELOAD_ATTEMPT_SESSION_SLOT = 'ov_stale_chunk_reload';
+const MODULE_LOAD_FAILURE_WORDINGS = [
+  /importing a module script failed/i,
+  /failed to fetch dynamically imported module/i,
+  /error loading dynamically imported module/i,
+  /failed to load module script/i,
+];
 
-function recoverFromStaleChunk(error) {
-  // Kept unexported: this file may only export its component, or React Fast
-  // Refresh stops working for the whole module (oxlint react/only-export-components).
-  if (!STALE_CHUNK_RE.test(error?.message || String(error || ''))) return false;
+function refreshAfterChunkLoss(error) {
+  const detail = String(error?.message ?? error);
+  const isMissingModule = MODULE_LOAD_FAILURE_WORDINGS.some((wording) => wording.test(detail));
+  if (!isMissingModule) return false;
+
+  let reloadIsArmed;
   try {
-    // Slow reloads must not expire the guard and restart a broken tab forever.
-    if (sessionStorage.getItem(STALE_CHUNK_RELOAD_KEY)) return false;
-    sessionStorage.setItem(STALE_CHUNK_RELOAD_KEY, String(Date.now()));
+    reloadIsArmed = sessionStorage.getItem(RELOAD_ATTEMPT_SESSION_SLOT) === null;
+    if (reloadIsArmed) {
+      sessionStorage.setItem(RELOAD_ATTEMPT_SESSION_SLOT, `${Date.now()}`);
+    }
   } catch {
-    // Storage blocked (private mode / embedded webview): no guard, no reload.
     return false;
   }
+
+  if (!reloadIsArmed) return false;
   window.location.reload();
   return true;
 }
@@ -53,9 +48,7 @@ export default class ErrorBoundary extends React.Component {
     // Surface via console.error so it reaches our ring buffer (Settings > Logs > Frontend).
     // eslint-disable-next-line no-console
     console.error(`[ErrorBoundary:${this.props.name || 'anon'}]`, error, info?.componentStack);
-    // Stale module graph (dev-server restart / new build under an open tab):
-    // reload once rather than leaving a dead card in every boundary.
-    recoverFromStaleChunk(error);
+    refreshAfterChunkLoss(error);
   }
 
   reset = () => this.setState({ error: null });

@@ -1,5 +1,7 @@
 # Electron voice design
 
+![Voice design in the default dark theme. Demo workspace.](media/electron/voice-design.png)
+
 > **Historical context:** this page was written while the Electron and Tauri apps
 > coexisted. Mentions of Tauri helpers, pages, tests and regression results describe
 > that migration period; the Tauri shell has since been removed and the shared code

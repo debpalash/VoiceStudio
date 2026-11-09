@@ -95,7 +95,7 @@ VoiceStudio through **Settings → Apps**, then run `-Yes` without `-RemoveApp`
 to clean up its remaining data.
 
 The script honors your custom locations: if you set `OMNIVOICE_DATA_DIR`,
-`OMNIVOICE_CACHE_DIR`, `HF_HOME`, or `HF_HUB_CACHE` (or picked custom
+`OMNIVOICE_CACHE_DIR`, `OMNIVOICE_ENGINES_DIR`, `HF_HOME`, or `HF_HUB_CACHE` (or picked custom
 data/model folders during setup), export the same variables before running it
 and it will target those instead of the defaults. It never touches anything
 outside the VoiceStudio folders, and without `--app` / `-RemoveApp` it does
@@ -122,7 +122,7 @@ Four kinds of data, in up to four locations:
 ~/Library/Application Support/VoiceStudio/    ← app folder + the managed Python env (runtime/project/.venv)
 ~/Library/Logs/VoiceStudio/                   ← desktop-shell logs
 ~/Library/Caches/voicestudio-electron-updater/ ← downloaded updates
-~/.config/omnivoice/                          ← saved env file (cache location, HF token)
+~/.config/omnivoice/                          ← saved env file (cache location, HF token, ROCm choice)
 ~/.cache/huggingface/                         ← model weights (shared HF cache — see caveat)
 ```
 
@@ -132,7 +132,7 @@ Four kinds of data, in up to four locations:
 ~/.omnivoice/                                 ← app data (voices, projects, omnivoice.db, outputs, omnivoice.log)
 ~/.config/VoiceStudio/                        ← app folder, desktop logs, AND the managed Python env (runtime/project/.venv)
 ~/.cache/voicestudio-electron-updater/        ← downloaded updates
-~/.config/omnivoice/                          ← saved env file (cache location, HF token)
+~/.config/omnivoice/                          ← saved env file (cache location, HF token, ROCm choice)
 ~/.cache/huggingface/                         ← model weights (shared HF cache — see caveat)
 ```
 
@@ -144,7 +144,7 @@ Four kinds of data, in up to four locations:
 %APPDATA%\OmniVoice\                           ← app data (voices, projects, omnivoice.db, outputs, omnivoice.log)
 %APPDATA%\VoiceStudio\                         ← app folder, desktop logs, AND the managed Python env (runtime\project\.venv)
 %LOCALAPPDATA%\voicestudio-electron-updater\   ← downloaded updates
-%USERPROFILE%\.config\omnivoice\               ← saved env file (cache location, HF token)
+%USERPROFILE%\.config\omnivoice\               ← saved env file (cache location, HF token, ROCm choice)
 %LOCALAPPDATA%\OmniVoice\hf_cache\             ← model weights (VoiceStudio uses a short path here to dodge MAX_PATH)
 ```
 
@@ -170,7 +170,8 @@ model paths don't hit the 260-character `MAX_PATH` limit.
   set `OMNIVOICE_DATA_DIR` / `OMNIVOICE_CACHE_DIR` / `HF_HOME` /
   `HF_HUB_CACHE`), your data is there instead of the defaults above. A Python
   runtime you moved to another drive lives in the `VoiceStudio` folder you
-  picked.
+  picked. When you picked that folder during first-run setup, your data and models
+  live inside it too (`data`, `models`) and are offered as separate choices.
 - **Portable mode:** everything lives in an `OmniVoiceStudio-Data/` folder next
   to the app binary — delete that one folder and you're done.
 - **App-managed engine sidecars:** if VoiceStudio installed IndexTTS 2.5,

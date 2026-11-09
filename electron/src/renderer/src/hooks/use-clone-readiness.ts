@@ -4,13 +4,15 @@ import { useProfiles } from './use-profiles';
 import { useCloneSettings } from '@/lib/store/clone-settings';
 import { recordingBusyStore, useReference } from '@/lib/store/reference';
 import { cloneBlocker } from '@/lib/clone-readiness';
-import { useTtsReadiness } from './use-tts-readiness';
+import { isPresetOnly, useTtsReadiness } from './use-tts-readiness';
+import { useEngines } from './use-engines';
 export function useCloneInputsReadiness() {
   const demo = useCloneDemo();
   const settings = useCloneSettings();
   const reference = useReference();
   const profiles = useProfiles();
   const recording = useStore(recordingBusyStore);
+  const { activeTts } = useEngines();
   if (demo) return 'engine' as const;
   return cloneBlocker({
     text: settings.text,
@@ -18,6 +20,7 @@ export function useCloneInputsReadiness() {
     profiles: profiles.isError ? [] : profiles.data,
     fileSize: reference.file?.size ?? 0,
     busy: recording || reference.pending,
+    needsReference: !isPresetOnly(activeTts),
   });
 }
 

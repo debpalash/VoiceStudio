@@ -52,6 +52,33 @@ def sortformer_model_path() -> Path:
     ).resolve()
 
 
+PYANNOTE_REPOS = (
+    "pyannote/speaker-diarization-3.1",
+    "pyannote/segmentation-3.0",
+    "pyannote/wespeaker-voxceleb-resnet34-LM",
+)
+
+
+def selected_model_repos() -> list[str]:
+    """Registry models the selected diarisation runtime loads.
+
+    A user-configured Sortformer GGUF (``OMNIVOICE_DIARIZATION_MODEL``) is a
+    local asset with no registry identity, so it names no repo.
+    """
+    if selected_backend() == SORTFORMER:
+        if os.environ.get("OMNIVOICE_DIARIZATION_MODEL", "").strip():
+            return []
+        return [SORTFORMER_REPO]
+    return list(PYANNOTE_REPOS)
+
+
+def ensure_selected_accepted() -> None:
+    """Raise ``ModelLicenceNotAccepted`` before an unaccepted diarisation model runs."""
+    from services.model_acceptance import ensure_accepted
+
+    ensure_accepted(selected_model_repos())
+
+
 def select_backend(backend: str) -> None:
     if backend not in {PYANNOTE, SORTFORMER}:
         raise ValueError("Unknown diarisation engine")

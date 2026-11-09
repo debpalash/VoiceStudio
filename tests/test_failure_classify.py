@@ -102,8 +102,8 @@ def test_classify_broken_venv_encodings():
     assert failure.classify("ModuleNotFoundError: No module named 'encodings'") == (
         "BROKEN_VENV"
     )
-    # ...but an app-level import of an 'encodings'-prefixed package must NOT.
-    assert failure.classify("No module named 'encodings_helper'") == ""
+    # ...but an app-level import of an 'encodings'-prefixed package is not BROKEN_VENV (it is a missing engine package).
+    assert failure.classify("No module named 'encodings_helper'") == "ENGINE_DEPENDENCY_MISSING"
 
 
 def test_classify_broken_venv_missing_own_package():
@@ -113,9 +113,9 @@ def test_classify_broken_venv_missing_own_package():
     assert failure.classify("ModuleNotFoundError: No module named 'omnivoice'") == (
         "BROKEN_VENV"
     )
-    # ...but a legitimately-named 'omnivoice_*' helper package must NOT match
+    # ...but a legitimately-named 'omnivoice_*' helper package is not BROKEN_VENV
     # (the trailing quote in the matcher is the guard).
-    assert failure.classify("No module named 'omnivoice_helper'") == ""
+    assert failure.classify("No module named 'omnivoice_helper'") == "ENGINE_DEPENDENCY_MISSING"
 
 
 def test_classify_socks_proxy_support_missing():

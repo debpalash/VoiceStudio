@@ -133,7 +133,7 @@ def test_reference_asr_hang_is_killed_and_next_request_recovers(monkeypatch, tmp
         "        while True: time.sleep(0.1)\n"
         "    return 'Reference words.'\n"
         "sys.modules['omnivoice.utils.audio'] = types.SimpleNamespace(CLONE_REF_TEXT_MAX_SECONDS=20)\n"
-        "sys.modules['services.tts_backend'] = types.SimpleNamespace(reference_duration_s=lambda _: 1)\n"
+        "sys.modules['services.tts_backend'] = types.SimpleNamespace(reference_duration_s=lambda _: 1, has_unresolved_clone_prompt=lambda *a, **k: False, generate_with_cached_ref=lambda model, **kw: model.generate(**kw))\n"
         "sys.modules['services.asr_backend'] = types.SimpleNamespace(transcribe_reference=transcribe)\n"
         "child._load_model = lambda _: types.SimpleNamespace(generate=lambda **kw: [None], sampling_rate=24000)\n"
         "child._tensor_to_pcm_b64 = lambda *args: ('AAAAAA==' if args[-1] == 'f32le' else 'AAA=', 24000, 1)\n"
@@ -154,6 +154,181 @@ def test_reference_asr_hang_is_killed_and_next_request_recovers(monkeypatch, tmp
         assert backend.generate("hello", ref_audio="okay.wav").shape[-1] == 1
     finally:
         backend.shutdown()
+
+
+def test_sidecar_synthesis_encodes_a_reference_once_per_sidecar(monkeypatch, tmp_path):
+    """Repeat requests reuse the cached clone prompt instead of re-selecting.
+
+    Without it a long reference reloads the passage-selection Whisper on
+    every line, and that phase alone can outlast the recv deadline.
+    """
+    from engines.omnivoice_subprocess import main as sidecar
+    from services import tts_backend
+
+    ref = tmp_path / "voice.wav"
+    ref.write_bytes(b"RIFF")
+    encodes, generated = [], []
+
+    class Model:
+        sampling_rate = 24_000
+
+        def create_voice_clone_prompt(self, ref_audio, ref_text=None, preprocess_prompt=True):
+            encodes.append(ref_audio)
+            return object()
+
+        def generate(self, **kw):
+            generated.append(kw)
+            return [None]
+
+    model = Model()
+    monkeypatch.setattr(sidecar, "_load_model", lambda _stdout: model)
+    monkeypatch.setattr(sidecar, "_tensor_to_pcm_b64", lambda *a, **k: ("AAA=", 24_000, 1))
+    monkeypatch.setattr(sidecar, "_send", lambda *_a, **_k: None)
+    monkeypatch.setattr(tts_backend, "reference_duration_s", lambda _p: 73.0)
+    # A disk hit would skip create_voice_clone_prompt and falsify the count.
+    monkeypatch.setenv("OMNIVOICE_PROMPT_DISK_CACHE", "0")
+    tts_backend.clear_clone_prompt_cache()
+    try:
+        for line in ("one", "two", "three"):
+            sidecar._handle_synthesize({"text": line, "ref_audio": str(ref)}, None)
+    finally:
+        tts_backend.clear_clone_prompt_cache()
+
+    assert len(encodes) == 1
+    assert all("voice_clone_prompt" in kw and "ref_audio" not in kw for kw in generated)
+
+
+def test_sidecar_asks_for_the_reference_recognizer_to_be_released(monkeypatch, tmp_path):
+    """Ranking a long reference loads a recognizer beside the TTS model; the
+    sidecar must have it unloaded before synthesis (8 GB unified memory)."""
+    from engines.omnivoice_subprocess import main as sidecar
+    from services import tts_backend
+
+    ref = tmp_path / "long.wav"
+    ref.write_bytes(b"RIFF")
+    seen = {}
+
+    def fake_generate(_model, **kw):
+        seen.update(kw)
+        return [None]
+
+    monkeypatch.setattr(sidecar, "_load_model", lambda _stdout: type("M", (), {"sampling_rate": 24_000})())
+    monkeypatch.setattr(sidecar, "_tensor_to_pcm_b64", lambda *a, **k: ("AAA=", 24_000, 1))
+    monkeypatch.setattr(sidecar, "_send", lambda *_a, **_k: None)
+    monkeypatch.setattr(tts_backend, "reference_duration_s", lambda _p: 73.0)
+    monkeypatch.setattr(tts_backend, "generate_with_cached_ref", fake_generate)
+
+    sidecar._handle_synthesize({"text": "hi", "ref_audio": str(ref)}, None)
+
+    assert seen["release_reference_asr"] is True
+
+
+def test_sidecar_short_reference_without_transcript_is_encoded_once(monkeypatch, tmp_path):
+    """A short reference whose transcript cannot be resolved must not reload
+    the model's own ASR on every line: it takes the cached-prompt path too."""
+    from engines.omnivoice_subprocess import main as sidecar
+    from services import asr_backend, tts_backend
+
+    ref = tmp_path / "short.wav"
+    ref.write_bytes(b"RIFF")
+    encodes, generated = [], []
+
+    class Model:
+        sampling_rate = 24_000
+
+        def create_voice_clone_prompt(self, ref_audio, ref_text=None, preprocess_prompt=True):
+            encodes.append(ref_audio)
+            return object()
+
+        def generate(self, **kw):
+            generated.append(kw)
+            return [None]
+
+    model = Model()
+    monkeypatch.setattr(sidecar, "_load_model", lambda _stdout: model)
+    monkeypatch.setattr(sidecar, "_tensor_to_pcm_b64", lambda *a, **k: ("AAA=", 24_000, 1))
+    monkeypatch.setattr(sidecar, "_send", lambda *_a, **_k: None)
+    monkeypatch.setattr(tts_backend, "reference_duration_s", lambda _p: 5.0)
+    asr_calls = []
+    monkeypatch.setattr(
+        asr_backend, "transcribe_reference",
+        lambda *_a, **_k: asr_calls.append(1),  # returns None: no words found
+    )
+    recognizers = ["installed-none"]
+    monkeypatch.setattr(tts_backend, "_reference_asr_identity", lambda: recognizers[0])
+    # A disk hit would skip create_voice_clone_prompt and falsify the count.
+    monkeypatch.setenv("OMNIVOICE_PROMPT_DISK_CACHE", "0")
+    tts_backend.clear_clone_prompt_cache()
+
+    def speak(line):
+        sidecar._handle_synthesize({"text": line, "ref_audio": str(ref)}, None)
+
+    try:
+        for line in ("one", "two", "three"):
+            speak(line)
+        assert len(encodes) == 1
+        assert all("voice_clone_prompt" in kw and "ref_audio" not in kw for kw in generated)
+        # Only the first request tries the recognizer, and only once: the
+        # prompt build must not repeat the sidecar's unsuccessful pre-pass.
+        # Once the prompt is cached, later lines never load it again.
+        assert len(asr_calls) == 1
+
+        # The user installs or selects another recognizer: it gets its turn
+        # (the stale prompt is not trusted), and when it also finds no words
+        # the cached prompt is reused and trusted again for the new chain.
+        # Its single empty attempt runs before the prompt-cache hit and is not
+        # repeated on the way to that hit.
+        recognizers[0] = "newly-selected"
+        speak("four")
+        assert len(asr_calls) == 2
+        assert len(encodes) == 1
+        speak("five")
+        assert len(asr_calls) == 2
+    finally:
+        tts_backend.clear_clone_prompt_cache()
+
+
+def test_sidecar_keeps_retrying_a_recognizer_that_errors(monkeypatch, tmp_path):
+    """Only a recognition that completed without words may be remembered: an
+    error is transient, so the recognizer is tried again on the next line."""
+    from engines.omnivoice_subprocess import main as sidecar
+    from services import asr_backend, tts_backend
+
+    ref = tmp_path / "flaky.wav"
+    ref.write_bytes(b"RIFF")
+    encodes, asr_calls = [], []
+
+    class Model:
+        sampling_rate = 24_000
+
+        def create_voice_clone_prompt(self, ref_audio, ref_text=None, preprocess_prompt=True):
+            encodes.append(ref_audio)
+            return object()
+
+        def generate(self, **kw):
+            return [None]
+
+    def failing_transcribe(*_a, **_k):
+        asr_calls.append(1)
+        raise RuntimeError("recognizer crashed")
+
+    model = Model()
+    monkeypatch.setattr(sidecar, "_load_model", lambda _stdout: model)
+    monkeypatch.setattr(sidecar, "_tensor_to_pcm_b64", lambda *a, **k: ("AAA=", 24_000, 1))
+    monkeypatch.setattr(sidecar, "_send", lambda *_a, **_k: None)
+    monkeypatch.setattr(tts_backend, "reference_duration_s", lambda _p: 5.0)
+    monkeypatch.setattr(tts_backend, "_reference_asr_identity", lambda: "installed-none")
+    monkeypatch.setattr(asr_backend, "transcribe_reference", failing_transcribe)
+    monkeypatch.setenv("OMNIVOICE_PROMPT_DISK_CACHE", "0")
+    tts_backend.clear_clone_prompt_cache()
+    try:
+        for line in ("one", "two", "three"):
+            sidecar._handle_synthesize({"text": line, "ref_audio": str(ref)}, None)
+    finally:
+        tts_backend.clear_clone_prompt_cache()
+
+    assert len(asr_calls) == 3  # the sidecar pre-pass, once on every line
+    assert len(encodes) == 1    # the prompt itself is still reused
 
 
 # ── registry + isolation ───────────────────────────────────────────────────
@@ -201,94 +376,67 @@ def test_engine_catalogue_reports_effective_mps_isolation(monkeypatch):
     assert row["isolation_mode"] == "subprocess"
 
 
-def test_mps_catalogue_hides_redundant_explicit_omnivoice_sidecar(monkeypatch):
-    """The picker advertises the canonical id, while legacy callers retain both."""
+def _catalogue_host(monkeypatch, family, registry):
     from core.device_caps import HostCaps
     from services import tts_backend
 
-    monkeypatch.setattr(
-        tts_backend,
-        "_REGISTRY",
-        {
-            "omnivoice": OmniVoiceBackend,
-            "omnivoice-subprocess": OmniVoiceSubprocessBackend,
-        },
-    )
+    families = (family,) if family == "cpu" else (family, "cpu")
+    monkeypatch.setattr(tts_backend, "_REGISTRY", registry)
     monkeypatch.setattr(
         "core.device_caps.detect_host_caps",
-        lambda: HostCaps(family="mps", available_families=("mps", "cpu")),
+        lambda: HostCaps(family=family, available_families=families),
     )
     monkeypatch.setattr(
         OmniVoiceSubprocessBackend,
         "is_available",
-        classmethod(lambda cls: (True, "ready")),
+        classmethod(lambda cls: (True, "sidecar healthy")),
     )
 
-    picker_ids = {item["id"] for item in list_backends()}
-    assert picker_ids == {"omnivoice"}
-    assert get_backend_class("omnivoice") is OmniVoiceMPSSubprocessBackend
 
-    all_ids = {item["id"] for item in list_backends(include_hidden=True)}
-    assert all_ids == {"omnivoice", "omnivoice-subprocess"}
+def test_mps_public_inventory_has_one_omnivoice_identity(monkeypatch):
+    registry = {
+        "omnivoice": OmniVoiceBackend,
+        "omnivoice-subprocess": OmniVoiceSubprocessBackend,
+    }
+    _catalogue_host(monkeypatch, "mps", registry)
+
+    public_ids = tuple(item["id"] for item in list_backends())
+    internal_ids = tuple(item["id"] for item in list_backends(include_hidden=True))
+
+    assert public_ids == ("omnivoice",)
+    assert internal_ids == tuple(registry)
+    assert get_backend_class("omnivoice") is OmniVoiceMPSSubprocessBackend
     assert get_backend_class("omnivoice-subprocess") is OmniVoiceSubprocessBackend
 
 
-def test_mps_active_routing_preserves_hidden_compatibility_id(monkeypatch):
-    from core.device_caps import HostCaps
+def test_active_routing_preserves_hidden_mps_compatibility_id(monkeypatch):
     from services import tts_backend
 
-    monkeypatch.setattr(
-        tts_backend,
-        "_REGISTRY",
+    _catalogue_host(
+        monkeypatch,
+        "mps",
         {"omnivoice-subprocess": OmniVoiceSubprocessBackend},
     )
     monkeypatch.setattr(tts_backend, "active_backend_id", lambda: "omnivoice-subprocess")
-    monkeypatch.setattr(
-        "core.device_caps.detect_host_caps",
-        lambda: HostCaps(family="mps", available_families=("mps", "cpu")),
-    )
-    monkeypatch.setattr(
-        OmniVoiceSubprocessBackend,
-        "is_available",
-        classmethod(lambda cls: (True, "ready")),
-    )
+    route = tts_backend.active_routing()
+    assert route is not None
+    assert route["engine"] == "omnivoice-subprocess"
+    assert (route["available"], route["effective_device"]) == (True, "mps")
+    assert (route["routing_status"], route["routing_reason"]) == ("accelerated", None)
 
-    assert tts_backend.active_routing() == {
-        "engine": "omnivoice-subprocess",
-        "available": True,
-        "effective_device": "mps",
-        "routing_status": "accelerated",
-        "routing_reason": None,
+
+@pytest.mark.parametrize(
+    "family",
+    [pytest.param("cuda", id="nvidia"), pytest.param("cpu", id="software")],
+)
+def test_non_mps_inventory_does_not_suppress_compatibility_choice(monkeypatch, family):
+    entries = {
+        "omnivoice": OmniVoiceBackend,
+        "omnivoice-subprocess": OmniVoiceSubprocessBackend,
     }
-
-
-@pytest.mark.parametrize("family", ("cuda", "cpu"))
-def test_non_mps_catalogue_keeps_explicit_omnivoice_sidecar(monkeypatch, family):
-    from core.device_caps import HostCaps
-    from services import tts_backend
-
-    monkeypatch.setattr(
-        tts_backend,
-        "_REGISTRY",
-        {
-            "omnivoice": OmniVoiceBackend,
-            "omnivoice-subprocess": OmniVoiceSubprocessBackend,
-        },
-    )
-    monkeypatch.setattr(
-        "core.device_caps.detect_host_caps",
-        lambda: HostCaps(family=family, available_families=(family, "cpu")),
-    )
-    monkeypatch.setattr(
-        OmniVoiceSubprocessBackend,
-        "is_available",
-        classmethod(lambda cls: (True, "ready")),
-    )
-
-    assert {item["id"] for item in list_backends()} == {
-        "omnivoice",
-        "omnivoice-subprocess",
-    }
+    _catalogue_host(monkeypatch, family, entries)
+    visible = {row["id"]: row for row in list_backends()}
+    assert visible.keys() == entries.keys()
 
 
 def test_mps_startup_does_not_preload_native_model(monkeypatch):
@@ -358,15 +506,14 @@ class _PlainBackend(SubprocessBackend):
         return ["multi"]
 
 
-def test_base_default_recv_timeout_covers_a_generation():
-    # A sidecar that does not choose gets a deadline that outlasts the
-    # wall-clock budget its own job was granted (#2103).
+def test_base_generate_deadline_is_the_generate_constant_not_the_ping_budget():
     from services.subprocess_backend import GENERATE_RECV_TIMEOUT_S
-    assert SubprocessBackend.recv_timeout_s == GENERATE_RECV_TIMEOUT_S == 600.0
-    assert _PlainBackend().recv_timeout_s == 600.0
-    # The ping budget itself is unchanged: health_check() still wants 60s.
-    assert RECV_TIMEOUT_S == 60.0
 
+    assert GENERATE_RECV_TIMEOUT_S == 600.0
+    assert _PlainBackend.recv_timeout_s == GENERATE_RECV_TIMEOUT_S
+    assert _PlainBackend().recv_timeout_s == GENERATE_RECV_TIMEOUT_S
+    assert SubprocessBackend.recv_timeout_s == GENERATE_RECV_TIMEOUT_S
+    assert RECV_TIMEOUT_S == 60.0
 
 def test_sidecar_spawn_delegates_all_containment_to_nested_owner(monkeypatch, tmp_path):
     from services import subprocess_backend as backend_module

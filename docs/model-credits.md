@@ -1,6 +1,6 @@
 # Model credits in About
 
-The About section in Settings → System preflight displays model and conversion authors, source links, and upstream
+The About section in Settings → About displays model and conversion authors, source links, and upstream
 terms in the maintained Electron desktop and web UI. Credits remain visible before
 the backend answers or a model is installed. Surrounding labels are translated in
 all 21 loaded locales; mandatory legal notices retain their original English text.
@@ -28,6 +28,7 @@ acceptance requirements, and dependency audits still need separate review.
 | OmniVoice-GGUF / Serveurperso | [Card at `0170941`](https://huggingface.co/Serveurperso/OmniVoice-GGUF/blob/017094167b5c9ed565a5076ac9b3b93c5ecf5c73/README.md) | Credit the GGUF conversion and upstream OmniVoice; its metadata names CC BY-NC 4.0. The card's description of the codec as Apache does not supersede the tokenizer's actual Boson licence. |
 | NLLB-200 distilled 600M / Meta AI | [Card at `f8d333a`](https://huggingface.co/facebook/nllb-200-distilled-600M/blob/f8d333a098d19b4fd9a8b18f94170487ad3f821d/README.md) | Credit Meta AI and link the CC BY-NC 4.0 terms named by the card. |
 | Llama-OuteTTS-1.0-1B MLX 4-bit / OuteAI / mlx-community / Meta | [Conversion card at `3ac2cff`](https://huggingface.co/mlx-community/Llama-OuteTTS-1.0-1B-4bit/blob/3ac2cff406f7de16a3216c60d0108571a916acc0/README.md), [original model](https://huggingface.co/OuteAI/Llama-OuteTTS-1.0-1B), [Llama 3.2 terms](https://huggingface.co/meta-llama/Llama-3.2-1B/blob/main/LICENSE.txt) | The original card separates Llama 3.2 components from OuteAI's CC BY-NC-SA 4.0 additions. Credit the MLX conversion, retain the required “Built with Llama” wording, and link both sources of terms. |
+| Whisper large-v3 Turbo MLX fp16 / OpenAI / mlx-community | [Conversion card at `624c19c`](https://huggingface.co/mlx-community/whisper-large-v3-turbo-asr-fp16/blob/624c19c9af5603fa73b83bce14d4aeea96156d18/README.md), [original model](https://huggingface.co/openai/whisper-large-v3-turbo) | OuteTTS voice cloning transcribes the reference clip with it. The conversion card states no licence; credit OpenAI and the MLX conversion. |
 
 The static presentation lives in
 `electron/src/renderer/src/features/settings/model-credits.tsx`, mounted by

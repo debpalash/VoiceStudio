@@ -15,10 +15,8 @@ import { ModelsDirectorySettings } from './models-directory-settings';
 import { ResetSettings } from './reset-settings';
 import { DataDirectorySettings } from './data-directory-settings';
 import { UninstallSettings } from './uninstall-settings';
-import {
-  warningText,
-  type StorageWarning,
-} from '@shared/utils/storageWarnings';
+import { diskMeterClass, visibleStorageWarnings } from './storage-meter';
+import { warningText, type StorageWarning } from '@shared/utils/storageWarnings';
 interface Item {
   id: string;
   path?: string;
@@ -110,7 +108,7 @@ export function StorageSettings() {
             </Button>
           </p>
         )}
-        {query.data?.warnings.map((warning, index) => (
+        {visibleStorageWarnings(query.data?.warnings).map((warning, index) => (
           <p key={index} role="alert" className="p-4 text-sm text-destructive">
             {warningText(t, warning)}
           </p>
@@ -132,7 +130,7 @@ export function StorageSettings() {
               className="h-1.5 overflow-hidden rounded-full bg-muted"
             >
               <div
-                className="h-full bg-primary"
+                className={'h-full ' + diskMeterClass(volume.used_percent)}
                 style={{ width: Math.max(0, Math.min(100, volume.used_percent)) + '%' }}
               />
             </div>

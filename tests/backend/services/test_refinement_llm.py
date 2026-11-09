@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -230,202 +231,136 @@ def test_config_invalid_json_falls_back_to_defaults(stored_config):
     assert cfg["auto"] is True and cfg["smart_cleanup"] is True
 
 
-def test_refine_transcript_passes_reasoning_effort_none(monkeypatch):
-    class _ReasoningBackend:
-        id = "openai-compat"
-        def __init__(self):
-            self.last_reasoning_effort = None
-        def chat_messages(self, *, messages, timeout=None, reasoning_effort=None):
-            self.last_reasoning_effort = reasoning_effort
-            return "Cleaned text."
+def test_refine_transcript_requests_no_reasoning(monkeypatch):
+    seen = []
 
-    backend = _ReasoningBackend()
-    monkeypatch.setattr("services.llm_backend.get_active_llm_backend", lambda: backend)
-    res = refinement.refine_transcript("hello um world", RefinementFlags())
-    assert res == "Cleaned text."
-    assert backend.last_reasoning_effort == "none"
+    class Backend:
+        def chat_messages(self, **kwargs):
+            seen.append(kwargs)
+            return "  Tidied.  "
+
+    monkeypatch.setattr(refinement, "_skill_llm", lambda: Backend())
+    assert refinement.refine_transcript("um tidied") == "Tidied."
+    assert seen[0]["reasoning_effort"] == "none"
 
 
-def test_openai_compat_backend_strips_think_tags(monkeypatch):
-    from services.llm_backend import OpenAICompatBackend
-    backend = OpenAICompatBackend()
-
-    class _FakeCompletionMessage:
-        content = "<think>\nLet me reason through this.\n</think>\nActual refined answer."
-    class _FakeChoice:
-        message = _FakeCompletionMessage()
-    class _FakeResponse:
-        choices = [_FakeChoice()]
-    class _FakeCompletions:
-        def create(self, **kw):
-            return _FakeResponse()
-    class _FakeChat:
-        completions = _FakeCompletions()
-    class _FakeClient:
-        chat = _FakeChat()
-
-    monkeypatch.setattr(backend, "_get_client", lambda: _FakeClient())
-    monkeypatch.setattr(backend, "_resolve_provider", lambda: None)
-    result = backend.chat_messages(messages=[{"role": "user", "content": "test"}])
-    assert result == "Actual refined answer."
+def _reply(content):
+    return SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=content))]
+    )
 
 
-def test_strip_reasoning_never_returns_the_models_monologue():
-    """A response that is ONLY thinking must come back empty.
-
-    maybe_refine treats an empty completion as "no result" and keeps the raw
-    transcript; returning the raw <think> body instead pasted the model's
-    private reasoning into the user's dictation.
-    """
-    from services.llm_backend import _strip_reasoning
-
-    assert _strip_reasoning("<think>weighing the options</think>") == ""
-    # truncated mid-thought (token cap): unclosed, still not an answer
-    assert _strip_reasoning("<think>never closed, output cut off") == ""
-    assert _strip_reasoning("<thinking>x</thinking>\nReal answer.") == "Real answer."
-    assert _strip_reasoning("Plain answer.") == "Plain answer."
-
-
-def _fake_client(seen, reject_reasoning=False, boom=None):
-    class _Msg:
-        content = "Cleaned."
-
-    class _Choice:
-        message = _Msg()
-
-    class _Res:
-        choices = [_Choice()]
-
-    class _Completions:
-        def create(self, **kw):
-            seen.append(kw)
-            if boom is not None:
-                raise boom
-            if reject_reasoning and "reasoning_effort" in kw:
-                raise RuntimeError("Error code: 400 - Unsupported parameter: 'reasoning_effort'")
-            return _Res()
-
-    class _Chat:
-        completions = _Completions()
-
-    class _Client:
-        chat = _Chat()
-
-    return _Client()
-
-
-def _bound_backend(monkeypatch, client, *, fresh_memo=True):
-    from services import llm_backend
+def _openai_backend(monkeypatch, create):
     from services.llm_backend import OpenAICompatBackend
 
-    if fresh_memo:
-        llm_backend._REASONING_EFFORT_REJECTED.clear()
     backend = OpenAICompatBackend()
+    client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+    )
     monkeypatch.setattr(backend, "_get_client", lambda: client)
     monkeypatch.setattr(backend, "_resolve_provider", lambda: None)
+    monkeypatch.setenv("TRANSLATE_MODEL", "fixture-model")
+    monkeypatch.setenv("TRANSLATE_BASE_URL", "http://fixture/v1")
     return backend
 
 
-def test_chat_messages_retries_without_reasoning_effort_on_a_server_400(monkeypatch):
-    """An endpoint that doesn't know the field answers 400, not TypeError —
-    catching only TypeError left dictation refinement permanently broken."""
-    seen: list[dict] = []
-    client = _fake_client(seen, reject_reasoning=True)
-    backend = _bound_backend(monkeypatch, client)
-
-    msgs = [{"role": "user", "content": "x"}]
-    assert backend.chat_messages(messages=msgs, reasoning_effort="none") == "Cleaned."
-    assert len(seen) == 2 and "reasoning_effort" not in seen[1]
-
-    # The rejection is remembered per ENDPOINT, not per instance: production
-    # gets a fresh OpenAICompatBackend on every call (get_active_llm_backend),
-    # so a per-instance memo would pay the rejected round trip on each request.
-    seen.clear()
-    again = _bound_backend(monkeypatch, client, fresh_memo=False)
-    assert again.chat_messages(messages=msgs, reasoning_effort="none") == "Cleaned."
-    assert len(seen) == 1 and "reasoning_effort" not in seen[0]
-
-
-def test_chat_messages_only_retries_when_the_server_names_the_field(monkeypatch):
-    """A 400 about some OTHER parameter must not trigger the retry — dropping
-    reasoning_effort wouldn't fix it, it would just fail twice."""
-    import pytest as _pytest
-
-    seen: list[dict] = []
-    backend = _bound_backend(
-        monkeypatch,
-        _fake_client(seen, boom=RuntimeError("400 Unsupported parameter: 'temperature'")),
+def test_openai_backend_removes_leading_reasoning(monkeypatch):
+    backend = _openai_backend(
+        monkeypatch, lambda **kwargs: _reply("<think>work</think>Answer")
     )
-    with _pytest.raises(RuntimeError, match="temperature"):
-        backend.chat_messages(
-            messages=[{"role": "user", "content": "x"}], temperature=0.2, reasoning_effort="none"
-        )
-    assert len(seen) == 1
+    assert backend.chat_messages(messages=[{"role": "user", "content": "Q"}]) == "Answer"
 
 
-def test_chat_messages_does_not_swallow_unrelated_failures(monkeypatch):
-    import pytest as _pytest
-
-    seen: list[dict] = []
-    backend = _bound_backend(
-        monkeypatch, _fake_client(seen, boom=RuntimeError("502 upstream is down"))
-    )
-    with _pytest.raises(RuntimeError, match="502"):
-        backend.chat_messages(messages=[{"role": "user", "content": "x"}], reasoning_effort="none")
-    assert len(seen) == 1  # no blind retry
-
-
-def test_reasoning_filter_preserves_literal_tags_in_the_answer():
+@pytest.mark.parametrize(
+    "raw",
+    ["<think>work</think>", "<reasoning>unfinished", "hidden</think>"],
+)
+def test_reasoning_only_returns_empty(raw):
     from services.llm_backend import _strip_reasoning
-    for text in ['Use <think> to start a block.', 'Explain <thinking>step</thinking> literally.', 'Example: <reasoning>unfinished']:
-        assert _strip_reasoning(text) == text
+
+    assert _strip_reasoning(raw) == ""
 
 
-def test_internal_type_error_is_not_retried_or_memoized(monkeypatch):
-    import pytest
-    from services import llm_backend, refinement
-    seen = []
-    backend = _bound_backend(monkeypatch, _fake_client(seen, boom=TypeError('internal decoder failure')))
-    monkeypatch.setattr(refinement, '_skill_llm', lambda: backend)
-    with pytest.raises(TypeError, match='internal decoder failure'):
-        refinement.refine_transcript('keep my words')
-    assert len(seen) == 1
-    assert not llm_backend._REASONING_EFFORT_REJECTED
-
-
-def test_multiple_leading_reasoning_blocks_keep_the_final_answer():
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("<thinking>notes</thinking> Result", "Result"),
+        ("<think>a</think><reasoning>b</reasoning>Result", "Result"),
+        ("private</think>Result", "Result"),
+        ("private</thinking>Result", "Result"),
+        ("Use <think> to start a block.", "Use <think> to start a block."),
+        ("Answer <thinking>x</thinking> remains", "Answer <thinking>x</thinking> remains"),
+    ],
+)
+def test_reasoning_stripping_boundaries(raw, expected):
     from services.llm_backend import _strip_reasoning
-    assert _strip_reasoning('<think>one</think>\n<thinking>two</thinking>Answer.') == 'Answer.'
+
+    assert _strip_reasoning(raw) == expected
 
 
-def test_prefilled_reasoning_block_is_stripped():
-    """Templates that put <think> in the prompt (Spark-X2.5, Qwen3 thinking
-    variants) leave only the closing tag in the reply when the server runs
-    without a reasoning parser."""
+def test_prefilled_close_is_kept_when_copied_from_prompt():
     from services.llm_backend import _strip_reasoning
-    assert _strip_reasoning("The user wants Spanish.\n</think>\n\nHola.") == "Hola."
-    assert _strip_reasoning("weighing it</thinking>Answer.") == "Answer."
-    assert _strip_reasoning("only reasoning, then</think>") == ""
-    # An answer that merely mentions a tag is still left alone.
-    assert _strip_reasoning("Close it with <think>x</think> here.") == "Close it with <think>x</think> here."
+
+    assert _strip_reasoning("literal </THINK> answer", "copy </think>") == "literal </THINK> answer"
+    assert _strip_reasoning(
+        "notes </think> literal </think> answer", "copy </THINK>"
+    ) == "literal </think> answer"
 
 
-def test_literal_closing_tag_from_the_prompt_is_kept():
-    """A reply may repeat a bare </think> only because the input had one —
-    translating that input must not cut the answer at the tag."""
-    from services.llm_backend import _strip_reasoning
-    line = "Use </think> to close the block."
-    assert _strip_reasoning(line, prompt="Translate to Spanish:\n" + line) == line
-    assert _strip_reasoning("Usa </THINK> para cerrar.", prompt=line) == "Usa </THINK> para cerrar."
-    # A tag the prompt never contained still ends a prefilled block.
-    assert _strip_reasoning("weighing it</think>Answer.", prompt="Translate: hi") == "Answer."
+def test_reasoning_effort_rejection_retries_and_is_memoized(monkeypatch):
+    from services.llm_backend import _REASONING_EFFORT_REJECTED
+
+    _REASONING_EFFORT_REJECTED.clear()
+    calls = []
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        if "reasoning_effort" in kwargs:
+            raise RuntimeError("400 unknown field reasoning_effort")
+        return _reply("ok")
+
+    first = _openai_backend(monkeypatch, create)
+    assert first.chat_messages(messages=[], reasoning_effort="none") == "ok"
+    second = _openai_backend(monkeypatch, create)
+    assert second.chat_messages(messages=[], reasoning_effort="none") == "ok"
+    assert len(calls) == 3
+    assert "reasoning_effort" not in calls[-1]
 
 
-def test_reasoning_ending_in_a_tag_the_source_also_contains_is_still_removed():
-    """Source text with a literal </think> must not switch reasoning removal
-    off: the reply has one more tag than the prompt, and that one is the
-    boundary (#2425 review)."""
-    from services.llm_backend import _strip_reasoning
-    prompt = "Translate to Spanish:\nUse </think> to close the block."
-    reply = "The user wants Spanish.</think>Usa </think> para cerrar el bloque."
-    assert _strip_reasoning(reply, prompt=prompt) == "Usa </think> para cerrar el bloque."
+@pytest.mark.parametrize(
+    "error",
+    [
+        RuntimeError("400 unsupported temperature"),
+        RuntimeError("502 bad gateway"),
+        TypeError("client bug"),
+    ],
+)
+def test_unrelated_client_failures_are_not_retried(monkeypatch, error):
+    from services.llm_backend import _REASONING_EFFORT_REJECTED
+
+    _REASONING_EFFORT_REJECTED.clear()
+    calls = []
+
+    def create(**kwargs):
+        calls.append(kwargs)
+        raise error
+
+    backend = _openai_backend(monkeypatch, create)
+    with pytest.raises(type(error), match=str(error)):
+        backend.chat_messages(messages=[], reasoning_effort="none", temperature=0.2)
+    assert len(calls) == 1
+    assert not _REASONING_EFFORT_REJECTED
+
+
+def test_refinement_propagates_internal_type_error_without_retry(monkeypatch):
+    calls = []
+
+    class Backend:
+        def chat_messages(self, **kwargs):
+            calls.append(kwargs)
+            raise TypeError("internal client failure")
+
+    monkeypatch.setattr(refinement, "_skill_llm", lambda: Backend())
+    with pytest.raises(TypeError, match="internal client failure"):
+        refinement.refine_transcript("hello")
+    assert len(calls) == 1

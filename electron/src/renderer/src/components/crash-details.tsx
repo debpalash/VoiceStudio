@@ -23,12 +23,8 @@ export function CrashDetails() {
       <div className="space-y-3 pt-3">
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
           <dt className="text-muted-foreground">{t('crash.field_exit')}</dt>
-          {/* A bare NTSTATUS says nothing: 3221225477 is an access violation,
-              and reading it as one is the difference between "it crashed" and
-              a report that can be triaged (#2250). The raw value stays first
-              so it still matches the log and anything the user searched for. */}
           <dd>
-            {crash.signal ?? (crash.exitCode != null ? describeExitCode(crash.exitCode) : '—')}
+            {crash.signal ?? (crash.exitCode != null ? describeExitCode(crash.exitCode, undefined, crash.logTail) : '—')}
           </dd>
           <dt className="text-muted-foreground">{t('crash.field_when')}</dt>
           <dd>{new Date(crash.timestamp).toLocaleString()}</dd>

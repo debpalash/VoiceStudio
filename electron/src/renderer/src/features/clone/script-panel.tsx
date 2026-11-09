@@ -15,7 +15,8 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { TAGS } from '@/lib/languages';
+import { useEngines } from '@/hooks/use-engines';
+import { KNOWN_TAGS, engineShortName, expressionCaps } from '@/lib/expression';
 import { setCloneSetting, useCloneSetting } from '@/lib/store/clone-settings';
 import { cn } from '@/lib/utils';
 import { SectionLabel } from './section-label';
@@ -27,6 +28,10 @@ export function ScriptPanel({
 }: { voiceName?: string; coachmark?: string; onUserEdit?: () => void } = {}) {
   const { t } = useTranslation();
   const text = useCloneSetting('text');
+  const { activeTts } = useEngines();
+  // Offer the engine's own reaction tags; any other engine would speak them as words.
+  const engineTags = expressionCaps(activeTts).tags;
+  const unsupportedTags = KNOWN_TAGS.filter((tag) => !engineTags.includes(tag));
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const importRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -305,17 +310,32 @@ export function ScriptPanel({
                       aria-label={t('clone.insert_token')}
                       className="fixed z-50 flex max-h-56 w-[min(360px,calc(100vw-16px))] flex-wrap gap-1 overflow-y-auto rounded-lg bg-popover p-2 text-popover-foreground shadow-md ring-1 ring-foreground/10 animate-in fade-in-0 zoom-in-95 motion-reduce:animate-none"
                     >
-                      {TAGS.map((tag) => (
-                        <button
-                          key={tag}
-                          type="button"
-                          role="menuitem"
-                          className="rounded-full px-2 py-0.5 text-[length:var(--text-caption)] text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50"
-                          onClick={() => edit(tag)}
+                      {[...engineTags, ...unsupportedTags].map((tag) => {
+                        const supported = engineTags.includes(tag);
+                        return (
+                          <button
+                            key={tag}
+                            type="button"
+                            role="menuitem"
+                            aria-disabled={!supported || undefined}
+                            aria-describedby={supported ? undefined : menuId + '-unsupported'}
+                            className="rounded-full px-2 py-0.5 text-[length:var(--text-caption)] text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 aria-disabled:cursor-not-allowed aria-disabled:opacity-45 aria-disabled:hover:bg-transparent aria-disabled:hover:text-muted-foreground"
+                            onClick={() => supported && edit(tag)}
+                          >
+                            {tag}
+                          </button>
+                        );
+                      })}
+                      {unsupportedTags.length > 0 && (
+                        <p
+                          id={menuId + '-unsupported'}
+                          className="w-full px-2 pt-1 text-[length:var(--text-caption)] text-muted-foreground"
                         >
-                          {tag}
-                        </button>
-                      ))}
+                          {t('expression.tags_unsupported', {
+                            engine: engineShortName(activeTts) || t('engineSidebar.tts'),
+                          })}
+                        </p>
+                      )}
                     </div>,
                     document.body,
                   )

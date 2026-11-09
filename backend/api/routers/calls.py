@@ -15,10 +15,29 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
-from api.dependencies import require_admin
+from api.dependencies import check_admin, require_admin, _request_presents_admin_credential
 from services.telephony import calls, config
 
-router = APIRouter(prefix="/calls", tags=["calls"], dependencies=[Depends(require_admin)])
+async def require_call_control(request: Request) -> None:
+    """Only the operator can opt authenticated paired sessions into call control.
+
+    This exception is scoped to calls; settings retain the strict admin gate.
+    Share PINs and trusted-network access never authorize billable calls.
+    """
+    try:
+        check_admin(request)
+        return
+    except HTTPException as exc:
+        if exc.status_code != 403:
+            raise
+        if not _request_presents_admin_credential(request):
+            raise
+        settings = await asyncio.to_thread(config.load_call_settings)
+        if not settings.allow_remote_control:
+            raise
+
+
+router = APIRouter(prefix="/calls", tags=["calls"], dependencies=[Depends(require_call_control)])
 
 _HEARTBEAT_S = 15.0
 
@@ -47,14 +66,15 @@ class _SettingsBody(BaseModel):
     inbound_brief: Optional[str] = Field(None, max_length=config.MAX_BRIEF_CHARS + 100)
     max_concurrent: Optional[int] = Field(None, ge=1, le=2)
     record_calls: Optional[bool] = None
+    allow_remote_control: Optional[bool] = None
 
 
-@router.get("/settings")
+@router.get("/settings", dependencies=[Depends(require_admin)])
 def get_settings():
     return config.load_call_settings().as_dict()
 
 
-@router.put("/settings")
+@router.put("/settings", dependencies=[Depends(require_admin)])
 def put_settings(body: _SettingsBody):
     current = config.load_call_settings()
     try:
@@ -73,11 +93,18 @@ def put_settings(body: _SettingsBody):
             else config.normalize_brief(body.inbound_brief, required=False),
             max_concurrent=current.max_concurrent if body.max_concurrent is None else body.max_concurrent,
             record_calls=current.record_calls if body.record_calls is None else body.record_calls,
+            allow_remote_control=current.allow_remote_control if body.allow_remote_control is None else body.allow_remote_control,
         )
     except config.ConfigError as exc:
         raise HTTPException(400, detail={"code": exc.code, "message": str(exc)}) from exc
     config.save_call_settings(updated)
     return updated.as_dict()
+
+
+@router.get("/options")
+def get_options():
+    settings = config.load_call_settings()
+    return {"disclosure": config.render_disclosure(settings.disclosure_template, settings.user_name)}
 
 
 @router.get("/readiness")

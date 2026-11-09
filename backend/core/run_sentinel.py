@@ -47,6 +47,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sys
 import tempfile
 import threading
 import time
@@ -58,6 +59,10 @@ from core.version import APP_VERSION
 logger = logging.getLogger("omnivoice.run_sentinel")
 
 SENTINEL_PATH = os.path.join(DATA_DIR, "run_sentinel.json")
+# Read by the Electron shell: electron/src/shared/utils/crashContext.ts.
+CONTEXT_PREFIX = "VOICESTUDIO_CRASH_CONTEXT="
+# An unchanged activity is only worth repeating when the memory figures have aged.
+CONTEXT_REPEAT_S = 30.0
 CRASH_RECORD_PATH = os.path.join(DATA_DIR, "last_run_crash.json")
 
 #: How many unclean-shutdown records to retain (newest first) — mirrors
@@ -79,6 +84,7 @@ _ACTIONABLE_LOG_MARKERS = (
     "critical",
     "fatal error",
     "out of memory",
+    "out_of_device_memory",  # Intel XPU driver OOM (UR_RESULT_ERROR_...)
     "memoryerror",
     "segmentation fault",
     "access violation",
@@ -92,6 +98,8 @@ _state: dict[str, Any] = {
     "started_at": None,
     "last_activity": None,
     "last_write": 0.0,
+    "emitted": None,
+    "emitted_at": 0.0,
 }
 # touch_activity() runs from FastAPI's request threadpool AND asyncio worker
 # tasks; the lock keeps the read-modify-write of _state + the sentinel file
@@ -223,6 +231,66 @@ def write_sentinel() -> bool:
             return False
 
 
+def _gib(value: float) -> float:
+    return round(value / 1024 ** 3, 1)
+
+
+def _memory_now() -> dict:
+    """Free RAM and swap, for telling an out-of-memory crash from any other."""
+    facts: dict = {}
+    try:
+        import psutil
+
+        ram = psutil.virtual_memory()
+        facts.update(ram_free_gb=_gib(ram.available), ram_total_gb=_gib(ram.total))
+        swap = psutil.swap_memory()
+        facts.update(swap_free_gb=_gib(swap.free), swap_total_gb=_gib(swap.total))
+    except Exception:
+        logger.debug("memory probe failed (non-fatal)", exc_info=True)
+    return facts
+
+
+def _engine_and_device() -> dict:
+    """Only what is already known: this runs on the path to the work, so it must
+    not import an engine or start a GPU probe."""
+    facts: dict = {}
+    try:
+        tts = sys.modules.get("services.tts_backend")
+        if tts is not None:
+            facts["engine"] = str(tts.active_backend_id())[:80]
+    except Exception:
+        logger.debug("engine lookup failed (non-fatal)", exc_info=True)
+    try:
+        caps = sys.modules.get("core.device_caps")
+        if caps is not None and caps.detect_host_caps.cache_info().currsize:
+            facts["device"] = caps.detect_host_caps().family
+    except Exception:
+        logger.debug("device lookup failed (non-fatal)", exc_info=True)
+    return facts
+
+
+def _context_line(activity: dict, now: float) -> str | None:
+    """The line for the desktop shell, which outlives a native crash this process
+    cannot report, or None when it would repeat. Same privacy rule as
+    `touch_activity`: identifiers and numbers only. Call holding `_lock`."""
+    key = (activity["kind"], activity["detail"])
+    if _state["emitted"] == key and now - _state["emitted_at"] < CONTEXT_REPEAT_S:
+        return None
+    _state["emitted"], _state["emitted_at"] = key, now
+    fields = {name: value for name, value in activity.items() if name != "ts" and value is not None}
+    return CONTEXT_PREFIX + json.dumps(fields)
+
+
+def _send_context(line: str | None) -> None:
+    """A full pipe can block this write, so never call it holding `_lock`."""
+    if line is None:
+        return
+    try:
+        print(line, file=sys.stderr, flush=True)
+    except Exception:
+        logger.debug("crash context not sent (non-fatal)", exc_info=True)
+
+
 def touch_activity(kind: str, detail: str | None = None) -> None:
     """Record that meaningful work (a generate, a transcribe, a model load)
     just started, so an unclean death can be attributed to it.
@@ -234,18 +302,22 @@ def touch_activity(kind: str, detail: str | None = None) -> None:
     """
     try:
         now = time.time()
+        activity = {
+            "ts": now,
+            "kind": str(kind)[:40],
+            "detail": (str(detail)[:80] if detail else None),
+            **_engine_and_device(),
+            **_memory_now(),
+        }
         with _lock:
-            _state["last_activity"] = {
-                "ts": now,
-                "kind": str(kind)[:40],
-                "detail": (str(detail)[:80] if detail else None),
-            }
-            if not _state["owns"]:
-                return
-            if now - float(_state["last_write"] or 0) < ACTIVITY_THROTTLE_S:
-                return
-            _write_json_atomic(SENTINEL_PATH, _sentinel_payload())
-            _state["last_write"] = now
+            _state["last_activity"] = activity
+            context = _context_line(activity, now)
+        # First: a full disk breaks the write below, and is when these facts matter most.
+        _send_context(context)
+        with _lock:
+            if _state["owns"] and now - float(_state["last_write"] or 0) >= ACTIVITY_THROTTLE_S:
+                _write_json_atomic(SENTINEL_PATH, _sentinel_payload())
+                _state["last_write"] = now
     except Exception:
         logger.debug("run-sentinel activity touch failed (non-fatal)", exc_info=True)
 
@@ -294,6 +366,16 @@ def _build_crash_record(sentinel: dict, now: float) -> dict:
             "ts": last_activity.get("ts"),
             "kind": scrub_text(str(last_activity.get("kind") or ""))[:40],
             "detail": scrub_text(str(last_activity.get("detail") or ""))[:80] or None,
+            **{
+                name: last_activity[name]
+                for name in ("ram_free_gb", "ram_total_gb", "swap_free_gb", "swap_total_gb")
+                if isinstance(last_activity.get(name), (int, float))
+            },
+            **{
+                name: scrub_text(str(last_activity[name]))[:80]
+                for name in ("engine", "device")
+                if last_activity.get(name)
+            },
         }
     else:
         last_activity = None
@@ -376,9 +458,7 @@ def detect_unclean_shutdown(now: float | None = None) -> Optional[dict]:
                 # volume). Its sentinel is not evidence of anything — leave
                 # it alone and don't write ours over it.
                 logger.info(
-                    "run_sentinel.json belongs to a live process (pid %s) — "
-                    "another instance shares this data dir; skipping crash "
-                    "detection and sentinel ownership for this run.",
+                    "run_sentinel.json belongs to a live process (pid %s) — another instance shares this data dir; skipping crash detection and sentinel ownership for this run.",
                     pid,
                 )
                 _state["foreign_live"] = True
@@ -458,6 +538,8 @@ def _reset_for_tests() -> None:
                 "started_at": None,
                 "last_activity": None,
                 "last_write": 0.0,
+                "emitted": None,
+                "emitted_at": 0.0,
                 "foreign_live": False,
             }
         )

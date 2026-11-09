@@ -1,14 +1,15 @@
 import uuid
 import time
 import json
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from api.dependencies import require_consumer_reads_admin_writes
 from pydantic import BaseModel
 
 from core.db import db_conn
 from core import event_bus
 from schemas.requests import ProjectSaveRequest
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_consumer_reads_admin_writes)])
 
 
 class ProjectRenameRequest(BaseModel):
@@ -90,3 +91,8 @@ async def delete_project(project_id: str):
         conn.execute("DELETE FROM studio_projects WHERE id=?", (project_id,))
     event_bus.emit("projects", {"action": "deleted", "id": project_id})
     return {"deleted": project_id}
+
+
+# Project handoff shares the existing authenticated projects router.
+from api.routers.project_bundles import router as project_bundles_router
+router.include_router(project_bundles_router)

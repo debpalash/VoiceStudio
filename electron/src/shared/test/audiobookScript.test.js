@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   parseCastNames,
+  parseChapterOutline,
+  chapterHeadingSnippet,
   scriptStats,
   formatRuntimeClock,
   validateScript,
@@ -37,6 +39,69 @@ describe('scriptStats', () => {
   });
 });
 
+describe('parseChapterOutline', () => {
+  it('returns heading offsets, 1-based lines, and spoken word counts', () => {
+    const script =
+      '# One\n[voice:Mara] Hello world here. [pause 500ms]\n# Two\nFour more spoken words.';
+    expect(parseChapterOutline(script)).toEqual([
+      {
+        index: 0,
+        title: 'One',
+        start: 0,
+        headingEnd: 5,
+        line: 1,
+        words: 3,
+      },
+      {
+        index: 1,
+        title: 'Two',
+        start: 51,
+        headingEnd: 56,
+        line: 3,
+        words: 4,
+      },
+    ]);
+  });
+
+  it('normalizes CRLF, keeps indented headings, and skips empty manuscripts', () => {
+    expect(parseChapterOutline('')).toEqual([]);
+    expect(parseChapterOutline('just some words')).toEqual([]);
+    const outline = parseChapterOutline('# First\r\nbody\r\n  # Second\r\n');
+    expect(
+      outline.map((chapter) => ({
+        title: chapter.title,
+        line: chapter.line,
+        words: chapter.words,
+      })),
+    ).toEqual([
+      { title: 'First', line: 1, words: 1 },
+      { title: 'Second', line: 3, words: 0 },
+    ]);
+    expect(outline[1].start).toBe(outline[0].start + '# First\nbody\n'.length);
+  });
+
+  it('counts lines cumulatively across many chapters', () => {
+    const script = Array.from({ length: 200 }, (_, i) => `# C${i}\na\n\nb`).join('\n');
+    const outline = parseChapterOutline(script);
+    expect(outline).toHaveLength(200);
+    outline.forEach((chapter, i) => expect(chapter.line).toBe(i * 4 + 1));
+  });
+});
+
+describe('chapterHeadingSnippet', () => {
+  it('inserts a heading on the current line or the next one', () => {
+    expect(chapterHeadingSnippet('', 0)).toBe('# ');
+    expect(chapterHeadingSnippet('Hello', 5)).toBe('\n# ');
+    expect(chapterHeadingSnippet('Hello\n', 6)).toBe('# ');
+  });
+  it('moves text after a mid-line caret or selection off the heading line', () => {
+    expect(chapterHeadingSnippet('Hello world', 6)).toBe('\n# \n');
+    expect(chapterHeadingSnippet('Hello world', 0)).toBe('# \n');
+    expect(chapterHeadingSnippet('Hello world\nNext', 6, 11)).toBe('\n# ');
+    expect(chapterHeadingSnippet('Hello world', 0, 5)).toBe('# \n');
+  });
+});
+
 describe('formatRuntimeClock', () => {
   it('formats <1h as M:SS and ≥1h as H:MM', () => {
     expect(formatRuntimeClock(45)).toBe('0:45');
@@ -66,5 +131,15 @@ describe('validateScript', () => {
   it('does not flag known reaction tags', () => {
     const warns = validateScript('# C\nHa [laughter] ha.', {});
     expect(warns.filter((w) => w.type === 'unknown_tag')).toEqual([]);
+  });
+  it('knows [emotion:] and says once when the engine will skip it (#3422)', () => {
+    const script = '# C\n[emotion:quietly terrified] Hello? [EMOTION:] Bye. [emotion:sad] Gone.';
+    // Parsed and stripped, never read aloud: never an unknown tag.
+    expect(validateScript(script, {})).toEqual([]);
+    expect(validateScript(script, { emotionIgnoredBy: 'OmniVoice' })).toEqual([
+      { type: 'emotion_ignored', name: 'OmniVoice' },
+    ]);
+    // No tag, no warning, whatever the engine.
+    expect(validateScript('# C\nPlain.', { emotionIgnoredBy: 'OmniVoice' })).toEqual([]);
   });
 });

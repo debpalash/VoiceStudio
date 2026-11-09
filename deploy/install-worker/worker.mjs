@@ -12,9 +12,9 @@ const html = `<!doctype html>
 <p>Build main and install:</p><pre>curl -fsSL https://voicestudio.sh/install | sh -s -- --main</pre>
 <p>Uninstall (keep settings, models and projects):</p><pre>curl -fsSL https://voicestudio.sh/install | sh -s -- --uninstall</pre>
 <h2>Windows PowerShell</h2>
-<pre>irm https://voicestudio.sh/install | iex</pre>
-<pre>$env:VOICESTUDIO_VERSION='X.Y.Z'; irm https://voicestudio.sh/install | iex</pre>
-<pre>$env:VOICESTUDIO_INSTALL_MODE='main'; irm https://voicestudio.sh/install | iex</pre>
+<pre>irm https://voicestudio.sh/install.ps1 | iex</pre>
+<pre>$env:VOICESTUDIO_VERSION='X.Y.Z'; irm https://voicestudio.sh/install.ps1 | iex</pre>
+<pre>$env:VOICESTUDIO_INSTALL_MODE='main'; irm https://voicestudio.sh/install.ps1 | iex</pre>
 <p>Uninstall (clear any version override first):</p><pre>Remove-Item Env:VOICESTUDIO_VERSION -ErrorAction SilentlyContinue
 $env:VOICESTUDIO_INSTALL_MODE='uninstall'; irm https://voicestudio.sh/install.ps1 | iex</pre>
 <p>Main builds require Git, Node.js 22+, Bun, Rust/Cargo and platform build tools.

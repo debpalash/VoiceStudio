@@ -69,6 +69,18 @@ beforeEach(() => {
 });
 
 describe('voice_match — generate request wiring', () => {
+  it('falls back to strict_slot when the timing preference is absent', async () => {
+    useAppStore.setState({ timingStrategy: undefined });
+    const { result } = renderWorkflow();
+    await act(async () => {
+      await result.current.handleDubGenerate();
+    });
+    expect(dubApi.dubGenerate).toHaveBeenCalledWith(
+      'job1',
+      expect.objectContaining({ timing_strategy: 'strict_slot' }),
+    );
+  });
+
   it('a fresh store sends the DEFAULT per_line', async () => {
     const { result } = renderWorkflow();
     await act(async () => {

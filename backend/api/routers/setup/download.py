@@ -28,18 +28,20 @@ from services.hf_auth import token_for_endpoint
 from services.hf_revisions import revision_for
 from utils import hf_progress
 from utils import download_aggregator
-# Weight-floor scan (MM2-07 / #352) lives in ``models.py`` — the lowest module in
-# the setup import graph — so install-time validation here, the first-run
-# install-state detector (#622), and load-time repair share one set of floors and
-# can't drift apart. ``_MIN_WEIGHT_BYTES``/``_WEIGHT_FLOORS`` re-exported for tests.
-from .models import (  # noqa: F401
+# Weight floors and package files live in ``services/model_catalogue.py`` (via
+# ``models.py``), so install-time validation here, the first-run install-state
+# detector (#622), and load-time repair share one set of floors.
+from services.model_catalogue import _package_files
+
+from .models import (
     KNOWN_MODELS,
     invalidate_cache,
+    model_key,
+    shares_repo,
+    _snapshot_dirs,
     snapshot_is_complete,
     disk_full_message,
     disk_space_error,
-    _MIN_WEIGHT_BYTES,
-    _WEIGHT_FLOORS,
 )
 
 logger = logging.getLogger("omnivoice.setup.download")
@@ -81,10 +83,12 @@ def clear_install_cooldowns() -> None:
     _install_cooldowns.clear()
     _install_failures.clear()
 
-# Repo_ids the user asked to cancel (FDL-11). Checked between retry attempts.
-# Note: a single in-flight snapshot_download/Xet fetch is not interruptible
-# mid-file in hf_hub 1.7.2 — cancel stops further retries, marks the row
-# cancelled, and clears the cooldown so a cancel isn't rate-limited.
+# Repo_ids the user asked to cancel (FDL-11). The install worker observes the
+# flag at every boundary it controls AND inside the transfer itself: the
+# segmented downloader polls it between chunks, and snapshot_download gets a
+# tqdm class whose update() raises once the flag is set, so an in-flight file
+# stops at its next chunk instead of running to completion. A cancelled
+# install then rolls the cache back (services.hf_cache_rollback).
 _cancelled: set[str] = set()
 
 # One worker per repo. Repeated clicks and feature-level recovery can converge
@@ -194,8 +198,50 @@ def _xet_active() -> bool:
     return os.environ.get("HF_HUB_DISABLE_XET", "").strip().lower() not in {"1", "true", "yes", "on"}
 
 
+def _hub_repo_of(key: str) -> str:
+    """Hub repository a catalogue identity downloads from."""
+    model = next((m for m in KNOWN_MODELS if model_key(m) == key), None)
+    return model["repo_id"] if model else key
+
+
 def _repo_cancelled(repo_id: str) -> bool:
     return repo_id in _cancelled
+
+
+def _cancellable_tqdm_class(repo_id: str) -> type:
+    """A tqdm class that aborts the transfer feeding it once ``repo_id`` is
+    cancelled.
+
+    snapshot_download runs each file in a worker thread that nothing outside
+    can interrupt, but every downloaded chunk passes through the progress bar
+    (huggingface_hub routes per-file bars into the tqdm_class instances), so
+    raising from ``update()`` stops each file at its next chunk. The file
+    thread-map bar raises too, which cancels files that have not started. The
+    base keeps the app's progress-emitting subclass when it is installed.
+    """
+    base = hf_progress.tracked_tqdm_class()
+    if base is None:
+        from huggingface_hub.utils import tqdm as base  # type: ignore[no-redef]
+
+    class _CancellableTqdm(base):  # type: ignore[misc,valid-type]
+        def update(self, n=1):
+            if _repo_cancelled(repo_id):
+                raise _InstallCancelled()
+            return super().update(n)
+
+    return _CancellableTqdm
+
+
+def _sleep_unless_cancelled(repo_id: str, seconds: float) -> None:
+    """Retry backoff that a cancel interrupts within a quarter second."""
+    deadline = time.monotonic() + max(0.0, seconds)
+    while True:
+        if _repo_cancelled(repo_id):
+            raise _InstallCancelled()
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        time.sleep(min(0.25, remaining))
 
 
 def _create_cache_pointer(blob_path: str, pointer: str) -> None:
@@ -237,21 +283,14 @@ def _segmented_snapshot(repo_id: str, *, endpoint: "str | None", revision: str) 
     from huggingface_hub.file_download import (
         hf_hub_url, get_hf_file_metadata, repo_folder_name,
     )
-    from services.segmented_download import segmented_download
+    from services.segmented_download import DownloadCancelled, segmented_download
     from services.token_resolver import resolve as _resolve_token
 
-    # `resolve()` returns a ResolvedToken record, not the bearer string, and
-    # every consumer below is typed `token: str | None`. Handing over the
-    # record fails silently rather than loudly (#2163): huggingface_hub's
-    # build_hf_headers ignores a non-str token and falls back to its own
-    # ambient discovery, so a token held only in VoiceStudio's settings sends
-    # NO Authorization header at all and every gated file 401s; our own
-    # segmented_download interpolates it into `f"Bearer {token}"` and sends a
-    # malformed header carrying the raw secret. Unwrap once, here.
-    _resolved = _resolve_token()
-    # Mirrors never receive the token; False also stops huggingface_hub from
-    # sending one it finds on its own.
-    hub_token = token_for_endpoint(endpoint, _resolved.token if _resolved else None)
+    # resolve() yields a record, not a string: unwrap it so every consumer
+    # below sees a bearer string or a real None. Mirrors get False, never a token.
+    _record = _resolve_token()
+    _bearer = getattr(_record, "token", None) if _record else None
+    hub_token = token_for_endpoint(endpoint, _bearer)
     token = hub_token or None
     api = HfApi(endpoint=endpoint, token=hub_token)
     info = api.repo_info(repo_id, repo_type="model", revision=revision)
@@ -290,12 +329,18 @@ def _segmented_snapshot(repo_id: str, *, endpoint: "str | None", revision: str) 
             raise RuntimeError("download target is outside the model cache") from exc
         os.makedirs(os.path.dirname(pointer), exist_ok=True)
         if not os.path.exists(blob_path):
-            _asyncio.run(segmented_download(
-                meta.location or url, blob_path,
-                token=token, expected_size=meta.size, expected_etag=etag,
-                on_bytes=lambda d, k=rel: download_aggregator.add_bytes(repo_id, k, d),
-                cancel_check=lambda: _repo_cancelled(repo_id),
-            ))
+            try:
+                _asyncio.run(segmented_download(
+                    meta.location or url, blob_path,
+                    token=token, expected_size=meta.size, expected_etag=etag,
+                    on_bytes=lambda d, k=rel: download_aggregator.add_bytes(repo_id, k, d),
+                    cancel_check=lambda: _repo_cancelled(repo_id),
+                ))
+            except DownloadCancelled as exc:
+                # A user cancel, not an accelerator failure: it must never be
+                # classified as one, or the install falls back to
+                # snapshot_download and downloads the whole model anyway.
+                raise _InstallCancelled() from exc
         if not os.path.lexists(pointer):
             _create_cache_pointer(blob_path, pointer)
 
@@ -349,7 +394,7 @@ def _validate_snapshot_has_weights(repo_id: str, snapshot_path: str) -> None:
 
     Delegates to ``models.snapshot_is_complete`` so configuration-only pipeline
     repositories use their declared required files instead of a weight floor."""
-    model = next((m for m in KNOWN_MODELS if m["repo_id"] == repo_id), {"repo_id": repo_id})
+    model = next((m for m in KNOWN_MODELS if model_key(m) == repo_id), {"repo_id": repo_id})
     if snapshot_is_complete(model, snapshot_path):
         return
     if model.get("config_only"):
@@ -423,8 +468,7 @@ class InstallModelRequest(BaseModel):
 
 @router.get("/models/install/status")
 def model_install_status():
-    """Read local and remote jobs after navigation without starting downloads."""
-    from services import gpu_gateway  # noqa: PLC0415
+    """Read local jobs after navigation without starting downloads."""
 
     now = time.time()
     _sweep_cooldowns(now)
@@ -437,7 +481,9 @@ def model_install_status():
             {
                 "repo_id": repo_id,
                 "target": "local",
-                "state": "downloading",
+                # Reported until the worker has stopped and cleaned up, so the
+                # UI keeps Cancel disabled instead of offering it again.
+                "state": "cancelling" if repo_id in _cancelled else "downloading",
                 **(aggregate.snapshot() if aggregate else {}),
             }
         )
@@ -477,7 +523,6 @@ def model_install_status():
         and repo_id not in detailed
         and now - failed_at < _COOLDOWN_SECS
     )
-    jobs.extend(gpu_gateway.remote_download_jobs())
     return {"jobs": jobs}
 
 
@@ -519,57 +564,35 @@ def _is_retryable_download_error(exc: BaseException) -> bool:
     return is_hf_connectivity_error(str(exc))
 
 
-def _segmented_retry_plan(
-    exc: BaseException, attempt: int, max_attempts: int
-) -> tuple[bool, bool]:
-    """What to do after the segmented accelerator failed on ``attempt``.
+def _segmented_retry_plan(exc: Exception, attempt: int, max_attempts: int) -> tuple[bool, bool]:
+    """Return ``(disable, retry)`` for a segmented-transfer failure.
 
-    Returns ``(disable_accelerator, reraise)``.
-
-    A dropped connection is not the accelerator's fault, so the error is
-    re-raised for the outer retry: the next attempt re-enters
-    :func:`_segmented_snapshot`, which resumes from the ``.part`` manifest.
-    Falling straight through to ``snapshot_download`` instead would finish the
-    install from a separate ``.incomplete`` file and strand that manifest — the
-    restart-from-zero this exists to prevent.
-
-    The final attempt is always reserved for the plain path, so the accelerator
-    can never be the reason an install fails outright. The two flags are
-    decoupled for that handover: the attempt that exhausts the accelerator still
-    re-raises, so the plain path starts on the LAST attempt rather than the
-    second-to-last. Disabling and falling through in the same attempt would
-    abandon the resumable manifest one attempt early and restart through a
-    separate file — which is the failure this whole helper exists to avoid.
+    Transient disconnects re-enter the accelerator so its range manifest can
+    resume; falling through immediately would use a separate incomplete file.
+    The penultimate attempt disables and retries, reserving the last attempt
+    for the plain downloader. A terminal or non-transient failure hands over
+    immediately because no useful accelerator retry remains.
     """
-    if not _is_retryable_download_error(exc):
-        return True, False  # the accelerator cannot work here at all
-    if attempt >= max_attempts:
-        # Nothing left to hand over to: take the plain path now rather than
-        # re-raising out of the loop with no fallback ever tried.
+    if not _is_retryable_download_error(exc) or attempt >= max_attempts:
         return True, False
     return attempt >= max_attempts - 1, True
 
 
-def _segmented_retry_note(disable: bool, reraise: bool) -> str:
-    """How to describe the outcome of :func:`_segmented_retry_plan` in the log.
-
-    Three distinct states, and reading only ``disable`` conflates two of them:
-    the attempt that exhausts the accelerator is disabled AND re-raises, so the
-    fallback starts on the NEXT attempt, not this one.
-    """
-    if not disable:
-        return "kept for the next attempt (resumes from its manifest)"
-    if reraise:
-        return "exhausted — retrying once more, then snapshot_download takes over"
-    return "disabled for this install — falling back to snapshot_download now"
+def _segmented_retry_log_phrase(disable: bool, retry: bool) -> str:
+    if not disable and retry:
+        return "accelerator retained; the next attempt resumes its range manifest"
+    if disable and retry:
+        return "accelerator exhausted; retrying once more before the plain downloader takes over"
+    return "accelerator disabled; falling back to the plain downloader now"
 
 
 @router.post("/models/install")
 async def install_model(req: InstallModelRequest):
     """Download one HF repo snapshot; progress goes through the shared
     ``/setup/download-stream`` SSE feed."""
+    # ``req.repo_id`` is the catalogue identity; Hub calls use ``hub_repo``.
     model_spec = next(
-        (model for model in KNOWN_MODELS if model["repo_id"] == req.repo_id),
+        (model for model in KNOWN_MODELS if model_key(model) == req.repo_id),
         None,
     )
     if model_spec is None:
@@ -577,25 +600,17 @@ async def install_model(req: InstallModelRequest):
             status_code=400,
             detail=(
                 f"Unknown model: {req.repo_id!r}. Known: "
-                + ", ".join(m["repo_id"] for m in KNOWN_MODELS)
+                + ", ".join(model_key(m) for m in KNOWN_MODELS)
             ),
         )
+    hub_repo = model_spec["repo_id"]
     allow_patterns = list(model_spec.get("allow_patterns") or []) or None
-    target = (req.target or "").strip()
+    target = (req.target or "local").strip() or "local"
     if target != "local":
-        from services import gpu_gateway  # noqa: PLC0415
-        from worker import routing  # noqa: PLC0415
-
-        decision = routing.decide()
-        if target and target != "local" and (
-            not decision.remote or decision.worker_id != target
-        ):
-            raise HTTPException(status_code=409, detail="The selected GPU target changed; try again.")
-        if decision.remote:
-            try:
-                return await gpu_gateway.download(req.repo_id, decision=decision)
-            except gpu_gateway.GatewayError as exc:
-                raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=400,
+            detail="Remote model installation is unavailable; target must be 'local'.",
+        )
     # Cooldown guard — don't retry if the same model just failed.
     import time as _time_check
     _sweep_cooldowns(_time_check.time())  # bound the dict (MM2-06)
@@ -610,6 +625,28 @@ async def install_model(req: InstallModelRequest):
             ),
         )
     loop = asyncio.get_running_loop()
+    _cache_before = None
+
+    def _rollback_cancelled_install() -> None:
+        """Remove the partial data a cancelled install wrote: transfer files,
+        blobs and snapshot entries that did not exist before it started, and
+        rewritten revision markers. A dependency another install is still
+        writing is left alone."""
+        if _cache_before is None:
+            return
+        from services import hf_cache_rollback
+        with _active_installs_lock:
+            # Another package of the same Hub repo may be installing too:
+            # map every other active install to the Hub repo it writes.
+            writing = {
+                _hub_repo_of(key) for key in _active_installs if key != req.repo_id
+            }
+            busy = {repo for repo in _cache_before.repos if repo in writing}
+        try:
+            hf_cache_rollback.rollback(_cache_before, skip=busy)
+        except Exception:  # noqa: BLE001 — cleanup must not mask the cancel
+            logger.warning("model install %s: cancelled download cleanup failed", req.repo_id)
+        invalidate_cache()
 
     def _do():
         # Failure handling must work even when imports, token resolution or
@@ -632,6 +669,18 @@ async def install_model(req: InstallModelRequest):
                 LocalEntryNotFoundError,
             )
             logger.info("model install starting: %s", req.repo_id)
+            # Record the cache before any byte lands, so a cancel can remove
+            # exactly what this install added and keep what was already there.
+            nonlocal _cache_before
+            try:
+                from huggingface_hub import constants as _hf_constants
+                from services import hf_cache_rollback
+                _cache_before = hf_cache_rollback.capture(
+                    _hf_constants.HF_HUB_CACHE,
+                    [hub_repo, *(d["repo_id"] for d in model_spec.get("dependencies") or ())],
+                )
+            except Exception:  # noqa: BLE001 — install proceeds without rollback data
+                logger.warning("model install %s: cache state could not be recorded", req.repo_id)
             # Apply opt-in Xet tuning knobs (high-perf / HDD) before downloading.
             apply_xet_env()
             # Drive snapshot_download explicitly (FDL-02): pass our progress-
@@ -639,8 +688,8 @@ async def install_model(req: InstallModelRequest):
             # (Xet feeds bytes into whatever tqdm_class is supplied), bound the
             # parallel-files worker count, and honour an optional mirror endpoint.
             dl_kwargs: dict = {
-                "repo_id": req.repo_id,
-                "revision": revision_for(req.repo_id),
+                "repo_id": hub_repo,
+                "revision": revision_for(hub_repo),
                 "max_workers": _download_max_workers(),
             }
             from services.token_resolver import resolve as resolve_token
@@ -648,9 +697,7 @@ async def install_model(req: InstallModelRequest):
             _bearer = resolved_token.token if resolved_token else None
             if allow_patterns:
                 dl_kwargs["allow_patterns"] = allow_patterns
-            _tqdm_cls = hf_progress.tracked_tqdm_class()
-            if _tqdm_cls is not None:
-                dl_kwargs["tqdm_class"] = _tqdm_cls
+            dl_kwargs["tqdm_class"] = _cancellable_tqdm_class(req.repo_id)
             _endpoint = _download_endpoint(gated=_gated)
             if _endpoint:
                 dl_kwargs["endpoint"] = _endpoint
@@ -663,8 +710,6 @@ async def install_model(req: InstallModelRequest):
 
             # Emit a 'resolving' heartbeat every 2s while snapshot_download
             # resolves repo metadata (before any tqdm bars appear).
-            import time as _t
-
             def _heartbeat():
                 _step = 0
                 while not _resolving.is_set():
@@ -689,7 +734,7 @@ async def install_model(req: InstallModelRequest):
             # the overall aggregator so its bar/ETA are correct from the first
             # event. Degrades gracefully (totals=None) on older/gated repos.
             _preflight_kwargs = {
-                "repo_id": req.repo_id,
+                "repo_id": hub_repo,
                 "revision": dl_kwargs["revision"],
                 "dry_run": True,
             }
@@ -713,6 +758,8 @@ async def install_model(req: InstallModelRequest):
                     if dependency.get("allow_patterns"):
                         dependency_plan_kwargs["allow_patterns"] = dependency["allow_patterns"]
                     _plan.extend(snapshot_download(**dependency_plan_kwargs))  # nosec B615 -- immutable revision_for pin
+                if req.repo_id in _cancelled:
+                    raise _InstallCancelled()
                 _summary = compute_plan(_plan)
                 # Disk-space guard (before a single byte flows): the preflight
                 # gives an exact "to download" size, so reject an install that
@@ -771,11 +818,7 @@ async def install_model(req: InstallModelRequest):
 
             _max_attempts = 5
             _attempt = 0
-            # The accelerator is retried across attempts so its manifest-based
-            # resume actually gets used; it is disabled for the rest of the
-            # install only when it fails for a reason that is NOT transient
-            # network trouble (i.e. the accelerator itself is unusable here).
-            _segmented_off = False
+            _segmented_disabled = False
             while True:
                 if req.repo_id in _cancelled:
                     raise _InstallCancelled()
@@ -789,8 +832,11 @@ async def install_model(req: InstallModelRequest):
                     # compromise a correct install (see _segmented_retry_plan).
                     _snapshot_path = None
                     if (
-                        not _segmented_off
+                        not _segmented_disabled
                         and not allow_patterns
+                        # Whole-repo entries only: its progress and cancel keys
+                        # are the Hub repo id.
+                        and req.repo_id == hub_repo
                         and _segmented_enabled()
                         and not _xet_active()
                     ):
@@ -803,17 +849,20 @@ async def install_model(req: InstallModelRequest):
                         except _InstallCancelled:
                             raise
                         except Exception as _seg_err:
+                            if req.repo_id in _cancelled:
+                                raise _InstallCancelled() from _seg_err
                             if is_disk_full_error(_seg_err):
                                 raise  # the plain path would hit the same wall
-                            _segmented_off, _seg_reraise = _segmented_retry_plan(
-                                _seg_err, _attempt, _max_attempts
+                            _disable, _retry = _segmented_retry_plan(
+                                _seg_err, _attempt, _max_attempts,
                             )
+                            _segmented_disabled = _segmented_disabled or _disable
                             logger.info(
-                                "segmented download for %s failed (%s); accelerator %s",
+                                "segmented download for %s failed (%s); %s",
                                 req.repo_id, _seg_err,
-                                _segmented_retry_note(_segmented_off, _seg_reraise),
+                                _segmented_retry_log_phrase(_disable, _retry),
                             )
-                            if _seg_reraise:
+                            if _retry:
                                 raise
                             _snapshot_path = None
                     if _snapshot_path is None:
@@ -821,7 +870,7 @@ async def install_model(req: InstallModelRequest):
                     _validate_snapshot_has_weights(req.repo_id, _snapshot_path)
                     from huggingface_hub.constants import HF_HUB_CACHE
                     from services.hf_revisions import remember_revision
-                    remember_revision(req.repo_id, dl_kwargs["revision"], HF_HUB_CACHE)
+                    remember_revision(hub_repo, dl_kwargs["revision"], HF_HUB_CACHE)
                     # A pipeline config is not a runnable installation by itself.
                     # Download its reviewed dependencies only inside this explicit
                     # install action, retaining the parent cancellation/retry flow.
@@ -844,7 +893,14 @@ async def install_model(req: InstallModelRequest):
                     if req.repo_id in _cancelled:
                         raise _InstallCancelled()
                     break
+                except _InstallCancelled:
+                    raise
                 except Exception as net_err:
+                    # Whatever an aborted transfer surfaces as (a wrapped
+                    # exception, an Xet error from the progress callback), a
+                    # failure after the user cancelled is that cancel.
+                    if req.repo_id in _cancelled:
+                        raise _InstallCancelled() from net_err
                     # #1224: a truncated body ("peer closed connection without
                     # sending complete message body") arrives as
                     # httpx.RemoteProtocolError, which inherits from Exception
@@ -896,7 +952,7 @@ async def install_model(req: InstallModelRequest):
                         "attempt": _attempt,
                         "error": str(net_err),
                     })
-                    _t.sleep(_backoff)
+                    _sleep_unless_cancelled(req.repo_id, _backoff)
             # Stop heartbeat once download completes
             _resolving.set()
             # Flush the overall bar to 100% with the true byte total (FDL-06):
@@ -933,6 +989,7 @@ async def install_model(req: InstallModelRequest):
             # A cancel is user intent, not a failure — don't set a cooldown.
             _install_cooldowns.pop(req.repo_id, None)
             _install_failures.pop(req.repo_id, None)
+            _rollback_cancelled_install()
             hf_progress.emit({
                 "repo_id": req.repo_id,
                 "filename": req.repo_id,
@@ -1046,8 +1103,6 @@ async def install_model(req: InstallModelRequest):
 
 async def cancel_install_and_wait(repo_id: str) -> None:
     """Request cancellation and retain authority until its thread exits."""
-    from worker.async_utils import drain_task  # noqa: PLC0415
-
     with _active_installs_lock:
         _cancelled.add(repo_id)
         _install_cooldowns.pop(repo_id, None)
@@ -1058,7 +1113,18 @@ async def cancel_install_and_wait(repo_id: str) -> None:
         # asyncio.to_thread cannot stop snapshot_download mid-file. Cancelling
         # its wrapper would only detach the thread, so wait until the blocking
         # call observes the flag or naturally returns.
-        await drain_task(task)
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                continue
+            except BaseException:
+                break
+        if task.done():
+            try:
+                task.result()
+            except BaseException:
+                pass
     finally:
         with _active_installs_lock:
             current = _install_tasks_by_repo.get(repo_id)
@@ -1070,19 +1136,17 @@ async def cancel_install_and_wait(repo_id: str) -> None:
 async def cancel_install(req: InstallModelRequest):
     """Request cancellation of an in-flight install (FDL-11).
 
-    Best-effort: stops further retry attempts and marks the row cancelled. A
-    single in-flight snapshot_download/Xet fetch isn't interruptible mid-file
-    in hf_hub 1.7.2, so an already-streaming file finishes; the cancel takes
-    effect at the next retry boundary. Clears the cooldown so the user can
-    immediately restart."""
+    Returns at once; the worker stops the transfer at its next chunk (or the
+    next boundary before any byte flows), removes the partial data it wrote
+    and reports ``install_cancelled``. ``/models/install/status`` shows the
+    job as ``cancelling`` until then. Clears the cooldown so the user can
+    restart immediately."""
     target = (req.target or "local").strip() or "local"
     if target != "local":
-        from services import gpu_gateway  # noqa: PLC0415
-
-        try:
-            return await gpu_gateway.cancel_download(req.repo_id, target=target)
-        except gpu_gateway.GatewayError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=400,
+            detail="Remote model installation is unavailable; target must be 'local'.",
+        )
     _cancelled.add(req.repo_id)
     _install_cooldowns.pop(req.repo_id, None)
     _install_failures.pop(req.repo_id, None)
@@ -1093,7 +1157,13 @@ async def cancel_install(req: InstallModelRequest):
 
 @router.delete("/models/{repo_id:path}")
 def delete_model(repo_id: str):
-    """Remove every cached revision of a repo from the HF cache."""
+    """Remove an installed model from the HF cache.
+
+    A whole-repo entry removes every cached revision of its repo. An entry that
+    shares its Hub repository with other catalogue entries removes only the
+    files it selected, so uninstalling one package never deletes another's.
+    """
+    model = next((m for m in KNOWN_MODELS if model_key(m) == repo_id), None)
     hf_progress.emit({
         "repo_id": repo_id,
         "filename": repo_id,
@@ -1101,35 +1171,47 @@ def delete_model(repo_id: str):
         "phase": "delete_start",
     })
     try:
-        from huggingface_hub import scan_cache_dir
-        info = scan_cache_dir()
-        commits = [
-            rev.commit_hash
-            for entry in info.repos if entry.repo_id == repo_id
-            for rev in entry.revisions
-        ]
-        if not commits:
-            raise HTTPException(
-                status_code=404,
-                detail=(
-                    f"Model {repo_id!r} isn't installed. Nothing to delete — "
-                    "run POST /models/install first if you want a fresh download."
-                ),
-            )
-        strategy = info.delete_revisions(*commits)
-        strategy.execute()
+        if model is not None and shares_repo(model):
+            freed = delete_package_files(model)
+            if freed is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail=(
+                        f"Model {repo_id!r} isn't installed. Nothing to delete — "
+                        "run POST /models/install first if you want a fresh download."
+                    ),
+                )
+        else:
+            from huggingface_hub import scan_cache_dir
+            info = scan_cache_dir()
+            commits = [
+                rev.commit_hash
+                for entry in info.repos if entry.repo_id == repo_id
+                for rev in entry.revisions
+            ]
+            if not commits:
+                raise HTTPException(
+                    status_code=404,
+                    detail=(
+                        f"Model {repo_id!r} isn't installed. Nothing to delete — "
+                        "run POST /models/install first if you want a fresh download."
+                    ),
+                )
+            strategy = info.delete_revisions(*commits)
+            strategy.execute()
+            freed = strategy.expected_freed_size
         hf_progress.emit({
             "repo_id": repo_id,
             "filename": repo_id,
             "downloaded": 0, "total": 0, "pct": 1.0,
             "phase": "delete_done",
-            "freed_bytes": strategy.expected_freed_size,
+            "freed_bytes": freed,
         })
         invalidate_cache()
         return {
             "deleted": True,
             "repo_id": repo_id,
-            "freed_bytes": strategy.expected_freed_size,
+            "freed_bytes": freed,
         }
     except HTTPException:
         raise
@@ -1141,3 +1223,58 @@ def delete_model(repo_id: str):
                 "Close any process using the model (e.g. the app's main dub job) and retry."
             ),
         )
+
+
+def delete_package_files(model: dict) -> "int | None":
+    """Delete one package's files from a Hub repo other entries share.
+
+    Removes every snapshot file the entry's ``allow_patterns`` select, unless a
+    sibling entry also selects it, then each blob no remaining snapshot file
+    points to. Returns the bytes freed, or None when nothing was installed.
+    """
+    siblings = [
+        other for other in KNOWN_MODELS
+        if other is not model and other.get("repo_id") == model["repo_id"]
+    ]
+    removed_any = False
+    freed = 0
+    for snapshot in _snapshot_dirs(model["repo_id"]):
+        repo_dir = os.path.dirname(os.path.dirname(snapshot))
+        shared = {path for other in siblings for path in _package_files(other, snapshot)}
+        for path in _package_files(model, snapshot):
+            if path in shared:
+                continue
+            target = os.path.realpath(path) if os.path.islink(path) else None
+            try:
+                if target is None:
+                    freed += os.path.getsize(path)
+                os.remove(path)
+                removed_any = True
+            except FileNotFoundError:
+                continue
+            if target and os.path.isfile(target) and not _blob_referenced(repo_dir, target):
+                freed += os.path.getsize(target)
+                os.remove(target)
+        _prune_empty_dirs(snapshot)
+    return freed if removed_any else None
+
+
+def _blob_referenced(repo_dir: str, blob: str) -> bool:
+    """True when any snapshot file of this repo still resolves to ``blob``."""
+    for root, _dirs, files in os.walk(os.path.join(repo_dir, "snapshots")):
+        for name in files:
+            path = os.path.join(root, name)
+            if os.path.islink(path) and os.path.realpath(path) == blob:
+                return True
+    return False
+
+
+def _prune_empty_dirs(snapshot: str) -> None:
+    for root, _dirs, _files in os.walk(snapshot, topdown=False):
+        if root != snapshot and not os.listdir(root):
+            try:
+                os.rmdir(root)
+            except OSError:
+                # Best-effort tidy-up: a dir that gained a file (a sibling
+                # package's concurrent download) or is locked stays in place.
+                continue

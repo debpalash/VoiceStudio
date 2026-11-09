@@ -35,12 +35,14 @@ import base64
 import io
 import json
 import logging
+import math
 import os
 import re
 import tempfile
 from typing import Annotated, Any, Literal, Optional, Union
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from api.dependencies import require_consumer
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.routing import APIRoute
@@ -147,7 +149,7 @@ class OpenAIErrorRoute(APIRoute):
         return route
 
 
-router = APIRouter(prefix="/v1", tags=["OpenAI-Compatible Audio API"], route_class=OpenAIErrorRoute)
+router = APIRouter(prefix="/v1", tags=["OpenAI-Compatible Audio API"], route_class=OpenAIErrorRoute, dependencies=[Depends(require_consumer)])
 
 
 # ── OpenAI model / voice aliases ────────────────────────────────────────────
@@ -302,29 +304,29 @@ class SpeechRequest(BaseModel):
     duration: Optional[float] = Field(
         default=None,
         gt=0,
-        description="VoiceStudio extension: target output duration in seconds.",
+        description="Aim for this many seconds of audio (seconds, must be positive). Outside the OpenAI spec; used by VoiceStudio engines that can honour it.",
     )
     seed: Optional[int] = Field(
         default=None,
-        description="VoiceStudio extension: deterministic sampling seed.",
+        description="Fixes the random seed so the same request can be reproduced. Outside the OpenAI spec; VoiceStudio only.",
     )
     denoise: bool = Field(
         default=True,
-        description="VoiceStudio extension: prepend denoise control when supported.",
+        description="Set false to skip the denoise step on engines that offer one. Outside the OpenAI spec; VoiceStudio only.",
     )
     preprocess_prompt: bool = Field(
         default=True,
-        description="VoiceStudio extension: trim/preprocess reference prompt when supported.",
+        description="Set false to use the reference clip untouched instead of preprocessing it, where the engine supports that. Outside the OpenAI spec; VoiceStudio only.",
     )
     chunk_duration: Optional[float] = Field(
         default=None,
         ge=0,
-        description="OmniVoice GGUF extension: long-form internal chunk duration.",
+        description="Seconds of speech per internal chunk for long texts; read by the OmniVoice GGUF engine only. Outside the OpenAI spec.",
     )
     chunk_threshold: Optional[float] = Field(
         default=None,
         ge=0,
-        description="OmniVoice GGUF extension: long-form internal chunk threshold.",
+        description="Length above which the OmniVoice GGUF engine starts splitting long texts into chunks. Outside the OpenAI spec.",
     )
     # #1014: these two were silently DISCARDED before (pydantic ignores
     # undeclared fields) — a 200 OK that quietly dropped the caller's quality
@@ -583,16 +585,19 @@ def _typed_speech_http_error(e: Exception) -> Optional[HTTPException]:
 
 def _run_tts(backend, text: str, kw: dict):
     """Run TTS inference in the GPU thread pool."""
-    from services.audio_dsp import apply_mastering, normalize_audio
+    import torch
+    from services.audio_dsp import apply_mastering, normalize_audio, trim_speech_padding
     from services.watermark import mark_synthetic
     wav = backend.generate(text, **kw)
     sr = backend.sample_rate
-    # Engines that already emit mastered, studio-grade audio (e.g. VoxCPM2's
-    # native 48 kHz) opt out of apply_mastering via `applies_own_mastering`.
-    # That chain's highpass + Compressor is tuned for VoiceStudio's 24 kHz clone
-    # output; applied to a studio engine it adds an audible level pump that
-    # degrades the very output we want clean. Loudness normalisation still
-    # runs — it's a benign peak scale, not dynamics.
+    # Strip the engine's lead-in/tail silence, as /generate does — unless the
+    # caller asked for an exact `duration`, which a trim would shorten.
+    if not kw.get("duration") and torch.is_tensor(wav):
+        wav = trim_speech_padding(wav, sr)
+    # Finished studio engines, such as VoxCPM2's native 48 kHz output, declare
+    # that they master themselves.  The shared high-pass/compressor was tuned
+    # for 24 kHz cloned audio and can make studio output pump audibly.  Peak-only
+    # loudness normalisation below remains safe and applies to every engine.
     if not getattr(backend, "applies_own_mastering", False):
         wav = apply_mastering(wav, sample_rate=sr)
     wav = normalize_audio(wav, target_dBFS=-2.0)
@@ -646,7 +651,12 @@ def _audio_chunks(audio: bytes):
 @router.post("/audio/speech")
 async def create_speech(req: SpeechRequest):
     """Generate audio from text. Compatible with OpenAI's POST /v1/audio/speech."""
-    backend = _resolve_engine(req.model)
+    from services.model_acceptance import ModelLicenceNotAccepted
+    try:
+        backend = _resolve_engine(req.model)
+    except ModelLicenceNotAccepted as exc:
+        # OpenAI's error shape; `detail` keeps the models for VoiceStudio clients.
+        raise OpenAIError(403, exc.detail(), param="model", code=exc.detail()["code"]) from exc
 
     # Compressed formats need ffmpeg: fail fast, before any model load or GPU
     # work, and never fall back to a body that doesn't match the format.
@@ -664,20 +674,58 @@ async def create_speech(req: SpeechRequest):
         raise OpenAIError(400, _routing["routing_reason"], param="model", code="model_not_available")
     _routing_notice = routing_notice(_routing)  # (status, reason) or None
 
+    # Engines whose runtime has no quality-knob flags reject explicit
+    # values here, where "the caller asked" is still known — deeper layers
+    # can't tell an explicit request from an internal default fill (dubbing
+    # previews always pass num_step=8), and anything later would first evict
+    # the resident engine and warm this one for a request that is already
+    # doomed (#3654 review). Per-knob flags: supertonic3 honors num_step but
+    # not guidance_scale, audio.cpp honors guidance_scale but not num_step.
+    # Raised as the same OpenAIError the generate-step mapper builds for
+    # TTSInputError (400, param="input") — this site runs before that try
+    # block, and an unmapped TTSInputError would fall through to the generic
+    # 500.
+    asked = [
+        (key, supported)
+        for key, supported in (
+            ("num_step", getattr(backend, "supports_num_step", True)),
+            ("guidance_scale", getattr(backend, "supports_guidance_scale", True)),
+        )
+        if getattr(req, key) is not None and not supported
+    ]
+    if asked:
+        names = ", ".join(key for key, _ in asked)
+        raise OpenAIError(
+            400,
+            f"Engine '{backend.id}' does not support {names}: the bundled "
+            f"runtime has no such options, so returning audio would silently "
+            f"ignore them. Omit {names} or use the in-process omnivoice engine.",
+            param="input",
+        )
+    num_step_range = getattr(backend, "num_step_range", None)
+    if (
+        req.num_step is not None
+        and num_step_range is not None
+        and not (num_step_range[0] <= req.num_step <= num_step_range[1])
+    ):
+        raise OpenAIError(
+            400,
+            f"Engine '{backend.id}' supports num_step {num_step_range[0]}–{num_step_range[1]}; "
+            f"got {req.num_step}, which it would silently clamp. Omit num_step "
+            f"or pick a value in range.",
+            param="num_step",
+        )
+
     # Build kwargs for the backend's generate() method
     kw: dict = {
         "speed": req.speed,
         "denoise": req.denoise,
         "preprocess_prompt": req.preprocess_prompt,
     }
-    if req.duration is not None:
-        kw["duration"] = req.duration
-    if req.seed is not None:
-        kw["seed"] = req.seed
-    if req.chunk_duration is not None:
-        kw["chunk_duration"] = req.chunk_duration
-    if req.chunk_threshold is not None:
-        kw["chunk_threshold"] = req.chunk_threshold
+    for opt in ("duration", "seed", "chunk_duration", "chunk_threshold"):
+        given = getattr(req, opt)
+        if given is not None:
+            kw[opt] = given
     if req.num_step is not None:
         kw["num_step"] = req.num_step
     if req.guidance_scale is not None:
@@ -707,8 +755,12 @@ async def create_speech(req: SpeechRequest):
                 kw["ref_audio"] = contained_join(VOICES_DIR, row["ref_audio_path"])
             if row["ref_text"]:
                 kw["ref_text"] = row["ref_text"]
-            if row["instruct"] and not instruct:
-                kw["instruct"] = row["instruct"]
+            if not instruct:
+                from services.voice_design_profiles import profile_instruct
+                stored_instruct = profile_instruct(row, backend.id)
+                if stored_instruct:
+                    kw["instruct"] = stored_instruct
+            # A profile's remembered seed keeps repeat requests for it reproducible.
             if req.seed is None and row["seed"] is not None:
                 kw["seed"] = row["seed"]
         else:
@@ -883,8 +935,7 @@ def _is_asr_engine_id(model: Optional[str]) -> bool:
 
 
 def _backend_request_kwargs(backend, options: dict) -> dict:
-    """The subset of OpenAI-derived decode options this backend's
-    ``transcribe()`` declares (shared with dictation's vocabulary prompt)."""
+    """Decode options from the request that this backend's ``transcribe`` accepts."""
     from services.asr_backend import transcribe_request_kwargs
     return transcribe_request_kwargs(backend, options)
 
@@ -900,9 +951,11 @@ def _reported_language(result: dict, requested: Optional[str], task: str) -> str
 
 def _num(value, default: float = 0.0) -> float:
     try:
-        return float(value) if value is not None else default
+        number = float(value) if value is not None else default
     except (TypeError, ValueError):
         return default
+    # MLX Whisper's temperature fallback can leave NaN/inf scores; strict JSON rejects them.
+    return number if math.isfinite(number) else default
 
 
 def _result_segments(result: dict) -> list[dict]:
@@ -961,6 +1014,7 @@ async def _transcribe_request(
         asr_model_missing_error,
         load_active_asr_backend,
     )
+    from services.model_acceptance import ModelLicenceNotAccepted
 
     if response_format not in _TRANSCRIPT_FORMATS:
         raise OpenAIError(
@@ -1038,7 +1092,7 @@ async def _transcribe_request(
         explicit_engine = model if _is_asr_engine_id(model) else None
 
         def _run():
-            backend = load_active_asr_backend()
+            backend = load_active_asr_backend(warm=True)
             if explicit_engine and getattr(backend, "id", None) != explicit_engine:
                 raise _ModelNotActive(explicit_engine, getattr(backend, "id", "?"))
             extra = _backend_request_kwargs(backend, options)
@@ -1135,6 +1189,9 @@ async def _transcribe_request(
             status_code=409,
             detail={**e.payload, "message": asr_model_missing_detail(e.payload)},
         )
+    except ModelLicenceNotAccepted as e:
+        # The active engine's model licence needs acceptance in the app (#2689).
+        raise OpenAIError(403, e.detail(), param="model", code=e.detail()["code"]) from e
     except TimeoutError as e:
         # ASRTimeoutError (subclass): backend alive, ASR too heavy for compute.
         logger.warning("OpenAI transcription timed out: %s", e)
@@ -1308,18 +1365,30 @@ def list_voices():
                 "SELECT id, name, language FROM voice_profiles ORDER BY name"
             ).fetchall()
         name_counts = Counter(_voice_name_key(r["name"]) for r in rows)
+        # An exact id always wins in _resolve_voice_profile, so a profile
+        # named exactly like ANOTHER profile's id is not name-addressable
+        # (#2751). Self-ID names stay addressable; case/whitespace variants
+        # still resolve by name because the id lookup is exact.
+        profile_ids = {r["id"] for r in rows}
         for row in rows:
             key = _voice_name_key(row["name"])
+            collides_with_other_id = row["name"] in profile_ids and row["name"] != row["id"]
             voices.append({
                 "voice_id": row["id"],
                 "name": row["name"],
                 "type": "profile",
                 "language": row["language"],
                 "addressable_by_name": bool(key) and name_counts[key] == 1
-                and not _name_is_reserved(key),
+                and not _name_is_reserved(key)
+                and not collides_with_other_id,
             })
     except Exception:
         logger.warning("Voice profiles could not be loaded; returning built-in aliases only")
+
+    # OpenAI-compatible clients such as Open WebUI read each voice's `id`
+    # (#2679); `voice_id` stays for existing callers.
+    for voice in voices:
+        voice["id"] = voice["voice_id"]
 
     return {"voices": voices, "engines": backends}
 

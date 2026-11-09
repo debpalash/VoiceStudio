@@ -1,7 +1,7 @@
-"""#2594 / #2601 / #2247: status polls must not be able to starve the worker pool.
+"""#2594 / #2601 / #2247: status polls must not starve the thread pool.
 
-The renderer polls ``/model/status``, ``/model/loaded`` and ``/workers/target``
-about once a second per widget while anything runs. They were sync routes
+The renderer polls ``/model/status`` and ``/model/loaded`` about once a second
+per widget while anything runs. They were sync routes
 behind a sync ``require_admin`` dependency, so every poll (and every other
 admin-router request) took a thread from the shared 40-thread pool. When the
 pool filled with blocked sync routes the whole API stopped answering although
@@ -21,14 +21,13 @@ import time
 
 import pytest
 
-sys.path.insert(
-    0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "backend")
-)
+_BACKEND_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "backend")
+sys.path.insert(0, os.path.normpath(_BACKEND_DIR))
 
 
-@pytest.fixture()
+@pytest.fixture
 def PollGuard():
-    # Imported at run time so collecting this file never imports backend code.
+    # Imported lazily so that collecting this module stays backend-free.
     from core.poll_guard import PollGuard as guard_cls
 
     return guard_cls
@@ -36,13 +35,12 @@ def PollGuard():
 
 def test_status_poll_routes_and_admin_gate_never_use_the_worker_pool():
     from api import dependencies
-    from api.routers import system, workers
+    from api.routers import system
 
     for fn in (
         dependencies.require_admin,
         system.model_status,
         system.loaded_models,
-        workers.get_target,
     ):
         assert inspect.iscoroutinefunction(fn), (
             f"{fn.__name__} is sync: it would queue behind every blocked sync route"
@@ -119,11 +117,10 @@ def test_polls_answer_while_the_shared_pool_is_saturated(monkeypatch, tmp_path):
     httpx = pytest.importorskip("httpx")
     import anyio.to_thread
     from fastapi import FastAPI
-    from api.routers import system, workers
+    from api.routers import system
 
     app = FastAPI()
     app.include_router(system.router)
-    app.include_router(workers.router)
     release = threading.Event()
 
     @app.get("/_block")
@@ -150,16 +147,14 @@ def test_polls_answer_while_the_shared_pool_is_saturated(monkeypatch, tmp_path):
                 started = time.monotonic()
                 status = await asyncio.wait_for(client.get("/model/status"), 5)
                 loaded = await asyncio.wait_for(client.get("/model/loaded"), 5)
-                target = await asyncio.wait_for(client.get("/workers/target?op=tts"), 5)
-                return status, loaded, target, time.monotonic() - started
+                return status, loaded, time.monotonic() - started
             finally:
                 release.set()
                 await asyncio.gather(*blockers, return_exceptions=True)
 
-    status, loaded, target, elapsed = asyncio.run(scenario())
+    status, loaded, elapsed = asyncio.run(scenario())
     assert status.status_code == 200, status.text
     assert loaded.status_code == 200, loaded.text
-    assert target.status_code == 200, target.text
     assert elapsed < 4.0
 
 
@@ -217,109 +212,3 @@ def test_last_good_snapshot_expires(PollGuard):
         release.set()
     assert within == {"n": 1}
     assert getattr(expired, "status_code", None) == 503, "a stale snapshot was served forever"
-
-
-def _renderer_workers_target_ops() -> set[str]:
-    """Every `op` the renderer can send to /workers/target, read from its source."""
-    import re
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parents[1] / "electron" / "src" / "renderer" / "src"
-    patterns = [
-        r"operation=\"([^\"]+)\"",  # <EngineNotice operation="design" />
-        r"useTtsReadiness\('([^']+)'",
-        r"useComputeTarget\([^)]*?,\s*'([^']+)'",
-        r"workers/target\?op=([A-Za-z0-9_-]+)",
-        r"ttsOperation = [^?]*\? '([^']+)' : '([^']+)'",
-    ]
-    found: set[str] = set()
-    for path in list(root.rglob("*.ts")) + list(root.rglob("*.tsx")):
-        if ".test." in path.name:
-            continue
-        text = path.read_text(encoding="utf-8")
-        for pattern in patterns:
-            for match in re.finditer(pattern, text):
-                found.update(g for g in match.groups() if g)
-    return found
-
-
-def test_every_operation_the_renderer_sends_is_accepted_by_workers_target():
-    from api.routers import workers
-    from worker import routing
-
-    ops = _renderer_workers_target_ops()
-    # Sanity: the scan sees the surfaces that regressed (#2608 review).
-    assert {"tts", "clone", "dub", "batch", "design", "compare", "profile-preview"} <= ops
-    # Backend-known operations, including the non-remote ones the picker asks about.
-    ops |= set(routing.REMOTE_OPERATIONS) | set(routing._OP_LABELS) | {"asr", "dictation", ""}
-    for op in sorted(ops):
-        payload = asyncio.run(workers.get_target(op=op))
-        assert payload["op"] == op, op
-
-
-def test_target_poll_still_rejects_arbitrary_strings():
-    from fastapi import HTTPException
-    from api.routers import workers
-
-    for bad in ("x" * 40, "Has Space", "../etc", "a;b", "UPPER"):
-        with pytest.raises(HTTPException) as caught:
-            asyncio.run(workers.get_target(op=bad))
-        assert caught.value.status_code == 422, bad
-
-
-@pytest.mark.parametrize("target", ["local", "gpu2"])
-def test_one_target_snapshot_answers_every_operation_like_a_per_op_query(monkeypatch, target):
-    """The derivation is what lets /workers/target keep a single in-flight key."""
-    from worker import routing
-
-    monkeypatch.setattr(routing, "get_target_id", lambda: target)
-    base = routing.status()
-    ops = set(routing.REMOTE_OPERATIONS) | set(routing._OP_LABELS) | {"design", "compare", "x-y"}
-    for op in sorted(ops):
-        assert routing.status_for_operation(base, op) == routing.status(op=op), (target, op)
-    assert routing.status_for_operation(base, "") == routing.status()
-
-
-def test_remote_caller_cannot_exhaust_target_poll_slots_with_distinct_ops(monkeypatch):
-    """Unauthenticated server-mode callers pick `op`; it must never pick the work."""
-    httpx = pytest.importorskip("httpx")
-    from fastapi import FastAPI
-    from api.routers import workers
-    from worker import routing
-
-    monkeypatch.setenv("OMNIVOICE_SERVER_MODE", "1")
-    monkeypatch.delenv("OMNIVOICE_API_KEY", raising=False)
-    guard = workers._target_poll
-    guard._last.clear()
-    guard._inflight.clear()
-    release = threading.Event()
-    calls = []
-
-    def _stalled(*_args, **_kwargs):
-        calls.append(threading.current_thread().name)
-        release.wait(30)
-        return {"target": "local", "op": "", "active": {}, "targets": []}
-
-    monkeypatch.setattr(routing, "status", _stalled)
-    app = FastAPI()
-    app.include_router(workers.router)
-    ops = [f"op{i}" for i in range(40)] + ["tts", "clone", "dub", "design"]
-
-    async def scenario():
-        transport = httpx.ASGITransport(app=app, client=("203.0.113.9", 50000))
-        async with httpx.AsyncClient(transport=transport, base_url="http://t") as client:
-            flood = await asyncio.gather(
-                *(client.get("/workers/target", params={"op": op}) for op in ops)
-            )
-            # A legitimate poll during the stall gets the bounded answer too,
-            # and consumes no further work.
-            legit = await client.get("/workers/target", params={"op": "tts"})
-            return flood, legit
-
-    try:
-        flood, legit = asyncio.run(scenario())
-    finally:
-        release.set()
-    assert {r.status_code for r in flood} == {503}
-    assert legit.status_code == 503
-    assert len(calls) == 1, f"{len(calls)} snapshots were started for distinct ops"

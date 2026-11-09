@@ -14,6 +14,22 @@ app (MSI installers) is no longer maintained; if you still run it, follow the
 Python, FFmpeg, and model weights are bootstrapped by the app itself on first
 launch; no toolchain is needed for the installer.
 
+## Keep engine environments off `C:`
+
+Engine environments (IndexTTS, CosyVoice, MOSS-TTS and other sidecars, plus the
+audio.cpp runtime) install under `<app data>\engines` and can reach several GB
+each. To place them on another drive, set `OMNIVOICE_ENGINES_DIR` before
+launching VoiceStudio, for example in PowerShell:
+
+```powershell
+[Environment]::SetEnvironmentVariable('OMNIVOICE_ENGINES_DIR', 'D:\VoiceStudio\engines', 'User')
+```
+
+Restart VoiceStudio afterwards. Voices, projects and settings stay in the data
+folder (`OMNIVOICE_DATA_DIR` moves that too). Engines already installed under the
+old folder are not moved: reinstall them from Engines, or move the
+`engines\<engine>` folder yourself and delete the old copy.
+
 ## Install
 
 Download the installer matching your PC from the
@@ -21,19 +37,27 @@ Download the installer matching your PC from the
 
 | PC | Installer |
 |---|---|
-| Intel / AMD (x64) | `VoiceStudio-Electron-<version>-win-x64.exe` |
-| Windows on ARM (Snapdragon X etc., experimental) | `VoiceStudio-Electron-<version>-win-arm64.exe` (releases without it: the x64 installer also works, under emulation) |
+| Intel / AMD (x64) | `VoiceStudio-<version>-win-x64.exe` |
+| Windows on ARM (Snapdragon X etc., experimental) | `VoiceStudio-<version>-win-arm64.exe` (releases without it: the x64 installer also works, under emulation) |
 
 The setup wizard installs for the current user by default (no administrator
 rights needed) and lets you choose the installation folder. Compare the download with the
 release's `SHA256SUMS.txt` before running it.
+
+During an update, the installer closes processes running inside the selected
+installation folder. Processes in similarly named sibling folders and the
+installer itself are excluded. If an older installer leaves a running copy
+open, exit that copy before retrying. If it keeps saying VoiceStudio
+cannot be closed when the app is stopped, run the installer from a different
+folder (for example Downloads) and retry; keep your existing runtime, model
+cache and data folders.
 
 Or, from a regular (non-admin) PowerShell, let the
 [install script](script.md) pick the right installer, verify it, and open the
 wizard:
 
 ```powershell
-irm https://voicestudio.sh/install | iex
+irm https://voicestudio.sh/install.ps1 | iex
 ```
 
 ### PCs without an NVIDIA GPU
@@ -72,11 +96,14 @@ drive (for example an external SSD):
 
 1. Run the installer and choose the external drive on its **Installation
    Folder** page.
-2. On the setup screen, press **Change…** beside **App environment** to put the
-   Python environment on the drive. uv's download cache and managed Python stay
-   beside that environment, so multi-GB wheels are not staged on `C:`.
-3. In **Settings > Storage**, move the application data folder (voices,
-   projects, settings) and the model cache to the drive.
+2. On the setup screen, press **Change…** beside **App environment** and pick
+   the drive. That one folder then holds the Python environment, uv's download
+   cache, managed Python, your data (`data`), the model cache (`models`) and
+   scratch files (`tmp`), so nothing is staged on `C:`. The setup screen lists
+   each effective location. Variables you set yourself (`OMNIVOICE_DATA_DIR`,
+   `OMNIVOICE_CACHE_DIR`, `TEMP`) win over the folder.
+3. An existing installation is never moved. To relocate its data or model cache
+   later, use **Settings > Storage**.
 
 The drive must be connected when VoiceStudio starts.
 
@@ -84,43 +111,54 @@ The drive must be connected when VoiceStudio starts.
 
 <a id="gpu-support"></a>
 
-**PyTorch GPU acceleration on Windows is NVIDIA/CUDA-only.** The Windows install
-ships the CUDA build of PyTorch; with an NVIDIA GPU and a regular NVIDIA
-driver it's picked up automatically (no CUDA Toolkit install needed).
+**NVIDIA GPUs** use CUDA automatically when a compatible driver is installed.
+**AMD GPUs** use CPU PyTorch by default; supported Radeon and Ryzen AI hardware
+can explicitly opt into the matched Windows 11 ROCm 7.2.1 installation for
+source and Electron with `OMNIVOICE_TORCH_VARIANT=rocm`.
 
-**AMD GPUs — including Ryzen / Ryzen AI integrated Radeon graphics — do not
-accelerate PyTorch engines on Windows.** The runtime has PyTorch 2.8 as either
-the NVIDIA CUDA build or (with no NVIDIA driver present) the CPU-only build;
-neither can drive a Radeon card, so those engines run on the CPU. pytorch.org publishes no Windows ROCm wheels, and VoiceStudio's ROCm
-option (`OMNIVOICE_TORCH_VARIANT=rocm`) is Linux-only — it is ignored on Windows
-rather than failing setup. (The Ryzen AI NPU is likewise not used.) Everything
-still works on CPU, just slower. What you can do today:
+Follow the [Windows ROCm guide](windows-rocm.md) for AMD's exact driver/hardware
+matrices, setup commands, offline verification, local speech smoke, repair and
+CPU rollback. Python 3.12 and the pinned Windows HIP CTranslate2 build are
+installed together. Main runtime readiness does not certify optional engines:
+WhisperX/pyannote GPU execution and GPU forced alignment remain explicitly
+gated pending MIOpen compatibility evidence; their CPU paths remain available.
+Existing sidecar Python/Torch pins are preserved. Windows ARM64, Windows 10,
+unlisted Radeon hardware and the Ryzen AI NPU are outside this recipe.
 
-- **Use an engine with its own GPU runtime.** [audio.cpp](../engines/audio-cpp.md)
-  (Breeze-TTS-2) ships a Vulkan build that runs on Radeon GPUs: install the
-  runtime from **Settings → Models**. VoiceStudio picks the discrete GPU
-  automatically.
-- **Run on Linux** (native, or the ROCm Docker image) for ROCm acceleration of
-  the PyTorch engines — see [linux.md — AMD GPU (ROCm)](linux.md#amd-gpu-rocm).
-- **Advanced / unsupported: AMD's own Windows ROCm wheels.** AMD publishes
-  PyTorch ROCm wheels for Windows (`https://repo.amd.com/rocm/whl-multi-arch/`,
-  Python 3.11–3.14, RDNA 3 / RDNA 4 cards such as the RX 7000 and RX 9000 series).
-  They are PyTorch 2.9 or newer, not the 2.8 the engines here are validated
-  against, and faster-whisper (CTranslate2) needs its own separate HIP build for
-  the GPU, so expect parts of the app (WhisperX is a reported example) to break. VoiceStudio does not install them, and no engine
-  parity is claimed. DirectML is not an option either: `torch-directml` needs
-  PyTorch 2.4.
+Engines with their own runtime remain separate: [audio.cpp](../engines/audio-cpp.md)
+can use its Vulkan build, subject to its own installation/capability checks.
+Linux ROCm setup remains documented in [linux.md](linux.md#amd-gpu-rocm).
+Unsupported community alternative: a WSL2 distro with ROCm 7.2.4 and AMD's
+`librocdxg` bridge, validated on an RX 7800 XT with the `v0.5.6` tag, is
+recorded in [wsl-amd-rocm.md](wsl-amd-rocm.md).
+
+**Intel Arc GPUs (XPU) — experimental.** The Windows install does not ship the
+Intel XPU build of PyTorch, so out of the box an Arc card is not used. If you run
+VoiceStudio with a PyTorch `+xpu` build, the main OmniVoice engine and PyTorch
+Whisper ASR run on the card. Engines that install their own PyTorch (CosyVoice,
+VoxCPM2, IndexTTS and similar) still run on the CPU. Two Windows driver quirks
+are handled for you:
+
+- The Arc driver cannot report free GPU memory. VoiceStudio estimates it as total
+  memory minus what PyTorch has reserved, so model loads no longer fail with
+  "doesn't support querying the available free memory".
+- An out-of-memory error (`UR_RESULT_ERROR_OUT_OF_DEVICE_MEMORY` or
+  `XPU out of memory`) is reported as one and its memory is released, so the next
+  generation can run without restarting the app.
 
 **Settings → Performance → GPU acceleration** shows exactly what applies to your
 machine: the GPUs Windows reports, which PyTorch build is installed, and a
 verdict for every engine (uses the GPU, runs on the CPU and why, or CPU by
-design). **Settings → About → Run self-check** names the card instead of just
+design). Manually installed HIP sidecars are recognized in Windows virtual
+environments too. If HIP cannot enumerate a GPU, diagnostics point to AMD's
+supported GPU, driver and wheel combination; an SDK directory on PATH alone
+does not prove a working PyTorch runtime. **Settings → About → Run self-check** names the card instead of just
 saying "no GPU acceleration detected".
 
 ## Building from source
 
 Use this for development or to run current `main`. The install script's
-`main` mode (`$env:VOICESTUDIO_INSTALL_MODE='main'; irm https://voicestudio.sh/install | iex`)
+`main` mode (`$env:VOICESTUDIO_INSTALL_MODE='main'; irm https://voicestudio.sh/install.ps1 | iex`)
 builds and installs a desktop package from `main` without a checkout; see
 [the install script guide](script.md).
 
@@ -130,7 +168,9 @@ Prerequisites:
 - **Bun** — `powershell -c "irm bun.sh/install.ps1 | iex"`.
 - **uv** — `powershell -c "irm https://astral.sh/uv/install.ps1 | iex"` (it
   provides the managed Python 3.11 the backend uses).
-- **Node.js 22+**.
+- **Node.js 22.12.0 or newer** (a current LTS release is recommended). Source
+  startup checks this before setup or Electron downloads; if your Node is too
+  old, install a supported release from https://nodejs.org and reopen the terminal.
 - **Rust / Cargo** — `winget install Rustlang.Rustup`; close and reopen
   PowerShell afterwards.
 - **Microsoft C++ Build Tools** — the
@@ -141,6 +181,14 @@ Prerequisites:
 ```powershell
 git clone https://github.com/debpalash/VoiceStudio.git
 cd VoiceStudio
+node electron/scripts/node-version.mjs
+```
+
+If the Node check fails, stop here, upgrade Node.js, and reopen your terminal
+before continuing. Then install dependencies and prepare the local backend
+(skip API setup when using an external backend or an Intel Mac):
+
+```powershell
 bun install
 bun run setup:api   # create the Python environment with uv
 bun run dev         # Electron with hot reload; it starts and supervises the backend
@@ -153,7 +201,7 @@ configuration.
 
 ## HF_TOKEN persistence
 
-The **recommended path** is the in-app **Settings → API Keys** panel: it
+The **recommended path** is the in-app **Settings → Credentials** panel: it
 writes the token to VoiceStudio's encrypted SQLite store *and* to the canonical
 `huggingface_hub` location, so every subprocess the app spawns picks it up.
 
@@ -186,11 +234,7 @@ synthesise call. On machines with <16 GB VRAM, that compile step can OOM
 `OutOfMemoryError: CUDA out of memory` or `RuntimeError: Triton compilation
 failed`.
 
-**The one-click fix:** open **Settings → Performance** in the app and toggle
-**"Disable torch.compile"** on. That sets the `TORCH_COMPILE_DISABLE=1` env var
-on every engine subprocess VoiceStudio spawns and forces the in-process engine
-to eager mode as well. You'll lose a few percent of peak throughput in exchange
-for the engine actually loading.
+For the built-in remedy, open **Settings → Performance** and turn on **Disable torch.compile**. In-process generation then follows the eager path, while every engine child launched by VoiceStudio receives `TORCH_COMPILE_DISABLE=1`. The tradeoff is a modest loss of maximum throughput.
 
 **From the CLI / from source:** set the env var manually before launching:
 
@@ -199,13 +243,7 @@ $env:TORCH_COMPILE_DISABLE = "1"
 bun run dev
 ```
 
-The OOM this section describes is Windows-specific, but the toggle itself works
-on **every** platform — it used to be greyed out elsewhere, which left Linux and
-macOS users with no way to switch off a `torch.compile` that was breaking their
-engine. Tracking issues:
-[#65](https://github.com/debpalash/VoiceStudio/issues/65) (this OOM) and
-[#2135](https://github.com/debpalash/VoiceStudio/issues/2135) (the same toggle
-on Linux/CUDA).
+Although [#65](https://github.com/debpalash/VoiceStudio/issues/65) describes a Windows-only memory problem, the control is intentionally not restricted to Windows. Other hosts can need the same eager fallback for compiler failures, including the older-NVIDIA crash tracked in [#2135](https://github.com/debpalash/VoiceStudio/issues/2135).
 
 ## Hugging Face token (optional but recommended)
 

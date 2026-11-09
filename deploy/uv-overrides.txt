@@ -1,0 +1,14 @@
+# Dependency overrides for the `uv pip install` install paths (deploy/Dockerfile
+# and the Colab notebook, cell 2e).
+#
+# `uv pip install` applies pyproject's `[tool.uv] override-dependencies` only
+# when it happens to run from the project directory with a uv recent enough to
+# read it; run from anywhere else it installs Pillow 12.3.0, because gradio
+# declares `pillow<13` and only an override lifts that cap (#3275). Passing the
+# file explicitly, and checking the result in the Docker build, removes both
+# conditions.
+#
+# Keep in lockstep with `[tool.uv] override-dependencies` in pyproject.toml.
+# tests/test_torch_constraints_are_applied.py fails if they drift, if either
+# install path stops passing --override, or if the Docker guard stops checking it.
+pillow>=13.0.0

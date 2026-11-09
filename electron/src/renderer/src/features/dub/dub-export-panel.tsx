@@ -1,13 +1,20 @@
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDownIcon, DownloadIcon, LoaderCircleIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { getBridge } from '@/components/bridge';
 import { PipelineFailure } from '@/components/pipeline-failure';
 import { apiPath, describeError, errorFromResponse } from '@/lib/api/client';
 import { saveExport } from '@/lib/export-history';
-import { dubExportRequest, type DubExportFormat } from './dub-export';
+import {
+  BED_LEVEL_MAX,
+  clampBedLevel,
+  dubExportRequest,
+  syncDubTranscript,
+  type DubExportFormat,
+} from './dub-export';
 import { setDubExportPreferences, type DubSession } from './dub-session';
 
 export function DubExportPanel({ session, disabled }: { session: DubSession; disabled: boolean }) {
@@ -24,6 +31,10 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
   const setExcluded = (excluded: string[]) => setDubExportPreferences({ excluded });
   const preserveBg = preferences.preserveBg ?? true;
   const setPreserveBg = (preserveBg: boolean) => setDubExportPreferences({ preserveBg });
+  const bedLevel = clampBedLevel(preferences.bedLevel ?? 100);
+  const setBedLevel = (bedLevel: number) =>
+    setDubExportPreferences({ bedLevel: clampBedLevel(bedLevel) });
+  const bedLevelId = useId();
   const burn = preferences.burn ?? false;
   const setBurn = (burn: boolean) => setDubExportPreferences({ burn });
   const dual = preferences.dual ?? false;
@@ -37,7 +48,10 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
   const pending = useRef(false);
   const tracks = ['original', ...session.tracks];
   const selected = tracks.filter((code) => !excluded.includes(code));
-  const choices = format === 'mp4' ? selected : session.tracks;
+  // Before any dub, the transcript still exports: as subtitles, or burned into
+  // the original video with its own audio (#3393).
+  const undubbed = session.tracks.length === 0;
+  const choices = format === 'mp4' ? selected : undubbed ? ['original'] : session.tracks;
   const track = choices.includes(trackChoice)
     ? trackChoice
     : choices.find((code) => code !== 'original') || choices[0] || '';
@@ -47,7 +61,9 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
   const ready =
     !!session.jobId &&
     !!track &&
-    (subtitles ? session.segments.length > 0 : session.tracks.length > 0);
+    (subtitles || (format === 'mp4' && undubbed)
+      ? session.segments.length > 0
+      : session.tracks.length > 0);
   const labels: Record<DubExportFormat, string> = {
     mp4: t('exportModal.mp4_h264'),
     wav: t('exportModal.wav_lossless'),
@@ -64,12 +80,15 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
     setSaving(true);
     setError(null);
     try {
+      if (undubbed && (subtitles || format === 'mp4'))
+        await syncDubTranscript(session.jobId!, session.segments);
       const request = dubExportRequest({
         jobId: session.jobId!,
         format,
         track,
         tracks: selected,
         preserveBg,
+        bedLevel,
         burn: burn && burnAllowed,
         dual,
         karaoke,
@@ -112,7 +131,7 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
     </div>
   );
   return (
-    <details className="group rounded-xl border border-border/60 bg-muted/20 p-3">
+    <details className="group rounded-xl border border-border/40 bg-muted/15 p-3">
       <summary className="flex cursor-pointer list-none items-center gap-2 text-sm font-medium">
         <DownloadIcon className="size-4 text-muted-foreground" />
         {t('exportModal.export_options')}
@@ -167,7 +186,25 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
           </div>
         </div>
         {['mp4', 'wav', 'mp3'].includes(format) &&
+          !undubbed &&
           toggle(t('exportModal.bg_audio'), preserveBg, setPreserveBg)}
+        {['mp4', 'wav', 'mp3'].includes(format) && !undubbed && preserveBg && (
+          <div className="space-y-2 text-xs">
+            <div className="flex items-center justify-between gap-3">
+              <span id={bedLevelId}>{t('exportModal.bg_level')}</span>
+              <output className="tabular-nums text-muted-foreground">{bedLevel}%</output>
+            </div>
+            <Slider
+              thumbProps={{ 'aria-labelledby': bedLevelId }}
+              min={0}
+              max={BED_LEVEL_MAX}
+              step={10}
+              value={[bedLevel]}
+              disabled={locked}
+              onValueChange={(value) => setBedLevel(Array.isArray(value) ? value[0] : value)}
+            />
+          </div>
+        )}
         {format === 'mp3' && (
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground">{t('exportModal.bitrate')}</p>
@@ -201,6 +238,9 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
         {subtitles && <p className="text-xs text-muted-foreground">{t('exportModal.subs_note')}</p>}
         {format === 'mp4' && !burnAllowed && (
           <p className="text-xs text-muted-foreground">{t('exportModal.stretch_subs_note')}</p>
+        )}
+        {undubbed && format === 'mp4' && session.segments.length > 0 && (
+          <p className="text-xs text-muted-foreground">{t('exportModal.undubbed_video_note')}</p>
         )}
         {!ready && (
           <p className="text-xs text-muted-foreground">{t('exportModal.nothing_selected')}</p>

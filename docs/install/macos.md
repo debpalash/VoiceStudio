@@ -14,7 +14,10 @@ is no longer maintained; if you still run it, follow the
 > downloading dependencies and shows remote-backend guidance instead: use the
 > remote connection controls on the setup screen to point the app at a backend
 > on another machine, or run VoiceStudio on an Apple Silicon Mac, Windows, or
-> Linux.
+> Linux. A source checkout behaves the same way: `bun run setup:api` stops
+> before syncing anything, and the app opens the same remote-backend screen
+> instead of reporting an incomplete Python environment
+> ([#3584](https://github.com/debpalash/VoiceStudio/issues/3584)).
 
 ## Requirements
 
@@ -35,6 +38,22 @@ run). Power users can inspect or override the binaries in
 Optional but recommended: **a Hugging Face account** for diarization and the
 larger TTS models. See [docs/setup/huggingface-token.md](../setup/huggingface-token.md).
 
+## Install with Homebrew
+
+The [official tap](https://github.com/debpalash/homebrew-tap) installs the released
+DMG for your Mac’s architecture:
+
+```sh
+brew tap debpalash/tap
+brew trust --cask debpalash/tap/voicestudio
+brew install --cask debpalash/tap/voicestudio
+```
+
+The trust step is required by recent Homebrew versions for third-party casks.
+Check the cask before trusting it with `brew cat --cask debpalash/tap/voicestudio`.
+Intel Macs still need a backend on another computer. If macOS blocks the first
+launch, follow the [Gatekeeper instructions](#gatekeeper-quarantine).
+
 ## Install (DMG)
 
 Download the DMG that matches your Mac (check **Apple menu → About This Mac →
@@ -44,8 +63,13 @@ double-click to mount it, and drag **VoiceStudio.app** into `/Applications`.
 
 | Mac | DMG to download |
 |-----|-----------------|
-| Apple Silicon (M1/M2/M3/M4…) | `VoiceStudio-Electron-<version>-mac-arm64.dmg` |
-| Intel | `VoiceStudio-Electron-<version>-mac-x64.dmg` — **UI only**: the local backend cannot run on Intel ([#889](https://github.com/debpalash/VoiceStudio/issues/889)) |
+| Apple Silicon (any M-series chip) | `VoiceStudio-<version>-mac-arm64.dmg` |
+| Intel | `VoiceStudio-<version>-mac-x64.dmg` — **UI only**: the local backend cannot run on Intel ([#889](https://github.com/debpalash/VoiceStudio/issues/889)) |
+
+Every Apple Silicon Mac takes the `arm64` DMG, including chips newer than this
+page: VoiceStudio checks the CPU architecture, never the chip's name. If macOS
+says VoiceStudio "is not supported on this Mac" or asks you to install Rosetta,
+you opened the `x64` DMG; install the `arm64` one instead (#3074).
 
 The architectures are **not** interchangeable: an Intel Mac cannot run the
 `arm64` build (Rosetta 2 only translates the other direction). An Apple
@@ -64,50 +88,73 @@ checksum, and installs `VoiceStudio.app` into `/Applications` (or
 curl -fsSL https://voicestudio.sh/install | sh
 ```
 
-If the first launch is blocked by macOS Gatekeeper ("VoiceStudio cannot be
-opened because the developer cannot be verified"), see the next section — it
-opens with one right-click, no Terminal.
+If the first launch is blocked by macOS Gatekeeper (a "developer cannot be
+verified" or "damaged" dialog), see the next section for the fix.
 
 ## App is "damaged" / can't be opened (Gatekeeper)
 
 <a id="gatekeeper-quarantine"></a>
 
-An unsigned or ad-hoc signed installer may show **"VoiceStudio cannot be opened
-because the developer cannot be verified"**. macOS Gatekeeper cannot verify an
-Apple Developer identity until the Electron release is signed and notarized
-(#1779). For an installer from the official GitHub release, compare its SHA-256
-with the release's `SHA256SUMS.txt` before considering the workaround below.
-Restricted environments that prohibit the workaround need a signed, notarized
-release; bypassing Gatekeeper is not a substitute.
+macOS may refuse to open VoiceStudio with one of two dialogs. Both come from
+Gatekeeper, and neither means the download is broken:
 
-**Fix — GUI, no Terminal (do this):** in Finder, **right-click** (or
-Control-click) **VoiceStudio.app** → **Open** → click **Open** again in the
-dialog. (On macOS 15 Sequoia: double-click once, then go to **System Settings →
-Privacy & Security**, scroll down, and click **"Open Anyway"**.) This is a
-one-time confirmation per install; afterwards it launches by double-click.
+- **"VoiceStudio is damaged and can't be opened. Move to Trash"**: Gatekeeper
+  is rejecting an app that carries the browser's `com.apple.quarantine`
+  attribute but has no Apple Developer ID signature and no notarization. The
+  wording is misleading; nothing is corrupt.
+- **"VoiceStudio cannot be opened because the developer cannot be verified"**:
+  the milder form of the same check, which offers an Open path.
 
-> If you instead see the harsher **"app is damaged and can't be opened. Move to
-> Trash"** with no Open option, the download was corrupted or it's a pre-signing
-> build — re-download the latest release, or use the Terminal fallback below.
+The release workflow requires Developer ID signing and notarization unless an
+unsigned release is explicitly approved. Older releases and local test builds
+may be signed ad hoc (`identity: '-'`), which is not an Apple identity. Check
+the signing status for the specific release you downloaded. Environments that
+require signed, notarized apps must use a qualifying release; bypassing
+Gatekeeper is not a substitute.
 
-**Fix — Terminal:** after dragging the app into `/Applications`, run:
+**Check the download first.** Compute its SHA-256 and compare it with
+`SHA256SUMS.txt` from the same GitHub Release:
+
+```bash
+shasum -a 256 ~/Downloads/VoiceStudio*.dmg
+```
+
+If the values match, the file is intact and downloading it again will give the
+same dialog. Only re-download when the checksum does **not** match.
+
+**Fix for "damaged" (Terminal).** After dragging the app into `/Applications`,
+clear the quarantine attribute:
 
 ```bash
 xattr -dr com.apple.quarantine "/Applications/VoiceStudio.app"
 ```
 
-(Adjust the path if you put the app somewhere other than `/Applications`.)
+(Change the path if the app lives elsewhere.) This is a one-time step per
+install. The shell installer already does it for you, and also repairs the
+signature of older releases.
 
-That clears the quarantine attribute so Gatekeeper stops blocking the launch — a
-one-time fix per install.
+**If a build still refuses to open,** re-sign it ad hoc on your own Mac and
+verify the result:
+
+```bash
+codesign --force --deep --sign - "/Applications/VoiceStudio.app"
+codesign --verify --deep --strict "/Applications/VoiceStudio.app"
+```
+
+The verify command prints nothing when the signature is valid.
+
+**Fix for "developer cannot be verified" (no Terminal).** In Finder,
+**right-click** (or Control-click) **VoiceStudio.app** → **Open** → click
+**Open** again in the dialog. On macOS 15 Sequoia, double-click once, then go to
+**System Settings → Privacy & Security**, scroll down and click **"Open
+Anyway"**. You confirm once per install; later launches work by double-click.
 
 ### For maintainers — enabling notarized Electron builds
 
 The maintained Electron release workflow uses a Developer ID Application
 certificate (`ELECTRON_MACOS_CSC_LINK` and `ELECTRON_MACOS_CSC_KEY_PASSWORD`)
-plus `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` for
-notarization. The Apple password is an **app-specific password**, not the
-account login password. See [the release guide](../RELEASING.md#credentials)
+plus `APPLE_API_KEY`, `APPLE_API_KEY_ID` and `APPLE_API_ISSUER` for
+notarization with an App Store Connect team API key. See [the release guide](../RELEASING.md#credentials)
 for all platform credentials and verification gates. An Apple Developer
 membership is required; the archived Tauri workflow's `APPLE_CERTIFICATE`
 secrets do not sign Electron installers.
@@ -126,13 +173,21 @@ Prerequisites (use a native arm64 terminal on Apple Silicon):
 - **Bun** — `curl -fsSL https://bun.sh/install | bash`.
 - **uv** — `curl -LsSf https://astral.sh/uv/install.sh | sh` (it provides the
   managed Python 3.11 the backend uses).
-- **Node.js 22+** and **Rust / Cargo** (`brew install rust`, or rustup —
+- **Node.js 22.12.0 or newer** and **Rust / Cargo** (`brew install rust`, or rustup —
   reopen the terminal or source `"$HOME/.cargo/env"` afterwards) for the
   Electron native helper.
 
 ```bash
 git clone https://github.com/debpalash/VoiceStudio.git
 cd VoiceStudio
+node electron/scripts/node-version.mjs
+```
+
+If the Node check fails, stop here, upgrade Node.js, and reopen your terminal
+before continuing. Then install dependencies and prepare the local backend
+(skip API setup when using an external backend or an Intel Mac):
+
+```bash
 bun install
 bun run setup:api   # create the Python environment with uv
 bun run dev         # Electron with hot reload; it starts and supervises the backend
@@ -168,7 +223,7 @@ The default install works without a token, but diarization (the
 `pyannote/speaker-diarization-3.1` model) is gated and the larger
 voice-design engines also download faster with a token attached.
 
-- Open **Settings → API Keys** in the app.
+- Open **Settings → Credentials** in the app.
 - Or set the env var `export HF_TOKEN=hf_…` in `~/.zshrc`.
 
 Full details: [docs/setup/huggingface-token.md](../setup/huggingface-token.md).

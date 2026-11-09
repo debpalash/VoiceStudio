@@ -13,6 +13,8 @@ This module is the engine-agnostic, pure core:
     preserved (``"smith,"`` → ``"Smith,"``). Longest key first, so a key
     ``Dr. Smith`` wins over ``Dr`` on overlapping input.
   * ``normalize_lexicon(lexicon)`` — drop empty/whitespace keys, coerce values.
+  * ``lexicon_signature(lexicon)`` — cache identity, order-aware where order
+    changes the output.
   * ``load_lexicon(path)`` / ``save_lexicon(path, lexicon)`` — JSON round-trip.
 
 ReDoS safety: the matcher is a single anchored-alternation regex built from
@@ -31,6 +33,7 @@ import re
 from pathlib import Path
 from typing import Optional
 
+from core.language_variants import VARIANT_CODES as _VARIANT_CODES
 from services.dub_qc import _NO_SPACE_SCRIPT
 
 # A "word" character for boundary purposes. We treat the standard regex word
@@ -107,6 +110,14 @@ def _compile(lexicon: dict[str, str]) -> tuple[Optional[re.Pattern], dict[str, s
     return pattern, lookup
 
 
+def _lexicon_matcher(lexicon: Optional[dict]):
+    """``text -> text`` applying ``lexicon`` in one pass, or ``None`` when empty."""
+    pattern, lookup = _compile(normalize_lexicon(lexicon))
+    if pattern is None:
+        return None
+    return lambda text: pattern.sub(lambda m: lookup[m.lastgroup], text)
+
+
 def apply_lexicon(text: str, lexicon: Optional[dict]) -> str:
     """Replace whole-word occurrences of each lexicon key with its respelling.
 
@@ -120,15 +131,63 @@ def apply_lexicon(text: str, lexicon: Optional[dict]) -> str:
     """
     if not text:
         return text or ""
+    matcher = _lexicon_matcher(lexicon)
+    return matcher(text) if matcher is not None else text
+
+
+def _precedence_keys(lexicon: dict[str, str]) -> list[list[str]]:
+    """Groups of keys whose relative order decides what synthesis receives.
+
+    Each group keeps its entry order; independent groups are sorted, so
+    moving one whole group past another (which changes nothing the matcher
+    does) keeps the signature.
+
+    ``_compile`` sorts longest-first and lets the later of two equal-length
+    keys win, so order only matters between equal-length keys that match the
+    same text case-insensitively (``GIF``/``gif``, or Unicode pairs such as
+    ``i``/``ı`` that ``re.IGNORECASE`` treats as equal). Collisions are found
+    with the matcher's own regex semantics rather than ``casefold``, which
+    disagrees with it (see ``_compile``).
+    """
+    by_len: dict[int, list[str]] = {}
+    for key in lexicon:
+        by_len.setdefault(len(key), []).append(key)
+    group_of: dict[str, str] = {}
+    for keys in by_len.values():
+        if len(keys) < 2:
+            continue
+        # One alternation per length bucket: the first alternative that fully
+        # matches a key, when it is an earlier key, collides with it.
+        alts = "|".join(f"(?P<k{i}>{re.escape(k)})" for i, k in enumerate(keys))
+        pattern = re.compile(f"(?:{alts})", re.IGNORECASE)
+        for i, key in enumerate(keys):
+            m = pattern.fullmatch(key)
+            first = int(m.lastgroup[1:]) if m and m.lastgroup else i
+            if first != i:
+                group_of[keys[first]] = keys[first]
+                group_of[key] = keys[first]
+    groups: dict[str, list[str]] = {}
+    for key in lexicon:
+        if key in group_of:
+            groups.setdefault(group_of[key], []).append(key)
+    return sorted(groups.values())
+
+
+def lexicon_signature(lexicon: Optional[dict]) -> str:
+    """Stable identity of a lexicon's effect on synthesis, for cache keys.
+
+    Entries are serialized sorted, so reordering unrelated entries keeps the
+    signature (and every cache keyed by it). When equal-length case variants
+    compete, the matcher picks by entry order (#2728), so their order is
+    appended; a lexicon without such variants keeps the signature caches
+    written before #2728 were keyed by.
+    """
     clean = normalize_lexicon(lexicon)
-    pattern, lookup = _compile(clean)
-    if pattern is None:
-        return text
-
-    def _repl(m: re.Match) -> str:
-        return lookup[m.lastgroup]
-
-    return pattern.sub(_repl, text)
+    sig = json.dumps(clean, sort_keys=True)
+    precedence = _precedence_keys(clean)
+    if precedence:
+        sig += "\x00order=" + json.dumps(precedence)
+    return sig
 
 
 # ── JSON persistence ─────────────────────────────────────────────────────────
@@ -136,14 +195,21 @@ def apply_lexicon(text: str, lexicon: Optional[dict]) -> str:
 def load_lexicon(path) -> dict[str, str]:
     """Load + normalize a lexicon from a JSON file.
 
-    A missing file, empty file, or non-object JSON yields ``{}`` rather than
-    raising — a project simply has no lexicon yet. Malformed JSON still raises
-    (caller's choice to surface it).
+    A missing file, empty file, unreadable file (non-UTF-8 bytes, OS error),
+    or non-object JSON yields ``{}`` rather than raising — a project simply
+    has no lexicon yet. Malformed JSON still raises (caller's choice to
+    surface it).
     """
     p = Path(path)
-    if not p.is_file():
+    try:
+        if not p.is_file():
+            return {}
+        raw = p.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeDecodeError):
+        # Same family as a missing file: the lexicon is unreadable, so
+        # treat it as not-yet-authored. Malformed JSON (the next step) is
+        # a different bug class and still propagates as before.
         return {}
-    raw = p.read_text(encoding="utf-8").strip()
     if not raw:
         return {}
     data = json.loads(raw)
@@ -159,7 +225,9 @@ def save_lexicon(path, lexicon: Optional[dict]) -> dict[str, str]:
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(
-        json.dumps(clean, indent=2, ensure_ascii=False, sort_keys=True) + "\n",
+        # Entry order is precedence for equal-length case variants (#2728);
+        # sorting the keys here would change what a reloaded lexicon says.
+        json.dumps(clean, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
     return clean
@@ -179,7 +247,8 @@ _ALL_LANG = "*"
 
 # Picker spellings the bundled map does not list (same aliases as
 # ``TTSBackend._normalize_language_code``).
-_LANG_NAME_ALIASES = {"mandarin": "zh", "arabic": "ar", "tagalog": "tl"}
+# Regional variant names ("Portuguese (Brazil)", #3143) scope to their base id.
+_LANG_NAME_ALIASES = {"mandarin": "zh", "arabic": "ar", "tagalog": "tl", **_VARIANT_CODES}
 # A bare ISO 639 id with optional region/script subtags: en, kbt, es-MX, zh_Hans.
 _LANG_TAG_RE = re.compile(r"^([a-z]{2,3})(?:[-_][a-z0-9]{1,8})*$")
 
@@ -362,6 +431,16 @@ def inert_entries_for_language(entries, language: str | None) -> list[dict]:
 _INLINE_RE = re.compile(r"\[\[([^\]]{0,256})\]\]")
 
 
+def _inline_replacement(m: re.Match) -> str:
+    inner = m.group(1)
+    return inner.split("|", 1)[1] if "|" in inner else inner
+
+
+def has_inline_override(text: Optional[str]) -> bool:
+    """True when ``text`` carries a ``[[…]]`` override (cache keys use this)."""
+    return bool(text) and "[[" in text and _INLINE_RE.search(text) is not None
+
+
 def apply_inline_overrides(text: str) -> str:
     """Resolve ``[[…]]`` one-off pronunciation overrides to plain spoken text.
 
@@ -373,14 +452,32 @@ def apply_inline_overrides(text: str) -> str:
     """
     if not text or "[[" not in text:
         return text or ""
+    return _INLINE_RE.sub(_inline_replacement, text)
 
-    def _repl(m: re.Match) -> str:
-        inner = m.group(1)
-        if "|" in inner:
-            inner = inner.split("|", 1)[1]
-        return inner
 
-    return _INLINE_RE.sub(_repl, text)
+def apply_lexicon_and_overrides(text: str, lexicon: Optional[dict]) -> str:
+    """Apply ``lexicon`` around inline ``[[…]]`` overrides, then resolve them.
+
+    The dictionary only rewrites text outside the brackets, so an explicit
+    ``[[route|route]]`` or ``[[route]]`` is spoken exactly as written even
+    when a saved entry respells ``route`` (#3561). Text without an override
+    is the plain ``apply_lexicon`` result. Every synthesis path — /generate
+    and each longform chapter span — goes through this one function.
+    """
+    if not text:
+        return text or ""
+    matcher = _lexicon_matcher(lexicon)
+    if matcher is None:
+        return apply_inline_overrides(text)
+    if "[[" not in text:
+        return matcher(text)
+    out, last = [], 0
+    for m in _INLINE_RE.finditer(text):
+        out.append(matcher(text[last:m.start()]))
+        out.append(_inline_replacement(m))
+        last = m.end()
+    out.append(matcher(text[last:]))
+    return "".join(out)
 
 
 def apply_pronunciation(
@@ -398,7 +495,8 @@ def apply_pronunciation(
          matching the audiobook layering). Both go through one ``apply_lexicon``
          pass (longest-term-first, word-boundary aware, idempotent).
       2. Inline ``[[…]]`` one-off overrides resolved last, so an inline override
-         always wins over any dictionary entry for that occurrence.
+         always wins over any dictionary entry for that occurrence — the
+         dictionary never rewrites inside the brackets (#3561).
 
     A falsy ``text`` / empty dictionary / no inline markers is a pass-through, so
     legacy plain text is byte-identical.
@@ -409,8 +507,7 @@ def apply_pronunciation(
     if lexicon:
         # Project-local JSON overlays the DB defaults; project wins on conflict.
         merged.update(normalize_lexicon(lexicon))
-    out = apply_lexicon(text, merged) if merged else text
-    return apply_inline_overrides(out)
+    return apply_lexicon_and_overrides(text, merged)
 
 
 # ── DB load/save ──────────────────────────────────────────────────────────────

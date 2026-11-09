@@ -7,7 +7,7 @@ export function EngineLanguagePicker({
   operation = 'clone',
   ...props
 }: ComponentProps<typeof LanguagePicker> & { operation?: string }) {
-  const { names, modelLabel, state } = useTtsLanguages(operation);
+  const { names, modelLabel, state, dialects } = useTtsLanguages(operation);
   return (
     <LanguagePicker
       {...props}
@@ -15,6 +15,7 @@ export function EngineLanguagePicker({
       supportedOptions={names}
       modelLabel={modelLabel}
       capabilityState={state}
+      renderedDialects={dialects}
     />
   );
 }

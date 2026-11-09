@@ -44,6 +44,7 @@ describe('errorDocsMap', () => {
       [
         'GPU_ARCH_UNSUPPORTED',
         'HOST_MEMORY_EXHAUSTED',
+        'DISK_FULL',
         'WINDOWS_APP_CONTROL_BLOCKED',
         'AUDIO_IO_FAILED',
         'INVALID_MEDIA_FILE',
@@ -54,6 +55,26 @@ describe('errorDocsMap', () => {
         'HF_AUTH_FAILED',
         'PKG_RESOURCES_MISSING',
         'POCKETTTS_GATED_WEIGHTS',
+        'ANTIVIRUS_BLOCKED',
+        'EXEC_REFUSED',
+        'EXEC_NOEXEC_MOUNT',
+        'RUNTIME_DOWNLOAD_STALLED',
+        'RUNTIME_DOWNLOAD_INTERRUPTED',
+        'RUNTIME_FOLDER_DENIED',
+        'RUNTIME_FILES_LOCKED',
+        'RUNTIME_IN_SYNCED_FOLDER',
+        'SYSTEM_LIBRARY_PROBLEM',
+        'UNSUPPORTED_PLATFORM',
+        'SOURCE_ENV_INCOMPLETE',
+        'BROKEN_VENV',
+        'NATIVE_ACCESS_VIOLATION',
+        'NATIVE_ILLEGAL_INSTRUCTION',
+        'NATIVE_CRASH',
+        'STARTUP_TIMEOUT_SILENT',
+        'STARTUP_TIMEOUT_OUTPUT',
+        'BACKEND_STARTUP_FAILED',
+        'PORT_IN_USE',
+        'ROCM_NOT_CONFIGURED',
         'PYANNOTE_LICENSE_REQUIRED',
       ].sort(),
     );
@@ -71,6 +92,18 @@ describe('errorDocsMap', () => {
       expect(url.startsWith(base), `${key} not under ${base}: ${url}`).toBe(true);
     }
     expect(DEFAULT_DOCS.startsWith(base)).toBe(true);
+  });
+
+  it.each([
+    "OSError: [Errno 28] No space left on device: '/tmp/a.wav'",
+    'OSError: [WinError 112] There is not enough space on the disk',
+    'OSError: [Errno 122] Disk quota exceeded',
+  ])('classifyError maps a full disk to DISK_FULL: %s', (message) => {
+    expect(classifyError(new Error(message))).toBe('DISK_FULL');
+  });
+
+  it('classifyError does not read a neighbouring WinError code as a full disk', () => {
+    expect(classifyError(new Error('[WinError 390] unrelated'))).toBeNull();
   });
 
   it('classifyError maps pkg_resources to PKG_RESOURCES_MISSING', () => {

@@ -9,6 +9,7 @@ const routes = [
   '/gallery',
   '/transcriptions',
   '/calls',
+  '/workflows',
   '/stories',
   '/audiobook',
   '/dub',
@@ -30,7 +31,6 @@ const routes = [
   '/settings/network',
   '/settings/sharing',
   '/settings/credentials',
-  '/settings/workers',
   '/settings/permissions',
   '/settings/privacy',
   '/settings/storage',
@@ -42,10 +42,55 @@ const routes = [
   '/settings/support',
 ];
 
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await chromium.launch({
+  channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge',
+  headless: true,
+});
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const cdp = await page.context().newCDPSession(page);
-await page.addInitScript(() => localStorage.setItem('voicestudio.setup.complete.v1', '1'));
+await page.addInitScript(() => {
+  localStorage.setItem('voicestudio.setup.complete.v1', '1');
+  // Stamp every DOM change so the audit can wait for the route to finish rendering.
+  window.__lastDomChange = performance.now();
+  new MutationObserver(() => {
+    window.__lastDomChange = performance.now();
+  }).observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+});
+// Requests still loading (lazy route chunks, mocked API reads); streams never finish, so skip them.
+const pending = new Set();
+const streaming = new Set(['eventsource', 'websocket']);
+page.on('request', (request) => {
+  if (!streaming.has(request.resourceType())) pending.add(request);
+});
+page.on('requestfinished', (request) => pending.delete(request));
+page.on('requestfailed', (request) => pending.delete(request));
+
+/**
+ * Audit a route only once it has rendered: its chunks and reads have loaded and the DOM has
+ * been still for a moment. A fixed sleep either wasted time or audited a half-mounted route.
+ */
+async function settled(route) {
+  const quietMs = 250;
+  // Generous: the first route also waits for the dev server to compile the app cold.
+  const deadline = Date.now() + 60_000;
+  let quietSince = Date.now();
+  let lastChange = -1;
+  for (;;) {
+    const change = await page.evaluate(() => window.__lastDomChange);
+    if (pending.size || change !== lastChange) {
+      lastChange = change;
+      quietSince = Date.now();
+    } else if (Date.now() - quietSince >= quietMs) {
+      return;
+    }
+    if (Date.now() > deadline) {
+      throw new Error(
+        `${route} never settled: ${pending.size} requests pending or DOM still changing`,
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+}
 const findings = [];
 const viewports = [
   { width: 1440, height: 900 },
@@ -57,7 +102,7 @@ try {
     await page.setViewportSize(viewport);
     for (const route of routes) {
       await page.goto(`${base}/#${route}`, { waitUntil: 'domcontentloaded' });
-      await page.waitForTimeout(600);
+      await settled(route);
       const routeFindings = await page.evaluate(() => {
         const issues = [];
         const visible = (element) => {

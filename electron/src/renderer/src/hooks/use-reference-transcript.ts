@@ -13,9 +13,17 @@ import { beginAppActivity } from '@/lib/app-activity';
  * engine list loaded late, or the user switched engines), that machine
  * transcript is cleared; a transcript the user edited is kept.
  */
+export interface RecommendedAsrModel {
+  repo_id: string;
+  label: string;
+  size_gb: number;
+}
+
 export function useReferenceTranscript(file: File | null, { skip = false } = {}) {
   const [state, setState] = useState<'idle' | 'busy' | 'ready' | 'unavailable' | 'failed'>('idle');
   const [attempt, setAttempt] = useState(0);
+  // The model the backend offers when none is installed (hardware-aware).
+  const [recommended, setRecommended] = useState<RecommendedAsrModel | null>(null);
   // The transcript this hook last wrote, so it can be withdrawn when `skip`
   // turns true without touching anything the user typed.
   const autoFilled = useRef<string | null>(null);
@@ -32,6 +40,7 @@ export function useReferenceTranscript(file: File | null, { skip = false } = {})
     const finishActivity = beginAppActivity('transcription');
     const before = cloneSettingsStore.state.refText;
     setState('busy');
+    setRecommended(null);
     void (async () => {
       try {
         const body = new FormData();
@@ -62,6 +71,14 @@ export function useReferenceTranscript(file: File | null, { skip = false } = {})
             'error' in detail &&
             detail.error === 'asr_model_missing' &&
             !('reason' in detail && detail.reason === 'verification_failed');
+          const offer = missing
+            ? (detail as { recommended?: Partial<RecommendedAsrModel> }).recommended
+            : null;
+          setRecommended(
+            offer && typeof offer.repo_id === 'string' && typeof offer.label === 'string'
+              ? { repo_id: offer.repo_id, label: offer.label, size_gb: Number(offer.size_gb) || 0 }
+              : null,
+          );
           setState(missing ? 'unavailable' : 'failed');
         }
       } finally {
@@ -73,5 +90,5 @@ export function useReferenceTranscript(file: File | null, { skip = false } = {})
       finishActivity();
     };
   }, [file, attempt, skip]);
-  return { state, retry: () => setAttempt((value) => value + 1) };
+  return { state, recommended, retry: () => setAttempt((value) => value + 1) };
 }

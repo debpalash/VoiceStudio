@@ -7,7 +7,6 @@ import {
   isGoalMet,
   formatMoney,
 } from '@shared/api/donation';
-import snapshotUrl from '../../../../../public/donation_progress.json?url';
 
 export function DonationGoal() {
   const { t } = useTranslation();
@@ -16,7 +15,9 @@ export function DonationGoal() {
     initialData: BUNDLED_PROGRESS,
     initialDataUpdatedAt: 0,
     queryFn: ({ signal }) =>
-      loadDonationProgress((_url, options) => fetch(snapshotUrl, { ...options, signal })),
+      // The snapshot ships in `public/`, so it is served from the app origin; importing it
+      // with `?url` inlined it as a `data:` URL that the CSP's `connect-src` refuses.
+      loadDonationProgress((url, options) => fetch(url, { ...options, signal })),
     staleTime: 60_000,
   });
   const pct = Math.round(progressPct(data) * 100);

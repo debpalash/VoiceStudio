@@ -11,8 +11,8 @@ Five things must hold, and every one of them is silent when it breaks:
   never asked for;
 * a network gallery is a **filesystem-write primitive**: keys, filenames and tar
   members are all attacker-supplied strings;
-* ``/archetypes/{id}/use`` **never** reads a gallery file — that WAV becomes the
-  reference audio a cloned voice is built from.
+* ``/archetypes/{id}/use`` **never** reads a gallery file or renders audio — it
+  stores a design recipe and leaves model loading to an explicit audio action.
 
 CI runs with ``HF_HUB_OFFLINE=1`` and there is no HTTP-stub fixture in this
 suite, so :class:`StubGallery` below is one: an ``httpx.MockTransport`` that

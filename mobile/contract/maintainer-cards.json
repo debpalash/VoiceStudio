@@ -1,0 +1,44 @@
+{
+  "debpalash": {
+    "name": "homeUi.maintainerPalash",
+    "role": "homeUi.creatorCoreTeam",
+    "links": [
+      {
+        "kind": "website",
+        "handle": "palash.dev",
+        "href": "https://palash.dev"
+      },
+      {
+        "kind": "github",
+        "handle": "@debpalash",
+        "href": "https://github.com/debpalash"
+      },
+      {
+        "kind": "x",
+        "handle": "@idebpalash",
+        "href": "https://x.com/idebpalash"
+      }
+    ]
+  },
+  "velixio": {
+    "name": "homeUi.maintainerShimul",
+    "role": "homeUi.coreTeam",
+    "links": [
+      {
+        "kind": "website",
+        "handle": "shimul.me",
+        "href": "https://shimul.me"
+      },
+      {
+        "kind": "github",
+        "handle": "@velixio",
+        "href": "https://github.com/velixio"
+      },
+      {
+        "kind": "x",
+        "handle": "@shimuldn",
+        "href": "https://x.com/shimuldn"
+      }
+    ]
+  }
+}

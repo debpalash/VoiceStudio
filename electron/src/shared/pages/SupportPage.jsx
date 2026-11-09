@@ -368,65 +368,66 @@ const LICENSE_MAILTO =
   'mailto:hi@voicestudio.sh?subject=VoiceStudio Commercial License Inquiry' +
   '&body=Hi Palash,%0A%0AI%27d like to talk about a commercial license for VoiceStudio.%0A%0AOrganization:%0ATeam size:%0AUse case:%0A';
 
+const LICENSE_BENEFITS = [
+  { Icon: Shield, labelKey: 'enterprise.benefit_ip' },
+  { Icon: Zap, labelKey: 'enterprise.benefit_cost' },
+  { Icon: Headphones, labelKey: 'enterprise.benefit_support' },
+];
+
+// Warm tint for the call-to-action card.
+const LICENSE_HUE = '#fe8019';
+
 function LicenseView() {
   const { t } = useTranslation();
-  const WHY_ITEMS = [
-    { icon: Shield, label: t('enterprise.benefit_ip') },
-    { icon: Zap, label: t('enterprise.benefit_cost') },
-    { icon: Headphones, label: t('enterprise.benefit_support') },
-  ];
+  const contact = () => openExternal(LICENSE_MAILTO);
+
   return (
-    <div className="flex flex-col gap-4">
-      <header className="text-center">
+    <div className="flex flex-col gap-7">
+      <header className="flex flex-col items-center justify-center gap-3 py-3 text-center">
         <Badge tone="neutral" size="sm">
           {t('enterprise.badge')}
         </Badge>
-        <h2 className="relative mt-2 inline-block font-serif text-[1.8rem] font-normal leading-tight tracking-[-0.02em] text-[var(--chrome-fg)]">
+        <h2 className="relative inline-block font-serif text-[1.7rem] font-normal leading-tight tracking-[-0.02em] text-[var(--chrome-fg)]">
           {t('enterprise.hero_title')}
           <span className="lp-hero__sweep" aria-hidden="true" />
         </h2>
-        <p className="mx-auto mt-3 max-w-[680px] font-sans text-[0.78rem] leading-[1.5] text-[var(--chrome-fg-muted)]">
+        <p className="max-w-prose text-sm text-[var(--chrome-fg-muted)]">
           {t('enterprise.hero_simple')}
         </p>
       </header>
 
-      <section className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-2">
-        {WHY_ITEMS.map(({ icon: Icon, label }) => (
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,160px),1fr))] gap-3">
+        {LICENSE_BENEFITS.map(({ Icon, labelKey }) => (
           <Card
-            key={label}
-            className="flex-row items-center gap-2.5 rounded-md border-border bg-transparent p-3 shadow-none transition-colors hover:border-border-strong hover:bg-[var(--chrome-hover-bg)]"
+            key={labelKey}
+            className="flex-row items-center gap-3 rounded-2xl border-border p-3 shadow-none"
           >
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-transparent bg-[color-mix(in_srgb,var(--color-brand)_10%,transparent)] text-[var(--color-brand)]">
-              <Icon size={15} />
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-[color-mix(in_srgb,var(--chrome-accent)_10%,transparent)] text-[var(--chrome-accent)]">
+              <Icon size={16} />
             </span>
-            <div className="font-mono text-[0.68rem] font-semibold uppercase tracking-[var(--chrome-label-track)] text-[var(--chrome-fg)]">
-              {label}
-            </div>
+            <span className="min-w-0 font-mono text-xs font-semibold uppercase tracking-[var(--chrome-label-track)] text-[var(--chrome-fg)]">
+              {t(labelKey)}
+            </span>
           </Card>
         ))}
-      </section>
+      </div>
 
-      <section>
-        <Card className="flex-row flex-wrap items-center justify-center gap-3 rounded-md border-border bg-[color-mix(in_srgb,#fe8019_5%,transparent)] p-4 text-center shadow-none">
-          <Button
-            variant="subtle"
-            size="sm"
-            leading={<Mail size={13} />}
-            onClick={() => openExternal(LICENSE_MAILTO)}
-            className="border-transparent bg-[color-mix(in_srgb,#fe8019_18%,transparent)] font-semibold text-[var(--chrome-fg)] hover:border-transparent hover:bg-[color-mix(in_srgb,#fe8019_28%,transparent)]"
-          >
-            {t('enterprise.request_quote')}
-          </Button>
-          <button
-            type="button"
-            onClick={() => openExternal(LICENSE_MAILTO)}
-            title={LICENSE_EMAIL}
-            className="font-mono text-[0.65rem] text-[var(--chrome-accent)] hover:underline"
-          >
-            {LICENSE_EMAIL}
-          </button>
-        </Card>
-      </section>
+      <Card
+        style={{ '--license-hue': LICENSE_HUE }}
+        className="flex-row flex-wrap items-center justify-center gap-3 rounded-2xl border-border bg-[color-mix(in_srgb,var(--license-hue)_7%,transparent)] p-4 shadow-none"
+      >
+        <Button variant="subtle" leading={<Mail size={14} />} onClick={contact}>
+          {t('enterprise.request_quote')}
+        </Button>
+        <button
+          type="button"
+          title={LICENSE_EMAIL}
+          onClick={contact}
+          className="bg-transparent font-mono text-sm text-[var(--chrome-fg-muted)] hover:text-[var(--chrome-fg)] hover:underline"
+        >
+          {LICENSE_EMAIL}
+        </button>
+      </Card>
     </div>
   );
 }

@@ -10,6 +10,10 @@
 #
 # Fields:
 #   repo_id    (required) — HuggingFace repository ID
+#   id         (optional) — catalogue identity when several entries download
+#                            different packages from one repo_id. Must be
+#                            "<repo_id>:<package>" and come with allow_patterns
+#                            + required_files; defaults to repo_id.
 #   engines    (required) — backend ids that load this repo; [] for pipeline weights no single engine owns (they list under "Other weights")
 #   label      (required) — Human-readable display name
 #   role       (required) — TTS | ASR | Translation | Diarisation
@@ -60,6 +64,20 @@ models:
       - "Breeze-TTS-2-GGUF/breeze-tts-2-q8_0.gguf"
       - "Sortformer-Diar-4spk-v1-GGUF/sortformer-diar-4spk-v1-q8_0.gguf"
     note: "Optional audio.cpp bundle for native voice cloning and up-to-four-speaker diarisation. Research/non-commercial weights and self-hosted outputs; install only after reviewing the licenses."
+
+  # A second package from the same repository: its own catalogue `id`
+  # (`<repo_id>:<package>`) so it installs, reports and uninstalls on its own.
+  - id: "audio-cpp/audio.cpp-gguf:dots-tts-soar-q8_0"
+    repo_id: "audio-cpp/audio.cpp-gguf"
+    label: "audio.cpp dots.tts SOAR (Q8_0, multilingual voice cloning)"
+    role: TTS
+    engines: [audiocpp-dots]
+    size_gb: 2.96
+    required_files:
+      - "DotTTS-SOAR-GGUF/dots-tts-soar-q8_0.gguf"
+    allow_patterns:
+      - "DotTTS-SOAR-GGUF/dots-tts-soar-q8_0.gguf"
+    note: "dots.tts on the native audio.cpp runtime, including Windows. Apache-2.0 weights."
 
   # ── ASR (optional — curated per platform) ─────────────────────────────
   # No ASR model is required to boot: TTS-only installs work. Dubbing,
@@ -325,6 +343,31 @@ models:
     engines: [cosyvoice]
     size_gb: 9.8
     curated_on: [cuda]
+    # The files the cosyvoice engine loads (its sidecar weights_allow_patterns). Without them an
+    # interrupted download that kept any one large file read as installed (#3112).
+    required_files:
+      - "cosyvoice3.yaml"
+      - "campplus.onnx"
+      - "speech_tokenizer_v3.onnx"
+      - "llm.pt"
+      - "flow.pt"
+      - "hift.pt"
+      - "CosyVoice-BlankEN/model.safetensors"
+
+  - repo_id: "Lourdle/Fun-CosyVoice3-0.5B-2512-GGUF"
+    label: "CosyVoice 3 0.5B Q4_K_M (native GGUF/Vulkan)"
+    role: TTS
+    engines: [cosyvoice-gguf]
+    size_gb: 0.9
+    required_files:
+      - "CosyVoice3-2512_Q4_K_M.gguf"
+      - "frontend-onnx/campplus.int8.onnx"
+      - "frontend-onnx/speech_tokenizer_v3.int8.onnx"
+    allow_patterns:
+      - "CosyVoice3-2512_Q4_K_M.gguf"
+      - "frontend-onnx/campplus.int8.onnx"
+      - "frontend-onnx/speech_tokenizer_v3.int8.onnx"
+    note: "Optional, pinned community GGUF port. Q4_K_M can sound muffled; review the upstream model card and component terms. Native runtime must be built separately."
 
   - repo_id: "lj1995/GPT-SoVITS"
     label: "GPT-SoVITS pretrained weights"
@@ -374,6 +417,22 @@ models:
     engines: [mlx-audio]
     size_gb: 0.8
     note: "Apple Silicon only — via mlx-audio backend."
+    platforms: [darwin-arm64]
+
+  - repo_id: "mlx-community/whisper-large-v3-turbo-asr-fp16"
+    label: "Whisper large-v3 Turbo (OuteTTS voice-clone reader, mlx-audio)"
+    role: TTS
+    engines: [mlx-audio]
+    size_gb: 1.6
+    note: "Apple Silicon only — OuteTTS reads the reference clip with it."
+    platforms: [darwin-arm64]
+
+  - repo_id: "mlx-community/VoxCPM2-8bit"
+    label: "VoxCPM2 8-bit (30 languages, 48 kHz, mlx-audio)"
+    role: TTS
+    engines: [mlx-audio]
+    size_gb: 3.3
+    note: "Apple Silicon only — via mlx-audio backend. Speaks the text as written; voice cloning and design stay on the full VoxCPM2 engine."
     platforms: [darwin-arm64]
 
   - repo_id: "mlx-community/Chatterbox-TTS-4bit"

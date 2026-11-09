@@ -15,6 +15,15 @@ export interface CommunityItem {
   _source_repo?: string;
   is_community?: boolean;
   attrs?: Record<string, string>;
+  /** ISO date (YYYY-MM-DD) the item joined the gallery; drives the "new" badge. */
+  added_at?: string;
+}
+
+export interface CommunityPack {
+  id: string;
+  name: string;
+  description?: string;
+  count: number;
 }
 
 export interface CommunityPage {
@@ -22,6 +31,9 @@ export interface CommunityPage {
   limit: number;
   offset: number;
   items: CommunityItem[];
+  /** Filter options for the whole catalogue, independent of the page's filters. */
+  packs?: CommunityPack[];
+  languages?: string[];
 }
 
 export interface CommunityFilters {
@@ -30,6 +42,7 @@ export interface CommunityFilters {
   type?: string | null;
   lang?: string | null;
   q?: string | null;
+  pack?: string | null;
   limit?: number;
   offset?: number;
   refresh?: boolean;

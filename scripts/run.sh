@@ -69,7 +69,8 @@ mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/omnivoice-run.log"
 
 # ── Start backend ──────────────────────────────────────────────────────────
-PORT=3900
+PORT="${OMNIVOICE_PORT:-$(python3 -c 'import json; print(json.load(open("config/app.json", encoding="utf-8"))["ports"]["backend"])')}"
+export OMNIVOICE_PORT="$PORT"
 echo "${C_OK}▸${C_RST} Starting backend on port ${PORT} (log: ${C_DIM}${LOG_FILE}${C_RST})…"
 
 uv run uvicorn main:app --app-dir backend --host 127.0.0.1 --port "$PORT" \

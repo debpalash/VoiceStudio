@@ -12,15 +12,14 @@ Install state reuses the same HF-cache check the model store uses, so a model
 shown "installed" here is the same snapshot the backend will load.
 
 Prefs are stored in the shared ``prefs.json`` store under the ``dictation.*``
-namespace (``dictation.enabled``, ``dictation.mode``, ``dictation.model_id``,
-``dictation.prompt``), mirroring how the ASR/TTS engine picks persist.
+namespace (``dictation.enabled``, ``dictation.mode``, ``dictation.model_id``),
+mirroring how the ASR/TTS engine picks persist.
 
-``prompt`` is an optional vocabulary hint (names, jargon, preferred script)
-handed to the capture engine as Whisper's ``initial_prompt`` on the live
-dictation socket and on ``/transcribe`` calls that pass ``dictation=true``.
-Engines whose ``transcribe()`` does not declare it (sherpa, WhisperX, PyTorch
-Whisper, CTC) never receive it, so an empty or unused prompt leaves dictation
-unchanged. The silent-model rescue decodes without it.
+``dictation.prompt`` is an optional vocabulary hint (names, jargon, preferred
+spellings). Whisper-style engines receive it on the live dictation socket and
+on ``/transcribe`` calls that opt in; engines that cannot take a prompt never
+see it, and the silent-model rescue decodes without it. It is read for every
+transcription, so changing it never reloads the capture engine.
 """
 from __future__ import annotations
 
@@ -47,27 +46,22 @@ PREF_PROMPT = "dictation.prompt"
 _DEFAULT_ENABLED = True
 _DEFAULT_MODE = "toggle"
 _VALID_MODES = ("toggle", "hold")
-# Whisper keeps only the last ~224 prompt tokens; the cap just bounds the
-# stored value, it is not a token budget.
+# Bound on the stored hint text (characters; not a token budget).
 MAX_PROMPT_CHARS = 1000
 
 
 def dictation_prompt() -> str:
-    """The saved vocabulary prompt, or ``""`` when none is set. Bounded on
-    read too, so a hand-edited prefs.json cannot push an engine past its
-    own prompt limit."""
     value = prefs.get(PREF_PROMPT, "")
-    return value.strip()[:MAX_PROMPT_CHARS] if isinstance(value, str) else ""
+    if not isinstance(value, str):
+        return ""
+    return value.strip()[:MAX_PROMPT_CHARS]
 
 
 def dictation_transcribe_kwargs(backend) -> dict:
-    """Decode kwargs the vocabulary prompt adds for ``backend`` — empty when
-    no prompt is saved or the engine's ``transcribe()`` cannot take one."""
     from services.asr_backend import transcribe_request_kwargs
 
-    return transcribe_request_kwargs(
-        backend, {"initial_prompt": dictation_prompt() or None},
-    )
+    hint = dictation_prompt()
+    return transcribe_request_kwargs(backend, {"initial_prompt": hint or None})
 
 
 def _read_prefs() -> dict:
@@ -147,9 +141,8 @@ class DictationPrefsUpdate(BaseModel):
 
 @router.post("/dictation/prefs", dependencies=[Depends(require_local)])
 def set_dictation_prefs(req: DictationPrefsUpdate):
-    """Persist any subset of the dictation prefs. Validates ``mode``,
-    ``model_id`` and ``prompt`` so a bad value can't wedge the capture engine.
-    An empty ``prompt`` clears it."""
+    """Persist any subset of the dictation prefs. Validates the values so a
+    bad one can't wedge the capture engine."""
     canonical = None
     if req.mode is not None:
         if req.mode not in _VALID_MODES:
@@ -157,12 +150,14 @@ def set_dictation_prefs(req: DictationPrefsUpdate):
                 status_code=400,
                 detail=f"mode must be one of {_VALID_MODES}",
             )
-    prompt = req.prompt.strip() if req.prompt is not None else None
-    if prompt is not None and len(prompt) > MAX_PROMPT_CHARS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"prompt must be at most {MAX_PROMPT_CHARS} characters",
-        )
+    prompt = None
+    if req.prompt is not None:
+        prompt = req.prompt.strip()
+        if len(prompt) > MAX_PROMPT_CHARS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"prompt must be at most {MAX_PROMPT_CHARS} characters",
+            )
     if req.model_id is not None:
         if not sd.is_sherpa_model(req.model_id):
             raise HTTPException(
@@ -175,9 +170,9 @@ def set_dictation_prefs(req: DictationPrefsUpdate):
     # Reset before persisting: if the capture service is unavailable, the
     # request fails without claiming that settings which are not active were
     # saved. A reset is safe even when a later preference write fails; the old
-    # persisted selection is simply loaded again on next capture. The prompt
-    # is read per transcription, so a prompt-only edit keeps the loaded model.
-    if any(v is not None for v in (req.enabled, req.mode, req.model_id)):
+    # persisted selection is simply loaded again on next capture.
+    # The prompt is read per transcription, so only the other prefs need a reset.
+    if (req.enabled, req.mode, req.model_id) != (None, None, None):
         try:
             from services import asr_backend
 

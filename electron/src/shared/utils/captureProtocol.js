@@ -10,14 +10,44 @@ export function classifySherpaFinal(message) {
   return 'ignore';
 }
 
+// CJK kana, ideographs, compatibility forms and fullwidth punctuation: text is
+// written without spaces, so dictated pieces that meet on one join directly.
+const CJK_EDGE = /[\u3000-\u303f\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\uff00-\uffef]/;
+
+/**
+ * Separator to type between two dictated pieces: one space, or nothing when
+ * either side is empty, a newline, or CJK. Mirrors `dictation_separator` in
+ * backend/services/dictation_cleanup.py so live and summary text agree.
+ */
+export function dictationSeparator(previous, next) {
+  if (!previous || !next) return '';
+  if (previous.endsWith('\n') || next.startsWith('\n')) return '';
+  if (CJK_EDGE.test(previous.slice(-1)) || CJK_EDGE.test(next[0])) return '';
+  return ' ';
+}
+
+/** Join committed dictation pieces the way they were typed. */
+export function joinDictationText(pieces) {
+  let out = '';
+  for (const raw of pieces || []) {
+    const piece = (raw || '').replace(/^[ \t]+|[ \t]+$/g, '');
+    if (!piece) continue;
+    out += dictationSeparator(out, piece) + piece;
+  }
+  return out.trim();
+}
+
 /** Return the EOF-summary suffix that has not already been committed live. */
 export function sherpaSummaryTail(summaryText, committed) {
   const summary = (summaryText || '').trim();
-  const delivered = (committed || []).join(' ').trim();
+  const delivered = joinDictationText(committed);
   if (!delivered) return summary;
   if (summary === delivered) return '';
-  const prefix = `${delivered} `;
-  return summary.startsWith(prefix) ? summary.slice(prefix.length).trim() : '';
+  if (!summary.startsWith(delivered)) return '';
+  const rest = summary.slice(delivered.length);
+  // The tail must start at a piece boundary, not mid-word ("hello" vs "helloo").
+  if (!rest.trim() || (rest[0] !== ' ' && dictationSeparator(delivered, rest) !== '')) return '';
+  return rest.trim();
 }
 
 /** Combine delivery outcomes without ever hiding a clipboard-only fallback. */

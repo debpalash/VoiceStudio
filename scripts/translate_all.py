@@ -10,7 +10,7 @@ LOCALES_DIR = os.path.join(
 
 LANGUAGES = [
     "zh-CN", "es", "fr", "de", "ja", "pt", "it", "ru", "ko",
-    "hi", "tr", "pl", "nl", "sv", "th", "vi", "id", "uk", "ar", "zh-TW"
+    "hi", "tr", "pl", "nl", "sv", "th", "vi", "id", "uk", "ar", "zh-TW", "gl"
 ]
 
 VAR_PAT = re.compile(r'\{\{[a-zA-Z0-9_]+\}\}')

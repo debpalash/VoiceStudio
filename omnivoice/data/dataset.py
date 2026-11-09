@@ -45,6 +45,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 import torch
 import torch.distributed as dist
 import torchaudio
+from omnivoice.utils.audio import read_audio
 import webdataset as wds
 from torch.utils.data import IterableDataset
 
@@ -54,7 +55,7 @@ def load_audio_webdataset(data, sample_rate: int = 24000, device="cpu"):
     Load audio from bytes data and resample to the target sample rate if needed.
     Return a tensor of shape (1, num_samples)
     """
-    audio, sr = torchaudio.load(io.BytesIO(data))
+    audio, sr = read_audio(io.BytesIO(data))
     audio = audio.to(device)
     if audio.size(dim=0) > 1:
         audio = torch.mean(audio, dim=0)
@@ -433,7 +434,7 @@ class JsonlDatasetReader(IterableDataReader):
                 )
                 continue
             try:
-                waveform, sr = torchaudio.load(audio_path)
+                waveform, sr = read_audio(audio_path)
                 if waveform.shape[0] > 1:
                     waveform = waveform.mean(dim=0, keepdim=True)
                 if sr != self.sample_rate:

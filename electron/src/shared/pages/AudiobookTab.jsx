@@ -4,10 +4,10 @@ import { FileText, Users, BookText } from 'lucide-react';
 import {
   audiobookPlan,
   audiobookGenerate,
-  audiobookResume,
   audiobookUploadCover,
   audiobookPreviewChapter,
   audiobookImport,
+  audiobookResume,
 } from '../api/audiobook';
 import { audioUrl } from '../api/generate';
 import { useEngines } from '../api/hooks';
@@ -275,47 +275,43 @@ export default function AudiobookTab({ profiles = [] }) {
     [text, defaultVoice, lex, overrides, language, voiceMapArg],
   );
 
-  const consumeGeneration = useCallback(
-    async (res, snapshotScript = null) => {
+  const consumeAudiobookStream = useCallback(
+    async (response, snapshotScript) => {
       await consumeLongformStream(
-        res,
+        response,
         (evt) => {
           if (evt.type === 'started') {
-            // Seed the per-chapter list; chapter 0 starts rendering immediately.
             chaptersRef.current = Array.from({ length: evt.chapters }, (_, i) => ({
               title: '',
               status: i === 0 ? 'rendering' : 'pending',
             }));
             setChapters(chaptersRef.current);
           } else if (evt.type === 'chapter') {
-            // A chapter finished (cached vs freshly rendered per evt.cached); the
-            // next pending chapter becomes the one rendering. duration_s feeds
-            // the synced-lyrics player's chapter timeline.
-            chaptersRef.current = chaptersRef.current.map((c, j) =>
-              j === evt.index
+            chaptersRef.current = chaptersRef.current.map((chapter, index) =>
+              index === evt.index
                 ? {
-                    ...c,
+                    ...chapter,
                     title: evt.title,
                     status: evt.cached ? 'cached' : 'done',
                     duration_s: evt.duration_s,
                   }
-                : j === evt.index + 1 && c.status === 'pending'
-                  ? { ...c, status: 'rendering' }
-                  : c,
+                : index === evt.index + 1 && chapter.status === 'pending'
+                  ? { ...chapter, status: 'rendering' }
+                  : chapter,
             );
             setChapters(chaptersRef.current);
           } else if (evt.type === 'chapter_error') {
-            chaptersRef.current = chaptersRef.current.map((c, j) =>
-              j === evt.index
+            chaptersRef.current = chaptersRef.current.map((chapter, index) =>
+              index === evt.index
                 ? {
-                    ...c,
+                    ...chapter,
                     title: evt.title,
                     status: 'failed',
                     error: evt.reason || evt.error || '',
                   }
-                : j === evt.index + 1 && c.status === 'pending'
-                  ? { ...c, status: 'rendering' }
-                  : c,
+                : index === evt.index + 1 && chapter.status === 'pending'
+                  ? { ...chapter, status: 'rendering' }
+                  : chapter,
             );
             setChapters(chaptersRef.current);
           } else if (evt.type === 'assembling') {
@@ -323,7 +319,7 @@ export default function AudiobookTab({ profiles = [] }) {
           } else if (evt.type === 'stopped') {
             setStopped(true);
           } else if (evt.type === 'done') {
-            if (snapshotScript === null) setOutput(evt.output);
+            if (snapshotScript === undefined) setOutput(evt.output);
             else setOutputSnapshot(evt.output, snapshotScript, chaptersRef.current);
             setDone({
               cached_chapters: evt.cached_chapters || 0,
@@ -333,10 +329,11 @@ export default function AudiobookTab({ profiles = [] }) {
             setError(evt.error || 'synthesis failed');
           }
         },
-        { isAborted: () => abortRef.current, signal: abortControllerRef.current?.signal },
+        {
+          isAborted: () => abortRef.current,
+          signal: abortControllerRef.current?.signal,
+        },
       );
-      // consumeLongformStream returns (never throws) on a caller-initiated stop.
-      if (abortRef.current) setStopped(true);
     },
     [setOutput, setOutputSnapshot],
   );
@@ -382,7 +379,9 @@ export default function AudiobookTab({ profiles = [] }) {
         },
         { signal: controller.signal },
       );
-      await consumeGeneration(res, text);
+      await consumeAudiobookStream(res, text);
+      // consumeLongformStream returns (never throws) on a caller-initiated stop.
+      if (abortRef.current) setStopped(true);
     } catch (e) {
       // A Stop that lands before/around the first byte aborts the fetch →
       // AbortError. Treat every self-initiated abort as "Stopped", not an error.
@@ -404,43 +403,50 @@ export default function AudiobookTab({ profiles = [] }) {
     overrides,
     language,
     voiceMapArg,
-    consumeGeneration,
+    consumeAudiobookStream,
   ]);
+
+  const prepareRecoveredRender = useCallback(() => {
+    abortRef.current = false;
+    chaptersRef.current = [];
+    setChapters([]);
+    setOutput('');
+    setError('');
+    setDone(null);
+    setStopped(false);
+    setAssembling(false);
+    setGenerating(true);
+  }, [setOutput]);
 
   const onResume = useCallback(
     async (jobId) => {
-      let accepted = false;
-      setError('');
-      setOutput('');
-      setDone(null);
-      setStopped(false);
-      setChapters([]);
-      chaptersRef.current = [];
-      setAssembling(false);
-      setGenerating(true);
-      abortRef.current = false;
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
+      prepareRecoveredRender();
+      const resumeController = new AbortController();
+      abortControllerRef.current = resumeController;
+      let streamOpened = false;
+
       try {
-        const res = await audiobookResume(jobId, { signal: controller.signal });
-        accepted = true;
-        // The manifest contains the original chapter plan, but the endpoint does
-        // not expose its source script. Keep playback, but do not attach whatever
-        // script happens to be open now as misleading synced lyrics.
-        await consumeGeneration(res);
-      } catch (error) {
-        if (abortRef.current || error?.name === 'AbortError') setStopped(true);
-        else {
-          setError(t('audiobook.resume_failed', { message: error?.message || String(error) }));
+        const stream = await audiobookResume(jobId, { signal: resumeController.signal });
+        streamOpened = true;
+        await consumeAudiobookStream(stream);
+        if (abortRef.current) setStopped(true);
+      } catch (problem) {
+        const wasStopped = abortRef.current || problem?.name === 'AbortError';
+        if (wasStopped) {
+          setStopped(true);
+        } else {
+          const reason = problem?.message ?? String(problem);
+          setError(t('audiobook.resume_failed', { message: reason }));
         }
       } finally {
         setGenerating(false);
         setAssembling(false);
-        abortControllerRef.current = null;
+        if (abortControllerRef.current === resumeController) abortControllerRef.current = null;
       }
-      return accepted;
+
+      return streamOpened;
     },
-    [consumeGeneration, setOutput, t],
+    [consumeAudiobookStream, prepareRecoveredRender, t],
   );
 
   // Stop = abort the fetch (cancels the request → backend disconnect) AND flip

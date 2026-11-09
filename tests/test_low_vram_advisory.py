@@ -190,7 +190,9 @@ def test_the_generate_call_sites_pass_the_engines_floor():
         and isinstance(kw.value, ast.Constant)
         and kw.value.value == "TTS generate"
     ]
-    assert len(dispatches) >= 5, "call-site scan found suspiciously few dispatches"
+    # Four local dispatches remain: classic native/generic, streamed chunks,
+    # and the shared local gateway. The removed fifth site was remote-only.
+    assert len(dispatches) >= 4, "call-site scan found suspiciously few dispatches"
 
     # Per dispatch, not a global tally: counting occurrences lets one call site
     # drop both arguments while another gains an extra and the total still

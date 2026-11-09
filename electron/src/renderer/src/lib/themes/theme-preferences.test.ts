@@ -70,4 +70,13 @@ describe('theme preferences', () => {
     expect(colorVariable('sidebarRowHover')).toBe('--app-theme-sidebar-row-hover');
     expect(colorVariable('terminalSelection')).toBe('--app-theme-terminal-selection-background');
   });
+  it("keeps Hearth's primary action colour clear of its destructive red", () => {
+    const hue = (color: string | undefined) =>
+      Number(/oklch\([\d.]+ [\d.]+ ([\d.]+)\)/.exec(color ?? '')?.[1]);
+    for (const appearance of ['light', 'dark'] as const) {
+      const colors = paletteColors('hearth', appearance)!;
+      const gap = Math.abs(hue(colors.messageAction) - hue(colors.error));
+      expect(Math.min(gap, 360 - gap), appearance).toBeGreaterThan(60);
+    }
+  });
 });

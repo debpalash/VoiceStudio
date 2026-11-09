@@ -87,3 +87,45 @@ def test_preflight_routes_the_same_way_as_the_diagnostic(
     row = next(r for r in rows if r["id"] == "gpu_routing")
     assert row["status"] == "warn"
     assert ("reinstall torch" in (row["fix"] or "")) is expect_driver_remedy
+
+
+def test_kernel_mismatch_cpu_fallback_names_the_wheel_not_the_driver(monkeypatch):
+    # #3067: the badge now falls back to CPU for a card the wheel has no
+    # kernels for; the hint must not send the user to pick another engine or
+    # update a driver that is fine.
+    _verdict(
+        monkeypatch,
+        f"Quadro M5000M (sm_52) not in this torch build's archs — {KERNEL_RISK_MARKER}; running on CPU",
+        status="cpu_fallback",
+    )
+    check = diagnose._check_gpu_routing()
+    assert check["status"] == WARN
+    assert "driver update will not help" in check["hint"]
+    assert "Pick an engine" not in check["hint"]
+
+
+def test_preflight_gpu_row_does_not_say_cuda_ready_without_kernels(monkeypatch):
+    # #3067 / review: the hardware row must agree with the routing row.
+    from api.routers.setup import wizard
+    import services.media_tools as media_tools
+
+    monkeypatch.setattr(wizard, "_network_check", lambda: {
+        "id": "network", "label": "Network", "status": "pass",
+        "detail": "stubbed", "fix": None, "mirror_reachable": True,
+    })
+    monkeypatch.setattr(media_tools, "summary", lambda auto_acquire=True: None)
+    monkeypatch.setattr(wizard, "_detect_gpu", lambda: {
+        "vendor": "nvidia", "backend": "cuda", "available": True,
+        "driver": "580.1", "device_name": "Quadro M5000M", "notes": [],
+        "kernels_missing": "sm_52",
+    })
+    resp = wizard.preflight()
+    checks = resp["checks"] if isinstance(resp, dict) else resp.checks
+    gpu = next(
+        (c if isinstance(c, dict) else c.model_dump())
+        for c in checks
+        if (c if isinstance(c, dict) else c.model_dump())["id"] == "gpu"
+    )
+    assert gpu["status"] == "warn"
+    assert "CUDA ready" not in gpu["detail"]
+    assert "driver update will not help" in gpu["fix"].lower()

@@ -21,6 +21,7 @@ import contextvars
 import itertools
 import logging
 import threading
+import time
 from typing import Callable, Optional
 
 logger = logging.getLogger("omnivoice.hf_progress")
@@ -51,6 +52,11 @@ Listener = Callable[[ProgressEvent], None]
 _listeners: dict[int, Listener] = {}
 _listener_lock = threading.Lock()
 _listener_counter = itertools.count(1)
+# Per-bar key for the overall aggregator. A monotonic counter, not id(self):
+# CPython recycles a freed object's address for the next same-shaped object, so
+# consecutive per-file bars routinely shared an id and the next bar's first
+# update overwrote bytes the finished file had already earned (#2936).
+_bar_key_counter = itertools.count(1)
 _installed = False
 _install_lock = threading.Lock()
 
@@ -120,25 +126,41 @@ def emit(event: ProgressEvent) -> None:
 
 
 class SafeFileWrapper:
+    """File proxy that prevents display failures from aborting downloads."""
+
+    _is_safe_wrapper = True
+
     def __init__(self, fp):
-        self.fp = fp
-        self._is_safe_wrapper = True
+        object.__setattr__(self, "_target_stream", fp)
+
     def write(self, s):
         try:
-            self.fp.write(s)
+            return self._target_stream.write(s)
         except (OSError, UnicodeError):
-            # OSError: EPIPE from a dead parent shell (the wrapper's original
-            # job). UnicodeError (#1155): a library print of user text hitting
-            # a non-UTF-8 stream — cp1252 stdout on Windows — must not abort
-            # the operation that printed. Logs are best-effort; work is not.
-            pass
+            return None
+
     def flush(self):
+        flush = getattr(self._target_stream, "flush", None)
+        if flush is None:
+            return None
         try:
-            getattr(self.fp, 'flush', lambda: None)()
+            return flush()
         except OSError:
-            pass
+            return None
+
     def __getattr__(self, name):
-        return getattr(self.fp, name)
+        from operator import attrgetter
+
+        destination = vars(self)["_target_stream"]
+        return attrgetter(name)(destination)
+
+
+def _safe_progress_stream(candidate):
+    if candidate is None:
+        return None
+    if getattr(candidate, "_is_safe_wrapper", False):
+        return candidate
+    return SafeFileWrapper(candidate)
 
 def install() -> None:
     """Monkey-patch `huggingface_hub`'s tqdm so every download reports to our
@@ -176,26 +198,32 @@ def install() -> None:
 
             @staticmethod
             def status_printer(file):
-                if file is not None and not getattr(file, "_is_safe_wrapper", False):
-                    file = SafeFileWrapper(file)
+                output_stream = _safe_progress_stream(file)
                 try:
-                    return original.status_printer(file)
+                    printer = original.status_printer(output_stream)
                 except Exception:
-                    return lambda s: None
+                    def printer(_message):
+                        return None
+                return printer
 
             def __init__(self, *args, **kwargs):
-                if 'file' in kwargs and kwargs['file'] is not None and not getattr(kwargs['file'], "_is_safe_wrapper", False):
-                    kwargs['file'] = SafeFileWrapper(kwargs['file'])
+                # Allocate the aggregator key FIRST: tqdm's own __init__ calls
+                # display(), which reaches _feed_sink() before any attribute
+                # set after super().__init__() would exist. Stable for this
+                # bar's whole life and never reused by a later bar (#2936).
+                self._bar_key = next(_bar_key_counter)
+
+                if "file" in kwargs:
+                    kwargs["file"] = _safe_progress_stream(kwargs["file"])
                 try:
                     super().__init__(*args, **kwargs)
                 except OSError:
                     pass
-
-                if hasattr(self, 'fp') and getattr(self, 'fp', None) is not None and not getattr(self.fp, "_is_safe_wrapper", False):
-                    self.fp = SafeFileWrapper(self.fp)
-
-                import time as _t
-                self._last_emit_time = _t.monotonic()
+                inherited_stream = getattr(self, "fp", None)
+                protected_stream = _safe_progress_stream(inherited_stream)
+                if protected_stream is not inherited_stream:
+                    self.fp = protected_stream
+                self._last_emit_time = time.monotonic()
                 try:
                     desc = getattr(self, "desc", None)
                     total = int(getattr(self, "total", 0) or 0)
@@ -242,9 +270,11 @@ def install() -> None:
 
                 Passes the tqdm `unit` so the aggregator can tell a byte bar
                 (unit 'B') from the "Fetching N files" count bar, and a stable
-                per-bar key (id(self)) because every per-file byte bar shares
-                the default desc 'download' under Xet — keying by desc would
-                collapse them into one.
+                per-bar key because every per-file byte bar shares the default
+                desc 'download' under Xet — keying by desc would collapse them
+                into one. The key is a counter allocated per bar, not id(self):
+                CPython reuses a freed bar's address, which made two files
+                share a key and erase each other's bytes (#2936).
                 """
                 sink = _byte_sink
                 if sink is None:
@@ -254,51 +284,52 @@ def install() -> None:
                     return
                 try:
                     unit = getattr(self, "unit", None)
-                    sink(rid, id(self), unit, int(done or 0), int(total or 0), complete)
+                    sink(rid, self._bar_key, unit, int(done or 0), int(total or 0), complete)
                 except Exception:
                     pass
 
             def update(self, n=1):
                 try:
-                    super().update(n)
+                    result = super().update(n)
                 except OSError:
-                    pass
-                import time as _t
-                now = _t.monotonic()
-                # Throttle: emit at most every 0.3s to avoid flooding SSE
-                if (now - self._last_emit_time) >= 0.3:
+                    result = None
+                now = time.monotonic()
+                if now - self._last_emit_time >= 0.3:
                     self._last_emit_time = now
-                    self._emit_progress()
+                    try:
+                        self._emit_progress()
+                    except Exception:
+                        pass
+                return result
 
             def display(self, msg=None, pos=None):
-                """tqdm calls display() on its refresh cycle; piggyback for
-                periodic emits even when update() intervals are large."""
-                import time as _t
-                now = _t.monotonic()
-                if (now - self._last_emit_time) >= 0.5:
+                now = time.monotonic()
+                if now - self._last_emit_time >= 0.5:
                     self._last_emit_time = now
-                    self._emit_progress()
+                    try:
+                        self._emit_progress()
+                    except Exception:
+                        pass
                 try:
                     return super().display(msg, pos)
                 except OSError:
-                    pass
+                    return None
 
             def close(self):
-                # Credit the file's full size to the aggregator on close. Under
-                # Xet a per-file byte bar often never increments `n` (Xet fetches
-                # chunks out-of-band), so completion is the only reliable signal
-                # that the file's bytes landed. Harmless for classic LFS bars
-                # (n already == total).
+                # tqdm totals can be floats or numpy numbers; coerce like _emit_progress.
                 try:
                     total = int(getattr(self, "total", 0) or 0)
-                    if total > 0:
+                except (TypeError, ValueError):
+                    total = 0
+                if total > 0:
+                    try:
                         self._feed_sink(total, total, complete=True)
-                except Exception:
-                    pass
+                    except Exception:
+                        pass
                 try:
-                    super().close()
+                    return super().close()
                 except OSError:
-                    pass
+                    return None
 
         # Stash the original for inspection / uninstall, then swap.
         hf_tqdm_module._omnivoice_original_tqdm = original  # type: ignore[attr-defined]

@@ -24,12 +24,22 @@ instead — same model family, no NeMo dependency:
   int8 ONNX exports of Parakeet TDT v2/v3; Whisper Tiny remains the
   cross-platform dictation default.
 
+## Finding setup help
+
+Open **Settings → Models → ASR** and expand **Parakeet TDT** to read the
+engine's setup warning. **Download weights** downloads model files only;
+it does not install NeMo or make an unavailable engine ready. There is no
+NeMo **Install** button because installing it into the managed Python
+environment would break the backend. Use one of the compatible engines
+above instead; **Re-check** only checks dependencies again.
+
 ## Selecting it
 
-Only meaningful if you've set up `nemo_toolkit[asr]` in a **separate,
-dedicated Python environment** that runs the backend:
+Only meaningful for an independently managed backend where NeMo is already
+available in a **separate, dedicated Python environment**. VoiceStudio does
+not create or switch to that environment:
 
-- **Model Catalogue**, ASR tab → **Use** on the Parakeet TDT row, or
+- **Settings → Models**, ASR tab → **Use** on the Parakeet TDT row, or
 - `OMNIVOICE_ASR_BACKEND=nemo-parakeet`.
 
 Auto-detect never picks it; it's an explicit opt-in.

@@ -41,11 +41,31 @@ def _white_noise() -> "torch.Tensor":
     return 0.5 * (torch.rand(N, generator=g) * 2 - 1)
 
 
-def _two_tone_buzz() -> "torch.Tensor":
-    """Two inharmonic partials — the other shape a collapsed render takes."""
+def _two_partial_buzz(f1: float = 200.0, f2: float = 310.0) -> "torch.Tensor":
+    """Two unrelated sinusoids: a loud, inharmonic, still purely tonal buzz."""
     t = torch.arange(N, dtype=torch.float32) / SR
-    s = torch.sin(2 * math.pi * 180.0 * t) + 0.6 * torch.sin(2 * math.pi * 361.0 * t)
-    return 0.8 * s / s.abs().max()
+    sig = torch.sin(2 * math.pi * f1 * t) + 0.6 * torch.sin(2 * math.pi * f2 * t)
+    return 0.7 * sig / sig.abs().max()
+
+
+def test_flatness_ordering_tone_speech_noise():
+    tone = arch._spectral_flatness(_pure_tone())
+    speech = arch._spectral_flatness(_speech_like())
+    noise = arch._spectral_flatness(_white_noise())
+    assert tone < arch._DEGENERATE_FLATNESS < speech < noise
+
+
+def test_flatness_none_for_short_or_non_finite_input():
+    assert arch._spectral_flatness(torch.ones(16)) is None
+    bad = _speech_like().clone()
+    bad[100] = float("nan")
+    assert arch._spectral_flatness(bad) is None
+
+
+def test_flatness_multichannel_is_mono_mixed():
+    stereo = torch.stack([_speech_like(), _speech_like()])
+    assert arch._spectral_flatness(stereo) == pytest.approx(
+        arch._spectral_flatness(_speech_like()), rel=1e-4)
 
 
 def _speech_like() -> "torch.Tensor":
@@ -94,27 +114,15 @@ def test_speech_like_is_usable():
     assert arch._is_unusable_audio(_speech_like()) is False
 
 
-# ── Threshold stays between the two things it has to separate ───────────────
-# Synthetic broadband speech has much higher flatness than real voiced audio.
-# Measure both sides of the threshold against actual inputs, including the
-# existing demo renders that the old thresholds rejected.
-
-
-def test_tonal_ceiling_is_measured_not_assumed():
-    """Derive the tonal side of the margin instead of trusting a literal.
-
-    A bare constant would keep passing if `_spectral_flatness` stopped scoring
-    tones near zero, so measure the degenerate signals here and require the
-    threshold to clear the worst of them tenfold.
-    """
-    tones = [
-        arch._spectral_flatness(_pure_tone(80.0)),
-        arch._spectral_flatness(_pure_tone(220.0)),
-        arch._spectral_flatness(_two_tone_buzz()),
-    ]
-    assert all(t is not None for t in tones)
-    assert max(tones) * 10 < arch._DEGENERATE_FLATNESS
-
+@pytest.mark.parametrize("make", [
+    lambda: _pure_tone(220.0),
+    lambda: _pure_tone(440.0),
+    _two_partial_buzz,
+])
+def test_tonal_signals_sit_far_below_threshold(make):
+    sig = make()
+    assert arch._spectral_flatness(sig) * 10 <= arch._DEGENERATE_FLATNESS
+    assert arch._is_unusable_audio(sig) is True
 
 _SAMPLES = Path(__file__).resolve().parents[1] / "assets" / "samples"
 _SPEECH_FIXTURES = [
@@ -144,19 +152,12 @@ def test_real_shipped_speech_clears_quality_floor(fixture):
     assert flatness > arch._DEGENERATE_FLATNESS * 10
     assert arch._is_unusable_audio(speech) is False
 
+def test_flatness_does_not_depend_on_clip_length():
+    clip = _speech_like()
+    short = arch._spectral_flatness(clip)
+    long = arch._spectral_flatness(torch.cat([clip] * 4))
+    assert abs(long - short) / short < 0.02
 
-def test_flatness_is_not_clip_length_dependent():
-    """Repeating a signal must not change what it measures.
-
-    The whole-clip FFT this replaced failed exactly here: its frequency
-    resolution grew with duration, so the same audio measured 0.0229 at 3 s and
-    ~0 at 12 s (100% drift). Framed, the drift is under 0.1%.
-    """
-    short = _speech_like()
-    long = torch.cat([short] * 4)
-    a, b = arch._spectral_flatness(short), arch._spectral_flatness(long)
-    assert a is not None and b is not None
-    assert abs(a - b) / a < 0.02
 
 
 # ── Constants didn't regress ────────────────────────────────────────────────

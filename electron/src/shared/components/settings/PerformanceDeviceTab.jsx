@@ -51,7 +51,8 @@ export default function PerformanceDeviceTab() {
           value={
             hw?.gpu_active ? (
               <Badge tone="success">
-                <CheckCircle size={11} /> {t('about.yes')}
+                <CheckCircle size={11} />
+                {t('about.yes')}
               </Badge>
             ) : (
               <Badge tone="neutral">{t('about.no')}</Badge>

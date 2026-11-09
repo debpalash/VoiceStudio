@@ -1,3 +1,4 @@
+import { renameSync as fsRenameSync } from 'node:fs';
 import { rename as fsRename } from 'node:fs/promises';
 
 /** Windows antivirus and indexers hold just-written files briefly; these codes are transient. */
@@ -19,33 +20,94 @@ export const FILE_RENAME: RenameRetryOptions = { attempts: 8, capMs: 400 };
 /** A freshly copied directory tree takes a scanner longer: about 10 s in total. */
 export const DIRECTORY_RENAME: RenameRetryOptions = { attempts: 15, capMs: 1000 };
 
+/** Synchronous callers (journals, settings files) cannot await a backoff. */
+export interface RenameSyncRetryOptions extends Omit<RenameRetryOptions, 'sleep' | 'rename'> {
+  sleep?: (ms: number) => void;
+  rename?: (from: string, to: string) => void;
+}
+
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+// One shared cell: allocating a SharedArrayBuffer per wait is needless churn.
+const syncCell = new Int32Array(new SharedArrayBuffer(4));
+const waitSync = (ms: number) => {
+  Atomics.wait(syncCell, 0, 0, ms);
+};
+/** Total time a synchronous retry may block the main process. */
+export const SYNC_WAIT_BUDGET_MS = 250;
+
+/** The backoff before retrying `error`, or undefined when it must be rethrown. */
+function transientDelay(
+  error: unknown,
+  attempt: number,
+  { attempts = FILE_RENAME.attempts, capMs = FILE_RENAME.capMs, platform = process.platform },
+): number | undefined {
+  const limit = platform === 'win32' ? (attempts ?? 1) : 1;
+  const code = (error as NodeJS.ErrnoException).code;
+  if (attempt >= limit || !code || !TRANSIENT_RENAME_CODES.has(code)) return undefined;
+  return Math.min(BACKOFF_MS * 2 ** (attempt - 1), capMs ?? 400);
+}
 
 /**
- * `rename`, retrying transient EPERM/EACCES/EBUSY on Windows with capped
- * exponential backoff. The last error is rethrown; other errors and other
- * platforms fail on the first try.
+ * Run `action`, retrying transient EPERM/EACCES/EBUSY on Windows with capped
+ * exponential backoff. Covers every filesystem step a Windows lock can block
+ * (rename, copy over, remove), not only rename. The last error is rethrown;
+ * other errors and other platforms fail on the first try.
  */
+export async function retryTransient<T>(
+  action: () => Promise<T>,
+  { sleep = wait, ...options }: Omit<RenameRetryOptions, 'rename'> = {},
+): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await action();
+    } catch (error) {
+      const delay = transientDelay(error, attempt, options);
+      if (delay === undefined) throw error;
+      await sleep(delay);
+    }
+  }
+}
+
+/**
+ * {@link retryTransient} for code that must stay synchronous. It blocks the
+ * main process, so total waiting is capped at {@link SYNC_WAIT_BUDGET_MS}
+ * however long the lock lasts; the last error is then rethrown.
+ */
+export function retryTransientSync<T>(
+  action: () => T,
+  { sleep = waitSync, ...options }: Omit<RenameSyncRetryOptions, 'rename'> = {},
+): T {
+  let remaining = SYNC_WAIT_BUDGET_MS;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return action();
+    } catch (error) {
+      const delay = transientDelay(error, attempt, options);
+      if (delay === undefined || remaining <= 0) throw error;
+      const wait = Math.min(delay, remaining);
+      remaining -= wait;
+      sleep(wait);
+    }
+  }
+}
+
+/** `rename` with {@link retryTransient}. */
 export async function renameWithRetry(
   from: string,
   to: string,
-  {
-    attempts = FILE_RENAME.attempts,
-    capMs = FILE_RENAME.capMs,
-    platform = process.platform,
-    sleep = wait,
-    rename = fsRename,
-  }: RenameRetryOptions = {},
+  { rename = fsRename, ...options }: RenameRetryOptions = {},
 ): Promise<void> {
-  const limit = platform === 'win32' ? (attempts ?? 1) : 1;
-  for (let attempt = 1; ; attempt++) {
-    try {
-      await rename(from, to);
-      return;
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      if (attempt >= limit || !code || !TRANSIENT_RENAME_CODES.has(code)) throw error;
-      await sleep(Math.min(BACKOFF_MS * 2 ** (attempt - 1), capMs ?? 400));
-    }
-  }
+  await retryTransient(() => rename(from, to), options);
+}
+
+/**
+ * `renameSync` with {@link retryTransientSync}. Windows Defender holds a large
+ * just-written temp file long enough that most immediate replaces fail EPERM.
+ */
+export function renameSyncWithRetry(
+  from: string,
+  to: string,
+  { rename = fsRenameSync, ...options }: RenameSyncRetryOptions = {},
+): void {
+  retryTransientSync(() => rename(from, to), options);
 }

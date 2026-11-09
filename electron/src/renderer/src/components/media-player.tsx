@@ -137,6 +137,9 @@ export function StudioMediaPlayer({
   );
   return (
     <MediaPlayer
+      // Vidstack falls back to the poster for lock-screen artwork, and an absent
+      // poster resolves to the page URL, which Chromium rejects with a warning.
+      artwork={props.poster ? [{ src: props.poster }] : []}
       {...props}
       ref={playerRef}
       playsInline

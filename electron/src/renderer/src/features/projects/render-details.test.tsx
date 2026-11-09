@@ -1,79 +1,72 @@
-import { expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import '@/i18n';
+import { expect, it } from 'vitest';
+import i18n from '@/i18n';
 import {
   RenderDetails,
   clock,
   renderRecipe,
   speedLabel,
+  voiceLabel,
   type RenderRecord,
 } from './render-details';
 
-const record: RenderRecord = {
-  job_id: 'j1',
-  output: 'story_j1.mp3',
-  type: 'story',
-  duration_s: 3460,
-  chapters: 9,
-  summary: {
-    engine: 'gpt-sovits',
-    voices: [{ id: '8651c9f5', name: 'Jake (fine-tune)' }],
-    language: 'English',
-    format: 'mp3',
-    lines: 18,
-    words: 9322,
-    speeds: [0.95],
-    options: { line_gap_ms: 250, seed: 7 },
-  },
-};
+const base: RenderRecord = { job_id: 'j', output: 'o.m4b', duration_s: 3725, chapters: 2 };
 
-it('formats durations and speed ranges', () => {
-  expect(clock(3460)).toBe('57:40');
+it('formats clocks and speed ranges', () => {
+  expect(clock(undefined)).toBe('0:00');
+  expect(clock(-4)).toBe('0:00');
+  expect(clock(59.6)).toBe('1:00');
   expect(clock(3725)).toBe('1:02:05');
-  expect(speedLabel([0.95])).toBe('0.95×');
-  expect(speedLabel([1, 0.8])).toBe('0.80–1.00×');
-  expect(speedLabel([])).toBe('');
+  expect(speedLabel(undefined)).toBe('');
+  expect(speedLabel([Number.NaN])).toBe('');
+  expect(speedLabel([1])).toBe('1.00×');
+  expect(speedLabel([1.25, 0.9, 1])).toBe('0.90–1.25×');
 });
 
-it('gives a render a one-line recipe that tells it apart in a list', () => {
-  expect(renderRecipe(record)).toBe('Jake (fine-tune) · 0.95× · gpt-sovits · 57:40');
-  expect(renderRecipe({ job_id: 'old', output: 'x.mp3' })).toBe('');
-  // A voice whose profile was deleted still identifies itself by id.
-  expect(
-    renderRecipe({ ...record, summary: { voices: [{ id: 'gone', name: '' }], speeds: [1] } }),
-  ).toBe('gone · 1.00× · 57:40');
+it('builds a one-line recipe and tolerates malformed summaries', () => {
+  const summary = {
+    engine: 'omnivoice',
+    voices: [
+      { id: 'a', name: 'Mara' },
+      { id: 'b', name: '' },
+    ],
+    speeds: [1],
+  };
+  expect(voiceLabel(summary)).toBe('Mara, b');
+  expect(renderRecipe({ ...base, summary })).toBe('Mara, b · 1.00× · omnivoice · 1:02:05');
+  expect(renderRecipe({ job_id: 'j', output: 'o' })).toBe('');
+  const broken = { voices: 'x', speeds: 'y', options: 5 } as never;
+  expect(renderRecipe({ ...base, summary: broken })).toBe('1:02:05');
+  expect(() => render(<RenderDetails render={{ ...base, summary: broken }} />)).not.toThrow();
 });
 
-it('shows how the render was made, and says so plainly when an old render has no record', () => {
-  const view = render(<RenderDetails render={record} />);
-  expect(screen.getByText('Jake (fine-tune)')).toBeVisible();
-  expect(screen.getByText('9 chapters · 18 lines · 9322 words')).toBeVisible();
-  expect(screen.getByText('Gap between lines 250 · Seed 7')).toBeVisible();
-  expect(screen.getByText('MP3')).toBeVisible();
-  view.unmount();
-  render(<RenderDetails render={{ job_id: 'old', output: 'x.mp3' }} />);
-  expect(screen.getByText(/before details were recorded/i)).toBeVisible();
+it('says so for renders made before details were recorded', () => {
+  render(<RenderDetails render={base} />);
+  expect(screen.getByText(i18n.t('projects.render_no_details'))).toBeInTheDocument();
 });
 
-it('never throws on a malformed record from an older or hand-edited store', () => {
-  const broken = {
-    job_id: 'b',
-    output: 'b.mp3',
-    summary: { voices: 'v1', speeds: 'fast', options: 'x' },
-  } as unknown as RenderRecord;
-  expect(renderRecipe(broken)).toBe('');
-  expect(() => render(<RenderDetails render={broken} />)).not.toThrow();
-});
-
-it('ignores inherited object names in persisted settings', () => {
+it('lists known settings only, with translated booleans', () => {
   render(
     <RenderDetails
       render={{
-        ...record,
-        summary: { options: { toString: 'unsafe', constructor: 'unsafe', seed: 7 } },
+        ...base,
+        summary: {
+          engine: 'eng',
+          language: 'en',
+          format: 'm4b',
+          lines: 4,
+          words: 20,
+          options: { seed: 0, trim_edges: true, toString: 'x', unknown: 1 },
+        },
       }}
     />,
   );
-  expect(screen.getByText('Seed 7')).toBeVisible();
-  expect(screen.queryByText(/unsafe/)).not.toBeInTheDocument();
+  const enabled = i18n.t('pronunciation.enabled');
+  expect(
+    screen.getByText(
+      `${i18n.t('audiobook.seed')} 0 · ${i18n.t('audiobook.trim_edges')} ${enabled}`,
+    ),
+  ).toBeInTheDocument();
+  expect(screen.getByText('M4B')).toBeInTheDocument();
+  expect(screen.queryByText(/unknown/)).toBeNull();
 });

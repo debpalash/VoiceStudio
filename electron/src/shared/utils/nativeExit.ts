@@ -1,33 +1,18 @@
-/**
- * nativeExit — naming the way a backend process died, from either shell.
- *
- * When the backend dies natively there is no Python traceback, only an exit
- * code. On Windows that code is an NTSTATUS, and the two desktop shells report
- * the same status differently:
- *
- *   Tauri    Rust `ExitStatus::code()` returns i32  ->  -1073741819
- *   Electron Node reports the raw DWORD             ->   3221225477
- *
- * Both are 0xC0000005, STATUS_ACCESS_VIOLATION. A table written against one
- * representation silently matches nothing from the other, which is how
- * https://github.com/debpalash/VoiceStudio/issues/2250 arrived titled
- * "exit code 3221225477" with no indication that the backend had segfaulted.
- *
- * Signals diverge the same way: POSIX Tauri reports the number (11), Node
- * reports the name ('SIGSEGV').
- *
- * So nothing here picks a side. Every entry point normalises first, then
- * classifies — which is also what keeps a third producer (the backend's own
- * run-sentinel) from needing a fourth table.
- */
+// Classifies how the backend process died. Rust reports a signed i32 exit
+// status while Node reports the raw unsigned DWORD, so every comparison goes
+// through the unsigned form.
 
-/**
- * Windows statuses that mean "the process was killed by a hardware or runtime
- * fault", keyed by the unsigned DWORD. Not an exhaustive NTSTATUS list — only
- * the faults that reach a user as an ordinary non-zero exit and would
- * otherwise be indistinguishable from a clean failure.
- */
-const NT_FAULT_STATUS: ReadonlyMap<number, string> = new Map([
+const UINT32_RANGE = 0x1_0000_0000;
+
+const POSIX_SIGNALS = new Map<string, number>([
+  ['SIGILL', 4],
+  ['SIGABRT', 6],
+  ['SIGKILL', 9],
+  ['SIGSEGV', 11],
+]);
+
+// NTSTATUS values that mean the process itself misbehaved natively.
+const NT_FAULTS = new Map<number, string>([
   [0xc0000005, 'STATUS_ACCESS_VIOLATION'],
   [0xc000001d, 'STATUS_ILLEGAL_INSTRUCTION'],
   [0xc0000096, 'STATUS_PRIVILEGED_INSTRUCTION'],
@@ -35,82 +20,78 @@ const NT_FAULT_STATUS: ReadonlyMap<number, string> = new Map([
   [0xc00000fd, 'STATUS_STACK_OVERFLOW'],
 ]);
 
-/**
- * Signal numbers that mean a native fault. Deliberately only SIGILL (4) and
- * SIGSEGV (11) — the two whose numbers are identical on every POSIX platform.
- *
- * SIGABRT (6) is excluded on purpose: abort() is how a fatal CUDA error exits,
- * including an asynchronous "CUDA error: out of memory", so it keeps the VRAM
- * guidance. SIGBUS is excluded because its number is platform-dependent (7 on
- * Linux, 10 on macOS, where 10 is SIGUSR1 on Linux) and guessing wrong would
- * misfile an ordinary signal as a hardware fault. SIGKILL (9) is the OS memory
- * killer, not a fault, and is classified separately by callers.
- */
-const NATIVE_FAULT_SIGNALS: ReadonlySet<number> = new Set([4, 11]);
+// Only signals that point at bad code or CPU features count; SIGABRT and
+// SIGKILL have their own handling elsewhere.
+const FAULT_SIGNALS: ReadonlySet<number> = new Set([4, 11]);
 
-/** The signal names a caller may see instead of a number, and their numbers. */
-const SIGNAL_NUMBERS: ReadonlyMap<string, number> = new Map([
-  ['SIGILL', 4],
-  ['SIGABRT', 6],
-  ['SIGKILL', 9],
-  ['SIGSEGV', 11],
-]);
+// Exit status 0xFFFFFFFF (unsigned) / -1 (signed): the process never reached a
+// real exit code. The shell records this when the backend was ended from
+// outside — security software, an OS policy, or another program — rather than
+// the backend choosing to exit (or faulting).
+const EXTERNAL_TERMINATION = 0xffff_ffff;
+const EXTERNAL_TERMINATION_LABEL = 'EXTERNAL_TERMINATION';
 
-const U32 = 0x1_0000_0000;
+/** The value itself when it is a finite number, otherwise null. */
+function finiteOrNull(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
 
-/**
- * The exit code as an unsigned DWORD, so both shells agree.
- *
- * A Windows NTSTATUS read as i32 is negative; the same status read as a DWORD
- * is that value plus 2^32. POSIX exit codes (0-255) and ordinary positive
- * codes are returned untouched.
- */
 export function normalizeExitCode(code: number | null | undefined): number | null {
-  if (typeof code !== 'number' || !Number.isFinite(code)) return null;
-  return code < 0 ? code + U32 : code;
+  const n = finiteOrNull(code);
+  if (n === null) return null;
+  return Number.isInteger(n) && n < 0 ? n + UINT32_RANGE : n;
 }
 
-/** The signal as a number, accepting either `11` or `'SIGSEGV'`. */
 export function normalizeSignal(signal: number | string | null | undefined): number | null {
-  if (typeof signal === 'number' && Number.isFinite(signal)) return signal;
-  if (typeof signal !== 'string') return null;
-  const named = SIGNAL_NUMBERS.get(signal.trim().toUpperCase());
-  return named ?? null;
+  if (typeof signal === 'string') return POSIX_SIGNALS.get(signal.trim().toUpperCase()) ?? null;
+  return finiteOrNull(signal);
 }
 
-/** `'STATUS_ACCESS_VIOLATION'` for a known Windows fault, else `null`. */
 export function ntStatusName(code: number | null | undefined): string | null {
-  const normalized = normalizeExitCode(code);
-  return normalized == null ? null : (NT_FAULT_STATUS.get(normalized) ?? null);
+  const unsigned = normalizeExitCode(code);
+  return unsigned === null ? null : (NT_FAULTS.get(unsigned) ?? null);
 }
 
-/**
- * The exit code as a person should read it:
- * `3221225477 (0xC0000005 STATUS_ACCESS_VIOLATION)`, or just the number when
- * it names nothing. The raw value is kept first so it still matches what the
- * shell logged and what a user searched for.
- */
+/** True when the exit status is 0xFFFFFFFF / -1 — the process was ended from
+ * outside (security software, an OS policy, another program) and never
+ * reached a real exit code. */
+export function isExternalKillExit(code: number | null | undefined): boolean {
+  return normalizeExitCode(code) === EXTERNAL_TERMINATION;
+}
+
+/** True when captured output already carries a fault dump or a Python
+ * traceback: evidence that explains the death better than "ended from outside". */
+export function hasFaultEvidence(output: string | readonly string[] | null | undefined): boolean {
+  // Array.isArray does not narrow a readonly array, so branch on the string case.
+  const text = typeof output === 'string' ? output : (output ?? []).join('\n');
+  return (
+    /(?:Fatal Python error:|Windows fatal exception:)/.test(text) ||
+    /Traceback \(most recent call last\)/.test(text)
+  );
+}
+
+/** `output` is the captured stderr/log tail; with fault evidence in it a -1
+ * exit is not labelled an external termination. */
 export function describeExitCode(
   code: number | null | undefined,
   unknownLabel = 'unknown',
+  output?: string | readonly string[] | null,
 ): string {
-  if (typeof code !== 'number' || !Number.isFinite(code)) return unknownLabel;
-  const name = ntStatusName(code);
-  if (!name) return String(code);
-  const normalized = normalizeExitCode(code) as number;
-  return `${code} (0x${normalized.toString(16).toUpperCase().padStart(8, '0')} ${name})`;
+  const raw = finiteOrNull(code);
+  if (raw === null) return unknownLabel;
+  const name = ntStatusName(raw);
+  const unsigned = normalizeExitCode(raw);
+  const external = unsigned === EXTERNAL_TERMINATION && !hasFaultEvidence(output);
+  if (name === null && !external) return String(raw);
+  const hex = (unsigned ?? 0).toString(16).toUpperCase().padStart(8, '0');
+  const label = name ?? EXTERNAL_TERMINATION_LABEL;
+  return `${raw} (0x${hex} ${label})`;
 }
 
-/**
- * True when the process died of a native fault — a segfault, an illegal
- * instruction, a stack overflow — rather than memory pressure or an orderly
- * non-zero exit.
- */
 export function isNativeFaultExit(death: {
   exitCode?: number | null;
   signal?: number | string | null;
 }): boolean {
-  const signal = normalizeSignal(death.signal);
-  if (signal != null && NATIVE_FAULT_SIGNALS.has(signal)) return true;
-  return ntStatusName(death.exitCode) != null;
+  const sig = normalizeSignal(death?.signal);
+  return (sig !== null && FAULT_SIGNALS.has(sig)) || ntStatusName(death?.exitCode) !== null;
 }

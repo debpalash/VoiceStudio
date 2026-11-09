@@ -120,6 +120,542 @@ def test_design_save_drops_object_object_instruct(app_client, fake_render):
     assert profile["instruct"] == "female, young adult, high pitch"
 
 
+def test_native_voice_design_profile_keeps_full_description(app_client):
+    """Saving a VoxCPM2 voice cannot silently collapse its prose to tags."""
+    from api.routers.generation import _resolve_profile_conditioning
+    from core.db import db_conn
+    from services.voice_design_profiles import profile_instruct
+
+    client, _ = app_client
+    raw = {
+        "description": "A soft-spoken Japanese narrator, a little breathy and introspective.",
+        "picks": {"Pitch": "low pitch"},
+    }
+    r = client.post("/profiles", data={
+        "name": "Native Designer", "kind": "design", "engine": "voxcpm2",
+        "vd_states": json.dumps(_VD), "design_recipe": json.dumps(raw),
+    })
+    assert r.status_code == 200, r.text
+    profile = r.json()
+    assert profile["ref_audio_path"] is None  # no accidental OmniVoice rendering
+    assert profile["instruct"] == "female, young adult, high pitch"
+    stored = json.loads(profile["design_recipe"])
+    assert stored["description"] == raw["description"]
+    assert stored["engine"] == "voxcpm2"
+    assert stored["picks"] == raw["picks"]
+
+    with db_conn() as conn:
+        row = conn.execute("SELECT * FROM voice_profiles WHERE id=?", (profile["id"],)).fetchone()
+    assert profile_instruct(row, "omnivoice") == "female, young adult, high pitch"
+    assert profile_instruct(row, "voxcpm2") == raw["description"] + ", low pitch"
+    cond = _resolve_profile_conditioning(row, engine_id="voxcpm2")
+    assert cond["instruct"] == raw["description"] + ", low pitch"
+    assert cond["ref_audio_path"] is None
+    # The Design workspace sends this same instruction; it must not be
+    # mistaken for a different identity and clear the saved profile link.
+    assert not _resolve_profile_conditioning(
+        row, engine_id="voxcpm2", instruct=cond["instruct"], seed=profile["seed"]
+    )["diverged"]
+
+
+def test_native_profile_preview_renders_with_its_authoring_engine(app_client, monkeypatch):
+    """A pending VoxCPM2 profile sample is rendered by VoxCPM2, once."""
+    import wave
+    from pathlib import Path
+
+    from api.routers import profiles as profiles_router
+    from core.db import db_conn
+
+    client, _ = app_client
+    recipe = {"description": "A gravelly lighthouse keeper with a slow drawl.", "picks": {}}
+    created = client.post("/profiles", data={
+        "name": "Lighthouse keeper", "kind": "design", "engine": "voxcpm2",
+        "vd_states": json.dumps(_VD), "design_recipe": json.dumps(recipe),
+    })
+    assert created.status_code == 200, created.text
+    pid = created.json()["id"]
+
+    renders = []
+
+    async def _fake_native(row, path, engine_id):
+        renders.append({"recipe": json.loads(row["design_recipe"]), "engine": engine_id})
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with wave.open(str(target), "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(24000)
+            wav.writeframes(b"\x00\x01" * 24000)
+
+    monkeypatch.setattr(profiles_router, "_render_native_design_sample", _fake_native)
+
+    first = client.get(f"/profiles/{pid}/audio")
+    assert first.status_code == 200, first.text
+    assert first.headers["content-type"].startswith("audio/")
+    assert len(renders) == 1
+    assert renders[0]["engine"] == "voxcpm2"
+    assert renders[0]["recipe"]["description"] == recipe["description"]
+
+    with db_conn() as conn:
+        stored = conn.execute(
+            "SELECT ref_audio_path FROM voice_profiles WHERE id=?", (pid,)
+        ).fetchone()
+    assert stored["ref_audio_path"] == f"{pid}.wav"
+
+    again = client.get(f"/profiles/{pid}/audio")
+    assert again.status_code == 200
+    assert len(renders) == 1
+
+
+def _write_identity_wave(path, amplitude: int) -> None:
+    """Write a valid preview with an identifiable sample value, without TTS."""
+    import wave
+    from pathlib import Path
+
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with wave.open(str(target), "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(24000)
+        wav.writeframes(amplitude.to_bytes(2, "little", signed=True) * 4800)
+
+
+@pytest.mark.asyncio
+async def test_edited_voice_preview_cannot_overwrite_newer_sample(app_client, monkeypatch):
+    """A slow old native preview must not replace a newer edited voice's WAV."""
+    import asyncio
+    from pathlib import Path
+
+    from api.routers import archetypes as archetypes_router
+    from api.routers import profiles as profiles_router
+    from core.db import db_conn
+    from fastapi import HTTPException
+
+    client, cfg = app_client
+    raw = {
+        "description": "A soft, breathy narrator from a future city.",
+        "picks": {"Gender": "female"},
+    }
+    created = client.post("/profiles", data={
+        "name": "Race test native", "kind": "design", "engine": "voxcpm2",
+        "vd_states": json.dumps(_VD), "design_recipe": json.dumps(raw),
+        "instruct": "female, high pitch", "ref_text": "Old scene line",
+    })
+    assert created.status_code == 200, created.text
+    pid = created.json()["id"]
+    sample = Path(cfg.VOICES_DIR) / f"{pid}.wav"
+    # A previous voice's WAV can still exist on disk after its DB link was
+    # cleared; the stale preview must not overwrite the refreshed version.
+    _write_identity_wave(sample, 300)
+    with db_conn() as conn:
+        original = conn.execute(
+            "SELECT * FROM voice_profiles WHERE id=?", (pid,),
+        ).fetchone()
+
+    started = asyncio.Event()
+    release = asyncio.Event()
+    old_calls = []
+    new_calls = []
+
+    async def old_native_render(row, path, engine_id):
+        """Pause the original render while the user changes the profile."""
+        old_calls.append((row["instruct"], engine_id))
+        started.set()
+        await release.wait()
+        _write_identity_wave(path, 600)
+
+    async def new_omnivoice_render(recipe, path, *, prefix):
+        """Finish a replacement preview before the old render is released."""
+        new_calls.append(recipe["instruct"])
+        _write_identity_wave(path, 900)
+        return path
+
+    monkeypatch.setattr(profiles_router, "_render_native_design_sample", old_native_render)
+    monkeypatch.setattr(archetypes_router, "_render_wav_atomic", new_omnivoice_render)
+
+    older = asyncio.create_task(profiles_router._materialize_design_sample(pid, original))
+    try:
+        await asyncio.wait_for(started.wait(), 4)
+        edited = client.put(f"/profiles/{pid}", json={"instruct": "male, low pitch"})
+        assert edited.status_code == 200, edited.text
+        assert edited.json()["design_recipe"] is None
+        assert edited.json()["ref_audio_path"] is None
+        with db_conn() as conn:
+            current = conn.execute(
+                "SELECT * FROM voice_profiles WHERE id=?", (pid,),
+            ).fetchone()
+
+        # Versioned render keys let the current voice render immediately;
+        # it must not join the blocked old preview for this same profile.
+        refreshed = await asyncio.wait_for(
+            profiles_router._materialize_design_sample(pid, current), 4,
+        )
+        assert refreshed == f"{pid}.wav"
+        updated_audio = sample.read_bytes()
+        import wave
+        with wave.open(str(sample), "rb") as wav:
+            assert wav.readframes(1) == (900).to_bytes(2, "little", signed=True)
+        assert old_calls == [("female, high pitch", "voxcpm2")]
+        assert new_calls == ["male, low pitch"]
+
+        release.set()
+        with pytest.raises(HTTPException) as stale:
+            await asyncio.wait_for(older, 4)
+        assert stale.value.status_code == 409
+        assert "changed" in str(stale.value.detail)
+        assert sample.read_bytes() == updated_audio
+
+        with db_conn() as conn:
+            stored = conn.execute(
+                "SELECT * FROM voice_profiles WHERE id=?", (pid,),
+            ).fetchone()
+        assert stored["ref_audio_path"] == f"{pid}.wav"
+        assert stored["instruct"] == "male, low pitch"
+        assert not list(Path(cfg.VOICES_DIR).glob(f".{pid}-preview-*.wav"))
+        assert not sample.with_suffix(".wav.bak").exists()
+    finally:
+        release.set()
+        if not older.done():
+            await older
+
+
+@pytest.mark.parametrize(
+    ("patch", "expect_stale"),
+    [
+        ({"name": "Renamed while previewing"}, False),
+        ({"ref_text": "New scene line"}, True),
+        ({"language": "Japanese"}, True),
+    ],
+)
+@pytest.mark.asyncio
+async def test_preview_tracks_all_voice_inputs_but_not_metadata(
+    app_client, monkeypatch, patch, expect_stale,
+):
+    """Only changes affecting generated speech invalidate an in-flight WAV."""
+    import asyncio
+    from pathlib import Path
+
+    from api.routers import profiles as profiles_router
+    from core.db import db_conn
+    from fastapi import HTTPException
+
+    client, cfg = app_client
+    created = client.post("/profiles", data={
+        "name": "Profile preview input test", "kind": "design", "engine": "voxcpm2",
+        "vd_states": json.dumps(_VD),
+        "design_recipe": json.dumps({"description": "Bright and clear", "picks": {}}),
+        "ref_text": "Original greeting", "language": "English",
+    })
+    assert created.status_code == 200
+    pid = created.json()["id"]
+    with db_conn() as conn:
+        original = conn.execute(
+            "SELECT * FROM voice_profiles WHERE id=?", (pid,),
+        ).fetchone()
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def render(row, path, engine_id):
+        """Wait until the profile edit is committed before finishing."""
+        started.set()
+        await release.wait()
+        _write_identity_wave(path, 800)
+
+    monkeypatch.setattr(profiles_router, "_render_native_design_sample", render)
+    task = asyncio.create_task(profiles_router._materialize_design_sample(pid, original))
+    try:
+        await asyncio.wait_for(started.wait(), 4)
+        edited = client.put(f"/profiles/{pid}", json=patch)
+        assert edited.status_code == 200, edited.text
+        assert edited.json()["ref_audio_path"] is None
+        release.set()
+        if expect_stale:
+            with pytest.raises(HTTPException) as stale:
+                await asyncio.wait_for(task, 4)
+            assert stale.value.status_code == 409
+            assert not (Path(cfg.VOICES_DIR) / f"{pid}.wav").exists()
+        else:
+            assert await asyncio.wait_for(task, 4) == f"{pid}.wav"
+            assert (Path(cfg.VOICES_DIR) / f"{pid}.wav").exists()
+        with db_conn() as conn:
+            record = conn.execute(
+                "SELECT ref_audio_path FROM voice_profiles WHERE id=?", (pid,),
+            ).fetchone()
+        assert record["ref_audio_path"] == (None if expect_stale else f"{pid}.wav")
+    finally:
+        release.set()
+        if not task.done():
+            await task
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [{"ref_text": "Corrected transcript"}, {"language": "Japanese"}],
+)
+def test_saved_voice_survives_transcript_or_language_correction(app_client, patch):
+    """Correcting metadata must never discard a rendered reference voice."""
+    from pathlib import Path
+
+    client, cfg = app_client
+    created = client.post("/profiles", data={
+        "name": "Saved voice", "kind": "design", "engine": "voxcpm2",
+        "vd_states": json.dumps(_VD),
+        "design_recipe": json.dumps({"description": "Gentle and warm", "picks": {}}),
+        "ref_text": "Original reference transcript", "language": "English",
+    })
+    assert created.status_code == 200, created.text
+    pid = created.json()["id"]
+    filename = f"{pid}.wav"
+    audio = Path(cfg.VOICES_DIR) / filename
+    _write_identity_wave(audio, 670)
+    from core.db import db_conn
+    with db_conn() as conn:
+        conn.execute(
+            "UPDATE voice_profiles SET ref_audio_path=? WHERE id=?", (filename, pid),
+        )
+
+    updated = client.put(f"/profiles/{pid}", json=patch)
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["ref_audio_path"] == filename
+    assert updated.json()["design_recipe"] is not None
+    assert audio.is_file()
+    assert client.get(f"/profiles/{pid}/audio").status_code == 200
+    with db_conn() as conn:
+        record = conn.execute(
+            "SELECT ref_audio_path FROM voice_profiles WHERE id=?", (pid,),
+        ).fetchone()
+    assert record["ref_audio_path"] == filename
+
+
+@pytest.mark.asyncio
+async def test_duplicate_pending_preview_requests_share_one_render(app_client, monkeypatch):
+    """Parallel requests for an unchanged design must render the WAV only once."""
+    import asyncio
+    from pathlib import Path
+
+    from api.routers import profiles as profiles_router
+    from core.db import db_conn
+
+    client, cfg = app_client
+    created = client.post("/profiles", data={
+        "name": "Repeated preview", "kind": "design", "engine": "voxcpm2",
+        "vd_states": json.dumps(_VD),
+        "design_recipe": json.dumps({"description": "Gentle", "picks": {}}),
+    })
+    assert created.status_code == 200
+    pid = created.json()["id"]
+    with db_conn() as conn:
+        row = conn.execute("SELECT * FROM voice_profiles WHERE id=?", (pid,)).fetchone()
+
+    started, release = asyncio.Event(), asyncio.Event()
+    calls = []
+
+    async def render(row, path, engine_id):
+        """Hold the first expensive synthesis until the second joins it."""
+        calls.append(path)
+        started.set()
+        await release.wait()
+        _write_identity_wave(path, 1100)
+
+    monkeypatch.setattr(profiles_router, "_render_native_design_sample", render)
+    first = asyncio.create_task(profiles_router._materialize_design_sample(pid, row))
+    second = None
+    try:
+        await asyncio.wait_for(started.wait(), 4)
+        second = asyncio.create_task(profiles_router._materialize_design_sample(pid, row))
+        await asyncio.sleep(0)
+        release.set()
+        result = await asyncio.wait_for(asyncio.gather(first, second), 4)
+        assert result == [f"{pid}.wav", f"{pid}.wav"]
+        assert len(calls) == 1
+        assert (Path(cfg.VOICES_DIR) / f"{pid}.wav").exists()
+    finally:
+        release.set()
+        pending = [t for t in (first, second) if t is not None and not t.done()]
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+
+
+@pytest.mark.asyncio
+async def test_deleted_profile_during_http_preview_never_reappears(app_client, monkeypatch):
+    """An HTTP preview underway when a voice is deleted must return 409, not resurrect it."""
+    import asyncio
+    from pathlib import Path
+
+    from api.routers import profiles as profiles_router
+    from httpx import ASGITransport, AsyncClient
+    from main import app
+
+    client, cfg = app_client
+    created = client.post("/profiles", data={
+        "name": "Deleted while previewing", "kind": "design", "engine": "voxcpm2",
+        "vd_states": json.dumps(_VD),
+        "design_recipe": json.dumps({"description": "soft narration", "picks": {}}),
+    })
+    assert created.status_code == 200, created.text
+    pid = created.json()["id"]
+    started, release = asyncio.Event(), asyncio.Event()
+
+    async def render(row, path, engine_id):
+        """Emulate a slow native engine that finishes after profile deletion."""
+        started.set()
+        await release.wait()
+        _write_identity_wave(path, 1000)
+
+    monkeypatch.setattr(profiles_router, "_render_native_design_sample", render)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as http:
+        first = asyncio.create_task(http.get(f"/profiles/{pid}/audio"))
+        try:
+            await asyncio.wait_for(started.wait(), 4)
+            deleted = await http.delete(f"/profiles/{pid}")
+            assert deleted.status_code == 200, deleted.text
+            release.set()
+            stale_response = await asyncio.wait_for(first, 4)
+            assert stale_response.status_code == 409, stale_response.text
+            assert "changed" in stale_response.json()["detail"]
+            assert (await http.get(f"/profiles/{pid}")).status_code == 404
+            assert not (Path(cfg.VOICES_DIR) / f"{pid}.wav").exists()
+            assert not list(Path(cfg.VOICES_DIR).glob(f".{pid}-preview-*.wav"))
+        finally:
+            release.set()
+            if not first.done():
+                await first
+
+
+@pytest.mark.asyncio
+async def test_native_preview_reuses_engine_cache_and_sends_seed(tmp_path, monkeypatch):
+    """Pending samples use the shared engine and forward seeds to sidecars."""
+    import torch
+    from api.routers import engines as engines_router
+    from api.routers import generation as generation_router
+    from api.routers import profiles as profiles_router
+    from services import engine_memory, gpu_gateway, tts_backend, watermark
+
+    class StubBackend:
+        """An in-memory engine with a real WAV tensor and seed-aware protocol."""
+        id = "voxcpm2"
+        supports_generation_seed = True
+        instruct_vocabulary = "freeform"
+        sample_rate = 24000
+
+        @classmethod
+        def is_available(cls):
+            """Pretend a previously installed sidecar is healthy."""
+            return True, "ready"
+
+        def generate(self, text, **kw):
+            """Record the actual kwargs a sidecar would receive."""
+            calls.append(kw)
+            return torch.ones(1, 24000) * 0.1
+
+    calls = []
+    engine = StubBackend()
+    cached = []
+    prewarmed = []
+    evicted = []
+
+    def get_cached(cls):
+        """Return the same adapter instance across independent previews."""
+        cached.append(cls)
+        return engine
+
+    async def prewarm(*, backend, engine, **kw):
+        """Record model readiness without starting GPU workers."""
+        prewarmed.append((backend, engine))
+
+    async def evict(engine_id):
+        """Track the single-active-engine eviction request."""
+        evicted.append(engine_id)
+
+    async def run_guarded(fn, **kw):
+        """Execute stub synthesis instead of dispatching to the real GPU."""
+        return fn()
+
+    async def passthrough(wav, sample_rate, **kw):
+        """Skip provenance cost while preserving the generated tensor."""
+        return wav
+
+    monkeypatch.setattr(tts_backend, "get_backend_class", lambda name: StubBackend)
+    monkeypatch.setattr(engines_router, "_get_engine_instance", get_cached)
+    monkeypatch.setattr(gpu_gateway, "prewarm", prewarm)
+    monkeypatch.setattr(engine_memory, "evict_other_tts_engines", evict)
+    monkeypatch.setattr(generation_router, "run_on_gpu_pool_guarded", run_guarded)
+    monkeypatch.setattr(watermark, "mark_synthetic_async", passthrough)
+
+    row = {
+        "kind": "design", "ref_text": "Speak softly.", "language": "Auto",
+        "instruct": "female", "vd_states": None, "seed": 123,
+        "design_recipe": json.dumps({
+            "description": "Warm and gentle narration.", "picks": {},
+            "engine": "voxcpm2",
+        }),
+    }
+    for i in range(2):
+        await profiles_router._render_native_design_sample(
+            row, str(tmp_path / f"sample-{i}.wav"), "voxcpm2",
+        )
+        assert (tmp_path / f"sample-{i}.wav").is_file()
+    assert cached == [StubBackend, StubBackend]
+    assert prewarmed == [(engine, "voxcpm2")] * 2
+    assert evicted == ["voxcpm2", "voxcpm2"]
+    assert len(calls) == 2
+    assert all(call["seed"] == 123 for call in calls)
+    assert all(call["instruct"] == "Warm and gentle narration." for call in calls)
+
+
+def test_editing_native_design_invalidates_stale_recipe_and_reference(app_client):
+    """Legacy tag edits intentionally replace stale prose and sample identity."""
+    from core.db import db_conn
+
+    client, _ = app_client
+    recipe = {
+        "description": "A warm Japanese narrator, slightly breathy and restrained.",
+        "picks": {"Age": "young adult"},
+    }
+    response = client.post("/profiles", data={
+        "name": "Edited native design", "kind": "design", "engine": "voxcpm2",
+        "vd_states": json.dumps(_VD), "design_recipe": json.dumps(recipe),
+    })
+    assert response.status_code == 200, response.text
+    pid = response.json()["id"]
+    assert response.json()["design_recipe"]
+
+    # Changing only the profile name or saving the same tags preserves recipe.
+    unchanged = client.put(f"/profiles/{pid}", json={"name": "New name"})
+    assert unchanged.status_code == 200
+    assert json.loads(unchanged.json()["design_recipe"])["description"] == recipe["description"]
+    tags = unchanged.json()["instruct"]
+    unchanged_tags = client.put(f"/profiles/{pid}", json={"instruct": tags})
+    assert unchanged_tags.status_code == 200
+    assert unchanged_tags.json()["design_recipe"]
+
+    # An actual tag change must not secretly reapply the old free-form prose.
+    with db_conn() as conn:
+        conn.execute("UPDATE voice_profiles SET ref_audio_path=? WHERE id=?", (
+            f"{pid}.wav", pid,
+        ))
+    changed = client.put(f"/profiles/{pid}", json={"instruct": "female, low pitch"})
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["instruct"] == "female, low pitch"
+    assert changed.json()["design_recipe"] is None
+    assert changed.json()["ref_audio_path"] is None
+    assert json.loads(changed.json()["vd_states"])["Pitch"] == "low pitch"
+
+
+def test_native_profile_rejects_invalid_recipe_and_reference_only_engine(app_client):
+    """Disallow malformed freeform inputs and reference-only design engines."""
+    client, _ = app_client
+    data = {
+        "name": "Invalid", "kind": "design", "engine": "voxcpm2",
+        "vd_states": json.dumps(_VD),
+    }
+    assert client.post("/profiles", data={**data, "design_recipe": "{broken"}).status_code == 422
+    assert client.post("/profiles", data={
+        **data, "engine": "indextts2",
+        "design_recipe": json.dumps({"description": "low smoky voice", "picks": {}}),
+    }).status_code == 422
+
+
 def test_design_rejects_malformed_vd_states(app_client):
     client, _ = app_client
     r = client.post(

@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 import zlib
 from dataclasses import dataclass, field
-from typing import Callable, Optional
+from typing import Callable, ClassVar, Optional
 
 
 #: Mix constant for the per-occurrence seed nonce (#1208) — a large odd
@@ -94,21 +94,19 @@ class ExpressiveOptions:
     emo_text: Optional[str] = None
     emo_alpha: Optional[float] = None
     vary_repeats: bool = False
-    #: Seamless joins (#2216): trim each render's own lead-in/tail, then add
-    #: deliberate silence — ``line_gap_ms`` between consecutive lines that carry
-    #: no explicit ``[pause]``, ``paragraph_gap_ms`` at a blank line inside one
-    #: line. Zero/False = today's bytes (hard joins with engine padding kept).
     line_gap_ms: int = 0
     paragraph_gap_ms: int = 0
     trim_edges: bool = False
 
-    #: Manifest keys that shape the join, not the engine call — never forward
-    #: these as synth kwargs.
-    JOIN_KEYS = ("line_gap_ms", "paragraph_gap_ms", "trim_edges")
+    JOIN_KEYS: ClassVar[tuple[str, str, str]] = (
+        "line_gap_ms",
+        "paragraph_gap_ms",
+        "trim_edges",
+    )
 
     def join_kwargs(self) -> dict:
-        """The subset of options :func:`synthesize_chapter` takes directly."""
-        return {k: getattr(self, k) for k in self.JOIN_KEYS}
+        """Return the chapter-stitching options as keyword arguments."""
+        return {name: getattr(self, name) for name in self.JOIN_KEYS}
 
     @property
     def is_default(self) -> bool:
@@ -134,10 +132,10 @@ class ExpressiveOptions:
             "emo_alpha": self.emo_alpha,
             "vary_repeats": self.vary_repeats,
         }
-        # Keep pre-join-control keys for every legacy render, including ones
-        # with a seed or emotion override (not only the all-default instance).
-        if self.line_gap_ms or self.paragraph_gap_ms or self.trim_edges:
-            payload.update(self.join_kwargs())
+        # Added only when active, so an all-zero instance keeps the old key.
+        joins = self.join_kwargs()
+        if any(joins.values()):
+            payload.update(joins)
         return json.dumps(payload, sort_keys=True, ensure_ascii=False)
 
     def to_manifest(self) -> dict:
@@ -153,17 +151,19 @@ class ExpressiveOptions:
             "emo_text": self.emo_text,
             "emo_alpha": self.emo_alpha,
             "vary_repeats": self.vary_repeats,
-            "line_gap_ms": self.line_gap_ms,
-            "paragraph_gap_ms": self.paragraph_gap_ms,
-            "trim_edges": self.trim_edges,
+            **self.join_kwargs(),
         }
 
     @classmethod
     def from_manifest(cls, data: Optional[dict]) -> "ExpressiveOptions":
-        """Rebuild from a resume manifest dict (unknown keys ignored)."""
+        """Rebuild options saved by :meth:`to_manifest`; empty input gives defaults.
+
+        Keys the manifest does not know about are ignored, so older and newer
+        manifests both load.
+        """
         if not data:
             return cls()
-        ev = data.get("emo_vector")
+        vector = data.get("emo_vector")
         return cls(
             num_step=data.get("num_step"),
             guidance_scale=data.get("guidance_scale"),
@@ -171,7 +171,7 @@ class ExpressiveOptions:
             class_temperature=data.get("class_temperature"),
             postprocess_output=data.get("postprocess_output"),
             seed=data.get("seed"),
-            emo_vector=tuple(ev) if ev else None,
+            emo_vector=tuple(vector) if vector else None,
             emo_text=data.get("emo_text"),
             emo_alpha=data.get("emo_alpha"),
             vary_repeats=bool(data.get("vary_repeats", False)),
@@ -207,20 +207,21 @@ class Span:
     text: str
     pause_ms_after: int = 0
     speed: Optional[float] = None
-    #: How this span joins the NEXT one when inline markup ([slow], [emphasis],
-    #: [spell]…) split one run of text into several spans. ``"continue"``: the
-    #: sentence runs straight on — no gap. ``"paragraph"``: a blank line sat on
-    #: the markup boundary — paragraph gap. ``None`` (every ordinary span): the
-    #: line ends here — line gap. Emitted only when set, so every existing plan,
-    #: manifest and cache key is byte-identical.
+    # How this span meets the next one when markup split a single line:
+    # "continue" (no gap) or "paragraph" (blank line on the boundary).
     join: Optional[str] = None
+    # Free-text delivery direction from ``[emotion:]`` (#3422); applied only by
+    # engines whose ``expression_caps`` take emotion, never spoken.
+    emotion: Optional[str] = None
 
     def to_dict(self) -> dict:
-        d = {"voice_id": self.voice_id, "text": self.text,
-             "pause_ms_after": self.pause_ms_after, "speed": self.speed}
+        out = {"voice_id": self.voice_id, "text": self.text,
+               "pause_ms_after": self.pause_ms_after, "speed": self.speed}
         if self.join:
-            d["join"] = self.join
-        return d
+            out["join"] = self.join
+        if self.emotion:
+            out["emotion"] = self.emotion
+        return out
 
 
 @dataclass
@@ -274,11 +275,8 @@ def parse_audiobook_script(text: str, *, default_voice: Optional[str] = None) ->
     return AudiobookPlan(chapters=chapters)
 
 
-#: Ceiling on the silence the join stage may ADD to one chapter. A real chapter
-#: needs a few minutes at most (hundreds of paragraphs x 0.6 s); without a
-#: ceiling a body of thousands of one-word paragraphs with a maxed-out gap
-#: allocates gigabytes of zeros. Explicit [pause] markers are the script's own
-#: and are not drawn from this budget.
+# Most silence the join stage may add to one chapter (15 minutes). Read at call
+# time; explicit [pause] silence is not counted against it.
 MAX_JOIN_SILENCE_MS = 15 * 60 * 1000
 
 
@@ -321,33 +319,71 @@ def _note_chunk_done() -> None:
         pass
 
 
-def _gap_after_span(span: Span, line_gap_ms: int, paragraph_gap_ms: int) -> int:
-    if span.pause_ms_after > 0 or span.join == "continue":
-        return 0
-    if span.join == "paragraph":
-        return paragraph_gap_ms or line_gap_ms
-    return line_gap_ms
+class _JoinPolicy:
+    """How a chapter's spoken spans are stitched: the two gap lengths (ms)."""
 
+    def __init__(self, line_ms: int, paragraph_ms: int, pause_fill: str = "silence") -> None:
+        self.line_ms = line_ms
+        self.paragraph_ms = paragraph_ms
+        self.pause_fill = pause_fill
 
-def _join_with_gap(parts: list, sample_rate: int, gap_ms: int):
-    """Hard-concat rendered paragraphs with ``gap_ms`` of silence between them."""
-    import torch
+    def silence_after(self, span: Span) -> int:
+        """Gap (ms) owed once *span* has been spoken and before any following audio."""
+        if span.pause_ms_after > 0:
+            return 0  # the explicit pause stands in for the gap
+        marker = span.join
+        if marker == "continue":
+            return 0
+        if marker == "paragraph":
+            return self.paragraph_ms or self.line_ms
+        return self.line_ms
 
-    parts = [p for p in parts if p is not None and p.shape[-1] > 0]
-    if not parts:
-        return None
-    if len(parts) == 1:
-        return parts[0]
-    from services.chunked_tts import concatenate_audio_chunks
+    def pieces(self, text: str) -> list[str]:
+        """Texts rendered separately for one span (paragraphs when a paragraph gap is set)."""
+        if self.paragraph_ms <= 0:
+            return [text]
+        from services.chunked_tts import split_paragraphs
 
-    n = int(sample_rate * gap_ms / 1000.0)
-    ref = parts[0]
-    out: list = []
-    for i, part in enumerate(parts):
-        if i and n > 0:
-            out.append(torch.zeros(*ref.shape[:-1], n, dtype=ref.dtype, device=ref.device))
-        out.append(part)
-    return concatenate_audio_chunks(out, sample_rate, crossfade_ms=0)
+        return split_paragraphs(text) or [text]
+
+    def enforce_budget(self, spans: list[Span], texts: list[str]) -> None:
+        """Raise ValueError when the silence this policy would add exceeds the limit."""
+        added = 0
+        carried = 0
+        for span, text in zip(spans, texts):
+            if span.text:
+                inner = (len(self.pieces(text)) - 1) * self.paragraph_ms
+                added += carried + inner
+                carried = self.silence_after(span)
+            if span.pause_ms_after > 0:
+                carried = 0
+        if added > MAX_JOIN_SILENCE_MS:
+            minutes = MAX_JOIN_SILENCE_MS // 60000
+            raise ValueError(
+                f"The join silence requested for this chapter is over the {minutes}-minute "
+                f"limit. Lower the line and paragraph gaps, or split the chapter."
+            )
+
+    def stitch(self, renders: list, sample_rate: int):
+        """Hard-join the paragraph renders of one span with the paragraph gap between them."""
+        import torch
+        from services.chunked_tts import concatenate_audio_chunks
+
+        present = [r for r in renders if r is not None]
+        if len(present) < 2:
+            return present[0] if present else None
+        from services.audio_dsp import fill_gaps
+
+        width = int(sample_rate * self.paragraph_ms / 1000.0)
+        items: list = []
+        for r in present[:-1]:
+            items.append(("a", r))
+            if width > 0:
+                items.append(("s", width))
+        items.append(("a", present[-1]))
+        # Digital silence or room tone, per Settings (#3611).
+        return concatenate_audio_chunks(
+            fill_gaps(items, sample_rate, self.pause_fill), sample_rate, crossfade_ms=0)
 
 
 def synthesize_chapter(
@@ -361,13 +397,16 @@ def synthesize_chapter(
     trim_edges: bool = False,
     lexicon: Optional[dict] = None,
     segment_cache: Optional["object"] = None,
+    on_progress: Optional[Callable[..., None]] = None,
+    pause_fill: Optional[str] = None,
 ):
     """Render a chapter's spans to one waveform via an injected ``synth``.
 
-    ``synth(text, voice_id, speed)`` returns a float32 audio tensor — 1-D
+    ``synth(text, voice_id, speed[, emotion=])`` returns a float32 audio tensor — 1-D
     ``(samples,)`` or ``(channels, samples)``; real engines emit ``(1, samples)``
     per the ``TTSBackend`` contract (#897) — for a span of text in the given
-    voice (``speed`` may be ``None`` for the engine default). Long spans are split with the ``chunked_tts`` splitter and
+    voice (``speed`` may be ``None`` for the engine default; ``emotion`` is
+    passed only for a span with an ``[emotion:]`` direction). Long spans are split with the ``chunked_tts`` splitter and
     crossfaded; inter-span ``pause_ms_after`` becomes silence. ``lexicon`` (when
     given) respells each span's text before chunking so the engine pronounces
     tricky words correctly; a ``None``/empty lexicon is a no-op pass-through.
@@ -378,6 +417,20 @@ def synthesize_chapter(
     interrupted chapter resumes from its finished segments. Pauses are
     synthesized silence and never touch the cache.
 
+    ``on_progress(done, total, audio_s=..., cached=...)`` (when given) is called
+    after every synthesized chunk and every span served from the segment cache,
+    with ``done``/``total`` in characters of this chapter's spoken text and
+    ``audio_s`` the seconds of audio that step produced (#3417). It runs on the
+    rendering thread; a failing callback never breaks the render.
+
+    Join settings (all default to the old hard-join behaviour): ``line_gap_ms``
+    / ``paragraph_gap_ms`` put silence between consecutive spoken spans (see
+    ``Span.join`` for markup splits), ``trim_edges`` strips each chunk's
+    engine-added lead-in/tail first, and a positive ``paragraph_gap_ms`` also
+    renders the paragraphs inside one span separately. An explicit
+    ``pause_ms_after`` replaces the gap after its span. The total added silence
+    is capped by ``MAX_JOIN_SILENCE_MS`` and checked before any work starts.
+
     Returns ``(audio_tensor, duration_seconds)``. torch + chunked_tts are
     imported lazily so this module stays import-light for the pure parser path.
     """
@@ -386,85 +439,94 @@ def synthesize_chapter(
     from services.chunked_tts import (concatenate_audio_chunks,
                                       join_rendered_chunks,
                                       split_text_into_chunks)
-    from services.pronunciation import apply_lexicon
-
-    from services.chunked_tts import split_paragraphs
+    from services.pronunciation import apply_lexicon_and_overrides
 
     items: list = []  # ("a", tensor) for audio, ("s", n_samples) for silence
-    pending_gap_ms = 0  # join silence owed before the next spoken span
-    # Validate the complete requested silence before touching synthesis/cache.
-    # Incremental shortening would bake context-dependent gaps into reusable
-    # segment audio, and cache hits could evade the chapter's silence budget.
-    paragraphs_by_span = []
-    planned_gap_ms = 0
-    total_join_ms = 0
-    for span in spans:
-        text = apply_lexicon(span.text, lexicon) if span.text else ""
-        paragraphs = (split_paragraphs(text) if paragraph_gap_ms > 0 else []) or [text]
-        if not span.text:
-            paragraphs = []
-        paragraphs_by_span.append(paragraphs)
-        if span.text:
-            total_join_ms += planned_gap_ms + max(0, len(paragraphs) - 1) * paragraph_gap_ms
-            if total_join_ms > MAX_JOIN_SILENCE_MS:
-                raise ValueError(
-                    "Requested join silence exceeds 15 minutes in one chapter; "
-                    "reduce the line/paragraph gaps or split the chapter."
-                )
-            planned_gap_ms = _gap_after_span(span, line_gap_ms, paragraph_gap_ms)
-        if span.pause_ms_after > 0:
-            planned_gap_ms = 0
+    # The same text /generate sends: dictionary around inline [[…]] overrides,
+    # which then resolve, so brackets never reach the engine (#3561).
+    texts_by_span = [apply_lexicon_and_overrides(span.text, lexicon) if span.text else ""
+                     for span in spans]
+    # Read the gap fill once (#3611): the caller keys its caches on the same
+    # value, so a switch flipped mid-render cannot mix fills under one key.
+    if pause_fill is None:
+        from services.audio_dsp import pause_fill_mode
+
+        pause_fill = pause_fill_mode()
+    policy = _JoinPolicy(line_gap_ms, paragraph_gap_ms, pause_fill)
+    paragraphs_by_span = [policy.pieces(t) if t else [] for t in texts_by_span]
+    policy.enforce_budget(spans, texts_by_span)
+    pending_gap_ms = 0  # silence owed before the next piece of audio
     # Per-occurrence index for identical spans (#1208 cache opt-out). The
     # segment cache folds it into its key ONLY when vary_repeats is on (else
     # the key is byte-identical to pre-#1208), so a repeated identical line
     # gets a distinct cache slot — and therefore a distinct take — instead of
     # replaying one WAV. Always computed (cheap); inert when the cache ignores it.
     occ_counts: dict = {}
+    progress_total = sum(len(p) for paras in paragraphs_by_span for p in paras)
+    progress_done = 0
+
+    def report(done: int, audio_s: float, cached: bool) -> None:
+        if on_progress is None:
+            return
+        try:
+            on_progress(min(done, progress_total), progress_total,
+                        audio_s=audio_s, cached=cached)
+        except Exception:  # noqa: BLE001 — progress is advisory
+            pass
+
     for span, paragraphs in zip(spans, paragraphs_by_span):
+        span_end = progress_done + sum(len(p) for p in paragraphs)
         if span.text:
-            occ_key = (span.voice_id, span.text, getattr(span, "speed", None))
+            occ_key = (span.voice_id, span.text, getattr(span, "speed", None),
+                       getattr(span, "emotion", None))
             occ = occ_counts.get(occ_key, 0)
             occ_counts[occ_key] = occ + 1
             audio = trace_call("cache", segment_cache.load, span, nonce=occ) if segment_cache is not None else None
             if audio is None:
-                # A blank line inside one span is a paragraph break: render
-                # each paragraph on its own so the join can put a deliberate
-                # gap there instead of running the paragraphs together.
-                # With no paragraph gap asked for, the span stays ONE engine
-                # call — the pre-existing bytes, seeds and prosody.
-                rendered_paragraphs = []
+                # Emotion is passed only when set, so a synth without emotion
+                # support (and every untagged book) is called exactly as before.
+                emotion = getattr(span, "emotion", None)
+                direction = {"emotion": emotion} if emotion else {}
+                paragraph_renders = []
                 for paragraph in paragraphs:
                     chunks = split_text_into_chunks(paragraph)
                     rendered = []
                     for c in chunks:
                         _stop_if_abandoned()
-                        rendered.append(trace_call("synthesis", synth, c, span.voice_id, span.speed))
+                        out = trace_call("synthesis", synth, c, span.voice_id, span.speed,
+                                         **direction)
+                        rendered.append(out)
                         _note_chunk_done()
+                        progress_done = min(span_end, progress_done + len(c))
+                        shape = getattr(out, "shape", None)
+                        report(progress_done,
+                               (shape[-1] / float(sample_rate)) if shape else 0.0, False)
                     # Deliberately NOT pre-filtered (#1330). Dropping the empties
                     # here both hid them — a chapter would come back short with
                     # nothing said about it — and misaligned `rendered` from
                     # `chunks`, so the concat could not name which text was lost.
-                    joined = join_rendered_chunks(rendered, sample_rate,
-                                                  crossfade_ms=crossfade_ms,
-                                                  texts=chunks, trim_edges=trim_edges)
-                    if joined is not None:
-                        rendered_paragraphs.append(joined)
-                audio = _join_with_gap(
-                    rendered_paragraphs, sample_rate,
-                    paragraph_gap_ms)
+                    paragraph_renders.append(
+                        join_rendered_chunks(rendered, sample_rate,
+                                             crossfade_ms=crossfade_ms,
+                                             texts=chunks, trim_edges=trim_edges))
+                audio = policy.stitch(paragraph_renders, sample_rate)
                 if audio is not None and segment_cache is not None:
                     trace_call("cache", segment_cache.store, span, audio, nonce=occ)
+                if span_end > progress_done:
+                    # Whitespace the splitter dropped: settle the span without
+                    # feeding a zero-length "chunk" into the rate.
+                    progress_done = span_end
+                    report(progress_done, 0.0, True)
+            elif span_end > progress_done:
+                progress_done = span_end
+                report(progress_done, 0.0, True)
             if audio is not None:
-                if pending_gap_ms > 0:
-                    n = int(sample_rate * pending_gap_ms / 1000.0)
-                    if n > 0:
-                        items.append(("s", n))
+                gap_samples = int(sample_rate * pending_gap_ms / 1000.0)
+                if gap_samples > 0:
+                    items.append(("s", gap_samples))
                 items.append(("a", audio))
-                # What follows this span: nothing in the middle of a line that
-                # inline markup split, the paragraph gap where a blank line sat
-                # on that split (line gap if no paragraph gap is set), else the
-                # line gap. An explicit [pause] below replaces any of them.
-                pending_gap_ms = _gap_after_span(span, line_gap_ms, paragraph_gap_ms)
+                pending_gap_ms = policy.silence_after(span)
+        progress_done = span_end
         if span.pause_ms_after > 0:
             pending_gap_ms = 0
             n = int(sample_rate * span.pause_ms_after / 1000.0)
@@ -478,13 +540,10 @@ def synthesize_chapter(
     # materialize inter-span silence AFTER the loop, matching the rendered
     # audio's channel dims / dtype / device (same pattern as generation.py's
     # _render_with_pauses). A silence-only chapter stays 1-D float32 as before.
-    ref = next((t for kind, t in items if kind == "a"), None)
-    parts: list = [
-        val if kind == "a"
-        else (torch.zeros(val, dtype=torch.float32) if ref is None
-              else torch.zeros(*ref.shape[:-1], val, dtype=ref.dtype, device=ref.device))
-        for kind, val in items
-    ]
+    # Gaps are digital silence or room tone, per Settings (#3611).
+    from services.audio_dsp import fill_gaps
+
+    parts: list = fill_gaps(items, sample_rate, pause_fill)
     # Hard-concat spans + silences (crossfading silence would bleed the gap).
     audio = parts[0] if len(parts) == 1 else concatenate_audio_chunks(parts, sample_rate, crossfade_ms=0)
     return audio, audio.shape[-1] / float(sample_rate)

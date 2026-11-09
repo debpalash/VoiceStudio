@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolvePerformanceModelPack } from './performance-model-packs';
+import { largestFittingTier, resolvePerformanceModelPack } from './performance-model-packs';
 import type { CatalogueModel } from './model-catalogue-query';
 
 const model = (
@@ -51,7 +51,7 @@ describe('performance model packs', () => {
     expect(pack.downloadGb).toBeCloseTo(6.074);
   });
 
-  it('omits models unsupported by the selected compute target', () => {
+  it('omits models unsupported by this device', () => {
     const pack = resolvePerformanceModelPack(
       [
         model('k2-fsa/OmniVoice', 2.4, true),
@@ -61,8 +61,40 @@ describe('performance model packs', () => {
       'fast',
     );
 
-    expect(pack.models.map((item) => item.repo_id)).not.toContain(
-      'Systran/faster-whisper-base',
+    expect(pack.models.map((item) => item.repo_id)).not.toContain('Systran/faster-whisper-base');
+  });
+
+  it('preselects the largest tier whose download fits the model disk', () => {
+    const catalogue = [
+      model('k2-fsa/OmniVoice', 2.4),
+      model('Systran/faster-whisper-base', 0.15),
+      model('csukuangfj/sherpa-onnx-whisper-tiny', 0.1),
+      model('deepdml/faster-whisper-large-v3-turbo-ct2', 1.6),
+      model('csukuangfj/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8', 0.7),
+      model('Systran/faster-whisper-large-v3', 3.1),
+      model('facebook/nllb-200-distilled-600M', 2.4),
+    ];
+    // Max needs 8.7 GB; Balanced 4.8 GB; Fast 2.65 GB (plus 1 GB headroom).
+    expect(largestFittingTier(catalogue, 'max', 5, 1)).toBe('fast');
+    expect(largestFittingTier(catalogue, 'max', 6, 1)).toBe('balanced');
+    expect(largestFittingTier(catalogue, 'max', 100, 10)).toBe('max');
+    expect(largestFittingTier(catalogue, 'balanced', 100, 10)).toBe('balanced');
+    expect(largestFittingTier(catalogue, 'max', 1, 10)).toBe('fast');
+    expect(largestFittingTier(catalogue, 'quality', undefined, 10)).toBe('quality');
+  });
+
+  it.each([
+    [true, 'mlx-community/whisper-large-v3-mlx'],
+    [false, 'Systran/faster-whisper-large-v3'],
+  ])('picks the Metal Whisper only where the device supports it (%s)', (mlxSupported, expected) => {
+    const pack = resolvePerformanceModelPack(
+      [
+        model('Systran/faster-whisper-large-v3', 2.9),
+        model('mlx-community/whisper-large-v3-mlx', 3.0, false, mlxSupported),
+      ],
+      'max',
     );
+
+    expect(pack.models.map((item) => item.repo_id)).toEqual([expected]);
   });
 });

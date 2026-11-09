@@ -6,20 +6,11 @@ unguarded it raises `AttributeError` inside the `ml_imports` startup phase, and
 a failure there takes the whole backend down: the desktop app sits on "starting
 backend" forever and `/health` stays 503.
 
-That is not hypothetical. #1931 came from an sm_120 (Blackwell) user whose
-torch import crashed on Windows and who fixed it by moving to torch 2.9.1,
-which brings torchaudio 2.9 with it. Someone already working around one
-problem then met a hard startup crash on a line that does nothing.
+The rule this file enforces: any torchaudio attribute that a newer release has
+deleted may only be touched inside an `if hasattr(torchaudio, "...")` block.
 
-The pin is not missing sm_120 kernels: torch 2.8.0 from the cu128 index lists
-sm_120 in get_arch_list(). CU128_ARCHS in tests/test_cuda_arch_compat.py
-records the same list, captured verbatim from a real cu128 build in #1285.
-
-The guard is one `hasattr`. This test is what keeps it: a cleanup pass that
-sees a no-op call and "simplifies" it by deleting the condition would restore
-the crash for every user on torchaudio 2.9, and no test in the suite would
-notice —
-CI runs the pinned torch, where the attribute still exists.
+A pinned test environment cannot reproduce the crash, so this scans every
+backend module for such calls and fails when one is not guarded.
 """
 
 import ast
@@ -87,10 +78,9 @@ def test_no_unguarded_removed_torchaudio_api():
         bad = _unguarded_calls(path)
         if bad:
             offenders[str(path.relative_to(BACKEND.parent))] = bad
+    assert not offenders
     assert not offenders, (
-        f"These reach a torchaudio API that torchaudio 2.9 removed, with "
-        f"nothing proving it exists: {offenders}. Wrap it in "
-        '`if hasattr(torchaudio, "..."):` — unguarded it is an AttributeError '
-        "inside ml_imports, which takes the backend down on any machine "
-        "running torchaudio 2.9 (#1931)."
+        "torchaudio APIs removed in 2.9 are called without a guard "
+        f"(file -> [(line, attribute)]): {offenders}. Wrap each call in "
+        '`if hasattr(torchaudio, "<name>"):`.'
     )

@@ -8,8 +8,14 @@ from services.performance_budget import Candidate, hardware_snapshot, make_plan
 
 def profile_plan(choice: str, overrides: dict, selections: dict) -> dict:
     from core import prefs
-    from services import performance_profiles as profiles, sherpa_dictation, translation_engines
-    from services import diarization_runtime, tts_backend
+
+    from services import (
+        diarization_runtime,
+        sherpa_dictation,
+        translation_engines,
+        tts_backend,
+    )
+    from services import performance_profiles as profiles
 
     hardware = hardware_snapshot()
     dedicated = hardware["device"] in {"cuda", "rocm", "xpu"}
@@ -35,8 +41,14 @@ def profile_plan(choice: str, overrides: dict, selections: dict) -> dict:
     if not custom_checkpoint and not any(os.environ.get(key) for key in ("OMNIVOICE_TTS_BACKEND", "OMNIVOICE_KITTENTTS_MODEL")) and current_tts in {
         "kittentts", "omnivoice", "omnivoice-subprocess",
     }:
-        from api.routers.setup.models import KNOWN_MODELS, cache_is_complete, is_cached, _model_supported
+        from api.routers.setup.models import (
+            KNOWN_MODELS,
+            _model_supported,
+            cache_is_complete,
+            is_cached,
+        )
         from core.device_caps import detect_host_caps
+
         from services.engine_routing import runtime_compute_profile
 
         tts = []
@@ -65,28 +77,40 @@ def profile_plan(choice: str, overrides: dict, selections: dict) -> dict:
     elif "tts" in current:
         fixed["tts"] = current["tts"]
 
-    if os.environ.get("OMNIVOICE_ASR_BACKEND") or prefs.is_env_shadowed("ASR_MODEL_FASTER"):
+    asr_engine = current["asr"].engine if "asr" in current else None
+    installed = None
+    if not (
+        os.environ.get("OMNIVOICE_ASR_BACKEND")
+        or prefs.is_env_shadowed("ASR_MODEL_FASTER")
+        or (asr_engine is not None and asr_engine not in profiles.TIERED_ASR_ENGINES)
+    ):
+        installed = profiles._preset_asr_models(asr_engine)
+    # A Mac on MLX Whisper with no other MLX model keeps its GPU engine.
+    if installed is None or (asr_engine == "mlx-whisper" and not installed):
         if "asr" in current:
             fixed["asr"] = current["asr"]
     else:
-        backend = profiles._faster_whisper_backend()
-        if backend:
+        if installed or profiles._faster_whisper_backend():
+            from core.windows_rocm.ct2 import hip_ct2_available
+
+            ct2_gpu = hardware["device"] == "cuda" or (
+                hardware["device"] == "rocm" and hip_ct2_available()
+            )
             models = []
-            for model in profiles._installed_ct2_models():
+            for backend, model in installed:
                 repo = model["repo_id"]
                 # Explicit Whisper quality order, not download-size sorting.
                 rank, ram, vram = (4, 4, 5)
-                if "turbo" in repo:
-                    rank, ram, vram = 3, 3, 3
-                elif "medium" in repo:
+                if "turbo" in repo or "medium" in repo:
                     rank, ram, vram = 3, 3, 3
                 elif "small" in repo:
                     rank, ram, vram = 2, 1.5, 1.5
                 elif "tiny" in repo or "base" in repo:
                     rank, ram, vram = 1, .6, .6
-                # CTranslate2 uses CUDA or CPU, not MPS/XPU/ROCm.
+                # Verified Windows HIP CT2 consumes VRAM just like CUDA; MLX
+                # runs on Apple's unified memory, which the RAM budget covers.
                 models.append(Candidate(backend, repo, rank, ram,
-                                        vram if hardware["device"] == "cuda" else 0))
+                                        vram if ct2_gpu and backend != "mlx-whisper" else 0))
             inventory["asr"] = models
 
     if os.environ.get("OMNIVOICE_SHERPA_ASR_MODEL") or not prefs.get("dictation.enabled", True):
@@ -102,12 +126,12 @@ def profile_plan(choice: str, overrides: dict, selections: dict) -> dict:
         ]
 
     translator = selections["translation"]["engine"]
-    if translator == "nllb" and translation_engines.is_ready(translator):
+    if translator == "nllb" and translation_engines.is_ready(translator, import_check=False):
         # A device-wide preset has no source/target language pair to validate.
         # Argos' installed status cannot prove it replaces NLLB's coverage.
         if "translation" in current:
             fixed["translation"] = current["translation"]
-    elif translator not in {"argos", "nllb"} and translation_engines.is_ready(translator):
+    elif translator not in {"argos", "nllb"} and translation_engines.is_ready(translator, import_check=False):
         if "translation" in current:
             fixed["translation"] = Candidate(translator, current["translation"].model, 1, 0)
     else:
@@ -116,7 +140,7 @@ def profile_plan(choice: str, overrides: dict, selections: dict) -> dict:
             for engine, repo, rank, ram, vram in [
                 ("argos", "argos", 1, 1, 0),
                 ("nllb", "facebook/nllb-200-distilled-600M", 4, 3, 3),
-            ] if translation_engines.is_ready(engine)
+            ] if translation_engines.is_ready(engine, import_check=False)
         ]
     if os.environ.get("OMNIVOICE_DIARIZATION_BACKEND"):
         if "diarisation" in current:
@@ -136,9 +160,9 @@ def profile_plan(choice: str, overrides: dict, selections: dict) -> dict:
         match = next((c for c in candidates if c.model == selected.get("model")), None)
         if match is not None:
             current[family] = match
-    for family in current:
+    for family, candidate in current.items():
         if family not in inventory and family not in fixed:
-            fixed[family] = current[family]
+            fixed[family] = candidate
     result = make_plan(choice, hardware, inventory, fixed, overrides, current)
     result["max_status"] = make_plan("max", hardware, inventory, fixed, current=current)["status"]
     return result

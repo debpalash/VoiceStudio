@@ -6,7 +6,7 @@ import {
   languageSupported,
 } from './language-options';
 import { QueryClient } from '@tanstack/react-query';
-import { rankOptions } from '@shared/components/VirtualSearchableSelect';
+import { rankOptions } from './language-search';
 import { LANGUAGES } from './languages';
 
 it('gives every canonical language a code without changing persisted values', () => {
@@ -35,18 +35,22 @@ it('does not infer support for regional variants, missing lists or a different m
   expect(languageSupported('German', [])).toBe(false);
   expect(languageSupported('de', ['german'])).toBe(true);
 });
+it('matches the Chinese script tags dub segments store against the engine names (#3685)', () => {
+  const engine = ['chinese', 'chinese (simplified)', 'chinese (traditional)', 'english'];
+  for (const language of ['Chinese (Simplified)', 'cmn-Hans', 'cmn-hans', 'cmn-Hant', 'CMN-HANT'])
+    expect(languageSupported(language, engine)).toBe(true);
+  // The two scripts stay distinct.
+  expect(languageSupported('cmn-Hant', ['chinese (simplified)'])).toBe(false);
+  expect(languageSupported('cmn-Hans', ['english'])).toBe(false);
+});
 
-it('blocks persisted incompatible local selections without guessing worker support', async () => {
+it('blocks persisted incompatible local selections while metadata is current', async () => {
   const client = new QueryClient();
-  client.setQueryData(['workers', 'target', 'clone'], { active: { remote: false } });
   client.setQueryData(['engines'], {
     tts: { active: 'kitten', backends: [{ id: 'kitten', supported_language_names: ['english'] }] },
   });
   expect(cachedTtsLanguagesSupported(client, 'clone', ['Japanese'])).toBe(false);
   expect(cachedTtsLanguagesSupported(client, 'clone', ['Auto'])).toBe(true);
-  client.setQueryData(['workers', 'target', 'clone'], { active: { remote: true } });
-  expect(cachedTtsLanguagesSupported(client, 'clone', ['Japanese'])).toBe(true);
-  client.setQueryData(['workers', 'target', 'clone'], { active: { remote: false } });
   await client.invalidateQueries({ queryKey: ['engines'] });
   expect(cachedTtsLanguagesSupported(client, 'clone', ['Japanese'])).toBe(true);
 });
@@ -59,4 +63,22 @@ it('keeps disabled recent choices behind enabled choices and uses exact matches 
     'French',
     'German',
   ]);
+});
+it('marks regional and script variants with their primary language for grouping', () => {
+  const [simplified, traditional, german] = languageOptions(
+    ['Chinese (Simplified)', 'Chinese (Traditional)', 'German'],
+    'en',
+    'Auto',
+  );
+  expect(simplified.family).toBe('cmn');
+  expect(traditional.family).toBe('cmn');
+  expect(simplified.familyLabel).toBeTruthy();
+  expect(german.family).toBeUndefined();
+  const [brazil, portugal] = languageOptions(
+    ['Portuguese (Brazil)', 'Portuguese (Portugal)'],
+    'en',
+    'Auto',
+  );
+  expect([brazil.family, portugal.family]).toEqual(['pt', 'pt']);
+  expect(brazil.familyLabel).toBe('Portuguese');
 });

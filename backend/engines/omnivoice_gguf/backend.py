@@ -27,9 +27,11 @@ Security (see plan front-matter threat model):
     T-04-02 — Subprocess arg injection: argv is composed from typed
               ``pathlib.Path`` objects rooted in ``$HF_HUB_CACHE`` or a
               ``tempfile.mkstemp()`` output path. ``shell=False`` always.
-    T-04-03 — GGUF quant served from network: ``huggingface_hub`` enforces
-              SHA verification at download time; revision is pinned to
-              ``quant_map.json._meta.source_commit_sha``.
+    T-04-03 — GGUF quant served from network: an installed pair is read
+              from the local HuggingFace cache first; only a missing
+              pair is fetched, on first generate, through
+              ``huggingface_hub`` (SHA-verified at download time) at the
+              revision pinned in ``quant_map.json._meta.source_commit_sha``.
     T-04-04 — HF_TOKEN leak into stderr: subprocess stderr is decoded
               through ``services.tts_backend._mask_hf_tokens`` before
               landing in any logger record.
@@ -59,7 +61,13 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+from .compute import BACKEND_ENV as BACKEND_ENV, DEVICE_ENV as DEVICE_ENV
+from .quant_cache import resolve_installed_pair
+
+if TYPE_CHECKING:
+    from core.device_caps import HostCaps
 
 logger = logging.getLogger("omnivoice.gguf")
 
@@ -80,6 +88,13 @@ _HF_REPO_ID = "Serveurperso/OmniVoice-GGUF"
 #: reaches the logger.
 _HF_TOKEN_RE = re.compile(r"hf_[A-Za-z0-9]{30,}")
 _HF_TOKEN_MASK = "hf_***REDACTED***"
+
+#: Decoded budget for one reference clip. The profile upload path caps a
+#: reference at 128 MB on disk (``api.routers.profiles``), but a lossy
+#: container decodes to far more than that, and converting a reference
+#: decodes it in the backend process. A clip that does not fit is refused
+#: with an actionable message instead of exhausting the backend.
+_MAX_REFERENCE_DECODED_BYTES = 128 * 1024 * 1024
 
 
 def _mask_token(s: str) -> str:
@@ -162,7 +177,89 @@ def _spawn_env() -> dict[str, str]:
     for var in ("LD_LIBRARY_PATH", "DYLD_FALLBACK_LIBRARY_PATH"):
         prev = env.get(var)
         env[var] = bin_dir if not prev else bin_dir + os.pathsep + prev
-    return env
+    from .compute import apply_compute_env
+    return apply_compute_env(env)
+
+
+#: Shared ggml runtime libraries the build drops next to the binary. With
+#: ``GGML_BACKEND_DL`` the runtime picks its CPU/Vulkan backend from these
+#: at load time, so they are as much "the runtime" as the executable.
+_GGML_LIB_RE = re.compile(r"^(?:lib)?ggml[\w.-]*\.(?:so(?:\.\d+)*|dylib|dll)$", re.IGNORECASE)
+
+
+def _mismatched_runtime_library(bin_dir: Path, manifest: dict[str, str]) -> str | None:
+    """Return the first listed ggml library whose bytes differ from the manifest.
+
+    Every listed library that is present must match. A listed library that
+    is absent belongs to another platform's build and is skipped; a present
+    library the manifest does not list is logged — manifests written before
+    #3042 listed only the executable, and refusing those installs would break
+    working runtimes.
+    """
+    for name, digest in sorted(manifest.items()):
+        if not _GGML_LIB_RE.match(name):
+            continue
+        path = bin_dir / name
+        if path.is_file() and _sha256_of_file(path).lower() != digest.lower():
+            return name
+    unlisted = sorted(
+        p.name for p in bin_dir.iterdir()
+        if p.is_file() and _GGML_LIB_RE.match(p.name) and p.name not in manifest
+    ) if manifest else []
+    if unlisted:
+        logger.warning(
+            "GGUF runtime libraries not covered by bin/checksums.sha256: %s",
+            ", ".join(unlisted),
+        )
+    return None
+
+
+#: Exit statuses meaning "this CPU cannot execute an instruction in the
+#: runtime": a negative signal number from subprocess on POSIX (SIGILL), the
+#: shell's 128+SIGILL, and Windows STATUS_ILLEGAL_INSTRUCTION in both its
+#: unsigned and signed spellings. A runtime compiled for newer CPU features
+#: than the host has (#2780) fails this way on every generate.
+_ILLEGAL_INSTRUCTION_EXITS = frozenset({-4, 132, 0xC000001D, 0xC000001D - (1 << 32)})
+
+#: Binaries that hit an illegal instruction, keyed by path, valued by the
+#: file identity they had then. Until the file changes (rebuilt/reinstalled),
+#: the engine reports itself unavailable instead of failing every generate.
+_CPU_INCOMPATIBLE: dict[str, tuple[int, int]] = {}
+
+
+def _file_identity(path: Path) -> tuple[int, int] | None:
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return (st.st_size, st.st_mtime_ns)
+
+
+def _cpu_incompatible_reason(bin_path: Path) -> str:
+    return (
+        f"GGUF binary {bin_path.name} stopped with an illegal instruction: it "
+        f"was built for CPU features this processor does not have. Rebuild it "
+        f"with `scripts/build-omnivoice-tts.sh --platform {_platform_slug()}` "
+        f"(portable x86-64 build), reinstall VoiceStudio, or use the default "
+        f"in-process OmniVoice engine (Model Catalogue)."
+    )
+
+
+def _raise_if_illegal_instruction(bin_path: Path, returncode) -> None:
+    """Record and raise a typed error when the runtime cannot run on this CPU."""
+    if returncode not in _ILLEGAL_INSTRUCTION_EXITS:
+        return
+    identity = _file_identity(bin_path)
+    if identity is not None:
+        _CPU_INCOMPATIBLE[str(bin_path)] = identity
+    from services.binary_preflight import InvalidBinaryError
+
+    raise InvalidBinaryError(
+        bin_path,
+        "it stopped with an illegal instruction (built for CPU features this "
+        "processor does not have)",
+        _binary_repair_hint(),
+    )
 
 
 def _binary_repair_hint() -> str:
@@ -248,12 +345,370 @@ def _allowed_quant_filenames(quant_map: Optional[dict] = None) -> set[str]:
     return out
 
 
+#: Env pin for the quant: ``auto`` or a tag (``Q4_K_M``, ``Q8_0``, ``BF16``,
+#: ``F32``), or a base filename from quant_map.json.
+QUANT_ENV = "OMNIVOICE_GGUF_QUANT"
+
+
+def env_quant_override() -> Optional[str]:
+    """The base filename ``OMNIVOICE_GGUF_QUANT`` names, or None when unset /
+    ``auto``. An unknown value is returned as-is so generation reports it
+    (a typo must not silently fall back to another precision)."""
+    raw = os.environ.get(QUANT_ENV, "").strip()
+    if not raw or raw.lower() == "auto":
+        return None
+    if raw.lower().endswith(".gguf"):
+        return raw
+    return f"omnivoice-base-{raw.upper()}.gguf"
+
+
+def _persisted_quant_override() -> Optional[str]:
+    """The Settings quant override, or None (auto). Never raises — an
+    unreadable settings DB must not stop generation; auto-select applies."""
+    try:
+        from services.settings_store import get_quant_override
+
+        return get_quant_override()
+    except Exception:  # noqa: BLE001
+        logger.debug("GGUF quant override unreadable; using auto-select", exc_info=True)
+        return None
+
+
 def _sha256_of_file(p: Path, *, chunk: int = 1 << 20) -> str:
     h = hashlib.sha256()
     with p.open("rb") as f:
         for buf in iter(lambda: f.read(chunk), b""):
             h.update(buf)
     return h.hexdigest()
+
+
+def _is_cli_readable_wav(path: Path) -> bool:
+    """True when the runtime can read ``path`` as it stands.
+
+    The bundled runtime reads WAV containers only (``omnivoice.cpp``
+    ``src/wav.h``: ``read_wav_buf``), and it decodes PCM16, PCM24 and
+    float32 — classic or WAVE_FORMAT_EXTENSIBLE. A RIFF/WAVE container
+    is therefore not enough: a PCM8, PCM32 or mu-law clip is a RIFF/WAVE
+    file the runtime rejects with "[WAV] Unsupported", so it has to be
+    converted like any other reference the CLI cannot read.
+
+    The header is parsed the way ``read_wav_buf`` parses it: the sample
+    format comes from the ``fmt `` chunk, an extensible header collapses
+    to its sub-format, and the ``data`` chunk is only read once a ``fmt ``
+    chunk has been seen.
+    """
+    try:
+        with path.open("rb") as handle:
+            header = handle.read(12)
+            if len(header) != 12 or header[:4] != b"RIFF" or header[8:12] != b"WAVE":
+                return False
+            audio_format = 0
+            bits = 0
+            channels = 0
+            chunk = handle.read(8)
+            while len(chunk) == 8:
+                chunk_id = chunk[:4]
+                size = int.from_bytes(chunk[4:8], "little")
+                if chunk_id == b"fmt ":
+                    body = handle.read(min(size, 40))
+                    if len(body) >= 16:
+                        audio_format = int.from_bytes(body[0:2], "little")
+                        channels = int.from_bytes(body[2:4], "little")
+                        bits = int.from_bytes(body[14:16], "little")
+                        if audio_format == 0xFFFE and len(body) >= 40:
+                            # WAVE_FORMAT_EXTENSIBLE collapses to its
+                            # effective sample format (1 -> PCM, 3 -> float).
+                            sub_format = int.from_bytes(body[24:26], "little")
+                            if sub_format in (1, 3):
+                                audio_format = sub_format
+                    handle.seek(size - len(body), 1)
+                elif chunk_id == b"data" and channels > 0:
+                    return (audio_format == 1 and bits in (16, 24)) or (
+                        audio_format == 3 and bits == 32
+                    )
+                else:
+                    handle.seek(size, 1)
+                if size & 1 and len(handle.read(1)) != 1:
+                    # A chunk with an odd size is padded to an even one.
+                    return False
+                chunk = handle.read(8)
+    except OSError:
+        return False
+    # The header ended without a data chunk the runtime can decode.
+    return False
+
+
+# Readable audio whose duration no probe field reports (live-recorded WebM).
+_UNSIZED = 0
+
+
+def _ffprobe_decoded_bytes(prompt: Path) -> Optional[int]:
+    """Decoded size of a reference clip, measured with ffprobe, or None.
+
+    ffprobe reads the container's metadata and decodes nothing, so a
+    container ``libsndfile`` cannot size can still be measured before it
+    is decoded. The *audio stream's* duration is preferred over the
+    container's: a video whose audio track is short is a short reference.
+    MediaRecorder WebM carries no stream duration, so the container's is
+    the fallback. A readable stream with no duration at all returns
+    ``_UNSIZED`` (0): the caller converts it and caps the *output* instead.
+    """
+    try:
+        from services.ffmpeg_utils import find_ffprobe, local_inputs_only
+
+        ffprobe = find_ffprobe()
+        if not ffprobe:
+            return None
+        proc = subprocess.run(
+            local_inputs_only(
+                [ffprobe, "-v", "error", "-select_streams", "a:0",
+                 "-show_entries", "stream=duration,channels,sample_rate:format=duration",
+                 "-of", "json", str(prompt)],
+                tool="ffprobe",
+            ),
+            capture_output=True, timeout=60, check=False,
+            # Every spawn in this module carries the loader env
+            # (tests/test_gguf_source_build_runtime_1348.py).
+            env=_spawn_env(),
+        )
+        if proc.returncode != 0:
+            return None
+        payload = json.loads(proc.stdout.decode("utf-8", errors="replace"))
+        stream = (payload.get("streams") or [{}])[0]
+        fmt = payload.get("format") or {}
+        duration = float(stream.get("duration") or 0.0)
+        if duration <= 0:
+            duration = float(fmt.get("duration") or 0.0)
+        channels = int(stream.get("channels") or 0)
+        sample_rate = int(stream.get("sample_rate") or 0)
+    except Exception:  # noqa: BLE001 — an unsized clip is a refusal
+        return None
+    if channels <= 0 or sample_rate <= 0:
+        return None
+    if duration <= 0:
+        return _UNSIZED
+    return int(duration * sample_rate * channels * 4)  # float32 samples
+
+
+def _reference_decoded_bytes(prompt: Path) -> int:
+    """Decoded size of a reference clip in bytes.
+
+    Read from the container metadata — the audio is never decoded, so an
+    oversized clip is refused before anything is allocated. ``libsndfile``
+    sizes every container it can read; the ones it cannot (M4A, AAC,
+    WebM) are measured with ffprobe.
+
+    Raises :class:`ValueError` when the clip cannot be sized at all: a
+    clip of unknown size is exactly what this budget exists to keep out.
+    """
+    try:
+        import soundfile as sf
+
+        info = sf.info(str(prompt))
+        return int(info.frames) * int(info.channels) * 4  # float32 samples
+    except Exception:  # noqa: BLE001 — libsndfile cannot read every container
+        pass
+    decoded = _ffprobe_decoded_bytes(prompt)
+    if decoded is None:
+        raise ValueError(
+            "The voice profile's reference clip could not be read as audio. "
+            "Re-upload the clip as a WAV, MP3, FLAC or OGG file."
+        )
+    return decoded
+
+
+def _remove_quietly(path: Path) -> None:
+    """Delete ``path`` without ever raising.
+
+    A leftover temporary file is not worth failing the call over, so a
+    removal failure is logged and the caller keeps its own error.
+    """
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        logger.debug("Could not remove the temporary file %s", path, exc_info=True)
+
+
+_TOO_LONG = (
+    "The voice profile's reference clip is too long to convert. "
+    "Trim it to a shorter clip and upload it again."
+)
+
+
+def _decode_unsized_capped(prompt: Path) -> Path:
+    """Decode a durationless clip to a temp WAV, stopping at the size cap.
+
+    ffmpeg's ``-fs`` ends the output at the cap, so a huge stream is never
+    decoded in full. Output that reaches the cap is refused rather than
+    returned truncated. The caller deletes the returned file.
+    """
+    from services.ffmpeg_utils import find_ffmpeg, local_inputs_only
+
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        raise ValueError(
+            "The voice profile's reference clip could not be read as audio. "
+            "Install ffmpeg or re-upload the clip as a WAV, MP3, FLAC or OGG file."
+        )
+    limit = _MAX_REFERENCE_DECODED_BYTES
+    fd, name = tempfile.mkstemp(prefix="omnivoice-gguf-dec-", suffix=".wav")
+    os.close(fd)
+    out = Path(name)
+    try:
+        proc = subprocess.run(
+            local_inputs_only(
+                [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+                 "-i", str(prompt), "-map", "0:a:0", "-f", "wav",
+                 "-c:a", "pcm_f32le", "-fs", str(limit), str(out)],
+                tool="ffmpeg",
+            ),
+            capture_output=True, timeout=120, check=False, env=_spawn_env(),
+        )
+        if proc.returncode != 0:
+            raise ValueError(
+                "The voice profile's reference clip could not be read as audio. "
+                "Re-upload the clip as a WAV, MP3, FLAC or OGG file."
+            )
+        # ffmpeg exits successfully at -fs; never accept truncated audio.
+        if out.stat().st_size >= limit:
+            raise ValueError(_TOO_LONG)
+    except BaseException:
+        _remove_quietly(out)
+        raise
+    return out
+
+
+def _convert_reference_to_wav(prompt: Path) -> Path:
+    """Decode ``prompt`` into a temporary WAV the GGUF CLI can read.
+
+    A voice profile keeps the reference clip in whatever container the user
+    uploaded (the profile editor accepts MP3, FLAC, Ogg, ...), but the CLI's
+    WAV reader only understands RIFF/WAVE — an MP3 reference killed the
+    spawn with "[WAV] Not a valid WAV buffer" (#3655). Decode through the
+    app's own loader (torchaudio → soundfile → ffmpeg) and write a WAV next
+    to the other per-call temp files. The CLI resamples and downmixes the
+    prompt itself, so the clip keeps its own rate and channel layout.
+    """
+    from services.audio_io import atomic_save_wav, load_audio
+
+    decoded = _reference_decoded_bytes(prompt)
+    if decoded > _MAX_REFERENCE_DECODED_BYTES:
+        # The upload path caps a reference at 128 MB on disk, but a lossy
+        # container decodes to far more than that — and the conversion
+        # decodes it in the backend process, while the CLI would do it in
+        # its own. Refuse instead of exhausting the backend.
+        raise ValueError(
+            "The voice profile's reference clip is too long to convert. "
+            "Trim it to a shorter clip and upload it again."
+        )
+    source = prompt
+    capped: Optional[Path] = None
+    if decoded == _UNSIZED:
+        # No size is knowable up front: bound the decode itself, so a big
+        # durationless clip cannot exhaust memory before it is checked.
+        capped = source = _decode_unsized_capped(prompt)
+    try:
+        wav, rate = load_audio(source)
+    except ValueError:
+        # The loader's own size-limit errors ("use a shorter clip") are
+        # actionable as they are — do not turn them into a re-upload hint.
+        raise
+    except Exception as exc:  # noqa: BLE001 — any decode failure is "unreadable"
+        raise ValueError(
+            "The voice profile's reference clip could not be read as audio. "
+            "Re-upload the clip as a WAV, MP3, FLAC or OGG file."
+        ) from exc
+    finally:
+        if capped is not None:
+            _remove_quietly(capped)
+    if decoded == _UNSIZED:
+        # No size was knowable up front, so the cap applies to what came out.
+        size = getattr(wav, "nbytes", None)
+        if size is None:
+            size = int(wav.numel()) * int(wav.element_size())
+        if int(size) > _MAX_REFERENCE_DECODED_BYTES:
+            raise ValueError(
+                "The voice profile's reference clip is too long to convert. "
+                "Trim it to a shorter clip and upload it again."
+            )
+    fd, name = tempfile.mkstemp(prefix="omnivoice-gguf-ref-", suffix=".wav")
+    os.close(fd)
+    target = Path(name)
+    try:
+        atomic_save_wav(str(target), wav, rate)
+    except BaseException:
+        # BaseException so an interrupted write does not leave the temp file
+        # behind either. A write failure keeps its own cause — the user
+        # cannot fix it by re-uploading the clip.
+        _remove_quietly(target)
+        raise
+    return target
+
+
+def _validated_reference(ref_audio: str) -> Path:
+    """Resolve a reference clip and check it against the engine's read policy.
+
+    The prompt clip must live under a directory this app owns (voices,
+    dubbing workspace or the temp dir) so a request cannot point the
+    binary at arbitrary files on disk.
+    """
+    from core.config import DUB_DIR, VOICES_DIR
+
+    prompt = Path(ref_audio).resolve()
+    roots = [
+        Path(VOICES_DIR).resolve(),
+        Path(DUB_DIR).resolve(),
+        Path(tempfile.gettempdir()).resolve(),
+    ]
+    if not any(prompt == root or prompt.is_relative_to(root) for root in roots):
+        raise FileNotFoundError(
+            f"Reference audio is outside the directories this engine may read: {prompt}"
+        )
+    if not prompt.is_file():
+        raise FileNotFoundError(f"Reference audio file does not exist: {prompt}")
+    return prompt
+
+
+def _automatic_entry(quant_map: dict) -> dict:
+    """The quant entry the automatic compute policy selects.
+
+    Sized on the Vulkan adapter the native runtime will open when one is
+    verified (``compute.automatic_compute_class``); the conservative tier
+    otherwise. An explicit override is handled by the caller.
+    """
+    from .compute import automatic_compute_class
+
+    entry = quant_map.get(automatic_compute_class())
+    if isinstance(entry, dict):
+        return entry
+    # No matching quant class — fall back.
+    return quant_map.get("cpu", {"base": "", "tokenizer": ""})
+
+
+def _weights_install_command(entry: dict, revision: str) -> str:
+    """The pinned command that pre-installs one quant pair by hand.
+
+    The engine downloads a missing pair itself on first generate; this
+    is the fallback for a host that cannot reach Hugging Face from the
+    app (it must land in the cache this app reads).
+    """
+    return (
+        f"hf download {_HF_REPO_ID} {entry.get('base')} "
+        f"{entry.get('tokenizer')} --revision {revision} "
+        f"--cache-dir \"<the cache directory this app reads>\""
+    )
+
+
+def _weights_missing_reason(entry: dict, revision: str, exc: BaseException | None = None) -> str:
+    """Actionable reason when the pinned pair is neither cached nor fetchable."""
+    cause = f" ({type(exc).__name__}: {exc})" if exc is not None else ""
+    return (
+        f"Could not download the GGUF weights {entry.get('base')} + "
+        f"{entry.get('tokenizer')}{cause}. Check the connection to "
+        "huggingface.co (or set a mirror in Settings) and try again, or "
+        "pre-install the pinned pair with:\n\n    "
+        f"{_weights_install_command(entry, revision)}"
+    )
 
 
 class ChecksumManifestError(RuntimeError):
@@ -326,6 +781,7 @@ def _is_macos_quarantined(p: Path) -> bool:
             ["/usr/bin/xattr", "-p", "com.apple.quarantine", str(p)],
             capture_output=True,
             text=True,
+            errors="replace",
             timeout=2,
         )
         # Exit code 0 means the xattr exists; non-zero usually means
@@ -373,8 +829,8 @@ def _make_backend_class():
         ``$HF_HUB_CACHE`` and writes a 24 kHz mono WAV to a temp path
         which we then load back into a ``torch.Tensor``.
 
-        ``compute_class`` → quant selection is driven by
-        ``hardware_probe.detect_capabilities()`` and the shipped
+        ``compute_class`` → quant selection is driven by the native
+        capacity policy in ``compute.automatic_compute_class()`` and the shipped
         ``quant_map.json`` table. The user can override the selection
         from Settings (allow-listed against the same JSON).
         """
@@ -382,8 +838,17 @@ def _make_backend_class():
         id = "omnivoice-gguf"
         display_name = "OmniVoice (GGUF, hardware-adaptive)"
         instruct_vocabulary = "tags"
-        gpu_compat = ("cuda", "mps", "cpu")
+        gpu_compat = ("cuda", "vulkan", "mps", "cpu")
+
         supports_voice_design = False
+        # The bundled omnivoice-tts CLI has no num_step/guidance_scale
+        # flags (verified against the C++ usage text) — explicit values are
+        # rejected at the API boundary with a 400 (#3654).
+        supports_num_step = False
+        supports_guidance_scale = False
+        # The seed reaches the binary as --seed; the parent's torch RNG never
+        # does, so /generate must forward it (#3413).
+        supports_generation_seed = True
         # Every generate() spawns the external binary — allocations live in
         # that process, invisible to parent-side accelerator counters.
         runs_out_of_process = True
@@ -394,12 +859,18 @@ def _make_backend_class():
         # Quick probe at startup to confirm the binary spawns at all.
         _PROBE_TIMEOUT_S = 5.0
 
+        @classmethod
+        def runtime_compute_profile(cls, caps: HostCaps) -> dict:
+            """Keep budgets conservative until the native device is verified."""
+            from .compute import runtime_profile
+            return runtime_profile(cls, caps)
+
         def __init__(self, quant_override: Optional[str] = None):
             """Construct without spawning the binary.
 
             ``quant_override`` — if provided, force this quant filename
             (must be in ``quant_map.json``'s allow-list). If ``None`` or
-            ``"auto"``, the probe + ``quant_map.json`` decide.
+            ``"auto"``, the native capacity policy + ``quant_map.json`` decide.
             """
             self._quant_override = quant_override
             self._quant_map: Optional[dict] = None
@@ -407,12 +878,12 @@ def _make_backend_class():
         # ── TTSBackend protocol ───────────────────────────────────────
 
         @classmethod
-        def is_available(cls) -> tuple[bool, str]:
-            """Verify the binary is present, checksum matches, not quarantined.
+        def _binary_status(cls) -> tuple[bool, str]:
+            """Verify the bundled runtime binary.
 
-            Never raises — failures roll up as ``(False, reason)`` so
-            ``list_backends()`` can render the picker even when the
-            engine is broken.
+            Existence, executable-magic, SHA-256 manifest, macOS
+            quarantine and the POSIX execute bit. Never raises — failures
+            roll up as ``(False, reason)``.
             """
             try:
                 bin_path = _binary_path()
@@ -442,6 +913,11 @@ def _make_backend_class():
                         f"VoiceStudio, or use the default in-process "
                         f"OmniVoice engine (Model Catalogue)."
                     )
+                known_bad = _CPU_INCOMPATIBLE.get(str(bin_path))
+                if known_bad is not None:
+                    if _file_identity(bin_path) == known_bad:
+                        return False, _cpu_incompatible_reason(bin_path)
+                    _CPU_INCOMPATIBLE.pop(str(bin_path), None)  # replaced: re-check
                 # Manifest-based SHA-256 verification (T-04-01).
                 try:
                     manifest = _load_checksum_manifest()
@@ -460,6 +936,16 @@ def _make_backend_class():
                             f"{bin_path.name} — manifest says "
                             f"{expected[:12]}…, actual is {actual[:12]}…. "
                             f"Reinstall or run the bundled `xattr -cr` cleanup."
+                        )
+                if manifest:
+                    bad_lib = _mismatched_runtime_library(bin_path.parent, manifest)
+                    if bad_lib is not None:
+                        return False, (
+                            f"GGUF runtime library checksum mismatch for "
+                            f"{bad_lib} — the runtime would load a library "
+                            f"other than the one that was built. Reinstall "
+                            f"VoiceStudio or rebuild with "
+                            f"`scripts/build-omnivoice-tts.sh`."
                         )
                 # macOS Gatekeeper quarantine detection (Pitfall 3).
                 if _is_macos_quarantined(bin_path):
@@ -489,6 +975,19 @@ def _make_backend_class():
             except Exception as exc:
                 return False, f"{type(exc).__name__}: {exc}"
 
+        @classmethod
+        def is_available(cls) -> tuple[bool, str]:
+            """Verify the bundled runtime; weights are not a readiness gate.
+
+            A missing weight pair is fetched on first generate (see
+            ``_resolve_quant_paths``), so a fresh install with a working
+            binary is a usable engine — the same contract as before
+            #3042. Never raises — failures roll up as ``(False, reason)``
+            so ``list_backends()`` can render the picker even when the
+            engine is broken.
+            """
+            return cls._binary_status()
+
         @property
         def sample_rate(self) -> int:
             return self._SAMPLE_RATE
@@ -510,79 +1009,116 @@ def _make_backend_class():
 
         def _select_quant_entry(self) -> dict:
             """Return the ``{base, tokenizer, rationale}`` dict for the
-            quant the current hardware should use (or the override).
+            quant the selected compute device should use (or the override).
 
-            Always returns a dict — falls back to ``cpu`` if the probe
-            returns an unknown compute_class (defense in depth).
+            Always returns a dict — falls back to ``cpu`` if the selected
+            compute class has no quant entry (defense in depth).
             """
             q = self._ensure_quant_map()
 
             # User override wins (allow-listed at write time in settings_store).
-            if self._quant_override and self._quant_override != "auto":
+            override = self._explicit_override()
+            if override:
                 allowed = _allowed_quant_filenames(q)
-                if self._quant_override in allowed:
+                if override in allowed:
                     # Walk both top-level and _extras entries looking for
                     # a quant whose ``base`` matches the override.
                     for _key, entry in _walk_quant_entries(q):
-                        if entry.get("base") == self._quant_override:
+                        if entry.get("base") == override:
                             return entry
 
-            # Auto-select by compute class.
-            from .hardware_probe import detect_capabilities
+            # The parent's GPU memory cannot prove the native adapter's capacity.
+            return _automatic_entry(q)
 
-            caps = detect_capabilities()
-            entry = q.get(caps.compute_class)
-            if isinstance(entry, dict):
-                return entry
-            # Probe returned a class we don't have a row for — fall back.
-            return q.get("cpu", {"base": "", "tokenizer": ""})
+        def _explicit_override(self) -> str | None:
+            """The quant filename the user pinned, if any.
 
-        def _resolve_quant_paths(self) -> tuple[Path, Path, dict]:
-            """Download (cached) the base+tokenizer quants and return paths.
-
-            Raises ``RuntimeError`` if the download fails (e.g. network
-            block, HF auth required for a gated upstream the GGUF derives
-            from). The caller's ``is_available`` / ``probe_load`` is
-            expected to short-circuit before reaching here when network
-            is unreachable.
+            Constructor argument > ``OMNIVOICE_GGUF_QUANT`` > the Settings
+            choice. Env wins over Settings, like every engine choice, so a
+            power-user pin is never silently undone by the UI. Before the
+            Settings read existed the registry (which constructs this class
+            without arguments) never applied a stored override at all.
             """
+            if self._quant_override is not None:
+                value = self._quant_override
+            else:
+                value = env_quant_override() or _persisted_quant_override()
+            if not value or value == "auto":
+                return None
+            return value
+
+        def _resolve_quant_paths(self, *, download: bool = True) -> tuple[Path, Path, dict]:
+            """Return the base+tokenizer paths for this engine.
+
+            An installed pair at the pinned revision always wins, so an
+            existing installation is never re-downloaded. Only when no
+            usable pair is cached — and ``download`` is true — is the
+            selected pair fetched from Hugging Face (first generate):
+
+            * an explicit quant override is strict — only that exact
+              pair counts, and a missing one is reported instead of
+              silently running a different precision;
+            * an explicit CPU choice keeps the CPU tier's quant policy,
+              so a larger cached quant is not used in its place;
+            * otherwise the selected tier is used when installed, and an
+              already-installed automatic pair is accepted as a fallback
+              so an existing installation is never re-downloaded.
+
+            Raises ``RuntimeError`` with the pinned install command when
+            no usable pair is present and it cannot be downloaded.
+            """
+            q = self._ensure_quant_map()
+            revision = q["_meta"]["source_commit_sha"]
             entry = self._select_quant_entry()
-            base_name = entry.get("base")
-            tok_name = entry.get("tokenizer")
-            if not base_name or not tok_name:
+            override = self._explicit_override()
+            if override and entry.get("base") != override:
+                raise RuntimeError(
+                    f"the configured GGUF quant override {override!r} names no "
+                    f"known quant base file — clear the override to use the "
+                    f"automatic selection"
+                )
+            if not entry.get("base") or not entry.get("tokenizer"):
                 raise RuntimeError(
                     "quant_map.json entry missing base/tokenizer filenames; "
                     "cannot resolve quants"
                 )
+            from .compute import cpu_selection_explicit
 
-            from huggingface_hub import hf_hub_download
+            allow_fallback = not override and not cpu_selection_explicit()
+            pair = resolve_installed_pair(
+                q,
+                entry,
+                repo_id=_HF_REPO_ID,
+                revision=revision,
+                allow_fallback=allow_fallback,
+            )
+            if pair is not None:
+                return pair[0], pair[1], pair[2]
+            if not download:
+                raise RuntimeError(_weights_missing_reason(entry, revision))
+            try:
+                from huggingface_hub import hf_hub_download
 
-            meta = self._ensure_quant_map()["_meta"]
-            rev = meta["source_commit_sha"]
-            base_path = Path(
-                hf_hub_download(
-                    repo_id=_HF_REPO_ID,
-                    filename=base_name,
-                    revision=rev,
-                )
-            )
-            tok_path = Path(
-                hf_hub_download(
-                    repo_id=_HF_REPO_ID,
-                    filename=tok_name,
-                    revision=rev,
-                )
-            )
+                base_path = Path(hf_hub_download(
+                    repo_id=_HF_REPO_ID, filename=entry["base"], revision=revision,
+                ))
+                tok_path = Path(hf_hub_download(
+                    repo_id=_HF_REPO_ID, filename=entry["tokenizer"], revision=revision,
+                ))
+            except Exception as exc:
+                raise RuntimeError(_weights_missing_reason(entry, revision, exc)) from exc
             return base_path, tok_path, entry
 
         @classmethod
-        def probe_load(cls, *, quant: Optional[str] = None, timeout: float = 5.0) -> None:
+        def probe_load(cls, *, quant: str | None = None, timeout: float = 5.0) -> None:
             """Spawn the binary with ``--help`` to confirm it loads cleanly.
 
-            Lightweight check — does not download quants, does not run
-            inference. The actual quant load is deferred to the first
-            ``generate()`` call (lazy) so a host with no network at
-            startup still passes the probe.
+            Lightweight check of the *runtime* only — it does not read
+            the weight cache, does not download quants and does not run
+            inference. Whether usable weights are installed is
+            :meth:`is_available`'s job; the two are separate questions
+            about separate files. The actual quant load is deferred to
+            the first ``generate()`` call.
 
             Raises:
                 RuntimeError — binary is unavailable, quarantined, or
@@ -590,7 +1126,7 @@ def _make_backend_class():
                 FileNotFoundError — binary missing.
                 subprocess.TimeoutExpired — binary hung past ``timeout``.
             """
-            ok, reason = cls.is_available()
+            ok, reason = cls._binary_status()
             if not ok:
                 raise RuntimeError(f"GGUF engine unavailable: {reason}")
             bin_path = _binary_path()
@@ -601,6 +1137,9 @@ def _make_backend_class():
                     timeout=timeout,
                     check=False,
                     env=_spawn_env(),
+                    # ggml's dynamic backend loader also scans the working
+                    # directory; pin it to the verified bin/ directory.
+                    cwd=str(bin_path.parent),
                 )
             except FileNotFoundError:
                 raise
@@ -616,6 +1155,7 @@ def _make_backend_class():
                     bin_path, f"the OS refused to execute it ({exc})",
                     _binary_repair_hint(),
                 ) from exc
+            _raise_if_illegal_instruction(bin_path, proc.returncode)
             # `--help` typically exits 0 or 1 (some CLIs use 1 to signal
             # "help shown, no work done"). We accept both as long as the
             # binary actually emitted something.
@@ -629,47 +1169,61 @@ def _make_backend_class():
         # ── generation ────────────────────────────────────────────────
 
         def generate(self, text: str, **kw):
-            """Synthesize ``text`` and return a ``torch.Tensor`` of shape (1, n_samples).
+            """Synthesise ``text`` by running the GGUF CLI once.
 
-            Recognized kwargs (others are silently ignored — keeps the
-            API surface lean and prevents accidental misuse):
-              * ``ref_audio`` (str/Path) — speaker reference WAV for cloning.
-              * ``ref_text`` (str) — transcript of ``ref_audio``.
-              * ``language`` (str) — ISO code or omnivoice-tts lang label.
-              * ``instruct`` (str) — style instruction.
-              * ``duration`` (float) — target duration in seconds.
-              * ``seed`` (int) — deterministic sampling seed.
-              * ``denoise`` (bool) — omit denoise token when false.
-              * ``preprocess_prompt`` (bool) — skip prompt preprocessing when false.
-              * ``chunk_duration`` / ``chunk_threshold`` (float) — binary long-form controls.
+            Keyword arguments understood (anything else is ignored):
+
+            * ``ref_audio`` – path of a voice prompt clip to clone from.
+            * ``ref_text`` – transcript of that clip; only used together with
+              ``ref_audio`` and passed to the CLI through a temporary file.
+            * ``language`` – ISO code or name; unknown values let the CLI guess.
+            * ``instruct`` – free-text voice-design instruction.
+            * ``duration`` – target length in seconds.
+            * ``seed`` – integer seed for reproducible sampling.
+            * ``denoise`` – set False to skip prompt denoising (default True).
+            * ``preprocess_prompt`` – set False to feed the prompt as-is
+              (default True).
+            * ``chunk_duration`` / ``chunk_threshold`` – long-text chunking
+              controls forwarded unchanged.
+
+            Returns a float32 tensor shaped ``(1, n_samples)`` at the model's
+            native rate.
             """
-            import soundfile as sf  # local import keeps module import cheap
+            import soundfile as sf
             import torch
 
-            base_path, tok_path, _entry = self._resolve_quant_paths()
+            base, tokenizer, _ = self._resolve_quant_paths()
+            ref_audio = kw.get("ref_audio")
+            ref_text = kw.get("ref_text")
 
-            # Write the WAV to a temp file; we'll read it back as a tensor.
-            fd, out_str = tempfile.mkstemp(prefix="omnivoice-gguf-", suffix=".wav")
+            fd, out_name = tempfile.mkstemp(suffix=".wav")
             os.close(fd)
-            out_path = Path(out_str)
-            ref_text_path: Optional[Path] = None
-
+            out_path = Path(out_name)
+            transcript_path: Optional[Path] = None
+            converted_prompt: Optional[Path] = None
             try:
-                ref_text = kw.get("ref_text")
-                if kw.get("ref_audio") and ref_text:
-                    text_fd, text_str = tempfile.mkstemp(
-                        prefix="omnivoice-gguf-ref-", suffix=".txt"
-                    )
-                    os.close(text_fd)
-                    ref_text_path = Path(text_str)
-                    ref_text_path.write_text(str(ref_text), encoding="utf-8")
-
+                if ref_audio and ref_text:
+                    # A file keeps arbitrary transcript text out of argv.
+                    t_fd, t_name = tempfile.mkstemp(suffix=".transcript")
+                    transcript_path = Path(t_name)
+                    with os.fdopen(t_fd, "w", encoding="utf-8") as handle:
+                        handle.write(str(ref_text))
+                # The CLI reads WAV containers of a few sample formats only,
+                # so a profile reference stored as MP3/M4A/... — or as a WAV
+                # the runtime cannot decode — has to be converted before it
+                # is handed over (#3655). The original path is validated
+                # first — the conversion reads the file.
+                if ref_audio:
+                    prompt = _validated_reference(ref_audio)
+                    if not _is_cli_readable_wav(prompt):
+                        converted_prompt = _convert_reference_to_wav(prompt)
+                        ref_audio = str(converted_prompt)
                 argv = self._build_argv(
-                    base=base_path,
-                    tokenizer=tok_path,
+                    base=base,
+                    tokenizer=tokenizer,
                     out_path=out_path,
-                    ref_audio=kw.get("ref_audio"),
-                    ref_text=str(ref_text_path) if ref_text_path else None,
+                    ref_audio=ref_audio,
+                    ref_text=str(transcript_path) if transcript_path else None,
                     language=kw.get("language"),
                     instruct=kw.get("instruct"),
                     duration=kw.get("duration"),
@@ -680,31 +1234,16 @@ def _make_backend_class():
                     chunk_threshold=kw.get("chunk_threshold"),
                 )
                 self._run_subprocess(argv, stdin_text=text)
-                wav, sr = sf.read(str(out_path))
+                samples, _rate = sf.read(str(out_path), dtype="float32")
             finally:
-                try:
-                    out_path.unlink()
-                except OSError:
-                    pass
-                if ref_text_path is not None:
-                    try:
-                        ref_text_path.unlink()
-                    except OSError:
-                        pass
+                for leftover in (out_path, transcript_path, converted_prompt):
+                    if leftover is None:
+                        continue
+                    _remove_quietly(leftover)
 
-            # soundfile returns (n,) for mono or (n, c) for multichannel.
-            # OmniVoice/Higgs Audio v2 is mono → (n,). Wrap to (1, n).
-            if wav.ndim == 1:
-                tensor = torch.from_numpy(wav).unsqueeze(0).float()
-            else:
-                # Defensive: if the binary ever returns stereo, take mean.
-                tensor = torch.from_numpy(wav.mean(axis=1)).unsqueeze(0).float()
-
-            # SubprocessBackend convention: return float32 in [-1, 1] at
-            # ``self.sample_rate`` (which we declare as 24_000). If the
-            # binary ever returns a different rate, the caller can resample
-            # — we don't second-guess here.
-            return tensor
+            if samples.ndim > 1:
+                samples = samples.mean(axis=1)
+            return torch.from_numpy(samples.astype("float32", copy=False)).unsqueeze(0)
 
         def _build_argv(
             self,
@@ -723,8 +1262,13 @@ def _make_backend_class():
             chunk_duration: Optional[float] = None,
             chunk_threshold: Optional[float] = None,
         ) -> list[str]:
-            """Compose argv from typed Path objects only (T-04-02)."""
-            argv: list[str] = [
+            """Assemble the CLI argument list; ``ref_text`` is a staged file path.
+
+            The prompt clip must live under a directory this app owns (voices,
+            dubbing workspace or the temp dir) so a request cannot point the
+            binary at arbitrary files on disk.
+            """
+            argv = [
                 str(_binary_path()),
                 "--model", str(base),
                 "--codec", str(tokenizer),
@@ -733,55 +1277,27 @@ def _make_backend_class():
             lang = _iso_to_omnivoice_lang(language)
             if lang:
                 argv += ["--lang", lang]
-            if instruct:
-                argv += ["--instruct", str(instruct)]
+            if isinstance(instruct, str) and instruct:
+                argv += ["--instruct", instruct]
             if duration is not None:
                 argv += ["--duration", str(float(duration))]
             if seed is not None:
                 argv += ["--seed", str(int(seed))]
-            if denoise is False:
-                argv += ["--no-denoise"]
-            if preprocess_prompt is False:
-                argv += ["--no-preprocess-prompt"]
             if chunk_duration is not None:
                 argv += ["--chunk-duration", str(float(chunk_duration))]
             if chunk_threshold is not None:
                 argv += ["--chunk-threshold", str(float(chunk_threshold))]
+            if denoise is False:
+                argv.append("--no-denoise")
+            if preprocess_prompt is False:
+                argv.append("--no-preprocess-prompt")
+
             if ref_audio:
-                # Two-stage validation (defense in depth):
-                #   (a) Reject anything outside the project's voices /
-                #       dub-jobs trees + the system temp dir. Test
-                #       `test_generate_blocks_freeform_ref_audio` proved
-                #       on Linux that an existence-only check accepts
-                #       sensitive paths like /etc/shadow.
-                #   (b) Then confirm the constrained path actually exists.
-                ref_path = Path(str(ref_audio)).resolve()
-                from core.config import VOICES_DIR, DUB_DIR
-                allowed_roots = [
-                    Path(VOICES_DIR).resolve(),
-                    Path(DUB_DIR).resolve(),
-                    Path(tempfile.gettempdir()).resolve(),
-                ]
-                inside_allowed = any(
-                    ref_path == root or root in ref_path.parents
-                    for root in allowed_roots
-                )
-                if not inside_allowed:
-                    # FileNotFoundError keeps the failure mode consistent
-                    # with the existing test's expectation and the prior
-                    # validation contract (callers never differentiate
-                    # "outside policy" from "missing file" — both are bad).
-                    raise FileNotFoundError(
-                        f"ref_audio outside allowed roots: {ref_path}"
-                    )
-                if not ref_path.is_file():
-                    raise FileNotFoundError(
-                        f"ref_audio not found: {ref_path}"
-                    )
-                argv += ["--ref-wav", str(ref_path)]
+                # Two-stage validation (defense in depth) — see
+                # :func:`_validated_reference`.
+                prompt = _validated_reference(ref_audio)
+                argv += ["--ref-wav", str(prompt)]
                 if ref_text:
-                    # The C++ runtime expects a transcript file path.
-                    # generate() creates this file in the system temp dir.
                     argv += ["--ref-text", str(ref_text)]
             return argv
 
@@ -807,10 +1323,14 @@ def _make_backend_class():
                     argv,
                     input=stdin_text,
                     text=True,
+                    encoding="utf-8",
+                    errors="replace",
                     capture_output=True,
                     timeout=timeout_s,
                     check=False,
                     env=_spawn_env(),
+                    # See probe_load: keep ggml's backend scan inside bin/.
+                    cwd=str(_binary_path().parent),
                 )
             except subprocess.TimeoutExpired as exc:
                 raise RuntimeError(
@@ -825,6 +1345,7 @@ def _make_backend_class():
                     _binary_repair_hint(),
                 ) from exc
 
+            _raise_if_illegal_instruction(Path(argv[0]), proc.returncode)
             if proc.returncode != 0:
                 stderr = _mask_token(proc.stderr or "")
                 raise RuntimeError(
@@ -852,7 +1373,22 @@ def _iso_to_omnivoice_lang(code: Optional[str]) -> Optional[str]:
     c = code.strip().lower()
     if c in ("auto", "multi", ""):
         return None
-    return _ISO_TO_OV.get(c, c.capitalize())
+    # App picker labels/tags ("Arabic", "ar", "Chinese (Simplified)") are not
+    # in the pinned resolver's table; send the canonical ID it does accept
+    # instead of an unknown label that silently drops to language-agnostic.
+    from omnivoice.utils.lang_map import APP_LANGUAGE_IDS, APP_LANGUAGE_NAMES
+
+    alias = APP_LANGUAGE_NAMES.get(c) or APP_LANGUAGE_IDS.get(c)
+    if alias:
+        return alias
+    if c in _ISO_TO_OV:
+        return _ISO_TO_OV[c]
+    # Already a valid OmniVoice id ("ht", "ug"): pass through, never title-case.
+    from omnivoice.utils.lang_map import LANG_IDS
+
+    if c in LANG_IDS:
+        return c
+    return c.capitalize()
 
 
 _ISO_TO_OV = {

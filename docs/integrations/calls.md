@@ -133,8 +133,12 @@ anyone.
 
 ## API
 
-All routes are on VoiceStudio's local API (admin-only; never on the telephony
-listener or tunnel).
+All routes are on VoiceStudio's local API, never the telephony listener or
+Twilio tunnel. Desktop mode defaults to local operator access. In **Calls →
+Incoming calls**, the operator can turn on **Allow paired call control** for
+API-key-authenticated phones. A sharing PIN or trusted network cannot authorize
+call control. Call settings keep the strict admin gate; paired phones cannot
+turn this permission on themselves. Server-mode admin access is unchanged.
 
 | Method and path | Purpose |
 |---|---|
@@ -147,7 +151,8 @@ listener or tunnel).
 | `POST /calls/{id}/hangup` | End the call now (cancels it if still ringing). |
 | `DELETE /calls/{id}` | Delete a finished call's record and recording. |
 | `GET /calls/{id}/recording` | The WAV recording, if the call was recorded. |
-| `GET /calls/settings`, `PUT /calls/settings` | `{from_number, disclosure_template, user_name, inbound_mode, inbound_brief, max_concurrent, record_calls}`. `PUT` changes only the fields sent. |
+| `GET /calls/settings`, `PUT /calls/settings` | `{from_number, disclosure_template, user_name, inbound_mode, inbound_brief, max_concurrent, record_calls, allow_remote_control}`. `PUT` changes only the fields sent. |
+| `GET /calls/options` | Rendered opening disclosure for the phone’s confirmation screen; no credentials or settings. |
 | `GET /calls/readiness` | `[{id, ok, detail}]` for `credentials`, `tunnel`, `number`, `llm`, `asr`, `voice`. |
 
 **CallRecord:** `{id, direction, to_masked, status, created_at, started_at,

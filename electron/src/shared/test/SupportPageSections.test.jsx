@@ -52,7 +52,7 @@ describe('the compact support page', () => {
       'true',
     );
     expect(
-      screen.getByRole('heading', { name: 'Ship AI voices in production' }),
+      screen.getByRole('heading', { name: 'License VoiceStudio for your organization' }),
     ).toBeInTheDocument();
   });
 

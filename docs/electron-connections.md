@@ -23,34 +23,10 @@ backend and honor its restart-required response. Browser fixtures verify saves,
 reload, failed writes and Auto reset. The live read-only schema was verified;
 no real mirror preference was changed or probe triggered during verification.
 
-Model downloads follow the compute target selected when the request starts. The
-control plane retains authenticated remote-worker progress so Models can recover
-it after navigation or renderer reconnect. Jobs are keyed by both repository and
-target, preventing a local download of the same repository from appearing on a
-remote model card. Cancel sends only the worker's advertised opaque model ID,
-keeps polling while the worker drains the install, and completes after the worker
-returns a terminal progress event.
-
-Engine Ready resolves TTS against the selected execution target. For a remote
-device it shows that worker's advertised engine/model, install and download
-readiness, execution backend, and heartbeat-confirmed residency; ASR,
-translation, dictation and diarisation remain attributed to the local device
-because those operations are not remotely routed. Clone, Design, Stories,
-Audiobook, profile preview and comparison actions use the same
-operation-scoped readiness, including cloning-capability filtering for Clone,
-so a model available only on the selected worker is usable without a duplicate
-local installation. If the selected worker is
-offline or an operation is local-only, readiness follows the backend's real
-local fallback instead of blocking on the remote choice. Batch validates the
-selected target before files or watched-folder items enter the queue, sends one
-coarse segment bundle per target language to a capable worker, and keeps ASR,
-translation, timeline assembly and muxing local. Dubbing and Batch preflight the
-selected worker and load local TTS lazily only if dispatch falls back, so a
-remote-only installation does not require duplicate weights on the control
-device.
+Model downloads and Engine Ready use the local backend's installation and
+runtime state. Clone, Design, Stories, Audiobook, Batch, profile previews and
+comparison actions share that local readiness contract.
 
 Sharing exposes the backend only after an inline confirmation. It shows the active PIN and LAN addresses, generates QR links locally, supports a configurable share port, and controls the backend's Tailscale serve integration. These actions remain explicit and do not run during settings reads.
 
 Remote backend configuration is owned by Electron main. Connection tests validate a VoiceStudio health response and exchange an optional server master key once for a scoped, expiring session. The renderer clears the key immediately; only the URL is persisted. Main injects the session into production and development HTTP proxy traffic, native watch-folder uploads, and path-bound dictation WebSocket tickets. Switching back to the local backend is always available.
-
-Remote-worker routing was exercised against an Ubuntu 26.04 WSL worker with an RTX 4090. A real profile-backed TTS request returned a WAV with `X-OmniVoice-Routing: remote`; stopping the worker changed the same selected target to an explicit local fallback, and a second request returned `X-OmniVoice-Routing: local_fallback`. Restarting the worker restored remote readiness without re-enrollment. Dubbing and Batch also completed real multi-segment worker tasks: the Batch proof returned two exact indexed, non-silent mono WAVs at 24 kHz in one committed bundle. The selected target was returned to Local after verification.

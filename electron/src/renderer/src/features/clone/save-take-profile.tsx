@@ -1,3 +1,4 @@
+import { DisabledReason } from '@/components/disabled-reason';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SaveIcon } from 'lucide-react';
@@ -34,14 +35,18 @@ export function SaveTakeProfile({ item }: { item: HistoryItem }) {
     }
   };
   return (
-    <div className="space-y-2">
+    // Collapsed, the button sits in the take's action row as its primary action;
+    // the form it opens takes the full row.
+    <div className={file || failed ? 'w-full basis-full space-y-2' : 'contents'}>
       {file ? (
         <>
           <SaveProfileForm
             file={file}
             selectOnSave={false}
             metadata={{
-              refText: item.text || '',
+              // Never the raw take text: it may be cut short or carry script
+              // markup the take never spoke (#3062). Empty transcribes the audio.
+              refText: item.transcript ?? '',
               instruct: item.instruct || '',
               language: item.language || 'Auto',
               seed: item.seed,
@@ -50,16 +55,24 @@ export function SaveTakeProfile({ item }: { item: HistoryItem }) {
           />
         </>
       ) : (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          disabled={busy || !item.audio_path}
-          onClick={() => void start()}
+        <DisabledReason
+          className={failed ? undefined : 'min-w-0 flex-1'}
+          reason={item.audio_path ? null : t('disabledReason.audio_missing')}
         >
-          <SaveIcon />
-          {t(busy ? 'preferences.loading' : 'clone.save_as_profile')}
-        </Button>
+          {(describedBy) => (
+            <Button
+              type="button"
+              size="sm"
+              className={failed ? undefined : 'min-w-0 flex-1'}
+              disabled={busy || !item.audio_path}
+              aria-describedby={describedBy}
+              onClick={() => void start()}
+            >
+              <SaveIcon />
+              {t(busy ? 'preferences.loading' : 'clone.save_as_profile')}
+            </Button>
+          )}
+        </DisabledReason>
       )}
       {failed && (
         <p role="alert" className="text-xs text-destructive">

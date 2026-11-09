@@ -107,6 +107,7 @@ class CallSession:
         self._written_seq = 0
         self._subscribers: list[tuple[asyncio.AbstractEventLoop, asyncio.Queue]] = []
         self._agent = None
+        self._operator_hangup = False
         self.timeline.append({"status": self.status, "t": round(time.time(), 3)})
 
     # ── Serialisation ──
@@ -825,7 +826,12 @@ async def finish(session: CallSession, stream_outcome: str, agent=None) -> None:
     if session.finalized:
         return
     session.ended_at = time.time()
-    failed = stream_outcome in ("error", "engine_unavailable", "synthesis_failed", "rejected_stream", "busy")
+    with session._lock:
+        # Disconnecting after an accepted hangup can cancel the media handler
+        # before it returns, leaving its generic error fallback. Explicit
+        # synthesis/transport failures remain failures even during hangup.
+        interrupted_hangup = stream_outcome == "error" and session._operator_hangup
+    failed = stream_outcome in ("error", "engine_unavailable", "synthesis_failed", "rejected_stream", "busy") and not interrupted_hangup
     if failed:
         session.error = session.error or stream_outcome
     outcome, summary = await _summarize(session, agent_mod.deps_factory())
@@ -878,8 +884,16 @@ def hangup(session: CallSession) -> None:
     from services.telephony import twilio as provider
 
     agent = session.agent
-    if agent is not None and agent.hangup():
-        return
+    if agent is not None:
+        # Publish the intent before dispatch: the media loop runs on another
+        # thread and can finish as soon as hangup() schedules its callback.
+        with session._lock:
+            previous = session._operator_hangup
+            session._operator_hangup = True
+        if agent.hangup():
+            return
+        with session._lock:
+            session._operator_hangup = previous
     if session.provider_call_id:
         cfg = config.load()
         try:

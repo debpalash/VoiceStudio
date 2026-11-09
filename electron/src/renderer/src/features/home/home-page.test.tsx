@@ -3,7 +3,9 @@ import { afterEach, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 const browser = vi.hoisted(() => ({ open: vi.fn(async () => {}) }));
 const files = vi.hoisted(() => ({ openExternal: vi.fn(async () => {}) }));
-vi.mock('@/components/bridge', () => ({ getBridge: () => ({ browser, files }) }));
+vi.mock('@/components/bridge', () => ({
+  getBridge: () => ({ browser, files }),
+}));
 
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ to, children, ...props }: { to: string; children: ReactNode }) => (
@@ -21,7 +23,9 @@ vi.mock('@/hooks/use-profiles', () => ({ useProfiles: () => ({ data: [] }) }));
 vi.mock('@/components/app-shell/workspace-header', () => ({
   WorkspaceHeader: ({ children }: { children: ReactNode }) => <header>{children}</header>,
 }));
-vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
 import { HomePage } from './home-page';
 import { homeContributors } from './home-contributors-data';
 import en from '@/i18n/locales/en.json';
@@ -61,10 +65,16 @@ it('names the feature Dubbing consistently while preserving the existing route',
 it('credits qualifying contributors and opens their GitHub profiles externally', () => {
   render(<HomePage />);
   const credits = screen.getAllByRole('listitem');
-  expect(credits).toHaveLength(homeContributors.length + 1);
   expect(
-    [1, 2, 3].map((row) => credits.filter((credit) => credit.style.gridRow === String(row)).length),
-  ).toEqual([5, 3, 2]);
+    Array.from(document.querySelectorAll('[data-core-maintainer]'), (badge) =>
+      badge.getAttribute('data-core-maintainer'),
+    ),
+  ).toEqual(['debpalash', 'velixio']);
+  expect(credits).toHaveLength(homeContributors.length + 1);
+  expect(Array.from(document.querySelectorAll('.home-contributors-core li img')).length).toBe(2);
+  expect(document.querySelectorAll('.home-contributors-rest li')).toHaveLength(
+    homeContributors.length - 2 + 1,
+  );
   expect(homeContributors.every((person) => person.commits > 10)).toBe(true);
   const all = screen.getByRole('link', { name: 'homeUi.allContributors' });
   expect(all).toHaveAttribute(
@@ -76,7 +86,7 @@ it('credits qualifying contributors and opens their GitHub profiles externally',
     'https://github.com/debpalash/VoiceStudio/graphs/contributors',
   );
   for (const { login } of homeContributors) {
-    if (login === 'debpalash') continue;
+    if (login === 'debpalash' || login === 'velixio') continue;
     const profile = screen.getByRole('link', { name: `GitHub · @${login}` });
     expect(profile).toHaveAttribute('href', `https://github.com/${login}`);
     expect(profile.querySelector('img')?.src).not.toMatch(/^https?:\/\/(avatars|github)/);
@@ -90,12 +100,35 @@ it('opens both creator profiles from the accessible avatar card', async () => {
   fireEvent.click(screen.getByRole('button', { name: '@debpalash' }));
   const github = await screen.findByRole('link', { name: 'GitHub @debpalash' });
   const x = screen.getByRole('link', { name: 'X @idebpalash' });
+  expect(screen.getByRole('link', { name: 'homeUi.website palash.dev' })).toHaveAttribute(
+    'href',
+    'https://palash.dev',
+  );
+  expect(screen.getByText('homeUi.creatorCoreTeam')).toBeVisible();
+  expect(screen.getByText('homeUi.maintainerPalash')).toBeVisible();
+  expect(screen.getAllByText('homeUi.follow')).toHaveLength(2);
   expect(github).toHaveAttribute('href', 'https://github.com/debpalash');
   expect(x).toHaveAttribute('href', 'https://x.com/idebpalash');
   fireEvent.click(github);
   expect(files.openExternal).toHaveBeenCalledWith('https://github.com/debpalash');
   fireEvent.click(x);
   expect(files.openExternal).toHaveBeenCalledWith('https://x.com/idebpalash');
+});
+
+it('gives velixio the same hover card as the creator', async () => {
+  render(<HomePage />);
+  fireEvent.click(screen.getByRole('button', { name: '@velixio' }));
+  const github = await screen.findByRole('link', { name: 'GitHub @velixio' });
+  expect(github).toHaveAttribute('href', 'https://github.com/velixio');
+  expect(screen.getByText('homeUi.maintainerShimul')).toBeVisible();
+  expect(screen.getByRole('link', { name: 'homeUi.website shimul.me' })).toHaveAttribute(
+    'href',
+    'https://shimul.me',
+  );
+  expect(screen.getByRole('link', { name: 'X @shimuldn' })).toHaveAttribute(
+    'href',
+    'https://x.com/shimuldn',
+  );
 });
 
 it('separates three primary creation actions and describes all nine destinations', () => {

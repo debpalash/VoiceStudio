@@ -79,6 +79,15 @@ class _FakeASR:
         return self.result
 
 
+class _LangASR(_FakeASR):
+    """ASR whose ``transcribe`` accepts a language pin (like MLX/faster-whisper)."""
+
+    def transcribe(self, audio_path, *, word_timestamps=True, language=None):
+        self.calls.append({"audio_path": audio_path, "word_timestamps": word_timestamps,
+                           "language": language})
+        return self.result
+
+
 @pytest.fixture()
 def client():
     from fastapi.testclient import TestClient
@@ -168,6 +177,35 @@ def _post_convert(client, pid, **extra):
 
 
 # ── The route ───────────────────────────────────────────────────────────────
+
+
+def test_convert_native_voice_uses_full_description(client, monkeypatch, _init_db):
+    """Converting with VoxCPM2 preserves a saved profile's free-form prose."""
+    import json
+    from core.db import db_conn
+
+    fake = _make_fake_engine(f"native-conv-{uuid.uuid4().hex[:6]}")
+    fake.instruct_vocabulary = "freeform"
+    asr = _FakeASR({"text": "Hello from a designed voice", "segments": []})
+    _wire_stubs(monkeypatch, engine_cls=fake, asr=asr)
+    pid = f"native-conv-{uuid.uuid4().hex[:8]}"
+    desc = "A warm, breathy adult voice speaking with a soft Japanese accent."
+    with db_conn() as conn:
+        conn.execute(
+            "INSERT INTO voice_profiles "
+            "(id, name, kind, instruct, vd_states, design_recipe, created_at) "
+            "VALUES (?, 'Native design', 'design', 'female', ?, ?, 0)",
+            (pid, json.dumps({"Gender": "female"}), json.dumps({
+                "description": desc, "picks": {"Pitch": "low pitch"},
+                "engine": fake.id,
+            })),
+        )
+    try:
+        res = _post_convert(client, pid, match_duration="0")
+        assert res.status_code == 200, res.text
+        assert fake.calls[0][1]["instruct"] == desc + ", low pitch"
+    finally:
+        _delete_profile_and_takes(pid)
 
 
 def test_convert_happy_path(client, monkeypatch, clone_profile):
@@ -559,3 +597,272 @@ def test_convert_router_is_registered():
     snapshot = os.path.join(os.path.dirname(__file__), "fixtures", "api_routes.txt")
     with open(snapshot, encoding="utf-8") as f:
         assert "POST /convert\n" in f.read()
+
+
+# ── Source language pin ─────────────────────────────────────────────────────
+
+
+def test_whisper_language_maps_names_and_keeps_auto():
+    from api.routers.voice_convert import _whisper_language
+
+    assert _whisper_language("Armenian") == "hy"
+    assert _whisper_language("Russian") == "ru"
+    assert _whisper_language("Hindi") == "hi"
+    assert _whisper_language("Bengali") == "bn"
+    assert _whisper_language("Thai") == "th"
+    assert _whisper_language("Burmese") == "my"
+    assert _whisper_language("Klingon") is None
+    assert _whisper_language("Auto") is None
+    assert _whisper_language("") is None
+    assert _whisper_language(None) is None
+    assert _whisper_language("Standard Arabic") == "ar"
+
+
+def test_convert_picker_offers_exactly_the_pinnable_languages():
+    """The Convert picker enables only names the backend pins; anything else
+    would silently auto-detect after an explicit choice."""
+    import json
+    from pathlib import Path
+    from api.routers.voice_convert import _whisper_language
+
+    root = Path(__file__).resolve().parents[1]
+    picker = json.loads((root / "electron/src/shared/languages.json").read_text("utf-8"))
+    pinnable = {name for name in picker if _whisper_language(name)}
+    source = (
+        root / "electron/src/renderer/src/features/tools/convert-languages.ts"
+    ).read_text("utf-8")
+    offered = set(re.findall(r"^  '([^']+)',$", source, re.M))
+    assert offered == pinnable
+
+    # LanguagePicker also enables any name sharing an ISO code with an offered
+    # one; each of those must pin too.
+    codes = json.loads((root / "electron/src/shared/language-codes.json").read_text("utf-8"))
+    offered_codes = {codes.get(name.lower()) for name in offered} - {None}
+    leaked = [n for n in picker if codes.get(n.lower()) in offered_codes and n not in pinnable]
+    assert not leaked
+
+
+def test_convert_pins_explicit_source_language(client, monkeypatch, clone_profile):
+    """An explicit ``language`` reaches the ASR so short non-Latin clips aren't
+    auto-detected as the wrong language (Armenian read as Russian)."""
+    fake = _make_fake_engine(f"fake-conv-{uuid.uuid4().hex[:6]}")
+    asr = _LangASR({"text": "hello", "segments": []})
+    _wire_stubs(monkeypatch, engine_cls=fake, asr=asr)
+
+    res = _post_convert(client, clone_profile, match_duration="0", language="Armenian")
+    assert res.status_code == 200, res.text
+    assert asr.calls[0]["language"] == "hy"
+
+
+def test_convert_auto_language_falls_back_to_profile_language(
+    client, monkeypatch, clone_profile,
+):
+    from core.db import db_conn
+
+    with db_conn() as conn:
+        conn.execute("UPDATE voice_profiles SET language=? WHERE id=?", ("Armenian", clone_profile))
+    fake = _make_fake_engine(f"fake-conv-{uuid.uuid4().hex[:6]}")
+    asr = _LangASR({"text": "hello", "segments": []})
+    _wire_stubs(monkeypatch, engine_cls=fake, asr=asr)
+
+    res = _post_convert(client, clone_profile, match_duration="0")
+    assert res.status_code == 200, res.text
+    assert asr.calls[0]["language"] == "hy"
+
+
+def test_convert_language_is_not_sent_to_asr_without_support(
+    client, monkeypatch, clone_profile,
+):
+    """Backends whose ``transcribe`` has no ``language`` option keep working."""
+    fake = _make_fake_engine(f"fake-conv-{uuid.uuid4().hex[:6]}")
+    asr = _FakeASR({"text": "hello", "segments": []})
+    _wire_stubs(monkeypatch, engine_cls=fake, asr=asr)
+
+    res = _post_convert(client, clone_profile, match_duration="0", language="Armenian")
+    assert res.status_code == 200, res.text
+    assert "language" not in asr.calls[0]
+
+
+def test_convert_explicit_language_beats_profile_language(client, monkeypatch, clone_profile):
+    """Picking Hindi on an English profile pins Hindi, not English."""
+    from core.db import db_conn
+
+    with db_conn() as conn:
+        conn.execute("UPDATE voice_profiles SET language=? WHERE id=?", ("English", clone_profile))
+    fake = _make_fake_engine(f"fake-conv-{uuid.uuid4().hex[:6]}")
+    asr = _LangASR({"text": "hello", "segments": []})
+    _wire_stubs(monkeypatch, engine_cls=fake, asr=asr)
+
+    res = _post_convert(client, clone_profile, match_duration="0", language="Hindi")
+    assert res.status_code == 200, res.text
+    assert asr.calls[0]["language"] == "hi"
+
+
+def test_convert_unsupported_pick_keeps_auto_detect(client, monkeypatch, clone_profile):
+    """A language Whisper lacks is not silently swapped for the profile's."""
+    from core.db import db_conn
+
+    with db_conn() as conn:
+        conn.execute("UPDATE voice_profiles SET language=? WHERE id=?", ("English", clone_profile))
+    fake = _make_fake_engine(f"fake-conv-{uuid.uuid4().hex[:6]}")
+    asr = _LangASR({"text": "hello", "segments": []})
+    _wire_stubs(monkeypatch, engine_cls=fake, asr=asr)
+
+    res = _post_convert(client, clone_profile, match_duration="0", language="Klingon")
+    assert res.status_code == 200, res.text
+    assert asr.calls[0]["language"] is None
+
+
+# ── Keep my delivery (#3421): speech-to-speech, no transcript ───────────────
+#
+# The recording goes to an engine that declares supports_voice_conversion;
+# ASR never runs. ffmpeg decode is stubbed.
+
+import numpy as np  # noqa: E402
+
+
+def _vc_engine(engine_id):
+    cls = _make_fake_engine(engine_id)
+    cls.supports_voice_conversion = True
+    cls.max_vc_source_seconds = 10.0
+    cls.vc_calls = []
+
+    def convert_voice(self, source_audio, *, ref_audio, seed=None):
+        import soundfile as sf
+
+        audio, sr = sf.read(source_audio, dtype="float32")
+        type(self).vc_calls.append((source_audio, ref_audio, len(audio) / sr))
+        return torch.full((1, len(audio)), 0.1)
+
+    cls.convert_voice = convert_voice
+    return cls
+
+
+@pytest.fixture()
+def profile():
+    from core.db import db_conn, init_db
+
+    init_db()
+    pid = f"vp-keep-{uuid.uuid4().hex[:8]}"
+    with db_conn() as conn:
+        conn.execute(
+            "INSERT INTO voice_profiles (id, name, kind, ref_audio_path, ref_text, created_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (pid, "Keep Target", "clone", "convert-ref.wav", "reference words", 0.0),
+        )
+    yield pid
+    _delete_profile_and_takes(pid)
+
+
+def _stub_decode(monkeypatch, seconds):
+    import services.voice_conversion as vc
+
+    async def decode(path, sr, *, max_s=None):
+        n = int((min(seconds, max_s) if max_s else seconds) * sr)
+        t = np.arange(n) / sr
+        return (0.3 * np.sin(2 * np.pi * 180 * t)).astype(np.float32)
+
+    monkeypatch.setattr(vc, "decode_mono", decode)
+
+
+def _no_asr(monkeypatch):
+    import services.asr_backend as ab
+
+    def boom(**kw):
+        raise AssertionError("Keep my delivery must not transcribe")
+
+    monkeypatch.setattr(ab, "load_active_asr_backend", boom)
+    monkeypatch.setattr(ab, "asr_model_missing_error", boom)
+
+
+def _post(client, pid, **extra):
+    return client.post(
+        "/convert",
+        data={"profile_id": pid, "keep_delivery": "1", **extra},
+        files={"audio": ("source.wav", b"RIFF-fake-wav-bytes", "audio/wav")},
+    )
+
+
+def test_keep_delivery_converts_the_recording_without_asr(client, monkeypatch, profile):
+    vc_cls = _vc_engine(f"vc-{uuid.uuid4().hex[:6]}")
+    plain = _make_fake_engine(f"plain-{uuid.uuid4().hex[:6]}")
+    monkeypatch.setitem(_tts_mod()._REGISTRY, vc_cls.id, vc_cls)
+    monkeypatch.setitem(_tts_mod()._REGISTRY, plain.id, plain)
+    # The active engine cannot convert; the installed one that can is used.
+    monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", plain.id)
+    _no_asr(monkeypatch)
+    _stub_decode(monkeypatch, 25.0)
+
+    r = _post(client, profile)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["engine"] == vc_cls.id and body["text"] == ""
+    # 25 s split under the 10 s cap (minus margin): every piece fits, none lost.
+    pieces = [c[2] for c in vc_cls.vc_calls]
+    assert len(pieces) >= 3 and max(pieces) <= 8.0 + 1e-6
+    assert abs(sum(pieces) - 25.0) < 0.01
+    assert body["duration_s"] == pytest.approx(25.0, abs=0.05)
+    assert plain.calls == []  # never re-spoken
+
+    from core.db import db_conn
+    with db_conn() as conn:
+        row = conn.execute(
+            "SELECT mode FROM generation_history WHERE id=?", (body["id"],)
+        ).fetchone()
+    assert row["mode"] == "convert"
+
+
+def test_keep_delivery_prefers_the_active_engine(client, monkeypatch, profile):
+    first = _vc_engine(f"vca-{uuid.uuid4().hex[:6]}")
+    active = _vc_engine(f"vcb-{uuid.uuid4().hex[:6]}")
+    monkeypatch.setitem(_tts_mod()._REGISTRY, first.id, first)
+    monkeypatch.setitem(_tts_mod()._REGISTRY, active.id, active)
+    monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", active.id)
+    _no_asr(monkeypatch)
+    _stub_decode(monkeypatch, 2.0)
+
+    r = _post(client, profile)
+    assert r.status_code == 200, r.text
+    assert r.json()["engine"] == active.id
+    assert first.vc_calls == []
+
+
+def test_keep_delivery_without_a_conversion_engine_says_what_to_install(client, monkeypatch, profile):
+    monkeypatch.setattr(_tts_mod(), "voice_conversion_engine_ids", lambda: [])
+    _no_asr(monkeypatch)
+    r = _post(client, profile)
+    assert r.status_code == 409
+    detail = r.json()["detail"]
+    assert detail["error"] == "voice_conversion_engine_missing"
+    assert "CosyVoice 3" in detail["message"]
+
+
+def test_split_lands_in_the_pause_and_respects_the_cap():
+    from services.voice_conversion import split_audio
+
+    sr = 16000
+    speech = lambda s: (0.3 * np.sin(2 * np.pi * 200 * np.arange(int(s * sr)) / sr)).astype(np.float32)
+    # 7 s speech, 0.5 s pause, 7 s speech: a 10 s cap must cut inside the pause.
+    audio = np.concatenate([speech(7.0), np.zeros(int(0.5 * sr), np.float32), speech(7.0)])
+    bounds = split_audio(audio, sr, 10.0)
+    assert bounds[0][0] == 0 and bounds[-1][1] == len(audio)
+    assert all(b - a <= 10 * sr for a, b in bounds)
+    assert all(bounds[i][1] == bounds[i + 1][0] for i in range(len(bounds) - 1))
+    assert 7.0 * sr <= bounds[0][1] <= 7.5 * sr
+    assert split_audio(audio[: 3 * sr], sr, 10.0) == [(0, 3 * sr)]
+    assert split_audio(np.zeros(0, np.float32), sr, 10.0) == []
+
+
+def test_keep_delivery_refuses_an_overlong_source(client, monkeypatch, profile):
+    import services.voice_conversion as vc
+
+    vc_cls = _vc_engine(f"vcl-{uuid.uuid4().hex[:6]}")
+    monkeypatch.setitem(_tts_mod()._REGISTRY, vc_cls.id, vc_cls)
+    monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", vc_cls.id)
+    monkeypatch.setattr(vc, "MAX_SOURCE_S", 5.0)
+    _no_asr(monkeypatch)
+    _stub_decode(monkeypatch, 30.0)
+    r = _post(client, profile)
+    assert r.status_code == 422
+    assert "longer than" in r.json()["detail"]
+    assert vc_cls.vc_calls == []

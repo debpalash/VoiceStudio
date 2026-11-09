@@ -20,7 +20,12 @@ _REPO_ID = re.compile(r"[A-Za-z0-9][\w.-]*/[\w.-]+")
 _PROGRAM_REPOS = {"0xShug0/audio.cpp", "zackees/ffmpeg_bins"}
 # A local checkout subdirectory and an SDK alias also match org/model syntax.
 _LOCAL_MODEL_PATHS = {"pretrained_models/Fun-CosyVoice3-0.5B"}
-_MODEL_ALIASES = {"moonshine/base": "UsefulSensors/moonshine-base"}
+_PHONE_RECORD_SOURCE = "mobile/contract/"
+_PHONE_ENGINE_PREFIX = "mobile:"
+_MODEL_ALIASES = {
+    "moonshine/base": "UsefulSensors/moonshine-base",
+    "moonshine/tiny": "UsefulSensors/moonshine-tiny",
+}
 
 
 def source_model_ids(root):
@@ -77,7 +82,8 @@ def catalog_ids(value):
     """Include transitive pipeline dependencies, not only top-level models."""
     if isinstance(value, dict):
         if isinstance(value.get("repo_id"), str):
-            yield value["repo_id"]
+            # A package entry of a shared repository is recorded by its own id.
+            yield value["id"] if isinstance(value.get("id"), str) else value["repo_id"]
         for child in value.values():
             yield from catalog_ids(child)
     elif isinstance(value, list):
@@ -87,8 +93,8 @@ def catalog_ids(value):
 
 def validate(registry, catalog, source_ids=()):
     errors = []
-    if not isinstance(registry, dict) or registry.get("schema_version") != 1:
-        return ["Expected model licence inventory schema_version 1"]
+    if not isinstance(registry, dict) or registry.get("schema_version") != 2:
+        return ["Expected model licence inventory schema_version 2"]
     ids = set()
     for group in ("models", "dynamic_assets"):
         records = registry.get(group)
@@ -129,6 +135,42 @@ def validate(registry, catalog, source_ids=()):
                 for field in ("reviewed_by", "reviewed_at", "review_scope", "revision"):
                     if not isinstance(record.get(field), str) or not record[field].strip():
                         errors.append(f"{rid}: cleared record needs {field}")
+    # The original source/catalogue scan remains intact; v2 adds exact-evidence
+    # shape checks without claiming SDK closure from static source inspection.
+    import sys
+    backend = str(Path(__file__).resolve().parents[1] / "backend")
+    if backend not in sys.path:
+        sys.path.insert(0, backend)
+    from services.model_licenses import _component, ModelTermsError
+    for record in registry.get("models", []) if isinstance(registry.get("models"), list) else []:
+        if not isinstance(record, dict) or not isinstance(record.get("id"), str):
+            continue
+        rid = record["id"]
+        revision = record.get("runtime_revision")
+        if revision is not None and (not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision)):
+            errors.append(f"{rid}: invalid runtime_revision")
+        if record.get("runtime_pin_scope") == "central" and revision is None:
+            errors.append(f"{rid}: central pin missing")
+        if record.get("component_closure") not in {"complete", "incomplete"}:
+            errors.append(f"{rid}: invalid component_closure")
+        for field in ("commercial_inference", "commercial_outputs"):
+            if record.get(field) not in {"unknown", "restricted"}:
+                errors.append(f"{rid}: unsupported {field} assessment")
+        if record.get("data_kind", "production") != "production":
+            errors.append(f"{rid}: test/illustrative data is not production evidence")
+        phone_only = str(record.get("configured_at", "")).startswith(_PHONE_RECORD_SOURCE)
+        for engine in record.get("engines") or []:
+            has_phone_prefix = isinstance(engine, str) and engine.startswith(_PHONE_ENGINE_PREFIX)
+            if not isinstance(engine, str) or has_phone_prefix != phone_only:
+                requirement = "must" if phone_only else "must not"
+                errors.append(
+                    f"{rid}: engine {engine!r} {requirement} start with "
+                    f"{_PHONE_ENGINE_PREFIX!r}"
+                )
+        try:
+            _component(record)
+        except (ModelTermsError, KeyError, TypeError) as exc:
+            errors.append(f"{rid}: invalid exact evidence ({type(exc).__name__})")
     records = registry.get("models")
     model_ids = {record["id"] for record in records if isinstance(record, dict)
                  and isinstance(record.get("id"), str)} if isinstance(records, list) else set()
@@ -142,7 +184,11 @@ def main():
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
     args = parser.parse_args()
     config = args.root / "backend/config"
-    registry = json.loads((config / "model_licenses.json").read_text(encoding="utf-8"))
+    sys_path = str(args.root / "backend")
+    import sys
+    sys.path.insert(0, sys_path)
+    from services.model_licenses import load_registry
+    registry = load_registry(config / "model_licenses.json")
     catalog = yaml.safe_load((config / "models.yaml").read_text(encoding="utf-8"))
     errors = validate(registry, catalog, source_model_ids(args.root))
     if errors:
@@ -155,3 +201,4 @@ def main():
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

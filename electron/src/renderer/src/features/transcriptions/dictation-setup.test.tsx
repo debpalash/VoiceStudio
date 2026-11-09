@@ -69,7 +69,13 @@ it('starts only the recommended model after an explicit click', async () => {
           },
         ],
       });
-    if (path === '/models/install/status') return Promise.resolve({ jobs: [] });
+    // The backend lists a job as soon as it accepts the install request.
+    if (path === '/models/install/status')
+      return Promise.resolve({
+        jobs: mock.api.mock.calls.some(([called]) => called === '/models/install')
+          ? [{ repo_id: 'owner/recommended', state: 'downloading' }]
+          : [],
+      });
     return Promise.resolve({});
   });
   mount();
@@ -79,9 +85,12 @@ it('starts only the recommended model after an explicit click', async () => {
     expect(mock.api).toHaveBeenCalledWith(
       '/models/install',
       expect.objectContaining({
-        body: JSON.stringify({ repo_id: 'owner/recommended', target: 'local' }),
+        body: JSON.stringify({ repo_id: 'owner/recommended' }),
       }),
     ),
   );
-  expect(screen.getByRole('status')).toHaveTextContent('asr_missing.started');
+  await waitFor(() =>
+    expect(screen.getByRole('status')).toHaveTextContent('Recommended ASR · modelInstall.queued'),
+  );
+  expect(screen.getByRole('button', { name: 'common.cancel' })).toBeInTheDocument();
 });

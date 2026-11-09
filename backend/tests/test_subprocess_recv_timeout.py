@@ -1,249 +1,205 @@
-"""Every sidecar's generate deadline outlasts the job budget it was granted (#2103).
+"""Deadlines applied to a sidecar while generate() waits on it (#2103)."""
+from __future__ import annotations
 
-#1611 raised IndexTTS's deadline because a healthy synthesis was being killed at
-60s. That fixed the reported engine and left the class default alone, so four
-more engines — confucius4, dots_tts, moss_tts_v15, supertonic3 — inherited the
-same 60s and were killed the same way.
+import asyncio
+import importlib
+import sys
+import textwrap
+import time
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
-60s is the ``health_check`` ping budget. Inheriting it as a *generation*
-deadline puts the sidecar watchdog five to ten times below
-``model_manager.generate_timeout_s`` (300s accelerated, 600s CPU), so the
-watchdog reclaims a sidecar the caller still considers well inside its budget.
-Every engine that overrode the hook picked 300s..900s, i.e. at or above the
-accelerated budget; the four that stayed silent are the whole bug.
-
-The invariant below is what keeps a new engine from re-entering that state by
-omission, which is the part #1611 could not do by fixing one engine.
-"""
 import pytest
 
+from services import model_manager
+from services import subprocess_backend as sb
+from services.subprocess_backend import SubprocessBackend
+
+SHORT_TEXT = "hi"
+HUGE_TEXT = "y" * 200_000
 
 
-# The engines named in #2103 that inherited the ping budget. Listed explicitly
-# so the regression is legible even if the registry is reorganised later.
-REGRESSED_ENGINE_IDS = ("confucius4-tts", "dots-tts", "moss-tts-v15", "supertonic3")
+def make_engine(name, **attrs):
+    """Build a throwaway concrete SubprocessBackend subclass and instantiate it."""
+    body = {
+        "id": name,
+        "is_available": classmethod(lambda cls: (True, "ok")),
+        "sample_rate": property(lambda self: 24000),
+        "supported_languages": property(lambda self: ["multi"]),
+        **attrs,
+    }
+    return type(f"Engine_{name}", (SubprocessBackend,), body)()
 
 
-def _subprocess_backend_classes():
-    """Every SubprocessBackend the registry can hand a user, by id."""
-    from services.tts_backend import get_backend_class
-    from services.tts_backend import list_backends
-    found = {}
-    for row in list_backends(include_hidden=True):
+# ── constants and class default ─────────────────────────────────────────────
+
+def test_constants_keep_ping_and_generate_budgets_apart():
+    assert sb.RECV_TIMEOUT_S == 60.0
+    assert sb.GENERATE_RECV_TIMEOUT_S > sb.RECV_TIMEOUT_S
+    assert sb.GENERATE_RECV_TIMEOUT_S >= model_manager.CPU_JOB_TIMEOUT_S
+
+
+def test_unconfigured_engine_inherits_generate_budget():
+    assert make_engine("plain").recv_timeout_s == sb.GENERATE_RECV_TIMEOUT_S
+
+
+@pytest.mark.parametrize("module,cls", [
+    ("engines.confucius4", "Confucius4Backend"),
+    ("engines.dots_tts", "DotsTTSBackend"),
+    ("engines.moss_tts_v15", "MossTTSV15Backend"),
+    ("engines.supertonic3.backend", "Supertonic3Backend"),
+])
+def test_engines_that_used_the_ping_budget_now_exceed_it(module, cls):
+    engine = getattr(importlib.import_module(module), cls)()
+    assert engine.recv_timeout_s > sb.RECV_TIMEOUT_S
+
+
+def test_every_sidecar_engine_covers_the_gpu_job_budget():
+    for mod in ("engines.confucius4", "engines.dots_tts", "engines.moss_tts_v15",
+                "engines.supertonic3.backend", "engines.omnivoice_subprocess"):
+        importlib.import_module(mod)
+    pending, found = list(SubprocessBackend.__subclasses__()), set()
+    while pending:
+        klass = pending.pop()
+        pending.extend(klass.__subclasses__())
+        if klass.__module__.startswith("engines."):
+            found.add(klass)
+    assert found
+    for klass in found:
         try:
-            cls = get_backend_class(row["id"])
+            instance = klass()
         except Exception:
-            continue  # an engine whose optional import is absent cannot be dispatched
-        if isinstance(cls, type) and getattr(cls, "_is_subprocess_isolated", False) and hasattr(cls, "recv_timeout_s"):
-            found[row["id"]] = cls
-    return found
+            continue
+        assert instance.recv_timeout_s >= model_manager.GPU_JOB_TIMEOUT_S, klass.__name__
 
 
-def test_ping_budget_and_generate_budget_are_separate_constants():
-    # A ping must stay fast; a generation must not be cut off at a ping's deadline.
-    from services.subprocess_backend import GENERATE_RECV_TIMEOUT_S
-    from services.subprocess_backend import RECV_TIMEOUT_S
-    assert RECV_TIMEOUT_S == 60.0
-    assert GENERATE_RECV_TIMEOUT_S > RECV_TIMEOUT_S
+# ── per-request deadline ────────────────────────────────────────────────────
+
+def test_deadline_for_short_input_is_the_flat_default():
+    assert make_engine("a")._effective_recv_timeout_s(SHORT_TEXT) == sb.GENERATE_RECV_TIMEOUT_S
 
 
-def test_default_generate_deadline_covers_the_cpu_job_budget():
-    # Lockstep with model_manager: raising either budget there without raising
-    # this one re-opens #2103 for every engine that does not override.
-    # Imported rather than duplicated so the two cannot drift silently.
-    from services.subprocess_backend import GENERATE_RECV_TIMEOUT_S
-    from services.subprocess_backend import SubprocessBackend
-    assert GENERATE_RECV_TIMEOUT_S >= 600.0
-    assert SubprocessBackend.recv_timeout_s == GENERATE_RECV_TIMEOUT_S
+def test_deadline_grows_with_huge_input():
+    engine = make_engine("b")
+    wanted = model_manager.generate_timeout_s(HUGE_TEXT, engine=engine, _include_sidecar_grace=False)
+    got = engine._effective_recv_timeout_s(HUGE_TEXT)
+    assert got > sb.GENERATE_RECV_TIMEOUT_S
+    assert got == pytest.approx(wanted)
 
 
-@pytest.mark.parametrize("engine_id", REGRESSED_ENGINE_IDS)
-def test_regressed_engines_no_longer_inherit_the_ping_budget(engine_id):
-    from services.subprocess_backend import RECV_TIMEOUT_S
-    cls = _subprocess_backend_classes().get(engine_id)
-    if cls is None:
-        pytest.fail(f"{engine_id} is not registered in this build")
-    # Read through an instance: several engines expose the hook as a property.
-    assert cls.__new__(cls).recv_timeout_s > RECV_TIMEOUT_S
+@pytest.mark.parametrize("text", [SHORT_TEXT, HUGE_TEXT])
+def test_engine_declared_deadline_is_never_overridden(text):
+    assert make_engine("c", recv_timeout_s=45.0)._effective_recv_timeout_s(text) == 45.0
 
 
-def test_no_registered_sidecar_undercuts_the_accelerated_job_budget():
-    """The class-level guard #1611 was missing.
+@pytest.mark.parametrize("bad", [RuntimeError("no probe"), float("inf"), float("nan")])
+def test_unusable_budget_leaves_flat_default(monkeypatch, bad):
+    def fake(*_a, **_k):
+        if isinstance(bad, Exception):
+            raise bad
+        return bad
 
-    A new SubprocessBackend that simply does not think about ``recv_timeout_s``
-    now inherits a deadline that already satisfies this; one that overrides it
-    with something too small fails here rather than in a user's generation.
-    """
-    from services.model_manager import GPU_JOB_TIMEOUT_S
-    too_short = {}
-    for engine_id, cls in _subprocess_backend_classes().items():
-        deadline = cls.__new__(cls).recv_timeout_s
-        if deadline < GPU_JOB_TIMEOUT_S:
-            too_short[engine_id] = deadline
-    assert not too_short, (
-        "these sidecars would be killed before their own job budget expires: "
-        f"{too_short} (accelerated budget is {GPU_JOB_TIMEOUT_S:g}s)"
+    monkeypatch.setattr(model_manager, "generate_timeout_s", fake)
+    assert make_engine("d")._effective_recv_timeout_s(HUGE_TEXT) == sb.GENERATE_RECV_TIMEOUT_S
+
+
+@pytest.mark.parametrize("declared", [None, 45.0])
+@pytest.mark.parametrize("text", [SHORT_TEXT, HUGE_TEXT])
+def test_pool_budget_outlasts_sidecar_deadline_by_grace(declared, text):
+    engine = make_engine("e", **({} if declared is None else {"recv_timeout_s": declared}))
+    assert model_manager.generate_timeout_s(text, engine=engine) >= (
+        engine._effective_recv_timeout_s(text) + 5
     )
 
 
-# ── a constant is not enough: the budget scales with the text (#2109 review) ─
+def test_explicit_budget_wins_over_engine_figures(monkeypatch):
+    monkeypatch.setattr(model_manager, "_GENERATE_TIMEOUT_EXPLICIT", True)
+    monkeypatch.setattr(model_manager, "GPU_JOB_TIMEOUT_S", 9.0)
+    assert model_manager.generate_timeout_s(SHORT_TEXT, engine=make_engine("f")) == 9.0
 
 
-def _SilentBackend():
-    from services.subprocess_backend import SubprocessBackend
-    from services.subprocess_backend import SubprocessBackend
-    class SilentBackend(SubprocessBackend):
-        """A sidecar with no custom deadline."""
-        id = "silent"
-        @classmethod
-        def is_available(cls):
-            return True, "ok"
-        @property
-        def sample_rate(self):
-            return 24000
-        @property
-        def supported_languages(self):
-            return ["multi"]
-    return SilentBackend()
+# ── failure text ────────────────────────────────────────────────────────────
+
+def test_failure_reason_distinguishes_crash_from_stall():
+    engine = make_engine("g")
+    engine._last_recv_timed_out = False
+    assert "closed pipe mid-generate" in engine._generate_failure_reason(1, 600)
+    engine._last_recv_timed_out = True
+    stalled = engine._generate_failure_reason(601.2, 600)
+    assert "600s" in stalled and "stopped it" in stalled and "closed pipe" not in stalled
+    assert "601s" in stalled
 
 
-def _OpinionatedBackend():
-    backend = _SilentBackend()
-    type(backend).id = "opinionated"
-    type(backend).recv_timeout_s = 45.0
-    return backend
+# ── real child process ──────────────────────────────────────────────────────
 
-
-def test_a_long_passage_raises_the_deadline_past_the_flat_default():
-    # generate_timeout_s adds 1s per 40 characters past a 1200-char allowance,
-    # so a long passage is granted more than the flat floor.
-    from services.subprocess_backend import GENERATE_RECV_TIMEOUT_S
-    backend = _SilentBackend()
-    short = backend._effective_recv_timeout_s("hello")
-    long_text = "x" * 200_000
-    long_deadline = backend._effective_recv_timeout_s(long_text)
-
-    assert short == GENERATE_RECV_TIMEOUT_S
-    assert long_deadline > short
-    # And it tracks the budget itself, not some second guess at it.
-    from services.model_manager import generate_timeout_s
-    assert generate_timeout_s(long_text, engine=backend) >= long_deadline + 5.0
-
-
-def test_an_engine_that_opts_down_keeps_its_own_deadline():
-    # #2103 asks that fast engines stay able to opt down, so deriving from the
-    # budget must not overrule an override in either direction.
-    backend = _OpinionatedBackend()
-    assert backend._effective_recv_timeout_s("hello") == 45.0
-    assert backend._effective_recv_timeout_s("x" * 200_000) == 45.0
-
-
-def test_budget_probe_failure_falls_back_instead_of_failing_the_generate(monkeypatch):
-    from services.subprocess_backend import GENERATE_RECV_TIMEOUT_S
-    import services.model_manager as mm
-
-    def _boom(*a, **kw):
-        raise RuntimeError("device probe unavailable")
-
-    monkeypatch.setattr(mm, "generate_timeout_s", _boom)
-    assert _SilentBackend()._effective_recv_timeout_s("hello") == GENERATE_RECV_TIMEOUT_S
-
-
-# ── the deadline has to appear in the error the caller sees (#2103) ─────────
-
-# Wedges on the first synthesize, so the parent's watchdog is the only thing
-# that can end the request — the exact shape the #1611 and #2103 reporters hit.
-WEDGING_SIDECAR = r'''
-import sys, json, struct, time
-
-def _send(o):
-    b = json.dumps(o, separators=(",", ":")).encode()
-    sys.stdout.buffer.write(struct.pack("!I", len(b)) + b)
+_MUTE_CHILD = textwrap.dedent('''
+    import json, struct, sys, time
+    hello = json.dumps({"op": "ready", "sample_rate": 24000}).encode()
+    sys.stdout.buffer.write(struct.pack("!I", len(hello)) + hello)
     sys.stdout.buffer.flush()
-
-_send({"op": "ready", "engine": "omnivoice-subprocess", "sample_rate": 24000})
-print("sidecar still alive, just slow", file=sys.stderr, flush=True)
-while True:
-    time.sleep(1)
-'''
+    print("child-says-hello", file=sys.stderr, flush=True)
+    sys.stdin.buffer.read(4)
+    time.sleep(3600)
+''')
 
 
-def test_timeout_error_names_the_deadline_instead_of_blaming_the_pipe(
-    tmp_path, monkeypatch,
-):
-    """#2103's second half: the watchdog's own deadline reached the user.
-
-    Before this, a kill and a crash both raised "sidecar closed pipe
-    mid-generate", so the one fact that explains the failure — that
-    VoiceStudio stopped the sidecar on its own deadline — appeared only in the
-    backend log, and reporters reasonably concluded the engine had crashed.
-    """
-    from engines.omnivoice_subprocess import OmniVoiceSubprocessBackend
-    script = tmp_path / "wedging_sidecar.py"
-    script.write_text(WEDGING_SIDECAR)
-    monkeypatch.setattr(
-        OmniVoiceSubprocessBackend, "sidecar_script", classmethod(lambda cls: script),
+@pytest.fixture
+def mute_engine(tmp_path):
+    script = tmp_path / "mute_child.py"
+    script.write_text(_MUTE_CHILD)
+    engine = make_engine(
+        "mute",
+        venv_python=classmethod(lambda cls: Path(sys.executable)),
+        sidecar_script=classmethod(lambda cls: script),
     )
-    # 2s so the test is fast; the property floors env overrides at 30s, so set
-    # the attribute the base actually reads (as the existing wedge test does).
-    monkeypatch.setattr(
-        OmniVoiceSubprocessBackend, "recv_timeout_s", property(lambda self: 2.0),
-    )
-    backend = OmniVoiceSubprocessBackend()
-    try:
-        with pytest.raises(RuntimeError) as excinfo:
-            backend.generate("anything")
-    finally:
-        backend.shutdown()
-
-    message = str(excinfo.value)
-    assert "2s" in message, message          # the deadline that ended it
-    assert "stopped it" in message, message  # who ended it, not "it closed"
-    assert "closed pipe" not in message, message
-    # #2026's stderr tail is carried on this path too, so a sidecar that did
-    # say something before the kill is not silenced by the timeout.
-    assert "still alive" in message, message
+    yield engine
+    engine.shutdown()
 
 
-@pytest.mark.parametrize("text", ["short", "x" * 200000], ids=["short", "long"])
-@pytest.mark.parametrize("engine_type", [_SilentBackend, _OpinionatedBackend])
-def test_outer_guard_outlasts_sidecar_watchdog(text, engine_type):
-    from services.model_manager import generate_timeout_s
-    backend = engine_type()
-    assert generate_timeout_s(text, engine=backend) >= backend._effective_recv_timeout_s(text) + 5.0
+def _exited_soon(proc, within=10.0):
+    deadline = time.monotonic() + within
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            return True
+        time.sleep(0.05)
+    return False
 
 
-def test_explicit_generation_budget_is_authoritative(monkeypatch):
-    import services.model_manager as mm
-    monkeypatch.setattr(mm, 'GPU_JOB_TIMEOUT_S', 12.0)
-    monkeypatch.setattr(mm, '_GENERATE_TIMEOUT_EXPLICIT', True)
-    assert mm.generate_timeout_s('short', engine=_SilentBackend(), execution_device='cuda') == 12.0
+def test_mute_sidecar_hits_deadline_with_diagnostics(mute_engine):
+    type(mute_engine).recv_timeout_s = 1.5
+    with pytest.raises(RuntimeError) as caught:
+        mute_engine.generate(SHORT_TEXT)
+    message = str(caught.value)
+    assert "1.5s" in message
+    assert "stopped it" in message
+    assert "closed pipe" not in message
+    assert "child-says-hello" in message
 
 
-@pytest.mark.asyncio
-@pytest.mark.parametrize('guard_kind', ['asr', 'tts'])
-async def test_outer_abandonment_terminates_owned_sidecar(tmp_path, monkeypatch, guard_kind):
-    from engines.omnivoice_subprocess import OmniVoiceSubprocessBackend
-    import asyncio
-    from concurrent.futures import ThreadPoolExecutor
-    from services.model_manager import run_on_gpu_pool_guarded
-    from services.asr_backend import run_transcribe_guarded
-    script = tmp_path / 'wedging_sidecar.py'
-    script.write_text(WEDGING_SIDECAR)
-    monkeypatch.setattr(OmniVoiceSubprocessBackend, 'sidecar_script', classmethod(lambda cls: script))
-    monkeypatch.setattr(OmniVoiceSubprocessBackend, 'recv_timeout_s', property(lambda self: 600.0))
-    backend = OmniVoiceSubprocessBackend()
-    # Guard lifetime is independent of which protocol operation is waiting.
-    with ThreadPoolExecutor(max_workers=1) as executor:
-        try:
-            if guard_kind == 'asr':
-                work = run_transcribe_guarded(executor, lambda: backend.generate('hang'), timeout=0.5)
-            else:
-                work = run_on_gpu_pool_guarded(lambda: backend.generate('hang'), executor=executor, timeout=0.5)
-            with pytest.raises(TimeoutError):
-                await work
-            assert backend._proc is not None
-            await asyncio.wait_for(asyncio.to_thread(backend._proc.wait, timeout=5), timeout=6)
-            assert backend._proc.poll() is not None
-        finally:
-            backend.shutdown()
+def test_asr_guard_timeout_takes_the_sidecar_down(mute_engine):
+    from services.asr_backend import ASRTimeoutError, run_transcribe_guarded
+
+    type(mute_engine).recv_timeout_s = 300.0
+
+    async def go():
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            with pytest.raises(ASRTimeoutError):
+                await run_transcribe_guarded(
+                    pool, lambda: mute_engine.generate(SHORT_TEXT), what="probe", timeout=1.5
+                )
+
+    asyncio.run(go())
+    assert mute_engine._proc is None or _exited_soon(mute_engine._proc)
+
+
+def test_tts_guard_timeout_takes_the_sidecar_down(mute_engine):
+    type(mute_engine).recv_timeout_s = 300.0
+
+    async def go():
+        with pytest.raises(TimeoutError):
+            await model_manager.run_on_gpu_pool_guarded(
+                lambda: mute_engine.generate(SHORT_TEXT), what="probe", timeout=1.5
+            )
+
+    asyncio.run(go())
+    assert mute_engine._proc is None or _exited_soon(mute_engine._proc)

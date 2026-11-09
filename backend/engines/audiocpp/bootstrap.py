@@ -84,6 +84,59 @@ PORT_ENV = "OMNIVOICE_AUDIOCPP_PORT"
 #: the app itself or a user-run ``audiocpp_server`` (default 8080).
 DEFAULT_PORT = 17860
 
+@dataclass(frozen=True)
+class ModelPackage:
+    """One audio.cpp model family served from :data:`HF_MODEL_REPO`.
+
+    Every family shares the managed runtime and the pinned repository
+    revision; each has its own package, loopback port and server.json
+    directory so two loaded engines never collide.
+    """
+
+    family: str
+    model_id: str
+    package_dir: str
+    default_package: str
+    label: str
+    default_port: int
+    package_env: str
+    port_env: str
+    model_env: str
+    workdir: str
+
+
+#: Breeze-TTS-2 — the original package. Its constants stay as above so
+#: existing installs, env overrides and settings keep working unchanged.
+BREEZE = ModelPackage(
+    family=FAMILY,
+    model_id=MODEL_ID,
+    package_dir=PACKAGE_DIR,
+    default_package=DEFAULT_PACKAGE,
+    label="Breeze-TTS-2",
+    default_port=DEFAULT_PORT,
+    package_env=PACKAGE_ENV,
+    port_env=PORT_ENV,
+    model_env="OMNIVOICE_AUDIOCPP_MODEL",
+    workdir="audiocpp",
+)
+
+#: dots.tts SOAR (Apache-2.0, multilingual voice cloning). The pinned v0.7.4
+#: runtime ships the ``dots_tts`` family, and the pinned repository revision
+#: holds the matching Q8_0 package (#2665).
+DOTS = ModelPackage(
+    family="dots_tts",
+    model_id="dots-tts-soar",
+    package_dir="DotTTS-SOAR-GGUF",
+    default_package="dots-tts-soar-q8_0.gguf",
+    label="dots.tts",
+    default_port=DEFAULT_PORT + 1,
+    package_env="OMNIVOICE_AUDIOCPP_DOTS_PACKAGE",
+    port_env="OMNIVOICE_AUDIOCPP_DOTS_PORT",
+    model_env="OMNIVOICE_AUDIOCPP_DOTS_MODEL",
+    workdir="audiocpp-dots",
+)
+
+
 #: This package's owned binary dir (probe 3).
 _PKG_BIN_DIR: Path = Path(__file__).parent / "bin"
 
@@ -309,9 +362,9 @@ def platform_slug() -> str:
 
 def managed_runtime_dir() -> Path:
     """Update-surviving location for the checksummed app-managed runtime."""
-    from core.config import DATA_DIR
+    from core.config import get_engines_dir
 
-    return Path(DATA_DIR) / "engines" / "audio-cpp" / VERSION.lstrip("v") / _platform_slug()
+    return Path(get_engines_dir()) / "audio-cpp" / VERSION.lstrip("v") / _platform_slug()
 
 
 def is_installed() -> bool:
@@ -360,6 +413,8 @@ def _probe_device_outcome(binary: str) -> _ProbeOutcome:
             [binary, "--list-devices"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=10,
             check=False,
         )
@@ -600,23 +655,23 @@ def default_asset_size() -> int | None:
     return _ASSET_SIZES.get(_platform_slug())
 
 
-def server_port() -> int:
+def server_port(package: ModelPackage = BREEZE) -> int:
     """Loopback port for the managed server (env override or default)."""
-    raw = os.environ.get(PORT_ENV, "").strip()
+    raw = os.environ.get(package.port_env, "").strip()
     if raw:
         try:
             port = int(raw)
             if 1 <= port <= 65535:
                 return port
-            logger.warning("Ignoring %s=%r: out of range.", PORT_ENV, raw)
+            logger.warning("Ignoring %s=%r: out of range.", package.port_env, raw)
         except ValueError:
-            logger.warning("Ignoring %s=%r: not a number.", PORT_ENV, raw)
-    return DEFAULT_PORT
+            logger.warning("Ignoring %s=%r: not a number.", package.port_env, raw)
+    return package.default_port
 
 
-def package_filename() -> str:
-    """GGUF package filename (env override or the Q8_0 default)."""
-    return os.environ.get(PACKAGE_ENV, "").strip() or DEFAULT_PACKAGE
+def package_filename(package: ModelPackage = BREEZE) -> str:
+    """GGUF package filename (env override or the package default)."""
+    return os.environ.get(package.package_env, "").strip() or package.default_package
 
 
 def _materialize_gguf_cache_path(model_file: Path) -> Path:
@@ -678,25 +733,27 @@ def _materialize_gguf_cache_path(model_file: Path) -> Path:
         ) from exc
 
 
-def resolve_model_file() -> Path:
-    """Resolve an explicitly installed Breeze-TTS-2 GGUF file.
+def resolve_model_file(package: ModelPackage = BREEZE) -> Path:
+    """Resolve an explicitly installed GGUF file for one model package.
 
-    An explicit ``OMNIVOICE_AUDIOCPP_MODEL`` path wins (file or directory
-    containing the package file). Otherwise only the local Hugging Face cache
-    is inspected. Downloads must be started explicitly from Model Catalogue →
-    Models, so generation can never silently transfer the 4.73 GiB package.
+    An explicit path in the package's model env var (``OMNIVOICE_AUDIOCPP_MODEL``
+    for Breeze-TTS-2) wins (file or directory containing the package file).
+    Otherwise only the local Hugging Face cache is inspected. Downloads must be
+    started explicitly from Model Catalogue → Models, so generation can never
+    silently transfer a multi-gigabyte package.
     """
-    override = os.environ.get("OMNIVOICE_AUDIOCPP_MODEL", "").strip()
+    filename = package_filename(package)
+    override = os.environ.get(package.model_env, "").strip()
     if override:
         cand = Path(override)
         if cand.is_file():
             return _materialize_gguf_cache_path(cand)
         if cand.is_dir():
-            inner = cand / package_filename()
+            inner = cand / filename
             if inner.is_file():
                 return _materialize_gguf_cache_path(inner)
         raise RuntimeError(
-            f"OMNIVOICE_AUDIOCPP_MODEL={override} is not a GGUF file or a "
+            f"{package.model_env}={override} is not a GGUF file or a "
             "directory containing one."
         )
 
@@ -710,26 +767,29 @@ def resolve_model_file() -> Path:
                 # Full immutable commit SHA declared above; Bandit cannot follow
                 # the module constant through this call.
                 revision=HF_MODEL_REVISION,  # nosec B615
-                allow_patterns=[f"{PACKAGE_DIR}/{package_filename()}"],
+                allow_patterns=[f"{package.package_dir}/{filename}"],
                 local_files_only=True,
             )
         )
     except (LocalEntryNotFoundError, OSError) as exc:
         raise RuntimeError(
-            "Breeze-TTS-2 is not installed. Install the audio.cpp Breeze-TTS-2 "
-            "model from the engine's Weights list in Model Catalogue, or set "
-            "OMNIVOICE_AUDIOCPP_MODEL to an existing GGUF file."
+            f"{package.label} is not installed. Install the audio.cpp "
+            f"{package.label} model from the engine's Weights list in Model "
+            f"Catalogue, or set {package.model_env} to an existing GGUF file."
         ) from exc
-    model_file = cached / PACKAGE_DIR / package_filename()
+    model_file = cached / package.package_dir / filename
     if not model_file.is_file():
         raise RuntimeError(
-            f"Breeze-TTS-2 package {package_filename()} is not completely "
+            f"{package.label} package {filename} is not completely "
             "installed. Reinstall it from the engine's Weights list in Model Catalogue."
         )
     return _materialize_gguf_cache_path(model_file)
 
 
 __all__ = [
+    "BREEZE",
+    "DOTS",
+    "ModelPackage",
     "AudioCPPDevice",
     "AudioCPPSelection",
     "BACKEND_ENV",

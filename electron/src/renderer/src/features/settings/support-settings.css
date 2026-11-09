@@ -114,6 +114,10 @@
   font-size: 14px;
   box-shadow: none;
 }
+/* GitHub Sponsors leads full-width; Ko-fi and PayPal share the row below. */
+.support-payments > a:first-child {
+  grid-column: 1 / -1;
+}
 .support-payments a svg:last-child {
   width: 12px;
   height: 12px;

@@ -91,6 +91,18 @@ def test_a_locked_design_take_is_not_cloned_once_edited():
     assert _gen()._resolve_profile_conditioning(row, instruct="female")["ref_audio_path"] is None
 
 
+def test_a_locked_design_take_wins_over_any_seed():
+    # #3265: the lock keeps the design's own seed (42 here), so a request that
+    # repeats the locked take's seed must not read as a design edit.
+    row = _design_row(is_locked=1, locked_audio_path="locked.wav")
+    for seed in (7, 42, 1234):
+        cond = _gen()._resolve_profile_conditioning(row, seed=seed)
+        assert cond["ref_audio_path"].endswith("locked.wav")
+        assert not cond["diverged"]
+    # Only a new description moves a locked design voice off its take.
+    assert _gen()._resolve_profile_conditioning(row, instruct="female", seed=7)["diverged"]
+
+
 def test_a_clone_profile_keeps_its_reference_with_a_style_instruct():
     row = _design_row(kind="clone", instruct="", ref_audio_path="clip.wav")
     cond = _gen()._resolve_profile_conditioning(row, instruct="whisper", seed=9)

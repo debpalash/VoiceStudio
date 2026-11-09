@@ -297,3 +297,183 @@ def test_auto_select_no_speech_within_transcript_limit_still_offers_transcript()
 
     with pytest.raises(ValueError, match=r"\[clone_ref_no_speech\].*matching transcript"):
         model.create_voice_clone_prompt((audio, 100), ref_text=None)
+
+
+_REAL_SPEECH = (
+    "Bonjour à tous, aujourd'hui je vais vous montrer comment préparer une tarte "
+    "aux pommes avec une pâte brisée maison, des pommes bien mûres et un peu de "
+    "cannelle pour relever le goût."
+)
+_LOOP = "Thank you. " * 148
+
+
+@pytest.mark.parametrize("loop", [_LOOP, "Thank you. " * 4, "Thank you. " * 4 + "Okay."])
+def test_auto_select_skips_a_whisper_repetition_loop_on_a_silent_window(monkeypatch, loop):
+    # #2836: Whisper loops "Thank you." over a near-silent window; the loop is
+    # longer than any real passage and used to win the selection.
+    model = _model(reject_tokenization=False)
+    model.sampling_rate = 100
+    model._asr_pipe = object()
+    model.transcribe = lambda candidate: (
+        "Hi there." if float(candidate[0].abs().mean()) > 0.01 else loop
+    )
+    monkeypatch.setattr(
+        "omnivoice.models.omnivoice.remove_silence_safe",
+        lambda audio, *_args, **_kwargs: audio,
+    )
+    audio = torch.full((1, 30 * 100), 0.05)
+    audio[:, 15 * 100 :] = 0.001
+
+    prompt = model.create_voice_clone_prompt((audio, 100), ref_text=None)
+
+    assert prompt.ref_text == "Hi there."
+
+
+@pytest.mark.parametrize("speech", [_REAL_SPEECH, "今日はとても良い天気ですね。公園を散歩しましょう。"])
+def test_auto_select_keeps_real_speech_against_a_shorter_window(monkeypatch, speech):
+    model = _model(reject_tokenization=False)
+    model.sampling_rate = 100
+    model._asr_pipe = object()
+    model.transcribe = lambda candidate: (
+        speech if float(candidate[0].abs().mean()) > 0.01 else "Wow."
+    )
+    monkeypatch.setattr(
+        "omnivoice.models.omnivoice.remove_silence_safe",
+        lambda audio, *_args, **_kwargs: audio,
+    )
+    audio = torch.full((1, 30 * 100), 0.001)
+    audio[:, 15 * 100 :] = 0.05
+
+    prompt = model.create_voice_clone_prompt((audio, 100), ref_text=None)
+
+    # add_punctuation may append a final mark (。) to an unpunctuated CJK end.
+    assert prompt.ref_text.startswith(speech)
+
+
+@pytest.mark.parametrize("loop", [_LOOP, "Thank you. " * 4])
+def test_auto_select_with_only_repetition_loops_reports_no_speech(loop):
+    model = _model(reject_tokenization=True)
+    model.sampling_rate = 100
+    model._asr_pipe = object()
+    model.transcribe = lambda _candidate: loop
+    audio = torch.full((1, 30 * 100), 0.001)
+
+    with pytest.raises(ValueError, match=r"\[clone_ref_no_speech\]"):
+        model.create_voice_clone_prompt((audio, 100), ref_text=None)
+
+
+def test_auto_select_preserves_short_genuine_repeated_speech(monkeypatch):
+    model = _model(reject_tokenization=False)
+    model.sampling_rate = 100
+    model._asr_pipe = object()
+    model.transcribe = lambda _candidate: "Testing one two. " * 3
+    monkeypatch.setattr("omnivoice.models.omnivoice.remove_silence_safe", lambda audio, *_args, **_kwargs: audio)
+    audio = torch.full((1, 30 * 100), 0.05)
+    prompt = model.create_voice_clone_prompt((audio, 100), ref_text=None)
+    assert prompt.ref_text == "Testing one two. Testing one two. Testing one two."
+
+
+@pytest.mark.parametrize("amplitude", [0.05, 0.0001])
+def test_auto_select_keeps_repeated_speech_over_quiet_short_text(monkeypatch, amplitude):
+    model = _model(reject_tokenization=False)
+    model.sampling_rate = 100
+    model._asr_pipe = object()
+    speech = "I can do it, I can, I can do it."
+    model.transcribe = lambda candidate: speech if float(candidate[0].std()) > 0.01 else "Wow."
+    monkeypatch.setattr("omnivoice.models.omnivoice.remove_silence_safe", lambda audio, *_args, **_kwargs: audio)
+    waveform = torch.sin(torch.arange(1500) * 0.2).unsqueeze(0) * amplitude
+    audio = torch.cat([waveform, torch.full_like(waveform, amplitude / 100)], dim=-1)
+    prompt = model.create_voice_clone_prompt((audio, 100), ref_text=None)
+    assert prompt.ref_text == speech
+
+
+def test_auto_select_keeps_only_spoken_passage_beside_louder_non_speech(monkeypatch):
+    model = _model(reject_tokenization=False)
+    model.sampling_rate = 100
+    model._asr_pipe = object()
+    speech = "Testing one two. Testing one two. Testing one two."
+    model.transcribe = lambda candidate: speech if float(candidate[0].std()) > 0.0001 else ""
+    monkeypatch.setattr("omnivoice.models.omnivoice.remove_silence_safe", lambda audio, *_args, **_kwargs: audio)
+    waveform = torch.sin(torch.arange(1500) * 0.2).unsqueeze(0) * 0.001
+    audio = torch.cat([waveform, torch.full_like(waveform, 0.5)], dim=-1)
+    assert model.create_voice_clone_prompt((audio, 100), ref_text=None).ref_text == speech
+
+
+def test_selected_passage_is_retranscribed_after_edge_trim(monkeypatch):
+    """A passage cut back to its pauses gets a transcript of exactly that audio."""
+    model = _model(reject_tokenization=False)
+    model.sampling_rate = 100
+    model._asr_pipe = object()
+    lengths = []
+
+    def transcribe(candidate):
+        lengths.append(candidate[0].size(-1))
+        return "Speech."
+
+    model.transcribe = transcribe
+    monkeypatch.setattr(
+        "omnivoice.models.omnivoice.remove_silence_safe",
+        lambda audio, *_args, **_kwargs: audio,
+    )
+    audio = torch.full((1, 16 * 100), 0.1)
+    audio[:, 1400:1430] = 0.0  # pause 1 s before the first window's fixed cut
+
+    model.create_voice_clone_prompt((audio, 100), ref_text=None)
+
+    assert lengths[:2] == [1500, 100]
+    assert len(lengths) == 3 and 1400 <= lengths[2] <= 1430
+
+
+def test_trim_transcription_failure_keeps_the_untrimmed_passage(monkeypatch):
+    """A recognizer that raises on the shorter trimmed window must not abort
+    cloning when the untrimmed passage already has a transcript."""
+    model = _model(reject_tokenization=False)
+    model.sampling_rate = 100
+    model._asr_pipe = object()
+
+    calls = []
+
+    def transcribe(candidate):
+        calls.append(candidate[0].size(-1))
+        if len(calls) == 3:  # two ranking windows, then the trimmed re-read
+            raise RuntimeError("recognizer failed on the trimmed window")
+        return "Speech."
+
+    model.transcribe = transcribe
+    monkeypatch.setattr(
+        "omnivoice.models.omnivoice.remove_silence_safe",
+        lambda audio, *_args, **_kwargs: audio,
+    )
+    audio = torch.full((1, 16 * 100), 0.1)
+    audio[:, 1400:1430] = 0.0
+
+    prompt = model.create_voice_clone_prompt((audio, 100), ref_text=None)
+
+    assert len(calls) == 3  # the failing trimmed read really happened
+    assert prompt.ref_text == "Speech."
+
+
+def test_trim_that_leaves_no_words_keeps_the_untrimmed_passage(monkeypatch):
+    """A usable passage must not become a "no speech" error because its
+    trimmed copy transcribes empty."""
+    model = _model(reject_tokenization=False)
+    model.sampling_rate = 100
+    model._asr_pipe = object()
+    lengths = []
+
+    def transcribe(candidate):
+        lengths.append(candidate[0].size(-1))
+        return "Speech." if candidate[0].size(-1) >= 1500 else ""
+
+    model.transcribe = transcribe
+    monkeypatch.setattr(
+        "omnivoice.models.omnivoice.remove_silence_safe",
+        lambda audio, *_args, **_kwargs: audio,
+    )
+    audio = torch.full((1, 16 * 100), 0.1)
+    audio[:, 1400:1430] = 0.0
+
+    prompt = model.create_voice_clone_prompt((audio, 100), ref_text=None)
+
+    assert prompt.ref_text == "Speech."
+    assert len(lengths) == 3 and lengths[2] < 1500  # the trim was tried, then dropped

@@ -1,0 +1,326 @@
+import Foundation
+import Observation
+import Network
+import VoiceStudioKit
+
+/// Network.framework observes interfaces locally; it never probes a remote service.
+final class WifiState: @unchecked Sendable {
+    private let monitor = NWPathMonitor()
+    private let lock = NSLock()
+    private var permitted = false
+    private var online = false
+    init() {
+        monitor.pathUpdateHandler = { [weak self] path in
+            guard let self else { return }
+            lock.withLock { online = path.status == .satisfied; permitted = path.status == .satisfied && (path.usesInterfaceType(.wifi) || path.usesInterfaceType(.wiredEthernet)) && !path.isExpensive }
+        }
+        monitor.start(queue: DispatchQueue(label: "com.voicestudio.model-network"))
+    }
+    var wifi: Bool { lock.withLock { permitted } }
+    var connected: Bool { lock.withLock { online } }
+    deinit { monitor.cancel() }
+}
+@MainActor @Observable final class PhoneModels {
+    private(set) var models: [PhoneModel] = []
+    private(set) var installed = Set<String>()
+    private(set) var accepted = Set<String>()
+    private(set) var progress: [String: Double] = [:]
+    private(set) var downloadDetails: [String: ModelDownloadProgress] = [:]
+    private(set) var paused = Set<String>()
+    private(set) var downloadFailures: [String:ClientError] = [:]
+    private(set) var used: Int64 = 0
+    private(set) var modelBytes: [String: Int64] = [:]
+    var error: ClientError?
+    var allowMobileData: Bool { didSet { UserDefaults.standard.set(allowMobileData, forKey: "models.mobile-data") } }
+    @ObservationIgnored private var downloads: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var downloadTokens: [String: UUID] = [:]
+    @ObservationIgnored private let wifi = WifiState()
+    private(set) var store: ModelStore?
+    private(set) var dubs: [PhoneDubRecord] = []
+    private(set) var dubStore: PhoneDubStore?
+    @ObservationIgnored private var pendingDubs: [UUID] = []
+    private(set) var activeDub: UUID?
+    private(set) var dubProgress: PhoneDubProgress?
+    @ObservationIgnored var onDubFinished: (@MainActor @Sendable (PhoneDubRequest) async -> Void)?
+    @ObservationIgnored private var dubTask: Task<Void,Never>?
+    private(set) var voices: [PhoneVoice] = []
+    private(set) var recent: [PhoneGeneration] = []
+    private(set) var voiceStore: PhoneVoiceStore?
+    private(set) var generationStore: PhoneGenerationStore?
+    private(set) var productionStore: ProductionStore?
+    private(set) var workflowStore: PhoneWorkflowStore?
+    private(set) var transcriptStore: PhoneTranscriptStore?
+    private(set) var engine: (any LocalEngine)?
+    private struct DownloadIntent: Codable {
+        let id: String
+        let pin: String
+        let mobile: Bool
+        var paused: Bool
+        var failure: String? = nil
+    }
+    private var intents: [DownloadIntent] = []
+    private var queueURL: URL?
+    @discardableResult private func saveIntents() -> Bool {
+        do {
+            guard let queueURL else { throw ClientError("mobile.simple.checkpoint_failed") }
+            try JSONEncoder().encode(intents).write(to: queueURL,options: .atomic)
+            return true
+        } catch {
+            // A stale active intent must never undo an explicit stop after relaunch.
+            if let queueURL { try? FileManager.default.removeItem(at: queueURL) }
+            self.error = ClientError("mobile.simple.checkpoint_failed"); return false
+        }
+    }
+    init(bundle: Bundle = .main) {
+        allowMobileData = UserDefaults.standard.bool(forKey: "models.mobile-data")
+        pendingDubs = (UserDefaults.standard.stringArray(forKey: "dub.queue") ?? []).compactMap(UUID.init(uuidString:))
+        do {
+            let root: URL = try {
+                #if DEBUG
+                if ProcessInfo.processInfo.arguments.contains("--ui-smoke") {
+                    return FileManager.default.temporaryDirectory.appendingPathComponent("PhoneModels-smoke-" + UUID().uuidString, isDirectory: true)
+                }
+                #endif
+                return try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true).appendingPathComponent("PhoneModels", isDirectory: true)
+            }()
+            queueURL = root.appendingPathComponent(".download-queue.json")
+            let store = try ModelStore(root: root)
+            self.store = store; engine = NativeLocalEngine(store: store)
+            guard let url = bundle.url(forResource: "models", withExtension: "json", subdirectory: "Catalogs") else { throw ClientError("mobile.local.catalogue_failed") }
+            models = try ModelCatalogue.decode(Data(contentsOf: url)).models
+            do { dubStore = try PhoneDubStore(root: root.appendingPathComponent("dubs")) }
+            catch { self.error = ClientError("mobile.errors.file") }
+            do { voiceStore = try PhoneVoiceStore(root: root.appendingPathComponent("voices")) }
+            catch { self.error = ClientError("mobile.errors.file") }
+            do { generationStore = try PhoneGenerationStore(root: root.appendingPathComponent("recent")) }
+            catch { self.error = ClientError("mobile.errors.file") }
+            do { productionStore = try ProductionStore(root: root.appendingPathComponent("production")) }
+            catch { self.error = ClientError("mobile.errors.file") }
+            do { workflowStore = try PhoneWorkflowStore(root: root.appendingPathComponent("workflows")) }
+            catch { self.error = ClientError("mobile.errors.file") }
+            do { transcriptStore = try PhoneTranscriptStore(root: root.appendingPathComponent("transcripts")) }
+            catch { self.error = ClientError("mobile.errors.file") }
+        } catch {
+            // Initialization remains usable for the paired-host flows; the Models page explains the failure.
+
+            self.error = error as? ClientError ?? ClientError("mobile.local.catalogue_failed")
+        }
+        if let queueURL,let data = try? Data(contentsOf: queueURL),let saved = try? JSONDecoder().decode([DownloadIntent].self,from: data) {
+            intents = saved.filter { item in models.contains { $0.id == item.id && (try? phoneModelPin($0)) == item.pin } }
+            paused = Set(intents.filter(\.paused).map(\.id))
+            for item in intents { if let failure = item.failure { downloadFailures[item.id] = ClientError(failure) } }
+        }
+        Task {
+            await ModelDownloadSessions.reconcile(authorized: Set(intents.map(\.id)))
+            // A paused intent still owns running system transfers from the previous run.
+            for item in intents where item.paused { await ModelDownloadSessions.suspend(modelID: item.id) }
+            for item in intents where !item.paused {
+                if let model = models.first(where: { $0.id == item.id }) {
+                    if await store?.installed(model) == true {
+                        intents.removeAll { $0.id == item.id }; saveIntents()
+                        await ModelDownloadSessions.remove(modelID: model.id)
+                    } else { startDownload(model,mobile: item.mobile) }
+                }
+            }
+        }
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--ui-smoke"),
+           ProcessInfo.processInfo.arguments.contains("--ui-phone-history") {
+            Task {
+                if let generationStore {
+                    _ = try? await generationStore.save(text: "Saved audio for deletion review",
+                        audio: LocalAudio(samples: Array(repeating: 0, count: 16000), sampleRate: 16000))
+                    await refresh()
+                }
+            }
+        }
+        #endif
+    }
+    func refresh() async {
+        guard let store else { return }
+        var downloaded = Set<String>(); var permitted = Set<String>(); var bytes: [String: Int64] = [:]
+        for model in models {
+            if await store.installed(model) { downloaded.insert(model.id) }
+            if await store.allowed(model) { permitted.insert(model.id) }
+            bytes[model.id] = await store.modelStorage(model)
+        }
+        installed = downloaded; accepted = permitted; modelBytes = bytes; used = await store.storageUsed()
+        do { voices = try await voiceStore?.list() ?? [] }
+        catch { self.error = ClientError("mobile.errors.file") }
+        do { recent = try await generationStore?.list() ?? [] }
+        catch { self.error = ClientError("mobile.errors.file") }
+        do { dubs = try await dubStore?.list() ?? [] }
+        catch { self.error = ClientError("mobile.errors.file") }
+
+    }
+    func ready(_ model: PhoneModel) -> Bool { installed.contains(model.id) && accepted.contains(model.id) }
+    func candidates(_ capability: ModelCapability) -> [PhoneModel] { models.filter { $0.capability == capability } }
+    func preferred(_ capability: ModelCapability) -> PhoneModel? {
+        candidates(capability).first(where: { ready($0) && $0.fits() }) ?? candidates(capability).first(where: ready) ?? candidates(capability).first(where: { $0.fits() }) ?? candidates(capability).first
+    }
+    func download(_ model: PhoneModel) {
+        guard downloads[model.id] == nil else { return }
+        guard let pin = try? phoneModelPin(model) else { error = ClientError("mobile.local.catalogue_failed"); return }
+        intents.removeAll { $0.id == model.id }
+        intents.append(DownloadIntent(id: model.id,pin: pin,mobile: allowMobileData,paused: false))
+        guard saveIntents() else {
+            intents.removeAll { $0.id == model.id }; paused.insert(model.id)
+            downloadFailures[model.id] = error ?? ClientError("mobile.simple.checkpoint_failed")
+            return
+        }
+        paused.remove(model.id)
+        if error == downloadFailures[model.id] { error = nil }
+        downloadFailures.removeValue(forKey: model.id)
+        startDownload(model,mobile: allowMobileData)
+    }
+    private func startDownload(_ model: PhoneModel,mobile: Bool) {
+        // The restored-intent loop can race an explicit pause between its snapshot and this call.
+        guard downloads[model.id] == nil,let store,!paused.contains(model.id) else { return }
+        progress[model.id] = 0
+        let token = UUID(); downloadTokens[model.id] = token
+        let policy = DownloadPolicy(allowMobileData: mobile); let wifi = wifi
+        downloads[model.id] = Task {
+            let monitor = Task {
+                while !Task.isCancelled {
+                    if !wifi.connected || (!mobile && !wifi.wifi),var value = downloadDetails[model.id] {
+                        value.stage = mobile ? "waiting_network" : "waiting"; value.bytesPerSecond = 0; value.etaSeconds = nil
+                        downloadDetails[model.id] = value
+                    }
+                    do { try await Task.sleep(for: .seconds(1)) } catch { return }
+                }
+            }
+            defer { monitor.cancel() }
+            defer { downloads[model.id] = nil; progress[model.id] = nil; downloadDetails[model.id] = nil; downloadTokens.removeValue(forKey: model.id) }
+            do {
+                let transport = try ModelDownloadSessions.transport(allowMobile: mobile)
+                while true {
+                    try Task.checkCancellation()
+                    if !mobile && !wifi.wifi {
+                        var waiting = downloadDetails[model.id] ?? ModelDownloadProgress(received: 0,total: model.total_bytes)
+                        waiting.stage = "waiting"; waiting.bytesPerSecond = 0; waiting.etaSeconds = nil
+                        downloadDetails[model.id] = waiting
+                        try await Task.sleep(for: .seconds(2)); continue
+                    }
+                    do {
+                        try await store.download(model,policy: policy,wifi: { wifi.wifi },transport: transport,details: { details in
+                            await MainActor.run {
+                                guard self.downloadTokens[model.id] == token else { return }
+                                self.downloadDetails[model.id] = details; self.progress[model.id] = details.fraction
+                            }
+                        })
+                        intents.removeAll { $0.id == model.id }; saveIntents(); paused.remove(model.id)
+                        await ModelDownloadSessions.remove(modelID: model.id)
+                        break
+                    } catch let error as ClientError where error.key == "mobile.local.wifi_required" { continue }
+                }
+            } catch is CancellationError {} catch {
+                if !Task.isCancelled {
+                    let failure = error as? ClientError ?? ClientError("mobile.local.download_failed")
+                    self.error = failure; downloadFailures[model.id] = failure
+                    for index in intents.indices where intents[index].id == model.id {
+                        intents[index].paused = true; intents[index].failure = failure.key
+                    }
+                    paused.insert(model.id); saveIntents()
+                }
+            }
+            await refresh()
+        }
+    }
+    func pause(_ model: PhoneModel) {
+        for index in intents.indices where intents[index].id == model.id { intents[index].paused = true }
+        paused.insert(model.id); saveIntents(); downloadTokens.removeValue(forKey: model.id); downloads[model.id]?.cancel()
+        // Cancelling the app task only suspends a system transfer that already reattached;
+        // a restored one keeps running until it is suspended here as well.
+        Task { await ModelDownloadSessions.suspend(modelID: model.id) }
+    }
+    func cancel(_ model: PhoneModel) {
+        intents.removeAll { $0.id == model.id }; paused.remove(model.id); saveIntents()
+        if error == downloadFailures[model.id] { error = nil }
+        downloadFailures.removeValue(forKey: model.id); downloadTokens.removeValue(forKey: model.id)
+        downloads[model.id]?.cancel()
+    }
+    func delete(_ model: PhoneModel) async {
+        guard let store else { return }
+        cancel(model); await downloads[model.id]?.value
+        await ModelDownloadSessions.remove(modelID: model.id)
+        do { try await store.delete(model); await refresh() }
+        catch { self.error = error as? ClientError ?? ClientError("mobile.errors.file") }
+    }
+    @discardableResult func accept(_ model: PhoneModel, accepted: Bool) async -> Bool {
+        guard let store else { return false }
+        if !accepted { cancel(model) }
+        do {
+            guard let version = AppVersion.full(info: Bundle.main.infoDictionary) else { throw ClientError("mobile.local.model_incompatible") }
+            try await store.accept(model, fingerprint: model.licence.terms_fingerprint, appVersion: version, accepted: accepted)
+            await refresh()
+            return true
+        } catch { self.error = error as? ClientError ?? ClientError("mobile.errors.file"); return false }
+    }
+    var dubModels: [PhoneModel] { [selectedModel("dub-asr",.asr), selectedModel("dub-translate",.translate), selectedModel("dub",.clone)].compactMap { $0 } }
+    var dubReady: Bool { dubModels.count == 3 && dubModels.allSatisfy(ready) }
+    func startDub(_ id: UUID) {
+        if activeDub != id && !pendingDubs.contains(id) { pendingDubs.append(id) }
+        UserDefaults.standard.set(pendingDubs.map(\.uuidString),forKey: "dub.queue")
+        startNextDub()
+    }
+    private func startNextDub() {
+        guard dubTask == nil, !pendingDubs.isEmpty, let dubStore, let engine, let store else { return }
+        let id = pendingDubs.removeFirst()
+        UserDefaults.standard.set(pendingDubs.map(\.uuidString),forKey: "dub.queue")
+        activeDub = id
+        let selected = models
+        let job = "dub:"+id.uuidString
+        PhoneJobs.shared.start(id: job,title: L10n().t("mobile.tabs.dub"),cpuFallbackSupported: NativeLocalEngine.cpuFallbackAvailable(models: selected)) { progress in
+            let request = try await dubStore.request(id)
+            let pinned = selected.filter { request.modelPins[$0.id] != nil }
+            let pipeline = PhoneDubPipeline(store: dubStore,engine: engine,authorize: {
+                for item in pinned { try await store.checkPermission(item) }
+            })
+            _ = try await pipeline.run(id: id,models: pinned,report: { value in
+                await MainActor.run { self.dubProgress = value }
+                await progress(EngineProgress(stage: .running,fraction: Double(value.percent)/100))
+            })
+            return PhoneJobResult(file: nil)
+        }
+        watchDub(id,store: dubStore)
+    }
+    /// Reattach the phone-library watcher when resuming the coordinator's original snapshot.
+    func resumeDub(_ id: UUID) {
+        guard activeDub == nil || activeDub == id,let dubStore else { return }
+        guard PhoneJobs.shared.resume(id: "dub:"+id.uuidString) else { return }
+        activeDub = id
+        watchDub(id,store: dubStore)
+    }
+    private func watchDub(_ id: UUID,store dubStore: PhoneDubStore) {
+        dubTask?.cancel()
+        let job = "dub:"+id.uuidString
+        dubTask = Task {
+            while PhoneJobs.shared.states[job]?.running == true {
+                do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
+            }
+            guard !Task.isCancelled else { return }
+            let state = PhoneJobs.shared.states[job]
+            if let failure = state?.error { self.error = failure }
+            if state?.result != nil,let request = try? await dubStore.request(id) {
+                guard !Task.isCancelled else { return }
+                await onDubFinished?(request)
+            }
+            guard !Task.isCancelled else { return }
+            await refresh()
+            // A Resume tap may have replaced this watcher during an await above.
+            guard !Task.isCancelled else { return }
+            activeDub = nil; dubProgress = nil; dubTask = nil
+            if state?.paused != true { startNextDub() }
+        }
+    }
+    func cancelDub() { if let activeDub { PhoneJobs.shared.cancel(id: "dub:"+activeDub.uuidString) } }
+    private var modelChoices: [String:String] = [:]
+    func chooseModel(_ task: String, _ id: String) { modelChoices[task] = id; UserDefaults.standard.set(id,forKey: "model."+task) }
+    func selectedModel(_ task: String, _ capability: ModelCapability) -> PhoneModel? {
+        let id = modelChoices[task] ?? UserDefaults.standard.string(forKey: "model."+task)
+        let choices = task == "speak-tts" ? models.filter(\.supportsSpeech) : candidates(capability)
+        return choices.first { $0.id == id } ?? preferred(capability)
+    }
+    func preference(_ task: String) -> TaskLocation? { UserDefaults.standard.string(forKey: "run-on." + task).flatMap(TaskLocation.init(rawValue:)) }
+    func choose(_ task: String, _ location: TaskLocation) { UserDefaults.standard.set(location.rawValue, forKey: "run-on." + task) }
+}

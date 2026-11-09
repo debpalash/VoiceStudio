@@ -9,7 +9,12 @@ descriptor that must never carry key material. The encrypted round-trip itself
 from __future__ import annotations
 
 import json
+import io
 import os
+import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from types import SimpleNamespace
 
 import pytest
 
@@ -39,30 +44,31 @@ def lp(monkeypatch, clean_llm_env):
 
 def test_registry_has_all_providers(lp):
     ids = {p.id for p in lp.all_providers()}
-    # 14 cloud + 2 local + custom + openai
+    # Named cloud providers, local servers and a custom endpoint.
     for expected in ("openai", "openrouter", "orcarouter", "cheaperinference",
-                     "groq", "cerebras", "google-ai",
+                     "opper", "api-route", "groq", "cerebras", "google-ai",
                      "mistral", "cohere", "nvidia", "github-models", "cloudflare",
                      "huggingface", "sambanova", "siliconflow", "ollama",
                      "lmstudio", "iflytek", "custom"):
         assert expected in ids, expected
 
 
-def test_catalogue_does_not_discover_or_persist_a_placeholder(lp, monkeypatch):
-    p = lp.get_provider("lmstudio")
-    monkeypatch.setattr(lp, "discover_model", lambda p: pytest.fail("catalogue made a network probe"))
-    assert lp.describe(p)["model"] == ""
-    assert lp.describe(p)["has_api_key"] is False
-    lp.save_key(p.id, "local-auth-secret")
-    assert lp.describe(p)["has_api_key"] is True
+def test_lmstudio_catalogue_hides_placeholder_and_tracks_key(lp, monkeypatch):
+    provider = lp.get_provider("lmstudio")
+    monkeypatch.setattr(lp, "discover_model", lambda p: pytest.fail("catalogue probed"))
+    descriptor = lp.describe(provider)
+    assert descriptor["model"] == ""
+    assert descriptor["has_api_key"] is False
+    lp.save_key(provider.id, "stored-key")
+    assert lp.describe(provider)["has_api_key"] is True
 
 
-def test_saved_lmstudio_placeholder_recovers_automatic_discovery(lp, monkeypatch):
-    p = lp.get_provider("lmstudio")
-    lp.save_overrides(p.id, model="local-model")
-    monkeypatch.setattr(lp, "discover_model", lambda p: "loaded-chat-model")
-    assert lp.resolve_model(p) == "loaded-chat-model"
-    assert lp.describe(p)["model"] == ""
+def test_saved_placeholder_is_treated_as_discoverable(lp, monkeypatch):
+    provider = lp.get_provider("lmstudio")
+    lp.save_overrides(provider.id, model=provider.default_model)
+    monkeypatch.setattr(lp, "discover_model", lambda p: "resident-model")
+    assert lp.resolve_model(provider) == "resident-model"
+    assert lp.describe(provider)["model"] == ""
 
 
 @pytest.mark.parametrize("url,model", [
@@ -117,21 +123,85 @@ def test_orcarouter_provider_contract(lp, monkeypatch):
     assert lp.resolve_model(p) == "orcarouter/test-model"
 
 
-def test_cheaperinference_provider_contract(lp, monkeypatch):
-    p = lp.get_provider("cheaperinference")
-    assert p.display_name == "Cheaper Inference"
-    assert p.default_base_url == "https://api.cheaperinference.com/v1"
-    assert p.default_model == "gpt-5.4-mini"
-    assert p.key_envs == ("CHEAPER_INFERENCE_API_KEY",)
-    assert p.base_url_env == "CHEAPER_INFERENCE_BASE_URL"
-    assert p.model_env == "CHEAPER_INFERENCE_MODEL"
+def test_cheaper_inference_catalogue_entry_and_environment_resolution(lp, monkeypatch):
+    provider = lp.get_provider("cheaperinference")
+    declared = {
+        "name": provider.display_name,
+        "endpoint": provider.default_base_url,
+        "model": provider.default_model,
+        "key_names": provider.key_envs,
+        "endpoint_env": provider.base_url_env,
+        "model_env": provider.model_env,
+        "signup": provider.signup_url,
+    }
+    assert declared == {
+        "name": "Cheaper Inference",
+        "endpoint": "https://api.cheaperinference.com/v1",
+        "model": "gpt-5.4-mini",
+        "key_names": ("CHEAPER_INFERENCE_API_KEY",),
+        "endpoint_env": "CHEAPER_INFERENCE_BASE_URL",
+        "model_env": "CHEAPER_INFERENCE_MODEL",
+        "signup": "https://cheaperinference.com/signup",
+    }
 
-    monkeypatch.setenv("CHEAPER_INFERENCE_API_KEY", "sk-ci-test")
-    monkeypatch.setenv("CHEAPER_INFERENCE_BASE_URL", "https://cheaperinference.example/v1")
-    monkeypatch.setenv("CHEAPER_INFERENCE_MODEL", "gpt-5.4")
-    assert lp.resolve_api_key(p) == "sk-ci-test"
-    assert lp.resolve_base_url(p) == "https://cheaperinference.example/v1"
-    assert lp.resolve_model(p) == "gpt-5.4"
+    overrides = {
+        "CHEAPER_INFERENCE_API_KEY": "temporary-secret",
+        "CHEAPER_INFERENCE_BASE_URL": "https://router.example/api/v1",
+        "CHEAPER_INFERENCE_MODEL": "vendor/small-chat",
+    }
+    for variable, value in overrides.items():
+        monkeypatch.setenv(variable, value)
+    assert (
+        lp.resolve_api_key(provider),
+        lp.resolve_base_url(provider),
+        lp.resolve_model(provider),
+    ) == ("temporary-secret", "https://router.example/api/v1", "vendor/small-chat")
+
+
+def test_opper_provider_contract(lp, monkeypatch):
+    p = lp.get_provider("opper")
+    assert p.display_name == "Opper"
+    assert p.default_base_url == "https://api.opper.ai/v3/compat"
+    assert p.default_model == "claude-sonnet-4-6"
+    assert p.key_envs == ("OPPER_API_KEY",)
+    assert p.base_url_env is None
+    assert p.model_env == "OPPER_MODEL"
+
+    monkeypatch.setenv("OPPER_API_KEY", "op-test")
+    monkeypatch.setenv("OPPER_MODEL", "gpt-5.4-mini")
+    # Opper's SDKs read OPPER_BASE_URL as the API root, so it must not
+    # replace the OpenAI-compatible endpoint here.
+    monkeypatch.setenv("OPPER_BASE_URL", "https://api.opper.ai")
+    assert lp.resolve_api_key(p) == "op-test"
+    assert lp.resolve_model(p) == "gpt-5.4-mini"
+    assert lp.resolve_base_url(p) == "https://api.opper.ai/v3/compat"
+
+
+def test_api_route_provider_contract(lp, monkeypatch):
+    p = lp.get_provider("api-route")
+    assert p.display_name == "API Route"
+    assert p.default_base_url == "https://global.api-route.com/v1"
+    assert p.default_model == "deepseek-v4.1-flash"
+    assert p.key_envs == ("API_ROUTE_API_KEY",)
+    assert p.base_url_env == "API_ROUTE_BASE_URL"
+    assert p.model_env == "API_ROUTE_MODEL"
+    assert p.transport == "openai" and not p.local
+    assert not lp.is_configured(p)
+    assert lp.active_provider_id() != p.id
+
+    lp.set_active_provider("openai")
+    lp.save_key(p.id, "stored-api-route-key")
+    assert lp.is_configured(p)
+    assert "stored-api-route-key" not in json.dumps(lp.describe(p))
+    assert lp.active_provider_id() == "openai"
+
+    monkeypatch.setenv("API_ROUTE_API_KEY", "env-api-route-key")
+    monkeypatch.setenv("API_ROUTE_BASE_URL", "https://gateway.example/v1")
+    monkeypatch.setenv("API_ROUTE_MODEL", "test-model")
+    assert lp.resolve_api_key(p) == "env-api-route-key"
+    assert lp.resolve_base_url(p) == "https://gateway.example/v1"
+    assert lp.resolve_model(p) == "test-model"
+    assert "env-api-route-key" not in json.dumps(lp.describe(p))
 
 
 def test_iflytek_provider_contract(lp, monkeypatch):
@@ -395,189 +465,139 @@ def test_stored_active_provider_id_ignores_env_and_auto(lp, monkeypatch):
     assert lp.stored_active_provider_id() == "mistral"
 
 
-def test_discover_model_probes_loaded_and_filters_embeddings(lp, monkeypatch):
-    lp.forget_discovered_models()
-    p = lp.get_provider("lmstudio")
-
-    # When LM Studio native API reports loaded model, it picks it
-    monkeypatch.setattr(
-        lp, "_probe_lmstudio_loaded_model",
-        lambda url, api_key="local": "qwen/qwen3.6-35b-a3b"
-    )
-    assert lp.discover_model(p) == "qwen/qwen3.6-35b-a3b"
-
-    # When fallback OpenAI models list runs, filters embeddings and picks preferred model
-    lp.forget_discovered_models()
-    monkeypatch.setattr(lp, "_probe_lmstudio_loaded_model", lambda url, api_key="local": None)
-
-    class _FakeModel:
-        def __init__(self, id):
-            self.id = id
-
-    class _FakeModels:
+def _install_model_listing(monkeypatch, ids, constructed=None):
+    class Models:
         def list(self, timeout=None):
-            return [
-                _FakeModel("text-embedding-nomic-embed-text-v1.5"),
-                _FakeModel("qwen/qwen3.6-35b-a3b"),
-                _FakeModel("prism-ml/bonsai-27b"),
-            ]
+            return [SimpleNamespace(id=model_id) for model_id in ids]
 
-    class _FakeClient:
-        models = _FakeModels()
+    class Client:
+        def __init__(self, **kwargs):
+            if constructed is not None:
+                constructed.append(kwargs)
+            self.models = Models()
 
-    import openai
-    monkeypatch.setattr(openai, "OpenAI", lambda **kw: _FakeClient())
-    assert lp.discover_model(lp.get_provider("ollama")) == "qwen/qwen3.6-35b-a3b"
+    monkeypatch.setitem(sys.modules, "openai", SimpleNamespace(OpenAI=Client))
 
 
-
-# ── LM Studio loaded-model discovery (regression) ───────────────────────────
-
-def test_lmstudio_loaded_model_never_overrides_the_stored_choice(lp, monkeypatch):
-    """The probe must sit BELOW the user's own choice.
-
-    Regression: it was wired into resolve_model above the stored override, so
-    picking a model in Settings → LLM Providers changed nothing for LM Studio —
-    the exact action the "pick one deliberately" log line tells the user to
-    take. It also cost an HTTP round trip on every resolve, which is what the
-    discovery cache exists to avoid.
-    """
+def test_lmstudio_native_probe_answer_wins(lp, monkeypatch):
     lp.forget_discovered_models()
-    p = lp.get_provider("lmstudio")
-
-    probes: list[str] = []
-    monkeypatch.setattr(
-        lp, "_probe_lmstudio_loaded_model",
-        lambda url, api_key="local": (probes.append(url), "loaded/other-model")[1],
-    )
-    lp._text[lp._MODEL_KEY + "lmstudio"] = "my/deliberate-choice"
-
-    assert lp.resolve_model(p) == "my/deliberate-choice"
-    assert probes == []
+    monkeypatch.setattr(lp, "_probe_lmstudio_loaded_model", lambda url, api_key="local": "resident")
+    assert lp.discover_model(lp.get_provider("lmstudio")) == "resident"
 
 
-def test_lmstudio_discovery_uses_the_loaded_model_when_nothing_is_set(lp, monkeypatch):
+def test_ollama_discovery_filters_embeddings_and_prefers_chat_family(lp, monkeypatch):
     lp.forget_discovered_models()
-    p = lp.get_provider("lmstudio")
-    monkeypatch.setattr(lp, "_probe_lmstudio_loaded_model", lambda url, api_key="local": "loaded/qwen3")
-    assert lp.resolve_model(p) == "loaded/qwen3"
+    _install_model_listing(monkeypatch, ["text-embed", "other-chat", "qwen-chat"])
+    assert lp.discover_model(lp.get_provider("ollama")) == "qwen-chat"
 
 
-def test_discover_model_is_deterministic_regardless_of_server_order(lp, monkeypatch):
-    """Two runs on one machine must pick the same model, or a bug report from
-    this path is not reproducible."""
-    p = lp.get_provider("ollama")
-    monkeypatch.setattr(lp, "_probe_lmstudio_loaded_model", lambda url, api_key="local": None)
+def test_stored_lmstudio_model_skips_native_probe(lp, monkeypatch):
+    lp.forget_discovered_models()
+    lp._text[lp._MODEL_KEY + "lmstudio"] = "chosen"
+    monkeypatch.setattr(lp, "_probe_lmstudio_loaded_model", lambda *a, **k: pytest.fail("probed"))
+    assert lp.resolve_model(lp.get_provider("lmstudio")) == "chosen"
 
-    class _FakeModel:
-        def __init__(self, mid):
-            self.id = mid
 
-    def _fake_openai(order):
-        class _FakeModels:
-            def list(self, timeout=None):
-                return [_FakeModel(m) for m in order]
+def test_lmstudio_resolve_uses_resident_model(lp, monkeypatch):
+    lp.forget_discovered_models()
+    monkeypatch.setattr(lp, "_probe_lmstudio_loaded_model", lambda *a, **k: "resident")
+    assert lp.resolve_model(lp.get_provider("lmstudio")) == "resident"
 
-        class _FakeClient:
-            models = _FakeModels()
 
-        return lambda **kw: _FakeClient()
-
-    import openai
-
-    picks = set()
-    for order in (["qwen/b-8b", "qwen/a-8b"], ["qwen/a-8b", "qwen/b-8b"]):
+def test_discovery_choice_is_deterministic(lp, monkeypatch):
+    provider = lp.get_provider("ollama")
+    answers = []
+    for ids in (["qwen-z", "qwen-a"], ["qwen-a", "qwen-z"]):
         lp.forget_discovered_models()
-        monkeypatch.setattr(openai, "OpenAI", _fake_openai(order))
-        picks.add(lp.discover_model(p))
-    assert picks == {"qwen/a-8b"}
+        _install_model_listing(monkeypatch, ids)
+        answers.append(lp.discover_model(provider))
+    assert answers == ["qwen-a", "qwen-a"]
 
 
-def test_discovery_does_not_select_embedding_only_models(lp, monkeypatch):
-    import openai
+def test_discovery_rejects_embedding_only_listing(lp, monkeypatch):
     lp.forget_discovered_models()
-    monkeypatch.setattr(lp, '_probe_lmstudio_loaded_model', lambda *args: None)
-    from types import SimpleNamespace
-    models = [SimpleNamespace(id=name) for name in ['text-embedding-nomic', 'bert-embedding']]
-    monkeypatch.setattr(openai, 'OpenAI', lambda **kw: SimpleNamespace(models=SimpleNamespace(list=lambda **kw: models)))
-    assert lp.discover_model(lp.get_provider('ollama')) is None
+    _install_model_listing(monkeypatch, ["text-embed", "minilm-bert"])
+    assert lp.discover_model(lp.get_provider("ollama")) is None
 
 
-def test_loaded_model_probe_uses_the_configured_key(lp, monkeypatch):
-    import io
-    import urllib.request
+def test_native_probe_sends_stored_bearer_key(lp, monkeypatch):
     lp.forget_discovered_models()
-    lp._secrets['llm_key.lmstudio'] = 'test-only-secret'
+    lp._secrets[lp.SECRET_PREFIX + "lmstudio"] = "stored-secret"
+    captured = {}
+
+    class Opener:
+        def open(self, request, timeout):
+            captured["authorization"] = request.get_header("Authorization")
+            return io.BytesIO(b'{"data":[{"id":"chat","type":"llm","state":"loaded"}]}')
+
+    monkeypatch.setattr(lp.urllib.request, "build_opener", lambda *handlers: Opener())
+    assert lp.discover_model(lp.get_provider("lmstudio")) == "chat"
+    assert captured["authorization"] == "Bearer stored-secret"
+
+
+@pytest.mark.parametrize("url", ["file:///tmp/model", "ftp://host/model", "https:///missing-host"])
+def test_native_probe_rejects_invalid_transport(lp, monkeypatch, url):
+    monkeypatch.setattr(
+        lp.urllib.request,
+        "build_opener",
+        lambda *handlers: pytest.fail("transport reached"),
+    )
+    assert lp._probe_lmstudio_loaded_model(url, "secret") is None
+
+
+def test_native_probe_does_not_follow_redirect_with_credentials(lp):
     requests = []
-    def respond(request, timeout):
-        requests.append(request)
-        return io.BytesIO(json.dumps({'data': [{'id': 'loaded-chat', 'type': 'llm', 'state': 'loaded'}]}).encode())
-    from types import SimpleNamespace
-    monkeypatch.setattr(urllib.request, 'build_opener', lambda *args: SimpleNamespace(open=respond))
-    assert lp.discover_model(lp.get_provider('lmstudio')) == 'loaded-chat'
-    assert requests[0].get_header('Authorization') == 'Bearer test-only-secret'
 
-
-@pytest.mark.parametrize('url', ['file:///tmp/models', 'ftp://host/models', 'https:///missing-host'])
-def test_loaded_model_probe_rejects_non_http_targets(lp, monkeypatch, url):
-    import urllib.request
-    calls = []
-    def forbidden(*args, **kwargs):
-        calls.append(args)
-        raise AssertionError('invalid URL must not reach transport')
-    from types import SimpleNamespace
-    monkeypatch.setattr(urllib.request, 'build_opener', lambda *args: SimpleNamespace(open=forbidden))
-    assert lp._probe_lmstudio_loaded_model(url) is None
-    assert not calls
-
-
-def test_loaded_model_probe_never_forwards_credentials_through_redirect(lp):
-    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-    from threading import Thread
-    seen = []
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
-            seen.append((self.path, self.headers.get('Authorization')))
-            if self.path == '/api/v0/models':
+            requests.append((self.path, self.headers.get("Authorization")))
+            if self.path == "/api/v0/models":
                 self.send_response(302)
-                self.send_header('Location', f'http://localhost:{self.server.server_port}/other-origin')
+                self.send_header("Location", "/redirected")
                 self.end_headers()
             else:
                 self.send_response(200)
                 self.end_headers()
-                self.wfile.write(b'{"data": [{"id": "chat", "type": "llm", "state": "loaded"}]}')
-        def log_message(self, *args):
+                self.wfile.write(b'{"data":[]}')
+
+        def log_message(self, format, *args):
             pass
-    server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
-    thread = Thread(target=server.serve_forever, daemon=True)
+
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    except PermissionError:
+        pytest.skip("the test sandbox forbids opening a loopback listener")
+    thread = threading.Thread(target=server.serve_forever)
     thread.start()
     try:
-        result = lp._probe_lmstudio_loaded_model(f'http://127.0.0.1:{server.server_port}/v1', 'test-only-secret')
+        url = f"http://127.0.0.1:{server.server_port}/v1"
+        assert lp._probe_lmstudio_loaded_model(url, "secret") is None
     finally:
         server.shutdown()
+        thread.join()
         server.server_close()
-        thread.join(timeout=2)
-    assert seen == [('/api/v0/models', 'Bearer test-only-secret')]
-    assert result is None
+    assert requests == [("/api/v0/models", "Bearer secret")]
 
 
-@pytest.mark.parametrize('model_type', ['embeddings', 'reranker', None])
-def test_lmstudio_never_selects_an_opaque_embedding_id(lp, monkeypatch, model_type):
-    import io
-    import urllib.request
-    import openai
-    from types import SimpleNamespace
+def test_lmstudio_never_uses_opaque_native_ids(lp, monkeypatch):
+    constructed = []
+    _install_model_listing(monkeypatch, ["fallback-chat"], constructed)
+    payload = {
+        "data": [
+            {"id": "embed-id", "type": "embeddings", "state": "loaded"},
+            {"id": "rerank-id", "type": "reranker", "state": "loaded"},
+            {"id": "opaque-id", "state": "loaded"},
+        ]
+    }
+
+    class Opener:
+        def open(self, request, timeout):
+            return io.BytesIO(json.dumps(payload).encode())
+
+    monkeypatch.setattr(lp.urllib.request, "build_opener", lambda *handlers: Opener())
     lp.forget_discovered_models()
-    payload = {'data': [{'id': 'opaque-123', 'type': model_type, 'state': 'loaded'}]}
-    monkeypatch.setattr(urllib.request, 'build_opener', lambda *args: SimpleNamespace(
-        open=lambda *args, **kwargs: io.BytesIO(json.dumps(payload).encode())))
-    calls = []
-    def fallback(**kwargs):
-        calls.append(True)
-        return SimpleNamespace(models=SimpleNamespace(list=lambda **kwargs: [SimpleNamespace(id='opaque-123')]))
-    monkeypatch.setattr(openai, 'OpenAI', fallback)
-    assert lp.discover_model(lp.get_provider('lmstudio')) is None
-    assert not calls
+    assert lp.discover_model(lp.get_provider("lmstudio")) is None
+    assert constructed == []
 
 
 @pytest.mark.parametrize("provider", ["anthropic", "groq", "custom"])

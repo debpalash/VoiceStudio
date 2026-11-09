@@ -1,121 +1,72 @@
-"""``load_audio`` must survive torchaudio 2.9 without TorchCodec (#1931).
+"""load_audio must still decode when torchaudio's TorchCodec route is unusable.
 
-torchaudio >= 2.9 routes ``load()`` through TorchCodec, which needs FFmpeg
-*shared libraries* on the system. Where those are absent the call raises
-``ImportError`` — but ``load_audio`` caught only ``(RuntimeError, OSError)``,
-so the pydub fallback written for precisely this situation never ran. Every
-voice-clone reference read, watermark check and dub segment load then failed
-with "TorchCodec is required for load_with_torchcodec".
-
-This is the read-side twin of the ``_safe_torchaudio_save`` regression in
-``tests/backend/services/test_audio_io.py``, and it reaches the same users:
-#1931 guarded ``set_audio_backend()`` against torchaudio 2.9 but left
-``load()`` unprotected. arm64 CUDA hosts reach it unavoidably, since torch
-2.8.0 publishes no aarch64 wheel.
-
-Note that ``backend="soundfile"`` does not avoid this — torchaudio 2.9
-accepts that argument and ignores it.
+torchaudio >= 2.9 raises ImportError from ``load()`` on hosts without FFmpeg
+shared libraries. These tests force that failure and check that the pydub
+fallback returns the same kind of tensor: mono, (1, T), float, correctly scaled
+for every WAV sample width.
 """
-from __future__ import annotations
-
 import numpy as np
 import pytest
 import soundfile as sf
 import torch
 
+from omnivoice.utils import audio as audio_utils
+
+PEAK = 0.5
 
 
-def _write_sine_wav(path, *, seconds: float = 0.5, sample_rate: int = 24000):
-    n = int(seconds * sample_rate)
-    t = np.arange(n, dtype=np.float32) / sample_rate
-    sf.write(str(path), 0.5 * np.sin(2 * np.pi * 440.0 * t), sample_rate,
-             subtype="PCM_16")
-    return sample_rate
+def _write_sine(path, *, subtype, rate=16000, seconds=0.5, channels=1):
+    t = np.arange(int(rate * seconds)) / rate
+    wave = PEAK * np.sin(2 * np.pi * 440 * t)
+    data = np.stack([wave] * channels, axis=1) if channels > 1 else wave
+    sf.write(str(path), data, rate, subtype=subtype)
+    return rate
 
 
-def _torchcodec_missing(*_a, **_kw):
-    raise ImportError(
-        "TorchCodec is required for load_with_torchcodec. "
-        "Please install torchcodec to use this function."
-    )
+@pytest.fixture
+def no_torchcodec(monkeypatch):
+    def fail(*args, **kwargs):
+        raise ImportError("TorchCodec could not find FFmpeg libraries")
+
+    monkeypatch.setattr(audio_utils.torchaudio, "load", fail)
 
 
-def test_load_audio_falls_back_when_torchcodec_missing(tmp_path, monkeypatch):
-    """Without the ImportError catch this raises instead of returning audio."""
-    from omnivoice.utils.audio import load_audio
-    import torchaudio
-
-    ref = tmp_path / "ref.wav"
-    sample_rate = _write_sine_wav(ref)
-    monkeypatch.setattr(torchaudio, "load", _torchcodec_missing)
-
-    waveform = load_audio(str(ref), sample_rate)
-
-    assert isinstance(waveform, torch.Tensor)
-    assert waveform.ndim == 2, f"expected (1, T), got {tuple(waveform.shape)}"
-    assert waveform.shape[0] == 1, "load_audio must return mono"
-    assert waveform.shape[-1] > 0
-    assert waveform.abs().max() > 0.05, "fallback produced silence"
+def test_fallback_returns_mono_non_silent_tensor(tmp_path, no_torchcodec):
+    path = tmp_path / "in.wav"
+    _write_sine(path, subtype="PCM_16")
+    wave = audio_utils.load_audio(str(path), 16000)
+    assert wave.shape[0] == 1
+    assert wave.dtype == torch.float32
+    assert wave.abs().max() > 0.1
 
 
-def test_load_audio_fallback_resamples_to_target(tmp_path, monkeypatch):
-    """The fallback path must still honour the requested sampling rate."""
-    from omnivoice.utils.audio import load_audio
-    import torchaudio
+def test_fallback_resamples_to_requested_rate(tmp_path, no_torchcodec):
+    path = tmp_path / "in.wav"
+    _write_sine(path, subtype="PCM_16", rate=16000, seconds=1.0)
+    wave = audio_utils.load_audio(str(path), 24000)
+    assert abs(wave.shape[1] - 24000) <= 48
 
-    ref = tmp_path / "ref_16k.wav"
-    _write_sine_wav(ref, seconds=0.5, sample_rate=16000)
-    monkeypatch.setattr(torchaudio, "load", _torchcodec_missing)
 
-    waveform = load_audio(str(ref), 24000)
-
-    # 0.5 s resampled 16k -> 24k is ~12000 samples; allow resampler edge slack.
-    assert abs(waveform.shape[-1] - 12000) <= 64, (
-        f"expected ~12000 samples at 24 kHz, got {waveform.shape[-1]}"
-    )
+def test_fallback_downmixes_stereo(tmp_path, no_torchcodec):
+    path = tmp_path / "stereo.wav"
+    _write_sine(path, subtype="PCM_16", channels=2)
+    assert audio_utils.load_audio(str(path), 16000).shape[0] == 1
 
 
 @pytest.mark.parametrize("subtype", ["PCM_U8", "PCM_16", "PCM_24", "PCM_32", "FLOAT"])
-def test_load_audio_fallback_amplitude_matches_bit_depth(
-    tmp_path, monkeypatch, subtype
-):
-    """The fallback must scale by the decoded width, not a fixed 32768.
-
-    pydub reports 8-bit as ``sample_width`` 1 and widens 24-bit to a
-    full-range int32 (``sample_width`` 4, contrary to the stale comment in
-    its own source). Dividing every decode by 32768 therefore returned 24-
-    and 32-bit references 32768x too loud and 8-bit ones 256x too quiet.
-    Nothing downstream clamps, so a clone reference silently became noise.
-
-    Before the ImportError catch this path was rare; on torchaudio >= 2.9
-    without TorchCodec it is the only path, which is what makes it a bug
-    worth fixing here.
-    """
-    from omnivoice.utils.audio import load_audio
-    import torchaudio
-
-    sample_rate = 24000
-    peak = 0.5
-    t = np.arange(sample_rate // 2, dtype=np.float64) / sample_rate
-    ref = tmp_path / f"ref_{subtype.lower()}.wav"
-    sf.write(str(ref), peak * np.sin(2 * np.pi * 440.0 * t), sample_rate,
-             subtype=subtype)
-    monkeypatch.setattr(torchaudio, "load", _torchcodec_missing)
-
-    waveform = load_audio(str(ref), sample_rate)
-
-    assert waveform.abs().max().item() == pytest.approx(peak, abs=0.02), (
-        f"{subtype} decoded at the wrong scale: peak "
-        f"{waveform.abs().max().item():.6f}, expected ~{peak}"
-    )
+def test_fallback_scale_follows_sample_width(tmp_path, no_torchcodec, subtype):
+    path = tmp_path / f"{subtype}.wav"
+    _write_sine(path, subtype=subtype)
+    wave = audio_utils.load_audio(str(path), 16000)
+    assert float(wave.abs().max()) == pytest.approx(PEAK, abs=0.02)
 
 
-@pytest.mark.parametrize("subtype", ["PCM_U8", "PCM_16", "PCM_24", "PCM_32"])
-def test_audiosegment_conversion_preserves_amplitude(tmp_path, subtype):
+@pytest.mark.parametrize("subtype", ["PCM_U8", "PCM_16", "PCM_24", "PCM_32", "FLOAT"])
+def test_audiosegment_to_tensor_keeps_amplitude_for_stereo(tmp_path, subtype):
     from pydub import AudioSegment
-    from omnivoice.utils.audio import audiosegment_to_tensor
-    path = tmp_path / "stereo.wav"
-    samples = np.tile([0.5, -0.25], (100, 1))
-    sf.write(path, samples, 24000, subtype=subtype)
-    converted = audiosegment_to_tensor(AudioSegment.from_file(path)).numpy()
-    np.testing.assert_allclose(converted, samples.T, atol=0.01)
+
+    path = tmp_path / f"st_{subtype}.wav"
+    _write_sine(path, subtype=subtype, rate=24000, channels=2)
+    tensor = audio_utils.audiosegment_to_tensor(AudioSegment.from_file(str(path)))
+    assert tensor.shape[0] == 2
+    assert float(tensor.abs().max()) == pytest.approx(PEAK, abs=0.02)

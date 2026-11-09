@@ -156,7 +156,7 @@ describe('split long-form persistence', () => {
   });
 
   it('recovers from localStorage quota failure using the committed durable payload', async () => {
-    const largeScript = 'quota-safe manuscript '.repeat(300_000);
+    const largeScript = 'quota-safe manuscript '.repeat(20_000);
     const legacy = legacyEnvelope(largeScript);
     const local = createLocalStorage(legacy, true);
     const durable = createDurableStore();

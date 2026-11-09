@@ -80,3 +80,12 @@ def test_fallback_version_resolves_to_pyproject():
         (root / "pyproject.toml").read_text(encoding="utf-8"),
     ).group(1)
     assert _fallback_version() == pyproject
+
+
+def test_ios_app_reads_the_full_version():
+    # CFBundleShortVersionString is X.Y.Z only; About and licence receipts must show
+    # the root version like Android's versionName (AppVersion.full).
+    from pathlib import Path
+    sources = (Path(__file__).resolve().parents[1] / "mobile/ios/VoiceStudio").rglob("*.swift")
+    offenders = [p.name for p in sources if "CFBundleShortVersionString" in p.read_text(encoding="utf-8")]
+    assert not offenders

@@ -11,7 +11,7 @@ Environment variables:
   OMNIVOICE_URL        full backend base URL (http or https, may carry a
                        path prefix, e.g. https://gpu-box/voicestudio). Wins
                        over OMNIVOICE_HOST / OMNIVOICE_PORT.
-  OMNIVOICE_PORT       backend port (default 3900).
+  OMNIVOICE_PORT       backend port (default from config/app.json).
   OMNIVOICE_HOST       host (default 127.0.0.1).
   OMNIVOICE_API_KEY    sent as a Bearer token when set (remote backends that
                        require an API key; loopback never needs one). Refused
@@ -40,10 +40,15 @@ from urllib.parse import urlsplit
 
 import httpx
 
+try:
+    from core.app_config import DEFAULT_BACKEND_PORT
+except ModuleNotFoundError:  # ``python -m backend.mcp_shim`` from the repo root
+    from backend.core.app_config import DEFAULT_BACKEND_PORT
+
 CLIENT_ID_HEADER = "X-OmniVoice-Client-Id"
 SESSION_HEADER = "mcp-session-id"
 HEALTH_TIMEOUT_S = 30.0
-DEFAULT_PORT = 3900
+DEFAULT_PORT = DEFAULT_BACKEND_PORT
 
 
 def _err(msg: str) -> None:

@@ -15,6 +15,8 @@
 #   :latest   — rolling preview: latest commit on main (never a release build)
 #   :main     — alias of the same rolling main build (kept for back-compat)
 #   :stable   — most recent versioned release (set when a non-prerelease is published)
+#   :beta     — most recent `vX.Y.Z-beta.N` prerelease (moves only on beta releases;
+#               a beta also gets its exact :X.Y.Z-beta.N tag, never :X.Y or :stable)
 #   :0.3.6    — exact version from the git tag
 #   :0.3      — major.minor floating tag (updated on every patch within the minor)
 #   :sha-xxxx — specific commit SHA; produced by every build
@@ -23,17 +25,30 @@
 # build-and-push-rocm job from the same Dockerfile via the BASE_IMAGE build-arg:
 #   :rocm           — rolling preview from main (the ROCm analogue of :latest)
 #   :stable-rocm    — most recent versioned release, ROCm build
+#   :beta-rocm      — most recent beta prerelease, ROCm build
 #   :0.3.6-rocm     — exact version, ROCm build
 #   :0.3-rocm       — major.minor floating tag, ROCm build
 #   :sha-xxxx-rocm  — specific commit SHA, ROCm build
 #
-# Images land at: ghcr.io/debpalash/voicestudio, the legacy GHCR alias
-# ghcr.io/debpalash/omnivoice-studio, and docker.io/palashdeb/omnivoice-studio
+# arm64 NVIDIA CUDA variant (#2831: DGX Spark / GB10, GH200, GB200) — same
+# semantics, `-cuda-arm64` suffixed, built natively on an arm64 runner by the
+# build-and-push-cuda-arm64 job (BASE_IMAGE=cuda-arm64-base):
+#   :cuda-arm64          — rolling preview from main
+#   :stable-cuda-arm64   — most recent versioned release
+#   :beta-cuda-arm64     — most recent beta prerelease
+#   :0.3.6-cuda-arm64    — exact version
+#   :0.3-cuda-arm64      — major.minor floating tag
+#   :sha-xxxx-cuda-arm64 — specific commit SHA
+# The un-suffixed and `-rocm` tags stay linux/amd64 only.
+#
+# GHCR images and layer caches use the lowercase repository owner namespace.
+# Upstream: ghcr.io/debpalash/voicestudio and its omnivoice-studio alias.
+# Docker Hub remains docker.io/palashdeb/omnivoice-studio
 # (Docker Hub push gated on the DOCKERHUB_USERNAME/DOCKERHUB_TOKEN secrets;
 # if unset the build still pushes to GHCR.)
 #
-# On main pushes the Docker Hub repository overview is also synced from
-# deploy/dockerhub-overview.md (source of truth for the hub.docker.com page).
+# Docker Hub overview text is published separately by dockerhub-description.yml
+# when deploy/dockerhub-overview.md changes, without rebuilding these images.
 #
 # NOTE: the Docker image is the headless web-server build of VoiceStudio (FastAPI
 # backend + pre-built React frontend served over HTTP).  The desktop
@@ -45,6 +60,31 @@ name: Docker (GHCR)
 on:
   push:
     branches: [main]
+    # A merge that only touches these cannot change what the image contains, so it
+    # does not rebuild the GPU images. Docker Hub overview text has a separate
+    # lightweight publishing workflow; Markdown and tests skip image rebuilds.
+    # Release/manual runs are unaffected.
+    paths-ignore:
+      - "**/*.md"
+      - "**/*.mdx"
+      - "**/*.rst"
+      - "**/*.adoc"
+      - "tests/**"
+      - "test/**"
+      - "**/tests/**"
+      - "**/test/**"
+      - "**/__tests__/**"
+      - "**/*.test.*"
+      - "**/*.spec.*"
+      - "**/test_*.py"
+      - "**/*_test.py"
+      - "**/conftest.py"
+      - "docs/**"
+      - "mobile/**"
+      - "changelog.d/**"
+      - "CHANGELOG.md"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/*.md"
   release:
     types: [published]
   workflow_dispatch:
@@ -66,15 +106,22 @@ permissions:
   contents: read
   packages: write
 
+# Only the newest main push needs to build the rolling :latest/:main images, so a
+# newer push cancels an older one. Releases and manual backfills never cancel
+# anything: each gets its own group.
+concurrency:
+  group: docker-${{ github.event_name == 'push' && 'main-push' || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
 env:
   REGISTRY: ghcr.io
-  # Keep registry coordinates explicit. VoiceStudio is the canonical GHCR
-  # path; the old path remains a compatibility alias during the migration.
-  IMAGE_NAME: debpalash/voicestudio
-  # Compatibility alias: keep existing deployments on the same tag stream.
-  LEGACY_IMAGE_NAME: debpalash/omnivoice-studio
   DOCKERHUB_IMAGE: palashdeb/omnivoice-studio
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # BuildKit layer cache. It lives in GHCR, not the Actions cache: the GHA cache is
+  # capped at 10 GB per repository and these layers (one is 4 GB, 5+ GB in total)
+  # evicted the iOS native-runtime, Gradle and bun caches, so mobile CI kept paying
+  # a 17 minute rebuild. A separate package keeps the cache out of the image's tags.
+  # Resolve all GHCR coordinates per job before metadata/cache consumers.
 
 jobs:
   build-and-push:
@@ -82,7 +129,7 @@ jobs:
     if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.backfill_release && inputs.release_ref || github.sha }}
 
@@ -92,7 +139,7 @@ jobs:
         env:
           RELEASE_REF: ${{ inputs.release_ref }}
         run: |
-          [[ "$RELEASE_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$RELEASE_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]]
           test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/${RELEASE_REF}^{commit}")"
           TAG_VERSION="${RELEASE_REF#v}"
           PACKAGE_VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
@@ -102,10 +149,17 @@ jobs:
             test "$PACKAGE_VERSION" = "$TAG_VERSION"
           fi
 
-      - name: Resolve image source commit
+      - &image-source
+        name: Resolve image source commit
         id: source
         shell: bash
-        run: echo "short_sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          OWNER="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | LC_ALL=C tr 'A-Z' 'a-z')"
+          echo "IMAGE_NAME=${OWNER}/voicestudio" >> "$GITHUB_ENV"
+          echo "LEGACY_IMAGE_NAME=${OWNER}/omnivoice-studio" >> "$GITHUB_ENV"
+          echo "BUILDCACHE_IMAGE=ghcr.io/${OWNER}/voicestudio-buildcache" >> "$GITHUB_ENV"
+          echo "short_sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       # Both image builds run right at the runner's disk ceiling (CUDA hit
       # ENOSPC 2026-07-16 morning; ROCm hit it the same afternoon even with
@@ -125,10 +179,10 @@ jobs:
       # - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -142,7 +196,7 @@ jobs:
 
       - name: Log in to Docker Hub
         if: steps.dockerhub.outputs.enabled == 'true'
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -159,7 +213,7 @@ jobs:
       # main preview channel only. :stable excludes prereleases.
       - name: Extract metadata (tags, labels)
         id: meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           # Same tag set applied to both registries. The Docker Hub line is
           # blank when the secret is unset, so metadata-action emits GHCR-only
@@ -172,7 +226,8 @@ jobs:
             latest=false
           tags: |
             type=semver,pattern={{version}},enable=${{ github.event_name == 'release' }}
-            type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'release' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'release' && !contains(github.ref, '-') }}
+            type=raw,value=beta,enable=${{ github.event_name == 'release' && github.event.release.prerelease && contains(github.ref, '-beta.') }}
             type=raw,value=stable,enable=${{ github.event_name == 'release' && !github.event.release.prerelease && !contains(github.ref, '-') }}
             type=raw,value=latest,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
             type=raw,value=main,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
@@ -183,11 +238,14 @@ jobs:
         with:
           context: .
           file: deploy/Dockerfile
+          build-args: |
+            BUILD_COMMIT=${{ steps.source.outputs.commit }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=registry,ref=${{ env.BUILDCACHE_IMAGE }}:buildkit
+          # A failed cache export must never fail (or skip) the image publish.
+          cache-to: type=registry,ref=${{ env.BUILDCACHE_IMAGE }}:buildkit,mode=max,ignore-error=true
 
       # One-time migration path for releases that predate the canonical GHCR
       # coordinate. The explicit ref is validated against package.json before
@@ -202,9 +260,15 @@ jobs:
           SOURCE_TAG: sha-${{ steps.source.outputs.short_sha }}
         run: |
           VERSION="${RELEASE_REF#v}"
-          MINOR="${VERSION%.*}"
-          TAGS=("$VERSION" "$MINOR")
-          if [[ "$PROMOTE_STABLE" == "true" ]]; then TAGS=(stable "${TAGS[@]}"); fi
+          if [[ "$VERSION" == *-beta.* ]]; then
+            # A beta never moves :stable or the floating major.minor tag.
+            test "$PROMOTE_STABLE" != "true"
+            TAGS=("$VERSION" beta)
+          else
+            MINOR="${VERSION%.*}"
+            TAGS=("$VERSION" "$MINOR")
+            if [[ "$PROMOTE_STABLE" == "true" ]]; then TAGS=(stable "${TAGS[@]}"); fi
+          fi
           for IMAGE in "$IMAGE_NAME" "$LEGACY_IMAGE_NAME"; do
             for TAG in "${TAGS[@]}"; do
               docker buildx imagetools create \
@@ -220,28 +284,6 @@ jobs:
             done
           fi
 
-      # Sync the Docker Hub repository overview from deploy/dockerhub-overview.md.
-      # Only on main pushes (the overview tracks the rolling preview) and only
-      # when Docker Hub creds are present, mirroring the push gating above.
-      #
-      # continue-on-error: the overview text is cosmetic, and the description
-      # PATCH 403s unless DOCKERHUB_TOKEN carries description-edit scope (many
-      # fine-grained Docker Hub tokens that can push still can't edit the
-      # description). The image build+push is what matters — a creds-scope
-      # mismatch on this cosmetic step must not fail the whole Docker run. To
-      # actually sync the overview, use a token with read/write (incl.
-      # description) scope, or the account password.
-      - name: Update Docker Hub description
-        if: steps.dockerhub.outputs.enabled == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        continue-on-error: true
-        uses: peter-evans/dockerhub-description@432a30c9e07499fd01da9f8a49f0faf9e0ca5b77 # v4.0.2
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: ${{ env.DOCKERHUB_IMAGE }}
-          short-description: "Local ElevenLabs alternative: voice cloning, design & video dubbing in 646 languages. No API keys."
-          readme-filepath: ./deploy/dockerhub-overview.md
-
   # ── ROCm/AMD GPU image variant (#1165) ──────────────────────────────────
   # Same Dockerfile, ROCm PyTorch base swapped in via the BASE_IMAGE
   # build-arg; tags mirror the CUDA job's with a `-rocm` suffix (table in the
@@ -253,7 +295,7 @@ jobs:
     if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.backfill_release && inputs.release_ref || github.sha }}
 
@@ -263,7 +305,7 @@ jobs:
         env:
           RELEASE_REF: ${{ inputs.release_ref }}
         run: |
-          [[ "$RELEASE_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$RELEASE_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]]
           test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/${RELEASE_REF}^{commit}")"
           TAG_VERSION="${RELEASE_REF#v}"
           PACKAGE_VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
@@ -273,10 +315,7 @@ jobs:
             test "$PACKAGE_VERSION" = "$TAG_VERSION"
           fi
 
-      - name: Resolve image source commit
-        id: source
-        shell: bash
-        run: echo "short_sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+      - *image-source
 
       # The ROCm base (~25 GB unpacked) plus build layers need every GB.
       # Same reclaim list as the CUDA job above — keep them identical
@@ -291,10 +330,10 @@ jobs:
           df -h /
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -308,7 +347,7 @@ jobs:
 
       - name: Log in to Docker Hub
         if: steps.dockerhub.outputs.enabled == 'true'
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -317,7 +356,7 @@ jobs:
       # prerelease gating) with a `-rocm` suffix on every tag.
       - name: Extract metadata (tags, labels)
         id: meta
-        uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
@@ -330,27 +369,49 @@ jobs:
             latest=false
           tags: |
             type=semver,pattern={{version}},suffix=-rocm,enable=${{ github.event_name == 'release' }}
-            type=semver,pattern={{major}}.{{minor}},suffix=-rocm,enable=${{ github.event_name == 'release' }}
+            type=semver,pattern={{major}}.{{minor}},suffix=-rocm,enable=${{ github.event_name == 'release' && !contains(github.ref, '-') }}
+            type=raw,value=beta-rocm,enable=${{ github.event_name == 'release' && github.event.release.prerelease && contains(github.ref, '-beta.') }}
             type=raw,value=stable-rocm,enable=${{ github.event_name == 'release' && !github.event.release.prerelease && !contains(github.ref, '-') }}
             type=raw,value=rocm,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
             type=raw,value=sha-${{ steps.source.outputs.short_sha }}-rocm
 
       # cache-from only: reading the CUDA job's exported cache reuses the
-      # identical frontend-builder stage. Deliberately NO cache-to — the
-      # multi-GB ROCm runtime layers would blow GitHub's 10 GB per-repo
-      # Actions cache budget and evict the CUDA job's cache.
+      # identical frontend-builder stage. Deliberately NO cache-to — the ROCm
+      # runtime layers would overwrite the CUDA job's cache image.
+      # The ROCm base ships its own HIP torch, which must equal the checked-out
+      # pin: a backfill of an older release builds that release's constraints,
+      # so the base follows deploy/torch-constraints.txt, not this workflow.
+      - name: Select the ROCm base for the checked-out torch pin
+        id: rocm_base
+        shell: bash
+        run: |
+          if [ -f deploy/torch-constraints.txt ]; then
+            torch="$(sed -n 's/^torch==\([0-9][0-9.]*\)$/\1/p' deploy/torch-constraints.txt | head -n1)"
+            if [ -z "$torch" ]; then
+              echo "::error::deploy/torch-constraints.txt has no exact torch==X.Y.Z pin"
+              exit 1
+            fi
+          else
+            # Releases older than the constraints file always built on the
+            # torch 2.8.0 ROCm base this workflow used before it followed the pin.
+            torch=2.8.0
+            echo "::notice::No deploy/torch-constraints.txt in this checkout; using the torch ${torch} ROCm base"
+          fi
+          echo "image=rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_${torch}" >> "$GITHUB_OUTPUT"
+
       - name: Build and push (ROCm)
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: deploy/Dockerfile
           build-args: |
-            BASE_IMAGE=rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_2.8.0
+            BASE_IMAGE=${{ steps.rocm_base.outputs.image }}
             GPU_FLAVOR=rocm
+            BUILD_COMMIT=${{ steps.source.outputs.commit }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
+          cache-from: type=registry,ref=${{ env.BUILDCACHE_IMAGE }}:buildkit
 
       - name: Backfill canonical GHCR release tags (ROCm)
         if: inputs.backfill_release
@@ -362,9 +423,157 @@ jobs:
           SOURCE_TAG: sha-${{ steps.source.outputs.short_sha }}-rocm
         run: |
           VERSION="${RELEASE_REF#v}"
-          MINOR="${VERSION%.*}"
-          TAGS=("${VERSION}-rocm" "${MINOR}-rocm")
-          if [[ "$PROMOTE_STABLE" == "true" ]]; then TAGS=(stable-rocm "${TAGS[@]}"); fi
+          if [[ "$VERSION" == *-beta.* ]]; then
+            # A beta never moves :stable-rocm or the floating major.minor tag.
+            test "$PROMOTE_STABLE" != "true"
+            TAGS=("${VERSION}-rocm" beta-rocm)
+          else
+            MINOR="${VERSION%.*}"
+            TAGS=("${VERSION}-rocm" "${MINOR}-rocm")
+            if [[ "$PROMOTE_STABLE" == "true" ]]; then TAGS=(stable-rocm "${TAGS[@]}"); fi
+          fi
+          for IMAGE in "$IMAGE_NAME" "$LEGACY_IMAGE_NAME"; do
+            for TAG in "${TAGS[@]}"; do
+              docker buildx imagetools create \
+                --tag "${REGISTRY}/${IMAGE}:${TAG}" \
+                "${REGISTRY}/${IMAGE}:${SOURCE_TAG}"
+            done
+          done
+          if [[ "$DOCKERHUB_ENABLED" == "true" ]]; then
+            for TAG in "${TAGS[@]}"; do
+              docker buildx imagetools create \
+                --tag "${DOCKERHUB_IMAGE}:${TAG}" \
+                "${DOCKERHUB_IMAGE}:${SOURCE_TAG}"
+            done
+          fi
+
+  # ── arm64 NVIDIA CUDA image variant (#2831) ─────────────────────────────
+  # DGX Spark / GB10, GH200 and GB200 (linux/arm64 SBSA). pytorch/pytorch has no
+  # arm64 image, so BASE_IMAGE names the Dockerfile's cuda-arm64-base stage
+  # (Ubuntu 24.04 + torch 2.10.0+cu129, whose aarch64 wheel bundles CUDA). Built
+  # natively on GitHub's arm64 runner, never under QEMU. A SEPARATE job with
+  # its own `-cuda-arm64` tags, so the amd64 CUDA tags stay single-arch and an
+  # arm64 failure can never block or alter them.
+  build-and-push-cuda-arm64:
+    # Only version releases publish images; other release tags are ignored.
+    if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.backfill_release && inputs.release_ref || github.sha }}
+
+      - name: Validate release backfill ref
+        if: inputs.backfill_release
+        shell: bash
+        env:
+          RELEASE_REF: ${{ inputs.release_ref }}
+        run: |
+          [[ "$RELEASE_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]]
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/${RELEASE_REF}^{commit}")"
+          TAG_VERSION="${RELEASE_REF#v}"
+          PACKAGE_VERSION="$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
+          if [[ "$(printf '%s\n' "$TAG_VERSION" '0.5.6' | sort -V | tail -n1)" == '0.5.6' ]]; then
+            test "$PACKAGE_VERSION" = '1.0.0'
+          else
+            test "$PACKAGE_VERSION" = "$TAG_VERSION"
+          fi
+
+      - *image-source
+
+      # The aarch64 torch wheel alone is 3.4 GB. Same reclaim list as the
+      # other jobs (paths absent on the arm64 image are simply skipped).
+      - name: Free runner disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/.ghcup /opt/hostedtoolcache /usr/share/swift \
+            /usr/local/share/boost /usr/local/lib/node_modules
+          sudo docker image prune --all --force
+          sudo apt-get clean
+          df -h /
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Log in to GHCR
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Same Docker Hub gating as the other jobs.
+      - name: Check Docker Hub credentials
+        id: dockerhub
+        run: echo "enabled=${{ secrets.DOCKERHUB_TOKEN != '' }}" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to Docker Hub
+        if: steps.dockerhub.outputs.enabled == 'true'
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Mirrors the CUDA job's tag rules (incl. the workflow_dispatch and
+      # prerelease gating) with a `-cuda-arm64` suffix on every tag.
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+            ${{ env.REGISTRY }}/${{ env.LEGACY_IMAGE_NAME }}
+            ${{ steps.dockerhub.outputs.enabled == 'true' && env.DOCKERHUB_IMAGE || '' }}
+          # latest=false is load-bearing: `auto` would add a bare `:latest` on
+          # release builds, replacing the amd64 preview with an arm64 image.
+          flavor: |
+            latest=false
+          tags: |
+            type=semver,pattern={{version}},suffix=-cuda-arm64,enable=${{ github.event_name == 'release' }}
+            type=semver,pattern={{major}}.{{minor}},suffix=-cuda-arm64,enable=${{ github.event_name == 'release' && !contains(github.ref, '-') }}
+            type=raw,value=beta-cuda-arm64,enable=${{ github.event_name == 'release' && github.event.release.prerelease && contains(github.ref, '-beta.') }}
+            type=raw,value=stable-cuda-arm64,enable=${{ github.event_name == 'release' && !github.event.release.prerelease && !contains(github.ref, '-') }}
+            type=raw,value=cuda-arm64,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+            type=raw,value=sha-${{ steps.source.outputs.short_sha }}-cuda-arm64
+
+      # Its own cache tag: amd64 layers are useless on arm64, and sharing the
+      # CUDA job's tag would overwrite it.
+      - name: Build and push (CUDA arm64)
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        with:
+          context: .
+          file: deploy/Dockerfile
+          platforms: linux/arm64
+          build-args: |
+            BASE_IMAGE=cuda-arm64-base
+            GPU_FLAVOR=cuda
+            BUILD_COMMIT=${{ steps.source.outputs.commit }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.BUILDCACHE_IMAGE }}:buildkit-cuda-arm64
+          # A failed cache export must never fail (or skip) the image publish.
+          cache-to: type=registry,ref=${{ env.BUILDCACHE_IMAGE }}:buildkit-cuda-arm64,mode=max,ignore-error=true
+
+      - name: Backfill canonical GHCR release tags (CUDA arm64)
+        if: inputs.backfill_release
+        shell: bash
+        env:
+          DOCKERHUB_ENABLED: ${{ steps.dockerhub.outputs.enabled }}
+          PROMOTE_STABLE: ${{ inputs.promote_stable }}
+          RELEASE_REF: ${{ inputs.release_ref }}
+          SOURCE_TAG: sha-${{ steps.source.outputs.short_sha }}-cuda-arm64
+        run: |
+          VERSION="${RELEASE_REF#v}"
+          if [[ "$VERSION" == *-beta.* ]]; then
+            # A beta never moves :stable-cuda-arm64 or the floating major.minor tag.
+            test "$PROMOTE_STABLE" != "true"
+            TAGS=("${VERSION}-cuda-arm64" beta-cuda-arm64)
+          else
+            MINOR="${VERSION%.*}"
+            TAGS=("${VERSION}-cuda-arm64" "${MINOR}-cuda-arm64")
+            if [[ "$PROMOTE_STABLE" == "true" ]]; then TAGS=(stable-cuda-arm64 "${TAGS[@]}"); fi
+          fi
           for IMAGE in "$IMAGE_NAME" "$LEGACY_IMAGE_NAME"; do
             for TAG in "${TAGS[@]}"; do
               docker buildx imagetools create \

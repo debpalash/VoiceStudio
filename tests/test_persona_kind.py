@@ -14,6 +14,7 @@ import io
 import json
 import os
 import zipfile
+from pathlib import Path
 
 import pytest
 
@@ -94,6 +95,90 @@ def test_import_preserves_design_kind(iso):
     assert json.loads(row["vd_states"])["Gender"] == "female"
 
 
+def test_imported_clone_preserves_freeform_prose(iso):
+    """A real marketplace import must not lose its original style on VoxCPM2."""
+    _, db, marketplace = iso
+    from fastapi import UploadFile
+    from services.voice_design_profiles import profile_instruct
+
+    prose = "Speak softly with warm breathiness and a gentle, wistful emotion."
+    file = UploadFile(
+        filename="freeform-clone.omnivoice",
+        file=io.BytesIO(_make_bundle({
+            "bundle_version": 1,
+            "profile_name": "Freeform clone",
+            "kind": "clone",
+            "instruct": prose,
+        })),
+    )
+    result = asyncio.run(marketplace.import_profile(file))
+    with db.db_conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM voice_profiles WHERE id=?",
+            (result["profile_id"],),
+        ).fetchone()
+
+    assert row["kind"] == "clone"
+    assert row["instruct"] == prose
+    assert profile_instruct(row, "voxcpm2") == prose
+    assert profile_instruct(row, "omnivoice") != prose
+
+
+def test_marketplace_install_preserves_design_kind(iso):
+    cfg, db, mk = iso
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    states = json.dumps({"Gender": "female"})
+    (Path(cfg.VOICES_DIR) / "aria.wav").write_bytes(b"RIFF" + b"\x00" * 512)
+    with db.db_conn() as conn:
+        conn.execute(
+            """INSERT INTO voice_profiles
+               (id, name, ref_audio_path, instruct, kind, vd_states)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            ("original-aria", "Marketplace Aria", "aria.wav", "female", "design", states),
+        )
+
+    app = FastAPI()
+    app.include_router(mk.router)
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        published = client.post("/marketplace/publish/original-aria")
+        assert published.status_code == 200
+        bundle_name = os.path.basename(published.json()["bundle_path"])
+        installed = client.post(f"/marketplace/install/{bundle_name}")
+        assert installed.status_code == 200
+        result = installed.json()
+
+    with db.db_conn() as conn:
+        row = conn.execute(
+            "SELECT kind, vd_states FROM voice_profiles WHERE id=?",
+            (result["profile_id"],),
+        ).fetchone()
+    assert row["kind"] == "design"
+    assert json.loads(row["vd_states"])["Gender"] == "female"
+
+
+def test_marketplace_install_legacy_bundle_defaults_to_clone(iso):
+    _, db, mk = iso
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    bundle = mk.MARKETPLACE_DIR / "legacy.omnivoice"
+    bundle.write_bytes(_make_bundle({"bundle_version": 1, "profile_name": "Legacy"}))
+    app = FastAPI()
+    app.include_router(mk.router)
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
+        installed = client.post("/marketplace/install/legacy.omnivoice")
+    assert installed.status_code == 200
+    with db.db_conn() as conn:
+        row = conn.execute(
+            "SELECT kind, vd_states FROM voice_profiles WHERE id=?",
+            (installed.json()["profile_id"],),
+        ).fetchone()
+    assert row["kind"] == "clone"
+    assert row["vd_states"] is None
+
+
 def test_import_legacy_bundle_defaults_to_clone(iso):
     cfg, db, mk = iso
     from fastapi import UploadFile
@@ -110,3 +195,21 @@ def test_import_legacy_bundle_defaults_to_clone(iso):
         ).fetchone()
     assert row["kind"] == "clone"
     assert row["vd_states"] is None
+
+
+def test_import_sanitises_untrusted_kind_and_design_settings(iso):
+    cfg, db, mk = iso
+    from fastapi import UploadFile
+
+    data = _make_bundle({
+        "bundle_version": 1, "profile_name": "Odd",
+        "kind": "admin", "vd_states": {"Gender": "female"},
+    })
+    result = asyncio.run(mk.import_profile(UploadFile(filename="odd.omnivoice", file=io.BytesIO(data))))
+
+    with db.db_conn() as conn:
+        row = conn.execute(
+            "SELECT kind, vd_states FROM voice_profiles WHERE id=?", (result["profile_id"],),
+        ).fetchone()
+    assert row["kind"] == "clone"
+    assert json.loads(row["vd_states"]) == {"Gender": "female"}

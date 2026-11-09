@@ -22,3 +22,13 @@ it('shares synthesis admission, sends multipart contract and releases on failure
   expect(freed).not.toBeNull();
   freed?.();
 });
+it('sends keep_delivery only when Keep my delivery is on', async () => {
+  const file = new File(['audio'], 'source.wav');
+  const signal = new AbortController().signal;
+  mock.json.mockReset();
+  mock.json.mockResolvedValue({ id: 'x', audio_url: '/audio/x.wav', text: '' });
+  await convertSpeech(file, 'a', true, signal);
+  await convertSpeech(file, 'a', true, signal, 'Auto', true);
+  expect(mock.json.mock.calls[0][1].body.has('keep_delivery')).toBe(false);
+  expect(mock.json.mock.calls[1][1].body.get('keep_delivery')).toBe('1');
+});

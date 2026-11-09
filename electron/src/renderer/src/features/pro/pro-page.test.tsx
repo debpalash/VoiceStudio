@@ -1,13 +1,7 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 
 const locale = vi.hoisted(() => ({ current: 'en' }));
-const status = vi.fn(async () => ({ active: false, configured: true }));
-const activate = vi.fn(async () => ({ active: true, configured: true }));
-const deactivate = vi.fn(async () => ({ active: false, configured: true }));
-vi.mock('@/components/bridge', () => ({
-  getBridge: () => ({ pro: { status, activate, deactivate } }),
-}));
 vi.mock('react-i18next', async () => {
   const { createInstance } = await import('i18next');
   const { default: en } = await import('@/i18n/locales/en.json');
@@ -37,12 +31,11 @@ afterEach(() => {
   locale.current = 'en';
 });
 
-it('shows pricing followed by Pro features', async () => {
+it('shows pricing followed by Pro features without licence activation', () => {
   render(<ProPage />);
-  await waitFor(() => expect(status).toHaveBeenCalledOnce());
   expect(screen.queryByText('$9')).not.toBeInTheDocument();
   expect(screen.getAllByText('$99')).toHaveLength(2);
-  expect(screen.getAllByText('$299')).toHaveLength(2);
+  expect(screen.getAllByText('$199')).toHaveLength(2);
   expect(screen.getByRole('link', { name: /proPage.choose_yearly/ })).toHaveAttribute(
     'href',
     'https://voicestudio.sh/pro?plan=yearly&quantity=1',
@@ -75,12 +68,7 @@ it('shows pricing followed by Pro features', async () => {
   expect(screen.getByText('proPage.lifetime_pay_once')).toBeVisible();
   expect(screen.getByText('proPage.lifetime_no_subscription')).toBeVisible();
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'proPage.activate_title' }));
-  expect(screen.getByRole('dialog', { name: 'proPage.activate_title' })).toBeVisible();
-  expect(screen.getByRole('link', { name: /proPage.read_terms/ })).toHaveAttribute(
-    'href',
-    'https://voicestudio.sh/terms',
-  );
+  expect(screen.queryByRole('button', { name: 'proPage.activate_title' })).not.toBeInTheDocument();
 });
 
 it('passes the selected user count and total to each website plan', () => {
@@ -93,45 +81,11 @@ it('passes the selected user count and total to each website plan', () => {
     'https://voicestudio.sh/pro?plan=yearly&quantity=2',
   );
   fireEvent.click(increase[1]);
-  expect(screen.getByText('$598')).toBeVisible();
+  expect(screen.getByText('$398')).toBeVisible();
   expect(screen.getByRole('link', { name: /proPage.choose_lifetime/ })).toHaveAttribute(
     'href',
     'https://voicestudio.sh/pro?plan=lifetime&quantity=2',
   );
-});
-
-it('activates an emailed licence and allows moving it to another device', async () => {
-  render(<ProPage />);
-  await waitFor(() => expect(status).toHaveBeenCalledOnce());
-  fireEvent.click(screen.getByRole('button', { name: 'proPage.activate_title' }));
-  fireEvent.change(screen.getByRole('textbox', { name: 'proPage.key_label' }), {
-    target: { value: 'a1b2c3d4-e5f6-7890' },
-  });
-  fireEvent.click(screen.getByRole('button', { name: 'proPage.activate' }));
-  await waitFor(() => expect(activate).toHaveBeenCalledWith('a1b2c3d4-e5f6-7890'));
-  await waitFor(() => expect(screen.getByText('proPage.active_title')).toBeVisible());
-  fireEvent.click(screen.getByRole('button', { name: 'proPage.deactivate' }));
-  await waitFor(() => expect(deactivate).toHaveBeenCalledOnce());
-});
-
-it('keeps the page usable when an older main process has no Pro handler', async () => {
-  status.mockRejectedValueOnce(new Error("No handler registered for 'pro:status'"));
-  render(<ProPage />);
-  fireEvent.click(screen.getByRole('button', { name: 'proPage.activate_title' }));
-  expect(await screen.findByText('proPage.not_configured')).toBeVisible();
-});
-
-it('recovers from rejected license IPC without leaving activation busy', async () => {
-  activate.mockRejectedValueOnce(new Error('IPC unavailable'));
-  render(<ProPage />);
-  await waitFor(() => expect(status).toHaveBeenCalled());
-  fireEvent.click(screen.getByRole('button', { name: 'proPage.activate_title' }));
-  fireEvent.change(screen.getByLabelText('proPage.key_label'), {
-    target: { value: 'test-license-123456' },
-  });
-  fireEvent.click(screen.getByRole('button', { name: 'proPage.activate' }));
-  await waitFor(() => expect(screen.getByText('proPage.error_offline')).toBeVisible());
-  expect(screen.getByRole('button', { name: 'proPage.activate' })).not.toBeDisabled();
 });
 
 it('localizes fixed USD prices and quantity totals', () => {

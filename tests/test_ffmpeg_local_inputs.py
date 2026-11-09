@@ -100,7 +100,7 @@ def _capture_spawns(monkeypatch):
         seen.append(list(cmd))
         return _Proc()
 
-    monkeypatch.setattr(ffmpeg_utils, "_spawn_async", fake_spawn)
+    monkeypatch.setattr(ffmpeg_utils, "_create_subprocess", fake_spawn)
     return seen
 
 

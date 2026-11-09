@@ -1,10 +1,19 @@
 import { SetupGate } from './setup-gate';
+import { SetupProgressCard } from './setup-progress-card';
 import { ReportBug } from './report-bug';
+import { SetupAnalyticsConsent } from './analytics-consent';
+import { SetupSupport } from './setup-support';
 import { CrashDetails } from './crash-details';
 import {
-  CheckIcon,
+  BackendOfflineBar,
+  BackendStatusPill,
+  useActiveSeconds,
+  useFailureRepeats,
+  type BackendPillState,
+} from './backend-status-pill';
+import {
   ChevronDownIcon,
-  CircleIcon,
+  ClipboardCopyIcon,
   RotateCcwIcon,
   DownloadIcon,
   FolderOpenIcon,
@@ -14,6 +23,7 @@ import { useTranslation } from 'react-i18next';
 import { AgentFixButton } from '@/components/agent-fix-button';
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { SetupDownloadNotice } from './setup-download-notice';
 import {
   Select,
   SelectContent,
@@ -24,9 +34,16 @@ import {
 import { Spinner } from '@/components/ui/spinner';
 import { ConfirmDialog } from '@/features/clone/confirm-dialog';
 import { RemoteBackendSettings } from '@/features/settings/remote-backend-settings';
+import { ExistingPythonSettings } from '@/features/settings/existing-python-settings';
 import { useBackendStatus } from '@/hooks/use-backend-status';
 import { isBackendBusy } from '@shared/utils/backendStage';
-import { backendFailureHints } from '@shared/utils/backendHint';
+import { backendCauseAction } from '@shared/utils/backendHint';
+import { DEFAULT_DOCS } from '@shared/utils/errorDocsMap';
+import {
+  classifyInstallFailure,
+  failureDocsAnchor,
+  failureGuidance,
+} from '@shared/utils/installFailure';
 import { scrubText } from '@shared/utils/scrub';
 import i18n, { APP_LANGUAGE_ITEMS, APP_LANGUAGES, setAppLanguage, type AppLocale } from '@/i18n';
 import { brandIcon } from '@/lib/brand';
@@ -34,6 +51,13 @@ import { cn } from '@/lib/utils';
 import type { RuntimeRegion } from '../../../preload/index.d';
 import { getBridge, isMac } from './bridge';
 import { ExternalLink } from './external-link';
+import {
+  MODEL_HEADROOM_GIB,
+  SetupHardware,
+  SetupHelpLinks,
+  SetupUpdateNotice,
+  SetupVersion,
+} from './setup-extras';
 
 interface BackendGateProps {
   children: ReactNode;
@@ -42,7 +66,6 @@ interface BackendGateProps {
 
 const RELEASES_URL = 'https://github.com/debpalash/VoiceStudio/releases/latest';
 const RETRYABLE = new Set(['crashed', 'failed', 'port_in_use']);
-const SETUP_PHASES = ['checking', 'downloading_uv', 'installing_deps', 'verifying'] as const;
 
 function useElapsedSeconds(elapsedMs: number, running: boolean): number {
   // The bridge only pushes a status on change; tick locally so the counter moves.
@@ -57,21 +80,6 @@ function useElapsedSeconds(elapsedMs: number, running: boolean): number {
     return () => window.clearInterval(id);
   }, [elapsedMs, running]);
   return seconds;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes >= 1024 ** 3)
-    return `${(bytes / 1024 ** 3).toFixed(bytes < 10 * 1024 ** 3 ? 1 : 0)} GB`;
-  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`;
-  return `${Math.max(0, Math.round(bytes / 1024))} KB`;
-}
-
-function formatEta(seconds: number): string {
-  const minutes = Math.floor(seconds / 60);
-  const remainder = seconds % 60;
-  return minutes > 0
-    ? `${minutes}:${String(remainder).padStart(2, '0')}`
-    : `0:${String(remainder).padStart(2, '0')}`;
 }
 
 /** Backend output is attacker-influenced text: repair requests carry it only as
@@ -95,9 +103,11 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
   const status = useBackendStatus();
   const [reachedReady, setReachedReady] = useState(false);
   const [logOpen, setLogOpen] = useState(false);
+  const [connectionOpen, setConnectionOpen] = useState(false);
   const [restarting, setRestarting] = useState(false);
   const [choosingLocation, setChoosingLocation] = useState(false);
   const [choosingRegion, setChoosingRegion] = useState(false);
+  const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
   const [cleanConfirmOpen, setCleanConfirmOpen] = useState(false);
   const setup = status.stage === 'setup_required';
   const regionItems = (['auto', 'global', 'china', 'russia', 'restricted'] as const).map(
@@ -108,31 +118,14 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
   );
   const installing = status.stage === 'installing';
   const setupFailed = setup && Boolean(status.message);
-  // Intel Macs can never resolve the runtime (#2365): the setup screen
-  // offers a remote backend instead of a local install that must fail.
+  // Main ignores setup requests until the old install stops, so don't offer them.
+  const installStuck = setup && status.setupIssue === 'install_stuck';
   const unsupportedPlatform = setup && status.setupIssue === 'unsupported_platform';
   // The Intel build under Rosetta on Apple Silicon (#2598): the same Mac runs
   // the local backend once the Apple Silicon build is installed.
   const wrongArchitecture = setup && status.setupIssue === 'wrong_architecture';
   const running = status.stage === 'starting' || status.stage === 'attaching' || installing;
   const seconds = useElapsedSeconds(status.elapsedMs, running);
-  const setupPhaseIndex = status.setupPhase ? SETUP_PHASES.indexOf(status.setupPhase) : 0;
-  const latestActivity = installing ? status.logTail.at(-1) : undefined;
-  const progress = status.setupProgress;
-  const downloadedBytes = progress?.downloadedBytes ?? 0;
-  const remainingBytes = Math.max(0, (progress?.totalBytes ?? 0) - downloadedBytes);
-  const downloadsComplete = Boolean(
-    progress?.downloadsComplete || progress?.preparedPackages || progress?.installedPackages,
-  );
-  const downloadPercent = progress?.totalBytes
-    ? downloadsComplete
-      ? 100
-      : Math.min(100, (downloadedBytes / progress.totalBytes) * 100)
-    : 0;
-  const dependencyCount =
-    progress?.installedPackages ?? progress?.preparedPackages ?? progress?.resolvedPackages;
-  const transferLive =
-    progress?.transferUpdatedAt !== undefined && Date.now() - progress.transferUpdatedAt < 15_000;
 
   const recovering = reachedReady && status.stage === 'failed' && status.managed;
   // A live-but-busy backend (#2430) is not a gate. The process is running the
@@ -140,7 +133,14 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
   // bar carries the only signal this needs. Tearing the app down behind an
   // error screen mid-generation is the bug this stage exists to prevent.
   const busy = isBackendBusy(status.stage);
+  const busySeconds = useActiveSeconds(busy);
+  const failedNow = RETRYABLE.has(status.stage);
+  const repeats = useFailureRepeats(failedNow, status.message);
 
+  useEffect(() => {
+    // "Copied" describes one failure; a retry or new crash needs a fresh copy.
+    setDiagnosticsCopied(false);
+  }, [status.stage, status.message]);
   useEffect(() => {
     setRestarting(false);
   }, [status.stage]);
@@ -152,10 +152,35 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
     return (
       <div className="contents">
         <SetupGate>{children}</SetupGate>
+        {busy ? <BackendOfflineBar seconds={busySeconds} /> : null}
       </div>
     );
 
   const failed = RETRYABLE.has(status.stage);
+  // One named cause and one primary action, instead of a raw error to decode.
+  const failureCode =
+    status.failure?.code ??
+    (failed || setupFailed
+      ? classifyInstallFailure({
+          stage: status.stage,
+          message: status.message,
+          setupIssue: status.setupIssue,
+          exitCode: status.exitCode,
+          signal: status.exitSignal,
+        })
+      : null);
+  const guidance = failureCode
+    ? failureGuidance(failureCode, {
+        message: status.message,
+        smartAppControl: status.failure?.smartAppControl,
+        exitCode: status.exitCode,
+        logLines: status.logTail,
+      })
+    : null;
+  const cause = guidance?.cause ?? null;
+  const pillState: BackendPillState = failed ? 'failed' : reachedReady ? 'recovering' : 'starting';
+  // Only an installed app reports `runtimePath`: its runtime is app-managed and movable.
+  const causeAction = backendCauseAction(cause, { managedRuntime: Boolean(status.runtimePath) });
   const stageText =
     installing && status.setupPhase
       ? t(`bootstrap.${status.setupPhase}`)
@@ -175,6 +200,28 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
       await getBridge()?.backend.restart();
     } catch {
       setRestarting(false);
+    }
+  };
+
+  const chooseFolder = async () => {
+    setChoosingLocation(true);
+    try {
+      const chosen = await getBridge()?.backend.chooseRuntimeLocation(t('firstrun.env_dir'));
+      if (chosen) await getBridge()?.backend.restart();
+    } catch {
+      /* The failure screen stays and Retry remains available. */
+    } finally {
+      setChoosingLocation(false);
+    }
+  };
+
+  const copyDiagnostics = async () => {
+    const text = scrubText([status.message, ...status.logTail].filter(Boolean).join('\n'));
+    try {
+      await navigator.clipboard.writeText(text);
+      setDiagnosticsCopied(true);
+    } catch {
+      /* Clipboard can be blocked; the log below stays selectable. */
     }
   };
 
@@ -207,14 +254,20 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
         <span className="whitespace-nowrap text-sm font-medium tracking-tight">
           {t('app.name')}
         </span>
+        <SetupVersion />
       </header>
       <div
         data-testid="backend-gate-scroll"
         className="studio-scrollbar min-h-0 flex-1 overflow-y-auto p-6"
       >
         <div className="mx-auto flex min-h-full w-full max-w-lg shrink-0 flex-col items-center justify-start gap-4 py-[clamp(1.5rem,8vh,5rem)] text-center">
-          {setup ? (
-            <DownloadIcon className="size-8 text-primary" aria-hidden="true" />
+          {setup || installing ? (
+            <div
+              className="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary ring-1 ring-primary/20"
+              aria-hidden="true"
+            >
+              <DownloadIcon className="size-6" />
+            </div>
           ) : failed ? (
             <div
               className="flex size-10 items-center justify-center rounded-full bg-destructive/10 text-lg font-semibold text-destructive"
@@ -225,169 +278,114 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
           ) : (
             <Spinner className="size-8 text-primary" aria-label={t('common.loading')} />
           )}
+          {!setup && !installing && (failed || running) ? (
+            <BackendStatusPill state={pillState} seconds={seconds} repeats={repeats} />
+          ) : null}
           <div className="space-y-1">
             <p className={cn('text-base font-medium', failed && 'text-destructive')}>{stageText}</p>
-            {(failed || setup) && status.message && !status.diagnosis ? (
+            {(failed || setup) && status.message && !status.diagnosis && !(cause && !setup) ? (
               <p className="text-sm text-muted-foreground">
                 {status.message === 'VOICESTUDIO_PROXY_BYPASS_UNSUPPORTED'
                   ? t('backend.proxy_bypass_help')
                   : setup
                     ? t(
-                        status.setupIssue ? `backend.setup_${status.setupIssue}` : 'backend.failed',
+                        status.setupIssue
+                          ? `backend.setup_${status.setupIssue}`
+                          : status.runtimeRepairFailed
+                            ? 'backend.repair_failed'
+                            : 'backend.failed',
                         {
-                          gib: status.setupRequiredGib ?? 9,
+                          gib: status.setupRequiredGib,
                         },
                       )
                     : status.message}
               </p>
             ) : null}
-            {failed && !setup
-              ? backendFailureHints(status.message).map((key) => (
+            {cause ? (
+              <p className="text-sm font-medium" data-testid="backend-cause">
+                {t(`backend.cause_${cause}`)}
+              </p>
+            ) : null}
+            {installing && status.setupPhase === 'installing_deps' ? (
+              <SetupDownloadNotice progress={status.setupProgress} />
+            ) : null}
+            {guidance
+              ? guidance.hints.map((key) => (
                   <p key={key} className="text-sm text-muted-foreground" data-testid="backend-hint">
                     {t(key)}
                   </p>
                 ))
               : null}
+            {failureCode && failureCode !== 'UNCLASSIFIED' ? (
+              <p className="text-xs text-muted-foreground" data-testid="backend-failure-code">
+                <code>{failureCode}</code> ·{' '}
+                <ExternalLink
+                  href={`${DEFAULT_DOCS}#${failureDocsAnchor(failureCode)}`}
+                >
+                  {t('backend.fix_docs')}
+                </ExternalLink>
+              </p>
+            ) : null}
             {failed && status.diagnosis === 'auth_required' ? (
-              // The workspace is gated, so Settings is unreachable: reconnecting
-              // with the API key has to be possible right here.
+              // The gated workspace hides Settings, so credentials must be repairable here.
               <div className="w-full pt-2 text-left">
                 <RemoteBackendSettings />
               </div>
             ) : null}
             {running ? (
-              <p className="font-mono text-xs text-muted-foreground tabular-nums">
-                {t('backend.elapsed', { seconds })}
+              <p className="mx-auto max-w-sm text-sm text-muted-foreground">
+                {t('backend.first_run_hint')}
               </p>
             ) : null}
           </div>
           {installing ? (
-            <div className="w-full rounded-2xl border border-border/60 bg-card/55 p-3 shadow-sm backdrop-blur-xl">
-              <ol className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-1" aria-label={stageText}>
-                {SETUP_PHASES.map((phase, index) => {
-                  const complete = index < setupPhaseIndex;
-                  const current = index === setupPhaseIndex;
-                  return (
-                    <li key={phase} className="min-w-0">
-                      <div
-                        className={cn(
-                          'mb-2 h-1 rounded-full bg-border/70 transition-colors',
-                          (complete || current) && 'bg-primary',
-                        )}
-                      />
-                      <div className="flex flex-col items-center gap-1 px-1">
-                        {complete ? (
-                          <CheckIcon className="size-4 text-primary" aria-hidden="true" />
-                        ) : current ? (
-                          <Spinner className="size-4 text-primary" aria-hidden="true" />
-                        ) : (
-                          <CircleIcon
-                            className="size-3.5 text-muted-foreground/50"
-                            aria-hidden="true"
-                          />
-                        )}
-                        <span
-                          className={cn(
-                            'text-xs leading-snug text-muted-foreground',
-                            current && 'font-medium text-foreground',
-                          )}
-                        >
-                          {t(`bootstrap.${phase}`)}
-                        </span>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ol>
-              {status.setupPhase === 'installing_deps' && progress ? (
-                <div className="mt-4 border-t border-border/50 pt-3 text-left">
-                  {progress.totalBytes ? (
-                    <>
-                      <div
-                        className="h-1.5 overflow-hidden rounded-full bg-muted"
-                        role="progressbar"
-                        aria-label={stageText}
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-valuenow={Math.round(downloadPercent)}
-                      >
-                        <div
-                          className="h-full rounded-full bg-primary transition-[width] duration-300"
-                          style={{ width: `${downloadPercent}%` }}
-                        />
-                      </div>
-                      {!downloadsComplete ? (
-                        <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 font-mono text-[11px] tabular-nums text-muted-foreground sm:grid-cols-4">
-                          <span>
-                            {formatBytes(downloadedBytes)} / ~{formatBytes(progress.totalBytes)}
-                          </span>
-                          <span>
-                            {t('bootstrap.remaining_amount', {
-                              amount: formatBytes(remainingBytes),
-                            })}
-                          </span>
-                          <span>
-                            {transferLive && progress.bytesPerSecond
-                              ? t('bootstrap.download_rate', {
-                                  rate: formatBytes(progress.bytesPerSecond),
-                                })
-                              : '—'}
-                          </span>
-                          <span>
-                            {transferLive && progress.etaSeconds !== undefined
-                              ? t('bootstrap.eta', { time: formatEta(progress.etaSeconds) })
-                              : '—'}
-                          </span>
-                        </div>
-                      ) : null}
-                    </>
-                  ) : null}
-                  {dependencyCount ? (
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      {t('bootstrap.dependencies_resolved', { count: dependencyCount })}
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-              {status.setupPhase === 'installing_deps' && progress?.activePackage ? (
-                <p className="mt-3 flex min-w-0 items-center gap-2 rounded-lg bg-background/45 px-3 py-2 text-left font-mono text-[11px] text-muted-foreground">
-                  <Spinner className="size-3 shrink-0 text-primary" aria-hidden="true" />
-                  <span className="truncate">{progress.activePackage}</span>
-                </p>
-              ) : status.setupPhase === 'installing_deps' && downloadsComplete ? (
-                <p className="mt-3 flex min-w-0 items-center gap-2 rounded-lg bg-background/45 px-3 py-2 text-left text-xs text-muted-foreground">
-                  <Spinner className="size-3 shrink-0 text-primary" aria-hidden="true" />
-                  <span>{t('bootstrap.downloads_complete')}</span>
-                </p>
-              ) : latestActivity ? (
-                <p
-                  className="mt-3 truncate rounded-lg bg-background/45 px-3 py-2 text-left font-mono text-[11px] text-muted-foreground"
-                  title={latestActivity}
-                  aria-live="polite"
-                >
-                  {latestActivity}
-                </p>
-              ) : null}
-            </div>
+            <SetupProgressCard
+              status={status}
+              seconds={seconds}
+              label={stageText}
+              cancelling={restarting}
+              onCancel={retry}
+            />
           ) : null}
           {setup ? (
             <>
               <p className="max-w-sm text-sm text-muted-foreground">{t('backend.setup_hint')}</p>
-              {wrongArchitecture && (
+              <SetupUpdateNotice />
+              {status.smartAppControlWarning && !status.failure ? (
+                <p
+                  className="max-w-sm text-sm text-warning"
+                  data-testid="setup-smart-app-control"
+                >
+                  {t('backend.setup_smart_app_control')}
+                </p>
+              ) : null}
+              <SetupAnalyticsConsent analyticsDisabled={status.analyticsDisabled} />
+              {!unsupportedPlatform && !wrongArchitecture ? <ExistingPythonSettings /> : null}
+              {wrongArchitecture ? (
                 <p className="max-w-sm text-sm text-muted-foreground">
                   {t('backend.setup_wrong_architecture')}
                 </p>
-              )}
-              {unsupportedPlatform && (
+              ) : null}
+              {unsupportedPlatform ? (
                 <p className="max-w-sm text-sm text-muted-foreground">
                   {t('backend.setup_unsupported_platform')}
                 </p>
-              )}
-              {(unsupportedPlatform || wrongArchitecture) && (
-                <div className="w-full text-left">
+              ) : null}
+              <div className="w-full text-left">
+                {wrongArchitecture || unsupportedPlatform ? (
                   <RemoteBackendSettings />
-                </div>
-              )}
+                ) : (
+                  <Collapsible open={connectionOpen} onOpenChange={setConnectionOpen}>
+                    <CollapsibleTrigger render={<Button variant="outline" className="w-full" />}>
+                      {t('setup.use_other_computer')}
+                      <ChevronDownIcon className="size-4" />
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      {connectionOpen ? <RemoteBackendSettings /> : null}
+                    </CollapsibleContent>
+                  </Collapsible>
+                )}
+              </div>
               <div className="grid w-full grid-cols-2 gap-2">
                 <label className="space-y-1 text-left text-xs text-muted-foreground">
                   <span>{t('settings.language')}</span>
@@ -416,7 +414,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                   <Select
                     items={regionItems}
                     value={status.runtimeRegion || 'auto'}
-                    disabled={choosingRegion || restarting}
+                    disabled={choosingRegion || restarting || installStuck}
                     onValueChange={async (value) => {
                       setChoosingRegion(true);
                       try {
@@ -449,7 +447,11 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium">{t('firstrun.env_dir')}</p>
                       <p className="mt-0.5 text-xs text-muted-foreground">
-                        {t('firstrun.env_dir_desc')}
+                        {t(
+                          status.runtimeStorage
+                            ? 'firstrun.env_dir_desc_scoped'
+                            : 'firstrun.env_dir_desc',
+                        )}
                       </p>
                       <p
                         className="mt-2 truncate font-mono text-xs text-muted-foreground"
@@ -457,6 +459,47 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                       >
                         {status.runtimePath}
                       </p>
+                      {status.runtimeFreeGib !== undefined &&
+                      status.setupRequiredGib !== undefined ? (
+                        <p
+                          data-testid="setup-free-space"
+                          className={cn(
+                            'mt-1 text-xs',
+                            status.runtimeFreeGib < status.setupRequiredGib
+                              ? 'text-warning'
+                              : 'text-muted-foreground',
+                          )}
+                        >
+                          {t('firstrun.free_space', {
+                            free: status.runtimeFreeGib,
+                            needed: status.setupRequiredGib,
+                          })}
+                        </p>
+                      ) : null}
+                      {status.runtimeFreeGib !== undefined &&
+                      status.setupRequiredGib !== undefined &&
+                      status.runtimeFreeGib >= status.setupRequiredGib &&
+                      status.runtimeFreeGib < status.setupRequiredGib + MODEL_HEADROOM_GIB ? (
+                        <p data-testid="setup-model-space" className="mt-0.5 text-xs text-warning">
+                          {t('setup.models_space')}
+                        </p>
+                      ) : null}
+                      <SetupHardware hardware={status.setupHardware} />
+                      {status.runtimeStorage && (
+                        <dl className="mt-2 space-y-0.5 text-xs text-muted-foreground">
+                          {(['data', 'models', 'temp'] as const).map((kind) => (
+                            <div key={kind} className="flex gap-2">
+                              <dt className="shrink-0">{t(`firstrun.storage_${kind}`)}</dt>
+                              <dd
+                                className="min-w-0 truncate font-mono"
+                                title={status.runtimeStorage?.[kind]}
+                              >
+                                {status.runtimeStorage?.[kind]}
+                              </dd>
+                            </div>
+                          ))}
+                        </dl>
+                      )}
                     </div>
                   </div>
                   <div className="mt-3 flex justify-end gap-2">
@@ -464,7 +507,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                       <Button
                         size="sm"
                         variant="ghost"
-                        disabled={choosingLocation || restarting}
+                        disabled={choosingLocation || restarting || installStuck}
                         onClick={() => {
                           void getBridge()
                             ?.backend.useDefaultRuntimeLocation()
@@ -479,7 +522,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                     <Button
                       size="sm"
                       variant="outline"
-                      disabled={choosingLocation || restarting}
+                      disabled={choosingLocation || restarting || installStuck}
                       onClick={async () => {
                         setChoosingLocation(true);
                         try {
@@ -502,7 +545,11 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                 </ExternalLink>
               )}
               {!unsupportedPlatform && !wrongArchitecture && (
-                <Button disabled={restarting || choosingLocation} onClick={() => void runSetup()}>
+                <Button
+                  className="h-auto min-h-8 max-w-full whitespace-normal py-1.5 text-center"
+                  disabled={restarting || choosingLocation || installStuck}
+                  onClick={() => void runSetup()}
+                >
                   {status.runtimeInterrupted
                     ? t('common.resume')
                     : setupFailed
@@ -513,7 +560,8 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
               {setupFailed ? (
                 <Button
                   variant="outline"
-                  disabled={restarting || choosingLocation}
+                  className="h-auto min-h-8 max-w-full whitespace-normal py-1.5 text-center"
+                  disabled={restarting || choosingLocation || installStuck}
                   onClick={() => setCleanConfirmOpen(true)}
                 >
                   <RotateCcwIcon data-icon="inline-start" />
@@ -522,17 +570,30 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
               ) : null}
             </>
           ) : null}
-          {installing ? (
-            <Button variant="outline" onClick={retry}>
-              {t('common.cancel')}
-            </Button>
-          ) : null}
-          {running ? (
-            <p className="max-w-sm text-xs text-muted-foreground">{t('backend.first_run_hint')}</p>
-          ) : null}
           {failed ? (
             <div className="flex flex-wrap justify-center gap-2">
-              <Button onClick={retry} disabled={restarting}>
+              {causeAction === 'choose_folder' ? (
+                <Button
+                  onClick={() => void chooseFolder()}
+                  disabled={restarting || choosingLocation || installStuck}
+                >
+                  <FolderOpenIcon data-icon="inline-start" />
+                  {t('backend.choose_folder')}
+                </Button>
+              ) : null}
+              {causeAction === 'copy_diagnostics' ? (
+                <Button onClick={() => void copyDiagnostics()}>
+                  <ClipboardCopyIcon data-icon="inline-start" />
+                  {diagnosticsCopied
+                    ? t('backend.diagnostics_copied')
+                    : t('backend.copy_diagnostics')}
+                </Button>
+              ) : null}
+              <Button
+                variant={causeAction === 'retry' ? 'default' : 'outline'}
+                onClick={retry}
+                disabled={restarting}
+              >
                 <RotateCcwIcon data-icon="inline-start" />
                 {t('backend.retry')}
               </Button>
@@ -562,25 +623,32 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
               request={`Resume and repair the interrupted VoiceStudio runtime setup. Current issue: ${status.setupIssue || 'unknown'}.${delimitedDiagnostic(status.message)} Use the Electron runtime setup control, wait for completion, and verify backend health. Do not clean reinstall or change user consent.`}
             />
           ) : null}
-          {status.logTail.length > 0 ? (
+          {!installing && (status.logTail.length > 0 || (cause && status.message)) ? (
             <Collapsible open={logOpen} onOpenChange={setLogOpen} className="w-full">
               <CollapsibleTrigger className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-muted-foreground outline-none hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50">
                 <ChevronDownIcon
                   className={cn('size-3.5 transition-transform', logOpen && 'rotate-180')}
                   aria-hidden="true"
                 />
-                {logOpen ? t('backend.hide_log') : t('backend.show_log')}
+                {t('backend.details')}
               </CollapsibleTrigger>
               <CollapsibleContent>
                 <pre
                   className="mt-2 max-h-56 overflow-auto rounded-lg border bg-card p-3 text-left font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground"
                   aria-label={t('backend.log_label')}
                 >
-                  {status.logTail.join('\n')}
+                  {[cause && status.message, ...status.logTail].filter(Boolean).join('\n')}
                 </pre>
               </CollapsibleContent>
             </Collapsible>
           ) : null}
+          {(installing || setupFailed || (setup && status.runtimeInterrupted)) && (
+            <SetupSupport key={`${status.stage}:${status.message ?? ''}`} status={status} />
+          )}
+          {setup || installing ? <SetupHelpLinks /> : null}
+          {/* A saved interpreter that broke later fails the launch, not setup: keep
+              the way back to the managed runtime (or another interpreter) here. */}
+          {failed && !status.remote ? <ExistingPythonSettings onlyWhenSelected /> : null}
           {failed && <ReportBug error={status.message} />}
           {failed && <CrashDetails />}
           <ConfirmDialog

@@ -9,6 +9,8 @@ from __future__ import annotations
 import asyncio
 import threading
 
+import pytest
+
 from core.device_caps import DIRECTML_MARKER, KERNEL_RISK_MARKER, HostCaps
 from services.engine_routing import (
     header_safe_reason,
@@ -36,7 +38,38 @@ def test_mps_host_mps_engine_accelerated():
     assert r["effective_device"] == "mps"
 
 
-def test_accelerated_with_kernel_risk_caveat():
+def test_cuda_kernel_mismatch_falls_back_to_cpu(monkeypatch):
+    # #3067: an sm_52 card on a sm_70+ wheel. The loader falls back to CPU, so
+    # the badge must too instead of a green "accelerated".
+    monkeypatch.delenv("OMNIVOICE_FORCE_CUDA", raising=False)
+    note = f"Quadro M5000M (sm_52) not in this torch build's archs — {KERNEL_RISK_MARKER}"
+    r = resolve_routing(("cuda", "cpu"), _caps("cuda", notes=[note]))
+    assert r["routing_status"] == "cpu_fallback"
+    assert r["effective_device"] == "cpu"
+    assert KERNEL_RISK_MARKER in r["routing_reason"]
+    assert "OMNIVOICE_FORCE_CUDA" in r["routing_reason"]
+
+
+def test_cuda_kernel_mismatch_without_cpu_path_keeps_caveat(monkeypatch):
+    monkeypatch.delenv("OMNIVOICE_FORCE_CUDA", raising=False)
+    note = f"GPU (sm_52) not in this torch build's archs — {KERNEL_RISK_MARKER}"
+    r = resolve_routing(("cuda",), _caps("cuda", notes=[note]))
+    assert r["routing_status"] == "accelerated"
+    assert KERNEL_RISK_MARKER in r["routing_reason"]
+
+
+def test_rocm_kernel_mismatch_stays_a_caveat(monkeypatch):
+    # The Linux ROCm loader may still remap with HSA_OVERRIDE_GFX_VERSION.
+    monkeypatch.delenv("OMNIVOICE_FORCE_CUDA", raising=False)
+    note = f"GPU (gfx1201) not in this torch build's archs — {KERNEL_RISK_MARKER}"
+    r = resolve_routing(("cuda", "rocm", "cpu"), _caps("rocm", notes=[note]))
+    assert r["routing_status"] == "accelerated"
+
+
+def test_accelerated_with_kernel_risk_caveat(monkeypatch):
+    # OMNIVOICE_FORCE_CUDA=1: the loader uses the GPU anyway, so the badge
+    # stays accelerated with the kernel-launch caveat.
+    monkeypatch.setenv("OMNIVOICE_FORCE_CUDA", "1")
     note = f"GPU (sm_120) not in this torch build's archs — {KERNEL_RISK_MARKER}"
     r = resolve_routing(("cuda", "cpu"), _caps("cuda", notes=[note]))
     assert r["routing_status"] == "accelerated"
@@ -199,7 +232,8 @@ def test_notice_emitted_for_cpu_fallback():
     assert n is not None and n[0] == "cpu_fallback" and n[1]
 
 
-def test_notice_emitted_for_accelerated_with_caveat():
+def test_notice_emitted_for_accelerated_with_caveat(monkeypatch):
+    monkeypatch.setenv("OMNIVOICE_FORCE_CUDA", "1")
     note = f"sm_120 not in build — {KERNEL_RISK_MARKER}"
     r = resolve_routing(("cuda", "cpu"), _caps("cuda", notes=[note]))
     n = routing_notice(r)
@@ -245,3 +279,71 @@ def test_npu_compatible_engine_uses_accelerated_route():
     assert resolve_routing(("npu", "cpu"), _caps("npu")) == {
         "effective_device": "npu", "routing_status": "accelerated", "routing_reason": None,
     }
+
+
+def test_sidecar_engine_kernel_mismatch_stays_a_caveat(monkeypatch):
+    # Review on #3553: a sidecar runs its own torch and never gets the parent
+    # loader's CPU fallback, so it must not be badged cpu_fallback.
+    monkeypatch.delenv("OMNIVOICE_FORCE_CUDA", raising=False)
+    note = f"GPU (sm_52) not in this torch build's archs — {KERNEL_RISK_MARKER}"
+    r = resolve_routing(("cuda", "cpu"), _caps("cuda", notes=[note]), parent_torch=False)
+    assert r["routing_status"] == "accelerated"
+    assert KERNEL_RISK_MARKER in r["routing_reason"]
+
+
+@pytest.mark.parametrize("value", [None, "", "0", "1", "true", " Yes ", "on", "off", "no"])
+def test_badge_and_loader_read_force_cuda_alike(monkeypatch, value):
+    from core.device_caps import cuda_forced
+    from services.model_manager import _env_flag
+
+    if value is None:
+        monkeypatch.delenv("OMNIVOICE_FORCE_CUDA", raising=False)
+    else:
+        monkeypatch.setenv("OMNIVOICE_FORCE_CUDA", value)
+    assert cuda_forced() == _env_flag("OMNIVOICE_FORCE_CUDA")
+
+
+def test_same_interpreter_sidecar_gets_the_loader_cpu_fallback(monkeypatch):
+    # omnivoice-subprocess runs the parent's interpreter and its child calls
+    # get_best_device(), which picks CPU for a card the wheel cannot drive. Its
+    # profile must say so, or CPU synthesis gets the accelerated time budget.
+    from engines.omnivoice_subprocess import OmniVoiceSubprocessBackend
+
+    monkeypatch.delenv("OMNIVOICE_FORCE_CUDA", raising=False)
+    note = f"Quadro M5000M (sm_52) not in this torch build's archs — {KERNEL_RISK_MARKER}"
+    profile = OmniVoiceSubprocessBackend.runtime_compute_profile(_caps("cuda", notes=[note]))
+    assert profile["routing_status"] == "cpu_fallback"
+    assert profile["effective_device"] == "cpu"
+
+
+def test_uses_parent_torch_by_interpreter_not_isolation():
+    from services.engine_routing import uses_parent_torch
+
+    class InProcess:
+        pass
+
+    class SharedSidecar:
+        _is_subprocess_isolated = True
+
+        @classmethod
+        def shares_parent_torch(cls):
+            return True
+
+    class OwnVenvSidecar:
+        _is_subprocess_isolated = True
+
+        @classmethod
+        def shares_parent_torch(cls):
+            return False
+
+    class BrokenProbe:
+        _is_subprocess_isolated = True
+
+        @classmethod
+        def shares_parent_torch(cls):
+            raise RuntimeError("boom")
+
+    assert uses_parent_torch(InProcess)
+    assert uses_parent_torch(SharedSidecar)
+    assert not uses_parent_torch(OwnVenvSidecar)
+    assert not uses_parent_torch(BrokenProbe)

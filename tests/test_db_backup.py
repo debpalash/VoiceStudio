@@ -140,39 +140,41 @@ def test_version_is_sanitized_for_filenames(tmp_path):
     assert os.path.dirname(backup) == os.path.dirname(str(db))
 
 
-def test_torn_partial_snapshot_is_not_a_backup(tmp_path, monkeypatch):
-    """A crash mid-copy leaves ``<db>.backup-<ver>-<n>.part-<pid>`` behind
-    (the temp name ``snapshot_before_migration`` renames into place at the
-    end). It must not be listed, reported as the latest backup, or counted
-    toward the rotation window."""
-    db = tmp_path / "omnivoice.db"
-    monkeypatch.setattr(db_backup, "_pid_alive", lambda pid: False)
-    _make_db(db)
-    real = db_backup.snapshot_before_migration(str(db), "0.3.8")
-    os.utime(real, (time.time() - 100, time.time() - 100))
-    torn = tmp_path / "omnivoice.db.backup-0.3.9-1.part-424242"
-    torn.write_bytes(b"torn")
+def test_rotation_ignores_and_removes_an_abandoned_copy(tmp_path, monkeypatch):
+    database = tmp_path / "library.sqlite"
+    _make_db(database)
+    complete = tmp_path / "library.sqlite.backup-preview-17-6"
+    incomplete = tmp_path / "library.sqlite.backup-preview-18-7.part-63001"
+    complete.write_bytes(b"ready")
+    incomplete.write_bytes(b"unfinished")
+    monkeypatch.setattr(db_backup, "_pid_alive", lambda _candidate: False)
 
-    assert db_backup.list_backups(str(db)) == [real]
-    assert db_backup.latest_backup(str(db))["path"] == real
-    assert db_backup.prune_backups(str(db), keep=1) == [str(torn)], "the torn file is garbage, the real backup stays"
-    assert os.path.isfile(real) and not torn.exists()
+    before_prune = db_backup.latest_backup(str(database))
+    removed = db_backup.prune_backups(str(database), keep=1)
+
+    assert before_prune is not None and before_prune["path"] == str(complete)
+    assert db_backup.list_backups(str(database)) == [str(complete)]
+    assert removed == [str(incomplete)]
+    assert complete.read_bytes() == b"ready"
+    assert not incomplete.exists()
 
 
-def test_stale_partial_from_dead_writer_is_removed_by_next_snapshot(tmp_path, monkeypatch):
-    db = tmp_path / "omnivoice.db"
-    _make_db(db)
-    dead = tmp_path / "omnivoice.db.backup-0.3.8-1.part-424242"
-    dead.write_bytes(b"torn")
-    mine = tmp_path / f"omnivoice.db.backup-0.3.8-2.part-{os.getpid()}"
-    mine.write_bytes(b"in progress")
-    monkeypatch.setattr(db_backup, "_pid_alive", lambda pid: pid == os.getpid())
+def test_next_snapshot_reaps_only_partials_without_a_live_owner(tmp_path, monkeypatch):
+    database = tmp_path / "library.sqlite"
+    _make_db(database)
+    paths_by_pid = {
+        64011: tmp_path / "library.sqlite.backup-1.2.0-8.part-64011",
+        64012: tmp_path / "library.sqlite.backup-1.2.0-9.part-64012",
+    }
+    for candidate in paths_by_pid.values():
+        candidate.write_text("pending")
+    monkeypatch.setattr(db_backup, "_pid_alive", lambda candidate: candidate == 64012)
 
-    made = db_backup.snapshot_before_migration(str(db), "0.3.9")
+    snapshot = db_backup.snapshot_before_migration(str(database), "1.2.1")
 
-    assert not dead.exists(), "a partial whose writer is gone is garbage"
-    assert mine.exists(), "a partial owned by a live process is left alone"
-    assert db_backup.list_backups(str(db)) == [made]
+    assert paths_by_pid[64012].read_text(encoding="utf-8") == "pending"
+    assert not paths_by_pid[64011].exists()
+    assert db_backup.list_backups(str(database)) == [snapshot]
 
 
 def test_pruning_preserves_non_snapshot_partials(tmp_path, monkeypatch):

@@ -1,40 +1,22 @@
-"""Repair wheel-shipped shared libraries that request an executable stack.
+"""Repair CTranslate2 shared libraries that ask the kernel for an executable stack.
 
-Why this exists
----------------
-CTranslate2 wheels up to and including 4.4.0 ship
-``ctranslate2.libs/libctranslate2-*.so`` with ``PT_GNU_STACK`` marked
-``RWE`` — a request for an executable stack. Linux kernels that refuse to
-grant it (hardened kernels, and mainline from 6.x onwards) fail the
-``dlopen`` outright::
+CTranslate2 wheels up to 4.4.0 ship ``libctranslate2*.so`` files whose ELF
+``PT_GNU_STACK`` program header has the execute flag (``PF_X``) set. Kernels
+and C libraries that refuse executable stacks then fail ``dlopen`` with
+"cannot enable executable stack", surfacing as ``OSError``/``ImportError`` and
+taking down whisperx, faster-whisper and Argos translation (#692). The last
+whisperx release for Python 3.11 pins ``ctranslate2<4.5.0``, so upgrading is
+not an option.
 
-    ImportError: libctranslate2-d3638643.so.4.4.0: cannot enable executable
-    stack as shared object requires: Invalid argument
-
-Everything that links CTranslate2 dies with it: the **whisperx** and
-**faster-whisper** ASR engines (#692) *and* Argos translation, which is the
-default dub translation engine (``argostranslate.translate`` imports
-``ctranslate2``). #692 taught the ASR selector to fall through to another
-engine; it never fixed the library, so Linux users on Python 3.11 lost both
-engines. The pin is upstream and not ours to lift: whisperx 3.4.5 — the last
-release that supports Python 3.11, which is what ``.python-version``, CI and
-the installers use — requires ``ctranslate2<4.5.0``, and 4.5.0 is the first
-release whose ``.so`` drops the exec-stack request.
-
-The flag is a single bit in the ELF program header, so we clear it in place
-rather than shipping a patched wheel or asking users for ``patchelf`` (which
-is not installed on a typical desktop). Inspection is a ~100-byte read with
-no imports, so :func:`ensure_ctranslate2_loadable` is cheap enough to call
-from an availability probe: it only rewrites a file when that file would
-otherwise refuse to load.
-
-Everything here is a no-op off Linux (macOS/Windows have no such rejection)
-and handles malformed ELF data — a repair that cannot happen returns a reason, and the
-caller degrades exactly as it did before.
+The library never needs an executable stack, so the fix is to clear that one
+flag bit in the header in place. This is done with plain file I/O: no
+``patchelf`` and, crucially, no import of ctranslate2 (the import is what
+fails). Nothing is cached; each call re-inspects the files, so a fresh install
+or a manual repair is noticed without restarting the backend.
 """
 from __future__ import annotations
 
-import glob
+import importlib.util
 import logging
 import os
 import struct
@@ -43,203 +25,225 @@ import threading
 
 logger = logging.getLogger("omnivoice.execstack")
 
-#: ELF segment type for the stack-permission marker, and its executable bit.
-_PT_GNU_STACK = 0x6474E551
-_PF_X = 0x1
+PT_GNU_STACK = 0x6474E551
+PF_X = 0x1
 
-#: Serialize in-process writes; flock also coordinates sidecar processes.
-_REPAIR_LOCK = threading.RLock()
+# Process-wide guard; re-entrant so helpers can nest. Cross-process safety
+# comes from flock where the host supports it.
+_LOCK = threading.RLock()
 
-
-def _elf_header(fh) -> tuple[str, int, int, int, bool] | None:
-    """Return ``(endian_prefix, e_phoff, e_phentsize, e_phnum, is_64)`` or None.
-
-    None means "not an ELF file we understand" — which is a normal answer
-    (a ``.so`` stub, a text file, a Mach-O), never an error.
-    """
-    fh.seek(0)
-    ident = fh.read(16)
-    if len(ident) < 16 or ident[:4] != b"\x7fELF":
-        return None
-    if ident[4] not in (1, 2) or ident[5] not in (1, 2):
-        return None
-    is_64 = ident[4] == 2
-    endian = "<" if ident[5] == 1 else ">"
-    fh.seek(0, os.SEEK_END)
-    size = fh.tell()
-    header_size = 64 if is_64 else 52
-    if size < header_size:
-        return None
-    fh.seek(0)
-    header = fh.read(header_size)
-    if len(header) != header_size:
-        return None
-    e_phoff = struct.unpack_from(endian + ("Q" if is_64 else "I"), header, 0x20 if is_64 else 0x1C)[0]
-    e_phentsize, e_phnum = struct.unpack_from(endian + "HH", header, 0x36 if is_64 else 0x2A)
-    if (not e_phnum or e_phoff < header_size or
-            e_phentsize < (56 if is_64 else 32) or
-            e_phoff + e_phentsize * e_phnum > size):
-        return None
-    # p_flags sits at a different offset per class (ELF64 puts it right after
-    # p_type; ELF32 puts it last), so the caller needs the class too.
-    return endian, e_phoff, e_phentsize, e_phnum, is_64
+_ELF_MAGIC = b"\x7fELF"
 
 
-def _gnu_stack_flags_offset(fh) -> tuple[int, int, str] | None:
-    """Locate the ``PT_GNU_STACK`` ``p_flags`` field.
+def _locate_stack_flags(f):
+    """Find the PT_GNU_STACK ``p_flags`` field in an open binary file.
 
-    Returns ``(file_offset, flags_value, endian_prefix)``, or None when the
-    file is not an ELF or carries no such segment.
-    """
-    parsed = _elf_header(fh)
-    if parsed is None:
-        return None
-    endian, e_phoff, e_phentsize, e_phnum, is_64 = parsed
-    flags_rel = 4 if is_64 else 24  # p_flags offset inside the program header
-    for i in range(e_phnum):
-        base = e_phoff + i * e_phentsize
-        fh.seek(base)
-        raw = fh.read(e_phentsize)
-        if len(raw) < flags_rel + 4:
-            continue
-        (p_type,) = struct.unpack_from(endian + "I", raw, 0)
-        if p_type != _PT_GNU_STACK:
-            continue
-        (p_flags,) = struct.unpack_from(endian + "I", raw, flags_rel)
-        return base + flags_rel, p_flags, endian
-    return None
-
-
-def has_execstack(path: str) -> bool | None:
-    """True when ``path`` requests an executable stack.
-
-    None when the question does not apply: unreadable, not an ELF, or no
-    ``PT_GNU_STACK`` segment.
+    Returns ``(offset, endian_prefix, value)`` or None when the file is not an
+    ELF we understand or has no such segment. Never raises for malformed data.
     """
     try:
-        with open(path, "rb") as fh:
-            found = _gnu_stack_flags_offset(fh)
-    except OSError:
+        f.seek(0, os.SEEK_END)
+        size = f.tell()
+        f.seek(0)
+        ident = f.read(16)
+        if len(ident) < 16 or ident[:4] != _ELF_MAGIC:
+            return None
+        ei_class, ei_data = ident[4], ident[5]
+        if ei_class == 2:
+            hdr_len, min_ent, flags_at = 64, 56, 4
+        elif ei_class == 1:
+            hdr_len, min_ent, flags_at = 52, 32, 24
+        else:
+            return None
+        if ei_data == 1:
+            e = "<"
+        elif ei_data == 2:
+            e = ">"
+        else:
+            return None
+        if size < hdr_len:
+            return None
+        f.seek(0)
+        hdr = f.read(hdr_len)
+        if len(hdr) < hdr_len:
+            return None
+        if ei_class == 2:
+            (phoff,) = struct.unpack_from(e + "Q", hdr, 0x20)
+            phentsize, phnum = struct.unpack_from(e + "HH", hdr, 0x36)
+        else:
+            (phoff,) = struct.unpack_from(e + "I", hdr, 0x1C)
+            phentsize, phnum = struct.unpack_from(e + "HH", hdr, 0x2A)
+        if phnum == 0 or phoff < hdr_len or phentsize < min_ent:
+            return None
+        if phoff + phentsize * phnum > size:
+            return None
+        for i in range(phnum):
+            base = phoff + i * phentsize
+            f.seek(base)
+            raw = f.read(4)
+            if len(raw) < 4:
+                return None
+            (p_type,) = struct.unpack(e + "I", raw)
+            if p_type != PT_GNU_STACK:
+                continue
+            f.seek(base + flags_at)
+            raw = f.read(4)
+            if len(raw) < 4:
+                return None
+            (flags,) = struct.unpack(e + "I", raw)
+            return base + flags_at, e, flags
+        return None
+    except Exception:  # noqa: BLE001 — inspection must never raise
+        return None
+
+
+def has_execstack(path) -> bool | None:
+    """True if the library requests an executable stack, False if it does not,
+    None when the file is unreadable, not a supported ELF, or lacks the header."""
+    try:
+        with open(path, "rb") as f:
+            found = _locate_stack_flags(f)
+    except Exception:  # noqa: BLE001
         return None
     if found is None:
         return None
-    _offset, flags, _endian = found
-    return bool(flags & _PF_X)
+    return bool(found[2] & PF_X)
 
 
-def clear_execstack(path: str) -> tuple[bool, str]:
-    """Clear the executable-stack request on ``path``.
+def clear_execstack(path) -> tuple[bool, str]:
+    """Clear PF_X of the PT_GNU_STACK header in place.
 
-    Returns ``(changed, detail)``. ``changed`` is False both when there was
-    nothing to do and when the write was refused (a read-only bundle, for
-    instance) — ``detail`` says which.
+    Returns ``(changed, detail)``. ``changed`` is False when there was nothing
+    to do or the write failed.
     """
-    try:
-        # Lock and inspect the same descriptor we write: another process may
-        # already have repaired it, or the wheel may have been replaced.
-        with _REPAIR_LOCK, open(path, "r+b") as fh:
-            # Use host capability, not an emulated target platform.
+    name = os.fspath(path)
+    with _LOCK:
+        try:
+            f = open(path, "r+b")
+        except Exception as e:  # noqa: BLE001
+            return False, f"{name} unreadable or not writable ({type(e).__name__}: {e})"
+        try:
+            locked = False
             if os.name == "posix":
-                import fcntl
-                fcntl.flock(fh, fcntl.LOCK_EX)
-            found = _gnu_stack_flags_offset(fh)
-            if found is None:
-                return False, "no PT_GNU_STACK segment"
-            offset, flags, endian = found
-            if not flags & _PF_X:
-                return False, "already non-executable"
-            fh.seek(offset)
-            fh.write(struct.pack(endian + "I", flags & ~_PF_X))
-            fh.flush()
-            os.fsync(fh.fileno())
-    except OSError as e:
-        return False, f"unreadable or not writable ({e.__class__.__name__})"
-    return True, "cleared PT_GNU_STACK executable bit"
+                try:
+                    import fcntl
+
+                    fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+                    locked = True
+                except Exception as e:  # noqa: BLE001
+                    logger.debug("flock unavailable for %s: %s", name, e)
+            try:
+                # Re-inspect through the locked descriptor: another process may
+                # have repaired the file while we waited.
+                found = _locate_stack_flags(f)
+                if found is None:
+                    return False, f"{name}: no PT_GNU_STACK segment"
+                offset, endian, flags = found
+                if not flags & PF_X:
+                    return False, f"{name}: stack already non-executable"
+                f.seek(offset)
+                f.write(struct.pack(endian + "I", flags & ~PF_X))
+                f.flush()
+                os.fsync(f.fileno())
+                return True, f"{name}: cleared the executable-stack flag"
+            except Exception as e:  # noqa: BLE001
+                return False, f"{name} unreadable or not writable ({type(e).__name__}: {e})"
+            finally:
+                if locked:
+                    try:
+                        import fcntl
+
+                        fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                    except Exception:  # noqa: BLE001
+                        pass
+        finally:
+            try:
+                f.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+def _collect(dirs: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for d in dirs:
+        try:
+            names = sorted(os.listdir(d))
+        except Exception:  # noqa: BLE001 — missing or unreadable dir
+            continue
+        for n in names:
+            if not n.startswith("libctranslate2"):
+                continue
+            if ".so" not in n and not n.endswith(".dylib"):
+                continue
+            p = os.path.join(d, n)
+            if p not in seen:
+                seen.add(p)
+                out.append(p)
+    return out
 
 
 def ctranslate2_library_paths() -> list[str]:
-    """Native libraries shipped with the installed ``ctranslate2`` wheel.
-
-    Found without importing ``ctranslate2`` — importing it is the very thing
-    that fails when the exec-stack bit is set.
-    """
-    import importlib.util
-
-    roots: list[str] = []
+    """Locate installed CTranslate2 native libraries without importing it."""
+    dirs: list[str] = []
     try:
         spec = importlib.util.find_spec("ctranslate2")
-    except (ImportError, ValueError):  # pragma: no cover — defensive
+    except (ImportError, ValueError):
         spec = None
-    locations = list(getattr(spec, "submodule_search_locations", None) or []) if spec else []
-    for pkg_dir in locations:
-        roots.append(pkg_dir)
-        roots.append(os.path.join(os.path.dirname(pkg_dir), "ctranslate2.libs"))
-    # Frozen builds flatten the wheel into the bundle directory.
+    if spec is not None:
+        roots = list(spec.submodule_search_locations or [])
+        if not roots and spec.origin:
+            roots = [os.path.dirname(spec.origin)]
+        for root in roots:
+            dirs.append(root)
+            dirs.append(os.path.join(os.path.dirname(root), "ctranslate2.libs"))
     meipass = getattr(sys, "_MEIPASS", None)
-    if meipass:
-        roots.append(meipass)
-        roots.append(os.path.join(meipass, "ctranslate2.libs"))
-    out: list[str] = []
-    for root in roots:
-        if not os.path.isdir(root):
-            continue
-        for pattern in ("libctranslate2*.so*", "libctranslate2*.dylib"):
-            out.extend(sorted(glob.glob(os.path.join(root, pattern))))
-    # Dedupe, preserving order.
-    return list(dict.fromkeys(out))
+    if getattr(sys, "frozen", False) and meipass:
+        dirs.append(meipass)
+        dirs.append(os.path.join(meipass, "ctranslate2.libs"))
+    return _collect(dirs)
 
 
 def ensure_ctranslate2_loadable() -> tuple[bool, str]:
-    """Make ``import ctranslate2`` possible on kernels that refuse exec stacks.
+    """Make sure CTranslate2's libraries can be loaded; repair them if needed."""
+    from core.windows_rocm.runtime import initialize_dll_search
 
-    Returns ``(ok, detail)`` where ``ok`` is False only when a library needs
-    the repair and could not get it — the caller should then report its
-    engine unavailable with ``detail`` as the reason. The repair is idempotent. Re-probe on each call so installation or
-    external repair takes effect without restarting.
-    """
-
-    result: tuple[bool, str]
+    # Required on every platform; also covers indirect imports such as Argos.
+    initialize_dll_search()
     if sys.platform != "linux":
-        # Only Linux rejects an exec-stack request at dlopen time.
-        result = (True, "not applicable off Linux")
-    else:
-        libs = ctranslate2_library_paths()
-        if not libs:
-            result = (True, "no ctranslate2 library found")
-        else:
-            repaired: list[str] = []
-            blocked: list[str] = []
-            for lib in libs:
-                if has_execstack(lib) is not True:
-                    continue
-                changed, detail = clear_execstack(lib)
-                if changed:
-                    repaired.append(os.path.basename(lib))
-                    logger.warning(
-                        "Repaired %s: %s — its executable-stack request is "
-                        "rejected by this kernel, which broke whisperx, "
-                        "faster-whisper and Argos translation (#692)",
-                        os.path.basename(lib), detail,
-                    )
-                elif has_execstack(lib) is not False:
-                    blocked.append(f"{os.path.basename(lib)} ({detail})")
-            if blocked:
-                result = (
-                    False,
-                    "ctranslate2's native library requests an executable stack, "
-                    "which this kernel refuses, and it could not be patched: "
-                    + "; ".join(blocked)
-                    + ". Reinstall the backend on Python 3.12+ (which resolves "
-                    "ctranslate2 4.8+, without the exec-stack request), or run "
-                    "`patchelf --clear-execstack <library>` once.",
-                )
-            elif repaired:
-                result = (True, "repaired " + ", ".join(repaired))
-            else:
-                result = (True, "no exec-stack request")
-
-    return result
+        return True, "exec-stack check not applicable on this platform"
+    libs = ctranslate2_library_paths()
+    if not libs:
+        return True, "no CTranslate2 libraries found"
+    repaired: list[str] = []
+    blocked: list[tuple[str, str]] = []
+    for path in libs:
+        if has_execstack(path) is not True:
+            continue
+        changed, detail = clear_execstack(path)
+        if changed:
+            logger.warning(
+                "Cleared the executable-stack flag on %s to keep CTranslate2 loadable (#692)",
+                path,
+            )
+            repaired.append(os.path.basename(path))
+        elif has_execstack(path) is not False:
+            blocked.append((path, detail))
+    if blocked:
+        names = ", ".join(os.path.basename(p) for p, _ in blocked)
+        reasons = "; ".join(d for _, d in blocked)
+        first = blocked[0][0]
+        return False, (
+            f"CTranslate2 library requests an executable stack and could not be "
+            f"repaired: {names} ({reasons}). Either reinstall the backend on "
+            f"Python 3.12+ (ctranslate2 4.8+ has no such request), or run "
+            f"`patchelf --clear-execstack {first}` once."
+        )
+    if repaired:
+        return True, "repaired " + ", ".join(repaired)
+    return True, "no executable-stack request"
 
 
 def reset_ctranslate2_cache() -> None:
-    """Compatibility hook; recoverable probe results are no longer cached."""
+    """Compatibility no-op: results are never cached."""
+    return None

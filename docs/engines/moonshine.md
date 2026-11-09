@@ -11,7 +11,7 @@ where even int8 whisper-large is too slow.
 - Install one of the runtimes into the app venv:
   `uv pip install moonshine-onnx` (lighter, tried first) or
   `moonshine-voice`.
-- Then **Model Catalogue**, ASR tab → **Use** on the Moonshine row,
+- Then **Settings → Models**, ASR tab → **Use** on the Moonshine row,
   or `OMNIVOICE_ASR_BACKEND=moonshine`.
 
 Auto-detect never picks it; it's an explicit opt-in.

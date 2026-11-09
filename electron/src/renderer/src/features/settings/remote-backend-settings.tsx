@@ -2,6 +2,7 @@ import { KeyRoundIcon, ServerCogIcon } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { DEFAULT_BACKEND_PORT } from '@shared/app-config';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -102,7 +103,7 @@ export function RemoteBackendSettings({
           value={url}
           className="min-w-64 font-mono"
           aria-label={t('settings.remote_backend_url')}
-          placeholder="http://gpu-box:3900"
+          placeholder={`http://gpu-box:${DEFAULT_BACKEND_PORT}`}
           autoComplete="off"
           spellCheck={false}
           disabled={Boolean(busy)}

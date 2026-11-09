@@ -63,7 +63,7 @@ try {
   const exported = readFileSync(await download.path(), 'utf8');
   assert.match(exported, new RegExp(`\\(${result.language}\\)`));
   assert.ok(exported.includes(result.text));
-  await page.getByText('Exported transcriptions', { exact: true }).waitFor();
+  await page.getByText('Transcript exported.', { exact: true }).waitFor();
 
   await page.getByRole('button', { name: 'Reuse script', exact: true }).click();
   await page.waitForURL(/#\/clone$/);
@@ -79,7 +79,7 @@ try {
   await page.goto(ui + '/#/transcriptions');
   await page.getByText(result.text, { exact: true }).first().waitFor();
   await page.getByRole('button', { name: 'Delete', exact: true }).click();
-  await page.getByRole('heading', { name: 'No transcriptions yet', exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'No transcripts saved yet', exact: true }).waitFor();
   assert.deepEqual(
     await page.evaluate(() => JSON.parse(localStorage.getItem('omni_transcriptions') || '[]')),
     [],

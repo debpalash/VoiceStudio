@@ -18,7 +18,8 @@ export function formatComputeRuntime(runtime: string) {
     .replace(/^rocm/i, 'ROCm')
     .replace(/^hip/i, 'HIP')
     .replace(/^xpu/i, 'Intel XPU')
-    .replace(/^mps/i, 'Apple MPS');
+    .replace(/^mps/i, 'Apple MPS')
+    .replace(/^vulkan/i, 'Vulkan');
 }
 
 export function ComputeVendorIcon({

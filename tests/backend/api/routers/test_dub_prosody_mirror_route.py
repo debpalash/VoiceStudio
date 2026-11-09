@@ -1,118 +1,140 @@
-"""POST /dub/prosody-mirror/{job_id}: reads the job's vocals, returns
-per-segment directions in request order, and never mutates the job."""
+"""POST /dub/prosody-mirror/{job_id}: read-only delivery analysis."""
 from __future__ import annotations
 
-import asyncio
+import os
+import shutil
+import uuid
 
 import numpy as np
 import pytest
 import soundfile as sf
-from pydantic import ValidationError
 
-SR = 44100
-
-
-def _line(f0=120.0, amp=0.1, syllables_hz=4.0, vibrato=0.0, dur_s=2.0):
-    t = np.arange(int(dur_s * SR)) / SR
-    freq = f0 * (1 + vibrato * np.sin(2 * np.pi * 1.5 * t))
-    phase = 2 * np.pi * np.cumsum(freq) / SR
-    carrier = sum(np.sin(k * phase) / k for k in range(1, 6))
-    envelope = 0.5 * (1 - np.cos(2 * np.pi * syllables_hz * t))
-    return (amp * carrier * envelope).astype(np.float32)
+os.environ.setdefault("OMNIVOICE_MODEL", "test")
 
 
-# ── Route ──────────────────────────────────────────────────────────────────
-
-@pytest.fixture
-def job_env(tmp_path, monkeypatch):
-    from api.routers import dub_export
-
-    job_id = "job-prosody"
-    job_dir = tmp_path / job_id
-    job_dir.mkdir()
-    job = {"id": job_id}
-    monkeypatch.setattr(dub_export, "DUB_DIR", str(tmp_path))
-    monkeypatch.setattr(dub_export, "_get_job", lambda jid: job if jid == job_id else None)
-    return {"job_id": job_id, "job_dir": job_dir, "job": job, "module": dub_export}
+def _tone(f0=150.0, dur=1.0, amp=0.3, am=4.0, sr=16000):
+    t = np.arange(int(dur * sr)) / sr
+    wave = sum(np.sin(2 * np.pi * f0 * k * t) / k for k in range(1, 5))
+    return (amp * wave * (0.55 + 0.45 * np.sin(2 * np.pi * am * t)) / 2).astype(np.float32)
 
 
-def _request(n=5, **extra):
-    from schemas.requests import ProsodyMirrorRequest
+@pytest.fixture()
+def client():
+    from fastapi.testclient import TestClient
+    from core.db import init_db
+    from main import app
 
-    segments = [{"id": f"s{i}", "start": 2.0 * i, "end": 2.0 * i + 2.0, "speaker_id": "A"} for i in range(n)]
-    return ProsodyMirrorRequest(segments=segments, **extra)
-
-
-def _call(env, job_id=None, req=None):
-    return asyncio.run(env["module"].dub_prosody_mirror(job_id or env["job_id"], req or _request()))
-
-
-def test_route_404_without_job_or_audio(job_env):
-    from fastapi import HTTPException
-
-    for job_id in ("nope", job_env["job_id"]):
-        with pytest.raises(HTTPException) as exc:
-            _call(job_env, job_id=job_id)
-        assert exc.value.status_code == 404
+    init_db()
+    return TestClient(app, client=("127.0.0.1", 50000))
 
 
-def test_route_prefers_vocals(job_env):
-    vocals, mix = job_env["job_dir"] / "vocals.wav", job_env["job_dir"] / "audio.wav"
-    parts = [_line(amp=0.1)] * 4 + [_line(amp=0.4, f0=170.0, syllables_hz=7.0, vibrato=0.1)]
-    sf.write(str(vocals), np.concatenate(parts), SR)
-    sf.write(str(mix), np.zeros(SR * 10, dtype=np.float32), SR)
-    job_env["job"].update(vocals_path=str(vocals), audio_path=str(mix))
+@pytest.fixture()
+def make_job():
+    from core.config import DUB_DIR
+    from services.dub_pipeline import _dub_jobs
 
-    res = _call(job_env)
-    assert res["source"] == "vocals"
-    assert [s["id"] for s in res["segments"]] == [f"s{i}" for i in range(5)]
-    assert res["segments"][4]["direction"] == "urgent, quick"
-    assert res["segments"][0]["direction"] == ""
+    created = []
 
+    def make(*, vocals=False, mix=True, mix_bytes=None):
+        job_id = "pm" + uuid.uuid4().hex[:8]
+        job_dir = os.path.join(DUB_DIR, job_id)
+        os.makedirs(job_dir, exist_ok=True)
+        job = {"segments": [], "duration": 8.0}
+        audio = np.concatenate([_tone(am=3), np.zeros(4000, np.float32), _tone(am=3, amp=0.05)] * 4)
+        if mix:
+            path = os.path.join(job_dir, "audio.wav")
+            if mix_bytes is not None:
+                with open(path, "wb") as f:
+                    f.write(mix_bytes)
+            else:
+                sf.write(path, audio, 16000)
+            job["audio_path"] = path
+        if vocals:
+            path = os.path.join(job_dir, "vocals.wav")
+            sf.write(path, audio, 16000)
+            job["vocals_path"] = path
+        _dub_jobs[job_id] = job
+        created.append((job_id, job_dir))
+        return job_id
 
-def test_route_reports_mix_when_separation_did_not_run(job_env):
-    mix = job_env["job_dir"] / "audio.wav"
-    sf.write(str(mix), np.concatenate([_line()] * 5), SR)
-    job_env["job"].update(vocals_path=str(mix), audio_path=str(mix))
-    assert _call(job_env)["source"] == "mix"
-
-
-def test_route_unreadable_audio_is_422(job_env):
-    from fastapi import HTTPException
-
-    broken = job_env["job_dir"] / "vocals.wav"
-    broken.write_bytes(b"not audio")
-    job_env["job"]["vocals_path"] = str(broken)
-    with pytest.raises(HTTPException) as exc:
-        _call(job_env)
-    assert exc.value.status_code == 422
-
-
-def test_request_rejects_duplicate_ids_and_bad_times():
-    from schemas.requests import ProsodyMirrorRequest
-
-    with pytest.raises(ValidationError):
-        ProsodyMirrorRequest(segments=[{"id": "a", "start": 0, "end": 1}] * 2)
-    with pytest.raises(ValidationError):
-        ProsodyMirrorRequest(segments=[{"id": "a", "start": float("nan"), "end": 1}])
-    with pytest.raises(ValidationError):
-        ProsodyMirrorRequest(segments=[])
-    for start, end in ((1.0, 1.0), (2.0, 1.0)):
-        with pytest.raises(ValidationError):
-            ProsodyMirrorRequest(segments=[{"id": "a", "start": start, "end": end}])
+    yield make
+    for job_id, job_dir in created:
+        _dub_jobs.pop(job_id, None)
+        shutil.rmtree(job_dir, ignore_errors=True)
 
 
-def test_route_refuses_overlapping_work_beyond_the_track(job_env):
-    """20k unique ids over the same minute must not buy hours of analysis."""
-    from fastapi import HTTPException
-    from schemas.requests import ProsodyMirrorRequest
+def _body(n=4):
+    return {"segments": [
+        {"id": str(i), "start": i * 1.4, "end": i * 1.4 + 1.0, "speaker_id": "A"}
+        for i in range(n)
+    ]}
 
-    vocals = job_env["job_dir"] / "vocals.wav"
-    sf.write(str(vocals), np.concatenate([_line()] * 5), SR)
-    job_env["job"]["vocals_path"] = str(vocals)
-    req = ProsodyMirrorRequest(
-        segments=[{"id": str(i), "start": 0.0, "end": 10.0} for i in range(20)]
-    )
-    with pytest.raises(HTTPException) as exc:
-        _call(job_env, req=req)
-    assert exc.value.status_code == 413
+
+def test_unknown_job_is_404(client):
+    res = client.post("/dub/prosody-mirror/nosuchjob", json=_body())
+    assert res.status_code == 404
+
+
+def test_bad_job_id_is_400(client):
+    assert client.post("/dub/prosody-mirror/bad%20id", json=_body()).status_code == 400
+
+
+def test_job_without_audio_is_404(client, make_job):
+    job_id = make_job(mix=False)
+    assert client.post(f"/dub/prosody-mirror/{job_id}", json=_body()).status_code == 404
+
+
+def test_prefers_vocals(client, make_job):
+    job_id = make_job(vocals=True)
+    res = client.post(f"/dub/prosody-mirror/{job_id}", json=_body())
+    assert res.status_code == 200
+    data = res.json()
+    assert data["source"] == "vocals"
+    assert [r["id"] for r in data["segments"]] == ["0", "1", "2", "3"]
+    assert all(r["measured"] for r in data["segments"])
+    assert set(data["segments"][0]) == {"id", "direction", "tokens", "z", "measured"}
+
+
+def test_mix_source_when_no_vocals(client, make_job):
+    job_id = make_job()
+    res = client.post(f"/dub/prosody-mirror/{job_id}", json=_body())
+    assert res.status_code == 200 and res.json()["source"] == "mix"
+
+
+def test_does_not_modify_job(client, make_job):
+    from services.dub_pipeline import _dub_jobs
+
+    job_id = make_job()
+    before = dict(_dub_jobs[job_id])
+    client.post(f"/dub/prosody-mirror/{job_id}", json=_body())
+    assert _dub_jobs[job_id] == before
+
+
+def test_unreadable_audio_is_422(client, make_job):
+    job_id = make_job(mix_bytes=b"this is not audio")
+    res = client.post(f"/dub/prosody-mirror/{job_id}", json=_body())
+    assert res.status_code == 422
+    assert "re-import" in res.json()["detail"].lower()
+
+
+def test_overlapping_segments_over_budget_is_413(client, make_job):
+    job_id = make_job()
+    segments = [{"id": f"s{i}", "start": 0.0, "end": 8.0} for i in range(30)]
+    res = client.post(f"/dub/prosody-mirror/{job_id}", json={"segments": segments})
+    assert res.status_code == 413
+    assert "overlapping" in res.json()["detail"]
+
+
+@pytest.mark.parametrize("body", [
+    {"segments": []},
+    {"segments": [{"id": "", "start": 0, "end": 1}]},
+    {"segments": [{"id": "a", "start": 2, "end": 1}]},
+    {"segments": [{"id": "a", "start": 1, "end": 1}]},
+    {"segments": [{"id": "a", "start": -1, "end": 1}]},
+    {"segments": [{"id": "a", "start": 0, "end": 1, "speaker_id": "x" * 129}]},
+    {"segments": [{"id": "a", "start": 0, "end": 1}, {"id": "a", "start": 1, "end": 2}]},
+    {},
+])
+def test_request_validation(client, make_job, body):
+    job_id = make_job()
+    assert client.post(f"/dub/prosody-mirror/{job_id}", json=body).status_code == 422

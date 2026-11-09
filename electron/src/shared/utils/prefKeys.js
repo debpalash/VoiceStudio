@@ -50,10 +50,9 @@ export const PREF_KEYS = [
  *  - 'ov_admin_session_epoch': cross-tab ordering marker for that connection
  *    state. Preserving it prevents a preference reset from reviving an older
  *    in-flight authentication response.
- *  - 'ov_stale_chunk_reload': sessionStorage timestamp of the one automatic
- *    reload ErrorBoundary performs when a lazy chunk went missing (dev-server
- *    restart / new build under an open tab). Per-tab loop guard, not a
- *    preference — and clearing it mid-incident would re-arm the reload.
+ *  - 'ov_stale_chunk_reload': per-tab sessionStorage timestamp guarding the
+ *    one reload ErrorBoundary performs for a missing lazy chunk. It is not a
+ *    preference; clearing it during an incident would arm the reload again.
  */
 export const PRESERVED_KEYS = [
   'ov_backend_url',

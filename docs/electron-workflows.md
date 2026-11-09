@@ -1,12 +1,25 @@
 # Electron Workflows
 
-Workflows run one saved pipeline over many inputs. A workflow is a canvas of
+Workflows run one saved pipeline over many inputs. The canvas lives at `#/workflows`; the
+**Calls** view it hands call drafts to lives at `#/calls`, with a button back to the canvas. A workflow is a canvas of
 steps joined by connections; the list it runs over comes from the input step —
 either scripts (one per `---` separator, or imported files) or uploaded audio
 clips. Up to 50 items per run, each script at most 20,000 characters and each
 clip at most 64 MiB. Drafts, the workflow library, duplication and deletion live
 in browser storage; generated audio and uploaded media are held separately and
 released when the last workflow referencing them is removed.
+
+The left list holds your saved workflows; **New** starts a blank one and **New
+from template** opens a picker grouped into Narration, Audio and Calls. The
+workflow name is edited in place in the header, next to a **Saved** indicator
+and the Run, Duplicate and Delete actions. Steps are added from the toolbar on
+the canvas edge: click a step to add it (wired after the selected step when that
+step has a free output) or drag it onto the canvas. The toolbar is reachable
+with Tab and moves with the arrow keys. Selecting a step — by click, or Enter on
+a focused step — opens its settings on the right. A step missing a required
+setting (scripts, audio clips, a voice, languages or a condition phrase) shows
+**Needs setup**, and Run stays unavailable, with the reason beside it, until
+every step is set.
 
 The executable steps are the input (**Start** or **Audio**), **Speak**,
 **Convert**, **Transcribe**, **Translate**, **Normalize**, **Condition** and

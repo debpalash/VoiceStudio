@@ -65,3 +65,27 @@ it('passes the explicit shared-cache opt-in to native cleanup', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'settings.uninstall_confirm' }));
   await waitFor(() => expect(mock.purge).toHaveBeenCalledWith(true));
 });
+
+it('does not double-count a nested shared cache in the estimate', () => {
+  const overlapping = [
+    {
+      key: 'data' as const,
+      path: 'D:\\VoiceStudio',
+      size_bytes: 10_000,
+      exists: true,
+      shared: true,
+    },
+    {
+      key: 'models' as const,
+      path: 'D:\\VoiceStudio\\models',
+      size_bytes: 8_000,
+      exists: true,
+      shared: true,
+    },
+  ];
+  expect(uninstallBytes(overlapping, false)).toBe(0);
+  expect(uninstallBytes(overlapping, true)).toBe(10_000);
+  // The same folder listed twice counts once, not zero times (#3512).
+  const duplicate = [overlapping[0], { ...overlapping[0], key: 'env' as const, shared: false }];
+  expect(uninstallBytes(duplicate, true)).toBe(10_000);
+});

@@ -7,10 +7,13 @@ import { ArrowLeftRightIcon, MicIcon, SquareIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { LanguagePicker } from '@/features/clone/language-picker';
+import { CONVERT_SOURCE_LANGUAGES } from './convert-languages';
 import { PipelineFailure } from '@/components/pipeline-failure';
 import { AgentFixButton } from '@/components/agent-fix-button';
 import { ProfileAvatar } from '@/components/profile-avatar';
 import { WaveformPlayer } from '@/components/waveform-player';
+import { SaveAudioButton } from '@/components/save-audio-button';
 import { useEngines } from '@/hooks/use-engines';
 import { useProfiles } from '@/hooks/use-profiles';
 import { useRecording } from '@/hooks/use-recording';
@@ -24,12 +27,21 @@ export function ConvertVoice() {
   const profiles = useProfiles();
   const engines = useEngines();
   const canClone = engines.activeTtsReady && engines.activeTts?.supports_cloning === true;
+  // Keep my delivery (#3421) runs on any installed engine that converts speech
+  // to speech, not only the active one.
+  const canKeepDelivery = (engines.data?.tts?.backends ?? []).some(
+    (b) =>
+      b.available && b.supports_voice_conversion === true && b.routing_status !== 'unavailable',
+  );
   const client = useQueryClient();
-  const { file, voice, search, match, result } = useConversion();
+  const { file, voice, search, match, keepDelivery, language, result } = useConversion();
+  const ready = keepDelivery ? canKeepDelivery : canClone;
   const setFile = (value: File | null) => setConversion('file', value);
   const setVoice = (value: string) => setConversion('voice', value);
   const setSearch = (value: string) => setConversion('search', value);
   const setMatch = (value: boolean) => setConversion('match', value);
+  const setKeepDelivery = (value: boolean) => setConversion('keepDelivery', value);
+  const setLanguage = (value: string) => setConversion('language', value);
   const setResult = (value: ConvertResult | null) => setConversion('result', value);
   const [sourceUrl, setSourceUrl] = useState('');
   const [error, setError] = useState('');
@@ -66,8 +78,17 @@ export function ConvertVoice() {
     };
   }, [file]);
   useEffect(() => () => request.current?.abort(), []);
-  const voices = (profiles.data ?? []).filter((p) => p.kind === 'clone' && p.ref_audio_path);
-  const valid = canClone && file && voices.some((p) => p.id === voice) && !recordingBusy;
+  // Match the backend's profile conditioning: designs use their saved sample
+  // or instructions; clones need a reference (a locked take takes precedence).
+  // Keep my delivery converts into a recording, so a design without a saved
+  // sample has nothing to convert into.
+  const voices = (profiles.data ?? []).filter(
+    (p) =>
+      (!keepDelivery && p.kind === 'design') ||
+      p.ref_audio_path ||
+      (p.is_locked && p.locked_audio_path),
+  );
+  const valid = ready && file && voices.some((p) => p.id === voice) && !recordingBusy;
   const run = async () => {
     if (!valid || request.current) return;
     const controller = new AbortController();
@@ -79,7 +100,14 @@ export function ConvertVoice() {
     setNeedsModel(false);
     setResult(null);
     try {
-      const converted = await convertSpeech(file, voice, match, controller.signal);
+      const converted = await convertSpeech(
+        file,
+        voice,
+        match,
+        controller.signal,
+        language,
+        keepDelivery,
+      );
       if (!controller.signal.aborted) {
         setResult(converted);
         void client.invalidateQueries({ queryKey: queryKeys.history });
@@ -87,14 +115,9 @@ export function ConvertVoice() {
     } catch (e) {
       if (!controller.signal.aborted) {
         const detail = e instanceof ApiError ? e.payload?.detail : null;
-        setNeedsModel(
-          Boolean(
-            detail &&
-            typeof detail === 'object' &&
-            'error' in detail &&
-            detail.error === 'asr_model_missing',
-          ),
-        );
+        const code =
+          detail && typeof detail === 'object' && 'error' in detail ? detail.error : null;
+        setNeedsModel(code === 'asr_model_missing' || code === 'voice_conversion_engine_missing');
         setError(describeError(e));
       }
     } finally {
@@ -196,23 +219,60 @@ export function ConvertVoice() {
               </Button>
             ))}
           {!voices.length && (
-            <p className="text-sm text-muted-foreground">{t('clone.no_profiles')}</p>
+            <p className="text-sm text-muted-foreground">
+              {keepDelivery && profiles.data?.length
+                ? t('convert.keep_delivery_no_voices')
+                : t('clone.no_profiles')}
+            </p>
           )}
         </div>
       </section>
       <div className="space-y-1">
         <label className="flex items-center gap-3 text-sm">
           <Switch
-            checked={match}
+            checked={keepDelivery}
+            disabled={busy}
             onCheckedChange={(value) => {
               invalidate();
-              setMatch(value);
+              setKeepDelivery(value);
             }}
           />
-          {t('convert.match_duration')}
+          {t('convert.keep_delivery')}
         </label>
-        <p className="text-xs text-muted-foreground">{t('convert.match_duration_hint')}</p>
+        <p className="text-xs text-muted-foreground">{t('convert.keep_delivery_hint')}</p>
       </div>
+      {!keepDelivery && (
+        <div className="space-y-2 text-sm">
+          <p>{t('convert.source_language')}</p>
+          <div>
+            <LanguagePicker
+              value={language}
+              supportedOptions={CONVERT_SOURCE_LANGUAGES}
+              recentsScope="convert-source-language"
+              disabled={busy}
+              onValueChange={(value) => {
+                invalidate();
+                setLanguage(value);
+              }}
+            />
+          </div>
+        </div>
+      )}
+      {!keepDelivery && (
+        <div className="space-y-1">
+          <label className="flex items-center gap-3 text-sm">
+            <Switch
+              checked={match}
+              onCheckedChange={(value) => {
+                invalidate();
+                setMatch(value);
+              }}
+            />
+            {t('convert.match_duration')}
+          </label>
+          <p className="text-xs text-muted-foreground">{t('convert.match_duration_hint')}</p>
+        </div>
+      )}
       {engines.isError && !engines.data && !busy && (
         <div
           role="alert"
@@ -224,12 +284,16 @@ export function ConvertVoice() {
           </Button>
         </div>
       )}
-      {!canClone && !(engines.isError && !engines.data) && !busy && (
+      {!ready && !(engines.isError && !engines.data) && !busy && (
         <div
           role="status"
           className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground"
         >
-          <span>{t('convert.cloning_required')}</span>
+          <span>
+            {keepDelivery
+              ? t('convert.keep_delivery_engine_required')
+              : t('convert.cloning_required')}
+          </span>
           <Link
             to="/settings/models/$family"
             params={{ family: 'tts' }}
@@ -248,13 +312,17 @@ export function ConvertVoice() {
               <div className="flex shrink-0 items-center gap-2">
                 <Link
                   to="/settings/models/$family"
-                  params={{ family: 'asr' }}
+                  params={{ family: keepDelivery ? 'tts' : 'asr' }}
                   className="text-xs font-medium text-primary hover:underline"
                 >
                   {t('modelSettings.models')}
                 </Link>
                 <AgentFixButton
-                  request={`Restore local ASR readiness for Voice Conversion, then keep the current source and target voice available for retry. Conversion reported: ${error}`}
+                  request={
+                    keepDelivery
+                      ? `Install CosyVoice 3 so Voice Conversion can keep the speaker's delivery, then keep the current source and target voice available for retry. Conversion reported: ${error}`
+                      : `Restore local ASR readiness for Voice Conversion, then keep the current source and target voice available for retry. Conversion reported: ${error}`
+                  }
                 />
               </div>
             ) : undefined
@@ -274,12 +342,20 @@ export function ConvertVoice() {
       </div>
       {result && (
         <section className="space-y-3 border-t pt-4" aria-label={t('convert.result_kicker')}>
-          <h3 className="text-sm font-medium">{t('convert.result_kicker')}</h3>
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-sm font-medium">{t('convert.result_kicker')}</h3>
+            <SaveAudioButton
+              url={apiPath(result.audio_url)}
+              suggestedName={`voicestudio-${result.id}.wav`}
+            />
+          </div>
           <WaveformPlayer src={apiPath(result.audio_url)} source="convert-result" height={40} />
-          <p className="text-sm">
-            <span className="text-muted-foreground">{t('convert.transcript')}: </span>
-            {result.text}
-          </p>
+          {result.text && (
+            <p className="text-sm">
+              <span className="text-muted-foreground">{t('convert.transcript')}: </span>
+              {result.text}
+            </p>
+          )}
         </section>
       )}
     </div>

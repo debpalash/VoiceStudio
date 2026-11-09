@@ -1,6 +1,8 @@
 import { ZapIcon } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { Button } from '@/components/ui/button';
+import { GpuOfferText, useGpuOffer } from '@/components/gpu-offer';
 import { apiJson } from '@/lib/api/client';
 import { SettingsRow, SettingsSection } from './settings-layout';
 
@@ -41,6 +43,7 @@ const STATES = new Set([
   'nvidia_cuda_unavailable',
   'nvidia_rocm_build',
   'intel_unsupported',
+  'kernels_missing',
 ]);
 const OPTIONS = new Set([
   'vulkan_engines',
@@ -49,6 +52,7 @@ const OPTIONS = new Set([
   'rocm_device_access',
   'reinstall_cuda_torch',
   'update_nvidia_driver',
+  'install_matching_torch',
 ]);
 const ENGINE_CODES = new Set([
   'gpu',
@@ -62,7 +66,41 @@ const ENGINE_CODES = new Set([
   'no_gpu',
   'needs_accelerator',
   'not_installed',
+  'unknown',
 ]);
+
+/** The GPU offer's permanent home: shown while the host qualifies and the
+ * GGUF engine is not in use, whatever was answered on the one-time banner. */
+function GpuOfferRow() {
+  const { t } = useTranslation();
+  const offer = useGpuOffer();
+  const status = offer.status;
+  if (!status?.eligible || status.active) return null;
+  return (
+    <SettingsRow
+      id="gpu-offer"
+      title={t('gpuOffer.title')}
+      description={
+        <span className="block space-y-1">
+          <GpuOfferText status={status} />
+          {offer.needsLicence && (
+            <span className="block text-xs">{t('gpuOffer.licence_then_retry')}</span>
+          )}
+          {offer.failed && (
+            <span role="alert" className="block text-xs text-destructive">
+              {t('common.error')}
+            </span>
+          )}
+        </span>
+      }
+    >
+      <Button size="sm" disabled={offer.busy} onClick={() => void offer.answer(true)}>
+        <ZapIcon />
+        {t('gpuOffer.accept')}
+      </Button>
+    </SettingsRow>
+  );
+}
 
 export function GpuAcceleration() {
   const { t } = useTranslation();
@@ -85,6 +123,7 @@ export function GpuAcceleration() {
   const onGpu = engines.filter((engine) => engine.code.startsWith('gpu')).length;
   return (
     <SettingsSection icon={ZapIcon} title={t('settings.gpu_report_title')}>
+      <GpuOfferRow />
       <SettingsRow
         id="gpu-report-summary"
         title={t('settings.gpu_report_summary')}
@@ -116,7 +155,9 @@ export function GpuAcceleration() {
       {engines.length > 0 && (
         <details className="px-4 py-3">
           <summary className="cursor-pointer text-sm font-medium">
-            {t('settings.gpu_report_engines', { gpu: onGpu, total: engines.length })}
+            {engines.some((engine) => engine.code === 'unknown')
+              ? t('common.details')
+              : t('settings.gpu_report_engines', { gpu: onGpu, total: engines.length })}
           </summary>
           <ul className="mt-2 divide-y divide-border/50 text-sm">
             {engines.map((engine) => (
@@ -131,7 +172,7 @@ export function GpuAcceleration() {
                   </span>
                 </span>
                 <span className="text-muted-foreground @xl:text-right">
-                  {t('settings.gpu_report_engine_' + engine.code, engine.params)}
+                  {engine.code === 'unknown' ? t('common.unknown') : t('settings.gpu_report_engine_' + engine.code, engine.params)}
                 </span>
               </li>
             ))}

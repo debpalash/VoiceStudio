@@ -21,12 +21,15 @@ from __future__ import annotations
 import asyncio
 from contextlib import ExitStack
 import logging
+import math
 import os
 import time
 from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
+
+from services.reference_transcript import stored_reference_transcript
 
 router = APIRouter()
 logger = logging.getLogger("omnivoice.tts_stream")
@@ -41,33 +44,42 @@ _perf_counter = time.perf_counter
 
 
 async def _resolve_stream_backend(engine_id: str | None):
-    """Resolve the live-stream engine without bypassing host isolation."""
+    """Pick the engine instance for one streaming request.
+
+    No ``engine_id`` means the configured engine. An explicit id is a
+    per-request override and is served from the shared engine cache, so the
+    configured engine keeps running and other sockets' engines are never
+    unloaded or evicted from here.
+    """
     from services import tts_backend
 
     selected_id = engine_id or tts_backend.active_backend_id()
     cls = tts_backend.get_backend_class(selected_id)
+    # Check the licence before choosing a branch: each one may hand back an
+    # instance that was already built.
+    tts_backend.ensure_engine_licence(cls)
+
     if cls is tts_backend.OmniVoiceBackend:
         if engine_id:
-            # Preserve the explicit core override path; the shared model is
-            # loaded on demand by OmniVoiceBackend, not cached as a sidecar.
+            # The backend loads the shared model lazily itself.
             return cls()
         from services.model_manager import get_model
 
         return tts_backend.get_active_tts_backend(model=await get_model())
+
     if not engine_id:
         return tts_backend.get_active_tts_backend()
-    # The configured backend is cached separately from explicit overrides.
-    # Reuse it when the ids match rather than constructing a second instance.
-    # Never evict here: another socket can still hold a backend across chunks.
-    if (
-        tts_backend._active_instance_id == selected_id
-        and isinstance(tts_backend._active_instance, cls)
-    ):
-        if not tts_backend._built_for_other_model(cls, tts_backend._active_instance):
-            return tts_backend._active_instance
+
+    active = tts_backend._active_instance
+    if tts_backend._active_instance_id == selected_id and isinstance(active, cls):
+        if not tts_backend._built_for_other_model(cls, active):
+            return active
+        # The model preference changed: pick up the new build without
+        # unloading the instance a running job may still hold.
         if tts_backend.active_backend_id() == selected_id:
             return tts_backend.get_active_tts_backend()
     return tts_backend.get_engine_instance_for(selected_id)
+
 
 class StreamTTSRequest(BaseModel):
     """Client request for streaming TTS."""
@@ -75,6 +87,11 @@ class StreamTTSRequest(BaseModel):
     voice: Optional[str] = None       # profile_id or preset name
     language: Optional[str] = None
     speed: float = 1.0
+    # Relative pacing for engines with native duration control (IndexTTS 2.5:
+    # <1 faster, >1 slower). Relative, so it holds for every streamed
+    # sentence; an absolute ``duration`` would apply to each one and is not
+    # accepted here. Takes precedence over ``speed`` (#3588).
+    duration_factor: Optional[float] = None
     instruct: Optional[str] = None
     description: Optional[str] = None
     # Emotion control (IndexTTS2)
@@ -115,6 +132,19 @@ def resolve_emotion_clip(value: object) -> str:
     raise ValueError(EMO_AUDIO_DETAIL)
 
 
+DURATION_FACTOR_DETAIL = "duration_factor must be a number from 0.5 to 2.0."
+
+
+def _duration_factor(value: object) -> float:
+    """A validated relative pacing factor; refuses rather than ignores (#3588)."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(DURATION_FACTOR_DETAIL)
+    factor = float(value)
+    if not math.isfinite(factor) or not 0.5 <= factor <= 2.0:
+        raise ValueError(DURATION_FACTOR_DETAIL)
+    return factor
+
+
 def build_stream_kwargs(data: dict) -> dict:
     """Generation kwargs for one streaming request, voice profile resolved.
 
@@ -122,6 +152,8 @@ def build_stream_kwargs(data: dict) -> dict:
     voice the same way (locked clip preferred, profile instruct as fallback).
     """
     kw: dict = {"speed": data.get("speed", 1.0)}
+    if data.get("duration_factor") is not None:
+        kw["duration_factor"] = _duration_factor(data["duration_factor"])
     if data.get("language"):
         kw["language"] = data["language"]
     if data.get("instruct"):
@@ -157,8 +189,9 @@ def build_stream_kwargs(data: dict) -> dict:
                     kw["ref_audio"] = contained_join(VOICES_DIR, row["locked_audio_path"])
                 elif row["ref_audio_path"]:
                     kw["ref_audio"] = contained_join(VOICES_DIR, row["ref_audio_path"])
-                if row["ref_text"]:
-                    kw["ref_text"] = row["ref_text"]
+                stored_ref_text = stored_reference_transcript(row)
+                if stored_ref_text:
+                    kw["ref_text"] = stored_ref_text
                 if row["instruct"] and not data.get("instruct"):
                     kw["instruct"] = row["instruct"]
             else:
@@ -243,15 +276,17 @@ async def synthesize_stream(
     """
     import functools
 
+    from services.tts_backend import engine_in_use
     from core.device_caps import detect_host_caps
     from core.scrub import scrub_text
     from services.engine_routing import runtime_compute_profile_async
     from services.model_manager import generate_timeout_s, run_on_gpu_pool_guarded
 
     backend = await _resolve_stream_backend(engine)
-    from services.tts_backend import engine_in_use
 
     kw = build_stream_kwargs({"voice": voice, "language": language})
+    # Hold the engine for the whole body (routing check, eviction of the
+    # others, every sentence job) so the idle sweeper cannot unload it midway.
     with engine_in_use(backend):
         routing = await runtime_compute_profile_async(backend, detect_host_caps())
         if routing["routing_status"] == "unavailable":
@@ -280,11 +315,6 @@ async def ws_tts(websocket: WebSocket):
     await websocket.accept()
     logger.info("TTS streaming WebSocket connected")
 
-    # Said once per socket, not once per utterance: a conversational client
-    # sends many requests down one connection and a repeated notice would be
-    # noise. See `_announce_local_only`.
-    announced_local_only = False
-
     try:
         while True:
             # Wait for a text request from the client
@@ -306,46 +336,8 @@ async def ws_tts(websocket: WebSocket):
             t0 = _perf_counter()
             text = data["text"]
 
-            # Remote GPU: this socket stays on this machine, and says so.
-            #
-            # /generate's port trades progressive playback for the remote
-            # render — the classic path was always a single wait, so spending
-            # it on a faster GPU is a straight win. This route is the opposite
-            # shape: it exists to put audio in the user's ear before the
-            # sentence has finished synthesizing, and sending each utterance to
-            # a worker would pay queue admission, a round trip and cold-load
-            # risk per utterance, for the one surface where latency IS the
-            # feature.
-            #
-            # Silence would be worse than the limitation: the header badge
-            # would read "gpu2" while this machine does 100% of the work, the
-            # same class of lie the op-aware picker exists to stop. Said once
-            # per socket — a conversational client sends many requests down one
-            # connection — and BEFORE engine resolution, so an engine that
-            # cannot load still tells the user where it would have run.
-            if not announced_local_only:
-                announced_local_only = True
-                try:
-                    from worker import routing as worker_routing
-
-                    target = worker_routing.decide(op="tts")
-                except Exception:  # noqa: BLE001 — advisory; never break audio
-                    target = None
-                if target is not None and target.remote:
-                    from core.scrub import scrub_text as _scrub
-
-                    await websocket.send_json({
-                        "type": "routing",
-                        "status": "local_stream",
-                        "reason": _scrub(
-                            f"{target.label} is your GPU target, but live "
-                            f"streaming runs on this machine"
-                        ),
-                    })
-
-            # Close on every exit: normal completion, routing rejection,
-            # disconnect, generation failure or task cancellation.
-            engine_lease = ExitStack()
+            # Per-request lease on the engine, released on every exit path below.
+            lease = ExitStack()
             try:
                 # Resolve engine
                 engine_id = data.get("engine")
@@ -363,12 +355,12 @@ async def ws_tts(websocket: WebSocket):
                     log_if_low(f"TTS stream load ({engine_id or 'active engine'})")
                 except Exception:
                     pass
-                backend = await _resolve_stream_backend(engine_id)
                 from services.tts_backend import engine_in_use
 
-                # The idle sweeper can run between sentence jobs and socket
-                # sends. Hold the cached instance for this whole request.
-                engine_lease.enter_context(engine_in_use(backend))
+                backend = await _resolve_stream_backend(engine_id)
+                # The idle sweeper can run between sentence jobs and socket sends;
+                # keep the engine in use until this request is fully done.
+                lease.enter_context(engine_in_use(backend))
 
                 # ── Routing gate (#21 — no silent CPU fallback). WebSockets have
                 # no response headers, so this uses frames: an error frame +
@@ -458,9 +450,8 @@ async def ws_tts(websocket: WebSocket):
                         started = True
 
                     # Convert to 16-bit PCM and stream
-                    pcm = (wav_tensor * 32767).clamp(-32768, 32767).to(torch.int16)
-                    if pcm.ndim == 2:
-                        pcm = pcm[0]  # mono
+                    from services.audio_io import pcm16_mono
+                    pcm = pcm16_mono(wav_tensor)
                     pcm_bytes = pcm.numpy().tobytes()
 
                     n_samples = len(pcm)
@@ -515,16 +506,24 @@ async def ws_tts(websocket: WebSocket):
                 )
 
             except Exception as e:
-                logger.exception("TTS streaming failed: %s", e)
+                from core.failure import licence_required_detail
+
+                licence = licence_required_detail(e)
+                if licence is None:
+                    logger.exception("TTS streaming failed: %s", e)
+                else:
+                    logger.info("TTS stream refused: model licence not accepted")
                 try:
                     await websocket.send_json({
                         "type": "error",
                         "detail": str(e),
+                        # code + models let the client open the acceptance dialog.
+                        **({"code": licence["code"], "models": licence["models"]} if licence else {}),
                     })
                 except Exception:
                     break
             finally:
-                engine_lease.close()
+                lease.close()
 
     except WebSocketDisconnect:
         pass

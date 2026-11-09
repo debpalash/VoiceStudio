@@ -1,0 +1,89 @@
+# Snapcraft Builds (snapcraft.io → Builds) packages the published release.
+# It repackages the official Linux .deb of the latest GitHub release, so a
+# Snapcraft-built revision ships byte-identical app files to the other Linux
+# installers. The release workflow (.github/workflows/snap-store.yml) remains
+# the primary path; keep the interfaces below in step with the `snap-store`
+# target in electron/electron-builder.config.mjs and
+# docs/store-publishing/snap-store.md.
+name: voicestudio
+title: VoiceStudio
+summary: Local voice cloning, voice design, dubbing and dictation on your computer.
+description: |
+  VoiceStudio is an open-source, fully local studio for voice cloning, voice
+  design, video dubbing, audiobooks and real-time dictation. Models run on
+  your own machine, with no account or API key; model downloads and other
+  network features run when you start them.
+license: AGPL-3.0-only
+website: https://voicestudio.sh
+source-code: https://github.com/debpalash/VoiceStudio
+issues: https://github.com/debpalash/VoiceStudio/issues
+icon: snap/gui/voicestudio.png
+base: core22
+grade: stable
+confinement: strict
+adopt-info: voicestudio
+architectures:
+  - build-on: [amd64]
+    build-for: [amd64]
+
+plugs:
+  browser-sandbox:
+    interface: browser-support
+    allow-sandbox: false
+
+apps:
+  voicestudio:
+    command: opt/VoiceStudio/voicestudio-electron --no-sandbox
+    desktop: usr/share/applications/voicestudio.desktop
+    extensions: [gnome]
+    environment:
+      # snapd updates the snap; the in-app updater must not.
+      VOICESTUDIO_DISABLE_UPDATER: "1"
+      TMPDIR: $XDG_RUNTIME_DIR
+    plugs:
+      - browser-sandbox
+      - desktop
+      - desktop-legacy
+      - home
+      - x11
+      - wayland
+      - unity7
+      - network
+      - network-bind
+      - gsettings
+      - audio-playback
+      - audio-record
+      - pulseaudio
+      - opengl
+
+parts:
+  voicestudio:
+    plugin: nil
+    build-packages: [curl, jq, dpkg]
+    override-pull: |
+      tag=$(curl -fsSL https://api.github.com/repos/debpalash/VoiceStudio/releases/latest | jq -r .tag_name)
+      version="${tag#v}"
+      craftctl set version="$version"
+      curl -fsSL -o voicestudio.deb \
+        "https://github.com/debpalash/VoiceStudio/releases/download/${tag}/VoiceStudio-${version}-linux-x64.deb"
+      curl -fsSL -o SHA256SUMS.txt \
+        "https://github.com/debpalash/VoiceStudio/releases/download/${tag}/SHA256SUMS.txt"
+      expected=$(grep " VoiceStudio-${version}-linux-x64.deb\$" SHA256SUMS.txt | cut -d' ' -f1)
+      echo "${expected}  voicestudio.deb" | sha256sum -c -
+    override-build: |
+      dpkg -x voicestudio.deb "$CRAFT_PART_INSTALL"
+      desktop="$CRAFT_PART_INSTALL/usr/share/applications"
+      mv "$desktop/VoiceStudio.desktop" "$desktop/voicestudio.desktop"
+      sed -i -e 's|^Exec=.*|Exec=voicestudio %U|' \
+             -e 's|^Icon=.*|Icon=${SNAP}/meta/gui/voicestudio.png|' "$desktop/voicestudio.desktop"
+      # Strict confinement cannot use the setuid sandbox helper.
+      rm -f "$CRAFT_PART_INSTALL/opt/VoiceStudio/chrome-sandbox"
+    stage-packages:
+      - libnss3
+      - libxss1
+      - libasound2
+      - libgbm1
+      - libsecret-1-0
+      - libnotify4
+      - libxtst6
+      - libuuid1

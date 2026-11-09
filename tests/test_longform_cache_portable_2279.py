@@ -5,8 +5,7 @@ change in how the data dir is reached (relocated in Settings, remounted, a
 symlink or env override) silently re-keyed every chapter and segment. A
 power-off could also leave a torn cache WAV or an empty resume manifest,
 because neither write was flushed before its rename. Drives the real
-``_render_chapter_cached`` / ``_remote_chapter_call`` with a stub synth (no
-model/GPU).
+``_render_chapter_cached`` with a stub synth (no model/GPU).
 
 App modules are resolved at call time, never at collection: other suites pop
 and re-import ``core.config`` (and purge ``api.*``/``services.*``), so a
@@ -259,70 +258,10 @@ def test_miss_names_the_changed_input(data_dirs, caplog):
     assert "reference audio" not in caplog.text
     # The record holds digests only — no script, transcript or lexicon text.
     records = list((cache / "inputs").iterdir())
-    blob = "".join(p.read_text() for p in records)
+    blob = "".join(p.read_text(encoding="utf-8") for p in records)
     for text in ("Why", "transcript", "hello", "LEXICON-SENTINEL", "v1.wav"):
         assert text not in blob
-    assert all(isinstance(json.loads(p.read_text()), dict) for p in records)
-
-
-# ── Remote chapter cache ────────────────────────────────────────────────────
-
-def _remote(cache, monkeypatch, voices_dir):
-    ab = _mod("api.routers.audiobook")
-    monkeypatch.setattr(ab, "_map_span_voice", lambda _v, default, _m: default)
-    monkeypatch.setattr(ab, "_resolve_voice", lambda _pid: {
-        "ref_audio": _ref(voices_dir), "ref_text": "hello", "instruct": None, "seed": None})
-    call, path = ab._remote_chapter_call(
-        _chapter("Remote."), engine_id="eng", default_voice="p1", voice_map=None,
-        language=None, lexicon=None, opts=_mod("services.audiobook").ExpressiveOptions(),
-        cache_dir=str(cache))
-    return call, path
-
-
-def _wav_file(path):
-    import soundfile as sf
-    sf.write(str(path), [0.1] * 2400, _SR, subtype="PCM_16")
-
-
-def test_remote_cache_follows_the_data_dir_and_legacy_fallback(data_dirs, monkeypatch, tmp_path):
-    old, new, cache, use = data_dirs
-    use(old)
-    _call, portable = _remote(cache, monkeypatch, old)
-    _wav_file(portable)
-    use(new)
-    assert _remote(cache, monkeypatch, new)[1] == portable  # moved data dir → same key
-    os.remove(portable)
-
-    # What a released build keyed under the OLD root (absolute path) …
-    use(old)
-    with monkeypatch.context() as m:
-        m.setattr(_mod("api.routers.audiobook"), "_portable_ref_audio", lambda r: r)
-        legacy = _remote(cache, m, old)[1]
-    _wav_file(legacy)
-    # … is still a hit under the new root, used in place when the move fails.
-    use(new)
-    lr = _mod("services.longform_render")
-    monkeypatch.setattr(lr, "adopt_cached_file", lambda legacy_path, path: legacy_path)
-    call, path = _remote(cache, monkeypatch, new)
-    assert path == legacy and os.path.isfile(legacy)
-    # decode() reads the existing complete entry instead of overwriting it.
-    got = call.decode(types.SimpleNamespace(path=str(tmp_path / "nope.wav")))
-    assert got[0] == legacy and got[2] is False
-
-
-def test_remote_decode_is_durable_and_replaces_a_torn_entry(data_dirs, monkeypatch, tmp_path):
-    old, _new, cache, use = data_dirs
-    use(old)
-    call, path = _remote(cache, monkeypatch, old)
-    with open(path, "wb") as f:
-        f.write(b"RIFF\x00\x00\x00\x00WAVE")  # torn: header only
-    produced = tmp_path / "remote.wav"
-    _wav_file(produced)
-    events = _record_durable_events(monkeypatch)
-    wav, dur, _cached, _s = call.decode(types.SimpleNamespace(path=str(produced)))
-    assert wav == path and dur > 0
-    assert _mod("services.longform_render").wav_is_complete(path)
-    assert events == ["flush-file", "rename", "flush-dir"]
+    assert all(isinstance(json.loads(p.read_text(encoding="utf-8")), dict) for p in records)
 
 
 # ── Durable publication ─────────────────────────────────────────────────────
@@ -414,7 +353,7 @@ def test_backend_startup_records_the_voices_root(tmp_path, monkeypatch):
     cache = outputs / lr.LONGFORM_CACHE_SUBDIR
     cache.mkdir(parents=True)
     lr.record_startup_voices_root()
-    roots = json.loads((cache / lr.VOICES_ROOTS_FILE).read_text())
+    roots = json.loads((cache / lr.VOICES_ROOTS_FILE).read_text(encoding="utf-8"))
     assert roots == [str(tmp_path / "voices")]
 
 

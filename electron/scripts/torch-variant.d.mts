@@ -19,3 +19,5 @@ export function selectTorchVariant(options?: {
   nvidiaAvailable?: () => Promise<boolean>;
 }): Promise<SelectedTorchVariant>;
 export function torchSyncArgs(variant: SelectedTorchVariant): string[];
+export function cudaOnlyPackages(lockText: string): string[];
+export function windowsRocmSyncArgs(lockText: string): string[];

@@ -5,7 +5,7 @@ $source = Get-Content "$PSScriptRoot/../../scripts/install.ps1" -Raw
 $requiredVersionLines = @(
     '$vsVersion = $Version',
     '$vsVersion = (Get-Content',
-    '$asset = "VoiceStudio-Electron-$vsVersion-win-x64.exe"'
+    '$asset = "$prefix-$vsVersion-win-x64.exe"'
 )
 foreach ($line in $requiredVersionLines) {
     if (-not $source.Contains($line)) { throw "Installer version must be isolated from PowerShell's Version parameter: $line" }
@@ -60,9 +60,16 @@ foreach ($version in @('', 'v1.0.0')) {
     & $installer -Version $version
     if (-not $script:launched) { throw 'Setup was not launched' }
     $selected = if ($version) { '1.0.0' } else { '1.2.3' }
-    if (-not ($script:urls -match "download/v$selected/VoiceStudio-Electron-$selected-win-x64.exe")) { throw 'Wrong package selected' }
+    if (-not ($script:urls -match "download/v$selected/VoiceStudio-$selected-win-x64.exe")) { throw 'Wrong package selected' }
     if ($version -and ($script:urls -match '/latest')) { throw 'Pinned version consulted latest' }
     if (Test-Path $script:downloaded) { throw 'Temporary installer not cleaned up' }
+}
+# Releases up to v0.5.7-beta.3 named their installers VoiceStudio-Electron-*.
+foreach ($case in @(@('0.5.6', 'VoiceStudio-Electron'), @('0.5.7-beta.3', 'VoiceStudio-Electron'), @('0.5.7-beta.4', 'VoiceStudio'), @('0.5.7', 'VoiceStudio'))) {
+    $script:urls.Clear(); $script:launched = $false
+    & $installer -Version $case[0]
+    if (-not $script:launched) { throw "Setup was not launched for $($case[0])" }
+    if (-not ($script:urls -contains "https://github.com/debpalash/VoiceStudio/releases/download/v$($case[0])/$($case[1])-$($case[0])-win-x64.exe")) { throw "Wrong package name for $($case[0])" }
 }
 # Windows on ARM prefers the native build and falls back to x64 (emulated) when a
 # release has no ARM64 installer. PROCESSOR_ARCHITEW6432 covers an emulated x64
@@ -72,11 +79,11 @@ foreach ($armEnv in @(@('ARM64', ''), @('AMD64', 'ARM64'))) {
     $script:noArmAsset = $false; $script:urls.Clear(); $script:launched = $false
     & $installer -Version '1.0.0'
     if (-not $script:launched) { throw 'ARM64 setup was not launched' }
-    if (-not ($script:urls -match 'download/v1\.0\.0/VoiceStudio-Electron-1\.0\.0-win-arm64\.exe')) { throw 'ARM64 host must install the native build' }
+    if (-not ($script:urls -match 'download/v1\.0\.0/VoiceStudio-1\.0\.0-win-arm64\.exe')) { throw 'ARM64 host must install the native build' }
     $script:noArmAsset = $true; $script:urls.Clear(); $script:launched = $false
     & $installer -Version '1.0.0'
     if (-not $script:launched) { throw 'ARM64 fallback did not launch setup' }
-    if (-not ($script:urls -match 'download/v1\.0\.0/VoiceStudio-Electron-1\.0\.0-win-x64\.exe')) { throw 'ARM64 host must fall back to the x64 build' }
+    if (-not ($script:urls -match 'download/v1\.0\.0/VoiceStudio-1\.0\.0-win-x64\.exe')) { throw 'ARM64 host must fall back to the x64 build' }
 }
 $script:noArmAsset = $false
 $env:PROCESSOR_ARCHITECTURE = 'AMD64'; $env:PROCESSOR_ARCHITEW6432 = ''
@@ -86,7 +93,7 @@ foreach ($legacy in @($true, $false)) {
     $script:urls.Clear(); $script:launched = $false; $script:downloaded = $null; $script:launchCount = 0
     & $installer -Silent
     if (-not $script:launched -or $script:launchCount -ne 1) { throw 'Fallback must launch setup exactly once' }
-    if (-not ($script:urls -match 'download/v1\.2\.3/VoiceStudio-Electron-1\.2\.3-win-x64\.exe')) { throw 'Rate-limit fallback selected wrong package' }
+    if (-not ($script:urls -match 'download/v1\.2\.3/VoiceStudio-1\.2\.3-win-x64\.exe')) { throw 'Rate-limit fallback selected wrong package' }
     if ($script:lastArguments -notcontains '/S') { throw 'Silent fallback lost its setup flag' }
     if (Test-Path $script:downloaded) { throw 'Fallback left its temporary installer behind' }
 }

@@ -118,10 +118,10 @@ describe('DubRightColumn language targets', () => {
     });
     const voice = () => screen.getByRole('button', { name: 'dub.set_voice' });
     fireEvent.click(voice());
-    fireEvent.change(screen.getByRole('listbox').querySelector('input'), {
+    fireEvent.change(screen.getByRole('combobox'), {
       target: { value: 'Aria' },
     });
-    fireEvent.keyDown(screen.getByRole('listbox').querySelector('input'), { key: 'Enter' });
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
     expect(apply).toHaveBeenLastCalledWith({ profile_id: 'clone-1' });
     expect(voice()).toHaveTextContent('dub.set_voice');
     fireEvent.click(voice());

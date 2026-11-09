@@ -9,7 +9,7 @@ import { decode } from 'html-entities';
 // timestamps. Mirrors _SRT_MARKUP_RE in backend/services/srt_parser.py.
 const CUE_MARKUP = new RegExp(
   [
-    '</?(?:[biu]|c|ruby|rt)(?:\\.[^\\s.<>]+)*>',
+    '</?(?:[biu]|c|ruby|rt|rtc|rp)(?:\\.[^\\s.<>]+)*>',
     '<(?:v|lang)(?:\\.[^\\s.<>]+)*[ \\t][^<>\\n]*>',
     '</(?:v|lang)>',
     '<font[ \\t][^<>\\n]*>',
@@ -25,6 +25,10 @@ const WEBVTT_TAG = /<[^<>\n]*>/g;
 const ASS_OVERRIDE = /\{\\[^{}\n]*\}/g;
 // `<br>` is a rendered line break, so it separates words instead of vanishing.
 const LINE_BREAK = /<br[ \t]*\/?>/gi;
+// Mirrored in backend/services/srt_parser.py. Scan tags once, without a
+// backtracking body match; rtc may contain rt and nested rtc annotations.
+const RUBY_TAG = /<(\/?)(ruby|rt|rtc|rp)(?=[\s.>/])[^<>\n]*>/gi;
+const SRT_RUBY_TAG = /^<\/?(?:ruby|rt|rtc|rp)(?:\.[^\s.<>]+)*>$/i;
 const TIMESTAMP = /^(?:\d+:)?[0-5]?\d:[0-5]?\d[,.]\d{1,3}$/;
 const TIMESTAMP_START = /^(?:\d+:)?[0-5]?\d:[0-5]?\d[,.]\d{1,3}(?:[ \t]|$)/;
 
@@ -64,10 +68,52 @@ function isWebVttMetadata(first) {
   return first === 'STYLE' || first === 'REGION' || /^NOTE(?:[ \t]|$)/.test(first);
 }
 
+/** Keep ruby base text; unclosed annotations end at this cue's boundary. */
+function stripRubyAnnotations(text, webvtt) {
+  const out = [];
+  let annotation = null;
+  let depth = 0;
+  let rubyDepth = 0;
+  let annotationRubyDepth = 0;
+  let last = 0;
+  for (const match of text.matchAll(RUBY_TAG)) {
+    if (annotation === null) out.push(text.slice(last, match.index));
+    const tag = match[0];
+    if (webvtt || SRT_RUBY_TAG.test(tag)) {
+      const name = match[2].toLowerCase();
+      const closing = Boolean(match[1]);
+      if (name === 'ruby') {
+        if (closing) {
+          if (rubyDepth === annotationRubyDepth) {
+            annotation = null;
+            depth = 0;
+          }
+          rubyDepth = Math.max(0, rubyDepth - 1);
+        } else if (!tag.endsWith('/>')) rubyDepth += 1;
+      } else if (closing && name === annotation) {
+        depth -= 1;
+        if (depth === 0) annotation = null;
+      } else if (rubyDepth && !closing && !tag.endsWith('/>')) {
+        if (annotation === null) {
+          annotation = name;
+          depth = 1;
+          annotationRubyDepth = rubyDepth;
+        } else if (name === annotation) depth += 1;
+      }
+    } else if (annotation === null) out.push(tag);
+    last = match.index + tag.length;
+  }
+  if (annotation === null) out.push(text.slice(last));
+  return out.join('');
+}
+
 /** Caption markup is not speech: karaoke spans, italics, `<br>`, `{\an8}` alignment. */
 function spokenCueText(text, webvtt = false) {
   const spaced = dropMatches(dropMatches(String(text || ''), ASS_OVERRIDE), LINE_BREAK, ' ');
-  const stripped = dropMatches(spaced, webvtt ? WEBVTT_TAG : CUE_MARKUP);
+  const stripped = dropMatches(
+    stripRubyAnnotations(spaced, webvtt),
+    webvtt ? WEBVTT_TAG : CUE_MARKUP,
+  );
   const spoken = webvtt ? unescapeWebVtt(stripped) : stripped;
   return spoken.replace(/[^\S\n]+/g, ' ').trim();
 }
@@ -104,10 +150,17 @@ export function parseSrt(content) {
       .split('\n')
       .map((l) => l.trim())
       .filter(Boolean);
-    const kept = [];
+    let kept = [];
+    const cueTexts = [];
+    const flushCue = () => {
+      const text = spokenCueText(kept.join('\n'), webvtt).replace(/\n+/g, ' ');
+      if (text) cueTexts.push(text);
+      kept = [];
+    };
     let pending = null;
     lines.forEach((l, i) => {
       if (isTimingLine(l)) {
+        flushCue();
         cues += 1;
         index = pending;
         pending = null;
@@ -129,7 +182,8 @@ export function parseSrt(content) {
       }
       kept.push(l);
     });
-    const text = spokenCueText(kept.join(' '), webvtt);
+    flushCue();
+    const text = cueTexts.join(' ');
     if (text) out.push(text);
   }
   return out.join('\n');

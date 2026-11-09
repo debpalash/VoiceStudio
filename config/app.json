@@ -1,0 +1,9 @@
+{
+  "productName": "VoiceStudio",
+  "appId": "com.voicestudio.desktop",
+  "ports": {
+    "backend": 3900,
+    "web": 3901,
+    "electronDev": 3902
+  }
+}

@@ -71,9 +71,6 @@ describe('long-form v5 migration', () => {
               seed: Number.POSITIVE_INFINITY,
               varyRepeats: 'yes',
               emoText: 'calm',
-              lineGapMs: 0,
-              paragraphGapMs: '600',
-              trimEdges: false,
               unknown: true,
             },
           },
@@ -93,10 +90,25 @@ describe('long-form v5 migration', () => {
       varyRepeats: false,
       emoText: 'calm',
       emoAlpha: null,
-      // Seamless-join knobs survive a reload; 0 / false are real values.
-      lineGapMs: 0,
+      lineGapMs: null,
       paragraphGapMs: null,
+      trimEdges: null,
+    });
+  });
+
+  it('keeps explicit zero gaps and an off trim switch, and drops malformed join values', () => {
+    const run = (overrides: Record<string, unknown>) =>
+      migrateAppStore({ storyProjects: [{ overrides }] }, 4).storyProjects?.[0].overrides;
+    expect(run({ lineGapMs: 0, paragraphGapMs: 350, trimEdges: false })).toMatchObject({
+      lineGapMs: 0,
+      paragraphGapMs: 350,
       trimEdges: false,
     });
+    expect(run({ lineGapMs: '250', paragraphGapMs: Number.NaN, trimEdges: 'yes' })).toMatchObject({
+      lineGapMs: null,
+      paragraphGapMs: null,
+      trimEdges: null,
+    });
+    expect(run({ lineGapMs: Number.POSITIVE_INFINITY })).toMatchObject({ lineGapMs: null });
   });
 });

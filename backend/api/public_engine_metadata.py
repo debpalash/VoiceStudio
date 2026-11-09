@@ -41,7 +41,7 @@ def _public_routing_reason(status: object, diagnostic: object) -> str:
 # boundary intact and still names the kind of problem and the place to fix it.
 _UNAVAILABLE_NOT_INSTALLED = (
     "This engine's package isn't installed yet. Install it from "
-    "Model Catalogue."
+    "Settings → Models."
 )
 # An engine gated behind an in-app license review (Supertonic-3, PocketTTS).
 # The Model Catalogue shows its Accept button only when the reason matches
@@ -50,7 +50,7 @@ _UNAVAILABLE_NOT_INSTALLED = (
 # the only way to enable those engines.
 _UNAVAILABLE_LICENSE = (
     "License not accepted yet. Review and accept it in "
-    "Model Catalogue to enable this engine."
+    "Settings → Models to enable this engine."
 )
 # An engine that cannot run on this machine at all: Apple-Silicon-only MLX,
 # PyTorch with no Intel Mac build. "Isn't installed yet" or "check
@@ -68,11 +68,11 @@ _UNAVAILABLE_NO_MPS = (
 )
 _UNAVAILABLE_NEEDS_CONFIG = (
     "This engine needs to be configured before it can run. Open "
-    "Model Catalogue to finish setting it up."
+    "Settings → Models to finish setting it up."
 )
 _UNAVAILABLE_FILE_MISSING = (
     "A file this engine needs is missing or unreadable. Reinstall it from "
-    "Model Catalogue."
+    "Settings → Models."
 )
 
 # The same two cases for an engine the app cannot install for you. "Install it

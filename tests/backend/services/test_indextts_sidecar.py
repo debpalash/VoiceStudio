@@ -413,11 +413,15 @@ def test_coexist_with_omnivoice_in_one_session(monkeypatch, patched_indextts_bac
 # ── env forwarding (D5, verified for IndexTTS specifically) ───────────────
 
 
-def test_env_forwarding_to_indextts_sidecar(monkeypatch, tmp_path):
-    """HF_TOKEN / HF_HOME / HF_ENDPOINT / HF_HUB_CACHE reach the sidecar."""
+@pytest.mark.parametrize("endpoint,expected_token", [
+    ("https://huggingface.co", "hf_indextts_test"),
+    ("https://mirror.example", None),
+])
+def test_env_forwarding_to_indextts_sidecar(monkeypatch, tmp_path, endpoint, expected_token):
+    """Cache settings reach the sidecar; credentials only reach the official Hub."""
     monkeypatch.setenv("HF_TOKEN", "hf_indextts_test")
     monkeypatch.setenv("HF_HOME", str(tmp_path / "hf_home"))
-    monkeypatch.setenv("HF_ENDPOINT", "https://mirror.example")
+    monkeypatch.setenv("HF_ENDPOINT", endpoint)
     monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "hf_cache"))
 
     monkeypatch.setattr(
@@ -451,9 +455,9 @@ def test_env_forwarding_to_indextts_sidecar(monkeypatch, tmp_path):
         reply = json.loads(body.decode("utf-8"))
         assert reply["op"] == "probe_env_result"
         keys = reply["keys"]
-        assert keys["HF_TOKEN"] == "hf_indextts_test"
+        assert keys["HF_TOKEN"] == expected_token
         assert keys["HF_HOME"] == str(tmp_path / "hf_home")
-        assert keys["HF_ENDPOINT"] == "https://mirror.example"
+        assert keys["HF_ENDPOINT"] == endpoint
         assert keys["HF_HUB_CACHE"] == str(tmp_path / "hf_cache")
     finally:
         backend.shutdown()
@@ -470,7 +474,7 @@ def test_no_indextts_import_in_tts_backend():
     Anything that triggers an `import indextts` at module load time
     re-opens #42.
     """
-    src = (REPO_ROOT / "backend" / "services" / "tts_backend.py").read_text()
+    src = (REPO_ROOT / "backend" / "services" / "tts_backend.py").read_text(encoding="utf-8")
     # Allow comments / docstring mentions of the package name; reject
     # actual import statements at module scope.
     for bad in ("from indextts", "import indextts"):
@@ -488,7 +492,7 @@ def test_no_indextts_import_in_tts_backend():
 
 def test_sidecar_imports_indextts():
     """backend/engines/indextts/main.py imports indextts (lazy, inside fn)."""
-    src = (REPO_ROOT / "backend" / "engines" / "indextts" / "main.py").read_text()
+    src = (REPO_ROOT / "backend" / "engines" / "indextts" / "main.py").read_text(encoding="utf-8")
     assert "from indextts.infer_v2_5 import IndexTTS2" in src
     assert "from indextts.infer_v2 import IndexTTS2" in src
 

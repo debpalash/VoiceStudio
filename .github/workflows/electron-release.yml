@@ -1,6 +1,9 @@
 name: Electron desktop release
 
 # Builds are safe by default. Only an explicit publish dispatch exposes a release.
+# Two channels, both cut from main: `vX.Y.Z` is Stable (GitHub's `latest`),
+# `vX.Y.Z-beta.N` is Beta (a prerelease that never becomes `latest`). No other
+# prerelease shape (-rc, -alpha, ...) is accepted.
 on:
   push:
     tags: ['v*']
@@ -34,8 +37,10 @@ jobs:
     # The archived sunset tag was assembled separately; future tags are Electron-only.
     if: github.event_name == 'workflow_dispatch' || github.ref_name != vars.TAURI_SUNSET_TAG
     runs-on: ubuntu-latest
+    outputs:
+      channel: ${{ steps.channel.outputs.channel }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.RELEASE_REF }}
       - name: Require an exact version tag
@@ -47,10 +52,21 @@ jobs:
           DISPATCH_ACTOR: ${{ github.actor }}
           RERUN_ACTOR: ${{ github.triggering_actor }}
           OWNER: ${{ github.repository_owner }}
+          # Comma-separated logins the owner trusts with unsigned publishes. Only repo
+          # admins can edit Actions variables, so the owner stays in control of it.
+          UNSIGNED_PUBLISHERS: ${{ vars.UNSIGNED_RELEASE_PUBLISHERS }}
         run: |
+          may_publish_unsigned() {
+            [ -n "$1" ] || return 1
+            [ "$1" = "$OWNER" ] && return 0
+            case ",$(printf '%s' "$UNSIGNED_PUBLISHERS" | tr -d '[:space:]')," in
+              *",$1,"*) return 0 ;;
+            esac
+            return 1
+          }
           if [ "$ALLOW_UNSIGNED" = true ]; then
-            test "$DISPATCH_ACTOR" = "$OWNER" && test "$RERUN_ACTOR" = "$OWNER" || {
-              echo "Only the repository owner may accept unsigned installers"; exit 1;
+            may_publish_unsigned "$DISPATCH_ACTOR" && may_publish_unsigned "$RERUN_ACTOR" || {
+              echo "Only the repository owner or an account in UNSIGNED_RELEASE_PUBLISHERS may accept unsigned installers"; exit 1;
             }
           fi
           if [ -n "$RELEASE_TAG_OVERRIDE" ]; then
@@ -59,10 +75,23 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           test "$REF" = "refs/tags/v$VERSION" || { echo "Select the exact version tag"; exit 1; }
           test "$(git rev-parse HEAD)" = "$(git rev-parse "$REF^{commit}")" || { echo "Checkout does not match the release tag"; exit 1; }
-  package:
+      - name: Resolve the release channel
+        id: channel
+        run: |
+          # stable (X.Y.Z) or beta (X.Y.Z-beta.N); any other shape fails here.
+          echo "channel=$(python3 scripts/prepare_electron_release.py --print-channel)" >> "$GITHUB_OUTPUT"
+  omnivoice-tts:
+    # The OmniVoice GGUF runtime each installer ships under resources/bin (#2780).
     needs: validate
+    uses: ./.github/workflows/build-omnivoice-tts.yml
+    with:
+      ref: ${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || github.ref }}
+      desktop: true
+
+  package:
+    needs: [validate, omnivoice-tts]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    timeout-minutes: 75  # three macOS build attempts when Apple drops a connection
     continue-on-error: ${{ matrix.experimental == true }}
     strategy:
       fail-fast: false
@@ -73,16 +102,21 @@ jobs:
             arch: x64
             target: x86_64-unknown-linux-gnu
             flags: --linux --x64
+            gguf_platform: linux-x86_64
           - runner: windows-2022
             platform: win32
             arch: x64
             target: x86_64-pc-windows-msvc
             flags: --win --x64
+            gguf_platform: windows-x86_64
           - runner: windows-11-arm
             platform: win32
             arch: arm64
             target: aarch64-pc-windows-msvc
             flags: --win --arm64
+            # Windows on ARM runs the emulated x64 Python runtime, which
+            # spawns the x64 GGUF runtime.
+            gguf_platform: windows-x86_64
             # Windows on ARM is new: a failed leg must not block the four
             # established targets. check_electron_release_assets.py verifies the
             # arm64 feed only when its manifest was published.
@@ -92,25 +126,28 @@ jobs:
             arch: arm64
             target: aarch64-apple-darwin
             flags: --mac --arm64
+            gguf_platform: darwin-arm64
           - runner: macos-15-intel
             platform: darwin
             arch: x64
             target: x86_64-apple-darwin
             flags: --mac --x64
+            # No GGUF runtime: Intel Macs cannot run the local backend.
+            gguf_platform: ''
     defaults:
       run:
         shell: bash
     env:
       VOICESTUDIO_RUST_TARGET: ${{ matrix.target }}
-      VOICESTUDIO_UPDATE_CHANNEL: electron-stable-${{ matrix.platform }}-${{ matrix.arch }}
+      # packaging-contract.mjs requires this runtime in the installer.
+      VOICESTUDIO_OMNIVOICE_TTS_PLATFORM: ${{ matrix.gguf_platform }}
+      VOICESTUDIO_UPDATE_CHANNEL: electron-${{ needs.validate.outputs.channel }}-${{ matrix.platform }}-${{ matrix.arch }}
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      VITE_POSTHOG_KEY: ${{ secrets.POSTHOG_PROJECT_TOKEN }}
-      VITE_POSTHOG_HOST: ${{ vars.POSTHOG_HOST }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.RELEASE_REF }}
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -119,7 +156,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
           targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: native/desktop-bridge -> target
           key: electron-${{ matrix.target }}
@@ -148,37 +185,77 @@ jobs:
           copyFileSync(source, destination);
           if (process.platform !== 'win32') chmodSync(destination, 0o755);
           NODE
+      - name: Stage the OmniVoice GGUF runtime
+        if: matrix.gguf_platform != ''
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: omnivoice-tts-${{ matrix.gguf_platform }}
+          path: electron/build/omnivoice-tts
       - name: Install locked dependencies
         run: bun install --frozen-lockfile
       - name: Validate and build Electron
         run: bun run check:electron
+      - name: Load notarization helper from workflow
+        if: matrix.platform == 'darwin'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api -H 'Accept: application/vnd.github.raw+json' \
+            "repos/$GITHUB_REPOSITORY/contents/scripts/prepare-apple-notarization.sh?ref=$GITHUB_SHA" \
+            > "$RUNNER_TEMP/prepare-apple-notarization.sh"
       - name: Package without publishing
         env:
           CSC_LINK: ${{ matrix.platform == 'darwin' && secrets.ELECTRON_MACOS_CSC_LINK || matrix.platform == 'win32' && secrets.ELECTRON_WINDOWS_CSC_LINK || '' }}
           CSC_KEY_PASSWORD: ${{ matrix.platform == 'darwin' && secrets.ELECTRON_MACOS_CSC_KEY_PASSWORD || matrix.platform == 'win32' && secrets.ELECTRON_WINDOWS_CSC_KEY_PASSWORD || '' }}
-          APPLE_ID: ${{ matrix.platform == 'darwin' && secrets.APPLE_ID || '' }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ matrix.platform == 'darwin' && secrets.APPLE_APP_SPECIFIC_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ matrix.platform == 'darwin' && secrets.APPLE_TEAM_ID || '' }}
+          APPLE_API_KEY: ${{ matrix.platform == 'darwin' && secrets.APPLE_API_KEY || '' }}
+          APPLE_API_KEY_ID: ${{ matrix.platform == 'darwin' && secrets.APPLE_API_KEY_ID || '' }}
+          APPLE_API_ISSUER: ${{ matrix.platform == 'darwin' && secrets.APPLE_API_ISSUER || '' }}
           PUBLISH: ${{ inputs.publish }}
           ALLOW_UNSIGNED: ${{ inputs.allow_unsigned }}
         working-directory: electron
         run: |
           if [ "${{ matrix.platform }}" = darwin ] && [ "$PUBLISH" = true ] && [ "$ALLOW_UNSIGNED" != true ]; then
-            if [ -z "${CSC_LINK:-}" ] || [ -z "${CSC_KEY_PASSWORD:-}" ] || [ -z "${APPLE_ID:-}" ] || [ -z "${APPLE_APP_SPECIFIC_PASSWORD:-}" ] || [ -z "${APPLE_TEAM_ID:-}" ]; then
+            if [ -z "${CSC_LINK:-}" ] || [ -z "${CSC_KEY_PASSWORD:-}" ] || [ -z "${APPLE_API_KEY:-}" ] || [ -z "${APPLE_API_KEY_ID:-}" ] || [ -z "${APPLE_API_ISSUER:-}" ]; then
               echo "Signed macOS publication requires Developer ID and Apple notarization credentials"; exit 1
             fi
+          fi
+          mac_notarization_args=()
+          if [ "${{ matrix.platform }}" = darwin ]; then
+            source "$RUNNER_TEMP/prepare-apple-notarization.sh"
           fi
           # An empty CSC_LINK is interpreted as the working directory by the
           # signer. Omit absent credentials rather than passing empty strings.
           if [ -z "${CSC_LINK:-}" ]; then
             unset CSC_LINK CSC_KEY_PASSWORD
+          elif [ "${{ matrix.platform }}" = darwin ]; then
+            # With discovery off and no identity name, electron-builder never looks in
+            # the keychain it imported CSC_LINK into and skips signing (v0.5.7-beta.1).
+            # Discovery is limited to that imported keychain, not the runner's.
+            export CSC_IDENTITY_AUTO_DISCOVERY=true
           fi
-          bun x electron-builder --config electron-builder.config.mjs ${{ matrix.flags }} --publish never
+          # Apple's notary and ticket services drop connections: the staple
+          # lookup after a successful notarization (error 68, v0.5.7-beta.2 and
+          # twice in a row on v0.5.8-beta.1) and the notarization upload itself
+          # (abortedUpload). Only those transient failures build again (of the
+          # NSURLErrorDomain codes: timed out -1001, cannot connect -1004,
+          # connection lost -1005, offline -1009; never trust errors such as
+          # -1202), up to three attempts with a growing pause; a rejected
+          # notarization or a signing error fails at once.
+          set -o pipefail
+          attempt=1
+          retry_delay="${APPLE_RETRY_DELAY_SECONDS:-60}"
+          until bun x electron-builder --config electron-builder.config.mjs ${{ matrix.flags }} "${mac_notarization_args[@]}" --publish never 2>&1 | tee "$RUNNER_TEMP/electron-builder.log"; do
+            if [ "$attempt" -ge 3 ] || ! grep -Eq "Failed to staple|abortedUpload|NSURLErrorDomain Code=-10(01|04|05|09)([^0-9]|$)|The network connection was lost" "$RUNNER_TEMP/electron-builder.log"; then exit 1; fi
+            echo "::warning::Apple's notarization service dropped the connection (attempt $attempt); building again in $((retry_delay * attempt))s"
+            sleep $((retry_delay * attempt))
+            attempt=$((attempt + 1))
+          done
           if [ "$RUNNER_OS" = Linux ]; then
             node scripts/embed-appimage-update.mjs
           fi
           node tests/packaging-contract.mjs --artifact
           node tests/update-package-contract.mjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
+          node ../scripts/create_store_artifact_manifest.mjs --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
       - name: Verify macOS signing and notarization before publication
         if: inputs.publish == true && inputs.allow_unsigned != true && matrix.platform == 'darwin'
         run: |
@@ -191,17 +268,72 @@ jobs:
         if: inputs.publish == true && inputs.allow_unsigned != true && matrix.platform == 'win32'
         shell: pwsh
         run: |
-          $installers = @(Get-ChildItem electron/release/VoiceStudio-Electron-*.exe)
+          $installers = @(Get-ChildItem electron/release/VoiceStudio-*.exe)
           if ($installers.Count -eq 0) { throw "No installer to verify" }
           foreach ($installer in $installers) {
             $signature = Get-AuthenticodeSignature $installer.FullName
             if ($signature.Status -ne 'Valid') { throw "Installer signature is not trusted: $($installer.Name)" }
           }
+      # Measure what each leg actually ships; the release notes are built from these
+      # reports. v0.5.7-beta.1 shipped a macOS bundle whose signing was skipped silently.
+      - name: Report and enforce macOS signing
+        if: matrix.platform == 'darwin'
+        env:
+          HAS_CREDENTIALS: ${{ secrets.ELECTRON_MACOS_CSC_LINK != '' }}
+        run: |
+          APP=$(find electron/release -maxdepth 2 -name VoiceStudio.app -type d -print -quit)
+          test -n "$APP" || { echo "No VoiceStudio.app to verify"; exit 1; }
+          # An invalid bundle signature makes browser downloads open as "damaged".
+          codesign --verify --deep --strict "$APP" || { echo "macOS bundle signature is invalid"; exit 1; }
+          # stapler validate reaches Apple over the network; retry so a dropped
+          # connection is not reported as an unsigned app (v0.5.7-beta.2 tag run).
+          validate_stapled() {
+            for attempt in 1 2 3 4; do
+              xcrun stapler validate "$APP" && return 0
+              sleep $((attempt * 10))
+            done
+            return 1
+          }
+          if codesign -dvv "$APP" 2>&1 | grep -q '^Authority=Developer ID Application:' && validate_stapled; then
+            STATUS=notarized
+          elif [ "$HAS_CREDENTIALS" = true ]; then
+            echo "Developer ID credentials are configured but the app is not signed and notarized with them"; exit 1
+          else
+            STATUS=adhoc
+          fi
+          mkdir -p electron/release-signing
+          printf '{"platform":"darwin","arch":"%s","status":"%s"}\n' "${{ matrix.arch }}" "$STATUS" > "electron/release-signing/signing-darwin-${{ matrix.arch }}.json"
+      - name: Report and enforce Windows signing
+        if: matrix.platform == 'win32'
+        shell: pwsh
+        env:
+          HAS_CREDENTIALS: ${{ secrets.ELECTRON_WINDOWS_CSC_LINK != '' }}
+        run: |
+          $installers = @(Get-ChildItem electron/release/VoiceStudio-*.exe)
+          if ($installers.Count -eq 0) { throw "No installer to verify" }
+          $unsigned = @($installers | Where-Object { (Get-AuthenticodeSignature $_.FullName).Status -ne 'Valid' })
+          if ($unsigned.Count -eq 0) { $status = 'signed' }
+          elseif ($env:HAS_CREDENTIALS -eq 'true') { throw "Windows signing is configured but these installers are not validly signed: $($unsigned.Name -join ', ')" }
+          else { $status = 'unsigned' }
+          New-Item -ItemType Directory -Force electron/release-signing | Out-Null
+          Set-Content "electron/release-signing/signing-win32-${{ matrix.arch }}.json" ('{"platform":"win32","arch":"${{ matrix.arch }}","status":"' + $status + '"}')
+      - name: Report Linux signing
+        if: matrix.platform == 'linux'
+        run: |
+          mkdir -p electron/release-signing
+          printf '{"platform":"linux","arch":"%s","status":"not-applicable"}\n' "${{ matrix.arch }}" > "electron/release-signing/signing-linux-${{ matrix.arch }}.json"
+      - name: Save the signing report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: electron-signing-${{ matrix.platform }}-${{ matrix.arch }}
+          retention-days: 14
+          if-no-files-found: error
+          path: electron/release-signing/signing-*.json
       - name: Packaged startup smoke test
         working-directory: electron
         run: |
           if [ "$RUNNER_OS" = Linux ]; then
-            for image in release/VoiceStudio-Electron-*-linux-x64.AppImage; do
+            for image in release/VoiceStudio-*-linux-x64.AppImage; do
               VOICESTUDIO_PACKAGED_EXE="electron/$image" xvfb-run -a node tests/packaged-smoke.mjs --setup
             done
           else
@@ -214,11 +346,27 @@ jobs:
           retention-days: 14
           if-no-files-found: error
           path: |
-            electron/release/VoiceStudio-Electron-*
+            electron/release/VoiceStudio-*
             electron/release/electron-*.yml
+            electron/release/store-artifact-manifest-*.json
+
+  # Both phone apps are required on the same tag as desktop. App Store uploads
+  # remain separate; GitHub users sideload the unsigned IPA with their Apple ID.
+  mobile:
+    needs: validate
+    # A called job may not ask for more than this grant, even one its `if`
+    # skips: mobile-release.yml's mobile-v* release job needs contents: write,
+    # and without it GitHub rejects the whole run at startup. Its other jobs
+    # still get only the contents: read it sets at the top.
+    permissions:
+      contents: write
+    uses: ./.github/workflows/mobile-release.yml
+    with:
+      release_ref: ${{ inputs.release_tag || github.ref_name }}
+    secrets: inherit
 
   release:
-    needs: package
+    needs: [validate, package, mobile]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -229,51 +377,118 @@ jobs:
       TAG: ${{ inputs.release_tag || github.ref_name }}
       SUNSET_TAG: ${{ vars.TAURI_SUNSET_TAG }}
       PUBLISH: ${{ inputs.publish }}
+      CHANNEL: ${{ needs.validate.outputs.channel }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.RELEASE_REF }}
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: electron-release-*
           merge-multiple: true
           path: release-assets
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: VoiceStudio-*
+          path: phone-assets
+      - name: Collect phone binaries
+        run: |
+          VERSION="${TAG#v}"
+          cp phone-assets/VoiceStudio-android-release/VoiceStudio.apk "release-assets/VoiceStudio-${VERSION}-android.apk"
+          cp phone-assets/VoiceStudio-android-release/VoiceStudio.aab "release-assets/VoiceStudio-${VERSION}-android.aab"
+          cp phone-assets/VoiceStudio-ios-unsigned/VoiceStudio-unsigned.ipa "release-assets/VoiceStudio-${VERSION}-ios-unsigned.ipa"
       - name: Validate all platforms before creating a release
         run: |
-          python3 scripts/prepare_electron_release.py --assets release-assets --tag "$TAG"
+          python3 scripts/prepare_electron_release.py --assets release-assets --tag "$TAG" --repo "$GITHUB_REPOSITORY"
       - name: Preserve the final Tauri updater feeds
+        # Archived Tauri clients read `latest/download`, which never serves a
+        # prerelease, so only Stable releases carry the sunset feeds.
+        if: env.CHANNEL == 'stable'
         run: |
           test "$SUNSET_TAG" = "v0.5.3" || { echo "TAURI_SUNSET_TAG must be v0.5.3 before releasing"; exit 1; }
           # Every release carries copies pointing to immutable v0.5.3 payloads
           # so archived Tauri clients never receive Electron installers.
           gh release download "$SUNSET_TAG" --pattern latest.json --dir release-assets
           gh release download "$SUNSET_TAG" --pattern latest-user.json --dir release-assets
-          python3 scripts/prepare_electron_release.py --assets release-assets --tag "$TAG" --sunset-tag "$SUNSET_TAG"
-      - name: Disclose explicitly accepted unsigned artifacts
-        if: inputs.allow_unsigned == true
+          python3 scripts/prepare_electron_release.py --assets release-assets --tag "$TAG" --sunset-tag "$SUNSET_TAG" --repo "$GITHUB_REPOSITORY"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: electron-signing-*
+          merge-multiple: true
+          path: release-signing
+      - name: Describe installer signing per platform
+        # The checkout is the release tag, which predates this helper when an older
+        # tag is rebuilt from main; use the helper from the workflow's own commit.
         run: |
-          cat >> release-assets/RELEASE_NOTES.md <<'EOF'
-
-          ### Electron installer trust
-          These Electron installers are unsigned or ad-hoc signed and are not Apple-notarized.
-          Windows/macOS may show trust warnings. macOS automatic updates are unverified;
-          use manual installer updates. Tauri updater signatures remain independently verified.
-          EOF
+          gh api -H "Accept: application/vnd.github.raw" \
+            "repos/$GITHUB_REPOSITORY/contents/scripts/release_signing_notes.py?ref=$GITHUB_SHA" \
+            > "$RUNNER_TEMP/release_signing_notes.py"
+          # The table leads the notes so downloaders see it before the changelog.
+          {
+            python3 "$RUNNER_TEMP/release_signing_notes.py" release-signing
+            echo
+            echo '### Phone downloads'
+            echo
+            BASE="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/VoiceStudio-${TAG#v}"
+            echo "Android: [signed APK](${BASE}-android.apk) · [Play bundle](${BASE}-android.aab)."
+            echo
+            echo "iPhone: [unsigned sideload IPA](${BASE}-ios-unsigned.ipa). Sign with your own Apple ID to install; this is not a TestFlight build."
+            echo
+            cat release-assets/RELEASE_NOTES.md
+          } > "$RUNNER_TEMP/RELEASE_NOTES.md"
+          mv "$RUNNER_TEMP/RELEASE_NOTES.md" release-assets/RELEASE_NOTES.md
       - name: Create or update draft
         run: |
+          # A beta is always a prerelease so GitHub never makes it `latest`.
+          PRERELEASE=false
+          if [ "$CHANNEL" = beta ]; then PRERELEASE=true; fi
           if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --verify-tag --draft --title "$TAG — VoiceStudio" --notes-file release-assets/RELEASE_NOTES.md
+            gh release create "$TAG" --verify-tag --draft --prerelease="$PRERELEASE" --title "$TAG — VoiceStudio" --notes-file release-assets/RELEASE_NOTES.md
           fi
           test "$(gh release view "$TAG" --json isDraft --jq .isDraft)" = true || { echo "Refusing to replace a published release"; exit 1; }
-          gh release edit "$TAG" --notes-file release-assets/RELEASE_NOTES.md
+          gh release edit "$TAG" --prerelease="$PRERELEASE" --notes-file release-assets/RELEASE_NOTES.md
           find release-assets -maxdepth 1 -type f ! -name RELEASE_NOTES.md -print0 | xargs -0 gh release upload "$TAG" --clobber
+          # A reused draft keeps assets from earlier runs that --clobber never
+          # removes, so check what the draft actually carries.
+          gh release view "$TAG" --json assets --jq '.assets[].name' | python3 scripts/check_electron_release_assets.py --foreign-feeds "$CHANNEL"
       - name: Publish only when explicitly requested
-        if: github.event_name == 'workflow_dispatch' && inputs.publish == true
-        run: gh release edit "$TAG" --draft=false --latest
-      # docker.yml publishes release images on `release: published`, which a
-      # GITHUB_TOKEN publish cannot trigger; dispatch its release backfill path.
-      - name: Publish release container images
+        id: publish_release
         if: github.event_name == 'workflow_dispatch' && inputs.publish == true
         run: |
+          if [ "$CHANNEL" = beta ]; then
+            gh release edit "$TAG" --draft=false --prerelease=true --latest=false
+          else
+            gh release edit "$TAG" --draft=false --prerelease=false --latest
+          fi
+          # Prove where `latest` points now: stable users follow `latest/download`,
+          # so a beta there would update every stable install onto it.
+          latest="$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)"
+          case "$latest" in *-beta.*)
+            echo "::error::Beta $latest is the latest release; stable users would update onto it"
+            exit 1;;
+          esac
+          if [ "$CHANNEL" = beta ] && [ "$latest" = "$TAG" ]; then
+            echo "::error::Beta $TAG became the latest release; stable users would update onto it"
+            exit 1
+          fi
+          if [ "$CHANNEL" = stable ] && [ "$latest" != "$TAG" ]; then
+            echo "::error::Stable $TAG is not the latest release (latest is $latest)"
+            exit 1
+          fi
+      # GITHUB_TOKEN publication does not emit another workflow's release event.
+      - name: Update the Android repository after stable publication
+        if: github.event_name == 'workflow_dispatch' && inputs.publish == true
+        run: |
+          if [ "$CHANNEL" = stable ]; then
+            gh workflow run android-repository.yml --ref main
+          fi
+      # docker.yml publishes release images on `release: published`, which a
+      # GITHUB_TOKEN publish cannot trigger; dispatch its release backfill path.
+      # Only Stable moves `:stable`; a beta gets `:beta` and its exact tag.
+      - name: Publish release container images
+        if: ${{ !cancelled() && steps.publish_release.outcome == 'success' && github.event_name == 'workflow_dispatch' && inputs.publish == true }}
+        run: |
+          PROMOTE=false
+          if [ "$CHANNEL" = stable ]; then PROMOTE=true; fi
           gh workflow run docker.yml --ref main \
-            -f backfill_release=true -f release_ref="$TAG" -f promote_stable=true
+            -f backfill_release=true -f release_ref="$TAG" -f promote_stable="$PROMOTE"

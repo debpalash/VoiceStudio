@@ -1,8 +1,17 @@
 // @vitest-environment node
 import { existsSync } from 'node:fs';
-import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join, parse } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import {
   inspectDataRelocation,
@@ -148,4 +157,129 @@ it('records nothing without a longform cache and is idempotent', async () => {
     await readFile(join(target, 'outputs', 'longform_cache', 'voices_roots.json'), 'utf8'),
   );
   expect(roots).toEqual([join(source, 'voices')]);
+});
+
+it('accepts a single-component destination directly under the volume root', async () => {
+  const { root, source } = await fixture();
+  // Only one path component below the drive root: previously rejected by
+  // safeDestination's '>= 2' requirement even though dirname(target) !== target.
+  const target = join(parse(root).root, 'VoiceStudio-relocation-single-test');
+  const plan = await inspectDataRelocation(source, target);
+  expect(plan.target.endsWith('VoiceStudio-relocation-single-test')).toBe(true);
+  expect(plan.file_count).toBe(2);
+});
+
+it.each(['..nested', '..cache', '..nested.name'])(
+  'rejects a destination inside the source through the legal component %s',
+  async (component) => {
+    const { source } = await fixture();
+    const target = join(source, component, 'destination');
+    await mkdir(target, { recursive: true });
+    await expect(inspectDataRelocation(source, target)).rejects.toThrow('nested_path');
+  },
+);
+
+it.each(['..nested', '..cache', '..nested.name'])(
+  'rejects a source inside the destination through the legal component %s',
+  async (component) => {
+    const { root } = await fixture();
+    const target = join(root, 'container');
+    const source = join(target, component, 'data');
+    await mkdir(source, { recursive: true });
+    await writeFile(join(source, 'sample.wav'), 'voice');
+    await expect(inspectDataRelocation(source, target)).rejects.toThrow('nested_path');
+  },
+);
+
+it.each(['..neighbor', 'data-other', 'database'])(
+  'allows the separate sibling %s without treating it as nested',
+  async (component) => {
+    const { source } = await fixture();
+    const target = join(dirname(source), component);
+    const plan = await inspectDataRelocation(source, target);
+    expect(plan.target).toBe(join(dirname(await realpath(source)), component));
+  },
+);
+
+it('never activates or removes a source whose dot-prefixed child contains the destination', async () => {
+  const { root, source } = await fixture();
+  const target = join(source, '..nested', 'destination');
+  await mkdir(target, { recursive: true });
+  let verified = false;
+  const outcome = await relocateDataDirectory(source, target, {
+    environmentPath: join(root, 'environment'),
+    stop: async () => undefined,
+    start: async () => undefined,
+    verify: async () => {
+      verified = true;
+      return true;
+    },
+    progress: () => undefined,
+  }).then(
+    (result) => ({ result, targetExists: existsSync(target), sourceExists: existsSync(source) }),
+    (error: Error) => ({ error }),
+  );
+  expect(outcome).toMatchObject({ error: expect.objectContaining({ message: 'nested_path' }) });
+  expect(verified).toBe(false);
+  expect(existsSync(source)).toBe(true);
+  expect(existsSync(target)).toBe(true);
+  expect(await readFile(join(source, 'voices', 'sample.wav'), 'utf8')).toBe('voice');
+});
+
+it.each([true, false])(
+  'keeps a replacement for a newly created target when verification returns %s',
+  async (verified) => {
+    const { root, source, target } = await fixture();
+    const moved = join(root, 'moved-copy');
+    await expect(
+      relocateDataDirectory(source, target, {
+        environmentPath: join(root, 'env'),
+        stop: async () => undefined,
+        start: async () => undefined,
+        verify: async () => {
+          await rename(target, moved);
+          await mkdir(target);
+          await writeFile(join(target, 'personal.txt'), 'unrelated');
+          return verified;
+        },
+        progress: () => undefined,
+      }),
+    ).rejects.toMatchObject({
+      message: 'rollback_incomplete',
+      cause: expect.objectContaining({
+        message: verified ? 'target_changed' : 'backend_verification_failed',
+      }),
+    });
+    expect(await readFile(join(target, 'personal.txt'), 'utf8')).toBe('unrelated');
+    expect(await readFile(join(source, 'voices', 'sample.wav'), 'utf8')).toBe('voice');
+  },
+);
+
+it('rejects a retargeted parent alias for a newly created destination', async () => {
+  const { root, source, target } = await fixture();
+  const alias = join(root, 'target-alias');
+  await symlink(dirname(target), alias, process.platform === 'win32' ? 'junction' : 'dir');
+  const requested = join(alias, basename(target));
+  const foreign = join(root, 'foreign-parent');
+  await mkdir(join(foreign, basename(target)), { recursive: true });
+  await writeFile(join(foreign, basename(target), 'personal.txt'), 'unrelated');
+  await expect(
+    relocateDataDirectory(source, requested, {
+      environmentPath: join(root, 'env'),
+      stop: async () => undefined,
+      start: async () => undefined,
+      verify: async () => {
+        await rename(alias, join(root, 'previous-alias'));
+        await symlink(foreign, alias, process.platform === 'win32' ? 'junction' : 'dir');
+        return true;
+      },
+      progress: () => undefined,
+    }),
+  ).rejects.toMatchObject({
+    message: 'rollback_incomplete',
+    cause: expect.objectContaining({ message: 'target_changed' }),
+  });
+  expect(await readFile(join(source, 'voices', 'sample.wav'), 'utf8')).toBe('voice');
+  expect(await readFile(join(target, 'voices', 'sample.wav'), 'utf8')).toBe('voice');
+  expect(await readFile(join(foreign, basename(target), 'personal.txt'), 'utf8')).toBe('unrelated');
 });

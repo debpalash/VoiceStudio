@@ -35,9 +35,9 @@ export default function GeneralTab() {
         subtitle={t('settings.language_desc')}
         control={
           <Select size="sm" value={locale} onChange={handleLocaleChange}>
-            {LANGUAGES.map((l) => (
-              <option key={l.code} value={l.code}>
-                {l.label}
+            {LANGUAGES.map(({ code, label }) => (
+              <option key={code} value={code}>
+                {label}
               </option>
             ))}
           </Select>

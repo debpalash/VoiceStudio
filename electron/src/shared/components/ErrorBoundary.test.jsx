@@ -73,63 +73,60 @@ describe('ErrorBoundary deeplink button', () => {
   });
 });
 
-// A dev-server restart (editing vite.config.js is enough) or a new build
-// shipped under an open tab makes every React.lazy import fail at once with
-// "Importing a module script failed". Nothing in the app is broken — the tab's
-// module graph is gone — so the boundary reloads ONCE instead of painting a
-// dead card in each of its instances, which is what the user hit.
-describe('ErrorBoundary — stale module graph', () => {
-  let reload;
-  let consoleError;
-
-  beforeEach(() => {
-    sessionStorage.clear();
-    reload = vi.fn();
-    // setup.js already no-ops navigation, so this is a plain reassignment.
-    window.location.reload = reload;
-    consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-  });
-
-  afterEach(() => {
-    consoleError.mockRestore();
-  });
-
-  const boundary = (name, message) =>
+describe('stale module graph', () => {
+  const crash = (message) =>
     render(
-      <ErrorBoundary name={name}>
+      <ErrorBoundary name="lazy-view">
         <Boom message={message} />
       </ErrorBoundary>,
     );
 
-  it('reloads when a lazy chunk can no longer be imported', () => {
-    boundary('catalogue', 'Importing a module script failed.');
-    expect(reload).toHaveBeenCalledTimes(1);
-  });
+  let reloadPage;
 
-  it('reloads for the Chromium stale import signature with a fresh guard', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    reloadPage = vi.spyOn(window.location, 'reload').mockImplementation(() => {});
     sessionStorage.clear();
-    boundary('projects', 'Failed to fetch dynamically imported module: /src/x.js');
-    expect(reload).toHaveBeenCalledTimes(1);
   });
 
-  it('reloads at most once, so a genuinely missing chunk cannot loop', () => {
-    boundary('clone-design', 'Importing a module script failed.');
-    expect(reload).toHaveBeenCalledTimes(1);
-
-    boundary('projects', 'Failed to fetch dynamically imported module: /src/x.js');
-    expect(reload).toHaveBeenCalledTimes(1);
-    expect(screen.getByText(/Failed to fetch dynamically imported module/)).toBeInTheDocument();
+  afterEach(() => {
+    sessionStorage.clear();
+    vi.restoreAllMocks();
   });
 
-  it('does not loop when a failed reload takes longer than ten seconds', () => {
+  it.each([
+    ['Safari wording', 'Importing a module script failed.'],
+    ['Chromium wording', 'Failed to fetch dynamically imported module: /assets/page.js'],
+  ])('refreshes once for %s', (_label, message) => {
+    crash(message);
+
+    expect(sessionStorage.getItem('ov_stale_chunk_reload')).not.toBeNull();
+    expect(reloadPage).toHaveBeenCalledOnce();
+  });
+
+  it('leaves a later boundary rendered instead of entering a reload loop', () => {
+    const initialFailure = crash('Error loading dynamically imported module');
+    initialFailure.unmount();
+
+    crash('Failed to load module script: stale.js');
+
+    expect(screen.getByText(/failed to load module script: stale\.js/i)).toBeInTheDocument();
+    expect(reloadPage).toHaveBeenCalledOnce();
+  });
+
+  it('treats a stale timestamp as a permanent guard for the current tab', () => {
     sessionStorage.setItem('ov_stale_chunk_reload', String(Date.now() - 60_000));
-    boundary('projects', 'Failed to fetch dynamically imported module: /src/x.js');
-    expect(reload).not.toHaveBeenCalled();
+
+    crash('Importing a module script failed');
+
+    expect(reloadPage).not.toHaveBeenCalled();
   });
 
-  it('leaves an ordinary render error to the error card', () => {
-    boundary('generate', "Cannot read properties of undefined (reading 'map')");
-    expect(reload).not.toHaveBeenCalled();
-    expect(screen.getByText(/Cannot read properties of undefined/)).toBeInTheDocument();
+  it('renders an unrelated exception without recording a refresh', () => {
+    crash('ordinary render failure');
+
+    expect(screen.getByText('ordinary render failure')).toBeInTheDocument();
+    expect(sessionStorage.getItem('ov_stale_chunk_reload')).toBeNull();
+    expect(reloadPage).not.toHaveBeenCalled();
   });
 });

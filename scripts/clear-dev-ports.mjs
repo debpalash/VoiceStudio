@@ -2,10 +2,11 @@
 
 import { spawnSync } from "node:child_process";
 import { readFileSync, readlinkSync } from "node:fs";
-import path, { dirname, resolve, sep } from "node:path";
+import path, { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { DEFAULT_BACKEND_PORT, DEFAULT_WEB_PORT } from "../config/app-config.mjs";
 
-const DEFAULT_PORTS = [3900, 3901];
+const DEFAULT_PORTS = [DEFAULT_BACKEND_PORT, DEFAULT_WEB_PORT];
 const CHECKOUT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 export function parseWindowsListeners(output, ports) {
@@ -69,10 +70,6 @@ function normalized(value, windows = process.platform === "win32") {
     return String(value || "")
       .replaceAll("/", "\\")
       .toLowerCase();
-  // path.posix, not the host resolver: `windows` is an explicit parameter, so
-  // POSIX normalisation must stay POSIX even when this runs on Windows. The
-  // host resolver turned "/work/VoiceStudio" into "C:\work\VoiceStudio",
-  // which then matched nothing in a POSIX command line.
   return path.posix.resolve(String(value || ""));
 }
 
@@ -190,68 +187,59 @@ function inspectMac(pid) {
 }
 
 function inspectWindows(pid) {
-  const script = [
-    `$p = Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}'`,
-    "if ($null -ne $p) {",
-    // Started is formatted explicitly (round-trip 'o') so the identity string
-    // is byte-stable and can be re-compared inside the stop script below.
-    "  $p | Select-Object ProcessId,ExecutablePath,CommandLine,@{n='Started';e={$_.CreationDate.ToUniversalTime().ToString('o')}} | ConvertTo-Json -Compress",
+  const powershell = [
+    `$item = Get-CimInstance -ClassName Win32_Process -Filter 'ProcessId = ${pid}'`,
+    "if ($item) {",
+    "  [pscustomobject]@{",
+    "    ProcessId = $item.ProcessId",
+    "    ExecutablePath = $item.ExecutablePath",
+    "    CommandLine = $item.CommandLine",
+    "    CreationDate = $item.CreationDate.ToUniversalTime().ToString('o')",
+    "  } | ConvertTo-Json -Compress",
     "}",
   ].join("; ");
-  const result = spawnSync(
+  const inspection = spawnSync(
     "powershell.exe",
-    ["-NoProfile", "-NonInteractive", "-Command", script],
-    {
-      encoding: "utf8",
-    },
+    ["-NoProfile", "-NonInteractive", "-Command", powershell],
+    { encoding: "utf8" },
   );
-  if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(`Could not inspect process ${pid}`);
-  if (!result.stdout.trim()) return null;
-  const info = JSON.parse(result.stdout);
+  if (inspection.error) throw inspection.error;
+  if (inspection.status !== 0) throw new Error(`Windows process inspection failed for pid ${pid}`);
+  const json = inspection.stdout.trim();
+  if (!json) return null;
+  const info = JSON.parse(json);
   return {
-    identity: `windows:${info.Started}`,
+    identity: `windows:${info.CreationDate}`,
     owned: belongsToCheckout("", info.CommandLine, info.ExecutablePath, true),
   };
 }
 
-/**
- * Terminate a Windows listener, bound to the process INSTANCE.
- *
- * `taskkill /pid` targets a reusable PID, so a pid recycled between inspect and
- * kill would take an unrelated process down — which is why auto-stop used to be
- * refused outright on Windows, leaving `bun run dev` permanently stuck behind
- * "stop it in Task Manager and retry" whenever a backend was orphaned. Fetching
- * the CIM instance, re-checking its creation timestamp, and terminating THAT
- * instance in one PowerShell pass closes the race: the terminate acts on the
- * object the check validated, not on a pid looked up again afterwards.
- */
-export function stopWindowsProcess(pid, _force, identity, run = spawnSync) {
-  const expected = String(identity || "").replace(/^windows:/, "");
-  const script = [
-    `$p = Get-CimInstance Win32_Process -Filter 'ProcessId = ${pid}'`,
-    "if ($null -eq $p) { exit 0 }",
-    `if ($p.CreationDate.ToUniversalTime().ToString('o') -ne '${expected}') { exit 3 }`,
-    // Terminate reports failure through ReturnValue, not through a thrown
-    // error: discarding it would report success on an access-denied kill.
-    "$r = Invoke-CimMethod -InputObject $p -MethodName Terminate",
-    "if ($r.ReturnValue -ne 0) { Write-Output $r.ReturnValue; exit 4 }",
+export function stopWindowsProcess(pid, force, identity, run = spawnSync) {
+  const fingerprint = String(identity ?? "").replace(/^windows:/, "").replaceAll("'", "''");
+  const powershell = [
+    `$target = Get-CimInstance -ClassName Win32_Process -Filter 'ProcessId = ${pid}'`,
+    "if (-not $target) { exit 0 }",
+    "$stamp = $target.CreationDate.ToUniversalTime().ToString('o')",
+    `if ($stamp -ne '${fingerprint}') { exit 3 }`,
+    "$termination = Invoke-CimMethod -InputObject $target -MethodName Terminate",
+    "if ($termination.ReturnValue -ne 0) {",
+    "  Write-Output $termination.ReturnValue",
+    "  exit 4",
+    "}",
   ].join("; ");
-  const result = run(
+  const stopped = run(
     "powershell.exe",
-    ["-NoProfile", "-NonInteractive", "-Command", script],
+    ["-NoProfile", "-NonInteractive", "-Command", powershell],
     { encoding: "utf8" },
   );
-  if (result.error) throw result.error;
-  // exit 3 == the pid now belongs to a different process; leave it alone.
-  if (result.status === 3) return;
-  if (result.status === 4) {
-    throw new Error(
-      `Could not stop process ${pid}: Terminate returned ${String(result.stdout || "").trim()}`,
-    );
+  if (stopped?.error) throw stopped.error;
+  if (stopped?.status === 3) return;
+  if (stopped?.status === 4) {
+    const cimCode = String(stopped.stdout ?? "").trim();
+    throw new Error(`Windows refused to terminate pid ${pid} (CIM return value ${cimCode})`);
   }
-  if (result.status !== 0) {
-    throw new Error(`Could not stop process ${pid}`);
+  if (stopped?.status !== 0) {
+    throw new Error(`PowerShell could not terminate pid ${pid}`);
   }
 }
 

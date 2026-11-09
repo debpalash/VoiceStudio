@@ -20,14 +20,9 @@ import threading
 
 import pytest
 
-
 @pytest.fixture
-def model_manager(monkeypatch):
-    for mod_name in ("core.config", "services.model_manager"):
-        if getattr(sys.modules.get(mod_name), "__file__", None) is None:
-            sys.modules.pop(mod_name, None)
-    import services.model_manager as mm
-    return mm
+def model_manager(fresh_model_manager):
+    return fresh_model_manager()
 
 
 def test_guard_times_out_resets_pool_and_restores_capacity(model_manager):

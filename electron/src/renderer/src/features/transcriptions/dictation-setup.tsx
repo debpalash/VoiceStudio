@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
-import { CheckIcon, DownloadIcon, MicIcon, XIcon } from 'lucide-react';
+import { CheckIcon, DownloadIcon, MicIcon } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { AgentFixButton } from '@/components/agent-fix-button';
-import { Progress } from '@/components/ui/progress';
+import { InstallProgress } from '@/components/model-install-progress';
+import { useModelInstall } from '@/hooks/use-model-install';
 import { apiJson, describeError } from '@/lib/api/client';
 import { fmtBytes } from '@shared/components/settings/models/format';
 
@@ -25,57 +26,32 @@ interface DictationCatalogue {
   engine_available: boolean;
 }
 
-interface InstallJob {
-  repo_id: string;
-  state: string;
-  bytes_done?: number;
-  total_bytes?: number;
-  error?: string;
-}
-
 export function DictationSetup({ onReady }: { onReady: () => void }) {
   const { t } = useTranslation();
   const client = useQueryClient();
-  const [installing, setInstalling] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const catalogue = useQuery({
     queryKey: ['dictation-setup-models'],
     queryFn: () => apiJson<DictationCatalogue>('/dictation/models'),
-    refetchInterval: installing ? 1_500 : false,
   });
-  const jobs = useQuery({
-    queryKey: ['model-install-jobs'],
-    queryFn: () => apiJson<{ jobs: InstallJob[] }>('/models/install/status'),
-    enabled: installing !== null,
-    refetchInterval: 1_000,
+  const install = useModelInstall(undefined, {
+    onReady: () => {
+      void Promise.all(
+        [
+          'dictation-setup-models',
+          'transcription-readiness',
+          'settings-dictation',
+          'sidebar-dictation',
+          'model-catalogue',
+        ].map((key) => client.invalidateQueries({ queryKey: [key] })),
+      )
+        .then(onReady)
+        .catch((error) => setFailed(describeError(error)));
+    },
   });
   const models = Array.isArray(catalogue.data?.models) ? catalogue.data.models : [];
-  const installJobs = Array.isArray(jobs.data?.jobs) ? jobs.data.jobs : [];
-  const activeModel = models.find((model) => model.id === installing);
-  const job = installJobs.find((entry) => entry.repo_id === activeModel?.repo_id);
-  const progress = job?.total_bytes
-    ? Math.min(100, Math.round(((job.bytes_done ?? 0) / job.total_bytes) * 100))
-    : null;
-
-  useEffect(() => {
-    if (!installing || !activeModel?.installed) return;
-    setInstalling(null);
-    void Promise.all([
-      client.invalidateQueries({ queryKey: ['transcription-readiness'] }),
-      client.invalidateQueries({ queryKey: ['settings-dictation'] }),
-      client.invalidateQueries({ queryKey: ['sidebar-dictation'] }),
-      client.invalidateQueries({ queryKey: ['model-catalogue'] }),
-    ])
-      .then(onReady)
-      .catch((error) => setFailed(describeError(error)));
-  }, [activeModel?.installed, client, installing, onReady]);
-
-  useEffect(() => {
-    if (!installing || !job || !['failed', 'cancelled', 'install_cancelled'].includes(job.state))
-      return;
-    setFailed(job.error || job.state);
-    setInstalling(null);
-  }, [installing, job]);
+  const activeModel = models.find((model) => model.repo_id === install.repoId);
+  const installing = install.active;
 
   const primary = useMemo(
     () => models.find((model) => model.installed) ?? models.find((model) => model.recommended),
@@ -99,30 +75,9 @@ export function DictationSetup({ onReady }: { onReady: () => void }) {
         onReady();
         return;
       }
-      setInstalling(model.id);
-      await apiJson('/models/install', {
-        method: 'POST',
-        // Live dictation intentionally stays on this machine for latency; the
-        // selected batch/synthesis worker must not retarget its inline setup.
-        body: JSON.stringify({ repo_id: model.repo_id, target: 'local' }),
-      });
-      void catalogue.refetch();
+      await install.start(model.repo_id);
     } catch (error) {
-      setInstalling(null);
       setFailed(describeError(error));
-    }
-  };
-
-  const cancel = async () => {
-    if (!activeModel) return;
-    try {
-      await apiJson('/models/install/cancel', {
-        method: 'POST',
-        body: JSON.stringify({ repo_id: activeModel.repo_id, target: 'local' }),
-      });
-    } finally {
-      setInstalling(null);
-      void catalogue.refetch();
     }
   };
 
@@ -147,13 +102,12 @@ export function DictationSetup({ onReady }: { onReady: () => void }) {
       <Button
         size="sm"
         variant={model === primary ? 'default' : 'outline'}
-        disabled={installing !== null}
+        disabled={installing}
         onClick={() => void choose(model)}
       >
         {model.installed ? <CheckIcon /> : <DownloadIcon />}
         {t(model.installed ? 'asr_missing.use' : 'asr_missing.download', {
           label: model.label,
-          size: model.size_gb,
         })}
       </Button>
     </div>
@@ -198,17 +152,20 @@ export function DictationSetup({ onReady }: { onReady: () => void }) {
         </div>
       </div>
       {choice(primary)}
-      {installing && activeModel && (
-        <div className="space-y-2" role="status">
-          <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-            <span>{t('asr_missing.started', { label: activeModel.label })}</span>
-            <Button size="xs" variant="ghost" onClick={() => void cancel()}>
-              <XIcon />
-              {t('common.cancel')}
-            </Button>
-          </div>
-          <Progress value={progress} aria-label={t('modelMaintenance.downloading')} />
-        </div>
+      {install.view && install.view.stage !== 'ready' && (
+        <InstallProgress
+          view={install.view}
+          name={activeModel?.label}
+          busy={install.busy}
+          onCancel={() => void install.cancel()}
+          onRetry={() => void install.retry()}
+          onDismiss={install.view.stage === 'failed' ? install.dismiss : undefined}
+        />
+      )}
+      {install.view?.stage === 'failed' && !install.view.problem && (
+        <AgentFixButton
+          request={`Restore local dictation readiness after the selected model install failed: ${install.view.detail ?? install.view.reason ?? ''}`}
+        />
       )}
       {failed && (
         <div role="alert" className="flex flex-wrap items-center gap-2 text-xs text-destructive">
@@ -223,7 +180,7 @@ export function DictationSetup({ onReady }: { onReady: () => void }) {
       {others.length > 0 && (
         <details>
           <summary className="cursor-pointer text-xs text-muted-foreground">
-            {t('asr_missing.choose')}
+            {t('asr_missing.other_models')}
           </summary>
           <div className="mt-2 grid gap-2 @2xl:grid-cols-2">{others.map(choice)}</div>
         </details>

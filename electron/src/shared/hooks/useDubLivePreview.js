@@ -21,8 +21,7 @@
  *     the dub generate body uses (`preset:` → instruct) — so the preview
  *     voice cannot disagree with what Generate would render. No CAST voice
  *     at all → skip with an actionable "assign a voice" toast.
- *   • Local-first: `/ws/tts` streams on this machine by design (the route
- *     itself refuses remote workers); no new outbound calls.
+ *   • Local-first: `/ws/tts` streams on this machine; no new outbound calls.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { toast } from 'react-hot-toast';

@@ -1,35 +1,43 @@
-export type GenerateBlocker =
-  | 'busy'
-  | 'importing'
-  | 'engine_loading'
-  | 'engine'
-  | 'no_lines'
-  | 'no_script'
-  | 'voice'
-  | 'lexicon';
+const REASONS = [
+  'busy',
+  'importing',
+  'engine_loading',
+  'engine',
+  'no_lines',
+  'no_script',
+  'voice',
+  'lexicon',
+] as const;
 
-/**
- * The ONE reason Generate is unavailable right now, most fundamental first, or
- * null when it can run. A greyed-out button with no explanation is a dead end:
- * the commonest case (lines with no voice and no default voice) looks exactly
- * like a broken app.
- */
-export function generateBlocker(input: {
+/** The single reason Generate is unavailable; see `generateBlocker` for precedence. */
+export type GenerateBlocker = (typeof REASONS)[number];
+
+export type GenerateBlockerInput = {
   mode: 'stories' | 'audiobook';
-  /** The OTHER longform mode is rendering; one render runs at a time. */
   busyElsewhere: boolean;
   importing: boolean;
   tts: 'engine' | 'loading' | null;
   usable: boolean;
   voicesReady: boolean;
   duplicateLexicon: boolean;
-}): GenerateBlocker | null {
-  if (input.busyElsewhere) return 'busy';
-  if (input.importing) return 'importing';
-  if (input.tts === 'loading') return 'engine_loading';
-  if (input.tts === 'engine') return 'engine';
-  if (!input.usable) return input.mode === 'stories' ? 'no_lines' : 'no_script';
-  if (!input.voicesReady) return 'voice';
-  if (input.mode === 'audiobook' && input.duplicateLexicon) return 'lexicon';
-  return null;
+};
+
+type Rule = readonly [GenerateBlocker, (input: GenerateBlockerInput) => boolean];
+
+// Earlier rules shadow later ones, so the list is ordered from the cause that
+// makes every other message moot down to the most local one.
+const RULES: readonly Rule[] = [
+  ['busy', (i) => i.busyElsewhere],
+  ['importing', (i) => i.importing],
+  ['engine_loading', (i) => i.tts === 'loading'],
+  ['engine', (i) => i.tts === 'engine'],
+  ['no_lines', (i) => !i.usable && i.mode === 'stories'],
+  ['no_script', (i) => !i.usable && i.mode === 'audiobook'],
+  ['voice', (i) => !i.voicesReady],
+  // Stories never reads the pronunciation lexicon, so a repeat there is harmless.
+  ['lexicon', (i) => i.mode === 'audiobook' && i.duplicateLexicon],
+];
+
+export function generateBlocker(input: GenerateBlockerInput): GenerateBlocker | null {
+  return RULES.find(([, applies]) => applies(input))?.[0] ?? null;
 }

@@ -1,28 +1,27 @@
 """Curated Hugging Face inputs are immutable and repair preserves installs."""
 from pathlib import Path
 
+import pytest
 import yaml
 
 from services import hf_revisions
 
 
-def test_every_catalog_repo_has_an_immutable_revision():
-    catalog = yaml.safe_load(Path("backend/config/models.yaml").read_text(encoding="utf-8"))
-    # Dependency repos are downloaded by the installer exactly like top-level
-    # ones (setup/download.py resolves `revision_for(dependency["repo_id"])`),
-    # and `revision_for` raises on an unpinned repo — so an unpinned dependency
-    # ships an install that always fails. Pin them under the same rule (#2163).
-    curated = []
-    for model in catalog["models"]:
-        curated.append(model["repo_id"])
-        for dependency in model.get("dependencies") or ():
-            curated.append(dependency["repo_id"])
-    missing = {
-        repo_id for repo_id in curated if repo_id not in hf_revisions.CURATED_REVISIONS
-    }
-    assert missing == set()
-    assert all(len(revision) == 40 for revision in hf_revisions.CURATED_REVISIONS.values())
-    assert all(int(revision, 16) >= 0 for revision in hf_revisions.CURATED_REVISIONS.values())
+def test_catalog_repos_and_dependencies_all_have_full_sha_pins():
+    cfg = Path(__file__).resolve().parents[1] / "backend" / "config" / "models.yaml"
+    data = yaml.safe_load(cfg.read_text(encoding="utf-8"))
+    entries = data["models"] if isinstance(data, dict) else data
+    repos = set()
+    for entry in entries:
+        if entry.get("repo_id"):
+            repos.add(entry["repo_id"])
+        for dep in entry.get("dependencies") or []:
+            repos.add(dep["repo_id"])
+    unpinned = sorted(repos - set(hf_revisions.CURATED_REVISIONS))
+    assert not unpinned, f"catalogue repos without a pinned revision: {unpinned}"
+    for repo, rev in hf_revisions.CURATED_REVISIONS.items():
+        assert len(rev) == 40, repo
+        int(rev, 16)  # raises ValueError if not hex
 
 
 def test_nllb_components_use_the_reviewed_revision():
@@ -99,3 +98,48 @@ def test_non_ascii_marker_falls_back_instead_of_raising(tmp_path):
     assert hf_revisions.installed_revision(repo_id, str(tmp_path)) == existing
     (repo_dir / "refs" / "main").write_bytes(b"\x80\x81")
     assert hf_revisions.installed_revision(repo_id, str(tmp_path)) == hf_revisions.revision_for(repo_id)
+
+
+def test_curated_revisions_survives_unreadable_registry(tmp_path):
+    """#2882: a corrupt or truncated curated-registry file must not crash
+    the import that populates :data:`CURATED_REVISIONS`. The same fallback
+    policy that 1f28c05 applied to per-marker reads (treat as absent, log,
+    let the next layer fail with a precise diagnostic) covers the
+    registry read too.
+
+    Three failure modes are covered: a non-UTF-8 byte sequence (raises
+    ``UnicodeDecodeError``), a truncated JSON file (raises
+    ``json.JSONDecodeError``), and a missing file (raises ``OSError``).
+    Each must return an empty mapping without raising.
+    """
+
+    # Non-UTF-8 bytes: a stray BOM or binary fragment left by an interrupted
+    # write or a write through some text/binary mode mix-up.
+    bad_bytes = tmp_path / "model_licenses.json"
+    bad_bytes.write_bytes(b"\xff\xfe" + b"{\"models\": []}")
+    assert hf_revisions._curated_revisions(bad_bytes) == {}
+
+    # Truncated JSON: the file looks like text but stops mid-record.
+    truncated = tmp_path / "model_licenses.json"
+    truncated.write_text('{"models": [', encoding="utf-8")
+    assert hf_revisions._curated_revisions(truncated) == {}
+
+    # Missing file: the registry is not present at all (e.g. a stripped
+    # install or a path the user moved).
+    missing = tmp_path / "missing_model_licenses.json"
+    assert hf_revisions._curated_revisions(missing) == {}
+
+
+@pytest.mark.parametrize("body", ["null", "[]", '"x"', '{"models": null}', '{"models": {}}', "{}"])
+def test_curated_revisions_survives_unexpected_registry_shape(tmp_path, body):
+    path = tmp_path / "shape_model_licenses.json"
+    path.write_text(body, encoding="utf-8")
+    assert hf_revisions._curated_revisions(path) == {}
+
+
+def test_curated_revisions_warning_omits_absolute_path(tmp_path, caplog):
+    path = tmp_path / "secret_dir" / "model_licenses.json"
+    with caplog.at_level("WARNING", logger="omnivoice.hf_revisions"):
+        assert hf_revisions._curated_revisions(path) == {}
+    assert str(tmp_path) not in caplog.text
+    assert "model_licenses.json" in caplog.text

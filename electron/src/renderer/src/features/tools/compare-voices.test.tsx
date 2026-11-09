@@ -125,3 +125,18 @@ it('does not announce dropped speech from a cancelled comparison', async () => {
   await new Promise((resolve) => setTimeout(resolve, 0));
   expect(mock.warning).not.toHaveBeenCalled();
 });
+
+it('says why Compare is unavailable instead of a silent disabled button', () => {
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <CompareVoices />
+    </QueryClientProvider>,
+  );
+  const compare = screen.getByRole('button', { name: 'compare.compare_btn' });
+  expect(compare).toBeDisabled();
+  expect(compare).toHaveAccessibleDescription('disabledReason.text_required');
+  fireEvent.change(screen.getByRole('textbox', { name: 'compare.test_phrase' }), {
+    target: { value: 'Shared phrase' },
+  });
+  expect(compare).toHaveAccessibleDescription('disabledReason.voices_required');
+});

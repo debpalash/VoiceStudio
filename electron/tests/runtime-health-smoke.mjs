@@ -55,7 +55,7 @@ try {
   await page.goto(base + '/#/clone');
   const localDevice = (state) =>
     page.getByRole('button', {
-      name: `${t('engineSidebar.localDevice')}: ${state}`,
+      name: `${t('engineSidebar.localShort')}: ${state}`,
       exact: true,
     });
   await localDevice(t('engineRuntime.loading')).waitFor();

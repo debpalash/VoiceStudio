@@ -28,7 +28,10 @@
     "src/preload/index.d.ts",
     "src/renderer/env.d.ts",
     "src/shared/utils/languageRejection.ts",
+    "src/shared/utils/windowChrome.ts",
+    "src/shared/app-config.ts",
     "src/shared/utils/generationFailureMessage.ts",
+    "src/shared/utils/failureCatalog.ts",
     "src/shared/utils/generateBudget.ts",
     "src/shared/utils/coalescedJsonStorage.ts",
     "src/shared/utils/indexedDbLongformStore.ts",
@@ -37,6 +40,8 @@
     "src/shared/api/donation.ts",
     "src/shared/api/authSession.ts",
     "src/shared/utils/runCrashRecord.ts",
+    "src/shared/utils/backendOutput.ts",
+    "src/shared/utils/installFailure.ts",
     "src/shared/utils/nativeExit.ts",
     "src/shared/utils/backendContact.ts",
     "src/shared/utils/backendStage.ts",
@@ -48,7 +53,6 @@
     "src/shared/api/dialects.ts",
     "src/shared/repair-request.ts",
     "src/shared/download-failure.ts",
-    "src/shared/components/VirtualSearchableSelect.tsx",
     "src/shared/web-api-routing.ts"
   ]
 }

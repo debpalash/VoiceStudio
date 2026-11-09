@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Android's XML domain rules have no CIDR support. HostPolicy + the guarded
+         DNS resolver enforce private-only HTTP on ALL app sockets, including media.
+         No WebView, DownloadManager or unguarded media transport is used. -->
+    <base-config cleartextTrafficPermitted="true"><trust-anchors><certificates src="system" /></trust-anchors></base-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">local</domain>
+        <domain includeSubdomains="true">ts.net</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain><domain includeSubdomains="false">::1</domain>
+    </domain-config>
+</network-security-config>

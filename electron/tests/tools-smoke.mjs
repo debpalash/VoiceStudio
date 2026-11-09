@@ -6,6 +6,9 @@ const browser = await chromium.launch({
 });
 try {
   const page = await browser.newPage();
+  await page.addInitScript(() => {
+    localStorage.setItem('voicestudio.setup.complete.v1', '1');
+  });
   const requests = [];
   await page.route('**/api/tools/*', (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -41,7 +44,7 @@ try {
   assert.deepEqual(requests.at(-1).body, { text: 'A line', slot_seconds: 2.5, target_lang: 'en' });
   await page.getByRole('button', { name: 'Probe file', exact: true }).click();
   await page
-    .getByRole('textbox', { name: 'Absolute path', exact: true })
+    .getByRole('textbox', { name: 'Absolute file path', exact: true })
     .fill('/fixture/sample.wav');
   await page.getByRole('button', { name: 'Probe', exact: true }).click();
   await page.getByText(/format_name/).waitFor();

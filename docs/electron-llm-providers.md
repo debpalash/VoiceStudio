@@ -20,6 +20,11 @@ as Model. Bedrock accepts a Bedrock API key or an existing `AWS_PROFILE` /
 AWS credentials, with region set in the AWS environment. Vertex uses Account ID
 as the Google project, application default credentials, and `VERTEXAI_LOCATION`
 (default `global`). Provider access and billing remain tied to your accounts.
+API Route uses `https://global.api-route.com/v1`, with `deepseek-v4.1-flash`
+as its default model. Select API Route and enter a key from
+[api-route.com](https://www.api-route.com); `API_ROUTE_API_KEY`,
+`API_ROUTE_BASE_URL` and `API_ROUTE_MODEL` also configure this entry.
+
 Model IDs vary by account; native SDK and CLI entries use manual model entry,
 while compatible endpoints offer model discovery. The generic LiteLLM entry
 requires a provider-prefixed model. Credentials can use a saved key, provider

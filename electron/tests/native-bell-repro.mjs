@@ -35,7 +35,7 @@ try {
     };
   });
   await page.goto((process.env.VOICESTUDIO_UI_URL || 'http://localhost:3902') + '/#/clone');
-  const bell = page.locator('[data-slot=macos-system-notifications] button');
+  const bell = page.locator('[data-slot=account-corner] button:has(.lucide-bell)');
   await bell.waitFor();
   const rect = await bell.boundingBox();
   const bounds = await app.evaluate(({ BrowserWindow }) => {

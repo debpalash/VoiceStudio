@@ -23,13 +23,14 @@ import unicodedata
 import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from api.dependencies import require_consumer_reads_admin_writes
 from pydantic import BaseModel, Field
 
 from core.db import db_conn
 
 logger = logging.getLogger("omnivoice.glossary")
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_consumer_reads_admin_writes)])
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -220,7 +221,8 @@ def auto_extract(project_id: str, req: AutoExtractRequest):
         (s.get("text") or "").strip() for s in req.segments if (s.get("text") or "").strip()
     )
     if not source_text.strip():
-        return list_terms(project_id)
+        return {"project_id": project_id, "proposed": 0, "inserted": 0,
+                "terms": list_terms(project_id)}
 
     max_chars = int(os.environ.get("OMNIVOICE_GLOSSARY_MAX_CHARS", "12000"))
     if len(source_text) > max_chars:

@@ -54,15 +54,20 @@ async function fixture() {
   const bundle = join(root, 'bundle');
   const project = join(root, 'runtime');
   await mkdir(join(bundle, 'backend'), { recursive: true });
+  await mkdir(join(bundle, 'config'), { recursive: true });
   await mkdir(join(bundle, 'frontend', 'dist'), { recursive: true });
   await mkdir(join(bundle, 'omnivoice'));
+  await mkdir(join(bundle, 'scripts'));
   for (const file of [
     'pyproject.toml',
     'README.md',
     'LICENSE',
     'backend/main.py',
+    'config/app.json',
     'frontend/dist/index.html',
     'omnivoice/__init__.py',
+    'scripts/windows-rocm-recipe.json',
+    'scripts/smoke_windows_rocm.py',
   ]) {
     await writeFile(join(bundle, file), file);
   }
@@ -218,6 +223,16 @@ describe('CPU-only runtime install', () => {
       ...CPU_TORCH_ARGS,
     ]);
     expect(CPU_TORCH_ARGS.join(' ')).toContain('download.pytorch.org/whl/cpu');
+  });
+  it('asks a Mac for 5 GiB too: its wheels carry no CUDA libraries', async () => {
+    host('darwin', 'arm64');
+    const { bundle, project } = await fixture();
+    vi.mocked(statfs).mockResolvedValueOnce({ bavail: 4 * 1024 ** 3, bsize: 1 } as Awaited<
+      ReturnType<typeof statfs>
+    >);
+    await expect(
+      installRuntime(bundle, project, 'uv', vi.fn(), new AbortController().signal),
+    ).rejects.toMatchObject({ code: 'ENOSPC', requiredGib: 5 });
   });
   it('needs 5 GiB instead of 9 GiB and says so', async () => {
     host('win32', 'x64');

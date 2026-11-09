@@ -163,7 +163,9 @@ export function DiagnosticsSettings() {
           </span>
         </SettingsRow>
         <SettingsRow id="diagnostics-version" title={t('about.version')}>
-          <span className="font-mono text-xs">{bridge?.app.version ?? __APP_VERSION__}</span>
+          <span className="font-mono text-xs">
+            {bridge?.app.version ?? __APP_VERSION__} ({__BUILD_COMMIT__})
+          </span>
         </SettingsRow>
         <SettingsRow id="diagnostics-platform" title={t('about.platform')}>
           <span className="max-w-xl text-right font-mono text-xs">{platform}</span>

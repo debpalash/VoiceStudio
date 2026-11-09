@@ -9,6 +9,7 @@ import {
   type ThemeMode,
   type ThemePreferences,
 } from '@/lib/themes/theme-preferences';
+import { onStorageKey } from '@/lib/storage-events';
 export type Theme = 'dark' | 'light';
 const listeners = new Set<() => void>();
 const media =
@@ -53,11 +54,15 @@ apply();
 media?.addEventListener('change', () => {
   if (preferences.mode === 'system') refresh();
 });
+onStorageKey(THEME_STORAGE_KEY, () => {
+  preferences = readStored();
+  refresh();
+});
+// localStorage.clear() in another window reports a null key.
 window.addEventListener('storage', (event) => {
-  if (event.key === THEME_STORAGE_KEY || event.key === null) {
-    preferences = readStored();
-    refresh();
-  }
+  if (event.key !== null) return;
+  preferences = readStored();
+  refresh();
 });
 function subscribe(listener: () => void) {
   listeners.add(listener);

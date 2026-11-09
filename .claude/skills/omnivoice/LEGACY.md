@@ -10,9 +10,7 @@ profiles, and jobs. The HTTP MCP endpoint is `/mcp`; discover tools from the
 connected server instead of assuming this older package's tool inventory.
 
 Launch the installed Electron app if the backend is unavailable. For source
-development follow the checkout's Electron README. Existing helpers in
-`scripts/` support legacy source installations; inspect their environment
-and dependency assumptions before running them.
+development follow the checkout's Electron README.
 
 Model downloads and remote services require the user's choice. Never silently
 install models, promise fixed latency, or treat compatibility voice names as
@@ -25,5 +23,6 @@ https://github.com/debpalash/VoiceStudio
 
 This archived entry is not an installable skill. Existing installations should
 remove the old `omnivoice` / `oss-maintainer` entries and install `voicestudio` /
-`voicestudio-maintainer` from the canonical repository. Legacy helpers remain
-for existing users; the Electron supervisor is the preferred launcher.
+`voicestudio-maintainer` from the canonical repository. The Electron supervisor
+attaches to a backend that is already running, or starts and supervises one when
+none is.

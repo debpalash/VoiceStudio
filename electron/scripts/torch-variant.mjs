@@ -69,8 +69,11 @@ export async function selectTorchVariant({
   nvidiaAvailable = () => hasNvidiaGpu({ env, platform }),
 } = {}) {
   const requested = requestedTorchVariant(env);
+  if (requested === 'rocm' && platform === 'win32') {
+    if (arch !== 'x64') throw new Error('Windows ROCm requires Windows x64 Python 3.12 (cp312).');
+    return 'rocm';
+  }
   if (platform === 'darwin') return 'native';
-  // ROCm is Linux-only; match the packaged install's Windows fallback.
   if (requested === 'rocm' && platform === 'linux') return 'rocm';
   const cpuWheelsApply =
     (platform === 'linux' && arch === 'x64') ||
@@ -86,4 +89,25 @@ export async function selectTorchVariant({
 /** Both variants are frozen in uv.lock; never download CUDA before swapping to CPU. */
 export function torchSyncArgs(variant) {
   return variant === 'cpu' ? ['--no-group', 'cuda', '--group', 'cpu'] : [];
+}
+
+/** The lock's CUDA runtime packages, excluding the hardware metadata binding. */
+export function cudaOnlyPackages(lockText) {
+  return [
+    ...new Set(
+      [...lockText.matchAll(/^name = "(nvidia-[a-z0-9-]+)"$/gm)]
+        .map((match) => match[1])
+        .filter((name) => name !== 'nvidia-ml-py'),
+    ),
+  ].sort();
+}
+
+/** Preserve SDK packages on repair; never lay locked CUDA/CT2 over the HIP overlay. */
+export function windowsRocmSyncArgs(lockText) {
+  return [
+    '--inexact',
+    ...['torch', 'torchaudio', 'torchvision', 'ctranslate2', ...cudaOnlyPackages(lockText)].flatMap(
+      (name) => ['--no-install-package', name],
+    ),
+  ];
 }

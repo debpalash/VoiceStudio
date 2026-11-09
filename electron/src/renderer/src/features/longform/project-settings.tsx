@@ -11,12 +11,15 @@ export function ProjectSettings({
   mode,
   draft,
   disabled,
+  bare = false,
   onChange,
   onBusy,
 }: {
   mode: Mode;
   draft: Draft;
   disabled: boolean;
+  /** Rendered as the Projects tab of the section pane instead of a disclosure. */
+  bare?: boolean;
   onChange: (value: Partial<Draft>) => void;
   onBusy: (busy: boolean) => void;
 }) {
@@ -85,9 +88,12 @@ export function ProjectSettings({
       }
       setConfirmation(null);
     });
+  const Wrapper = bare ? 'div' : 'details';
   return (
-    <details className="space-y-3">
-      <summary className="cursor-pointer text-sm font-medium">{t('stories.projects')}</summary>
+    <Wrapper className="space-y-3">
+      {!bare && (
+        <summary className="cursor-pointer text-sm font-medium">{t('stories.projects')}</summary>
+      )}
       <label className="block space-y-1 text-xs">
         {t('stories.projectName')}
         <Input
@@ -134,7 +140,7 @@ export function ProjectSettings({
           {t('common.loading')}
         </p>
       )}
-      <div className="max-h-64 space-y-1 overflow-y-auto">
+      <div className={bare ? 'space-y-1' : 'max-h-64 space-y-1 overflow-y-auto'}>
         {query.data
           ?.filter((project) => project.mode === mode)
           .map((project) => (
@@ -192,6 +198,6 @@ export function ProjectSettings({
             </div>
           ))}
       </div>
-    </details>
+    </Wrapper>
   );
 }

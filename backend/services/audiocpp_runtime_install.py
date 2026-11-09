@@ -13,6 +13,7 @@ import threading
 import urllib.request
 import zipfile
 
+from core.fs_retry import retry_on_lock
 from engines.audiocpp import bootstrap
 
 logger = logging.getLogger("omnivoice.audiocpp.install")
@@ -129,7 +130,11 @@ def _install() -> None:
     )
     target = bootstrap.managed_runtime_dir()
     target.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix="audiocpp-install-", dir=target.parent) as temp:
+    # A scanner may still hold the probed binary when the context exits; a
+    # leftover temp folder must not turn a finished install into an error.
+    with tempfile.TemporaryDirectory(
+        prefix="audiocpp-install-", dir=target.parent, ignore_cleanup_errors=True
+    ) as temp:
         temp_path = Path(temp)
         archive = temp_path / filename
         _download(url, archive, digest, expected_size)
@@ -156,9 +161,12 @@ def _install() -> None:
         )
         if probe.returncode != 0:
             raise RuntimeError("The downloaded audio.cpp runtime failed its device check")
+        # Windows antivirus scans the binary the device probe just ran and
+        # holds it for a moment, so publishing the folder at once failed with
+        # WinError 5 (#2685). Wait that lock out instead of failing the install.
         if target.exists():
-            shutil.rmtree(target)
-        os.replace(prepared, target)
+            retry_on_lock(lambda: shutil.rmtree(target))
+        retry_on_lock(lambda: os.replace(prepared, target))
     bootstrap.invalidate()
 
 

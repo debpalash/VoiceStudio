@@ -1,0 +1,54 @@
+# Manual upload of the selected branch's committed source ZIP to VirusTotal.
+# Never run on PR/push/release events: uploads are public and consume API quota.
+name: VirusTotal
+
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
+
+# One scan at a time for the repository's Public API key.
+concurrency:
+  group: virustotal-public-api
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    name: Scan source ZIP
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.11'
+      - name: Upload and wait for vendor results
+        env:
+          VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
+        run: |
+          if [ -z "$VIRUSTOTAL_API_KEY" ]; then
+            echo '::error::Set the VIRUSTOTAL_API_KEY repository Actions secret.'
+            exit 2
+          fi
+          set -o pipefail
+          make virustotal 2>&1 | tee "$RUNNER_TEMP/virustotal-report.txt"
+      - name: Add report link and results to summary
+        if: always()
+        run: |
+          if [ -f "$RUNNER_TEMP/virustotal-report.txt" ]; then
+            {
+              echo '## VirusTotal source scan'
+              echo '```text'
+              cat "$RUNNER_TEMP/virustotal-report.txt"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

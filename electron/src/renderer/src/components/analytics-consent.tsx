@@ -5,16 +5,46 @@ import { useTranslation } from 'react-i18next';
 import { BarChart3Icon, XIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiJson } from '@/lib/api/client';
-import { useBackendStatus } from '@/hooks/use-backend-status';
+import { getBackendStatusSnapshot, useBackendStatus } from '@/hooks/use-backend-status';
 import { isBackendReachable } from '@shared/utils/backendStage';
-import { setupWasStarted } from '@/lib/setup-progress';
+import { setupWasCompleted, setupWasStarted } from '@/lib/setup-progress';
 import {
+  analyticsAvailable,
   capture,
   capturePageview,
   disableAnalytics,
   enableAnalytics,
+  setAnalyticsSender,
 } from '@shared/utils/analytics';
 import { routeBreadcrumb } from '@/lib/report-breadcrumb';
+import {
+  readSetupAnalytics,
+  rememberSetupAnalytics,
+  setupAnalyticsAllowed,
+  SetupFunnel,
+} from '@/lib/setup-analytics';
+
+// Events reach the destination through the local backend, which re-checks consent.
+type AnalyticsBody = Parameters<Parameters<typeof setAnalyticsSender>[0] & object>[0];
+const postAnalytics = (body: AnalyticsBody) =>
+  apiJson('/api/settings/analytics/event', { method: 'POST', body: JSON.stringify(body) });
+// First-run events (setup_started, setup_failed) happen while there is no
+// backend to receive them; hold a bounded few and send them once it answers.
+const PENDING_LIMIT = 20;
+const pendingAnalytics: AnalyticsBody[] = [];
+export function flushPendingAnalytics(): void {
+  if (!isBackendReachable(getBackendStatusSnapshot().stage)) return;
+  for (const body of pendingAnalytics.splice(0)) void postAnalytics(body).catch(() => {});
+}
+export async function sendAnalytics(body: AnalyticsBody): Promise<unknown> {
+  if (!isBackendReachable(getBackendStatusSnapshot().stage)) {
+    if (pendingAnalytics.length < PENDING_LIMIT) pendingAnalytics.push(body);
+    return;
+  }
+  flushPendingAnalytics();
+  return postAnalytics(body);
+}
+setAnalyticsSender(sendAnalytics);
 
 interface AnalyticsState {
   available: boolean;
@@ -26,15 +56,54 @@ const analyticsKey = ['privacy', 'analytics'] as const;
 /** Keep the hardened frontend analytics client aligned with backend consent. */
 export function AnalyticsRuntime() {
   const backend = useBackendStatus();
+  const reachable = isBackendReachable(backend.stage);
+  useEffect(() => {
+    if (reachable) flushPendingAnalytics();
+  }, [reachable]);
+  const client = useQueryClient();
+  const funnel = useRef(new SetupFunnel());
+  const handedOver = useRef(false);
   const analytics = useQuery({
     queryKey: analyticsKey,
     queryFn: ({ signal }) => apiJson<AnalyticsState>('/api/settings/analytics', { signal }),
     enabled: isBackendReachable(backend.stage),
     retry: false,
   });
+  // The backend's first answer ends the setup copy's say. A choice it has not
+  // heard yet is handed over once; one it already holds always wins.
   useEffect(() => {
     if (!analytics.data) return;
-    if (analytics.data.available && analytics.data.opted_in) {
+    const early = readSetupAnalytics();
+    if (!early || early.settled) return;
+    if (analytics.data.prompted || analytics.data.opted_in) {
+      rememberSetupAnalytics({ enabled: analytics.data.opted_in, settled: true });
+      return;
+    }
+    if (handedOver.current) return;
+    handedOver.current = true;
+    rememberSetupAnalytics({ ...early, settled: true });
+    // Answered in the cache first: the wizard must not ask, and race, while this saves.
+    client.setQueryData(analyticsKey, (state: AnalyticsState | undefined) => ({
+      ...(state as AnalyticsState),
+      opted_in: early.enabled,
+      prompted: true,
+    }));
+    void apiJson('/api/settings/analytics', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled: early.enabled }),
+    }).catch(() => {
+      // Off until the wizard asks again. The early answer stays for the next launch.
+      rememberSetupAnalytics(early);
+      client.setQueryData(analyticsKey, (state: AnalyticsState | undefined) => ({
+        ...(state as AnalyticsState),
+        opted_in: false,
+        prompted: false,
+      }));
+    });
+  }, [analytics.data, client]);
+  useEffect(() => {
+    if (!analytics.data) return;
+    if (analytics.data.available && analytics.data.opted_in && !backend.analyticsDisabled) {
       void enableAnalytics().then(() => {
         const screen = routeBreadcrumb(window.location.hash);
         capture('screen_viewed', { stage: screen });
@@ -43,8 +112,57 @@ export function AnalyticsRuntime() {
     } else {
       disableAnalytics();
     }
-  }, [analytics.data]);
+  }, [analytics.data, backend.analyticsDisabled]);
+  // Setup and startup failures happen with no backend, so the funnel is sent
+  // from here, on the early answer until the backend can give its own.
+  const allowed = analytics.data
+    ? analytics.data.available && analytics.data.opted_in && !backend.analyticsDisabled
+    : analyticsAvailable() && setupAnalyticsAllowed(readSetupAnalytics(), backend.analyticsDisabled);
+  useEffect(() => {
+    const events = funnel.current.observe(backend, setupWasCompleted(), allowed);
+    if (!allowed || !events.length) return;
+    const common = {
+      app_version: __APP_VERSION__,
+      platform: getBridge()?.app.platform,
+      install_channel: backend.runtimePath ? 'installer' : 'source',
+    };
+    void enableAnalytics().then(() => {
+      for (const { event, props } of events) capture(event, { ...common, ...props });
+    });
+  }, [allowed, backend]);
   return null;
+}
+
+/** The first-run question, asked before setup so a failed install can be counted. */
+export function SetupAnalyticsConsent({ analyticsDisabled }: { analyticsDisabled?: boolean }) {
+  const { t } = useTranslation();
+  const [answered, setAnswered] = useState(() => readSetupAnalytics() !== null);
+  if (answered || analyticsDisabled || !analyticsAvailable() || setupWasCompleted()) return null;
+  const choose = (enabled: boolean) => {
+    rememberSetupAnalytics({ enabled, settled: false });
+    setAnswered(true);
+    if (enabled) void enableAnalytics();
+    else disableAnalytics();
+  };
+  return (
+    <section
+      className="w-full space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3 text-left"
+      data-testid="setup-analytics-consent"
+    >
+      <h2 className="text-sm font-medium">{t('consent.title')}</h2>
+      <p className="text-xs leading-5 text-muted-foreground">
+        {t('consent.body')} {t('consent.setup_note')}
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" size="sm" variant="outline" onClick={() => choose(true)}>
+          {t('consent.yes')}
+        </Button>
+        <Button type="button" size="sm" variant="outline" onClick={() => choose(false)}>
+          {t('consent.no')}
+        </Button>
+      </div>
+    </section>
+  );
 }
 
 export function AnalyticsConsent({

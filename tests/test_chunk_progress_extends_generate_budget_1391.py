@@ -252,7 +252,9 @@ def test_every_multi_part_render_loop_reports_progress():
         return False
 
     loops = [n for n in ast.walk(tree) if isinstance(n, ast.For) and _renders_inline(n)]
-    assert len(loops) == 3, f"expected the three inline render loops, found {len(loops)}"
+    # Native chunks, adapter chunks, pause spans, and the sentence chunks of a
+    # long pause span (#3021).
+    assert len(loops) == 4, f"expected the four inline render loops, found {len(loops)}"
     for loop in loops:
         assert _calls_progress(loop), (
             f"the render loop at line {loop.lineno} appends parts without "

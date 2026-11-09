@@ -8,6 +8,7 @@ import {
   torchSyncArgs,
 } from "../../electron/scripts/torch-variant.mjs";
 import { setupApi } from "../../scripts/setup-api.mjs";
+import { needsLocalBackendSetup, prepareDev } from "../../scripts/prepare-dev.mjs";
 import { uvRunArgs } from "../../scripts/dev-backend.mjs";
 
 for (const platform of ["linux", "win32"]) {
@@ -133,9 +134,56 @@ test("failed dependency sync never continues into setup or reports success", asy
   );
 });
 
-test("root setup command and every dev restart preserve the chosen CPU environment", () => {
+test("an Intel Mac stops before syncing and names the remote-backend path (#3584)", async () => {
+  let ran = false;
+  await assert.rejects(
+    setupApi({
+      platform: "darwin",
+      arch: "x64",
+      selectVariant: async () => "native",
+      log: () => {},
+      repairNativeLibraries: async () => {},
+      run: () => {
+        ran = true;
+        return { status: 0 };
+      },
+    }),
+    /Intel Macs cannot install the local backend[\s\S]*backend on another computer/,
+  );
+  assert.equal(ran, false);
+});
+
+test("root dev prepares the API before launch", () => {
   const pkg = JSON.parse(readFileSync(new URL("../../package.json", import.meta.url), "utf8"));
   assert.equal(pkg.scripts["setup:api"], "node scripts/setup-api.mjs");
+  assert.equal(pkg.scripts.predev, "node scripts/prepare-dev.mjs");
+
+  const calls = [];
+  assert.equal(
+    prepareDev({
+      env: {},
+      platform: "linux",
+      arch: "x64",
+      run(command, args) {
+        calls.push([command, ...args]);
+        return { status: 0 };
+      },
+    }),
+    0,
+  );
+  assert.deepEqual(calls, [
+    ["bun", "install"],
+    ["bun", "run", "setup:api"],
+  ]);
+});
+
+test("root dev leaves external-backend and Intel Mac launches usable", () => {
+  assert.equal(needsLocalBackendSetup({ env: { VOICESTUDIO_SKIP_BACKEND: "1" } }), false);
+  assert.equal(needsLocalBackendSetup({ env: { OMNIVOICE_BACKEND_CMD: '["python"]' } }), false);
+  assert.equal(needsLocalBackendSetup({ env: {}, platform: "darwin", arch: "x64" }), false);
+});
+
+test("every backend restart preserves the chosen CPU environment", () => {
   for (const variant of ["", "auto", "cpu", "cuda", "rocm"]) {
     assert.ok(uvRunArgs({ OMNIVOICE_TORCH_VARIANT: variant }).includes("--no-sync"));
   }
@@ -159,7 +207,7 @@ for (const platform of ["darwin", "linux"]) {
   }
 }
 
-test("Windows ROCm opt-in falls back to a supported CPU or CUDA wheel", async () => {
+test("Windows ROCm opt-in preserves the explicit recipe regardless of NVIDIA", async () => {
   for (const hasGpu of [false, true]) {
     assert.equal(
       await selectTorchVariant({
@@ -168,7 +216,7 @@ test("Windows ROCm opt-in falls back to a supported CPU or CUDA wheel", async ()
         arch: "x64",
         nvidiaAvailable: async () => hasGpu,
       }),
-      hasGpu ? "cuda" : "cpu",
+      "rocm",
     );
   }
   assert.equal(requestedTorchVariant({ OMNIVOICE_TORCH_VARIANT: "default" }), "cuda");
@@ -261,4 +309,30 @@ test("NVIDIA probe errors and empty GPU lists fall back to CPU", async () => {
       expected,
     );
   }
+});
+
+test("setup heals the checkout .venv before every uv call and survives a failed heal (#1783)", async () => {
+  const order = [];
+  let heals = 0;
+  assert.equal(
+    await setupApi({
+      platform: "linux",
+      arch: "x64",
+      selectVariant: async () => "cpu",
+      log: () => {},
+      repairNativeLibraries: async () => {},
+      healPthFiles: async (venv) => {
+        assert.match(venv, /[\\/]\.venv$/);
+        order.push("heal");
+        if (++heals === 2) throw new Error("read-only");
+        return [];
+      },
+      run: (_cmd, args) => {
+        order.push(args[0]);
+        return { status: 0 };
+      },
+    }),
+    0,
+  );
+  assert.deepEqual(order, ["heal", "sync", "heal", "run"]);
 });

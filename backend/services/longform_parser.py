@@ -1,7 +1,7 @@
 """Canonical longform marker parser (#27) — the single source of grammar truth.
 
 The longform marker dialect (``# heading``, ``[voice:NAME]``, ``[pause …]``,
-``[slow]/[fast]/[emphasis]/[spell]``) was parsed by three independent code
+``[emotion:TEXT]``, ``[slow]/[fast]/[emphasis]/[spell]``) was parsed by three independent code
 paths that disagreed (client/server/regex-level). This module is the one
 canonical Python parser; ``electron/src/shared/utils/longformParser.js`` is its
 mechanically-mirrored JS twin, and ``tests/fixtures/longform_parser_cases.json``
@@ -9,7 +9,7 @@ is the shared golden corpus asserted byte-for-byte against both.
 
 Pure text→plan, import-light (no torch). Grammar precedence (outer→inner):
 
-    # chapter  →  [voice:]  →  [pause]  →  SSML-lite  →  [spell]
+    # chapter  →  [voice:]  →  [emotion:]  →  [pause]  →  SSML-lite  →  [spell]
 
 It reuses the existing pause dialect (``omnivoice.utils.text.parse_pause_markers``)
 and SSML-lite (``services.ssml_lite``) verbatim so those modules stay the single
@@ -34,8 +34,16 @@ _HEADING_RE = re.compile(r"^[ \t]*#[ \t]+(\S.*)$", re.MULTILINE)
 # match attempts across ``finditer`` (the ReDoS source). A voice name never
 # contains a bracket; the value is stripped in code. Empty → default voice.
 _VOICE_RE = re.compile(r"\[voice:([^\]\[]*)\]")
-# A blank line (paragraph break). Linear: one ``\n``, a run of inline
-# whitespace, one ``\n`` — no nested quantifiers.
+# ``[emotion:TEXT]`` sets a free-text delivery direction for the text after it
+# until the next ``[emotion:]`` or voice run (#3422); empty resets it. Same
+# bracket-free content class as ``_VOICE_RE``, so matching stays linear.
+# Case-insensitive like ``[pause]``: a capitalised tag must never be read aloud.
+_EMOTION_RE = re.compile(r"\[emotion:([^\]\[]*)\]", re.IGNORECASE)
+_EMOTION_WS_RE = re.compile(r"[ \t\r\n]+")
+#: Longest emotion direction kept, in code points (the JS twin counts the same).
+EMOTION_MAX_CHARS = 200
+# A blank line: two newlines with only spaces/tabs/CR between. One character
+# class, no nesting, so matching stays linear in the input length.
 _BLANK_LINE_RE = re.compile(r"\n[ \t\r]*\n")
 
 
@@ -48,6 +56,58 @@ def _normalize(text: Optional[str]) -> str:
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
+def _emotion_value(raw: str) -> Optional[str]:
+    """Normalized emotion direction: whitespace runs collapsed, capped, ``None`` if empty."""
+    value = _EMOTION_WS_RE.sub(" ", raw).strip()[:EMOTION_MAX_CHARS].strip()
+    return value or None
+
+
+def _split_emotions(segments: list[dict], emotion: Optional[str]):
+    """Split SSML-lite segments at ``[emotion:]`` markers, tagging each piece.
+
+    ``emotion`` is the direction in force before the first segment; returns
+    ``(pieces, emotion_after)`` so the caller carries it across pause spans.
+    The marker itself is dropped; surrounding whitespace stays on the pieces,
+    so the join logic still sees blank lines around it.
+    """
+    out: list[dict] = []
+    for seg in segments:
+        text, last = seg["text"], 0
+        for m in _EMOTION_RE.finditer(text):
+            out.append({**seg, "text": text[last:m.start()], "emotion": emotion})
+            emotion = _emotion_value(m.group(1))
+            last = m.end()
+        out.append({**seg, "text": text[last:], "emotion": emotion})
+    return out, emotion
+
+
+def _kept_segments(segments: list[dict], default_speed: Optional[float]) -> list[dict]:
+    """Keep segments that still have spoken text; say how each meets the next kept one.
+
+    ``join`` is ``"paragraph"`` when a blank line lies in the whitespace between two
+    kept segments (the first's trailing space, any dropped blank segments, the
+    second's leading space), else ``"continue"``; the last kept segment has none.
+    """
+    from services.ssml_lite import spell_out
+
+    kept = []
+    for idx, seg in enumerate(segments):
+        spoken = (spell_out(seg["text"]) if seg["spell"] else seg["text"]).strip()
+        if spoken:
+            speed = seg["speed"] if seg["speed"] is not None else default_speed
+            kept.append({"at": idx, "text": spoken, "speed": speed,
+                         "emotion": seg.get("emotion")})
+    for cur, nxt in zip(kept, kept[1:]):
+        first = segments[cur["at"]]["text"]
+        second = segments[nxt["at"]]["text"]
+        between = "".join(segments[k]["text"] for k in range(cur["at"] + 1, nxt["at"]))
+        gap = first[len(first.rstrip()):] + between + second[:len(second) - len(second.lstrip())]
+        cur["join"] = "paragraph" if _BLANK_LINE_RE.search(gap) else "continue"
+    if kept:
+        kept[-1]["join"] = None
+    return kept
+
+
 def _parse_chapter_body(
     body: str,
     *,
@@ -56,7 +116,8 @@ def _parse_chapter_body(
 ) -> list[dict]:
     """Voice→pause→SSML layering for ONE chapter body (no chapter split).
 
-    Returns a list of span dicts ``{voice_id, text, pause_ms_after, speed}``.
+    Returns a list of span dicts ``{voice_id, text, pause_ms_after, speed}``,
+    plus ``join`` where markup split a line and ``emotion`` where one is set.
     A ``#`` inside ``body`` is NOT treated as a heading here — that is the
     caller's (chapter-split) concern. The JS twin (``parseChapterBody``) is what
     ``storyToSpans`` calls per spoken track."""
@@ -71,47 +132,38 @@ def _parse_chapter_body(
         last = m.end()
     runs.append((cur_voice, body[last:]))
 
-    from services.ssml_lite import parse_ssml_lite, spell_out
+    from services.ssml_lite import parse_ssml_lite
 
     for voice, run_text in runs:
+        # Every voice run starts neutral: one character's mood never leaks into
+        # the next, and a chapter (its own body) starts neutral too.
+        emotion: Optional[str] = None
         for span_text, pause_ms in parse_pause_markers(run_text):
             t = span_text.strip()
             if not t and pause_ms == 0:
                 continue  # pure whitespace between markers — nothing to render
-            # (text, speed, paragraph_break_before). The whitespace BETWEEN two
-            # kept segments is tracked so a blank line that happens to sit on a
-            # markup boundary still ends the line instead of being swallowed.
-            rendered: list[tuple[str, Optional[float], bool]] = []
-            between = ""
-            for seg in (parse_ssml_lite(t) if t else []):
-                raw = seg["text"]
-                st = (spell_out(raw) if seg["spell"] else raw).strip()
-                if not st:
-                    between += raw
-                    continue
-                # Inline SSML speed overrides the per-line default; a plain
-                # segment inherits default_speed.
-                sp = seg["speed"] if seg["speed"] is not None else default_speed
-                lead = raw[:len(raw) - len(raw.lstrip())]
-                rendered.append((st, sp, bool(_BLANK_LINE_RE.search(between + lead))))
-                between = raw[len(raw.rstrip()):]
+            segments = parse_ssml_lite(t) if t else []
+            if _EMOTION_RE.search(t):
+                segments, emotion = _split_emotions(segments, emotion)
+            elif emotion:
+                segments = [{**seg, "emotion": emotion} for seg in segments]
+            rendered = _kept_segments(segments, default_speed)
             if not rendered:
                 # Only-markers / empty text but a real pause → carry the silence.
                 if pause_ms > 0:
                     spans.append({"voice_id": voice, "text": "",
                                   "pause_ms_after": pause_ms, "speed": None})
                 continue
-            for j, (st, sp, _brk) in enumerate(rendered):
+            for j, piece in enumerate(rendered):
                 span = {
-                    "voice_id": voice, "text": st,
+                    "voice_id": voice, "text": piece["text"],
                     "pause_ms_after": pause_ms if j == len(rendered) - 1 else 0,
-                    "speed": sp,
+                    "speed": piece["speed"],
                 }
-                if j < len(rendered) - 1:
-                    # Inline markup split one run of text. Say how this span
-                    # joins the next: straight on, or across a blank line. Key
-                    # present only here — plain scripts parse byte-identically.
-                    span["join"] = "paragraph" if rendered[j + 1][2] else "continue"
+                if piece["join"]:
+                    span["join"] = piece["join"]
+                if piece["emotion"]:
+                    span["emotion"] = piece["emotion"]
                 spans.append(span)
     return spans
 

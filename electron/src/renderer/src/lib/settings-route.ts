@@ -11,7 +11,6 @@ const settingsRoutes = new Set([
   '/settings/credentials',
   '/settings/performance',
   '/settings/usage',
-  '/settings/workers',
   '/settings/privacy',
   '/settings/permissions',
   '/settings/storage',
@@ -29,9 +28,9 @@ function validSettingsRoute(value: string | null): value is string {
 export function readLastSettingsRoute(): string {
   try {
     const value = localStorage.getItem(SETTINGS_ROUTE_STORAGE_KEY);
-    return validSettingsRoute(value) ? value : '/settings/appearance';
+    return validSettingsRoute(value) ? value : '/settings/general';
   } catch {
-    return '/settings/appearance';
+    return '/settings/general';
   }
 }
 

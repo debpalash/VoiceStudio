@@ -17,25 +17,11 @@ import pytest
 
 
 @pytest.fixture
-def model_manager(monkeypatch):
-    for mod_name in ("core.config", "services.model_manager"):
-        if getattr(sys.modules.get(mod_name), "__file__", None) is None:
-            sys.modules.pop(mod_name, None)
-
-    import services.model_manager as mm
+def model_manager(offline_model_manager, monkeypatch):
     from services import hf_revisions
 
-    monkeypatch.setattr(mm, "_torch", None)
-    monkeypatch.setattr(mm, "_OmniVoice", None)
-    monkeypatch.setattr(mm, "model", None)
-    monkeypatch.setenv("OMNIVOICE_MODEL", "test/checkpoint")
-    monkeypatch.delenv("OMNIVOICE_PRELOAD_TTS_ASR", raising=False)
-    monkeypatch.delenv("HF_HUB_OFFLINE", raising=False)
-    monkeypatch.delenv("TRANSFORMERS_OFFLINE", raising=False)
-    monkeypatch.setattr(mm, "_lazy_torch", lambda: SimpleNamespace(float16="float16", float32="float32"))
-    monkeypatch.setattr(mm, "get_best_device", lambda: "cpu")
     monkeypatch.setitem(hf_revisions.CURATED_REVISIONS, "test/checkpoint", "a" * 40)
-    return mm
+    return offline_model_manager
 
 
 _TRUNCATED = OSError(

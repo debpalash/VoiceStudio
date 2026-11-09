@@ -41,7 +41,10 @@ python -m backend.speech_client transcribe recording.wav
 It targets `VOICESTUDIO_URL`, else the loopback backend on `OMNIVOICE_PORT`
 (default 3900), and sends `OMNIVOICE_API_KEY` as a bearer key when set. The
 former `status`, `start`, `stop`, `toggle` and `transcribe --insert` commands
-exit with an explanation.
+exit with an explanation. Numeric loopback spellings such as `127.1` are
+recognized without a DNS lookup; remote bearer credentials still require HTTPS.
+Uploaded filenames are reduced to a portable basename before entering multipart
+headers; audio bytes and form-field contents are preserved.
 
 ## Bring your own capture interface
 

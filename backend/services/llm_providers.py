@@ -21,11 +21,14 @@ users.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import time
+import urllib.request
 from dataclasses import dataclass
 from typing import Optional
+from urllib.parse import urlsplit
 
 logger = logging.getLogger("omnivoice.llm_providers")
 
@@ -90,7 +93,19 @@ _PROVIDERS: tuple[Provider, ...] = (
              key_envs=("CHEAPER_INFERENCE_API_KEY",),
              base_url_env="CHEAPER_INFERENCE_BASE_URL",
              model_env="CHEAPER_INFERENCE_MODEL",
-             signup_url="https://cheaperinference.com/signup"),
+             signup_url="https://cheaperinference.com/signup",
+             notes="A single gateway that reaches models from several AI labs."),
+    # No base_url_env: Opper's own SDKs read OPPER_BASE_URL as the API root,
+    # not this OpenAI-compatible path. The URL can still be changed in Settings.
+    Provider("opper", "Opper", "https://api.opper.ai/v3/compat",
+             "claude-sonnet-4-6",
+             key_envs=("OPPER_API_KEY",), model_env="OPPER_MODEL",
+             signup_url="https://platform.opper.ai"),
+    Provider("api-route", "API Route", "https://global.api-route.com/v1",
+             "deepseek-v4.1-flash",
+             key_envs=("API_ROUTE_API_KEY",), base_url_env="API_ROUTE_BASE_URL",
+             model_env="API_ROUTE_MODEL",
+             signup_url="https://www.api-route.com"),
     Provider("groq", "Groq", "https://api.groq.com/openai/v1",
              "llama-3.3-70b-versatile",
              key_envs=("GROQ_API_KEY",), base_url_env="GROQ_BASE_URL",
@@ -321,76 +336,57 @@ def _cached_discovery(pid: str) -> tuple[bool, Optional[str]]:
     return True, value
 
 
-#: LM Studio's native endpoint, unlike the OpenAI-compatible ``/v1/models``,
-#: reports which checkpoints are actually resident in memory. On a laptop only
-#: one usually is, and asking for any other makes LM Studio evict and reload
-#: multi-GB weights mid-request (or fail outright when they don't fit), so the
-#: loaded one is the only sane discovery answer.
 _LMSTUDIO_PROBE_TIMEOUT_S = 3.0
 
 
-def _probe_lmstudio_loaded_model(base_url: str, api_key: str = "local") -> Optional[str]:
-    """Return the id of a model LM Studio currently holds in memory, if any.
+class _RejectRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
 
-    Best-effort and never raises: LM Studio not running, an older build without
-    ``/api/v0``, or any other host on that URL simply yields ``None`` and the
-    caller keeps its configured/default model without guessing from untyped IDs.
-    Only ever called through
-    :func:`discover_model`, which caches both outcomes — probing per request
-    would cost an HTTP round trip on every translated segment.
-    """
-    import json
-    import urllib.request
-    from urllib.parse import urlsplit
 
+def _probe_lmstudio_loaded_model(
+    base_url: str, api_key: str = "local"
+) -> Optional[str]:
+    """Return a typed, resident LM Studio chat model without following redirects."""
     if not base_url:
         return None
     try:
         parsed = urlsplit(base_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             return None
-        clean_base = base_url.rstrip("/")
-        if clean_base.endswith("/v1"):
-            clean_base = clean_base[: -len("/v1")]
-        headers = {"User-Agent": "VoiceStudio"}
+        root = base_url.rstrip("/")
+        if root.endswith("/v1"):
+            root = root[:-3]
+        headers = {"User-Agent": "VoiceStudio LM Studio model probe"}
         if api_key and api_key != "local":
             headers["Authorization"] = f"Bearer {api_key}"
-        req = urllib.request.Request(f"{clean_base}/api/v0/models", headers=headers)
-        class NoRedirect(urllib.request.HTTPRedirectHandler):
-            def redirect_request(self, req, fp, code, msg, headers, newurl):
-                return None
-
-        # A configured API credential belongs only to the configured origin.
-        opener = urllib.request.build_opener(NoRedirect())
-        with opener.open(req, timeout=_LMSTUDIO_PROBE_TIMEOUT_S) as resp:  # nosec B310 — HTTP(S) validated above
-            data = json.loads(resp.read().decode("utf-8"))
-        loaded = [
-            str(m.get("id"))
-            for m in (data.get("data") or [])
-            if isinstance(m, dict)
-            and m.get("state") == "loaded"
-            and m.get("type") in {"llm", "vlm"}
-            and m.get("id")
+        request = urllib.request.Request(
+            f"{root}/api/v0/models", headers=headers, method="GET"
+        )
+        opener = urllib.request.build_opener(_RejectRedirects())
+        # The configured URL is validated above and redirects are disabled.
+        with opener.open(request, timeout=_LMSTUDIO_PROBE_TIMEOUT_S) as response:  # nosec B310
+            payload = json.load(response)
+        entries = payload["data"]
+        if not isinstance(entries, list):
+            return None
+        loaded_ids = [
+            entry["id"]
+            for entry in entries
+            if isinstance(entry, dict)
+            and entry.get("state") == "loaded"
+            and entry.get("type") in {"llm", "vlm"}
+            and isinstance(entry.get("id"), str)
+            and entry["id"]
         ]
-    except Exception as e:  # noqa: BLE001 — discovery is best-effort by design
-        logger.debug("LM Studio loaded-model probe failed: %s", e)
+        return sorted(loaded_ids)[0] if loaded_ids else None
+    except Exception as exc:
+        logger.debug("LM Studio loaded-model probe failed: %s", exc)
         return None
-    # Sorted for the same reason discover_model sorts: two runs on one machine
-    # must pick the same model when several are resident.
-    return sorted(loaded)[0] if loaded else None
 
 
 def discover_model(p: Provider) -> Optional[str]:
-    """Ask an OpenAI-compatible server which model it is actually serving.
-
-    Only used when we would otherwise send a placeholder. Never raises: a
-    server that is down or does not implement ``/v1/models`` leaves the caller
-    with the placeholder, which is exactly where it was before.
-
-    Both outcomes are cached — success for :data:`DISCOVERY_TTL_S`, failure for
-    :data:`DISCOVERY_FAILURE_TTL_S` — because this runs once per translated
-    segment, so an uncached failure costs a 5s timeout per segment.
-    """
+    """Best-effort model discovery with positive and negative caching."""
     hit, cached = _cached_discovery(p.id)
     if hit:
         return cached
@@ -399,52 +395,46 @@ def discover_model(p: Provider) -> Optional[str]:
         return None
 
     if p.id == "lmstudio":
-        loaded = _probe_lmstudio_loaded_model(base_url, resolve_api_key(p))
-        if loaded:
-            _DISCOVERED_MODEL[p.id] = (loaded, time.monotonic() + DISCOVERY_TTL_S)
-            return loaded
-        # /v1/models omits native types; opaque embedding IDs cannot be
-        # distinguished safely. Keep the user/default choice instead.
-        _DISCOVERED_MODEL[p.id] = (None, time.monotonic() + DISCOVERY_FAILURE_TTL_S)
-        return None
+        loaded = _probe_lmstudio_loaded_model(base_url, resolve_api_key(p) or "local")
+        ttl = DISCOVERY_TTL_S if loaded else DISCOVERY_FAILURE_TTL_S
+        _DISCOVERED_MODEL[p.id] = (loaded, time.monotonic() + ttl)
+        return loaded
 
     try:
         from openai import OpenAI
 
-        # max_retries=0 + a short timeout: this runs in the request path, and a
-        # local server that is not running must fail fast rather than add the
-        # SDK's retry ladder to a translation the user is waiting on.
-        client = OpenAI(api_key=resolve_api_key(p) or "local",
-                        base_url=base_url, max_retries=0)
-        ids = [m.id for m in client.models.list(timeout=5)]
-    except Exception as e:  # noqa: BLE001 — discovery is best-effort by design
-        logger.debug("model discovery failed for %s: %s", p.id, e)
-        _DISCOVERED_MODEL[p.id] = (None, time.monotonic() + DISCOVERY_FAILURE_TTL_S)
-        return None
-    if not ids:
+        client = OpenAI(
+            api_key=resolve_api_key(p) or "local",
+            base_url=base_url,
+            max_retries=0,
+        )
+        listed = client.models.list(timeout=5)
+        records = getattr(listed, "data", listed)
+        ids = [record.id for record in records if isinstance(getattr(record, "id", None), str)]
+    except Exception as exc:
+        logger.debug("Model discovery failed for %s: %s", p.id, exc)
         _DISCOVERED_MODEL[p.id] = (None, time.monotonic() + DISCOVERY_FAILURE_TTL_S)
         return None
 
-    # An embedding checkpoint cannot serve chat — picking one yields a 400 on
-    # every request — so never return them as a chat discovery result.
-    chat_ids = [mid for mid in ids if not any(k in mid.lower() for k in ("embed", "bert"))]
-    if not chat_ids:
+    candidates = [
+        model_id for model_id in ids
+        if "embed" not in model_id.lower() and "bert" not in model_id.lower()
+    ]
+    if not candidates:
         _DISCOVERED_MODEL[p.id] = (None, time.monotonic() + DISCOVERY_FAILURE_TTL_S)
         return None
-    candidate_ids = chat_ids
-
-    # Prefer a known instruct family over whatever else is loaded, then sort
-    # WITHIN the chosen bucket: deterministic rather than "whatever the server
-    # listed first", so two runs on the same machine pick the same model and a
-    # bug report is reproducible.
-    preferred = [mid for mid in candidate_ids if any(k in mid.lower() for k in ("qwen", "llama"))]
-    chosen = sorted(preferred or candidate_ids)[0]
-
+    preferred = [
+        model_id for model_id in candidates
+        if "qwen" in model_id.lower() or "llama" in model_id.lower()
+    ]
+    chosen = sorted(preferred or candidates)[0]
     if len(ids) > 1:
         logger.info(
             "%s has %d models loaded and no model is set in Settings; using %r. "
             "Pick one in Settings → LLM Providers to choose deliberately.",
-            p.display_name, len(ids), chosen,
+            p.display_name,
+            len(ids),
+            chosen,
         )
     _DISCOVERED_MODEL[p.id] = (chosen, time.monotonic() + DISCOVERY_TTL_S)
     return chosen
@@ -471,13 +461,11 @@ def resolve_model(p: Provider) -> str:
     Discovery sits between the user's choice and the built-in default so it can
     never override an explicit setting, and only runs for providers whose
     default is a placeholder — everyone else keeps a pure, offline resolution.
-    For LM Studio, "discovered" means the model actually loaded in memory
-    (:func:`_probe_lmstudio_loaded_model`) rather than the alphabetically first
-    one the server lists — but it stays BELOW the stored override like every
-    other discovery: picking a model in Settings → LLM Providers has to win, or
-    the "pick one deliberately" line this module logs would be a lie. Probing
-    from here would also re-open the per-segment cost the discovery cache
-    exists to prevent (a 200-segment dub × one HTTP round trip each).
+
+    For LM Studio, discovery reports the model currently resident in memory,
+    rather than choosing the first advertised id. It remains below a stored
+    Settings choice, and its cache prevents repeating a network probe for every
+    segment in a large dub.
     """
     explicit = configured_model(p)
     if explicit:

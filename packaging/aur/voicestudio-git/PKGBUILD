@@ -1,0 +1,108 @@
+# Maintainer: Palash Debnath <aur at palash dot dev>
+pkgname=voicestudio-git
+pkgver=0.5.7.r6387.g1a29929
+pkgrel=2
+pkgdesc='Local AI voice studio: cloning, speech, dubbing and transcription (development sources)'
+arch=('x86_64')
+url='https://voicestudio.sh'
+license=('AGPL-3.0-only')
+depends=(
+  'alsa-lib' 'at-spi2-core' 'gcc-libs' 'glibc' 'gtk3' 'libdrm' 'libnotify'
+  'libsecret' 'libx11' 'libxcomposite' 'libxdamage' 'libxfixes' 'libxkbcommon'
+  'libxrandr' 'libxss' 'libxtst' 'mesa' 'nspr' 'nss' 'openssl'
+  'util-linux-libs' 'vulkan-icd-loader' 'wayland' 'xdg-utils' 'xdotool'
+)
+makedepends=(
+  'bun>=1.4.2' 'cmake' 'git' 'ninja' 'nodejs>=22.12' 'npm' 'pkgconf'
+  'rust' 'shaderc' 'spirv-headers' 'uv' 'vulkan-headers'
+)
+optdepends=(
+  'libappindicator-gtk3: tray integration on compatible desktops'
+  'xdg-desktop-portal: native file dialogs and desktop integration'
+)
+provides=("voicestudio=$pkgver")
+conflicts=('voicestudio')
+# makepkg's GCC LTO objects cannot be consumed by Rust's LLVM linker when
+# linking the locked aws-lc-sys dependency. Keep the toolchains compatible.
+options=('!strip' '!debug' '!lto')
+source=('voicestudio::git+https://github.com/debpalash/VoiceStudio.git#branch=main')
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "$srcdir/voicestudio"
+  printf '%s.r%s.g%s' \
+    "$(node -p "JSON.parse(require('fs').readFileSync('package.json', 'utf8')).version.replaceAll('-', '.')")" \
+    "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+}
+
+prepare() {
+  cd "$srcdir/voicestudio"
+  export ELECTRON_SKIP_BINARY_DOWNLOAD=1
+  bun install --frozen-lockfile
+  CARGO_HOME="$srcdir/cargo-home" cargo fetch --locked \
+    --manifest-path native/desktop-bridge/Cargo.toml \
+    --target x86_64-unknown-linux-gnu
+}
+
+build() {
+  cd "$srcdir/voicestudio"
+  export CARGO_HOME="$srcdir/cargo-home"
+  export CARGO_NET_OFFLINE=true
+  export VOICESTUDIO_BUNDLED_UV=/usr/bin/uv
+  export VOICESTUDIO_RUST_TARGET=x86_64-unknown-linux-gnu
+  export VOICESTUDIO_OMNIVOICE_TTS_PLATFORM=linux-x86_64
+  export OMNIVOICE_BUILD_JOBS="${OMNIVOICE_BUILD_JOBS:-2}"
+
+  # Build the same pinned GGUF runtime as the official release, including
+  # runtime-dispatched CPU variants and the optional Vulkan backend.
+  local runtime_commit
+  runtime_commit=$(node -p "JSON.parse(require('fs').readFileSync('backend/engines/omnivoice_gguf/quant_map.json', 'utf8'))._meta.runtime_commit_sha")
+  (
+    # The pinned runtime defines FORTIFY_SOURCE=2 itself. Arch's default =3
+    # conflicts with that definition and breaks its -Werror ABI check. Keep
+    # the upstream level for this build, retaining all other makepkg flags.
+    export CFLAGS="$(sed -E 's/-D_FORTIFY_SOURCE=[0-9]+/-D_FORTIFY_SOURCE=2/g' <<< "$CFLAGS")"
+    export CXXFLAGS="$(sed -E 's/-D_FORTIFY_SOURCE=[0-9]+/-D_FORTIFY_SOURCE=2/g' <<< "$CXXFLAGS")"
+    export CPPFLAGS="$(sed -E 's/-D_FORTIFY_SOURCE=[0-9]+/-D_FORTIFY_SOURCE=2/g' <<< "$CPPFLAGS")"
+    bash scripts/build-omnivoice-tts.sh --platform linux-x86_64 --commit-sha "$runtime_commit"
+  )
+  install -d electron/build/omnivoice-tts
+  cp -a bin/. electron/build/omnivoice-tts/
+
+  # Electron, the renderer, web UI and native bridge use upstream's packaging
+  # path. Python engines and model weights are installed by the user's setup.
+  bun run dist:dir
+  node electron/tests/packaging-contract.mjs --artifact
+}
+
+package() {
+  cd "$srcdir/voicestudio"
+  install -d "$pkgdir/opt/VoiceStudio"
+  cp -a electron/release/linux-unpacked/. "$pkgdir/opt/VoiceStudio/"
+  chmod 4755 "$pkgdir/opt/VoiceStudio/chrome-sandbox"
+
+  install -d "$pkgdir/usr/bin"
+  cat > "$pkgdir/usr/bin/voicestudio" <<'EOF'
+#!/bin/sh
+export VOICESTUDIO_DISABLE_UPDATER=1
+exec /opt/VoiceStudio/voicestudio-electron "$@"
+EOF
+  chmod 755 "$pkgdir/usr/bin/voicestudio"
+
+  install -d "$pkgdir/usr/share/applications"
+  cat > "$pkgdir/usr/share/applications/VoiceStudio.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=VoiceStudio
+Comment=Local AI voice studio
+Exec=voicestudio %U
+Icon=voicestudio
+Terminal=false
+Categories=AudioVideo;Audio;
+StartupWMClass=VoiceStudio
+EOF
+  install -Dm644 docs/logo.svg \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/voicestudio.svg"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 LICENSE-NOTICE.md "$pkgdir/usr/share/licenses/$pkgname/LICENSE-NOTICE.md"
+}

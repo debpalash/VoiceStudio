@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { CheckIcon, CircleIcon, LoaderCircleIcon, XIcon, ZapIcon } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  CheckIcon,
+  CircleIcon,
+  LoaderCircleIcon,
+  TriangleAlertIcon,
+  XIcon,
+  ZapIcon,
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { AudiobookRenderChapter } from './longform-session';
-
-function formatElapsed(seconds: number): string {
-  const safe = Math.max(0, Math.floor(seconds));
-  return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, '0')}`;
-}
+import { formatDuration, renderStatus, type RenderProgressSnapshot } from './render-eta';
 
 function ChapterStatusIcon({ status }: { status: string }) {
   if (status === 'rendering')
@@ -20,26 +23,42 @@ function ChapterStatusIcon({ status }: { status: string }) {
 export function GenerationProgress({
   chapters,
   assembling,
+  stage = assembling ? 'assembling' : 'rendering',
+  progress = null,
+  startedAt = null,
+  lastActivityAt = null,
 }: {
   chapters: AudiobookRenderChapter[];
   assembling: boolean;
+  stage?: string;
+  progress?: RenderProgressSnapshot | null;
+  startedAt?: number | null;
+  lastActivityAt?: number | null;
 }) {
   const { t } = useTranslation();
-  const start = useRef(performance.now());
-  const [now, setNow] = useState(start.current);
+  // The clock lives in the session (startedAt), so leaving the page and
+  // coming back keeps the real elapsed time instead of restarting at 0:00.
+  const [mountedAt] = useState(() => Date.now());
+  const [now, setNow] = useState(mountedAt);
   const completed = useMemo(
     () =>
       chapters.filter((chapter) => ['done', 'cached', 'failed'].includes(chapter.status)).length,
     [chapters],
   );
   const total = chapters.length;
-  const percent = total ? Math.round((completed / total) * 100) : 0;
-  const elapsed = (now - start.current) / 1000;
-  const eta =
-    completed > 0 && completed < total ? (elapsed / completed) * (total - completed) : null;
+  const status = renderStatus({
+    stage,
+    chapters,
+    progress,
+    startedAt: startedAt ?? mountedAt,
+    lastActivityAt,
+    now,
+  });
+  const percent = Math.round(status.percent);
+  const eta = status.etaS;
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(performance.now()), 1000);
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -56,8 +75,14 @@ export function GenerationProgress({
             : t('audiobook.progress_summary', { current: completed, total })}
         </span>
         <span className="shrink-0 font-mono tabular-nums text-muted-foreground">
-          {formatElapsed(elapsed)}
-          {eta == null ? '' : ` · ${t('audiobook.eta', { time: formatElapsed(eta) })}`}
+          {formatDuration(status.elapsedS)}
+          {assembling
+            ? ''
+            : eta != null
+              ? ` · ${t('audiobook.eta', { time: formatDuration(eta) })}`
+              : progress && percent < 100
+                ? ` · ${t('audiobook.eta_estimating')}`
+                : ''}
         </span>
       </div>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
@@ -66,6 +91,22 @@ export function GenerationProgress({
           style={{ width: `${assembling ? 100 : percent}%` }}
         />
       </div>
+      {!assembling && (progress || status.stalledForS != null) && (
+        <div className="mt-1.5 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
+          <span className="tabular-nums">{percent}%</span>
+          {status.rtf != null && (
+            <span className="tabular-nums" title={t('audiobook.realtime_hint')}>
+              {t('audiobook.realtime', { rate: status.rtf.toFixed(2) })}
+            </span>
+          )}
+        </div>
+      )}
+      {status.stalledForS != null && (
+        <p role="alert" className="mt-2 flex items-start gap-1.5 text-xs text-warning">
+          <TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
+          <span>{t('audiobook.stalled', { time: formatDuration(status.stalledForS) })}</span>
+        </p>
+      )}
       {total > 0 && (
         <ol className="mt-2 max-h-36 space-y-0.5 overflow-y-auto">
           {chapters.map((chapter, index) => (

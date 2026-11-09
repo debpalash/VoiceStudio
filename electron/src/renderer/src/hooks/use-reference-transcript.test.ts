@@ -28,6 +28,16 @@ it('shows unavailable when the backend reports the selected ASR model is missing
   expect(cloneSettingsStore.state.refText).toBe('');
 });
 
+it('keeps the backend-recommended model so the UI can offer to install it', async () => {
+  const recommended = { repo_id: 'Systran/faster-whisper-large-v3', label: 'Whisper', size_gb: 3 };
+  api.mockRejectedValueOnce(
+    new ApiError(409, 'ASR model missing', { detail: { error: 'asr_model_missing', recommended } }),
+  );
+  const { result } = renderHook(() => useReferenceTranscript(file));
+  await waitFor(() => expect(result.current.state).toBe('unavailable'));
+  expect(result.current.recommended).toEqual(recommended);
+});
+
 it('uses selected capture settings and stores the raw transcript', async () => {
   api.mockResolvedValueOnce({ text: ' Hello there ' });
   const { result } = renderHook(() => useReferenceTranscript(file));

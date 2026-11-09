@@ -1,10 +1,9 @@
 """Pure length-scaling arithmetic for the per-job generate compute budget.
 
-Stdlib only, so ``services.model_manager`` (the real budget), the torch-free
-``worker.deadlines`` fallback and the standalone ``mcp_server`` client timeout
-all share ONE definition instead of each re-deriving it. They drifted apart
-before (#1190/#1202), and a drifted copy means a tool or remote worker giving
-up before the backend does.
+Stdlib only, so ``services.model_manager`` (the real budget) and the standalone
+``mcp_server`` client timeout share ONE definition instead of each re-deriving
+it. They drifted apart before (#1190/#1202), which could make a tool give up
+before the backend did.
 
 Two scaling classes:
 

@@ -1,0 +1,417 @@
+# Mobile — native iOS and Android companion apps (mobile/contract/SPEC.md).
+#
+# Both apps build from generated inputs (theme tokens, OpenAPI, Electron locale
+# catalogs), so a change to any of those re-runs this workflow on `main`. Contract
+# drift itself is caught by tests/test_mobile_contract.py in ci.yml, which is why a
+# pull request only starts these builds when it changes the apps.
+
+name: mobile
+
+on:
+  # A pull request builds both apps only when it changes them. Locale, language and
+  # package.json edits reach the apps through generated files under mobile/, so
+  # tests/test_mobile_contract.py (run by ci.yml) fails such a PR until the
+  # regenerated files are committed, and that commit triggers this workflow.
+  # `main` below still builds on those paths.
+  pull_request:
+    paths:
+      - "mobile/**"
+      - "docs/logo.svg"
+      - "scripts/prepare_mobile_contributors.py"
+      - "scripts/export-mobile-contributors.ts"
+      - "electron/src/renderer/src/components/brand-icons.tsx"
+      - "electron/src/renderer/src/features/home/contributors/**"
+      - ".github/workflows/mobile.yml"
+  push:
+    branches: [main]
+    paths:
+      - "mobile/**"
+      - "docs/logo.svg"
+      - "scripts/prepare_mobile_contributors.py"
+      - "scripts/export-mobile-contributors.ts"
+      - "electron/src/renderer/src/components/brand-icons.tsx"
+      - "electron/src/renderer/src/features/home/contributors/**"
+      - "electron/src/renderer/src/i18n/locales/**"
+      - "electron/src/shared/languages.json"
+      - "package.json"
+      - ".github/workflows/mobile.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Changed runtime paths
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      runtime: ${{ steps.scope.outputs.runtime }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: scope
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/ci_scope.py
+
+  android:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.runtime != 'false' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: mobile/android
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # Validates the committed wrapper jar and caches Gradle state.
+      - uses: gradle/actions/setup-gradle@ac638b010cf58a27ee6c972d7336334ccaf61c96 # v4.4.1
+
+      - name: SDK location
+        run: printf 'sdk.dir=%s\n' "$ANDROID_HOME" > local.properties
+
+      # On-device runtimes (mobile/native/pins.json) build with the pinned NDK and
+      # CMake; Gradle's preBuild runs mobile/native/android/build.sh.
+      - name: NDK and CMake
+        run: bash "$GITHUB_WORKSPACE/mobile/android/install-sdk-packages.sh"
+
+      - name: Cache native runtimes
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: mobile/native/android/build
+          key: android-native-${{ hashFiles('mobile/native/pins.json', 'mobile/native/android/**', '!mobile/native/android/build/**', 'mobile/native/mp3/**', 'mobile/ios/VoiceStudioKit/Sources/VSNative/Lame/**', 'mobile/ios/VoiceStudioKit/Sources/VSNative/Mp3Encoder.c', 'mobile/ios/VoiceStudioKit/Sources/VSNative/include/Mp3Encoder.h') }}
+
+      - name: Build, unit tests, lint
+        run: ./gradlew --no-daemon assembleDebug assembleDebugAndroidTest testDebugUnitTest lint
+
+      # A Beta channel version (X.Y.Z-beta.N) must configure too, not only the checked-in one.
+      - name: Beta version configures
+        run: |
+          node -e 'const f="../../package.json",p=require(f);p.version=p.version.replace(/-.*/,"")+"-beta.1";require("fs").writeFileSync(f,JSON.stringify(p,null,2)+"\n")'
+          ./gradlew --no-daemon -q :app:printAppVersion | tee "$RUNNER_TEMP/version.txt"
+          grep -qE '^versionName=[0-9]+\.[0-9]+\.[0-9]+-beta\.1 versionCode=[0-9]+$' "$RUNNER_TEMP/version.txt"
+          git checkout -- ../../package.json
+
+      - name: Upload reports on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: android-reports
+          path: mobile/android/**/build/reports/
+          retention-days: 7
+
+  ios:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.runtime != 'false' }}
+    # Same SDK as the TestFlight upload, so App Store toolchain breaks show up here first.
+    runs-on: macos-26
+    # Cold simulator/device compilation can exhaust an hour after tests pass.
+    # Keep the full validation run bounded without relaxing UI-test deadlines.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Bundle and validate iOS resources
+        run: python3 mobile/ios/scripts/test_resources.py
+
+      - name: VoiceStudioKit tests
+        working-directory: mobile/ios/VoiceStudioKit
+        # Serial on purpose. In parallel the suite hangs on the 3-core runner (the step
+        # sat for the whole 60 minute job timeout on three runs); run one at a time all
+        # 201 tests pass in about 155 s, the same time the parallel run used to take.
+        # A 15 minute cap turns any new hang into a fast, named failure.
+        timeout-minutes: 15
+        run: swift test --no-parallel
+
+      # iOS xcframeworks for the pinned on-device runtimes (sherpa-onnx, onnxruntime,
+      # llama.cpp, omnivoice.cpp); needs Xcode, so it only runs here.
+      - name: Restore native runtimes
+        id: native-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: mobile/native/ios/build
+          key: ios-native-${{ hashFiles('mobile/native/pins.json', 'mobile/native/ios/**', '!mobile/native/ios/build/**') }}
+
+      - name: Build native runtimes
+        env:
+          # Read-only token: avoids the anonymous GitHub API rate limit on shared runners.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          brew install cmake ninja 2>/dev/null || true
+          bash mobile/native/ios/build.sh ios
+
+      # Preserve a successful native build even if a later simulator or app step fails.
+      - name: Save native runtimes
+        if: steps.native-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: mobile/native/ios/build
+          key: ${{ steps.native-cache.outputs.cache-primary-key }}
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate --spec mobile/ios/VoiceStudio/project.yml
+
+      - name: Build app and UI tests (simulator)
+        run: |
+          # First available iPhone simulator; runner images change names over time.
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devs = json.load(sys.stdin)["devices"]
+          print(next(d["udid"] for rt, ds in devs.items() if "iOS" in rt for d in ds if d["name"].startswith("iPhone")))')
+          echo "SIM_UDID=$UDID" >> "$GITHUB_ENV"
+          # Boot and wait before testing: a runner that starts XCTest against a
+          # still-booting simulator fails with "test runner failed to initialize
+          # for UI testing" (kAXErrorCannotComplete).
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          xcodebuild -project mobile/ios/VoiceStudio/VoiceStudio.xcodeproj \
+            -scheme VoiceStudio -destination "id=$UDID" \
+            CODE_SIGNING_ALLOWED=NO build-for-testing
+
+      - name: UI smoke test
+        run: |
+          xcodebuild -project mobile/ios/VoiceStudio/VoiceStudio.xcodeproj \
+            -scheme VoiceStudio -destination "id=$SIM_UDID" \
+            -resultBundlePath "$RUNNER_TEMP/ui.xcresult" \
+            CODE_SIGNING_ALLOWED=NO test-without-building
+
+      - name: Native video export and playback regressions
+        run: |
+          xcodebuild -project mobile/ios/VoiceStudio/VoiceStudio.xcodeproj \
+            -scheme VoiceStudioNative -destination "id=$SIM_UDID" \
+            '-only-testing:VoiceStudioKitTests/phoneVideoMuxPreservesOrientationAndMarksPlayableAudio()' \
+            '-only-testing:VoiceStudioKitTests/phoneDubPlaybackRestoresPlaybackAfterDictation()' \
+            '-only-testing:VoiceStudioKitTests/phoneDictationConverterKeepsRightStereoChannel()' \
+            -parallel-testing-enabled NO CODE_SIGNING_ALLOWED=NO test
+      # ScreenshotTour keeps a screenshot of every screen; export them for review.
+      - name: Export UI screenshots
+        if: always()
+        run: |
+          [ -d "$RUNNER_TEMP/ui.xcresult" ] || exit 0
+          mkdir -p "$RUNNER_TEMP/shots"
+          xcrun xcresulttool export attachments --path "$RUNNER_TEMP/ui.xcresult" --output-path "$RUNNER_TEMP/shots"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: ios-screenshots
+          path: ${{ runner.temp }}/shots
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # Unsigned device build for maintainers to sideload onto their own iPhone
+      # (it is signed on install with their Apple ID; see docs/mobile.md). Not a
+      # release artifact.
+      - name: Unsigned iPhone build
+        run: |
+          xcodebuild -project mobile/ios/VoiceStudio/VoiceStudio.xcodeproj \
+            -scheme VoiceStudio -configuration Release -sdk iphoneos \
+            -destination 'generic/platform=iOS' -derivedDataPath "$RUNNER_TEMP/device" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+          python3 mobile/ios/scripts/validate_privacy_manifests.py "$RUNNER_TEMP/device/Build/Products/Release-iphoneos/VoiceStudio.app"
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          cp -R "$RUNNER_TEMP/device/Build/Products/Release-iphoneos/VoiceStudio.app" "$RUNNER_TEMP/ipa/Payload/"
+          (cd "$RUNNER_TEMP/ipa" && zip -qry "$RUNNER_TEMP/VoiceStudio-unsigned.ipa" Payload)
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: VoiceStudio-ios-unsigned
+          path: ${{ runner.temp }}/VoiceStudio-unsigned.ipa
+          retention-days: 7
+
+  # SPEC.md M2 "Tests": real on-device inference in CI — TTS output is
+  # transcribed back by ASR with the smallest pinned models, using the same
+  # native code the phones run. Models are user-started downloads in the app;
+  # here they are fetched for the test with its explicit test-licence flag.
+  ios-inference:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.runtime != 'false' }}
+    # Standard Intel runners have 14 GB RAM; standard ARM runners have 7 GB.
+    # The verified OmniVoice pack requires 8 GB, including inference headroom.
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Cache native runtimes and smoke models
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            mobile/native/ios/build/macos
+            mobile/ios/.cache/inference-models
+          key: ios-inference-${{ runner.arch }}-${{ hashFiles('mobile/native/pins.json', 'mobile/native/ios/build.py', 'mobile/native/ios/patches/**', 'mobile/contract/models.json') }}
+
+      - name: Fetch smallest models
+        run: python3 mobile/ios/scripts/fetch-smoke-models.py --accept-test-licences
+
+      - name: Fetch additional Speech models
+        run: python3 mobile/ios/scripts/fetch-smoke-models.py --accept-test-licences --speech-models
+
+      # VSNative uses __has_include: preparing headers after its first compile
+      # leaves cached no-runtime stubs even though the dylibs now exist.
+      - name: Prepare all host runtimes before Swift compilation
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: mobile/native/ios/build.sh macos-runtimes
+
+      - name: Real TTS -> ASR
+        env:
+          # Native source metadata uses the same read-only API token as iOS builds.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: mobile/ios/scripts/real-inference.sh
+
+      - name: Real Speech preset and reference models
+        run: |
+          export VOICESTUDIO_REAL_SPEECH=1
+          SHERPA_ONNX_LIBRARY="$(cat mobile/native/ios/build/macos/sherpa-path.txt)"
+          export SHERPA_ONNX_LIBRARY
+          mobile/ios/scripts/check-swift.sh test --filter realSpeechModels --no-parallel
+
+      - name: Fetch OmniVoice saved-voice Speech pack
+        run: python3 mobile/ios/scripts/fetch-smoke-models.py --accept-test-licences --omni-speech
+
+      - name: Real OmniVoice Speech word fidelity
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          export VOICESTUDIO_REAL_OMNI_SPEECH=1
+          SHERPA_ONNX_LIBRARY="$(cat mobile/native/ios/build/macos/sherpa-path.txt)"
+          export SHERPA_ONNX_LIBRARY
+          OMNIVOICE_LIBRARY="$(python3 -c 'import json; print(json.load(open("mobile/native/ios/build/macos/runtime-paths.json"))["omnivoice.cpp"])')"
+          export OMNIVOICE_LIBRARY
+          mobile/ios/scripts/check-swift.sh test --filter realOmniSavedVoice --no-parallel
+
+  android-inference:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.runtime != 'false' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    defaults:
+      run:
+        working-directory: mobile/android
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@ac638b010cf58a27ee6c972d7336334ccaf61c96 # v4.4.1
+
+      - name: SDK, NDK and CMake
+        run: |
+          printf 'sdk.dir=%s\n' "$ANDROID_HOME" > local.properties
+          bash "$GITHUB_WORKSPACE/mobile/android/install-sdk-packages.sh"
+
+      - name: Cache native runtimes
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: mobile/native/android/build
+          key: android-native-${{ hashFiles('mobile/native/pins.json', 'mobile/native/android/**', '!mobile/native/android/build/**', 'mobile/native/mp3/**', 'mobile/ios/VoiceStudioKit/Sources/VSNative/Lame/**', 'mobile/ios/VoiceStudioKit/Sources/VSNative/Mp3Encoder.c', 'mobile/ios/VoiceStudioKit/Sources/VSNative/include/Mp3Encoder.h') }}
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Real TTS -> ASR on an x86_64 emulator
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          ram-size: 4096M
+          disk-size: 6G
+          working-directory: mobile/android
+          script: ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.voicestudio.mobile.LocalInferenceTest#smallestModelsProduceSpeechAndRecognizeItOffline,com.voicestudio.mobile.LocalInferenceTest#speechPresetAndReferenceModelsProduceAudioOffline -Pandroid.testInstrumentationRunnerArguments.speechInferenceSmoke=true -Pandroid.testInstrumentationRunnerArguments.localInferenceSmoke=true -Pandroid.testInstrumentationRunnerArguments.downloadSmokeModels=true -Pandroid.testInstrumentationRunnerArguments.acceptModelLicencesForSmoke=true
+
+  # Google Play phone screenshots from the real debug app (PlayScreenshotTour):
+  # phone-first, smallest speech model, English. Nexus 5X is 1080x1920, inside
+  # Play's 2:1 limit. Pulled from the emulator as the android-play-screenshots artifact.
+  android-screenshots:
+    needs: changes
+    if: ${{ !cancelled() && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && needs.changes.outputs.runtime != 'false' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    defaults:
+      run:
+        working-directory: mobile/android
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@ac638b010cf58a27ee6c972d7336334ccaf61c96 # v4.4.1
+
+      - name: SDK, NDK and CMake
+        run: |
+          printf 'sdk.dir=%s\n' "$ANDROID_HOME" > local.properties
+          bash "$GITHUB_WORKSPACE/mobile/android/install-sdk-packages.sh"
+
+      - name: Cache native runtimes
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: mobile/native/android/build
+          key: android-native-${{ hashFiles('mobile/native/pins.json', 'mobile/native/android/**', '!mobile/native/android/build/**', 'mobile/native/mp3/**', 'mobile/ios/VoiceStudioKit/Sources/VSNative/Lame/**', 'mobile/ios/VoiceStudioKit/Sources/VSNative/Mp3Encoder.c', 'mobile/ios/VoiceStudioKit/Sources/VSNative/include/Mp3Encoder.h') }}
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      # The APKs stay installed after the run so the PNGs in the app's external
+      # files dir can be pulled; the pull runs even if the tour fails partway.
+      - name: Screenshot tour on a 16:9 emulator
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: Nexus 5X
+          ram-size: 4096M
+          disk-size: 6G
+          disable-animations: true
+          working-directory: mobile/android
+          script: |
+            ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true -Pandroid.testInstrumentationRunnerArguments.class=com.voicestudio.mobile.PlayScreenshotTour -Pandroid.testInstrumentationRunnerArguments.playScreenshots=true -Pandroid.testInstrumentationRunnerArguments.downloadSmokeModels=true -Pandroid.testInstrumentationRunnerArguments.acceptModelLicencesForSmoke=true; status=$?; adb pull /sdcard/Android/data/sh.voicestudio.mobile/files/play-screenshots "$RUNNER_TEMP"; exit $status
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: android-play-screenshots
+          path: ${{ runner.temp }}/play-screenshots/*.png
+          if-no-files-found: error
+          retention-days: 30

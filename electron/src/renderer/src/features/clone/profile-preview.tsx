@@ -10,6 +10,9 @@ import { EngineNotice } from '@/components/engine-notice';
 import { WaveformPlayer } from '@/components/waveform-player';
 import { generateClone } from '@/lib/api/generate';
 import { describeError } from '@/lib/api/client';
+import { apiFailureGuidance } from '@/lib/api/failure';
+import { FailureAction } from '@/components/failure-action';
+import { failureTopicOf } from '@shared/utils/failureCatalog';
 import type { Profile } from '@/lib/api/types';
 import { DEFAULT_CLONE_SETTINGS } from '@/lib/store/clone-settings';
 import { acquireSynthesis } from '@/lib/synthesis-lock';
@@ -30,7 +33,11 @@ export function ProfilePreview({
   const client = useQueryClient();
   const [text, setText] = useState(() => t('voice_profile.test_text'));
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{
+    detail?: string;
+    guidance?: string;
+    topic?: string;
+  } | null>(null);
   const [url, setUrl] = useState('');
   const [take, setTake] = useState<{ id: string; seed: number | null } | null>(null);
   const request = useRef<AbortController | null>(null);
@@ -45,7 +52,7 @@ export function ProfilePreview({
     if (request.current || !text.trim() || ttsBlocker) return;
     const release = acquireSynthesis();
     if (!release) {
-      setError(t('tts_errors.generation_in_progress'));
+      setError({ guidance: t('tts_errors.generation_in_progress') });
       return;
     }
     const controller = new AbortController();
@@ -69,13 +76,18 @@ export function ProfilePreview({
       announceDroppedSpeech(result.dropped);
       setUrl(URL.createObjectURL(result.blob));
       setTake(result.id ? { id: result.id, seed: result.seed } : null);
-      toast.success(t('tts.generationComplete'));
+      toast.success(t('tts.generationComplete'), { position: 'top-right' });
       void client.invalidateQueries({ queryKey: queryKeys.history });
       void client.invalidateQueries({
         queryKey: ['profile-usage', profile.id],
       });
     } catch (cause) {
-      if (!controller.signal.aborted) setError(describeError(cause));
+      if (!controller.signal.aborted)
+        setError({
+          detail: describeError(cause),
+          guidance: apiFailureGuidance(cause),
+          topic: failureTopicOf(cause),
+        });
     } finally {
       finishActivity();
       release();
@@ -92,6 +104,7 @@ export function ProfilePreview({
         {t('voice_profile.test_phrase')}
       </label>
       <textarea
+        dir="auto"
         id={id}
         rows={3}
         value={text}
@@ -120,24 +133,27 @@ export function ProfilePreview({
         </p>
       )}
       {error && (
-        <div
-          role="alert"
-          className="rounded-md border border-border/60 bg-muted/20 p-3 text-xs"
-        >
-          <p className="font-medium">
-            {t('profileIdentity.generation_failed')}
-          </p>
-          <details className="mt-1 text-muted-foreground">
-            <summary className="cursor-pointer rounded py-1 focus-visible:outline-ring">
-              {t('profileIdentity.details')}
-            </summary>
-            <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted/40 p-2 font-mono text-xs">
-              {error}
-            </pre>
-            <Link to="/settings/logs" className="mt-2 inline-block underline">
-              {t('settings.logs')}
-            </Link>
-          </details>
+        <div role="alert" className="rounded-md border border-border/60 bg-muted/20 p-3 text-xs">
+          <p className="font-medium">{t('profileIdentity.generation_failed')}</p>
+          {error.guidance && <p className="mt-1 leading-5">{error.guidance}</p>}
+          {error.topic && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <FailureAction topic={error.topic} />
+            </div>
+          )}
+          {error.detail && (
+            <details className="mt-1 text-muted-foreground">
+              <summary className="cursor-pointer rounded py-1 focus-visible:outline-ring">
+                {t('profileIdentity.details')}
+              </summary>
+              <pre className="mt-2 max-h-28 overflow-auto whitespace-pre-wrap break-all rounded-md bg-muted/40 p-2 font-mono text-xs">
+                {error.detail}
+              </pre>
+              <Link to="/settings/logs" className="mt-2 inline-block underline">
+                {t('settings.logs')}
+              </Link>
+            </details>
+          )}
         </div>
       )}
       {url && (

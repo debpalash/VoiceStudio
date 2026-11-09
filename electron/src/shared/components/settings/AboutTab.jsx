@@ -103,7 +103,7 @@ export default function AboutTab({
           info?.has_hf_token ? (
             t('about.yes')
           ) : (
-            <span className="inline-flex flex-wrap items-center gap-[var(--space-3)]">
+            <span className="inline-flex flex-wrap items-center gap-[var(--space-2)]">
               {t('about.no')}
               <OpenCategoryButton categoryId="credentials" />
             </span>

@@ -1,37 +1,16 @@
 import assert from 'node:assert/strict';
-import { chromium } from 'playwright';
+import { launchSmokeBrowser, openMockedPage } from './smoke-api-mock.mjs';
 
-const browser = await chromium.launch({
-  ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
-  headless: true,
-});
+const browser = await launchSmokeBrowser();
 try {
-  const page = await browser.newPage({ viewport: { width: 1200, height: 800 } });
-  await page.addInitScript(() => localStorage.setItem('voicestudio.setup.complete.v1', '1'));
-  await page.route(
-    (url) => url.pathname.startsWith('/api/'),
-    (route) => {
-      const path = new URL(route.request().url()).pathname;
-      const fixtures = {
-        '/api/health': { status: 'ok' },
-        '/api/setup/status': { ready: true },
-        '/api/models/install/status': { jobs: [] },
-        '/api/workers/target': {
-          target: 'local',
-          op: 'tts',
-          active: { remote: false, label: 'Local', reason: '' },
-          targets: [],
-          remote_operations: [],
-        },
-        '/api/profiles': [],
-        '/api/history': [],
-        '/api/projects': [],
-      };
-      return path in fixtures
-        ? route.fulfill({ json: fixtures[path] })
-        : route.fulfill({ status: 404, json: { detail: 'Not mocked' } });
+  const page = await openMockedPage(browser, {
+    viewport: { width: 1200, height: 800 },
+    fixtures: {
+      '/api/profiles': [],
+      '/api/history': [],
+      '/api/projects': [],
     },
-  );
+  });
   await page.goto(
     (process.env.VOICESTUDIO_UI_URL || 'http://localhost:3928') + '/#/settings/appearance',
   );

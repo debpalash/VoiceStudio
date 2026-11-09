@@ -310,15 +310,15 @@ def find_ffmpeg():
     candidate = _acquired_bundled("ffmpeg")
     if candidate:
         return candidate
-    # 4. Well-known system paths + PATH lookup
-    common = [
+    # Check conventional installations before falling back to PATH.
+    candidates = [
         "/opt/homebrew/bin/ffmpeg",
         "/usr/local/bin/ffmpeg",
         *windows_tool_candidates("ffmpeg"),
         "ffmpeg",
     ]
-    for path in common:
-        resolved = shutil.which(path)
+    for candidate in candidates:
+        resolved = shutil.which(candidate)
         if resolved and _binary_runs(resolved):
             return resolved
     logger.warning("ffmpeg not found (or not runnable) in env, imageio, or system PATH")
@@ -518,68 +518,74 @@ def ensure_media_tools_on_path() -> list[str]:
     return added
 
 
-async def _spawn_async(cmd, **kwargs):
-    """Try asyncio subprocess; fall back to thread-based subprocess on Windows
-    where ProactorEventLoop may not be available (e.g. under uvicorn --reload)."""
+class _ThreadProcess:
+    uses_sync_pipes = True
+
+    def __init__(self, popen):
+        self._popen = popen
+        self._returncode = popen.returncode
+
+    @property
+    def stdin(self):
+        return self._popen.stdin
+
+    @property
+    def stdout(self):
+        return self._popen.stdout
+
+    @property
+    def stderr(self):
+        return self._popen.stderr
+
+    @property
+    def pid(self):
+        return self._popen.pid
+
+    @property
+    def returncode(self):
+        return self._returncode
+
+    async def communicate(self, input=None):
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(None, self._popen.communicate, input)
+        self._returncode = self._popen.returncode
+        return result
+
+    async def wait(self):
+        if self._returncode is None:
+            loop = asyncio.get_running_loop()
+            self._returncode = await loop.run_in_executor(None, self._popen.wait)
+        return self._returncode
+
+    def kill(self):
+        return self._popen.kill()
+
+    def terminate(self):
+        return self._popen.terminate()
+
+
+async def _spawn_in_thread(cmd, **kwargs):
+    popen_kwargs = dict(kwargs)
+    popen_kwargs.setdefault("stdin", None)
+    popen_kwargs.setdefault("stdout", asyncio.subprocess.PIPE)
+    popen_kwargs.setdefault("stderr", asyncio.subprocess.PIPE)
+    for pipe_name in ("stdin", "stdout", "stderr"):
+        if popen_kwargs[pipe_name] == asyncio.subprocess.PIPE:
+            popen_kwargs[pipe_name] = subprocess.PIPE
+
+    loop = asyncio.get_running_loop()
+    popen = await loop.run_in_executor(
+        None, lambda: subprocess.Popen(cmd, **popen_kwargs)
+    )
+    return _ThreadProcess(popen)
+
+
+async def _create_subprocess(cmd, **kwargs):
     try:
         return await asyncio.create_subprocess_exec(*cmd, **kwargs)
     except NotImplementedError:
-        logger.debug("asyncio subprocess not supported, falling back to thread-based subprocess")
-        return await _spawn_thread_fallback(cmd, **kwargs)
-
-
-async def _spawn_thread_fallback(cmd, **kwargs):
-    """Run a subprocess synchronously in a thread via subprocess.Popen."""
-    stdout = kwargs.pop("stdout", asyncio.subprocess.PIPE)
-    stderr = kwargs.pop("stderr", asyncio.subprocess.PIPE)
-    stdin = kwargs.pop("stdin", None)
-    loop = asyncio.get_running_loop()
-
-    def _run():
-        return subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE if stdout == asyncio.subprocess.PIPE else stdout,
-            stderr=subprocess.PIPE if stderr == asyncio.subprocess.PIPE else stderr,
-            stdin=subprocess.PIPE if stdin == asyncio.subprocess.PIPE else stdin,
-            **kwargs,  # forward cwd / env / etc. so the fallback matches the async call
-        )
-
-    proc = await loop.run_in_executor(None, _run)
-    # Wrap the Popen process to match asyncio.subprocess.Process interface
-    class _AsyncCompatProc:
-        def __init__(self, popen):
-            self._popen = popen
-            self.returncode = popen.returncode
-            self.stdin = popen.stdin
-            self.stdout = popen.stdout
-            self.stderr = popen.stderr
-            self.pid = popen.pid
-            # These are plain SYNC pipes (io.BufferedReader), NOT asyncio
-            # StreamReaders — so callers must not `await proc.stderr.read()` on
-            # this wrapper. `communicate()`/`wait()` below are the only async
-            # entry points. run_proc_streaming_stderr checks this flag and
-            # degrades to communicate() on the fallback loop instead of awaiting
-            # the sync pipe (which raised "a coroutine or an awaitable is
-            # required" and crashed the demucs step under uvicorn --reload).
-            self.uses_sync_pipes = True
-
-        async def communicate(self, input=None):
-            out, err = await loop.run_in_executor(None, self._popen.communicate, input)
-            self.returncode = self._popen.returncode
-            return out, err
-
-        async def wait(self):
-            code = await loop.run_in_executor(None, self._popen.wait)
-            self.returncode = code
-            return code
-
-        def kill(self):
-            self._popen.kill()
-
-        def terminate(self):
-            self._popen.terminate()
-
-    return _AsyncCompatProc(proc)
+        logger.debug("The active event loop cannot launch subprocesses; using a worker thread")
+        return await _spawn_in_thread(cmd, **kwargs)
 
 
 async def spawn_subprocess(*args, **kwargs):
@@ -607,7 +613,7 @@ async def _spawn_with_retry(cmd, **kwargs):
     last_err = None
     for _ in range(5):
         try:
-            return await _spawn_async(cmd, **kwargs)
+            return await _create_subprocess(cmd, **kwargs)
         except BlockingIOError as e:
             last_err = e
             if e.errno != errno.EAGAIN:
@@ -620,8 +626,6 @@ async def _spawn_with_retry(cmd, **kwargs):
                 await asyncio.sleep(delay)
                 delay *= 2
                 continue
-            raise
-        except Exception:
             raise
     raise last_err if last_err else RuntimeError("spawn failed")
 

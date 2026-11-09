@@ -93,3 +93,37 @@ it('unlocks through the dedicated endpoint and retains retry controls on failure
   );
   expect(screen.getByRole('button', { name: 'common.confirm' })).toBeEnabled();
 });
+
+function mountWith(profile: Partial<Profile>) {
+  render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <ProfileConsent profile={{ id: 'p/1', ...profile } as Profile} />
+    </QueryClientProvider>,
+  );
+}
+
+it.each([
+  ['voice_profile.attest_own_voice', 'own_voice'],
+  ['voice_profile.attest_permission', 'speaker_permission'],
+])('%s records the consent basis needed before the voice can sync', async (label, basis) => {
+  mocks.api.mockResolvedValue({});
+  mountWith({});
+  fireEvent.click(screen.getByText(label));
+  await waitFor(() => expect(mocks.api).toHaveBeenCalled());
+  const [path, init] = mocks.api.mock.calls[0];
+  expect(path).toBe('/profiles/p%2F1/attestation');
+  expect(init.method).toBe('POST');
+  expect(JSON.parse(init.body)).toEqual({ basis });
+});
+
+it('an attested voice shows its basis and can clear it', async () => {
+  mocks.api.mockResolvedValue({});
+  mountWith({ consent_basis: 'speaker_permission', consent_attested_at: '2026-10-16T09:00:00Z' });
+  expect(screen.getByText('voice_profile.attested_permission')).toBeInTheDocument();
+  fireEvent.click(screen.getByText('voice_profile.attest_clear'));
+  await waitFor(() => expect(mocks.api).toHaveBeenCalled());
+  expect(mocks.api.mock.calls[0][0]).toBe('/profiles/p%2F1/attestation');
+  expect(mocks.api.mock.calls[0][1].method).toBe('DELETE');
+});

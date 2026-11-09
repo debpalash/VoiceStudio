@@ -63,7 +63,7 @@ try {
   assert(!('base_url' in calls[0].body));
   reject = true;
   await page.getByRole('button', { name: 'Test', exact: true }).click();
-  await page.getByRole('alert').filter({ hasText: 'Failed to save' }).waitFor();
+  await page.getByRole('alert').filter({ hasText: 'Save failed.' }).waitFor();
   assert.equal(calls.filter((call) => call.kind === 'test').length, 1);
   reject = false;
   await page.getByRole('button', { name: 'Fetch models', exact: true }).click();

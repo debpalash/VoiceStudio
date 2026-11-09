@@ -1,132 +1,129 @@
-"""MCP describe_voice / design_voice: agents can design a voice profile.
-
-The tools wrap ``POST /design/describe`` and ``POST /profiles`` (kind=design).
-A stub app stands in for the backend: the real describe router (pure CPU, no
-model) plus a ``/profiles`` endpoint that records the form it receives.
-"""
 import asyncio
 import json
-import os
-import sys
-
-os.environ.setdefault("OMNIVOICE_MODEL", "test")
-os.environ.setdefault("OMNIVOICE_DISABLE_FILE_LOG", "1")
+from dataclasses import dataclass, field
 
 import pytest
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
 
 pytest.importorskip("mcp")
 
 
-def _stub_app(received: list):
-    from fastapi import FastAPI, Form, Request, Response
-
-    from api.routers.describe_voice import router as describe_router
-
-    app = FastAPI()
-    app.include_router(describe_router)
-
-    @app.post("/profiles")
-    async def create_profile(
-        name: str = Form(...),
-        kind: str = Form("clone"),
-        vd_states: str = Form(""),
-        instruct: str = Form(""),
-        language: str = Form("Auto"),
-    ):
-        received.append({
-            "name": name, "kind": kind, "vd_states": vd_states,
-            "instruct": instruct, "language": language,
-        })
-        return {"id": "abcd1234", "name": name, "kind": kind}
-
-    @app.post("/generate")
-    async def generate(request: Request):
-        form = await request.form()
-        received.append({"generate": dict(form)})
-        return Response(b"RIFF", media_type="audio/wav", headers={"X-Audio-Id": "a1"})
-
-    return app
+def _call(server, tool, **arguments):
+    reply = asyncio.run(server.call_tool(tool, arguments))
+    blocks = reply[0] if isinstance(reply, tuple) else reply
+    return json.loads(blocks[0].text)
 
 
-def _call(mcp, tool: str, args: dict) -> dict:
-    result = asyncio.run(mcp.call_tool(tool, args))
-    content = result[0] if isinstance(result, tuple) else result
-    return json.loads(content[0].text)
+@dataclass
+class BackendJournal:
+    profiles: list[dict] = field(default_factory=list)
+    generations: list[dict] = field(default_factory=list)
 
 
 @pytest.fixture
-def server(monkeypatch):
-    monkeypatch.delenv("OMNIVOICE_API_URL", raising=False)
-    from mcp_server import create_mcp_server
-
-    received: list = []
-    return create_mcp_server(app=_stub_app(received)), received
-
-
-def test_design_tools_are_registered(server):
-    mcp, _ = server
-    names = {t.name for t in asyncio.run(mcp.list_tools())}
-    assert {"describe_voice", "design_voice"} <= names
-
-
-def test_describe_voice_previews_without_saving(server):
-    mcp, received = server
-    out = _call(mcp, "describe_voice", {"description": "an old man with a deep voice"})
-    assert out["attrs"]["Gender"] == "male"
-    assert out["attrs"]["Age"] == "elderly"
-    assert received == []
-
-
-def test_design_voice_saves_a_design_profile(server):
-    mcp, received = server
-    out = _call(mcp, "design_voice", {
-        "name": "Innkeeper",
-        "description": "an elderly woman, british accent, gravelly",
-    })
-    assert out["profile_id"] == "abcd1234"
-    assert out["kind"] == "design"
-    assert "gravelly" in " ".join(out["unmatched"])
-
-    (form,) = received
-    assert form["kind"] == "design"
-    states = json.loads(form["vd_states"])
-    assert states["Gender"] == "female"
-    assert states["EnglishAccent"] == "british accent"
-    assert "female" in form["instruct"]
-
-
-def test_design_voice_refuses_a_description_with_no_attributes(server):
-    mcp, received = server
-    out = _call(mcp, "design_voice", {"name": "Nobody", "description": "gravelly"})
-    assert "error" in out
-    assert out["unmatched"] == ["gravelly"]
-    assert received == []
-
-
-def test_design_voice_save_waits_as_long_as_a_generation(server, monkeypatch):
-    # The save renders the identity sample through the GPU queue; the default
-    # 120 s POST deadline could give up while the profile still gets saved.
+def voice_tools(monkeypatch):
+    from fastapi import FastAPI, Request, Response
     import mcp_server
 
-    kinds = []
-    real = mcp_server._post_timeout_s
-    monkeypatch.setattr(mcp_server, "_post_timeout_s",
-                        lambda kind="", text="": kinds.append(kind) or real(kind, text))
-    mcp, _ = server
-    _call(mcp, "design_voice", {"name": "Guard", "description": "a young man"})
-    assert "generate" in kinds
+    journal = BackendJournal()
+    backend = FastAPI()
+
+    @backend.post("/design/describe")
+    async def map_description(request: Request):
+        words = (await request.json())["description"].split()
+        known = [word for word in words if word in {"male", "female", "elderly", "canadian"}]
+        if not known:
+            return {"attrs": {}, "instruct": "", "matched": [], "unmatched": words}
+        attributes = {
+            "gender": "female" if "female" in known else "male",
+            "age": "elderly" if "elderly" in known else "Auto",
+            "accent": "canadian" if "canadian" in known else "Auto",
+        }
+        return {
+            "attrs": attributes,
+            "instruct": "Render the mapped identity consistently.",
+            "matched": known,
+            "unmatched": [word for word in words if word not in known],
+        }
+
+    @backend.post("/profiles")
+    async def store_profile(request: Request):
+        fields = dict(await request.form())
+        journal.profiles.append(fields)
+        return {"id": "designed-42", "name": fields["name"], "kind": fields["kind"]}
+
+    @backend.post("/generate")
+    async def synthesize(request: Request):
+        journal.generations.append(dict(await request.form()))
+        return Response(b"WAVE", headers={"X-Audio-Id": "audio42"})
+
+    monkeypatch.delenv("OMNIVOICE_API_URL", raising=False)
+    return mcp_server.create_mcp_server(app=backend), journal
 
 
-@pytest.mark.parametrize("language, expected", [(None, None), ("Auto", "Auto"), ("fr", "fr")])
-def test_generate_speech_leaves_language_to_the_profile_unless_given(server, language, expected):
-    # An explicit "Auto" makes the backend ignore a profile's saved language
-    # (#533), so an omitted language must stay omitted.
-    mcp, received = server
-    args = {"text": "Hello there.", "profile_id": "abcd1234"}
-    if language is not None:
-        args["language"] = language
-    asyncio.run(mcp.call_tool("generate_speech", args))
-    (entry,) = [r["generate"] for r in received if "generate" in r]
-    assert entry.get("language") == expected
+def test_voice_design_commands_are_exposed(voice_tools):
+    server, _journal = voice_tools
+    exposed = {definition.name for definition in asyncio.run(server.list_tools())}
+    assert exposed.issuperset({"describe_voice", "design_voice"})
+
+
+def test_description_preview_has_no_profile_side_effect(voice_tools):
+    server, journal = voice_tools
+    preview = _call(server, "describe_voice", description="female elderly")
+
+    assert journal.profiles == []
+    assert preview["attrs"] == {"gender": "female", "age": "elderly", "accent": "Auto"}
+
+
+def test_profile_save_uses_the_preview_recipe(voice_tools):
+    server, journal = voice_tools
+    result = _call(
+        server,
+        "design_voice",
+        name="Northwind",
+        description="male canadian luminous",
+        language="en-CA",
+    )
+    sent = journal.profiles[0]
+
+    assert (sent["kind"], sent["language"], bool(sent["instruct"])) == ("design", "en-CA", True)
+    assert json.loads(sent["vd_states"]) == {
+        "gender": "male", "age": "Auto", "accent": "canadian",
+    }
+    assert result["profile_id"] == "designed-42"
+    assert result["unmatched"] == ["luminous"]
+
+
+def test_unrecognized_words_do_not_create_a_profile(voice_tools):
+    server, journal = voice_tools
+    refusal = _call(server, "design_voice", name="Blank", description="silvery textured")
+
+    assert journal.profiles == []
+    assert refusal["unmatched"] == ["silvery", "textured"]
+    assert refusal.get("error")
+
+
+def test_profile_creation_selects_the_long_timeout(monkeypatch, voice_tools):
+    import mcp_server
+
+    requested_modes = []
+    monkeypatch.setattr(
+        mcp_server,
+        "_post_timeout_s",
+        lambda mode=None, text=None: requested_modes.append(mode) or 123,
+    )
+    server, _journal = voice_tools
+    _call(server, "design_voice", name="Measured", description="female")
+    assert requested_modes.count("generate") == 1
+
+
+@pytest.mark.parametrize("argument", [pytest.param(None, id="omitted"), "Auto", "de"])
+def test_speech_language_form_distinguishes_omission(voice_tools, argument):
+    server, journal = voice_tools
+    request = {"text": "Guten Tag"}
+    if argument is not None:
+        request["language"] = argument
+    _call(server, "generate_speech", **request)
+
+    posted = journal.generations[-1]
+    assert posted.get("language") == argument
+    assert ("language" in posted) is (argument is not None)

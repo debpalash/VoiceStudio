@@ -7,65 +7,84 @@ import { apiJson, apiPost } from '../api/client';
 import { Button, Input } from '../ui';
 
 /**
- * HfTokenCard — a compact, single-line Hugging Face token input that lives in
- * the wizard's pinned action area, right by the "Waiting for required models…"
- * / Continue button. A free token gives authenticated downloads (faster,
- * higher rate limits, fewer stalls) and unlocks gated models (pyannote
- * diarization). Persisted via the same encrypted-app-token endpoint Settings uses, so
- * it survives restarts.
+ * Compact one-line Hugging Face token card, pinned next to the wizard's
+ * Continue action. A token buys authenticated downloads, higher rate limits
+ * and access to gated models.
  *
- * Before pitching a token, it checks the resolver state (same endpoint the
- * Settings → API Keys panel uses, `ApiKeysPanel.jsx`) so a user who already
- * has a locally configured token — from the app store, an env var, or `huggingface-cli
- * login` — sees that instead of a blind "add a token" prompt (#FR-006).
- * Replacing an already-active token is gated behind an explicit "Replace…"
- * click rather than being one blind paste-and-Save away, since Save persists
- * in the app store and the selected local Hub token file.
- *
- * @param {string=} className extra class on the root (e.g. layout pinning).
+ * The card asks the token resolver what is already configured before it
+ * offers anything: with no token it shows the paste form, with an active one
+ * it shows where the token comes from and keeps the form hidden. Overwriting
+ * an active token takes an explicit click on "Replace…", and the form then
+ * carries a warning saying so.
  */
+
+const SOURCE_IDS = ['app', 'env', 'hf-cli'];
+const SOURCE_LABELS = {
+  app: ['settings.hf_source_app_label', 'VoiceStudio (encrypted, recommended)'],
+  env: ['settings.hf_source_env_label', 'Environment variable'],
+  'hf-cli': ['settings.hf_source_cli_label', 'HuggingFace CLI'],
+};
+
+// The resolver answers with exactly one row per source. Anything else means
+// we cannot tell what is configured, so it counts as a failed read.
+function readSourceRows(data) {
+  const rows = data?.sources;
+  if (!Array.isArray(rows) || rows.length !== SOURCE_IDS.length) return null;
+  const seen = new Set();
+  for (const row of rows) {
+    if (!row || typeof row.set !== 'boolean' || !SOURCE_IDS.includes(row.source)) return null;
+    seen.add(row.source);
+  }
+  return seen.size === SOURCE_IDS.length ? rows : null;
+}
+
 export default function HfTokenCard({ className = '' }) {
   const { t } = useTranslation();
   const [hfToken, setHfToken] = useState('');
   const [hfState, setHfState] = useState('idle'); // idle | saving | saved | error
 
-  // Resolver state (mirrors ApiKeysPanel's `state`/`refresh` pair): null while
-  // the first GET is in flight, 'error' when it fails — either way we never
-  // want to flash a false "you have no token" pitch before we actually know.
-  const [tokenState, setTokenState] = useState(null);
-  const [checkFailed, setCheckFailed] = useState(false);
-  const [checkAttempt, setCheckAttempt] = useState(0);
-  // Explicit gate: revealing the paste-a-token form when a token is already
-  // active requires this deliberate click, so Save can never blind-clobber a
-  // working token.
-  const [replacing, setReplacing] = useState(false);
+  const [sources, setSources] = useState(null); // null until the resolver answers
+  const [stateFailed, setStateFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  // 'keep' shows an already-active token as is; 'overwrite' opens the form over it.
+  const [intent, setIntent] = useState('keep');
 
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const data = await apiJson('/system/hf-token/state');
-        if (
-          !Array.isArray(data?.sources) ||
-          data.sources.length !== 3 ||
-          !['app', 'env', 'hf-cli'].every((source) =>
-            data.sources.some((row) => row?.source === source && typeof row.set === 'boolean'),
-          )
-        )
-          throw new Error('Invalid token state');
-        if (!cancelled) setTokenState(data);
-      } catch {
-        if (!cancelled) setCheckFailed(true);
-      }
-    })();
+    let live = true;
+    apiJson('/system/hf-token/state')
+      .then((data) => {
+        if (!live) return;
+        const rows = readSourceRows(data);
+        if (rows) setSources(rows);
+        else setStateFailed(true);
+      })
+      .catch(() => {
+        if (live) setStateFailed(true);
+      });
     return () => {
-      cancelled = true;
+      live = false;
     };
-  }, [checkAttempt]);
+  }, [attempt]);
+
+  const retryStateCheck = () => {
+    setStateFailed(false);
+    setSources(null);
+    setAttempt((n) => n + 1);
+  };
+
+  const activeRow = sources?.find((row) => row.set) ?? null;
+
+  const overwriting = Boolean(activeRow) && intent === 'overwrite';
+
+  const backOutOfOverwrite = () => {
+    setIntent('keep');
+    setHfToken('');
+    setHfState('idle');
+  };
 
   const saveHfToken = async () => {
     const value = hfToken.trim();
-    if (!value || hfState === 'saving' || tokenState == null || checkFailed) return;
+    if (!value || hfState === 'saving' || !sources || stateFailed) return;
     setHfState('saving');
     try {
       await apiPost('/api/settings/hf-token', { token: value });
@@ -92,64 +111,40 @@ export default function HfTokenCard({ className = '' }) {
     );
   }
 
-  if (checkFailed) {
+  if (stateFailed) {
     return (
       <div
         className={cn(
-          'flex flex-wrap items-center gap-2 rounded-md bg-danger/10 px-3 py-2 text-sm',
+          'flex flex-wrap items-center gap-2 rounded-md border border-transparent bg-danger/[0.08] px-3 py-2 text-sm',
           className,
         )}
       >
-        <span role="alert" className="text-danger">
+        <span role="alert" className="font-semibold text-danger">
           {t('common.error', 'Something went wrong')}
         </span>
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => {
-            setCheckFailed(false);
-            setTokenState(null);
-            setCheckAttempt((attempt) => attempt + 1);
-          }}
-        >
+        <Button variant="ghost" size="sm" onClick={retryStateCheck}>
           {t('bootstrap.retry', 'Retry')}
         </Button>
       </div>
     );
   }
 
-  // Still checking — never flash the "add a token" pitch before we know
-  // whether one is already active.
-  if (tokenState == null) {
+  if (!sources) {
     return (
       <div
         className={cn(
-          'flex items-center gap-2 rounded-md border border-transparent bg-primary/[0.07] px-3 py-2 text-sm text-fg-muted',
+          'flex flex-wrap items-center gap-2 rounded-md border border-transparent bg-primary/[0.07] px-3 py-2 text-sm',
           className,
         )}
       >
         <Zap size={16} className="shrink-0 text-primary" aria-hidden="true" />
-        {t('firstrun.checking', 'checking…')}
+        <span className="text-muted-foreground">{t('firstrun.checking', 'checking…')}</span>
       </div>
     );
   }
 
-  const SOURCE_LABELS = {
-    app: t('settings.hf_source_app_label', {
-      defaultValue: 'VoiceStudio (encrypted, recommended)',
-    }),
-    env: t('settings.hf_source_env_label', {
-      defaultValue: 'Environment variable',
-    }),
-    'hf-cli': t('settings.hf_source_cli_label', {
-      defaultValue: 'HuggingFace CLI',
-    }),
-  };
-  const activeRow = tokenState?.sources?.find((row) => row.set);
-
-  // A token is already configured locally and the user hasn't asked to replace
-  // it — show the satisfied state, not the pitch (#FR-006).
-  if (activeRow && !replacing) {
+  if (activeRow && !overwriting) {
+    const [labelKey, labelFallback] = SOURCE_LABELS[activeRow.source] ?? [];
     return (
       <div
         className={cn(
@@ -157,20 +152,20 @@ export default function HfTokenCard({ className = '' }) {
           className,
         )}
       >
-        <Check size={16} className="shrink-0 text-success" aria-hidden="true" />
-        <span className="font-semibold text-success">
+        <span className="inline-flex items-center gap-1.5 font-semibold text-success">
+          <Check size={14} aria-hidden="true" />
           {t('firstrun.hf_token_active_using', {
-            source: SOURCE_LABELS[activeRow.source] || activeRow.source,
-            masked: activeRow.masked || '',
             defaultValue: 'Hugging Face token found in {{source}} — {{masked}}',
+            source: labelKey ? t(labelKey, labelFallback) : activeRow.source,
+            masked: activeRow.masked || '',
           })}
         </span>
         <button
           type="button"
           className="cursor-pointer appearance-none whitespace-nowrap border-0 bg-transparent p-0 text-[0.76rem] text-primary underline hover:no-underline"
-          onClick={() => setReplacing(true)}
+          onClick={() => setIntent('overwrite')}
         >
-          {t('firstrun.hf_token_replace', 'Replace token…')}
+          {t('firstrun.hf_token_replace', 'Replace…')}
         </button>
       </div>
     );
@@ -185,17 +180,21 @@ export default function HfTokenCard({ className = '' }) {
       )}
     >
       <Zap size={16} className="shrink-0 text-primary" aria-hidden="true" />
-      <span className={cn('font-semibold', !(replacing && activeRow) && 'max-[560px]:hidden')}>
-        {replacing && activeRow
-          ? t(
-              'firstrun.hf_token_replace_warning',
-              'This replaces the token saved for this app. It does not revoke the old token.',
-            )
-          : t(
-              'firstrun.hf_token_inline_prompt',
-              'Speed up downloads with a free Hugging Face token',
-            )}
-      </span>
+      {overwriting ? (
+        <span className="font-semibold">
+          {t(
+            'firstrun.hf_token_replace_warning',
+            'This replaces the token saved for this app. It does not revoke the old token.',
+          )}
+        </span>
+      ) : (
+        <span className="font-semibold max-[560px]:hidden">
+          {t(
+            'firstrun.hf_token_inline_prompt',
+            'Speed up downloads with a free Hugging Face token',
+          )}
+        </span>
+      )}
       <Input
         size="sm"
         className="min-w-[130px] flex-1 basis-[180px]"
@@ -227,19 +226,15 @@ export default function HfTokenCard({ className = '' }) {
           ? t('firstrun.hf_token_saving', 'saving…')
           : t('firstrun.hf_token_save', 'Save')}
       </Button>
-      {replacing && activeRow && (
-        <button
-          type="button"
-          className="cursor-pointer appearance-none whitespace-nowrap border-0 bg-transparent p-0 text-[0.76rem] text-fg-muted underline hover:no-underline"
+      {overwriting && (
+        <Button
+          variant="ghost"
+          size="sm"
           disabled={hfState === 'saving'}
-          onClick={() => {
-            setReplacing(false);
-            setHfToken('');
-            setHfState('idle');
-          }}
+          onClick={backOutOfOverwrite}
         >
           {t('common.cancel', 'Cancel')}
-        </button>
+        </Button>
       )}
       <button
         type="button"

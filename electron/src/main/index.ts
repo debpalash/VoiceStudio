@@ -1,4 +1,5 @@
 import { createTrayIcon } from './tray-icon';
+import { MAC_TRAFFIC_LIGHTS } from '../shared/utils/windowChrome';
 import { installWatchFolders } from './watch-folders';
 import { installNativeCapture } from './native-capture';
 import { isTrustedRenderer } from './trusted-renderer';
@@ -8,10 +9,12 @@ import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, session, shell, Tray } from 'electron';
 import { electronApp, is, optimizer } from '@electron-toolkit/utils';
 import { BackendSupervisor, backendRoot } from './backend';
+import { applySavedTorchVariant } from './torch-choice';
 import { registerIpc, wireWindowMaximizeEvents } from './ipc';
 import { APP_ORIGIN, installAppProtocol, registerAppScheme } from './protocol';
-import { startDevBackendProxy } from './dev-backend-proxy';
+import { electronProxyPort, startDevBackendProxy } from './dev-backend-proxy';
 import { DesktopUpdater, registerUpdateIpc } from './updater';
+import { scheduleUpdateChecks } from './update-schedule';
 import { registerRepairAgents } from './repair-agents';
 import { installRendererPermissions } from './media-permissions';
 import { installBlankWindowGuard } from './blank-window-guard';
@@ -22,7 +25,11 @@ import {
   observeMainProcessTask,
 } from './main-error-journal';
 import { activateLiveWindow, isLiveWindow } from './window-safety';
+import { startAccount } from './account';
 import { installAppIdentity, installMacApplicationMenu } from './app-identity';
+import { APP_ID, PRODUCT_NAME } from '../../../config/app-config.mjs';
+import { restoreSecurityScopedDirectories } from './security-scoped-files';
+import { devInstanceFile, recordDevInstance, waitForPreviousDevInstance } from './dev-lock-handoff';
 
 // Packaged GUI launches can inherit a short-lived terminal pipe. When that
 // launcher exits, diagnostic console writes emit EPIPE asynchronously and can
@@ -31,7 +38,6 @@ import { installAppIdentity, installMacApplicationMenu } from './app-identity';
 process.stdout?.on('error', () => {});
 process.stderr?.on('error', () => {});
 
-const APP_USER_MODEL_ID = 'com.voicestudio.desktop';
 const here = dirname(fileURLToPath(import.meta.url));
 const PRELOAD_PATH = join(here, '../preload/index.mjs');
 const RENDERER_DIR = join(here, '../renderer');
@@ -45,7 +51,7 @@ registerAppScheme();
 
 const mainErrors = new MainErrorJournal(
   join(app.getPath('userData'), 'main-process-errors.json'),
-  app.getVersion(),
+  __APP_VERSION__,
 );
 installMainProcessErrorHandlers(mainErrors);
 
@@ -58,7 +64,12 @@ let closeCapture: (() => void) | null = null;
 let closeDevProxy: (() => Promise<void>) | null = null;
 let closeUpdates: (() => void) | null = null;
 let closeRepairAgents: (() => void) | null = null;
+let closeAccount: (() => void) | null = null;
+let closeDirectoryScopes: (() => void) | null = null;
 let quitPreparation: Promise<void> | null = null;
+// False for quits that must not install a downloaded update: a relaunch, or
+// the uninstall exit. Read when the updater is torn down.
+let installUpdateOnQuit = true;
 
 const PERSISTENCE_FLUSH_REQUEST = 'app:flush-persistence';
 const PERSISTENCE_FLUSHED = 'app:persistence-flushed';
@@ -98,11 +109,15 @@ async function tearDownNativeResources(): Promise<void> {
   closeUpdates = null;
   closeRepairAgents?.();
   closeRepairAgents = null;
+  closeAccount?.();
+  closeAccount = null;
   tray?.destroy();
   tray = null;
   const proxyTeardown = closeDevProxy?.() ?? Promise.resolve();
   closeDevProxy = null;
   await Promise.allSettled([supervisor?.shutdown() ?? Promise.resolve(), proxyTeardown]);
+  closeDirectoryScopes?.();
+  closeDirectoryScopes = null;
 }
 
 function beginOrderlyQuit(flushPersistence = true): Promise<void> {
@@ -124,6 +139,11 @@ function brandIconPath(file: string): string {
     : join(backendRoot(), 'electron', 'build', 'icons', file);
 }
 
+ipcMain.handle(
+  'app:is-fullscreen',
+  (event) => BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false,
+);
+
 function createWindow(): BrowserWindow {
   const appUrl =
     is.dev && process.env.ELECTRON_RENDERER_URL
@@ -139,7 +159,7 @@ function createWindow(): BrowserWindow {
     backgroundColor: BACKGROUND,
     titleBarStyle: 'hidden',
     ...(process.platform === 'darwin'
-      ? { trafficLightPosition: { x: 12, y: 10 } }
+      ? { trafficLightPosition: MAC_TRAFFIC_LIGHTS }
       : { titleBarOverlay: OVERLAY }),
     webPreferences: {
       preload: PRELOAD_PATH,
@@ -150,6 +170,8 @@ function createWindow(): BrowserWindow {
     },
   });
 
+  win.on('enter-full-screen', () => win.webContents.send('app:fullscreen', true));
+  win.on('leave-full-screen', () => win.webContents.send('app:fullscreen', false));
   win.on('ready-to-show', () => activateLiveWindow(win));
   win.on('close', (event) => {
     if (quitting) return;
@@ -178,6 +200,7 @@ function createWindow(): BrowserWindow {
     process.env.ELECTRON_RENDERER_URL,
     async () => {
       await win.webContents.session.clearCache();
+      installUpdateOnQuit = false;
       app.relaunch();
       // The independent fallback has no mounted persistence handler to flush.
       await beginOrderlyQuit(false);
@@ -225,9 +248,15 @@ async function openOutside(url: string): Promise<void> {
   }
 }
 
-if (process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1' && !app.requestSingleInstanceLock()) {
+const singleInstance = process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1';
+// A dev restart starts the new Electron before the old one has let go of the lock.
+const devInstance =
+  singleInstance && !app.isPackaged ? devInstanceFile(app.getPath('userData')) : null;
+if (devInstance) waitForPreviousDevInstance({ file: devInstance });
+if (singleInstance && !app.requestSingleInstanceLock()) {
   app.quit();
 } else {
+  if (devInstance) recordDevInstance(devInstance);
   app.on('second-instance', () => {
     activateLiveWindow(mainWindow);
   });
@@ -235,11 +264,13 @@ if (process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1' && !app.requestSing
   void app
     .whenReady()
     .then(async () => {
-      electronApp.setAppUserModelId(APP_USER_MODEL_ID);
+      electronApp.setAppUserModelId(APP_ID);
       if (process.platform === 'darwin') installMacApplicationMenu(app, Menu, __APP_VERSION__);
       installRendererPermissions(session.defaultSession, process.env.ELECTRON_RENDERER_URL);
       app.on('browser-window-created', (_event, window) => optimizer.watchWindowShortcuts(window));
+      closeDirectoryScopes = restoreSecurityScopedDirectories();
 
+      applySavedTorchVariant();
       const backend = new BackendSupervisor();
       supervisor = backend;
       console.log(`[supervisor] backend root: ${backendRoot()} (packaged=${app.isPackaged})`);
@@ -257,10 +288,24 @@ if (process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1' && !app.requestSing
         () => mainWindow,
         async () => {
           quitting = true;
+          installUpdateOnQuit = false;
           await tearDownNativeResources();
           app.exit(0);
         },
       );
+      // Before backend.start(): the backend inherits the token-bridge env.
+      closeAccount = await startAccount({
+        getMainWindow: () => mainWindow,
+        isRemoteBackend: () => backend.connection.remote,
+        notifyBackend: async (path) => {
+          if (backend.connection.remote) return;
+          await fetch(`${backend.baseUrl}${path}`, {
+            method: 'POST',
+            headers: backend.requestHeaders(),
+            signal: AbortSignal.timeout(5000),
+          });
+        },
+      });
       closeRepairAgents = await registerRepairAgents(
         backend,
         backendRoot(),
@@ -271,7 +316,7 @@ if (process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1' && !app.requestSing
         const proxy = await startDevBackendProxy(
           () => backend.baseUrl,
           () => backend.requestHeaders(),
-          Number(process.env.VOICESTUDIO_ELECTRON_PROXY_PORT) || 3903,
+          electronProxyPort(process.env.VOICESTUDIO_ELECTRON_PROXY_PORT),
           process.env.ELECTRON_RENDERER_URL
             ? [new URL(process.env.ELECTRON_RENDERER_URL).origin]
             : [],
@@ -288,17 +333,18 @@ if (process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1' && !app.requestSing
           quitting = true;
         },
       );
-      const startupUpdateCheck = setTimeout(
-        () => observeMainProcessTask(updater.check(true), mainErrors, 'Startup update check'),
-        10_000,
-      );
-      const periodicUpdateCheck = setInterval(
-        () => observeMainProcessTask(updater.check(true), mainErrors, 'Periodic update check'),
-        6 * 60 * 60 * 1_000,
-      );
+      // 10 s after launch, then every 6 h; a failed check retries after 1 h,
+      // doubling back to 6 h.
+      const stopUpdateChecks = scheduleUpdateChecks(() => {
+        const check = updater.checkInBackground();
+        observeMainProcessTask(check, mainErrors, 'Background update check');
+        return check;
+      });
       closeUpdates = () => {
-        clearTimeout(startupUpdateCheck);
-        clearInterval(periodicUpdateCheck);
+        // A downloaded update installs as the app quits (electron-updater's
+        // autoInstallOnAppQuit, on the "quit" event after this teardown).
+        updater.prepareForQuit(installUpdateOnQuit);
+        stopUpdateChecks();
         closeUpdateIpc();
       };
       mainWindow = createWindow();
@@ -307,10 +353,10 @@ if (process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1' && !app.requestSing
         () => backend.baseUrl,
         () => backend.requestHeaders(),
       );
-      const icon = nativeImage.createFromPath(brandIconPath('icon.png'));
+      const icon = nativeImage.createFromPath(brandIconPath('icon-macos.png'));
       if (process.platform === 'darwin') app.dock?.setIcon(icon);
       tray = new Tray(createTrayIcon(brandIconPath('32x32.png')));
-      tray.setToolTip('VoiceStudio');
+      tray.setToolTip(PRODUCT_NAME);
       closeCapture = installNativeCapture(PRELOAD_PATH, tray, () => mainWindow);
       tray.on('click', () => {
         if (!isLiveWindow(mainWindow)) mainWindow = createWindow();

@@ -1,5 +1,7 @@
 mod cleanup;
 mod shortcuts;
+#[cfg(target_os = "macos")]
+mod macos_event_pump;
 mod watch_folder_core;
 #[cfg(target_os = "linux")]
 mod wayland_shortcut_core;

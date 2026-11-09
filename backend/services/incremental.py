@@ -123,6 +123,9 @@ _FIT_PARAM_DEFAULTS = {
 }
 
 
+_MIN_AUDIO_RATE_DEFAULT = 0.85  # mirrors FitParams.min_audio_rate
+
+
 def fit_fingerprint(params: dict) -> str:
     """Deterministic hash of the fit configuration for one dub track.
 
@@ -137,6 +140,11 @@ def fit_fingerprint(params: dict) -> str:
         if v is None or v == "":
             v = _FIT_PARAM_DEFAULTS[k]
         payload[k] = _canon_value(k, v)
+    # Added after tracks were already fingerprinted: hashed only when set to a
+    # non-default value, so existing tracks are not flagged stale by an upgrade.
+    min_rate = params.get("min_audio_rate")
+    if min_rate not in (None, "") and float(min_rate) != _MIN_AUDIO_RATE_DEFAULT:
+        payload["min_audio_rate"] = _canon_value("min_audio_rate", min_rate)
     blob = json.dumps(payload, sort_keys=True, ensure_ascii=False)
     return hashlib.sha1(blob.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
 

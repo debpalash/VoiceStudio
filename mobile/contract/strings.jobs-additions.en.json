@@ -1,0 +1,31 @@
+{
+  "mobile": {
+    "jobs": {
+      "title": "Phone processing",
+      "checkpointed": "Completed steps are saved. Cancel and resume when needed.",
+      "power_paused": "Processing paused to protect the battery or cool the phone. Resume when conditions improve.",
+      "background_paused": "Paused in the background. Reopen this task and resume from the saved steps."
+    },
+    "flow": {
+      "import_media": "Import audio or video",
+      "template_clean": "Clean and speak",
+      "template_translate": "Translate and speak",
+      "template_transcribe": "Transcribe and translate",
+      "contains": "Continue if text contains (case-sensitive)",
+      "skip": "When absent, skip {{count}} steps",
+      "skip_label": "Steps to skip when absent",
+      "retries": "Retries: {{count}}",
+      "retries_label": "Retries after an error",
+      "step_transcribe": "Transcribe media",
+      "step_condition": "Condition"
+    },
+    "integration": {
+      "received": "Received content",
+      "review": "Review the shared content before running a task. Nothing starts automatically.",
+      "shortcut_speak": "Open speech",
+      "shortcut_dictate": "Open dictation",
+      "widget_description": "Open speech or dictation. Recording starts only when you tap Start.",
+      "text": "Text"
+    }
+  }
+}

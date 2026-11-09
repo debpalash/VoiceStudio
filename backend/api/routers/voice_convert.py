@@ -8,6 +8,11 @@ audio, and — by default — the take is pitch-preservingly time-stretched
 (ffmpeg atempo, clamped to one well-behaved 0.5–2.0 stage) so it lands near
 the source clip's duration.
 
+With ``keep_delivery`` on ("Keep my delivery", #3421) none of that runs:
+the recording itself goes to an engine that converts speech to speech
+(``services.voice_conversion``), so the speaker's timing, rhythm and
+intonation are kept and only the voice changes.
+
 Deliberately reuses the /generate choke points instead of re-deriving them:
 
 * profile row → conditioning via ``generation._resolve_profile_conditioning``
@@ -32,15 +37,17 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import inspect
 import logging
 import os
 import tempfile
 import time
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from api.dependencies import consumer_generation, require_consumer_reads_admin_writes
 from core.path_security import upload_suffix
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_consumer_reads_admin_writes)])
 logger = logging.getLogger("omnivoice.convert")
 
 #: ffmpeg's atempo filter is well-behaved in [0.5, 2.0] per stage. Convert
@@ -111,7 +118,64 @@ async def _match_source_duration(audio_tensor, sample_rate: int, source_duration
         return audio_tensor
 
 
-async def _transcribe_source(tmp_path: str, *, source_lease=None) -> dict:
+# Whisper's own language table (code -> name), plus the aliases the language
+# picker uses. Kept here (not text_normalization's number-formatting table,
+# which only knows a few dozen languages) so every Whisper-supported pick pins.
+_WHISPER_LANGUAGES = {
+    "en": "english", "zh": "chinese", "de": "german", "es": "spanish", "ru": "russian",
+    "ko": "korean", "fr": "french", "ja": "japanese", "pt": "portuguese", "tr": "turkish",
+    "pl": "polish", "ca": "catalan", "nl": "dutch", "ar": "arabic", "sv": "swedish",
+    "it": "italian", "id": "indonesian", "hi": "hindi", "fi": "finnish", "vi": "vietnamese",
+    "he": "hebrew", "uk": "ukrainian", "el": "greek", "ms": "malay", "cs": "czech",
+    "ro": "romanian", "da": "danish", "hu": "hungarian", "ta": "tamil", "no": "norwegian",
+    "th": "thai", "ur": "urdu", "hr": "croatian", "bg": "bulgarian", "lt": "lithuanian",
+    "la": "latin", "mi": "maori", "ml": "malayalam", "cy": "welsh", "sk": "slovak",
+    "te": "telugu", "fa": "persian", "lv": "latvian", "bn": "bengali", "sr": "serbian",
+    "az": "azerbaijani", "sl": "slovenian", "kn": "kannada", "et": "estonian",
+    "mk": "macedonian", "br": "breton", "eu": "basque", "is": "icelandic", "hy": "armenian",
+    "ne": "nepali", "mn": "mongolian", "bs": "bosnian", "kk": "kazakh", "sq": "albanian",
+    "sw": "swahili", "gl": "galician", "mr": "marathi", "pa": "punjabi", "si": "sinhala",
+    "km": "khmer", "sn": "shona", "yo": "yoruba", "so": "somali", "af": "afrikaans",
+    "oc": "occitan", "ka": "georgian", "be": "belarusian", "tg": "tajik", "sd": "sindhi",
+    "gu": "gujarati", "am": "amharic", "yi": "yiddish", "lo": "lao", "uz": "uzbek",
+    "fo": "faroese", "ht": "haitian creole", "ps": "pashto", "tk": "turkmen",
+    "nn": "nynorsk", "mt": "maltese", "sa": "sanskrit", "lb": "luxembourgish",
+    "my": "myanmar", "bo": "tibetan", "tl": "tagalog", "mg": "malagasy", "as": "assamese",
+    "tt": "tatar", "haw": "hawaiian", "ln": "lingala", "ha": "hausa", "ba": "bashkir",
+    "jw": "javanese", "su": "sundanese", "yue": "cantonese",
+}
+_WHISPER_NAME_TO_CODE = {name: code for code, name in _WHISPER_LANGUAGES.items()} | {
+    "burmese": "my", "valencian": "ca", "flemish": "nl", "haitian": "ht",
+    "letzeburgesch": "lb", "pushto": "ps", "panjabi": "pa", "moldavian": "ro",
+    "moldovan": "ro", "sinhalese": "si", "castilian": "es", "mandarin": "zh",
+    "filipino": "tl", "farsi": "fa",
+    # Names the Electron language picker uses for these Whisper languages.
+    "standard arabic": "ar", "norwegian bokmål": "no", "norwegian nynorsk": "nn",
+    "plateau malagasy": "mg", "jv": "jw", "nb": "no",
+}
+
+
+def _whisper_language(language: "str | None") -> "str | None":
+    """Language name (picker/profile) or ISO code -> Whisper code.
+
+    ``None`` for blank/"Auto"/not a Whisper language, which keeps Whisper's
+    auto-detect.
+    """
+    s = str(language or "").strip().lower()
+    if not s or s == "auto":
+        return None
+    if s in _WHISPER_NAME_TO_CODE:
+        return _WHISPER_NAME_TO_CODE[s]
+    return s if s in _WHISPER_LANGUAGES else None
+
+
+def _is_auto(language: "str | None") -> bool:
+    return str(language or "").strip().lower() in ("", "auto")
+
+
+async def _transcribe_source(
+    tmp_path: str, *, source_lease=None, language: "str | None" = None,
+) -> dict:
     """Active-ASR transcription of the uploaded clip (no word timestamps).
 
     Mirrors POST /transcribe: typed 409 + download CTA before any backend
@@ -138,8 +202,15 @@ async def _transcribe_source(tmp_path: str, *, source_lease=None) -> dict:
         # `load_*`, not `get_*`: the loader runs ensure_loaded() and degrades
         # past an engine whose deep import chain is broken (#1185).
         from services.asr_backend import load_active_asr_backend
-        backend = load_active_asr_backend()
-        return backend.transcribe(tmp_path, word_timestamps=False)
+        backend = load_active_asr_backend(warm=True)
+        kwargs = {"word_timestamps": False}
+        code = _whisper_language(language)
+        # Pin the spoken language: auto-detect on short clips misreads e.g.
+        # Armenian as Russian. Backends without a ``language`` option keep
+        # auto-detecting.
+        if code and "language" in inspect.signature(backend.transcribe).parameters:
+            kwargs["language"] = code
+        return backend.transcribe(tmp_path, **kwargs)
 
     from services.model_manager import _gpu_pool
     release = source_lease.acquire() if source_lease is not None else None
@@ -169,17 +240,128 @@ async def _transcribe_source(tmp_path: str, *, source_lease=None) -> dict:
             release()
 
 
+async def _convert_keeping_delivery(row, profile_id: str, source_path: str) -> dict:
+    """"Keep my delivery" (#3421): speech-to-speech, no transcribe/re-speak.
+
+    Runs on the active engine when it converts speech itself, else on an
+    installed engine that does (CosyVoice 3). The take keeps the source
+    timing, so ``match_duration`` does not apply.
+    """
+    from api.routers.generation import (
+        _finalize_generation,
+        _generate_timeout_s,
+        _resolve_profile_conditioning,
+    )
+    from core.device_caps import detect_host_caps
+    from services.engine_routing import runtime_compute_profile_async
+    from services.model_manager import (
+        GpuJobTimeoutError,
+        GpuPoolBusyError,
+        run_on_gpu_pool_guarded,
+    )
+    from services.voice_conversion import (
+        CHARS_PER_SECOND,
+        convert_recording,
+        resolve_voice_conversion_backend,
+    )
+
+    try:
+        backend = await resolve_voice_conversion_backend()
+    except LookupError as e:
+        raise HTTPException(
+            status_code=409,
+            detail={"error": "voice_conversion_engine_missing", "message": str(e)},
+        ) from e
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+    cond = _resolve_profile_conditioning(row, engine_id=backend.id)
+    if not cond["ref_audio_path"]:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "This voice has no reference recording to convert into. Pick a "
+                "cloned voice, or a designed voice with a saved sample."
+            ),
+        )
+    compute_profile = await runtime_compute_profile_async(backend, detect_host_caps())
+
+    async def _run(job, seconds: float):
+        # Budgeted like a synthesis of that much speech.
+        return await run_on_gpu_pool_guarded(
+            job, what="Voice convert",
+            timeout=_generate_timeout_s(
+                "x" * max(1, int(seconds * CHARS_PER_SECOND)),
+                engine=backend,
+                execution_device=compute_profile["effective_device"],
+                min_vram_gb=compute_profile["min_vram_gb"],
+                hardware_family=compute_profile.get("runtime_hardware_family"),
+                vram_gb=compute_profile.get("runtime_vram_gb"),
+            ),
+            min_vram_gb=compute_profile["min_vram_gb"],
+        )
+
+    used_seed = cond["seed"]
+    if used_seed is None:
+        import random
+        used_seed = random.randint(0, 2**31 - 1)
+    start_time = time.time()
+    try:
+        audio_tensor = await convert_recording(
+            backend, source_path, cond["ref_audio_path"],
+            seed=used_seed, run_job=_run,
+        )
+    except GpuPoolBusyError as e:
+        raise HTTPException(
+            status_code=503, detail=str(e),
+            headers={"Retry-After": str(e.retry_after), "X-OmniVoice-Retryable": "true"},
+        ) from e
+    except GpuJobTimeoutError as e:
+        raise HTTPException(
+            status_code=503, detail=str(e),
+            headers={"Retry-After": "30", "X-OmniVoice-Retryable": "true"},
+        ) from e
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e)) from e
+    sample_rate = backend.sample_rate
+
+    from services.watermark import mark_synthetic_async
+    audio_tensor = await mark_synthetic_async(
+        audio_tensor, sample_rate, context="convert.finalize",
+    )
+    _, meta = await _finalize_generation(
+        audio_tensor, sample_rate, text="", history_mode="convert",
+        ref_audio_path=cond["ref_audio_path"], language=cond["language"],
+        instruct=None, resolved_profile_id=profile_id,
+        used_seed=used_seed, start_time=start_time,
+        already_marked=True,
+    )
+    return {
+        "id": meta["id"],
+        "audio_url": f"/audio/{meta['filename']}",
+        "text": "",
+        "duration_s": meta["duration"],
+        "gen_time_s": meta["gen_time"],
+        "engine": backend.id,
+    }
+
+
 @router.post("/convert")
+@consumer_generation
 async def convert_speech(
     audio: UploadFile = File(...),
     profile_id: str = Form(...),
     match_duration: bool = Form(True),
+    language: str = Form(""),
+    keep_delivery: bool = Form(False),
 ):
     """Convert a spoken clip into an existing voice profile's voice.
 
     Multipart form: ``audio`` (the source clip), ``profile_id`` (an existing
     voice profile), optional ``match_duration`` (default on — atempo the take
-    toward the source clip's length, clamped to 0.5–2.0×).
+    toward the source clip's length, clamped to 0.5–2.0×), optional
+    ``keep_delivery`` (default off — convert the recording itself so the
+    speaker's timing, rhythm and intonation are kept, #3421; no transcript).
 
     Returns JSON ``{audio_url, text, duration_s, id}`` — the take is saved to
     OUTPUTS_DIR and served from the ``/audio`` mount like every other take.
@@ -198,7 +380,8 @@ async def convert_speech(
             status_code=404,
             detail="That voice profile doesn't exist. It may have been deleted from another tab.",
         )
-    cond = _resolve_profile_conditioning(row)
+    # Resolve conditioning after selecting the effective TTS engine so native
+    # Voice Design recipes are interpreted consistently with /generate.
 
     # ── Save the upload before loading an engine. Every ASR backend (and
     # ffprobe) needs a file path; the bounded streaming copy rejects oversized
@@ -214,6 +397,9 @@ async def convert_speech(
             tmp.close()
         source_lease = _TempReferenceLease(tmp.name)
 
+        if keep_delivery:
+            return await _convert_keeping_delivery(row, profile_id, tmp.name)
+
         # ── Engine gate before ASR/TTS work: the shared resolver refuses a
         # clone-less engine with the actionable switch-engine message (→ 400),
         # and a backend mid-shutdown raises ModelLoadInterruptedByShutdown out
@@ -226,7 +412,15 @@ async def convert_speech(
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e))
 
-        result = await _transcribe_source(tmp.name, source_lease=source_lease)
+        cond = _resolve_profile_conditioning(row, engine_id=backend.id)
+        # Spoken language of the SOURCE clip: the explicit pick, else (Auto) the
+        # target profile's language (so Armenian speech isn't read as Russian).
+        # A pick Whisper doesn't support keeps auto-detect rather than
+        # silently switching to the profile's language.
+        source_language = cond["language"] if _is_auto(language) else language
+        result = await _transcribe_source(
+            tmp.name, source_lease=source_lease, language=source_language,
+        )
 
         segments = result.get("segments", [])
         text = result.get("text", "")
@@ -273,7 +467,11 @@ async def convert_speech(
                 )
                 cond["ref_text"] = None
             if cond["ref_text"] and cond["persist_ref_text"]:
-                _persist_profile_ref_text(profile_id, cond["ref_text"])
+                _persist_profile_ref_text(
+                    profile_id, cond["ref_text"],
+                    replace=cond.get("replace_ref_text"),
+                    ref_audio_file=cond.get("ref_audio_file"),
+                )
 
         # Source duration for the optional match: the container's own length
         # (ffprobe), falling back to the last ASR segment end. Best-effort —

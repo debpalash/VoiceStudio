@@ -3,6 +3,7 @@ import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
@@ -33,17 +34,19 @@ export function InboundSettings({
   const ids = useId();
   const [mode, setMode] = useState<InboundMode>('greeting');
   const [brief, setBrief] = useState('');
+  const [remoteControl, setRemoteControl] = useState(false);
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     if (open && settings) {
       setMode(settings.inbound_mode);
       setBrief(settings.inbound_brief ?? '');
+      setRemoteControl(settings.allow_remote_control ?? false);
     }
   }, [open, settings]);
   const save = async () => {
     setSaving(true);
     try {
-      onSaved(await saveCallSettings({ inbound_mode: mode, inbound_brief: brief }));
+      onSaved(await saveCallSettings({ inbound_mode: mode, inbound_brief: brief, allow_remote_control: remoteControl }));
       toast.success(t('nav.saved'));
       onOpenChange(false);
     } catch (error) {
@@ -107,6 +110,13 @@ export function InboundSettings({
               />
             </div>
           )}
+          <div className="flex items-start justify-between gap-3 rounded-lg border p-3">
+            <div>
+              <label htmlFor={`${ids}-remote`} className="text-sm font-medium">{t('mobile.calls.remote_control')}</label>
+              <p id={`${ids}-remote-hint`} className="text-xs text-muted-foreground">{t('mobile.calls.remote_control_hint')}</p>
+            </div>
+            <Switch id={`${ids}-remote`} checked={remoteControl} onCheckedChange={setRemoteControl} aria-describedby={`${ids}-remote-hint`} />
+          </div>
           <p className="text-xs text-muted-foreground">
             {t('calls.inbound_twilio_note')}{' '}
             <Link

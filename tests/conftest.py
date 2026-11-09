@@ -1,3 +1,5 @@
+import importlib.abc
+import importlib.machinery
 import os
 import sys
 import tempfile
@@ -19,8 +21,24 @@ if _BACKEND not in sys.path:
 # test module, which is what freezes DATA_DIR at `core.config` import time)
 # makes every local run behave like a clean CI runner. `setdefault` semantics:
 # an explicitly exported OMNIVOICE_DATA_DIR still wins.
-if not os.environ.get("OMNIVOICE_DATA_DIR"):
+#
+# pytest-xdist: the controller imports this file first and exports the dir it
+# made; every worker then inherits it, so all workers shared ONE prefs.json /
+# omnivoice.db / user-env and one worker's `llm_backend=off` flipped another's
+# "ready" assertion. A dir WE created (tracked in _OMNIVOICE_TEST_AUTO_DATA_DIR)
+# is therefore re-made per worker; an explicitly exported one is still honored.
+_AUTO_DATA_DIR = "_OMNIVOICE_TEST_AUTO_DATA_DIR"
+_inherited_auto_dir = os.environ.get("OMNIVOICE_DATA_DIR") if (
+    os.environ.get("PYTEST_XDIST_WORKER")
+    and os.environ.get("OMNIVOICE_DATA_DIR") == os.environ.get(_AUTO_DATA_DIR)
+) else None
+if _inherited_auto_dir:
+    _env_file = os.environ.get("OMNIVOICE_ENV_FILE", "")
+    if _env_file.startswith(_inherited_auto_dir):
+        del os.environ["OMNIVOICE_ENV_FILE"]  # re-derived below from the worker's dir
+if not os.environ.get("OMNIVOICE_DATA_DIR") or _inherited_auto_dir:
     os.environ["OMNIVOICE_DATA_DIR"] = tempfile.mkdtemp(prefix="omnivoice-test-data-")
+    os.environ[_AUTO_DATA_DIR] = os.environ["OMNIVOICE_DATA_DIR"]
 # Same story for the durable per-user env file (~/.config/omnivoice/env):
 # `main.py` loads it with override=True at import, so a TestClient importing
 # the app mid-suite would inject the developer's real TRANSLATE_* / key vars
@@ -129,6 +147,74 @@ def _settings_files_restore(snapshot: dict) -> None:
         with open(tmp, "wb") as handle:
             handle.write(before)
         os.replace(tmp, path)
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "model_licence_gate: run with real model-licence acceptance (default: accepted)",
+    )
+
+
+_LICENCE_STUB = {"active": False, "stubbed": []}
+
+
+class _LicenceDefaultFinder(importlib.abc.MetaPathFinder):
+    """Stub ``ensure_accepted`` on every copy of services.model_acceptance.
+
+    Suites that purge and re-import backend modules mid-test (tests/backend)
+    create a fresh copy after the autouse fixture below has already run, so
+    patching the copy that existed then would miss the one the app uses.
+    """
+
+    def find_spec(self, name, path=None, target=None):
+        if name != "services.model_acceptance":
+            return None
+        spec = importlib.machinery.PathFinder.find_spec(name, path)
+        if spec is None or spec.loader is None:
+            return spec
+        loader, run = spec.loader, spec.loader.exec_module
+
+        def exec_module(module):
+            run(module)
+            if _LICENCE_STUB["active"]:
+                _stub_licence_module(module)
+
+        loader.exec_module = exec_module
+        return spec
+
+
+def _stub_licence_module(module) -> None:
+    _LICENCE_STUB["stubbed"].append((module, module.ensure_accepted))
+    module.ensure_accepted = lambda repo_ids: None
+
+
+sys.meta_path.insert(0, _LicenceDefaultFinder())
+
+
+@pytest.fixture(autouse=True)
+def _model_licences_accepted_by_default(request):
+    """Gated model licences read as accepted unless a test opts in with
+    ``@pytest.mark.model_licence_gate``.
+
+    Enforcement has its own tests (test_model_acceptance, test_tts_model_licence_gate);
+    every other engine test would otherwise depend on acceptance state that a
+    fresh test data dir never has. Mirrored in backend/tests/conftest.py.
+    """
+    if request.node.get_closest_marker("model_licence_gate"):
+        yield
+        return
+    _LICENCE_STUB["active"] = True
+    current = sys.modules.get("services.model_acceptance")
+    if current is not None and all(m is not current for m, _ in _LICENCE_STUB["stubbed"]):
+        _stub_licence_module(current)
+    try:
+        yield
+    finally:
+        _LICENCE_STUB["active"] = False
+        for module, original in reversed(_LICENCE_STUB["stubbed"]):
+            module.ensure_accepted = original
+        _LICENCE_STUB["stubbed"].clear()
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -293,6 +379,107 @@ def asr_model_installed(monkeypatch, request):
                 targets[id(val)] = val
     for mod in targets.values():
         monkeypatch.setattr(mod, "asr_model_missing_error", lambda **_kw: None)
+
+
+def _asr_backend_targets(request):
+    """The canonical ``services.asr_backend`` plus any stale module-typed alias
+    the test module holds (see ``asr_model_installed``)."""
+    import importlib
+    import types
+
+    canonical = importlib.import_module("services.asr_backend")
+    targets = {id(canonical): canonical}
+    for val in vars(getattr(request, "module", None) or types.SimpleNamespace()).values():
+        if isinstance(val, types.ModuleType) and getattr(val, "__name__", "") == "services.asr_backend":
+            targets[id(val)] = val
+    return list(targets.values())
+
+
+@pytest.fixture
+def neutral_asr_host(monkeypatch, request):
+    """A CPU-only host for ASR selection tests, whatever machine runs them.
+
+    ``_auto_detect`` reads MPS, CUDA, ROCm-Torch and the Windows HIP install
+    before any test stub of ``_probe_available`` matters, so a selection test
+    that pins only some of them passes on a plain runner and fails on an Apple
+    Silicon or Windows ROCm host (#3549). Every predicate starts False here;
+    a test opts back in to the hardware it is about. The Windows HIP checks
+    are imported lazily by the code under test from ``sys.modules``, so they
+    are patched on the module that is canonical NOW, not on an alias an
+    earlier ``sys.modules`` purge left behind. The warm transcription instance
+    is released on both sides so a cached engine never outlives its stubs
+    (with an explicit clock: a test may have stubbed ``time.monotonic``).
+    """
+    import importlib
+
+    hip = importlib.import_module("core.windows_rocm.ct2")
+    monkeypatch.setattr(hip, "windows_hip_installed", lambda: False)
+    monkeypatch.setattr(hip, "hip_ct2_available", lambda: False)
+    targets = _asr_backend_targets(request)
+    for mod in targets:
+        for name in ("_mps_available", "_cuda_reported_available", "_rocm_torch"):
+            monkeypatch.setattr(mod, name, lambda: False)
+        mod.release_transcription_backend(0.0, now=float("inf"))
+    yield
+    for mod in targets:
+        mod.release_transcription_backend(0.0, now=float("inf"))
+
+
+@pytest.fixture
+def cpu_host(monkeypatch):
+    """Pin host capabilities to a plain CPU machine.
+
+    On Apple Silicon the configured ``omnivoice`` engine resolves to the
+    crash-isolated MPS sidecar, which loads the real checkpoint in a child
+    process and never sees a test's in-process ``get_model`` stub — so tests
+    that stub the native OmniVoice path passed on Linux CI and failed on every
+    Mac (#3695). Patches ``core.device_caps.detect_host_caps`` on the canonical
+    module and every loaded backend module that bound it at import time.
+    """
+    import importlib
+
+    device_caps = importlib.import_module("core.device_caps")
+    real = device_caps.detect_host_caps
+    caps = device_caps.HostCaps(family="cpu", available_families=("cpu",))
+    fake = lambda: caps  # noqa: E731 — a stand-in with the probe's signature
+    monkeypatch.setattr(device_caps, "detect_host_caps", fake)
+    for name, mod in list(sys.modules.items()):
+        if (name.split(".")[0] in {"api", "core", "engines", "main", "services"}
+                and getattr(mod, "detect_host_caps", None) is real):
+            monkeypatch.setattr(mod, "detect_host_caps", fake)
+    return caps
+
+
+_MODEL_MANAGER_TEST_REPO = "test/checkpoint"
+
+
+@pytest.fixture
+def fresh_model_manager(monkeypatch):
+    """Load the real model manager while discarding collection-time stubs."""
+    import importlib
+
+    def load(*, force: bool = False):
+        for name in ("core.config", "services.model_manager"):
+            loaded = sys.modules.get(name)
+            if force or (loaded is not None and getattr(loaded, "__file__", None) is None):
+                sys.modules.pop(name, None)
+        return importlib.import_module("services.model_manager")
+
+    return load
+
+
+@pytest.fixture
+def offline_model_manager(fresh_model_manager, monkeypatch):
+    manager = fresh_model_manager()
+    for name in ("_torch", "_OmniVoice", "model"):
+        monkeypatch.setattr(manager, name, None)
+    monkeypatch.setenv("OMNIVOICE_MODEL", _MODEL_MANAGER_TEST_REPO)
+    for name in ("OMNIVOICE_PRELOAD_TTS_ASR", "HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE"):
+        monkeypatch.delenv(name, raising=False)
+    fake_torch = type("TestTorch", (), {"float16": object(), "float32": object()})()
+    monkeypatch.setattr(manager, "_lazy_torch", lambda: fake_torch)
+    monkeypatch.setattr(manager, "get_best_device", lambda: "cpu")
+    return manager
 
 
 @pytest.fixture(autouse=True)

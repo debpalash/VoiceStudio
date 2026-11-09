@@ -59,6 +59,9 @@ The env var overrides the persisted UI choice.
   has none, VoiceStudio uses an already-installed speech recognizer on first
   use and saves the result to the profile. This includes the catalogue’s
   Whisper Turbo CT2 build; cloning does not require a second Transformers copy.
+  In Voice Cloning, a reference transcript you type also accompanies a selected
+  saved voice and overrides its stored transcript for that generation. Leaving
+  the field blank keeps the stored transcript or automatic transcription path.
   The model-level Whisper fallback
   also requires cached weights; it never downloads another ASR during cloning.
   It reuses any installed snapshot of the configured PyTorch Whisper model

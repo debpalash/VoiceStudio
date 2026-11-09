@@ -1,38 +1,24 @@
-import { chromium } from 'playwright';
+import { launchSmokeBrowser, openMockedPage } from './smoke-api-mock.mjs';
 import assert from 'node:assert/strict';
-const browser = await chromium.launch({
-  ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
-  headless: true,
-});
-try {
-  const page = await browser.newPage({ viewport: { width: 1200, height: 800 } });
-  await page.addInitScript(() => localStorage.setItem('voicestudio.setup.complete.v1', '1'));
-  await page.route(
-    (url) => url.pathname.startsWith('/api/'),
-    (route) => {
-      const path = new URL(route.request().url()).pathname;
-      const fixtures = {
-        '/api/health': { status: 'ok' },
-        '/api/setup/status': { ready: true },
-        '/api/models/install/status': { jobs: [] },
-        '/api/workers/target': {
-          target: 'local',
-          op: 'tts',
-          active: { remote: false, label: 'Local', reason: '' },
-          targets: [],
-          remote_operations: [],
-        },
-        '/api/profiles': [],
-        '/api/history': [],
-        '/api/projects': [],
-        '/api/export/history': [],
-        '/api/longform/jobs': { jobs: [] },
-      };
-      return path in fixtures
-        ? route.fulfill({ json: fixtures[path] })
-        : route.fulfill({ status: 404, json: { detail: 'Not mocked' } });
-    },
+const browser = await launchSmokeBrowser();
+async function expectFocus(page, locator) {
+  await page.waitForFunction(
+    (element) => element === document.activeElement,
+    await locator.elementHandle(),
+    { timeout: 3000 },
   );
+}
+try {
+  const page = await openMockedPage(browser, {
+    viewport: { width: 1200, height: 800 },
+    fixtures: {
+      '/api/profiles': [],
+      '/api/history': [],
+      '/api/projects': [],
+      '/api/export/history': [],
+      '/api/longform/jobs': { jobs: [] },
+    },
+  });
   const routes = [
     ['Voice', 'Clone', '/clone'],
     ['Voice', 'Design', '/design'],
@@ -40,11 +26,11 @@ try {
     ['Voice', 'Gallery', '/gallery'],
     ['Stories', 'Stories', '/stories'],
     ['Stories', 'Audiobook', '/audiobook'],
-    ['Dubbing', 'Dub', '/dub'],
-    ['Dubbing', 'Batch Dub', '/batch'],
+    ['Dubbing', 'Dubbing', '/dub'],
+    ['Dubbing', 'Batch Dubbing', '/batch'],
   ];
   for (const [group, item, path] of routes) {
-    await page.goto((process.env.VOICESTUDIO_UI_URL || 'http://localhost:3928') + '/#/design');
+    await page.goto((process.env.VOICESTUDIO_UI_URL || 'http://localhost:3912') + '/#/design');
     const rail = page.locator('[data-slot=compact-main-sidebar]');
     await rail.waitFor();
     await rail.getByRole('button', { name: group, exact: true }).click();
@@ -55,7 +41,7 @@ try {
     await link.click();
     await page.waitForURL('**/#' + path, { timeout: 3000 });
   }
-  await page.goto((process.env.VOICESTUDIO_UI_URL || 'http://localhost:3928') + '/#/design');
+  await page.goto((process.env.VOICESTUDIO_UI_URL || 'http://localhost:3912') + '/#/design');
   const rail = page.locator('[data-slot=compact-main-sidebar]');
   await rail.waitFor();
   const voice = rail.getByRole('button', { name: 'Voice', exact: true });
@@ -74,13 +60,13 @@ try {
   await clone.waitFor();
   await page.keyboard.press('Escape');
   await clone.waitFor({ state: 'hidden' });
-  assert.equal(await voice.evaluate((element) => element === document.activeElement), true);
+  await expectFocus(page, voice);
   await page.keyboard.press('ArrowRight');
   await clone.waitFor();
-  assert.equal(await clone.evaluate((element) => element === document.activeElement), true);
+  await expectFocus(page, clone);
   await page.keyboard.press('ArrowLeft');
   await clone.waitFor({ state: 'hidden' });
-  assert.equal(await voice.evaluate((element) => element === document.activeElement), true);
+  await expectFocus(page, voice);
   await voice.dblclick();
   await rail.waitFor({ state: 'hidden' });
   assert.equal((await page.getByRole('button', { name: 'Close', exact: true }).count()) > 0, true);

@@ -34,6 +34,9 @@ test('HTML visitors see all three installation choices', async () => {
   assert.match(html, /--version X.Y.Z/);
   assert.match(html, /--main/);
   assert.match(html, /Electron/);
+  // The live /install route can serve the shell script to PowerShell (#2973).
+  assert.doesNotMatch(html, /irm https:\/\/voicestudio\.sh\/install \|/);
+  assert.match(html, /irm https:\/\/voicestudio\.sh\/install\.ps1 \| iex/);
 });
 test('HEAD is bodyless and unsupported methods are rejected', async () => {
   assert.equal(await worker.fetch(new Request('https://voicestudio.sh/install', { method: 'HEAD' })).text(), '');

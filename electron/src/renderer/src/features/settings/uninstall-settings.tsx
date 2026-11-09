@@ -37,8 +37,20 @@ const ICONS: Record<UninstallTarget['key'], LucideIcon> = {
 };
 
 export function uninstallBytes(targets: UninstallTarget[], includeModels: boolean): number {
-  return targets
-    .filter((target) => target.exists && (includeModels || !target.shared))
+  const selected = targets.filter((target) => target.exists && (includeModels || !target.shared));
+  const pathKey = (value: string) => value.replaceAll('\\', '/').replace(/\/$/, '');
+  // The same folder listed twice counts once (the first listing), not zero times (#3512).
+  return selected
+    .filter(
+      (target, index) =>
+        !selected.some(
+          (parent, other) =>
+            other !== index &&
+            (pathKey(target.path) === pathKey(parent.path)
+              ? other < index
+              : pathKey(target.path).startsWith(pathKey(parent.path) + '/')),
+        ),
+    )
     .reduce((sum, target) => sum + target.size_bytes, 0);
 }
 
@@ -149,9 +161,9 @@ export function UninstallSettings() {
             </div>
           )}
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-xs text-muted-foreground">
+            <span className="text-sm text-muted-foreground">
               {t('settings.uninstall_total', { count: selected.length, size: fmtBytes(bytes) })}
-            </p>
+            </span>
             <Button
               variant="destructive"
               disabled={busy || scanFailed || present.length === 0}

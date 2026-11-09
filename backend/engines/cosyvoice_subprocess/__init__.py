@@ -19,6 +19,7 @@ import math
 import os
 from pathlib import Path
 
+from services.expression import COSYVOICE_INLINE_TAGS
 from services.subprocess_backend import SubprocessBackend
 
 VENV_ENV_VAR = "OMNIVOICE_COSYVOICE_DIR"
@@ -38,8 +39,25 @@ class CosyVoiceSubprocessBackend(SubprocessBackend):
 
     id = "cosyvoice"
     display_name = "CosyVoice 3 (9 langs, zero-shot, instruct, Apache-2.0)"
-    gpu_compat = ("cuda", "cpu")
+    # The sidecar speaks the same protocol as the in-process backend, whose
+    # generate() reads language/ref/instruct only — no quality knobs (#3654).
+    supports_num_step = False
+    supports_guidance_scale = False
+    gpu_compat = ("cuda", "rocm", "cpu")
+    # instruct + reference → inference_instruct2 (emotion, dialect, pace).
+    instruct_directs_delivery = True
+    inline_tags = COSYVOICE_INLINE_TAGS
     _DEFAULT_SAMPLE_RATE = 24_000
+    # The sidecar seeds its own torch RNG from the request (#3413): the
+    # parent's torch.manual_seed never reaches another process.
+    supports_generation_seed = True
+    # Upstream's inference_vc: the source recording's speech tokens are kept
+    # as they are and re-rendered with the reference voice, so timing and
+    # rhythm stay the speaker's own (#3421).
+    supports_voice_conversion = True
+    #: Upstream's speech tokenizer refuses clips longer than 30 s; callers
+    #: split longer sources (services.voice_conversion).
+    max_vc_source_seconds = 30.0
 
     @classmethod
     def is_available(cls) -> tuple[bool, str]:
@@ -64,6 +82,11 @@ class CosyVoiceSubprocessBackend(SubprocessBackend):
     def sidecar_script(cls) -> Path:
         return Path(__file__).resolve().parent / "main.py"
 
+    @classmethod
+    def sidecar_python_hint(cls) -> "Path | None":
+        """Expose only the bootstrap-selected interpreter for routing metadata."""
+        return own_venv_python()
+
     @property
     def recv_timeout_s(self) -> float:
         # Loading the model and its text normalizers takes a while on a cold
@@ -86,6 +109,12 @@ class CosyVoiceSubprocessBackend(SubprocessBackend):
         from services.tts_backend import CosyVoiceBackend
 
         return CosyVoiceBackend.supported_languages.fget(self)
+
+    def convert_voice(self, source_audio: str, *, ref_audio: str, seed=None):
+        msg = {"op": "convert", "source_audio": str(source_audio), "ref_audio": str(ref_audio)}
+        if seed is not None:
+            msg["seed"] = int(seed)
+        return self._exchange(msg, deadline_text="")
 
     def model_identity(self) -> str:
         # v1/v2/v3 share the one "cosyvoice" id; the folder name tells them

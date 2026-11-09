@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { backendFailureHints, inSyncedFolder } from './backendHint';
+import {
+  backendCauseAction,
+  backendFailureCause,
+  backendFailureHints,
+  inSyncedFolder,
+} from './backendHint';
 
 // #2440 / #2445 / #2465: the three recurring "backend would not start" reports
 // each have one fix that the raw message never names. The hint maps the stable
@@ -16,10 +21,26 @@ describe('backendFailureHints', () => {
     ]);
   });
 
+  it('names Smart App Control instead of suggesting an antivirus exclusion (#3224)', () => {
+    expect(
+      backendFailureHints(
+        'Could not start C:\\runtime\\python.exe: spawn UNKNOWN. Windows Smart App Control blocked it.',
+      ),
+    ).toEqual(['backend.hint_smart_app_control', 'backend.hint_smart_app_control_local']);
+  });
+
   it('explains a startup budget that ran out on a slow host (#2445)', () => {
     expect(
       backendFailureHints(
         'Backend did not answer on port 3900 within 600 s (OMNIVOICE_STARTUP_BUDGET_S). It printed no output.',
+      ),
+    ).toEqual(['backend.hint_slow_start']);
+  });
+
+  it('still classifies a silent timeout that quotes the backend log tail', () => {
+    expect(
+      backendFailureHints(
+        "Backend did not answer on port 3900 within 300 s (OMNIVOICE_STARTUP_BUDGET_S). It printed no output. The backend's own log (~/.omnivoice/omnivoice.log) ends with:\nINFO: loading torch\nSlow disks and antivirus scanning are the usual cause.",
       ),
     ).toEqual(['backend.hint_slow_start']);
   });
@@ -41,6 +62,64 @@ describe('backendFailureHints', () => {
   });
 });
 
+describe('backendFailureCause', () => {
+  it.each([
+    ['Could not start the backend: spawn UNKNOWN', 'spawn_blocked'],
+    ['Could not start the backend: spawn UNKNOWN (Smart App Control)', 'smart_app_control'],
+    // #3209: a refused DLL load names its blocker, so the advice matches it.
+    [
+      "Backend exited (exit code 1): Windows refused to load one of the engine's files. Windows Smart App Control blocked it. Last output: ImportError: DLL load failed while importing _sqlite3: An Application Control policy has blocked this file.",
+      'smart_app_control',
+    ],
+    [
+      "Backend exited (exit code 1): Windows refused to load one of the engine's files. Your antivirus blocked it.",
+      'antivirus',
+    ],
+    ['Backend exited unexpectedly (exit code 3221225477).', 'native_crash'],
+    ['Backend exited unexpectedly (exit code -1073741819).', 'native_crash'],
+    ['Backend exited unexpectedly (signal SIGSEGV).', 'native_crash'],
+    ['The Python environment in C:\\VoiceStudio is missing or incomplete.', 'missing_env'],
+    [
+      'The Python environment in C:\\Users\\a\\OneDrive\\VS is missing or incomplete.',
+      'synced_folder',
+    ],
+    [
+      'The Python environment in C:\\VoiceStudio is missing (no .venv\\Scripts\\python.exe). Install it.',
+      'missing_env',
+    ],
+    [
+      'The Python environment in C:\\VoiceStudio is incomplete: ImportError: torch. Install it.',
+      'missing_env',
+    ],
+    ['EPERM: operation not permitted, mkdir', 'permission'],
+    ['Backend did not answer on port 3900 within 600 s', 'slow_start'],
+  ])('names %s', (message, cause) => expect(backendFailureCause(message)).toBe(cause));
+
+  it('yields null for an unrecognised failure', () => {
+    expect(backendFailureCause(undefined)).toBeNull();
+    expect(backendFailureCause('Backend exited unexpectedly (exit code 1).')).toBeNull();
+  });
+});
+
+describe('a silent startup timeout that quotes the backend log (#3724)', () => {
+  const quoting = (path: string, lines: string[]) =>
+    'Backend did not answer on port 3900 within 300 s (OMNIVOICE_STARTUP_BUDGET_S). ' +
+    `It printed no output. The backend's own log (${path}) ends with:\n${lines.join('\n')}\n` +
+    'Slow disks and antivirus scanning of the runtime folder are the usual cause: click Retry, ' +
+    'exclude the VoiceStudio runtime folder from real-time scanning, or raise ' +
+    'OMNIVOICE_STARTUP_BUDGET_S (for example 900).';
+
+  it.each([
+    ['a data dir in a synced folder', '~/Dropbox/OmniVoice/omnivoice.log', ['INFO: loading torch']],
+    ['a permission error in the log', '~/.omnivoice/omnivoice.log', ['OSError: [Errno 13] EACCES']],
+    ['a refused launch in the log', '~/.omnivoice/omnivoice.log', ['spawn UNKNOWN']],
+  ])('stays a slow start with %s', (_label, path, lines) => {
+    const message = quoting(path, lines);
+    expect(backendFailureCause(message)).toBe('slow_start');
+    expect(backendFailureHints(message)).toEqual(['backend.hint_slow_start']);
+  });
+});
+
 describe('inSyncedFolder', () => {
   it.each([
     'C:\\Users\\a\\OneDrive\\Desktop\\VoiceStudio',
@@ -54,4 +133,15 @@ describe('inSyncedFolder', () => {
     'ignores %s',
     (path) => expect(inSyncedFolder(path)).toBe(false),
   );
+});
+
+describe('backendCauseAction', () => {
+  it('offers moving the environment only for an app-managed runtime (#3480)', () => {
+    for (const cause of ['missing_env', 'permission', 'synced_folder'] as const) {
+      expect(backendCauseAction(cause, { managedRuntime: true })).toBe('choose_folder');
+      expect(backendCauseAction(cause, { managedRuntime: false })).toBe('retry');
+    }
+    expect(backendCauseAction('native_crash', { managedRuntime: false })).toBe('copy_diagnostics');
+    expect(backendCauseAction(null, { managedRuntime: true })).toBe('retry');
+  });
 });

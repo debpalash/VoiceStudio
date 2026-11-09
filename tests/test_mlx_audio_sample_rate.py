@@ -21,14 +21,17 @@ def _tone(rate):
 
 
 @pytest.mark.parametrize("rate", [24000, 44100, 48000])
-@pytest.mark.parametrize("fallback", [False, True])
-def test_generated_audio_keeps_its_duration_and_pitch(backend, rate, fallback):
+@pytest.mark.parametrize("limited_signature", [False, True])
+def test_generated_audio_keeps_its_duration_and_pitch(backend, rate, limited_signature):
     def generate(**kwargs):
-        if fallback and "voice" in kwargs:
-            raise TypeError("unexpected keyword argument 'voice'")
         yield SimpleNamespace(audio=_tone(rate), sample_rate=rate)
 
-    backend._model = SimpleNamespace(generate=generate)
+    def generate_limited(text, speed):
+        yield SimpleNamespace(audio=_tone(rate), sample_rate=rate)
+
+    backend._model = SimpleNamespace(
+        generate=generate_limited if limited_signature else generate,
+    )
     declared_rate = backend.sample_rate  # callers can read this before generate
     wav = backend.generate("Hello", voice="speaker")
 
@@ -53,18 +56,24 @@ def test_raw_audio_without_rate_metadata_keeps_the_existing_contract(backend):
     np.testing.assert_array_equal(backend.generate("Hello")[0].numpy(), audio)
 
 
-@pytest.mark.parametrize("fallback", [False, True])
+@pytest.mark.parametrize("limited_signature", [False, True])
 @pytest.mark.parametrize("rates", [(44100, 44100), (44100, 44100, 48000, 48000)])
-def test_contiguous_chunks_share_resampling_context(backend, fallback, rates):
+def test_contiguous_chunks_share_resampling_context(backend, limited_signature, rates):
     import torch
     import torchaudio
     pieces = [_tone(rate)[:101] for rate in rates]
+
     def generate(**kwargs):
-        if fallback and "voice" in kwargs:
-            raise TypeError("unsupported voice")
         for audio, rate in zip(pieces, rates):
             yield SimpleNamespace(audio=audio, sample_rate=rate)
-    backend._model = SimpleNamespace(generate=generate)
+
+    def generate_limited(text, speed):
+        for audio, rate in zip(pieces, rates):
+            yield SimpleNamespace(audio=audio, sample_rate=rate)
+
+    backend._model = SimpleNamespace(
+        generate=generate_limited if limited_signature else generate,
+    )
     expected = []
     for start in range(0, len(rates), 2):
         joined = torch.from_numpy(np.concatenate(pieces[start:start + 2]))

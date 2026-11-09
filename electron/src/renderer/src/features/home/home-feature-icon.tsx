@@ -92,7 +92,7 @@ export function HomeFeatureIcon({ destination }: { destination: string }) {
             <path className="home-svg-sequence home-svg-delay-long" d="M17 22h8" />
           </>
         );
-      case '/calls':
+      case '/workflows':
         return (
           <>
             <path d="M10 8h12v9M8 11v13h13" opacity=".4" />

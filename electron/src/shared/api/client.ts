@@ -24,6 +24,7 @@ import {
 import { backendLifecycleStage, type BackendLifecycle } from '../utils/backendLifecycle.ts';
 import { scrubText } from '../utils/scrub.js';
 import { deploymentMode } from '../utils/deploymentMode.ts';
+import { DEFAULT_BACKEND_PORT } from '../app-config.ts';
 import {
   lastBackendContact,
   misroutedBackendMessage,
@@ -50,7 +51,7 @@ export const LS_API_KEY = LEGACY_API_KEY_STORAGE_KEY;
 // Pure + exported for unit testing — takes env + window so tests don't need to
 // re-import the module or stub import.meta.env.
 export function _resolveApiBase(env: any, win: any): string {
-  const port = env?.VITE_API_PORT || '3900';
+  const port = env?.VITE_API_PORT || String(DEFAULT_BACKEND_PORT);
   // Explicit override, in precedence order:
   //   1. localStorage ov_backend_url — the user's explicit "Remote backend"
   //      setting (Wave 2.3). Beats everything: it's the one override a
@@ -299,9 +300,15 @@ const BACKEND_MARKER_HEADER = 'x-omnivoice-backend';
 // "Not Found" — the one non-JSON backend voice. That fallback is a heuristic,
 // which is exactly why the header exists: a proxy CAN return
 // `{"error":"Not Found"}` and impersonate the shape.
+// Gateway answers that a proxy or CDN sends in its own voice when the backend
+// is slow or unreachable: nginx's 502/503/504 and Cloudflare's 520-527/530.
+const PROXY_GATEWAY_STATUSES = new Set([
+  502, 503, 504, 520, 521, 522, 523, 524, 525, 526, 527, 530,
+]);
+
 async function readError(
   res: Response,
-): Promise<{ detail: unknown; backendShaped: boolean; localized?: string }> {
+): Promise<{ detail: unknown; backendShaped: boolean; localized?: string; raw?: boolean }> {
   const marked = Boolean(res.headers?.get?.(BACKEND_MARKER_HEADER));
   const text = await res.text().catch(() => '');
   try {
@@ -316,7 +323,11 @@ async function readError(
     if (j.error) return { detail: j.error, backendShaped: marked };
     return { detail: text || res.statusText, backendShaped: marked };
   } catch {
-    return { detail: text || res.statusText, backendShaped: marked || text.trim() === 'Not Found' };
+    return {
+      detail: text || res.statusText,
+      backendShaped: marked || text.trim() === 'Not Found',
+      raw: Boolean(text.trim()),
+    };
   }
 }
 
@@ -547,7 +558,16 @@ export async function apiFetch(path: string, opts: ApiFetchOptions = {}): Promis
     }
     if (!res.ok) {
       // An HTTP error means the backend *did* respond — never retry it.
-      const { detail, backendShaped, localized } = await readError(res);
+      const { detail, backendShaped, localized, raw } = await readError(res);
+      // A gateway status with a page that is not the backend's (a Cloudflare 524
+      // timeout, an nginx 504) means a proxy gave up waiting; the backend may still
+      // be rendering. Explain that instead of echoing the page's HTML (#3219).
+      if (backendTarget && raw && !backendShaped && PROXY_GATEWAY_STATUSES.has(res.status)) {
+        throw new ApiError(i18n.t('tts_errors.proxy_gateway_error', { status: res.status }), {
+          status: res.status,
+          detail,
+        });
+      }
       // #1385: a 404 in some other server's voice means the request never
       // reached a VoiceStudio backend at all — a static host's catch-all page
       // or a reverse proxy with no route for this path. Echoing that page

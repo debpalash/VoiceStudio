@@ -1,0 +1,226 @@
+name: Snap Store package
+
+# Every v* tag uploads its verified Snap and releases it to `candidate`. Stable
+# is never automatic: an owner dispatches `promote_revision` after the
+# runbook's install, refresh and rollback checks. Store credentials exist only
+# in the `snap-store` environment used by the upload and promote jobs.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: "Upload this build to candidate (run from a v* tag)"
+        type: boolean
+        default: false
+      promote_revision:
+        description: "Release this existing Store revision to stable instead of building"
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: snap-store-${{ github.ref }}-${{ inputs.promote_revision || 'build' }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+env:
+  SNAP_NAME: voicestudio
+
+jobs:
+  package:
+    # Beta tags (vX.Y.Z-beta.N) are not Snap releases: the Snap Store track is stable-only.
+    if: ${{ !inputs.promote_revision && !(github.ref_type == 'tag' && contains(github.ref_name, '-beta.')) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      VOICESTUDIO_DISTRIBUTION: snap-store
+      VOICESTUDIO_RUST_TARGET: x86_64-unknown-linux-gnu
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Match the tag to the app version
+        if: github.ref_type == 'tag'
+        run: |
+          # Release tags are final vX.Y.Z only (no -rc tags, CLAUDE.md).
+          if ! printf '%s' "$GITHUB_REF_NAME" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::$GITHUB_REF_NAME is not a final vX.Y.Z release tag"
+            exit 1
+          fi
+          version=$(node -p "require('./package.json').version")
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: '1.4.2'
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: native/desktop-bridge -> target
+          key: electron-snap-x86_64-unknown-linux-gnu
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: '0.12.13'
+          enable-cache: false
+      - name: Install native build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libxdo-dev libxtst-dev libx11-dev libxkbcommon-dev libwayland-dev libssl-dev pkg-config squashfs-tools
+      - name: Bundle pinned uv
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { chmodSync, copyFileSync, mkdirSync } from 'node:fs';
+          import { join } from 'node:path';
+          const source = execFileSync('which', ['uv'], { encoding: 'utf8' }).trim();
+          const dir = 'electron/build/uv';
+          mkdirSync(dir, { recursive: true });
+          const destination = join(dir, 'uv-x86_64-unknown-linux-gnu');
+          copyFileSync(source, destination);
+          chmodSync(destination, 0o755);
+          NODE
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+      - name: Validate Snap policy and Electron
+        run: |
+          node scripts/validate_store_foundation.mjs --distribution=snap-store
+          bun run --cwd electron typecheck
+          bun run --cwd electron test
+          bun run --cwd electron build
+          bun run --cwd electron build:web
+          node electron/tests/packaging-contract.mjs
+      - name: Package without publishing
+        working-directory: electron
+        run: |
+          bun x electron-builder --config electron-builder.config.mjs --linux snap --x64 --publish never
+          node tests/packaging-contract.mjs --artifact
+          node ../scripts/verify_snap_artifact.mjs
+          node ../scripts/create_store_artifact_manifest.mjs --distribution=snap-store --platform=linux --arch=x64
+          node ../scripts/create_snap_store_assets.mjs
+          node --input-type=module <<'NODE'
+          import { readdirSync, readFileSync } from 'node:fs';
+          const files = readdirSync('release');
+          const snaps = files.filter((name) => name.endsWith('.snap'));
+          if (snaps.length !== 1) throw new Error(`Expected one Snap artifact, found: ${snaps}`);
+          if (files.some((name) => /^electron-.*\.yml$/.test(name))) {
+            throw new Error('A store-owned Snap must not emit application updater metadata');
+          }
+          const manifest = JSON.parse(
+            readFileSync('release/store-artifact-manifest-linux-x64.json', 'utf8'),
+          );
+          if (manifest.distribution.target !== 'snap-store') throw new Error('Wrong distribution');
+          if (manifest.distribution.applicationUpdates !== 'store') throw new Error('Wrong updater');
+          if (!manifest.artifacts.some((artifact) => artifact.file === snaps[0])) {
+            throw new Error('Snap artifact is missing from the provenance manifest');
+          }
+          NODE
+      - name: Save Snap and provenance for review
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: snap-store-rehearsal-linux-x64
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            electron/release/*.snap
+            electron/release/VoiceStudio-*-snap-verification.json
+            electron/release/store-artifact-manifest-linux-x64.json
+            electron/release/snap-store-assets/
+
+  upload:
+    needs: package
+    if: github.ref_type == 'tag' && (github.event_name == 'push' || inputs.upload)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: snap-store
+    # No shared concurrency group: GitHub keeps one pending run per group and
+    # cancels the rest, which could drop the newest tag. The newest-tag check
+    # below keeps a slow older build from moving candidate backwards.
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: snap-store-rehearsal-linux-x64
+          path: artifact
+      - name: Upload to candidate
+        env:
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        run: |
+          set -o pipefail
+          if [ -z "$SNAPCRAFT_STORE_CREDENTIALS" ]; then
+            echo "::error::Add SNAPCRAFT_STORE_CREDENTIALS to the snap-store environment (docs/store-publishing/snap-store.md)"
+            exit 1
+          fi
+          snap=$(find artifact -maxdepth 1 -name '*.snap' -print)
+          if [ "$(printf '%s\n' "$snap" | grep -c .)" != 1 ]; then
+            echo "::error::Expected one Snap artifact, found: $snap"
+            exit 1
+          fi
+          newest_tag() {
+            git ls-remote --tags --refs "https://github.com/$GITHUB_REPOSITORY" 'v*' \
+              | sed 's#.*refs/tags/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1
+          }
+          sudo snap install snapcraft --classic
+          # Upload first, then decide: the newest-tag check runs seconds before
+          # the release, so an older tag cannot move candidate backwards.
+          snapcraft upload "$snap" | tee upload.log
+          revision=$(grep -oE 'Revision [0-9]+' upload.log | tail -1 | grep -oE '[0-9]+')
+          if [ -z "$revision" ]; then
+            echo "::error::Could not read the Store revision from snapcraft upload"
+            exit 1
+          fi
+          newest=$(newest_tag)
+          if [ -z "$newest" ]; then
+            echo "::error::Could not list release tags to order candidate uploads"
+            exit 1
+          fi
+          if [ "$GITHUB_REF_NAME" = "$newest" ]; then
+            snapcraft release "$SNAP_NAME" "$revision" candidate
+            channel=candidate
+          else
+            echo "::warning::$GITHUB_REF_NAME is older than $newest; revision $revision was not released"
+            channel="none (older than $newest)"
+          fi
+          {
+            echo "### Snap Store upload"
+            echo
+            echo "- Source: \`$GITHUB_REF_NAME\` (\`$GITHUB_SHA\`)"
+            echo "- Package: \`$(basename "$snap")\`"
+            echo "- Store revision: $revision"
+            echo "- Channel: $channel; promote with \`promote_revision\` after the runbook checks"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  promote:
+    if: ${{ inputs.promote_revision }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: snap-store
+    steps:
+      - name: Require the repository owner
+        run: |
+          if [ "$GITHUB_TRIGGERING_ACTOR" != "$GITHUB_REPOSITORY_OWNER" ]; then
+            echo "::error::Only $GITHUB_REPOSITORY_OWNER can promote a Snap to stable"
+            exit 1
+          fi
+      - name: Release the revision to stable
+        env:
+          REVISION: ${{ inputs.promote_revision }}
+          SNAPCRAFT_STORE_CREDENTIALS: ${{ secrets.SNAPCRAFT_STORE_CREDENTIALS }}
+        run: |
+          if ! printf '%s' "$REVISION" | grep -Eq '^[1-9][0-9]*$'; then
+            echo "::error::promote_revision must be a Store revision number"
+            exit 1
+          fi
+          if [ -z "$SNAPCRAFT_STORE_CREDENTIALS" ]; then
+            echo "::error::Add SNAPCRAFT_STORE_CREDENTIALS to the snap-store environment"
+            exit 1
+          fi
+          sudo snap install snapcraft --classic
+          snapcraft release "$SNAP_NAME" "$REVISION" stable
+          echo "Released $SNAP_NAME revision $REVISION to stable" >> "$GITHUB_STEP_SUMMARY"

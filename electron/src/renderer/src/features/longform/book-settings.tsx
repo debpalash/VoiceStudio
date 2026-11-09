@@ -1,6 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ImagePlusIcon, TrashIcon, PlusIcon } from 'lucide-react';
+import {
+  ImageIcon,
+  ImagePlusIcon,
+  PlusIcon,
+  SpellCheckIcon,
+  TrashIcon,
+  Volume2Icon,
+} from 'lucide-react';
+import { SettingsSection } from './settings-section';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { PipelineFailure } from '@/components/pipeline-failure';
@@ -60,9 +68,8 @@ export function BookSettings({
     }
   };
   return (
-    <div className="space-y-5">
-      <details className="space-y-3">
-        <summary className="cursor-pointer text-sm font-medium">{t('audiobook.details')}</summary>
+    <div className="space-y-3">
+      <SettingsSection title={t('audiobook.details')} icon={ImageIcon}>
         {metadataFields.map((field) => (
           <label key={field} className="block space-y-1 text-xs text-muted-foreground">
             {t('audiobook.meta_' + field)}
@@ -123,25 +130,33 @@ export function BookSettings({
           )}
         </div>
         {error && <PipelineFailure fallback={error} onDismiss={() => setError(null)} />}
-      </details>
-      <details className="space-y-2">
-        <summary className="cursor-pointer text-sm font-medium">{t('audiobook.loudness')}</summary>
-        {(['off', 'acx', 'podcast'] as const).map((value) => (
-          <Button
-            key={value}
-            size="sm"
-            className="w-full justify-start"
-            disabled={disabled}
-            variant={draft.loudness === value ? 'secondary' : 'ghost'}
-            onClick={() => onChange({ loudness: value })}
-          >
-            {t('audiobook.loudness_' + value)}
-          </Button>
-        ))}
-      </details>
+      </SettingsSection>
+      <SettingsSection
+        title={t('audiobook.loudness')}
+        icon={Volume2Icon}
+        meta={t('audiobook.loudness_' + draft.loudness)}
+      >
+        <div className="space-y-1">
+          {(['off', 'acx', 'podcast'] as const).map((value) => (
+            <Button
+              key={value}
+              size="sm"
+              className="w-full justify-start"
+              disabled={disabled}
+              variant={draft.loudness === value ? 'secondary' : 'ghost'}
+              onClick={() => onChange({ loudness: value })}
+            >
+              {t('audiobook.loudness_' + value)}
+            </Button>
+          ))}
+        </div>
+      </SettingsSection>
       {pronunciation && (
-        <details className="space-y-3">
-          <summary className="cursor-pointer text-sm font-medium">{t('audiobook.lexicon')}</summary>
+        <SettingsSection
+          title={t('audiobook.lexicon')}
+          icon={SpellCheckIcon}
+          meta={draft.lexicon.length || undefined}
+        >
           {draft.lexicon.map((row, index) => (
             <div key={index} className="space-y-1">
               <Input
@@ -205,7 +220,7 @@ export function BookSettings({
               {t('audiobook.lex_duplicate')}
             </p>
           )}
-        </details>
+        </SettingsSection>
       )}
     </div>
   );

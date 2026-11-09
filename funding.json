@@ -1,0 +1,105 @@
+{
+  "$schema": "https://fundingjson.org/schema/v1.1.0.json",
+  "version": "v1.1.0",
+  "entity": {
+    "type": "group",
+    "role": "owner",
+    "name": "VoiceStudio",
+    "email": "partner@voicestudio.sh",
+    "description": "Maintainers of VoiceStudio, the open-source, fully local voice cloning, voice design, dubbing and dictation app.",
+    "webpageUrl": { "url": "https://voicestudio.sh" }
+  },
+  "projects": [
+    {
+      "guid": "voicestudio",
+      "name": "VoiceStudio",
+      "description": "A free, fully local alternative to ElevenLabs: voice cloning, voice design, video dubbing and real-time dictation across 646 languages on desktop and phone, with no accounts, API keys or cloud.",
+      "webpageUrl": { "url": "https://voicestudio.sh" },
+      "repositoryUrl": { "url": "https://github.com/debpalash/VoiceStudio" },
+      "licenses": ["spdx:AGPL-3.0-only"],
+      "tags": ["text-to-speech", "voice-cloning", "speech-recognition", "dubbing", "desktop-app", "privacy", "open-source"]
+    }
+  ],
+  "funding": {
+    "channels": [
+      {
+        "guid": "github-sponsors",
+        "type": "payment-provider",
+        "address": "https://github.com/sponsors/debpalash",
+        "description": "GitHub Sponsors; tiers and what each includes are listed in SPONSORS.md."
+      },
+      {
+        "guid": "ko-fi",
+        "type": "payment-provider",
+        "address": "https://ko-fi.com/debpalash"
+      },
+      {
+        "guid": "paypal",
+        "type": "payment-provider",
+        "address": "https://paypal.me/palashCoder"
+      }
+    ],
+    "plans": [
+      {
+        "guid": "supporter",
+        "status": "active",
+        "name": "Supporter",
+        "description": "Funds development. Recognition and communication only; it does not buy features, priority or a commercial licence.",
+        "amount": 5,
+        "currency": "USD",
+        "frequency": "monthly",
+        "channels": ["github-sponsors"]
+      },
+      {
+        "guid": "community-sponsor",
+        "status": "active",
+        "name": "Community Sponsor",
+        "description": "Your name with a link in the README and SPONSORS.md.",
+        "amount": 25,
+        "currency": "USD",
+        "frequency": "monthly",
+        "channels": ["github-sponsors"]
+      },
+      {
+        "guid": "development-sponsor",
+        "status": "active",
+        "name": "Development Sponsor",
+        "description": "A small logo in the README and SPONSORS.md, and a quarterly development update.",
+        "amount": 100,
+        "currency": "USD",
+        "frequency": "monthly",
+        "channels": ["github-sponsors"]
+      },
+      {
+        "guid": "company-sponsor",
+        "status": "active",
+        "name": "Company Sponsor",
+        "description": "A logo and link on the project website.",
+        "amount": 500,
+        "currency": "USD",
+        "frequency": "monthly",
+        "channels": ["github-sponsors"]
+      },
+      {
+        "guid": "strategic-sponsor",
+        "status": "active",
+        "name": "Strategic Sponsor",
+        "description": "A quarterly feedback call. Feedback is welcome; it does not set the roadmap.",
+        "amount": 1000,
+        "currency": "USD",
+        "frequency": "monthly",
+        "channels": ["github-sponsors"]
+      },
+      {
+        "guid": "one-time",
+        "status": "active",
+        "name": "One-time donation",
+        "description": "Any amount, with thanks.",
+        "amount": 0,
+        "currency": "USD",
+        "frequency": "one-time",
+        "channels": ["ko-fi", "paypal", "github-sponsors"]
+      }
+    ]
+  }
+}

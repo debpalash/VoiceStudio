@@ -2,6 +2,7 @@ import i18n from 'i18next';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   CLONE_MAX_SECONDS,
+  StreamingPreviewError,
   REF_HARD_MAX_SECONDS,
   generateClone,
   generateCloneStreaming,
@@ -85,6 +86,38 @@ describe('sanitizeInstruct', () => {
 });
 
 describe('toGenerateForm', () => {
+  it('sends a manually supplied reference transcript with a saved voice (#3192)', () => {
+    const transcript = ' These are the words spoken in the reference. ';
+    const form = toGenerateForm({
+      ...BASE_INPUT,
+      profileId: 'saved-voice',
+      refText: transcript,
+      refAudio: new File(['unused upload'], 'other.wav'),
+    });
+    expect(form.get('profile_id')).toBe('saved-voice');
+    expect(form.get('ref_text')).toBe(transcript);
+    expect(form.has('ref_audio')).toBe(false);
+  });
+
+  it.each([undefined, '', ' \t\n '])(
+    'omits a blank saved-voice transcript (%j) so the stored transcript can be used',
+    (refText) => {
+      const form = toGenerateForm({ ...BASE_INPUT, profileId: 'saved-voice', refText });
+      expect(form.has('ref_text')).toBe(false);
+    },
+  );
+
+  it('does not send a reference transcript when no reference is selected', () => {
+    expect(toGenerateForm({ ...BASE_INPUT, refText: 'old transcript' }).has('ref_text')).toBe(
+      false,
+    );
+  });
+
+  it('sends the picked preset voice only when one is set (#2938)', () => {
+    expect(toGenerateForm(BASE_INPUT).has('preset_voice')).toBe(false);
+    expect(toGenerateForm({ ...BASE_INPUT, presetVoice: 'F3' }).get('preset_voice')).toBe('F3');
+  });
+
   it('keeps existing defaults and sends explicit quality choices', () => {
     const defaults = toGenerateForm(BASE_INPUT);
     expect(defaults.get('wav_bits')).toBe('16');
@@ -93,6 +126,13 @@ describe('toGenerateForm', () => {
     expect(chosen.get('wav_bits')).toBe('32');
     expect(chosen.get('effect_preset')).toBe('raw');
     expect(chosen.get('num_step')).toBe('32');
+  });
+  it('resolves best quality per engine and clamps explicit steps to its range', () => {
+    expect(toGenerateForm({ ...BASE_INPUT, steps: null }, 'omnivoice').get('num_step')).toBe('32');
+    expect(toGenerateForm({ ...BASE_INPUT, steps: null }, 'supertonic3').get('num_step')).toBe('12');
+    // Engines that ignore steps keep the old wire value.
+    expect(toGenerateForm({ ...BASE_INPUT, steps: null }, 'kittentts').get('num_step')).toBe('16');
+    expect(toGenerateForm({ ...BASE_INPUT, steps: 100 }, 'voxcpm2').get('num_step')).toBe('64');
   });
   it('maps tuning fields and explicitly sends Auto to override a saved voice language', () => {
     const form = toGenerateForm({ ...BASE_INPUT, profileId: 'p1' });
@@ -159,22 +199,60 @@ describe('toGenerateForm', () => {
     ).toBe(false);
   });
 
-  it('sends the Voice Design recipe with the take (#2389)', () => {
-    const designRecipe = { description: 'raspy', picks: { Pitch: 'low pitch' } };
-    const form = toGenerateForm({ ...BASE_INPUT, designRecipe });
-    expect(JSON.parse(String(form.get('design_recipe')))).toEqual(designRecipe);
+  it('attaches the design recipe as JSON only when one is given', () => {
+    const recipe = { description: 'a calm narrator', picks: { Pitch: 'low pitch' } };
+    const withRecipe = toGenerateForm({ ...BASE_INPUT, designRecipe: recipe });
+    expect(JSON.parse(String(withRecipe.get('design_recipe')))).toEqual(recipe);
     expect(toGenerateForm(BASE_INPUT).has('design_recipe')).toBe(false);
   });
 
-  it('sends a free-form engine its description as written (#2389)', () => {
-    const description = ' raspy old female, scottish accent ';
+  it('omits emotion on a neutral take and sends text emotion with strength', () => {
+    const neutral = toGenerateForm(BASE_INPUT);
+    expect(neutral.has('emo_text')).toBe(false);
+    expect(neutral.has('emo_vector')).toBe(false);
+    expect(neutral.has('emo_alpha')).toBe(false);
+    const expressive = toGenerateForm({
+      ...BASE_INPUT,
+      profileId: 'speaker-1',
+      emoText: '  slightly angry, holding back tears  ',
+      emoAlpha: 0.45,
+    });
+    expect(expressive.get('emo_text')).toBe('slightly angry, holding back tears');
+    expect(expressive.get('emo_alpha')).toBe('0.45');
+    expect(expressive.has('emo_vector')).toBe(false);
+  });
+
+  it('sends eight emotion weights and never mixes them with text prompts', () => {
+    const weights = [0.8, 0, 0.1, 0, 0, 0.2, 0, 0];
+    const form = toGenerateForm({
+      ...BASE_INPUT,
+      emoVector: weights,
+      emoText: 'ignored when a vector is present',
+      emoAlpha: 0.5,
+    });
+    expect(JSON.parse(String(form.get('emo_vector')))).toEqual(weights);
+    expect(form.has('emo_text')).toBe(false);
+    expect(form.has('emo_alpha')).toBe(false);
+  });
+
+  it('keeps a free-form engine instruct as written, trimmed', () => {
+    const prose = 'a tired lighthouse keeper, gravelly, speaking slowly';
+    const form = toGenerateForm({
+      ...BASE_INPUT,
+      profileId: 'p1',
+      instruct: `  ${prose}  `,
+      instructVocabulary: 'freeform',
+    });
+    expect(form.get('instruct')).toBe(prose);
+    // The tag engines still drop it.
     expect(
       toGenerateForm({
         ...BASE_INPUT,
-        instruct: description,
-        instructVocabulary: 'freeform',
-      }).get('instruct'),
-    ).toBe('raspy old female, scottish accent');
+        profileId: 'p1',
+        instruct: prose,
+        instructVocabulary: 'tags',
+      }).has('instruct'),
+    ).toBe(false);
   });
 });
 
@@ -237,7 +315,10 @@ describe('generateClone', () => {
     vi.stubGlobal('fetch', fetchMock);
     const onProgress = vi.fn();
 
-    const result = await generateClone({ ...BASE_INPUT, profileId: 'p1' }, { onProgress });
+    const result = await generateClone(
+      { ...BASE_INPUT, profileId: 'p1', refText: 'Reference words' },
+      { onProgress },
+    );
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
@@ -245,6 +326,7 @@ describe('generateClone', () => {
     expect(init.method).toBe('POST');
     expect(init.body).toBeInstanceOf(FormData);
     expect((init.body as FormData).get('profile_id')).toBe('p1');
+    expect((init.body as FormData).get('ref_text')).toBe('Reference words');
     expect(init.signal).toBeInstanceOf(AbortSignal);
 
     expect(result.blob.size).toBe(bytes.length);
@@ -347,7 +429,10 @@ describe('generateClone', () => {
       budget.queueWait +
       7_200 +
       budget.sidecarGrace +
-      Math.max(budget.progressExtensionCap, budget.progressExtensionBudgets * (7_200 + budget.sidecarGrace));
+      Math.max(
+        budget.progressExtensionCap,
+        budget.progressExtensionBudgets * (7_200 + budget.sidecarGrace),
+      );
     expect(withCeiling).toBeGreaterThan(backendMaxS * 1000);
     expect(withCeiling).toBeGreaterThan(generateAbortMs(20));
     expect(generateAbortMs(20, { cpuAutoCeiling: Number.NaN })).toBe(generateAbortMs(20));
@@ -398,84 +483,93 @@ it('localizes streamed profile language refusals and prevents classic fallback',
   }
 });
 
-it('carries the backend error class off a stream error frame (#1800)', async () => {
-  // Every unclassified engine failure renders one fixed floor message, so the
-  // class name is the only thing separating one auto-filed report from another.
+function streamReturns(frame: Record<string, unknown>) {
+  const line = JSON.stringify({ type: 'error', ...frame }) + '\n';
   vi.stubGlobal(
     'fetch',
-    vi.fn(
-      async () =>
-        new Response(
-          JSON.stringify({
-            type: 'error',
-            code: 'generation_failed',
-            detail: 'Generation failed. Check the selected engine and try again.',
-            retryable: true,
-            error_class: 'RuntimeError',
-          }) + '\n',
-          { headers: { 'content-type': 'application/x-ndjson' } },
-        ),
-    ),
+    vi.fn(async () => new Response(line, { headers: { 'content-type': 'application/x-ndjson' } })),
   );
-  const error = await generateCloneStreaming(BASE_INPUT).catch((e) => e);
-  expect(error.errorClass).toBe('RuntimeError');
+}
+
+async function failedStream() {
+  return (await generateCloneStreaming(BASE_INPUT).then(
+    () => null,
+    (e: unknown) => e,
+  )) as StreamingPreviewError;
+}
+
+describe('error frames and the backend exception class', () => {
+  it('records a string class and keeps the frame retryable', async () => {
+    streamReturns({ detail: 'Generation failed.', error_class: 'KeyError', retryable: true });
+    const err = await failedStream();
+    expect(err).toBeInstanceOf(StreamingPreviewError);
+    expect(err.errorClass).toBe('KeyError');
+    expect(err.retryable).toBe(true);
+  });
+
+  it('records any string verbatim, including an empty one', async () => {
+    streamReturns({ detail: 'x', error_class: '' });
+    expect((await failedStream()).errorClass).toBe('');
+  });
+
+  it('stores null when the class is missing or not a string', async () => {
+    const frames: Array<Record<string, unknown>> = [
+      { detail: 'x' },
+      { detail: 'x', error_class: null },
+      { detail: 'x', error_class: 7.5 },
+      { detail: 'x', error_class: true },
+      { detail: 'x', error_class: ['KeyError'] },
+    ];
+    for (const frame of frames) {
+      streamReturns(frame);
+      expect((await failedStream()).errorClass).toBeNull();
+    }
+  });
+
+  const TOPICS = [
+    { topic: 'AUDIO_IO_FAILED', key: 'tts_errors.audio_io_failed', terminal: false },
+    { topic: 'GPU_ARCH_UNSUPPORTED', key: 'tts_errors.gpu_arch_unsupported', terminal: true },
+    {
+      topic: 'WINDOWS_APP_CONTROL_BLOCKED',
+      key: 'tts_errors.windows_app_control_blocked',
+      terminal: true,
+    },
+  ];
+  for (const { topic, key, terminal } of TOPICS) {
+    it(`${topic} is shown in the user's language`, async () => {
+      const t = vi.spyOn(i18n, 't').mockReturnValue(`translated:${topic}`);
+      try {
+        streamReturns({
+          detail: 'raw english',
+          docs_topic: topic,
+          error_class: 'OSError',
+          retryable: !terminal,
+          terminal,
+        });
+        const err = await failedStream();
+        expect(t).toHaveBeenCalledWith(key);
+        expect(err.message).toBe(`translated:${topic}`);
+        expect(err.errorClass).toBe('OSError');
+        expect(err.terminal).toBe(terminal);
+        expect(shouldFallbackToClassic(err)).toBe(false);
+      } finally {
+        t.mockRestore();
+      }
+    });
+  }
 });
 
-it.each([undefined, null, 42, { name: 'RuntimeError' }])(
-  'ignores missing or non-string backend class %j',
-  async (errorClass) => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({
-              type: 'error',
-              detail: 'plain failure',
-              retryable: false,
-              error_class: errorClass,
-            }) + '\n',
-            { headers: { 'content-type': 'application/x-ndjson' } },
-          ),
-      ),
-    );
-    const error = await generateCloneStreaming(BASE_INPUT).catch((e) => e);
-    expect(error.errorClass).toBeNull();
-  },
-);
-
-it.each([
-  ['GPU_ARCH_UNSUPPORTED', 'gpu_arch_unsupported'],
-  ['WINDOWS_APP_CONTROL_BLOCKED', 'windows_app_control_blocked'],
-  ['AUDIO_IO_FAILED', 'audio_io_failed'],
-])('localizes %s without changing stream retry behavior', async (topic, key) => {
-  const translate = vi.spyOn(i18n, 't').mockReturnValue('Localized recovery');
-  const terminal = topic !== 'AUDIO_IO_FAILED';
-  try {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(
-        async () =>
-          new Response(
-            JSON.stringify({
-              type: 'error',
-              docs_topic: topic,
-              detail: 'English fallback',
-              error_class: 'RuntimeError',
-              retryable: !terminal,
-              terminal,
-            }) + '\n',
-            { headers: { 'content-type': 'application/x-ndjson' } },
-          ),
-      ),
-    );
-    const error = await generateCloneStreaming(BASE_INPUT).catch((e) => e);
-    expect(error.message).toBe('Localized recovery');
-    expect(error.errorClass).toBe('RuntimeError');
-    expect(translate).toHaveBeenCalledWith(`tts_errors.${key}`);
-    expect(error.terminal).toBe(terminal);
-    expect(shouldFallbackToClassic(error)).toBe(false);
-  } finally {
-    translate.mockRestore();
-  }
+it('sends the saved profile and its reference text on the streaming route', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => new Response('', { headers: { 'content-type': 'application/x-ndjson' } })),
+  );
+  await generateCloneStreaming({
+    ...BASE_INPUT,
+    profileId: 'saved-voice',
+    refText: 'Reference words',
+  }).catch((e) => e);
+  const form = vi.mocked(fetch).mock.calls[0][1]?.body as FormData;
+  expect(form.get('profile_id')).toBe('saved-voice');
+  expect(form.get('ref_text')).toBe('Reference words');
 });

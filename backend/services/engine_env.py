@@ -28,52 +28,32 @@ _TORCH_COMPILE_KEY = "perf.torch_compile_disabled"
 # (e.g. a brand-new architecture running through PTX forward-compat).
 _FORCE_COMPILE_ENV = "OMNIVOICE_FORCE_TORCH_COMPILE"
 
-# #2135: the environment escape hatches that torch itself honours. `main.py`
-# sets TORCH_COMPILE_DISABLE/TORCHDYNAMO_DISABLE on win32, `build_engine_env`
-# injects TORCH_COMPILE_DISABLE into engine subprocesses, and
-# `docs/install/windows.md` tells users to export it — but the in-process gate
-# below never read them, so an operator who set the documented variable still
-# got a compiled model (and, on a cudagraph mode, a native crash they could not
-# turn off). Reading them here makes one knob mean one thing everywhere.
-_COMPILE_DISABLE_ENVS = (
+_COMPILE_OPT_OUT_VARIABLES = (
     "TORCH_COMPILE_DISABLE",
     "TORCHDYNAMO_DISABLE",
     "TORCHINDUCTOR_DISABLE",
 )
+_OPT_OUT_VALUES = {"yes", "true", "on", "1"}
 
-_TRUTHY = frozenset({"1", "true", "yes", "on"})
 
-
-def _env_compile_disabled() -> Optional[str]:
-    """The name of the first set-and-truthy compile-disable env var, else None.
-
-    Mirrors torch's own reading of these variables so the app's decision and
-    torch's behaviour cannot disagree — the state the reporter in #2135 hit,
-    where the log said "torch.compile applied" while TORCH_COMPILE_DISABLE=1
-    was exported.
-    """
-    for name in _COMPILE_DISABLE_ENVS:
-        if os.environ.get(name, "").strip().lower() in _TRUTHY:
-            return name
+def compile_opt_out_name() -> Optional[str]:
+    """Name the first parent-process switch requesting eager execution."""
+    for variable in _COMPILE_OPT_OUT_VARIABLES:
+        setting = os.getenv(variable)
+        if setting is not None and setting.strip().casefold() in _OPT_OUT_VALUES:
+            return variable
     return None
 
 
 def _settings_db_path() -> str:
-    """The settings DB the compile toggle is actually read from (best-effort).
-
-    Logged alongside the toggle because #2135's reporter had three
-    `omnivoice.db` files on the box and edited one the backend never opened;
-    naming the path turns "the setting doesn't work" into a one-line diagnosis.
-    """
+    """Produce a privacy-filtered identifier for the settings store."""
     try:
         from core.config import DB_PATH
-
         from core.scrub import scrub_text
 
         return scrub_text(str(DB_PATH))
     except Exception:
         return "<unknown>"
-
 
 # #278: set (with a reason) the first time torch.compile — or *running* the
 # compiled model — fails at runtime in this process. Once set, every later
@@ -199,16 +179,14 @@ def mark_flashinfer_runtime_failure(reason: str) -> None:
 def _cuda_arch_supported_for_compile() -> "tuple[bool, str]":
     """Check the GPU's architecture against this torch build's arch list.
 
-    A new GPU architecture routinely breaks torch.compile/Triton before
-    upstream support lands (issue #278): the eager model runs via PTX
-    forward-compat, but Inductor/Triton kernel compilation targets the new arch
-    directly and fails mid-generation. Blackwell sm_120 was that case; it no
-    longer is on the pinned torch 2.8.0+cu128, where this probe can return
-    supported; independent compiler/runtime failures still need eager fallback. If the device's arch tag is
-    absent from this build's arch list we treat compile as unsupported and use
-    eager. The comparison is delegated to ``core.device_caps.arch_unsupported``
-    so it stays CUDA/ROCm-aware — a ROCm build lists ``gfx…`` names, and the
-    old ``sm_`` comparison here disabled compile on every AMD host (#1228).
+    The probe asks ``core.device_caps.arch_unsupported`` whether the device's
+    arch tag appears in the arch list of the torch build that is running. That
+    helper understands both CUDA (``sm_NN``) and ROCm (``gfx...``) naming; a
+    plain ``sm_`` comparison once switched compile off on AMD hosts (#1228).
+    When the arch is missing from the list, compile is reported unsupported and
+    eager execution is used. An arch that is listed (Blackwell ``sm_120`` on the
+    pinned torch 2.8.0+cu128, for one) counts as supported; unrelated compiler
+    or runtime failures are still caught by the eager fallback in model_manager.
 
     Returns ``(supported, reason)``. Fails open — any probe error returns
     ``(True, "")`` so a weird torch build never silently loses the
@@ -299,14 +277,9 @@ def should_torch_compile(device: str) -> bool:
     """
     if device != "cuda":
         return False
-    # #2135: honoured before every other gate — an explicit env opt-out is the
-    # user's most direct statement of intent, and it must hold on every
-    # platform (the reporter was on Linux, where this used to be ignored).
-    disabled_by = _env_compile_disabled()
-    if disabled_by is not None:
-        logger.info(
-            "torch.compile skipped: %s is set — using eager mode.", disabled_by,
-        )
+    environment_switch = compile_opt_out_name()
+    if environment_switch:
+        logger.info("%s requests eager execution; torch.compile will not run.", environment_switch)
         return False
     if importlib.util.find_spec("triton") is None:
         logger.info("torch.compile skipped: Triton unavailable — using eager mode.")
@@ -316,15 +289,12 @@ def should_torch_compile(device: str) -> bool:
 
         if settings_store.get_text(_TORCH_COMPILE_KEY, "0") == "1":
             logger.info(
-                "torch.compile skipped: disabled in Settings (Performance) [%s].",
+                "Performance settings in %s select eager execution; skipping torch.compile.",
                 _settings_db_path(),
             )
             return False
-        # #2135: say which DB answered "not disabled". Without this the only
-        # observable outcome of a toggle that never reached the running
-        # backend is a log line saying compile was applied anyway.
         logger.debug(
-            "torch.compile: %s not set in %s — compile remains eligible.",
+            "Compile remains eligible because %s is off in settings database %s.",
             _TORCH_COMPILE_KEY, _settings_db_path(),
         )
     except Exception:
@@ -405,13 +375,6 @@ def build_engine_env(
         except Exception:
             logger.exception("build_engine_env: token resolver failed (non-fatal)")
 
-    # INST-12 (#65), widened to every platform by #2135: TORCH_COMPILE_DISABLE
-    # when the user opted in. This was win32-only on the theory that
-    # torch.compile only misbehaves on Windows (no Triton wheel). #2135 is the
-    # counter-example — a Linux/CUDA host where compile crashes the engine —
-    # and a Settings toggle that silently does nothing on the user's platform
-    # is worse than no toggle at all. Cost when enabled on Linux/macOS is a
-    # slower engine, which is exactly what the user asked for by enabling it.
     try:
         from services import settings_store
 
@@ -420,16 +383,12 @@ def build_engine_env(
     except Exception:
         logger.exception("build_engine_env: torch_compile_disabled read failed")
 
-    # #2135: an env opt-out on the parent must reach the child too. Without
-    # this a user who exported TORCH_COMPILE_DISABLE=1 got an eager parent and
-    # a compiled sidecar — the inconsistency that made the flag look ignored.
-    disabled_by = _env_compile_disabled()
-    if disabled_by is not None:
-        if env.get("TORCH_COMPILE_DISABLE") != "1":
-            logger.debug(
-                "build_engine_env: %s is set — disabling torch.compile in the "
-                "engine subprocess too.", disabled_by,
-            )
+    inherited_opt_out = compile_opt_out_name()
+    if inherited_opt_out and env.get("TORCH_COMPILE_DISABLE") != "1":
         env["TORCH_COMPILE_DISABLE"] = "1"
+        logger.debug(
+            "Engine child receives TORCH_COMPILE_DISABLE because the parent set %s.",
+            inherited_opt_out,
+        )
 
     return env

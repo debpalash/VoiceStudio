@@ -118,9 +118,10 @@ try {
   await page.getByText('hf_cli****').waitFor({ state: 'detached' });
   assert.deepEqual(clears, [null, 'true']);
 
+  // Each provider's fields carry the provider name: "DeepL · DeepL API Key".
   const key = page
     .locator('input')
-    .and(page.getByLabel(t('credentials.deepl_key'), { exact: true }));
+    .and(page.getByLabel(`DeepL · ${t('settings.llmp_api_key')}`, { exact: true }));
   await key.fill('translation-fixture');
   await key.press('Enter');
   await page.waitForFunction(() =>

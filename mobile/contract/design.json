@@ -1,0 +1,96 @@
+{
+  "categories": [
+    {
+      "id": "Gender",
+      "label": "clone.cat_Gender",
+      "options": [
+        {
+          "token": "",
+          "label": "clone.opt_Auto"
+        },
+        {
+          "token": "male",
+          "label": "clone.opt_male"
+        },
+        {
+          "token": "female",
+          "label": "clone.opt_female"
+        }
+      ]
+    },
+    {
+      "id": "Age",
+      "label": "clone.cat_Age",
+      "options": [
+        {
+          "token": "",
+          "label": "clone.opt_Auto"
+        },
+        {
+          "token": "child",
+          "label": "clone.opt_child"
+        },
+        {
+          "token": "teenager",
+          "label": "clone.opt_teenager"
+        },
+        {
+          "token": "young adult",
+          "label": "clone.opt_young_adult"
+        },
+        {
+          "token": "middle-aged",
+          "label": "clone.opt_middle_aged"
+        },
+        {
+          "token": "elderly",
+          "label": "clone.opt_elderly"
+        }
+      ]
+    },
+    {
+      "id": "Pitch",
+      "label": "clone.cat_Pitch",
+      "options": [
+        {
+          "token": "",
+          "label": "clone.opt_Auto"
+        },
+        {
+          "token": "very low pitch",
+          "label": "clone.opt_very_low_pitch"
+        },
+        {
+          "token": "low pitch",
+          "label": "clone.opt_low_pitch"
+        },
+        {
+          "token": "moderate pitch",
+          "label": "clone.opt_moderate_pitch"
+        },
+        {
+          "token": "high pitch",
+          "label": "clone.opt_high_pitch"
+        },
+        {
+          "token": "very high pitch",
+          "label": "clone.opt_very_high_pitch"
+        }
+      ]
+    },
+    {
+      "id": "Style",
+      "label": "clone.cat_Style",
+      "options": [
+        {
+          "token": "",
+          "label": "clone.opt_Auto"
+        },
+        {
+          "token": "whisper",
+          "label": "clone.opt_whisper"
+        }
+      ]
+    }
+  ]
+}

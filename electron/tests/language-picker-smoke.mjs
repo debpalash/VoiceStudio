@@ -63,7 +63,8 @@ try {
                   'japanese',
                   'spanish',
                   'italian',
-                  'portuguese',
+                  'portuguese (brazil)',
+                  'portuguese (portugal)',
                   'korean',
                 ],
               },
@@ -74,16 +75,6 @@ try {
     );
     await page.route('**/api/setup/status', (route) =>
       route.fulfill({ json: { models_ready: true, missing: [] } }),
-    );
-    await page.route('**/api/workers/target**', (route) =>
-      route.fulfill({
-        json: {
-          target: 'local',
-          active: { remote: false, label: 'Local device' },
-          targets: [],
-          remote_operations: [],
-        },
-      }),
     );
     await page.route('**/api/profiles', (route) =>
       route.fulfill({
@@ -113,6 +104,24 @@ try {
     const input = menu.getByRole('combobox');
     await input.focus();
     assert.equal(await menu.getByRole('listbox').getAttribute('data-columns'), String(columns));
+    // Unsupported languages start collapsed behind a single row; supported ones lead.
+    assert.equal(
+      await menu.locator('[role=option][aria-disabled=true]').count(),
+      0,
+      'unsupported languages start collapsed',
+    );
+    const showAll = menu.getByRole('option', { name: strings.languagePicker.showAll, exact: true });
+    // The row ends the supported list, so narrow one-column layouts virtualize it out of view.
+    await menu.getByRole('listbox').evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    await showAll.click();
+    await menu
+      .getByRole('option', { name: strings.languagePicker.hideUnsupported, exact: true })
+      .waitFor();
+    assert.ok(await menu.locator('[role=option][aria-disabled=true]').count(), 'expands');
+    assert.equal(await menu.isVisible(), true, 'expanding keeps the menu open');
+    await input.focus();
     const count = await menu.getByRole('option').count();
     assert.ok(count > 0 && count < 80, `virtualized: ${count} mounted options`);
     assert.equal(

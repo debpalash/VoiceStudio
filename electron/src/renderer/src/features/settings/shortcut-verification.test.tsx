@@ -8,7 +8,7 @@ const mock = vi.hoisted(() => ({
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock('@/components/dictation-demo', () => ({ DictationDemo: () => null }));
 vi.mock('@/hooks/use-native-dictation', () => ({
-  dictationPreferencesKey: ['prefs'],
+  dictationPreferencesKey: ['dictation-preferences'],
   nativeShortcutKey: ['native-shortcut'],
   useDictationPreferences: () => ({ data: { enabled: true, mode: 'hold' } }),
 }));

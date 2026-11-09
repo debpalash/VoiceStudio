@@ -11,12 +11,39 @@ vi.mock('@/lib/languages', () => ({
   TAGS: ['[laughter]', '[sigh]'],
 }));
 
+const engine = vi.hoisted(() => ({ tags: ['[laughter]', '[sigh]'] }));
+vi.mock('@/hooks/use-engines', () => ({
+  useEngines: () => ({
+    activeTts: {
+      id: 'omnivoice',
+      display_name: 'VoiceStudio (k2-fsa/OmniVoice, 600+ languages)',
+      expression_caps: { emotion: 'none', tags: engine.tags },
+    },
+  }),
+}));
+
 vi.mock('@/lib/store/clone-settings', () => ({
   useCloneSetting: () => 'hello world',
   setCloneSetting: (...args: unknown[]) => setCloneSetting(...args),
 }));
 
 describe('ScriptPanel', () => {
+  it('grays out reaction tags the active engine would speak as words (#3422)', () => {
+    engine.tags = ['[sigh]'];
+    setCloneSetting.mockClear();
+    render(<ScriptPanel />);
+    fireEvent.click(screen.getByRole('button', { name: 'Insert expression token' }));
+    const laughter = screen.getByRole('menuitem', { name: '[laughter]' });
+    expect(laughter).toHaveAttribute('aria-disabled', 'true');
+    expect(laughter).toHaveAccessibleDescription(
+      'Grayed tags would be read aloud as words by OmniVoice.',
+    );
+    fireEvent.click(laughter);
+    expect(setCloneSetting).not.toHaveBeenCalled();
+    expect(screen.getByRole('menuitem', { name: '[sigh]' })).not.toHaveAttribute('aria-disabled');
+    engine.tags = ['[laughter]', '[sigh]'];
+  });
+
   it('inserts an expression token at the caret', () => {
     render(<ScriptPanel />);
     const textarea = screen.getByRole('textbox', { name: 'Script' }) as HTMLTextAreaElement;

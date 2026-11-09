@@ -1,0 +1,36 @@
+VoiceStudio mobile dependency notices
+
+Inter 4.1 variable font: Copyright 2016 The Inter Project Authors.
+Source: https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip
+SIL Open Font License 1.1: included in OFL.txt.
+
+AndroidX (Compose, Material 3, CameraX, Lifecycle, Navigation, DataStore,
+WorkManager, Media3), Kotlin, kotlinx.coroutines, kotlinx.serialization,
+OkHttp/Okio and ZXing core: Apache License 2.0.
+AndroidX: https://android.googlesource.com/platform/frameworks/support
+Kotlin: https://github.com/JetBrains/kotlin
+OkHttp/Okio: https://github.com/square/okhttp and https://github.com/square/okio
+ZXing: https://github.com/zxing/zxing
+Apache License 2.0: included in Apache-2.0.txt.
+No analytics, crash reporting or remote notification dependencies are present.
+
+Native runtime notices (same component set as the iOS app):
+sherpa-onnx 1.13.8 (Apache-2.0), ONNX Runtime (MIT), eSpeak NG (GPL-3.0),
+piper-phonemize (MIT), kaldi-native-fbank (Apache-2.0), KissFFT (BSD-3-Clause),
+kaldi-decoder, kaldifst and OpenFst (Apache-2.0), simple-sentencepiece
+(Apache-2.0), nlohmann/json (MIT), hclust-cpp (BSD-2-Clause), Eigen (MPL-2.0 with bundled BSD/Apache notices),
+omnivoice.cpp and its GGML (MIT), llama.cpp and its GGML (MIT).
+Their complete upstream notices are included in native-*.txt. Original nested
+component notices are retained, including Unicode data and bundled headers.
+Pinned source URLs/commits and eSpeak NG corresponding source (including build
+scripts) are listed in native-Corresponding-source.txt and native-sources.json.
+Runtime versions and AAR checksum: mobile/native/pins.json.
+Model licences and attribution are displayed separately in Models.
+
+Local book import: PdfBox-Android 2.0.27.0 (Apache-2.0 and bundled component
+licences). Upstream attribution and full component licences are included in
+pdfbox-notice.txt and pdfbox-license.txt. Bouncy Castle 1.72 (bcprov, bcpkix,
+bcutil) uses the licence included in bouncycastle-license.txt.
+
+Offline MP3 export: LAME 3.100 (LGPL-2.0-or-later). Complete original
+licence, attribution and corresponding-source/relink location: lame.txt.

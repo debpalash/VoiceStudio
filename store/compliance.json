@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "statuses": ["approved", "not-bundled", "blocked", "needs-review"],
+  "components": [
+    {
+      "id": "voicestudio-application",
+      "delivery": "bundled",
+      "paths": ["backend", "frontend/dist", "electron/out"],
+      "license": "AGPL-3.0-only",
+      "status": "approved",
+      "evidence": "LICENSE and LICENSE-NOTICE.md"
+    },
+    {
+      "id": "omnivoice-python-package",
+      "delivery": "bundled",
+      "paths": ["omnivoice"],
+      "license": "Apache-2.0",
+      "status": "approved",
+      "evidence": "LICENSE-NOTICE.md"
+    },
+    {
+      "id": "uv-executable",
+      "delivery": "bundled",
+      "paths": ["electron/build/uv"],
+      "license": "MIT OR Apache-2.0",
+      "status": "needs-review",
+      "evidence": "The platform worker must bundle the upstream notice and record the exact binary digest."
+    },
+    {
+      "id": "python-runtime-and-wheels",
+      "delivery": "runtime-download",
+      "paths": ["uv.lock"],
+      "license": "multiple",
+      "status": "needs-review",
+      "evidence": "Resolve per locked package before bundling; PyAV/FFmpeg redistribution remains documented as unresolved."
+    },
+    {
+      "id": "default-model-weights",
+      "delivery": "runtime-download",
+      "paths": [],
+      "license": "multiple, including non-commercial terms",
+      "status": "not-bundled",
+      "evidence": "LICENSE-NOTICE.md and backend/config/model_licenses.json"
+    }
+  ]
+}

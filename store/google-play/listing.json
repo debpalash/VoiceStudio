@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "packageName": "sh.voicestudio.mobile",
+  "defaultLanguage": "en-US",
+  "listing": {
+    "title": "VoiceStudio: Offline Voice AI",
+    "shortDescription": "Clone voices, dictate and dub videos on your phone. Offline, with no account.",
+    "fullDescription": [
+      "VoiceStudio runs speech models on your phone. Once a model is downloaded, it works offline: no account, no API key, and nothing you record or type leaves the device.",
+      "",
+      "WHAT YOU CAN DO",
+      "• Speech: turn text into natural speech with a preset voice or one you cloned.",
+      "• Clone a voice from a short recording or audio file, after confirming you have the speaker's consent.",
+      "• Dictate: live speech-to-text you can copy or share.",
+      "• Dub: transcribe a video, translate it into another language and voice it, then save or share the result.",
+      "",
+      "MODELS YOU CHOOSE",
+      "Pick which models to download. Each shows its size, languages and licence before you download it; models with restrictive licences ask you to accept their terms first. Downloads use Wi-Fi unless you allow mobile data, are checked before use, and can be deleted any time.",
+      "",
+      "LANGUAGES",
+      "Voice cloning and dubbing cover 11 languages: English, Chinese, Japanese, Korean, French, German, Spanish, Portuguese, Italian, Russian and Arabic. Dictation on the phone is English; pair your computer for more. Preset speech covers 32 languages, depending on the model.",
+      "",
+      "USE YOUR COMPUTER TOO (OPTIONAL)",
+      "If you run VoiceStudio on your computer, scan its QR code to pair. Heavy jobs can then run on your computer's engines, chosen per task. The phone talks only to your own computer; there is no cloud relay.",
+      "",
+      "PRIVACY",
+      "On-device tasks send nothing anywhere. The only network requests are model downloads you start, reports you choose to send about a result and, if you pair, requests to your own computer. Analytics are off unless you say yes, and this version sends none.",
+      "",
+      "OPEN SOURCE",
+      "VoiceStudio is free and open source (AGPL-3.0): https://github.com/debpalash/VoiceStudio",
+      "",
+      "Use voice cloning responsibly: only clone voices you have permission to use."
+    ]
+  },
+  "category": "Music & Audio",
+  "tags": [
+    "Text to speech",
+    "Speech to text",
+    "Voice recorder",
+    "Translation"
+  ],
+  "contact": {
+    "website": "https://voicestudio.sh",
+    "email": "Set in Play Console by the account owner",
+    "privacyPolicy": "https://voicestudio.sh/privacy"
+  },
+  "graphics": {
+    "icon": "store/google-play/icon-512.png",
+    "featureGraphic": "store/google-play/feature-graphic-1024x500.png",
+    "phoneScreenshots": "Capture 2 to 8 from a release build (Home, Speak, Voices, Dub, Dictate, Models); 9:16, 1080x1920 or larger"
+  },
+  "dataSafety": {
+    "collectsData": true,
+    "sharesData": false,
+    "collected": [
+      {
+        "type": "App activity → Other user-generated content",
+        "what": "A content report the user chooses to send: reason, optional note, optionally the text they entered, app version and the model that made the result",
+        "optional": true,
+        "purposes": [
+          "Fraud prevention, security, and compliance"
+        ],
+        "ephemeral": false,
+        "linkedToIdentity": false
+      }
+    ],
+    "encryptedInTransit": true,
+    "deletionRequests": "Not offered: reports carry no account, device or install identifier to match a request to, and the server deletes them after 180 days.",
+    "rationale": "Models run on the device. Model downloads are user-started requests to Hugging Face, and pairing sends requests only to the user's own computer; neither reaches the developer. Reports reach VoiceStudio only when the user taps Send, and the server stores no IP address with them. The first-run analytics choice is stored on the device and this version transmits no analytics.",
+    "reviewWhen": "Re-answer before shipping phone analytics or any new network destination (mobile/contract/SPEC.md → Privacy)."
+  },
+  "permissions": {
+    "android.permission.INTERNET": "Download the models the user picks and talk to the user's own paired computer.",
+    "android.permission.ACCESS_NETWORK_STATE": "Keep model downloads on Wi-Fi unless the user allows mobile data.",
+    "android.permission.CAMERA": "Scan the pairing QR code shown by VoiceStudio on the user's computer.",
+    "android.permission.RECORD_AUDIO": "Dictation and recording a reference clip for voice cloning, only while the user records.",
+    "android.permission.POST_NOTIFICATIONS": "Tell the user when a dubbing job finishes.",
+    "android.permission.FOREGROUND_SERVICE": "Keep a long dubbing job running with a visible progress notification.",
+    "android.permission.FOREGROUND_SERVICE_DATA_SYNC": "Upload a video to the user's own computer for dubbing and download the result, started by the user.",
+    "android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING": "Dub a video on the phone (transcribe, translate, voice and mux) with a visible progress notification, started by the user; Android 15 and newer.",
+    "android.permission.RUN_USER_INITIATED_JOBS": "Download phone models after the user taps Download, with a visible progress notification and Pause control; Android 14 and newer. No transfers start without a saved user request."
+  },
+  "appContent": {
+    "ads": false,
+    "appAccess": "All features work without login; no test account needed.",
+    "targetAudience": "18 and over (voice cloning)",
+    "contentRating": {
+      "category": "Utility, productivity, communication, or other",
+      "violence": false,
+      "sexualContent": false,
+      "profanity": false,
+      "controlledSubstances": false,
+      "gambling": false,
+      "userInteraction": false,
+      "sharesLocation": false,
+      "digitalPurchases": false,
+      "note": "Users don't interact with each other; generated audio stays on the device unless the user shares it."
+    },
+    "generativeAi": {
+      "generatesContent": true,
+      "kinds": [
+        "Synthetic speech",
+        "Voice clones",
+        "Translated dubbing"
+      ],
+      "consentBeforeCloning": true,
+      "inAppReporting": "Report action on every generated result sends a report inside the app (mobile/contract/SPEC.md → Reporting generated content)."
+    },
+    "newsApp": false,
+    "healthApp": false,
+    "financialFeatures": false,
+    "governmentApp": false
+  }
+}

@@ -13,19 +13,16 @@
  * it does not recognise yields no hint rather than a wrong one.
  */
 
-export type BackendHintKey =
-  | 'backend.hint_spawn_blocked'
-  | 'backend.hint_slow_start'
-  | 'backend.hint_synced_folder';
+import {
+  classifyInstallFailure,
+  failureGuidance,
+  inSyncedFolder,
+  type BackendCause,
+  type BackendHintKey,
+} from './installFailure';
 
-/** Cloud-sync clients whose placeholders / locks break a Python environment. */
-const SYNCED_FOLDER =
-  /(^|[\\/])(onedrive(\s+-\s+[^\\/]+)?|dropbox|icloud\s*drive|google\s*drive|nextcloud)([\\/]|$)/i;
-
-/** True when the text names a path inside a cloud-synced folder. */
-export function inSyncedFolder(text: string): boolean {
-  return SYNCED_FOLDER.test(text);
-}
+export { inSyncedFolder };
+export type { BackendCause, BackendHintKey };
 
 /**
  * The hints that apply to a failed-backend message, most specific first.
@@ -33,16 +30,51 @@ export function inSyncedFolder(text: string): boolean {
  */
 export function backendFailureHints(message: string | undefined): BackendHintKey[] {
   if (!message) return [];
-  const hints: BackendHintKey[] = [];
-  // The OS refused to run the program: libuv reports a blocked executable on
-  // Windows as the bare `spawn UNKNOWN`, and EPERM/EACCES elsewhere.
-  if (/\bCould not start\b.*\b(spawn UNKNOWN|UNKNOWN|EPERM|EACCES)\b/s.test(message)) {
-    hints.push('backend.hint_spawn_blocked');
-  }
-  // The readiness wait ran out on a launch that was not obviously dead.
-  if (/did not answer on port \d+ within \d+ s/.test(message)) {
-    hints.push('backend.hint_slow_start');
-  }
-  if (inSyncedFolder(message)) hints.push('backend.hint_synced_folder');
-  return hints;
+  return failureGuidance(classifyInstallFailure({ message }), { message }).hints;
+}
+
+/** The single primary action that fixes (or best diagnoses) each cause. */
+export type BackendCauseAction = 'retry' | 'choose_folder' | 'copy_diagnostics';
+
+export const BACKEND_CAUSE_ACTION: Record<BackendCause, BackendCauseAction> = {
+  smart_app_control: 'retry',
+  app_control_policy: 'retry',
+  antivirus: 'retry',
+  spawn_blocked: 'retry',
+  gatekeeper: 'retry',
+  noexec: 'choose_folder',
+  download: 'retry',
+  illegal_instruction: 'copy_diagnostics',
+  native_crash: 'copy_diagnostics',
+  external_kill: 'retry',
+  missing_env: 'choose_folder',
+  permission: 'choose_folder',
+  synced_folder: 'choose_folder',
+  slow_start: 'retry',
+};
+
+/**
+ * The primary action for a cause on this install. Moving the environment only
+ * exists for the app-managed runtime of an installed app: a source checkout's
+ * `.venv` lives in the repository, the folder picker refuses it, and a
+ * "Choose another folder" button there did nothing (#3480). Retry re-checks the
+ * environment instead, which is what a source user needs after running setup.
+ */
+export function backendCauseAction(
+  cause: BackendCause | null,
+  { managedRuntime }: { managedRuntime: boolean },
+): BackendCauseAction {
+  if (!cause) return 'retry';
+  const action = BACKEND_CAUSE_ACTION[cause];
+  return action === 'choose_folder' && !managedRuntime ? 'retry' : action;
+}
+
+/**
+ * Collapses a failed-backend message into ONE named cause, most specific
+ * first, or null when nothing is recognised (the raw message is then shown
+ * alone with Retry).
+ */
+export function backendFailureCause(message: string | undefined): BackendCause | null {
+  if (!message) return null;
+  return failureGuidance(classifyInstallFailure({ message }), { message }).cause;
 }

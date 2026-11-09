@@ -68,7 +68,11 @@ def _recv(stream):
 
 def _measure_vram_mb() -> float:
     try:
-        import torch
+        # A ping must stay cheap: importing torch here can take a long time on a cold
+        # start (#2837). Until the model has loaded, nothing is allocated.
+        torch = sys.modules.get("torch")
+        if torch is None:
+            return 0.0
         if torch.cuda.is_available():
             return round(torch.cuda.memory_allocated() / (1024 ** 2), 1)
     except Exception:
@@ -137,6 +141,35 @@ def _chdir_to_clone_if_available() -> None:
             pass
 
 
+def _patch_xpu_mem_get_info(torch) -> None:
+    """Pinned copy of ``backend/core/xpu_compat.py`` (this sidecar cannot
+    import parent code): Intel Arc drivers on Windows refuse the free-memory
+    query that transformers/accelerate call while loading onto XPU, so fall
+    back to ``total - reserved``. Kept in step by
+    tests/test_xpu_mem_get_info_shim.py."""
+    xpu = getattr(torch, "xpu", None)
+    original = getattr(xpu, "mem_get_info", None)
+    if original is None or getattr(original, "_omnivoice_fallback", False):
+        return
+
+    def mem_get_info(device=None):
+        try:
+            return original(device)
+        except RuntimeError:
+            if device is None:
+                idx = int(xpu.current_device())
+            elif isinstance(device, int):
+                idx = device
+            else:
+                idx = torch.device(device).index
+                idx = int(xpu.current_device()) if idx is None else int(idx)
+            total = int(xpu.get_device_properties(idx).total_memory)
+            return max(total - int(xpu.memory_reserved(idx)), 0), total
+
+    mem_get_info._omnivoice_fallback = True
+    xpu.mem_get_info = mem_get_info
+
+
 def _load_model(stdout):
     """Cold-construct using an available torch accelerator, with CPU fallback."""
     global _model
@@ -162,6 +195,8 @@ def _load_model(stdout):
         device = "cpu"  # Broken accelerator drivers must not block CPU loading.
     if device == "mps":
         device = "cpu"  # MPS was slower than CPU in the existing validation run
+    if device == "xpu":
+        _patch_xpu_mem_get_info(torch)
     _send(stdout, {"op": "progress", "stage": "loading_model", "percent": 50})
 
     _model = ConfuciusTTS(config_path=_config_path(), device=device)

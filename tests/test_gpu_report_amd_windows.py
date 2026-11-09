@@ -331,7 +331,20 @@ def test_working_gpu_and_gpu_less_and_pinned_states():
     assert _report(_cpu_caps(probe_ok=False), [], "unknown")["state"] == "probe_failed"
 
 
-def test_kernel_risk_note_marks_accelerated_with_caveat():
+def test_kernel_risk_note_marks_the_host_as_missing_kernels():
+    # A wheel with no kernels for the card makes the loader fall back to the
+    # CPU, so the report must not present the host as GPU-accelerated (#3067).
+    caps = HostCaps(
+        family="cuda", available_families=("cuda", "cpu"),
+        notes=("GPU (sm_120) not in this torch build's archs - may fail at kernel launch",),
+    )
+    assert _report(caps, [GEFORCE], "cuda")["state"] == "kernels_missing"
+
+
+def test_forced_cuda_keeps_the_accelerated_caveat(monkeypatch):
+    # OMNIVOICE_FORCE_CUDA=1 runs the engine on the GPU anyway, so the host
+    # is usable and the risk stays a caveat rather than a missing-kernel host.
+    monkeypatch.setenv("OMNIVOICE_FORCE_CUDA", "1")
     caps = HostCaps(
         family="cuda", available_families=("cuda", "cpu"),
         notes=("GPU (sm_120) not in this torch build's archs - may fail at kernel launch",),
@@ -392,8 +405,13 @@ def _fake_venv(tmp_path, version_py: str):
     site = tmp_path / ".venv" / "lib" / "python3.11" / "site-packages" / "torch"
     site.mkdir(parents=True, exist_ok=True)
     (site / "version.py").write_text(version_py)
+    win_site = tmp_path / ".venv" / "Lib" / "site-packages" / "torch"
+    win_site.mkdir(parents=True, exist_ok=True)
+    (win_site / "version.py").write_text(version_py)
     (tmp_path / ".venv" / "bin").mkdir(parents=True, exist_ok=True)
     (tmp_path / ".venv" / "bin" / "python").write_text("")
+    (tmp_path / ".venv" / "Scripts").mkdir(parents=True, exist_ok=True)
+    (tmp_path / ".venv" / "Scripts" / "python.exe").write_text("")
 
 
 def test_indextts_does_not_claim_rocm_when_its_venv_holds_a_cuda_torch(tmp_path, monkeypatch):
@@ -418,13 +436,16 @@ def test_indextts_does_not_claim_rocm_when_its_venv_holds_a_cuda_torch(tmp_path,
     assert rocm["effective_device"] == "rocm"
 
 
-def test_indextts_keeps_its_claim_when_the_venv_cannot_be_inspected(tmp_path, monkeypatch):
+@pytest.mark.parametrize("platform,expected", [("win32", "cpu_fallback"), ("linux", "accelerated")])
+def test_indextts_unknown_venv_is_conservative_only_on_opted_windows(tmp_path, monkeypatch, platform, expected):
     from engines.indextts import IndexTTS2Backend, bootstrap
 
+    monkeypatch.setenv("OMNIVOICE_TORCH_VARIANT", "rocm")
     monkeypatch.setenv("OMNIVOICE_INDEXTTS_DIR", str(tmp_path))  # no .venv at all
     monkeypatch.setattr(bootstrap, "_resolved_python", None)
+    monkeypatch.setattr("sys.platform", platform)
     rocm_caps = HostCaps(family="rocm", available_families=("rocm", "cpu"))
-    assert IndexTTS2Backend.runtime_compute_profile(rocm_caps)["routing_status"] == "accelerated"
+    assert IndexTTS2Backend.runtime_compute_profile(rocm_caps)["routing_status"] == expected
     # Never narrowed off a ROCm host either.
     cuda_caps = HostCaps(family="cuda", available_families=("cuda", "cpu"))
     assert IndexTTS2Backend.runtime_compute_profile(cuda_caps)["routing_status"] == "accelerated"
@@ -447,6 +468,9 @@ def test_linux_intel_arc_is_found_without_a_vram_figure(tmp_path, symlink_or_ski
     """i915/xe expose no mem_info_vram_total, so Arc used to read 0 GB and be
     dropped as noise. A card behind a bridge is discrete; the iGPU at 00:02.0
     is not."""
+    import sys
+    if sys.platform == "win32":
+        pytest.skip("Linux sysfs PCI path with colons cannot be created on Windows filesystem")
     inv = _m("core.gpu_inventory")
     pci = tmp_path / "pci"
     for name in ("0000:00:02.0", "0000:03:00.0"):

@@ -1,22 +1,14 @@
-"""Voice Design takes: design_recipe on generation_history
+"""Keep the inputs needed to recreate designed-voice generations.
+
+Adds an optional design-recipe payload to generation history. The migration
+checks the table and column first, so repeated or partial upgrades only add
+missing schema and leave existing rows intact. ``core.db`` declares the same
+column in its base schema and additive reconciliation path for installations
+where alembic cannot run.
 
 Revision ID: 0013_generation_history_design_recipe
 Revises: 0012_call_sessions
-Create Date: 2026-09-28 00:00:00.000000
-
-Adds ``generation_history.design_recipe TEXT DEFAULT NULL`` — the Voice Design
-draft behind a take, as JSON ``{"description", "picks", "mapped"}`` (#2389),
-where ``mapped`` is derived server-side from the description.
-The instruct alone cannot say which details the user wrote, picked or had
-mapped from the description, so reopening a take could not rebuild the draft
-that produced it. Rows written before this column stay NULL and keep the
-instruct-based restore.
-
-Additive + idempotent (guarded by PRAGMA table_info, matching 0009), so a
-fresh install whose ``_BASE_SCHEMA`` already declares the column is a no-op.
-The same column is mirrored into ``core/db.py::_BASE_SCHEMA`` so fresh
-installs and migrated DBs converge, and ``_reconcile_additive_columns`` heals
-DBs where alembic cannot run.
+Create Date: 2026-10-01 00:00:00.000000
 """
 from typing import Sequence, Union
 
@@ -29,34 +21,30 @@ down_revision: Union[str, None] = "0012_call_sessions"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-
-def _has_column(table: str, column: str) -> bool:
-    bind = op.get_bind()
-    rows = bind.execute(sa.text(f"PRAGMA table_info({table})")).fetchall()
-    return any(r[1] == column for r in rows)
+_TABLE = "generation_history"
+_COLUMN = "design_recipe"
 
 
 def _has_table(name: str) -> bool:
-    bind = op.get_bind()
-    row = bind.execute(
+    row = op.get_bind().execute(
         sa.text("SELECT name FROM sqlite_master WHERE type='table' AND name=:n"),
         {"n": name},
     ).fetchone()
     return row is not None
 
 
+def _has_column(table: str, column: str) -> bool:
+    rows = op.get_bind().execute(sa.text(f"PRAGMA table_info({table})")).fetchall()
+    return any(r[1] == column for r in rows)
+
+
 def upgrade() -> None:
-    # A DB that missed init has no generation_history; the startup self-heal
-    # (#710) creates it from _BASE_SCHEMA with the column already present.
-    if not _has_table("generation_history"):
+    if not _has_table(_TABLE):
         return
-    if not _has_column("generation_history", "design_recipe"):
-        op.add_column(
-            "generation_history",
-            sa.Column("design_recipe", sa.Text(), nullable=True, server_default=None),
-        )
+    if not _has_column(_TABLE, _COLUMN):
+        op.add_column(_TABLE, sa.Column(_COLUMN, sa.Text(), nullable=True))
 
 
 def downgrade() -> None:
-    if _has_table("generation_history") and _has_column("generation_history", "design_recipe"):
-        op.drop_column("generation_history", "design_recipe")
+    if _has_table(_TABLE) and _has_column(_TABLE, _COLUMN):
+        op.drop_column(_TABLE, _COLUMN)

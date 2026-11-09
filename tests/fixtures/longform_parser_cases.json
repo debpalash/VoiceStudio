@@ -1476,8 +1476,135 @@
     "expected": []
   },
   {
-    "name": "inline_markup_marks_continuation_not_line_end",
-    "input": "He was [slow]very[/slow] tired.\nNext line. [pause 1s] After.",
+    "name": "join_markup_midline_then_pause_line",
+    "input": "The gate [fast]creaked open[/fast] slowly.[pause 2s]\nLater, quiet.",
+    "default_voice": "narr",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "narr",
+            "text": "The gate",
+            "pause_ms_after": 0,
+            "speed": null,
+            "join": "continue"
+          },
+          {
+            "voice_id": "narr",
+            "text": "creaked open",
+            "pause_ms_after": 0,
+            "speed": 1.15,
+            "join": "continue"
+          },
+          {
+            "voice_id": "narr",
+            "text": "slowly.",
+            "pause_ms_after": 2000,
+            "speed": null
+          },
+          {
+            "voice_id": "narr",
+            "text": "Later, quiet.",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "join_paragraph_break_at_markup_edge",
+    "input": "Dawn came.\n\n[slow]Nobody stirred.[/slow] Then a bell.",
+    "default_voice": "narr",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "narr",
+            "text": "Dawn came.",
+            "pause_ms_after": 0,
+            "speed": null,
+            "join": "paragraph"
+          },
+          {
+            "voice_id": "narr",
+            "text": "Nobody stirred.",
+            "pause_ms_after": 0,
+            "speed": 0.85,
+            "join": "continue"
+          },
+          {
+            "voice_id": "narr",
+            "text": "Then a bell.",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "join_lone_newline_at_markup_edge",
+    "input": "Rain fell\n[emphasis]hard[/emphasis]\nall night",
+    "default_voice": "narr",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "narr",
+            "text": "Rain fell",
+            "pause_ms_after": 0,
+            "speed": null,
+            "join": "continue"
+          },
+          {
+            "voice_id": "narr",
+            "text": "hard",
+            "pause_ms_after": 0,
+            "speed": 0.92,
+            "join": "continue"
+          },
+          {
+            "voice_id": "narr",
+            "text": "all night",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "join_blank_line_hidden_in_empty_spell_segment",
+    "input": "[fast]left[/fast][spell]\n  \n[/spell][slow]right[/slow]",
+    "default_voice": "narr",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "narr",
+            "text": "left",
+            "pause_ms_after": 0,
+            "speed": 1.15,
+            "join": "paragraph"
+          },
+          {
+            "voice_id": "narr",
+            "text": "right",
+            "pause_ms_after": 0,
+            "speed": 0.85
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "emotion_basic_until_reset",
+    "input": "[emotion:quietly terrified] Did you hear that? [emotion:] It was the wind.",
     "default_voice": "v1",
     "expected": [
       {
@@ -1485,27 +1612,251 @@
         "spans": [
           {
             "voice_id": "v1",
-            "text": "He was",
+            "text": "Did you hear that?",
+            "pause_ms_after": 0,
+            "speed": null,
+            "join": "continue",
+            "emotion": "quietly terrified"
+          },
+          {
+            "voice_id": "v1",
+            "text": "It was the wind.",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "emotion_blank_line_join",
+    "input": "Calm. [emotion:sad] Sad.\n\n[emotion:happy] Happy.",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "Calm.",
             "pause_ms_after": 0,
             "speed": null,
             "join": "continue"
           },
           {
             "voice_id": "v1",
-            "text": "very",
+            "text": "Sad.",
+            "pause_ms_after": 0,
+            "speed": null,
+            "join": "paragraph",
+            "emotion": "sad"
+          },
+          {
+            "voice_id": "v1",
+            "text": "Happy.",
+            "pause_ms_after": 0,
+            "speed": null,
+            "emotion": "happy"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "emotion_survives_pause",
+    "input": "[emotion:angry] Get out! [pause 500ms] Now!",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "Get out!",
+            "pause_ms_after": 500,
+            "speed": null,
+            "emotion": "angry"
+          },
+          {
+            "voice_id": "v1",
+            "text": "Now!",
+            "pause_ms_after": 0,
+            "speed": null,
+            "emotion": "angry"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "emotion_resets_at_voice",
+    "input": "[emotion:angry] Get out! [voice:Sam] O-okay.",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "Get out!",
+            "pause_ms_after": 0,
+            "speed": null,
+            "emotion": "angry"
+          },
+          {
+            "voice_id": "Sam",
+            "text": "O-okay.",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "emotion_after_voice_tag",
+    "input": "[voice:Mara] [emotion:nervous] Hello? [voice:Mara] Again.",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "Mara",
+            "text": "Hello?",
+            "pause_ms_after": 0,
+            "speed": null,
+            "emotion": "nervous"
+          },
+          {
+            "voice_id": "Mara",
+            "text": "Again.",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "emotion_resets_at_chapter",
+    "input": "# One\n[emotion:sad] Gone.\n# Two\nBack.",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "One",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "Gone.",
+            "pause_ms_after": 0,
+            "speed": null,
+            "emotion": "sad"
+          }
+        ]
+      },
+      {
+        "title": "Two",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "Back.",
+            "pause_ms_after": 0,
+            "speed": null
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "emotion_inside_ssml",
+    "input": "[slow]a [emotion:x] b[/slow] c",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "a",
             "pause_ms_after": 0,
             "speed": 0.85,
             "join": "continue"
           },
           {
             "voice_id": "v1",
-            "text": "tired.\nNext line.",
+            "text": "b",
+            "pause_ms_after": 0,
+            "speed": 0.85,
+            "join": "continue",
+            "emotion": "x"
+          },
+          {
+            "voice_id": "v1",
+            "text": "c",
+            "pause_ms_after": 0,
+            "speed": null,
+            "emotion": "x"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "emotion_whitespace_collapsed",
+    "input": "[emotion:  very\n  tired  ] Yawn.",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "Yawn.",
+            "pause_ms_after": 0,
+            "speed": null,
+            "emotion": "very tired"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "emotion_only_with_pause",
+    "input": "[emotion:sad] [pause 1s] Later.",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "",
             "pause_ms_after": 1000,
             "speed": null
           },
           {
             "voice_id": "v1",
-            "text": "After.",
+            "text": "Later.",
+            "pause_ms_after": 0,
+            "speed": null,
+            "emotion": "sad"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "emotion_empty_is_neutral",
+    "input": "[emotion:] [emotion:   ] Plain.",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
+          {
+            "voice_id": "v1",
+            "text": "Plain.",
             "pause_ms_after": 0,
             "speed": null
           }
@@ -1514,8 +1865,8 @@
     ]
   },
   {
-    "name": "blank_line_on_markup_boundary_ends_the_line",
-    "input": "Intro [slow]slowly[/slow]\n\nNew paragraph.",
+    "name": "emotion_capped_at_200",
+    "input": "[emotion:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa] Long.",
     "default_voice": "v1",
     "expected": [
       {
@@ -1523,21 +1874,26 @@
         "spans": [
           {
             "voice_id": "v1",
-            "text": "Intro",
+            "text": "Long.",
             "pause_ms_after": 0,
             "speed": null,
-            "join": "continue"
-          },
+            "emotion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "emotion_bracket_in_value_is_literal",
+    "input": "[emotion:a[b] text",
+    "default_voice": "v1",
+    "expected": [
+      {
+        "title": "Chapter 1",
+        "spans": [
           {
             "voice_id": "v1",
-            "text": "slowly",
-            "pause_ms_after": 0,
-            "speed": 0.85,
-            "join": "paragraph"
-          },
-          {
-            "voice_id": "v1",
-            "text": "New paragraph.",
+            "text": "[emotion:a[b] text",
             "pause_ms_after": 0,
             "speed": null
           }
@@ -1546,8 +1902,8 @@
     ]
   },
   {
-    "name": "single_newline_on_markup_boundary_continues",
-    "input": "Intro [slow]slowly[/slow]\nsame paragraph.",
+    "name": "emotion_case_insensitive",
+    "input": "[Emotion:sad] Not read aloud. [EMOTION:] Plain.",
     "default_voice": "v1",
     "expected": [
       {
@@ -1555,46 +1911,15 @@
         "spans": [
           {
             "voice_id": "v1",
-            "text": "Intro",
+            "text": "Not read aloud.",
             "pause_ms_after": 0,
             "speed": null,
-            "join": "continue"
+            "join": "continue",
+            "emotion": "sad"
           },
           {
             "voice_id": "v1",
-            "text": "slowly",
-            "pause_ms_after": 0,
-            "speed": 0.85,
-            "join": "continue"
-          },
-          {
-            "voice_id": "v1",
-            "text": "same paragraph.",
-            "pause_ms_after": 0,
-            "speed": null
-          }
-        ]
-      }
-    ]
-  },
-  {
-    "name": "blank_line_inside_dropped_segment_ends_the_line",
-    "input": "One [slow] \n\n [/slow]Two.",
-    "default_voice": "v1",
-    "expected": [
-      {
-        "title": "Chapter 1",
-        "spans": [
-          {
-            "voice_id": "v1",
-            "text": "One",
-            "pause_ms_after": 0,
-            "speed": null,
-            "join": "paragraph"
-          },
-          {
-            "voice_id": "v1",
-            "text": "Two.",
+            "text": "Plain.",
             "pause_ms_after": 0,
             "speed": null
           }

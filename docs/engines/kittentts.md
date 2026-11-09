@@ -69,6 +69,13 @@ flaky connection). See [downloading-models.md](../downloading-models.md).
 
 - Engine unavailable: `pip install kittentts` into VoiceStudio's Python
   environment and restart.
+- Model load fails with `EspeakDataError`: espeak-ng (the phonemizer behind
+  KittenTTS) cannot open its data folder, usually because the install path is
+  too long or contains non-ASCII characters. VoiceStudio already retries with a
+  short copy in `%PROGRAMDATA%` (Windows), `~/.cache` or the temp folder; if
+  none is writable, set `OMNIVOICE_ESPEAK_DATA_CACHE` to a short, writable
+  ASCII folder (for example `C:\espeak`) and restart. Older builds exited the
+  whole backend with `Error processing file '…phontab'` here.
 - Other issues: [install/troubleshooting.md](../install/troubleshooting.md).
 
 See also: [benchmarks.md](../benchmarks.md),

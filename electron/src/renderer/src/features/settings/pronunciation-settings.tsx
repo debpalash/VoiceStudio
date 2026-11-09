@@ -202,7 +202,9 @@ export function PronunciationSettings() {
         title={t('pronunciation.title')}
         description={t('pronunciation.help')}
       >
-        <Badge variant="secondary">{rows.length}</Badge>
+        <Badge variant="secondary">
+          {t('pronunciation.entries_count', { count: rows.length })}
+        </Badge>
       </SettingsRow>
       {(error || entries.isError) && (
         <div className="p-4">

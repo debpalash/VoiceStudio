@@ -2,6 +2,7 @@ import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  agentChildEnv,
   agentProviderFailure,
   agentCommandMatchesPlatform,
   dubTranslationPrompt,
@@ -245,4 +246,21 @@ describe('packaged app repair sessions', () => {
     expect(translationLaunchArgs('claude')).toContain('--no-session-persistence');
     expect(translationLaunchArgs('opencode')).not.toContain('--auto');
   });
+});
+
+it('repair agent env strips account bridge vars and other backend-only capabilities', () => {
+  const keys = [
+    'VOICESTUDIO_ACCOUNT_BRIDGE_URL',
+    'VOICESTUDIO_ACCOUNT_BRIDGE_TOKEN',
+    'VOICESTUDIO_LLM_AGENT_URL',
+    'VOICESTUDIO_LLM_AGENT_TOKEN',
+  ];
+  for (const key of keys) vi.stubEnv(key, 'capability');
+  try {
+    const env = agentChildEnv({ NO_COLOR: '1' });
+    for (const key of keys) expect(env[key]).toBeUndefined();
+    expect(env.NO_COLOR).toBe('1');
+  } finally {
+    vi.unstubAllEnvs();
+  }
 });

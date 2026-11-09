@@ -46,7 +46,7 @@ export default function VoiceProfile({ voiceId, onBack, onOpenProject, onDeleted
   const [saving, setSaving] = useState(false);
 
   // Try-it panel
-  const [testText, setTestText] = useState(t('voice_profile.test_text'));
+  const [testText, setTestText] = useState(() => t('voice_profile.test_text'));
   const [testGenerating, setTestGenerating] = useState(false);
   const [testAudioUrl, setTestAudioUrl] = useState(null);
 

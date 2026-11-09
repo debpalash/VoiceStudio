@@ -1,7 +1,9 @@
 // @vitest-environment node
 import { createServer } from 'node:http';
 import { afterEach, expect, it } from 'vitest';
+import { DEFAULT_ELECTRON_PROXY_PORT } from '../../../config/app-config.mjs';
 import {
+  electronProxyPort,
   proxyRequestRefused,
   startDevBackendProxy,
   type DevBackendProxy,
@@ -22,7 +24,7 @@ it('streams requests to the current backend with only main-owned authorization',
         path: request.url,
         body: Buffer.concat(chunks).toString('utf8'),
         authorization: request.headers.authorization,
-        origin: request.headers.origin,
+        origin: request.headers['x-voicestudio-desktop-origin'] as string | undefined,
       };
       response.writeHead(201, { 'content-type': 'text/plain' });
       response.end('proxied');
@@ -35,14 +37,14 @@ it('streams requests to the current backend with only main-owned authorization',
 
   const proxy: DevBackendProxy = await startDevBackendProxy(
     () => `http://127.0.0.1:${address.port}`,
-    () => ({ Authorization: 'Bearer scoped-session' }),
+    () => ({ Authorization: 'Bearer scoped-session', 'X-VoiceStudio-Desktop-Origin': 'app://voicestudio' }),
     0,
     ['http://localhost:3902'],
   );
   cleanup.push(proxy.close);
   const response = await fetch(`${proxy.url}/system/info?full=1`, {
     method: 'POST',
-    headers: { Authorization: 'Bearer renderer-secret', Origin: 'http://localhost:3902' },
+    headers: { Authorization: 'Bearer renderer-secret', Origin: 'http://localhost:3902', 'X-VoiceStudio-Desktop-Origin': 'app://forged' },
     body: 'stream me',
   });
 
@@ -52,7 +54,7 @@ it('streams requests to the current backend with only main-owned authorization',
     path: '/system/info?full=1',
     body: 'stream me',
     authorization: 'Bearer scoped-session',
-    origin: undefined,
+    origin: 'app://voicestudio',
   });
 });
 
@@ -123,4 +125,18 @@ it('refuses other websites and rebound host names before injecting credentials',
   expect(
     proxyRequestRefused({ host: '127.0.0.1:3903', 'sec-fetch-site': 'cross-site' }, renderer),
   ).toBe(true);
+});
+
+it('binds an OS-assigned port when asked for port 0, so no pre-picked port can be stolen', async () => {
+  expect(electronProxyPort('0')).toBe(0);
+  const proxy = await startDevBackendProxy(() => 'http://127.0.0.1:1', () => ({}), 0);
+  cleanup.push(proxy.close);
+  expect(Number(new URL(proxy.url).port)).toBeGreaterThan(0);
+});
+
+it('falls back to the default proxy port for a missing or invalid setting', () => {
+  for (const raw of [undefined, '', '  ', 'abc', '-1', '65536', '1.5']) {
+    expect(electronProxyPort(raw)).toBe(DEFAULT_ELECTRON_PROXY_PORT);
+  }
+  expect(electronProxyPort('49305')).toBe(49305);
 });

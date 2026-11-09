@@ -5,7 +5,7 @@
 Three user-driven decisions (locked):
 1. **Full UI consolidation** — one "Voice" workspace; the saved profile is the hub; "from audio" (clone) and "by design" are two ways to *define* the same profile object.
 2. **History moves right** — left sidebar keeps **Projects + Downloads** only; the per-workspace generation history lives on the right.
-3. **Design voice saves a rendered reference WAV** — on save we *try* to synthesize a deterministic sample (seed 42) and store it as `ref_audio_path`, *and* persist the design params for re-editing. Same mechanism archetypes already use. **Saving never depends on a loaded TTS model** (issue #476): if the engine isn't ready (e.g. fresh model-less Docker image) the row is persisted with the sample *pending* and the deterministic sample is rendered lazily on first preview/use — the row's `vd_states` + `instruct` already make the voice fully usable (synthesis falls back to instruct-only conditioning).
+3. **Design voice saves a rendered reference WAV** — on save we *try* to synthesize a deterministic sample (the saved seed, 42 when none) and store it as `ref_audio_path`, *and* persist the design params for re-editing. Same mechanism archetypes already use. **Saving never depends on a loaded TTS model** (issue #476): if the engine isn't ready (e.g. fresh model-less Docker image) the row is persisted with the sample *pending* and the deterministic sample is rendered lazily on first preview/use — the row's `vd_states` + `instruct` already make the voice fully usable (synthesis falls back to instruct-only conditioning).
 
 Not in scope: changing the Dub or Stories workspaces beyond giving them the same right-side history panel; realtime/streaming synthesis; voice-mixing.
 
@@ -73,7 +73,7 @@ Constraints honored (from `CLAUDE.md`): existing `voice_profiles` / `generation_
 │ Pitch    · low        [v.low][◉low][mod][high][v.high]     │
 │ Accent   · british    [ british accent              ▾]     │
 └────────────────────────────────────────────────────────────┘
-   Save → renders a sample WAV (seed 42) + stores these picks
+   Save → renders a sample WAV (saved seed, default 42) + stores these picks
    as a reusable design profile.      [ 💾 Save as profile ]
 ```
 
@@ -166,7 +166,7 @@ UPDATE voice_profiles SET kind='clone' WHERE kind IS NULL OR kind='';
 interface Profile {
   id: string; name: string;
   kind: 'clone' | 'design';
-  ref_audio_path: string | null;   // clone: user audio. design: rendered sample (seed 42)
+  ref_audio_path: string | null;   // clone: user audio. design: rendered sample (saved seed, default 42)
   ref_text: string;
   instruct: string;                 // style; for design = buildDesignInstruct(vd_states) ⊕ free text
   vd_states: Record<string,string> | null;  // design only — for re-editing the sliders
@@ -218,7 +218,7 @@ GET /history?mode=clone|design&limit=50
 - Make `ref_audio` **optional**. Add `kind` (default `clone`) and `vd_states` (JSON string, optional) form fields.
 - Validation:
   - `kind='clone'` → `ref_audio` required (today's rule). Upload saves recreate the voices storage directory if it is missing, including after startup.
-  - `kind='design'` → `vd_states` required; `instruct` is **not** required (an all-Auto design has an empty instruct and is still a valid, saveable voice). The server *opportunistically* renders a sample WAV (reuse the archetype renderer in `archetypes.py`: synth `sample_script` at `_PREVIEW_SEED=42`, store as `ref_audio_path`) and always persists `vd_states` + derived `instruct` + `seed=42`. **The render is non-fatal** (issue #476): if the engine isn't ready the row is saved with `ref_audio_path=NULL` (sample pending) and `GET /profiles/{id}/audio` renders + caches it lazily on first request (returning a precise "model not ready — finish setup / download a model" 503 if the engine is still unavailable).
+  - `kind='design'` → `vd_states` required; `instruct` is **not** required (an all-Auto design has an empty instruct and is still a valid, saveable voice). The server *opportunistically* renders a sample WAV (reuse the archetype renderer in `archetypes.py`: synth `sample_script` at the submitted seed, `_PREVIEW_SEED=42` when none, store as `ref_audio_path`) and always persists `vd_states` + derived `instruct` + that `seed`. A deferred render uses the stored seed. **The render is non-fatal** (issue #476): if the engine isn't ready the row is saved with `ref_audio_path=NULL` (sample pending) and `GET /profiles/{id}/audio` renders + caches it lazily on first request (returning a precise "model not ready — finish setup / download a model" 503 if the engine is still unavailable).
 - Return `kind` and `vd_states` in the profile payload (and from `GET /profiles`, `GET /profiles/{id}`).
 
 ### `POST /generate` profile resolution (`backend/api/routers/generation.py:310-335`)
@@ -248,7 +248,7 @@ Replace the brittle inference (`is_locked` + `instruct` presence) with an explic
 ## 7 — Risks / open items
 
 - **Mode-id churn:** persisted `mode:'clone'|'design'` in `localStorage` and `generation_history.mode` must keep resolving. Shim in `useAppData` restore + `restoreHistory`; never rename the history `mode` *values* (still `clone`/`design`), only the *navigation* mode id.
-- **Archetype path reuse:** the design-save render must share one helper with `archetypes.py` materialization, not copy it (single source for "synth a sample at seed 42 → store as profile").
+- **Archetype path reuse:** the design-save render must share one helper with `archetypes.py` materialization, not copy it (single source for "synth a sample at the saved seed → store as profile").
 - **`personality` column** (`db.py`, added in `0002`) stays unused; do not repurpose in this spec.
 - **Cross-platform:** all default behavior here is platform-agnostic; no opt-in gating needed (record/mic already exists today).
 - **Docs:** update any `docs/**` / README sections that name "Clone tab" / "Design tab" in the P4 PR (docs-sync hard rule).

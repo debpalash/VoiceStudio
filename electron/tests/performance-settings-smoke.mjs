@@ -217,7 +217,11 @@ try {
   await page.getByText(t('settings.compute_device_env_pinned')).waitFor();
   await page.getByText(t('settings.compute_device_ignored')).waitFor();
   assert.equal(await cpu.isDisabled(), true);
-  assert.equal(await toggle.isDisabled(), true);
+  // torch.compile stays a live, user-controllable switch on every platform
+  // (#2135): the env-pinned device must not lock it, and the linux state loads.
+  await toggle.and(page.locator(':not([data-disabled]):not([aria-disabled="true"])')).waitFor();
+  assert.equal(await toggle.isEnabled(), true);
+  assert.equal(await toggle.getAttribute('aria-checked'), 'false');
   assert.equal(
     await page.getByRole('button', { name: t('settings.device_family_cuda'), exact: true }).count(),
     0,

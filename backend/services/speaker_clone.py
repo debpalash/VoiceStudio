@@ -54,6 +54,16 @@ MIN_SEGMENT_REF_DURATION_S = 3.0
 MIN_SLICE_DURATION_S = 1.5
 ADJACENT_TURN_GUARD_S = 0.3
 
+# Short-turn fallback (#3419): a speaker who only ever answers in short turns
+# ("Good, and you?") has no slice of MIN_SLICE_DURATION_S, so the pass above
+# gave them no clone and every one of their lines fell back to the default
+# voice while the other speaker was cloned. When that pass finds nothing, the
+# speaker's lines are trimmed to keep ADJACENT_TURN_GUARD_S away from every
+# other speaker (the boundary-bleed risk the slice floor guards against) and
+# pooled from slices of at least FALLBACK_MIN_SLICE_S. The pool must reach
+# MIN_SEGMENT_REF_DURATION_S, the same floor a single-line reference needs.
+FALLBACK_MIN_SLICE_S = 0.8
+
 
 def extract_speaker_clones(
     vocals_path: str,
@@ -61,6 +71,7 @@ def extract_speaker_clones(
     out_dir: str,
     *,
     labels_source: str | None = None,
+    strict: bool = False,
 ) -> dict[str, dict]:
     """Build a per-speaker reference sample from `vocals_path` + `segments`.
 
@@ -75,7 +86,9 @@ def extract_speaker_clones(
           ...
         }
 
-    Speakers whose segments total < MIN_REF_DURATION_S are skipped — we'd
+    Speakers without MIN_REF_DURATION_S of long slices fall back to their
+    short turns, trimmed clear of other speakers (#3419). A speaker whose
+    clean audio still totals < MIN_SEGMENT_REF_DURATION_S is skipped — we'd
     rather fall back to the default TTS voice than ship a bad clone.
 
     ``labels_source`` records where the ``speaker_id`` labels came from
@@ -92,6 +105,8 @@ def extract_speaker_clones(
         )
         return {}
     if not vocals_path or not os.path.exists(vocals_path):
+        if strict:
+            raise FileNotFoundError("Source audio for speaker references is missing")
         logger.info("speaker_clone: no vocals track at %s; skipping", vocals_path)
         return {}
     if not segments:
@@ -101,6 +116,8 @@ def extract_speaker_clones(
         audio, sr = sf.read(vocals_path, dtype="float32", always_2d=False)
     except Exception as e:
         logger.warning("speaker_clone: failed to read %s: %s", vocals_path, e)
+        if strict:
+            raise
         return {}
     if audio.ndim > 1:
         audio = audio.mean(axis=1)
@@ -123,8 +140,8 @@ def extract_speaker_clones(
         )
         if not chosen:
             logger.info(
-                "speaker_clone: %s has <%ss of usable audio; will fall back to default voice",
-                speaker_id, MIN_REF_DURATION_S,
+                "speaker_clone: %s has <%ss of clean audio; will fall back to default voice",
+                speaker_id, MIN_SEGMENT_REF_DURATION_S,
             )
             continue
 
@@ -138,9 +155,16 @@ def extract_speaker_clones(
             sf.write(ref_path, ref_audio_np, sr)
         except Exception as e:
             logger.warning("speaker_clone: failed to write %s: %s", ref_path, e)
+            if strict:
+                raise
             continue
 
-        ref_text = " ".join((seg.get("text") or "").strip() for _, seg in chosen).strip()
+        if any(seg.get("text") is None for _, seg in chosen):
+            # A trimmed slice without word timestamps: its transcript is
+            # unknown, so leave it empty for the engine to transcribe (#3419).
+            ref_text = ""
+        else:
+            ref_text = " ".join((seg.get("text") or "").strip() for _, seg in chosen).strip()
         out[speaker_id] = {
             "ref_audio": ref_path,
             "ref_text": ref_text,
@@ -174,7 +198,8 @@ def extract_segment_refs(
                    "ref_text": "the source-language line",
                    "duration": 4.12}, ...}
 
-    Segments shorter than ``MIN_SEGMENT_REF_DURATION_S`` are omitted — the
+    Segments shorter than ``MIN_SEGMENT_REF_DURATION_S``, and segments that
+    overlap another speaker's segment, are omitted — the
     caller falls back to the per-speaker reference for those (a strict
     improvement over per-speaker-only, never a regression). Uses the
     *original* segment timestamps (pre slack-absorption); only the vocals are
@@ -197,6 +222,11 @@ def extract_segment_refs(
         start = float(seg.get("start", 0.0))
         end = float(seg.get("end", 0.0))
         if end - start < MIN_SEGMENT_REF_DURATION_S:
+            continue
+        if _overlaps_other_speaker(seg, segments):
+            # Overlapping speech (#3419): the clip would carry both voices and
+            # this line's dub would sound like a blend of them. The line uses
+            # its speaker's pooled reference instead.
             continue
         s = max(0, int(start * sr))
         e = min(audio.size, int(end * sr))
@@ -304,6 +334,19 @@ def _adjacent_to_other_speaker(
     return False
 
 
+def _overlaps_other_speaker(seg: dict, all_segments: list[dict]) -> bool:
+    """True when a segment of a different speaker overlaps ``seg`` in time."""
+    speaker_id = seg.get("speaker_id") or "Speaker 1"
+    s0 = float(seg.get("start", 0.0))
+    s1 = float(seg.get("end", 0.0))
+    for other in all_segments:
+        if other is seg or (other.get("speaker_id") or "Speaker 1") == speaker_id:
+            continue
+        if min(s1, float(other.get("end", 0.0))) - max(s0, float(other.get("start", 0.0))) > 1e-3:
+            return True
+    return False
+
+
 def _pick_reference_slices(
     items: list[tuple[int, dict]],
     *,
@@ -326,8 +369,8 @@ def _pick_reference_slices(
     * ``labels_source="heuristic"`` returns [] — gap-based labels are not
       voice identity, so no slice of them is safe to clone from.
 
-    Cap at MAX_REF_DURATION_S. Return [] if we can't reach
-    MIN_REF_DURATION_S. When ``all_segments``/``speaker_id`` are not
+    Cap at MAX_REF_DURATION_S. When this can't reach MIN_REF_DURATION_S,
+    fall back to ``_pick_short_turn_slices`` (#3419). When ``all_segments``/``speaker_id`` are not
     provided (legacy callers), adjacency scoring degrades to duration-only —
     the pre-guard behavior.
     """
@@ -367,9 +410,94 @@ def _pick_reference_slices(
             break
 
     if total < MIN_REF_DURATION_S:
-        return []
+        return _pick_short_turn_slices(
+            items, speaker_id=speaker_id, all_segments=all_segments,
+        )
 
     # Restore original order so concatenated transcript reads left-to-right.
+    picked.sort(key=lambda pair: pair[0])
+    return picked
+
+
+def _guarded_span(
+    seg: dict, speaker_id: str, all_segments: list[dict] | None
+) -> tuple[float, float] | None:
+    """``seg``'s span trimmed to stay ADJACENT_TURN_GUARD_S clear of every
+    segment of a different speaker; None when nothing usable remains."""
+    s0 = float(seg.get("start", 0.0))
+    s1 = float(seg.get("end", 0.0))
+    start, end = s0, s1
+    for other in all_segments or []:
+        if other is seg or (other.get("speaker_id") or "Speaker 1") == speaker_id:
+            continue
+        o0 = float(other.get("start", 0.0))
+        o1 = float(other.get("end", 0.0))
+        if o1 <= s0 - ADJACENT_TURN_GUARD_S or o0 >= s1 + ADJACENT_TURN_GUARD_S:
+            continue
+        if o0 <= s0:
+            start = max(start, o1 + ADJACENT_TURN_GUARD_S)
+        elif o1 >= s1:
+            end = min(end, o0 - ADJACENT_TURN_GUARD_S)
+        else:
+            return None  # another speaker talks inside this line
+    return (start, end) if end > start else None
+
+
+def _text_within(seg: dict, span: tuple[float, float]) -> str | None:
+    """The words of ``seg`` whose timestamps lie inside the kept ``span``.
+
+    A trimmed slice must not carry words whose audio was cut: a reference
+    transcript naming unheard words makes the clone speak them. Returns None
+    when the segment has no word timestamps, so the caller leaves ref_text
+    empty and the engine transcribes the clip itself.
+    """
+    words = seg.get("words") or []
+    timed = [w for w in words if isinstance(w, dict)
+             and isinstance(w.get("start"), (int, float))
+             and isinstance(w.get("end"), (int, float))]
+    if not timed or len(timed) != len(words):
+        return None
+    eps = 1e-6
+    kept = [str(w.get("text", w.get("word", ""))).strip() for w in timed
+            if w["start"] >= span[0] - eps and w["end"] <= span[1] + eps]
+    return " ".join(t for t in kept if t)
+
+
+def _pick_short_turn_slices(
+    items: list[tuple[int, dict]],
+    *,
+    speaker_id: str,
+    all_segments: list[dict] | None,
+) -> list[tuple[int, dict]]:
+    """Fallback for a speaker with no slice long enough for the main pass.
+
+    Returns trimmed copies of the speaker's segments (see ``_guarded_span``),
+    longest first up to IDEAL_REF_DURATION_S, or [] when they cannot reach
+    MIN_SEGMENT_REF_DURATION_S.
+    """
+    candidates = []
+    for idx, seg in items:
+        span = _guarded_span(seg, speaker_id, all_segments)
+        if span and span[1] - span[0] >= FALLBACK_MIN_SLICE_S:
+            trimmed = {**seg, "start": span[0], "end": span[1]}
+            if span != (float(seg.get("start", 0.0)), float(seg.get("end", 0.0))):
+                trimmed["text"] = _text_within(seg, span)
+                if trimmed["text"] == "":
+                    continue  # no whole word survives the trim
+            candidates.append((idx, trimmed))
+    candidates.sort(key=lambda pair: -(pair[1]["end"] - pair[1]["start"]))
+    picked: list[tuple[int, dict]] = []
+    total = 0.0
+    for idx, seg in candidates:
+        dur = seg["end"] - seg["start"]
+        if total + dur > MAX_REF_DURATION_S and picked:
+            continue
+        picked.append((idx, seg))
+        total += dur
+        if total >= IDEAL_REF_DURATION_S:
+            break
+    if total < MIN_SEGMENT_REF_DURATION_S:
+        return []
     picked.sort(key=lambda pair: pair[0])
     return picked
 

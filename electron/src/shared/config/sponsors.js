@@ -7,34 +7,58 @@
 // user reviews and submits it in their own browser; VoiceStudio never POSTs or
 // holds a credential.
 
-import { KOFI_URL } from '../utils/donateLinks';
+import { GITHUB_SPONSORS_URL, KOFI_URL } from '../utils/donateLinks';
+import supermetryMark from '../assets/sponsors/supermetry-mark.svg';
+import opengtmMark from '../assets/sponsors/opengtm-mark.svg';
+import opalMark from '../assets/sponsors/opal-mark.svg';
 
 const REPO = 'https://github.com/debpalash/VoiceStudio';
 
 /**
- * Active sponsors. EMPTY until the first sponsor signs on — the Support page
- * renders a "be the first" placeholder while this is empty.
+ * Active sponsors. The Support page renders a "be the first" placeholder while
+ * this is empty.
  *
  * To add a sponsor, append an entry here AND to SPONSORS.md (repo root) — the
- * two are kept in lockstep (in-app grid ⇄ README / project-site credit):
+ * two are kept in lockstep (in-app grid ⇄ README / project-site credit), which
+ * tests/test_sponsors_lockstep.py enforces:
  *
  *   {
- *     name:    'Acme Corp',                      // display name + <img alt>
- *     logoUrl: 'https://acme.example/logo.svg',  // wide / transparent works best
- *     url:     'https://acme.example',           // where the logo links to
- *     tier:    'gold',                           // one of SPONSOR_TIERS
+ *     name:    'Acme Corp',                // display name + <img alt>
+ *     logoUrl: acmeLogo,                   // a BUNDLED import (CSP img-src 'self'); never a remote URL
+ *     url:     'https://acme.example/?…',  // where the logo links to (utm_content=in-app-support)
+ *     tier:    'strategic',                // one of SPONSOR_TIERS
  *   }
  *
  * @type {{ name: string, logoUrl: string, url: string, tier: string }[]}
  */
-export const SPONSORS = [];
+export const SPONSORS = [
+  {
+    name: 'OpenGTM',
+    logoUrl: opengtmMark,
+    url: 'https://opengtm.palash.dev/?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=in-app-support',
+    tier: 'strategic',
+  },
+  {
+    name: 'Opal',
+    logoUrl: opalMark,
+    url: 'https://opal.palash.dev/?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=in-app-support',
+    tier: 'strategic',
+  },
+  {
+    name: 'Supermetry',
+    logoUrl: supermetryMark,
+    url: 'https://supermetry.com/?utm_source=voicestudio&utm_medium=sponsor&utm_campaign=strategic-sponsor&utm_content=in-app-support',
+    tier: 'strategic',
+  },
+];
 
 /**
- * Tier display order (highest first). Sponsors are grouped by tier on the
- * Support page; any unrecognized tier sorts to the end.
+ * Tier display order (highest first), matching the tiers in SPONSORS.md and
+ * funding.json. Sponsors are grouped by tier on the Support page; any
+ * unrecognized tier sorts to the end.
  * @type {string[]}
  */
-export const SPONSOR_TIERS = ['platinum', 'gold', 'silver', 'bronze'];
+export const SPONSOR_TIERS = ['strategic', 'company', 'development', 'community', 'supporter'];
 
 /**
  * Where "Become a sponsor" and the tier docs point. Single source of truth for
@@ -46,6 +70,8 @@ export const SPONSOR_CONTACT = {
    *  blank_issues_enabled=false, so those redirect to the template chooser and
    *  drop the body — the template route carries the structured fields instead. */
   githubIssue: `${REPO}/issues/new?template=sponsor.yml`,
+  /** Recurring or one-time support with GitHub's sponsor credit and badge. */
+  githubSponsors: GITHUB_SPONSORS_URL,
   /** One-tap alternative for individuals who'd rather tip than sign a deal. */
   kofi: KOFI_URL,
   /** SPONSORS.md on GitHub — what sponsors get + the current roster. */

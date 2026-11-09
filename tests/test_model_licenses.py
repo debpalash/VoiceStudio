@@ -2,6 +2,7 @@
 import copy
 import importlib.util
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -110,3 +111,47 @@ def test_dynamic_assets_cannot_inherit_blanket_clearance():
     data = registry()
     data["dynamic_assets"][0]["commercial_use"] = True
     assert any("commercial_use" in error for error in checker().validate(data, catalog()))
+
+
+def test_engine_ids_match_phone_record_namespace():
+    data = registry()
+    phone_record = next(
+        record for record in data["models"]
+        if record.get("configured_at", "").startswith("mobile/contract/")
+    )
+    phone_record["engines"] = ["sherpa-onnx"]
+    phone_errors = [
+        error for error in checker().validate(data, catalog())
+        if "'mobile:'" in error
+    ]
+    assert phone_errors
+
+    desktop_record = next(
+        record for record in data["models"]
+        if record.get("configured_at") == "backend/config/models.yaml"
+    )
+    desktop_record["engines"] = ["mobile:omnivoice"]
+
+    namespace_errors = [
+        error for error in checker().validate(data, catalog())
+        if "'mobile:'" in error
+    ]
+
+    assert len(namespace_errors) == 2
+
+
+def test_desktop_engine_gates_exclude_phone_only_models():
+    data = registry()
+    phone_ids = {
+        record["id"] for record in data["models"]
+        if record.get("configured_at", "").startswith("mobile/contract/")
+    }
+    assert phone_ids
+
+    backend = str(ROOT / "backend")
+    if backend not in sys.path:
+        sys.path.insert(0, backend)
+    from services.model_acceptance import repos_for_engine
+
+    for engine in ("sherpa-onnx", "llama.cpp", "omnivoice", "kittentts", "mlx-audio"):
+        assert phone_ids.isdisjoint(repos_for_engine(engine))

@@ -1,0 +1,943 @@
+{
+  "schema_version": 1,
+  "models": [
+    {
+      "id": "kitten-mini-en-fp16",
+      "name": "Kitten",
+      "capability": "tts",
+      "runtime": "sherpa-onnx",
+      "repo": "csukuangfj/kitten-mini-en-v0_1-fp16",
+      "revision_policy": "main",
+      "revision": "2472be3b6436106f15d361747c225daa209d7bd8",
+      "files": [
+        {
+          "path": "model.fp16.onnx",
+          "size": 166061300,
+          "sha256": "78c8dee1d945a334924c280cbe85af846fa0421808f0f760cb5c8d258be9ec86",
+          "role": "model"
+        },
+        {
+          "path": "tokens.txt",
+          "size": 1064,
+          "sha256": "934a4188addc7665dd3410256bb622169242357fbb99d840d9351209b486dabb",
+          "role": "tokens"
+        },
+        {
+          "path": "voices.bin",
+          "size": 8192,
+          "sha256": "42a40a24a352a38657d6cb86ceee51bbc2b7780b29e04fb60bcdf959adccea01",
+          "role": "voices"
+        },
+        {
+          "path": "espeak-ng-data/phondata",
+          "size": 550424,
+          "sha256": "4e0288957874029a8c3c9f41a8f517ad4bf18127046decbdd4b9d1d6807ce3a3",
+          "role": "espeak-data"
+        },
+        {
+          "path": "espeak-ng-data/phonindex",
+          "size": 39074,
+          "sha256": "3ca7b8fa3b42624e4b0f152707e7a39245fce569aa99ea47c055d9e622fcf0c4",
+          "role": "espeak-data"
+        },
+        {
+          "path": "espeak-ng-data/phontab",
+          "size": 55796,
+          "sha256": "886f3fa402cb0ba73d483aa8ad000af47a6b7cc06293c75a97913fba68a530f6",
+          "role": "espeak-data"
+        },
+        {
+          "path": "espeak-ng-data/intonations",
+          "size": 2040,
+          "sha256": "3f8af65fd3eda9759a10f021d61361c120871f463515229c925995c7f90918cc",
+          "role": "espeak-data"
+        },
+        {
+          "path": "espeak-ng-data/en_dict",
+          "size": 166944,
+          "sha256": "71bd330ba8a2e3e8076e631508208ef49449d6147c17b7bd2b4b1e1468292e35",
+          "role": "espeak-data"
+        },
+        {
+          "path": "espeak-ng-data/lang/gmw/en",
+          "size": 140,
+          "sha256": "4605d5330801de3641c6e366d15f129ea1f5ffbce8722642aba01ace07ab9c83",
+          "role": "espeak-data"
+        },
+        {
+          "path": "espeak-ng-data/lang/gmw/en-US",
+          "size": 257,
+          "sha256": "41534c2a22df5dd4f1052ff9e1a33a3ea7bff5a26b5c02bdad5ba8ddb7524704",
+          "role": "espeak-data"
+        }
+      ],
+      "languages": [
+        "en"
+      ],
+      "min_ram_gb": 2,
+      "config": {
+        "model_type": "kitten",
+        "sample_rate": 24000,
+        "num_speakers": 8,
+        "speaker_ids": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7
+        ],
+        "default_speaker_id": 0,
+        "data_dir": "espeak-ng-data",
+        "length_scale": 1.0,
+        "num_threads": 2,
+        "provider": "cpu"
+      }
+    },
+    {
+      "id": "kokoro-multi-int8",
+      "name": "Kokoro",
+      "capability": "tts",
+      "runtime": "sherpa-onnx",
+      "repo": "csukuangfj/kokoro-int8-multi-lang-v1_1",
+      "revision_policy": "main",
+      "revision": "155831f1b4ba23b1f5c058be6a61df90cefb2a37",
+      "files": [
+        {
+          "path": "model.int8.onnx",
+          "size": 114299010,
+          "sha256": "bda15858163726a492d02a9a727bc263551b86ac77f90812c4b30ff41d380e26",
+          "role": "model"
+        },
+        {
+          "path": "tokens.txt",
+          "size": 1111,
+          "sha256": "931ab2df2400cd65d580a22402024c2347ced8ae9ea300e545144b1aacc48e14",
+          "role": "tokens"
+        },
+        {
+          "path": "voices.bin",
+          "size": 53790720,
+          "sha256": "e64a5a581d8c2a350d848f51c3121657cd83aa07ed6109172177345874a7244c",
+          "role": "voices"
+        },
+        {
+          "path": "lexicon-us-en.txt",
+          "size": 5956885,
+          "sha256": "7daaab53a181be9885b853a8582bf1838186317e5dadacbcef9c426d6fa0da14",
+          "role": "lexicon"
+        },
+        {
+          "path": "lexicon-zh.txt",
+          "size": 2119465,
+          "sha256": "11111d8cd695fba2ace1367a1d0a708b586e6ef5c1f9be91da5d7eef129b651c",
+          "role": "lexicon"
+        },
+        {
+          "path": "date-zh.fst",
+          "size": 59154,
+          "sha256": "eb8aa079ae3cb81d8f4404992f39d61a0cb990947512b5b8d1e54d1f6980e718",
+          "role": "rule-fst"
+        },
+        {
+          "path": "number-zh.fst",
+          "size": 64482,
+          "sha256": "743f402181fcfebf76cc2f0546b71fa26476e626fbe4e460fb7b4c3a7a8bd5bd",
+          "role": "rule-fst"
+        },
+        {
+          "path": "phone-zh.fst",
+          "size": 88630,
+          "sha256": "1ac2b6fa56b1442320c4de7db08353bab8963a2b57f365eebcdd3a2d3562f8d7",
+          "role": "rule-fst"
+        },
+        {
+          "path": "espeak-ng-data/phondata",
+          "size": 550424,
+          "sha256": "4e0288957874029a8c3c9f41a8f517ad4bf18127046decbdd4b9d1d6807ce3a3",
+          "role": "espeak-data"
+        },
+        {
+          "path": "espeak-ng-data/phonindex",
+          "size": 39074,
+          "sha256": "3ca7b8fa3b42624e4b0f152707e7a39245fce569aa99ea47c055d9e622fcf0c4",
+          "role": "espeak-data"
+        },
+        {
+          "path": "espeak-ng-data/phontab",
+          "size": 55796,
+          "sha256": "886f3fa402cb0ba73d483aa8ad000af47a6b7cc06293c75a97913fba68a530f6",
+          "role": "espeak-data"
+        },
+        {
+          "path": "espeak-ng-data/intonations",
+          "size": 2040,
+          "sha256": "3f8af65fd3eda9759a10f021d61361c120871f463515229c925995c7f90918cc",
+          "role": "espeak-data"
+        },
+        {
+          "path": "espeak-ng-data/en_dict",
+          "size": 166944,
+          "sha256": "71bd330ba8a2e3e8076e631508208ef49449d6147c17b7bd2b4b1e1468292e35",
+          "role": "espeak-data"
+        },
+        {
+          "path": "espeak-ng-data/lang/gmw/en",
+          "size": 140,
+          "sha256": "4605d5330801de3641c6e366d15f129ea1f5ffbce8722642aba01ace07ab9c83",
+          "role": "espeak-data"
+        },
+        {
+          "path": "espeak-ng-data/lang/gmw/en-US",
+          "size": 257,
+          "sha256": "41534c2a22df5dd4f1052ff9e1a33a3ea7bff5a26b5c02bdad5ba8ddb7524704",
+          "role": "espeak-data"
+        }
+      ],
+      "languages": [
+        "en",
+        "zh"
+      ],
+      "min_ram_gb": 3,
+      "config": {
+        "model_type": "kokoro",
+        "sample_rate": 24000,
+        "num_speakers": 103,
+        "speaker_ids": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20,
+          21,
+          22,
+          23,
+          24,
+          25,
+          26,
+          27,
+          28,
+          29,
+          30,
+          31,
+          32,
+          33,
+          34,
+          35,
+          36,
+          37,
+          38,
+          39,
+          40,
+          41,
+          42,
+          43,
+          44,
+          45,
+          46,
+          47,
+          48,
+          49,
+          50,
+          51,
+          52,
+          53,
+          54,
+          55,
+          56,
+          57,
+          58,
+          59,
+          60,
+          61,
+          62,
+          63,
+          64,
+          65,
+          66,
+          67,
+          68,
+          69,
+          70,
+          71,
+          72,
+          73,
+          74,
+          75,
+          76,
+          77,
+          78,
+          79,
+          80,
+          81,
+          82,
+          83,
+          84,
+          85,
+          86,
+          87,
+          88,
+          89,
+          90,
+          91,
+          92,
+          93,
+          94,
+          95,
+          96,
+          97,
+          98,
+          99,
+          100,
+          101,
+          102
+        ],
+        "default_speaker_id": 0,
+        "data_dir": "espeak-ng-data",
+        "lexicon": "lexicon-us-en.txt,lexicon-zh.txt",
+        "rule_fsts": "date-zh.fst,number-zh.fst,phone-zh.fst",
+        "lang": "",
+        "length_scale": 1.0,
+        "num_threads": 2,
+        "provider": "cpu"
+      },
+      "selection_rationale": "Pinned sherpa frontend supports English and Chinese; do not advertise all languages of the upstream architecture. English phonemizer assets only; Mandarin uses the explicit lexicon."
+    },
+    {
+      "id": "whisper-tiny-int8",
+      "name": "Whisper Tiny",
+      "capability": "asr",
+      "runtime": "sherpa-onnx",
+      "repo": "csukuangfj/sherpa-onnx-whisper-tiny",
+      "revision_policy": "main",
+      "revision": "65176e2deb88badc814a94058666cadccc29b61c",
+      "files": [
+        {
+          "path": "tiny-encoder.int8.onnx",
+          "size": 12937772,
+          "sha256": "d24fb083ae3b1041fc24e97971d60e280c9342201fbb67b0ab428a8b4a51a434",
+          "role": "encoder"
+        },
+        {
+          "path": "tiny-decoder.int8.onnx",
+          "size": 89855401,
+          "sha256": "d2fece8dd42771f1df975c6c0445770d0c292bf7547c2cae04a6c0cc57540925",
+          "role": "decoder"
+        },
+        {
+          "path": "tiny-tokens.txt",
+          "size": 816730,
+          "sha256": "b34b360dbb493e781e479794586d661700670d65564001f23024971d1f2fa126",
+          "role": "tokens"
+        }
+      ],
+      "languages": [
+        "en",
+        "zh",
+        "ja",
+        "ko",
+        "fr",
+        "de",
+        "es",
+        "pt",
+        "it",
+        "ru",
+        "ar"
+      ],
+      "min_ram_gb": 2,
+      "config": {
+        "model_type": "whisper",
+        "sample_rate": 16000,
+        "feature_dim": 80,
+        "language": "",
+        "task": "transcribe",
+        "decoding_method": "greedy_search",
+        "num_threads": 2,
+        "provider": "cpu"
+      },
+      "selection_rationale": "Multilingual Whisper; listed languages are the initial offered subset. Int8 encoder and decoder only; vocabulary remains required."
+    },
+    {
+      "id": "whisper-base-int8",
+      "name": "Whisper Base",
+      "capability": "asr",
+      "runtime": "sherpa-onnx",
+      "repo": "csukuangfj/sherpa-onnx-whisper-base",
+      "revision_policy": "main",
+      "revision": "bb53ee204431c90d314c1cc08d28d23e5b7927cc",
+      "files": [
+        {
+          "path": "base-encoder.int8.onnx",
+          "size": 29120534,
+          "sha256": "0b8fb1304b6109976038efff5ace81720e00386f3ff6b54ee8c75291ca0a1e11",
+          "role": "encoder"
+        },
+        {
+          "path": "base-decoder.int8.onnx",
+          "size": 130672026,
+          "sha256": "9759d217388a01b3a4c7c15533201067b48ae819c4daafc8624e64b9409dc02d",
+          "role": "decoder"
+        },
+        {
+          "path": "base-tokens.txt",
+          "size": 816730,
+          "sha256": "b34b360dbb493e781e479794586d661700670d65564001f23024971d1f2fa126",
+          "role": "tokens"
+        }
+      ],
+      "languages": [
+        "en",
+        "zh",
+        "ja",
+        "ko",
+        "fr",
+        "de",
+        "es",
+        "pt",
+        "it",
+        "ru",
+        "ar"
+      ],
+      "min_ram_gb": 3,
+      "config": {
+        "model_type": "whisper",
+        "sample_rate": 16000,
+        "feature_dim": 80,
+        "language": "",
+        "task": "transcribe",
+        "decoding_method": "greedy_search",
+        "num_threads": 2,
+        "provider": "cpu"
+      },
+      "selection_rationale": "Multilingual Whisper; listed languages are the initial offered subset. Int8 encoder and decoder only; vocabulary remains required."
+    },
+    {
+      "id": "zipformer-en-20m-int8",
+      "name": "Zipformer",
+      "capability": "asr-stream",
+      "runtime": "sherpa-onnx",
+      "repo": "csukuangfj/sherpa-onnx-streaming-zipformer-en-20M-2023-02-17",
+      "revision_policy": "main",
+      "revision": "d42f2d9f7ca24806fb667456a18a9f1b60f70d16",
+      "files": [
+        {
+          "path": "encoder-epoch-99-avg-1.int8.onnx",
+          "size": 42845182,
+          "sha256": "3810755ce7c3ab26b42a8bcf39d191308fa27fb0f53358823ba46141d03b7eb3",
+          "role": "encoder"
+        },
+        {
+          "path": "decoder-epoch-99-avg-1.int8.onnx",
+          "size": 539499,
+          "sha256": "21e2a2acd961b3ac72f55be2f10f1a285e1b0b0ba010d7c0b6eab141411b163c",
+          "role": "decoder"
+        },
+        {
+          "path": "joiner-epoch-99-avg-1.int8.onnx",
+          "size": 259572,
+          "sha256": "e085d73b593cf9b0707f370dbd656d58327d3fe36d80d849202ef81df02cb01e",
+          "role": "joiner"
+        },
+        {
+          "path": "tokens.txt",
+          "size": 5048,
+          "sha256": "49e3c2646595fd907228b3c6787069658f67b17377c60aeb8619c4551b2316fb",
+          "role": "tokens"
+        }
+      ],
+      "languages": [
+        "en"
+      ],
+      "min_ram_gb": 2,
+      "config": {
+        "model_type": "zipformer",
+        "sample_rate": 16000,
+        "feature_dim": 80,
+        "decoding_method": "greedy_search",
+        "enable_endpoint": true,
+        "rule1_min_trailing_silence": 2.4,
+        "rule2_min_trailing_silence": 1.2,
+        "rule3_min_utterance_length": 20.0,
+        "num_threads": 2,
+        "provider": "cpu"
+      }
+    },
+    {
+      "id": "omnivoice-q4-k-m",
+      "name": "OmniVoice",
+      "capability": "clone",
+      "runtime": "omnivoice.cpp",
+      "repo": "Serveurperso/OmniVoice-GGUF",
+      "revision_policy": "desktop",
+      "revision": "361609388ae572a820d085185bbbe2a2aac4b30e",
+      "files": [
+        {
+          "path": "omnivoice-base-Q8_0.gguf",
+          "size": 656395008,
+          "sha256": "2882d887921798aea13d45236556bdf8012842ab6f8cd2690943eead6289f298",
+          "role": "model"
+        },
+        {
+          "path": "omnivoice-tokenizer-F32.gguf",
+          "size": 734300704,
+          "sha256": "83820c6316da023076af7c1d06de5e38dcd09ae9f42203675bf8b3bd9a58e330",
+          "role": "tokenizer"
+        }
+      ],
+      "languages": [
+        "en",
+        "zh",
+        "ja",
+        "ko",
+        "fr",
+        "de",
+        "es",
+        "pt",
+        "it",
+        "ru",
+        "ar"
+      ],
+      "min_ram_gb": 8,
+      "config": {
+        "sample_rate": 24000,
+        "quantization": "Q8_0",
+        "reference_sample_rate": 24000,
+        "reference_channels": 1,
+        "requires_reference_audio": true,
+        "requires_reference_text": true,
+        "num_threads": 2,
+        "tokenizer_precision": "F32"
+      },
+      "selection_rationale": "Same immutable desktop source revision. Q8_0 base and the native F32 codec follow the runtime author precision recommendation; Q4 saved-reference short speech repeated words, while the Q8/F32 saved-reference path matched the prompt without repetitions. Reference-free short speech was unreliable with both packs. Speech requires a saved voice; Voice Design remains explicit. The stable legacy id preserves preferences and the installed-model directory. The 8 GB minimum reserves headroom for the larger weights and inference. Retain the registry non-commercial restriction and tokenizer conditions despite the older conversion card Apache label."
+    },
+    {
+      "id": "qwen3-1-7b-q4-k-m",
+      "name": "Qwen3 1.7B",
+      "capability": "translate",
+      "runtime": "llama.cpp",
+      "repo": "unsloth/Qwen3-1.7B-GGUF",
+      "revision_policy": "main",
+      "revision": "d7f544eead698dbd1f15126ef60b45a1e1933222",
+      "files": [
+        {
+          "path": "Qwen3-1.7B-Q4_K_M.gguf",
+          "size": 1107409472,
+          "sha256": "b139949c5bd74937ad8ed8c8cf3d9ffb1e99c866c823204dc42c0d91fa181897",
+          "role": "model"
+        }
+      ],
+      "languages": [
+        "en",
+        "zh",
+        "ja",
+        "ko",
+        "fr",
+        "de",
+        "es",
+        "pt",
+        "it",
+        "ru",
+        "ar",
+        "hi",
+        "bn",
+        "vi",
+        "th",
+        "id",
+        "tr",
+        "nl",
+        "pl",
+        "uk",
+        "fa",
+        "he",
+        "sv",
+        "cs",
+        "ro",
+        "el"
+      ],
+      "min_ram_gb": 6,
+      "config": {
+        "architecture": "qwen3",
+        "quantization": "Q4_K_M",
+        "context_length": 2048,
+        "max_new_tokens": 512,
+        "temperature": 0.7,
+        "top_p": 0.8,
+        "top_k": 20,
+        "min_p": 0.0,
+        "presence_penalty": 1.5,
+        "enable_thinking": false,
+        "prompt_template": "<|im_start|>system\nTranslate the user's subtitle into {target_language}. Reply with only the {target_language} translation; keep the meaning and punctuation. /no_think<|im_end|>\n<|im_start|>user\n{text}<|im_end|>\n<|im_start|>assistant\n<think>\n\n</think>\n\n",
+        "stop_sequences": [
+          "<|im_end|>",
+          "<|endoftext|>"
+        ],
+        "num_threads": 2
+      },
+      "selection_rationale": "Unsloth is an established GGUF publisher and declares Apache-2.0 from Qwen. This Q4_K_M is 1,107,409,472 bytes, below the approximately 1.2 GB target; the official Qwen GGUF repository offers only Q8_0 (1,834,426,016 bytes). Qwen3-1.7B is post-trained for instructions and its upstream card explicitly includes multilingual translation. Non-thinking ChatML and a 2048-token context bound phone working memory. Translation quality on phones remains to be measured."
+    },
+    {
+      "id": "piper-lessac-en-medium",
+      "name": "Piper",
+      "capability": "tts",
+      "runtime": "sherpa-onnx",
+      "repo": "csukuangfj/vits-piper-en_US-lessac-medium",
+      "revision_policy": "main",
+      "files": [
+        {
+          "path": "en_US-lessac-medium.onnx",
+          "size": 63201425,
+          "sha256": "ea793a648ce0370665f99fbf891eae3b3a973565c72b08534bb5b2c04e8f2332",
+          "role": "model"
+        },
+        {
+          "path": "tokens.txt",
+          "size": 921,
+          "sha256": "87c8ef66eae5473ed0cc0366b3964c736ca6c5f676c979522ea31234e47430b9",
+          "role": "tokens"
+        },
+        {
+          "path": "espeak-ng-data/phondata",
+          "size": 550424,
+          "sha256": "4e0288957874029a8c3c9f41a8f517ad4bf18127046decbdd4b9d1d6807ce3a3",
+          "role": "espeak-data"
+        },
+        {
+          "path": "espeak-ng-data/phonindex",
+          "size": 39074,
+          "sha256": "3ca7b8fa3b42624e4b0f152707e7a39245fce569aa99ea47c055d9e622fcf0c4",
+          "role": "espeak-data"
+        },
+        {
+          "path": "espeak-ng-data/phontab",
+          "size": 55796,
+          "sha256": "886f3fa402cb0ba73d483aa8ad000af47a6b7cc06293c75a97913fba68a530f6",
+          "role": "espeak-data"
+        },
+        {
+          "path": "espeak-ng-data/intonations",
+          "size": 2040,
+          "sha256": "3f8af65fd3eda9759a10f021d61361c120871f463515229c925995c7f90918cc",
+          "role": "espeak-data"
+        },
+        {
+          "path": "espeak-ng-data/en_dict",
+          "size": 166944,
+          "sha256": "71bd330ba8a2e3e8076e631508208ef49449d6147c17b7bd2b4b1e1468292e35",
+          "role": "espeak-data"
+        },
+        {
+          "path": "espeak-ng-data/lang/gmw/en",
+          "size": 140,
+          "sha256": "4605d5330801de3641c6e366d15f129ea1f5ffbce8722642aba01ace07ab9c83",
+          "role": "espeak-data"
+        },
+        {
+          "path": "espeak-ng-data/lang/gmw/en-US",
+          "size": 257,
+          "sha256": "41534c2a22df5dd4f1052ff9e1a33a3ea7bff5a26b5c02bdad5ba8ddb7524704",
+          "role": "espeak-data"
+        }
+      ],
+      "languages": [
+        "en"
+      ],
+      "min_ram_gb": 2,
+      "config": {
+        "model_type": "vits",
+        "sample_rate": 22050,
+        "num_speakers": 1,
+        "num_threads": 2,
+        "data_dir": "espeak-ng-data",
+        "speaker_names": [
+          "Lessac"
+        ]
+      },
+      "revision": "83f7470750b36549037551ef7007fa3b4b8697e0"
+    },
+    {
+      "id": "supertonic3-int8",
+      "name": "Supertonic 3",
+      "capability": "tts",
+      "runtime": "sherpa-onnx",
+      "repo": "csukuangfj2/sherpa-onnx-supertonic-3-tts-int8-2026-05-11",
+      "revision_policy": "main",
+      "files": [
+        {
+          "path": "duration_predictor.int8.onnx",
+          "size": 3700147,
+          "sha256": "c3eb91414d5ff8a7a239b7fe9e34e7e2bf8a8140d8375ffb14718b1c639325db",
+          "role": "duration-predictor"
+        },
+        {
+          "path": "text_encoder.int8.onnx",
+          "size": 36416150,
+          "sha256": "c7befd5ea8c3119769e8a6c1486c4edc6a3bc8365c67621c881bbb774b9902ff",
+          "role": "text-encoder"
+        },
+        {
+          "path": "vector_estimator.int8.onnx",
+          "size": 78400833,
+          "sha256": "20cd86fa5c6effedfda0e7cffe5b0569ca401c440a0c3a1d72bf39286c0db3fd",
+          "role": "vector-estimator"
+        },
+        {
+          "path": "vocoder.int8.onnx",
+          "size": 25991073,
+          "sha256": "e923d60f53f95eb1ce235f1dc33ec56d9c057823c96fa6f8acf98f32b0da6152",
+          "role": "vocoder"
+        },
+        {
+          "path": "tts.json",
+          "size": 8253,
+          "sha256": "42078d3aef1cd43ab43021f3c54f47d2d75ceb4e75f627f118890128b06a0d09",
+          "role": "tts-config"
+        },
+        {
+          "path": "unicode_indexer.bin",
+          "size": 262144,
+          "sha256": "8402ca48e5189a8950138580b0fff64db6f072f24ac07cd54ba8b2fbb9883b30",
+          "role": "unicode-indexer"
+        },
+        {
+          "path": "voice.bin",
+          "size": 517168,
+          "sha256": "67d5209b0ee8ce6c74105ffbe12fe6a7628aea3b4ba2fcb308a4a67938a93ce8",
+          "role": "voices"
+        }
+      ],
+      "languages": [
+        "en",
+        "ko",
+        "ja",
+        "ar",
+        "bg",
+        "cs",
+        "da",
+        "de",
+        "el",
+        "es",
+        "et",
+        "fi",
+        "fr",
+        "hi",
+        "hr",
+        "hu",
+        "id",
+        "it",
+        "lt",
+        "lv",
+        "nl",
+        "pl",
+        "pt",
+        "ro",
+        "ru",
+        "sk",
+        "sl",
+        "sv",
+        "tr",
+        "uk",
+        "vi"
+      ],
+      "min_ram_gb": 3,
+      "config": {
+        "model_type": "supertonic",
+        "sample_rate": 44100,
+        "num_speakers": 10,
+        "num_threads": 2,
+        "num_steps": 5
+      },
+      "revision": "cca5a0e6c96e1d2c720986bf7e75fcc81dee3ae4"
+    },
+    {
+      "id": "pocket-tts-int8-en",
+      "name": "Pocket TTS",
+      "capability": "clone",
+      "runtime": "sherpa-onnx",
+      "repo": "csukuangfj2/sherpa-onnx-pocket-tts-int8-2026-01-26",
+      "revision_policy": "main",
+      "files": [
+        {
+          "path": "lm_flow.int8.onnx",
+          "size": 9962530,
+          "sha256": "8d627d235c44a597da908e1085ebe241cbbe358964c502c5a5063d18851a5529",
+          "role": "lm-flow"
+        },
+        {
+          "path": "lm_main.int8.onnx",
+          "size": 76341079,
+          "sha256": "bfc0c7e7e3d72864fa3bb2ee499f62f21ddc1474b885f5f3ca570f8be73e787e",
+          "role": "lm-main"
+        },
+        {
+          "path": "encoder.onnx",
+          "size": 72713165,
+          "sha256": "e8f2f6d301ffb96e398b138a7dc6d3038622d236044636b73d920bab85890260",
+          "role": "encoder"
+        },
+        {
+          "path": "decoder.int8.onnx",
+          "size": 22693618,
+          "sha256": "12b0857402d31aead94df19d6783b4350d1f740e811f3a3202c70ad89ae11eea",
+          "role": "decoder"
+        },
+        {
+          "path": "text_conditioner.onnx",
+          "size": 16388343,
+          "sha256": "0b84e837d7bfaf2c896627b03e3f080320309f37f4fc7df7698c644f7ba5e6b1",
+          "role": "text-conditioner"
+        },
+        {
+          "path": "vocab.json",
+          "size": 69478,
+          "sha256": "6fb646346cf931016f70c4921aab0900ce7a304b893cb02135c74e294abfea01",
+          "role": "vocab"
+        },
+        {
+          "path": "token_scores.json",
+          "size": 123616,
+          "sha256": "5be2f278caf9b9800741f0fd82bff677f4943ec764c356f907213434b622d958",
+          "role": "token-scores"
+        }
+      ],
+      "languages": [
+        "en"
+      ],
+      "min_ram_gb": 3,
+      "config": {
+        "model_type": "pocket",
+        "sample_rate": 24000,
+        "num_speakers": 0,
+        "num_threads": 2,
+        "reference_required": true,
+        "supports_cloning": true,
+        "num_steps": 10
+      },
+      "revision": "e715955cf50d18d919d37231513c0e914b83661a"
+    },
+    {
+      "id": "zipvoice-distill-int8-zh-en",
+      "name": "ZipVoice",
+      "capability": "clone",
+      "runtime": "sherpa-onnx",
+      "repo": "k2-fsa/ZipVoice",
+      "revision_policy": "main",
+      "files": [
+        {
+          "path": "zipvoice_distill/text_encoder_int8.onnx",
+          "size": 5570211,
+          "sha256": "f2de9a761a85e5ddd125dee6e05bad1c7ee92c11b83b4d775dab216a6aa41379",
+          "role": "encoder"
+        },
+        {
+          "path": "zipvoice_distill/fm_decoder_int8.onnx",
+          "size": 124657100,
+          "sha256": "3cc2e08a96610d7ea1b227398e97cdbbe0414499741d3aec0b8113db2a2ab251",
+          "role": "decoder"
+        },
+        {
+          "path": "zipvoice_distill/tokens.txt",
+          "size": 2570,
+          "sha256": "ce98c1afc5f7a20c2484dffdd68a1fff0a4a2cc707328833750c4476c37cdbda",
+          "role": "tokens"
+        },
+        {
+          "path": "vocos_24khz.onnx",
+          "role": "vocoder",
+          "size": 54157409,
+          "sha256": "bcb3b970e384161c4d634f0bb9e999ff1c471b34c9bc0b1049a5014065ed3cc0",
+          "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/vocoder-models/vocos_24khz.onnx"
+        },
+        {
+          "path": "espeak-ng-data/phondata",
+          "size": 550424,
+          "sha256": "4e0288957874029a8c3c9f41a8f517ad4bf18127046decbdd4b9d1d6807ce3a3",
+          "role": "espeak-data",
+          "url": "https://huggingface.co/csukuangfj/kitten-mini-en-v0_1-fp16/resolve/2472be3b6436106f15d361747c225daa209d7bd8/espeak-ng-data/phondata"
+        },
+        {
+          "path": "espeak-ng-data/phonindex",
+          "size": 39074,
+          "sha256": "3ca7b8fa3b42624e4b0f152707e7a39245fce569aa99ea47c055d9e622fcf0c4",
+          "role": "espeak-data",
+          "url": "https://huggingface.co/csukuangfj/kitten-mini-en-v0_1-fp16/resolve/2472be3b6436106f15d361747c225daa209d7bd8/espeak-ng-data/phonindex"
+        },
+        {
+          "path": "espeak-ng-data/phontab",
+          "size": 55796,
+          "sha256": "886f3fa402cb0ba73d483aa8ad000af47a6b7cc06293c75a97913fba68a530f6",
+          "role": "espeak-data",
+          "url": "https://huggingface.co/csukuangfj/kitten-mini-en-v0_1-fp16/resolve/2472be3b6436106f15d361747c225daa209d7bd8/espeak-ng-data/phontab"
+        },
+        {
+          "path": "espeak-ng-data/intonations",
+          "size": 2040,
+          "sha256": "3f8af65fd3eda9759a10f021d61361c120871f463515229c925995c7f90918cc",
+          "role": "espeak-data",
+          "url": "https://huggingface.co/csukuangfj/kitten-mini-en-v0_1-fp16/resolve/2472be3b6436106f15d361747c225daa209d7bd8/espeak-ng-data/intonations"
+        },
+        {
+          "path": "espeak-ng-data/en_dict",
+          "size": 166944,
+          "sha256": "71bd330ba8a2e3e8076e631508208ef49449d6147c17b7bd2b4b1e1468292e35",
+          "role": "espeak-data",
+          "url": "https://huggingface.co/csukuangfj/kitten-mini-en-v0_1-fp16/resolve/2472be3b6436106f15d361747c225daa209d7bd8/espeak-ng-data/en_dict"
+        },
+        {
+          "path": "espeak-ng-data/lang/gmw/en",
+          "size": 140,
+          "sha256": "4605d5330801de3641c6e366d15f129ea1f5ffbce8722642aba01ace07ab9c83",
+          "role": "espeak-data",
+          "url": "https://huggingface.co/csukuangfj/kitten-mini-en-v0_1-fp16/resolve/2472be3b6436106f15d361747c225daa209d7bd8/espeak-ng-data/lang/gmw/en"
+        },
+        {
+          "path": "espeak-ng-data/lang/gmw/en-US",
+          "size": 257,
+          "sha256": "41534c2a22df5dd4f1052ff9e1a33a3ea7bff5a26b5c02bdad5ba8ddb7524704",
+          "role": "espeak-data",
+          "url": "https://huggingface.co/csukuangfj/kitten-mini-en-v0_1-fp16/resolve/2472be3b6436106f15d361747c225daa209d7bd8/espeak-ng-data/lang/gmw/en-US"
+        },
+        {
+          "path": "lexicon.txt",
+          "role": "lexicon",
+          "bundled": "tts/zipvoice-lexicon.txt",
+          "size": 1727147,
+          "sha256": "c94b049d970e971acdc2a7e5e7b23ca594222a9d640e417c711f2ad1e7bb7d46"
+        }
+      ],
+      "languages": [
+        "en",
+        "zh"
+      ],
+      "min_ram_gb": 3,
+      "config": {
+        "model_type": "zipvoice",
+        "sample_rate": 24000,
+        "num_speakers": 0,
+        "num_threads": 2,
+        "reference_required": true,
+        "supports_cloning": true,
+        "data_dir": "espeak-ng-data",
+        "num_steps": 8
+      },
+      "revision": "889dd609a42f0de9cf9aac335eae42677becb1b9"
+    }
+  ]
+}

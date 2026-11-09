@@ -1,6 +1,7 @@
 import os
 import re
 import errno
+import functools
 import uuid
 import asyncio
 import logging
@@ -23,28 +24,36 @@ from core.media_types import AUDIO_EXTS, MEDIA_EXTS, media_extension, media_uplo
 from core.url_safety import UnsafeURLError, check_public_url, is_manifest_head, is_manifest_file
 from core.failure import InvalidMediaFileError
 from core import event_bus
-from schemas.requests import CleanupSegmentsRequest, DubIngestUrlRequest, ParseSubtitleTextRequest
-from services.srt_parser import CUE_SOURCE_FIELDS, CUE_SOURCE_ID
+from schemas.requests import CleanupSegmentsRequest, DubIngestUrlRequest, ParseSubtitleTextRequest, TranscriptSyncRequest
+from services.srt_parser import CUE_SOURCE_FIELDS, CUE_SOURCE_ID, vouch_cue_source
+from services.dub_language import (
+    DUB_SOURCE_LANG_CODES as _DUB_SOURCE_LANG_CODES,
+    asr_source_language,
+    detected_source_language as _detected_source_lang,
+)
 from services.model_manager import get_model, _gpu_pool, _cpu_pool, get_diarization_pipeline, offload_tts_for_asr, restore_tts_after_asr, should_preload_tts_asr, release_device_cache
 from services.asr_backend import (
     ASR_TRANSCRIBE_TIMEOUT_S,
     ASRTimeoutError,
     reset_pool_after_wedge,
     run_transcribe_guarded,
+    transcribe_request_kwargs,
 )
 from services.audio_io import _safe_soundfile_write
+from services.diarization_runtime import ensure_selected_accepted as _ensure_diarisation_accepted
 from services.ffmpeg_utils import find_ffmpeg, local_inputs_only
+from services.model_acceptance import ModelLicenceNotAccepted
 from services.segmentation import (
     segment_transcript,
     assign_speakers_from_diarization,
     assign_speakers_from_turns,
     assign_speakers_heuristic,
-    resplit_segments_by_diarization,
+    label_segments_by_diarization,
     resplit_segments_by_turns,
     _words_from_whisper,
     clean_up_segments,
 )
-from services.onset_align import snap_segment_starts
+from services.onset_align import snap_segment_starts, trim_segment_ends
 from services import dub_pipeline
 from core.browser_guard import reject_cross_site_get
 
@@ -59,9 +68,15 @@ def _cookie_transport_allowed(
 ) -> bool:
     """Credentials may cross HTTP only from a local UI to a loopback peer."""
     from api.dependencies import is_local_host
+    from core.auth import is_loopback
+    from core.csrf import DEFAULT_DESKTOP_ORIGINS
 
     if scheme == "https":
         return True
+    # Main asserts this exact origin after stripping renderer-supplied headers.
+    # Desktop identity never permits sending credentials to a remote HTTP peer.
+    if origin in DEFAULT_DESKTOP_ORIGINS:
+        return is_loopback(client_host)
     try:
         origin_host = urlsplit(origin or "").hostname or ""
     except ValueError:
@@ -349,6 +364,7 @@ async def dub_import_srt(job_id: str, file: UploadFile = File(...)):
             job.get("speaker_clones"),
         )
         replace_source_segments(job, segments)
+        job.pop("source_lang_detection_missing", None)
         job["segment_clones"] = segment_clones
         # A pooled speaker clone is keyed only by a display label. Replacement
         # cues can reuse that label without overlapping the original speaker, so
@@ -508,6 +524,11 @@ def dub_use_downloaded_captions(job_id: str):
     source_lang = job.get("source_lang_override") or _detected_source_lang(caption_lang)
     with dub_pipeline._dub_jobs_lock:
         replace_source_segments(job, segments)
+        # An unrecognised caption tag must ask for the language, not fall back to English.
+        if source_lang is None:
+            job["source_lang_detection_missing"] = True
+        else:
+            job.pop("source_lang_detection_missing", None)
         job["source_lang"] = source_lang
         job["full_transcript"] = " ".join(segment["text"] for segment in segments)
         # Caption files contain timing and text, but no trustworthy speaker or
@@ -527,13 +548,11 @@ def dub_use_downloaded_captions(job_id: str):
 
 @router.post("/dub/cleanup-segments/{job_id}")
 def dub_cleanup_segments(job_id: str, req: Optional[CleanupSegmentsRequest] = None):
-    """Re-run merge/stitch passes to drop fragments.
+    """Merge fragments and stitch split sentences in a job's segments.
 
-    Cleans the editor's segments when sent, so unsaved text, timing and
-    direction edits survive; otherwise the job's stored segments. The
-    editor's result is returned without being stored: it is an undoable edit
-    like any other, and the job keeps the segments its existing audio and
-    subtitle exports were generated from until the next generation.
+    With a body, the editor's own segments are cleaned and handed back
+    untouched on the server, so the client can apply the result as an edit
+    the user can undo. Without one, the stored segments are cleaned and saved.
     """
     job = _get_job(job_id)
     if not job:
@@ -542,11 +561,53 @@ def dub_cleanup_segments(job_id: str, req: Optional[CleanupSegmentsRequest] = No
         cleaned = clean_up_segments(req.segments)
         return {"segments": cleaned, "before": len(req.segments), "after": len(cleaned)}
     with dub_pipeline._dub_jobs_lock:
-        segments = job.get("segments") or []
-        cleaned = clean_up_segments(segments)
+        stored = job.get("segments") or []
+        cleaned = clean_up_segments(stored)
         replace_source_segments(job, cleaned)
         _save_job(job_id, job)
-    return {"segments": cleaned, "before": len(segments), "after": len(cleaned)}
+    return {"segments": cleaned, "before": len(stored), "after": len(cleaned)}
+
+
+@router.post("/dub/sync-transcript/{job_id}")
+def dub_sync_transcript(job_id: str, req: TranscriptSyncRequest):
+    """Store the editor's transcript while the job has no dub yet (#3393).
+
+    Exporting the original video or audio with subtitles needs no generated
+    track, but the subtitle writers read ``job["segments"]``, which still
+    holds the raw transcription. Once a dub exists its exports must keep the
+    segments that dub was rendered from, so this refuses to overwrite them.
+    Per-row metadata (speaker, word timings, cue sources) is carried over by
+    stable id; text and timing come from the editor.
+    """
+    job = _get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    with dub_pipeline._dub_jobs_lock:
+        if job.get("dubbed_tracks"):
+            raise HTTPException(
+                status_code=409,
+                detail="This project already has a dub; its exports use the dubbed lines.",
+            )
+        existing = [row for row in (job.get("segments") or []) if isinstance(row, dict)]
+        by_id = {str(row["id"]): row for row in existing if row.get("id") is not None}
+        rows = []
+        for segment in req.segments:
+            previous = by_id.get(segment.id) if segment.id is not None else None
+            row = dict(previous) if previous else {}
+            if segment.id is not None:
+                row["id"] = segment.id
+            if previous is None or previous.get("text") != segment.text:
+                # Word timings belong to the transcribed words, not edited text.
+                row.pop("words", None)
+            row["start"] = segment.start
+            row["end"] = max(segment.start, segment.end)
+            row["text"] = segment.text
+            row["text_original"] = segment.text_original or segment.text
+            vouch_cue_source(row, segment.text, segment.cue_source_id)
+            rows.append(row)
+        replace_source_segments(job, rows)
+        _save_job(job_id, job)
+    return {"segments": len(rows)}
 
 
 @router.post("/dub/abort/{job_id}")
@@ -722,27 +783,6 @@ def _dub_upload_disk_error() -> HTTPException:
         },
     )
 
-# Source-language choices exposed by the first-party dub UI, plus every
-# language code Whisper can write back after auto-detection. A restored job
-# may reuse that detected value as the next upload's override, so rejecting our
-# own persisted codes strands otherwise valid dubbing sessions (#1737).
-# Keeping this an allow-list still rejects language names and private-use
-# BCP-47 tags. Values are normalized to lowercase below.
-_DUB_SOURCE_LANG_CODES = frozenset({
-    "af", "sq", "am", "ar", "hy", "az", "eu", "be", "bn", "bs", "bg",
-    "my", "ca", "cmn-hans", "cmn-hant", "hr", "cs", "da", "nl", "en",
-    "et", "fi", "fr", "gl", "ka", "de", "el", "gu", "ht", "ha", "haw",
-    "he", "hi", "hu", "is", "id", "it", "ja", "jw", "kn", "kk", "km",
-    "ko", "ku", "ky", "lo", "la", "lv", "lt", "mk", "ms", "ml", "mt",
-    "mi", "mr", "mn", "ne", "no", "ps", "fa", "pl", "pt", "pa", "ro",
-    "ru", "sm", "gd", "sr", "sn", "sd", "si", "sk", "sl", "so", "es",
-    "su", "sw", "sv", "tg", "ta", "te", "th", "tr", "uk", "ur", "uz",
-    "vi", "cy", "xh", "yi", "yo", "zu",
-    "as", "ba", "bo", "br", "fo", "lb", "ln", "mg", "nn", "oc", "sa",
-    "tk", "tl", "tt", "yue", "zh",
-})
-
-
 def _source_lang_override(value: str | None) -> str | None:
     """Normalize a user-selected source language; auto/und means detect.
 
@@ -771,13 +811,12 @@ def _source_lang_override(value: str | None) -> str | None:
     return code
 
 
-def _detected_source_lang(value: str | None) -> str:
-    """Normalize an ASR language without truncating valid three-letter codes."""
-    code = (value or "en").split("_", 1)[0].strip().lower()
-    if code in _DUB_SOURCE_LANG_CODES:
-        return code
-    short = code[:2]
-    return short if short in _DUB_SOURCE_LANG_CODES else "en"
+
+
+def _source_language_state(job: dict, detected_lang: str | None) -> dict:
+    """Persist unknown ASR detection explicitly; the user's source override wins."""
+    source = job.get("source_lang_override") or _detected_source_lang(detected_lang)
+    return {"source_lang": source, "source_lang_detection_missing": source is None}
 
 
 @router.post("/dub/upload")
@@ -959,7 +998,7 @@ async def dub_ingest_url(req: DubIngestUrlRequest, request: Request):
     if req.cookie_file and not _cookie_transport_allowed(
         request.url.scheme,
         request.client.host if request.client else None,
-        request.headers.get("origin"),
+        request.headers.get("origin") or request.headers.get("x-voicestudio-desktop-origin"),
     ):
         raise HTTPException(
             status_code=403,
@@ -1009,12 +1048,11 @@ _CHUNK_TRANSCRIBE_ATTEMPTS = max(1, int(os.environ.get("OMNIVOICE_TRANSCRIBE_CHU
 #: by Chrome's ~5 min no-response cap and by reverse-proxy idle timeouts,
 #: which the UI can only report as the generic "stream dropped" guess.
 ASR_LOAD_KEEPALIVE_S = float(os.environ.get("OMNIVOICE_ASR_LOAD_KEEPALIVE_S", "15.0"))
-#: Seconds between `ping` events while a post-transcript step runs on an
-#: executor (diarization, clone extraction, reference-text refinement, the
-#: ASR unload / TTS restore). #2108: the per-segment refinement re-runs ASR
-#: once per segment — 113 passes, ~19 min on an M1 Pro CPU — and was awaited
-#: bare, so the stream went byte-silent for the whole stretch, the webview
-#: severed it, and the UI could only say "stream ended early".
+#: Seconds between `ping` SSE events while a step that runs after the transcript
+#: exists (diarisation, clone extraction, reference-text refinement, model
+#: unload) is busy on an executor. Those steps can take minutes, and a stream
+#: that stays byte-silent that long is cut by the desktop webview or a proxy.
+#: Looked up at call time by `_ping_while`, so tests may patch it.
 POST_ASR_PING_S = 5.0
 
 
@@ -1051,30 +1089,31 @@ class _ASRWorkLifetime:
 
 
 async def _ping_while(fut):
-    """Yield `ping` events every POST_ASR_PING_S until ``fut`` settles.
+    """Yield a ``ping`` SSE event every ``POST_ASR_PING_S`` until ``fut`` is done.
 
-    Every await in the transcribe stream body that can outlast a few seconds
-    goes through here so the connection never goes byte-silent. The result
-    (or exception) stays on ``fut`` for the caller to read.
+    ``fut`` is an executor future or task that is already running. This helper
+    only waits; the caller reads ``fut.result()`` afterwards, so the work's own
+    exception or cancellation surfaces there unchanged.
 
-    Leaving early — the client disconnected, or the body raised at a `yield` —
-    cancels ``fut`` exactly as a bare ``await fut`` would have, so a wrapped
-    run_transcribe_guarded still runs its abandon path instead of refining on
-    after disconnection. Native threads are not cancelled by Future.cancel();
-    _ASRWorkLifetime orders model cleanup behind their actual completion. Nothing is awaited in the finally: it also runs under GeneratorExit.
-    A failure that lands after we left is still marked retrieved, so it cannot
-    surface later as "exception was never retrieved" (CodeRabbit, #2138) —
-    the same done-callback the TTS-load keepalive uses.
+    If the consumer leaves early (``aclose()``, disconnect, cancellation) while
+    the work is still running, the work is cancelled, as awaiting it directly
+    would have done. The cleanup below never awaits, so it is safe under
+    ``GeneratorExit``.
     """
-    fut.add_done_callback(lambda f: f.cancelled() or f.exception())
     try:
-        while True:
-            done, _ = await asyncio.wait({fut}, timeout=POST_ASR_PING_S)
-            if done:
-                return
-            yield _sse_event("ping", {})
+        while not fut.done():
+            # asyncio.wait neither cancels `fut` on timeout nor raises its error.
+            finished, _ = await asyncio.wait({fut}, timeout=POST_ASR_PING_S)
+            if not finished:
+                yield _sse_event("ping", {})
     finally:
         if not fut.done():
+            def _mark_retrieved(f):
+                # Reading the state keeps asyncio from logging "never retrieved".
+                if not f.cancelled():
+                    f.exception()
+
+            fut.add_done_callback(_mark_retrieved)
             fut.cancel()
 _prep_event_helper = dub_pipeline.prep_event  # alias; we keep the module-local _prep_event below for the inline one-liner shape
 
@@ -1086,6 +1125,35 @@ CLONE_SKIP_HEURISTIC_MSG = (
     "auto voice cloning skipped: speaker labels are gap-based estimates — "
     "set up diarization (Model Catalogue → Other weights → pyannote) for per-speaker clones"
 )
+
+
+def _align_to_speech(segments, audio, sr, separated_vocals) -> None:
+    """Snap line starts, then trim line ends, to voiced speech (#280, #963, #3419).
+
+    Call only on final speaker-specific lines, after the diarization re-split.
+    Each step is best-effort: a failure leaves the ASR timing in place.
+    """
+    try:
+        snap_segment_starts(segments, audio, sr, separated_vocals=separated_vocals)
+    except Exception as e:
+        logger.warning("onset alignment skipped: %s", e)
+    try:
+        trim_segment_ends(segments, audio, sr, separated_vocals=separated_vocals)
+    except Exception as e:
+        logger.warning("end trimming skipped: %s", e)
+
+
+def _diarization_pipeline_checked():
+    """``get_diarization_pipeline(return_error=True)`` behind licence acceptance.
+
+    An unaccepted selected model returns ``(None, detail)`` with the typed
+    ``model_licence_required`` detail instead of loading it (#2689).
+    """
+    try:
+        _ensure_diarisation_accepted()
+    except ModelLicenceNotAccepted as exc:
+        return None, exc.detail()
+    return get_diarization_pipeline(return_error=True)
 
 
 def _clamp_num_speakers(value) -> Optional[int]:
@@ -1104,116 +1172,326 @@ def _clamp_num_speakers(value) -> Optional[int]:
     return value if 1 <= value <= 20 else None
 
 
+def _phrase_windows(phrases):
+    windows = []
+    for candidate in phrases:
+        spoken_text = str(candidate.get("text") or "").strip()
+        try:
+            bounds = (float(candidate.get("start")), float(candidate.get("end")))
+        except (TypeError, ValueError):
+            continue
+        if spoken_text and bounds[1] - bounds[0] >= 0.75:
+            windows.append((*bounds, spoken_text))
+    return windows
+
+
+def _embed_phrase_windows(diar_pipe, audio_target, windows):
+    import numpy as np
+    from pyannote.core import Segment
+
+    rows = []
+    lengths = []
+    for begin, finish, _text in windows:
+        span_length = finish - begin
+        samples, _rate = diar_pipe._audio.crop(
+            audio_target,
+            Segment(begin, finish),
+            duration=span_length,
+            mode="pad",
+        )
+        encoded = diar_pipe._embedding(samples[None])
+        if hasattr(encoded, "detach"):
+            encoded = encoded.detach().cpu().numpy()
+        flattened = np.asarray(encoded).ravel()
+        if not np.all(np.isfinite(flattened)):
+            return None
+        rows.append(flattened)
+        lengths.append(span_length)
+    return np.stack(rows), lengths
+
+
+def _partition_phrase_voices(feature_rows, lengths):
+    import numpy as np
+    from sklearn.cluster import AgglomerativeClustering
+
+    membership = AgglomerativeClustering(
+        n_clusters=2,
+        metric="cosine",
+        linkage="average",
+    ).fit_predict(feature_rows)
+    groups = tuple(np.unique(membership))
+    if len(groups) != 2:
+        return None
+
+    for group in groups:
+        positions = np.flatnonzero(membership == group)
+        occupied = sum(lengths[int(position)] for position in positions)
+        if positions.size < 2 or occupied < 1.5:
+            return None
+
+    safe_lengths = np.clip(
+        np.linalg.norm(feature_rows, axis=1, keepdims=True), 1e-8, None
+    )
+    normalized = feature_rows / safe_lengths
+    cosine_grid = normalized @ normalized.T
+    matching = []
+    opposing = []
+    for row, column in zip(*np.triu_indices(len(membership), k=1)):
+        collection = matching if membership[row] == membership[column] else opposing
+        collection.append(float(cosine_grid[row, column]))
+    if not matching or not opposing:
+        return None
+    return membership, float(np.mean(matching) - np.mean(opposing))
+
+
 def _recover_from_phrase_embeddings(
     diar_pipe,
-    diarized_segments: list[dict],
+    diarized_segments,
     *,
-    phrases: list[dict],
-    requested_speakers: int | None,
-    audio_target: str,
-    segments: list[dict],
-    words: list,
+    phrases,
+    requested_speakers,
+    audio_target,
+    segments,
+    words,
 ):
-    """Recover rapid turns when pyannote collapses a two-speaker exchange.
+    current_ids = set(filter(None, (row.get("speaker_id") for row in diarized_segments)))
+    if len(current_ids) > 1:
+        return None
 
-    Uses ASR phrase boundaries and the embedding/audio components already
-    loaded by speaker-diarization-3.1. Weak or imbalanced clusters are rejected
-    so ordinary single-speaker recordings remain untouched. Returns
-    ``(segments, separation)`` or ``None``.
-    """
-    present = {
-        str(seg.get("speaker_id")) for seg in diarized_segments
-        if seg.get("speaker_id")
-    }
-    if len(present) > 1:
+    windows = _phrase_windows(phrases)
+    if len(windows) < 4:
         return None
-    usable_phrases = [
-        phrase for phrase in phrases
-        if phrase.get("text")
-        and float(phrase.get("end", 0.0)) - float(phrase.get("start", 0.0)) >= 0.75
-    ]
-    if len(usable_phrases) < 4:
-        return None
-    requested = int(requested_speakers) if requested_speakers else 2
-    if requested != 2:
-        return None
-    embedding = getattr(diar_pipe, "_embedding", None)
-    audio = getattr(diar_pipe, "_audio", None)
-    if embedding is None or audio is None:
-        return None
+
     try:
-        import numpy as np
-        from pyannote.core import Segment as _PyannoteSegment
-        from sklearn.cluster import AgglomerativeClustering
-
-        vectors = []
-        durations = []
-        for phrase in usable_phrases:
-            start, end = float(phrase["start"]), float(phrase["end"])
-            duration = end - start
-            waveform, _ = audio.crop(
-                audio_target, _PyannoteSegment(start, end),
-                duration=duration, mode="pad",
-            )
-            vector = np.asarray(embedding(waveform[None])).reshape(-1)
-            if not np.isfinite(vector).all():
-                return None
-            vectors.append(vector)
-            durations.append(duration)
-        matrix = np.vstack(vectors)
-        labels = np.asarray(AgglomerativeClustering(
-            n_clusters=2, metric="cosine", linkage="average",
-        ).fit_predict(matrix))
-        if len(set(labels.tolist())) != 2:
-            return None
-
-        counts = [int(np.sum(labels == cluster)) for cluster in (0, 1)]
-        cluster_durations = [
-            float(sum(duration for duration, label in zip(durations, labels) if label == cluster))
-            for cluster in (0, 1)
-        ]
-        if min(counts) < 2 or min(cluster_durations) < 1.5:
-            return None
-
-        normalized = matrix / np.maximum(np.linalg.norm(matrix, axis=1, keepdims=True), 1e-8)
-        similarities = normalized @ normalized.T
-        within, cross = [], []
-        for left in range(len(labels)):
-            for right in range(left + 1, len(labels)):
-                target = within if labels[left] == labels[right] else cross
-                target.append(float(similarities[left, right]))
-        if not within or not cross:
-            return None
-        separation = float(np.mean(within) - np.mean(cross))
-        min_separation = 0.12 if requested_speakers == 2 else 0.18
-        if separation < min_separation:
-            logger.info(
-                "phrase-embedding speaker recovery rejected (separation=%.3f < %.3f)",
-                separation, min_separation,
-            )
-            return None
-
-        speaker_map = {}
-        turns = []
-        for phrase, label in zip(usable_phrases, labels.tolist()):
-            if label not in speaker_map:
-                speaker_map[label] = f"Speaker {len(speaker_map) + 1}"
-            turns.append({
-                "start": float(phrase["start"]),
-                "end": float(phrase["end"]),
-                "speaker": speaker_map[label],
-            })
-        # Assignment mutates segment dictionaries. Work on copies so a recovery
-        # rejected by the final two-speaker check cannot leak partial labels
-        # into the ordinary pyannote result.
-        assigned = assign_speakers_from_turns([dict(item) for item in segments], turns)
-        recovered = resplit_segments_by_turns(assigned, words, turns)
-        if len({item.get("speaker_id") for item in recovered if item.get("speaker_id")}) < 2:
-            return None
-        return recovered, separation
-    except Exception:
-        logger.exception("phrase-embedding speaker recovery failed")
+        intended_count = int(requested_speakers) if requested_speakers else 2
+    except (TypeError, ValueError):
         return None
+    if intended_count != 2:
+        return None
+
+    if getattr(diar_pipe, "_embedding", None) is None:
+        return None
+    if getattr(diar_pipe, "_audio", None) is None:
+        return None
+
+    try:
+        embedded = _embed_phrase_windows(diar_pipe, audio_target, windows)
+        if embedded is None:
+            return None
+        partition = _partition_phrase_voices(*embedded)
+        if partition is None:
+            return None
+        assignments, separation = partition
+
+        required_gap = 0.12 if requested_speakers == 2 else 0.18
+        if separation < required_gap:
+            logger.info(
+                "Voice-span regrouping declined: score %.3f did not reach %.3f",
+                separation,
+                required_gap,
+            )
+            return None
+
+        public_names = {}
+        acoustic_turns = []
+        for (begin, finish, _text), membership in zip(windows, assignments):
+            group = int(membership)
+            if group not in public_names:
+                public_names[group] = f"Speaker {len(public_names) + 1}"
+            acoustic_turns.append(
+                {"start": begin, "end": finish, "speaker": public_names[group]}
+            )
+
+        untouched_inputs = [row.copy() for row in segments]
+        relabelled = assign_speakers_from_turns(untouched_inputs, acoustic_turns)
+        rebuilt = resplit_segments_by_turns(relabelled, words, acoustic_turns)
+        output_ids = set(filter(None, (row.get("speaker_id") for row in rebuilt)))
+        if len(output_ids) < 2:
+            return None
+        return rebuilt, separation
+    except Exception:
+        logger.exception("Could not evaluate phrase-level voice grouping")
+        return None
+
+
+async def _reanalyze_speakers(job_id: str, job: dict, num_speakers: Optional[int], cancelled):
+    """Refresh acoustic labels on existing cues; never rerun ASR or rewrite text."""
+    import copy
+    from services.speaker_clone import auto_profile_id, build_cast_sources, extract_speaker_clones
+    from services.diarization_native import NativeSortformer
+    from api.routers.dub_generate import resolve_consistent_ref
+
+    warnings = []
+    with dub_pipeline._dub_jobs_lock:
+        snapshot = copy.deepcopy(job)
+        revision = segments_revision(job)
+
+    def is_cancelled():
+        return cancelled.is_set() or bool(job.get("aborted")) or task_manager.is_cancelled(job_id)
+
+    def analyze():
+        reference_run = None
+        committed = False
+        offloaded = False
+        try:
+            if is_cancelled():
+                return None
+            audio = snapshot.get("vocals_path") or snapshot.get("audio_path")
+            if not audio or not os.path.isfile(audio):
+                audio = snapshot.get("audio_path")
+            if not audio or not os.path.isfile(audio):
+                raise RuntimeError("No audio available for speaker analysis")
+            offload_tts_for_asr()
+            offloaded = True
+            pipeline, _error = _diarization_pipeline_checked()
+            if pipeline is None:
+                raise RuntimeError("The selected installed diarization model is unavailable")
+            options = {"num_speakers":num_speakers} if num_speakers else {}
+            native = isinstance(pipeline, NativeSortformer)
+            hint_warning = None
+            if native:
+                options.pop("num_speakers",None)
+                options.update(job_id=job_id,cancel_check=is_cancelled)
+                if num_speakers:
+                    hint_warning = {"source":"diarization","detail":
+                        "The selected native diarizer detects speakers automatically; the requested speaker count was ignored.",
+                        "speaker_hint":{"requested":num_speakers,"status":"ignored"}}
+            diarization = pipeline(audio,**options)
+            if is_cancelled():
+                return None
+            # Assign overlap labels only. Splitting or fresh ASR would discard
+            # manually corrected words, translated rows, IDs and cue timings.
+            segments = assign_speakers_from_diarization(copy.deepcopy(snapshot["segments"]),diarization)
+            directory = _safe_job_dir(job_id)
+            if not directory:
+                raise RuntimeError("Job directory not found")
+            reference_run = dub_pipeline.new_reference_run_dir(directory)
+            # Keep edited cue boundaries, but never pool a cue containing more
+            # than one acoustic speaker into a supposedly single-speaker voice.
+            def cue_identity(row, index):
+                return str(row["id"]) if row.get("id") is not None else str(index)
+
+            ambiguous = set()
+            has_speech = False
+            source_cues = []
+            for index, row in enumerate(segments):
+                overlaps = {label for turn, _, label in diarization.itertracks(yield_label=True)
+                            if min(row["end"],turn.end) > max(row["start"],turn.start)}
+                has_speech = has_speech or bool(overlaps)
+                if len(overlaps) != 1:
+                    ambiguous.add(cue_identity(row,index))
+                else:
+                    source_cues.append({**row,"text":row.get("text_original") or row["text"]})
+            if not has_speech:
+                raise RuntimeError("No speakers detected on the existing cues")
+            speakers = extract_speaker_clones(audio,source_cues,reference_run,
+                labels_source="audiocpp-sortformer" if native else "pyannote",strict=True)
+            segment_refs = copy.deepcopy(snapshot.get("segment_clones") or {})
+            preserved_bindings = {}
+            # Old automatic per-cue clips spanning multiple new speakers cannot
+            # remain a default. Explicit selections keep the old audio under a
+            # distinct key so other cues do not accidentally inherit it.
+            explicit = {row.get("profile_id") for index,row in enumerate(snapshot["segments"])
+                        if row.get("profile_id") != "auto-seg:"+cue_identity(row,index)}
+            for identity in ambiguous:
+                reference = segment_refs.pop(identity,None)
+                binding = "auto-seg:"+identity
+                if reference and binding in explicit:
+                    key = "reanalysis-"+uuid.uuid4().hex
+                    segment_refs[key] = reference
+                    preserved_bindings[binding] = "auto-seg:"+key
+            sources = build_cast_sources(segments,speakers,segment_refs)
+
+            def rebind(row, speaker, old_speaker, identity):
+                result = dict(row)
+                result["speaker_id"] = speaker
+                voice = row.get("profile_id") or ""
+                own_default = identity in ambiguous and voice == "auto-seg:"+identity
+                if not voice or voice == auto_profile_id(old_speaker) or own_default:
+                    result["profile_id"] = auto_profile_id(speaker) if speaker in sources else ""
+                elif voice in preserved_bindings:
+                    result["profile_id"] = preserved_bindings[voice]
+                elif voice.startswith("auto:"):
+                    # An explicit other-speaker selection names the OLD label.
+                    # Preserve its exact audio as a cross-reference before the
+                    # new label map replaces the old pooled source references.
+                    if voice not in preserved_bindings:
+                        reference = resolve_consistent_ref(snapshot,voice[len("auto:"):])
+                        if not reference or not reference.get("ref_audio"):
+                            raise RuntimeError("An explicitly selected source voice is unavailable")
+                        key = "reanalysis-"+uuid.uuid4().hex
+                        segment_refs[key] = reference
+                        preserved_bindings[voice] = "auto-seg:"+key
+                    result["profile_id"] = preserved_bindings[voice]
+                return result
+
+            old_by_id = {cue_identity(row,index):row for index,row in enumerate(snapshot["segments"])}
+            segments = [rebind(row,row.get("speaker_id") or "Speaker 1",
+                               old_by_id[cue_identity(row,index)].get("speaker_id") or "Speaker 1",
+                               cue_identity(row,index))
+                        for index,row in enumerate(segments)]
+            with dub_pipeline._dub_jobs_lock:
+                if is_cancelled():
+                    return None
+                if _get_job(job_id) is not job:
+                    return None
+                if segments_revision(job) != revision:
+                    return copy.deepcopy(job)
+                candidate = copy.deepcopy(job)
+                replace_source_segments(candidate,segments)
+                candidate.update(speaker_clones=speakers,segment_clones=segment_refs,
+                           cast_sources=sources,
+                           ref_run=os.path.basename(reference_run))
+                _save_job(job_id,candidate,strict=True)
+                job.update(candidate)
+                committed = True
+                if hint_warning:
+                    warnings.append(hint_warning)
+                elif num_speakers and len({row["speaker_id"] for row in segments}) != num_speakers:
+                    warnings.append({"source":"diarization","detail":
+                        "The detected speakers on the existing cue boundaries differ from the requested count.",
+                        "speaker_hint":{"requested":num_speakers,"status":"approximate"}})
+                if ambiguous:
+                    warnings.append({"source":"speaker_clone","detail":
+                        "Some cues lack a single verified speaker; their audio was excluded from new source-voice references."})
+                return copy.deepcopy(job)
+        finally:
+            # This finally runs on the worker, after all native work finishes,
+            # even if the SSE waiter disconnects while inference is running.
+            if reference_run and not committed:
+                dub_pipeline.discard_reference_run(reference_run,job)
+            if committed and snapshot.get("ref_run") and reference_run:
+                previous = os.path.join(os.path.dirname(reference_run),os.path.basename(str(snapshot["ref_run"])))
+                if previous != reference_run:
+                    dub_pipeline.discard_reference_run(previous,job)
+            if offloaded:
+                try:
+                    restore_tts_after_asr()
+                except Exception:
+                    logger.exception("Could not restore TTS placement after speaker analysis")
+
+    loop = asyncio.get_running_loop()
+    future = loop.run_in_executor(_gpu_pool,analyze)
+    try:
+        async for ping in _ping_while(future):
+            yield ping
+        result = future.result()
+        if result is None:
+            yield _sse_event("aborted",{})
+            return
+        for warning in warnings:
+            yield _sse_event("warning",warning)
+        yield _sse_event("final",{
+            "segments":result["segments"],
+            # Unknown stays unknown (None): guessing "en" would let the client
+            # translate from the wrong language past the missing-source check.
+            "source_lang":result.get("source_lang_override") or result.get("source_lang"),
+            "full_transcript":result.get("full_transcript") or "",
+            "speaker_clones":result.get("cast_sources",{}),"cast_sources":result.get("cast_sources",{}),
+        })
+        yield _sse_event("done",{})
+    finally:
+        cancelled.set()
 
 
 @router.get("/dub/transcribe-stream/{job_id}", dependencies=[Depends(reject_cross_site_get)])
@@ -1221,6 +1499,7 @@ async def dub_transcribe_stream(
     job_id: str,
     num_speakers: Optional[int] = None,
     per_segment_refs: bool = True,
+    reanalyze_speakers: bool = False,
 ):
     """Stream per-chunk segments via SSE, then emit diarized final pass.
 
@@ -1228,6 +1507,10 @@ async def dub_transcribe_stream(
     as in-stream `error` events rather than HTTP errors, because EventSource
     on the client can't read non-2xx response bodies — a 503 there surfaces
     as an opaque "network error" instead of the actionable message we want.
+
+    `reanalyze_speakers` explicitly refreshes acoustic labels and source voices
+    on existing cues without rerunning ASR or replacing edited text/timings.
+    Ordinary reconnects continue to replay completed transcription results.
 
     `num_speakers` is an optional hint passed straight to pyannote. Left unset,
     pyannote auto-detects the count — but its auto-detect can collapse a
@@ -1241,6 +1524,8 @@ async def dub_transcribe_stream(
     # Clamp to a sane range; ignore anything non-positive / absurd so a bad
     # query string can never break the diarization call. None → auto-detect.
     num_speakers = _clamp_num_speakers(num_speakers)
+    import threading
+    _speaker_cancelled = threading.Event()
 
     # VRAM guard: _gen_body unloads the ASR backend on its normal completion
     # path only — a crash mid-stream, an early `return` (e.g. "audio load
@@ -1289,6 +1574,7 @@ async def dub_transcribe_stream(
                 logger.warning("restore_tts_after_asr failed: %s", e)
 
     async def _gen_body():
+        """Yield preflight, chunk progress and final diarized results as SSE events."""
         # ── Preflight — run INSIDE the stream, never before it (#1196) ──
         # This whole block used to run in the endpoint body, before the
         # StreamingResponse existed — i.e. OUTSIDE the stream's terminal-event
@@ -1324,10 +1610,20 @@ async def dub_transcribe_stream(
         # running a second whole-file ASR pass. This is deliberately gated by
         # an explicit completion marker so partial work and imported subtitle
         # rows still take their established paths.
+        if reanalyze_speakers:
+            if not job or not isinstance(job.get("segments"),list) or not job["segments"]:
+                yield _sse_event("error",{"code":"dub_transcript_required",
+                    "detail":"Transcribe the source before analyzing its speakers."})
+                yield _sse_event("done",{})
+            else:
+                async for event in _reanalyze_speakers(job_id,job,num_speakers,_speaker_cancelled):
+                    yield event
+            return
+
         if job and job.get("transcription_complete") and isinstance(job.get("segments"), list):
             yield _sse_event("final", {
                 "segments": job["segments"],
-                "source_lang": job.get("source_lang") or "en",
+                "source_lang": job.get("source_lang_override") or job.get("source_lang"),
                 "full_transcript": job.get("full_transcript") or "",
                 "speaker_clones": job.get("cast_sources", {}),
                 "cast_sources": job.get("cast_sources", {}),
@@ -1382,6 +1678,11 @@ async def dub_transcribe_stream(
                             break
                         yield b": tts-load keepalive\n\n"
                     _model = _model_task.result()
+                except ModelLicenceNotAccepted:
+                    # Only a best-effort harvest of a preloaded ASR pipe; the TTS
+                    # model's licence is asked for when it is actually used.
+                    logger.info("transcribe preflight: TTS model licence not accepted; skipping preload")
+                    _model = None
                 except Exception as e:
                     logger.error(
                         "transcribe preflight: model load failed (job=%s): %s",
@@ -1432,78 +1733,52 @@ async def dub_transcribe_stream(
                         preflight_payload = _missing
                     if _missing is None:
                         try:
-                            # Free recoverable TTS VRAM before ASR chooses its
-                            # device. Probing first falsely routed Whisper to
-                            # CPU even when this offload made CUDA viable.
+                            loop = asyncio.get_running_loop()
                             try:
-                                await asyncio.get_running_loop().run_in_executor(
-                                    _cpu_pool, offload_tts_for_asr
-                                )
+                                await loop.run_in_executor(_cpu_pool, offload_tts_for_asr)
                                 _tts_offloaded["v"] = True
-                            except Exception as e:
-                                logger.warning("offload_tts_for_asr failed (continuing): %s", e)
-                            # The PyTorch-Whisper backend lazily builds its own pipeline
-                            # when no preloaded `_asr_pipe` is present (issue #255), so it
-                            # no longer needs OMNIVOICE_PRELOAD_TTS_ASR=1.
-                            #
-                            # Select + eagerly load in ONE call so a real load failure
-                            # (e.g. WhisperX: missing weights, CTranslate2/cuDNN
-                            # mismatch, the torch-2.6 weights-only VAD regression)
-                            # surfaces once, with its actual cause, as a clean preflight
-                            # `error` event — instead of being buried in N cryptic
-                            # per-chunk failures and retried on every chunk (#578) —
-                            # and so a backend whose deep import chain is rotted (e.g.
-                            # `No module named 'lightning_fabric'` from a partial
-                            # install, #1185) is marked unavailable and skipped in
-                            # favor of the next engine instead of failing ASR init
-                            # wholesale. Run in a thread so the (blocking) load
-                            # doesn't stall the event loop.
-                            import functools
-                            _load_fut = asyncio.get_running_loop().run_in_executor(
+                            except Exception as exc:
+                                logger.warning("Could not free TTS memory before ASR load: %s", exc)
+
+                            fut = loop.run_in_executor(
                                 _gpu_pool,
                                 functools.partial(
                                     load_active_asr_backend,
                                     asr_pipe=getattr(_model, "_asr_pipe", None),
                                 ),
                             )
-                            # On client disconnect the ASGI server cancels this
-                            # generator mid-wait; the executor load keeps
-                            # running (and still caches its result). Retrieve
-                            # its eventual exception so asyncio never logs
-                            # "Task exception was never retrieved" into the
-                            # crash forensics log.
-                            _load_fut.add_done_callback(
-                                lambda f: f.cancelled() or f.exception()
+                            fut.add_done_callback(
+                                lambda completed: completed.cancelled() or completed.exception()
                             )
-                            # Keepalive while the load runs (#1196): a first-run
-                            # load may download weights for minutes, and a
-                            # byte-silent stream gets severed by Chrome's
-                            # ~5 min no-response cap or a reverse proxy's idle
-                            # timeout — which the UI can only render as the
-                            # generic "stream dropped" guess. SSE comment
-                            # lines are invisible to EventSource, so no client
-                            # changes are needed.
                             while True:
-                                _done, _ = await asyncio.wait(
-                                    {_load_fut}, timeout=ASR_LOAD_KEEPALIVE_S
+                                done, _ = await asyncio.wait(
+                                    {fut}, timeout=ASR_LOAD_KEEPALIVE_S
                                 )
-                                if _done:
+                                if done:
                                     break
                                 yield b": asr-load keepalive\n\n"
-                            _asr_backend = _load_fut.result()
+                            _asr_backend = fut.result()
                             _loaded_asr["backend"] = _asr_backend
-                        except ASRModelMissingError as e:
-                            # A broken primary fell through to a fallback whose
-                            # weights aren't installed — same typed payload
-                            # (and download CTA) as the initial preflight.
-                            preflight_error = asr_model_missing_detail(e.payload)
-                            preflight_payload = e.payload
-                        except Exception as e:
-                            logger.error("Transcription preflight ASR load failed")
+                        except ASRModelMissingError as exc:
+                            preflight_error = asr_model_missing_detail(exc.payload)
+                            preflight_payload = exc.payload
+                        except ModelLicenceNotAccepted as exc:
+                            preflight_error = str(exc)
+                            preflight_payload = exc.detail()
+                        except Exception as exc:
+                            logger.error(
+                                "ASR backend initialization failed (%s)",
+                                type(exc).__name__,
+                            )
                             from core.failure import build_failure
-                            f = build_failure(e, stage="transcribe-preflight", include_diagnostic=False)
-                            preflight_error = "ASR backend initialization failed: " + f["reason"] + (
-                                f" — {f['hint']}" if f.get("hint") else ""
+                            failure = build_failure(
+                                exc,
+                                stage="transcribe-preflight",
+                                include_diagnostic=False,
+                            )
+                            hint = f" — {failure['hint']}" if failure.get("hint") else ""
+                            preflight_error = (
+                                f"ASR backend initialization failed: {failure['reason']}{hint}"
                             )
                     scene_cuts = job.get("scene_cuts") or []
 
@@ -1538,49 +1813,28 @@ async def dub_transcribe_stream(
             return
 
         total = float(len(audio_np)) / float(sr) if sr else 0.0
-        global_speaker_clustering = bool(
-            getattr(
-                _asr_backend,
-                "requires_full_audio_for_speaker_consistency",
-                False,
-            )
-        )
-        transcribe_chunk_s = (
-            total
-            if global_speaker_clustering and total > 0
-            else TRANSCRIBE_CHUNK_S
-        )
-        transcribe_timeout_s = (
-            ASR_TRANSCRIBE_TIMEOUT_S
-            if global_speaker_clustering
-            else TRANSCRIBE_CHUNK_TIMEOUT_S
-        )
-        transcribe_timeout_env = (
-            "OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S"
-            if global_speaker_clustering
-            else "OMNIVOICE_TRANSCRIBE_CHUNK_TIMEOUT_S"
-        )
-        chunks_n = (
-            max(1, int(math.ceil(total / transcribe_chunk_s)))
-            if total > 0
-            else 1
-        )
-        yield _sse_event("start", {
-            "duration": total,
-            "chunks": chunks_n,
-            "chunk_s": transcribe_chunk_s,
-        })
+        # Some backends (FunASR with a speaker model) only label speakers
+        # consistently within one transcribe() call, so they get the entire
+        # recording as a single chunk instead of fixed-size slices.
+        whole_file_mode = bool(getattr(_asr_backend, "requires_full_audio_for_speaker_consistency", False))
+        if whole_file_mode and total > 0:
+            chunk_len = total
+        else:
+            chunk_len = TRANSCRIBE_CHUNK_S
+        if whole_file_mode:
+            chunk_timeout = ASR_TRANSCRIBE_TIMEOUT_S
+            chunk_timeout_env = "OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S"
+        else:
+            chunk_timeout = TRANSCRIBE_CHUNK_TIMEOUT_S
+            chunk_timeout_env = "OMNIVOICE_TRANSCRIBE_CHUNK_TIMEOUT_S"
+        chunks_n = max(1, math.ceil(total / chunk_len)) if total > 0 else 1
+        yield _sse_event("start", {"duration": total, "chunks": chunks_n, "chunk_s": chunk_len})
 
         all_segments: list[dict] = []
         # Words (global-timeline) retained so diarization can re-split a segment
         # that spans two speakers' turns at the word boundary (#486).
         all_words: list = []
-        # Preserve the ASR backend's natural phrase boundaries before
-        # segment_transcript merges short neighboring phrases. Pyannote 3.1
-        # occasionally collapses rapid exchanges into one dominant speaker; in
-        # that narrow case these phrase spans give its own WeSpeaker embedding
-        # model clean candidate utterances for a conservative recovery pass.
-        asr_phrase_segments: list[dict] = []
+        raw_phrases: list[dict] = []
         detected_lang = None
         next_seg_id = 0
         chunk_errors: list[str] = []
@@ -1593,8 +1847,8 @@ async def dub_transcribe_stream(
             if job.get("aborted"):
                 yield _sse_event("aborted", {})
                 return
-            t0 = i * transcribe_chunk_s
-            t1 = min(total, t0 + transcribe_chunk_s)
+            t0 = i * chunk_len
+            t1 = min(total, t0 + chunk_len)
             s_from = int(t0 * sr)
             s_to = int(t1 * sr)
             chunk_arr = audio_np[s_from:s_to]
@@ -1602,6 +1856,7 @@ async def dub_transcribe_stream(
                 continue
 
             def _transcribe_chunk(arr=chunk_arr, offset=t0, local_sr=sr):
+                """Transcribe with a supported language hint and shift times to the full audio."""
                 # Route through the active backend (WhisperX by default).
                 # Backends all take a file path, so write the chunk first.
                 try:
@@ -1609,7 +1864,12 @@ async def dub_transcribe_stream(
                     tmp.close()
                     try:
                         _safe_soundfile_write(tmp.name, arr, local_sr)
-                        r = _asr_backend.transcribe(tmp.name, word_timestamps=True)
+                        language = asr_source_language(
+                            job.get("source_lang_override"),
+                            getattr(_asr_backend, "id", None),
+                        )
+                        kwargs = transcribe_request_kwargs(_asr_backend, {"language": language or None})
+                        r = _asr_backend.transcribe(tmp.name, word_timestamps=True, **kwargs)
                     finally:
                         try: os.remove(tmp.name)
                         except OSError: pass
@@ -1661,11 +1921,11 @@ async def dub_transcribe_stream(
                 task = asyncio.ensure_future(run_transcribe_guarded(
                     _gpu_pool, lambda: _asr_work.run(_transcribe_chunk),
                     what=f"Dub chunk {i + 1}/{chunks_n}",
-                    timeout=transcribe_timeout_s,
-                    timeout_env=transcribe_timeout_env,
+                    timeout=chunk_timeout,
+                    timeout_env=chunk_timeout_env,
                 ))
                 while True:
-                    done, _pending = await asyncio.wait({task}, timeout=5.0)
+                    done, _ = await asyncio.wait({task}, timeout=5.0)
                     if done:
                         break
                     yield _sse_event("ping", {})
@@ -1679,9 +1939,8 @@ async def dub_transcribe_stream(
                     # the worker remains honestly occupied until it exits.
                     timed_out = True
                     logger.error(
-                        "Transcribe chunk %d/%d timed out after %.0fs (attempt %d/%d, job=%s)",
-                        i + 1, chunks_n, transcribe_timeout_s, _attempt,
-                        _CHUNK_TRANSCRIBE_ATTEMPTS, log_safe(job_id),
+                        "Transcribe chunk %d/%d exceeded %.0fs limit (attempt %d/%d, job=%s)",
+                        i + 1, chunks_n, chunk_timeout, _attempt, _CHUNK_TRANSCRIBE_ATTEMPTS, log_safe(job_id),
                     )
                     from core.public_errors import stream_failure
                     failure = stream_failure("transcription_timeout")
@@ -1715,17 +1974,16 @@ async def dub_transcribe_stream(
             if detected_lang is None and part.get("language"):
                 detected_lang = part["language"]
             asr_speaker_turns.extend(part.get("speaker_turns") or [])
-            for _phrase in part.get("chunks", []) or []:
-                _pts = _phrase.get("timestamp") or (None, None)
-                _ptext = (_phrase.get("text") or "").strip()
+            for item in part.get("chunks") or []:
                 try:
-                    _ps, _pe = float(_pts[0]), float(_pts[1])
+                    timestamp = item.get("timestamp")
+                    start = float(timestamp[0])
+                    end = float(timestamp[1])
                 except (TypeError, ValueError, IndexError):
                     continue
-                if _ptext and _pe > _ps:
-                    asr_phrase_segments.append({
-                        "start": _ps, "end": _pe, "text": _ptext,
-                    })
+                text = (item.get("text") or "").strip()
+                if text and end > start:
+                    raw_phrases.append({"start": start, "end": end, "text": text})
             chunk_segs = segment_transcript(part, duration=t1, scene_cuts=scene_cuts)
             # Same word source segment_transcript used (already global-timeline),
             # kept for the post-diarization speaker re-split (#486).
@@ -1733,18 +1991,10 @@ async def dub_transcribe_stream(
                 all_words.extend(_words_from_whisper(part))
             except Exception:
                 pass
-            # #280: Whisper often stretches a segment's start back over
-            # leading music/silence (classic case: speech begins at 0:03,
-            # transcript says 0.0 → the dub plays 3 s early). Snap starts
-            # forward to the actual speech onset. `audio_np` is the same
-            # track ASR ran on — vocals.wav when Demucs succeeded. #963:
-            # when it didn't (mixed audio), snapping is disabled — every
-            # footstep/sigh/score cue is a false onset candidate there.
-            try:
-                snap_segment_starts(chunk_segs, audio_np, sr,
-                                    separated_vocals=asr_on_vocals)
-            except Exception as e:
-                logger.warning("onset alignment skipped for chunk %d: %s", i, e)
+            # Onset alignment (#280, #963, #3419) runs on the final
+            # speaker-specific lines after the diarization re-split below,
+            # never here: moving a shared segment's start or end before the
+            # re-split drops a whispered speaker's words from it.
             # Provisional per-chunk labels for the streaming UI only — the
             # final diarization pass below overwrites them. Honor the user's
             # speaker-count hint here too so the interim view doesn't flip
@@ -1886,6 +2136,9 @@ async def dub_transcribe_stream(
                         f"speaker count."
                     )
                 return resplit, {
+                    # A licence-blocked diarisation model carries its typed
+                    # payload (code + models) through to the client (#2689).
+                    **(err_sentinel if isinstance(err_sentinel, dict) else {}),
                     "detail": detail,
                     "error_class": error_class,
                     "docs_url": error_docs_map.lookup(error_class),
@@ -1895,16 +2148,14 @@ async def dub_transcribe_stream(
             # The active ASR backend already diarized inline (FunASR cam++):
             # its turns are the fast path and skip pyannote entirely (#182) —
             # but ONLY when the user didn't set an explicit speaker count.
-            # Inline turns can't be forced to N speakers through the shared ASR
-            # contract, so a set num_speakers prefers pyannote — the one engine
-            # that honors an exact count. When pyannote can't load, the turns
-            # are still the best labels available; use them and say so instead
-            # of silently eating the hint.
+            # An explicit speaker count can't be pushed through the shared ASR
+            # contract to inline turns, so in that case prefer pyannote. If pyannote
+            # fails to load we still keep the inline turns and tell the user.
             diar_pipe = None
             err_sentinel = None
             if asr_speaker_turns:
                 if num_speakers:
-                    diar_pipe, err_sentinel = get_diarization_pipeline(return_error=True)
+                    diar_pipe, err_sentinel = _diarization_pipeline_checked()
                 if not diar_pipe:
                     return _use_turns(err_sentinel=err_sentinel)
                 logger.info(
@@ -1913,7 +2164,23 @@ async def dub_transcribe_stream(
                     num_speakers, len(asr_speaker_turns),
                 )
             else:
-                diar_pipe, err_sentinel = get_diarization_pipeline(return_error=True)
+                diar_pipe, err_sentinel = _diarization_pipeline_checked()
+            if not diar_pipe and isinstance(err_sentinel, dict):
+                # The selected diarisation model's licence is not accepted
+                # (#2689): no model ran; say so with the typed payload so the
+                # client can offer acceptance, and label by silence gaps.
+                return (
+                    assign_speakers_heuristic(all_segments, num_speakers),
+                    {
+                        **err_sentinel,
+                        "detail": err_sentinel["message"]
+                        + " Using silence gaps for now; rapid speaker turns may be merged."
+                        + _hint_suffix(),
+                        "error_class": "MODEL_LICENCE_REQUIRED",
+                        "docs_url": error_docs_map.lookup("MODEL_LICENCE_REQUIRED"),
+                    },
+                    "heuristic",
+                )
             if not diar_pipe:
                 # Phase 1 AUTH-01: ask the resolver (App → Env → HF-CLI),
                 # not just the env var. This is the #35 fix — users who
@@ -1975,6 +2242,9 @@ async def dub_transcribe_stream(
                         f"the underlying error. Falling back to a silence-gap "
                         f"heuristic; rapid speaker turns may be merged."
                     )
+                    from core.windows_rocm.pipelines import pipeline_error
+                    if compatibility := pipeline_error():
+                        detail += " " + compatibility
                     error_class = "DIARIZATION_LOAD_FAILED"
                 warning = {
                     "detail": detail + _hint_suffix(),
@@ -2007,14 +2277,14 @@ async def dub_transcribe_stream(
                     diar = diar_pipe(asr_audio_target, num_speakers=num_speakers)
                 else:
                     diar = diar_pipe(asr_audio_target)
-                assigned = assign_speakers_from_diarization(all_segments, diar)
-                # #486: split any segment that spans two speakers' turns at the
-                # word boundary (single-speaker segments pass through unchanged).
-                resplit = resplit_segments_by_diarization(assigned, all_words, diar)
+                # #486: label, then split any segment that spans two speakers'
+                # turns at the word boundary (single-speaker segments pass
+                # through unchanged).
+                resplit = label_segments_by_diarization(all_segments, all_words, diar)
                 recovered = _recover_from_phrase_embeddings(
                     diar_pipe,
                     resplit,
-                    phrases=asr_phrase_segments,
+                    phrases=raw_phrases,
                     requested_speakers=num_speakers,
                     audio_target=asr_audio_target,
                     segments=all_segments,
@@ -2023,9 +2293,9 @@ async def dub_transcribe_stream(
                 if recovered is not None:
                     recovered_segments, separation = recovered
                     logger.info(
-                        "Recovered rapid two-speaker exchange from ASR phrase embeddings "
-                        "(phrases=%d, separation=%.3f).",
-                        len(asr_phrase_segments), separation,
+                        "Recovered a rapid two-speaker exchange from %d phrases (separation %.3f)",
+                        len(raw_phrases),
+                        separation,
                     )
                     return recovered_segments, None, "phrase_embeddings"
                 return resplit, None, "audiocpp-sortformer" if isinstance(diar_pipe, NativeSortformer) else "pyannote"
@@ -2090,6 +2360,16 @@ async def dub_transcribe_stream(
 
         from services.segmentation import deduplicate_chunk_segments
         final_segs = deduplicate_chunk_segments(final_segs)
+        # #280: Whisper often stretches a segment's start back over leading
+        # music/silence (speech begins at 0:03, transcript says 0.0 → the dub
+        # plays 3 s early) and its end over trailing breaths. Snap each line to
+        # its speech. `audio_np` is the track ASR ran on — vocals.wav when
+        # Demucs succeeded; #963: on mixed audio snapping is disabled, since
+        # every footstep/sigh/score cue is a false onset. #3419: starts and
+        # ends gate on voiced speech, so this runs only on the final
+        # speaker-specific lines: before the re-split, a whispered speaker
+        # sharing a segment with a voiced one would be cut out of it.
+        _align_to_speech(final_segs, audio_np, sr, asr_on_vocals)
         # Everything this pass derives is committed together at the end, so an
         # SRT import that lands while references are extracted is never mixed
         # with, or overwritten by, this transcript. The clone maps are replaced
@@ -2118,6 +2398,7 @@ async def dub_transcribe_stream(
                 build_cast_sources,
                 extract_speaker_clones,
             )
+            from services import speaker_clone as _speaker_clone_mod
             vocals_for_clone = job.get("vocals_path") or asr_audio_target
             clones = {}
             if labels_source == "heuristic":
@@ -2145,8 +2426,10 @@ async def dub_transcribe_stream(
                 # single-segment regen silently rendered in the default voice.
                 _clone_dir = _ref_run_dir(os.path.dirname(vocals_for_clone))
                 fut_clones = loop.run_in_executor(
-                    _cpu_pool, lambda: extract_speaker_clones(
-                        vocals_for_clone, final_segs,
+                    _cpu_pool,
+                    lambda: extract_speaker_clones(
+                        vocals_for_clone,
+                        final_segs,
                         _clone_dir,
                         labels_source=labels_source,
                     ),
@@ -2155,26 +2438,21 @@ async def dub_transcribe_stream(
                     yield _ping
                 clones = fut_clones.result()
                 if clones:
-                    from services.speaker_clone import refine_ref_texts
-                    # Bound the re-transcribe like every other ASR dispatch in
-                    # this file (#730): a wedged transcribe would otherwise hold
-                    # the GPU-pool worker forever and starve later work into a
-                    # "can't reach backend". On timeout the guard resets the pool
-                    # and raises — keep the original (unrefined) clones, matching
-                    # refine_ref_text's own "failure is a strict no-op" fallback.
+                    # Re-read each reference clip's text; bounded by the guard
+                    # so a wedged ASR cannot hold a GPU-pool worker forever.
+                    fut_refine = asyncio.ensure_future(run_transcribe_guarded(
+                        _gpu_pool,
+                        lambda: _asr_work.run(
+                            lambda: _speaker_clone_mod.refine_ref_texts(clones, _asr_backend)
+                        ),
+                        what="Dub speaker reference text",
+                    ))
+                    async for _ping in _ping_while(fut_refine):
+                        yield _ping
                     try:
-                        fut_refine = asyncio.ensure_future(run_transcribe_guarded(
-                            _gpu_pool,
-                            lambda: _asr_work.run(lambda: refine_ref_texts(clones, _asr_backend)),
-                            what="Dub clone ref-text refine",
-                        ))
-                        async for _ping in _ping_while(fut_refine):
-                            yield _ping
                         clones = fut_refine.result()
                     except ASRTimeoutError as e:
-                        logger.warning(
-                            "clone ref-text refine timed out; keeping original ref_text: %s", e
-                        )
+                        logger.warning("speaker reference refinement timed out, keeping originals: %s", e)
             # Wave 3.2: per-segment clone refs. Cut each long-enough segment's
             # own reference from the vocals so the dub of each line matches the
             # prosody of its source line. Short lines fall back to the
@@ -2194,8 +2472,7 @@ async def dub_transcribe_stream(
                     _seg_clone_dir = _ref_run_dir(os.path.dirname(vocals_for_clone))
                     fut_seg_refs = loop.run_in_executor(
                         _cpu_pool, lambda: extract_segment_refs(
-                            vocals_for_clone, final_segs,
-                            _seg_clone_dir,
+                            vocals_for_clone, final_segs, _seg_clone_dir,
                             seg_ids=seg_ids_for_clone,
                         ),
                     )
@@ -2203,22 +2480,19 @@ async def dub_transcribe_stream(
                         yield _ping
                     seg_clones = fut_seg_refs.result()
                     if seg_clones:
-                        from services.speaker_clone import refine_ref_texts
-                        # Same guard as the per-speaker refine above (#730):
-                        # keep the original seg_clones on a wedge/timeout.
+                        fut_seg_refine = asyncio.ensure_future(run_transcribe_guarded(
+                            _gpu_pool,
+                            lambda: _asr_work.run(
+                                lambda: _speaker_clone_mod.refine_ref_texts(seg_clones, _asr_backend)
+                            ),
+                            what="Dub segment reference text",
+                        ))
+                        async for _ping in _ping_while(fut_seg_refine):
+                            yield _ping
                         try:
-                            fut_refine = asyncio.ensure_future(run_transcribe_guarded(
-                                _gpu_pool,
-                                lambda: _asr_work.run(lambda: refine_ref_texts(seg_clones, _asr_backend)),
-                                what="Dub segment ref-text refine",
-                            ))
-                            async for _ping in _ping_while(fut_refine):
-                                yield _ping
-                            seg_clones = fut_refine.result()
+                            seg_clones = fut_seg_refine.result()
                         except ASRTimeoutError as e:
-                            logger.warning(
-                                "segment ref-text refine timed out; keeping original ref_text: %s", e
-                            )
+                            logger.warning("segment reference refinement timed out, keeping originals: %s", e)
                         commit["segment_clones"] = seg_clones
                 except Exception as e:
                     logger.warning("per-segment clone refs skipped: %s", e)
@@ -2265,9 +2539,7 @@ async def dub_transcribe_stream(
                 )
                 replace_source_segments(job, final_segs)
                 job.update(commit)
-                job["source_lang"] = job.get("source_lang_override") or _detected_source_lang(
-                    detected_lang
-                )
+                job.update(_source_language_state(job, detected_lang))
                 job["full_transcript"] = " ".join(s.get("text", "") for s in final_segs)
                 job["transcription_complete"] = True
                 _save_job(job_id, job)
@@ -2297,7 +2569,9 @@ async def dub_transcribe_stream(
         # (CodeRabbit review, #1198 — normal-completion half).
         if _asr_backend:
             try:
-                fut_unload = loop.run_in_executor(_gpu_pool, lambda: _asr_work.cleanup(_asr_backend.unload))
+                fut_unload = loop.run_in_executor(
+                    _gpu_pool, lambda: _asr_work.cleanup(_asr_backend.unload)
+                )
                 async for _ping in _ping_while(fut_unload):
                     yield _ping
                 fut_unload.result()
@@ -2356,6 +2630,7 @@ async def dub_transcribe_stream(
             yield _sse_event("error", stream_failure(transcription_failure_code(exc)))
             yield _sse_event("done", {})
         finally:
+            _speaker_cancelled.set()
             _asr_work.stop()
             if _ref_run["dir"] and not _ref_run["committed"]:
                 dub_pipeline.discard_reference_run(_ref_run["dir"], _get_job(job_id))
@@ -2434,7 +2709,13 @@ async def dub_transcribe(job_id: str, num_speakers: Optional[int] = None):
     # OMNIVOICE_PRELOAD_TTS_ASR — and when it is off, that branch raises "fallback
     # is not preloaded" anyway. Loading ~3 GB to reach a None attribute (and then
     # having offload_tts_for_asr free it) was pure cost.
-    _model = await get_model() if should_preload_tts_asr() else None
+    _model = None
+    if should_preload_tts_asr():
+        try:
+            _model = await get_model()
+        except ModelLicenceNotAccepted:
+            # Harvest-only preload; skip it rather than fail transcription.
+            logger.info("transcribe: TTS model licence not accepted; skipping preload")
 
     # TTS-only install: no ASR model on disk → typed 409 with a download CTA,
     # BEFORE any backend is constructed (the whisper backends auto-download
@@ -2454,6 +2735,9 @@ async def dub_transcribe(job_id: str, num_speakers: Optional[int] = None):
                 status_code=409,
                 detail={**missing, "message": asr_model_missing_detail(missing)},
             )
+    # Diarisation runs after ASR; refuse an unaccepted model before any work
+    # (ModelLicenceNotAccepted → typed 403, #2689).
+    await asyncio.to_thread(_ensure_diarisation_accepted)
 
     def _transcribe():
 
@@ -2478,49 +2762,43 @@ async def dub_transcribe(job_id: str, num_speakers: Optional[int] = None):
         from services.asr_backend import load_active_asr_backend
         _asr = load_active_asr_backend(asr_pipe=getattr(_model, "_asr_pipe", None))
         try:
+            logger.info("Transcribing full audio with ASR backend %s", _asr.id)
             try:
-                logger.info("Transcribing full audio via %s ...", _asr.id)
                 result = _asr.transcribe(asr_audio_target, word_timestamps=True)
                 detected_lang = result.get("language")
-            except Exception as e:
-                logger.exception("ASR backend %s failed", _asr.id)
-                if getattr(_model, "_asr_pipe", None) is None:
+            except Exception as exc:
+                logger.exception("ASR backend %s failed during full-audio transcription", _asr.id)
+                fallback_pipe = getattr(_model, "_asr_pipe", None)
+                if fallback_pipe is None:
+                    backend_name = str(getattr(_asr, "id", "selected ASR"))
                     raise RuntimeError(
-                        f"ASR backend {_asr.id} failed and PyTorch Whisper fallback is not preloaded: {e}"
-                    ) from e
-                # Last-resort fallback — in-memory pytorch whisper via the TTS
-                # model's pipeline when explicitly preloaded.
-                audio_np, sr = sf.read(asr_audio_target, dtype="float32")
-                if audio_np.ndim > 1: audio_np = audio_np.mean(axis=1)
-                bs = 16 if torch.cuda.is_available() else 1
-                result = _model._asr_pipe(
-                    {"array": audio_np, "sampling_rate": sr},
-                    return_timestamps=True, chunk_length_s=15, batch_size=bs,
+                        f"Transcription with {backend_name} failed ({exc}). "
+                        "The in-memory PyTorch Whisper fallback cannot run because "
+                        "it was not preloaded."
+                    ) from exc
+                audio, sample_rate = sf.read(asr_audio_target, dtype="float32")
+                if audio.ndim > 1:
+                    audio = audio.mean(axis=1)
+                batch_size = 16 if torch.cuda.is_available() else 1
+                result = fallback_pipe(
+                    {"array": audio, "sampling_rate": sample_rate},
+                    return_timestamps=True,
+                    chunk_length_s=15,
+                    batch_size=batch_size,
                 )
-                detected_lang = (result.get("language") if isinstance(result, dict) else None)
+                detected_lang = result.get("language") if isinstance(result, dict) else None
         finally:
             try:
                 _asr.unload()
-            except Exception as e:
-                logger.warning("Failed to unload ASR backend: %s", e)
+            except Exception as exc:
+                logger.warning("ASR backend unload failed: %s", exc)
 
-        detected["source_lang"] = job.get("source_lang_override") or _detected_source_lang(
-            detected_lang
-        )
+        detected.update(_source_language_state(job, detected_lang))
 
         scene_cuts = job.get("scene_cuts") or []
         segments = segment_transcript(result, duration=job.get("duration", 0.0), scene_cuts=scene_cuts)
 
-        # #280: snap segment starts forward to the actual speech onset so the
-        # dub doesn't begin seconds before the original speaker does. #963:
-        # only on the separated vocals track — on mixed audio every ambient
-        # sound is a false onset candidate, so snapping is disabled.
-        try:
-            audio_for_onset, onset_sr = sf.read(asr_audio_target, dtype="float32")
-            snap_segment_starts(segments, audio_for_onset, onset_sr,
-                                separated_vocals=asr_on_vocals)
-        except Exception as e:
-            logger.warning("onset alignment skipped: %s", e)
+        # Onset alignment runs after the speaker re-split below (#3419).
 
         diar_pipe = get_diarization_pipeline()
         if diar_pipe:
@@ -2534,12 +2812,26 @@ async def dub_transcribe(job_id: str, num_speakers: Optional[int] = None):
                     diarization = diar_pipe(diar_target, num_speakers=num_speakers)
                 else:
                     diarization = diar_pipe(diar_target)
-                segments = assign_speakers_from_diarization(segments, diarization)
+                # Same label-then-split as the SSE endpoint (#486, #3419):
+                # labelling alone merged a short reply into the previous
+                # speaker's line for the CLI and phone companion.
+                segments = label_segments_by_diarization(
+                    segments, _words_from_whisper(result), diarization,
+                )
             except Exception:
                 logger.exception("Pyannote diarization failed during inference. Falling back to heuristic.")
                 segments = assign_speakers_heuristic(segments, num_speakers)
         else:
             segments = assign_speakers_heuristic(segments, num_speakers)
+
+        # #280/#963/#3419: snap each speaker-specific line to its speech, on
+        # the separated vocals only, after the re-split (see the SSE path).
+        try:
+            audio_for_onset, onset_sr = sf.read(asr_audio_target, dtype="float32")
+        except Exception as e:
+            logger.warning("onset alignment skipped: %s", e)
+        else:
+            _align_to_speech(segments, audio_for_onset, onset_sr, asr_on_vocals)
 
         # Previously ran `segment_for_subtitles(segments)` here. Removed 2026-04-21 —
         # that splitter enforces Netflix's 17 CPS reading-speed ceiling which
@@ -2592,7 +2884,7 @@ async def dub_transcribe(job_id: str, num_speakers: Optional[int] = None):
             "full_transcript": job.get("full_transcript", ""),
             "source_lang": source_lang,
         }
-    except HTTPException:
+    except (HTTPException, ModelLicenceNotAccepted):
         raise
     except asyncio.CancelledError:
         raise

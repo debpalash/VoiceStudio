@@ -39,7 +39,7 @@ _ALL_FIELDS = {
     "emo_alpha": 0.4,
     "vary_repeats": True,
     "line_gap_ms": 250,
-    "paragraph_gap_ms": 600,
+    "paragraph_gap_ms": 350,
     "trim_edges": True,
 }
 
@@ -182,6 +182,7 @@ def _record_manual_seed(monkeypatch):
     return seeds
 
 
+@pytest.mark.usefixtures("cpu_host")
 def test_omnivoice_default_opts_reproduce_todays_synth_args(monkeypatch):
     import asyncio
 
@@ -219,6 +220,7 @@ def test_omnivoice_default_opts_reproduce_todays_synth_args(monkeypatch):
         assert k not in kw
 
 
+@pytest.mark.usefixtures("cpu_host")
 def test_omnivoice_overrides_reach_model_but_emotion_never_does(monkeypatch):
     import asyncio
 
@@ -363,120 +365,169 @@ def test_vary_repeats_gives_each_repeat_its_own_take(tmp_path):
     assert _count_synth_calls(tmp_path, ExpressiveOptions(vary_repeats=True)) == 2
 
 
-# ── Seamless joins (#2216): edge trim + deliberate gaps ─────────────────────
-def test_trim_edge_silence_strips_engine_padding_but_keeps_onset():
-    from services.chunked_tts import trim_edge_silence
+# ── seamless joins ──────────────────────────────────────────────────────────
+# Sample rate 1000 Hz throughout, so one sample is one millisecond.
 
-    sr = 1000
-    speech = torch.full((500,), 0.5)
-    padded = torch.cat([torch.zeros(70), speech, torch.zeros(300)])  # 70 ms / 300 ms
-    out = trim_edge_silence(padded, sr, keep_ms=40)
-    # 40 ms kept on each side of the loud region.
-    assert out.shape[-1] == 40 + 500 + 40
-    assert torch.equal(out[40:540], speech)
-    # Stereo: trims on the last axis.
-    st = torch.stack([padded, padded * 0.1])
-    assert trim_edge_silence(st, sr, keep_ms=40).shape == (2, 580)
-    # Silent throughout / empty: unchanged (caller decides what that means).
-    assert trim_edge_silence(torch.zeros(100), sr).shape[-1] == 100
-    assert trim_edge_silence(torch.zeros(0), sr).shape[-1] == 0
-    # Already tight: same tensor back.
-    assert trim_edge_silence(speech, sr) is speech
+def _burst(before, loud, after, level=0.5):
+    """Silence, a constant-level burst, silence."""
+    return torch.cat([torch.zeros(before), torch.full((loud,), level), torch.zeros(after)])
 
 
-def test_split_paragraphs_on_blank_lines_only():
+class TestEdgeTrim:
+    def test_cuts_to_the_burst_plus_margin(self):
+        from services.chunked_tts import trim_edge_silence
+
+        out = trim_edge_silence(_burst(700, 250, 900), 1000)
+        assert out.numel() == 250 + 2 * 40
+        assert out[40:290].eq(0.5).all()
+
+    @pytest.mark.parametrize("keep_ms, expected", [(0, 60), (10, 80), (25, 110)])
+    def test_margin_is_configurable(self, keep_ms, expected):
+        from services.chunked_tts import trim_edge_silence
+
+        out = trim_edge_silence(_burst(300, 60, 300), 1000, keep_ms=keep_ms)
+        assert out.numel() == expected
+
+    def test_multichannel_uses_the_loudest_channel_and_clamps(self):
+        from services.chunked_tts import trim_edge_silence
+
+        wave = torch.zeros(2, 500)
+        wave[0, 200:210] = 0.3
+        wave[1, 205:230] = 0.3
+        out = trim_edge_silence(wave, 1000)
+        assert out.shape == (2, 30 + 40 + 40)
+        near_edge = torch.zeros(1, 400)
+        near_edge[0, 5:395] = 0.9
+        assert trim_edge_silence(near_edge, 1000) is near_edge
+
+    @pytest.mark.parametrize("maker", [lambda: torch.zeros(300), lambda: torch.zeros(0),
+                                       lambda: torch.full((300,), 0.0005)])
+    def test_nothing_to_cut_returns_same_object(self, maker):
+        from services.chunked_tts import trim_edge_silence
+
+        wave = maker()
+        assert trim_edge_silence(wave, 1000) is wave
+
+    def test_none_passes_through(self):
+        from services.chunked_tts import trim_edge_silence
+
+        assert trim_edge_silence(None, 1000) is None
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("alpha\nbeta", ["alpha\nbeta"]),
+    ("alpha\n\nbeta", ["alpha", "beta"]),
+    ("  alpha  \n \t\n\n\n  beta\n", ["alpha", "beta"]),
+    ("", []), (None, []), (" \n\n \n", []),
+    ("alpha\r\n\r\nbeta", ["alpha", "beta"]),
+    ("alpha\r\n \r\n\r\nbeta", ["alpha", "beta"]),
+    ("alpha\r\nbeta", ["alpha\r\nbeta"]),
+])
+def test_split_paragraphs_cases(text, expected):
     from services.chunked_tts import split_paragraphs
 
-    assert split_paragraphs("One.\nStill one.\n\nTwo.\n \n\nThree.") == [
-        "One.\nStill one.", "Two.", "Three."]
-    assert split_paragraphs("") == []
-    assert split_paragraphs("   \n\n  ") == []
+    assert split_paragraphs(text) == expected
 
 
-def test_synthesize_chapter_defaults_are_gap_free_and_untrimmed():
-    """Zero gaps + no trim reproduce today's bytes exactly (cache stability)."""
-    sr = 1000
-    padded = torch.cat([torch.zeros(70), torch.ones(500), torch.zeros(300)])
-    spans = [Span(text="a", voice_id="v"), Span(text="b", voice_id="v")]
-    audio, _ = synthesize_chapter(spans, lambda *_: padded.clone(), sr)
-    assert audio.shape[-1] == 2 * padded.shape[-1]
+def test_join_rendered_chunks_trim_flag():
+    from services.chunked_tts import join_rendered_chunks
+
+    pieces = [_burst(100, 50, 100), _burst(100, 50, 100)]
+    assert join_rendered_chunks(pieces, 1000, crossfade_ms=0).numel() == 500
+    assert join_rendered_chunks(pieces, 1000, crossfade_ms=0, trim_edges=True).numel() == 2 * 130
 
 
-def test_synthesize_chapter_line_gap_trims_edges_and_inserts_gap():
-    sr = 1000
-    padded = torch.cat([torch.zeros(70), torch.ones(500), torch.zeros(300)])
-    spans = [Span(text="a", voice_id="v"), Span(text="b", voice_id="v")]
-    audio, _ = synthesize_chapter(spans, lambda *_: padded.clone(), sr,
-                                  line_gap_ms=250, trim_edges=True)
-    trimmed = 40 + 500 + 40
-    assert audio.shape[-1] == trimmed + 250 + trimmed
+class _Studio:
+    """Renders a chapter with a stub engine that returns ``length`` samples of ones."""
+
+    def __init__(self, length=10, sample_rate=1000):
+        self.length, self.sample_rate, self.calls = length, sample_rate, []
+
+    def engine(self, text, voice, speed=None):
+        self.calls.append(text)
+        return torch.ones(self.length)
+
+    def render(self, spans, **kw):
+        kw.setdefault("crossfade_ms", 0)
+        return synthesize_chapter(spans, self.engine, self.sample_rate, **kw)[0]
 
 
-def test_synthesize_chapter_explicit_pause_wins_over_line_gap():
-    sr = 1000
-    tone = torch.ones(500)
-    spans = [Span(text="a", voice_id="v", pause_ms_after=1000),
-             Span(text="b", voice_id="v")]
-    audio, _ = synthesize_chapter(spans, lambda *_: tone.clone(), sr,
-                                  line_gap_ms=250)
-    # [pause] on the first line replaces the line gap, it is not added to it.
-    assert audio.shape[-1] == 500 + 1000 + 500
-    # Trailing silence-only span: no dangling line gap before it either.
-    spans = [Span(text="a", voice_id="v"), Span(text="", voice_id="v", pause_ms_after=100)]
-    audio, _ = synthesize_chapter(spans, lambda *_: tone.clone(), sr, line_gap_ms=250)
-    assert audio.shape[-1] == 500 + 100
+def _spoken(*texts, **per_span):
+    return [Span(voice_id=None, text=t, **per_span) for t in texts]
 
 
-def test_synthesize_chapter_paragraph_gap_inside_one_span():
-    sr = 1000
-    tone = torch.ones(500)
-    seen = []
-
-    def synth(text, *_):
-        seen.append(text)
-        return tone.clone()
-
-    spans = [Span(text="First para.\n\nSecond para.", voice_id="v")]
-    audio, _ = synthesize_chapter(spans, synth, sr, paragraph_gap_ms=600)
-    assert seen == ["First para.", "Second para."]
-    assert audio.shape[-1] == 500 + 600 + 500
-    # No paragraph gap asked for → the span stays ONE engine call with its text
-    # untouched: the pre-existing bytes, seeds and prosody under the old key.
-    seen.clear()
-    audio, _ = synthesize_chapter(spans, synth, sr)
-    assert seen == ["First para.\n\nSecond para."]
-    assert audio.shape[-1] == 500
+def test_defaults_match_explicit_zero_settings():
+    studio = _Studio()
+    spans = _spoken("one", "two", "three")
+    assert torch.equal(studio.render(spans),
+                       studio.render(spans, line_gap_ms=0, paragraph_gap_ms=0, trim_edges=False))
+    assert studio.render(spans).numel() == 30
 
 
-def test_line_gap_never_lands_inside_a_line_split_by_inline_markup():
-    """`He was [emphasis]very[/emphasis] tired.` is three spans but ONE line."""
-    from services.longform_parser import _parse_chapter_body as parse_chapter_body
+def test_line_gap_sits_between_trimmed_lines_only():
+    padded = _burst(200, 30, 200).unsqueeze(0)
+    audio = synthesize_chapter(_spoken("a", "b", "c"), lambda *_: padded, 1000,
+                               crossfade_ms=0, line_gap_ms=120, trim_edges=True)[0]
+    assert audio.shape == (1, 3 * 110 + 2 * 120)
+    first_gap = audio[0, 110:230]
+    assert not first_gap.any()
+    assert audio[0, 230 + 40].item() == 0.5
 
-    parsed = parse_chapter_body("He was [slow]very[/slow] tired.\n")
-    assert [s.get("join") for s in parsed] == ["continue", "continue", None]
-    # A plain line carries no key at all (byte-identical plans and cache keys).
-    assert all("join" not in s for s in parse_chapter_body("Plain line."))
 
-    sr = 1000
-    tone = torch.ones(500)
-    spans = [Span(**s) for s in parsed] + [Span(voice_id=None, text="Next line.")]
-    audio, _ = synthesize_chapter(spans, lambda *_: tone.clone(), sr, line_gap_ms=250)
-    # Exactly one gap: after the line, none between its three spans.
-    assert audio.shape[-1] == 4 * 500 + 250
-    # Round-trips through the manifest dict only when set.
-    assert spans[0].to_dict()["join"] == "continue"
-    assert "join" not in spans[-1].to_dict()
+def test_pause_wins_over_gap_and_silence_only_spans_get_none():
+    studio = _Studio()
+    spans = [Span(voice_id=None, text="a", pause_ms_after=25),
+             Span(voice_id=None, text="b"),
+             Span(voice_id=None, text="", pause_ms_after=15)]
+    assert studio.render(spans, line_gap_ms=500).numel() == 10 + 25 + 10 + 15
+    only_pause_next = _spoken("a") + [Span(voice_id=None, text="", pause_ms_after=7)]
+    assert studio.render(only_pause_next, line_gap_ms=500).numel() == 10 + 7
 
-    # A blank line sitting ON the markup boundary is a paragraph break: it gets
-    # the paragraph gap (the line gap when no paragraph gap is set), never none.
-    parsed = parse_chapter_body("Intro [slow]slowly[/slow]\n\nNew paragraph.")
-    assert [s.get("join") for s in parsed] == ["continue", "paragraph", None]
-    spans = [Span(**s) for s in parsed]
-    audio, _ = synthesize_chapter(spans, lambda *_: tone.clone(), sr,
-                                  line_gap_ms=250, paragraph_gap_ms=600)
-    assert audio.shape[-1] == 3 * 500 + 600
-    audio, _ = synthesize_chapter(spans, lambda *_: tone.clone(), sr, line_gap_ms=250)
-    assert audio.shape[-1] == 3 * 500 + 250
+
+def test_paragraph_gap_controls_engine_calls():
+    studio = _Studio()
+    script = _spoken("first\n\nsecond\n\nthird")
+    merged = studio.render(script, paragraph_gap_ms=40)
+    assert studio.calls == ["first", "second", "third"]
+    assert merged.numel() == 30 + 2 * 40
+    studio.calls.clear()
+    studio.render(script)
+    assert studio.calls == ["first\n\nsecond\n\nthird"]
+
+
+def test_markup_pieces_of_one_line_are_not_separated():
+    studio = _Studio()
+    spans = [Span(voice_id=None, text="x", join="continue"),
+             Span(voice_id=None, text="y", join="continue"),
+             Span(voice_id=None, text="z"),
+             Span(voice_id=None, text="next line")]
+    assert studio.render(spans, line_gap_ms=90).numel() == 40 + 90
+
+
+@pytest.mark.parametrize("line, para, expected_gap", [(100, 300, 300), (100, 0, 100), (0, 250, 250)])
+def test_blank_line_boundary_prefers_paragraph_gap(line, para, expected_gap):
+    studio = _Studio()
+    spans = [Span(voice_id=None, text="p", join="paragraph"), Span(voice_id=None, text="q")]
+    assert studio.render(spans, line_gap_ms=line, paragraph_gap_ms=para).numel() == 20 + expected_gap
+
+
+def test_join_marker_serialisation():
+    bare = Span(voice_id="v", text="t").to_dict()
+    assert "join" not in bare
+    marked = Span(voice_id="v", text="t", join="continue").to_dict()
+    assert marked["join"] == "continue"
+    assert list(marked).index("join") == list(marked).index("speed") + 1
+
+
+def test_join_settings_in_options():
+    opts = ExpressiveOptions(line_gap_ms=80, paragraph_gap_ms=160, trim_edges=True)
+    assert tuple(opts.join_kwargs()) == ExpressiveOptions.JOIN_KEYS
+    assert ExpressiveOptions.from_manifest(opts.to_manifest()) == opts
+    assert ExpressiveOptions.from_manifest({"trim_edges": 1, "other": 9}).trim_edges is True
+    assert ExpressiveOptions(seed=3).cache_signature() == \
+        ExpressiveOptions(seed=3, line_gap_ms=0, paragraph_gap_ms=0, trim_edges=False).cache_signature()
+    assert ExpressiveOptions(seed=3).cache_signature() != \
+        ExpressiveOptions(seed=3, trim_edges=True).cache_signature()
 
 
 def test_join_silence_budget_rejects_before_synthesis_or_cache(monkeypatch):
@@ -516,20 +567,22 @@ def test_join_silence_budget_keeps_exact_gaps_and_pause_precedence(monkeypatch):
     assert audio.shape[-1] == 30 + 60 + 20
 
 
-def test_render_request_gap_fields_are_bounded_and_reach_options():
-    from api.routers.audiobook import LongformRenderRequest, _expressive_opts
+@pytest.mark.parametrize("field", ["line_gap_ms", "paragraph_gap_ms"])
+@pytest.mark.parametrize("bad", [-5, 5001, 10 ** 6])
+def test_request_gap_out_of_range_is_rejected(field, bad):
+    from api.routers.audiobook import ExpressiveMixin
 
-    req = LongformRenderRequest(line_gap_ms=250, paragraph_gap_ms=350, trim_edges=True)
-    opts = _expressive_opts(req)
-    assert (opts.line_gap_ms, opts.paragraph_gap_ms, opts.trim_edges) == (250, 350, True)
-    assert opts.cache_signature()  # non-default vs the dataclass → cache key moves
     with pytest.raises(ValueError):
-        LongformRenderRequest(line_gap_ms=99999)
-    with pytest.raises(ValueError):
-        LongformRenderRequest(paragraph_gap_ms=5001)
-    off = _expressive_opts(LongformRenderRequest(
-        line_gap_ms=0, paragraph_gap_ms=0, trim_edges=False))
-    assert off.cache_signature() == ""  # explicit "old joins" = today's cache key
+        ExpressiveMixin(**{field: bad})
+
+
+def test_request_join_fields_lower_into_options():
+    from api.routers.audiobook import ExpressiveMixin, _expressive_opts
+
+    top = _expressive_opts(ExpressiveMixin(line_gap_ms=5000, paragraph_gap_ms=0, trim_edges=True))
+    assert (top.line_gap_ms, top.paragraph_gap_ms, top.trim_edges) == (5000, 0, True)
+    assert top.cache_signature()
+    assert _expressive_opts(ExpressiveMixin()).cache_signature() == ""
 
 
 def test_chapter_cache_key_moves_with_a_span_join_and_is_legacy_without_one():

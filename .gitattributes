@@ -1,3 +1,16 @@
 # Hash-pinned legal texts (tests/test_cla_workflow.py): identical bytes on every OS.
 .github/CLA-*.md text eol=lf
 .github/CCLA-*.md text eol=lf
+mobile/ios/VoiceStudio/Resources/NativeLicences/*.txt text eol=lf
+mobile/android/app/src/main/assets/licenses/*.txt text eol=lf
+
+# Windows batch files break goto/labels with LF endings.
+*.bat text eol=crlf
+
+# Repository-only moderation tests contain copied scam commands. Keep them in
+# Git checkouts/CI, but do not distribute attack examples in source archives.
+/tests/test_scam_guard.py export-ignore
+
+# Pinned upstream MP3 encoder; provenance and checksums are reviewed separately.
+mobile/ios/VoiceStudioKit/Sources/VSNative/Lame/** text eol=lf linguist-vendored
+mobile/native/ios/patches/*.patch text eol=lf

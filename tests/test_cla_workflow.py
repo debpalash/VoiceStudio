@@ -60,6 +60,22 @@ def test_sign_phrase_matches_the_agreement_and_contributing():
         assert cla.SIGN_PHRASE in path.read_text(encoding="utf-8"), path
 
 
+def test_new_contributors_are_told_to_sign_before_their_first_pull_request():
+    """GitHub cannot block opening a pull request, so the docs must say that the
+    merge is gated and where to sign first: the maintainer-labelled signing issue
+    that ``sign_on_issue`` records for anyone."""
+    signing_issue = "https://github.com/debpalash/VoiceStudio/issues/2586"
+    contributing = (_REPO / ".github" / "CONTRIBUTING.md").read_text(encoding="utf-8")
+    template = (_REPO / ".github" / "pull_request_template.md").read_text(encoding="utf-8")
+    readme = (_REPO / "README.md").read_text(encoding="utf-8")
+    assert "Before your first pull request" in contributing
+    assert contributing.count(signing_issue) >= 2
+    assert signing_issue in template
+    assert "sign the Contributor License Agreement once" in " ".join(template.split())
+    assert "contribution-licensing" in readme
+    assert cla.SIGNING_LABEL == "cla"
+
+
 def test_workflow_comment_filter_admits_the_sign_phrase_and_recheck():
     job_filter = _load(_CLA_WORKFLOW)["jobs"]["cla"]["if"]
     needles = re.findall(r"contains\(github\.event\.comment\.body, '([^']+)'\)", job_filter)
@@ -97,6 +113,7 @@ def test_signatures_never_go_to_main():
 
 
 def test_privileged_workflows_never_run_pull_request_code():
+    """Allow privileged checkouts to use only the trusted event base commit."""
     for path in sorted(_WORKFLOWS.glob("*.y*ml")):
         workflow = _load(path)
         if not _triggers(workflow) & _PRIVILEGED_TRIGGERS:
@@ -111,7 +128,11 @@ def test_privileged_workflows_never_run_pull_request_code():
                 assert not uses.startswith("actions/download-artifact@"), f"{where} downloads artifacts"
                 if uses.startswith("actions/checkout@"):
                     options = step.get("with") or {}
-                    assert not {"ref", "repository"} & set(options), f"{where} checks out a non-base ref"
+                    assert "repository" not in options, f"{where} checks out another repository"
+                    assert options.get("ref", "${{ github.sha }}") in {
+                        "${{ github.sha }}",
+                        "${{ github.event.pull_request.base.sha }}",
+                    }, f"{where} checks out a non-base ref"
                     assert options.get("persist-credentials") is False, f"{where} keeps credentials"
                 assert "${{ github.event" not in str(step.get("run", "")), f"{where} interpolates event data"
 
@@ -155,3 +176,13 @@ def test_cla_api_errors_block_merging_independently_of_the_commit_status():
     assert {"context": job.get("name", "cla"), "integration_id": 15368} in checks
     assert not job.get("continue-on-error", False)
     assert all(not step.get("continue-on-error", False) for step in job["steps"])
+
+
+def test_backfill_is_manual_main_only_and_never_checks_out_pr_code():
+    workflow = _load(_WORKFLOWS / "cla-backfill.yml")
+    assert _triggers(workflow) == {"workflow_dispatch"}
+    job = workflow["jobs"]["backfill"]
+    assert job["if"] == "github.ref == 'refs/heads/main'"
+    checkout = next(step for step in job["steps"] if "checkout" in step.get("uses", ""))
+    assert checkout["with"]["persist-credentials"] is False
+    assert "ref" not in checkout["with"]

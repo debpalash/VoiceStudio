@@ -2,10 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen } from '@testing-library/react';
 import { expect, it } from 'vitest';
 import i18n from '@/i18n';
-import {
-  DEFAULT_OVERRIDES,
-  overridesToRequest,
-} from '@shared/utils/longformOverrides';
+import { DEFAULT_OVERRIDES, overridesToRequest } from '@shared/utils/longformOverrides';
 import { ProductionSettings } from './production-settings';
 it('shows effective legacy joins for untouched and reset drafts', () => {
   render(
@@ -18,4 +15,15 @@ it('shows effective legacy joins for untouched and reset drafts', () => {
   const trim = screen.getByText(i18n.t('audiobook.trim_edges')).querySelector('[role="switch"]');
   expect(trim).toHaveAttribute('aria-checked', 'false');
   expect(overridesToRequest(DEFAULT_OVERRIDES, 'Auto')).toEqual({});
+});
+
+it('keeps emotion visible but disabled until the engine supports it (#3422)', () => {
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <ProductionSettings value={DEFAULT_OVERRIDES} disabled={false} onChange={() => {}} />
+    </QueryClientProvider>,
+  );
+  expect(screen.getByText(i18n.t('audiobook.emotion_help'))).toBeInTheDocument();
+  expect(screen.getByLabelText(i18n.t('audiobook.emotion_text'))).toBeDisabled();
+  expect(screen.getByLabelText(i18n.t('audiobook.emotion_alpha'))).toBeDisabled();
 });

@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { HistoryItem, Profile } from '@/lib/api/types';
+import { mergeDescribedAttrs } from '@shared/utils/voiceInstruct';
 import {
   applyDescription,
+  canResetToDescription,
   designDraftFromTake,
   designInstruct,
   designRecipe,
@@ -32,6 +34,30 @@ const profile = {
 
 describe('designed voice drafts', () => {
   beforeEach(() => localStorage.clear());
+
+  it('restores the native free-form prompt and explicit picks from a saved voice', () => {
+    const description = 'a gentle, slightly raspy Japanese narrator';
+    const native = {
+      ...profile,
+      design_recipe: JSON.stringify({
+        description,
+        picks: { Pitch: 'low pitch' },
+        mapped: { Gender: 'female', Age: 'young adult' },
+        engine: 'voxcpm2',
+      }),
+    };
+    const restored = restoreDesignProfile(native, 9);
+    expect(restored).toMatchObject({
+      description,
+      profileId: profile.id,
+      picks: { Pitch: { value: 'low pitch', description } },
+      mapped: { Gender: 'female', Age: 'young adult' },
+    });
+    const reopened = replaceRecipe(readDraft(), restored);
+    expect(reopened.description).toBe(description);
+    expect(reopened.profileId).toBe(profile.id);
+    expect(designInstruct(reopened, 'freeform')).toBe(description + ', low pitch');
+  });
 
   it('persists the selected profile identity with the draft', () => {
     localStorage.setItem(
@@ -116,197 +142,217 @@ describe('saved design voice link', () => {
   });
 });
 
-describe('designInstruct', () => {
-  const attrs = { Gender: 'female', Age: 'elderly' };
-  const description = ' raspy old female, scottish accent ';
-  const draft = { attrs, description, picks: {} };
-  const pick = (value: string) => ({ value, description: '' });
+function historyRow(overrides: Partial<HistoryItem> = {}): HistoryItem {
+  return {
+    id: 'row-9',
+    text: 'Opening line',
+    mode: 'design',
+    language: 'English',
+    instruct: null,
+    profile_id: null,
+    audio_path: 'row-9.wav',
+    duration_seconds: 3,
+    generation_time: 2,
+    seed: 77,
+    starred: 0,
+    created_at: 100,
+    ...overrides,
+  };
+}
 
-  it('sends OmniVoice its effective details', () => {
-    expect(designInstruct(draft, 'tags')).toBe('female, elderly');
+/** Fresh draft with `text` as its description, already mapped to `mapping`. */
+function mappedDraft(text: string, mapping: Record<string, string>) {
+  localStorage.clear();
+  const typed = editVoice(readDraft(), { description: text });
+  return applyDescription(typed, mapping, text);
+}
+
+describe('designInstruct', () => {
+  it.each([
+    ['tags', 'female, young adult'],
+    ['freeform', 'a bright storyteller'],
+  ] as const)('%s engines read their own form', (vocabulary, expected) => {
+    const draft = mappedDraft('a bright storyteller', { Gender: 'female', Age: 'young adult' });
+    expect(designInstruct(draft, vocabulary)).toBe(expected);
   });
 
-  it('sends a free-form engine the description as written plus its picks (#2389)', () => {
-    expect(designInstruct(draft, 'freeform')).toBe('raspy old female, scottish accent');
-    expect(designInstruct({ ...draft, picks: { Age: pick('elderly') } }, 'freeform')).toBe(
-      'raspy old female, scottish accent, elderly',
-    );
-    expect(
-      designInstruct(
-        { ...draft, description: '  ', picks: { Gender: pick('female'), Age: pick('elderly') } },
-        'freeform',
-      ),
-    ).toBe('female, elderly');
+  it('adds only hand-picked details after the prose for free-form engines', () => {
+    const base = mappedDraft('  a bright storyteller  ', { Gender: 'female' });
+    const picked = pickDetail(base, 'Style', 'whisper').draft;
+    expect(designInstruct(picked, 'freeform')).toBe('a bright storyteller, whisper');
+    expect(designInstruct(picked, 'tags')).toBe('female, whisper');
+  });
+
+  it('can consist of picks alone', () => {
+    let draft = mappedDraft('   ', {});
+    for (const [category, value] of [
+      ['Age', 'teenager'],
+      ['Gender', 'male'],
+    ] as const) {
+      draft = pickDetail(draft, category, value).draft;
+    }
+    expect(designInstruct(draft, 'freeform')).toBe('teenager, male');
+  });
+
+  it('repeats a pick even when it equals what the text mapped to', () => {
+    const draft = pickDetail(mappedDraft('a gent', { Gender: 'male' }), 'Gender', 'male').draft;
+    expect(designInstruct(draft, 'freeform')).toBe('a gent, male');
   });
 });
 
-describe('free-form design drafts (#2389)', () => {
-  // Sichuanese, written as an escape to keep the source ASCII.
-  const DIALECT = '\u56DB\u5DDD\u8BDD';
-  const blank = () => ({ ...readDraft(), description: '', picks: {}, mapped: {} });
-  const typed = (draft: ReturnType<typeof blank>, description: string) => ({
-    ...draft,
-    description,
+describe('how picks and the description interact', () => {
+  it('a pick survives a rewording that is silent about it', () => {
+    const picked = pickDetail(
+      mappedDraft('a guide', { Gender: 'female' }),
+      'Pitch',
+      'high pitch',
+    ).draft;
+    const reworded = editVoice(picked, { description: 'a friendly guide' });
+    const merged = applyDescription(reworded, { Gender: 'female' }, 'a friendly guide');
+    expect(merged.attrs).toMatchObject({ Gender: 'female', Pitch: 'high pitch' });
+    expect(Object.keys(merged.picks)).toEqual(['Pitch']);
   });
-  const take = {
-    id: 'take',
-    text: 'Hello',
-    mode: 'design',
-    language: null,
-    instruct: 'raspy, female',
-    profile_id: null,
-    audio_path: 'take.wav',
-    duration_seconds: 1,
-    generation_time: 1,
-    seed: 3,
-    starred: null,
-    created_at: 1,
-  } satisfies HistoryItem;
 
-  beforeEach(() => localStorage.clear());
+  it('a rewording that speaks to the same detail wins over an old pick', () => {
+    const picked = pickDetail(mappedDraft('a guide', {}), 'Age', 'teenager').draft;
+    const reworded = editVoice(picked, { description: 'a retired guide' });
+    const merged = applyDescription(reworded, { Age: 'elderly' }, 'a retired guide');
+    expect(merged.attrs.Age).toBe('elderly');
+    expect(merged.picks).toEqual({});
+  });
 
-  it('keeps a pick when an edit says nothing new about it', () => {
-    const mapped = applyDescription(
-      typed(blank(), 'old man'),
-      { Gender: 'male', Age: 'elderly' },
-      'old man',
+  it('an old accent pick yields to a dialect the new text implies', () => {
+    const picked = pickDetail(mappedDraft('a guide', {}), 'EnglishAccent', 'indian accent').draft;
+    const reworded = editVoice(picked, { description: 'a guide from Chengdu' });
+    const merged = applyDescription(reworded, { ChineseDialect: '四川话' }, 'a guide from Chengdu');
+    expect(merged.attrs.ChineseDialect).toBe('四川话');
+    expect(merged.attrs.EnglishAccent).toBe('Auto');
+    expect(merged.picks).toEqual({});
+  });
+
+  it('a mapping that arrives late cannot overrule a pick made under the same text', () => {
+    const picked = pickDetail(
+      editVoice(readDraft(), { description: 'a guide' }),
+      'Gender',
+      'male',
+    ).draft;
+    const merged = applyDescription(picked, { Gender: 'female' }, 'a guide');
+    expect([merged.attrs.Gender, merged.picks.Gender?.value, merged.mapped.Gender]).toEqual([
+      'male',
+      'male',
+      'female',
+    ]);
+  });
+
+  it('picking across an exclusive pair names the casualty and forgets its pick', () => {
+    localStorage.clear();
+    const accent = pickDetail(readDraft(), 'EnglishAccent', 'american accent').draft;
+    const { draft, clearedCategory } = pickDetail(accent, 'ChineseDialect', '东北话');
+    expect(clearedCategory).toBe('EnglishAccent');
+    expect(Object.keys(draft.picks)).toEqual(['ChineseDialect']);
+    expect(draft.attrs.EnglishAccent).toBe('Auto');
+  });
+});
+
+describe('designDraftFromTake', () => {
+  it('preserves zero as a stored take seed', () => {
+    expect(designDraftFromTake(historyRow({ seed: 0 })).seed).toBe(0);
+  });
+
+  it('treats a take with no recipe as prose whose recognised tags become details', () => {
+    const draft = designDraftFromTake(historyRow({ instruct: 'male, very low pitch' }));
+    expect(draft.attrs).toMatchObject({ Gender: 'male', Pitch: 'very low pitch' });
+    expect(draft.picks).toEqual({});
+    expect(draft.seed).toBe(77);
+    expect(designInstruct(draft, 'tags')).toBe('male, very low pitch');
+    expect(designInstruct(draft, 'freeform')).toBe('male, very low pitch');
+  });
+
+  it('separates recognised tags from prose between the two vocabularies', () => {
+    const draft = designDraftFromTake(historyRow({ instruct: 'male, hums while talking' }));
+    expect(designInstruct(draft, 'tags')).toBe('male');
+    expect(designInstruct(draft, 'freeform')).toBe('male, hums while talking');
+  });
+
+  it('brings back everything a stored recipe held', () => {
+    const original = pickDetail(
+      mappedDraft('a warm host', { Gender: 'female' }),
+      'Age',
+      'elderly',
+    ).draft;
+    const recipe = JSON.stringify({ ...designRecipe(original), mapped: original.mapped });
+    const reopened = designDraftFromTake(
+      historyRow({ design_recipe: recipe, profile_id: 'saved-1', instruct: 'ignored' }),
     );
-    const picked = pickDetail(mapped, 'Age', 'middle-aged').draft;
-    const edited = typed(picked, 'old man, raspy');
-    const remapped = applyDescription(edited, { Gender: 'male', Age: 'elderly' }, 'old man, raspy');
-    expect(remapped.attrs).toMatchObject({ Gender: 'male', Age: 'middle-aged' });
-    expect(designInstruct(remapped, 'freeform')).toBe('old man, raspy, middle-aged');
-    expect(designInstruct(remapped, 'tags')).toBe('male, middle-aged');
-  });
-
-  it('keeps a pick that matches the mapped value', () => {
-    const mapped = applyDescription(typed(blank(), 'raspy'), { Age: 'elderly' }, 'raspy');
-    const picked = pickDetail(mapped, 'Age', 'elderly').draft;
-    expect(designInstruct(picked, 'freeform')).toBe('raspy, elderly');
-  });
-
-  it('lets a newer description override an older pick of the same detail', () => {
-    const recipe = replaceRecipe(blank(), {
-      attrs: { ...blank().attrs, Gender: 'male', Pitch: 'low pitch' },
-    });
-    const edited = typed(recipe, 'young woman');
-    const remapped = applyDescription(
-      edited,
-      { Gender: 'female', Age: 'young adult' },
-      'young woman',
+    expect(reopened.description).toBe('a warm host');
+    expect(reopened.profileId).toBe('saved-1');
+    expect(reopened.attrs).toMatchObject({ Gender: 'female', Age: 'elderly' });
+    expect(reopened.picks).toEqual({ Age: { value: 'elderly', description: 'a warm host' } });
+    expect(reopened.mapped).toMatchObject({ Gender: 'female' });
+    (['tags', 'freeform'] as const).forEach((v) =>
+      expect(designInstruct(reopened, v)).toBe(designInstruct(original, v)),
     );
-    expect(remapped.attrs).toMatchObject({
-      Gender: 'female',
-      Age: 'young adult',
-      Pitch: 'low pitch',
-    });
-    expect(designInstruct(remapped, 'freeform')).toBe('young woman, low pitch');
-  });
-
-  it('does not let a late mapping undo a pick made after the text was typed', () => {
-    const picked = pickDetail(typed(blank(), 'a child'), 'Age', 'elderly').draft;
-    const landed = applyDescription(picked, { Age: 'child' }, 'a child');
-    expect(landed.attrs.Age).toBe('elderly');
-    const edited = typed(landed, 'a child, raspy');
-    expect(applyDescription(edited, { Age: 'child' }, 'a child, raspy').attrs.Age).toBe('elderly');
-  });
-
-  it('lets a newer description override an older exclusive pick', () => {
-    const accent = pickDetail(blank(), 'EnglishAccent', 'british accent').draft;
-    const edited = typed(accent, 'from Sichuan');
-    const remapped = applyDescription(edited, { ChineseDialect: DIALECT }, 'from Sichuan');
-    expect(remapped.attrs).toMatchObject({ ChineseDialect: DIALECT, EnglishAccent: 'Auto' });
-    expect(remapped.picks).not.toHaveProperty('EnglishAccent');
-  });
-
-  it('drops the pick an exclusive pick clears', () => {
-    const accent = pickDetail(blank(), 'EnglishAccent', 'british accent').draft;
-    const dialect = pickDetail(accent, 'ChineseDialect', DIALECT);
-    expect(dialect.clearedCategory).toBe('EnglishAccent');
-    expect(dialect.draft.picks).not.toHaveProperty('EnglishAccent');
-  });
-
-  it('restores a take so both engine kinds receive the same instruct', () => {
-    const draft = designDraftFromTake(take);
-    expect(draft).toMatchObject({
-      description: 'raspy, female',
-      attrs: { Gender: 'female', Age: 'Auto' },
-      picks: {},
-    });
-    expect(designInstruct(draft, 'freeform')).toBe('raspy, female');
-    expect(designInstruct(draft, 'tags')).toBe('female');
-    const tagsOnly = designDraftFromTake({ ...take, instruct: 'female, elderly' });
-    expect(tagsOnly.description).toBe('female, elderly');
-    expect(designInstruct(tagsOnly, 'freeform')).toBe('female, elderly');
-    expect(designInstruct(tagsOnly, 'tags')).toBe('female, elderly');
-  });
-
-  it('reopens a take with a stored recipe exactly as it was drafted', () => {
-    const mapped = applyDescription(
-      typed(blank(), 'raspy old woman'),
-      { Gender: 'female', Age: 'elderly' },
-      'raspy old woman',
+    const edited = applyDescription(
+      editVoice(reopened, { description: 'a warm host with energy' }),
+      { Gender: 'female' },
+      'a warm host with energy',
     );
-    const drafted = pickDetail(mapped, 'Pitch', 'low pitch').draft;
-    const sent = designRecipe(drafted);
-    expect(sent).toEqual({ description: 'raspy old woman', picks: { Pitch: 'low pitch' } });
-    // The backend stores the recipe with the mapping it derives from the description.
-    const reopened = designDraftFromTake({
-      ...take,
-      instruct: designInstruct(drafted, 'freeform'),
-      design_recipe: JSON.stringify({ ...sent, mapped: drafted.mapped }),
-    });
-    expect(reopened).toMatchObject({
-      description: 'raspy old woman',
-      attrs: { Gender: 'female', Age: 'elderly', Pitch: 'low pitch' },
-      picks: { Pitch: { value: 'low pitch', description: 'raspy old woman' } },
-      mapped: { Gender: 'female', Age: 'elderly', Pitch: 'Auto' },
-    });
-    for (const vocabulary of ['freeform', 'tags'] as const) {
-      expect(designInstruct(reopened, vocabulary)).toBe(designInstruct(drafted, vocabulary));
-    }
-    // Editing the reopened description keeps the pick it was made with.
-    const edited = typed(reopened, 'raspy old woman, tired');
-    expect(
-      applyDescription(edited, { Gender: 'female', Age: 'elderly' }, 'raspy old woman, tired').attrs
-        .Pitch,
-    ).toBe('low pitch');
+    expect(edited.picks.Age?.value).toBe('elderly');
   });
 
-  it('falls back to the instruct when a stored recipe is unreadable', () => {
-    for (const design_recipe of ['{broken', '[]', JSON.stringify({ picks: {} }), null]) {
-      expect(designDraftFromTake({ ...take, design_recipe })).toMatchObject({
-        description: 'raspy, female',
-        attrs: { Gender: 'female' },
-        picks: {},
-      });
-    }
+  it.each([
+    [{ raw: '{not json' }],
+    [{ raw: '"just text"' }],
+    [{ raw: JSON.stringify({ picks: { Age: 'child' } }) }],
+    [{ raw: null }],
+  ])('uses the instruct when the stored recipe is unusable (%j)', ({ raw }) => {
+    const draft = designDraftFromTake(historyRow({ instruct: 'child', design_recipe: raw }));
+    expect([draft.description, draft.attrs.Age]).toEqual(['child', 'child']);
+  });
+});
+
+describe('replaceRecipe and stored drafts', () => {
+  it('wipes the description and mapping and records the new details as picks', () => {
+    const before = mappedDraft('a gent', { Gender: 'male' });
+    const after = replaceRecipe(before, { attrs: mergeDescribedAttrs({ Pitch: 'low pitch' }) });
+    expect([after.description, after.mapped]).toEqual(['', {}]);
+    expect(after.picks).toEqual({ Pitch: { value: 'low pitch', description: '' } });
   });
 
-  it('replaces the description and makes the recipe the picks', () => {
-    const current = {
-      ...blank(),
-      description: 'raspy',
-      picks: { Pitch: { value: 'low pitch', description: 'raspy' } },
-    };
-    const replaced = replaceRecipe(current, { attrs: { ...current.attrs, Gender: 'male' } });
-    expect(replaced).toMatchObject({
-      description: '',
-      picks: { Gender: { value: 'male', description: '' } },
-      mapped: {},
-    });
-    expect(designInstruct(replaced, 'freeform')).toBe('male');
+  it('upgrades a draft stored without picks by treating its details as picks', () => {
+    localStorage.setItem(
+      STORAGE,
+      JSON.stringify({ text: 'old', seed: 5, attrs: { Style: 'whisper', Pitch: 'high pitch' } }),
+    );
+    expect(Object.keys(readDraft().picks).sort()).toEqual(['Pitch', 'Style']);
   });
 
-  it('treats details in drafts saved before descriptions as picks', () => {
-    localStorage.setItem(STORAGE, JSON.stringify({ text: 'Hi', attrs: { Gender: 'female' } }));
-    const legacy = readDraft();
-    expect(legacy).toMatchObject({
-      description: '',
-      picks: { Gender: { value: 'female', description: '' } },
-    });
-    expect(designInstruct(legacy, 'freeform')).toBe('female');
-    localStorage.setItem(STORAGE, JSON.stringify({ picks: { Age: 'elderly' }, mapped: [1] }));
-    expect(readDraft()).toMatchObject({ picks: {}, mapped: {} });
+  it.each([
+    [{ picks: 7, mapped: 'x' }],
+    [{ picks: { Age: { value: 3, description: '' } }, mapped: [1] }],
+  ])('treats damaged picks and mapped (%j) as empty', (damage) => {
+    localStorage.setItem(STORAGE, JSON.stringify({ seed: 5, attrs: {}, ...damage }));
+    const draft = readDraft();
+    expect([draft.picks, draft.mapped]).toEqual([{}, {}]);
+  });
+
+  it('starts blank when storage holds garbage', () => {
+    localStorage.setItem(STORAGE, 'nope{');
+    const draft = readDraft();
+    expect([draft.text, draft.profileId, draft.description]).toEqual(['', null, '']);
+  });
+});
+
+describe('canResetToDescription', () => {
+  const pick = { Age: { value: 'elderly', description: '' } };
+  it('hides the reset while the description is empty, even with picks', () => {
+    expect(canResetToDescription({ description: '  ', picks: pick, profileId: 'p' })).toBe(false);
+  });
+  it('hides the reset when the details already follow the description', () => {
+    expect(canResetToDescription({ description: 'warm', picks: {}, profileId: null })).toBe(false);
+  });
+  it('offers the reset when picks or a saved voice override the description', () => {
+    expect(canResetToDescription({ description: 'warm', picks: pick, profileId: null })).toBe(true);
+    expect(canResetToDescription({ description: 'warm', picks: {}, profileId: 'p' })).toBe(true);
   });
 });

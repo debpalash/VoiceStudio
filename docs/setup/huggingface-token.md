@@ -11,7 +11,7 @@ order — the first source that has a token *and* survives a live `whoami`
 call wins:
 
 1. **App** — encrypted in VoiceStudio's SQLite settings store.
-   Set via the in-app **Settings → API Keys** panel.
+   Set via the in-app **Settings → Credentials** panel.
 2. **Env** — `HF_TOKEN` (or the legacy `HUGGING_FACE_HUB_TOKEN`) environment
    variable visible to the VoiceStudio process.
 3. **HF CLI** — the local `HF_TOKEN_PATH` file (normally `~/.cache/huggingface/token`) written by
@@ -20,14 +20,14 @@ call wins:
 Source labels in onboarding and Settings follow the selected UI language;
 product names such as HuggingFace CLI remain unchanged.
 
-On opening **Settings → API Keys**, each row shows local set/unset state and
+On opening **Settings → Credentials**, each row shows local set/unset state and
 a masked preview (`hf_…3jw`). Tokens remain **Not tested** until you select
 **Test now**. That explicit check displays the `whoami` username and a green
 check for valid sources, with an **Active** badge on the highest-priority valid source.
 
 ## Setting via the app (recommended)
 
-1. Open **Settings → API Keys**.
+1. Open **Settings → Credentials**.
 2. Paste your HF token (get one from
    [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens) —
    the "read" scope is enough).
@@ -68,7 +68,7 @@ to see it.
 
 > **Don't use `setx`.** `setx HF_TOKEN "hf_..."` writes the variable but
 > *doesn't propagate to the current shell* — a common source of "I set it
-> but it's empty" bug reports. Use the in-app Settings → API Keys path or
+> but it's empty" bug reports. Use the in-app Settings → Credentials path or
 > the `[Environment]::SetEnvironmentVariable` one-liner above.
 
 ## Setting via `huggingface-cli`
@@ -83,7 +83,7 @@ huggingface-cli login
 
 That normally writes to `~/.cache/huggingface/token`. VoiceStudio reads the
 selected local token file directly — you'll see the
-**HF CLI** row in **Settings → API Keys** flip to "set".
+**HF CLI** row in **Settings → Credentials** flip to "set".
 
 ## Accepting model licenses
 
@@ -111,7 +111,7 @@ process).
   token is valid at
   [huggingface.co/settings/tokens](https://huggingface.co/settings/tokens)
   and has at least the "read" scope.
-- **Token didn't survive a reboot** — open **Settings → API Keys** and check
+- **Token didn't survive a reboot** — open **Settings → Credentials** and check
   the App row. If it's empty, the SQLite store may have been wiped — re-save.
   If it's set but the active source is "Env" or "HF CLI", that's the cascade
   working as intended (App is highest priority).

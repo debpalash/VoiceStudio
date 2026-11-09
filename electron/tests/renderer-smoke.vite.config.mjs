@@ -14,6 +14,8 @@ const uiPort = Number(process.env.VOICESTUDIO_SMOKE_PORT) || 3912;
 
 export default defineConfig({
   root: rendererRoot,
+  // Serve the same static files as the app (early-error-capture.js, aec-worklet.js, ...).
+  publicDir: resolve(electronRoot, 'public'),
   plugins: [
     react(),
     tailwindcss(),
@@ -30,6 +32,7 @@ export default defineConfig({
   ],
   define: {
     __APP_VERSION__: JSON.stringify(version),
+    __BUILD_COMMIT__: JSON.stringify('000000000'),
     __WEB_DEPLOYMENT__: false,
   },
   resolve: {

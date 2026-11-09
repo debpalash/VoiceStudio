@@ -1,0 +1,149 @@
+name: Mac App Store package
+
+# Builds signed MAS packages for private validation. It never uploads to App
+# Store Connect, creates a listing, starts TestFlight, or publishes a version.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mac-app-store-${{ github.sha }}
+  cancel-in-progress: false
+
+env:
+  VOICESTUDIO_DISTRIBUTION: mac-app-store
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - name: Enforce the bundled-only compliance gate
+        run: node scripts/validate_store_foundation.mjs --distribution=mac-app-store
+
+  package:
+    needs: validate
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            target: aarch64-apple-darwin
+            flag: --arm64
+          - runner: macos-15-intel
+            arch: x64
+            target: x86_64-apple-darwin
+            flag: --x64
+    env:
+      VOICESTUDIO_RUST_TARGET: ${{ matrix.target }}
+      VOICESTUDIO_UPDATE_CHANNEL: electron-stable-darwin-${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: '1.4.2'
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: native/desktop-bridge -> target
+          key: mac-app-store-${{ matrix.target }}
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: '0.12.13'
+          enable-cache: false
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+      - name: Stage frozen Python and media tools
+        if: matrix.arch == 'arm64'
+        env:
+          UV_PROJECT_ENVIRONMENT: ${{ runner.temp }}/mas-python-environment
+          UV_PYTHON_PREFERENCE: only-managed
+          UV_NO_CACHE: '1'
+        run: |
+          uv python install 3.11
+          uv sync --frozen --no-dev --no-editable --no-install-project --python 3.11
+          "$UV_PROJECT_ENVIRONMENT/bin/python" scripts/stage_mas_python.py --python "$UV_PROJECT_ENVIRONMENT/bin/python" --lock uv.lock --output electron/build/python-runtime
+          "$UV_PROJECT_ENVIRONMENT/bin/python" scripts/stage_mas_media.py --download --output electron/build/media-tools
+          python3 -c 'import os, shutil; shutil.rmtree(os.environ["UV_PROJECT_ENVIRONMENT"])'
+      - name: Build pinned Apple silicon GGUF runtime
+        if: matrix.arch == 'arm64'
+        run: |
+          PIN=$(python3 -c "import json; print(json.load(open('backend/engines/omnivoice_gguf/quant_map.json'))['_meta']['runtime_commit_sha'])")
+          bash scripts/build-omnivoice-tts.sh --platform darwin-arm64 --commit-sha "$PIN"
+          mkdir -p electron/build/omnivoice-tts
+          cp -R bin/. electron/build/omnivoice-tts/
+          echo 'VOICESTUDIO_OMNIVOICE_TTS_PLATFORM=darwin-arm64' >> "$GITHUB_ENV"
+      - name: Validate Electron
+        run: bun run check:electron
+      - name: Prepare App Store signing inputs
+        env:
+          PROFILE: ${{ secrets.ELECTRON_MAC_APP_STORE_PROVISIONING_PROFILE }}
+          APP_CERTIFICATE: ${{ secrets.ELECTRON_MAC_APP_STORE_CSC_LINK }}
+          APP_CERTIFICATE_PASSWORD: ${{ secrets.ELECTRON_MAC_APP_STORE_CSC_KEY_PASSWORD }}
+          INSTALLER_CERTIFICATE: ${{ secrets.ELECTRON_MAC_APP_STORE_INSTALLER_LINK }}
+          INSTALLER_CERTIFICATE_PASSWORD: ${{ secrets.ELECTRON_MAC_APP_STORE_INSTALLER_KEY_PASSWORD }}
+        run: |
+          for value in "$PROFILE" "$APP_CERTIFICATE" "$APP_CERTIFICATE_PASSWORD" "$INSTALLER_CERTIFICATE" "$INSTALLER_CERTIFICATE_PASSWORD"; do
+            test -n "$value" || { echo "Mac App Store signing inputs are incomplete"; exit 1; }
+          done
+          PROFILE_PATH="$RUNNER_TEMP/VoiceStudio.provisionprofile"
+          printf '%s' "$PROFILE" | base64 -D > "$PROFILE_PATH"
+          chmod 600 "$PROFILE_PATH"
+          echo "VOICESTUDIO_MAS_PROVISIONING_PROFILE=$PROFILE_PATH" >> "$GITHUB_ENV"
+      - name: Build signed sandbox packages
+        working-directory: electron
+        env:
+          CSC_LINK: ${{ secrets.ELECTRON_MAC_APP_STORE_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.ELECTRON_MAC_APP_STORE_CSC_KEY_PASSWORD }}
+          CSC_INSTALLER_LINK: ${{ secrets.ELECTRON_MAC_APP_STORE_INSTALLER_LINK }}
+          CSC_INSTALLER_KEY_PASSWORD: ${{ secrets.ELECTRON_MAC_APP_STORE_INSTALLER_KEY_PASSWORD }}
+        run: |
+          bun x electron-builder --config electron-builder.config.mjs --mac mas ${{ matrix.flag }} --publish never
+          node tests/packaging-contract.mjs --artifact
+      - name: Verify Apple Distribution signatures and sandbox
+        working-directory: electron
+        run: |
+          APP=$(find release -type d -path '*mas*' -name VoiceStudio.app -print -quit)
+          PKG=$(find release -maxdepth 1 -type f -name 'VoiceStudio-MacAppStore-*-mac-${{ matrix.arch }}.pkg' -print -quit)
+          test -n "$APP" && test -n "$PKG"
+          codesign --verify --deep --strict "$APP"
+          codesign --display --entitlements :- "$APP" > "$RUNNER_TEMP/mas-entitlements.plist"
+          test "$(plutil -extract com.apple.security.app-sandbox raw "$RUNNER_TEMP/mas-entitlements.plist")" = true
+          pkgutil --check-signature "$PKG"
+          APP="$APP" PKG="$PKG" ARCH='${{ matrix.arch }}' node --input-type=module <<'NODE'
+          import { basename } from 'node:path';
+          import { writeFileSync } from 'node:fs';
+          writeFileSync(`release/apple-signing-darwin-${process.env.ARCH}.json`, `${JSON.stringify({
+            schemaVersion: 1,
+            status: 'valid',
+            application: basename(process.env.APP),
+            package: basename(process.env.PKG),
+            checks: { deepStrictCodeSignature: true, appSandbox: true, installerSignature: true },
+          }, null, 2)}\n`);
+          NODE
+      - name: Record artifact provenance
+        working-directory: electron
+        run: node ../scripts/create_store_artifact_manifest.mjs --distribution=mac-app-store --platform=darwin --arch=${{ matrix.arch }} --signing-evidence=apple-signing-darwin-${{ matrix.arch }}.json
+      - name: Save private App Store handoff
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: mac-app-store-darwin-${{ matrix.arch }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            electron/release/VoiceStudio-MacAppStore-*-mac-${{ matrix.arch }}.pkg
+            electron/release/store-artifact-manifest-darwin-${{ matrix.arch }}.json
+            electron/release/apple-signing-darwin-${{ matrix.arch }}.json

@@ -37,6 +37,8 @@ Engine availability depends on installed models, hardware, and configured provid
 - **Confucius4-TTS** — [Guide](engines/confucius4-tts.md)
 - pockettts
 - audiocpp — [Guide](engines/audio-cpp.md)
+- audiocpp-dots — [Guide](engines/audio-cpp.md)
+- CosyVoice 3 GGUF — [Vulkan setup](engines/cosyvoice-gguf.md)
 
 ## Transcription
 

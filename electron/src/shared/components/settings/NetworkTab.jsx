@@ -13,108 +13,96 @@ import { Wifi, Globe, Film } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAppStore } from '../../store';
 import { useSystemInfo, queryKeys } from '../../api/hooks';
+import { apiFetch } from '../../api/client';
 import { Button, Badge } from '../../ui';
 import { SettingsSection, SettingRow, SettingsInput } from './primitives';
 import RestartBadge from './RestartBadge';
 
+const PROXY_KEYS = [
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'ALL_PROXY',
+  'http_proxy',
+  'https_proxy',
+  'all_proxy',
+];
+
 export default function NetworkTab() {
   const { t } = useTranslation();
-  const { data: sysInfo } = useSystemInfo();
-  const [proxyUrl, setProxyUrl] = useState('');
-  const [proxySaved, setProxySaved] = useState(false);
-  const [proxyCleared, setProxyCleared] = useState(false);
-  const [proxySaving, setProxySaving] = useState(false);
   const queryClient = useQueryClient();
-  const openSettingsTab = useAppStore((s) => s.openSettingsTab);
+  const systemInfo = useSystemInfo();
+  const openSettingsTab = useAppStore((state) => state.openSettingsTab);
+  const [proxy, setProxy] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [cleared, setCleared] = useState(false);
+  const backendProxy = systemInfo.data?.proxy_url || '';
 
   useEffect(() => {
-    if (!proxyUrl && !proxySaved && !proxyCleared) setProxyUrl(sysInfo?.proxy_url || '');
-  }, [sysInfo?.proxy_url]);
+    if (!saved && !cleared) setProxy((current) => current || backendProxy);
+  }, [backendProxy, cleared, saved]);
 
-  const ffmpegOk = sysInfo?.ffmpeg_ok;
-  // "A proxy is configured" must survive an app reload: derive it from the
-  // backend-persisted value, not only from a save in this session — otherwise
-  // the Clear button (and the "Set" badge) vanish on reload with the proxy
-  // still active and no way to remove it.
-  const proxyConfigured = !proxyCleared && (proxySaved || Boolean(sysInfo?.proxy_url));
-
-  const saveProxy = async () => {
-    const value = proxyUrl.trim();
-    setProxySaving(true);
-    try {
-      const { apiFetch } = await import('../../api/client');
-      const setEnv = (key, val) =>
+  const writeProxy = async (value) => {
+    await Promise.all(
+      PROXY_KEYS.map((key) =>
         apiFetch('/system/set-env', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key, value: val }),
-        });
-      await setEnv('HTTP_PROXY', value);
-      await Promise.all([
-        setEnv('HTTPS_PROXY', value),
-        setEnv('ALL_PROXY', value),
-        setEnv('http_proxy', value),
-        setEnv('https_proxy', value),
-        setEnv('all_proxy', value),
-      ]);
+          body: JSON.stringify({ key, value }),
+        }),
+      ),
+    );
+  };
+
+  const saveProxy = async () => {
+    const value = proxy.trim();
+    setBusy(true);
+    try {
+      await writeProxy(value);
+      setSaved(true);
+      setCleared(false);
       toast.success(t('settings.proxy_saved'));
-      setProxySaved(true);
-      setProxyCleared(false);
-      queryClient.invalidateQueries({ queryKey: queryKeys.systemInfo });
-    } catch (e) {
-      toast.error(t('settings.save_failed', { message: e.message }));
+      void queryClient.invalidateQueries({ queryKey: queryKeys.systemInfo });
+    } catch (error) {
+      toast.error(t('settings.save_failed', { message: error.message }));
     } finally {
-      setProxySaving(false);
+      setBusy(false);
     }
   };
 
   const clearProxy = async () => {
-    setProxySaving(true);
+    setBusy(true);
     try {
-      const { apiFetch } = await import('../../api/client');
-      const setEnv = (key, val) =>
-        apiFetch('/system/set-env', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key, value: val }),
-        });
-      await Promise.all([
-        setEnv('HTTP_PROXY', ''),
-        setEnv('HTTPS_PROXY', ''),
-        setEnv('ALL_PROXY', ''),
-        setEnv('http_proxy', ''),
-        setEnv('https_proxy', ''),
-        setEnv('all_proxy', ''),
-      ]);
-      setProxyUrl('');
-      setProxySaved(false);
-      setProxyCleared(true);
+      await writeProxy('');
+      setProxy('');
+      setSaved(false);
+      setCleared(true);
       toast.success(t('settings.proxy_cleared'));
-      queryClient.invalidateQueries({ queryKey: queryKeys.systemInfo });
-    } catch (e) {
-      toast.error(t('settings.clear_failed', { message: e.message }));
+      void queryClient.invalidateQueries({ queryKey: queryKeys.systemInfo });
+    } catch (error) {
+      toast.error(t('settings.clear_failed', { message: error.message }));
     } finally {
-      setProxySaving(false);
+      setBusy(false);
     }
   };
+
+  const configured = !cleared && (saved || Boolean(backendProxy));
 
   return (
     <SettingsSection
       icon={Wifi}
-      title={t('settings.network', { defaultValue: 'Network' })}
-      description={t('settings.network_desc', {
-        defaultValue: 'Proxy for downloads and model fetches.',
-      })}
+      title={t('settings.network')}
+      description={t('settings.network_desc')}
     >
       <SettingRow
+        icon={Globe}
         align="start"
         stack
-        icon={Globe}
         title={
           <>
             {t('settings.proxy')}
             <RestartBadge applies />
-            {proxyConfigured && (
+            {configured && (
               <Badge tone="success" size="xs">
                 {t('credentials.saved')}
               </Badge>
@@ -125,28 +113,31 @@ export default function NetworkTab() {
         control={
           <>
             <SettingsInput
-              placeholder="http://127.0.0.1:7890 or socks5://127.0.0.1:7890"
-              value={proxyUrl}
-              onChange={(e) => setProxyUrl(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && saveProxy()}
-              aria-label={t('settings.proxy_input_aria', { defaultValue: 'Proxy URL' })}
+              value={proxy}
+              onChange={(event) => setProxy(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void saveProxy();
+              }}
+              placeholder="http://127.0.0.1:8080 or socks5://127.0.0.1:1080"
+              aria-label={t('settings.proxy_input_aria')}
+              disabled={busy}
             />
             <Button
               size="sm"
               variant="subtle"
-              onClick={saveProxy}
-              loading={proxySaving}
-              disabled={!proxyUrl.trim()}
+              disabled={!proxy.trim()}
+              loading={busy}
+              onClick={() => void saveProxy()}
             >
               {t('credentials.save')}
             </Button>
-            {proxyConfigured && (
+            {configured && (
               <Button
                 size="sm"
                 variant="ghost"
-                onClick={clearProxy}
-                loading={proxySaving}
+                loading={busy}
                 data-testid="proxy-clear"
+                onClick={() => void clearProxy()}
               >
                 {t('settings.proxy_clear')}
               </Button>
@@ -154,31 +145,25 @@ export default function NetworkTab() {
           </>
         }
       />
-
-      {/* Pointer, not a control — the FFmpeg override lives in Audio tools now.
-          Two competing writers of env.FFMPEG_PATH would fight each other. */}
       <SettingRow
         icon={Film}
         title={
           <>
             {t('settings.ffmpeg')}
-            <Badge tone={ffmpegOk ? 'success' : 'warn'} size="xs">
-              {ffmpegOk ? t('settings.ffmpeg_found') : t('settings.ffmpeg_missing')}
+            <Badge tone={systemInfo.data?.ffmpeg_ok ? 'success' : 'warn'} size="xs">
+              {t(systemInfo.data?.ffmpeg_ok ? 'settings.ffmpeg_found' : 'settings.ffmpeg_missing')}
             </Badge>
           </>
         }
-        note={t('settings.audio_tools_moved_note', {
-          defaultValue:
-            'The FFmpeg override moved to its own panel with more control (version, origin, restore).',
-        })}
+        note={t('settings.audio_tools_moved_note')}
         control={
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => openSettingsTab('audio-tools')}
             data-testid="open-audio-tools"
+            onClick={() => openSettingsTab('audio-tools')}
           >
-            {t('settings.audio_tools_open', { defaultValue: 'Open Audio tools' })} →
+            {t('settings.audio_tools_open')} →
           </Button>
         }
       />

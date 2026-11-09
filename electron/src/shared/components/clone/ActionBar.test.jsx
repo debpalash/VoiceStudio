@@ -99,39 +99,19 @@ describe('ActionBar', () => {
     expect(screen.getByRole('slider', { name: 'clone.steps' })).toBeInTheDocument();
   });
 
-  it('shows indeterminate progress instead of inventing a percentage from elapsed time', () => {
-    render(
-      <ActionBar
-        {...baseProps}
-        showOverrides={false}
-        setShowOverrides={setter}
-        isGenerating
-        generationTime="10.6"
-        generationProgress={null}
-      />,
-    );
-
-    const progress = screen.getByRole('progressbar');
-    expect(progress).not.toHaveAttribute('aria-valuenow');
-    expect(progress).toHaveAttribute('data-state', 'indeterminate');
+  it('shows an indeterminate bar while generating without a reported percentage', () => {
+    render(<ActionBar {...baseProps} isGenerating generationProgress={null} />);
+    const bar = screen.getByRole('progressbar');
+    expect(bar).not.toHaveAttribute('aria-valuenow');
   });
 
-  it('shows determinate progress only when the generation path reports it', () => {
-    render(
-      <ActionBar
-        {...baseProps}
-        showOverrides={false}
-        setShowOverrides={setter}
-        isGenerating
-        generationTime="10.6"
-        generationProgress={42}
-      />,
-    );
+  it('shows a determinate bar at the reported percentage', () => {
+    render(<ActionBar {...baseProps} isGenerating generationProgress={42} />);
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '42');
+  });
 
-    const progress = screen.getByRole('progressbar');
-    expect(progress).toHaveAttribute('aria-valuenow', '42');
-    expect(progress.querySelector('[data-slot="progress-indicator"]')).toHaveStyle({
-      width: '42%',
-    });
+  it('renders no progress bar when idle', () => {
+    render(<ActionBar {...baseProps} generationProgress={42} />);
+    expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   });
 });

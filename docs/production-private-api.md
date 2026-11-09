@@ -154,4 +154,4 @@ trusted-network, admin-route, and CORS behavior is in
 Deploying VoiceStudio does not settle the licenses of optional engines or model
 weights. Record the exact engine, model revision, and accepted terms alongside
 the deployment, and review generated-output restrictions for that combination.
-See [Engine licences](engines/index.md) before enabling an engine.
+See the [engine guides](engines/README.md) and the [model licence inventory](licensing/model-inventory.md) before enabling an engine.

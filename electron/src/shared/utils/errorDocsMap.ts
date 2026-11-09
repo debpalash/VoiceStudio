@@ -20,6 +20,9 @@ export const ERROR_DOCS: Record<string, string> = {
   // #2462 — the host ran out of system RAM (the only memory class a
   // CPU-only machine can produce).
   HOST_MEMORY_EXHAUSTED: `${BASE}/docs/install/troubleshooting.md#generation-failure-diagnosis`,
+  // The volume holding data / model cache / temp is full (ENOSPC, EDQUOT,
+  // WinError 112/39).
+  DISK_FULL: `${BASE}/docs/install/troubleshooting.md#generation-failure-diagnosis`,
   WINDOWS_APP_CONTROL_BLOCKED: `${BASE}/docs/install/troubleshooting.md#generation-failure-diagnosis`,
   AUDIO_IO_FAILED: `${BASE}/docs/install/troubleshooting.md#generation-failure-diagnosis`,
   INVALID_MEDIA_FILE: `${BASE}/docs/electron-dubbing.md#unreadable-source-file`,
@@ -34,6 +37,27 @@ export const ERROR_DOCS: Record<string, string> = {
   // Distinct from HF_AUTH_FAILED (which is a missing/invalid token).
   PYANNOTE_LICENSE_REQUIRED: `${BASE}/docs/features/diarization.md#license-acceptance-flow`,
   POCKETTTS_GATED_WEIGHTS: `${BASE}/docs/install/troubleshooting.md#pockettts-gated-weights`,
+  // Install failure codes (installFailure.ts).
+  ANTIVIRUS_BLOCKED: `${BASE}/docs/install/troubleshooting.md#antivirus_blocked`,
+  EXEC_REFUSED: `${BASE}/docs/install/troubleshooting.md#exec_refused`,
+  EXEC_NOEXEC_MOUNT: `${BASE}/docs/install/troubleshooting.md#exec_noexec_mount`,
+  RUNTIME_DOWNLOAD_STALLED: `${BASE}/docs/install/troubleshooting.md#runtime_download_stalled`,
+  RUNTIME_DOWNLOAD_INTERRUPTED: `${BASE}/docs/install/troubleshooting.md#runtime_download_interrupted`,
+  RUNTIME_FOLDER_DENIED: `${BASE}/docs/install/troubleshooting.md#runtime_folder_denied`,
+  RUNTIME_FILES_LOCKED: `${BASE}/docs/install/troubleshooting.md#runtime_files_locked`,
+  RUNTIME_IN_SYNCED_FOLDER: `${BASE}/docs/install/troubleshooting.md#runtime_in_synced_folder`,
+  SYSTEM_LIBRARY_PROBLEM: `${BASE}/docs/install/troubleshooting.md#system_library_problem`,
+  UNSUPPORTED_PLATFORM: `${BASE}/docs/install/troubleshooting.md#unsupported_platform`,
+  SOURCE_ENV_INCOMPLETE: `${BASE}/docs/install/troubleshooting.md#source_env_incomplete`,
+  BROKEN_VENV: `${BASE}/docs/install/troubleshooting.md#broken_venv`,
+  NATIVE_ACCESS_VIOLATION: `${BASE}/docs/install/troubleshooting.md#native_access_violation`,
+  NATIVE_ILLEGAL_INSTRUCTION: `${BASE}/docs/install/troubleshooting.md#native_illegal_instruction`,
+  NATIVE_CRASH: `${BASE}/docs/install/troubleshooting.md#native_crash`,
+  STARTUP_TIMEOUT_SILENT: `${BASE}/docs/install/troubleshooting.md#startup_timeout_silent`,
+  STARTUP_TIMEOUT_OUTPUT: `${BASE}/docs/install/troubleshooting.md#startup_timeout_output`,
+  BACKEND_STARTUP_FAILED: `${BASE}/docs/install/troubleshooting.md#backend_startup_failed`,
+  PORT_IN_USE: `${BASE}/docs/install/troubleshooting.md#port_in_use`,
+  ROCM_NOT_CONFIGURED: `${BASE}/docs/install/troubleshooting.md#rocm_not_configured`,
 };
 
 export const DEFAULT_DOCS = `${BASE}/docs/install/troubleshooting.md`;
@@ -48,6 +72,7 @@ export const TRANSLATION_ENGINES_DOCS = `${BASE}/docs/dubbing/translation-engine
 export const ERROR_CLASS_KEYS = [
   'GPU_ARCH_UNSUPPORTED',
   'HOST_MEMORY_EXHAUSTED',
+  'DISK_FULL',
   'WINDOWS_APP_CONTROL_BLOCKED',
   'AUDIO_IO_FAILED',
   'INVALID_MEDIA_FILE',
@@ -60,6 +85,26 @@ export const ERROR_CLASS_KEYS = [
   'HF_AUTH_FAILED',
   'PYANNOTE_LICENSE_REQUIRED',
   'POCKETTTS_GATED_WEIGHTS',
+  'ANTIVIRUS_BLOCKED',
+  'EXEC_REFUSED',
+  'EXEC_NOEXEC_MOUNT',
+  'RUNTIME_DOWNLOAD_STALLED',
+  'RUNTIME_DOWNLOAD_INTERRUPTED',
+  'RUNTIME_FOLDER_DENIED',
+  'RUNTIME_FILES_LOCKED',
+  'RUNTIME_IN_SYNCED_FOLDER',
+  'SYSTEM_LIBRARY_PROBLEM',
+  'UNSUPPORTED_PLATFORM',
+  'SOURCE_ENV_INCOMPLETE',
+  'BROKEN_VENV',
+  'NATIVE_ACCESS_VIOLATION',
+  'NATIVE_ILLEGAL_INSTRUCTION',
+  'NATIVE_CRASH',
+  'STARTUP_TIMEOUT_SILENT',
+  'STARTUP_TIMEOUT_OUTPUT',
+  'BACKEND_STARTUP_FAILED',
+  'PORT_IN_USE',
+  'ROCM_NOT_CONFIGURED',
 ] as const;
 
 export type ErrorClass = (typeof ERROR_CLASS_KEYS)[number];
@@ -73,6 +118,15 @@ export function classifyError(error: unknown): ErrorClass | null {
     (error as { message?: string } | null | undefined)?.message ?? String(error ?? '');
   const lower = message.toLowerCase();
   if (/media file is damaged or incomplete/.test(lower)) return 'INVALID_MEDIA_FILE';
+  // Same signatures as backend/core/failure.py `is_disk_full_error`.
+  if (
+    /no space left|disk quota exceeded|disc quota exceeded|not enough space on the disk/.test(
+      lower,
+    ) ||
+    /\berrno 28\b|\bwinerror (?:112|39)\b/.test(lower)
+  ) {
+    return 'DISK_FULL';
+  }
   if (/pkg_resources/.test(lower)) return 'PKG_RESOURCES_MISSING';
   if (
     /pocket(?:tts|[-_ ]tts)|kyutai/.test(lower) &&

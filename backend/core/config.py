@@ -65,6 +65,20 @@ _ensure_short_hf_cache_on_windows()
 
 
 DATA_DIR = get_app_data_dir()
+
+
+def get_engines_dir(data_dir=None):
+    """Root of the managed engine installs (venvs, checkouts, audio.cpp runtime).
+
+    Defaults to ``DATA_DIR/engines`` so existing installs keep working. Set
+    ``OMNIVOICE_ENGINES_DIR`` to put these multi-GB trees on another drive
+    (e.g. keep a small C: drive free) while voices and projects stay in
+    ``DATA_DIR`` (#2683). Read at call time, so tests and late env restores work.
+    """
+    custom = (os.environ.get("OMNIVOICE_ENGINES_DIR") or "").strip()
+    if custom:
+        return os.path.abspath(os.path.expanduser(custom))
+    return os.path.join(DATA_DIR if data_dir is None else data_dir, "engines")
 VOICES_DIR = os.path.join(DATA_DIR, "voices")       # Reference audio for profiles
 OUTPUTS_DIR = os.path.join(DATA_DIR, "outputs")      # Generated audio files
 DUB_DIR = os.path.join(DATA_DIR, "dub_jobs")

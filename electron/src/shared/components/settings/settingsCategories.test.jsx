@@ -28,6 +28,11 @@ describe('matchCategories — search matching', () => {
     expect(matchCategories('language')).toContain('appearance');
   });
 
+  it('finds a provider by its spaced display name and by the joined spelling', () => {
+    expect(matchCategories('cheaper inference')).toContain('llm-providers');
+    expect(matchCategories('cheaperinference')).toContain('llm-providers');
+  });
+
   it('folds the former General category into Appearance', () => {
     expect(CATEGORY_BY_ID.general).toBeUndefined();
     expect(resolveCategoryId('general')).toBe('appearance');

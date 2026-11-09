@@ -12,7 +12,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { I18nextProvider } from 'react-i18next';
-import i18n from '../i18n';
+import i18n, { LANGUAGES } from '../i18n';
 
 const captureLocales = import.meta.glob('../i18n/locales/*.json', {
   eager: true,
@@ -221,7 +221,7 @@ describe('CaptureWidget', () => {
   const typeCalls = () => mocks.holder.calls.filter(([c]) => c === 'simulate_type');
 
   it('provides a translated Inserted outcome in every supported locale', () => {
-    expect(Object.keys(captureLocales)).toHaveLength(21);
+    expect(Object.keys(captureLocales)).toHaveLength(LANGUAGES.length);
     for (const [path, locale] of Object.entries(captureLocales)) {
       expect(locale.capture.inserted, path).toBeTruthy();
       if (!path.endsWith('/en.json')) expect(locale.capture.inserted, path).not.toBe('Inserted');
@@ -1480,12 +1480,12 @@ describe('CaptureWidget', () => {
     expect(screen.queryByText(/Listening/)).not.toBeInTheDocument();
   });
 
-  it('exposes the full setup label as a title, since the 300px pill clips it', async () => {
+  it('exposes the full Accessibility setup text as the label hover title', async () => {
     mocks.holder.a11y = false;
     render(withI18n(<CaptureWidget />));
 
-    const labelEl = await screen.findByText(/Allow Accessibility/);
-    expect(labelEl.title).toBe(i18n.t('capture.a11y_setup'));
+    const label = await screen.findByText(/Allow Accessibility/);
+    expect(label).toHaveAttribute('title', 'Allow Accessibility so dictation can type for you');
   });
 
   it('clears the Accessibility setup pill after the native grant changes', async () => {

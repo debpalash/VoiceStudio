@@ -1,0 +1,19 @@
+{
+  "mobile": {
+    "jobs": {
+      "requesting_gpu": "Requesting background GPU access…",
+      "requesting_cpu": "Requesting background CPU time…",
+      "continued_gpu": "GPU continuation granted; iOS can still pause or end this task.",
+      "continued_cpu": "CPU continuation granted; iOS can still pause or end this task.",
+      "switching_cpu": "Saving progress and releasing the GPU before continuing on CPU…",
+      "background_limited": "Background time is limited by iOS. Completed steps are saved if time expires.",
+      "background_requestable": "This phone supports background GPU requests. Each task still needs iOS approval.",
+      "gpu_unavailable": "Background GPU is unavailable here. Use CPU continuation or reopen to resume saved steps.",
+      "cpu_fallback": "Allow CPU continuation when background GPU is unavailable",
+      "cpu_tradeoff": "CPU continuation is slower and may use more battery. Foreground work normally uses the GPU.",
+      "cpu_unavailable": "CPU continuation is unavailable for this model in the installed build. Saved steps can still resume in the foreground.",
+      "resume_checkpoint": "Resume saved task",
+      "foreground_service": "A foreground service keeps this task running while Android allows it."
+    }
+  }
+}

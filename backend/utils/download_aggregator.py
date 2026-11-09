@@ -53,12 +53,22 @@ class DownloadAggregator:
         self.repo_id = repo_id
         self.target = target
         self.total_bytes = total_bytes
-        # byte bars keyed by an opaque per-bar key (id of the tqdm instance):
-        #   key -> (downloaded, total)
+        # Byte bars for the files still in flight, keyed by an opaque per-bar
+        # key: key -> (downloaded, total). A bar is promoted to
+        # ``_completed_bytes`` when it closes and its entry is dropped, so a
+        # later bar that reuses the same key cannot overwrite bytes that are
+        # already earned (CPython recycles id() values aggressively).
         self._byte_bars: dict[object, tuple[int, Optional[int]]] = {}
+        # Bytes credited by byte bars that have already closed, plus the keys
+        # that produced them so a repeated close is not counted twice.
+        self._completed_bytes = 0
+        self._completed_keys: set[object] = set()
         # file-count progress from the "Fetching N files" bar
         self._files_done = 0
         self._files_total = files_total
+        # Highest count reported so far, so switching from the byte-bar
+        # fallback to the count bar never shows fewer files than before.
+        self._files_done_seen = 0
         self._samples: deque[tuple[float, int]] = deque()
         self._lock = threading.Lock()
         self._last_emit = 0.0
@@ -66,15 +76,38 @@ class DownloadAggregator:
     # ── feed ──────────────────────────────────────────────────────────────
     def update_byte_bar(self, key: object, downloaded: int, total: Optional[int]) -> None:
         with self._lock:
-            self._byte_bars[key] = (int(downloaded or 0), total)
+            if key in self._completed_keys:
+                # The bar already closed and its bytes are credited. tqdm's
+                # close() calls display(), which reaches this path with the
+                # same key; counting it again would double the file.
+                return
+            prev, prev_total = self._byte_bars.get(key, (0, None))
+            # Monotonic per bar: a retried or throttled update must never lower
+            # the bytes already reported for this bar.
+            self._byte_bars[key] = (max(prev, int(downloaded or 0)), total or prev_total)
 
     def credit_complete(self, key: object, total: Optional[int]) -> None:
-        """A byte bar closed — credit its full size (Xet completion signal)."""
+        """A byte bar closed — credit its full size (Xet completion signal).
+
+        The entry is promoted out of ``_byte_bars`` so the key is free for the
+        next file without erasing what this one earned. Re-crediting the same
+        key is a no-op.
+        """
         with self._lock:
             t = int(total or 0)
-            prev = self._byte_bars.get(key, (0, t))
-            # never go backwards
-            self._byte_bars[key] = (max(prev[0], t), t or prev[1])
+            prev, prev_total = self._byte_bars.pop(key, (0, None))
+            credited = max(prev, t)
+            if credited <= 0:
+                # Nothing to credit (and no total to remember).
+                if prev_total:
+                    self._byte_bars[key] = (prev, prev_total)
+                return
+            if key in self._completed_keys:
+                # The same bar closed twice (tqdm can call close() again on
+                # teardown). Its bytes are already credited.
+                return
+            self._completed_keys.add(key)
+            self._completed_bytes += credited
 
     def update_files(self, done: int, total: Optional[int]) -> None:
         with self._lock:
@@ -90,7 +123,13 @@ class DownloadAggregator:
 
     # ── derive ────────────────────────────────────────────────────────────
     def _bytes_done_locked(self) -> int:
-        return sum(d for d, _ in self._byte_bars.values())
+        total = self._completed_bytes + sum(d for d, _ in self._byte_bars.values())
+        # Never report past the preflight total: a retried file can briefly
+        # double-count the same bytes, and a >100% bar is worse than a
+        # slightly slow one.
+        if self.total_bytes:
+            return min(total, int(self.total_bytes))
+        return total
 
     def _rate_locked(self, now: float, bytes_done: int) -> float:
         self._samples.append((now, bytes_done))
@@ -110,10 +149,22 @@ class DownloadAggregator:
             bytes_done = self._bytes_done_locked()
             rate = self._rate_locked(now, bytes_done)
             total = self.total_bytes
-            # files_done: prefer the count bar; fall back to completed byte bars
+            # files_done: prefer the count bar. Without it, count the files
+            # whose bar has closed plus any live bar that reached its total —
+            # completed bars leave `_byte_bars`, so they must be counted here
+            # or a finished file would never appear.
             files_done = self._files_done
-            if not files_done and self._byte_bars:
-                files_done = sum(1 for d, t in self._byte_bars.values() if t and d >= t)
+            if not files_done:
+                finished_live = sum(
+                    1 for d, t in self._byte_bars.values() if t and d >= t
+                )
+                files_done = len(self._completed_keys) + finished_live
+            # The count bar can lag behind the bars that already closed (or
+            # report fewer files than finished), so keep the high-water mark:
+            # the displayed count must not drop between snapshots.
+            if files_done > self._files_done_seen:
+                self._files_done_seen = files_done
+            files_done = self._files_done_seen
             eta = None
             if rate > 0 and total and total > bytes_done:
                 eta = (total - bytes_done) / rate
@@ -167,8 +218,11 @@ def complete(repo_id: str, *, target: str = "local") -> None:
             # exactly total. Never add on top: the segmented path already
             # accumulated the real bytes, so adding total again would double it.
             agg._byte_bars = {"__complete__": (int(agg.total_bytes), int(agg.total_bytes))}
+            agg._completed_bytes = 0
+            agg._completed_keys.clear()
         if agg._files_total:
             agg._files_done = agg._files_total
+            agg._files_done_seen = max(agg._files_done_seen, agg._files_total)
         # Clear the rate window: crediting the full size in one step would
         # otherwise compute an absurd instantaneous rate (Δbytes over ~0s).
         agg._samples.clear()

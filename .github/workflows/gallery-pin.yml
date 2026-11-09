@@ -1,0 +1,42 @@
+name: Gallery pin
+
+# Fails a PR that moves the omnivoice-gallery submodule backwards or onto a
+# commit that is not on the gallery's main — the stale-submodule accident that
+# reverted the pin in #3447 (.github/scripts/gallery_pin.py).
+on:
+  pull_request:
+    paths:
+      - "omnivoice-gallery"
+      - ".gitmodules"
+      - ".github/scripts/gallery_pin.py"
+      - ".github/workflows/gallery-pin.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  pin:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Pin only moves forward along gallery main
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          # The canonical gallery, not whatever .gitmodules says: a PR that
+          # repoints the submodule at a fork could otherwise vouch for itself.
+          GALLERY: https://github.com/debpalash/omnivoice-gallery.git
+        run: |
+          url=$(git config -f .gitmodules submodule.omnivoice-gallery.url)
+          if [ "$url" != "$GALLERY" ]; then
+            echo "::error file=.gitmodules::omnivoice-gallery must point at $GALLERY, not $url"; exit 1
+          fi
+          old=$(git rev-parse "$BASE:omnivoice-gallery")
+          new=$(git rev-parse "HEAD:omnivoice-gallery")
+          git clone -q --bare --filter=blob:none "$GALLERY" gallery.git
+          git -C gallery.git fetch -q origin '+refs/heads/main:refs/remotes/origin/main' 2>/dev/null \
+            || git -C gallery.git update-ref refs/remotes/origin/main refs/heads/main
+          python3 .github/scripts/gallery_pin.py "$old" "$new" gallery.git

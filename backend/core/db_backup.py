@@ -37,17 +37,8 @@ KEEP_BACKUPS = 3
 #: Skip the snapshot (with a log line) when the DB exceeds this size.
 MAX_BACKUP_DB_BYTES = 500 * 1024 * 1024
 
-#: ``<db name>.backup-<version>-<n>`` — ``<version>`` may itself contain
-#: dashes (preview builds stamp ``0.3.9-41``), so the counter is the final
-#: ``-<digits>`` group. ``<version>`` is limited to the characters
-#: ``_sanitize_version`` emits, and the counter must be the whole tail:
-#: an in-progress snapshot (``…backup-<version>-<n>.part-<pid>``) left
-#: behind by a crash mid-copy must never be listed as a backup.
-_BACKUP_SUFFIX_RE = re.compile(r"\.backup-(?P<version>[A-Za-z0-9._-]+)-(?P<n>\d+)$")
-
-#: Temp name a snapshot is copied into before ``os.replace`` to its final
-#: name (see ``snapshot_before_migration``).
-_PARTIAL_SUFFIX_RE = re.compile(r"\.part-\d+$")
+_BACKUP_SUFFIX_RE = re.compile(r"[.]backup-(?:[A-Za-z0-9._-])+-(?:[0-9]+)\Z")
+_PART_FILE_END = re.compile(r"[.]part-(?P<owner>[0-9]+)\Z")
 
 
 def _sanitize_version(version: str) -> str:
@@ -69,7 +60,7 @@ def list_backups(db_path: str) -> list[str]:
     for name in names:
         if not name.startswith(base + ".backup-"):
             continue
-        if _PARTIAL_SUFFIX_RE.search(name):
+        if _PART_FILE_END.search(name):
             continue
         if not _BACKUP_SUFFIX_RE.search(name[len(base):]):
             continue
@@ -187,63 +178,58 @@ def stale_reservations(db_path: str) -> list[str]:
 
 
 def stale_partial_backups(db_path: str) -> list[str]:
-    """``<db>.backup-<version>-<n>.part-<pid>`` files whose writer is gone.
-
-    ``snapshot_before_migration`` copies into such a temp name and renames it
-    into place at the end; a crash, kill or power loss mid-copy leaves the
-    torn file behind. Those are never valid backups (``list_backups`` skips
-    them) and are removed by ``prune_backups``. A partial owned by a live
-    process is left alone.
-    """
-    directory = os.path.dirname(os.path.abspath(db_path)) or "."
-    base = os.path.basename(db_path)
+    """Find unfinished snapshots that no running writer can still own."""
+    folder = os.path.dirname(os.path.abspath(db_path)) or "."
+    db_name = os.path.basename(db_path)
     try:
-        names = os.listdir(directory)
+        directory_entries = os.listdir(folder)
     except OSError:
         return []
-    stale = []
-    for name in names:
-        if not name.startswith(base + ".backup-"):
+
+    abandoned: list[str] = []
+    required_prefix = f"{db_name}.backup-"
+    this_pid = os.getpid()
+    for entry in directory_entries:
+        part_end = _PART_FILE_END.search(entry)
+        if not entry.startswith(required_prefix) or part_end is None:
             continue
-        m = _PARTIAL_SUFFIX_RE.search(name)
-        if not m or not _BACKUP_SUFFIX_RE.fullmatch(name[len(base):m.start()]):
+
+        completed_name = entry[:part_end.start()]
+        completed_tail = completed_name[len(db_name):]
+        if _BACKUP_SUFFIX_RE.fullmatch(completed_tail) is None:
             continue
-        pid = int(name[m.start() + len(".part-"):])
-        if pid != os.getpid() and not _pid_alive(pid):
-            stale.append(os.path.join(directory, name))
-    return stale
+
+        writer_pid = int(part_end.group("owner"))
+        writer_is_active = writer_pid == this_pid or _pid_alive(writer_pid)
+        if not writer_is_active:
+            abandoned.append(os.path.join(folder, entry))
+    return abandoned
 
 
 def _pid_alive(pid: int) -> bool:
-    import psutil
-
+    """Check process ownership without sending a signal to that process."""
     if pid <= 0:
         return False
+    import psutil
     try:
-        return psutil.pid_exists(pid)
+        return bool(psutil.pid_exists(pid))
     except (OSError, psutil.Error):
-        # An uncertain owner must never cause deletion of its partial backup.
         return True
 
 
 def prune_backups(db_path: str, keep: int = KEEP_BACKUPS) -> list[str]:
-    """Delete all but the ``keep`` newest backups, plus torn partial
-    snapshots from earlier runs. Returns deleted paths."""
+    """Remove abandoned work files and snapshots older than the retention limit."""
     deleted = []
-    for path in stale_partial_backups(db_path) + stale_reservations(db_path):
+    leftovers = stale_partial_backups(db_path) + stale_reservations(db_path)
+    old_backups = list_backups(db_path)[max(0, keep):]
+    for path in leftovers + old_backups:
         try:
             os.remove(path)
-            deleted.append(path)
-            logger.info("Removed stale DB backup leftover %s", path)
         except OSError as exc:
-            logger.warning("Could not remove DB backup leftover %s: %s", path, exc)
-    for path in list_backups(db_path)[keep:]:
-        try:
-            os.remove(path)
-            deleted.append(path)
-            logger.info("Pruned old DB backup %s", path)
-        except OSError as exc:
-            logger.warning("Could not prune old DB backup %s: %s", path, exc)
+            logger.warning("Could not remove obsolete database backup file %s: %s", path, exc)
+            continue
+        logger.info("Removed obsolete database backup file: %s", path)
+        deleted.append(path)
     return deleted
 
 

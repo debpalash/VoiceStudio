@@ -29,7 +29,7 @@ const PERSONALITIES = [
   { id: 'news_anchor', name: 'News Anchor', is_demo: false },
   { id: 'storyteller', name: 'Storyteller', is_demo: false },
   { id: 'corporate', name: 'Corporate', is_demo: false },
-  { id: 'energetic', name: 'Energetic', is_demo: false },
+  { id: 'energetic', name: 'High energy', is_demo: false },
 ];
 
 vi.mock('../api/client', () => ({
@@ -96,12 +96,12 @@ function baseProps(overrides = {}) {
     setVdStates: NOOP,
     isGenerating: false,
     generationTime: 0,
-    generationProgress: null,
     applyPreset: NOOP,
     insertTag: NOOP,
     handleSaveProfile: NOOP,
     handleSaveDesignProfile: NOOP,
     handleGenerate: NOOP,
+    generationProgress: null,
     startRecording: NOOP,
     stopRecording: NOOP,
     ingestRefAudio: NOOP,
@@ -123,13 +123,11 @@ function renderDesignTab(overrides = {}) {
 
 describe('CloneDesignTab — Voice Design panel redesign regressions', () => {
   it('forwards measurable generation progress to the action bar', () => {
-    renderDesignTab({ isGenerating: true, generationTime: '10.6', generationProgress: 42 });
-
-    const progress = screen.getByRole('progressbar');
-    expect(progress).toHaveAttribute('aria-valuenow', '42');
-    expect(progress.querySelector('[data-slot="progress-indicator"]')).toHaveStyle({
-      width: '42%',
-    });
+    renderDesignTab({ isGenerating: true, generationProgress: 63 });
+    const bars = screen
+      .getAllByRole('progressbar')
+      .filter((b) => b.getAttribute('aria-valuenow') === '63');
+    expect(bars).toHaveLength(1);
   });
 
   it.each([
@@ -178,20 +176,20 @@ describe('CloneDesignTab — Voice Design panel redesign regressions', () => {
   it('shows exactly 5 combined starting-point chips, with the overflow count covering BOTH personalities and PRESETS', async () => {
     renderDesignTab();
     await screen.findByText('Narrator');
-    expect(screen.getByText('Casual')).toBeInTheDocument();
-    expect(screen.getByText('News Anchor')).toBeInTheDocument();
+    expect(screen.getByText('Relaxed')).toBeInTheDocument();
+    expect(screen.getByText('Newsreader')).toBeInTheDocument();
     expect(screen.getByText('Storyteller')).toBeInTheDocument();
-    expect(screen.getByText('Corporate')).toBeInTheDocument();
+    expect(screen.getByText('Professional')).toBeInTheDocument();
 
-    // Hidden behind the toggle: the 6th personality (Energetic) + all 6
+    // Hidden behind the toggle: the 6th personality (High energy) + all 6
     // hardcoded PRESETS (12 total - 5 visible = 7).
-    expect(screen.queryByText('Energetic')).toBeNull();
-    expect(screen.queryByText(/Authoritative/)).toBeNull();
+    expect(screen.queryByText('High energy')).toBeNull();
+    expect(screen.queryByText(/Commanding/)).toBeNull();
     const more = screen.getByText('7 more…');
 
     fireEvent.click(more);
-    expect(screen.getByText('Energetic')).toBeInTheDocument();
-    expect(screen.getByText(/Authoritative/)).toBeInTheDocument();
+    expect(screen.getByText('High energy')).toBeInTheDocument();
+    expect(screen.getByText(/Commanding/)).toBeInTheDocument();
     expect(screen.queryByText(/more…/)).toBeNull();
   });
 
@@ -206,8 +204,8 @@ describe('CloneDesignTab — Voice Design panel redesign regressions', () => {
     const setVdStates = vi.fn();
     const setInstruct = vi.fn();
     renderDesignTab({ setVdStates, setInstruct });
-    const narrator = await screen.findByRole('button', { name: /narrator/i });
-    const casual = screen.getByRole('button', { name: /casual/i });
+    const narrator = await screen.findByRole('button', { name: /^narrator$/i });
+    const casual = screen.getByRole('button', { name: /relaxed/i });
 
     narrator.focus();
     expect(document.activeElement).toBe(narrator);

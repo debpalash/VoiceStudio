@@ -31,9 +31,12 @@ Protocol:
     ``"final_kind": "utterance"|"summary"``. Utterances are mid-session
     commits; the summary is the authoritative whole-session result at EOF.
 
-    Every ``final`` text is normalised by services.text_polish (leading
-    capital for Latin scripts, terminal punctuation, single-spaced) so the
-    pasted result reads like typed text. Partials are raw.
+    Every dictation ``final`` text is cleaned by services.dictation_cleanup
+    (hesitations, stutters, all-caps, punctuation spacing, optional spoken
+    punctuation) and normalised by services.text_polish (leading capital for
+    Latin scripts, terminal punctuation, single-spaced) so the pasted result
+    reads like typed text. Platform-stream API clients get polish only.
+    Partials are raw.
 """
 from __future__ import annotations
 
@@ -50,6 +53,7 @@ from typing import Any
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from api.dependencies import is_local_host, ws_remote_authorized
+from services.dictation_cleanup import join_dictation_pieces, polish_dictation
 from services.text_polish import polish_text
 
 router = APIRouter()
@@ -98,6 +102,37 @@ _AEC_FAR = 0x01   # playback reference frame (feed the echo model only)
 # absurd rate must never be believed: it would re-open the unbounded-memory
 # path the recovery-tail cap closed.
 SR_MIN, SR_MAX = 8000, 96000
+
+
+# Marks "no language passed" apart from an explicit None (language unknown).
+_SESSION_LANGUAGE = object()
+
+
+def _final_polisher(websocket, language: str | None):
+    """The text normaliser for this session's ``final`` frames.
+
+    Dictation sessions get the full cleanup (services.dictation_cleanup);
+    platform-stream API clients keep the plain polish they always had. The
+    spoken-punctuation setting is read once per session. The returned
+    callable takes ``(text, language=None)``; a language passed in overrides
+    the session's, even when it is ``None``: the silent-model recovery's
+    fallback recognizer may not report a language, and the failed model's
+    English hint must not then strip Portuguese "um" or German "er"."""
+    if isinstance(websocket, _PlatformWebSocket):
+        return lambda text, lang=_SESSION_LANGUAGE: polish_text(text)
+    from services.dictation_cleanup import _spoken_punctuation_enabled
+
+    spoken = _spoken_punctuation_enabled()
+    return lambda text, lang=_SESSION_LANGUAGE: polish_dictation(
+        text,
+        language if lang is _SESSION_LANGUAGE else lang,
+        spoken_punctuation=spoken,
+    )
+
+
+def _spec_language(spec) -> str | None:
+    """Language hint for a sherpa model's text (None when multilingual)."""
+    return "en" if getattr(spec, "languages", "") == "English" else None
 
 
 def _is_end_control(text: str | None) -> bool:
@@ -244,6 +279,27 @@ def _select_sherpa_spec(websocket: WebSocket):
     return _usable_spec(mid) if mid else None
 
 
+def _dictation_licence_error(spec) -> dict | None:
+    """``model_licence_required`` detail for the model this session would use.
+
+    Mirrors the session's routing: the selected sherpa model when sherpa is
+    installed, otherwise the capture engine the legacy path resolves.
+    """
+    from services.asr_backend import SherpaDictationBackend, get_capture_asr_backend
+    from services.model_acceptance import ModelLicenceNotAccepted, ensure_accepted
+
+    try:
+        if spec is not None and SherpaDictationBackend.is_available()[0]:
+            ensure_accepted([spec.repo_id])
+        else:
+            get_capture_asr_backend()
+    except ModelLicenceNotAccepted as exc:
+        return exc.detail()
+    except Exception:  # noqa: BLE001 — other failures surface on the real path
+        logger.debug("dictation licence preflight could not resolve the engine", exc_info=True)
+    return None
+
+
 @router.websocket(PLATFORM_STREAM_PATH)
 @router.websocket("/ws/transcribe")
 async def ws_transcribe(websocket: WebSocket):
@@ -317,6 +373,17 @@ async def ws_transcribe(websocket: WebSocket):
                 "type": "error", "kind": "asr_model_missing",
                 "message": asr_model_missing_detail(missing), **missing,
             })
+            await websocket.close()
+        except Exception:  # noqa: BLE001 — client may already be gone
+            pass
+        return
+    # Licence acceptance (#2689): a gated model the user has not accepted gets
+    # a typed frame the client can turn into the acceptance dialog, before any
+    # recognizer is built — never a generic failure or a silent engine swap.
+    licence = await asyncio.to_thread(_dictation_licence_error, spec)
+    if licence is not None:
+        try:
+            await websocket.send_json({"type": "error", "kind": licence["code"], **licence})
             await websocket.close()
         except Exception:  # noqa: BLE001 — client may already be gone
             pass
@@ -458,6 +525,7 @@ async def ws_transcribe(websocket: WebSocket):
 
             # Transcribe current buffer
             try:
+                # Only the dictation socket carries the vocabulary hint, never the public stream API.
                 text = await _transcribe_buffer(
                     audio_chunks[:], pcm_sr=pcm_sr, dictation=not is_platform_stream,
                 )
@@ -490,14 +558,17 @@ async def ws_transcribe(websocket: WebSocket):
     # Final transcription on complete buffer — skip if client already gone.
     if total_bytes > MIN_FINAL_BUFFER_BYTES:
         try:
-            # The vocabulary hint is a dictation setting; API stream clients
-            # on PLATFORM_STREAM_PATH never get it.
             result = await _transcribe_buffer_full(
                 audio_chunks, pcm_sr=pcm_sr, dictation=not is_platform_stream,
             )
             # Dictation v2: deterministic polish so the pasted final reads
             # like typed text (leading capital, terminal punctuation).
-            result["text"] = polish_text(result.get("text", ""))
+            if is_platform_stream:
+                result["text"] = polish_text(result.get("text", ""))
+            else:
+                result["text"] = await asyncio.to_thread(
+                    polish_dictation, result.get("text", ""), result.get("language"),
+                )
             # Wave 2.1: optional local-LLM refinement of the final text.
             # HARD-BOUNDED (maybe_refine_async, ~4s OMNIVOICE_REFINE_TIMEOUT_S):
             # a slow/dead LLM can never delay this `final` beyond the budget —
@@ -515,9 +586,15 @@ async def ws_transcribe(websocket: WebSocket):
             if not await _safe_send({"type": "final", **result}):
                 logger.debug("Skipped final send — client already disconnected")
         except Exception as e:
-            logger.exception("Final transcription failed")
-            await _safe_send({"type": "error", "message": str(e),
-                              "kind": "transcribe", "detail": str(e)})
+            from services.model_acceptance import ModelLicenceNotAccepted
+
+            if isinstance(e, ModelLicenceNotAccepted):
+                # Accepted at session start, revoked since: keep it typed.
+                await _safe_send({"type": "error", "kind": e.detail()["code"], **e.detail()})
+            else:
+                logger.exception("Final transcription failed")
+                await _safe_send({"type": "error", "message": str(e),
+                                  "kind": "transcribe", "detail": str(e)})
     else:
         await _safe_send({
             "type": "final",
@@ -648,9 +725,12 @@ def _pcm16_rms(pcm: bytes) -> float:
 
 
 async def _recover_silent_sherpa(
-    spec, pcm: bytes, pcm_sr: int,
+    spec, pcm: bytes, pcm_sr: int, polish=None,
 ) -> tuple[str, list[dict]]:
-    """Retry a token-silent Sherpa session through an installed local ASR."""
+    """Retry a token-silent Sherpa session through an installed local ASR.
+
+    ``polish`` is the session's :func:`_final_polisher`, so platform-stream
+    clients keep plain polish on this path too."""
     logger.warning(
         "dictation model %s decoded NOTHING from %.1fs of speech-level audio "
         "— falling back to the capture ASR engine for this session",
@@ -675,7 +755,7 @@ async def _recover_silent_sherpa(
         result = await _transcribe_buffer_full(
             [pcm], pcm_sr=pcm_sr, skip_sherpa=True,
         )
-        text = polish_text(_result_text(result))
+        text = (polish or polish_dictation)(_result_text(result), result.get("language"))
         if not text:
             return "", []
         # The RMS gate can fire on fan/keyboard noise. Only another recognizer
@@ -798,6 +878,7 @@ async def _run_sherpa_streaming(websocket: WebSocket, spec):
     from services.asr_backend import get_sherpa_dictation_backend
 
     pcm_sr, aec = await _sherpa_session(websocket)
+    polish = _final_polisher(websocket, _spec_language(spec))
     logger.info("sherpa streaming dictation: model=%s sr=%d aec=%s",
                 spec.id, pcm_sr, bool(aec))
 
@@ -866,7 +947,7 @@ async def _run_sherpa_streaming(websocket: WebSocket, spec):
             if endpoint:
                 # Commit this utterance (polished — it gets pasted); reset
                 # for the next one.
-                text = polish_text(text)
+                text = polish(text)
                 if text:
                     committed.append(text)
                     await _send({"type": "final", "text": text,
@@ -890,18 +971,18 @@ async def _run_sherpa_streaming(websocket: WebSocket, spec):
     except Exception as e:
         logger.debug("sherpa streaming flush failed: %s", e)
         tail_text = ""
-    tail_text = polish_text(tail_text)
+    tail_text = polish(tail_text)
     if tail_text and tail_text != (committed[-1] if committed else None):
         committed.append(tail_text)
 
-    # Pieces are already polished; the join is too (polish is idempotent).
-    full = " ".join(t for t in committed if t).strip()
+    # Pieces are already polished; join them as typed (no space across CJK).
+    full = join_dictation_pieces(committed)
     segments = [{"start": 0.0, "end": None, "text": t} for t in committed if t]
 
     model_silent = is_model_silent(full, heard_speech, session_pcm.total_bytes)
     if model_silent:
         recovered, recovered_segments = await _recover_silent_sherpa(
-            spec, session_pcm.tail(), pcm_sr,
+            spec, session_pcm.tail(), pcm_sr, polish,
         )
         if recovered:
             full = recovered
@@ -949,6 +1030,7 @@ async def _run_sherpa_offline(websocket: WebSocket, spec):
     from services.asr_backend import get_sherpa_dictation_backend
 
     pcm_sr, aec = await _sherpa_session(websocket)
+    polish = _final_polisher(websocket, _spec_language(spec))
     logger.info("sherpa offline dictation: model=%s sr=%d aec=%s",
                 spec.id, pcm_sr, bool(aec))
 
@@ -1025,7 +1107,7 @@ async def _run_sherpa_offline(websocket: WebSocket, spec):
             return
         del buf[:len(snapshot)]
         last_partial = ""
-        text = polish_text(text)
+        text = polish(text)
         if text:
             committed.append(text)
             await _send({"type": "final", "text": text,
@@ -1076,11 +1158,11 @@ async def _run_sherpa_offline(websocket: WebSocket, spec):
     except Exception:
         logger.exception("sherpa offline final failed")
         tail = ""
-    tail = polish_text(tail)
+    tail = polish(tail)
     if tail:
         committed.append(tail)
-    # Pieces are already polished; the join is too (polish is idempotent).
-    full = " ".join(committed).strip()
+    # Pieces are already polished; join them as typed (no space across CJK).
+    full = join_dictation_pieces(committed)
     segments = [{"start": 0.0, "end": None, "text": t} for t in committed]
 
     # Silent-model fallback: we heard speech-level audio but the selected
@@ -1091,7 +1173,7 @@ async def _run_sherpa_offline(websocket: WebSocket, spec):
     model_silent = is_model_silent(full, heard_speech, session_pcm.total_bytes)
     if model_silent:
         recovered, recovered_segments = await _recover_silent_sherpa(
-            spec, session_pcm.tail(), pcm_sr,
+            spec, session_pcm.tail(), pcm_sr, polish,
         )
         if recovered:
             full = recovered
@@ -1159,10 +1241,10 @@ def _result_text(result: dict | None) -> str:
 async def _transcribe_buffer(
     chunks: list[bytes], *, pcm_sr: int | None = None, dictation: bool = False,
 ) -> str:
-    """Quick partial transcription of the current audio buffer.
+    """Transcribe the buffered audio so far and return the text.
 
-    ``dictation=True`` applies the saved dictation vocabulary hint; other
-    callers of this helper (e.g. the phone-call agent) stay unbiased by it.
+    ``dictation=True`` passes the saved vocabulary hint to engines that take a
+    prompt; every other caller gets an unbiased decode.
     """
 
     tmp = _pcm16_to_wav(b"".join(chunks), pcm_sr) if pcm_sr else _chunks_to_wav(chunks)
@@ -1172,12 +1254,14 @@ async def _transcribe_buffer(
     try:
         from services.model_manager import _gpu_pool
         from services.asr_backend import get_capture_asr_backend, run_transcribe_guarded
-        from api.routers.dictation import dictation_transcribe_kwargs
 
         def _run():
             backend = get_capture_asr_backend()
-            prompt_kwargs = dictation_transcribe_kwargs(backend) if dictation else {}
-            result = backend.transcribe(tmp, word_timestamps=False, **prompt_kwargs)
+            hint = {}
+            if dictation:
+                from api.routers.dictation import dictation_transcribe_kwargs
+                hint = dictation_transcribe_kwargs(backend)
+            result = backend.transcribe(tmp, word_timestamps=False, **hint)
             return _result_text(result)
 
         # Bound dictation transcribes (#730): a wedged whisperx/CTranslate2 call
@@ -1196,12 +1280,10 @@ async def _transcribe_buffer_full(
     chunks: list[bytes], *, pcm_sr: int | None = None, skip_sherpa: bool = False,
     dictation: bool = False,
 ) -> dict:
-    """Full transcription with timing info for the final result.
+    """Transcribe the whole buffer and return text, segments and timing.
 
-    ``dictation=True`` applies the saved dictation vocabulary hint. The
-    silent-model rescue (``skip_sherpa``) leaves it off: its text decides
-    whether a sherpa model is demoted, and Whisper can echo a prompt on noise,
-    so that text must come from the audio alone.
+    ``dictation=True`` hands the saved vocabulary hint to engines that accept
+    one. The default (used by the silent-model rescue and other callers) never does.
     """
     tmp = _pcm16_to_wav(b"".join(chunks), pcm_sr) if pcm_sr else _chunks_to_wav(chunks)
     if tmp is None:
@@ -1211,13 +1293,15 @@ async def _transcribe_buffer_full(
     try:
         from services.model_manager import _gpu_pool
         from services.asr_backend import get_capture_asr_backend, run_transcribe_guarded
-        from api.routers.dictation import dictation_transcribe_kwargs
 
         def _run():
             backend = get_capture_asr_backend(skip_sherpa=skip_sherpa)
-            prompt_kwargs = dictation_transcribe_kwargs(backend) if dictation else {}
             t0 = time.perf_counter()
-            result = backend.transcribe(tmp, word_timestamps=False, **prompt_kwargs)
+            hint = {}
+            if dictation:
+                from api.routers.dictation import dictation_transcribe_kwargs
+                hint = dictation_transcribe_kwargs(backend)
+            result = backend.transcribe(tmp, word_timestamps=False, **hint)
             elapsed = round(time.perf_counter() - t0, 2)
 
             segments = result.get("segments", [])

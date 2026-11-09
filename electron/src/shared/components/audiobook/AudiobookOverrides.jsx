@@ -1,20 +1,13 @@
 import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { Settings2, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react';
 import { DEFAULT_OVERRIDES } from '../../store/longformSlice';
+import JoinOptions from './JoinOptions';
 
 // Longform render defaults the sliders display when a knob is UNSET (null) —
 // the documented audiobook/longform preset. A null value means "not overridden"
 // (the backend keeps the model default and today's bytes); moving a slider sets
 // an explicit override. Mirrors the Voice page's Production Overrides surface.
-const DISPLAY = {
-  numStep: 32,
-  guidanceScale: 2.0,
-  posTemp: 5.0,
-  classTemp: 0.0,
-  lineGapMs: 0,
-  paragraphGapMs: 0,
-};
+const DISPLAY = { numStep: 32, guidanceScale: 2.0, posTemp: 5.0, classTemp: 0.0 };
 
 const CHIP =
   'text-[0.65rem] bg-black/35 px-[5px] py-px rounded-[3px] [border:1px_solid_rgba(255,255,255,0.04)] [font-variant-numeric:tabular-nums]';
@@ -30,15 +23,8 @@ const CHIP =
  * controls on engines that ignore emotion.
  */
 export default function AudiobookOverrides({ t, overrides, onChange, emotionSupported = false }) {
-  const { i18n } = useTranslation();
-  const milliseconds = new Intl.NumberFormat(i18n.resolvedLanguage || i18n.language, {
-    style: 'unit',
-    unit: 'millisecond',
-    unitDisplay: 'short',
-  });
   const [open, setOpen] = useState(false);
   const o = overrides;
-
   return (
     <div className="audiobook-tab__field flex flex-col gap-[6px]">
       <div className="flex items-center justify-between">
@@ -166,54 +152,7 @@ export default function AudiobookOverrides({ t, overrides, onChange, emotionSupp
             </label>
           </div>
 
-          <div className="flex flex-col gap-[6px] pt-[6px] [border-top:1px_solid_rgba(255,255,255,0.06)]">
-            <div className="text-[0.7rem] text-fg-muted">{t('audiobook.joins_help')}</div>
-            <div>
-              <div className="label-row justify-between text-[0.7rem]">
-                <span>{t('audiobook.line_gap')}</span>
-                <span className={CHIP}>
-                  {milliseconds.format(o.lineGapMs ?? DISPLAY.lineGapMs)}
-                </span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="2000"
-                step="50"
-                aria-label={t('audiobook.line_gap')}
-                value={o.lineGapMs ?? DISPLAY.lineGapMs}
-                onChange={(e) => onChange({ lineGapMs: Number(e.target.value) })}
-              />
-            </div>
-            <div>
-              <div className="label-row justify-between text-[0.7rem]">
-                <span>{t('audiobook.paragraph_gap')}</span>
-                <span className={CHIP}>
-                  {milliseconds.format(o.paragraphGapMs ?? DISPLAY.paragraphGapMs)}
-                </span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="3000"
-                step="50"
-                aria-label={t('audiobook.paragraph_gap')}
-                value={o.paragraphGapMs ?? DISPLAY.paragraphGapMs}
-                onChange={(e) => onChange({ paragraphGapMs: Number(e.target.value) })}
-              />
-            </div>
-            <label
-              className="text-[0.72rem] flex items-center gap-[6px] cursor-pointer"
-              title={t('audiobook.trim_edges_help')}
-            >
-              <input
-                type="checkbox"
-                checked={o.trimEdges ?? false}
-                onChange={(e) => onChange({ trimEdges: e.target.checked })}
-              />{' '}
-              {t('audiobook.trim_edges')}
-            </label>
-          </div>
+          <JoinOptions t={t} overrides={o} onChange={onChange} />
 
           {emotionSupported && (
             <div className="flex flex-col gap-[6px] pt-[6px] [border-top:1px_solid_rgba(255,255,255,0.06)]">
@@ -252,6 +191,12 @@ export default function AudiobookOverrides({ t, overrides, onChange, emotionSupp
   );
 }
 
+const JOIN_FIELDS = [
+  ['lineGapMs', 'line_gap_ms'],
+  ['paragraphGapMs', 'paragraph_gap_ms'],
+  ['trimEdges', 'trim_edges'],
+];
+
 /**
  * Lower the persisted overrides (+ language) into the snake_case request fields
  * the backend expects. Only NON-default values are emitted, so an untouched
@@ -274,8 +219,9 @@ export function overridesToRequest(overrides, language) {
     body.emo_text = emo;
     if (o.emoAlpha != null) body.emo_alpha = o.emoAlpha;
   }
-  if (o.lineGapMs != null) body.line_gap_ms = o.lineGapMs;
-  if (o.paragraphGapMs != null) body.paragraph_gap_ms = o.paragraphGapMs;
-  if (o.trimEdges != null) body.trim_edges = o.trimEdges;
+  for (const [field, wire] of JOIN_FIELDS) {
+    // `0` and `false` are deliberate; only an unset (null/undefined) knob is skipped.
+    if (o[field] !== null && o[field] !== undefined) body[wire] = o[field];
+  }
   return body;
 }

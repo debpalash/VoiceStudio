@@ -5,8 +5,8 @@ catalog: docs/feature-catalog.md
 #
 # When a PR adds or removes an engine or user-facing feature, update this
 # file in the same PR — otherwise the nightly job opens/updates the rolling
-# `docs-drift` issue. Spec: docs/competitive-analysis.md Spec 9a /
-# docs/specs/2026-06-12-elevenlabs-parity-program.md Wave 0.1.
+# `docs-drift` issue. See docs/competitive-analysis.md Spec 9a for the
+# rationale and docs/feature-catalog.md for the current reader-facing list.
 
 # Each name must appear verbatim in README.md (the Features grid).
 features:
@@ -36,6 +36,9 @@ tts_engines:
   - id: cosyvoice
     readme: CosyVoice 3
     doc: docs/engines/cosyvoice.md
+  - id: cosyvoice-gguf
+    readme: CosyVoice 3 GGUF
+    doc: docs/engines/cosyvoice-gguf.md
   - id: kittentts
     readme: KittenTTS
   - id: mlx-audio
@@ -62,6 +65,8 @@ tts_engines:
     doc: docs/engines/confucius4-tts.md
   - id: pockettts
   - id: audiocpp
+    doc: docs/engines/audio-cpp.md
+  - id: audiocpp-dots
     doc: docs/engines/audio-cpp.md
 
 # Same contract against backend/services/asr_backend.py _REGISTRY.
@@ -90,8 +95,6 @@ asr_engines:
 # Doc files that must exist (the install path users are sent to).
 docs:
   - docs/downloading-models.md
-  - docs/remote-workers.md
-  - docs/adr/inbound-node-mode.md
   - docs/branding.md
   - docs/install/macos.md
   - docs/install/windows.md

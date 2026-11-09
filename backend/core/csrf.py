@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from urllib.parse import SplitResult, urlsplit
 
+from core.app_config import DEFAULT_WEB_PORT
+
 
 CSRF_HEADER = "x-voicestudio-csrf"
 CSRF_VALUE = "1"
@@ -91,10 +93,10 @@ DEFAULT_DESKTOP_ORIGINS = ("app://voicestudio",)
 # The browser UI dev-server port. OMNIVOICE_UI_PORT is canonical, matching
 # OMNIVOICE_PORT; VOICESTUDIO_UI_PORT is the name the Vite configs read before
 # the two were unified and stays accepted as an alias. Mirrored in
-# electron/electron.vite.config.ts and electron/vite.web.config.ts.
+# config/app.json.
 UI_PORT_ENV = "OMNIVOICE_UI_PORT"
 UI_PORT_ENV_ALIASES = ("VOICESTUDIO_UI_PORT",)
-DEFAULT_UI_PORT = 3901
+DEFAULT_UI_PORT = DEFAULT_WEB_PORT
 
 
 def configured_ui_port() -> int | None:

@@ -1,7 +1,9 @@
+import errno
 import hashlib
 import io
 import os
 from pathlib import Path
+import time
 import zipfile
 
 import pytest
@@ -91,3 +93,86 @@ def test_pinned_runtime_assets_have_published_sizes_and_sha256():
         assert bootstrap.VERSION.removeprefix("v") in filename
         assert len(digest) == 64 and set(digest) <= set("0123456789abcdef")
         assert bootstrap._ASSET_SIZES[slug] > 20_000_000
+
+
+def _stub_release(monkeypatch, tmp_path):
+    """Point the installer at a local zip holding the server and CLI."""
+    target = tmp_path / "engines" / "audio-cpp" / bootstrap.VERSION / "runtime"
+    cli_name = "audiocpp_cli.exe" if os.name == "nt" else "audiocpp_cli"
+    monkeypatch.setattr(bootstrap, "default_asset", lambda: ("runtime.zip", "0" * 64))
+    monkeypatch.setattr(bootstrap, "default_asset_size", lambda: 1)
+    monkeypatch.setattr(bootstrap, "managed_runtime_dir", lambda: target)
+
+    def download(_url, destination, _digest, _size):
+        with zipfile.ZipFile(destination, "w") as bundle:
+            bundle.writestr(f"bin/{bootstrap.binary_name()}", b"server")
+            bundle.writestr(f"bin/{cli_name}", b"cli")
+
+    class Probe:
+        returncode = 0
+
+    monkeypatch.setattr(installer, "_download", download)
+    monkeypatch.setattr(installer.subprocess, "run", lambda *_a, **_k: Probe())
+    monkeypatch.setattr(time, "sleep", lambda _seconds: None)
+    return target
+
+
+def _scanner_lock(path):
+    error = PermissionError(errno.EACCES, "Access is denied", str(path))
+    error.winerror = 5
+    return error
+
+
+def test_install_waits_out_a_scanner_lock_on_the_probed_runtime(monkeypatch, tmp_path):
+    # #2685: right after the device probe runs the new binary, Windows
+    # antivirus holds it, and publishing the folder failed with WinError 5.
+    target = _stub_release(monkeypatch, tmp_path)
+    original_replace = os.replace
+    attempts = []
+
+    def replace(src, dst):
+        if Path(dst) == target:
+            attempts.append(dst)
+            if len(attempts) < 3:
+                raise _scanner_lock(src)
+        return original_replace(src, dst)
+
+    monkeypatch.setattr(installer.os, "replace", replace)
+
+    installer._install()
+
+    assert len(attempts) == 3
+    assert (target / bootstrap.binary_name()).read_bytes() == b"server"
+
+
+def test_install_still_reports_a_lock_that_never_clears(monkeypatch, tmp_path):
+    target = _stub_release(monkeypatch, tmp_path)
+    attempts = []
+
+    def replace(src, dst):
+        attempts.append(dst)
+        raise _scanner_lock(src)
+
+    monkeypatch.setattr(installer.os, "replace", replace)
+
+    with pytest.raises(PermissionError):
+        installer._install()
+
+    assert 1 < len(attempts) <= 10
+    assert not target.exists()
+
+
+def test_install_does_not_retry_errors_that_are_not_locks(monkeypatch, tmp_path):
+    _stub_release(monkeypatch, tmp_path)
+    attempts = []
+
+    def replace(src, dst):
+        attempts.append(dst)
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(installer.os, "replace", replace)
+
+    with pytest.raises(OSError, match="No space"):
+        installer._install()
+
+    assert len(attempts) == 1

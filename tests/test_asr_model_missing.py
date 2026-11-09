@@ -35,7 +35,7 @@ def _clear_installed_repo_memo():
 @pytest.fixture(scope="module")
 def client():
     from main import app
-    return TestClient(app)
+    return TestClient(app, client=("127.0.0.1", 50000))
 
 
 @contextlib.contextmanager
@@ -317,6 +317,40 @@ class TestEndpoints:
         with _dictation_whisper_missing():
             r = client.post(
                 "/transcribe",
+                files={"audio": ("t.wav", b"RIFF0000WAVE", "audio/wav")},
+            )
+        _assert_409(r)
+
+    def test_reference_transcript_uses_installed_model_when_selection_missing(self, client):
+        """#2929/#2678: the selected engine's weights are absent but another
+        speech-to-text model is installed. generate transcribes through it, so
+        the clone preview must not answer asr_model_missing."""
+        from services import asr_backend
+
+        with _offline_asr_missing(cached=False), \
+             patch.object(asr_backend, "asr_model_missing_error",
+                          side_effect=lambda **kw: {"error": "asr_model_missing"}), \
+             patch.object(asr_backend, "_installed_reference_fallbacks",
+                          return_value=[object()]), \
+             patch.object(asr_backend, "transcribe_reference",
+                          return_value="hello there"):
+            r = client.post(
+                "/transcribe",
+                data={"mode": "reference"},
+                files={"audio": ("t.wav", b"RIFF0000WAVE", "audio/wav")},
+            )
+        assert r.status_code == 200, r.text
+        assert r.json()["text"].strip().lower().startswith("hello")
+
+    def test_reference_transcript_409_when_nothing_installed(self, client):
+        from services import asr_backend
+
+        with _offline_asr_missing(cached=False), \
+             patch.object(asr_backend, "_installed_reference_fallbacks", return_value=[]), \
+             patch.object(asr_backend, "dictation_model_id", return_value=None):
+            r = client.post(
+                "/transcribe",
+                data={"mode": "reference"},
                 files={"audio": ("t.wav", b"RIFF0000WAVE", "audio/wav")},
             )
         _assert_409(r)

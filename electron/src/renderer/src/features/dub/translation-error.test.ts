@@ -2,7 +2,11 @@ import { expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/i18n-text', () => ({
   tr: (key: string, options?: Record<string, unknown>) =>
-    key === 'common.unknown' ? 'unknown' : `Unsupported: ${String(options?.languages)}`,
+    key === 'common.unknown'
+      ? 'unknown'
+      : key === 'workflowRun.invalid_language'
+        ? 'Choose source and target languages.'
+        : `Unsupported: ${String(options?.languages)}`,
 }));
 import { ApiError } from '@/lib/api/client';
 import { describeDubTranslationError } from './translation-error';
@@ -24,4 +28,9 @@ it('ignores unrelated failures and handles an absent language list', () => {
       }),
     ),
   ).toBe('Unsupported: unknown');
+});
+
+it('localizes the missing ASR source-language recovery action', () => {
+  const error = new ApiError(400, 'raw English backend text', { code: 'source_language_required' });
+  expect(describeDubTranslationError(error)).toBe('Choose source and target languages.');
 });

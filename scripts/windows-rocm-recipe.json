@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "gpu_architectures": ["gfx1201", "gfx1200", "gfx1100", "gfx1101", "gfx1150", "gfx1151"],
+  "python": {"version": "3.12", "abi": "cp312", "platform": "win-amd64"},
+  "torch": {
+    "find_links": "https://repo.radeon.com/rocm/windows/rocm-rel-7.2.1/",
+    "packages": ["torch==2.9.1+rocm7.2.1", "torchaudio==2.9.1+rocm7.2.1", "torchvision==0.24.1+rocm7.2.1"],
+    "wheel_files": ["torch-2.9.1%2Brocm7.2.1-cp312-cp312-win_amd64.whl", "torchaudio-2.9.1%2Brocm7.2.1-cp312-cp312-win_amd64.whl", "torchvision-0.24.1%2Brocm7.2.1-cp312-cp312-win_amd64.whl"],
+    "wheel_sha256": {"torch-2.9.1%2Brocm7.2.1-cp312-cp312-win_amd64.whl": "e88bf270163b48f7f27f7ea3db5ffb3be4ba107301933022bcb3c6ddedfeeabb", "torchaudio-2.9.1%2Brocm7.2.1-cp312-cp312-win_amd64.whl": "62835605995c7812a3224733abf08e222afddb7a487c493521e613ca46e578ab", "torchvision-0.24.1%2Brocm7.2.1-cp312-cp312-win_amd64.whl": "b5c34d76a2f01fb97e1e0f224bd97fc3a58ec1ee1ef2376af2d72086e9aca34c"},
+    "hip_prefix": "7.2."
+  },
+  "runtime": {
+    "packages": ["rocm==7.2.1", "rocm-sdk-core==7.2.1", "rocm-sdk-devel==7.2.1", "rocm-sdk-libraries-custom==7.2.1"],
+    "wheel_files": ["rocm_sdk_core-7.2.1-py3-none-win_amd64.whl", "rocm_sdk_devel-7.2.1-py3-none-win_amd64.whl", "rocm_sdk_libraries_custom-7.2.1-py3-none-win_amd64.whl", "rocm-7.2.1.tar.gz"],
+    "wheel_sha256": {"rocm_sdk_core-7.2.1-py3-none-win_amd64.whl": "f68989d48df71cbfc3cb68bf705dc37c0f56e9666feddb59a1a0f5ff7539fe1c", "rocm_sdk_devel-7.2.1-py3-none-win_amd64.whl": "19e6ee67e13432b7c1e8a4077df795dcb1239546ae314700c4b4d97e5b4b8f63", "rocm_sdk_libraries_custom-7.2.1-py3-none-win_amd64.whl": "c7fe0b0731af8896093ff69e11496830d3cb6a4aed73e895c60b7cbdc200be92", "rocm-7.2.1.tar.gz": "9084902eaa69213a00a90784ad89e6e5fe73c702df0cc6cc3a70d777c7a6142b"}
+  },
+  "ctranslate2": {
+    "version": "4.8.2",
+    "archive_url": "https://github.com/OpenNMT/CTranslate2/releases/download/v4.8.2/rocm-python-wheels-Windows.zip",
+    "archive_size": 137538158,
+    "archive_sha256": "43da4baa5feaee49f77e176277a9647f99c493173c81a0bc60f491cac97532c2",
+    "wheel_member": "temp-windows/ctranslate2-4.8.2-cp312-cp312-win_amd64.whl",
+    "wheel_sha256": "d5b9b0d34b23584638fc087bf99a85b0ba9917b84860d5fbddcc73b0aedd4fd4",
+    "binary_sha256": "37fdba6e52f87422562f7068c7bc19e342d57bf957a161da6d9fdf6d47f93317",
+    "required_dlls": ["hipblas.dll", "amdhip64_7.dll"]
+  }
+}

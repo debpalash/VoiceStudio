@@ -1,0 +1,156 @@
+[
+  {
+    "diagnostic": "openai package not installed. Install with: uv pip install openai",
+    "key": "asrSetupRepairBundled",
+    "engine": {
+      "id": "openai-compat-asr",
+      "display_name": "openai-compat-asr",
+      "available": false,
+      "reason": "This engine's package isn't installed yet. Install it from Settings → Models.",
+      "install_hint": "No install needed — configure a server endpoint in Settings → Models → ASR. Points VoiceStudio at any OpenAI-compatible server (a self-hosted Qwen3-ASR/FunASR/SenseVoice server, OpenAI's own Whisper API, or similar) — a path to Qwen3-ASR today, without waiting on a direct transformers integration."
+    }
+  },
+  {
+    "diagnostic": "file is missing",
+    "key": "asrSetupRepairBundled",
+    "engine": {
+      "id": "openai-compat-asr",
+      "display_name": "openai-compat-asr",
+      "available": false,
+      "reason": "A file this engine needs is missing or unreadable. Reinstall it from Settings → Models.",
+      "install_hint": "No install needed — configure a server endpoint in Settings → Models → ASR. Points VoiceStudio at any OpenAI-compatible server (a self-hosted Qwen3-ASR/FunASR/SenseVoice server, OpenAI's own Whisper API, or similar) — a path to Qwen3-ASR today, without waiting on a direct transformers integration."
+    }
+  },
+  {
+    "diagnostic": "transformers package not installed",
+    "key": "asrSetupRepairBundled",
+    "engine": {
+      "id": "pytorch-whisper",
+      "display_name": "pytorch-whisper",
+      "available": false,
+      "reason": "This engine's package isn't installed yet. Install it from Settings → Models.",
+      "install_hint": "Bundled with transformers — no extra install (CUDA/MPS/CPU)"
+    }
+  },
+  {
+    "diagnostic": "file is missing",
+    "key": "asrSetupRepairBundled",
+    "engine": {
+      "id": "pytorch-whisper",
+      "display_name": "pytorch-whisper",
+      "available": false,
+      "reason": "A file this engine needs is missing or unreadable. Reinstall it from Settings → Models.",
+      "install_hint": "Bundled with transformers — no extra install (CUDA/MPS/CPU)"
+    }
+  },
+  {
+    "diagnostic": "faster-whisper package not installed",
+    "key": "asrSetupRepairBundled",
+    "engine": {
+      "id": "faster-whisper-isolated",
+      "display_name": "faster-whisper-isolated",
+      "available": false,
+      "reason": "This engine's package isn't installed yet. Install it from Settings → Models.",
+      "install_hint": "No extra install (reuses faster-whisper). Escape hatch for hanging transcribes: runs ASR in a separate process that can be force-killed to reclaim a hung transcribe and its VRAM (#730). Slightly slower per call than in-process faster-whisper."
+    }
+  },
+  {
+    "diagnostic": "file is missing",
+    "key": "asrSetupRepairBundled",
+    "engine": {
+      "id": "faster-whisper-isolated",
+      "display_name": "faster-whisper-isolated",
+      "available": false,
+      "reason": "A file this engine needs is missing or unreadable. Reinstall it from Settings → Models.",
+      "install_hint": "No extra install (reuses faster-whisper). Escape hatch for hanging transcribes: runs ASR in a separate process that can be force-killed to reclaim a hung transcribe and its VRAM (#730). Slightly slower per call than in-process faster-whisper."
+    }
+  },
+  {
+    "diagnostic": "Configure a server endpoint in Settings → Models → ASR",
+    "key": "asrSetupRemote",
+    "engine": {
+      "id": "openai-compat-asr",
+      "display_name": "openai-compat-asr",
+      "available": false,
+      "reason": "This engine needs to be configured before it can run. Open Settings → Models to finish setting it up.",
+      "install_hint": "No install needed — configure a server endpoint in Settings → Models → ASR. Points VoiceStudio at any OpenAI-compatible server (a self-hosted Qwen3-ASR/FunASR/SenseVoice server, OpenAI's own Whisper API, or similar) — a path to Qwen3-ASR today, without waiting on a direct transformers integration."
+    }
+  },
+  {
+    "diagnostic": "requires Apple Silicon",
+    "key": "setupStatusPlatform",
+    "engine": {
+      "id": "mlx-whisper",
+      "display_name": "mlx-whisper",
+      "available": false,
+      "reason": "This engine doesn't run on this computer's platform. Its guide lists the platforms it supports.",
+      "install_hint": "pip install mlx-whisper  (Apple Silicon only)"
+    }
+  },
+  {
+    "diagnostic": "torch MPS unavailable",
+    "key": "setupStatusNoMps",
+    "engine": {
+      "id": "mlx-whisper",
+      "display_name": "mlx-whisper",
+      "available": false,
+      "reason": "This engine needs Apple's GPU (MPS), and this installation's PyTorch can't use it. Updating macOS or reinstalling VoiceStudio usually restores it.",
+      "install_hint": "pip install mlx-whisper  (Apple Silicon only)"
+    }
+  },
+  {
+    "diagnostic": "nemo_toolkit not installed",
+    "key": "asrSetupNemoParakeet",
+    "engine": {
+      "id": "nemo-parakeet",
+      "display_name": "nemo-parakeet",
+      "available": false,
+      "reason": "This engine's package isn't installed yet. Install it from Settings → Models.",
+      "install_hint": "No safe install path in this app yet — nemo_toolkit's ASR extras pin transformers>=4.57,<4.58, which conflicts with VoiceStudio's own transformers>=5.3 requirement and WILL break the backend (ImportError on startup) if installed into this shared venv. Do NOT install nemo_toolkit here. If you want to try Parakeet TDT, set it up in a separate/dedicated Python environment — not the one VoiceStudio manages; in-app isolation for this engine is tracked separately."
+    }
+  },
+  {
+    "diagnostic": "moonshine package not installed",
+    "key": "asrSetupPackageInstall",
+    "engine": {
+      "id": "moonshine",
+      "display_name": "moonshine",
+      "available": false,
+      "reason": "This engine's package isn't installed yet. Install it from Settings → Models.",
+      "install_hint": "uv pip install moonshine-onnx  (or moonshine-voice; edge/CPU-optimized ASR)"
+    }
+  },
+  {
+    "diagnostic": "funasr package not installed",
+    "key": "asrSetupPackageInstall",
+    "engine": {
+      "id": "funasr",
+      "display_name": "funasr",
+      "available": false,
+      "reason": "This engine's package isn't installed yet. Install it from Settings → Models.",
+      "install_hint": "pip install funasr  (SenseVoiceSmall + FSMN-VAD; CUDA or CPU)"
+    }
+  },
+  {
+    "diagnostic": "file is missing",
+    "key": "asrSetupNemoParakeet",
+    "engine": {
+      "id": "nemo-parakeet",
+      "display_name": "nemo-parakeet",
+      "available": false,
+      "reason": "A file this engine needs is missing or unreadable. Reinstall it from Settings → Models.",
+      "install_hint": "No safe install path in this app yet — nemo_toolkit's ASR extras pin transformers>=4.57,<4.58, which conflicts with VoiceStudio's own transformers>=5.3 requirement and WILL break the backend (ImportError on startup) if installed into this shared venv. Do NOT install nemo_toolkit here. If you want to try Parakeet TDT, set it up in a separate/dedicated Python environment — not the one VoiceStudio manages; in-app isolation for this engine is tracked separately."
+    }
+  },
+  {
+    "diagnostic": "file is missing",
+    "key": "setupStatusFileMissing",
+    "engine": {
+      "id": "funasr",
+      "display_name": "funasr",
+      "available": false,
+      "reason": "A file this engine needs is missing or unreadable. Reinstall it from Settings → Models.",
+      "install_hint": "pip install funasr  (SenseVoiceSmall + FSMN-VAD; CUDA or CPU)"
+    }
+  }
+]

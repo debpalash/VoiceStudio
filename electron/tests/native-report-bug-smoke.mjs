@@ -16,7 +16,7 @@ const app = await electron.launch({
     ...process.env,
     ELECTRON_RENDERER_URL: '',
     VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES: '1',
-    VOICESTUDIO_ELECTRON_PROXY_PORT: '49304',
+    VOICESTUDIO_ELECTRON_PROXY_PORT: '0',
   },
 });
 try {

@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VoiceStudio presentation</title>
+    <style>
+      @font-face {
+        font-family: Inter;
+        src: url("__FONT__") format("woff2");
+        font-weight: 100 900;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1440px;
+        height: 1000px;
+        overflow: hidden;
+      }
+      body {
+        background: #101017;
+        color: #eee9f1;
+        font-family: Inter, system-ui, sans-serif;
+      }
+      .backdrop {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+      .masthead {
+        position: absolute;
+        inset: 22px 46px auto;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 17px;
+        font-weight: 650;
+        letter-spacing: -0.55px;
+      }
+      .brand img {
+        width: 32px;
+        height: 32px;
+      }
+      .feature {
+        color: #d6c5d4;
+        font-size: 11px;
+        font-weight: 550;
+        letter-spacing: 1.5px;
+        text-transform: uppercase;
+      }
+      .window {
+        position: absolute;
+        top: 80px;
+        left: 40px;
+        width: 1360px;
+        height: 850px;
+        overflow: hidden;
+        border-radius: 17px;
+        background: #0b0b0b;
+        box-shadow:
+          0 35px 75px #0007,
+          0 5px 20px #0005;
+      }
+      .window::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        border: 1px solid #ffffff29;
+        border-radius: inherit;
+      }
+      .window img {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      .footer {
+        position: absolute;
+        inset: auto 46px 27px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+      }
+      .tagline {
+        color: #b6a8b8;
+        font-size: 12px;
+        letter-spacing: 0.1px;
+      }
+      .sections {
+        display: flex;
+        gap: 6px;
+      }
+      .sections span {
+        width: 23px;
+        height: 3px;
+        background: #ffffff25;
+        border-radius: 2px;
+      }
+      .sections span.active {
+        background: #e8a9bf;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="backdrop">__BACKGROUND__</div>
+    <header class="masthead">
+      <div class="brand"><img src="__LOGO__" alt="" />VoiceStudio</div>
+      <div class="feature" id="feature"></div>
+    </header>
+    <main class="window"><img id="capture" alt="" /></main>
+    <footer class="footer">
+      <div class="tagline">AI voice studio. On your device.</div>
+      <div class="sections" aria-hidden="true">
+        <span></span><span></span><span></span><span></span>
+      </div>
+    </footer>
+  </body>
+</html>

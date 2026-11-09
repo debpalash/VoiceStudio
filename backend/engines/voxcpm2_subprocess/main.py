@@ -76,8 +76,11 @@ def _recv(stream):
 
 def _measure_vram_mb() -> float:
     try:
-        import torch  # noqa: PLC0415
-
+        # A ping must stay cheap: importing torch here can take a long time on a cold
+        # start (#2837). Until the model has loaded, nothing is allocated.
+        torch = sys.modules.get("torch")
+        if torch is None:
+            return 0.0
         if torch.cuda.is_available():
             return float(torch.cuda.memory_allocated()) / (1024 * 1024)
     except Exception:  # noqa: BLE001 — a probe, never fatal
@@ -142,13 +145,76 @@ def _load_model(stdout):
         from voxcpm import VoxCPM  # type: ignore[import-not-found]  # noqa: PLC0415
 
         checkpoint = os.environ.get("OMNIVOICE_VOXCPM_MODEL", "openbmb/VoxCPM2")
+        device = _load_device()
+        extra = {"device": device} if device else {}
         _MODEL = _with_retries(
             lambda: VoxCPM.from_pretrained(
-                checkpoint, load_denoiser=False, optimize=False
+                checkpoint, load_denoiser=False, optimize=False, **extra
             )
         )
     _send(stdout, {"op": "progress", "stage": "loading_model", "percent": 100})
     return _MODEL
+
+
+_CUDA_ARCH_TAG = re.compile(r"^(sm|compute)_(\d+)([a-z]?)$")
+
+
+def _cuda_build_covers(arch_list, major: int, minor: int) -> bool:
+    """Can a torch build compiled for ``arch_list`` run on CC ``major.minor``?
+
+    A copy of ``core.device_caps.cuda_build_covers`` (this process imports
+    nothing from the app; a test keeps the two in step). SASS runs upward
+    within its major version, PTX JIT-compiles forward, and an ``a``/``f``
+    suffix only matches its exact capability (#1285).
+    """
+    device_cc = major * 10 + minor
+    for entry in arch_list or ():
+        m = _CUDA_ARCH_TAG.match(str(entry).strip())
+        if not m:
+            continue
+        kind, cc, suffix = m.group(1), int(m.group(2)), m.group(3)
+        e_major, e_minor = divmod(cc, 10)
+        if suffix:
+            if cc == device_cc:
+                return True
+        elif kind == "sm":
+            if e_major == major and e_minor <= minor:
+                return True
+        elif cc <= device_cc:
+            return True
+    return False
+
+
+def _load_device():
+    """``None`` (VoxCPM picks) unless that pick would be a CUDA GPU this
+    venv's torch has no kernels for: then ``"cpu"``.
+
+    The engine venv carries its own torch, newer than the app's, and current
+    CUDA wheels dropped Pascal (GTX 10xx, sm_61). VoxCPM still chose ``cuda``
+    there and every render failed with "no kernel image is available". CPU is
+    slow but works. ``OMNIVOICE_VOXCPM_DEVICE`` overrides either way.
+    """
+    forced = os.environ.get("OMNIVOICE_VOXCPM_DEVICE", "").strip()
+    if forced:
+        return forced
+    try:
+        import torch  # noqa: PLC0415
+
+        if not torch.cuda.is_available():
+            return None
+        archs = [str(a) for a in (torch.cuda.get_arch_list() or [])]
+        major, minor = torch.cuda.get_device_capability(0)
+    except Exception:  # noqa: BLE001 -- the probe must never block loading
+        return None
+    if not archs or _cuda_build_covers(archs, major, minor):
+        return None
+    print(
+        f"voxcpm2: this torch build ({', '.join(archs)}) has no kernels for "
+        f"the GPU (sm_{major}{minor}); running on CPU. Set "
+        "OMNIVOICE_VOXCPM_DEVICE to override.",
+        file=sys.stderr,
+    )
+    return "cpu"
 
 
 def _sample_rate(model) -> int:
@@ -231,6 +297,8 @@ def generation_kwargs(text: str, **options) -> dict:
     return {
         "text": f"({control}){text}" if control else text,
         "cfg_value": options.get("guidance_scale", 2.0),
+        # Without an explicit cap VoxCPM uses its own 4096 default and a short
+        # request can run for minutes.
         "max_len": max_len,
         "inference_timesteps": inference_timesteps,
         # Upstream retries a "bad case" up to three whole generations, which

@@ -204,11 +204,16 @@ def _check_ram() -> dict:
     return _check("ram", "System memory", OK, detail)
 
 
+def _diagnostic_catalogue(module, family: str) -> list[dict]:
+    options = {"include_hidden": True} if family == "tts" else {}
+    return module.list_backends(**options)
+
+
 def _check_engines() -> dict:
     try:
-        from services.tts_backend import list_backends, active_backend_id
-        backends = list_backends(include_hidden=True)
-        active = active_backend_id()
+        from services import tts_backend
+        active = tts_backend.active_backend_id()
+        backends = _diagnostic_catalogue(tts_backend, "tts")
     except Exception as e:
         return _check("engines", "TTS engines", WARN, f"could not enumerate: {e}")
     available = [b["id"] for b in backends if b.get("available")]
@@ -248,18 +253,24 @@ def _check_gpu_routing() -> dict:
     host = v.get("host_family", "cpu")
 
     if status == "accelerated":
-        if reason and KERNEL_RISK_MARKER in reason:  # driver/arch caveat — at risk
+        if reason and KERNEL_RISK_MARKER in reason:  # driver/arch caveat
             return _check("gpu_routing", "GPU routing", WARN,
                           f"{engine} -> {dev}: {reason}",
                           "The GPU is selected but may fail at kernel launch — "
                           "update drivers / reinstall torch for this GPU arch.")
-        if reason:  # low-VRAM caveat — not a driver/arch issue
+        if reason:  # advisory only, e.g. little free VRAM
             return _check("gpu_routing", "GPU routing", WARN,
                           f"{engine} -> {dev}: {reason}",
                           "Unload other models before generating, keep the text "
-                          "short, or pick a lighter engine.")
+                          "short, or choose a lighter engine.")
         return _check("gpu_routing", "GPU routing", OK, f"{engine} -> {dev} (accelerated)")
     if status == "cpu_fallback":
+        if reason and KERNEL_RISK_MARKER in reason:  # wheel lacks this GPU's arch (#3067)
+            return _check("gpu_routing", "GPU routing", WARN,
+                          f"{engine} runs on CPU: {reason}",
+                          "The installed PyTorch build has no kernels for this GPU's "
+                          "architecture, so a driver update will not help. Install a "
+                          "PyTorch build that covers it, or continue on CPU (slower).")
         return _check("gpu_routing", "GPU routing", WARN,
                       f"{engine} runs on CPU: {reason or 'no GPU path for this host'}",
                       "Pick an engine that supports this host's GPU for a big speedup, "
@@ -397,11 +408,7 @@ def run_diagnostics(include_network: bool = True, deep: bool = False) -> dict:
         try:
             module = importlib.import_module(f"services.{family}_backend")
             active = module.active_backend_id()
-            rows = (
-                module.list_backends(include_hidden=True)
-                if family == "tts"
-                else module.list_backends()
-            )
+            rows = _diagnostic_catalogue(module, family)
             row = next((item for item in rows if item.get("id") == active), None)
             if row is not None:
                 engine_execution.append({
@@ -443,11 +450,16 @@ def run_diagnostics(include_network: bool = True, deep: bool = False) -> dict:
     }
 
 
+def format_console_text(report: dict) -> str:
+    """``format_text`` escaped to ASCII for legacy Windows console code pages."""
+    return format_text(report).encode("ascii", errors="backslashreplace").decode("ascii")
+
+
 def format_text(report: dict) -> str:
     """Human-readable rendering for `--diagnose` / pasting into an issue.
 
-    ASCII-only on purpose — Windows consoles with legacy code pages must
-    not choke on the output.
+    Returns real Unicode (bundle files stay UTF-8); the console print site in
+    ``main.py --diagnose`` escapes to ASCII for legacy Windows code pages.
     """
     tag = {OK: "[ OK ]", WARN: "[WARN]", FAIL: "[FAIL]"}
     lines = [

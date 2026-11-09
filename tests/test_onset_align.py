@@ -302,3 +302,108 @@ def test_onsets_sorted_ascending():
     onsets = detect_speech_onsets(audio, SR)
     assert onsets == sorted(onsets)
     assert len(onsets) == 4
+
+
+# ── #3419: VAD-gated starts and ends ───────────────────────────────────────
+#
+# Speech is voiced; sighs, breaths and rustles are not. A *sustained*
+# unvoiced sound passes the #963 energy-sustain guard, so before #3419 it
+# could still set a line's start, and trailing breaths/silence padded the end.
+
+from services.onset_align import (  # noqa: E402
+    CONSONANT_LEAD_S,
+    TAIL_PAD_S,
+    snap_segments_to_speech,
+    trim_segment_ends,
+)
+
+
+def _breath(duration_s: float, amp: float = 0.3, seed: int = 3) -> np.ndarray:
+    """Band-limited noise (500–3000 Hz): the spectrum of a sigh or breath."""
+    rng = np.random.default_rng(seed)
+    n = int(duration_s * SR)
+    spec = np.fft.rfft(rng.standard_normal(n))
+    freqs = np.fft.rfftfreq(n, 1 / SR)
+    spec[(freqs < 500) | (freqs > 3000)] = 0
+    x = np.fft.irfft(spec, n)
+    return (amp * x / np.max(np.abs(x))).astype(np.float32)
+
+
+def _voice(duration_s: float, f0: float = 140.0, amp: float = 0.5) -> np.ndarray:
+    """Harmonic-rich voiced tone, a stand-in for a vowel."""
+    t = np.arange(int(duration_s * SR)) / SR
+    x = sum(np.sin(2 * np.pi * f0 * k * t) / k for k in range(1, 8))
+    return (amp * x / np.max(np.abs(x))).astype(np.float32)
+
+
+def test_sustained_sigh_before_the_line_does_not_set_its_start():
+    audio = np.concatenate([_silence(0.3), _breath(0.6), _silence(0.1), _voice(2.0)])
+    segs = [{"start": 0.0, "end": 3.0, "text": "x"}]
+    assert snap_segment_starts(segs, audio, SR) == 1
+    # The line starts at the voice (1.0 s), not at the sigh (0.3 s).
+    assert segs[0]["start"] == pytest.approx(1.0 - PRE_ROLL_S, abs=0.08)
+
+
+def test_sigh_running_into_the_first_word_keeps_only_a_consonant_lead():
+    audio = np.concatenate([_breath(0.8), _voice(2.0)])
+    segs = [{"start": 0.0, "end": 2.8, "text": "x"}]
+    assert snap_segment_starts(segs, audio, SR) == 1
+    assert 0.8 - 0.15 - PRE_ROLL_S - 0.03 <= segs[0]["start"] <= 0.8
+
+
+def test_long_rustle_before_the_first_word_is_skipped():
+    # More than MAX_SNAP_S of audible but unvoiced sound: #963 refused this
+    # jump; with no voiced speech in the skipped span it is safe to take.
+    audio = np.concatenate([_breath(2.5, amp=0.25), _silence(0.2), _voice(2.0)])
+    segs = [{"start": 0.0, "end": 4.7, "text": "x"}]
+    assert snap_segment_starts(segs, audio, SR) == 1
+    assert segs[0]["start"] == pytest.approx(2.7 - PRE_ROLL_S, abs=0.08)
+
+
+def test_whispered_line_keeps_the_energy_rule():
+    # No voiced frames at all: the energy onset still applies.
+    audio = np.concatenate([_silence(1.0), _breath(2.0)])
+    segs = [{"start": 0.0, "end": 3.0, "text": "x"}]
+    assert snap_segment_starts(segs, audio, SR) == 1
+    assert segs[0]["start"] == pytest.approx(1.0 - PRE_ROLL_S, abs=0.08)
+
+
+def test_trailing_breath_and_silence_are_trimmed_from_the_end():
+    audio = np.concatenate([_voice(1.5), _silence(0.1), _breath(0.7), _silence(1.0)])
+    segs = [{"start": 0.0, "end": 3.3, "text": "x"}]
+    assert trim_segment_ends(segs, audio, SR) == 1
+    assert segs[0]["end"] == pytest.approx(1.5 + TAIL_PAD_S, abs=0.08)
+    assert segs[0]["start"] == 0.0
+
+
+def test_end_trim_keeps_a_final_consonant():
+    audio = np.concatenate([_voice(1.5), _breath(0.1), _silence(1.0)])
+    segs = [{"start": 0.0, "end": 2.6, "text": "x"}]
+    assert trim_segment_ends(segs, audio, SR) == 1
+    assert segs[0]["end"] == pytest.approx(1.6 + TAIL_PAD_S, abs=0.08)
+
+
+def test_end_trim_leaves_whispered_lines_and_tight_ends_alone():
+    whispered = [{"start": 0.0, "end": 3.0, "text": "x"}]
+    assert trim_segment_ends(whispered, np.concatenate([_breath(2.0), _silence(1.0)]), SR) == 0
+    assert whispered[0]["end"] == 3.0
+    tight = [{"start": 0.0, "end": 1.6, "text": "x"}]
+    assert trim_segment_ends(tight, _voice(1.6), SR) == 0
+    assert tight[0]["end"] == 1.6
+
+
+def test_end_trim_is_skipped_on_mixed_audio():
+    audio = np.concatenate([_voice(1.5), _silence(1.5)])
+    segs = [{"start": 0.0, "end": 3.0, "text": "x"}]
+    assert trim_segment_ends(segs, audio, SR, separated_vocals=False) == 0
+    assert segs[0]["end"] == 3.0
+
+
+def test_snap_segments_to_speech_moves_both_edges():
+    audio = np.concatenate([_breath(0.6), _silence(0.2), _voice(1.5), _breath(0.5), _silence(0.5)])
+    segs = [{"start": 0.0, "end": 3.3, "text": "x"}]
+    assert snap_segments_to_speech(segs, audio, SR) == 2
+    assert segs[0]["start"] == pytest.approx(0.8 - PRE_ROLL_S, abs=0.08)
+    # A breath right after the last vowel may be a final consonant: at most
+    # CONSONANT_LEAD_S of it is kept, the rest of the breath is trimmed.
+    assert segs[0]["end"] == pytest.approx(2.3 + CONSONANT_LEAD_S + TAIL_PAD_S, abs=0.08)

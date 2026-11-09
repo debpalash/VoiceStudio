@@ -17,12 +17,20 @@ import mimetypes
 import os
 from pathlib import Path
 import secrets
+import socket
 import sys
 from typing import Any
 from urllib import error, request
 from urllib.parse import urlsplit
 
-DEFAULT_ENGINE_URL = "http://127.0.0.1:3900"
+try:
+    from core.app_config import DEFAULT_BACKEND_PORT
+    from core.path_security import portable_filename
+except ModuleNotFoundError:  # ``python -m backend.speech_client`` from the repo root
+    from backend.core.app_config import DEFAULT_BACKEND_PORT
+    from backend.core.path_security import portable_filename
+
+DEFAULT_ENGINE_URL = f"http://127.0.0.1:{DEFAULT_BACKEND_PORT}"
 
 
 def _default_engine_url() -> str:
@@ -70,7 +78,29 @@ def _is_loopback_host(host: str | None) -> bool:
     try:
         return ipaddress.ip_address(host).is_loopback
     except ValueError:
+        pass
+    # Match the OS's numeric IPv4 spellings without resolving a hostname.
+    try:
+        addresses = socket.getaddrinfo(host, None, flags=socket.AI_NUMERICHOST)
+    except OSError:
         return False
+    return bool(addresses) and all(
+        ipaddress.ip_address(info[4][0]).is_loopback for info in addresses
+    )
+
+
+class _LoopbackDirectProxyHandler(request.ProxyHandler):
+    """Environment proxies, except for loopback targets.
+
+    no_proxy rarely lists numeric aliases like 127.1, and a plain-HTTP bearer
+    key must not reach a proxy in the clear. Checked per request, so a redirect
+    from loopback to a remote host still uses the configured proxy.
+    """
+
+    def proxy_open(self, req, proxy, type):  # noqa: A002 - urllib signature
+        if _is_loopback_host(urlsplit(req.full_url).hostname):
+            return None
+        return super().proxy_open(req, proxy, type)
 
 
 def _open(req: request.Request, timeout: float = 300.0) -> tuple[bytes, str]:
@@ -81,12 +111,11 @@ def _open(req: request.Request, timeout: float = 300.0) -> tuple[bytes, str]:
     credentialed = bool(req.get_header("Authorization"))
     if credentialed and scheme != "https" and not _is_loopback_host(target.hostname):
         raise SpeechClientError("Remote VoiceStudio credentials require https://")
+    handlers: list[request.BaseHandler] = [_LoopbackDirectProxyHandler()]
+    if credentialed:
+        handlers.append(_RejectCredentialRedirect())
     try:
-        opener = (
-            request.build_opener(_RejectCredentialRedirect())
-            if credentialed
-            else request.build_opener()
-        )
+        opener = request.build_opener(*handlers)
         with opener.open(req, timeout=timeout) as response:  # noqa: S310
             return response.read(), response.headers.get("Content-Type", "")
     except error.HTTPError as exc:
@@ -126,7 +155,8 @@ def _encode_multipart(
                 b"\r\n",
             ]
         )
-    safe_filename = Path(filename).name.replace('"', "") or "audio.wav"
+    basename = filename.replace("\\", "/").rsplit("/", 1)[-1]
+    safe_filename = portable_filename(basename, default="audio.wav")
     content_type = mimetypes.guess_type(safe_filename)[0] or "application/octet-stream"
     if Path(safe_filename).suffix.lower() in {".wav", ".wave"}:
         content_type = "audio/wav"

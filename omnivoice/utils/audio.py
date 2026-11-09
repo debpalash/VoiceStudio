@@ -24,6 +24,8 @@ inference post-processing.
 
 import logging
 import math
+import os
+from typing import Optional
 
 import numpy as np
 import torch
@@ -50,6 +52,47 @@ CLONE_REF_NO_SPEECH_MARKER = "[clone_ref_no_speech]"
 CLONE_REF_TEXT_MAX_SECONDS = 20.0
 CLONE_REF_WINDOW_SECONDS = 15.0
 CLONE_REF_MAX_WINDOWS = 5
+# The selected passage's edges are pulled inward to a pause within this span,
+# so it neither starts nor ends mid-word.
+CLONE_REF_EDGE_SEARCH_SECONDS = 1.5
+
+
+def trim_passage_to_pauses(
+    wav: torch.Tensor,
+    sample_rate: int,
+    search_seconds: float = CLONE_REF_EDGE_SEARCH_SECONDS,
+    frame_seconds: float = 0.05,
+    pause_ratio: float = 0.05,
+) -> torch.Tensor:
+    """Shrink a (C, T) passage so both edges fall in a pause.
+
+    Fixed-length windows are cut at arbitrary times, so a selected passage can
+    end mid-word: its transcript then ends in a fragment the audio does not
+    match, and the clone opens its output by finishing that fragment. Each
+    edge moves inward to the quietest frame within ``search_seconds`` — but
+    only when that frame is a real pause (energy under ``pause_ratio`` of the
+    passage's median frame); otherwise the edge stays. Never lengthens.
+    """
+    frame = max(1, int(frame_seconds * sample_rate))
+    n = wav.size(-1) // frame
+    span = int(search_seconds * sample_rate) // frame
+    if n < 2 * span + 2:
+        return wav
+    energy = wav[:, : n * frame].abs().amax(dim=0).float().square()
+    frames = energy.reshape(n, frame).mean(dim=1)
+    floor = float(frames.median()) * pause_ratio
+
+    def quietest(lo: int, hi: int):
+        k = lo + int(frames[lo:hi].argmin())
+        return k if float(frames[k]) < floor else None
+
+    head = quietest(0, span)
+    tail = quietest(n - span, n)
+    if head is None and tail is None:
+        return wav
+    start = head * frame + frame // 2 if head is not None else 0
+    end = tail * frame + frame // 2 if tail is not None else wav.size(-1)
+    return wav[:, start:end]
 
 
 def clone_ref_transcript_too_long_message(duration_s: float) -> str:
@@ -60,6 +103,83 @@ def clone_ref_transcript_too_long_message(duration_s: float) -> str:
         f"{CLONE_REF_TEXT_MAX_SECONDS:.0f} seconds. Trim both the audio and "
         "transcript to the same 3-10 second passage, or omit the transcript "
         "so VoiceStudio can pick and transcribe the best passage automatically."
+    )
+
+
+# Host-RAM cost of encoding a reference with the Higgs audio tokenizer on the
+# CPU (#3340). Measured fresh-process peak RSS growth, inference mode, 24 kHz:
+# 5 s -> 1.06 GB, 10 s -> 1.36 GB, 20 s -> 2.17 GB, i.e. a fixed working set
+# plus a per-second term. The DAC acoustic encoder runs its first blocks at the
+# full sample rate, so the cost is linear in clip length.
+REF_ENCODE_BASE_BYTES = 750 * 1024 ** 2
+REF_ENCODE_BYTES_PER_SECOND = 72 * 1024 ** 2
+# Set to 1 to skip the pre-encode memory check (e.g. a host whose memory
+# probe under-reports what it can actually allocate).
+REF_ENCODE_MEMORY_CHECK_ENV = "OMNIVOICE_SKIP_REF_MEMORY_CHECK"
+
+
+class ReferenceEncodeMemoryError(MemoryError):
+    """The reference cannot be encoded in the memory this host has free.
+
+    A ``MemoryError`` so every layer that recognizes host-RAM exhaustion (the
+    failure classifier's HOST_MEMORY_EXHAUSTED remedy, the clone-prompt cache's
+    no-retry rule) treats it as exactly that.
+    """
+
+
+def reference_encode_bytes(duration_s: float) -> int:
+    """Estimated peak host RAM needed to encode a ``duration_s`` reference."""
+    return int(REF_ENCODE_BASE_BYTES + max(0.0, duration_s) * REF_ENCODE_BYTES_PER_SECOND)
+
+
+def _allocatable_bytes() -> Optional[int]:
+    """Free physical RAM plus free swap/page file, or None when unknown."""
+    try:
+        import psutil
+
+        free = int(psutil.virtual_memory().available)
+        try:
+            free += int(psutil.swap_memory().free)
+        except Exception:  # noqa: BLE001 — swap unknown: physical RAM alone
+            pass
+        return free
+    except Exception:  # noqa: BLE001 — no probe: never block on a guess
+        return None
+
+
+def check_reference_encode_memory(duration_s: float, device_type: str, probe=_allocatable_bytes) -> None:
+    """Refuse a CPU reference encode that cannot fit, before it starts (#3340).
+
+    On a CPU-only host the encode allocates from system RAM, and running out
+    there is not reliably a Python exception: on Windows the backend died with
+    an access violation inside the DAC encoder's activation, taking every
+    in-flight job with it. Refusing up front turns that into an actionable
+    error the user can recover from.
+
+    The budget is free RAM **plus free swap**, so the check only refuses when
+    the encode cannot fit even with paging. It never refuses on a guess: no
+    probe, a non-CPU device, or the opt-out env var all skip it. One garbage
+    collection is tried before refusing, since the freed Python objects may be
+    exactly the room the encode needs.
+    """
+    if device_type != "cpu" or os.environ.get(REF_ENCODE_MEMORY_CHECK_ENV) == "1":
+        return
+    need = reference_encode_bytes(duration_s)
+    free = probe()
+    if free is None or free >= need:
+        return
+    import gc
+
+    gc.collect()
+    free = probe()
+    if free is None or free >= need:
+        return
+    gib = 1024 ** 3
+    raise ReferenceEncodeMemoryError(
+        f"Not enough free memory to prepare this {duration_s:.0f}-second voice "
+        f"reference on the CPU (needs about {need / gib:.1f} GB, "
+        f"{free / gib:.1f} GB free). Use a shorter reference clip (3-10 "
+        "seconds) or close other memory-heavy apps, then try again."
     )
 
 
@@ -80,11 +200,11 @@ def load_audio(audio_path: str, sampling_rate: int):
             audio_path, backend="soundfile"
         )
     except (ImportError, RuntimeError, OSError):
-        # Fallback via pydub+ffmpeg for formats torchaudio can't handle.
-        # ImportError belongs here too: torchaudio >= 2.9 routes load()
-        # through TorchCodec and raises ImportError when its FFmpeg shared
-        # libraries are absent. The ``backend="soundfile"`` argument above
-        # does NOT avoid that — 2.9 accepts and ignores it.
+        # torchaudio >= 2.9 sends load() through TorchCodec, which raises
+        # ImportError when the FFmpeg shared libraries are absent (and ignores
+        # backend="soundfile"). pydub decodes through the ffmpeg binary instead.
+        from pydub import AudioSegment
+
         aseg = AudioSegment.from_file(audio_path)
         waveform = audiosegment_to_tensor(aseg)
         prompt_sampling_rate = aseg.frame_rate
@@ -99,6 +219,55 @@ def load_audio(audio_path: str, sampling_rate: int):
         waveform = torch.mean(waveform, dim=0, keepdim=True)
 
     return waveform
+
+
+def read_audio(source) -> "tuple[torch.Tensor, int]":
+    """Read audio as a channels-first float32 tensor, without TorchCodec.
+
+    torchaudio >= 2.9 decodes only through TorchCodec (FFmpeg shared
+    libraries), which VoiceStudio does not install. soundfile covers WAV, FLAC
+    and OGG; anything else (MP3 on old libsndfile, M4A) goes through pydub and
+    the ffmpeg binary.
+    """
+    import soundfile as sf
+
+    try:
+        samples, rate = sf.read(source, dtype="float32", always_2d=True)
+        return torch.from_numpy(samples.T.copy()), int(rate)
+    except RuntimeError:  # soundfile.LibsndfileError: a container libsndfile cannot decode
+        if hasattr(source, "seek"):
+            source.seek(0)
+        aseg = AudioSegment.from_file(source)
+        return audiosegment_to_tensor(aseg), aseg.frame_rate
+
+
+_SAVE_SUBTYPES = {8: "PCM_U8", 16: "PCM_16", 24: "PCM_24", 32: "PCM_32"}
+
+
+def save_audio(target, waveform: torch.Tensor, sample_rate: int, format: Optional[str] = None,
+               bits_per_sample: Optional[int] = None) -> None:
+    """Write a channels-first tensor with soundfile (no TorchCodec needed).
+
+    Matches ``torchaudio.save`` defaults: float tensors become 32-bit float WAV
+    unless ``bits_per_sample`` asks for integer PCM. ``format`` defaults to the
+    file extension, or WAV for buffers.
+    """
+    import soundfile as sf
+
+    data = waveform.detach().cpu()
+    if data.ndim == 1:
+        data = data.unsqueeze(0)
+    suffix = os.path.splitext(os.fspath(target))[1].lstrip(".") if isinstance(target, (str, os.PathLike)) else ""
+    fmt = (format or suffix or "wav").upper()
+    if bits_per_sample in _SAVE_SUBTYPES:
+        subtype = _SAVE_SUBTYPES[bits_per_sample]
+    elif fmt == "WAV" and data.is_floating_point():
+        subtype = "FLOAT"
+    else:
+        subtype = None  # soundfile's default for the container (PCM_16 FLAC, Vorbis OGG)
+    if data.is_floating_point():
+        data = data.float()
+    sf.write(target, data.numpy().T, int(sample_rate), subtype=subtype, format=fmt)
 
 
 def remove_silence(

@@ -1,0 +1,14 @@
+{
+  "mobile": {
+    "books": {
+      "import_failed": "Couldn't import this book. Use an unencrypted EPUB, text PDF, or UTF-8 text file (up to 64 MB).",
+      "no_text": "No readable text found. Scanned PDFs need text recognition before import.",
+      "export_failed": "Couldn't export audio. M4B supports up to 255 chapters.",
+      "invalid_controls": "Use speeds from 0.5 to 2, pauses up to 30 seconds, and nonempty pronunciation entries.",
+      "controls_hint": "Import EPUB, text PDF, or TXT. Add [pause:0.5] for seconds of silence; start a line with [speed:1.25] to change its speed. Unchanged lines reuse saved audio.",
+      "line_speed": "Line speed",
+      "restore_recipe": "Edit saved voice recipe",
+      "save_recipe_copy": "Save as a new voice"
+    }
+  }
+}

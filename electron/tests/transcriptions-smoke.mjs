@@ -116,7 +116,7 @@ try {
   await page.getByText('No speech-to-text model is installed', { exact: false }).waitFor();
   await page.getByRole('button', { name: /Download Fixture dictation/ }).click();
   await page.getByRole('button', { name: 'Upload audio', exact: true }).click({ trial: true });
-  assert.deepEqual(installs, [{ repo_id: 'fixture/dictation', target: 'local' }]);
+  assert.deepEqual(installs, [{ repo_id: 'fixture/dictation' }]);
   await page.locator('summary').filter({ hasText: 'Input device' }).click();
   await page.getByRole('combobox', { name: 'Input device', exact: true }).click();
   await page.getByRole('option', { name: 'Studio microphone', exact: true }).click();

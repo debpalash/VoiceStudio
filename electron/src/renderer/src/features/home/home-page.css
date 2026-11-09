@@ -22,17 +22,36 @@
 }
 
 .home-contributors {
-  --contributor-size: clamp(34px, 3.5vw, 42px);
+  --contributor-size: 32px;
+  --maintainer-size: 52px;
   direction: ltr;
-  display: grid;
-  flex-shrink: 0;
-  grid-template-columns: repeat(var(--contributor-columns), calc(var(--contributor-size) / 2));
-  grid-template-rows: repeat(3, var(--contributor-size));
-  align-items: center;
-  gap: 0;
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  /* Wide enough for two short rows, so the avatars sit beside the title and
+     subtitle instead of stacking into a column taller than them. */
+  max-width: calc(var(--contributor-size) * 8 + 16px);
   margin-inline-start: auto;
   padding: 4px;
+}
+
+.home-contributors ul {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.home-contributors-core {
+  gap: 8px;
+}
+
+.home-contributors-rest {
+  gap: 2px;
 }
 
 .home-contributors li {
@@ -54,12 +73,40 @@
 }
 
 .home-contributor-avatar {
+  position: relative;
   display: block;
   width: var(--contributor-size);
   height: var(--contributor-size);
-  padding: 3px;
+  padding: 2px;
   border-radius: 50%;
   background: var(--card);
+}
+
+.home-contributors-core .home-contributor-avatar {
+  width: var(--maintainer-size);
+  height: var(--maintainer-size);
+  padding: 3px;
+}
+
+/* Core maintainers share a small badge in the app’s accent color. */
+.home-core-maintainer {
+  position: absolute;
+  inset-inline-end: 0;
+  bottom: 0;
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--background);
+  border-radius: 50%;
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.home-core-maintainer svg {
+  width: 8px;
+  height: 8px;
+  fill: currentColor;
 }
 
 .home-contributor-all {
@@ -97,29 +144,128 @@
 }
 
 .home-contributor-popup {
-  width: 216px;
-  padding: 8px;
+  position: relative;
+  width: 264px;
+  padding: 0 0 6px;
+  overflow: hidden;
+}
+
+/* Edge glow: a hairline rim lit from the top-left plus a faint halo, both from the theme's primary colour. */
+.home-contributor-popup {
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, var(--primary) 12%, transparent),
+    0 18px 48px -18px color-mix(in oklab, var(--primary) 45%, transparent),
+    0 10px 30px -12px rgb(0 0 0 / 35%);
+}
+
+.home-contributor-popup::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  padding: 1px;
+  border-radius: inherit;
+  background: linear-gradient(
+    145deg,
+    color-mix(in oklab, var(--primary) 60%, transparent),
+    transparent 38%,
+    transparent 70%,
+    color-mix(in oklab, var(--primary) 22%, transparent)
+  );
+  pointer-events: none;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+/* Soft wash of the theme's primary colour behind the portrait. */
+.home-contributor-banner {
+  height: 44px;
+  background:
+    radial-gradient(
+      120% 140% at 0% 0%,
+      color-mix(in oklab, var(--primary) 34%, transparent),
+      transparent 70%
+    ),
+    radial-gradient(
+      90% 120% at 100% 0%,
+      color-mix(in oklab, var(--primary) 16%, transparent),
+      transparent 70%
+    );
 }
 
 .home-contributor-identity {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 4px 6px 10px;
-  font-size: 14px;
+  gap: 12px;
+  margin-top: -22px;
+  padding: 0 14px 12px;
+}
+
+/* The name block starts below the banner so it centres on the portrait. */
+.home-contributor-identity > div {
+  padding-top: 22px;
 }
 
 .home-contributor-identity img {
+  flex-shrink: 0;
   border-radius: 50%;
+  box-shadow:
+    0 0 0 3px var(--popover),
+    0 4px 14px rgb(0 0 0 / 18%);
+}
+
+.home-contributor-identity strong {
+  display: block;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.home-contributor-identity small {
+  font-size: 11.5px;
+}
+
+.home-contributor-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 5px;
+  padding: 2px 8px 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--primary) 14%, transparent);
+  color: var(--primary);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.home-contributor-role svg {
+  width: 10px;
+  height: 10px;
+  fill: currentColor;
+}
+
+.home-contributor-links {
+  display: grid;
+  gap: 2px;
+  padding: 6px 6px 0;
+  border-top: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
 }
 
 .home-contributor-popup a {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 8px 10px;
-  border-radius: 8px;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 10px;
   font-size: 12px;
+  transition: background-color 150ms ease;
 }
 
 .home-contributor-popup a:is(:hover, :focus-visible) {
@@ -128,11 +274,69 @@
 
 .home-contributor-popup a:focus-visible {
   outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.home-contributor-link-icon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--muted) 70%, transparent);
+  color: var(--muted-foreground);
+  transition: color 150ms ease;
+}
+
+.home-contributor-link-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.home-contributor-popup a:is(:hover, :focus-visible) .home-contributor-link-icon {
+  color: var(--foreground);
+}
+
+/* Quiet until the row is pointed at, then the theme's primary colour. */
+.home-contributor-follow {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--primary) 14%, transparent);
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 600;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.home-contributor-popup a:is(:hover, :focus-visible) .home-contributor-follow {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.home-contributor-popup a[data-kind='website'] .home-contributor-follow,
+.home-contributor-popup a[data-kind='website']:is(:hover, :focus-visible) .home-contributor-follow {
+  padding: 0 7px;
+  background: transparent;
+  color: var(--muted-foreground);
 }
 
 .home-contributor-popup small {
   display: block;
   color: var(--muted-foreground);
+}
+
+/* Label and handle sit as one tight block, centred on the icon tile. */
+.home-contributor-popup a > span:not(.home-contributor-link-icon, .home-contributor-follow) {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 1.25;
 }
 
 @media (prefers-reduced-motion: reduce) {

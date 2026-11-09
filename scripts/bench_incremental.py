@@ -8,8 +8,8 @@ Success criterion: incremental regen ≤ 5.0s (roadmap Phase 4.1 exit target).
 Usage:
     uv run python scripts/bench_incremental.py [URL]
 
-Default URL is the Fireship clip the user picked. Server must be live at
-127.0.0.1:3900 with the models loaded (first cold run can take minutes).
+Default URL is the Fireship clip the user picked. The server must be live on
+the configured backend port with the models loaded (first cold run can take minutes).
 """
 from __future__ import annotations
 
@@ -18,9 +18,15 @@ import os
 import sys
 import time
 import urllib.request
+from pathlib import Path
 from urllib.error import HTTPError, URLError
 
-API = "http://127.0.0.1:3900"
+_APP_CONFIG = json.loads(
+    (Path(__file__).resolve().parents[1] / "config" / "app.json").read_text(
+        encoding="utf-8"
+    )
+)
+API = f"http://127.0.0.1:{os.environ.get('OMNIVOICE_PORT', _APP_CONFIG['ports']['backend'])}"
 DEFAULT_URL = "https://www.youtube.com/watch?v=ZzI9JE0i6Lc"
 TARGET_S = 5.0
 # Cap baseline segments to keep full-dub wall-clock tractable. The incremental

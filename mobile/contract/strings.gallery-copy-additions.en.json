@@ -1,0 +1,11 @@
+{
+  "mobile": {
+    "galleryCopy": {
+      "action": "Copy to this phone",
+      "ready": "Copied to this phone",
+      "requires_host": "Use a voice on your computer first, then copy its reference to this phone.",
+      "confirm": "Download this voice’s reference audio and transcript from your paired computer? Continue only if you own the voice or have permission and will follow its license.",
+      "unavailable": "Copying requires reference audio up to 30 seconds and a nonempty transcript."
+    }
+  }
+}

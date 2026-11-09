@@ -1,4 +1,4 @@
-import { LANG_CODES } from '@shared/utils/languages';
+import { translationTargetCode } from '@/lib/translation-targets';
 import { restoreDubDraft } from '../dub/dub-draft';
 import type { DubSession } from '../dub/dub-session';
 export interface DubProject {
@@ -114,7 +114,7 @@ export function projectPayload(session: DubSession, name: string) {
       voiceMatch: session.voiceMatch,
       generatedTiming: session.generatedTiming,
       segHashesByLang: session.fingerprintsByLang,
-      dubLangCode: LANG_CODES.find((lang) => lang.label === session.target)?.code || 'auto',
+      dubLangCode: translationTargetCode(session.target) || 'auto',
       dubSourceLangCode: session.sourceLang,
       dubTracks: session.tracks,
       dubStep: session.phase,

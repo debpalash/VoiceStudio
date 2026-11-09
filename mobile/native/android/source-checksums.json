@@ -1,0 +1,5 @@
+{
+  "omnivoice.cpp": {"commit":"886fc079838ca7400cb2b42b36e2a65aa1daabe8","sha256":"db7898b061692c2c8a83a43bf9af64ac4419b14a8bc44584aae497fc40cbced5"},
+  "llama.cpp": {"commit":"797de63b2fa7396dcc8caca76834c699ac84e1c3","sha256":"9bd5be5bc2ab0e0f5146bc6fbdd3a4a834383aaffa105faeeada119e83d51f3e"},
+  "ggml": {"repo":"ServeurpersoCom/ggml","commit":"f3bc6505c4e2ede83a193e0fb4695938ff3804fd","sha256":"662bc4da4088eb5da2f26095ce9bd2bf5b74053843be369897ecc64d66b6c9df"}
+}

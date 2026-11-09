@@ -79,6 +79,16 @@ def test_system_info_reports_code_fingerprint(client, monkeypatch):
     assert body["code_fingerprint"] == "deadbeef1234"
 
 
+def test_system_info_reports_the_build_commit(client, monkeypatch):
+    """Bug reports carry the commit next to the version (#3293)."""
+    from core import version
+
+    version.build_commit.cache_clear()
+    monkeypatch.setenv("OMNIVOICE_BUILD_COMMIT", "0123456789abcdef")
+    assert client.get("/system/info").json()["build_commit"] == "012345678"
+    version.build_commit.cache_clear()
+
+
 def test_health_exposes_version(client):
     """`/health` is the zero-auth way to confirm the running version (#249)."""
     from core.version import APP_VERSION

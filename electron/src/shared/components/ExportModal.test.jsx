@@ -45,14 +45,14 @@ describe('ExportModal (regression #183)', () => {
     const onClose = vi.fn();
     const setDefaultTrack = vi.fn();
     renderModal({ onClose, setDefaultTrack });
-    fireEvent.click(screen.getByRole('button', { name: /default audio track/i }));
+    fireEvent.click(screen.getByRole('button', { name: /default audio/i }));
     expect(document.querySelector('.export-drawer')).not.toContainElement(
       screen.getByRole('listbox'),
     );
 
     fireEvent.mouseDown(
       target === 'search'
-        ? screen.getByRole('textbox', { name: /search/i })
+        ? screen.getByRole('combobox', { name: /default audio/i })
         : screen.getByRole('option', { name: /^ES/ }),
     );
     expect(onClose).not.toHaveBeenCalled();
@@ -68,9 +68,9 @@ describe('ExportModal (regression #183)', () => {
   it('dismisses the selector before the export drawer when Escape is pressed', () => {
     const onClose = vi.fn();
     renderModal({ onClose });
-    const trigger = screen.getByRole('button', { name: /default audio track/i });
+    const trigger = screen.getByRole('button', { name: /default audio/i });
     fireEvent.click(trigger);
-    fireEvent.keyDown(screen.getByRole('textbox', { name: /search/i }), { key: 'Escape' });
+    fireEvent.keyDown(screen.getByRole('combobox', { name: /default audio/i }), { key: 'Escape' });
     expect(screen.queryByRole('listbox')).not.toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
     expect(trigger).toHaveFocus();
@@ -85,7 +85,7 @@ describe('ExportModal (regression #183)', () => {
     expect(document.querySelector('.export-body')).not.toContainElement(
       document.querySelector('.export-summary'),
     );
-    fireEvent.click(screen.getByRole('button', { name: /default audio track/i }));
+    fireEvent.click(screen.getByRole('button', { name: /default audio/i }));
     fireEvent.mouseDown(screen.getByRole('option', { name: /^ES/ }));
     expect(setDefaultTrack).toHaveBeenCalledWith('es');
     expect(screen.getAllByRole('switch')).toHaveLength(2);

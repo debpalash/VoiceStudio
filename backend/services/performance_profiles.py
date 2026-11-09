@@ -11,6 +11,15 @@ from services.performance_budget import TIERS as _PERFORMANCE_TIERS
 #: the backend gates and the renderer (via ``tts_tiered_engines``).
 TIERED_TTS_ENGINES = frozenset({"omnivoice", "omnivoice-subprocess"})
 
+#: ASR engines the performance tiers manage: the CTranslate2 Whisper runtime and,
+#: on Apple Silicon, MLX Whisper (#3349). Any other active ASR engine (Parakeet
+#: MLX, PyTorch Whisper on ROCm, or one the user picked) is kept, and a Mac
+#: already on MLX Whisper only moves between MLX models: a preset must not move
+#: a Mac from its GPU engine to CPU faster-whisper.
+TIERED_ASR_ENGINES = frozenset(
+    {"faster-whisper", "faster-whisper-isolated", "whisperx", "mlx-whisper"}
+)
+
 
 _PERFORMANCE_PROFILE_KEY = "performance_profile"
 _PERFORMANCE_FAMILIES = (
@@ -92,6 +101,63 @@ def _installed_ct2_models() -> list[dict]:
     ]
 
 
+_CT2_EQUIVALENT_OF_MLX = {
+    "mlx-community/whisper-large-v3-mlx": "Systran/faster-whisper-large-v3",
+    "mlx-community/whisper-large-v3-turbo": "deepdml/faster-whisper-large-v3-turbo-ct2",
+}
+
+
+def _installed_mlx_whisper_model() -> dict | None:
+    from api.routers.setup.models import (
+        KNOWN_MODELS,
+        _model_supported,
+        cache_is_complete,
+        is_cached,
+    )
+    from services import asr_backend
+
+    if not (
+        asr_backend._mps_available()
+        and asr_backend._probe_available(asr_backend.MLXWhisperBackend)
+    ):
+        return None
+    repo_id = asr_backend.mlx_whisper_model_id()
+    model = next((m for m in KNOWN_MODELS if m.get("repo_id") == repo_id), None)
+    if (
+        model is None
+        or not _model_supported(model)
+        or not is_cached(repo_id)
+        or not cache_is_complete(model)
+    ):
+        return None
+    return model
+
+
+def _installed_asr_models() -> list[tuple[str, dict]]:
+    backend = _faster_whisper_backend()
+    models = [(backend, model) for model in _installed_ct2_models()] if backend else []
+    mlx = _installed_mlx_whisper_model()
+    if mlx is None:
+        return models
+    cpu_copy = _CT2_EQUIVALENT_OF_MLX.get(str(mlx["repo_id"]))
+    return [
+        *(item for item in models if item[1].get("repo_id") != cpu_copy),
+        ("mlx-whisper", mlx),
+    ]
+
+
+def _preset_asr_models(active_engine: str | None) -> list[tuple[str, dict]]:
+    """Installed ASR models a preset may select for the active ASR engine.
+
+    CTranslate2 hosts may move to MLX Whisper (CPU to GPU); a host already on
+    MLX Whisper keeps to MLX models so no tier moves it back to the CPU.
+    """
+    models = _installed_asr_models()
+    if active_engine == "mlx-whisper":
+        return [item for item in models if item[0] == "mlx-whisper"]
+    return models
+
+
 def _faster_whisper_backend() -> str | None:
     from services import asr_backend
 
@@ -156,14 +222,17 @@ def _activate_asr_model(tier: str) -> dict | None:
         "ASR_MODEL_FASTER"
     ):
         return None
-    model = _tier_choice(
-        _installed_ct2_models(), tier, size=lambda item: item.get("size_gb")
-    )
-    backend_id = _faster_whisper_backend()
-    if model is None or backend_id is None:
+    active = asr_backend.active_backend_id()
+    if active not in TIERED_ASR_ENGINES:
         return None
+    choice = _tier_choice(
+        _preset_asr_models(active), tier, size=lambda item: item[1].get("size_gb")
+    )
+    if choice is None:
+        return None
+    backend_id, model = choice
     repo_id = str(model["repo_id"])
-    if asr_backend.faster_whisper_model_id() != repo_id:
+    if backend_id != "mlx-whisper" and asr_backend.faster_whisper_model_id() != repo_id:
         asr_backend.select_faster_whisper_model(repo_id)
     if asr_backend.active_backend_id() != backend_id:
         prefs.set_("asr_backend", backend_id)
@@ -225,7 +294,7 @@ def _installed_selectable_families() -> set[str]:
     from services import sherpa_dictation, translation_engines
 
     families: set[str] = set()
-    if _installed_ct2_models() and _faster_whisper_backend():
+    if _installed_asr_models():
         families.add("asr")
     sherpa_available, _ = sherpa_dictation.sherpa_available()
     if sherpa_available and _installed_dictation_models():
@@ -276,7 +345,7 @@ def profile_state(choice: str | None = None) -> dict:
     }
     supported_engines = {
         "tts": TIERED_TTS_ENGINES,
-        "asr": {"faster-whisper", "faster-whisper-isolated"},
+        "asr": {"faster-whisper", "faster-whisper-isolated", "mlx-whisper"},
         "translation": {"nllb"},
         "dictation": {"offline-transducer", "online-transducer"},
     }
@@ -314,6 +383,8 @@ def profile_state(choice: str | None = None) -> dict:
             "engine": asr_engine,
             "model": asr_backend.faster_whisper_model_id()
             if asr_engine in {"faster-whisper", "faster-whisper-isolated"}
+            else asr_backend.mlx_whisper_model_id()
+            if asr_engine == "mlx-whisper"
             else asr_engine,
         },
         "dictation": {
@@ -360,8 +431,11 @@ def profile_state(choice: str | None = None) -> dict:
         # The renderer mirrors the TTS preset only for these engines.
         "tts_tiered_engines": sorted(TIERED_TTS_ENGINES),
         "targets": {
-            family: _PERFORMANCE_TARGETS[family][effective[family]]
-            for family in _PERFORMANCE_TARGETS
+            **{
+                family: _PERFORMANCE_TARGETS[family][effective[family]]
+                for family in _PERFORMANCE_TARGETS
+            },
+            **({"asr": {"engine": "mlx-whisper"}} if asr_engine == "mlx-whisper" else {}),
         },
         "selections": selections,
         "plan": plan,
@@ -438,7 +512,7 @@ def _activate_budgeted_profile(tier: str) -> dict:
                 # Normal next-use switching releases the outgoing engine.
                 prefs.set_("tts_backend", engine)
         elif family == "asr":
-            if asr_backend.faster_whisper_model_id() != model:
+            if engine != "mlx-whisper" and asr_backend.faster_whisper_model_id() != model:
                 asr_backend.select_faster_whisper_model(model)
             prefs.set_("asr_backend", engine)
         elif family == "dictation":

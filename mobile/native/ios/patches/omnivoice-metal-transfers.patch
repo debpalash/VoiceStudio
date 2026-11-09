@@ -1,0 +1,76 @@
+--- a/ggml/src/ggml-metal/ggml-metal-device.m
++++ b/ggml/src/ggml-metal/ggml-metal-device.m
+@@ -1657,11 +1657,10 @@
+ 
+     @autoreleasepool {
+         // src
+-        void * data_ptr = (void *)(uintptr_t) data; // "const cast" the src data
+-        id<MTLBuffer> buf_src = [buf->dev->mtl_device newBufferWithBytesNoCopy:data_ptr
++        // Tensor slices need not have the page alignment required by no-copy buffers.
++        id<MTLBuffer> buf_src = [buf->dev->mtl_device newBufferWithBytes:data
+                                                                length:size
+-                                                              options:MTLResourceStorageModeShared
+-                                                          deallocator:nil];
++                                                              options:MTLResourceStorageModeShared];
+ 
+         GGML_ASSERT(buf_src);
+ 
+@@ -1698,8 +1697,9 @@
+ 
+         dispatch_semaphore_wait(completion_semaphore, DISPATCH_TIME_FOREVER);
+         dispatch_release(completion_semaphore);
++        [buf_src release];
+ 
+         //[cmd_buf waitUntilCompleted];
+     }
+ }
+ 
+@@ -1715,10 +1715,8 @@
+         bid_src.offs += offset;
+ 
+         // dst
+-        id<MTLBuffer> buf_dst = [buf->dev->mtl_device newBufferWithBytesNoCopy:data
+-                                                               length:size
+-                                                              options:MTLResourceStorageModeShared
+-                                                          deallocator:nil];
++        id<MTLBuffer> buf_dst = [buf->dev->mtl_device newBufferWithLength:size
++                                                              options:MTLResourceStorageModeShared];
+ 
+         GGML_ASSERT(buf_dst);
+ 
+@@ -1738,6 +1736,8 @@
+ 
+         [cmd_buf commit];
+         [cmd_buf waitUntilCompleted];
++        memcpy(data, [buf_dst contents], size);
++        [buf_dst release];
+     }
+ }
+ 
+--- a/ggml/src/ggml-metal/ggml-metal-context.m
++++ b/ggml/src/ggml-metal/ggml-metal-context.m
+@@ -351,10 +351,8 @@
+ void ggml_metal_get_tensor_async(ggml_metal_t ctx, const struct ggml_tensor * tensor, void * data, size_t offset, size_t size) {
+     @autoreleasepool {
+         id<MTLDevice> device = ggml_metal_device_get_obj(ctx->dev);
+-        id<MTLBuffer> buf_dst = [device newBufferWithBytesNoCopy:data
+-                                                          length:size
+-                                                         options:MTLResourceStorageModeShared
+-                                                     deallocator:nil];
++        id<MTLBuffer> buf_dst = [device newBufferWithLength:size
++                                                         options:MTLResourceStorageModeShared];
+ 
+         GGML_ASSERT(buf_dst);
+ 
+@@ -378,6 +376,11 @@
+                            size:size];
+ 
+         [encoder endEncoding];
++        // The caller owns data until synchronization; copy before completion.
++        [cmd_buf addCompletedHandler:^(id<MTLCommandBuffer> completed) {
++            GGML_UNUSED(completed);
++            memcpy(data, [buf_dst contents], size);
++        }];
+         [cmd_buf commit];
+         [buf_dst release];
+ 

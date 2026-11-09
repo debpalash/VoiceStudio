@@ -4,6 +4,7 @@ import { CopyIcon, MicIcon, PauseIcon, PlayIcon, SquareIcon, XIcon } from 'lucid
 import { Button } from '@/components/ui/button';
 import { useBackendStatus } from '@/hooks/use-backend-status';
 import { isBackendReachable } from '@shared/utils/backendStage';
+import { dictationSeparator } from '@shared/utils/captureProtocol';
 import { LiveDictation } from './live-dictation';
 import { addTranscription } from '@shared/utils/transcriptionsStore';
 
@@ -51,6 +52,7 @@ export function CaptureWidget() {
       setDelivery(null);
       output.current = Promise.resolve();
       let sequence = 0;
+      let typed = '';
       void api
         .accept(event.session)
         .then(() => {
@@ -59,10 +61,13 @@ export function CaptureWidget() {
             addTranscription(entry);
             const text = entry.refined_text || entry.text || '';
             const index = sequence++;
+            // Same separator as the summary join: none between CJK pieces.
+            const piece = dictationSeparator(typed, text) + text;
+            typed += piece;
             output.current = output.current
               .then(async () => {
                 if (session.current !== event.session) return;
-                const outcome = await api.deliver(event.session, index, (index ? ' ' : '') + text);
+                const outcome = await api.deliver(event.session, index, piece);
                 if (session.current === event.session && outcome === 'copied')
                   setDelivery('copied');
               })

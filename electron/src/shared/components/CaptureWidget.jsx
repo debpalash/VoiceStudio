@@ -765,35 +765,46 @@ export default function CaptureWidget({ onDismiss }) {
       }
     };
     const acknowledgeDelivery = (event) => {
-      const deliveryId = event?.payload?.deliveryId;
-      const eventRegistrationId = event?.payload?.registrationId;
-      if (eventRegistrationId != null && eventRegistrationId !== registrationId) return false;
-      if (deliveryId != null) {
-        return tauriInvoke('acknowledge_dictation_capture_delivery', {
-          registrationId,
-          deliveryId,
-        })
-          .catch((err) => {
-            console.warn('dictation delivery acknowledgement failed:', err);
-            return false;
-          })
-          .then((acknowledged) => acknowledged !== false);
+      const payload = event?.payload || {};
+      if (payload.registrationId !== undefined && payload.registrationId !== registrationId) {
+        return false;
       }
-      return true;
-    };
-    const completeDelivery = async (event, error = null) => {
-      const deliveryId = event?.payload?.deliveryId;
-      if (deliveryId == null) return;
+      if (payload.deliveryId === undefined) return true;
       try {
-        await tauriInvoke('complete_dictation_capture_delivery', {
-          registrationId,
-          deliveryId,
-          error,
+        return Promise.resolve(
+          tauriInvoke('acknowledge_dictation_capture_delivery', {
+            registrationId,
+            deliveryId: payload.deliveryId,
+          }),
+        )
+          .then((accepted) => accepted !== false)
+          .catch((err) => {
+            console.warn('acknowledge_dictation_capture_delivery was rejected:', err);
+            return false;
+          });
+      } catch (err) {
+        console.warn('acknowledge_dictation_capture_delivery threw before returning:', err);
+        return Promise.resolve(false);
+      }
+    };
+    const completeDelivery = (event, error = null) => {
+      const deliveryId = event?.payload?.deliveryId;
+      if (deliveryId === undefined) return;
+      try {
+        void Promise.resolve(
+          tauriInvoke('complete_dictation_capture_delivery', {
+            registrationId,
+            deliveryId,
+            error,
+          }),
+        ).catch((err) => {
+          console.warn('complete_dictation_capture_delivery was rejected:', err);
         });
       } catch (err) {
-        console.warn('dictation delivery completion failed:', err);
+        console.warn('complete_dictation_capture_delivery threw before returning:', err);
       }
     };
+    const startFailure = 'Dictation could not start';
     (async () => {
       try {
         registrationId = await tauriInvoke('begin_dictation_capture_registration');
@@ -802,59 +813,56 @@ export default function CaptureWidget({ onDismiss }) {
           return;
         }
         const { listen } = await import('@tauri-apps/api/event');
-        unlistenStart = await listen('tray-dictate', async (event) => {
-          let acknowledgement = acknowledgeDelivery(event);
-          if (acknowledgement === false) return;
-          if (acknowledgement !== true) acknowledgement = await acknowledgement;
-          if (!acknowledgement) return;
+        const handleStart = async (event) => {
           const now = Date.now();
           if (now - nativeEventAtRef.current.start < 150) {
-            await completeDelivery(event, 'Duplicate dictation start ignored');
+            completeDelivery(event, 'Repeated start ignored');
             return;
           }
           nativeEventAtRef.current.start = now;
+
           const sessionId = event?.payload?.sessionId;
           if (!sessionId) {
-            hideWidgetWindow();
-            await completeDelivery(event, 'Dictation output session is missing');
+            void hideWidgetWindow();
+            completeDelivery(event, 'No output session was supplied');
             return;
           }
-          // Fresh: the model may have been changed from the main window
-          // since this store last loaded (see ensureDictationPrefsHydrated).
+
           await ensureDictationPrefsHydrated({ fresh: true });
           if (!enabledRef.current) {
-            // The hotkey is inert, but Rust has already shown the window.
-            // Put it back rather than leaving an empty capsule on screen.
-            hideWidgetWindow();
-            await finishOutputSession(sessionId);
-            await completeDelivery(event, 'Dictation is disabled');
+            void hideWidgetWindow();
+            void finishOutputSession(sessionId);
+            completeDelivery(event, 'Dictation is turned off');
             return;
           }
+
           const sequence = ++nativeStartSequenceRef.current;
-          const s = stateRef.current;
+          const initialState = stateRef.current;
           const startupWasInFlight = startInFlightRef.current;
-          const restartable = s === 'idle' || s === 'done' || s === 'error' || s === 'setup';
+          const restartable = ['idle', 'done', 'error', 'setup'].includes(initialState);
           if (!restartable && !startupWasInFlight) {
-            if (modeRef.current === 'toggle' && s === 'recording') {
+            if (modeRef.current === 'toggle' && initialState === 'recording') {
               stopRecordingRef.current?.();
             }
             try {
               await tauriInvoke('reject_dictation_output_session', { sessionId });
             } catch (err) {
-              console.warn('reject dictation output session failed:', err);
+              console.warn('dictation output session rejection failed:', err);
             }
-            await completeDelivery(event, 'Dictation is already active');
+            completeDelivery(event, 'A capture is already running');
             return;
           }
+
           const trackHold = modeRef.current === 'hold';
           if (trackHold) {
             holdStartSequenceRef.current = sequence;
             holdStartRef.current = 'starting';
           }
-          const clearPendingHold = () => {
-            if (holdStartSequenceRef.current !== sequence) return;
-            holdStartRef.current = null;
-            holdStartSequenceRef.current = 0;
+          const resetPendingHold = () => {
+            if (holdStartSequenceRef.current === sequence) {
+              holdStartRef.current = null;
+              holdStartSequenceRef.current = 0;
+            }
           };
 
           const activation = nativeActivationChainRef.current.then(() =>
@@ -864,99 +872,107 @@ export default function CaptureWidget({ onDismiss }) {
           try {
             await activation;
           } catch (err) {
-            console.warn('activate dictation output session failed:', err);
-            clearPendingHold();
-            await finishOutputSession(sessionId);
-            hideWidgetWindow();
-            await completeDelivery(event, `Could not activate dictation output: ${err}`);
+            console.warn('dictation output activation failed:', err);
+            resetPendingHold();
+            void finishOutputSession(sessionId);
+            void hideWidgetWindow();
+            completeDelivery(event, `Output activation failed: ${String(err?.message || err)}`);
             return;
           }
+
           if (cancelled || sequence !== nativeStartSequenceRef.current || !enabledRef.current) {
-            clearPendingHold();
-            await finishOutputSession(sessionId);
-            await completeDelivery(event, 'Dictation start was cancelled');
+            resetPendingHold();
+            void finishOutputSession(sessionId);
+            completeDelivery(event, 'Dictation start was cancelled or replaced');
             return;
           }
+
+          const completeAfterStart = (result) =>
+            completeDelivery(event, result ? null : startFailure);
+          const launchRecording = (hold) => {
+            try {
+              void Promise.resolve(startRecordingRef.current?.(hold, sessionId)).then(
+                completeAfterStart,
+                (err) => {
+                  console.warn('dictation recording startup failed:', err);
+                  completeDelivery(event, startFailure);
+                },
+              );
+            } catch (err) {
+              console.warn('dictation recording startup failed:', err);
+              completeDelivery(event, startFailure);
+            }
+          };
+
           if (startupWasInFlight) {
             const current = stateRef.current;
             if (startInFlightRef.current) {
               outputSessionIdRef.current = sessionId;
               pendingNativeStartRef.current = { sessionId, trackHold, sequence };
-              await completeDelivery(event, 'Another dictation start is already in progress');
-            } else if (current === 'recording' || current === 'transcribing') {
-              outputSessionIdRef.current = sessionId;
-              await completeDelivery(event);
-            } else if (
-              current === 'idle' ||
-              current === 'done' ||
-              current === 'error' ||
-              current === 'setup'
-            ) {
-              outputSessionIdRef.current = sessionId;
-              void Promise.resolve(startRecordingRef.current?.(trackHold, sessionId)).then(
-                (accepted) =>
-                  completeDelivery(event, accepted ? null : 'Dictation could not start'),
-              );
-            } else {
-              clearPendingHold();
-              await finishOutputSession(sessionId);
-              await completeDelivery(event, 'Dictation could not accept this start');
+              completeDelivery(event, 'Another capture is still starting');
+              return;
             }
+            if (current === 'recording' || current === 'transcribing') {
+              outputSessionIdRef.current = sessionId;
+              completeDelivery(event);
+              return;
+            }
+            if (['idle', 'done', 'error', 'setup'].includes(current)) {
+              outputSessionIdRef.current = sessionId;
+              launchRecording(trackHold);
+              return;
+            }
+            resetPendingHold();
+            void finishOutputSession(sessionId);
+            completeDelivery(event, 'The current state cannot accept a start');
             return;
           }
-          if (s === 'setup') {
-            // Re-probe on each press — the user may have just granted access
-            // in System Settings. A missing grant no longer blocks capture:
-            // native delivery can truthfully fall back to clipboard-only.
+
+          if (initialState === 'setup') {
             outputSessionIdRef.current = sessionId;
-            void checkAccessibility().then(async () => {
+            void checkAccessibility().then(() => {
               if (outputSessionIdRef.current !== sessionId) {
-                await completeDelivery(event, 'Dictation output session changed before startup');
+                completeDelivery(event, 'Output session changed before startup');
                 return;
               }
-              const accepted = await startRecordingRef.current?.(
-                modeRef.current === 'hold',
-                sessionId,
-              );
-              await completeDelivery(event, accepted ? null : 'Dictation could not start');
+              launchRecording(modeRef.current === 'hold');
             });
             return;
           }
-          const idle = s === 'idle' || s === 'done' || s === 'error';
+
+          const idle = ['idle', 'done', 'error'].includes(initialState);
           if (modeRef.current === 'toggle') {
-            // Press once to start, again to stop.
             if (idle) {
-              void Promise.resolve(startRecordingRef.current?.(false, sessionId)).then((accepted) =>
-                completeDelivery(event, accepted ? null : 'Dictation could not start'),
-              );
+              launchRecording(false);
               return;
-            } else if (s === 'recording') {
+            }
+            if (initialState === 'recording') {
               stopRecordingRef.current?.();
-              await completeDelivery(event);
+              completeDelivery(event);
               return;
             }
           } else if (idle) {
-            // Hold mode: keydown → start.
-            void Promise.resolve(startRecordingRef.current?.(true, sessionId)).then((accepted) =>
-              completeDelivery(event, accepted ? null : 'Dictation could not start'),
-            );
+            launchRecording(true);
             return;
           }
-          await completeDelivery(event, 'Dictation could not start');
-        });
-        unlistenStop = await listen('tray-dictate-stop', async (event) => {
-          let acknowledgement = acknowledgeDelivery(event);
-          if (acknowledgement === false) return;
-          if (acknowledgement !== true) acknowledgement = await acknowledgement;
-          if (!acknowledgement) return;
+          completeDelivery(event, startFailure);
+        };
+
+        const onStart = (event) => {
+          const receipt = acknowledgeDelivery(event);
+          if (receipt === false) return;
+          if (receipt === true) return handleStart(event);
+          return receipt.then((accepted) => (accepted ? handleStart(event) : undefined));
+        };
+
+        const handleStop = async (event) => {
           const now = Date.now();
           if (now - nativeEventAtRef.current.stop < 150) {
-            await completeDelivery(event, 'Duplicate dictation stop ignored');
+            completeDelivery(event, 'Repeated stop ignored');
             return;
           }
           nativeEventAtRef.current.stop = now;
           await ensureDictationPrefsHydrated();
-          // Only hold mode acts on release; toggle ignores it.
           let accepted = false;
           if (modeRef.current === 'hold' && stateRef.current === 'recording') {
             stopRecordingRef.current?.();
@@ -965,11 +981,18 @@ export default function CaptureWidget({ onDismiss }) {
             holdStartRef.current = 'released';
             accepted = true;
           }
-          await completeDelivery(
-            event,
-            accepted ? null : 'Dictation is not recording in hold mode',
-          );
-        });
+          completeDelivery(event, accepted ? null : 'No hold recording is ready to stop');
+        };
+
+        const onStop = (event) => {
+          const receipt = acknowledgeDelivery(event);
+          if (receipt === false) return;
+          if (receipt === true) return handleStop(event);
+          return receipt.then((accepted) => (accepted ? handleStop(event) : undefined));
+        };
+
+        unlistenStart = await listen('tray-dictate', onStart);
+        unlistenStop = await listen('tray-dictate-stop', onStop);
         await ensureDictationPrefsHydrated();
         if (cancelled) {
           await teardownRegistration();
@@ -2110,7 +2133,8 @@ export default function CaptureWidget({ onDismiss }) {
       const formData = new FormData();
       formData.append('audio', blob, `capture.${extension}`);
       formData.append('mode', captureMode);
-      // Hotkey dictation: apply the saved vocabulary hint (file transcription doesn't).
+      // Marks this upload as hotkey dictation so the server may apply the saved
+      // vocabulary hint; file transcription never sets it.
       formData.append('dictation', 'true');
 
       try {
@@ -2347,7 +2371,7 @@ export default function CaptureWidget({ onDismiss }) {
       <div className="capture-pill__preview">
         <span
           className="block text-[14px] leading-[1.5] font-medium"
-          title={state === 'error' ? errorInfo?.message || label || undefined : label || undefined}
+          title={(state === 'error' ? errorInfo?.message || label : label) || undefined}
         >
           {emoji} {label}
         </span>

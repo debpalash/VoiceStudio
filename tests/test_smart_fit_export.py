@@ -133,7 +133,9 @@ class TestVideoRetimePlanFor:
     def test_legacy_wins_when_job_strategy_is_stretch_video(self):
         from api.routers.dub_export import _video_retime_plan_for
         job = _smart_fit_job()
+        # Re-rendered with Stretch Video: the Smart Fit plan is stale.
         job["timing_strategy"] = "stretch_video"
+        job["dubbed_tracks"]["de"]["timing_strategy"] = "stretch_video"
         legacy_entry = {"plan": [dict(_PLAN[0])]}
         job["video_stretch_plans"] = {"de": legacy_entry}
         kind, entry = _video_retime_plan_for(job, "de")
@@ -223,13 +225,13 @@ class TestChunkFilterGraph:
         graph, label = build_chunk_filter_graph(chunks, "[0:v]", tail_pad_s=0.5)
         assert label == "[vstretched]"
         assert graph.endswith(
-            "concat=n=5:v=1:a=0[vcat];[vcat]tpad=stop_mode=clone:stop_duration=0.5000[vstretched]"
+            "concat=n=5:v=1:a=0[vcat];[vcat]pad=ceil(iw/2)*2:ceil(ih/2)*2,tpad=stop_mode=clone:stop_duration=0.5000[vstretched]"
         )
 
-    def test_no_tail_pad_keeps_legacy_concat_terminal(self):
+    def test_no_tail_pad_keeps_frame_padding_only(self):
         chunks = expand_retime_chunks(_PLAN, _ORIG_DUR)
         graph, _ = build_chunk_filter_graph(chunks, "[0:v]")
-        assert graph.endswith("concat=n=5:v=1:a=0[vstretched]")
+        assert graph.endswith("concat=n=5:v=1:a=0[vcat];[vcat]pad=ceil(iw/2)*2:ceil(ih/2)*2[vstretched]")
         assert "tpad" not in graph and "fps=" not in graph
 
 
@@ -326,8 +328,9 @@ class TestBurnPolicyAndFittedCues:
         content = open(path, encoding="utf-8").read()
         assert "Dialogue: 0,0:00:01.00,0:00:03.75,Default," in content
         # "Hello" sweeps until "there" starts on the FITTED timeline:
-        # 2.375 - 1.0 = 1.375 s → 138 cs (\kf rounds to centiseconds).
-        assert "{\\kf138}Hello {\\kf138}there" in content
+        # 2.375 s rounds to 2.38 s, so "Hello" gets 138 cs and "there" the
+        # 137 cs left before the 3.75 s cue end (275 cs in all).
+        assert "{\\kf138}Hello {\\kf137}there" in content
 
     def test_write_burn_srt_uses_fitted_times(self, tmp_path):
         from api.routers.dub_export import _write_burn_srt

@@ -2,6 +2,7 @@ export interface TranscriptSegment {
   start?: number | null;
   end?: number | null;
   text: string;
+  speaker?: string;
 }
 export interface TranscriptEntry {
   id: number;
@@ -10,6 +11,7 @@ export interface TranscriptEntry {
   language: string;
   duration_s: number;
   segments: TranscriptSegment[];
+  speakers?: string[];
   timestamp: string;
 }
 export const TRANSCRIPTIONS_KEY: string;

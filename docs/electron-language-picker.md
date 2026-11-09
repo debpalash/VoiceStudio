@@ -5,19 +5,31 @@ native name when different, and language code. Search matches all names and code
 the representative flag's country name/code, and flag emoji,
 ignores case and accents, and runs locally without a typing delay or network requests.
 The selected value remains the existing canonical language name in projects and requests.
+Portuguese is offered as Portuguese (Brazil) and Portuguese (Portugal); a value saved as
+plain "Portuguese" shows as Portuguese (Brazil) and is not rewritten. When the selected
+model cannot render the chosen variant's accent, the picker footer says so (the engine's
+`rendered_dialects`); see [Supported Languages](languages.md#regional-variants).
 
 ![Responsive language picker with supported choices first](assets/language-picker.png)
 
-The screenshot uses fixture model metadata to demonstrate both enabled and disabled rows.
+The screenshot uses fixture model metadata: supported languages are listed and the
+unsupported ones wait behind **Show all languages**.
 
 ## Selection and accessibility
 
 The popup adapts to one, two or three columns. Auto and up to four recent enabled
-choices lead the list; remaining enabled languages precede unavailable languages.
-Unavailable results remain searchable and have a model-specific disabled explanation.
-Recents stay on this device and never override model support.
+choices (under **Recent**) lead the list, followed by the languages the selected model
+supports. Unsupported languages are collapsed behind a single **Show all languages**
+row (with a count); it is an ordinary list row, so Up/Down reach it and Enter expands
+or collapses it without closing the popup. Search still finds unsupported languages,
+listed after the supported matches with a model-specific disabled explanation. A saved
+unsupported choice keeps the section expanded so the current value stays visible.
+Regional or script variants of one language (for example Portuguese (Brazil) and
+Portuguese (Portugal)) are grouped under that language's name. Recents stay on this
+device and never override model support.
 
-Opening focuses search. Up/Down follow reading order across enabled choices; Enter
+Opening focuses search. Up/Down follow reading order across enabled choices and the
+Show all languages row; Enter
 selects and Escape cancels. Alt+Left/Right also navigate, respecting RTL; ordinary
 Left/Right and Home/End keep their native text-editing behavior. IME confirmation
 does not select a language. Closing restores focus; Tab exits the popup.
@@ -42,22 +54,24 @@ Qwen3-TTS covers 10 languages and OuteTTS 1.0 covers 23. The same list drives th
 picker and the synthesis guard. Kokoro reads its tables from the installed package
 (including `dict(...)` declarations) without importing MLX or loading weights, and
 falls back to its declared set if those tables cannot be read. Only a custom
-MLX-Audio repo is explicitly unknown, which is not a claim of universal support. Worker language
-metadata is not yet advertised by the runtime API, so local lists never restrict a
-remote worker. Loading and failed discovery have separate labels. No models are
+MLX-Audio repo is explicitly unknown, which is not a claim of universal support.
+Loading and failed discovery have separate labels. No models are
 downloaded or switched by selecting a language. Auto retains each engine's existing
 automatic/default behavior; it does not add support for another language.
 
 ## Maintenance and validation
 
-`SearchableSelect` owns an opt-in virtualized surface; existing classic consumers
-retain their behavior. `language-codes.json` mirrors `LANG_NAME_TO_ID` and is guarded
+The picker's virtualized menu lives in the renderer
+(`features/clone/language-menu.tsx`); ranking and the recent/supported/collapsed row
+layout are pure functions in `lib/language-search.ts` with unit tests. The classic
+shared `SearchableSelect` is unchanged for its other consumers. `language-codes.json` mirrors `LANG_NAME_TO_ID` and is guarded
 by a backend parity test. User-facing labels live in both Electron locale trees.
 
 Run picker, language-options, TTS-language and affected generation unit tests;
 `tests/test_engine_language_options.py` with `HF_HUB_OFFLINE=1` and an empty cache;
 Electron typecheck and locale checks. `electron/tests/language-picker-smoke.mjs`
-checks browser layout, flags, focus return, disabled selection, active-option mounting,
+checks browser layout, flags, the collapsed unsupported row, focus return, disabled
+selection, active-option mounting,
 and measures filtering with English/German/Arabic and desktop platform bridge fixtures.
 Set `VOICESTUDIO_UI_URL` to the smoke server and optionally `PLAYWRIGHT_CHANNEL`.
 These bridge fixtures do not replace native OS or manual screen-reader testing.

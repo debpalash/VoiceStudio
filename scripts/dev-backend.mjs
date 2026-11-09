@@ -27,10 +27,12 @@ import { homedir } from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
+import { DEFAULT_BACKEND_PORT } from "../config/app-config.mjs";
+import { asciiSafePthFilesSync } from "../electron/scripts/pth-ascii.mjs";
 
-export const DEFAULT_BACKEND_PORT = 3900;
+export { DEFAULT_BACKEND_PORT };
 
-/** The port Vite proxies to (electron/vite.web.config.ts: OMNIVOICE_PORT || 3900). */
+/** The port Vite proxies to (OMNIVOICE_PORT or config/app.json). */
 export function backendPort(env = process.env) {
   const port = Number.parseInt(String(env.OMNIVOICE_PORT ?? "").trim(), 10);
   return Number.isInteger(port) && port > 0 && port < 65536 ? port : DEFAULT_BACKEND_PORT;
@@ -66,27 +68,21 @@ export const CRASH_RESTART_LIMIT = 3;
 export const CRASH_RESTART_WINDOW_MS = 60_000;
 export const SOURCE_RELOAD_DEBOUNCE_MS = 250;
 
-/**
- * Stop a spawned backend and everything it started.
- *
- * We spawn `uv`, which spawns uvicorn as its own child. Windows has no signals:
- * `child.kill()` maps to TerminateProcess on the DIRECT child only, so killing
- * `uv` orphaned the uvicorn grandchild — which kept holding port 3900. The next
- * spawn then failed to bind ([Errno 10048]), which the supervisor counted as a
- * crash, and three of those tore the whole dev stack down. `taskkill /T` walks
- * the tree; POSIX keeps plain signal delivery.
- */
-export function killProcessTree(child, sig, { platform = process.platform, run = spawnSync } = {}) {
-  if (platform !== "win32") {
+export function killProcessTree(
+  child,
+  sig,
+  { platform = process.platform, run = spawnSync } = {},
+) {
+  if (platform === "win32") {
+    const taskkillArgs = ["/pid", `${child.pid}`, "/T", "/F"];
+    const attempt = run("taskkill", taskkillArgs, { stdio: "ignore" });
+    const treeWasStopped = attempt != null && attempt.error == null && attempt.status === 0;
+    if (treeWasStopped) return "taskkill";
     child.kill(sig);
-    return "signal";
-  }
-  const result = run("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore" });
-  if (!result || result.error || result.status !== 0) {
-    child.kill(sig); // taskkill unavailable or the process already exited
     return "fallback";
   }
-  return "taskkill";
+  child.kill(sig);
+  return "signal";
 }
 
 export function isBackendSourceChange(filename) {
@@ -150,6 +146,8 @@ export function buildExitBanner({ code, signal, logTail, logPath, platform = pro
 
 // Setup is explicit and chooses the CPU/CUDA wheel graph. Never let launch or
 // restart silently restore the default CUDA group (or undo a ROCm swap).
+
+/** `uv run` argv for launching the backend: same as uvicornArgs, minus any dependency re-sync. */
 export function uvRunArgs(env = process.env) {
   const args = uvicornArgs(env);
   return [args[0], "--no-sync", ...args.slice(1)];
@@ -161,6 +159,9 @@ export function uvRunArgs(env = process.env) {
  */
 export function createBackendSupervisor({
   spawnBackend = () => spawn("uv", uvRunArgs(), { stdio: "inherit" }),
+  // A manual `uv sync` rewrites the editable .pth with the checkout path, which
+  // a non-ASCII folder on a non-UTF-8 Windows code page cannot start (#1783).
+  healPthFiles = () => asciiSafePthFilesSync(path.resolve(".venv")),
   watchBackend = (onChange) =>
     watch("backend", { recursive: true }, (_event, filename) => onChange(filename?.toString())),
   killBackend = (proc, sig) => killProcessTree(proc, sig),
@@ -176,10 +177,7 @@ export function createBackendSupervisor({
   let restartTimer = null;
   let reloadTimer = null;
   let reloadRequested = false;
-  // True when the reload we asked for was served by a forced tree-kill, which
-  // reports a non-zero exit and no signal. Only then may such an exit be read
-  // as "the reload we asked for" instead of "it crashed mid-reload".
-  let reloadKillForced = false;
+  let forcedReloadKill = false;
   let watcher = null;
   let crashTimes = [];
   let requestedExitCode = null;
@@ -225,9 +223,10 @@ export function createBackendSupervisor({
       reloadRequested = true;
       report(`[dev-backend] ${filename} changed; reloading backend…`);
       try {
-        reloadKillForced = killBackend(child, "SIGTERM") === "taskkill";
+        forcedReloadKill = killBackend(child, "SIGTERM") === "taskkill";
       } catch {
         reloadRequested = false;
+        forcedReloadKill = false;
       }
     }, SOURCE_RELOAD_DEBOUNCE_MS);
   }
@@ -248,6 +247,12 @@ export function createBackendSupervisor({
         report(`[dev-backend] backend source watcher failed: ${err.message}`);
         stop("SIGTERM", 1);
       });
+    }
+
+    try {
+      healPthFiles();
+    } catch {
+      // Best effort: the launch below reports a Python that still cannot start.
     }
 
     let current;
@@ -281,9 +286,8 @@ export function createBackendSupervisor({
 
       if (reloadRequested) {
         reloadRequested = false;
-        const expectedReloadExit =
-          code === 0 || signal === "SIGTERM" || reloadKillForced;
-        reloadKillForced = false;
+        const expectedReloadExit = code === 0 || signal === "SIGTERM" || forcedReloadKill;
+        forcedReloadKill = false;
         if (expectedReloadExit) {
           start();
           return;

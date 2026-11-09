@@ -1,21 +1,21 @@
 # Integration directory
 
-Directory entries are not paid sponsors or endorsements. The app lists only entries with a completed built-in setup block or setup panel. Each carries the **Works with VoiceStudio** badge and capability chips (MCP server, Speech API, Transcription API, Workflow template, Self-hosted, Local language model, Phone calls). Catalog metadata alone never creates a card or a routable detail page. Setup blocks and panels live in one registry keyed by the catalog slug (`electron/src/renderer/src/features/integrations/setup-registry.ts`), so a connector becomes visible only when its wiring is added there. The provider's website opens from the detail page's **Website** card. Icons are bundled locally so viewing the directory sends no logo requests to providers. Brand marks belong to their respective owners.
+Directory entries are not paid sponsors or endorsements. The app lists only entries with a completed built-in setup block or setup panel. Each carries the **Works with VoiceStudio** badge and capability chips (MCP server, Speech API, Transcription API, Workflow template, Self-hosted, Local language model, Phone calls). Catalog metadata alone never creates a card or a routable detail page. Setup blocks and panels live in one registry keyed by the catalog slug (`electron/src/renderer/src/features/integrations/setup-registry.ts`), so a connector becomes visible only when its wiring is added there. The provider's website opens from the detail page's **Website** card. Icons are bundled locally so viewing the directory sends no logo requests to providers. Brand marks belong to their respective owners. Every visible entry must ship a real brand mark; a test fails if one falls back to the generic placeholder.
 
-The compact footer’s Integrations button opens the directory. Each visible detail page offers the provider's website as a separate action. Featured sponsors without completed integration wiring do not receive placeholder detail pages.
+The sidebar's Integrations entry opens the directory. Each visible detail page offers the provider's website as a separate action. Featured sponsors without completed integration wiring do not receive placeholder detail pages.
 
 | Company | Official source | Icon source |
 |---|---|---|
 | Twilio | [Website](https://www.twilio.com) | Bundled site icon |
 | n8n | [Website](https://n8n.io) | Bundled site icon |
 | GitHub Container Registry | [Website](https://ghcr.io) | Bundled GitHub icon |
-| Docker | [Website](https://www.docker.com) | Bundled site icon |
+| Docker | [Website](https://www.docker.com) | Simple Icons 15.0.0 mark (CC0), Docker blue |
 | Model Context Protocol | [Website](https://modelcontextprotocol.io) | Bundled site icon |
-| OpenAI Agents | [Guide](https://platform.openai.com/docs/guides/agents) | Bundled local mark |
-| Claude Code | [Guide](https://docs.anthropic.com/en/docs/claude-code) | Bundled site icon |
-| Cursor | [Website](https://cursor.com) | Bundled site icon |
-| Codex CLI | [Repository](https://github.com/openai/codex) | Bundled local mark |
-| VoiceStudio API | [Repository](https://github.com/debpalash/VoiceStudio) | Bundled local mark |
+| OpenAI Agents | [Guide](https://platform.openai.com/docs/guides/agents) | Simple Icons 15.0.0 OpenAI mark (CC0) on a black tile |
+| Claude Code | [Guide](https://docs.anthropic.com/en/docs/claude-code) | Simple Icons 15.0.0 Claude mark (CC0), Claude orange |
+| Cursor | [Website](https://cursor.com) | Official site icon (`cursor.com/marketing-static/favicon.svg`) |
+| Codex CLI | [Repository](https://github.com/openai/codex) | Simple Icons 15.0.0 OpenAI mark (CC0) on a black tile |
+| VoiceStudio API | [Repository](https://github.com/debpalash/VoiceStudio) | VoiceStudio app icon (`voicestudio.svg`, a copy of `electron/public/favicon.svg`) |
 
 ## Connect coding agents
 

@@ -1,0 +1,27 @@
+name: CLA reminders
+
+on:
+  schedule:
+    - cron: '17 8 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  statuses: read
+
+jobs:
+  reminders:
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: cla-reminders
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - run: python3 .github/scripts/cla_reminders.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

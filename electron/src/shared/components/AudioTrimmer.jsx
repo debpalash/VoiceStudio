@@ -66,7 +66,6 @@ export default function AudioTrimmer({ file, maxSeconds = 15, onConfirm, onCance
   const [endInput, setEndInput] = useState('0.00');
 
   const [audioMeta, setAudioMeta] = useState(null);
-
   useEffect(() => {
     stateRef.current = {
       start,

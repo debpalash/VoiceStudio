@@ -2,7 +2,15 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import type { ReactNode } from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 
-const mock = vi.hoisted(() => ({ save: vi.fn() }));
+const mock = vi.hoisted(() => ({ save: vi.fn(), start: vi.fn() }));
+vi.mock('@/hooks/use-reference-asr-install', () => ({
+  useReferenceAsrInstall: () => ({
+    start: mock.start,
+    installing: false,
+    progress: null,
+    error: null,
+  }),
+}));
 vi.mock('@/hooks/use-profiles', () => ({
   useCreateCloneProfile: () => ({ mutateAsync: mock.save, isPending: false }),
   useProfiles: () => ({ data: [] }),
@@ -44,7 +52,7 @@ it('blocks direct submission while transcribing and permits saving afterward', a
 
 it('opens optional details and explains a failed automatic transcription', async () => {
   const retry = vi.fn();
-  render(<OptionalDetails transcription={{ state: 'failed', retry }} />);
+  render(<OptionalDetails transcription={{ state: 'failed', recommended: null, retry }} />);
 
   expect(await screen.findByText('transcriptions.failed')).toHaveClass('text-destructive');
   fireEvent.click(screen.getByRole('button', { name: 'referenceAsr.retry' }));
@@ -55,7 +63,7 @@ it('hands missing reference ASR to the app-operation repair flow without losing 
   const retry = vi.fn();
   const listener = vi.fn();
   window.addEventListener('voicestudio:repair-agent-open', listener);
-  render(<OptionalDetails transcription={{ state: 'unavailable', retry }} />);
+  render(<OptionalDetails transcription={{ state: 'unavailable', recommended: null, retry }} />);
 
   fireEvent.click(screen.getByRole('button', { name: 'repairAgent.fix' }));
 
@@ -66,4 +74,14 @@ it('hands missing reference ASR to the app-operation repair flow without losing 
   fireEvent.click(screen.getByRole('button', { name: 'referenceAsr.retry' }));
   expect(retry).toHaveBeenCalledOnce();
   window.removeEventListener('voicestudio:repair-agent-open', listener);
+});
+
+it('offers a one-click install of the recommended speech-to-text model', () => {
+  const retry = vi.fn();
+  const recommended = { repo_id: 'Systran/faster-whisper-large-v3', label: 'Whisper', size_gb: 3 };
+  render(<OptionalDetails transcription={{ state: 'unavailable', retry, recommended }} />);
+
+  expect(mock.start).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'referenceAsr.install' }));
+  expect(mock.start).toHaveBeenCalledOnce();
 });

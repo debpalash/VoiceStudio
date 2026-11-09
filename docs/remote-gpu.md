@@ -9,11 +9,9 @@ inference staying on the powerful machine.
 > gate (share PIN, API key, dictation WebSocket, trusted networks) with the exact
 > headers, params, and `401`/`403`/`429` meanings.
 
-> Want to keep working *here* and only send individual jobs to another GPU? That
-> is a different feature — see [docs/remote-workers.md](remote-workers.md). This
-> page moves the whole backend (and your projects with it) to the other machine;
-> remote workers keep everything local and farm out single tasks. Both are
-> supported, and setting one up does not affect the other.
+This page covers the retained **remote backend** mode: the whole backend and its
+projects run on the other machine. It is distinct from Network sharing, which
+serves the current backend's UI to other devices on the LAN.
 
 This is opt-in and off by default: with no API key set, the backend stays
 loopback-only exactly as before.

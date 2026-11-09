@@ -5,6 +5,7 @@ import {
   AudioLinesIcon,
   Clock3Icon,
   FingerprintIcon,
+  RepeatIcon,
   SlidersHorizontalIcon,
   WandSparklesIcon,
 } from 'lucide-react';
@@ -13,14 +14,15 @@ import { Button } from '@/components/ui/button';
 import { ProfileAvatar } from '@/components/profile-avatar';
 import { SaveAudioButton } from '@/components/save-audio-button';
 import { WaveformPlayer } from '@/components/waveform-player';
-import { audioUrl } from '@/lib/api/client';
+import { audioMp3Url, audioUrl } from '@/lib/api/client';
 import type { HistoryItem } from '@/lib/api/types';
 import { reuseTake, takeSettings } from '@/lib/store/takes';
 import { useGenerateClone } from '@/hooks/use-generate';
 import { useNavigate } from '@tanstack/react-router';
 import { designDraftFromTake, writeDraft } from '@/features/design/design-draft';
 import { openTake } from '@/lib/store/takes';
-import { setCloneSetting } from '@/lib/store/clone-settings';
+import { setCloneSetting, useCloneSetting } from '@/lib/store/clone-settings';
+import { languageOptions } from '@/lib/language-options';
 import { formatRelative, formatSeconds } from './format';
 
 const NUMERIC_SETTINGS = [
@@ -33,12 +35,24 @@ const NUMERIC_SETTINGS = [
   ['layerPenalty', 'clone.layer_pen'],
 ] as const;
 
+/** Two language settings name the same choice ("Auto" and an unset take are both Auto). */
+export function sameLanguage(left: string | null | undefined, right: string | null | undefined) {
+  const normal = (value: string | null | undefined) => (value?.trim() || 'Auto').toLowerCase();
+  return normal(left) === normal(right);
+}
+
 export function TakeDetails({ item }: { item: HistoryItem }) {
   const { t, i18n } = useTranslation();
   const profiles = useProfiles();
   const navigate = useNavigate();
   const { isGenerating } = useGenerateClone();
   const settings = takeSettings(item);
+  // The composer's language drives the next take; this take keeps the one it used.
+  const composerLanguage = useCloneSetting('language');
+  const languageLabel = (value: string | null | undefined) =>
+    languageOptions([value?.trim() || 'Auto'], i18n.language, t('clone.auto'))[0]?.label ??
+    (value || t('clone.auto'));
+  const takeLanguage = languageLabel(item.language);
   const voice = profiles.data?.find((profile) => profile.id === item.profile_id);
   const isDesign = item.mode === 'design';
   const ModeIcon = isDesign ? WandSparklesIcon : FingerprintIcon;
@@ -98,8 +112,18 @@ export function TakeDetails({ item }: { item: HistoryItem }) {
       </div>
       <dl className="space-y-2 text-sm">
         <div className="flex items-start justify-between gap-4">
-          <dt className="text-muted-foreground">{t('clone.language')}</dt>
-          <dd className="text-right">{item.language || t('clone.auto')}</dd>
+          <dt className="shrink-0 text-muted-foreground">{t('clone.language')}</dt>
+          <dd className="min-w-0 text-right" title={t('clone.take_language_used')}>
+            <span className="block truncate">{takeLanguage}</span>
+            {!sameLanguage(item.language, composerLanguage) && (
+              <span
+                data-slot="take-language-next"
+                className="block truncate text-xs text-muted-foreground"
+              >
+                {t('clone.take_language_next', { language: languageLabel(composerLanguage) })}
+              </span>
+            )}
+          </dd>
         </div>
         {item.seed != null ? (
           <div className="flex items-start justify-between gap-4">
@@ -110,7 +134,8 @@ export function TakeDetails({ item }: { item: HistoryItem }) {
         {item.instruct && (
           <div className="flex items-start justify-between gap-4">
             <dt className="shrink-0 text-muted-foreground">{t('clone.style')}</dt>
-            <dd className="max-w-[65%] whitespace-pre-wrap break-words text-right">
+            {/* One line that never runs under an overlay; the full style is the tooltip. */}
+            <dd className="min-w-0 flex-1 truncate text-right" title={item.instruct}>
               {item.instruct}
             </dd>
           </div>
@@ -156,10 +181,14 @@ export function TakeDetails({ item }: { item: HistoryItem }) {
             <AudioLinesIcon className="size-4 text-muted-foreground" aria-hidden="true" />
             {t('clone.output_title')}
           </p>
-          <WaveformPlayer src={audioUrl(item.audio_path)} source="history" height={64} />
+          <WaveformPlayer
+            src={audioUrl(item.audio_path)}
+            source={'take-' + item.id}
+            durationHint={item.duration_seconds ?? undefined}
+            height={64}
+          />
         </div>
       )}
-      <SaveTakeProfile key={item.id + '-save'} item={item} />
       {voice && (
         <LockVoice
           locked={Boolean(voice.is_locked)}
@@ -170,15 +199,26 @@ export function TakeDetails({ item }: { item: HistoryItem }) {
           disabled={isGenerating}
         />
       )}
-      <div className="flex flex-wrap items-center gap-2">
+      {/* One row: the primary save, then the secondary actions as quiet icon buttons. */}
+      <div data-slot="take-actions" className="flex flex-wrap items-center gap-1.5">
+        <SaveTakeProfile key={item.id + '-save'} item={item} />
         {item.audio_path && (
           <SaveAudioButton
             url={audioUrl(item.audio_path)}
+            mp3Url={audioMp3Url(item.audio_path)}
             suggestedName={`voicestudio-${item.id}.wav`}
+            iconOnly
           />
         )}
-        <Button variant="outline" disabled={isGenerating} onClick={() => void reuse()}>
-          {t('clone.history_reuse')}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t('clone.history_reuse')}
+          title={t('clone.history_reuse')}
+          disabled={isGenerating}
+          onClick={() => void reuse()}
+        >
+          <RepeatIcon />
         </Button>
       </div>
     </div>

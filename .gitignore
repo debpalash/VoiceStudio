@@ -7,12 +7,13 @@ __pycache__/
 *.so
 *.egg
 *.egg-info/
-.venv/
+.venv
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
 dist/
 build/
+.playwright-mcp
 
 # ─────────────────────────────────────────────────────────────────────────
 #  Node / Turborepo / Tauri
@@ -21,7 +22,7 @@ node_modules/
 node_modules
 .turbo/
 bun.lockb
-frontend/src-tauri/target/
+frontend/src-tauri/
 electron/.tmp-native-target/
 native/**/target*/
 
@@ -119,7 +120,6 @@ examples/data*
 examples/download*
 examples/exp*/
 omnivoice.zip
-frontend/src-tauri/binaries/ffmpeg
 
 # cuDNN 8 compat libs (auto-installed by scripts/setup_cudnn.py)
 cudnn8_compat/
@@ -186,3 +186,8 @@ backend/assets/samples/demo/dubbing/*.src.wav
 
 # Generated Windows MSI diagnostic logs and installer payloads
 /wix-diagnostic-artifacts/
+
+# Local working copies kept out of the repo: the vssaas account/sync contract
+# handoff (canonical in vssaas) and Microsoft Store listing text drafts.
+/account_login/
+/store-*-en.txt

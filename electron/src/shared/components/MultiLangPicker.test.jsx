@@ -129,7 +129,10 @@ describe('MultiLangPicker viewport-safe menu', () => {
 
 describe('MultiLangPicker responsive language cards', () => {
   it('maps every supported language to a representative flag', () => {
-    expect(Object.keys(LANGUAGE_FLAGS).sort()).toEqual(LANG_CODES.map(({ code }) => code).sort());
+    // Plus the regional Portuguese choices of the TTS picker (#3143).
+    expect(Object.keys(LANGUAGE_FLAGS).sort()).toEqual(
+      [...LANG_CODES.map(({ code }) => code), 'pt-BR', 'pt-PT'].sort(),
+    );
   });
 
   it('keeps selected languages compact and shows their flags in the manager', () => {

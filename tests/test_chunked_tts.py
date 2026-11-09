@@ -259,3 +259,93 @@ def test_chunking_disabled_with_zero(client, monkeypatch):
     assert res.status_code == 200, res.text
     assert len(fake.calls) == 1
     assert fake.calls[0][0] == long_text
+
+
+# ── Arabic-script / Devanagari sentence enders ─────────────────────────────
+# Written as escapes: U+06D4 Arabic full stop (Urdu), U+061F Arabic question
+# mark, U+0964 Devanagari danda, U+060C Arabic comma.
+_UR_STOP = "۔"
+_UR_Q = "؟"
+_UR_COMMA = "،"
+# "yeh ek mukammal jumla hai" in Urdu script, no ender.
+_UR_SENTENCE = "یہ ایک مکمل جملہ ہے"
+
+
+def test_urdu_paragraph_splits_only_at_full_stops():
+    # ~1,200 chars of Urdu sentences ending in the Arabic full stop. Before the
+    # fix the splitter ignored it and cut at an arbitrary space mid-sentence.
+    sentences = [f"{_UR_SENTENCE} {n}{_UR_STOP if n % 3 else _UR_Q}" for n in range(50)]
+    text = " ".join(sentences)
+    assert len(text) > 1100
+    chunks = split_text_into_chunks(text, 800)
+    assert len(chunks) > 1
+    assert all(len(c) <= 800 for c in chunks)
+    assert all(c[-1] in (_UR_STOP, _UR_Q) for c in chunks), [c[-5:] for c in chunks]
+    assert " ".join(chunks).split() == text.split()
+
+
+def test_urdu_full_stop_without_following_space():
+    sentence = _UR_SENTENCE * 3 + _UR_STOP  # no space after the ender
+    text = sentence * 20
+    chunks = split_text_into_chunks(text, 400)
+    assert len(chunks) > 1
+    assert all(c.endswith(_UR_STOP) for c in chunks)
+    assert "".join(chunks) == text
+
+
+def test_devanagari_danda_is_a_sentence_end():
+    text = ("abc def ghi" + "।") * 80  # no space after the danda
+    chunks = split_text_into_chunks(text, 300)
+    assert len(chunks) > 1
+    assert all(c.endswith("।") for c in chunks)
+
+
+def test_arabic_comma_is_a_clause_boundary():
+    text = (_UR_SENTENCE + _UR_COMMA + " ") * 40  # no sentence end at all
+    chunks = split_text_into_chunks(text.strip(), 300)
+    assert len(chunks) > 1
+    assert all(c.endswith(_UR_COMMA) for c in chunks[:-1])
+
+
+def test_long_pause_spans_are_chunked_through_engine(client, monkeypatch):
+    # A real Urdu script had 1,000+ char spans between [pause] markers; each
+    # went to the engine in one shot and the audio degraded. Each long span
+    # must now fan out into sentence chunks, all with the take's seed (#3730).
+    fake = _make_fake_engine("fake-pause-chunk-engine")
+    fake.calls = []
+    monkeypatch.setitem(_tts_mod()._REGISTRY, "fake-pause-chunk-engine", fake)
+    fake.supports_generation_seed = True
+
+    span = " ".join(f"{_UR_SENTENCE} {n}{_UR_STOP}" for n in range(50))  # ~1,200 chars
+    assert len(span) > 1100
+    text = f"{span} [pause 500ms] {span}"
+    res = client.post("/generate", data={
+        "text": text, "engine": "fake-pause-chunk-engine", "seed": "7",
+    })
+
+    assert res.status_code == 200, res.text
+    assert len(fake.calls) >= 4, "each long span should fan out into chunks"
+    assert all(len(t) <= 800 for t, _ in fake.calls)
+    assert all(t.endswith(_UR_STOP) for t, _ in fake.calls)
+    assert " ".join(t for t, _ in fake.calls).split() == (span + " " + span).split()
+    assert [kw.get("seed") for _, kw in fake.calls] == [7] * len(fake.calls)
+
+
+def test_dropped_chunk_log_scrubs_secrets_and_home_paths(monkeypatch, caplog):
+    """Dropped-sentence text reaches the shareable log scrubbed; the caller's
+    sink still gets the raw text for the user (#3021)."""
+    import logging
+
+    from services.chunked_tts import report_dropped_chunks
+
+    secret = "s3cr3t-value-0123456789abcdef"
+    monkeypatch.setenv("MY_API_TOKEN", secret)
+    text = f"key {secret} at /Users/alice/notes.txt"
+    sink: list = []
+    with caplog.at_level(logging.WARNING):
+        report_dropped_chunks([0], 1, texts=[text], sink=sink)
+    logged = caplog.text
+    assert secret not in logged
+    assert "/Users/alice" not in logged
+    assert "Dropped 1 of 1" in logged
+    assert sink == [text]

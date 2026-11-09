@@ -112,40 +112,24 @@ def test_multiple_tasks_are_all_cancelled_before_any_await():
     assert set(cancelled_order) == {"slow", "fast"}
 
 
-def test_production_shutdown_wait_is_generous_enough_for_a_cold_import():
-    """Post-merge code-review finding (Greptile, PR #1002): the original 3s
-    bound left a real residual window — cancelling the asyncio task doesn't
-    stop the underlying OS thread, so a cold transformers import taking
-    longer than the bound could still let shutdown report "done" while that
-    thread was alive, the exact #1000 class again just with lower odds.
-    Python can't forcibly kill a running thread, so no finite bound
-    eliminates this outright — this pins the production call site to a
-    materially more generous wait (20s, not 3s) rather than letting a future
-    edit quietly shrink it back down without deliberate consideration.
-
-    Source-level guard, not a live-timing test: driving an actual >3s cold
-    import through this suite would make it slow and environment-dependent
-    for no real benefit.
-    """
+def test_shutdown_wait_bound_is_long_enough_for_a_cold_import():
+    """Source guard: the shutdown call that awaits the background tasks must
+    not shrink to a few seconds, or a cold transformers import would still be
+    running when shutdown reports done."""
     import re
+    from pathlib import Path
 
-    src = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                             "backend", "main.py")).read()
-    # Early-bind refactor: the handles moved onto app.state (the shutdown
-    # block may run after a startup that never finished), but the guarded
-    # property is unchanged — the four task handles, one generous bound.
-    call = re.search(
-        r"await _cancel_and_await_tasks\(\s*"
-        r"getattr\(app\.state, \"idle_task\", None\),\s*"
-        r"getattr\(app\.state, \"worker_task\", None\),\s*"
-        r"getattr\(app\.state, \"preload_task\", None\),\s*"
-        r"getattr\(app\.state, \"capture_preload_task\", None\),\s*"
-        r"getattr\(app\.state, \"watermark_preload_task\", None\),\s*"
-        r"timeout=([\d.]+),?\s*\)",
-        src,
+    src = (Path(__file__).resolve().parents[1] / "backend" / "main.py").read_text(encoding="utf-8")
+    names = r"\s*,\s*".join(
+        rf'getattr\(app\.state,\s*"{n}",\s*None\)'
+        for n in ("idle_task", "worker_task", "profile_reconcile_task",
+                  "preload_task", "capture_preload_task", "watermark_preload_task")
     )
-    assert call, "production shutdown call site not found in main.py"
-    assert float(call.group(1)) >= 15.0, (
-        f"shutdown wait bound regressed to {call.group(1)}s — see PR #1002 review history "
-        "before shrinking this"
+    m = re.search(
+        rf"await _cancel_and_await_tasks\(\s*{names}\s*,\s*timeout=([0-9.]+)\s*,?\s*\)", src
+    )
+    assert m, "production _cancel_and_await_tasks(...) call not found in backend/main.py"
+    assert float(m.group(1)) >= 15.0, (
+        "the shutdown wait bound exists so a cold import can finish during shutdown; "
+        f"timeout={m.group(1)} is too short"
     )

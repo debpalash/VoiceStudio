@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import {
@@ -6,7 +6,6 @@ import {
   AlertTriangleIcon,
   BellIcon,
   ChevronRightIcon,
-  DownloadIcon,
   InfoIcon,
   XIcon,
 } from 'lucide-react';
@@ -16,7 +15,9 @@ import { Button } from '@/components/ui/button';
 import { apiFetch, apiJson } from '@/lib/api/client';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
-import type { UpdateState } from '../../../../preload/index.d';
+import { DownloadActivityList, useDownloadActivity } from './download-activity';
+import { LongformActivityCard, longformActivityStatus } from '@/components/longform-activity-card';
+import { useLongformActivity } from '@/lib/longform-activity';
 
 interface SystemNotification {
   id: string;
@@ -49,7 +50,6 @@ function loadDismissed(): string[] {
 }
 
 function notificationRoute(note: SystemNotification) {
-  if (note.id.startsWith('desktop-update-')) return '/settings/updates' as const;
   if (note.id === 'hf-token-missing') return '/settings/credentials' as const;
   if (note.id === 'ffmpeg-missing') return '/settings/media' as const;
   if (note.id === 'disk-low') return '/settings/storage' as const;
@@ -92,50 +92,22 @@ export function SystemNotifications({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [dismissed, setDismissed] = useState(loadDismissed);
-  const [update, setUpdate] = useState<UpdateState | null>(null);
+  const downloads = useDownloadActivity();
+  // A Stories/Audiobook render keeps running when its page is left.
+  const render = useLongformActivity();
+  const downloadFailed = downloads.items.length > downloads.active;
   const query = useQuery({
     queryKey: ['system-notifications'],
     queryFn: ({ signal }) => apiJson<NotificationsResponse>('/system/notifications', { signal }),
     enabled,
     refetchInterval: enabled ? 30_000 : false,
   });
-  useEffect(() => {
-    const updates = getBridge()?.updates;
-    if (!updates) return;
-    let active = true;
-    void updates
-      .getState()
-      .then((state) => active && setUpdate(state))
-      .catch(() => {});
-    const unsubscribe = updates.onState(setUpdate);
-    return () => {
-      active = false;
-      unsubscribe();
-    };
-  }, []);
-  const updateNotification = useMemo<SystemNotification | null>(() => {
-    if (
-      !update?.availableVersion ||
-      (update.status !== 'available' && update.status !== 'downloaded')
-    )
-      return null;
-    return {
-      id: `desktop-update-${update.availableVersion}`,
-      level: 'info',
-      title: t(update.status === 'downloaded' ? 'update.ready' : 'update.available', {
-        version: update.availableVersion,
-      }),
-      message: t('update.safety'),
-      action: { type: 'navigate', target: '/settings/updates', label: t('common.open') },
-      persistent: true,
-    };
-  }, [t, update]);
   const visible = useMemo(() => {
     const backend = (query.data?.notifications ?? []).filter(
       (note) => note.level === 'error' || !dismissed.includes(note.id),
     );
-    return updateNotification ? [updateNotification, ...backend] : backend;
-  }, [dismissed, query.data?.notifications, updateNotification]);
+    return backend;
+  }, [dismissed, query.data?.notifications]);
 
   const dismiss = (id: string) => {
     const next = [...dismissed.filter((item) => item !== id), id].slice(-50);
@@ -171,9 +143,15 @@ export function SystemNotifications({
     }
   };
 
+  const total = visible.length + downloads.items.length + (render ? 1 : 0);
   const triggerLabel =
-    visible
-      .map((note) => note.title || note.message)
+    [
+      render
+        ? `${t(render.mode === 'stories' ? 'nav.stories' : 'audiobook.title')}: ${longformActivityStatus(render, t)}`
+        : null,
+      downloads.active ? t('modelInstall.activeCount', { count: downloads.active }) : null,
+      ...visible.map((note) => note.title || note.message),
+    ]
       .filter(Boolean)
       .join('. ') ||
     t(
@@ -191,7 +169,7 @@ export function SystemNotifications({
         render={
           <Button
             variant="ghost"
-            size="icon-xs"
+            size={titlebar ? 'icon-sm' : 'icon-xs'}
             className={cn(
               'relative shrink-0 text-muted-foreground hover:text-foreground',
               titlebar && 'app-no-drag',
@@ -201,15 +179,17 @@ export function SystemNotifications({
         }
       >
         <BellIcon />
-        {visible.length > 0 && (
+        {total > 0 && (
           <span
             className={cn(
               'absolute -top-0.5 -right-0.5 min-w-3 rounded-full px-0.5 text-center text-[8px] leading-3 font-semibold text-white',
-              visible.some((note) => note.level === 'error') ? 'bg-destructive' : 'bg-primary',
+              downloadFailed || visible.some((note) => note.level === 'error')
+                ? 'bg-destructive'
+                : 'bg-primary',
             )}
             aria-hidden="true"
           >
-            {visible.length > 9 ? '9+' : visible.length}
+            {total > 9 ? '9+' : total}
           </span>
         )}
       </PopoverTrigger>
@@ -218,17 +198,19 @@ export function SystemNotifications({
         align={titlebar ? 'end' : 'start'}
         className="max-h-[min(28rem,calc(100vh-2rem))] w-[min(22rem,calc(100vw-2rem))] space-y-1 overflow-y-auto p-1.5"
       >
-        {!enabled && visible.length === 0 && (
+        <LongformActivityCard />
+        <DownloadActivityList activity={downloads} />
+        {!enabled && total === 0 && (
           <p className="px-3 py-4 text-center text-xs text-muted-foreground">
             {t('modelSettings.unavailable')}
           </p>
         )}
-        {enabled && query.isPending && visible.length === 0 && (
+        {enabled && query.isPending && total === 0 && (
           <p className="px-3 py-4 text-center text-xs text-muted-foreground">
             {t('preferences.loading')}
           </p>
         )}
-        {enabled && !query.isPending && !query.isError && visible.length === 0 && (
+        {enabled && !query.isPending && !query.isError && total === 0 && (
           <p className="px-3 py-4 text-center text-xs text-muted-foreground">
             {t('logs.all_clear')}
           </p>
@@ -254,11 +236,7 @@ export function SystemNotifications({
                 levelStyle(note.level),
               )}
             >
-              {note.id.startsWith('desktop-update-') ? (
-                <DownloadIcon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-              ) : (
-                <LevelIcon level={note.level} />
-              )}
+              <LevelIcon level={note.level} />
               <button
                 type="button"
                 disabled={!actionable}

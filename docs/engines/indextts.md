@@ -77,6 +77,25 @@ On an AMD ROCm host, swap the venv's torch for a ROCm build after the install
 are the working ones). Left alone, the upstream `pyproject.toml` resolves the
 CUDA build, which cannot see an AMD GPU and runs entirely on the CPU.
 
+## Voice Cloning emotion controls
+
+When IndexTTS2 is the selected TTS engine, the **Voice Cloning** composer
+shows an **Emotion** button beside its voice controls. This is independent
+of the voice reference clip:
+
+- **Off** (default) — clone the reference without additional emotion direction.
+- **Description** — describe the emotional delivery in natural language;
+  adjust its strength from 0 to 0.6.
+- **Sliders** — set the eight weights (happy, angry, sad, afraid,
+  disgusted, melancholic, surprised, calm), each from 0 to 1.
+
+These options also work through `POST /generate`, including
+`stream=true`: pass `emo_text` and optional `emo_alpha`, or an
+`emo_vector` JSON array of eight weights. Supplying both methods or
+selecting an engine without emotion support returns 422. The
+WebSocket `/ws/tts` API additionally supports an emotion reference clip
+(`emo_audio`), which is not exposed by the composer yet.
+
 ## Compatibility
 
 VoiceStudio probes these locations in order:
@@ -106,6 +125,13 @@ or Arabic script for Auto requests. Ambiguous Latin text defaults to English.
 IndexTTS 2.5 uses `duration_factor` for native duration guidance. VoiceStudio's
 dubbing fit stage remains responsible for exact segment timing. Legacy
 IndexTTS-2 installations continue receiving their `target_tokens` control.
+
+The public **Speed** setting (on `/generate`, Stories, the OpenAI-compatible
+route and `/ws/tts`) is converted to that same duration control: speed 1.25
+asks for 1/1.25 of the natural reading time. An explicit `duration` or
+`duration_factor` takes precedence over speed, so pacing is never applied
+twice. `/ws/tts` also accepts `duration_factor` (0.5–2.0, lower is faster);
+it is relative, so it applies to every streamed sentence.
 
 ## Troubleshooting
 

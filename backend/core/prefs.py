@@ -64,6 +64,12 @@ def _save(data: dict) -> None:
         raise
 
 
+def _announce(key: str) -> None:
+    from core import change_hooks  # imported late: prefs loads before everything else
+
+    change_hooks.notify("prefs", key)
+
+
 def get(key: str, default: Any = None) -> Any:
     return _load().get(key, default)
 
@@ -73,6 +79,7 @@ def set_(key: str, value: Any) -> None:
         data = _load()
         data[key] = value
         _save(data)
+    _announce(key)
 
 
 def update_mapping(key: str, changes: dict, *, replace: bool = False) -> None:
@@ -84,14 +91,15 @@ def update_mapping(key: str, changes: dict, *, replace: bool = False) -> None:
         value.update(changes)
         data[key] = value
         _save(data)
+    _announce(key)
 
 
 def delete(key: str) -> None:
-    """Remove *key* from prefs.json if present."""
     with _MUTATE_LOCK:
         data = _load()
         data.pop(key, None)
         _save(data)
+    _announce(key)
 
 
 def resolve(key: str, *, env: Optional[str] = None, default: Any = None) -> Any:

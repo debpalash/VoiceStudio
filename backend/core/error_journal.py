@@ -48,11 +48,17 @@ _entries: "OrderedDict[str, dict]" = OrderedDict()
 
 # Ordered: first match wins, most specific patterns up top.
 _CLASS_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    # Mirrors `failure._GPU_OOM_SIGNATURES`; pinned equal by
+    # tests/test_xpu_device_oom.py.
     ("GPU_OOM", (
         "cuda out of memory",
+        "cuda error: out of memory",
+        "cuda_error_out_of_memory",
         "mps backend out of memory",
         "hip out of memory",
         "out of memory on device",
+        "xpu out of memory",
+        "out_of_device_memory",
     )),
     # #2462: the host ran out of system RAM. Mirrors
     # `failure._HOST_OOM_SIGNATURES` — kept as literals here so a journal

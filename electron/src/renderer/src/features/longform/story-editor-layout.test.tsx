@@ -1,26 +1,23 @@
 import { render } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
+import '@/i18n';
 
-// The editor must not be a shrinkable flex item: with `min-h-0` a long script
-// overflowed its box and painted over the generation progress panel and the
-// footer while an audiobook rendered.
-
-vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock('@/components/waveform-player', () => ({ WaveformPlayer: () => null }));
 vi.mock('./story-preview', () => ({ previewStoryLine: vi.fn() }));
 vi.mock('./story-stems', () => ({ StoryStems: () => null }));
 vi.mock('@/components/pipeline-failure', () => ({ PipelineFailure: () => null }));
+
 import { StoryEditor } from './story-editor';
 import { blankLongformDraft } from './longform-session';
 
-it('lets the script push later siblings down instead of overlapping them', () => {
+it('lets the editor grow inside the page scroller instead of clipping to its own box', () => {
   const draft = blankLongformDraft();
-  draft.lines = [{ id: '1', character: 'narrator', text: 'Line one.', profileId: null }];
+  draft.lines = [{ id: 'only', text: 'A single line of story.', profileId: null }];
   const { container } = render(
-    <StoryEditor draft={draft} profiles={[]} disabled={false} onChange={vi.fn()} />,
+    <StoryEditor draft={draft} profiles={[]} disabled={false} onChange={() => {}} />,
   );
-  const root = container.querySelector('[data-slot="story-editor"]') as HTMLElement;
-  expect(root).toBeInTheDocument();
-  expect(root.className.split(' ')).not.toContain('min-h-0');
-  expect(root.className.split(' ')).toContain('flex-1');
+  const editor = container.querySelector('[data-slot="story-editor"]');
+  expect(editor).not.toBeNull();
+  expect(editor).toHaveClass('flex-1');
+  expect(editor).not.toHaveClass('min-h-0');
 });

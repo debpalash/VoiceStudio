@@ -8,6 +8,7 @@ backend fixtures (see tests/test_fdl_*).
 from __future__ import annotations
 
 import asyncio
+import importlib
 import os
 import sys
 
@@ -110,6 +111,16 @@ def test_omnivoice_unload_idempotent_and_preload_safe():
 def test_list_loaded_empty(monkeypatch):
     monkeypatch.setattr(mm, "model", None)
     monkeypatch.setattr(mm, "_diar_pipeline", None)
+    # list_loaded() also reads these process-wide registries (sidecars, engines,
+    # the active backend, the dictation ASR and the offline translator); an earlier test on
+    # the same pytest-xdist worker can leave an engine or sidecar behind, which
+    # made this test pass serially and fail depending on worker placement.
+    monkeypatch.setattr("services.subprocess_backend.list_live_sidecars", lambda: [])
+    monkeypatch.setattr("services.asr_backend._capture_backend", None)
+    monkeypatch.setattr("api.routers.dub_translate._nllb_model", None)
+    monkeypatch.setattr("api.routers.engines._ENGINE_INSTANCES", {})
+    monkeypatch.setattr("services.tts_backend._active_instance", None)
+    monkeypatch.setattr("services.tts_backend._active_instance_id", None)
     out = ml.list_loaded()
     assert out == {"models": [], "count": 0} or out["count"] == 0
 
@@ -231,7 +242,13 @@ def test_large_tensor_weight_passes(tmp_path):
 
 # ── #622: install-state detector is weight-aware (truncated cache ≠ installed) ─
 
-import api.routers.setup.models as models  # noqa: E402
+def _models():
+    """Resolve at call time so a reloaded module is never tested stale."""
+    return importlib.import_module("api.routers.setup.models")
+
+
+def _catalogue():
+    return importlib.import_module("services.model_catalogue")
 
 
 def _make_snapshot(cache_root, repo_id, files):
@@ -248,26 +265,45 @@ def test_snapshot_has_weights_distinguishes_truncated(tmp_path):
     full = tmp_path / "full"; full.mkdir()
     (full / "config.json").write_bytes(b"{}")
     (full / "model.safetensors").write_bytes(b"\0" * (6 * 1024 * 1024))
-    assert models.snapshot_has_weights(str(full)) is True
+    assert _catalogue().snapshot_has_weights(str(full)) is True
 
     trunc = tmp_path / "trunc"; trunc.mkdir()
     (trunc / "config.json").write_bytes(b"{}")
     (trunc / "tokenizer.json").write_bytes(b"x" * 4096)
-    assert models.snapshot_has_weights(str(trunc)) is False
+    assert _catalogue().snapshot_has_weights(str(trunc)) is False
 
 
 def test_cache_is_complete_flags_truncated_weight_repo(tmp_path, monkeypatch):
     monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
     # Weight-bearing repo with config only (interrupted download) → incomplete.
     _make_snapshot(tmp_path, "k2-fsa/OmniVoice", {"config.json": b"{}"})
-    assert models.cache_is_complete({"repo_id": "k2-fsa/OmniVoice"}) is False
+    assert _models().cache_is_complete({"repo_id": "k2-fsa/OmniVoice"}) is False
     # Same repo once the shard lands → complete.
     _make_snapshot(
         tmp_path / "ok", "k2-fsa/OmniVoice",
         {"config.json": b"{}", "model.safetensors": b"\0" * (6 * 1024 * 1024)},
     )
     monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path / "ok"))
-    assert models.cache_is_complete({"repo_id": "k2-fsa/OmniVoice"}) is True
+    assert _models().cache_is_complete({"repo_id": "k2-fsa/OmniVoice"}) is True
+
+
+def test_cosyvoice3_partial_download_is_not_installed(tmp_path, monkeypatch):
+    """#3112: an interrupted CosyVoice 3 download kept some 5 MB+ weights, which the
+    any-large-file check took for a complete install. Its declared files decide now."""
+    monkeypatch.setenv("HF_HUB_CACHE", str(tmp_path))
+    model = next(m for m in _models().KNOWN_MODELS if m["repo_id"] == "FunAudioLLM/Fun-CosyVoice3-0.5B-2512")
+    big = b"\0" * (6 * 1024 * 1024)
+    rev = tmp_path / "models--FunAudioLLM--Fun-CosyVoice3-0.5B-2512" / "snapshots" / "abc123"
+    rev.mkdir(parents=True)
+    for name in ("cosyvoice3.yaml", "campplus.onnx", "llm.pt"):  # flow.pt, hift.pt, ... never landed
+        (rev / name).write_bytes(big)
+    assert _models().cache_is_complete(model) is False
+
+    for name in model["required_files"]:
+        path = rev / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(big)
+    assert _models().cache_is_complete(model) is True
 
 
 def test_cache_is_complete_exempts_config_only_repo(tmp_path, monkeypatch):
@@ -275,7 +311,7 @@ def test_cache_is_complete_exempts_config_only_repo(tmp_path, monkeypatch):
     # pyannote pipeline ships no weight of its own — a tiny cache is legit, not
     # truncated; the config_only hint must keep it from being flagged incomplete.
     _make_snapshot(tmp_path, "pyannote/speaker-diarization-3.1", {"config.yaml": b"x"})
-    assert models.cache_is_complete(
+    assert _models().cache_is_complete(
         {
             "repo_id": "pyannote/speaker-diarization-3.1",
             "config_only": True,
@@ -300,35 +336,13 @@ def test_list_models_downgrades_truncated_cache(tmp_path, monkeypatch):
 
     import huggingface_hub
     monkeypatch.setattr(huggingface_hub, "scan_cache_dir", lambda: _Info())
-    models.invalidate_cache()
-    out = models.list_models()
+    _models().invalidate_cache()
+    out = _models().list_models()
     row = next(m for m in out["models"] if m["repo_id"] == "k2-fsa/OmniVoice")
     assert row["installed"] is False
     assert row["incomplete"] is True
-    models.invalidate_cache()
+    _models().invalidate_cache()
 
-
-def test_list_models_uses_selected_worker_inventory_not_local_cache(monkeypatch):
-    monkeypatch.setattr(
-        models,
-        "_target_repo_inventory",
-        lambda: ("gpu2", {"k2-fsa/OmniVoice"}),
-    )
-    monkeypatch.setattr(
-        models,
-        "_current_platform_tags",
-        lambda: ["linux", "linux-x86_64", "cuda"],
-    )
-    models.invalidate_cache()
-
-    out = models.list_models()
-
-    row = next(m for m in out["models"] if m["repo_id"] == "k2-fsa/OmniVoice")
-    assert row["installed"] is True
-    assert row["incomplete"] is False
-    assert out["hf_cache_dir"] == ""
-    assert out["disk_free_gb"] is None
-    models.invalidate_cache()
 
 # ── The unload ordering (#1495) ─────────────────────────────────────────────
 #
@@ -336,7 +350,7 @@ def test_list_models_uses_selected_worker_inventory_not_local_cache(monkeypatch)
 # emptied. Inverted, the unload frees nothing and says it worked: the weights
 # are still reachable so gc keeps them, empty_cache() only returns blocks the
 # allocator already considered free, and the reference drops a moment later
-# into a cache nobody will flush again. That is how a headless worker node held
+# into a cache nobody will flush again. That is how a backend process held
 # 3.6 GB across an idle sweep whose log line read "Released 1 idle engine(s)".
 #
 # Four call sites open-coded the pair; the one the engine-registry sweep reaches

@@ -118,3 +118,67 @@ def test_changelog_path_env_override(tmp_path, monkeypatch):
     assert changelog.changelog_path() == str(f)
     monkeypatch.setenv("OMNIVOICE_CHANGELOG", str(tmp_path / "missing.md"))
     assert changelog.changelog_path() is None
+
+
+_CHANNELS = """# Changelog
+
+## [Unreleased]
+
+- Not yet released
+
+## [0.5.7] — 2026-10-17
+
+- Drafted, never tagged
+
+## [0.5.7-beta.3] — 2026-10-26
+
+- Third beta
+
+## [0.5.7-beta.2] — 2026-10-24
+
+- Second beta
+
+## [0.5.6] — 2026-09-23
+
+- Stable
+"""
+
+
+def test_notes_never_list_a_version_newer_than_the_running_app():
+    versions = [r["version"] for r in changelog.parse_changelog(_CHANNELS, 5, "0.5.7-beta.2")]
+    assert versions == ["0.5.7-beta.2", "0.5.6"]
+
+
+def test_a_stable_app_skips_beta_sections():
+    versions = [r["version"] for r in changelog.parse_changelog(_CHANNELS, 5, "0.5.6")]
+    assert versions == ["0.5.6"]
+    versions = [r["version"] for r in changelog.parse_changelog(_CHANNELS, 5, "0.5.7")]
+    assert versions == ["0.5.7", "0.5.6"]
+
+
+def test_unknown_app_version_keeps_every_release():
+    assert len(changelog.parse_changelog(_CHANNELS, 5, None)) == 4
+    assert len(changelog.parse_changelog(_CHANNELS, 5, "dev-build")) == 4
+
+
+def test_intro_drops_download_table_and_images():
+    text = """## [1.0.0] — 2026-10-01
+
+**Headline.** The release.
+
+**Download**
+
+| Platform | Installer |
+| --- | --- |
+| Windows x64 | [Installer](https://example.test/a.exe) |
+
+![screenshot](https://example.test/a.png)
+
+**Upgrading:** Install over the old app.
+
+### Fixed
+
+- A fix. (#1)
+"""
+    [release] = changelog.parse_changelog(text)
+    assert release["intro"] == "**Headline.** The release.\n\n**Upgrading:** Install over the old app."

@@ -25,7 +25,6 @@ import StorageUsagePanel from '../components/settings/StorageUsagePanel';
 import HFMirrorPanel from '../components/settings/HFMirrorPanel';
 import SharingPanel from '../components/settings/SharingPanel';
 import RemoteBackendPanel from '../components/settings/RemoteBackendPanel';
-import WorkersPanel from '../components/settings/WorkersPanel';
 import MCPBindingsPanel from '../components/settings/MCPBindingsPanel';
 import OpenApiPanel from '../components/settings/OpenApiPanel';
 import PronunciationPanel from '../components/settings/PronunciationPanel';
@@ -450,8 +449,6 @@ export default function Settings() {
             <MCPBindingsPanel />
           </>
         );
-      case 'workers':
-        return <WorkersPanel />;
       case 'openapi':
         return <OpenApiPanel />;
       case 'credentials':

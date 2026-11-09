@@ -33,7 +33,7 @@ describe('blank window fallback', () => {
   it('stays aligned with every renderer locale catalogue', () => {
     const directory = join(process.cwd(), 'src/renderer/src/i18n/locales');
     const locales = readdirSync(directory).filter((file) => file.endsWith('.json'));
-    expect(locales).toHaveLength(21);
+    expect(locales).toHaveLength(22);
     for (const file of locales) {
       const locale = file.slice(0, -5);
       const catalogue = JSON.parse(readFileSync(join(directory, file), 'utf8')) as {

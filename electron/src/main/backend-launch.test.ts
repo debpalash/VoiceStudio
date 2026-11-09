@@ -1,7 +1,40 @@
 // @vitest-environment node
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { join, resolve } from 'node:path';
-const state = vi.hoisted(() => ({ installed: true, packaged: false, ready: true }));
+import { tmpdir } from 'node:os';
+const state = vi.hoisted(() => ({
+  installed: true,
+  packaged: false,
+  ready: true,
+  checkout: true,
+  bundledOnly: false,
+  bundledManifestMissing: false,
+  selected: null as string | null,
+}));
+const validateSelected = vi.hoisted(() =>
+  vi.fn(async (pythonPath: string, _cwd: string) => ({ ok: true, pythonPath })),
+);
+vi.mock('./runtime-python-selection', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./runtime-python-selection')>()),
+  selectedPythonPath: () => state.selected,
+  validatePythonRuntime: validateSelected,
+}));
+vi.mock('./distribution', () => ({
+  runtimeSetupSupported: () => !state.bundledOnly,
+  currentDistributionProfile: () => ({
+    fileAccess: state.bundledOnly ? 'sandbox-scoped' : 'user-selected',
+  }),
+}));
+vi.mock('./bundled-runtime', () => ({
+  bundledPython: (root: string) => {
+    if (state.bundledManifestMissing) throw new Error('Bundled manifest is missing');
+    return join(root, 'python-runtime', 'bin', 'python3.11');
+  },
+  bundledRuntimeEnv: (_root: string, data: string) => ({
+    VOICESTUDIO_BUNDLED_CODE_ONLY: '1',
+    OMNIVOICE_DATA_DIR: join(data, 'data'),
+  }),
+}));
 vi.mock('electron', () => ({
   app: {
     get isPackaged() {
@@ -15,7 +48,7 @@ vi.mock('node:fs', async (importOriginal) => ({
   ...(await importOriginal<typeof import('node:fs')>()),
   existsSync: (path: string) =>
     path === join(resolve('/repo'), 'backend', 'main.py') ||
-    path === join(resolve('/repo'), 'pyproject.toml') ||
+    (path === join(resolve('/repo'), 'pyproject.toml') && state.checkout) ||
     (path.includes('.venv') ? state.installed : path.includes('uv')),
   statSync: () => ({ isFile: () => true, size: 1 }),
   accessSync: () => undefined,
@@ -27,6 +60,8 @@ vi.mock('./runtime-project', async (importOriginal) => ({
     return state.ready;
   }),
 }));
+const healPth = vi.hoisted(() => vi.fn(async (_venv: string): Promise<string[]> => []));
+vi.mock('./pth-ascii', () => ({ asciiSafePthFiles: healPth }));
 vi.mock('./legacy-storage', () => ({
   legacyStorageEnv: () => ({
     OMNIVOICE_DATA_DIR: '/legacy/data',
@@ -34,18 +69,111 @@ vi.mock('./legacy-storage', () => ({
   }),
 }));
 import {
+  BackendSupervisor,
   devRendererPort,
+  loadBlockMessage,
   resolveSpawnPlan,
   managedBackendSpawnOptions,
+  setBackendOnlyEnv,
+  smartAppControlFromRegistry,
   spawnFailureMessage,
   startupTimeoutMessage,
 } from './backend';
+// These launch/setup cases model a supported local-runtime host. Intel and
+// Rosetta behavior is exercised below with explicit hostIssue values.
+beforeEach(() => vi.stubGlobal('process', { ...process, arch: 'arm64' }));
 afterEach(() => {
   state.installed = true;
   state.ready = true;
   state.packaged = false;
+  state.checkout = true;
+  state.bundledOnly = false;
+  state.bundledManifestMissing = false;
+  state.selected = null;
+  validateSelected.mockClear();
+  healPth.mockReset();
+  healPth.mockResolvedValue([]);
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
+it('store builds launch only bundled Python, ignoring external command overrides', async () => {
+  state.packaged = true;
+  state.bundledOnly = true;
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '["external-python"]');
+  vi.stubEnv('OMNIVOICE_DATA_DIR', undefined);
+  const original = process.resourcesPath;
+  Object.defineProperty(process, 'resourcesPath', {
+    value: '/signed/resources',
+    configurable: true,
+  });
+  try {
+    expect(await resolveSpawnPlan(3912, '/legacy/project', undefined)).toEqual({
+      argv: [
+        join('/signed/resources', 'python-runtime', 'bin', 'python3.11'),
+        '-s',
+        '-B',
+        '-m',
+        'uvicorn',
+        'main:app',
+        '--app-dir',
+        'backend',
+        '--host',
+        '127.0.0.1',
+        '--port',
+        '3912',
+      ],
+      cwd: '/signed/resources',
+    });
+    expect(managedBackendSpawnOptions(3912).env).toMatchObject({
+      VOICESTUDIO_BUNDLED_CODE_ONLY: '1',
+      OMNIVOICE_DATA_DIR: join('/user-data', 'data'),
+    });
+  } finally {
+    Object.defineProperty(process, 'resourcesPath', { value: original, configurable: true });
+  }
+});
+it('store builds preserve an explicit data pointer instead of silently starting with empty data', () => {
+  state.packaged = true;
+  state.bundledOnly = true;
+  vi.stubEnv('OMNIVOICE_DATA_DIR', '/selected/inaccessible-data');
+  expect(managedBackendSpawnOptions(3912).env?.OMNIVOICE_DATA_DIR).toBe(
+    '/selected/inaccessible-data',
+  );
+});
+it('keeps host diagnostics available when a store package has no local interpreter', async () => {
+  state.packaged = true;
+  state.bundledOnly = true;
+  state.bundledManifestMissing = true;
+  const facts = await new BackendSupervisor().hostSnapshot();
+  expect(facts.os).toEqual(expect.any(String));
+  expect(facts.ramGb).toBeGreaterThan(0);
+  expect(facts.runtime.pythonPresent).toBeNull();
+});
+it('runs a selected interpreter against bundled resources, never the absent managed project', async () => {
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
+  state.packaged = true;
+  state.selected = '/existing/bin/python';
+  const original = process.resourcesPath;
+  Object.defineProperty(process, 'resourcesPath', { configurable: true, value: '/packaged/resources' });
+  try {
+    const plan = await resolveSpawnPlan(3912, '/missing/managed/project');
+    expect(plan).toMatchObject({ cwd: '/packaged/resources' });
+    expect(validateSelected).toHaveBeenCalledWith('/existing/bin/python', '/packaged/resources');
+  } finally {
+    Object.defineProperty(process, 'resourcesPath', { configurable: true, value: original });
+  }
+});
+it.each(['darwin', 'win32', 'linux'] as const)(
+  'leaves China downloads eligible for automatic failover on %s',
+  (platform) => {
+    vi.stubEnv('HF_ENDPOINT', undefined);
+    expect(managedBackendSpawnOptions(3900, 'china', platform).env.HF_ENDPOINT).toBeUndefined();
+    vi.stubEnv('HF_ENDPOINT', 'https://custom.example');
+    expect(managedBackendSpawnOptions(3900, 'china', platform).env.HF_ENDPOINT).toBe(
+      'https://custom.example',
+    );
+  },
+);
 it('launches the prepared source interpreter without syncing or downloading dependencies', async () => {
   vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
   const plan = await resolveSpawnPlan(3912);
@@ -61,6 +189,19 @@ it('launches the prepared source interpreter without syncing or downloading depe
   );
   expect(plan.argv.slice(1, 3)).toEqual(['-m', 'uvicorn']);
   expect(plan.argv.slice(-2)).toEqual(['--port', '3912']);
+});
+it('heals a source checkout .venv before probing it, and tolerates a failed heal (#1783)', async () => {
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
+  const { runtimeDependenciesReady } = await import('./runtime-project');
+  const probe = vi.mocked(runtimeDependenciesReady);
+  probe.mockClear();
+  await resolveSpawnPlan(3912);
+  expect(healPth).toHaveBeenCalledWith(join(resolve('/repo'), '.venv'));
+  if (probe.mock.calls.length) {
+    expect(healPth.mock.invocationCallOrder[0]).toBeLessThan(probe.mock.invocationCallOrder[0]);
+  }
+  healPth.mockRejectedValueOnce(new Error('read-only'));
+  expect(await resolveSpawnPlan(3912)).toHaveProperty('argv');
 });
 it('requires explicit source setup when no environment exists, even with uv installed', async () => {
   vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
@@ -96,6 +237,53 @@ it('names the failing import or the absent interpreter instead of one vague mess
   if (!('error' in missing)) throw new Error('expected a setup error');
   expect(missing.error).toContain('is missing (no .venv');
   expect(missing.error).not.toContain('incomplete');
+});
+
+it('never gives an installed app the source-checkout setup command (#3480)', async () => {
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
+  state.packaged = true;
+  state.installed = false;
+  state.ready = false;
+  const plan = await resolveSpawnPlan(3900, '/managed/runtime/project');
+  expect(plan).not.toHaveProperty('error');
+  expect(JSON.stringify(plan)).not.toContain('setup:api');
+});
+
+it('tells a source checkout to press Retry after setup, since Retry re-checks the environment', async () => {
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
+  state.ready = false;
+  const plan = await resolveSpawnPlan(3900);
+  if (!('error' in plan)) throw new Error('expected a setup error');
+  expect(plan.error).toContain('then press Retry.');
+});
+
+it('names the folder to open and refuses setup advice outside a checkout (#2988)', async () => {
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
+  state.installed = false;
+  state.checkout = false;
+  const plan = await resolveSpawnPlan(3900);
+  if (!('error' in plan)) throw new Error('expected a setup error');
+  expect(plan.error).toContain('not a VoiceStudio source checkout');
+  expect(plan.error).toContain('release installer');
+});
+
+it('sends an Intel Mac checkout to a remote backend instead of setup:api (#3584)', async () => {
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
+  state.ready = false;
+  const plan = await resolveSpawnPlan(3900, undefined, 'unsupported_platform');
+  if (!('error' in plan)) throw new Error('expected a host error');
+  expect(plan.setupIssue).toBe('unsupported_platform');
+  expect(plan.error).toContain('backend on another computer');
+  expect(plan.error).not.toContain('incomplete');
+
+  const rosetta = await resolveSpawnPlan(3900, undefined, 'wrong_architecture');
+  if (!('error' in rosetta)) throw new Error('expected a host error');
+  expect(rosetta.error).toContain('arm64');
+  expect(rosetta).not.toHaveProperty('setupIssue');
+
+  // An explicit backend command still wins on any host.
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '["custom-python"]');
+  expect(await resolveSpawnPlan(3900, undefined, 'unsupported_platform')).toHaveProperty('argv');
 });
 
 it('keeps native fault frames when the production log ring overflows', async () => {
@@ -149,7 +337,7 @@ it('passes legacy storage to packaged backends while preserving explicit overrid
   expect(managedBackendSpawnOptions(3900).env.OMNIVOICE_DATA_DIR).toBeUndefined();
 });
 
-it('names the program and runtime repair when the OS rejects a spawn', () => {
+it('names the refused program without recommending runtime repair', () => {
   const python = String.raw`C:\Users\u\VoiceStudio\.venv\Scripts\python.exe`;
   const message = spawnFailureMessage(
     python,
@@ -157,7 +345,43 @@ it('names the program and runtime repair when the OS rejects a spawn', () => {
   );
   expect(message).toContain(python);
   expect(message).toContain('spawn UNKNOWN');
-  expect(message).toContain('repair the local runtime');
+  expect(message).not.toContain('repair the local runtime');
+});
+
+it('reads Smart App Control from the registry output', () => {
+  const reg = (value: string) =>
+    `\r\nHKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\CI\\Policy\r\n    VerifiedAndReputablePolicyState    REG_DWORD    ${value}\r\n`;
+  expect(smartAppControlFromRegistry(reg('0x1'))).toBe('on');
+  expect(smartAppControlFromRegistry(reg('0x2'))).toBe('evaluation');
+  expect(smartAppControlFromRegistry(reg('0x0'))).toBe('off');
+  expect(smartAppControlFromRegistry(reg('0x9'))).toBe('unknown');
+  expect(
+    smartAppControlFromRegistry('ERROR: The system was unable to find the specified registry key'),
+  ).toBe('unknown');
+});
+
+it('names Smart App Control when it blocked the runtime (#3224)', () => {
+  const python = String.raw`C:\Users\u\VoiceStudio\.venv\Scripts\python.exe`;
+  const blocked = Object.assign(new Error('spawn UNKNOWN'), { code: 'UNKNOWN' });
+  for (const smartAppControl of ['on', 'evaluation'] as const) {
+    const message = spawnFailureMessage(python, blocked, { smartAppControl });
+    expect(message).toContain(python);
+    expect(message).toContain('spawn UNKNOWN');
+    expect(message).toContain('Windows Smart App Control blocked it');
+    expect(message).not.toContain('repair the local runtime');
+  }
+  // Off or unreadable: keep the OS refusal without recommending reinstallation.
+  for (const smartAppControl of ['off', 'unknown'] as const) {
+    expect(spawnFailureMessage(python, blocked, { smartAppControl })).not.toContain(
+      'repair the local runtime',
+    );
+  }
+  // Only the bare Windows UNKNOWN is attributed to it, never a missing file.
+  const missing = Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' });
+  expect(spawnFailureMessage(python, missing)).toContain('repair the local runtime');
+  expect(spawnFailureMessage(python, missing, { smartAppControl: 'on' })).not.toContain(
+    'Smart App Control',
+  );
 });
 
 it('points a custom backend command at its own executable', () => {
@@ -180,8 +404,8 @@ it('says what the launch did in a startup-budget failure', () => {
   const budget = 'Backend did not answer on port 3900 within 300 s (OMNIVOICE_STARTUP_BUDGET_S).';
   expect(
     startupTimeoutMessage(3900, 300_000, { owned: true, lastOutput: 'INFO: loading model' }),
-  ).toBe(`${budget} Last output: INFO: loading model`);
-  expect(startupTimeoutMessage(3900, 300_000, { owned: true })).toBe(
+  ).toContain(`${budget} Last output: INFO: loading model`);
+  expect(startupTimeoutMessage(3900, 300_000, { owned: true })).toContain(
     `${budget} It printed no output.`,
   );
   expect(startupTimeoutMessage(3900, 300_000, { owned: false })).toBe(
@@ -252,4 +476,84 @@ it('tells the backend the dev renderer port so Sharing reports the real UI port'
   vi.stubEnv('OMNIVOICE_UI_PORT', '');
   vi.stubEnv('ELECTRON_RENDERER_URL', '');
   expect(managedBackendSpawnOptions(3900).env.OMNIVOICE_UI_PORT).toBe('');
+});
+
+it('hands backend-only capabilities to the managed backend alone, never to process.env', () => {
+  setBackendOnlyEnv({
+    VOICESTUDIO_ACCOUNT_BRIDGE_URL: 'http://127.0.0.1:1',
+    VOICESTUDIO_ACCOUNT_BRIDGE_TOKEN: 'cap',
+  });
+  try {
+    expect(managedBackendSpawnOptions(3900).env).toMatchObject({
+      VOICESTUDIO_ACCOUNT_BRIDGE_URL: 'http://127.0.0.1:1',
+      VOICESTUDIO_ACCOUNT_BRIDGE_TOKEN: 'cap',
+    });
+    expect(process.env.VOICESTUDIO_ACCOUNT_BRIDGE_TOKEN).toBeUndefined();
+  } finally {
+    setBackendOnlyEnv({
+      VOICESTUDIO_ACCOUNT_BRIDGE_URL: undefined,
+      VOICESTUDIO_ACCOUNT_BRIDGE_TOKEN: undefined,
+    });
+  }
+  expect(managedBackendSpawnOptions(3900).env.VOICESTUDIO_ACCOUNT_BRIDGE_TOKEN).toBeUndefined();
+});
+
+it('tells the backend which commit the app was built from (#3293)', () => {
+  vi.stubEnv('OMNIVOICE_BUILD_COMMIT', undefined);
+  expect(managedBackendSpawnOptions(3900).env.OMNIVOICE_BUILD_COMMIT).toBe('000000000');
+  vi.stubEnv('OMNIVOICE_BUILD_COMMIT', 'abcdef123');
+  expect(managedBackendSpawnOptions(3900).env.OMNIVOICE_BUILD_COMMIT).toBe('abcdef123');
+});
+
+it('names Smart App Control when it refused a runtime DLL, and other blockers otherwise (#3209)', () => {
+  const last =
+    'ImportError: DLL load failed while importing _sqlite3: An Application Control policy has blocked this file.';
+  expect(loadBlockMessage('exit code 1', last, 'application_control', 'on')).toBe(
+    "Backend exited (exit code 1): Windows refused to load one of the engine's files. " +
+      `Windows Smart App Control blocked it. Last output: ${last}`,
+  );
+  expect(loadBlockMessage('exit code 1', last, 'application_control', 'off')).toContain(
+    'A Windows application control policy blocked it.',
+  );
+  expect(loadBlockMessage('exit code 1', '', 'group_policy', 'on')).toContain(
+    'A Windows application control policy blocked it.',
+  );
+  expect(loadBlockMessage('exit code 1', '', 'antivirus')).toBe(
+    "Backend exited (exit code 1): Windows refused to load one of the engine's files. Your antivirus blocked it.",
+  );
+});
+
+it('reports a failed launch as the managed runtime, with a failure record', async () => {
+  const { BackendSupervisor } = await import('./backend');
+  const supervisor = new BackendSupervisor();
+  const internals = supervisor as unknown as {
+    generation: number;
+    spawnChild(plan: { argv: string[]; cwd: string }, generation: number): void;
+  };
+  const program = join(tmpdir(), 'voicestudio-no-such-dir', 'python');
+
+  internals.spawnChild({ argv: [program], cwd: tmpdir() }, internals.generation);
+
+  await vi.waitFor(() => expect(supervisor.status.stage).toBe('failed'));
+  expect(supervisor.status.managed).toBe(true);
+  expect(supervisor.status.failure).toMatchObject({
+    stage: 'failed',
+    program: 'python',
+    errorCode: 'ENOENT',
+  });
+});
+
+it('codes a refusal at once and forgets the failure when the next attempt starts', async () => {
+  const { BackendSupervisor } = await import('./backend');
+  const supervisor = new BackendSupervisor();
+  const internals = supervisor as unknown as {
+    setStage(stage: string, patch: { message?: string; managed?: boolean }): void;
+  };
+
+  internals.setStage('failed', { message: 'Could not start C:\\rt\\python.exe: spawn UNKNOWN' });
+  expect(supervisor.status.failure?.program).toBe('python.exe');
+  expect(supervisor.status.failure?.code).toMatch(/EXEC_REFUSED|WINDOWS_APP_CONTROL_BLOCKED/);
+
+  internals.setStage('attaching', { message: undefined });
+  expect(supervisor.status.failure).toBeUndefined();
 });

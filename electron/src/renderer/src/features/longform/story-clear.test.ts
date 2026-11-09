@@ -1,34 +1,40 @@
-import { expect, it } from 'vitest';
-import { blankLongformDraft, type Draft } from './longform-session';
+import { describe, expect, it } from 'vitest';
+import { blankLongformDraft } from './longform-session';
 import { clearedScriptPatch, scriptSize } from './story-clear';
 
-// "Clear script" must drop every line and chapter of a story in one step but
-// leave the cast alone; for an audiobook it empties the manuscript.
-
-it('clears every story line and pending import text, never the cast', () => {
-  const patch = clearedScriptPatch('stories');
-  expect(patch).toEqual({ lines: [], importText: '' });
-  expect('cast' in patch).toBe(false);
+describe('script reset patches', () => {
+  it.each([
+    ['audiobook', { script: '' }],
+    ['stories', { lines: [], importText: '' }],
+  ] as const)('creates the narrow patch for %s', (kind, expected) => {
+    const patch = clearedScriptPatch(kind);
+    expect(patch).toStrictEqual(expected);
+    expect(Object.keys(patch)).not.toContain('cast');
+  });
 });
 
-it('clears the audiobook manuscript', () => {
-  expect(clearedScriptPatch('audiobook')).toEqual({ script: '' });
-});
+describe('content count used by the reset confirmation', () => {
+  it('treats only visible audiobook text as one unit', () => {
+    const base = blankLongformDraft();
+    const counts = ['\n\t ', ' A chapter begins. '].map((script) =>
+      scriptSize('audiobook', { ...base, script }),
+    );
+    expect(counts).toStrictEqual([0, 1]);
+  });
 
-it('sizes the script so the button disables on an empty draft', () => {
-  const draft = blankLongformDraft();
-  expect(scriptSize('stories', draft)).toBe(0);
-  expect(scriptSize('audiobook', draft)).toBe(0);
-  draft.lines = [
-    { id: '1', character: 'narrator', text: '# Chapter one', profileId: null },
-    { id: '2', character: 'narrator', text: 'Zoe stepped closer.', profileId: null },
-  ] as Draft['lines'];
-  expect(scriptSize('stories', draft)).toBe(2);
-  draft.importText = 'Imported but not yet split';
-  expect(scriptSize('stories', draft)).toBe(3);
-  draft.importText = '';
-  draft.script = '  \n';
-  expect(scriptSize('audiobook', draft)).toBe(0);
-  draft.script = 'Once upon a time.';
-  expect(scriptSize('audiobook', draft)).toBe(1);
+  it('adds a nonblank import buffer to the existing story rows', () => {
+    const base = {
+      ...blankLongformDraft(),
+      lines: [
+        { id: 'line-a', text: 'Narration', profileId: null },
+        { id: 'line-b', text: '', profileId: 'voice-b' },
+      ],
+    };
+    expect([
+      scriptSize('stories', base),
+      scriptSize('stories', { ...base, importText: 'Paste queue' }),
+      scriptSize('stories', { ...base, importText: '\n ' }),
+      scriptSize('stories', { ...base, importText: undefined as unknown as string }),
+    ]).toEqual([2, 3, 2, 2]);
+  });
 });

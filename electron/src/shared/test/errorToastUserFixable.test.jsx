@@ -123,6 +123,7 @@ describe('toastErrorWithReport voice-design instruct guidance (#1771)', () => {
     'en',
     'es',
     'fr',
+    'gl',
     'hi',
     'id',
     'it',
@@ -141,9 +142,9 @@ describe('toastErrorWithReport voice-design instruct guidance (#1771)', () => {
     'zh-TW',
   ];
 
-  it('every new i18n key added for #1771 exists in all 21 locales', () => {
+  it('every new i18n key added for #1771 exists in all locales', () => {
     const localesDir = path.resolve(__dirname, '../i18n/locales');
-    expect(SUPPORTED_LOCALES).toHaveLength(21);
+    expect(SUPPORTED_LOCALES).toHaveLength(22);
     for (const code of SUPPORTED_LOCALES) {
       const locale = JSON.parse(fs.readFileSync(path.join(localesDir, `${code}.json`), 'utf8'));
       expect(locale.tts_errors?.dialect_accent_conflict, `${code} missing key`).toBeTruthy();

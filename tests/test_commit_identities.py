@@ -150,6 +150,7 @@ def test_shipped_hash_list_is_digests_only():
 
 
 def test_workflow_uses_trusted_target_orchestration_and_privileged_status():
+    """Pin identity policy execution to the pull request's trusted base commit."""
     wf = yaml.load(WORKFLOW.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
     assert set(wf["on"]) == {"pull_request_target"}
     assert "edited" in wf["on"]["pull_request_target"]["types"]
@@ -157,7 +158,11 @@ def test_workflow_uses_trusted_target_orchestration_and_privileged_status():
     (job,) = wf["jobs"].values()
     checkout, run = job["steps"]
     assert re.fullmatch(r"actions/checkout@[0-9a-f]{40}", checkout["uses"])
-    assert checkout["with"] == {"fetch-depth": "0", "persist-credentials": "false"}
+    assert checkout["with"] == {
+        "ref": "${{ github.event.pull_request.base.sha }}",
+        "fetch-depth": "0",
+        "persist-credentials": "false",
+    }
     assert run["run"] == "python3 .github/scripts/identity_check.py"
     assert run["env"] == {"GITHUB_TOKEN": "${{ secrets.GITHUB_TOKEN }}"}
     assert 'tar -c' not in run["run"]  # no bootstrap path through PR-owned policy

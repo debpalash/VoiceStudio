@@ -7,7 +7,7 @@
  * tests/test_longform_parser.py and electron/src/shared/test/longformParser.test.js).
  * Do not "improve" one side without the other — the corpus will fail.
  *
- * Grammar precedence (outer→inner):  # chapter → [voice:] → [pause] → SSML-lite.
+ * Grammar precedence (outer→inner):  # chapter → [voice:] → [emotion:] → [pause] → SSML-lite.
  */
 import { parseSsmlLite, spellOut } from './ssmlLite';
 
@@ -19,6 +19,11 @@ export const PAUSE_MAX_MS = 10000;
 const HEADING_RE = /^[ \t]*#[ \t]+(\S.*)$/gm;
 // [voice:NAME] — content excludes BOTH brackets (mirrors _VOICE_RE).
 const VOICE_RE = /\[voice:([^\][]*)\]/g;
+// [emotion:TEXT] — free-text delivery direction until the next [emotion:] or
+// voice run (#3422); empty resets. Mirrors _EMOTION_RE.
+const EMOTION_RE = /\[emotion:([^\][]*)\]/gi;
+/** Longest emotion direction kept, in code points (mirrors EMOTION_MAX_CHARS). */
+export const EMOTION_MAX_CHARS = 200;
 // Pause dialect mirroring omnivoice.utils.text._PAUSE_RE. JS has no atomic
 // group; the unit's own `(?:\s*(ms|s))?` is zero-width when no unit follows, so
 // the trailing `\s*` is the ONLY consumer of trailing whitespace — no two `\s*`
@@ -89,8 +94,68 @@ function parseVoiceRuns(body, defaultVoice) {
   return runs;
 }
 
-// A blank line (paragraph break) — mirrors _BLANK_LINE_RE in longform_parser.py.
-const BLANK_LINE_RE = /\n[ \t\r]*\n/;
+/** Mirror of _emotion_value: whitespace runs collapsed, capped, null if empty. */
+function emotionValue(raw) {
+  const collapsed = raw.replace(/[ \t\r\n]+/g, ' ').trim();
+  // Array.from counts code points like Python, so a cut never splits a surrogate pair.
+  const value = Array.from(collapsed).slice(0, EMOTION_MAX_CHARS).join('').trim();
+  return value || null;
+}
+
+/** Mirror of _split_emotions → [pieces, emotionAfter]. */
+function splitEmotions(segments, emotion) {
+  const out = [];
+  for (const seg of segments) {
+    const text = seg.text;
+    let last = 0;
+    const re = new RegExp(EMOTION_RE.source, EMOTION_RE.flags);
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      out.push({ ...seg, text: text.slice(last, m.index), emotion });
+      emotion = emotionValue(m[1] || '');
+      last = re.lastIndex;
+      if (re.lastIndex === m.index) re.lastIndex++;
+    }
+    out.push({ ...seg, text: text.slice(last), emotion });
+  }
+  return [out, emotion];
+}
+
+// A blank line: two newlines with only spaces/tabs between (single class, linear time).
+const BLANK_LINE_RE = /\n[ \t]*\n/;
+
+const trailingSpace = (x) => x.slice(x.trimEnd().length);
+const leadingSpace = (x) => x.slice(0, x.length - x.trimStart().length);
+
+/**
+ * Keep the segments that still have spoken text and say, for each kept one, how it meets
+ * the next kept one: 'paragraph' when a blank line lies in the whitespace between them
+ * (its own trailing space, any dropped blank segments, the next one's leading space),
+ * otherwise 'continue'. The final kept segment has no join.
+ */
+function keptSegments(segments, defaultSpeed) {
+  const kept = [];
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    const spoken = (seg.spell ? spellOut(seg.text) : seg.text).trim();
+    if (spoken) {
+      kept.push({
+        index: i,
+        text: spoken,
+        speed: seg.speed != null ? seg.speed : defaultSpeed,
+        emotion: seg.emotion ?? null,
+      });
+    }
+  }
+  return kept.map((item, k) => {
+    const next = kept[k + 1];
+    if (!next) return { ...item, join: null };
+    let gap = trailingSpace(segments[item.index].text);
+    for (let m = item.index + 1; m < next.index; m++) gap += segments[m].text;
+    gap += leadingSpace(segments[next.index].text);
+    return { ...item, join: BLANK_LINE_RE.test(gap) ? 'paragraph' : 'continue' };
+  });
+}
 
 /**
  * Voice→pause→SSML layering for ONE chapter body (no chapter split). The
@@ -100,43 +165,32 @@ const BLANK_LINE_RE = /\n[ \t\r]*\n/;
 export function parseChapterBody(body, { defaultVoice = null, defaultSpeed = null } = {}) {
   const spans = [];
   for (const [voice, runText] of parseVoiceRuns(body, defaultVoice)) {
+    // Every voice run starts neutral (mirrors the Python reset).
+    let emotion = null;
     for (const [spanText, pauseMs] of parsePauseMarkers(runText)) {
       const t = (spanText || '').trim();
       if (!t && pauseMs === 0) continue;
-      // [text, speed, paragraphBreakBefore]. The whitespace BETWEEN two kept
-      // segments is tracked so a blank line sitting on a markup boundary still
-      // ends the line instead of being swallowed (py parity).
-      const rendered = [];
-      let between = '';
-      for (const seg of t ? parseSsmlLite(t) : []) {
-        const raw = seg.text;
-        const st = (seg.spell ? spellOut(raw) : raw).trim();
-        if (!st) {
-          between += raw;
-          continue;
-        }
-        const sp = seg.speed != null ? seg.speed : defaultSpeed;
-        const lead = raw.slice(0, raw.length - raw.trimStart().length);
-        rendered.push([st, sp, BLANK_LINE_RE.test(between + lead)]);
-        between = raw.slice(raw.trimEnd().length);
-      }
+      let segments = t ? parseSsmlLite(t) : [];
+      if (new RegExp(EMOTION_RE.source, 'i').test(t))
+        [segments, emotion] = splitEmotions(segments, emotion);
+      else if (emotion) segments = segments.map((seg) => ({ ...seg, emotion }));
+      const rendered = keptSegments(segments, defaultSpeed);
       if (!rendered.length) {
         if (pauseMs > 0) {
           spans.push({ voice_id: voice, text: '', pause_ms_after: pauseMs, speed: null });
         }
         continue;
       }
-      rendered.forEach(([st, sp], j) => {
-        const span = {
+      rendered.forEach(({ text, speed, join, emotion: spanEmotion }, j) => {
+        const last = j === rendered.length - 1;
+        spans.push({
           voice_id: voice,
-          text: st,
-          pause_ms_after: j === rendered.length - 1 ? pauseMs : 0,
-          speed: sp,
-        };
-        // Inline markup split one run of text: say how this span joins the next —
-        // straight on, or across a blank line. Key present only here (py parity).
-        if (j < rendered.length - 1) span.join = rendered[j + 1][2] ? 'paragraph' : 'continue';
-        spans.push(span);
+          text,
+          pause_ms_after: last ? pauseMs : 0,
+          speed,
+          ...(join ? { join } : {}),
+          ...(spanEmotion ? { emotion: spanEmotion } : {}),
+        });
       });
     }
   }

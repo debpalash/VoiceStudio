@@ -2,6 +2,7 @@ import i18next from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import en from './locales/en.json';
 import { matchLocale } from './locale-match';
+import { onStorageKey } from '@/lib/storage-events';
 
 export const SUPPORTED_LOCALES = [
   'en',
@@ -25,6 +26,7 @@ export const SUPPORTED_LOCALES = [
   'uk',
   'ar',
   'zh-TW',
+  'gl',
 ] as const;
 
 export type AppLocale = (typeof SUPPORTED_LOCALES)[number];
@@ -111,6 +113,17 @@ export const APP_LANGUAGES = SUPPORTED_LOCALES.map((code) => {
 export const APP_LANGUAGE_ITEMS = APP_LANGUAGES.map(({ code, label }) => ({ value: code, label }));
 
 let languageRequest = 0;
+
+// A language pulled by Cloud sync (or chosen in another window) applies here too.
+onStorageKey(LOCALE_KEY, () => {
+  let saved: AppLocale | null = null;
+  try {
+    saved = normalizeLocale(localStorage.getItem(LOCALE_KEY));
+  } catch {
+    return;
+  }
+  if (saved && saved !== i18next.language) void setAppLanguage(saved);
+});
 
 export async function setAppLanguage(locale: AppLocale) {
   const request = ++languageRequest;

@@ -57,7 +57,11 @@ _BASE_SCHEMA = """
         consent_recorded_at REAL DEFAULT NULL,
         kind TEXT DEFAULT 'clone',
         vd_states TEXT DEFAULT NULL,
-        created_at REAL
+        design_recipe TEXT DEFAULT NULL,
+        created_at REAL,
+        sync_id TEXT DEFAULT NULL,
+        consent_basis TEXT DEFAULT '',
+        consent_attested_at TEXT DEFAULT NULL
     );
     CREATE TABLE IF NOT EXISTS generation_history (
         id TEXT PRIMARY KEY,
@@ -137,7 +141,9 @@ _BASE_SCHEMA = """
         created_at REAL NOT NULL,
         payload TEXT NOT NULL
     );
-    CREATE INDEX IF NOT EXISTS idx_job_events_job_seq ON job_events(job_id, seq);
+    -- The unique (job_id, seq) index is NOT created here: on a DB that still
+    -- holds duplicate pairs it would fail inside executescript and stop
+    -- startup. _ensure_job_events_unique_seq renumbers first, then creates it.
 
     -- Phase 1 AUTH-02: encrypted per-install key/value store. Used today
     -- for the HF token row + the per-install Fernet salt. Both fresh
@@ -210,13 +216,7 @@ _BASE_SCHEMA = """
     );
     CREATE INDEX IF NOT EXISTS idx_call_sessions_created ON call_sessions(created_at);
 
-    -- Remote GPU workers (docs/remote-workers.md). Opt-in: an install with no
-    -- remote workers never writes a row here and behaves exactly as before.
-    --
-    -- `public_key` is the worker's identity — a server-assigned id is a name,
-    -- not proof, so every reconnect is verified against this key. Revocation
-    -- is a persisted fact (not in-memory state) precisely so a restart of the
-    -- control plane cannot silently readmit a worker the user removed.
+    -- Legacy tables kept for existing installs; the feature moved to VoiceStudio Pro.
     CREATE TABLE IF NOT EXISTS remote_workers (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL DEFAULT '',
@@ -230,8 +230,6 @@ _BASE_SCHEMA = """
         host_json TEXT NOT NULL DEFAULT '{}',
         capabilities_json TEXT NOT NULL DEFAULT '[]',
         max_concurrent_tasks INTEGER NOT NULL DEFAULT 1,
-        -- Bumped on every successful (re)connect. Messages stamped with an
-        -- older epoch are from a session we have already replaced.
         session_epoch INTEGER NOT NULL DEFAULT 0,
         consent_granted_at REAL,
         created_at REAL NOT NULL,
@@ -239,8 +237,6 @@ _BASE_SCHEMA = """
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_remote_workers_key ON remote_workers(key_id);
 
-    -- Single-use join tokens. Only the hash is stored: the plaintext exists
-    -- once, in the dialog that shows it.
     CREATE TABLE IF NOT EXISTS remote_worker_enrollments (
         token_id TEXT PRIMARY KEY,
         secret_hash TEXT NOT NULL,
@@ -253,15 +249,8 @@ _BASE_SCHEMA = """
         used_by_worker TEXT
     );
 
-    -- Tasks dispatched to remote workers. Unlike the local `jobs` table (whose
-    -- startup sweep marks anything in-flight as failed), these must SURVIVE a
-    -- control-plane restart: the desktop app quits while a remote GPU keeps
-    -- rendering, and the worker is the source of truth for what is still
-    -- running. Reconciliation on reconnect rebuilds live state from here.
     CREATE TABLE IF NOT EXISTS remote_tasks (
         id TEXT PRIMARY KEY,
-        -- Client-supplied; deduplicates client retries before the worker
-        -- protocol is involved at all.
         idempotency_key TEXT,
         operation TEXT NOT NULL,
         engine TEXT NOT NULL DEFAULT '',
@@ -272,10 +261,6 @@ _BASE_SCHEMA = """
         max_attempts INTEGER NOT NULL DEFAULT 3,
         excluded_json TEXT NOT NULL DEFAULT '[]',
         error_json TEXT,
-        -- Written BEFORE RESULT_ACK is sent. If the server dies between
-        -- receiving a result and acknowledging it, the worker redelivers and
-        -- this row is what makes the second delivery a no-op instead of a
-        -- silently lost multi-minute render.
         result_ref TEXT,
         result_json TEXT,
         project_id TEXT,
@@ -312,6 +297,49 @@ _BASE_SCHEMA = """
     );
     CREATE INDEX IF NOT EXISTS idx_remote_attempts_task ON remote_task_attempts(task_id);
     CREATE INDEX IF NOT EXISTS idx_remote_attempts_worker ON remote_task_attempts(worker_id, state);
+
+    -- VoiceStudio Cloud settings sync (S1). Same DDL as alembic 0014_cloud_sync.
+    CREATE TABLE IF NOT EXISTS cloud_sync_state (
+        organization_id TEXT PRIMARY KEY,
+        device_id TEXT,
+        cursor INTEGER NOT NULL DEFAULT 0,
+        enabled INTEGER NOT NULL DEFAULT 0,
+        choices_json TEXT NOT NULL DEFAULT '{}',
+        last_full_sync_at TEXT,
+        needs_update_json TEXT NOT NULL DEFAULT '{}',
+        full_pull_json TEXT NOT NULL DEFAULT '[]'
+    );
+    CREATE TABLE IF NOT EXISTS cloud_sync_items (
+        organization_id TEXT NOT NULL,
+        collection TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        revision INTEGER NOT NULL,
+        deleted INTEGER NOT NULL,
+        schema_version INTEGER NOT NULL,
+        content_json TEXT,
+        PRIMARY KEY (organization_id, collection, item_id)
+    );
+    CREATE TABLE IF NOT EXISTS cloud_sync_outbox (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        organization_id TEXT NOT NULL,
+        collection TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        op TEXT NOT NULL CHECK (op IN ('put','delete')),
+        idempotency_key TEXT NOT NULL,
+        queued_at TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT,
+        gen INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS cloud_sync_outbox_one_per_item
+        ON cloud_sync_outbox (organization_id, collection, item_id);
+    CREATE TABLE IF NOT EXISTS cloud_sync_local (
+        key TEXT PRIMARY KEY,
+        value_json TEXT,
+        seq INTEGER NOT NULL,
+        origin TEXT NOT NULL,
+        meta_json TEXT NOT NULL DEFAULT '{}'
+    );
 """
 
 # Only tables/columns this module is allowed to ALTER. Prevents SQL injection via
@@ -407,6 +435,44 @@ def _reconcile_additive_columns(conn) -> None:
         canon.close()
 
 
+def _ensure_job_events_unique_seq(conn) -> None:
+    """Renumber duplicate (job_id, seq) events, then enforce uniqueness.
+
+    Mirrors alembic 0016 for installs where alembic cannot run. Duplicates came
+    from the old non-atomic writer; each is a real event, so rows are
+    renumbered in arrival order (seq, id) from the job's lowest seq, never
+    deleted. Jobs without a duplicate are untouched. Never raises: an index
+    that cannot be built must not stop startup.
+    """
+    try:
+        dup_jobs = [
+            r[0]
+            for r in conn.execute(
+                "SELECT DISTINCT job_id FROM job_events GROUP BY job_id, seq HAVING COUNT(*) > 1"
+            )
+        ]
+        for job_id in dup_jobs:
+            rows = conn.execute(
+                "SELECT id, seq FROM job_events WHERE job_id = ? ORDER BY seq, id", (job_id,)
+            ).fetchall()
+            base = rows[0][1]
+            conn.executemany(
+                "UPDATE job_events SET seq = ? WHERE id = ?",
+                [(base + offset, row[0]) for offset, row in enumerate(rows)],
+            )
+        if dup_jobs:
+            logger.info("job_events: renumbered duplicate seqs for %d job(s)", len(dup_jobs))
+        conn.execute("DROP INDEX IF EXISTS idx_job_events_job_seq")
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_job_events_job_seq_unique "
+            "ON job_events(job_id, seq)"
+        )
+        conn.commit()
+    except sqlite3.Error as exc:
+        conn.rollback()
+        logger.warning("job_events unique-seq repair failed: %s", exc)
+
+
 def ensure_schema() -> None:
     """Idempotently ensure the base tables + additive columns exist.
 
@@ -422,6 +488,7 @@ def ensure_schema() -> None:
     try:
         conn.executescript(_BASE_SCHEMA)
         _reconcile_additive_columns(conn)
+        _ensure_job_events_unique_seq(conn)
         conn.commit()
     finally:
         conn.close()
@@ -440,6 +507,7 @@ def init_db():
         # (consent_audio_path, kind, ...). Runs regardless of whether alembic
         # below succeeds, so an unrunnable alembic can't leave a 500-ing schema.
         _reconcile_additive_columns(conn)
+        _ensure_job_events_unique_seq(conn)
         conn.commit()
     finally:
         conn.close()

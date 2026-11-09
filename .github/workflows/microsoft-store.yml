@@ -1,0 +1,314 @@
+name: Microsoft Store package
+
+# Builds a signed, Store-specific NSIS package and Partner Center handoff.
+# It never submits or publishes a listing. Uploading immutable package URLs is
+# an explicit owner-only action; Partner Center submission remains owner-gated.
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Exact version tag; required when staging public package URLs"
+        type: string
+        default: ""
+      stage_package_urls:
+        description: "Owner approval to add immutable Microsoft Store installers to the matching GitHub release"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: microsoft-store-${{ inputs.release_tag || github.sha }}
+  cancel-in-progress: false
+
+env:
+  SOURCE_REF: ${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || github.sha }}
+  VOICESTUDIO_DISTRIBUTION: microsoft-store
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE_REF }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Validate target and publication authority
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          STAGE_PACKAGE_URLS: ${{ inputs.stage_package_urls }}
+          DISPATCH_ACTOR: ${{ github.actor }}
+          RERUN_ACTOR: ${{ github.triggering_actor }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          node scripts/validate_store_foundation.mjs --distribution=microsoft-store
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "$STAGE_PACKAGE_URLS" = true ]; then
+            test "$DISPATCH_ACTOR" = "$OWNER" && test "$RERUN_ACTOR" = "$OWNER" || {
+              echo "Only the repository owner may stage Store package URLs"; exit 1;
+            }
+            test "$RELEASE_TAG" = "v$VERSION" || {
+              echo "Staging requires the exact version tag v$VERSION"; exit 1;
+            }
+            test "$(git rev-parse HEAD)" = "$(git rev-parse "$RELEASE_TAG^{commit}")" || {
+              echo "Checkout does not match the release tag"; exit 1;
+            }
+          fi
+
+  package:
+    needs: validate
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 70
+    continue-on-error: ${{ matrix.experimental == true }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: windows-2022
+            arch: x64
+            target: x86_64-pc-windows-msvc
+            flag: --x64
+          - runner: windows-11-arm
+            arch: arm64
+            target: aarch64-pc-windows-msvc
+            flag: --arm64
+            experimental: true
+    defaults:
+      run:
+        shell: bash
+    env:
+      VOICESTUDIO_RUST_TARGET: ${{ matrix.target }}
+      VOICESTUDIO_UPDATE_CHANNEL: electron-microsoft-store-stable-win32-${{ matrix.arch }}
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE_REF }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: "1.4.2"
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: native/desktop-bridge -> target
+          key: microsoft-store-${{ matrix.target }}
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        with:
+          version: "0.12.13"
+          enable-cache: false
+      - name: Bundle pinned uv for the host architecture
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { mkdirSync, copyFileSync } from 'node:fs';
+          import { join } from 'node:path';
+          const expected = process.env.VOICESTUDIO_RUST_TARGET;
+          const targets = { 'win32-x64': 'x86_64-pc-windows-msvc', 'win32-arm64': 'aarch64-pc-windows-msvc' };
+          if (targets[`${process.platform}-${process.arch}`] !== expected) throw new Error('Runner architecture does not match package target');
+          const source = execFileSync('where.exe', ['uv'], { encoding: 'utf8' }).trim().split(/\r?\n/)[0];
+          const dir = 'electron/build/uv';
+          mkdirSync(dir, { recursive: true });
+          copyFileSync(source, join(dir, `uv-${expected}.exe`));
+          NODE
+      - name: Install locked dependencies
+        run: bun install --frozen-lockfile
+      - name: Validate and build Electron
+        run: bun run check:electron
+      - name: Build signed Microsoft Store installer
+        env:
+          CSC_LINK: ${{ secrets.ELECTRON_WINDOWS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.ELECTRON_WINDOWS_CSC_KEY_PASSWORD }}
+        working-directory: electron
+        run: |
+          test -n "$CSC_LINK" && test -n "$CSC_KEY_PASSWORD" || {
+            echo "Microsoft Store packages require Authenticode credentials"; exit 1;
+          }
+          bun x electron-builder --config electron-builder.config.mjs --win ${{ matrix.flag }} --publish never
+          node tests/packaging-contract.mjs --artifact
+          node tests/update-package-contract.mjs --platform win32 --arch ${{ matrix.arch }}
+      - name: Verify Authenticode signatures
+        shell: pwsh
+        run: |
+          $installer = @(Get-ChildItem electron/release/VoiceStudio-MicrosoftStore-*-win-${{ matrix.arch }}.exe)
+          if ($installer.Count -ne 1) { throw "Expected one Store installer, found $($installer.Count)" }
+          $unpacked = if ('${{ matrix.arch }}' -eq 'arm64') { 'electron/release/win-arm64-unpacked' } else { 'electron/release/win-unpacked' }
+          $publisher = (Get-Content store/metadata.json | ConvertFrom-Json).identity.publisherLegalName
+          ./scripts/verify_microsoft_store_authenticode.ps1 -Installer $installer[0].FullName -UnpackedDirectory $unpacked -ExpectedPublisher $publisher -Output "electron/release/authenticode-win32-${{ matrix.arch }}.json"
+      - name: Validate clean silent install, launch and uninstall
+        shell: pwsh
+        run: |
+          $installer = @(Get-ChildItem electron/release/VoiceStudio-MicrosoftStore-*-win-${{ matrix.arch }}.exe)[0]
+          $result = Start-Process -FilePath $installer.FullName -ArgumentList '/S' -Wait -PassThru
+          if ($result.ExitCode -ne 0) { throw "Silent install failed: $($result.ExitCode)" }
+          $entry = @(Get-ItemProperty HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object DisplayName -eq 'VoiceStudio')
+          if ($entry.Count -ne 1) { throw "Expected one VoiceStudio uninstall entry, found $($entry.Count)" }
+          $metadata = Get-Content store/metadata.json | ConvertFrom-Json
+          $version = (Get-Content package.json | ConvertFrom-Json).version
+          if ($entry[0].Publisher -ne $metadata.identity.publisherLegalName) { throw "Unexpected uninstall publisher: $($entry[0].Publisher)" }
+          if ($entry[0].DisplayVersion -ne $version) { throw "Unexpected installed version: $($entry[0].DisplayVersion)" }
+          $executable = Join-Path $env:LOCALAPPDATA 'Programs\VoiceStudio\VoiceStudio.exe'
+          if (-not (Test-Path $executable)) { throw "Installed executable is missing: $executable" }
+          $env:VOICESTUDIO_PACKAGED_EXE = $executable
+          Push-Location electron
+          node tests/packaged-smoke.mjs --setup
+          Pop-Location
+          $uninstaller = $entry[0].UninstallString.Trim('"')
+          $result = Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait -PassThru
+          if ($result.ExitCode -ne 0) { throw "Silent uninstall failed: $($result.ExitCode)" }
+          if (Test-Path $executable) { throw 'Silent uninstall left the application executable behind' }
+      - name: Validate upgrade from the previous direct release
+        if: matrix.arch == 'x64'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $currentVersion = [version](Get-Content package.json | ConvertFrom-Json).version
+          $previous = @(
+            gh release list --repo $env:GITHUB_REPOSITORY --limit 100 --json tagName,isDraft |
+              ConvertFrom-Json |
+              Where-Object { -not $_.isDraft -and $_.tagName -match '^v\d+\.\d+\.\d+$' } |
+              ForEach-Object { [pscustomobject]@{ Tag = $_.tagName; Version = [version]$_.tagName.Substring(1) } } |
+              Where-Object Version -lt $currentVersion |
+              Sort-Object Version -Descending
+          )[0]
+          if ($null -eq $previous) { throw "No previous direct release exists before $currentVersion" }
+          New-Item -ItemType Directory -Path previous-release | Out-Null
+          # Direct installers are VoiceStudio-<version>-win-x64.exe; releases up to
+          # v0.5.7-beta.3 named them VoiceStudio-Electron-<version>-win-x64.exe.
+          gh release download $previous.Tag --repo $env:GITHUB_REPOSITORY --pattern 'VoiceStudio-[0-9]*-win-x64.exe' --pattern 'VoiceStudio-Electron-*-win-x64.exe' --dir previous-release
+          $directInstaller = @(Get-ChildItem previous-release/VoiceStudio-*-win-x64.exe)
+          if ($directInstaller.Count -ne 1) { throw "Expected one previous direct installer, found $($directInstaller.Count)" }
+          $result = Start-Process -FilePath $directInstaller[0].FullName -ArgumentList '/S' -Wait -PassThru
+          if ($result.ExitCode -ne 0) { throw "Previous release install failed: $($result.ExitCode)" }
+          $storeInstaller = @(Get-ChildItem electron/release/VoiceStudio-MicrosoftStore-*-win-x64.exe)[0]
+          $result = Start-Process -FilePath $storeInstaller.FullName -ArgumentList '/S' -Wait -PassThru
+          if ($result.ExitCode -ne 0) { throw "Store upgrade failed: $($result.ExitCode)" }
+          $entry = @(Get-ItemProperty HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\* | Where-Object DisplayName -eq 'VoiceStudio')
+          if ($entry.Count -ne 1) { throw "Upgrade left $($entry.Count) VoiceStudio uninstall entries" }
+          if ([version]$entry[0].DisplayVersion -ne $currentVersion) { throw "Upgrade retained version $($entry[0].DisplayVersion)" }
+          $publisher = (Get-Content store/metadata.json | ConvertFrom-Json).identity.publisherLegalName
+          if ($entry[0].Publisher -ne $publisher) { throw "Upgrade retained publisher $($entry[0].Publisher)" }
+          $executable = Join-Path $env:LOCALAPPDATA 'Programs\VoiceStudio\VoiceStudio.exe'
+          $env:VOICESTUDIO_PACKAGED_EXE = $executable
+          Push-Location electron
+          node tests/packaged-smoke.mjs --setup
+          Pop-Location
+          $uninstaller = $entry[0].UninstallString.Trim('"')
+          $result = Start-Process -FilePath $uninstaller -ArgumentList '/S' -Wait -PassThru
+          if ($result.ExitCode -ne 0) { throw "Post-upgrade uninstall failed: $($result.ExitCode)" }
+      - name: Record artifact provenance
+        working-directory: electron
+        run: node ../scripts/create_store_artifact_manifest.mjs --distribution=microsoft-store --platform=win32 --arch=${{ matrix.arch }} --signing-evidence=authenticode-win32-${{ matrix.arch }}.json
+      - name: Save validated Store package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: microsoft-store-win32-${{ matrix.arch }}
+          retention-days: 30
+          if-no-files-found: error
+          path: |
+            electron/release/VoiceStudio-MicrosoftStore-*-win-${{ matrix.arch }}.exe
+            electron/release/VoiceStudio-MicrosoftStore-*-win-${{ matrix.arch }}.exe.blockmap
+            electron/release/electron-microsoft-store-stable-win32-${{ matrix.arch }}.yml
+            electron/release/store-artifact-manifest-win32-${{ matrix.arch }}.json
+            electron/release/authenticode-win32-${{ matrix.arch }}.json
+
+  handoff:
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE_REF }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: microsoft-store-*
+          merge-multiple: true
+          path: microsoft-store-handoff
+      - name: Create Partner Center handoff
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG=${RELEASE_TAG:-v$VERSION}
+          node scripts/create_microsoft_store_handoff.mjs --release-dir=microsoft-store-handoff --output=microsoft-store-handoff/microsoft-store-submission.json --tag="$TAG"
+      - name: Add canonical listing assets
+        run: |
+          mkdir -p microsoft-store-handoff/listing/screenshots
+          cp docs/logo.png microsoft-store-handoff/listing/box-art.png
+          node --input-type=module <<'NODE'
+          import { copyFileSync, readFileSync } from 'node:fs';
+          import { basename, join } from 'node:path';
+          const assets = JSON.parse(readFileSync('store/assets.json', 'utf8'));
+          for (const screenshot of assets.screenshots) copyFileSync(screenshot.source, join('microsoft-store-handoff/listing/screenshots', basename(screenshot.source)));
+          NODE
+      - name: Save Partner Center handoff
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: microsoft-store-partner-center-handoff
+          retention-days: 30
+          if-no-files-found: error
+          path: microsoft-store-handoff
+
+  stage:
+    if: inputs.stage_package_urls == true
+    needs: handoff
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ env.SOURCE_REF }}
+          persist-credentials: false
+      - name: Revalidate publication authority
+        env:
+          DISPATCH_ACTOR: ${{ github.actor }}
+          RERUN_ACTOR: ${{ github.triggering_actor }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          test "$DISPATCH_ACTOR" = "$OWNER" && test "$RERUN_ACTOR" = "$OWNER" || {
+            echo "Only the repository owner may stage Store package URLs"; exit 1;
+          }
+          VERSION=$(node -p "require('./package.json').version")
+          test "$RELEASE_TAG" = "v$VERSION" || {
+            echo "Staging requires the exact version tag v$VERSION"; exit 1;
+          }
+          test "$(git rev-parse HEAD)" = "$(git rev-parse "$RELEASE_TAG^{commit}")" || {
+            echo "Checkout does not match the release tag"; exit 1;
+          }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: microsoft-store-partner-center-handoff
+          path: microsoft-store-handoff
+      - name: Stage immutable versioned package URLs
+        run: |
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+          mkdir -p staged-verification
+          for package in microsoft-store-handoff/VoiceStudio-MicrosoftStore-*.exe microsoft-store-handoff/VoiceStudio-MicrosoftStore-*.exe.blockmap microsoft-store-handoff/electron-microsoft-store-stable-*.yml; do
+            NAME=$(basename "$package")
+            if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' | grep -Fxq "$NAME"; then
+              echo "Refusing to replace immutable Store package: $NAME"; exit 1
+            fi
+            gh release upload "$RELEASE_TAG" "$package" --repo "$GITHUB_REPOSITORY"
+            gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$NAME" --dir staged-verification
+            cmp "$package" "staged-verification/$NAME" || {
+              echo "Staged package differs from the validated bytes: $NAME"; exit 1
+            }
+          done

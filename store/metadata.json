@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "identity": {
+    "productName": "VoiceStudio",
+    "applicationId": "com.voicestudio.desktop",
+    "macAppStore": {
+      "applicationId": "sh.voicestudio.pro",
+      "appStoreConnectId": "6829361961"
+    },
+    "publisherLegalName": "Yupcha Softwares Private Limited",
+    "license": "AGPL-3.0-only",
+    "defaultLocale": "en-US"
+  },
+  "listing": {
+    "title": "VoiceStudio",
+    "shortDescription": "Local voice cloning, voice design, dubbing and dictation on your computer.",
+    "description": "VoiceStudio is a local-first desktop studio for voice cloning, voice design, video dubbing, transcription and real-time dictation. Audio and projects remain on the user's computer by default, with no account or API key required. Models and the managed runtime are installed only through explicit setup or model-install actions.",
+    "keywords": [
+      "voice cloning",
+      "text to speech",
+      "dubbing",
+      "dictation",
+      "transcription",
+      "audio"
+    ]
+  },
+  "urls": {
+    "website": "https://voicestudio.sh",
+    "privacyPolicy": "https://voicestudio.sh/privacy",
+    "support": "https://github.com/debpalash/VoiceStudio/issues",
+    "source": "https://github.com/debpalash/VoiceStudio"
+  },
+  "requirements": {
+    "diskGib": 10,
+    "firstRunNetworkRequired": true,
+    "architectures": {
+      "windows": ["x64", "arm64-experimental"],
+      "linux": ["x64"],
+      "macos": ["arm64", "x64-ui-only"]
+    },
+    "minimumOs": {
+      "windows": "Windows 10",
+      "macos": "macOS 13.3",
+      "linux": "Distribution supported by the selected package format"
+    }
+  },
+  "permissions": {
+    "microphone": "Record reference speech and provide real-time dictation when the user starts those features.",
+    "accessibility": "Insert user-requested dictation into the focused application when the user enables this integration.",
+    "files": "Open user-selected media and save generated audio, video and project files."
+  },
+  "contentDeclarations": {
+    "generativeAi": true,
+    "voiceCloning": true,
+    "syntheticAudioWatermarking": true,
+    "publicUserContentHosting": false
+  },
+  "categories": {
+    "microsoft-store": "Music",
+    "snap-store": "Audio & Video",
+    "mac-app-store": "Productivity"
+  }
+}

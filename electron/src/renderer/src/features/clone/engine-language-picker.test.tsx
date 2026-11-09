@@ -6,9 +6,6 @@ const state = vi.hoisted(() => ({ names: ['english'] as string[] | null }));
 vi.mock('@/hooks/use-engines', () => ({
   useEngines: () => ({ activeTts: { supported_language_names: state.names } }),
 }));
-vi.mock('@/hooks/use-compute-target', () => ({
-  useComputeTarget: () => ({ data: { active: { remote: false } } }),
-}));
 vi.mock('@/lib/languages', () => ({
   LANGUAGES: ['Auto', 'English', 'Japanese'],
   POPULAR_LANGUAGES: ['English'],
@@ -20,7 +17,10 @@ it('updates allowed choices after an engine switch without rewriting the saved l
   const onValueChange = vi.fn();
   const view = render(<EngineLanguagePicker onValueChange={onValueChange} />);
   fireEvent.click(screen.getByRole('button', { name: 'Language' }));
+  // The saved unsupported choice stays visible rather than hiding behind "Show all languages".
   expect(await screen.findByRole('option', { name: 'Japanese' })).toBeDisabled();
+  // A toggle that cannot hide the saved choice would do nothing, so none is offered.
+  expect(screen.queryByRole('option', { name: 'Hide unsupported languages' })).toBeNull();
   expect(screen.getByRole('option', { name: 'Auto' })).toBeEnabled();
   state.names = null;
   view.rerender(<EngineLanguagePicker onValueChange={onValueChange} />);

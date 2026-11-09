@@ -6,14 +6,9 @@ AttributeError inside the ``ml_imports`` startup phase, and a failure there
 takes the whole backend with it: the desktop app sits on "starting backend"
 forever and /health stays 503.
 
-The group that hits this is not hypothetical. #1931 came from an sm_120
-(Blackwell) user whose torch import crashed on Windows and who fixed it by
-moving to torch 2.9.1, which brings torchaudio 2.9 with it. Working around one
-problem and then crashing on a line that does nothing is the whole bug.
-
-The pinned torch is not missing sm_120 kernels: 2.8.0 from the cu128 index
-lists sm_120 in get_arch_list(). CU128_ARCHS in tests/test_cuda_arch_compat.py
-records the same list, captured verbatim from a real cu128 build in #1285.
+The failure only exists on a newer torchaudio than the one the test environment
+pins, so no runtime check can catch it here; the guard has to be proven by
+reading the source instead.
 
 Checked at the source level because reproducing it needs a real torchaudio 2.9
 in the environment, which the pinned test env does not have. Guarding the

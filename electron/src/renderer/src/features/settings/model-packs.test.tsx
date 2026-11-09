@@ -6,8 +6,8 @@ const mock = vi.hoisted(() => ({ api: vi.fn(), setTier: vi.fn() }));
 vi.mock('@/lib/api/client', () => ({ apiJson: mock.api, describeError: String }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock('@/hooks/use-backend-status', () => ({ useBackendStatus: () => ({ stage: 'ready' }) }));
-vi.mock('@/hooks/use-performance-profile', async (original) => ({
-  ...(await original<object>()),
+vi.mock('@/hooks/use-performance-profile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/hooks/use-performance-profile')>()),
   usePerformanceProfile: () => ({
     data: { global: 'balanced', applicable_families: [], implemented_families: [] },
     isSaving: false,
@@ -25,7 +25,6 @@ it('previews every pack without active engines and installs only the chosen tier
   mock.api.mockImplementation(async (path: string) => {
     if (path === '/models')
       return {
-        target: 'local',
         disk_free_gb: 100,
         models: [
           ['k2-fsa/OmniVoice', 'OmniVoice'],
@@ -75,6 +74,6 @@ it('previews every pack without active engines and installs only the chosen tier
   );
   expect(mock.api).toHaveBeenCalledWith('/models/install', {
     method: 'POST',
-    body: JSON.stringify({ repo_id: 'Systran/faster-whisper-base', target: 'local' }),
+    body: JSON.stringify({ repo_id: 'Systran/faster-whisper-base' }),
   });
 });

@@ -1,4 +1,5 @@
 export const CATEGORIES: Record<string, string[]>;
+export const CHINESE_DIALECT_IDS: Record<string, string>;
 export const PRESETS: { id: string; name: string; tags: string; attrs: Record<string, string> }[];
 export const POPULAR_LANGS: string[];
 export const POPULAR_ISO: string[];

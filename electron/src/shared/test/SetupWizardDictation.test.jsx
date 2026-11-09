@@ -56,11 +56,11 @@ describe('SetupWizard dictation step (real DictationDemo)', () => {
   it('shows the rail label and the demo title as two distinct strings, each once (#1930)', async () => {
     render(withI18n(<SetupWizard onReady={() => {}} />));
 
-    fireEvent.click(await screen.findByText(/All good — continue/i));
-    fireEvent.click(await screen.findByText(/Required models ready/i));
+    fireEvent.click(await screen.findByText('Continue'));
+    fireEvent.click(await screen.findByText(/Required models are ready/i));
 
     // Straight to dictation — no consent step in this build.
-    expect(await screen.findByText(/Enter studio/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Enter the studio/i)).toBeInTheDocument();
 
     // The step rail's short label and the DictationDemo card's own title are
     // two DIFFERENT strings — no more reusing "Try dictation" for both.

@@ -162,10 +162,10 @@ and with no LLM configured (or on any LLM error) it simply does nothing.
 
 **Settings → System → LLM Providers** is the one place to set up the LLM. Pick a
 provider, paste its API key, choose a model, **Test** it, and "use for
-translation." Supported: OpenAI, OpenRouter, OrcaRouter, Cheaper Inference, Groq,
-Cerebras, Google AI (Gemini), Mistral, Cohere, NVIDIA, GitHub Models, Cloudflare,
-Hugging Face, SambaNova, SiliconFlow, iFLYTEK Astron MaaS, **local Ollama / LM Studio**
-(offline, no key), and a **Custom** OpenAI-compatible endpoint.
+translation." Supported choices are OpenAI, OpenRouter, OrcaRouter, Cheaper Inference,
+Opper, API Route, Groq, Cerebras, Google AI (Gemini), Mistral, Cohere, NVIDIA, GitHub Models,
+Cloudflare, Hugging Face, SambaNova, SiliconFlow, iFLYTEK Astron MaaS,
+**local Ollama / LM Studio (offline, no key)**, and a **Custom OpenAI-compatible endpoint**.
 
 Keys entered here are stored **encrypted** on your machine and never returned to
 the UI. For a fully offline setup, pick **Ollama** (`ollama pull llama3.1`) or
@@ -177,12 +177,26 @@ provider via environment variables (e.g. `GROQ_API_KEY`, or the legacy
 OrcaRouter can be configured without the UI with `ORCAROUTER_API_KEY`, and its
 defaults can be overridden with `ORCAROUTER_BASE_URL` and `ORCAROUTER_MODEL`.
 
-[Cheaper Inference](https://cheaperinference.com) is an OpenAI-compatible
-gateway to models from several labs (default model `gpt-5.4-mini`).
-Pricing varies by model and request; check the [current provider catalog](https://cheaperinference.com/docs).
-It can be configured without the UI with `CHEAPER_INFERENCE_API_KEY`, and its
-defaults can be overridden with `CHEAPER_INFERENCE_BASE_URL` and
-`CHEAPER_INFERENCE_MODEL`.
+[Cheaper Inference](https://cheaperinference.com) is an OpenAI-compatible gateway
+covering models from several labs. It defaults to `gpt-5.4-mini`; pricing depends
+on the selected model and request, as listed in its [provider catalog](https://cheaperinference.com/docs).
+Without the UI, set `CHEAPER_INFERENCE_API_KEY`; override the defaults with
+`CHEAPER_INFERENCE_BASE_URL` and `CHEAPER_INFERENCE_MODEL`.
+
+[Opper](https://opper.ai) is an EU-hosted AI gateway with 700+ models from 50+
+providers behind one OpenAI-compatible API and one key (default model
+`claude-sonnet-4-6`). Enter a key from [platform.opper.ai](https://platform.opper.ai)
+in the provider settings, or set `OPPER_API_KEY`, and override the model with
+`OPPER_MODEL`. The endpoint can only be changed in the provider settings,
+because Opper's own tools use `OPPER_BASE_URL` for a different URL.
+
+[API Route](https://www.api-route.com) uses the OpenAI-compatible endpoint
+`https://global.api-route.com/v1` and defaults to `deepseek-v4.1-flash`.
+Choose **API Route** in the provider settings and enter your API key, or set
+`API_ROUTE_API_KEY`. Override the endpoint and model with `API_ROUTE_BASE_URL`
+and `API_ROUTE_MODEL`. To pin the active provider, set
+`LLM_DEFAULT_PROVIDER=api-route`. Cloud requests require explicit selection
+and a configured key, just like the other hosted providers.
 
 iFLYTEK Astron MaaS uses `IFLYTEK_API_KEY`, `IFLYTEK_BASE_URL` and
 `IFLYTEK_MODEL`. It has no default model: copy the model ID (for example Spark
@@ -204,7 +218,7 @@ shared machine — set the `LLM_DEFAULT_PROVIDER` environment variable to a
 provider id before launching the backend:
 
 ```
-LLM_DEFAULT_PROVIDER=groq        # or openai, openrouter, orcarouter, cheaperinference, cerebras, iflytek, ollama, custom, …
+LLM_DEFAULT_PROVIDER=groq        # or openai, openrouter, orcarouter, cheaperinference, opper, api-route, cerebras, iflytek, ollama, custom, …
 ```
 
 Resolution order for the active provider is: `LLM_DEFAULT_PROVIDER` (env) →
@@ -255,18 +269,20 @@ panels instead so neither editor becomes unusably small.
   from-source checkout.
 - **Installed it but still "needs install"** — restart the backend so Python
   picks up the newly-installed module.
-- **"The 'argos' engine's CTranslate2 runtime could not be loaded…"** — Argos
-  translates on CTranslate2, and on Linux kernels that refuse an executable
-  stack the CTranslate2 library shipped with Python 3.11 installs (4.4.0) is
-  rejected outright. VoiceStudio repairs that library in place on first use; if
-  it cannot (read-only install), the message names the fix — reinstall the
-  backend on Python 3.12+, or run `patchelf --clear-execstack` on the library
-  once — and NLLB stays available in the meantime
-  ([#692](https://github.com/debpalash/VoiceStudio/issues/692)).
+- **"Offline translation with 'argos' is unavailable: its CTranslate2 backend failed to start"** — Argos
+  runs on CTranslate2, and older CTranslate2 builds (4.4.0 and below) ask the
+  Linux kernel for an executable stack, which hardened kernels refuse.
+  VoiceStudio first tries to repair the library in place by clearing that flag.
+  If that is not possible (read-only install), either reinstall the backend on
+  Python 3.12+ (CTranslate2 4.8+ has no such request) or run
+  `patchelf --clear-execstack <library>` once. NLLB (local) stays available
+  meanwhile ([#692](https://github.com/debpalash/VoiceStudio/issues/692)).
 
 
 
 
+
+SRT and WebVTT imports accept hour fields longer than two digits, preserving cues from recordings over 99 hours.
 
 SRT and WebVTT exports round each cue timestamp once to the nearest millisecond, including carry into the next second or minute. The OpenAI-compatible transcription exports use the same formatter.
 

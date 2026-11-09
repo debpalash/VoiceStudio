@@ -15,12 +15,14 @@ import { PipelineFailure } from '@/components/pipeline-failure';
 import { importToText } from '@shared/utils/importStory';
 import { cueSheetFor } from './cue-sheet';
 import { saveLocalFile } from '@/lib/local-export';
-import { StoryCast, StoryEditor } from './story-editor';
+import { StoryEditor } from './story-editor';
+import { StoryCast } from './story-cast';
+import { StorySpeed } from './story-speed';
 import { clearedScriptPatch, scriptSize } from './story-clear';
 import { ConfirmDialog } from '../clone/confirm-dialog';
 import { AudiobookMarkupToolbar } from './audiobook-markup-toolbar';
+import { ChapterOutline } from './chapter-outline';
 import { storyVoicesReady } from './story-inputs';
-import { StorySpeed } from './story-speed';
 import { ProjectSettings } from './project-settings';
 import { ProductionSettings } from './production-settings';
 import { ChapterPreviews } from './chapter-previews';
@@ -34,13 +36,16 @@ import {
 } from '@shared/utils/audiobookScript';
 import { BookSettings } from './book-settings';
 import { duplicateWords } from './book-options';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useEngines } from '@/hooks/use-engines';
+import { engineShortName, expressionCaps } from '@/lib/expression';
 import { Link } from '@tanstack/react-router';
-import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { DownloadIcon, ListIcon, SparklesIcon } from 'lucide-react';
 import { Button, buttonVariants } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { WaveformPlayer } from '@/components/waveform-player';
 import { SyncedAudiobookPlayer } from './synced-audiobook-player';
 import { GeneratePanel } from './generate-panel';
@@ -50,9 +55,10 @@ import { ValidationWarnings, type ScriptWarning } from './validation-warnings';
 import { getBridge } from '@/components/bridge';
 import { useProfiles } from '@/hooks/use-profiles';
 import { apiJson, apiPath, describeError } from '@/lib/api/client';
+import { RenderRecovery } from './render-recovery';
 import { saveExport } from '@/lib/export-history';
 import { EngineLanguagePicker } from '@/features/clone/engine-language-picker';
-import { LANG_CODES } from '@shared/utils/languages';
+import { outputLanguageOptions } from './output-languages';
 import {
   editLongform,
   dismissLongformError,
@@ -64,13 +70,7 @@ import {
 } from './longform-session';
 import { SAMPLE_AUDIOBOOK_SCRIPT } from '@shared/data/sampleAudiobook';
 import { useTtsReadiness } from '@/hooks/use-tts-readiness';
-interface Recovery {
-  job_id: string;
-  type: string;
-  title: string;
-  chapters_done: number;
-  total_chapters: number;
-}
+const FORMATS = ['m4b', 'mp3'] as const;
 export function LongformPage({ mode }: { mode: Mode }) {
   const { t } = useTranslation();
   const session = useLongformSession();
@@ -81,22 +81,22 @@ export function LongformPage({ mode }: { mode: Mode }) {
     mode === 'audiobook' ? draft.script : draft.lines.map((line) => line.text).join('\n');
   const names = useMemo(() => parseCastNames(text), [text]);
   const stats = useMemo(() => scriptStats(text), [text]);
+  const languageOptions = useMemo(() => outputLanguageOptions(draft.language), [draft.language]);
   const { data: profiles = [] } = useProfiles();
   const [importing, setImporting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [warningsDismissed, setWarningsDismissed] = useState(false);
-  const [clearOpen, setClearOpen] = useState(false);
+  const [scriptResetRequested, setScriptResetRequested] = useState(false);
+  const [scriptCaret, setScriptCaret] = useState(0);
   const audiobookInput = useRef<HTMLTextAreaElement>(null);
   const locked = !!session.active || importing;
-  const scriptLines = scriptSize(mode, draft);
-  const query = useQuery({
-    queryKey: ['longform-recovery'],
-    queryFn: ({ signal }) => apiJson<{ jobs: Recovery[] }>('/audiobook/jobs', { signal }),
-  });
-  useEffect(() => {
-    if (!session.active) void query.refetch();
-  }, [session.active]);
+  const resetEntryCount = scriptSize(mode, draft);
+  const resetIsUnavailable = locked || resetEntryCount < 1;
+  const resetMessage =
+    mode === 'audiobook'
+      ? t('stories.clearConfirmScript')
+      : t('stories.clearConfirm', { count: resetEntryCount });
   const set = (value: Parameters<typeof editLongform>[1]) => editLongform(mode, value);
   const usable =
     mode === 'audiobook'
@@ -112,6 +112,12 @@ export function LongformPage({ mode }: { mode: Mode }) {
     (mode === 'stories'
       ? storyVoicesReady(draft, profiles)
       : profiles.some((profile) => profile.id === draft.voice));
+  const { activeTts } = useEngines();
+  // Name the engine only when it skips [emotion:] (#3422), so the warning can say so.
+  const emotionIgnoredBy =
+    activeTts && expressionCaps(activeTts).emotion === 'none'
+      ? engineShortName(activeTts) || t('engineSidebar.tts')
+      : null;
   const warnings = useMemo(
     () =>
       mode === 'audiobook'
@@ -120,28 +126,44 @@ export function LongformPage({ mode }: { mode: Mode }) {
               Boolean(draft.voiceCast[name]),
             ),
             profileIds: profiles.map((profile) => profile.id),
+            emotionIgnoredBy,
           }) as ScriptWarning[])
         : [],
-    [draft.script, draft.voiceCast, mode, profiles],
+    [draft.script, draft.voiceCast, mode, profiles, emotionIgnoredBy],
   );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const otherModeRendering = session.active !== null && session.active !== mode;
   const blocker = generateBlocker({
     mode,
-    busyElsewhere: Boolean(session.active) && session.active !== mode,
+    busyElsewhere: otherModeRendering,
     importing,
     tts: ttsBlocker,
     usable,
     voicesReady,
     duplicateLexicon: duplicateWords(draft.lexicon),
   });
+  const resumeRender = (jobId: string) => void renderLongform(mode, jobId);
+  const startRender = () => void renderLongform(mode);
+  // One element, rendered either pinned in the setup pane or, once that is folded away, over the editor.
   const generatePanel = (
-    <GeneratePanel
-      mode={mode}
-      session={session}
-      blocker={blocker}
-      onGenerate={() => void renderLongform(mode)}
-      onStop={stopLongform}
-    />
+    <div className="flex min-h-0 flex-col gap-2">
+      <RenderRecovery
+        mode={mode}
+        active={session.active !== null}
+        disabled={locked || ttsBlocker !== null}
+        disabledReason={
+          ttsBlocker !== null ? t('engines.none_ready_title') : t('audiobook.recovery_busy')
+        }
+        onResume={resumeRender}
+      />
+      <GeneratePanel
+        mode={mode}
+        session={session}
+        blocker={blocker}
+        onGenerate={startRender}
+        onStop={stopLongform}
+      />
+    </div>
   );
   const importFile = async (file: File) => {
     const importEpoch = storiesImportEpoch.current;
@@ -188,21 +210,16 @@ export function LongformPage({ mode }: { mode: Mode }) {
       setExporting(false);
     }
   };
-  // The m4b embeds its chapters, but mp3 has no portable way to carry them, and
-  // players, podcast hosts and show-notes want the timestamps as text. What
-  // belongs in the sheet is decided in cue-sheet.ts; this only saves it.
-  const cueSheet = cueSheetFor(draft.outputChapters, draft.output, (n) =>
+  const downloadableCues = cueSheetFor(draft.outputChapters, draft.output, (n) =>
     t('audiobook.chapter_n', { n }),
   );
-  const downloadCueSheet = async () => {
-    if (!cueSheet) return;
+  const saveCueSheet = async () => {
+    if (downloadableCues === null) return;
     setLocalError(null);
+    const { body, filename } = downloadableCues;
     try {
-      // Native save dialog under Electron, like every other local export.
-      await saveLocalFile(
-        new Blob([cueSheet.body], { type: 'text/plain;charset=utf-8' }),
-        cueSheet.filename,
-      );
+      const textFile = new Blob([body], { type: 'text/plain;charset=utf-8' });
+      await saveLocalFile(textFile, filename);
     } catch (cause) {
       setLocalError(describeError(cause));
     }
@@ -215,8 +232,9 @@ export function LongformPage({ mode }: { mode: Mode }) {
         </h1>
         <Link
           to={mode === 'stories' ? '/audiobook' : '/stories'}
-          className={buttonVariants({ variant: 'ghost', size: 'sm' })}
+          className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), 'ms-auto')}
         >
+          {mode === 'stories' ? <BookOpenTextIcon /> : <AudioLinesIcon />}
           {t(mode === 'stories' ? 'audiobook.title' : 'nav.stories')}
         </Link>
       </WorkspaceHeader>
@@ -227,8 +245,21 @@ export function LongformPage({ mode }: { mode: Mode }) {
           size="wide"
           variant="controls"
           footer={generatePanel}
+          library={
+            <div className="studio-scrollbar min-h-0 flex-1 overflow-y-auto p-3.5 text-[13px]">
+              <ProjectSettings
+                bare
+                mode={mode}
+                draft={draft}
+                disabled={locked}
+                onChange={set}
+                onBusy={setImporting}
+              />
+            </div>
+          }
+          libraryLabel={t('projects.title')}
           onCollapsedChange={setSidebarCollapsed}
-          className="space-y-3 [&>details]:rounded-xl [&>details]:border [&>details]:border-border/60 [&>details]:bg-muted/20 [&>details]:p-3 [&>section]:rounded-xl [&>section]:border [&>section]:border-border/60 [&>section]:bg-muted/20 [&>section]:p-3"
+          className="space-y-3"
         >
           <div className="space-y-4 rounded-xl border border-border/60 bg-muted/20 p-3">
             <label className="block space-y-2 text-xs font-medium text-muted-foreground">
@@ -246,7 +277,7 @@ export function LongformPage({ mode }: { mode: Mode }) {
             <div className="space-y-1">
               <h2 className="mb-2 flex items-center gap-2 text-xs font-medium text-muted-foreground">
                 <FingerprintIcon className="size-4" aria-hidden="true" />
-                {t('stories.voice')}
+                {t('stories.voiceLabel')}
               </h2>
               {!profiles.length && (
                 <p className="text-xs text-muted-foreground">{t('stories.noProfiles')}</p>
@@ -264,7 +295,9 @@ export function LongformPage({ mode }: { mode: Mode }) {
                 </Button>
               ))}
             </div>
-            {mode === 'stories' && <StorySpeed draft={draft} disabled={locked} onChange={set} />}
+            {mode === 'stories' ? (
+              <StorySpeed draft={draft} disabled={locked} onChange={set} />
+            ) : null}
             <div className="space-y-2">
               <h2 className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
                 <LanguagesIcon className="size-4" aria-hidden="true" />
@@ -273,7 +306,7 @@ export function LongformPage({ mode }: { mode: Mode }) {
               <EngineLanguagePicker
                 operation={ttsOperation}
                 value={draft.language}
-                options={['Auto', ...LANG_CODES.map((l) => l.label)]}
+                options={languageOptions}
                 disabled={locked}
                 onValueChange={(language) => set({ language })}
               />
@@ -283,18 +316,28 @@ export function LongformPage({ mode }: { mode: Mode }) {
                 <FileAudioIcon className="size-4" aria-hidden="true" />
                 {t('audiobook.format')}
               </h2>
-              <div className="flex gap-1 rounded-lg bg-background/40 p-1">
-                {(['m4b', 'mp3'] as const).map((format) => (
-                  <Button
+              <ToggleGroup
+                aria-label={t('audiobook.format')}
+                value={[draft.format]}
+                disabled={locked}
+                onValueChange={(values) => {
+                  const format = FORMATS.find((candidate) => candidate === values[0]);
+                  if (format) set({ format });
+                }}
+                spacing={0}
+                className="grid w-full grid-cols-2 gap-0.5 rounded-lg bg-muted/40 p-0.5 ring-1 ring-inset ring-border/50"
+              >
+                {FORMATS.map((format) => (
+                  <ToggleGroupItem
                     key={format}
-                    variant={draft.format === format ? 'secondary' : 'ghost'}
-                    disabled={locked}
-                    onClick={() => set({ format })}
+                    value={format}
+                    size="sm"
+                    className="h-7 w-full rounded-md text-muted-foreground hover:bg-background/60 aria-pressed:bg-background aria-pressed:text-foreground aria-pressed:shadow-sm"
                   >
                     {t('audiobook.format_' + format)}
-                  </Button>
+                  </ToggleGroupItem>
                 ))}
-              </div>
+              </ToggleGroup>
             </div>
           </div>
           {mode === 'stories' && (
@@ -317,13 +360,6 @@ export function LongformPage({ mode }: { mode: Mode }) {
               onBusy={setImporting}
             />
           )}
-          <ProjectSettings
-            mode={mode}
-            draft={draft}
-            disabled={locked}
-            onChange={set}
-            onBusy={setImporting}
-          />
           <ProductionSettings
             value={draft.overrides}
             disabled={locked}
@@ -336,38 +372,21 @@ export function LongformPage({ mode }: { mode: Mode }) {
             onChange={set}
             onBusy={setImporting}
           />
-          {(query.data?.jobs || [])
-            .filter((job) => job.type === (mode === 'stories' ? 'longform' : 'audiobook'))
-            .map((job) => (
-              <div key={job.job_id} className="space-y-2 border-t border-border/50 pt-4 text-xs">
-                <h2 className="font-medium">{t('audiobook.recovery_title')}</h2>
-                <p>{job.title || t('audiobook.untitled')}</p>
-                <p>
-                  {t('audiobook.recovery_progress', {
-                    done: job.chapters_done,
-                    total: job.total_chapters,
-                  })}
-                </p>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={locked || ttsBlocker !== null}
-                  onClick={() => void renderLongform(mode, job.job_id)}
-                >
-                  {t('common.resume')}
-                </Button>
-              </div>
-            ))}
         </SecondarySidebar>
         <section className="flex min-w-0 flex-1 flex-col overflow-y-auto">
-          <div className="mx-auto flex w-full max-w-6xl min-h-0 flex-1 flex-col gap-4 px-6 py-5">
+          {/* Grows to fill the pane but never shrinks below its content: the
+              editor keeps its height and the notes below it stay in normal flow,
+              so a short window scrolls the pane instead of stacking them. */}
+          <div className="mx-auto flex w-full max-w-6xl flex-[1_0_auto] flex-col gap-4 px-6 py-5">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="flex items-center gap-2 text-sm font-medium">
                   <BookOpenTextIcon className="size-4 text-muted-foreground" />
                   {t('clone.script')}
                 </h2>
-                <p className="mt-1 text-xs text-muted-foreground">{t(mode + '.subtitle')}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t(mode === 'stories' ? 'stories.scriptSubtitle' : 'audiobook.subtitle')}
+                </p>
               </div>
               <label className={buttonVariants({ variant: 'outline', size: 'sm' })}>
                 <ImportIcon />
@@ -391,21 +410,17 @@ export function LongformPage({ mode }: { mode: Mode }) {
                 variant="ghost"
                 size="sm"
                 title={t('stories.clearScriptHint')}
-                disabled={locked || scriptLines === 0}
-                onClick={() => setClearOpen(true)}
+                disabled={resetIsUnavailable}
+                onClick={() => setScriptResetRequested(true)}
               >
                 <Trash2Icon />
                 {t('stories.clearScript')}
               </Button>
               <ConfirmDialog
-                open={clearOpen}
-                onOpenChange={setClearOpen}
+                open={scriptResetRequested}
+                onOpenChange={(nextOpen) => setScriptResetRequested(nextOpen)}
                 title={t('stories.clearScript')}
-                description={
-                  mode === 'audiobook'
-                    ? t('stories.clearConfirmScript')
-                    : t('stories.clearConfirm', { count: scriptLines })
-                }
+                description={resetMessage}
                 confirmLabel={t('stories.clearScript')}
                 onConfirm={() => set(clearedScriptPatch(mode))}
               />
@@ -430,18 +445,32 @@ export function LongformPage({ mode }: { mode: Mode }) {
                   disabled={locked}
                   setText={(script) => set({ script })}
                 />
-                <textarea
-                  ref={audiobookInput}
-                  aria-label={t('clone.script')}
-                  className="min-h-64 flex-1 resize-none bg-transparent text-base leading-7 outline-none"
-                  value={draft.script}
-                  placeholder={t('audiobook.script_placeholder')}
-                  disabled={locked}
-                  onChange={(e) => {
-                    set({ script: e.target.value });
-                    if (warningsDismissed) setWarningsDismissed(false);
-                  }}
-                />
+                <div className="flex min-h-64 flex-1 flex-col gap-3 lg:flex-row">
+                  <ChapterOutline
+                    script={draft.script}
+                    caret={scriptCaret}
+                    textareaRef={audiobookInput}
+                    disabled={locked}
+                    onJump={setScriptCaret}
+                  />
+                  <textarea
+                    dir="auto"
+                    ref={audiobookInput}
+                    aria-label={t('clone.script')}
+                    className="min-h-64 min-w-0 flex-1 resize-none bg-transparent text-base leading-7 outline-none"
+                    value={draft.script}
+                    placeholder={t('audiobook.script_placeholder')}
+                    disabled={locked}
+                    onSelect={(event) => setScriptCaret(event.currentTarget.selectionStart)}
+                    onClick={(event) => setScriptCaret(event.currentTarget.selectionStart)}
+                    onKeyUp={(event) => setScriptCaret(event.currentTarget.selectionStart)}
+                    onChange={(e) => {
+                      set({ script: e.target.value });
+                      setScriptCaret(e.target.selectionStart);
+                      if (warningsDismissed) setWarningsDismissed(false);
+                    }}
+                  />
+                </div>
               </div>
             ) : (
               <StoryEditor
@@ -455,7 +484,7 @@ export function LongformPage({ mode }: { mode: Mode }) {
             )}
             <p className="text-xs text-muted-foreground">
               {t('audiobook.stats', {
-                chapters: stats.chapters,
+                count: stats.chapters,
                 words: stats.words,
                 runtime: formatRuntimeClock(stats.runtimeSec),
               })}
@@ -486,8 +515,7 @@ export function LongformPage({ mode }: { mode: Mode }) {
               </div>
             )}
             {sidebarCollapsed && (
-              // The setup pane is collapsed: keep Generate and the tracker in reach.
-              <div className="sticky bottom-0 z-10 -mx-2 shrink-0 rounded-xl border border-border/60 bg-background/90 p-3 backdrop-blur-xl">
+              <div className="sticky bottom-0 z-10 -mx-3 mt-auto shrink-0 rounded-2xl border border-border/70 bg-background/75 p-3.5 shadow-lg backdrop-blur-lg">
                 {generatePanel}
               </div>
             )}
@@ -512,8 +540,8 @@ export function LongformPage({ mode }: { mode: Mode }) {
                     )}
                   </div>
                   <div className="flex items-center gap-1">
-                    {cueSheet && (
-                      <Button variant="ghost" size="sm" onClick={() => void downloadCueSheet()}>
+                    {downloadableCues !== null && (
+                      <Button variant="ghost" size="sm" onClick={() => void saveCueSheet()}>
                         <ListIcon />
                         {t('audiobook.download_cues')}
                       </Button>

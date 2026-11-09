@@ -181,6 +181,7 @@ class CallSettings:
     inbound_brief: str = ""
     max_concurrent: int = 1
     record_calls: bool = False
+    allow_remote_control: bool = False
 
     def as_dict(self) -> dict:
         return {
@@ -191,6 +192,7 @@ class CallSettings:
             "inbound_brief": self.inbound_brief,
             "max_concurrent": self.max_concurrent,
             "record_calls": self.record_calls,
+            "allow_remote_control": self.allow_remote_control,
         }
 
 
@@ -249,6 +251,7 @@ def load_call_settings() -> CallSettings:
         inbound_brief=text("inbound_brief"),
         max_concurrent=concurrent,
         record_calls=text("record_calls") == "1",
+        allow_remote_control=text("allow_remote_control") == "1",
     )
 
 
@@ -259,6 +262,7 @@ def save_call_settings(cfg: CallSettings) -> None:
         settings_store.set_text(_CALLS_PREFIX + key, getattr(cfg, key))
     settings_store.set_text(_CALLS_PREFIX + "max_concurrent", str(cfg.max_concurrent))
     settings_store.set_text(_CALLS_PREFIX + "record_calls", "1" if cfg.record_calls else "0")
+    settings_store.set_text(_CALLS_PREFIX + "allow_remote_control", "1" if cfg.allow_remote_control else "0")
 
 
 def _int_env(name: str, default: int, lo: int, hi: int) -> int:

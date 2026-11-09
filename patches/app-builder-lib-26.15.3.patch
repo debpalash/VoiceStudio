@@ -1,0 +1,31 @@
+diff --git a/templates/nsis/include/allowOnlyOneInstallerInstance.nsh b/templates/nsis/include/allowOnlyOneInstallerInstance.nsh
+index a5cb3fe536a9fe95a95ac796f92a27f62d9762cc..476ee3c435425c1c186f34dba18036474aaa1e8b 100644
+--- a/templates/nsis/include/allowOnlyOneInstallerInstance.nsh
++++ b/templates/nsis/include/allowOnlyOneInstallerInstance.nsh
+@@ -34,6 +34,8 @@
+   Var /GLOBAL PowerShellPath
+   StrCpy $CmdPath "$SYSDIR\cmd.exe"
+   StrCpy $PowerShellPath "$SYSDIR\WindowsPowerShell\v1.0\powershell.exe"
++  # Keep the path out of PowerShell source (install folders may contain quotes).
++  System::Call 'kernel32::SetEnvironmentVariableW(w "ELECTRON_BUILDER_INSTALL_ROOT", w "$INSTDIR")i.r0'
+   !ifmacrodef customCheckAppRunning
+     !insertmacro customCheckAppRunning
+   !else
+@@ -63,7 +65,7 @@
+ 
+ !macro FIND_PROCESS _FILE _RETURN
+   ${if} $IsPowerShellAvailable == 0
+-    nsExec::Exec `"$PowerShellPath" -C "if ((Get-CimInstance -ClassName Win32_Process | ? {$$_.Path -and $$_.Path.StartsWith('$INSTDIR', 'CurrentCultureIgnoreCase')}).Count -gt 0) { exit 0 } else { exit 1 }"`
++    nsExec::Exec `"$PowerShellPath" -C "if ((Get-CimInstance -ClassName Win32_Process | ? {$$_.ExecutablePath -and $$_.ProcessId -ne $pid -and $$_.ExecutablePath.StartsWith(($$env:ELECTRON_BUILDER_INSTALL_ROOT.TrimEnd([char]92) + [char]92), 'OrdinalIgnoreCase')}).Count -gt 0) { exit 0 } else { exit 1 }"`
+     Pop ${_RETURN}
+   ${else}
+     !ifdef INSTALL_MODE_PER_ALL_USERS
+@@ -91,7 +93,7 @@
+   ${endIf}
+ 
+   ${if} $IsPowerShellAvailable == 0
+-    nsExec::Exec `"$PowerShellPath" -C "Get-CimInstance -ClassName Win32_Process | ? {$$_.Path -and $$_.Path.StartsWith('$INSTDIR', 'CurrentCultureIgnoreCase')} | % { Stop-Process -Id $$_.ProcessId $0 }"`
++    nsExec::Exec `"$PowerShellPath" -C "Get-CimInstance -ClassName Win32_Process | ? {$$_.ExecutablePath -and $$_.ProcessId -ne $pid -and $$_.ExecutablePath.StartsWith(($$env:ELECTRON_BUILDER_INSTALL_ROOT.TrimEnd([char]92) + [char]92), 'OrdinalIgnoreCase')} | % { Stop-Process -Id $$_.ProcessId $0 }"`
+   ${else}
+     !ifdef INSTALL_MODE_PER_ALL_USERS
+       nsExec::Exec `taskkill /IM "${_FILE}" /FI "PID ne $pid"`

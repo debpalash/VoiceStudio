@@ -159,9 +159,9 @@ def _configure(enabled=True, **settings):
 @pytest.fixture()
 def api(fakes):
     from fastapi.testclient import TestClient
-    from main import app
 
-    return TestClient(app, client=("127.0.0.1", 50000))
+    main = importlib.import_module("main")
+    return TestClient(main.app, client=("127.0.0.1", 51123))
 
 
 @pytest.fixture()
@@ -537,7 +537,7 @@ def test_call_settings_validate_and_disclosure_may_be_emptied(api):
     assert ok.status_code == 200, ok.text
     assert ok.json() | {} == {
         "from_number": FROM, "disclosure_template": "", "user_name": "", "inbound_mode": "agent",
-        "inbound_brief": "", "max_concurrent": 2, "record_calls": False,
+        "inbound_brief": "", "max_concurrent": 2, "record_calls": False, "allow_remote_control": False,
     }
     assert api.get("/calls/settings").json()["disclosure_template"] == ""
 
@@ -921,12 +921,13 @@ def _alembic_upgrade(db_path):
     command.upgrade(cfg, "head")
 
 
-def _alembic_head():
+def _head_revision() -> str:
     from alembic.config import Config
     from alembic.script import ScriptDirectory
 
-    root = os.path.dirname(os.path.dirname(__file__))
-    return ScriptDirectory.from_config(Config(os.path.join(root, "alembic.ini"))).get_current_head()
+    ini = os.path.join(os.path.dirname(os.path.dirname(__file__)), "alembic.ini")
+    (head,) = ScriptDirectory.from_config(Config(ini)).get_heads()
+    return head
 
 
 def test_migration_adds_call_sessions_and_matches_the_base_schema(tmp_path, monkeypatch):
@@ -945,9 +946,9 @@ def test_migration_adds_call_sessions_and_matches_the_base_schema(tmp_path, monk
     canon.executescript(_BASE_SCHEMA)
     with sqlite3.connect(db_path) as conn:
         migrated = [(r[1], r[2].upper(), r[3], r[5]) for r in conn.execute("PRAGMA table_info(call_sessions)")]
-        assert conn.execute("SELECT * FROM voice_profiles").fetchall() == [("keep", "Mine")]
-        # The newest revision, not a literal: later migrations must not break this test.
-        assert conn.execute("SELECT version_num FROM alembic_version").fetchone()[0] == _alembic_head()
+        assert conn.execute("SELECT id, name FROM voice_profiles").fetchall() == [("keep", "Mine")]
+        stamped = [r[0] for r in conn.execute("SELECT version_num FROM alembic_version")]
+        assert stamped == [_head_revision()]
     fresh = [(r[1], r[2].upper(), r[3], r[5]) for r in canon.execute("PRAGMA table_info(call_sessions)")]
     norm = lambda cols: [(n, {"FLOAT": "REAL"}.get(t, t), nn, pk) for n, t, nn, pk in cols]  # noqa: E731
     assert norm(migrated) == norm(fresh)

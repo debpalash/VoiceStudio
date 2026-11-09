@@ -102,106 +102,49 @@ export function tracksByCharacter(tracks) {
   return groups;
 }
 
-/**
- * Build a chapter cue sheet string from {time,title} cues.
- *
- * `HH:MM:SS<TAB>Title`, one line per chapter, no trailing newline — the shape
- * spreadsheets and chapter-aware editors split on without guessing where the
- * timestamp ends (spec 33).
- *
- * Titles pass through `cueTitle`, so a tab or line break inside one cannot add
- * a field or a line and desynchronise every following cue.
- */
-export function buildCueSheet(chapters) {
-  return (chapters || []).map((c) => `${formatTimecode(c.time)}\t${cueTitle(c.title)}`).join('\n');
-}
+const CUE_FIELD_BREAK = /[\t\n\r\v\f\u0085\u2028\u2029]+/g;
 
-// Every character that splits a field (tab) or a line in common readers:
-// CR/LF, vertical tab, form feed, NEL, and the Unicode line/paragraph separators.
-const CUE_BREAKS = /[\t\n\v\f\r\u0085\u2028\u2029]+/g;
-
-/** One-line, single-field title: runs of tabs/line breaks become one space. */
-function cueTitle(title) {
-  return String(title ?? '')
-    .replace(CUE_BREAKS, ' ')
+function cueTitle(value) {
+  return String(value ?? '')
+    .replace(CUE_FIELD_BREAK, ' ')
     .trim();
 }
 
-/**
- * Accumulate `{time, title}` cues from the ordered SUCCESSFUL chapters of a
- * render. Cue k starts at the summed duration of chapters 0..k-1, so cue 0 is
- * always 00:00:00.
- *
- * Callers must pass only chapters that actually rendered. The backend appends
- * to `chapters_meta` — the source of the m4b's embedded FFMETADATA chapters —
- * only on success, so including a failed chapter here would shift every
- * following cue out of step with the audio it describes.
- *
- * Accumulates in whole milliseconds, the unit the backend writes START/END in,
- * so a cue lands on exactly the embedded chapter's start. `duration_ms` (the
- * exact value the backend put in `chapters_meta`) wins; older backends only
- * send `duration_s` rounded to centiseconds, which is converted per chapter.
- * Summing float seconds instead would drift — `0.1 + 0.2` is not `0.3`, and a
- * start that should be 60 s can floor to 59.
- *
- * Total by construction: a missing, non-finite, or negative duration
- * contributes zero rather than poisoning every later start time, and a blank
- * title falls back to `fallbackTitle(position)` over the rendered chapters.
- * Tabs and line breaks in a title collapse to a single space.
- *
- * @param {{title?: string, duration_s?: number|string, duration_ms?: number|string}[]|null|undefined} chapters
- * @param {(n: number) => string} [fallbackTitle]
- * @returns {{time: number, title: string}[]}
- */
-export function cuesFromChapters(chapters, fallbackTitle = (n) => `Chapter ${n}`) {
-  const cues = [];
-  let elapsedMs = 0;
-  for (const chapter of chapters || []) {
-    // Normalised before the blank check so a title of only breaks falls back.
-    const title = cueTitle(chapter?.title);
-    cues.push({ time: elapsedMs / 1000, title: title || fallbackTitle(cues.length + 1) });
-    elapsedMs += chapterMs(chapter);
+function numericDuration(value) {
+  if (value == null || (typeof value === 'string' && !value.trim())) return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+/** Convert ordered cues to a tab-delimited, newline-separated text document. */
+export function buildCueSheet(cues) {
+  const rows = [];
+  for (const cue of cues ?? []) rows.push(`${formatTimecode(cue.time)}\t${cueTitle(cue.title)}`);
+  return rows.join('\n');
+}
+
+export function cuesFromChapters(chapters, fallbackTitle = (position) => `Chapter ${position}`) {
+  const result = [];
+  let cursorMs = 0;
+  for (const [index, chapter] of (chapters ?? []).entries()) {
+    const suppliedTitle = cueTitle(chapter?.title);
+    result.push({
+      title: suppliedTitle || cueTitle(fallbackTitle(index + 1)),
+      time: cursorMs / 1000,
+    });
+    const milliseconds = numericDuration(chapter?.duration_ms);
+    const seconds = numericDuration(chapter?.duration_s);
+    const contribution = milliseconds === undefined ? (seconds ?? 0) * 1000 : milliseconds;
+    cursorMs += Math.max(0, Math.round(contribution));
   }
-  return cues;
+  return result;
 }
 
-function chapterMs(chapter) {
-  const ms = finiteNumber(chapter?.duration_ms);
-  if (ms != null) return Math.max(0, Math.round(ms));
-  const seconds = finiteNumber(chapter?.duration_s);
-  return seconds != null ? Math.max(0, Math.round(seconds * 1000)) : 0;
-}
-
-// `Number('')`, `Number(' ')` and `Number(null)` are 0, so a blank
-// `duration_ms` would shadow a real `duration_s`; only numbers and nonblank
-// numeric strings count.
-function finiteNumber(value) {
-  if (typeof value !== 'number' && !(typeof value === 'string' && value.trim() !== '')) return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
-
-/**
- * Cue-sheet filename for a render output: `audiobook_ab12.m4b` ->
- * `audiobook_ab12.txt`.
- *
- * Any path prefix (`/` or `\`) is dropped, then a trailing `.m4b`/`.mp3` becomes `.txt`.
- * Only those two are swapped — the formats the renderer actually produces — so
- * an unexpected name falls back to `cuesheet.txt` instead of turning
- * `report.tar.gz` into `report.tar.txt`.
- *
- * Both patterns are anchored with fixed alternations and no unbounded
- * repetition, so a hostile `output` cannot make them backtrack.
- *
- * @param {string|null|undefined} output
- * @returns {string}
- */
 export function cueSheetFilename(output) {
-  const base = String(output || '')
-    .split(/[\\/]/)
-    .pop();
-  const named = base.replace(/\.(m4b|mp3)$/i, '.txt');
-  return /\.txt$/i.test(named) ? named : 'cuesheet.txt';
+  const segments = String(output ?? '').split(/[\\/]/);
+  const leaf = segments.at(-1) ?? '';
+  const audioSuffix = /\.(?:m4b|mp3)$/i;
+  return audioSuffix.test(leaf) ? leaf.replace(audioSuffix, '.txt') : 'cuesheet.txt';
 }
 
 /**
@@ -210,7 +153,8 @@ export function cueSheetFilename(output) {
  * record a cue at the current timeline position.
  * @param tracks          [{ text, character, profileId, speed }]
  * @param resolveOpts     (track) => { profileId, speed }   // applies cast fallback
- * @param fetchChunkBlob  (text, profileId, speed) => Promise<Blob>   // /generate WAV
+ * @param fetchChunkBlob  (text, profileId, speed, emotion?) => Promise<Blob>   // /generate WAV;
+ *                        emotion is passed only for a line's [emotion:] span
  * @param onProgress      (done, total) => void
  * @returns { blob: Blob, chapters: [{time,title}], durationSec: number }
  */
@@ -236,6 +180,7 @@ export async function exportStoryAudio(tracks, resolveOpts, fetchChunkBlob, onPr
             text: span.text,
             profileId: span.voice_id,
             speed: span.speed,
+            emotion: span.emotion,
           });
         if (span.pause_ms_after > 0)
           plan.push({ type: 'pause', seconds: span.pause_ms_after / 1000 });
@@ -257,7 +202,12 @@ export async function exportStoryAudio(tracks, resolveOpts, fetchChunkBlob, onPr
         sampleCursor += b.length;
         continue;
       }
-      const blob = await fetchChunkBlob(item.text, item.profileId, item.speed);
+      const blob = await fetchChunkBlob(
+        item.text,
+        item.profileId,
+        item.speed,
+        ...(item.emotion ? [item.emotion] : []),
+      );
       const decoded = await ctx.decodeAudioData(await blob.arrayBuffer());
       buffers.push(decoded);
       sampleCursor += decoded.length; // resamples to ctx.sampleRate → safe to concat

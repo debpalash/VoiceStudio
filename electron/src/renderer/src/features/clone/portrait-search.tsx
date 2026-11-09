@@ -65,6 +65,7 @@ export function PortraitSearch({
               <button
                 key={index}
                 type="button"
+                disabled={disabled}
                 aria-label={image.title || name}
                 className="aspect-square overflow-hidden rounded-lg outline-none ring-offset-background hover:ring-2 hover:ring-primary focus-visible:ring-2 focus-visible:ring-ring"
                 onClick={() => {

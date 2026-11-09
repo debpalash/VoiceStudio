@@ -1,55 +1,52 @@
-"""#2365 — first-run setup must gate Intel Macs before any download.
-
-PyTorch ships no macOS x86_64 wheels, so the dependency set can never
-resolve there (#889). The preflight previously had no platform gate, so
-``ok`` stayed true and setup burned a multi-GB ``uv sync`` before dying
-on the resolver error. A ``platform`` fail check now blocks Continue on
-the wizard's first step, where the remote-backend guidance is shown.
-Local inference stays unsupported — this only moves the failure earlier.
-"""
+import pytest
 
 from api.routers.setup import wizard
 
 
-def _platform_check(monkeypatch, platform_machine: str, sys_platform: str) -> dict:
-    # Keep the preflight hermetic: stub the probes that hit the network or
-    # auto-acquire media tools, so each platform assertion stays fast and offline.
-    monkeypatch.setattr(wizard, "_network_check", lambda: {
-        "id": "network", "label": "Network", "status": "pass",
-        "detail": "stubbed", "fix": None, "mirror_reachable": True,
-    })
-    import services.media_tools as media_tools
-    monkeypatch.setattr(media_tools, "summary", lambda auto_acquire=True: None)
-    monkeypatch.setattr(wizard._platform, "machine", lambda: platform_machine)
-    monkeypatch.setattr(wizard.sys, "platform", sys_platform)
-    resp = wizard.preflight()
-    checks = resp["checks"] if isinstance(resp, dict) else resp.checks
-    for c in checks:
-        c = c if isinstance(c, dict) else c.model_dump()
-        if c["id"] == "platform":
-            return c, resp["ok"] if isinstance(resp, dict) else resp.ok
-    raise AssertionError("no platform check in preflight response")
-
-
-def test_intel_mac_fails_preflight_before_any_download(monkeypatch):
-    """The #2365 report: darwin + x86_64 must fail with remote-backend guidance."""
-    check, ok = _platform_check(monkeypatch, "x86_64", "darwin")
-    assert check["status"] == "fail"
-    assert ok is False
-    assert "remote backend" in (check["fix"] or "")
-
-
-def test_apple_silicon_has_no_platform_gate(monkeypatch):
-    """Apple Silicon must not see the gate at all — no platform check appended."""
-    monkeypatch.setattr(wizard, "_network_check", lambda: {
-        "id": "network", "label": "Network", "status": "pass",
-        "detail": "stubbed", "fix": None, "mirror_reachable": True,
-    })
-    import services.media_tools as media_tools
-    monkeypatch.setattr(media_tools, "summary", lambda auto_acquire=True: None)
-    monkeypatch.setattr(wizard._platform, "machine", lambda: "arm64")
+@pytest.fixture
+def run_macos_preflight(monkeypatch):
     monkeypatch.setattr(wizard.sys, "platform", "darwin")
-    resp = wizard.preflight()
-    checks = resp["checks"] if isinstance(resp, dict) else resp.checks
-    ids = [(c if isinstance(c, dict) else c.model_dump())["id"] for c in checks]
-    assert "platform" not in ids
+    monkeypatch.setattr(wizard._platform, "platform", lambda terse=True: "macOS-test")
+    monkeypatch.setattr(wizard, "_ram_gb", lambda: 24.25)
+    monkeypatch.setattr(wizard, "_disk_free_gb", lambda _cache: 81.75)
+    monkeypatch.setattr(wizard, "_detect_gpu", lambda: {
+        "vendor": "none",
+        "backend": "cpu",
+        "available": False,
+        "driver": "",
+        "device_name": "Test CPU",
+        "notes": [],
+    })
+    monkeypatch.setattr(wizard, "_network_check", lambda: {
+        "id": "network",
+        "label": "Network",
+        "status": "pass",
+        "detail": "stubbed",
+        "fix": None,
+    })
+    monkeypatch.setattr("services.media_tools.summary", lambda **_options: {"stub": True})
+
+    def invoke(machine):
+        monkeypatch.setattr(wizard._platform, "machine", lambda: machine)
+        result = wizard.preflight()
+        return result.model_dump() if hasattr(result, "model_dump") else result
+
+    return invoke
+
+
+def test_x86_macos_returns_a_terminal_platform_result(run_macos_preflight):
+    payload = run_macos_preflight("x86_64")
+    by_id = {item["id"]: item for item in payload["checks"]}
+
+    assert payload["media_tools"] is None
+    assert payload["ok"] is False
+    assert by_id["platform"]["status"] == "fail"
+    assert "remote backend" in by_id["platform"]["fix"]
+
+
+def test_arm_macos_continues_without_a_platform_failure(run_macos_preflight):
+    payload = run_macos_preflight("arm64")
+    check_ids = [item["id"] for item in payload["checks"]]
+
+    assert "platform" not in check_ids
+    assert payload["media_tools"] == {"stub": True}

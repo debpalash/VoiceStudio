@@ -1,5 +1,7 @@
 # Electron dubbing workspace
 
+![Bundled original and dubbed samples in the default dark theme.](media/electron/dubbing.png)
+
 > **Historical context:** this page was written while the Electron and Tauri apps
 > coexisted. Mentions of Tauri helpers, pages, tests and regression results describe
 > that migration period; the Tauri shell has since been removed and the shared code
@@ -20,8 +22,12 @@ translate, review the text, then generate. Completed tracks can be previewed and
 exported through the native save dialog.
 
 The import card can clear a pasted URL and its cookie attachment before ingest.
-After loading a source, Remove video (Remove audio for audio sources) returns to
-the import card, with its file and URL options, discarding the transcript and edit
+A loaded source shows as one file row: its name (full name on hover), length and
+size, and a **File actions** menu with Change file, Use link and Remove video
+(Remove audio for audio sources). While it is preparing, the main pane previews
+the file and shows the current stage. Spoken language (Auto by default) and the
+speaker count sit directly under it, with Import .srt as a secondary action.
+Remove returns to the import card, with its file and URL options, discarding the transcript and edit
 history while retaining production settings. It stays available after an
 interrupted or failed run, and asks for confirmation when transcript edits or
 segments would be discarded.
@@ -31,16 +37,41 @@ selection and timestamp stay visible, while row actions reveal on hover or keybo
 focus. Inset hairline separators preserve the reading rhythm; source text and metadata
 stay dimmed until the row is active, while the translation remains the visual lead.
 Clicking a translation turns only that row into a growing editor. Advanced
-voice and timing controls remain folded behind the speaker header. When a workspace
+voice and timing controls remain folded behind the speaker header, which also
+moves the line to another speaker or a **New speaker**; **Set speaker...** in the
+selection bar does the same for several lines. A line that followed its old
+speaker's voice takes the new speaker's voice, while a voice picked for that line
+stays. See the [multi-speaker walkthrough](dubbing/multi-speaker-guide.md). When a workspace
 also opens local controls, constrained or scaled windows automatically use the main
 navigation rail so the transcript keeps the available width; expanding it remains an
 explicit temporary override.
 When several targets are selected, progress tabs above the transcript switch the
 active language in one click while preserving every target for Translate All and
 Generate. Persisted provider error pages are discarded and restored to the source
-dialogue with a retryable error state.
+dialogue with a retryable error state. Restored errors stay attached to the affected
+language, preserving its warning badge and issue-navigation stop when switching targets.
+
+The transcript toolbar counts flagged segments and offers Previous issue / Next
+issue controls. They wrap through tight-fit and overlong lines, translation errors
+or Fast fallbacks, generated-audio overflows, and QC verification flags in transcript
+order. Each jump selects and scrolls to the row, including rows outside the visible
+part of a long transcript. Keyboard focus stays on the control so Enter or Space
+can continue the review. Translation-error badges and navigation use the active
+language's saved failures, so a successful translation into another language does
+not hide them. Pasted replacements and edits to saved translations clear that
+language's error while keeping failures in other languages. The count follows
+edits and the active transcript; zero means no recorded flags, not that ungenerated
+speech has been verified. Navigation is disabled while a job is running or awaiting
+recovery.
 
 Long projects virtualize transcript rows, so only the visible editors are mounted.
+The transcript toolbar and waveform timeline stay above that scroll container.
+Selecting a timeline cue, with the mouse or keyboard, reveals its transcript row
+without moving the timeline out of view; timing controls remain available while
+editing long projects. Expanded rows, resized inline notices and dismissed errors
+retain their correct virtualized positions.
+
+The Dubbing pane has a Projects tab beside its controls that lists saved dub projects, newest first. Selecting a project and confirming opens it in place (it waits while a dub is running); the Projects workspace remains the place to save, rename and delete.
 Timeline waveform peaks and onsets are computed once by the backend and cached as a
 small JSON payload; Chromium never decodes the full separated-vocals WAV to draw the
 timeline. Video previews are written atomically with MP4 fast-start metadata and are
@@ -55,7 +86,11 @@ reading the source body or starting a preview mux. Local NLLB batches scale with
 bounding batch multiplied by beam count.
 
 The backend remains responsible for separation, ASR, speaker cloning, translation,
-TTS, fitting, mixing and export. Electron reuses Tauri's speaker binding and
+TTS, fitting, mixing and export. When the vocals were separated, each line starts on
+detected speech and ends after its last spoken sound (#3419): a sigh, breath, footstep
+or rustle before a line no longer sets its start, and trailing breaths and silence are
+trimmed from its slot. Whispered lines keep the energy-based start. Without separated
+vocals, the transcription timestamps are kept. Electron reuses Tauri's speaker binding and
 segment generation helpers. A stream close without a terminal event is a failure,
 not success. Cancellation aborts the HTTP stream and requests backend task/job
 cancellation. Edits, target language, track metadata and task IDs persist locally across reloads.
@@ -99,6 +134,11 @@ The backend retains voice references only where their timing overlaps the new cu
 Malformed, overlapping, or duration-clamped cue counts remain visible in the sidebar.
 Failed imports preserve the current edits. Generated track buttons clear on successful
 replacement to avoid presenting older audio as the new subtitles' output.
+Ruby pronunciation guides in SRT/VTT captions are excluded from the spoken text
+in Dub and Stories: `<ruby>read<rt>reed</rt></ruby>` speaks only "read".
+Nested annotation containers and fallback parentheses are excluded too; unchanged
+Dub subtitle exports retain the original ruby markup. An unclosed annotation
+ends at the enclosing ruby or cue boundary, so it cannot hide the next cue.
 URL import runs only after clicking Ingest; it uses the backend's existing yt-dlp
 pipeline. URL imports (here and in the voice gallery) accept only `http://` and
 `https://` links and refuse addresses on this computer or the local network,
@@ -116,6 +156,23 @@ If the backend reports that no LLM is configured, the UI selects Fast and shows
 an inline explanation with a link to LLM settings. It does not silently claim
 that Cinematic or Autofit completed. Browser fixtures cover this fallback and
 reload persistence; real LLM-backed quality passes remain unverified.
+
+A regional dialect is a prompt instruction, so only an LLM-backed translation
+can act on one. A neural machine-translation engine has a single code per
+language — NLLB's `por_Latn` is Portuguese with no European variant to select —
+so asking it for Portuguese (Portugal) returns whatever its training favoured.
+The backend reports whether the dialect was applied, and the workspace shows an
+inline explanation beside the translator when it was not, with a link to LLM
+settings. The selection is never silently discarded. The notice describes the
+last translation, so switching to an LLM-backed engine and translating again
+clears it.
+
+Portuguese (Brazil) and Portuguese (Portugal) are separate target choices; both
+write the Portuguese track with that dialect, and a plain Portuguese target
+means Brazilian. NLLB, Argos and Google write Brazilian Portuguese, so a
+Brazilian request counts as applied and a European one shows the notice naming
+the variant the engine wrote (`dialect_used` in the response). See
+[Supported Languages](languages.md#regional-variants).
 
 **Translate with Agent** detects the installed Codex, Claude Code, OpenCode and Pi CLIs. Dubbing
 presents Agent and the active Google, Argos, NLLB or API engine as separate translator choices;
@@ -186,7 +243,21 @@ including zero guidance. Engine-specific audible effects remain unverified.
 Saved Smart Fit override values now survive project import and draft recovery and
 reach generation only when Smart Fit is selected. Other timing strategies omit
 those parameters. Unit tests cover round-trip preservation and request routing;
-there is no new tuning panel (Tauri exposes these as stored preferences).
+the speed limits now have a panel (below).
+
+**Smart Fit speed limits (#2896).** With Smart Fit selected, the Timing section
+shows two sliders: *Fastest speed* (`audio_rate_cap`, 1.0 to 2.0, default 1.5) and
+*Slowest speed* (`min_audio_rate`, 0.5 to 1.0, default 0.85; 1.0 stops short lines
+being slowed to fill their slot). Both are sent as `fit_options`, validated by the
+API (out-of-range values return 422), saved with drafts and projects, and leave
+the defaults untouched until moved. Changing one re-mixes rendered lines without
+re-synthesizing them.
+
+The backend validates `fit_options` before synthesis: `max_audio_only_rate`,
+`audio_rate_cap`, and `video_slow_cap` must be finite and at least 1;
+`gap_guard_s` must be finite and nonnegative. Invalid overrides return HTTP 422.
+Omitted or null values retain the server defaults; a zero gap guard and
+`allow_video_retime: false` remain explicit overrides.
 
 Real export verification: `tests/test_smart_fit_export.py` passes all 43 tests
 with the installed app-managed FFmpeg/ffprobe explicitly supplied. Its seven
@@ -213,7 +284,8 @@ either neighbor. Merge/split uses Tauri's shared attribution bookkeeping, so spe
 voice, direction, gain and target language survive moving words across a boundary.
 Undo and redo retain the latest 50 edit states and reset when a new source, subtitle
 file, translation or project becomes the editing baseline. The toolbar and
-Cmd/Ctrl shortcuts expose the same operations. Unit and browser regressions cover
+Cmd/Ctrl shortcuts expose the same operations; Cmd/Ctrl+Z in any other field (glossary,
+translation notes, segment Start/End) stays that field's own undo. Unit and browser regressions cover
 the full insert/delete/merge/split/undo/redo sequence and merge-to-split attribution.
 
 The editor includes a proportional timing lane above the segment rows. Segment
@@ -262,32 +334,38 @@ transcripts automatically.
 
 ### Mirror source delivery
 
-**More → Mirror source delivery** writes a direction for each line from how the
-original actor spoke it. VoiceStudio measures pitch, pitch movement, loudness,
-syllable rate and voicing on the separated vocals track (the full mix when
-separation did not run) and compares every line against the same speaker's own
-typical delivery. Markedly louder, higher and faster lines become `urgent, quick`;
-near-unvoiced lines become `whispered`; lines close to the speaker's norm stay empty.
+**More → Mirror source delivery** writes short delivery words into the Direction
+field of segments that have none, based on how the original speaker said each line.
+It never touches a direction you typed, and the whole pass is one Undo step.
 
-| Measured against the speaker's baseline | Direction |
-| :--- | :--- |
-| Louder, faster and higher | `urgent` |
-| Louder, higher or more animated | `energetic` |
-| Quieter, lower and flatter | `calm` |
-| Loud but unhurried | `announcing` |
-| Mostly unvoiced and quiet | `whispered` |
-| Faster or slower syllables | `quick` / `slow` |
+For every segment it measures the separated vocals (the mix when no vocals exist):
+loudness, speaking rate, pitch level, pitch movement and how much of the line is
+voiced. Each line is then compared with the same speaker's usual delivery, and only
+clear departures become words from the same taxonomy as typed directions. Lines
+close to the speaker's norm get nothing.
 
-Only empty directions are filled; a direction you typed is never replaced, and
-**Undo** reverts the whole pass. The words are the same taxonomy typed directions
-use, so they reach the TTS instruction, translation tone and speech-rate target
-with or without an LLM. Emotion is not inferred from acoustics; add it yourself.
-A speaker needs three measurable lines for their own baseline; otherwise the video's
-pooled baseline is used without pitch, which does not transfer between voices.
-Analysis runs locally in pure NumPy and takes roughly ten seconds per hour of
-dialogue; a line longer than a minute is measured from its first minute. The API is `POST /dub/prosody-mirror/{job_id}` with the editor's current
-segments; it only suggests directions and never changes the job, and refuses requests
-whose segments add up to more than twice the source audio plus one minute (one line).
+| Measured against the speaker's norm | Word |
+| --- | --- |
+| Louder and faster, with higher pitch when pitch is comparable | urgent |
+| Louder and higher or more animated overall | energetic |
+| Quieter and lower or flatter overall | calm |
+| Much louder and slower | announcing |
+| Mostly unvoiced and quieter | whispered (nothing else is added) |
+| Noticeably faster / slower | quick / slow |
+
+Emotion is never inferred; add it yourself in the Direction field.
+
+A speaker with at least three measured lines gets a personal baseline, including
+pitch. Otherwise lines are compared with all measured lines pooled together, and
+pitch is only used in that pooled case when the whole file has a single known
+speaker. Fewer than three measurable lines produce no suggestions. Analysis runs
+locally with no model download. A line longer than a minute is measured from its
+first minute.
+
+The same analysis is available as `POST /dub/prosody-mirror/{job_id}`. It only
+reads the job and never changes it. The request is rejected when the segments
+together cover more than twice the track length plus one minute (typically
+duplicated or overlapping segments).
 
 ### Preserve sound outside dialogue
 
@@ -367,6 +445,12 @@ size while its beginning is filled with zeros after an interrupted download or
 copy. Wait for the transfer to finish, ensure the storage drive has enough free
 space, and download or copy a fresh file before uploading again. Repeatedly
 uploading the same damaged file cannot restore its missing header.
+
+A file with no audio track, an empty file, an unsupported file type or a
+damaged file is shown as a note on the file row (for example "No audio track —
+choose a video or audio file with sound") instead of a failure banner: choose
+another file with Change file. Real failures keep the banner with Open docs and
+Copy diagnostic.
 Uploads also check that the data drive has room for the source copy. If the drive fills during a copy, VoiceStudio removes the partial job
 file and asks you to free space in Settings → Storage before retrying.
 
@@ -394,3 +478,7 @@ audio if a later import fails validation or runs out of space.
 
 Cancelling an upload waits for its copy worker to stop before closing the input
 and clearing the reserved job, so the same upload can be retried safely.
+
+Use **Use link** in the source's File actions menu to replace it with a URL. **Cancel**
+closes the URL form without changing the source; changing the source also closes
+the form. URL ingestion waits until any pending cancellation finishes.

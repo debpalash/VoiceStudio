@@ -53,7 +53,7 @@ if (quitDuringStartup && !existing)
   throw new Error('--quit-during-startup requires VOICESTUDIO_TEST_PROFILE with a managed runtime');
 const activate = (locator) =>
   extractAndRun || wayland ? locator.dispatchEvent('click') : locator.click();
-let env = { ...process.env };
+let env = { ...process.env, OMNIVOICE_ENV_FILE: resolve(profile, 'user-env') };
 let verifyManagedShutdown = false;
 if (setup || install || existing) {
   const server = createServer();
@@ -303,7 +303,7 @@ try {
     }
     if (firstSound) {
       const continueButton = window.getByRole('button', {
-        name: 'All good — continue',
+        name: 'Continue',
         exact: true,
       });
       const systemCheck = window.getByRole('button', {

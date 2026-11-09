@@ -57,6 +57,11 @@ def test_cookie_export_accepts_a_bom_and_rejects_empty_or_oversized_files(dub_co
     ("scheme", "host", "origin", "allowed"),
     [
         ("http", "127.0.0.1", "http://localhost:3901", True),
+        ("http", "127.0.0.1", "app://voicestudio", True),
+        ("http", "::1", "app://voicestudio", True),
+        ("http", "192.0.2.20", "app://voicestudio", False),
+        ("http", "127.0.0.1", "app://voicestudio.evil", False),
+        ("http", "127.0.0.1", "app://voicestudio/path", False),
         # The retired Tauri webview origin is no longer a trusted local UI.
         ("http", "127.0.0.1", "http://tauri.localhost", False),
         ("http", "::1", "http://localhost:3901", True),
@@ -70,6 +75,57 @@ def test_cookie_credentials_only_cross_https_or_local_ui(
     dub_core, scheme, host, origin, allowed
 ):
     assert dub_core._cookie_transport_allowed(scheme, host, origin) is allowed
+
+
+@pytest.mark.parametrize(
+    ("host", "headers", "allowed"),
+    [
+        ("127.0.0.1", {"x-voicestudio-desktop-origin": "app://voicestudio"}, True),
+        ("::1", {"x-voicestudio-desktop-origin": "app://voicestudio"}, True),
+        ("192.0.2.20", {"x-voicestudio-desktop-origin": "app://voicestudio"}, False),
+        ("127.0.0.1", {"x-voicestudio-desktop-origin": "app://forged"}, False),
+        ("127.0.0.1", {"origin": "https://untrusted.example",
+                       "x-voicestudio-desktop-origin": "app://voicestudio"}, False),
+        ("127.0.0.1", {}, False),
+    ],
+)
+def test_ingest_recognizes_desktop_proxy_marker(
+    dub_core, tmp_path, monkeypatch, host, headers, allowed
+):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr(dub_core, "check_public_url", lambda url: url)
+    monkeypatch.setattr(dub_core, "_safe_job_dir", lambda _job: str(tmp_path))
+    staged = []
+    cookie_path = str(tmp_path / "session.cookies.txt")
+
+    def stage_cookie_export(text):
+        staged.append(text)
+        return cookie_path
+
+    monkeypatch.setattr(dub_core, "_stage_cookie_export", stage_cookie_export)
+    enqueue = AsyncMock()
+    monkeypatch.setattr(dub_core.task_manager, "add_task", enqueue)
+    request = SimpleNamespace(
+        url=SimpleNamespace(scheme="http"),
+        client=SimpleNamespace(host=host), headers=headers,
+    )
+    payload = dub_core.DubIngestUrlRequest(
+        url="https://youtube.com/watch?v=abc", cookie_file=COOKIE_TEXT,
+    )
+    if allowed:
+        response = asyncio.run(dub_core.dub_ingest_url(payload, request))
+        assert response.status_code == 202
+        assert staged == [COOKIE_TEXT]
+        enqueue.assert_awaited_once()
+        assert enqueue.await_args.args[5]["cookie_file"] == cookie_path
+    else:
+        with pytest.raises(HTTPException) as exc:
+            asyncio.run(dub_core.dub_ingest_url(payload, request))
+        assert exc.value.status_code == 403
+        assert staged == []
+        enqueue.assert_not_awaited()
 
 
 def test_cookie_export_is_forwarded_to_ytdlp(dub_pipeline, tmp_path, monkeypatch):

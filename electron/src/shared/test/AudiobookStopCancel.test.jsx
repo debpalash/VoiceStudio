@@ -33,12 +33,12 @@ const gen = {
   },
 };
 vi.mock('../api/audiobook', () => ({
-  audiobookListJobs: vi.fn().mockResolvedValue({ jobs: [] }),
-  audiobookResume: vi.fn(),
   audiobookPlan: vi.fn(),
   audiobookUploadCover: vi.fn(),
   audiobookPreviewChapter: vi.fn(),
   audiobookImport: vi.fn(),
+  audiobookListJobs: vi.fn().mockResolvedValue({ jobs: [] }),
+  audiobookResume: vi.fn(),
   audiobookGenerate: vi.fn((_body, opts) => {
     gen.capturedSignal = opts?.signal;
     let n = 0;

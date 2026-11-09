@@ -6,7 +6,6 @@ import { generateAbortMs } from '../utils/generateBudget';
 import { playBlobAudio, playPing } from '../utils/media';
 import {
   StreamingPreviewError,
-  resolveRemoteTtsTarget,
   shouldFallbackToClassic,
   streamGenerateSpeech,
   supportsStreamingPreview,
@@ -29,11 +28,6 @@ const t = i18next.t.bind(i18next);
 // shouldn't fire one toast per request. Tracks the last status surfaced this
 // session (module scope, no localStorage); resets on full reload.
 let _lastRoutingStatus = null;
-
-// Same de-dup, for "progressive playback is off because your GPU is the one
-// across the room". Keyed by worker so switching machines re-announces, while
-// ten renders in a row on the same worker say it once.
-let _lastStreamingOffWorker = null;
 
 /**
  * Encapsulates TTS generation logic, streaming response handling,
@@ -71,8 +65,6 @@ export default function useTTS({ selectedProfile, setSelectedProfile, loadHistor
   const [pendingTrimFile, setPendingTrimFile] = useState(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationTime, setGenerationTime] = useState(0);
-  // Real 0–100 progress when the active delivery path can measure it.
-  // null means the backend has not supplied a meaningful fraction yet.
   const [generationProgress, setGenerationProgress] = useState(null);
   const timerRef = useRef(null);
   const textAreaRef = useRef(null);
@@ -131,10 +123,9 @@ export default function useTTS({ selectedProfile, setSelectedProfile, loadHistor
     setIsGenerating(true);
     setGenerationTime(0);
     setGenerationProgress(null);
-    const st = Date.now();
+    const startedAt = Date.now();
     timerRef.current = setInterval(() => {
-      const elapsed = ((Date.now() - st) / 1000).toFixed(1);
-      setGenerationTime(elapsed);
+      setGenerationTime(((Date.now() - startedAt) / 1000).toFixed(1));
     }, 100);
     let abortTimer = null;
     try {
@@ -304,25 +295,9 @@ export default function useTTS({ selectedProfile, setSelectedProfile, loadHistor
       // no user-visible difference beyond the old wait; pre-stream HTTP errors
       // (ApiError) throw straight to the shared catch, exactly like before.
       //
-      // Remote GPU is the one case where it must NOT run: the stream is
-      // rendered by this process, so taking it would silently ignore the
-      // worker the user picked — a local render dressed as a remote one. The
-      // classic path below is the one that goes remote, so it wins, and the
-      // user is told why their progressive playback stopped rather than left
-      // to conclude the app got slower.
       let streamed = false;
       const wantsStreaming = useAppStore.getState().autoPlayPreview && supportsStreamingPreview();
-      const remoteTarget = wantsStreaming
-        ? await resolveRemoteTtsTarget({ signal: ac.signal })
-        : null;
-      if (remoteTarget) {
-        const who = remoteTarget.label || remoteTarget.workerId || '';
-        if (who !== _lastStreamingOffWorker) {
-          _lastStreamingOffWorker = who;
-          toast(t('tts.streamingOffRemote', { label: who }), { icon: '🖥️', duration: 6000 });
-        }
-      }
-      if (wantsStreaming && !remoteTarget) {
+      if (wantsStreaming) {
         try {
           await streamGenerateSpeech(formData, {
             signal: ac.signal,

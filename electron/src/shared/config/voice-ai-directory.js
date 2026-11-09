@@ -10,9 +10,12 @@ import telnyxLogo from '../assets/integrations/telnyx.ico';
 import n8nLogo from '../assets/integrations/n8n.ico';
 import zapierLogo from '../assets/integrations/zapier.ico';
 import githubLogo from '../assets/integrations/github.png';
-import dockerLogo from '../assets/integrations/docker.png';
+import dockerLogo from '../assets/integrations/docker.svg';
 import mcpLogo from '../assets/integrations/mcp.png';
-import anthropicLogo from '../assets/integrations/anthropic.png';
+import claudeLogo from '../assets/integrations/claude.svg';
+import cursorLogo from '../assets/integrations/cursor.svg';
+import openaiLogo from '../assets/integrations/openai.svg';
+import voiceStudioLogo from '../assets/integrations/voicestudio.svg';
 
 export const VOICE_AI_DIRECTORY = [
   {
@@ -60,21 +63,26 @@ export const VOICE_AI_DIRECTORY = [
   {
     name: 'OpenAI Agents',
     url: 'https://platform.openai.com/docs/guides/agents',
-    logoUrl: genericLogo,
+    logoUrl: openaiLogo,
   },
   {
     name: 'Claude Code',
     url: 'https://docs.anthropic.com/en/docs/claude-code',
-    logoUrl: anthropicLogo,
+    logoUrl: claudeLogo,
+  },
+  {
+    name: 'Cursor',
+    url: 'https://www.cursor.com',
+    logoUrl: cursorLogo,
   },
   {
     name: 'Codex CLI',
     url: 'https://github.com/openai/codex',
-    logoUrl: genericLogo,
+    logoUrl: openaiLogo,
   },
   {
     name: 'VoiceStudio API',
     url: 'https://github.com/debpalash/VoiceStudio',
-    logoUrl: genericLogo,
+    logoUrl: voiceStudioLogo,
   },
 ];

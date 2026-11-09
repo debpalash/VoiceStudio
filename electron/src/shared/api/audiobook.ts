@@ -135,21 +135,21 @@ export interface ResumableAudiobookJob {
   created_at: number | null;
 }
 
-/** List server-owned longform manifests left by interrupted renders. */
+/** Fetch the renders the backend has on disk that can still be resumed. */
 export async function audiobookListJobs(): Promise<{ jobs: ResumableAudiobookJob[] }> {
-  const res = await apiFetch('/audiobook/jobs');
+  const res = await apiFetch('/audiobook/jobs', { method: 'GET' });
   return res.json();
 }
 
-/** Resume one trusted server-side manifest and stream the normal audiobook events. */
+/** Ask the backend to continue one render; consumers read events from the response body. */
 export async function audiobookResume(
   jobId: string,
   opts: { signal?: AbortSignal } = {},
 ): Promise<Response> {
-  return apiFetch(`/audiobook/resume/${encodeURIComponent(jobId)}`, {
-    method: 'POST',
-    signal: opts.signal,
-  });
+  const route = ['/audiobook/resume', encodeURIComponent(jobId)].join('/');
+  const requestOptions: RequestInit = { method: 'POST' };
+  if (opts.signal) requestOptions.signal = opts.signal;
+  return apiFetch(route, requestOptions);
 }
 
 /** Upload a cover image; returns the server-side path to pass as `cover_path`. */

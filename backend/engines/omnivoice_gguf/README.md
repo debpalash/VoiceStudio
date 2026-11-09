@@ -38,21 +38,75 @@ decision doc cannot drift.
 
 ## Quant variants
 
-| Compute class | Quant | Base size | Tokenizer size | Total VRAM | When auto-selected |
-|---------------|-------|-----------|----------------|------------|---------------------|
-| `high-vram`   | BF16  | 1.23 GB   | 373 MB         | ~1.60 GB   | 12 GB+ VRAM        |
-| `mid-vram`    | Q8_0  | 656 MB    | 289 MB         | ~945 MB    | 4-12 GB VRAM       |
-| `low-vram`    | Q4_K_M| 407 MB    | 252 MB         | ~659 MB    | 1-4 GB VRAM        |
-| `cpu`         | Q4_K_M| 407 MB    | 252 MB         | ~659 MB    | CPU-only fallback  |
+| Compute class | Quant | Base size | Tokenizer size | Total VRAM | Selection policy |
+|---------------|-------|-----------|----------------|------------|------------------|
+| `high-vram`   | BF16  | 1.23 GB   | 373 MB         | ~1.60 GB   | Manual override; 12 GB+ VRAM sizing guidance |
+| `mid-vram`    | Q8_0  | 656 MB    | 289 MB         | ~945 MB    | Manual override; 4-12 GB VRAM sizing guidance |
+| `low-vram`    | Q4_K_M| 407 MB    | 252 MB         | ~659 MB    | Manual option; 1-4 GB VRAM sizing guidance |
+| `cpu`         | Q4_K_M| 407 MB    | 252 MB         | ~659 MB    | Automatic default while native capacity is unverified |
 
-F32 is published by the model but not auto-selected by the probe — it's
+The automatic `cpu` tier selects the smallest quant without changing the native
+compute backend: GPU acceleration remains available. Explicit allowed quant
+filenames remain authoritative.
+
+F32 is published by the model but requires an explicit override — it's
 ~3.2 GB total and offers no quality gain over BF16. Available as a
 Settings override for users on machines where bit-exact reference output
 is needed.
 
+## Weights: installed first, downloaded on first use
+
+`quant_cache.py` resolves the pinned base+tokenizer pair from the local
+HuggingFace cache (`try_to_load_from_cache`, a pure filesystem lookup).
+Generation (`_resolve_quant_paths`) uses an installed pair whenever one
+is usable; only when none is does it download the selected pair at the
+pinned revision with `hf_hub_download`. Readiness (`is_available`) checks
+the runtime binary only, so a fresh install is ready before its weights
+arrive.
+
+- A complete pair counts only when **both** files exist at the pinned
+  revision; a half-installed pair, a directory, a dangling symlink and a
+  zero-byte partial download do not.
+- The selected tier is used whenever its pair is installed. An explicit
+  Settings override is strict — only that exact pair counts. An explicit
+  CPU choice (Settings, `OMNIVOICE_DEVICE=cpu`, `OMNIVOICE_GGUF_BACKEND=cpu`
+  or a native `GGML_BACKEND=CPU`) keeps the CPU tier's quant policy, so
+  a larger cached quant is not substituted for it.
+- Only when the selected pair is absent, and the selection is not an
+  explicit CPU choice, does the smallest complete cached automatic pair
+  (Q8_0, then BF16) stand in (#3042), so an existing installation is
+  never re-downloaded, and an installed quant is never rewritten.
+  Override-only quants (F32) are never auto-selected.
+
+An offline host can pre-install a pair by hand; it has to land in the
+cache this app reads — a standalone `hf` command does not inherit the
+app's cache location:
+
+```bash
+hf download Serveurperso/OmniVoice-GGUF \
+  omnivoice-base-Q4_K_M.gguf omnivoice-tokenizer-Q4_K_M.gguf \
+  --revision 361609388ae572a820d085185bbbe2a2aac4b30e \
+  --cache-dir "<the cache directory this app reads>"
+```
+
+The revision is `_meta.source_commit_sha` from `quant_map.json`;
+`docs/engines/omnivoice-gguf.md` carries the per-platform `--cache-dir`
+examples. A failed first-use download raises with this command in the
+message.
+
+## Runtime integrity
+
+`bin/checksums.sha256` covers the executable and every ggml shared
+library `scripts/build-omnivoice-tts.sh` copies next to it. Every listed
+library that is present must match before the binary is spawned; an
+unlisted one is logged (manifests from before #3042 list only the
+executable). The binary runs with `bin/` as its working directory, so
+ggml's dynamic backend loader cannot pick up a library from anywhere
+else.
+
 ## Hardware probe
 
-`hardware_probe.detect_capabilities()` walks:
+`hardware_probe.detect_capabilities()` describes the parent Python process:
 
 1. `torch.cuda.is_available()` → CUDA backend, total VRAM from
    `torch.cuda.mem_get_info()`.
@@ -62,6 +116,12 @@ is needed.
 
 Thresholds (in `_bucket()`): 12 GB → high-vram, 4 GB → mid-vram,
 1 GB → low-vram, else cpu.
+
+That parent CUDA/MPS adapter may differ from the native runtime's selected
+adapter, so its memory cannot establish a safe automatic quant size.
+`compute.automatic_compute_class()` instead uses the conservative `cpu` tier
+until native adapter capacity can be verified. Larger quants remain available
+through explicit Settings overrides.
 
 ## Subprocess invocation
 

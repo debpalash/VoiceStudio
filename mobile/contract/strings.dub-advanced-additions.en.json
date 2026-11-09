@@ -1,0 +1,41 @@
+{
+  "mobile": {
+    "dub_advanced": {
+      "ass": "Styled subtitles (.ass)",
+      "background_hint": "Background mixing requires an isolated track produced by your computer.",
+      "cast": "Cast",
+      "cast_checked": "I have checked the speaker labels and voices",
+      "clips": "Per-segment clips (.zip)",
+      "color": "Subtitle color",
+      "computer_hint": "Runs on your paired computer using its installed engines.",
+      "cyan": "Cyan",
+      "detect": "Detect speakers on Computer",
+      "detect_hint": "Uses installed computer models. Analysis may change the segments; review the cast and regenerate each target language.",
+      "dual": "Dual (translated + original)",
+      "export_limit": "Packages are limited to 1 GiB total and 512 MiB per file.",
+      "exports": "Export options",
+      "font_size": "Font size",
+      "generate_first": "Generate this language before exporting.",
+      "install_on_computer": "Install the diarization models on your computer first.",
+      "invalid_cast": "The speaker analysis is incomplete or invalid.",
+      "invalid_export": "These export options are invalid.",
+      "keep_cast": "Keep current cast voice",
+      "manual_cast_hint": "Assign speaker labels on your phone. Use Computer for automatic speaker detection.",
+      "merge_speakers": "Segments with different speakers cannot be merged.",
+      "missing_translation": "Translation did not cover every segment. Retry with the same source.",
+      "multi_audio": "Video with multiple audio tracks",
+      "multi_audio_hint": "Includes all generated languages. The selected language plays by default.",
+      "replace_overrides": "Replace individual line voices",
+      "review_cast": "Review the detected labels and choose a voice for each speaker.",
+      "source_voice": "Voice from this speaker",
+      "speaker": "Speaker",
+      "stems": "Dubbed + original audio (.zip)",
+      "stems_hint": "The original recording is unseparated. Use Computer for an isolated background track.",
+      "timing": "Timing",
+      "top": "Place subtitles at the top",
+      "video_required": "Generate a video output before exporting multiple audio tracks.",
+      "white": "White",
+      "yellow": "Yellow"
+    }
+  }
+}

@@ -1,14 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { apiJson } from '@/lib/api/client';
-interface DescriptionResult {
+
+export interface DescriptionResult {
   attrs: Record<string, string>;
   matched: unknown[];
   unmatched: string[];
 }
+
+const DEBOUNCE_MS = 450;
+
 /**
- * Manual edits, new text and navigation always supersede a queued mapper
- * response. `apply` also receives the description the mapping belongs to, so
- * callers can drop one that no longer matches.
+ * Maps a typed voice description onto voice-design details through
+ * `POST /design/describe`. `apply` receives the mapped details together with
+ * the (trimmed) description they belong to, so a caller can discard a mapping
+ * whose text has since changed.
  */
 export function useDescription(
   apply: (attrs: Record<string, string>, description: string) => void,
@@ -16,66 +21,69 @@ export function useDescription(
   const applyRef = useRef(apply);
   applyRef.current = apply;
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const active = useRef<AbortController | null>(null);
+  const controller = useRef<AbortController | null>(null);
   const [pending, setPending] = useState(false);
   const [unmatched, setUnmatched] = useState<string[]>([]);
   const [matched, setMatched] = useState(true);
   const [failed, setFailed] = useState(false);
-  const cancel = () => {
+
+  const stop = () => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
-    active.current?.abort();
-    active.current = null;
+    controller.current?.abort();
+    controller.current = null;
+  };
+
+  const cancel = () => {
+    stop();
     setPending(false);
   };
+
   const describe = (description: string, immediate = false) => {
-    cancel();
+    stop();
     setFailed(false);
     setUnmatched([]);
     setMatched(true);
-    const normalized = description.trim();
-    if (!normalized) {
+    const text = description.trim();
+    if (!text) {
+      setPending(false);
       if (immediate) applyRef.current({}, '');
       return;
     }
-    const controller = new AbortController();
-    active.current = controller;
     setPending(true);
+    const request = new AbortController();
+    controller.current = request;
     timer.current = setTimeout(
       () => {
         timer.current = null;
-        void apiJson<DescriptionResult>('/design/describe', {
+        apiJson<DescriptionResult>('/design/describe', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ description: normalized }),
-          signal: controller.signal,
+          body: JSON.stringify({ description: text }),
+          signal: request.signal,
         })
           .then((result) => {
-            if (controller.signal.aborted) return;
-            applyRef.current(result.attrs, normalized);
+            if (request.signal.aborted) return;
+            applyRef.current(result.attrs, text);
             setUnmatched(result.unmatched ?? []);
-            setMatched(Boolean(result.matched?.length));
+            setMatched((result.matched ?? []).length > 0);
           })
           .catch(() => {
-            if (!controller.signal.aborted) setFailed(true);
+            if (!request.signal.aborted) setFailed(true);
           })
           .finally(() => {
-            if (active.current === controller) {
-              active.current = null;
+            if (controller.current === request) {
+              controller.current = null;
               setPending(false);
             }
           });
       },
-      immediate ? 0 : 450,
+      immediate ? 0 : DEBOUNCE_MS,
     );
   };
-  useEffect(
-    () => () => {
-      if (timer.current) clearTimeout(timer.current);
-      active.current?.abort();
-    },
-    [],
-  );
+
+  useEffect(() => stop, []);
+
   return {
     describe: (description: string) => describe(description),
     reset: (description: string) => describe(description, true),

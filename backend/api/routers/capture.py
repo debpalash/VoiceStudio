@@ -21,11 +21,12 @@ import os
 import tempfile
 import time
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from api.dependencies import consumer_generation, require_consumer_reads_admin_writes
 from typing import Optional
 from core.path_security import upload_suffix
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_consumer_reads_admin_writes)])
 logger = logging.getLogger("omnivoice.capture")
 
 
@@ -42,11 +43,15 @@ def _timing(value):
 
 def _truthy(value: Optional[str]) -> bool:
     """Parse a multipart form flag. Treats '1'/'true'/'yes'/'on'/'auto'
-    (any case) as on; everything else — including None — as off."""
-    return (value or "").strip().lower() in {"1", "true", "yes", "on", "auto"}
+    (any case) as on; everything else — including None, and the ``Form``
+    default a direct (non-HTTP) call leaves in place — as off."""
+    if not isinstance(value, str):
+        return False
+    return value.strip().lower() in {"1", "true", "yes", "on", "auto"}
 
 
 @router.post("/transcribe")
+@consumer_generation
 async def transcribe_audio(
     audio: UploadFile = File(...),
     language: Optional[str] = Form(None),
@@ -54,6 +59,8 @@ async def transcribe_audio(
     mode: Optional[str] = Form(None),
     refine: Optional[str] = Form(None),
     dictation: Optional[str] = Form(None),
+    diarize: Optional[str] = Form(None),
+    num_speakers: Optional[str] = Form(None),
 ):
     """Transcribe an audio file to text.
 
@@ -72,11 +79,17 @@ async def transcribe_audio(
               through when no LLM backend is configured. The raw ``text``
               is always returned; ``refined_text`` is added only when the
               LLM actually changed something.
-        dictation: Opt-in flag for hotkey-dictation callers: applies the
-              saved dictation vocabulary hint (``dictation.prompt``) to
-              engines that accept a prompt. Off by default so file
-              transcription and MCP/CLI callers are never biased by it;
-              ignored in 'reference' mode.
+        dictation: Opt-in flag for hotkey-dictation callers. When true, the
+              saved vocabulary hint is passed to engines that accept a
+              prompt. Off by default (file transcription, MCP/CLI stay
+              unbiased) and ignored in 'reference' mode.
+
+        diarize: Opt-in speaker identification ('accurate' mode only, which
+              is the mode with segment timings). Each segment gains a
+              ``speaker`` label and the response a ``speakers`` list. If the
+              diarization model is missing or fails, the transcript is still
+              returned with a ``diarization_error`` code and no labels.
+        num_speakers: Optional exact speaker count hint for diarization.
 
     Returns:
         {
@@ -94,6 +107,15 @@ async def transcribe_audio(
     # Save upload to a temp file (all backends need a file path)
     ext = upload_suffix(audio.filename, ".wav") or ".wav"
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+
+    def _cleanup_tmp() -> None:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
+
+    # Set while a worker that reads the upload may outlive this request.
+    defer_tmp_cleanup = False
     try:
         content = await audio.read()
         tmp.write(content)
@@ -107,36 +129,53 @@ async def transcribe_audio(
         # CTA, BEFORE any backend is constructed (the whisper backends
         # auto-download multi-GB weights from HF on first load).
         from services.asr_backend import asr_model_missing_detail, asr_model_missing_error
-        missing = await asyncio.to_thread(
-            asr_model_missing_error,
-            purpose="transcribe" if use_active_asr else "dictation",
-            require_installed=requested_mode == "reference",
-        )
-        if missing is not None and not use_active_asr:
-            transcribe_missing = await asyncio.to_thread(
+
+        async def _probe_asr(purpose: str, *, installed_only: bool):
+            return await asyncio.to_thread(
                 asr_model_missing_error,
-                purpose="transcribe",
-                require_installed=True,
+                purpose=purpose,
+                require_installed=installed_only,
             )
-            if transcribe_missing is None:
+
+        initial_purpose = "transcribe" if use_active_asr else "dictation"
+        missing = await _probe_asr(
+            initial_purpose,
+            installed_only=requested_mode == "reference",
+        )
+        if missing is not None and initial_purpose == "dictation":
+            installed_transcriber_missing = await _probe_asr(
+                "transcribe", installed_only=True
+            )
+            use_active_asr = installed_transcriber_missing is None
+            if use_active_asr:
                 missing = None
-                use_active_asr = True
+        # The selected offline engine's weights are absent, but a reference
+        # transcript does not need that engine: generate transcribes through
+        # any installed recognizer, so the preview must too (#2929/#2678).
+        reference_fallback = False
+        if missing is not None and requested_mode == "reference":
+            from services.asr_backend import reference_asr_installed
+            reference_fallback = await asyncio.to_thread(reference_asr_installed)
+            if reference_fallback:
+                missing = None
         if missing is not None:
             raise HTTPException(
                 status_code=409,
                 detail={**missing, "message": asr_model_missing_detail(missing)},
             )
 
-        from api.routers.dictation import dictation_transcribe_kwargs
+        apply_hint = _truthy(dictation) and requested_mode != "reference"
 
-        def _prompt_kwargs(backend) -> dict:
-            # The dictation vocabulary prompt, only for callers that opt in;
-            # a voice-clone reference transcript must stay unbiased by it.
-            if requested_mode == "reference" or not _truthy(dictation):
+        def _hint_kwargs(backend) -> dict:
+            if not apply_hint:
                 return {}
+            from api.routers.dictation import dictation_transcribe_kwargs
             return dictation_transcribe_kwargs(backend)
 
         def _run():
+            if reference_fallback:
+                from services.asr_backend import transcribe_reference
+                return {"text": transcribe_reference(tmp.name) or ""}, "reference", None
             if use_active_asr:
                 # Accurate mode: full WhisperX with forced alignment —
                 # for when the user explicitly wants word-level timing.
@@ -145,9 +184,11 @@ async def transcribe_audio(
                 # chain is broken, which then 500s at `.transcribe()`. The
                 # loader degrades to the next healthy engine (#1185).
                 from services.asr_backend import load_active_asr_backend
-                backend = load_active_asr_backend(require_installed=True) if requested_mode == "reference" else load_active_asr_backend()
+                backend = load_active_asr_backend(
+                    require_installed=requested_mode == "reference", warm=True,
+                )
                 result = backend.transcribe(
-                    tmp.name, word_timestamps=use_accurate, **_prompt_kwargs(backend),
+                    tmp.name, word_timestamps=use_accurate, **_hint_kwargs(backend)
                 )
             else:
                 # Fast mode (default): use the fastest available engine
@@ -156,7 +197,7 @@ async def transcribe_audio(
                 from services.asr_backend import get_capture_asr_backend
                 backend = get_capture_asr_backend()
                 result = backend.transcribe(
-                    tmp.name, word_timestamps=False, **_prompt_kwargs(backend),
+                    tmp.name, word_timestamps=False, **_hint_kwargs(backend)
                 )
             sherpa_model_id = getattr(getattr(backend, "spec", None), "id", None)
             return result, backend.id, sherpa_model_id
@@ -167,6 +208,7 @@ async def transcribe_audio(
             ASRTimeoutError,
             run_transcribe_guarded,
         )
+        from services.model_acceptance import ModelLicenceNotAccepted
         t0 = time.perf_counter()
         try:
             result, engine_id, sherpa_model_id = await run_transcribe_guarded(
@@ -185,6 +227,8 @@ async def transcribe_audio(
                 status_code=409,
                 detail={**e.payload, "message": asr_model_missing_detail(e.payload)},
             )
+        except ModelLicenceNotAccepted:
+            raise  # typed 403 via the app handler (#2689)
         except Exception as e:
             # Each ASR engine decodes the upload its own way (ffmpeg, PyAV,
             # libsndfile), so a video with no audio stream fails with a
@@ -219,9 +263,8 @@ async def transcribe_audio(
                 def _run_fallback():
                     from services.asr_backend import get_capture_asr_backend
 
-                    # No vocabulary prompt here: this text is the evidence for
-                    # demoting the sherpa model, and Whisper can echo a prompt
-                    # on noise — it must come from the audio alone.
+                    # No hint here: this text decides whether a sherpa model is
+                    # demoted, and a prompted Whisper can echo the hint on noise.
                     fallback = get_capture_asr_backend(skip_sherpa=True)
                     return (
                         fallback.transcribe(tmp.name, word_timestamps=False),
@@ -277,9 +320,19 @@ async def transcribe_audio(
         # dictation socket (capture_ws) does, so the widget's POST fallback and
         # MCP/CLI callers get the same typed-looking result the WS returns —
         # not the raw "...test" the REST path used to leak. Segments stay raw
-        # (their timings/verbatim recognition are the contract).
+        # (their timings/verbatim recognition are the contract). Hotkey
+        # dictation callers (dictation=true) also get the dictation cleanup
+        # (hesitations, stutters, spacing, optional spoken punctuation) the
+        # socket applies; file transcription, MCP/CLI and voice-clone
+        # reference transcripts keep the words that were spoken.
         from services.text_polish import polish_text
-        full_text = polish_text(full_text)
+        if _truthy(dictation) and requested_mode != "reference":
+            from services.dictation_cleanup import polish_dictation
+            full_text = await asyncio.to_thread(
+                polish_dictation, full_text, result.get("language") or language,
+            )
+        else:
+            full_text = polish_text(full_text)
 
         # Calculate audio duration from segments if available. A segment whose
         # timing the engine could not determine carries end=None (sherpa's
@@ -314,28 +367,74 @@ async def transcribe_audio(
             refined_text is not None,
         )
 
+        out_segments = [
+            {
+                "start": _timing(s.get("start", 0)),
+                "end": _timing(s.get("end", 0)),
+                "text": s.get("text", "").strip(),
+            }
+            for s in segments
+        ]
+        speakers: list[str] = []
+        diarization_error = None
+        if _truthy(diarize) and use_accurate:
+            from services.transcript_diarization import diarize_segments, parse_speaker_hint
+
+            try:
+                labels, diarization_error = await run_transcribe_guarded(
+                    _gpu_pool,
+                    lambda: diarize_segments(tmp.name, out_segments, parse_speaker_hint(num_speakers)),
+                    what="Speaker identification",
+                    # A timed-out or cancelled worker may still be reading the
+                    # upload: the guard deletes it once the worker has exited.
+                    on_abandon=_cleanup_tmp,
+                )
+            except ASRTimeoutError as exc:
+                defer_tmp_cleanup = True
+                logger.warning("Speaker identification timed out: %s", exc)
+                labels, diarization_error = [None] * len(out_segments), "DIARIZATION_TIMEOUT"
+            except asyncio.CancelledError:
+                defer_tmp_cleanup = True
+                raise
+            for segment, label in zip(out_segments, labels):
+                if label:
+                    segment["speaker"] = label
+                    if label not in speakers:
+                        speakers.append(label)
+
         response = {
             "text": full_text,
-            "segments": [
-                {
-                    "start": _timing(s.get("start", 0)),
-                    "end": _timing(s.get("end", 0)),
-                    "text": s.get("text", "").strip(),
-                }
-                for s in segments
-            ],
+            "segments": out_segments,
             "language": detected_lang,
             "duration_s": round(duration, 2),
             "transcription_time_s": elapsed,
             "engine": engine_id,
         }
+        try:
+            # Which speech-to-text engine people use. Metadata only; the
+            # allowlist drops anything that is not an engine key.
+            from core.analytics import capture as _capture_analytics
+
+            _capture_analytics("transcription_completed", {
+                "feature": "transcription",
+                "action": "transcribe",
+                "outcome": "complete",
+                "engine_id": str(engine_id or ""),
+                "language": str(detected_lang or "auto")[:16],
+                "duration_seconds": round(duration, 2),
+                "gen_time_seconds": elapsed,
+            })
+        except Exception:  # noqa: BLE001 — analytics may never break a transcription
+            logger.warning("analytics: transcription_completed capture failed", exc_info=True)
+        if speakers:
+            response["speakers"] = speakers
+        if diarization_error:
+            response["diarization_error"] = diarization_error
         if refined_text is not None:
             response["refined_text"] = refined_text
         if recovered_from is not None:
             response["model_silent"] = recovered_from
         return response
     finally:
-        try:
-            os.unlink(tmp.name)
-        except OSError:
-            pass
+        if not defer_tmp_cleanup:
+            _cleanup_tmp()

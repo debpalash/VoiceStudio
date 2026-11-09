@@ -4,10 +4,13 @@ import {
   type PerformanceProfileState,
 } from '@/hooks/use-performance-profile';
 import { presetEngineFeedback } from './preset-engine-feedback';
-import { engineDetailLevels, useEngineDetailLevel } from './use-engine-detail-level';
+import {
+  engineDetailLevels,
+  useEngineDetailLevel,
+  type EngineDetailLevel,
+} from './use-engine-detail-level';
 import { EngineRow } from './engine-row';
 import { useTranslationEngines } from '@/features/settings/translation-settings';
-import { Link } from '@tanstack/react-router';
 import {
   LanguagesIcon,
   AudioLinesIcon,
@@ -18,8 +21,8 @@ import {
   ListIcon,
   LayersIcon,
   CodeXmlIcon,
-  ChevronRightIcon,
   CpuIcon,
+  GaugeIcon,
   MemoryStickIcon,
   MonitorUpIcon,
 } from 'lucide-react';
@@ -34,14 +37,12 @@ import { useDictationSelection } from '@/hooks/use-dictation-selection';
 import { cn } from '@/lib/utils';
 import { useAppActivities } from '@/lib/app-activity';
 import {
-  resolveRemoteRuntime,
+  isResidentAsrModel,
   resolveRuntimeHealth,
   type SidebarModelStatus,
 } from './status-runtime';
 import { PerformanceProfile } from '@/components/performance-profile';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/popover';
-import { ComputeTargetChoices } from '@/components/compute-target-choices';
-import { useComputeRuntime, useComputeTarget } from '@/hooks/use-compute-target';
 import type { BatchJob } from '@shared/api/batch-types';
 import {
   IDLE_STATUS_POLL_MS,
@@ -71,15 +72,6 @@ interface LoadedModelStatus {
 function boundedPercent(value: number, total = 100) {
   if (!Number.isFinite(value) || !Number.isFinite(total) || total <= 0) return 0;
   return Math.max(0, Math.min(100, (value / total) * 100));
-}
-
-function formatBytes(bytes: number) {
-  const gib = Math.max(0, bytes) / 1024 ** 3;
-  return new Intl.NumberFormat(undefined, {
-    style: 'unit',
-    unit: 'gigabyte',
-    maximumFractionDigits: gib >= 10 ? 0 : 1,
-  }).format(gib);
 }
 
 function DeviceMetric({
@@ -170,27 +162,11 @@ export function StatusBar({
   const [appliedProfile, setAppliedProfile] = useState<PerformanceProfileState | null>(null);
   const enginesRefreshing = useIsFetching({ queryKey: ['engines'] }) > 0;
   const status = useBackendStatus();
-  const computeTarget = useComputeTarget(isBackendReachable(status.stage));
-  const activeComputeTarget = computeTarget.data?.active;
-  const activeRemoteTarget = activeComputeTarget?.remote
-    ? computeTarget.data?.targets.find((item) => item.id === activeComputeTarget.worker_id)
-    : undefined;
   const [selectedDetail, setSelectedDetail] = useState<string | null>('tts');
   const activities = useAppActivities();
   const activityCount = Object.values(activities).reduce((total, count) => total + count, 0);
-  const deviceUsage = useDeviceUsage(deviceOpen && !activeComputeTarget?.remote);
+  const deviceUsage = useDeviceUsage(deviceOpen);
   const { data, isLoading: enginesLoading, isError: enginesError } = useEngines();
-  const selectedTtsFamily = engineFamilyState(data, 'tts');
-  const selectedTts = selectedTtsFamily?.backends.find(
-    (engine) => engine.id === selectedTtsFamily.active,
-  );
-  const remoteTtsRuntime = useComputeRuntime(
-    activeRemoteTarget?.id,
-    selectedTts?.id,
-    'tts',
-    isBackendReachable(status.stage) && Boolean(activeRemoteTarget),
-    activityCount > 0,
-  );
   const model = useQuery({
     queryKey: ['sidebar-model-status'],
     queryFn: () => apiJson<SidebarModelStatus>('/model/status'),
@@ -276,52 +252,20 @@ export function StatusBar({
         return (
           (entry.id === 'tts' && selected?.id === 'omnivoice') || entry.is_active_engine === true
         );
-      if (family === 'asr')
-        return (
-          (entry.id === 'asr' || entry.id === 'capture-asr') && entry.checkpoint === activeModel
-        );
+      if (family === 'asr') return isResidentAsrModel(entry.id) && entry.checkpoint === activeModel;
       return entry.id === family;
     });
-    const remoteRuntime =
-      family === 'tts' && activeRemoteTarget
-        ? resolveRemoteRuntime(
-            remoteTtsRuntime.data,
-            remoteTtsRuntime.isPending,
-            remoteTtsRuntime.isError,
-            activities.synthesis > 0 || activities.longform > 0 || batchTtsActive,
-          )
-        : undefined;
-    const remoteCapability = remoteRuntime?.capability;
-    const remoteProblem =
-      remoteRuntime?.state === 'unavailable'
-        ? remoteTtsRuntime.data?.reason && remoteTtsRuntime.data.reason !== 'chosen'
-          ? remoteTtsRuntime.data.reason
-          : t('modelSettings.unavailable')
-        : undefined;
     return {
       family,
-      name: remoteCapability?.display_name || selected?.display_name,
-      model: remoteCapability?.repo_ids?.[0] || remoteCapability?.model_id || activeModel,
-      runtime:
-        remoteCapability?.backend ||
-        resident?.device ||
-        selected?.execution_evidence?.actual_execution_device,
-      problem: remoteProblem
-        ? remoteProblem
-        : family === 'tts' && selected?.id === 'omnivoice'
+      name: selected?.display_name,
+      model: activeModel,
+      runtime: resident?.device || selected?.execution_evidence?.actual_execution_device,
+      problem:
+        family === 'tts' && selected?.id === 'omnivoice'
           ? model.data?.error || selected?.routing_reason || selected?.reason || selected?.hint
           : selected?.routing_reason || selected?.reason || selected?.hint,
-      state: remoteRuntime
-        ? remoteRuntime.state === 'checking'
-          ? 'engineRuntime.loading'
-          : remoteRuntime.state === 'working'
-            ? 'engineRuntime.working'
-            : remoteRuntime.state === 'ready'
-              ? 'engineRuntime.ready'
-              : remoteRuntime.state === 'idle'
-                ? 'engineRuntime.idle'
-                : 'modelSettings.unavailable'
-        : enginesLoading && !data
+      state:
+        enginesLoading && !data
           ? 'engineRuntime.loading'
           : !selected?.available
             ? 'modelSettings.unavailable'
@@ -382,27 +326,9 @@ export function StatusBar({
         : runtimeHealth === 'unavailable'
           ? 'bg-destructive'
           : DOT.starting;
-  const deviceDot = activeRemoteTarget
-    ? activeRemoteTarget.status === 'ready'
-      ? DOT.ready
-      : activeRemoteTarget.status === 'busy'
-        ? DOT.starting
-        : 'bg-destructive'
-    : stageDot;
-  const deviceLabel = activeComputeTarget?.remote
-    ? activeComputeTarget.label
-    : status.remote
-      ? t('settings.remote_backend_title')
-      : t('engineSidebar.localDevice');
-  const deviceStageText = activeRemoteTarget
-    ? t(
-        activeRemoteTarget.status === 'ready'
-          ? 'engineRuntime.ready'
-          : activeRemoteTarget.status === 'busy'
-            ? 'engineRuntime.working'
-            : 'engineSidebar.offline',
-      )
-    : stageText;
+  const deviceLabel = status.remote
+    ? t('settings.remote_backend_title')
+    : t('engineSidebar.localShort');
   const formatMemory = (used: number, total?: number) =>
     total && total > 0 ? `${used.toFixed(1)} / ${total.toFixed(1)} GB` : `${used.toFixed(1)} GB`;
   const deviceContent = (
@@ -412,71 +338,14 @@ export function StatusBar({
       className="w-[min(18rem,calc(100vw-2rem))] space-y-3 p-3"
     >
       <div className="flex items-center gap-2">
-        <span className={cn('size-2 shrink-0 rounded-full', deviceDot)} aria-hidden="true" />
+        <span className={cn('size-2 shrink-0 rounded-full', stageDot)} aria-hidden="true" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">{deviceLabel}</p>
-          <p className="truncate text-[11px] text-muted-foreground">{deviceStageText}</p>
+          <p className="truncate text-[11px] text-muted-foreground">{stageText}</p>
         </div>
         <CpuIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
       </div>
-      <ComputeTargetChoices data={computeTarget.data} />
-      {activeRemoteTarget ? (
-        <div className="space-y-3 rounded-lg border border-border/55 bg-muted/20 p-2.5 text-xs">
-          <p className="truncate text-foreground/85" title={activeRemoteTarget.endpoint}>
-            {activeRemoteTarget.endpoint}
-          </p>
-          <div className="flex items-center justify-between gap-3 tabular-nums text-muted-foreground">
-            <span>
-              {activeRemoteTarget.latency_ms > 0
-                ? `${Math.round(activeRemoteTarget.latency_ms)} ms`
-                : deviceStageText}
-            </span>
-            <span>
-              {activeRemoteTarget.active_tasks}/{activeRemoteTarget.max_tasks}
-            </span>
-          </div>
-          {activeRemoteTarget.cpu_percent != null && (
-            <DeviceMetric
-              Icon={CpuIcon}
-              label={t('settings.device_family_cpu')}
-              value={`${Math.round(activeRemoteTarget.cpu_percent)}%`}
-              percent={activeRemoteTarget.cpu_percent}
-            />
-          )}
-          {activeRemoteTarget.gpu_name &&
-            (activeRemoteTarget.gpu_utilization_percent != null ||
-              (activeRemoteTarget.free_memory_bytes != null &&
-                activeRemoteTarget.gpu_memory_bytes > 0)) && (
-              <DeviceMetric
-                Icon={MonitorUpIcon}
-                label={t('settings.device_family_gpu')}
-                value={[
-                  activeRemoteTarget.gpu_utilization_percent != null
-                    ? `${Math.round(activeRemoteTarget.gpu_utilization_percent)}%`
-                    : null,
-                  activeRemoteTarget.free_memory_bytes != null &&
-                  activeRemoteTarget.gpu_memory_bytes > 0
-                    ? `${formatBytes(
-                        activeRemoteTarget.gpu_memory_bytes - activeRemoteTarget.free_memory_bytes,
-                      )} / ${formatBytes(activeRemoteTarget.gpu_memory_bytes)}`
-                    : null,
-                ]
-                  .filter((value): value is string => value != null)
-                  .join(' · ')}
-                percent={
-                  activeRemoteTarget.free_memory_bytes != null &&
-                  activeRemoteTarget.gpu_memory_bytes > 0
-                    ? boundedPercent(
-                        activeRemoteTarget.gpu_memory_bytes - activeRemoteTarget.free_memory_bytes,
-                        activeRemoteTarget.gpu_memory_bytes,
-                      )
-                    : (activeRemoteTarget.gpu_utilization_percent ?? 0)
-                }
-                detail={activeRemoteTarget.gpu_name}
-              />
-            )}
-        </div>
-      ) : deviceUsage.isError ? (
+      {deviceUsage.isError ? (
         <button
           type="button"
           onClick={() => void deviceUsage.refetch()}
@@ -544,18 +413,6 @@ export function StatusBar({
           ))}
         </div>
       )}
-      <Link
-        to="/settings/workers"
-        onClick={() => setDeviceOpen(false)}
-        className="group/remote flex items-center gap-2 rounded-lg border border-border/55 px-2.5 py-2 text-xs font-medium outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <MonitorUpIcon className="size-4 shrink-0 text-primary" aria-hidden="true" />
-        <span className="min-w-0 flex-1">{t('engineSidebar.connectRemoteDevice')}</span>
-        <ChevronRightIcon
-          className="size-3.5 shrink-0 text-muted-foreground transition-transform group-hover/remote:translate-x-0.5 motion-reduce:transition-none"
-          aria-hidden="true"
-        />
-      </Link>
     </PopoverContent>
   );
   const engines = [
@@ -665,16 +522,30 @@ export function StatusBar({
   }, [presetRefreshing, appliedProfile]);
   const applicable = profile.data?.applicable_families ?? profile.data?.implemented_families ?? [];
   const displayEngines = engines.map((row) =>
-    activeComputeTarget?.remote && row.family === 'tts'
-      ? row
-      : presetEngineFeedback(
-          row,
-          appliedProfile,
-          refreshing[row.family as keyof typeof refreshing],
-          profile.isSaving,
-          applicable,
-        ),
+    presetEngineFeedback(
+      row,
+      appliedProfile,
+      refreshing[row.family as keyof typeof refreshing],
+      profile.isSaving,
+      applicable,
+    ),
   );
+  const engineRows = (rowLevel: EngineDetailLevel) =>
+    displayEngines
+      .filter(({ family }) => rowLevel !== 'simple' || family === 'tts')
+      .map((row) => (
+        <EngineRow
+          key={row.family}
+          row={row}
+          level={rowLevel}
+          online={isBackendReachable(status.stage)}
+          dotClass={engineStateClass(row.state)}
+          open={selectedDetail === row.family}
+          onToggle={() =>
+            setSelectedDetail((current) => (current === row.family ? null : row.family))
+          }
+        />
+      ));
   const viewControl = (
     <div
       role="radiogroup"
@@ -707,28 +578,99 @@ export function StatusBar({
       })}
     </div>
   );
+  // The simplest view is icon-only: the status dot and tooltip carry what a label did.
+  const deviceIconOnly = level === 'simple';
+  const handleApplied = (applied: PerformanceProfileState) => {
+    appliedRefreshStarted.current = presetRefreshing;
+    setAppliedProfile(applied);
+  };
+  // The icon rail has no room for the slider, so the gauge opens it as a popover.
+  const railProfile = (
+    <Popover>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            aria-label={t('performanceProfile.title')}
+            title={t('performanceProfile.title')}
+            // In the macOS rail's footer column the gauge leads, above Settings.
+            className={cn(engineLinkClass, inline ? 'order-first size-8' : 'h-7 w-full')}
+          />
+        }
+      >
+        <GaugeIcon className={engineIconClass} aria-hidden="true" />
+      </PopoverTrigger>
+      <PopoverContent
+        side="right"
+        align="end"
+        className="max-h-[min(36rem,80dvh)] w-72 space-y-2 overflow-y-auto p-3 text-xs"
+      >
+        {isBackendReachable(status.stage) && (
+          <PerformanceProfile showHardware={false} onApplied={handleApplied} />
+        )}
+        {engineRows('models')}
+      </PopoverContent>
+    </Popover>
+  );
   const iconDevicePopover = (
     <Popover open={deviceOpen} onOpenChange={setDeviceOpen}>
       <PopoverTrigger
         render={
           <button
             type="button"
-            aria-label={`${deviceLabel}: ${deviceStageText}`}
-            className={cn(engineLinkClass, 'h-7 w-full', !compact && 'justify-start gap-2 px-2')}
+            aria-label={`${deviceLabel}: ${stageText}`}
+            className={cn(
+              engineLinkClass,
+              inline ? 'relative size-8' : 'relative h-7 w-full',
+              !compact && !deviceIconOnly && 'justify-start gap-2 px-2',
+            )}
           />
         }
       >
         <CpuIcon className={engineIconClass} aria-hidden="true" />
-        {!compact && <span className="min-w-0 truncate">{deviceLabel}</span>}
+        {!compact && !deviceIconOnly && <span className="min-w-0 truncate">{deviceLabel}</span>}
         <span
           className={cn(
             compact
               ? 'absolute inset-x-2 bottom-0.5 h-0.5 rounded-full'
-              : 'ml-auto size-1.5 shrink-0 rounded-full',
-            deviceDot,
+              : deviceIconOnly
+                ? 'absolute end-1.5 top-1 size-1.5 rounded-full'
+                : 'ml-auto size-1.5 shrink-0 rounded-full',
+            stageDot,
           )}
           aria-hidden="true"
         />
+      </PopoverTrigger>
+      {deviceContent}
+    </Popover>
+  );
+  // Status dot, chip and device name: the readable form, used wherever there is room for text.
+  const labeledDevicePopover = (
+    <Popover open={deviceOpen} onOpenChange={setDeviceOpen}>
+      <PopoverTrigger
+        render={
+          <button
+            type="button"
+            aria-label={`${deviceLabel}: ${stageText}`}
+            title={`${deviceLabel}: ${stageText}`}
+            className="group/status flex h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md px-2 text-left outline-none transition-[background-color,box-shadow,backdrop-filter] duration-150 hover:bg-sidebar-accent/65 hover:backdrop-blur-xl hover:shadow-[inset_0_1px_0_rgb(255_255_255/8%),0_5px_14px_rgb(0_0_0/10%)] hover:ring-1 hover:ring-inset hover:ring-sidebar-border/60 focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        }
+      >
+        {/* Status dot as a badge on the chip, so the icon lines up with the
+            rows below it. */}
+        <span className="relative shrink-0" aria-hidden="true">
+          <CpuIcon className="size-3.5" />
+          <span
+            className={cn(
+              'absolute -end-0.5 -bottom-0.5 size-1.5 rounded-full ring-2 ring-sidebar',
+              stageDot,
+            )}
+          />
+        </span>
+        <span className="min-w-0 flex-1 truncate" role="status">
+          {deviceLabel}
+        </span>
       </PopoverTrigger>
       {deviceContent}
     </Popover>
@@ -741,6 +683,7 @@ export function StatusBar({
           inline ? 'contents' : 'border-t border-border/50 px-1.5 py-2',
         )}
       >
+        {railProfile}
         {iconDevicePopover}
       </footer>
     );
@@ -750,71 +693,46 @@ export function StatusBar({
       <div>
         {!footerLeading && (
           <div className="flex items-center gap-0.5">
-            <Popover open={deviceOpen} onOpenChange={setDeviceOpen}>
-              <PopoverTrigger
-                render={
-                  <button
-                    type="button"
-                    aria-label={`${deviceLabel}: ${deviceStageText}`}
-                    className="group/status flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-left outline-none transition-[background-color,box-shadow,backdrop-filter] duration-150 hover:bg-sidebar-accent/65 hover:backdrop-blur-xl hover:shadow-[inset_0_1px_0_rgb(255_255_255/8%),0_5px_14px_rgb(0_0_0/10%)] hover:ring-1 hover:ring-inset hover:ring-sidebar-border/60 focus-visible:ring-2 focus-visible:ring-ring"
-                  />
-                }
-              >
-                <span
-                  className={cn('size-1.5 shrink-0 rounded-full', deviceDot)}
-                  aria-hidden="true"
-                />
-                <CpuIcon className="size-3.5 shrink-0" aria-hidden="true" />
-                <span className="min-w-0 flex-1 truncate" role="status">
-                  {deviceLabel}
-                </span>
-              </PopoverTrigger>
-              {deviceContent}
-            </Popover>
-            {viewControl}
+            {labeledDevicePopover}
+            {level !== 'simple' && viewControl}
           </div>
         )}
         {isBackendReachable(status.stage) && (
           <PerformanceProfile
-            onApplied={(applied) => {
-              appliedRefreshStarted.current = presetRefreshing;
-              setAppliedProfile(applied);
-              if (level === 'simple') chooseLevel('models');
-            }}
+            showHardware={level !== 'simple'}
+            extra={
+              level === 'simple' ? (
+                <>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-muted-foreground">{t('sidebarTools.title')}</span>
+                    {viewControl}
+                  </div>
+                  {engineRows('models')}
+                </>
+              ) : undefined
+            }
+            onApplied={handleApplied}
           />
         )}
-        <div
-          id="sidebar-engine-details"
-          data-detail-level={level}
-          className={cn(
-            'min-w-0',
-            level === 'simple'
-              ? 'rounded-lg bg-sidebar-accent/20'
-              : 'max-h-[32dvh] space-y-0.5 overflow-y-auto overscroll-contain',
-          )}
-        >
-          {displayEngines
-            .filter(({ family }) => level !== 'simple' || family === 'tts')
-            .map((row) => (
-              <EngineRow
-                key={row.family}
-                row={row}
-                level={level}
-                online={isBackendReachable(status.stage)}
-                dotClass={engineStateClass(row.state)}
-                open={selectedDetail === row.family}
-                onToggle={() =>
-                  setSelectedDetail((current) => (current === row.family ? null : row.family))
-                }
-              />
-            ))}
-        </div>
+        {level !== 'simple' && (
+          <div
+            id="sidebar-engine-details"
+            data-detail-level={level}
+            className="max-h-[32dvh] min-w-0 space-y-0.5 overflow-y-auto overscroll-contain"
+          >
+            {/* With the device in the footer beside Settings there is no room
+                for the view switch there, so it heads the rows it controls. */}
+            {footerLeading && <div className="flex justify-end">{viewControl}</div>}
+            {engineRows(level)}
+          </div>
+        )}
 
         {footerLeading && (
           <div className="sticky bottom-0 mt-1.5 flex items-center gap-1 border-t border-border/50 bg-sidebar pt-1.5">
             {footerLeading}
-            <div className="min-w-0 flex-1">{iconDevicePopover}</div>
-            {viewControl}
+            {/* Device beside Settings; on a narrow pane Settings drops to its
+                icon and the device name truncates, so neither is pushed out. */}
+            <div className="flex min-w-0 flex-1 items-center gap-0.5">{labeledDevicePopover}</div>
           </div>
         )}
       </div>

@@ -1,6 +1,8 @@
+import { ProjectHandoff } from './project-handoff';
 import { SecondarySidebar } from '@/components/workspace-sidebar';
 import { WorkspaceHeader } from '@/components/app-shell/workspace-header';
-import { AudioPreviewButton } from '@/components/audio-preview-button';
+import { PlayInDockButton } from '@/components/now-playing-dock';
+import { takePlaybackKind } from '@/lib/audio/playback-kind';
 import { PipelineFailure } from '@/components/pipeline-failure';
 import { ProfileAvatar } from '@/components/profile-avatar';
 import { getBridge } from '@/components/bridge';
@@ -12,7 +14,7 @@ import {
   type Mode,
 } from '../longform/longform-session';
 import { projectLibrary } from '../longform/project-library';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -29,7 +31,6 @@ import {
   ListIcon,
   MicIcon,
   PencilIcon,
-  SaveIcon,
   SearchIcon,
   TrashIcon,
 } from 'lucide-react';
@@ -66,18 +67,16 @@ import {
   attachDubProject,
   detachDubProject,
 } from '../dub/dub-session';
-import { projectPayload, type DubProject } from './project-format';
-import { RenderDetails, renderRecipe, type RenderRecord } from './render-details';
+import type { DubProject } from './project-format';
+import { RenderDisclosure, renderRecipe, type RenderRecord } from './render-details';
 
-type LibraryKind =
-  | 'dub'
-  | 'stories'
-  | 'audiobooks'
-  | 'profiles'
-  | 'transcripts'
-  | 'history'
-  | 'exports';
-type Filter = 'all' | LibraryKind;
+import {
+  LIBRARY_KINDS,
+  countByFilter,
+  matchesFilter,
+  type Filter,
+  type LibraryKind,
+} from './library-filter';
 
 interface ExportRecord {
   id: string;
@@ -130,7 +129,6 @@ export function ProjectsPage() {
   const history = useHistory();
   const [transcripts, setTranscripts] = useState<TranscriptEntry[]>(loadTranscriptions);
   const [rename, setRename] = useState('');
-  const [name, setName] = useState(session.project?.name || session.filename);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [view, setView] = useState<'grid' | 'list'>('list');
@@ -147,7 +145,6 @@ export function ProjectsPage() {
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
   const query = useQuery({
     queryKey: ['projects'],
     queryFn: ({ signal }) => apiJson<DubProject[]>('/projects', { signal }),
@@ -179,7 +176,6 @@ export function ProjectsPage() {
     pending.current = true;
     setBusy(true);
     setError(null);
-    setSaved(false);
     try {
       await work();
       await Promise.all([
@@ -193,18 +189,6 @@ export function ProjectsPage() {
       setBusy(false);
     }
   };
-  const save = (copy: boolean) =>
-    act(async () => {
-      const snapshot = session;
-      const payload = projectPayload(snapshot, name);
-      const id = copy ? undefined : snapshot.project?.id;
-      const result = await apiJson<{ id: string }>(
-        '/projects' + (id ? '/' + encodeURIComponent(id) : ''),
-        { method: id ? 'PUT' : 'POST', body: JSON.stringify(payload) },
-      );
-      attachDubProject(snapshot, { ...payload, id: result.id });
-      setSaved(true);
-    });
   const apply = () =>
     act(async () => {
       if (!confirm) return;
@@ -237,7 +221,6 @@ export function ProjectsPage() {
               ...session.project,
               name: rename.trim(),
             });
-            setName(rename.trim());
           }
         } else {
           const project = await apiJson<DubProject>(path);
@@ -326,7 +309,8 @@ export function ProjectsPage() {
         name: project.name,
         kind: project.mode === 'stories' ? 'stories' : 'audiobooks',
         projectKind: project.mode,
-        subtitle: t(project.mode === 'stories' ? 'nav.stories' : 'audiobook.title'),
+        // The type label already says Stories or Audiobooks; no second copy of it.
+        subtitle: '',
         updatedAt: timestamp(project.updatedAt),
       });
     }
@@ -383,10 +367,7 @@ export function ProjectsPage() {
         id: render.job_id,
         name: render.title || render.output,
         kind: render.type === 'story' ? 'stories' : 'audiobooks',
-        // Voice · speed · engine · length: what tells two renders of a book apart.
-        subtitle:
-          renderRecipe(render) ||
-          t(render.type === 'story' ? 'projects.story' : 'projects.audiobook'),
+        subtitle: renderRecipe(render),
         updatedAt: timestamp(render.created_at),
         render,
       });
@@ -403,22 +384,9 @@ export function ProjectsPage() {
     transcripts,
   ]);
 
-  const counts = useMemo(() => {
-    const next: Record<Filter, number> = {
-      all: rows.length,
-      dub: 0,
-      stories: 0,
-      audiobooks: 0,
-      profiles: 0,
-      transcripts: 0,
-      history: 0,
-      exports: 0,
-    };
-    for (const row of rows) next[row.kind]++;
-    return next;
-  }, [rows]);
+  const counts = useMemo(() => countByFilter(rows.map((row) => row.kind)), [rows]);
   const visible = rows.filter((row) => {
-    if (filter !== 'all' && row.kind !== filter) return false;
+    if (!matchesFilter(row.kind, filter)) return false;
     const term = search.trim().toLocaleLowerCase();
     return !term || `${row.name} ${row.subtitle}`.toLocaleLowerCase().includes(term);
   });
@@ -428,7 +396,7 @@ export function ProjectsPage() {
     label: string;
     icon: typeof FolderOpenIcon;
   }[] = [
-    { id: 'all', label: t('projects.all'), icon: FolderOpenIcon },
+    { id: 'all', label: t('projects.all_projects'), icon: FolderOpenIcon },
     { id: 'dub', label: t('projects.dub_projects'), icon: FilmIcon },
     { id: 'stories', label: t('projects.stories'), icon: AudioLinesIcon },
     { id: 'audiobooks', label: t('projects.audiobooks'), icon: BookOpenIcon },
@@ -467,6 +435,8 @@ export function ProjectsPage() {
       text: take.text,
       language: take.language || 'Auto',
       selectedProfileId: take.profile_id,
+      // Never carry the previous voice's transcript onto the reused take's voice.
+      refText: profiles.data?.find((profile) => profile.id === take.profile_id)?.ref_text ?? '',
       instruct: take.instruct || '',
     });
     await navigate({ to: '/clone' });
@@ -485,6 +455,20 @@ export function ProjectsPage() {
     <div className="flex h-full min-h-0 flex-col">
       <WorkspaceHeader>
         <h1 className="text-sm font-medium">{t('projects.title')}</h1>
+        <div className="ms-auto">
+          <ProjectHandoff
+            disabled={locked}
+            selection={
+              selectedRows.length === 1 && selectedRows[0].projectKind
+                ? {
+                    id: selectedRows[0].id,
+                    kind: selectedRows[0].projectKind,
+                    name: selectedRows[0].name,
+                  }
+                : undefined
+            }
+          />
+        </div>
       </WorkspaceHeader>
       <div className="flex min-h-0 flex-1 @max-[40rem]:flex-col">
         <SecondarySidebar
@@ -496,68 +480,33 @@ export function ProjectsPage() {
           {filterItems.map((item) => {
             const Icon = item.icon;
             return (
-              <Button
-                key={item.id}
-                className="h-9 w-full justify-start gap-2.5 rounded-lg px-2.5 font-normal [&_svg]:text-muted-foreground"
-                variant={filter === item.id ? 'secondary' : 'ghost'}
-                aria-pressed={filter === item.id}
-                onClick={() => {
-                  setFilter(item.id);
-                  setSelected(new Set());
-                }}
-              >
-                <Icon />
-                <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
-                <span className="rounded-md bg-background/45 px-1.5 py-0.5 text-[11px] tabular-nums text-muted-foreground">
-                  {counts[item.id]}
-                </span>
-              </Button>
+              <Fragment key={item.id}>
+                {item.id === LIBRARY_KINDS[0] && (
+                  <p className="px-2.5 pt-3 pb-1 text-[11px] font-medium text-muted-foreground">
+                    {t('projects.library_group')}
+                  </p>
+                )}
+                <Button
+                  className="h-9 w-full justify-start gap-2.5 rounded-lg px-2.5 font-normal [&_svg]:text-muted-foreground"
+                  variant={filter === item.id ? 'secondary' : 'ghost'}
+                  aria-pressed={filter === item.id}
+                  onClick={() => {
+                    setFilter(item.id);
+                    setSelected(new Set());
+                  }}
+                >
+                  <Icon />
+                  <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
+                  <span className="rounded-md bg-background/45 px-1.5 py-0.5 text-[11px] tabular-nums text-muted-foreground">
+                    {counts[item.id]}
+                  </span>
+                </Button>
+              </Fragment>
             );
           })}
         </SecondarySidebar>
         <section className="min-w-0 flex-1 overflow-y-auto p-6">
           <div className="mx-auto max-w-6xl space-y-5">
-            {session.jobId && (
-              <form
-                className="space-y-3 rounded-xl border border-border/50 bg-card/35 p-4"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void save(false);
-                }}
-              >
-                <label htmlFor="project-name" className="text-sm font-medium">
-                  {t('sidebar.save_project')}
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  <Input
-                    id="project-name"
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    disabled={locked}
-                    className="min-w-48 flex-1"
-                  />
-                  <Button type="submit" disabled={locked || !name.trim()}>
-                    <SaveIcon />
-                    {t('common.save')}
-                  </Button>
-                  {session.project && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={locked || !name.trim()}
-                      onClick={() => void save(true)}
-                    >
-                      {t('sidebar.save_new_project')}
-                    </Button>
-                  )}
-                </div>
-                {saved && (
-                  <p role="status" className="text-sm text-muted-foreground">
-                    {t('app.toast_project_saved')}
-                  </p>
-                )}
-              </form>
-            )}
             <div className="flex items-center gap-2">
               <div className="relative min-w-0 flex-1">
                 <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -760,16 +709,7 @@ export function ProjectsPage() {
                             </span>
                           )}
                         </p>
-                        {row.render && (
-                          <details className="mt-1.5">
-                            <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
-                              {t('projects.render_details')}
-                            </summary>
-                            <div className="mt-2">
-                              <RenderDetails render={row.render} />
-                            </div>
-                          </details>
-                        )}
+                        {row.render ? <RenderDisclosure render={row.render} /> : null}
                       </div>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
@@ -805,9 +745,12 @@ export function ProjectsPage() {
                       )}
                       {row.take && (
                         <>
-                          <AudioPreviewButton
+                          <PlayInDockButton
                             src={apiPath('/audio/' + encodeURIComponent(row.take.audio_path))}
-                            source={'projects-take-' + row.take.id}
+                            source={'take-' + row.take.id}
+                            title={row.name}
+                            kind={takePlaybackKind(row.take.mode)}
+                            duration={row.take.duration_seconds}
                           />
                           <Button
                             size="sm"
@@ -829,9 +772,11 @@ export function ProjectsPage() {
                         </Button>
                       )}
                       {row.render && (
-                        <AudioPreviewButton
+                        <PlayInDockButton
                           src={apiPath('/audio/' + encodeURIComponent(row.render.output))}
                           source={'projects-render-' + row.render.job_id}
+                          title={row.name}
+                          kind={row.render.type === 'story' ? 'story' : 'audiobook'}
                         />
                       )}
                       {row.projectKind && (

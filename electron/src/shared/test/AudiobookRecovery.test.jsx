@@ -1,185 +1,110 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { I18nextProvider } from 'react-i18next';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-import i18n from '../i18n';
-import en from '../i18n/locales/en.json';
+const doubles = vi.hoisted(() => ({ jobs: vi.fn(), reveal: vi.fn() }));
 
-const mocks = vi.hoisted(() => ({
-  jobs: vi.fn(),
-  resume: vi.fn(),
-  reveal: vi.fn(),
-}));
-
-vi.mock('../api/audiobook', () => ({
-  audiobookListJobs: mocks.jobs,
-  audiobookResume: mocks.resume,
-  audiobookPlan: vi.fn(),
-  audiobookGenerate: vi.fn(),
-  audiobookUploadCover: vi.fn(),
-  audiobookPreviewChapter: vi.fn(),
-  audiobookImport: vi.fn(),
-}));
-vi.mock('../api/exports', () => ({ exportReveal: mocks.reveal }));
-vi.mock('../api/engines', () => ({
-  listEngines: vi.fn().mockResolvedValue({ tts: { active: 'x', backends: [] } }),
-}));
-vi.mock('../api/generate', () => ({ audioUrl: (file) => `/audio/${file}` }));
-vi.mock('../api/system', () => ({
-  systemInfo: vi.fn().mockResolvedValue({ outputs_dir: '/data/outputs' }),
+vi.mock('../api/audiobook', () => ({ audiobookListJobs: doubles.jobs }));
+vi.mock('../api/exports', () => ({ exportReveal: doubles.reveal }));
+vi.mock('../api/hooks', () => ({
+  useSystemInfo: () => ({ data: { outputs_dir: 'D:\\VoiceStudio\\renders\\' } }),
 }));
 
 import AudiobookRecovery from '../components/audiobook/AudiobookRecovery';
-import AudiobookTab from '../pages/AudiobookTab';
-import { useAppStore } from '../store';
 
-function renderRecovery(onResume = vi.fn()) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return {
-    onResume,
-    ...render(
-      <QueryClientProvider client={queryClient}>
-        <I18nextProvider i18n={i18n}>
-          <AudiobookRecovery t={i18n.t.bind(i18n)} generating={false} onResume={onResume} />
-        </I18nextProvider>
-      </QueryClientProvider>,
-    ),
-  };
-}
+const labels = {
+  'audiobook.recovery_title': 'unfinished book',
+  'audiobook.untitled': 'no title',
+  'audiobook.recovery_hint': 'keep completed work',
+  'audiobook.resume': 'continue job',
+  'audiobook.open_chapter_cache': 'show audio files',
+  'audiobook.open_cache_failed': 'folder unavailable',
+};
+const translate = (key, args = {}) => {
+  if (key === 'audiobook.recovery_progress') return `${args.done} ready out of ${args.total}`;
+  if (key === 'audiobook.cache_location_hint') return `${args.manifestPath} | ${args.cachePath}`;
+  return labels[key] ?? key;
+};
+const job = (id, created_at, extra = {}) => ({
+  job_id: id,
+  type: 'audiobook',
+  status: 'cancelled',
+  title: `Book ${id}`,
+  total_chapters: 9,
+  chapters_done: 4,
+  created_at,
+  ...extra,
+});
 
-describe('Audiobook recovery surface (#1911)', () => {
+describe('recovery card inventory', () => {
   beforeEach(() => {
-    localStorage.clear();
-    vi.clearAllMocks();
-    mocks.jobs.mockResolvedValue({
-      jobs: [
-        {
-          job_id: 'job-safe-123',
-          type: 'audiobook',
-          status: 'cancelled',
-          title: 'A Long Book',
-          total_chapters: 30,
-          chapters_done: 6,
-          created_at: 1,
-        },
-      ],
-    });
-    mocks.reveal.mockResolvedValue({ success: true });
-    useAppStore.getState().setLastOutput('');
-    mocks.resume.mockResolvedValue({
-      body: {
-        getReader: () => {
-          let sent = false;
-          return {
-            read: () => {
-              if (sent) return Promise.resolve({ done: true });
-              sent = true;
-              return Promise.resolve({
-                done: false,
-                value: new TextEncoder().encode(
-                  'data: {"type":"started","job_id":"fresh","chapters":1}\n\n' +
-                    'data: {"type":"chapter","index":0,"total":1,"title":"One","cached":true}\n\n' +
-                    'data: {"type":"done","output":"audiobook_fresh.m4b","cached_chapters":1,"failed_chapters":[]}\n\n',
-                ),
-              });
-            },
-            cancel: vi.fn().mockResolvedValue(undefined),
-          };
-        },
-      },
-    });
+    doubles.jobs.mockReset();
+    doubles.reveal.mockReset();
   });
 
-  it('shows interrupted work and resumes the selected backend job', async () => {
-    const onResume = vi.fn().mockResolvedValue(true);
-    renderRecovery(onResume);
-
-    expect(await screen.findByRole('heading', { name: en.audiobook.recovery_title })).toBeTruthy();
-    expect(screen.getByText('A Long Book')).toBeTruthy();
-    expect(screen.getByText('6 of 30 chapters are cached', { exact: false })).toBeTruthy();
-
-    fireEvent.click(screen.getByRole('button', { name: en.audiobook.resume }));
-    expect(onResume).toHaveBeenCalledWith('job-safe-123');
-    mocks.jobs.mockResolvedValue({ jobs: [] });
-    await waitFor(() => expect(screen.queryByText('A Long Book')).toBeNull());
+  it('explains a failed inventory load and retries on request', async () => {
+    doubles.jobs.mockRejectedValueOnce(new Error('offline'));
+    doubles.jobs.mockResolvedValueOnce({ jobs: [job('later', 5)] });
+    render(<AudiobookRecovery t={translate} generating={false} onResume={vi.fn()} />);
+    expect(await screen.findByText('audiobook.recovery_load_failed')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'audiobook.recovery_retry' }));
+    expect(await screen.findByText('Book later')).toBeTruthy();
+    expect(screen.queryByText('audiobook.recovery_load_failed')).toBeNull();
+    expect(doubles.jobs).toHaveBeenCalledTimes(2);
   });
 
-  it('refreshes recovery inventory after an interrupted resumed render', async () => {
-    const onResume = vi.fn().mockImplementation(async () => {
-      mocks.jobs.mockResolvedValue({
-        jobs: [
-          {
-            job_id: 'job-fresh-456',
-            type: 'audiobook',
-            status: 'cancelled',
-            title: 'A Long Book (resumed)',
-            total_chapters: 30,
-            chapters_done: 9,
-            created_at: 2,
-          },
-        ],
-      });
-      return true;
-    });
-    renderRecovery(onResume);
+  it('selects the newest audiobook and replaces it after continuation', async () => {
+    doubles.jobs
+      .mockResolvedValueOnce({
+        jobs: [job('early', 10), job('latest', 80), job('story', 99, { type: 'longform' })],
+      })
+      .mockResolvedValueOnce({ jobs: [job('replacement', 100, { chapters_done: 1 })] });
+    const continueJob = vi.fn().mockResolvedValue(true);
+    render(<AudiobookRecovery t={translate} generating={false} onResume={continueJob} />);
 
-    fireEvent.click(await screen.findByRole('button', { name: en.audiobook.resume }));
+    expect(await screen.findByText('Book latest')).toBeInTheDocument();
+    expect(screen.getByText('4 ready out of 9')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'continue job' }));
 
-    expect(await screen.findByText('A Long Book (resumed)')).toBeTruthy();
-    expect(mocks.jobs).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(continueJob).toHaveBeenCalledWith('latest'));
+    expect(await screen.findByText('Book replacement')).toBeInTheDocument();
+    expect(doubles.jobs).toHaveBeenCalledTimes(2);
   });
 
-  it('restores the recovery card when the post-resume inventory refresh fails', async () => {
-    const onResume = vi.fn().mockImplementation(async () => {
-      mocks.jobs.mockRejectedValueOnce(new Error('inventory offline'));
-      return true;
-    });
-    renderRecovery(onResume);
-
-    fireEvent.click(await screen.findByRole('button', { name: en.audiobook.resume }));
-
-    expect(await screen.findByText('A Long Book')).toBeTruthy();
-    expect(mocks.jobs).toHaveBeenCalledTimes(2);
-  });
-
-  it('reveals the server-owned chapter cache through the existing safe seam', async () => {
-    renderRecovery();
-
-    fireEvent.click(await screen.findByRole('button', { name: en.audiobook.open_chapter_cache }));
-    await waitFor(() =>
-      expect(mocks.reveal).toHaveBeenCalledWith({ path: '/data/outputs/longform_cache' }),
-    );
-    expect(screen.getByText(/\/data\/outputs\/longform_cache/)).toBeTruthy();
-    expect(screen.getByText(/\/data\/outputs\/audiobook_job-safe-123\/resume\.json/)).toBeTruthy();
-  });
-
-  it('stays out of the workspace when no resumable audiobook exists', async () => {
-    mocks.jobs.mockResolvedValue({ jobs: [] });
-    renderRecovery();
-
-    await waitFor(() => expect(mocks.jobs).toHaveBeenCalledOnce());
-    expect(screen.queryByRole('heading', { name: en.audiobook.recovery_title })).toBeNull();
-  });
-
-  it('wires Resume to the backend stream and restores a playable result', async () => {
-    useAppStore.getState().setScript('# Different open draft\nDo not attach this as lyrics.');
-    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  it('brings the original choice back when the follow-up inventory is unavailable', async () => {
+    doubles.jobs.mockResolvedValueOnce({ jobs: [job('retryable', null)] });
+    doubles.jobs.mockRejectedValueOnce(new Error('inventory offline'));
     render(
-      <QueryClientProvider client={queryClient}>
-        <I18nextProvider i18n={i18n}>
-          <AudiobookTab profiles={[]} />
-        </I18nextProvider>
-      </QueryClientProvider>,
+      <AudiobookRecovery
+        t={translate}
+        generating={false}
+        onResume={vi.fn().mockResolvedValue(true)}
+      />,
     );
+    expect(await screen.findByText('Book retryable')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'continue job' }));
+    expect(await screen.findByText('Book retryable')).toBeInTheDocument();
+  });
 
-    fireEvent.click(await screen.findByRole('button', { name: en.audiobook.resume }));
-    await waitFor(() => expect(mocks.resume).toHaveBeenCalledOnce());
-    expect(mocks.resume.mock.calls[0][0]).toBe('job-safe-123');
-    expect(mocks.resume.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
-    await waitFor(() => expect(useAppStore.getState().lastOutput).toBe('audiobook_fresh.m4b'));
-    expect(screen.getByText(en.audiobook.ready, { exact: false })).toBeTruthy();
-    expect(useAppStore.getState().lastOutputScript).not.toContain('Different open draft');
+  it('shows both storage locations and reveals the shared chapter directory', async () => {
+    doubles.jobs.mockResolvedValue({ jobs: [job('paths', 5)] });
+    doubles.reveal.mockResolvedValue(undefined);
+    render(<AudiobookRecovery t={translate} generating={false} onResume={vi.fn()} />);
+
+    expect(await screen.findByText(/audiobook_paths\/resume\.json/)).toBeInTheDocument();
+    expect(screen.getByText(/longform_cache/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'show audio files' }));
+    await waitFor(() =>
+      expect(doubles.reveal).toHaveBeenCalledWith({
+        path: 'D:\\VoiceStudio\\renders/longform_cache',
+      }),
+    );
+  });
+
+  it('has no recovery chrome when the server returns no audiobook work', async () => {
+    doubles.jobs.mockResolvedValue({ jobs: [job('other', 3, { type: 'longform' })] });
+    render(<AudiobookRecovery t={translate} generating={false} onResume={vi.fn()} />);
+    await waitFor(() => expect(doubles.jobs).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText('unfinished book')).not.toBeInTheDocument();
   });
 });

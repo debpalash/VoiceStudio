@@ -74,6 +74,11 @@ try {
       localStorage.removeItem('voicestudio.dub.session.v1');
       sessionStorage.removeItem('voicestudio.test.reset-dub');
     }
+    const timelineDraft = sessionStorage.getItem('voicestudio.test.timeline-draft');
+    if (timelineDraft) {
+      localStorage.setItem('voicestudio.dub.session.v1', timelineDraft);
+      sessionStorage.removeItem('voicestudio.test.timeline-draft');
+    }
   });
   const video = process.env.VOICESTUDIO_TEST_VIDEO
     ? readFileSync(process.env.VOICESTUDIO_TEST_VIDEO)
@@ -82,7 +87,9 @@ try {
   const vidstackWarnings = [];
   let mediaHeadRequests = 0;
   let releaseVideo;
-  const videoReady = new Promise((resolve) => { releaseVideo = resolve; });
+  const videoReady = new Promise((resolve) => {
+    releaseVideo = resolve;
+  });
   page.on('pageerror', (error) => errors.push(error.message));
   page.on('console', (message) => {
     if (message.type() === 'warning' && message.text().includes('[vidstack]'))
@@ -122,17 +129,6 @@ try {
       },
     }),
   );
-  await page.route('**/api/workers/target**', (route) =>
-    route.fulfill({
-      json: {
-        target: 'local',
-        op: 'dub',
-        active: { remote: false, label: 'Local device', reason: '' },
-        remote_operations: [],
-        targets: [],
-      },
-    }),
-  );
   await page.route('**/api/engines/translation', (route) =>
     route.fulfill({
       json: {
@@ -157,9 +153,23 @@ try {
       },
     }),
   );
-  await page.route('**/api/dub/upload', (route) =>
-    route.fulfill({ json: { job_id: 'fixture', task_id: 'prep-fixture' } }),
-  );
+  let rejectNoAudio = true;
+  await page.route('**/api/dub/upload', (route) => {
+    if (!rejectNoAudio)
+      return route.fulfill({ json: { job_id: 'fixture', task_id: 'prep-fixture' } });
+    rejectNoAudio = false;
+    return route.fulfill({
+      status: 422,
+      json: {
+        detail: {
+          code: 'no_audio_track',
+          docs_topic: 'NO_AUDIO_TRACK',
+          message: 'This file has no audio track.',
+          hint: 'Check that the file plays with sound.',
+        },
+      },
+    });
+  });
   await page.route('**/api/tasks/stream/prep-fixture', (route) =>
     route.fulfill({
       contentType: 'text/event-stream',
@@ -176,12 +186,15 @@ try {
       contentType: 'text/event-stream',
       body: failTranscription
         ? ': disconnected\n\n'
-        : 'event: final\ndata: {"segments":[{"id":"1","start":0,"end":2,"text":"Hello there","speaker_id":"SPEAKER_00"},{"id":"2","start":3,"end":5,"text":"Second line","speaker_id":"SPEAKER_01"}],"source_lang":"en","cast_sources":{"SPEAKER_00":{},"SPEAKER_01":{}}}\n\nevent: done\ndata: {}\n\n',
+        : 'event: final\ndata: {"segments":[{"id":"1","start":0,"end":2,"text":"Hello there","speaker_id":"SPEAKER_00"},{"id":"2","start":3.004,"end":5,"text":"Second line","speaker_id":"SPEAKER_01"}],"source_lang":"en","cast_sources":{"SPEAKER_00":{},"SPEAKER_01":{}}}\n\nevent: done\ndata: {}\n\n',
     });
   });
   if (video) {
     await page.route('**/api/dub/thumb/fixture', (route) =>
-      route.fulfill({ contentType: 'image/svg+xml', body: '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect width="320" height="180" fill="teal"/></svg>' }),
+      route.fulfill({
+        contentType: 'image/svg+xml',
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect width="320" height="180" fill="teal"/></svg>',
+      }),
     );
     await page.route('**/api/dub/media/fixture', async (route) => {
       await videoReady;
@@ -223,6 +236,7 @@ try {
     return route.fulfill({ json: { job_id: 'fixture', task_id: 'prep-fixture' } });
   });
   let generation;
+  let generationFailure = null;
   await page.route('**/api/dub/generate/fixture', (route) => {
     generation = route.request().postDataJSON();
     return route.fulfill({ json: { task_id: 'generation-fixture' } });
@@ -230,20 +244,36 @@ try {
   await page.route('**/api/tasks/stream/generation-fixture', (route) =>
     route.fulfill({
       contentType: 'text/event-stream',
-      body: 'data: {"type":"progress","current":0,"total":1}\n\ndata: {"type":"done","tracks":["es"]}\n\n',
+      body: generationFailure
+        ? `data: ${JSON.stringify({ type: 'error', stage: 'generate', ...generationFailure })}\n\n`
+        : 'data: {"type":"progress","current":0,"total":1}\n\ndata: {"type":"done","tracks":["es"]}\n\n',
     }),
   );
   await page.goto(
     new URL('/#/dub', process.env.VOICESTUDIO_UI_URL || 'http://localhost:3902').href,
   );
-  await page.locator('summary').filter({ hasText: 'Spoken language' }).click();
-  const analysis = page
-    .locator('details')
-    .filter({ has: page.locator('summary').filter({ hasText: 'Spoken language' }) });
-  await analysis.getByRole('button', { name: 'Language', exact: true }).click();
-  await page.getByRole('combobox', { name: 'Language', exact: true }).fill('French');
+  // Spoken language and speaker count are compact rows, open without a disclosure.
+  await page.getByRole('button', { name: 'Spoken language', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Spoken language', exact: true }).fill('French');
   await page.getByRole('option', { name: 'French', exact: true }).click();
   await page.getByRole('spinbutton', { name: 'Speakers', exact: true }).fill('2');
+
+  // A file without sound is a choose-another-file prompt on the file row, not a failure banner.
+  await page
+    .locator('input[type=file]')
+    .first()
+    .setInputFiles({ name: 'Screen Recording.mov', mimeType: 'video/quicktime', buffer: wave });
+  const sourceRow = page.locator('[data-slot="dub-source-row"]');
+  await sourceRow
+    .getByText('No audio track — choose a video or audio file with sound', { exact: true })
+    .waitFor();
+  assert.equal(await page.getByRole('alert').count(), 0);
+  assert.equal(await page.getByRole('button', { name: 'Copy diagnostic' }).count(), 0);
+  assert.equal(await page.getByText('Video dubbing studio', { exact: true }).count(), 0);
+  await page
+    .locator('[data-slot="dub-source-status"]')
+    .getByRole('button', { name: 'Change file', exact: true })
+    .waitFor();
 
   await page
     .locator('input[type=file]')
@@ -310,6 +340,19 @@ try {
   await segmentRows.first().locator('[data-segment-options-trigger]').click();
   await segmentRows.nth(1).locator('[data-segment-options-trigger]').click();
   const secondStart = segmentRows.nth(1).getByRole('spinbutton', { name: 'Start', exact: true });
+  // 3.004 shows as 3.00; tabbing through the untouched field must not commit
+  // that rounding, so Undo still reverts the nudge above.
+  await secondStart.focus();
+  await secondStart.press('Tab');
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await segmentRows.first().locator('[data-segment-options-trigger]').click();
+  assert.equal(
+    await segmentRows.first().getByRole('spinbutton', { name: 'Start', exact: true }).inputValue(),
+    '0.00',
+  );
+  await segmentRows.first().locator('[data-segment-options-trigger]').click();
+  await page.getByRole('button', { name: 'Redo', exact: true }).click();
+  await segmentRows.nth(1).locator('[data-segment-options-trigger]').click();
   await secondStart.fill('1.9');
   await secondStart.press('Tab');
   assert.equal(await secondStart.inputValue(), '2.00');
@@ -328,6 +371,10 @@ try {
   assert.equal(await segmentRows.count(), 2);
   await page.getByRole('button', { name: 'Redo', exact: true }).click();
   assert.equal(await segmentRows.count(), 3);
+  await segmentRows.first().locator('[data-segment-options-trigger]').click();
+  await segmentRows.first().getByRole('spinbutton', { name: 'Start', exact: true }).press('Control+z');
+  assert.equal(await segmentRows.count(), 3);
+  await segmentRows.first().locator('[data-segment-options-trigger]').click();
   await segmentRows.nth(1).getByRole('button', { name: 'Delete', exact: true }).click();
   assert.equal(await segmentRows.count(), 2);
   await segmentRows.first().getByRole('button', { name: 'More actions', exact: true }).click();
@@ -358,13 +405,15 @@ try {
   await waitForSegmentText(0, 'Imported subtitle');
   await page.getByText('2 skipped (malformed)', { exact: true }).waitFor();
   const translatorPicker = page.getByRole('group', { name: 'Translator', exact: true });
-  await translatorPicker.getByRole('button', { name: 'Translate with Agent', exact: true }).click();
+  await translatorPicker.getByRole('button', { name: 'Agent', exact: true }).click();
   await page.getByRole('button', { name: 'Translate', exact: true }).click();
   await waitForSegmentText(0, 'Agent: Imported subtitle');
   const agentRequest = await page.evaluate(() => globalThis.__dubAgentRequests.at(-1));
   assert.equal(agentRequest.agent, 'codex');
   assert.equal(agentRequest.purpose, 'translate');
-  assert.equal(agentRequest.sourceLanguage, 'en');
+  // The user picked French under Spoken language before transcribing, and a
+  // deliberate choice wins over the transcript's detected 'en' (#3442).
+  assert.equal(agentRequest.sourceLanguage, 'fr');
   assert.equal(agentRequest.targetLanguage, 'Spanish');
   assert.deepEqual(agentRequest.glossary, [{ source: 'VoiceStudio', target: 'VoiceStudio' }]);
   assert.deepEqual(agentRequest.segments, [
@@ -380,7 +429,7 @@ try {
   // Translation controls stay expanded without an extra disclosure click.
   await page.getByRole('button', { name: 'Cinematic', exact: true }).waitFor({ state: 'visible' });
   await page.getByRole('button', { name: 'Cinematic', exact: true }).click();
-  await page.getByRole('button', { name: 'Translate All', exact: true }).click();
+  await page.getByRole('button', { name: 'Translate every segment', exact: true }).click();
   await waitForSegmentText(0, 'Hola');
   assert.equal(translations[0].quality, 'cinematic');
   await page
@@ -428,7 +477,7 @@ try {
   );
   fallback = true;
   await page.getByRole('button', { name: 'Autofit', exact: true }).click();
-  await page.getByRole('button', { name: 'Translate All', exact: true }).click();
+  await page.getByRole('button', { name: 'Translate every segment', exact: true }).click();
   await page
     .getByRole('button', { name: 'Fast', exact: true })
     .and(page.locator('[aria-pressed="true"]'))
@@ -444,7 +493,7 @@ try {
     /\/settings\/models\/llm$/,
   );
   await page.getByRole('button', { name: 'Generate Dub', exact: true }).click();
-  const dubbedPreview = page.getByRole('button', { name: 'Dubbed (es)', exact: true });
+  const dubbedPreview = page.getByRole('button', { name: 'es dubbed audio', exact: true });
   await dubbedPreview.waitFor();
   if (video) {
     await page.evaluate(async () => {
@@ -481,7 +530,7 @@ try {
   if (video) {
     assert.equal(
       await page
-        .getByRole('switch', { name: 'Burn subtitles into picture (hardsub)', exact: true })
+        .getByRole('switch', { name: 'Burn into video', exact: true })
         .isDisabled(),
       true,
     );
@@ -498,13 +547,21 @@ try {
     );
   });
   await page.route('**/api/export/record', (route) => route.fulfill({ json: { ok: true } }));
-  await page.getByRole('button', { name: 'MP3 (compressed)', exact: true }).click();
+  await page.getByRole('button', { name: 'MP3 · compressed', exact: true }).click();
   await page.getByRole('button', { name: '320 kbps', exact: true }).click();
-  await page.getByRole('switch', { name: 'Background audio', exact: true }).click();
+  // #2964: the background bed level reaches the export while the background is mixed in.
+  const bedLevel = page.getByRole('slider', { name: 'Background volume', exact: true });
+  await bedLevel.focus();
+  await bedLevel.press('ArrowRight');
+  await page.getByText('110%', { exact: true }).waitFor();
   rejectExport = true;
   await page.getByRole('button', { name: 'Export', exact: true }).click();
   await page.getByRole('alert').waitFor();
   assert.equal(await page.getByText('private backend trace').count(), 0);
+  assert.equal(exportRequests.at(-1).searchParams.get('preserve_bg'), 'true');
+  assert.equal(exportRequests.at(-1).searchParams.get('bed_level'), '1.1');
+  await page.getByRole('switch', { name: 'Background audio', exact: true }).click();
+  await bedLevel.waitFor({ state: 'hidden' });
   rejectExport = false;
   await page.getByRole('button', { name: 'Export', exact: true }).click();
   await page.waitForFunction(() => globalThis.__nativeSaveRequests.length === 1);
@@ -513,6 +570,7 @@ try {
   assert.equal(exportRequests.at(-1).searchParams.get('lang'), 'es');
   assert.equal(exportRequests.at(-1).searchParams.get('bitrate'), '320k');
   assert.equal(exportRequests.at(-1).searchParams.get('preserve_bg'), 'false');
+  assert.equal(exportRequests.at(-1).searchParams.get('bed_level'), null);
   let subtitleRequest;
   await page.route('**/api/dub/srt/fixture?*', (route) => {
     subtitleRequest = new URL(route.request().url());
@@ -522,7 +580,7 @@ try {
     });
   });
   await page.getByRole('button', { name: 'SRT', exact: true }).click();
-  await page.getByRole('switch', { name: 'Dual (translated + original)', exact: true }).click();
+  await page.getByRole('switch', { name: 'Translation + original', exact: true }).click();
   await page.getByRole('button', { name: 'Export', exact: true }).click();
   await page.waitForFunction(() => globalThis.__nativeSaveRequests.length === 2);
   savedExport = await page.evaluate(() => globalThis.__nativeSaveRequests.at(-1));
@@ -537,11 +595,11 @@ try {
   );
   assert.equal(
     await page
-      .getByRole('switch', { name: 'Dual (translated + original)', exact: true })
+      .getByRole('switch', { name: 'Translation + original', exact: true })
       .getAttribute('aria-checked'),
     'true',
   );
-  await page.getByRole('button', { name: 'MP3 (compressed)', exact: true }).click();
+  await page.getByRole('button', { name: 'MP3 · compressed', exact: true }).click();
   assert.equal(
     await page
       .getByRole('switch', { name: 'Background audio', exact: true })
@@ -552,10 +610,208 @@ try {
     await page.getByRole('button', { name: '320 kbps', exact: true }).getAttribute('aria-pressed'),
     'true',
   );
+  // A prepared upload can be replaced with a URL without first removing it.
+  // The file row keeps Change file / Use link / Remove in one overflow menu.
+  const useLink = async () => {
+    await page.getByRole('button', { name: 'File actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Use link', exact: true }).click();
+  };
+  assert.equal(
+    await page.locator('[data-slot="dub-source-row"]').getByRole('button').count(),
+    1,
+    'the file row has a single actions trigger instead of wrapping text buttons',
+  );
+  const linkInput = page.getByRole('textbox', { name: /paste a video URL/ });
+  await useLink();
+  await linkInput.fill('https://example.com/cancelled.mp4');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  assert.equal(await linkInput.count(), 0);
+  assert.equal(urlRequest, undefined);
+  await useLink();
+  await linkInput.fill('https://example.com/stale.mp4');
+  await page.evaluate(async () => {
+    const { dubSession } = await import('/src/features/dub/dub-session.ts');
+    dubSession.setState((current) => ({
+      ...current,
+      jobId: 'replacement',
+      filename: 'replacement.mp4',
+    }));
+  });
+  await linkInput.waitFor({ state: 'hidden' });
+  await useLink();
+  assert.equal(await linkInput.inputValue(), '');
+  // Cancellation can outlive the active stream; retain the replacement form.
+  let finishAbort;
+  const abortReady = new Promise((resolve) => {
+    finishAbort = resolve;
+  });
+  await page.route('**/api/dub/abort/replacement', async (route) => {
+    await abortReady;
+    await route.fulfill({ json: {} });
+  });
+  await linkInput.fill('https://example.com/pending.mp4');
+  const abortRequest = page.waitForRequest('**/api/dub/abort/replacement');
+  await page.evaluate(async () => {
+    const { dubSession, cancelDub } = await import('/src/features/dub/dub-session.ts');
+    dubSession.setState((current) => ({ ...current, batchProgress: { current: 1, total: 2 } }));
+    void cancelDub();
+  });
+  await abortRequest;
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('button')].some(
+      (button) => button.textContent?.trim() === 'Ingest' && button.disabled,
+    ),
+  );
+  await linkInput.evaluate((input) =>
+    input.closest('form').dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })),
+  );
+  assert.equal(await linkInput.inputValue(), 'https://example.com/pending.mp4');
+  assert.equal(urlRequest, undefined);
+  finishAbort();
+  await page.waitForFunction(() =>
+    [...document.querySelectorAll('button')].some(
+      (button) => button.textContent?.trim() === 'Ingest' && !button.disabled,
+    ),
+  );
+  // A completed transcript longer than the virtual window must reveal cues
+  // without scrolling the timeline being operated out of the workspace.
+  await page.evaluate(() => {
+    const draft = JSON.parse(localStorage.getItem('voicestudio.dub.session.v1'));
+    draft.jobId = 'fixture';
+    draft.segments = Array.from({ length: 120 }, (_, index) => ({
+      id: `long-${index}`,
+      start: index * 3,
+      end: index * 3 + 2,
+      text: `Translated cue ${index + 1}`,
+      text_original: `Original cue ${index + 1}`,
+      speaker_id: 'SPEAKER_00',
+      translations: { es: `Translated cue ${index + 1}` },
+    }));
+    draft.duration = 360;
+    draft.phase = 'done';
+    sessionStorage.setItem('voicestudio.test.timeline-draft', JSON.stringify(draft));
+  });
+  await page.reload();
+  const assertTimelineCueVisible = async (id) => {
+    await page.waitForFunction((id) => {
+      const transcript = document.querySelector('[data-slot="dub-transcript"]');
+      const scroll = [...(transcript?.children || [])].find(
+        (element) => getComputedStyle(element).overflowY === 'auto',
+      );
+      const row = document.querySelector(`article[data-dub-row-id="${id}"]`);
+      if (!scroll || !row) return false;
+      const viewport = scroll.getBoundingClientRect();
+      const bounds = row.getBoundingClientRect();
+      return bounds.top >= viewport.top - 1 && bounds.bottom <= viewport.bottom + 1;
+    }, id);
+    const layout = await page.evaluate((id) => {
+      const transcript = document.querySelector('[data-slot="dub-transcript"]');
+      const timeline = transcript.querySelector('section[aria-label="Segment timeline"]');
+      const toolbar = transcript.querySelector('[data-slot="dub-transcript-toolbar"]');
+      const scroll = [...transcript.children].find(
+        (element) => getComputedStyle(element).overflowY === 'auto',
+      );
+      const row = transcript.querySelector(`article[data-dub-row-id="${id}"]`);
+      const bounds = transcript.getBoundingClientRect();
+      const controls = timeline.getBoundingClientRect();
+      const cue = row.getBoundingClientRect();
+      return {
+        timelineVisible: controls.top >= bounds.top - 1 && controls.bottom <= bounds.bottom + 1,
+        cueBelowTimeline: cue.top >= controls.bottom - 1,
+        toolbarClear: !toolbar || toolbar.getBoundingClientRect().bottom <= controls.top + 1,
+        cueViewportHeight: scroll.clientHeight,
+      };
+    }, id);
+    assert.equal(
+      layout.timelineVisible,
+      true,
+      `${id}: timeline must stay in the transcript viewport`,
+    );
+    assert.equal(layout.cueBelowTimeline, true, `${id}: controls must not cover the revealed cue`);
+    assert.equal(layout.toolbarClear, true, `${id}: timeline must not overlap the toolbar`);
+    assert(layout.cueViewportHeight >= 140, 'compact layouts must retain usable transcript space');
+  };
+  for (const [index, viewport] of [
+    { width: 1400, height: 900 },
+    { width: 1000, height: 600 },
+  ].entries()) {
+    await page.setViewportSize(viewport);
+    await timeline.locator('[data-timeline-segment="long-90"]').waitFor();
+    assert((await segmentRows.count()) < 120, 'long transcript must remain virtualized');
+    assert.equal(await page.locator('article[data-dub-row-id="long-90"]').count(), 0);
+    await timeline.locator('[data-timeline-segment="long-90"]').click();
+    await assertTimelineCueVisible('long-90');
+    // Use the actual focused control, not locator.press (which can auto-scroll
+    // an offscreen timeline and hide the regression).
+    await page.keyboard.press('ArrowRight');
+    await assertTimelineCueVisible('long-91');
+    assert.equal(
+      await page.evaluate(() => document.activeElement?.getAttribute('data-timeline-segment')),
+      'long-91',
+    );
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Control+ArrowRight');
+    const selectedRow = page.locator('article[data-dub-row-id="long-91"]');
+    await selectedRow.locator('[data-segment-options-trigger]').click();
+    assert.equal(
+      await selectedRow.getByRole('spinbutton', { name: 'Start', exact: true }).inputValue(),
+      (273 + (index + 1) * 0.1).toFixed(2),
+    );
+    await page.waitForFunction(
+      (expectedStart) => {
+        const draft = JSON.parse(localStorage.getItem('voicestudio.dub.session.v1'));
+        return Math.abs(draft.segments[91].start - expectedStart) < 0.0001;
+      },
+      273 + (index + 1) * 0.1,
+    );
+    const timings = await page.evaluate(() =>
+      JSON.parse(localStorage.getItem('voicestudio.dub.session.v1')).segments.map(
+        ({ start, end }) => ({ start, end }),
+      ),
+    );
+    for (const [cueIndex, timing] of timings.entries()) {
+      assert(
+        Math.abs(timing.start - (cueIndex * 3 + (cueIndex === 91 ? (index + 1) * 0.1 : 0))) <
+          0.0001,
+        `nudge must only change long-91, not long-${cueIndex}`,
+      );
+      assert.equal(timing.end, cueIndex * 3 + 2);
+    }
+    // Expanded row measurements and a resized content prefix must not corrupt
+    // subsequent virtualized reveals.
+    await timeline.locator('[data-timeline-segment="long-5"]').click();
+    await assertTimelineCueVisible('long-5');
+    await page.locator('article[data-dub-row-id="long-5"] input[type="checkbox"]').check();
+    await timeline.locator('[data-timeline-segment="long-110"]').click();
+    await assertTimelineCueVisible('long-110');
+    await timeline.locator('[data-timeline-segment="long-91"]').click();
+    await selectedRow.locator('[data-segment-options-trigger]').click();
+    await timeline.locator('[data-timeline-segment="long-0"]').click();
+    await assertTimelineCueVisible('long-0');
+  }
+  // Error notices sit above the same virtualized list without resizing the
+  // scrollport. Appearing, growing and dismissing one must keep reveals accurate.
+  const generationNotice = page.locator('[data-slot="dub-transcript-scroll"] [role="alert"]');
+  for (const hint of [
+    'Retry generation after the model is ready.',
+    'Retry generation after the model is ready. Confirm that the selected voice model is installed and its reference clip can be read. The existing transcript remains editable while the model problem is resolved. No cue edits need to be discarded, and generation can be retried when the local engine is available again.',
+  ]) {
+    generationFailure = { reason: 'The voice model could not generate this dub.', hint };
+    await page.getByRole('button', { name: 'Generate Dub', exact: true }).click();
+    await generationNotice.getByText(hint, { exact: true }).waitFor();
+    await timeline.locator('[data-timeline-segment="long-90"]').click();
+    await assertTimelineCueVisible('long-90');
+  }
+  await generationNotice.getByRole('button', { name: 'Dismiss', exact: true }).click();
+  await generationNotice.waitFor({ state: 'hidden' });
+  await timeline.locator('[data-timeline-segment="long-0"]').click();
+  await assertTimelineCueVisible('long-0');
+  generationFailure = null;
+  await page.setViewportSize({ width: 1400, height: 900 });
   await page.evaluate(() => sessionStorage.setItem('voicestudio.test.reset-dub', '1'));
   await page.reload();
   failTranscription = true;
-  await page.getByRole('textbox', { name: /paste YouTube/ }).fill('https://example.com/movie.mp4');
+  await page.getByRole('textbox', { name: /paste a video URL/ }).fill('https://example.com/movie.mp4');
   await page
     .locator('summary')
     .filter({ hasText: /^Advanced$/ })
@@ -591,13 +847,152 @@ try {
   await page.getByRole('button', { name: 'Retry', exact: true }).click();
   await waitForSegmentText(0, 'Hello there');
   assert.equal(transcriptionCalls, attempts + 1);
+
+  // Issue navigation must reach unmounted rows, not just the visible transcript.
+  await page.evaluate(async () => {
+    const { dubSession } = await import('/src/features/dub/dub-session.ts');
+    const segments = Array.from({ length: 1000 }, (_, index) => ({
+      id: `issue-nav-${index}`,
+      start: index * 2,
+      end: index * 2 + 1,
+      text: `Transcript line ${index + 1}`,
+      text_original: `Transcript line ${index + 1}`,
+    }));
+    segments[3].plan = { status: 'tight', est_dur_s: 1.2, available_s: 1, est_overrun_s: 0.2 };
+    segments[499].plan = { status: 'impossible', est_dur_s: 3, available_s: 1, est_overrun_s: 2 };
+    segments[995].fit_status = { status: 'overflows', overflow_s: 1 };
+    dubSession.setState((current) => ({
+      ...current,
+      segments,
+      duration: 2000,
+      phase: 'editing',
+      tracks: [],
+    }));
+  });
+  const issues = page.getByRole('group', { name: 'Transcript issues', exact: true });
+  const nextIssue = issues.getByRole('button', { name: 'Next issue', exact: true });
+  const previousIssue = issues.getByRole('button', { name: 'Previous issue', exact: true });
+  await issues.getByText('Flagged segments: 3', { exact: true }).waitFor();
+  assert.equal(await page.locator('[data-dub-row-id="issue-nav-995"]').count(), 0);
+  const waitForIssue = (id) =>
+    page.waitForFunction((targetId) => {
+      const row = document.querySelector(`[data-dub-row-id="${targetId}"]`);
+      if (!row || row.getAttribute('aria-current') !== 'true') return false;
+      const rect = row.getBoundingClientRect();
+      const scroll = row.closest('.studio-scrollbar')?.getBoundingClientRect();
+      const controls = document
+        .querySelector('[aria-label="Transcript issues"]')
+        ?.getBoundingClientRect();
+      return (
+        scroll &&
+        controls &&
+        rect.top >= Math.max(scroll.top, controls.bottom) &&
+        rect.bottom <= scroll.bottom
+      );
+    }, id);
+  await nextIssue.focus();
+  await nextIssue.press('Enter');
+  await waitForIssue('issue-nav-3');
+  assert.equal(await nextIssue.evaluate((button) => button === document.activeElement), true);
+  await issues.getByText('Issue 1 of 3', { exact: true }).waitFor();
+  await previousIssue.click();
+  await waitForIssue('issue-nav-995');
+  await issues.getByText('Issue 3 of 3', { exact: true }).waitFor();
+  assert.ok((await segmentRows.count()) < 60, 'issue navigation must preserve virtualization');
+  await nextIssue.click();
+  await waitForIssue('issue-nav-3');
+  await nextIssue.click();
+  await waitForIssue('issue-nav-499');
+  // A resolved current row is still the cursor: next must advance, not skip.
+  await page.evaluate(async () => {
+    const { editDubSegment } = await import('/src/features/dub/dub-session.ts');
+    editDubSegment('issue-nav-499', { text: 'Shorter line' });
+  });
+  await issues.getByText('Flagged segments: 2', { exact: true }).waitFor();
+  await nextIssue.click();
+  await waitForIssue('issue-nav-995');
+  await page.evaluate(async () => {
+    const { dubSession } = await import('/src/features/dub/dub-session.ts');
+    dubSession.setState((current) => ({ ...current, phase: 'generating' }));
+  });
+  assert.equal(await nextIssue.isDisabled(), true);
+  assert.equal(await previousIssue.isDisabled(), true);
+  await page.evaluate(async () => {
+    const { dubSession } = await import('/src/features/dub/dub-session.ts');
+    dubSession.setState((current) => ({
+      ...current,
+      phase: 'editing',
+      segments: current.segments.map(({ plan, fit_status, ...segment }) => segment),
+    }));
+  });
+  await issues.getByText('Flagged segments: 0', { exact: true }).waitFor();
+  assert.equal(await nextIssue.isDisabled(), true);
+  assert.equal(await previousIssue.isDisabled(), true);
+
+  // A later successful translation clears the scalar error, but an earlier
+  // language's failure must remain discoverable when switching back to it.
+  await page.evaluate(async () => {
+    const { dubSession, setDubTarget } = await import('/src/features/dub/dub-session.ts');
+    dubSession.setState((current) => ({
+      ...current,
+      segments: current.segments.map((segment, index) =>
+        index === 123
+          ? {
+              ...segment,
+              translate_error: undefined,
+              translate_errors: { fr: 'French translation failed' },
+              translations: { de: 'Guten Tag' },
+            }
+          : segment,
+      ),
+    }));
+    setDubTarget('German', 'de');
+  });
+  await issues.getByText('Flagged segments: 0', { exact: true }).waitFor();
+  await page.evaluate(async () => {
+    const { setDubTarget } = await import('/src/features/dub/dub-session.ts');
+    setDubTarget('French', 'fr');
+  });
+  await issues.getByText('Flagged segments: 1', { exact: true }).waitFor();
+  await nextIssue.click();
+  await waitForIssue('issue-nav-123');
+  const translationRow = page.locator('[data-dub-row-id="issue-nav-123"]');
+  await translationRow.locator('[title*="French translation failed"]').waitFor();
+  await page.evaluate(async () => {
+    const { setDubTarget } = await import('/src/features/dub/dub-session.ts');
+    setDubTarget('German', 'de');
+  });
+  await issues.getByText('Flagged segments: 0', { exact: true }).waitFor();
+  assert.equal(await translationRow.locator('[title*="French translation failed"]').count(), 0);
+  await page.evaluate(async () => {
+    const { setDubTarget } = await import('/src/features/dub/dub-session.ts');
+    setDubTarget('French', 'fr');
+  });
+  await issues.getByText('Issue 1 of 1', { exact: true }).waitFor();
+  await page.evaluate(async () => {
+    const { applyDubTranslationRows } = await import('/src/features/dub/dub-session.ts');
+    applyDubTranslationRows('fr', [
+      {
+        id: 'issue-nav-123',
+        index: 123,
+        start: 246,
+        end: 247,
+        before: 'Transcript line 124',
+        after: 'Bonjour',
+        matched: true,
+      },
+    ]);
+  });
+  await issues.getByText('Flagged segments: 0', { exact: true }).waitFor();
+  assert.equal(await nextIssue.isDisabled(), true);
+  assert.equal(await translationRow.locator('[title*="French translation failed"]').count(), 0);
   assert.deepEqual(errors, []);
   assert.deepEqual(vidstackWarnings, []);
   if (video) assert.equal(mediaHeadRequests, 0);
   if (process.env.VOICESTUDIO_SCREENSHOT)
     await page.screenshot({ path: process.env.VOICESTUDIO_SCREENSHOT });
   console.log(
-    'PASS: dub upload, streamed transcription, subtitle import, translate, edit, reload recovery, generate, export readiness and URL import',
+    'PASS: dub upload, streamed transcription, subtitle import, translate, edit, reload recovery, generate, export readiness, long virtualized timeline visibility, error-notice resizing and dismissal, and URL import',
   );
 } finally {
   await browser.close();

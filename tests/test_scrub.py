@@ -150,6 +150,38 @@ def test_home_superstring_not_corrupted(monkeypatch):
     assert out == "~/secret.wav"
 
 
+_NONSTANDARD_HOME = "/mnt/md0/homes/alice"
+
+
+@pytest.fixture
+def nonstandard_home(monkeypatch):
+    # Patch the lookup itself so the case runs identically on Windows, where
+    # expanduser reads USERPROFILE rather than HOME.
+    monkeypatch.setattr(scrub_module.os.path, "expanduser", lambda _p: _NONSTANDARD_HOME)
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        (f"Cannot use models dir {_NONSTANDARD_HOME}.", "Cannot use models dir ~."),
+        (f"in {_NONSTANDARD_HOME}, retrying", "in ~, retrying"),
+        (f"(cwd {_NONSTANDARD_HOME})", "(cwd ~)"),
+        (f"home={_NONSTANDARD_HOME}; next", "home=~; next"),
+        (f"at {_NONSTANDARD_HOME}: denied", "at ~: denied"),
+        (f"{_NONSTANDARD_HOME}/voice.wav", "~/voice.wav"),
+        (_NONSTANDARD_HOME, "~"),
+    ],
+)
+def test_nonstandard_home_before_punctuation_redacted(nonstandard_home, raw, expected):
+    assert scrub_text(raw) == expected
+
+
+@pytest.mark.parametrize("sibling", ["alicex", "alice-old", "alice_2", "alice.bak"])
+def test_nonstandard_home_sibling_not_mangled(nonstandard_home, sibling):
+    path = f"/mnt/md0/homes/{sibling}/file"
+    assert scrub_text(path) == path
+
+
 class _BrokenPattern:
     def sub(self, *_args, **_kwargs):
         raise RuntimeError("redaction engine failed")

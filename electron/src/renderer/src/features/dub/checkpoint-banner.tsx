@@ -57,21 +57,23 @@ export function CheckpointBanner({
   return (
     <div
       role="status"
-      className="flex items-center gap-3 rounded-xl border border-primary/15 bg-primary/5 px-3 py-2 shadow-[inset_0_1px_0_rgb(255_255_255/5%)]"
+      // One slim row: the stage, its next step and timing review; the hint is the tooltip.
+      className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 bg-primary/5 px-2.5 py-1.5"
+      title={t(config.hint)}
     >
-      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-        <Icon className="size-4" />
+      <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+        <Icon className="size-3.5" aria-hidden="true" />
       </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-sm font-medium">{t(config.title)}</p>
-        <p className="mt-0.5 text-xs leading-5 text-muted-foreground">{t(config.hint)}</p>
-        {stage === 'done' && timingWarnings > 0 && (
-          <p className="mt-1 flex items-center gap-1.5 text-xs text-warning">
-            <AlertTriangleIcon className="size-3.5" />
-            {t('checkpoint.timing_review', { count: timingWarnings })}
-          </p>
-        )}
-      </div>
+      <p className="min-w-0 flex-1 truncate text-sm font-medium">
+        {t(config.title)}
+        <span className="sr-only"> {t(config.hint)}</span>
+      </p>
+      {stage === 'done' && timingWarnings > 0 && (
+        <p className="flex shrink-0 items-center gap-1.5 text-xs text-warning">
+          <AlertTriangleIcon className="size-3.5" aria-hidden="true" />
+          {t('checkpoint.timing_review', { count: timingWarnings })}
+        </p>
+      )}
       {config.cta && onContinue && (
         <Button size="sm" variant="secondary" disabled={disabled} onClick={onContinue}>
           {ActionIcon && <ActionIcon />}

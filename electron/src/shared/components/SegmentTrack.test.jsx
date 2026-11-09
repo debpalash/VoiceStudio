@@ -89,6 +89,18 @@ describe('SegmentTrack — rendering', () => {
 
     expect(screen.getAllByRole('option')).toHaveLength(200);
   });
+
+  it('windows jobs only after the 200-segment threshold', () => {
+    const segments = Array.from({ length: 201 }, (_, id) => ({
+      id,
+      start: id,
+      end: id + 0.5,
+      text: `line ${id}`,
+    }));
+    setup({ segments, duration: 201, pxPerSec: 100, scrollLeft: 10_000 });
+
+    expect(screen.getAllByRole('option').length).toBeLessThan(201);
+  });
 });
 
 describe('SegmentTrack — keyboard', () => {

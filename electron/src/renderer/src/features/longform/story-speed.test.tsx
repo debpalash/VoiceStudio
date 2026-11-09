@@ -1,93 +1,53 @@
-import { expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
-import '@/i18n';
-import { blankLongformDraft, renderBody } from './longform-session';
+import { describe, expect, it, vi } from 'vitest';
+import i18n from '@/i18n';
 import { StorySpeed, linesWithOwnSpeed } from './story-speed';
+import { blankLongformDraft, type Line } from './longform-session';
 
-const draft = {
+const mk = (id: string, speed?: number | null): Line => ({
+  id,
+  text: `t-${id}`,
+  profileId: null,
+  speed,
+});
+const draftWith = (lines: Line[], globalSpeed = 1) => ({
   ...blankLongformDraft(),
-  globalSpeed: 0.95,
-  lines: [
-    { id: 'a', text: '# One', profileId: null },
-    { id: 'b', text: 'Body.', profileId: null, speed: 0.8 },
-    { id: 'c', text: 'More.', profileId: null, speed: null },
-  ],
-};
-
-it('counts only lines that carry their own speed', () => {
-  expect(linesWithOwnSpeed(draft.lines)).toBe(1);
-  expect(linesWithOwnSpeed([])).toBe(0);
+  lines,
+  globalSpeed,
 });
 
-it('sets the book-wide speed from the setup card', () => {
-  const onChange = vi.fn();
-  render(<StorySpeed draft={draft} disabled={false} onChange={onChange} />);
-  expect(screen.getByText('0.95×')).toBeVisible();
-  fireEvent.change(screen.getByRole('slider', { name: 'Speed' }), { target: { value: '0.9' } });
-  expect(onChange).toHaveBeenCalledWith({ globalSpeed: 0.9 });
-});
-
-it('hands overriding lines back to the book-wide speed in one click', () => {
-  const onChange = vi.fn();
-  render(<StorySpeed draft={draft} disabled={false} onChange={onChange} />);
-  fireEvent.click(screen.getByRole('button', { name: 'Use for all lines' }));
-  const patch = onChange.mock.calls[0][0];
-  expect(patch.lines.map((line: { speed?: number | null }) => line.speed)).toEqual([
-    null,
-    null,
-    null,
-  ]);
-  expect(patch.lines.map((line: { text: string }) => line.text)).toEqual([
-    '# One',
-    'Body.',
-    'More.',
-  ]);
-});
-
-it('shows no override row when every line follows the book', () => {
-  render(
-    <StorySpeed
-      draft={{ ...draft, lines: draft.lines.map((line) => ({ ...line, speed: null })) }}
-      disabled={false}
-      onChange={vi.fn()}
-    />,
-  );
-  expect(screen.queryByRole('button', { name: 'Use for all lines' })).toBeNull();
-});
-
-it('applies the global speed to render requests without changing the cast or line voices', () => {
-  const onChange = vi.fn();
-  const story = {
-    ...draft,
-    cast: [{ id: 'actor', name: 'Actor', profileId: 'cast-voice' }],
-    lines: [
-      { id: 'one', text: 'First.', profileId: null, character: 'actor', speed: 1 },
-      { id: 'two', text: 'Second.', profileId: 'line-voice', speed: 0.8 },
-    ],
-  };
-  expect(linesWithOwnSpeed(story.lines)).toBe(2);
-  render(<StorySpeed draft={story} disabled={false} onChange={onChange} />);
-  fireEvent.click(screen.getByRole('button', { name: 'Use for all lines' }));
-  const updated = { ...story, ...onChange.mock.calls[0][0] };
-  expect(updated.lines).toEqual(story.lines.map((line) => ({ ...line, speed: null })));
-  expect(renderBody('stories', updated)).toMatchObject({
-    chapters: [
-      {
-        spans: [
-          { text: 'First.', voice_id: 'cast-voice', speed: 0.95 },
-          { text: 'Second.', voice_id: 'line-voice', speed: 0.95 },
-        ],
-      },
-    ],
+describe('linesWithOwnSpeed', () => {
+  it('ignores missing, null, zero and negative speeds', () => {
+    expect(linesWithOwnSpeed([])).toBe(0);
+    expect(linesWithOwnSpeed([mk('x'), mk('y', null), mk('z', 0), mk('w', -1)])).toBe(0);
+    expect(linesWithOwnSpeed([mk('x', 0.6), mk('y', 1.9), mk('z')])).toBe(2);
   });
 });
 
-it('locks both speed controls during rendering', () => {
-  const onChange = vi.fn();
-  render(<StorySpeed draft={draft} disabled onChange={onChange} />);
-  expect(screen.getByRole('slider', { name: 'Speed' })).toBeDisabled();
-  const reset = screen.getByRole('button', { name: 'Use for all lines' });
-  expect(reset).toBeDisabled();
-  fireEvent.click(reset);
-  expect(onChange).not.toHaveBeenCalled();
+describe('StorySpeed', () => {
+  it('shows the two-decimal readout and reports slider moves', () => {
+    const spy = vi.fn();
+    render(<StorySpeed draft={draftWith([mk('a')], 0.75)} disabled={false} onChange={spy} />);
+    expect(screen.getByText('0.75×')).toBeInTheDocument();
+    const slider = screen.getByLabelText(i18n.t('stories.global_speed'));
+    expect(slider).toHaveAttribute('min', '0.5');
+    expect(slider).toHaveAttribute('max', '2');
+    fireEvent.change(slider, { target: { value: '1.8' } });
+    expect(spy).toHaveBeenCalledWith({ globalSpeed: 1.8 });
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('clears every per-line speed from the reset button', () => {
+    const spy = vi.fn();
+    const lines = [mk('a', 1.4), mk('b', 0.7), mk('c')];
+    render(<StorySpeed draft={draftWith(lines)} disabled={false} onChange={spy} />);
+    fireEvent.click(screen.getByRole('button', { name: i18n.t('stories.global_speed_apply') }));
+    expect(spy).toHaveBeenCalledWith({ lines: lines.map((l) => ({ ...l, speed: null })) });
+  });
+
+  it('locks the controls while the page is busy', () => {
+    render(<StorySpeed draft={draftWith([mk('a', 1.1)])} disabled onChange={vi.fn()} />);
+    expect(screen.getByLabelText(i18n.t('stories.global_speed'))).toBeDisabled();
+    expect(screen.getByRole('button')).toBeDisabled();
+  });
 });

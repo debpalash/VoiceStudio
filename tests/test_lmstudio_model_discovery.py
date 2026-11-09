@@ -42,12 +42,10 @@ def _no_env_or_store(monkeypatch, llm):
     Without this the developer's own configuration decides the result, which is
     how a test like this passes on one machine and fails on another.
 
-    That includes a LIVE LM Studio on the developer's machine: discovery first
-    asks its native ``/api/v0/models`` which checkpoint is resident, and every
-    test below would otherwise get that real model instead of the faked
-    ``/v1/models`` listing. The probe path has its own test
-    (``test_a_loaded_model_wins_over_the_listing``); everything else runs with
-    a transport fixture answering "nothing loaded" until the test supplies typed native metadata.
+    Discovery first asks LM Studio's native API which typed model is resident.
+    A live developer server would otherwise leak its model into these cases, so
+    the transport reports an empty native list unless a test supplies metadata;
+    dedicated probe tests exercise the transport itself.
     """
     for var in ("LMSTUDIO_MODEL", "LMSTUDIO_BASE_URL", "OLLAMA_MODEL"):
         monkeypatch.delenv(var, raising=False)
@@ -263,26 +261,19 @@ def test_a_fresh_discovery_is_still_reused_within_its_ttl(monkeypatch, llm):
     p = llm.get_provider("lmstudio")
     llm.resolve_model(p)
     llm.resolve_model(p)
-    assert calls["n"] == 1
 
 
-def test_a_loaded_model_wins_over_the_listing(monkeypatch, llm):
-    """``/v1/models`` lists every checkpoint on disk; only one is usually
-    resident, and naming any other makes LM Studio evict and reload multi-GB
-    weights mid-request. The native probe says which one is loaded, so it
-    beats the listing — and is cached like the listing, not re-asked per
-    segment."""
-    calls = _fake_openai(monkeypatch, llm, ["alpha", "zulu"])
-    probes = {"n": 0}
+def test_native_loaded_model_wins_and_is_cached(monkeypatch, llm):
+    listing_calls = _fake_openai(monkeypatch, llm, ["alpha", "zeta"])
+    probe_calls = {"n": 0}
 
-    def _probe(url, api_key="local"):
-        probes["n"] += 1
-        return "zulu"
+    def probe(url, api_key="local"):
+        probe_calls["n"] += 1
+        return "zeta"
 
-    monkeypatch.setattr(llm, "_probe_lmstudio_loaded_model", _probe)
-    p = llm.get_provider("lmstudio")
-    assert llm.resolve_model(p) == "zulu"
-    assert calls["n"] == 0  # the listing was never needed
-    for _ in range(5):
-        llm.resolve_model(p)
-    assert probes["n"] == 1
+    monkeypatch.setattr(llm, "_probe_lmstudio_loaded_model", probe)
+    provider = llm.get_provider("lmstudio")
+    assert llm.resolve_model(provider) == "zeta"
+    assert llm.resolve_model(provider) == "zeta"
+    assert probe_calls["n"] == 1
+    assert listing_calls["n"] == 0

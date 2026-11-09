@@ -192,33 +192,34 @@ def test_redirect_is_rejected_without_following_location(outbound_http, monkeypa
     assert _Connection.instances[0].closed is True
 
 
-def test_gptsovits_availability_uses_valid_configured_endpoint(
-    outbound_http, monkeypatch
-):
+def test_availability_probe_is_one_validator_get(outbound_http, monkeypatch):
     from services.tts_backend import GPTSoVITSBackend
 
-    calls = []
+    seen = []
 
-    class _ContextResponse:
-        def __enter__(self):
-            return self
+    def record(url, **kwargs):
+        seen.append((url, kwargs))
 
-        def __exit__(self, *_args):
-            return False
+        class _Ctx:
+            def __enter__(self):
+                return self
 
-    monkeypatch.setenv("OMNIVOICE_GPTSOVITS_URL", "http://127.0.0.1:9880")
-    monkeypatch.setattr(
-        outbound_http,
-        "open_trusted_endpoint",
-        lambda url, **kwargs: calls.append((url, kwargs)) or _ContextResponse(),
-    )
+            def __exit__(self, *exc):
+                return False
 
+        return _Ctx()
+
+    monkeypatch.setenv("OMNIVOICE_GPTSOVITS_URL", "http://127.0.0.1:9911")
+    monkeypatch.setattr(outbound_http, "open_trusted_endpoint", record)
     assert GPTSoVITSBackend.is_available() == (True, "ready (api_v2 server reachable)")
-    # Probe targets the api_v2 /tts route — a healthy server returns 200/400/405,
-    # the routing-mismatch branch is exercised separately below.
-    assert calls == [
-        ("http://127.0.0.1:9880", {"method": "GET", "timeout": 2, "path": "tts", "allowed_statuses": {400, 405}, "query": "text=&text_lang=en&prompt_lang=en"})
-    ]
+    assert len(seen) == 1
+    url, kwargs = seen[0]
+    assert url == "http://127.0.0.1:9911"
+    assert kwargs["method"] == "GET" and kwargs["path"] == "tts"
+    assert kwargs["timeout"] == 2
+    assert kwargs["allowed_statuses"] == {400, 405}
+    assert kwargs["query"] == "text=&text_lang=en&prompt_lang=en"
+
 
 
 def test_gptsovits_routing_mismatch_message_distinguishes_old_protocol(
@@ -266,95 +267,62 @@ def test_gptsovits_connection_refused_message_unchanged(outbound_http, monkeypat
     assert "does not expose api_v2" not in message
 
 
-@pytest.mark.parametrize("ref_text", ["reference text", None])
-def test_gptsovits_generate_posts_json_to_tts_with_v2_schema(
-    outbound_http, monkeypatch, ref_text
-):
-    """The generate path sends api_v2's JSON body to /tts, not v1's query string.
+class _EmptyReply:
+    def __enter__(self):
+        return self
 
-    Regression test for #2102: the adapter previously POSTed a query string
-    at the origin URL with v1 field names (``text_language``, ``refer_wav_path``,
-    ``prompt_language``), which api_v2 silently 404s on. The fix sends JSON
-    to /tts with v2 field names (``text_lang``, ``ref_audio_path``,
-    ``prompt_lang``) and the required v2-only keys (``media_type``,
-    ``text_split_method``, ``streaming_mode``).
-    """
-    import json
-    import io
-    import struct
+    def __exit__(self, *exc):
+        return False
 
-    from services.tts_backend import GPTSoVITSBackend
+    def read(self):
+        return b""
 
-    # Minimal valid WAV header + 1 sample so torchaudio.load() succeeds.
-    # 32 kHz mono int16 to match GPTSoVITSBackend.sample_rate so the
-    # resample step is a no-op (the test focuses on the request shape,
-    # not the audio math).
-    riff_size = struct.pack("<I", 36 + 2)  # 36 + data payload size
-    fmt_chunk = struct.pack("<IHHIIHH", 16, 1, 1, 32000, 64000, 2, 16)
-    data_size = struct.pack("<I", 2)
-    wav_header = b"RIFF" + riff_size + b"WAVE" + b"fmt " + fmt_chunk + b"data" + data_size + b"\x00\x00"
 
-    class _ByteResponse:
-        def __init__(self, payload):
-            self._payload = payload
+@pytest.fixture
+def posted(outbound_http, monkeypatch):
+    """Capture what generate() sends; reply with an empty body and silent audio."""
+    import torch
+    import torchaudio
 
-        def __enter__(self):
-            return self
+    from services import audio_io
 
-        def __exit__(self, *_args):
-            return False
-
-        def read(self):
-            return self._payload
-
-        def close(self):
-            pass
-
-    captured = {}
+    sent = []
 
     def fake_open(url, **kwargs):
-        captured["url"] = url
-        captured["kwargs"] = kwargs
-        body = kwargs.get("body")
-        if body is not None:
-            captured["json"] = json.loads(body.decode("utf-8"))
-        captured["content_type"] = kwargs.get("content_type")
-        return _ByteResponse(wav_header)
+        sent.append({"url": url, **kwargs, "json": json.loads(kwargs["body"])})
+        return _EmptyReply()
 
-    monkeypatch.setenv("OMNIVOICE_GPTSOVITS_URL", "http://127.0.0.1:9880")
     monkeypatch.setattr(outbound_http, "open_trusted_endpoint", fake_open)
+    monkeypatch.setattr(torchaudio, "load", lambda *a, **k: (torch.zeros(1, 320), 32000))
+    monkeypatch.setattr(audio_io, "load_audio", lambda *a, **k: (torch.zeros(1, 320), 32000))
+    monkeypatch.setenv("OMNIVOICE_GPTSOVITS_URL", "http://127.0.0.1:9880")
+    for name in ("REF_AUDIO", "REF_TEXT", "REF_LANG"):
+        monkeypatch.delenv(f"OMNIVOICE_GPTSOVITS_{name}", raising=False)
+    return sent
 
-    backend = GPTSoVITSBackend()
-    backend.generate(
-        "hello world",
-        ref_audio="/tmp/ref.wav",
-        ref_text=ref_text,
-        language="en",
-        speed=1.5,
-    )
 
-    # Path / method / content-type — api_v2 contract.
-    assert captured["url"] == "http://127.0.0.1:9880"
-    assert captured["kwargs"]["method"] == "POST"
-    assert captured["kwargs"]["path"] == "tts"
-    assert captured["content_type"] == "application/json"
-    # v2 field names — none of the v1 names are present.
-    body = captured["json"]
-    assert body["text"] == "hello world"
-    assert body["text_lang"] == "en"
-    assert body["ref_audio_path"] == "/tmp/ref.wav"
-    assert body["prompt_text"] == (ref_text or "")
+@pytest.mark.parametrize("transcript", ["what the clip says", None])
+def test_generate_posts_api_v2_json(posted, transcript):
+    from services.tts_backend import GPTSoVITSBackend
+
+    kwargs = {"ref_audio": "/clips/a.wav", "speed": 1.25}
+    if transcript is not None:
+        kwargs["ref_text"] = transcript
+    GPTSoVITSBackend().generate("Hello there", language="en", **kwargs)
+
+    call = posted[0]
+    assert call["url"] == "http://127.0.0.1:9880"
+    assert call["method"] == "POST" and call["path"] == "tts"
+    assert call["content_type"] == "application/json"
+    body = call["json"]
+    assert body["text"] == "Hello there" and body["text_lang"] == "en"
+    assert body["ref_audio_path"] == "/clips/a.wav"
+    assert body["prompt_text"] == (transcript or "")
     assert body["prompt_lang"] == "auto"
-    # v1 names that the old adapter sent — must NOT appear anymore.
-    for legacy in ("text_language", "refer_wav_path", "prompt_language"):
-        assert legacy not in body, f"{legacy!r} is a v1 field, must not leak into v2"
-    # v2-only keys the server requires.
-    assert body["media_type"] == "wav"
-    assert body["text_split_method"] == "cut0"
-    assert body["streaming_mode"] is False
-    # Speed forwarded as float, not stringified.
-    assert body["speed_factor"] == 1.5
+    assert (body["text_split_method"], body["media_type"], body["streaming_mode"]) == ("cut0", "wav", False)
     assert isinstance(body["speed_factor"], float)
+    assert not {"text_language", "refer_wav_path", "prompt_language"} & set(body)
+
 
 
 @pytest.mark.parametrize("reference", [None, ""])
@@ -502,88 +470,52 @@ def test_probe_supplies_languages_without_synthesizing(outbound_http, monkeypatc
     assert GPTSoVITSBackend.is_available()[0]
 
 
-def _fake_open(monkeypatch, outbound_http, captured):
-    import json
-
-    class _EmptyResponse:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_args):
-            return False
-
-        def read(self):
-            return b""
-
-        def close(self):
-            pass
-
-    def fake_open(url, **kwargs):
-        captured["kwargs"] = kwargs
-        captured["json"] = json.loads(kwargs["body"].decode("utf-8"))
-        return _EmptyResponse()
-
-    monkeypatch.setattr(outbound_http, "open_trusted_endpoint", fake_open)
-    import torchaudio
-
-    def fake_load(_buf):
-        import torch
-        return torch.zeros(1, 16000), 16000
-
-    monkeypatch.setattr(torchaudio, "load", fake_load)
-
-
-
-def test_gptsovits_generate_uses_configured_default_reference(outbound_http, monkeypatch):
-    """Plain TTS clones the environment's default clip when the request has none."""
+def test_plain_tts_uses_environment_clip_then_explicit_clip_wins(posted, monkeypatch):
     from services.tts_backend import GPTSoVITSBackend
 
-    captured = {}
-    _fake_open(monkeypatch, outbound_http, captured)
+    monkeypatch.setenv("OMNIVOICE_GPTSOVITS_REF_AUDIO", "/srv/default.wav")
+    monkeypatch.setenv("OMNIVOICE_GPTSOVITS_REF_TEXT", "default words")
+    monkeypatch.setenv("OMNIVOICE_GPTSOVITS_REF_LANG", "Japanese")
+    backend = GPTSoVITSBackend()
+    backend.generate("first", language="en")
+    backend.generate("second", language="en", ref_audio="/clips/own.wav", ref_text="own words")
+
+    first, second = (c["json"] for c in posted)
+    assert (first["ref_audio_path"], first["prompt_text"], first["prompt_lang"]) == (
+        "/srv/default.wav", "default words", "ja")
+    assert (second["ref_audio_path"], second["prompt_text"], second["prompt_lang"]) == (
+        "/clips/own.wav", "own words", "auto")
+    assert "speed_factor" not in first and "speed_factor" not in second
+
+
+@pytest.mark.parametrize("code", ["zh", "en", "ja", "yue", "ko"])
+def test_request_clip_ignores_reference_language_variable(posted, monkeypatch, code):
+    from services.tts_backend import GPTSoVITSBackend
+
+    monkeypatch.setenv("OMNIVOICE_GPTSOVITS_REF_LANG", "ko" if code != "ko" else "zh")
+    GPTSoVITSBackend().generate("text", language=code, ref_audio="/clips/x.wav")
+    body = posted[0]["json"]
+    assert body["prompt_lang"] == "auto"
+    assert body["text_lang"] == code
+
+
+def test_environment_clip_without_language_variable_means_auto(posted, monkeypatch):
+    from services.tts_backend import GPTSoVITSBackend
+
+    monkeypatch.setenv("OMNIVOICE_GPTSOVITS_REF_AUDIO", "/srv/default.wav")
+    GPTSoVITSBackend().generate("text", language="en")
+    body = posted[0]["json"]
+    assert body["prompt_lang"] == "auto" and body["prompt_text"] == ""
+
+
+def test_probe_reports_http_status_for_other_failures_with_url(outbound_http, monkeypatch):
+    from services.tts_backend import GPTSoVITSBackend
+
+    def refuse(*_a, **_k):
+        raise outbound_http.EndpointHTTPError(503)
+
     monkeypatch.setenv("OMNIVOICE_GPTSOVITS_URL", "http://127.0.0.1:9880")
-    monkeypatch.setenv("OMNIVOICE_GPTSOVITS_REF_AUDIO", "/srv/voices/me.wav")
-    monkeypatch.setenv("OMNIVOICE_GPTSOVITS_REF_TEXT", "the words in the clip")
-    monkeypatch.setenv("OMNIVOICE_GPTSOVITS_REF_LANG", "ja")
-
-    GPTSoVITSBackend().generate("just text")
-    body = captured["json"]
-    assert body["text"] == "just text"
-    assert body["text_lang"] == "en"
-    assert body["ref_audio_path"] == "/srv/voices/me.wav"
-    assert body["prompt_text"] == "the words in the clip"
-    assert body["prompt_lang"] == "ja"
-    # An explicit clip on the request still wins over the default.
-    GPTSoVITSBackend().generate("more", ref_audio="/clips/other.wav", ref_text="other words")
-    assert captured["json"]["ref_audio_path"] == "/clips/other.wav"
-    assert captured["json"]["prompt_lang"] == "auto"
-    # No speed override means no speed_factor key at all.
-    assert "speed_factor" not in captured["json"]
-
-
-@pytest.mark.parametrize("target_language", ["en", "ja", "zh", "ko", "yue"])
-def test_explicit_reference_language_is_independent_of_target(
-    outbound_http, monkeypatch, target_language
-):
-    """Profile/upload references must not be phonemized in the target language."""
-    from services.tts_backend import GPTSoVITSBackend
-    captured = {}
-    _fake_open(monkeypatch, outbound_http, captured)
-    monkeypatch.setenv("OMNIVOICE_GPTSOVITS_REF_LANG", "ja")
-    GPTSoVITSBackend().generate(
-        "target text", language=target_language,
-        ref_audio="/clips/english.wav", ref_text="An English reference.",
-    )
-    assert captured["json"]["text_lang"] == target_language
-    assert captured["json"]["prompt_lang"] == "auto"
-
-
-def test_default_reference_without_language_uses_auto(outbound_http, monkeypatch):
-    from services.tts_backend import GPTSoVITSBackend
-    captured = {}
-    _fake_open(monkeypatch, outbound_http, captured)
-    monkeypatch.setenv("OMNIVOICE_GPTSOVITS_REF_AUDIO", "/clips/english.wav")
-    monkeypatch.setenv("OMNIVOICE_GPTSOVITS_REF_TEXT", "An English reference.")
-    monkeypatch.delenv("OMNIVOICE_GPTSOVITS_REF_LANG", raising=False)
-    GPTSoVITSBackend().generate("target text", language="ja")
-    assert captured["json"]["text_lang"] == "ja"
-    assert captured["json"]["prompt_lang"] == "auto"
+    monkeypatch.setattr(outbound_http, "open_trusted_endpoint", refuse)
+    ok, message = GPTSoVITSBackend.is_available()
+    assert ok is False and "HTTP 503" in message and "9880" in message
+    assert "not reachable" not in message

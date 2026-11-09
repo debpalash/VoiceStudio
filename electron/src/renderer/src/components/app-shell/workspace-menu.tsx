@@ -36,7 +36,7 @@ type Destination = readonly [
     | '/design'
     | '/transcriptions'
     | '/personas'
-    | '/calls'
+    | '/workflows'
     | '/integrations',
   label: string,
   icon: typeof AudioLinesIcon,
@@ -61,14 +61,14 @@ const dubDestinations: Destination[] = [
 ];
 const laterDestinations: Destination[] = [
   ['/transcriptions', 'nav.transcribe', MicIcon],
-  ['/calls', 'workflows.title', WorkflowIcon],
+  ['/workflows', 'workflows.title', WorkflowIcon],
   ['/projects', 'projects.title', FolderIcon],
   ['/tools', 'tools.title', WrenchIcon],
   ['/integrations', 'integrationCatalog.title', BlocksIcon],
 ];
 
 const itemClass =
-  'workspace-nav-item group relative isolate flex h-8 min-w-0 items-center overflow-hidden rounded-md text-sm text-sidebar-foreground/80 outline-none transition-[color,background-color,box-shadow,backdrop-filter] duration-150 before:pointer-events-none before:absolute before:inset-0 before:-z-10 before:rounded-[inherit] before:bg-gradient-to-r before:from-white/[0.07] before:via-white/[0.025] before:to-transparent before:opacity-0 before:transition-opacity before:duration-150 hover:bg-sidebar-accent/65 hover:text-sidebar-foreground hover:backdrop-blur-xl hover:shadow-[inset_0_1px_0_rgb(255_255_255/9%),0_6px_18px_rgb(0_0_0/10%)] hover:ring-1 hover:ring-inset hover:ring-sidebar-border/60 hover:before:opacity-100 focus-visible:ring-2 focus-visible:ring-ring';
+  'workspace-nav-item group relative isolate flex h-8 min-w-0 items-center overflow-hidden rounded-md text-[13px] text-sidebar-foreground/80 outline-none transition-[color,background-color,box-shadow,backdrop-filter] duration-150 before:pointer-events-none before:absolute before:inset-0 before:-z-10 before:rounded-[inherit] before:bg-gradient-to-r before:from-white/[0.07] before:via-white/[0.025] before:to-transparent before:opacity-0 before:transition-opacity before:duration-150 hover:bg-sidebar-accent/65 hover:text-sidebar-foreground hover:backdrop-blur-xl hover:shadow-[inset_0_1px_0_rgb(255_255_255/9%),0_6px_18px_rgb(0_0_0/10%)] hover:ring-1 hover:ring-inset hover:ring-sidebar-border/60 hover:before:opacity-100 focus-visible:ring-2 focus-visible:ring-ring';
 const iconClass =
   'workspace-nav-icon size-4 shrink-0 text-muted-foreground transition-[color,filter] duration-150';
 
@@ -82,7 +82,7 @@ const iconMotion: Record<Destination[0], string> = {
   '/dub': 'tilt',
   '/batch': 'lift',
   '/transcriptions': 'nudge',
-  '/calls': 'pulse',
+  '/workflows': 'pulse',
   '/projects': 'lift',
   '/tools': 'tilt',
   '/integrations': 'turn',
@@ -117,7 +117,7 @@ function NavigationLink({
           : flyout
             ? 'h-10 gap-2 px-3 text-sm'
             : nested
-              ? 'h-7 gap-2 px-2 text-xs'
+              ? 'gap-2 px-2'
               : 'gap-2.5 px-2.5',
       )}
       activeProps={{
@@ -127,7 +127,7 @@ function NavigationLink({
       }}
     >
       <Icon
-        className={cn(iconClass, nested && 'size-3.5')}
+        className={iconClass}
         data-tone={to.slice(1)}
         data-motion={iconMotion[to]}
         aria-hidden="true"
@@ -286,7 +286,7 @@ function NavigationGroup({
       </Popover>
     );
   return (
-    <div className="py-0.5">
+    <div>
       <button
         type="button"
         aria-expanded={expanded}
@@ -305,7 +305,7 @@ function NavigationGroup({
         <ChevronRightIcon
           aria-hidden="true"
           className={cn(
-            'ml-auto size-3.5 shrink-0 transition-transform duration-200 motion-reduce:transition-none',
+            'ml-auto size-3.5 shrink-0 text-muted-foreground/60 transition-[transform,color] duration-200 group-hover:text-muted-foreground motion-reduce:transition-none',
             expanded && 'rotate-90',
           )}
         />

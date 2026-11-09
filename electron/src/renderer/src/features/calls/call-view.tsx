@@ -64,6 +64,7 @@ function Transcript({ lines, live }: { lines: LiveLine[]; live: boolean }) {
                   : 'rounded-bl-md bg-muted text-foreground',
                 !line.final && 'opacity-70 italic',
               )}
+              dir="auto"
             >
               {line.text}
             </p>

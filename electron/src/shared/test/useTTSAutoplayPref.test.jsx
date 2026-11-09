@@ -5,7 +5,6 @@ import { useAppStore } from '../store';
 import { playBlobAudio } from '../utils/media';
 import {
   StreamingPreviewError,
-  resolveRemoteTtsTarget,
   streamGenerateSpeech,
   supportsStreamingPreview,
 } from '../utils/streamingTts';
@@ -50,9 +49,6 @@ vi.mock('../api/generate', async (importOriginal) => {
   };
 });
 
-// Streaming renders in THIS process, so with a worker selected the classic
-// path is the only one that reaches it. The delivery path is chosen here, so
-// this is where "did it actually go remote?" is decided.
 vi.mock('../utils/streamingTts', async (importOriginal) => {
   const actual = await importOriginal();
   return {
@@ -62,7 +58,6 @@ vi.mock('../utils/streamingTts', async (importOriginal) => {
     // delivery-path tests below turn it on explicitly.
     supportsStreamingPreview: vi.fn(actual.supportsStreamingPreview),
     streamGenerateSpeech: vi.fn().mockResolvedValue({ id: 'x', audio_path: 'x.wav' }),
-    resolveRemoteTtsTarget: vi.fn().mockResolvedValue(null),
   };
 });
 
@@ -104,7 +99,7 @@ describe('useTTS auto-play pref (#1032)', () => {
     expect(playBlobAudio.mock.calls[0][0]).toBeInstanceOf(Blob);
     // Global mini-player metadata: the generate path labels its playback so
     // the bar reads "Generated audio" instead of a bare untitled track.
-    expect(playBlobAudio.mock.calls[0][1]).toMatchObject({ label: 'Generated audio' });
+    expect(playBlobAudio.mock.calls[0][1]).toMatchObject({ label: 'Synthesized audio' });
   });
 
   it('does NOT auto-play when autoPlayPreview is OFF', async () => {
@@ -114,14 +109,13 @@ describe('useTTS auto-play pref (#1032)', () => {
   });
 });
 
-describe('useTTS delivery path vs the chosen GPU', () => {
+describe('useTTS delivery path', () => {
   beforeEach(() => {
     useAppStore.setState({ autoPlayPreview: true });
     vi.mocked(supportsStreamingPreview).mockReturnValue(true);
     vi.mocked(streamGenerateSpeech).mockClear();
     vi.mocked(generateSpeech).mockClear();
     vi.mocked(toast).mockClear();
-    vi.mocked(resolveRemoteTtsTarget).mockResolvedValue(null);
   });
 
   it('streams progressively when the work runs on this machine', async () => {
@@ -130,93 +124,66 @@ describe('useTTS delivery path vs the chosen GPU', () => {
     expect(generateSpeech).not.toHaveBeenCalled();
   });
 
-  it('keeps real stream progress separate from the elapsed timer', async () => {
-    let release;
-    const gate = new Promise((resolve) => {
-      release = resolve;
+  it('exposes streamed progress apart from the elapsed timer and clears it afterwards', async () => {
+    let reportProgress;
+    let finish;
+    vi.mocked(streamGenerateSpeech).mockImplementationOnce((_fd, opts) => {
+      reportProgress = opts.onProgress;
+      return new Promise((resolve) => {
+        finish = () => resolve({ id: 'x', audio_path: 'x.wav' });
+      });
     });
-    vi.mocked(streamGenerateSpeech).mockImplementationOnce(async (_formData, { onProgress }) => {
-      onProgress(42);
-      await gate;
-      return { id: 'x', audio_path: 'x.wav' };
-    });
-
     const { result } = renderHook(() => useTTS(hookProps()));
-    let generation;
-    act(() => {
-      generation = result.current.handleGenerate();
-    });
+    expect(result.current.generationProgress).toBeNull();
 
-    await waitFor(() => expect(result.current.generationProgress).toBe(42));
+    let run;
+    act(() => {
+      run = result.current.handleGenerate();
+    });
+    await waitFor(() => expect(reportProgress).toBeTypeOf('function'));
+    act(() => reportProgress(37));
+
+    expect(result.current.isGenerating).toBe(true);
+    expect(result.current.generationProgress).toBe(37);
     expect(String(result.current.generationTime)).not.toContain('%');
 
     await act(async () => {
-      release();
-      await generation;
+      finish();
+      await run;
     });
+    expect(result.current.isGenerating).toBe(false);
     expect(result.current.generationProgress).toBeNull();
   });
 
-  it('clears stale stream progress before a classic fallback', async () => {
+  it('drops streamed progress when it falls back to the classic request', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.mocked(streamGenerateSpeech).mockImplementationOnce(async (_fd, opts) => {
+      opts.onProgress(80);
+      throw new StreamingPreviewError('stream dropped');
+    });
     let releaseClassic;
-    const classicGate = new Promise((resolve) => {
-      releaseClassic = resolve;
-    });
-    vi.mocked(streamGenerateSpeech).mockImplementationOnce(async (_formData, { onProgress }) => {
-      onProgress(42);
-      throw new StreamingPreviewError('stream transport dropped');
-    });
-    vi.mocked(generateSpeech).mockImplementationOnce(async () => ({
-      body: {
-        getReader: () => ({
-          read: async () => {
-            await classicGate;
-            return { done: true, value: undefined };
-          },
+    vi.mocked(generateSpeech).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseClassic = () =>
+            resolve({
+              body: { getReader: () => ({ read: async () => ({ done: true, value: undefined }) }) },
+              headers: { get: () => null },
+            });
         }),
-      },
-      headers: { get: () => null },
-    }));
-
+    );
     const { result } = renderHook(() => useTTS(hookProps()));
-    let generation;
+    let run;
     act(() => {
-      generation = result.current.handleGenerate();
+      run = result.current.handleGenerate();
     });
-
     await waitFor(() => expect(generateSpeech).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(result.current.generationProgress).toBeNull());
+    expect(result.current.isGenerating).toBe(true);
+    expect(result.current.generationProgress).toBeNull();
 
     await act(async () => {
       releaseClassic();
-      await generation;
+      await run;
     });
-  });
-
-  it('takes the classic path when the resolved target is a worker', async () => {
-    // Streaming would have rendered here — a local job wearing the badge of
-    // the 4090 the user picked. The classic path is the one that goes remote.
-    vi.mocked(resolveRemoteTtsTarget).mockResolvedValue({
-      workerId: 'w1',
-      label: 'desktop-4090',
-    });
-    await runGenerate();
-
-    expect(streamGenerateSpeech).not.toHaveBeenCalled();
-    expect(generateSpeech).toHaveBeenCalledTimes(1);
-  });
-
-  it('says why progressive playback stopped, once per worker', async () => {
-    // Silently dropping the feature reads as "the app got slower"; the user
-    // has to be able to connect it to the choice they made.
-    vi.mocked(resolveRemoteTtsTarget).mockResolvedValue({ workerId: 'w9', label: 'gpu2' });
-    await runGenerate();
-    await runGenerate();
-
-    const said = vi.mocked(toast).mock.calls.map(([msg]) => msg);
-    const notices = said.filter((m) => typeof m === 'string' && m.includes('gpu2'));
-    expect(notices).toHaveLength(1);
-    expect(notices[0]).toMatch(/gpu2/);
-    expect(notices[0]).not.toMatch(/streamingOffRemote/); // a real string, not the key
   });
 });

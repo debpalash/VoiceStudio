@@ -1,83 +1,136 @@
-import { expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
 import '@/i18n';
 import { GeneratePanel, type GenerateSession } from './generate-panel';
 
-const idle: GenerateSession = {
+vi.mock('@/components/longform-activity-card', () => ({
+  LongformActivityCard: () => <aside>activity-card-stub</aside>,
+}));
+
+afterEach(cleanup);
+
+const quiet: GenerateSession = {
   active: null,
-  stage: 'idle',
+  stage: 'rendering',
   completed: 0,
   total: 0,
   failed: 0,
   stopped: false,
   chapters: [],
 };
+const handlers = () => ({ onGenerate: vi.fn(), onStop: vi.fn() });
+const statusNode = () => document.getElementById('generate-status');
 
-it('says why Generate is unavailable instead of going silently grey', () => {
-  render(
-    <GeneratePanel
-      mode="stories"
-      session={idle}
-      blocker="voice"
-      onGenerate={vi.fn()}
-      onStop={vi.fn()}
-    />,
-  );
-  const button = screen.getByRole('button', { name: 'Generate' });
-  expect(button).toBeDisabled();
-  expect(screen.getByText('Choose a default voice, or give every line a voice.')).toBeVisible();
-  expect(button).toHaveAttribute('aria-describedby', 'generate-status');
+it('keeps the button locked and attaches the reason to it', () => {
+  render(<GeneratePanel mode="stories" session={quiet} blocker="voice" {...handlers()} />);
+  const go = screen.getByRole('button', { name: /generate/i });
+  expect(go).toBeDisabled();
+  expect(go.getAttribute('aria-describedby')).toBe('generate-status');
+  expect(statusNode()?.textContent).toMatch(/voice/i);
 });
 
-it('generates when nothing blocks it and swaps to Stop with the tracker while rendering', () => {
-  const onGenerate = vi.fn();
-  const onStop = vi.fn();
+it('runs the callback once, then offers Stop together with the tracker', () => {
+  const { onGenerate, onStop } = handlers();
+  const view = render(
+    <GeneratePanel
+      mode="audiobook"
+      session={quiet}
+      blocker={null}
+      onGenerate={onGenerate}
+      onStop={onStop}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: /create audiobook/i }));
+  expect(onGenerate).toHaveBeenCalledOnce();
+
+  const running: GenerateSession = {
+    ...quiet,
+    active: 'audiobook',
+    completed: 0,
+    total: 2,
+    chapters: [
+      { title: 'Opening movement', status: 'rendering' },
+      { title: 'Closing movement', status: 'pending' },
+    ],
+  };
+  view.rerender(
+    <GeneratePanel
+      mode="audiobook"
+      session={running}
+      blocker={null}
+      onGenerate={onGenerate}
+      onStop={onStop}
+    />,
+  );
+  expect(screen.queryByRole('button', { name: /create audiobook/i })).toBeNull();
+  const panel = within(document.querySelector<HTMLElement>('[data-slot="generate-panel"]')!);
+  expect(panel.getByText('Opening movement')).toBeTruthy();
+  expect(panel.getByText('Closing movement')).toBeTruthy();
+  fireEvent.click(panel.getByRole('button', { name: 'Stop' }));
+  expect(onStop).toHaveBeenCalledOnce();
+});
+
+it('refuses a second render while the other mode is working', () => {
+  render(
+    <GeneratePanel
+      mode="audiobook"
+      blocker="busy"
+      session={{ ...quiet, active: 'stories', total: 4 }}
+      {...handlers()}
+    />,
+  );
+  expect(screen.getByText('activity-card-stub')).toBeTruthy();
+  expect(
+    (screen.getByRole('button', { name: /create audiobook/i }) as HTMLButtonElement).disabled,
+  ).toBe(true);
+  expect(statusNode()?.textContent).toMatch(/already rendering/i);
+});
+
+it('hides the engine explanation visually yet keeps it announced and linked', () => {
+  render(<GeneratePanel mode="stories" session={quiet} blocker="engine" {...handlers()} />);
+  expect(statusNode()?.className).toContain('sr-only');
+  expect(statusNode()?.textContent?.length).toBeGreaterThan(5);
+  expect(screen.getByRole('button', { name: /generate/i }).getAttribute('aria-describedby')).toBe(
+    'generate-status',
+  );
+});
+
+it('shows progress wording while rendering and a stopped note afterwards', () => {
   const view = render(
     <GeneratePanel
       mode="stories"
-      session={idle}
       blocker={null}
-      onGenerate={onGenerate}
-      onStop={onStop}
+      session={{ ...quiet, active: 'stories', stage: 'starting', total: 3 }}
+      {...handlers()}
     />,
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Generate' }));
-  expect(onGenerate).toHaveBeenCalledOnce();
-
+  expect(statusNode()?.textContent).toBe('Loading…');
   view.rerender(
     <GeneratePanel
       mode="stories"
-      session={{
-        ...idle,
-        active: 'stories',
-        stage: 'rendering',
-        total: 2,
-        chapters: [
-          { title: 'One', status: 'done' },
-          { title: 'Two', status: 'rendering' },
-        ] as GenerateSession['chapters'],
-      }}
       blocker={null}
-      onGenerate={onGenerate}
-      onStop={onStop}
+      session={{ ...quiet, failed: 1, stopped: true }}
+      {...handlers()}
     />,
   );
-  expect(screen.queryByRole('button', { name: 'Generate' })).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
-  expect(onStop).toHaveBeenCalledOnce();
-  expect(screen.getByText('Two')).toBeVisible();
+  expect(screen.getByText(/stopped/i)).toBeTruthy();
 });
 
-it('explains that the other longform mode is rendering', () => {
+it('lets the panel and its tracker shrink so Stop stays inside a short pane', () => {
   render(
     <GeneratePanel
       mode="stories"
-      session={{ ...idle, active: 'audiobook', stage: 'rendering' }}
-      blocker="busy"
-      onGenerate={vi.fn()}
-      onStop={vi.fn()}
+      blocker={null}
+      session={{
+        ...quiet,
+        active: 'stories',
+        total: 1,
+        chapters: [{ title: 'One', status: 'rendering' }],
+      }}
+      {...handlers()}
     />,
   );
-  expect(screen.getByRole('button', { name: 'Generate' })).toBeDisabled();
-  expect(screen.getByText(/already rendering/i)).toBeVisible();
+  const panel = document.querySelector('[data-slot="generate-panel"]');
+  expect(panel).toHaveClass('min-h-0');
+  expect(panel?.querySelector('.overflow-y-auto')).toHaveClass('min-h-0');
 });

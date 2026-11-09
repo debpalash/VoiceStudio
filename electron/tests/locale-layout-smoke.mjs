@@ -28,10 +28,11 @@ const locales = [
   'uk',
   'ar',
   'zh-TW',
+  'gl',
 ];
 const longStringLocales = ['de', 'fr', 'ru', 'uk', 'hi', 'ar', 'zh-TW'];
 const routes = ['settings/general', 'settings/performance', 'settings/models', 'clone', 'dub'];
-const baseUrl = process.env.VOICESTUDIO_SMOKE_URL ?? 'http://localhost:3912';
+const baseUrl = process.env.VOICESTUDIO_UI_URL || process.env.VOICESTUDIO_SMOKE_URL || 'http://localhost:3912';
 
 async function catalog(locale) {
   return JSON.parse(await readFile(join(localeRoot, `${locale}.json`), 'utf8'));
@@ -44,7 +45,7 @@ function assertNoHorizontalDocumentOverflow(measurement, context) {
   );
 }
 
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await chromium.launch({ channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge', headless: true });
 try {
   for (const locale of locales) {
     const expected = await catalog(locale);

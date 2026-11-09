@@ -345,31 +345,15 @@ export default function DesignMethodPanel({
             </div>
           </div>
 
-          {/* Reset to the description's implied recipe, or save the current
-                    one as a reusable profile (0005): the backend renders a
-                    deterministic identity sample (seed 42) and stores the
-                    slider picks for later re-editing. */}
-          {/* Separated by space alone, never a rule: the app-wide border
-                    removal (tests/test_no_literal_borders.py) took every
-                    decorative divider out, so a token hairline here would
-                    reintroduce exactly the class that guard protects. */}
-          <div className="mt-[var(--space-4)] flex items-center justify-between gap-[var(--space-3)] flex-wrap">
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             <Button variant="ghost" size="sm" onClick={resetToDescription}>
-              {t('clone.reset_to_description', { defaultValue: 'Reset to description' })}
+              {t('clone.reset_to_description', { defaultValue: 'Back to the description' })}
             </Button>
-            {!showSaveProfile ? (
-              <Button
-                variant="subtle"
-                size="sm"
-                onClick={() => setShowSaveProfile(true)}
-                leading={<Save size={12} />}
-              >
-                {t('clone.save_design_as_profile', { defaultValue: 'Save design as profile' })}
-              </Button>
-            ) : (
-              <div className="flex gap-[var(--space-3)] items-center [&>:first-child]:flex-1">
+            {showSaveProfile ? (
+              <div className="flex min-w-0 flex-1 items-center gap-2">
                 <Input
                   size="sm"
+                  className="min-w-0 flex-1"
                   placeholder={t('clone.profile_name')}
                   value={profileName}
                   onChange={(e) => setProfileName(e.target.value)}
@@ -377,6 +361,7 @@ export default function DesignMethodPanel({
                 <Button
                   variant="subtle"
                   size="sm"
+                  leading={<Save size={12} />}
                   onClick={() =>
                     handleSaveDesignProfile(
                       vdStates,
@@ -391,6 +376,15 @@ export default function DesignMethodPanel({
                   {t('clone.cancel')}
                 </Button>
               </div>
+            ) : (
+              <Button
+                variant="subtle"
+                size="sm"
+                leading={<Save size={12} />}
+                onClick={() => setShowSaveProfile(true)}
+              >
+                {t('clone.save_design_as_profile', { defaultValue: 'Keep this design as a voice' })}
+              </Button>
             )}
           </div>
         </div>

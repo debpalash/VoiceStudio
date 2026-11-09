@@ -1,6 +1,6 @@
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await chromium.launch({ channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge', headless: true });
 const page = await browser.newPage();
 try {
   await page.addInitScript(() => {
@@ -29,7 +29,7 @@ try {
     router.routesById['/settings/support'].options.component = window.originalSupportComponent;
   });
   await fallback.getByRole('button', { name: 'Try again', exact: true }).click();
-  await page.getByRole('heading', { name: 'Support VoiceStudio', exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'Donate to VoiceStudio Project', exact: true }).waitFor();
   assert.equal(await page.evaluate(() => window.recoverySentinel), 'renderer-still-running');
 
   await page.evaluate(async () => {
@@ -49,7 +49,7 @@ try {
     await router.navigate({ to: '/settings/support' });
   });
   await firstDynamicReload;
-  await page.getByRole('heading', { name: 'Support VoiceStudio', exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'Donate to VoiceStudio Project', exact: true }).waitFor();
   assert.equal(
     await page.evaluate(() =>
       Object.keys(sessionStorage).some((key) => key.startsWith('voicestudio.moduleRetry:')),
@@ -92,7 +92,7 @@ try {
     router.routesById['/settings/support'].options.component = window.originalSupportComponent;
   });
   await dynamicFallback.getByRole('button', { name: 'Try again', exact: true }).click();
-  await page.getByRole('heading', { name: 'Support VoiceStudio', exact: true }).waitFor();
+  await page.getByRole('heading', { name: 'Donate to VoiceStudio Project', exact: true }).waitFor();
   assert.equal(
     await page.evaluate(() => window.recoverySentinel),
     'renderer-still-running-after-reload',

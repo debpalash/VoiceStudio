@@ -7,10 +7,10 @@
         requests microphone access. Without it, getUserMedia() in the
         WebView fails silently on macOS 10.14+ (TCC blocks the access
         and returns NotAllowedError to JS). This file is auto-merged
-        into the app's Info.plist by tauri-bundler at bundle time.
+        into the app's Info.plist by electron-builder at bundle time.
     -->
     <key>NSMicrophoneUsageDescription</key>
-    <string>VoiceStudio needs microphone access for live dictation and voice recording. Audio is processed on your machine.</string>
+    <string>__APP_PRODUCT_NAME__ needs microphone access for live dictation and voice recording. Audio is processed on your machine.</string>
 
     <!--
         Same story for camera. We don't currently use it, but if a future
@@ -18,6 +18,6 @@
         need this string. Cheap to ship now; avoids a future TCC denial.
     -->
     <key>NSCameraUsageDescription</key>
-    <string>VoiceStudio may use the camera for upcoming video features. Video stays on your machine.</string>
+    <string>__APP_PRODUCT_NAME__ may use the camera for upcoming video features. Video stays on your machine.</string>
 </dict>
 </plist>

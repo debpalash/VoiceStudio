@@ -48,7 +48,12 @@ def test_silence_is_not_amplified(client):
     assert not np.any(audio)
 
 
-@pytest.mark.parametrize('data', [b'not audio', wav(np.array([np.nan, np.inf]))])
+# Explicit ids: a float WAV embeds a PEAK timestamp, so the generated id differs
+# per xdist worker and fails collection ("Different tests were collected").
+@pytest.mark.parametrize(
+    'data',
+    [pytest.param(b'not audio', id='not-audio'), pytest.param(wav(np.array([np.nan, np.inf])), id='nan-inf')],
+)
 def test_rejects_invalid_samples_before_marking(client, data):
     client, marker = client
     response = client.post('/tools/normalize-speech', files={'audio': ('bad.wav', data)})

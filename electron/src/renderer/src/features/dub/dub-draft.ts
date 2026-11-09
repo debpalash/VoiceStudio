@@ -1,5 +1,7 @@
 import { restoreExportPreferences } from './dub-export';
 import type { DubSession } from './dub-session';
+import { DUB_INPUT_ISSUES } from './dub-input-issue';
+import { LANG_CODES } from '@shared/utils/languages';
 export const DUB_DRAFT_KEY = 'voicestudio.dub.session.v1';
 
 function isProviderErrorText(value: unknown): value is string {
@@ -19,6 +21,8 @@ export function restoreDubDraft(raw: string | null, defaults: DubSession): DubSe
     if (!value || typeof value !== 'object' || !Array.isArray(value.segments)) return defaults;
     const safeId = (id: unknown) =>
       typeof id === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(id) ? id : null;
+    const target = typeof value.target === 'string' ? value.target : defaults.target;
+    const targetCode = LANG_CODES.find((language) => language.label === target)?.code;
     const segments = value.segments
       .filter((segment: unknown) => {
         if (!segment || typeof segment !== 'object') return false;
@@ -35,14 +39,30 @@ export function restoreDubDraft(raw: string | null, defaults: DubSession): DubSe
       .map((segment: DubSession['segments'][number]) => {
         const textOriginal =
           typeof segment.text_original === 'string' ? segment.text_original : segment.text;
+        const invalidOutputError = 'translation provider returned invalid output';
+        const invalidActiveText = isProviderErrorText(segment.text);
+        const translateErrors = { ...segment.translate_errors };
         const translations = Object.fromEntries(
-          Object.entries(segment.translations || {}).filter(
-            ([, text]) => !isProviderErrorText(text),
-          ),
+          Object.entries(segment.translations || {}).filter(([language, text]) => {
+            if (!isProviderErrorText(text)) return true;
+            translateErrors[language] = invalidOutputError;
+            return false;
+          }),
         );
+        if (invalidActiveText && targetCode) translateErrors[targetCode] = invalidOutputError;
         const rejectedProviderOutput =
-          isProviderErrorText(segment.text) ||
+          invalidActiveText ||
           Object.keys(translations).length !== Object.keys(segment.translations || {}).length;
+        // Preserve the active legacy failure when introducing a per-language map.
+        if (
+          rejectedProviderOutput &&
+          !segment.translate_errors &&
+          segment.translate_error &&
+          targetCode &&
+          !translateErrors[targetCode]
+        ) {
+          translateErrors[targetCode] = segment.translate_error;
+        }
         const agentGeneratedLangs = [
           ...(Array.isArray(segment.agent_generated_langs) ? segment.agent_generated_langs : []),
           ...(typeof segment.agent_generated_lang === 'string'
@@ -62,14 +82,15 @@ export function restoreDubDraft(raw: string | null, defaults: DubSession): DubSe
             : undefined;
         return {
           ...segment,
-          text: isProviderErrorText(segment.text) ? textOriginal : segment.text,
+          text: invalidActiveText ? textOriginal : segment.text,
           text_original: textOriginal,
           translations: Object.keys(translations).length ? translations : undefined,
           agent_generated_lang: activeAgentLanguage,
           agent_generated_langs: agentGeneratedLangs.length ? agentGeneratedLangs : undefined,
-          translate_error: rejectedProviderOutput
-            ? 'translation provider returned invalid output'
-            : segment.translate_error,
+          translate_error: rejectedProviderOutput ? invalidOutputError : segment.translate_error,
+          translate_errors: Object.keys(translateErrors).length
+            ? translateErrors
+            : segment.translate_errors,
         };
       });
     const taskId = safeId(value.taskId);
@@ -96,6 +117,10 @@ export function restoreDubDraft(raw: string | null, defaults: DubSession): DubSe
       recovery,
       segments,
       filename: typeof value.filename === 'string' ? value.filename : '',
+      // A rejected file keeps its Change file prompt after a reload.
+      inputIssue: (DUB_INPUT_ISSUES as readonly unknown[]).includes(value.inputIssue)
+        ? value.inputIssue
+        : null,
       duration:
         Number.isFinite(value.duration) && Number(value.duration) > 0
           ? Number(value.duration)
@@ -160,23 +185,27 @@ export function restoreDubDraft(raw: string | null, defaults: DubSession): DubSe
       fitOptions:
         value.fitOptions && typeof value.fitOptions === 'object' && !Array.isArray(value.fitOptions)
           ? Object.fromEntries(
-              Object.entries(value.fitOptions).filter(([key, item]) =>
-                key === 'allow_video_retime'
-                  ? typeof item === 'boolean'
-                  : [
-                      'max_audio_only_rate',
-                      'audio_rate_cap',
-                      'video_slow_cap',
-                      'gap_guard_s',
-                    ].includes(key) &&
-                    typeof item === 'number' &&
-                    Number.isFinite(item) &&
-                    item >= (key === 'gap_guard_s' ? 0 : 1),
-              ),
+              Object.entries(value.fitOptions).filter(([key, item]) => {
+                if (key === 'allow_video_retime') return typeof item === 'boolean';
+                if (typeof item !== 'number' || !Number.isFinite(item)) return false;
+                if (key === 'gap_guard_s') return item >= 0;
+                if (key === 'min_audio_rate') return item >= 0.5 && item <= 1;
+                return (
+                  ['max_audio_only_rate', 'audio_rate_cap', 'video_slow_cap'].includes(key) &&
+                  item >= 1
+                );
+              }),
             )
           : undefined,
       exportOptions: restoreExportPreferences(value.exportOptions),
       translationFallback: value.translationFallback === true,
+      dialectIgnored: value.dialectIgnored === true,
+      dialectUsed:
+        value.dialectIgnored === true &&
+        typeof value.dialectUsed === 'string' &&
+        /^[a-zA-Z]{2,3}-[a-zA-Z]{2,4}$/.test(value.dialectUsed)
+          ? value.dialectUsed
+          : undefined,
       quality: ['fast', 'autofit', 'cinematic', 'agent'].includes(value.quality)
         ? value.quality
         : defaults.quality,
@@ -191,13 +220,15 @@ export function restoreDubDraft(raw: string | null, defaults: DubSession): DubSe
         typeof value.condenseSuggest === 'boolean'
           ? value.condenseSuggest
           : defaults.condenseSuggest,
-      translationInstructions: typeof value.translationInstructions === 'string'
-        ? value.translationInstructions.slice(0, 5000) : undefined,
+      translationInstructions:
+        typeof value.translationInstructions === 'string'
+          ? value.translationInstructions.slice(0, 5000)
+          : undefined,
       dialect:
         typeof value.dialect === 'string' && /^[a-zA-Z]{2,3}-[a-zA-Z]{2,4}$/.test(value.dialect)
           ? value.dialect
           : undefined,
-      target: typeof value.target === 'string' ? value.target : defaults.target,
+      target,
       multiTargets: Array.isArray(value.multiTargets)
         ? value.multiTargets.filter((item: unknown): item is { lang: string; code: string } =>
             Boolean(

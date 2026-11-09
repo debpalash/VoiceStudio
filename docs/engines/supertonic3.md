@@ -45,6 +45,10 @@ Seven preset voices are surfaced: `M1` (default), `M3`, `M4`, `M5`, `F3`,
 caller passes one explicitly; unknown ids fall back to the default with a
 log line.
 
+In the Clone composer, choose a voice from the searchable **Preset voice** menu.
+The current voice remains selected when you open the menu and press Enter;
+type to filter, use the arrow keys to move, and Escape to close.
+
 ## Behaviour notes
 
 - Output is 44.1 kHz mono.
@@ -52,8 +56,9 @@ log line.
   install, otherwise from VoiceStudio's (where `uv sync --extra supertonic`
   puts it). Subsequent calls reuse the warm ONNX session.
 - `speed` is clamped to 0.7–2.0; quality steps clamp to 5–12.
-- Language is an ISO 639-1 code; Auto engages the SDK's multilingual
-  fallback.
+- Language accepts a supported full name (such as Portuguese or Estonian),
+  an ISO 639-1 code, or a regional tag such as `pt-BR`. Auto engages the
+  SDK's multilingual fallback.
 
 ## Known limits
 

@@ -1,0 +1,8 @@
+{
+  "mobile": {
+    "transcripts": {
+      "hint": "Transcribe audio or video up to four hours on this phone. Completed sections are saved for resuming.",
+      "edited_hint": "Your original transcript is kept. Restore it to export timed subtitles after editing the text."
+    }
+  }
+}

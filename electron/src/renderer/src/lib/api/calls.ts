@@ -61,6 +61,7 @@ export interface StartCallInput {
 }
 
 export interface CallSettings {
+  allow_remote_control?: boolean;
   from_number: string;
   /** Fills `{name}` in the disclosure template. */
   user_name?: string;

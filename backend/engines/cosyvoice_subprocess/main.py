@@ -79,8 +79,11 @@ def _recv(stream):
 
 def _measure_vram_mb() -> float:
     try:
-        import torch  # noqa: PLC0415
-
+        # A ping must stay cheap: importing torch here can take a long time on a cold
+        # start (#2837). Until the model has loaded, nothing is allocated.
+        torch = sys.modules.get("torch")
+        if torch is None:
+            return 0.0
         if torch.cuda.is_available():
             return float(torch.cuda.memory_allocated()) / (1024 * 1024)
     except Exception:  # noqa: BLE001 — a probe, never fatal
@@ -319,7 +322,47 @@ def _handle_synthesize(msg: dict, stdout) -> None:
             "ref_audio must be a local file path; URLs are not accepted (local-first)."
         )
     model = _load_model(stdout)
+    if msg.get("seed") is not None:
+        import torch  # noqa: PLC0415
+
+        torch.manual_seed(int(msg["seed"]))
     chunks = list(_run_model(model, msg))
+    sample_rate = int(getattr(model, "sample_rate", COSYVOICE_SAMPLE_RATE) or COSYVOICE_SAMPLE_RATE)
+    pcm_b64, n_samples = _mono_pcm_b64(chunks, sample_rate)
+    _send(stdout, {
+        "op": "audio",
+        "audio_pcm_b64": pcm_b64,
+        "sample_rate": COSYVOICE_SAMPLE_RATE,
+        "n_samples": n_samples,
+    })
+
+
+def _local_wav(msg: dict, key: str) -> str:
+    path = msg.get(key)
+    if not path or not isinstance(path, str):
+        raise ValueError(f"convert: missing '{key}'")
+    if _URL_RE.match(path):
+        raise ValueError(f"{key} must be a local file path; URLs are not accepted (local-first).")
+    if not os.path.isfile(path):
+        raise ValueError(f"convert: {key} not found")
+    return path
+
+
+def _handle_convert(msg: dict, stdout) -> None:
+    """Speech-to-speech: keep the source's speech tokens, swap the voice (#3421).
+
+    The caller sends mono WAV files of at most 30 s each (the speech
+    tokenizer's limit), so the source timing is preserved exactly.
+    """
+    source = _local_wav(msg, "source_audio")
+    ref_audio = _local_wav(msg, "ref_audio")
+    model = _load_model(stdout)
+    if msg.get("seed") is not None:
+        import torch  # noqa: PLC0415
+
+        torch.manual_seed(int(msg["seed"]))
+    with _heartbeat(stdout, "generating"):
+        chunks = list(model.inference_vc(source, ref_audio, stream=False))
     sample_rate = int(getattr(model, "sample_rate", COSYVOICE_SAMPLE_RATE) or COSYVOICE_SAMPLE_RATE)
     pcm_b64, n_samples = _mono_pcm_b64(chunks, sample_rate)
     _send(stdout, {
@@ -363,6 +406,8 @@ def main() -> int:
                 _send(stdout, {"op": "pong", "vram_mb": _measure_vram_mb()})
             elif op == "synthesize":
                 _handle_synthesize(msg, stdout)
+            elif op == "convert":
+                _handle_convert(msg, stdout)
             elif op == "shutdown":
                 return 0
             else:

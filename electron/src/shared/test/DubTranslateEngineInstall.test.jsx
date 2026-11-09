@@ -159,7 +159,7 @@ describe('DubLeftColumn — translation-engine install affordance', () => {
       { id: 'argos', display_name: 'Argos', installed: true, install_command: null },
     ];
     render(<DubLeftColumn {...makeProps({ engines, setTranslateProvider })} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Engine', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Speech engine', exact: true }));
     fireEvent.mouseDown(screen.getByRole('option', { name: 'Argos', exact: true }));
     expect(setTranslateProvider).toHaveBeenCalledWith('argos');
   });

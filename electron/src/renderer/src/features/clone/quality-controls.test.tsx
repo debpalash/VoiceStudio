@@ -90,13 +90,13 @@ it('changes export precision with the keyboard, updates size and keeps sampling 
   expect(screen.getByText('cloneQuality.size: 5.8')).toBeInTheDocument();
   fireEvent.click(screen.getByRole('radio', { name: /cloneQuality\.preset16/ }));
   expect(cloneSettingsStore.state.wavBits).toBe(16);
-  expect(cloneSettingsStore.state.steps).toBe(16);
+  expect(cloneSettingsStore.state.steps).toBeNull();
   await act(async () => {
     fireEvent.keyDown(screen.getByRole('slider', { name: 'cloneQuality.effort' }), {
-      key: 'ArrowRight',
+      key: 'ArrowLeft',
     });
   });
-  expect(cloneSettingsStore.state.steps).toBe(17);
+  expect(cloneSettingsStore.state.steps).toBe(31);
   expect(cloneSettingsStore.state.wavBits).toBe(16);
   fireEvent.click(screen.getByRole('switch', { name: 'cloneQuality.mastering' }));
   expect(cloneSettingsStore.state.effectPreset).toBe('raw');
@@ -143,4 +143,30 @@ it('estimates from output metadata and leaves unknown model formats unspecified'
   engine.output_sample_rate = null;
   view.rerender(<QualityControls />);
   expect(screen.getByText('cloneQuality.sizeUnknown')).toBeInTheDocument();
+});
+
+it('defaults to best quality and badges, then restores, faster settings', async () => {
+  const view = render(<QualityControls />);
+  expect(screen.getByRole('button', { name: 'cloneQuality.title: cloneQuality.preset16' })).toBeVisible();
+  open();
+  const steps = await screen.findByRole('slider', { name: 'cloneQuality.effort' });
+  expect(steps).toHaveAttribute('aria-valuenow', '32');
+  expect(screen.getByText('cloneQuality.best')).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'cloneQuality.restore' })).toBeNull();
+  act(() => cloneSettingsStore.setState((prev) => ({ ...prev, steps: 16 })));
+  view.rerender(<QualityControls />);
+  expect(
+    screen.getByRole('button', {
+      name: 'cloneQuality.title: cloneQuality.preset16 · cloneQuality.faster',
+    }),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'cloneQuality.restore' }));
+  expect(cloneSettingsStore.state.steps).toBeNull();
+  expect(screen.getByText('cloneQuality.best')).toBeInTheDocument();
+});
+
+it('treats an explicit choice at or above the best value as best quality', () => {
+  cloneSettingsStore.setState(() => ({ ...DEFAULT_CLONE_SETTINGS, steps: 48 }));
+  render(<QualityControls />);
+  expect(screen.getByRole('button', { name: 'cloneQuality.title: cloneQuality.preset16' })).toBeVisible();
 });

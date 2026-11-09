@@ -1,18 +1,17 @@
-import { GaugeIcon } from 'lucide-react';
+import { TimerIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import type { Draft } from './longform-session';
 
-/** Lines whose own speed wins over the book-wide one. */
-export const linesWithOwnSpeed = (lines: Draft['lines']) =>
-  lines.filter((line) => typeof line.speed === 'number' && line.speed > 0).length;
+type SpeedLine = { speed?: number | null };
 
-/**
- * Book-wide reading speed, in the setup card next to voice and language. It
- * used to live at the bottom of the collapsed Cast card, where a narrator with
- * no cast never looks — so people set the speed line by line instead. Lines
- * that carry their own speed are counted, with one click to hand them back.
- */
+/** Number of lines that carry their own positive speed. */
+export function linesWithOwnSpeed(lines: SpeedLine[]): number {
+  return lines.reduce((n, l) => (typeof l.speed === 'number' && l.speed > 0 ? n + 1 : n), 0);
+}
+
+const SPEED_RANGE = { min: 0.5, max: 2, step: 0.05 };
+
 export function StorySpeed({
   draft,
   disabled,
@@ -23,44 +22,39 @@ export function StorySpeed({
   onChange: (patch: Partial<Draft>) => void;
 }) {
   const { t } = useTranslation();
-  const overrides = linesWithOwnSpeed(draft.lines);
+  const overridden = linesWithOwnSpeed(draft.lines);
+  const clearLineSpeeds = () =>
+    onChange({ lines: draft.lines.map((l) => ({ ...l, speed: null })) });
+
   return (
-    <div className="space-y-2">
-      <h2 className="flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
-        <span className="flex items-center gap-2">
-          <GaugeIcon className="size-4" aria-hidden="true" />
-          {t('stories.global_speed')}
-        </span>
-        <span className="tabular-nums text-foreground/90">{draft.globalSpeed.toFixed(2)}×</span>
-      </h2>
+    <fieldset className="m-0 grid gap-1.5 border-0 p-0" disabled={disabled}>
+      <div className="flex items-baseline gap-2 text-xs font-medium text-muted-foreground">
+        <TimerIcon className="size-4 self-center" aria-hidden="true" />
+        <legend className="float-left p-0">{t('stories.global_speed')}</legend>
+        <output className="ml-auto font-mono tabular-nums text-foreground">
+          {`${draft.globalSpeed.toFixed(2)}×`}
+        </output>
+      </div>
       <input
+        type="range"
+        {...SPEED_RANGE}
+        className="w-full accent-primary"
         aria-label={t('stories.global_speed')}
         title={t('stories.global_speed_hint')}
-        type="range"
-        min="0.5"
-        max="2"
-        step="0.05"
-        className="w-full accent-primary"
-        disabled={disabled}
         value={draft.globalSpeed}
-        onChange={(e) => onChange({ globalSpeed: Number(e.target.value) })}
+        onChange={(e) => onChange({ globalSpeed: Number(e.currentTarget.value) })}
       />
-      <p className="text-xs text-muted-foreground">{t('stories.global_speed_hint')}</p>
-      {overrides > 0 && (
-        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-          <span>{t('stories.global_speed_overrides', { count: overrides })}</span>
-          <Button
-            size="xs"
-            variant="ghost"
-            disabled={disabled}
-            onClick={() =>
-              onChange({ lines: draft.lines.map((line) => ({ ...line, speed: null })) })
-            }
-          >
+      <p className="m-0 text-xs text-muted-foreground">{t('stories.speedHint')}</p>
+      {overridden > 0 ? (
+        <p className="m-0 flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="min-w-0 flex-1">
+            {t('stories.global_speed_overrides', { count: overridden })}
+          </span>
+          <Button size="xs" variant="ghost" onClick={clearLineSpeeds}>
             {t('stories.global_speed_apply')}
           </Button>
-        </div>
-      )}
-    </div>
+        </p>
+      ) : null}
+    </fieldset>
   );
 }

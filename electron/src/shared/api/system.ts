@@ -60,7 +60,7 @@ export async function modelStatus(): Promise<ModelStatus> {
  *  `engine_id`/`is_active_engine` attribute TTS-family entries to an engine
  *  (a model can stay resident after the user switches engines). */
 export interface LoadedModel {
-  id: string; // 'tts' | 'asr' | 'diarization' | 'sidecar:<e>' | 'engine:<e>' | 'capture-asr'
+  id: string; // 'tts' | 'asr' | 'diarization' | 'sidecar:<e>' | 'engine:<e>' | 'capture-asr' | 'transcription-asr'
   name: string;
   checkpoint: string;
   device: string;

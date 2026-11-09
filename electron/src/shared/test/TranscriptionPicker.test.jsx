@@ -65,7 +65,7 @@ describe('TranscriptionPicker', () => {
       { id: 2, text: 'beta dog', timestamp: new Date().toISOString() },
     ]);
     render(<TranscriptionPicker open onClose={vi.fn()} onPick={vi.fn()} />);
-    const box = screen.getByPlaceholderText(/Search transcriptions/i);
+    const box = screen.getByPlaceholderText(/Find a transcript/i);
     fireEvent.change(box, { target: { value: 'cat' } });
     expect(screen.getByText('alpha cat')).toBeInTheDocument();
     expect(screen.queryByText('beta dog')).not.toBeInTheDocument();

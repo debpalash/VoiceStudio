@@ -86,7 +86,7 @@ export function ChapterPreviews({
     }
   };
   return (
-    <section className="space-y-3 border-t border-border/50 pt-3">
+    <section className="space-y-3 rounded-xl border border-border/60 bg-muted/20 p-3">
       <Button
         variant="ghost"
         size="sm"

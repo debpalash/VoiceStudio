@@ -154,3 +154,19 @@ def test_a_hostile_custom_fallback_cannot_reach_the_header():
     header = content_disposition("我的声音.ovsvoice", fallback="声音")
     header.encode("latin-1")
     assert 'filename=""' not in header
+
+
+@pytest.mark.parametrize("control", [chr(i) for i in range(32)] + [chr(127)])
+def test_download_filenames_remove_ascii_controls(control):
+    header = content_disposition(f"voice{control}take.wav")
+    assert all(ord(c) >= 32 and ord(c) != 127 for c in header)
+    assert 'filename="voice_take.wav"' in header
+    assert "filename*=UTF-8''voice_take.wav" in header
+
+
+def test_custom_fallback_removes_nul_before_http_serialization():
+    import h11
+
+    header = content_disposition("🎙.wav", fallback="voice\x00take")
+    response = h11.Response(status_code=200, headers=[("Content-Disposition", header)])
+    assert h11.Connection(h11.SERVER).send(response)

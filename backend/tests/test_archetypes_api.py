@@ -2,10 +2,9 @@
 
 These cover the parts that don't need the 5 GB TTS model: category listing,
 filtering, pagination, lookup, 404s, and the preview *cache-hit* path (a
-pre-existing cached WAV is served without invoking the model). The on-demand
-render paths (``/preview`` cold, ``/use``) call the real inference pipeline and
-are exercised by runtime/manual verification — they're structured to reuse
-generation.py's proven ``_run_inference`` rather than re-implementing it.
+pre-existing cached WAV is served without invoking the model). A cold preview
+calls the real inference pipeline; ``/use`` intentionally stores only the
+recipe so choosing a voice stays instant.
 """
 from __future__ import annotations
 
@@ -161,27 +160,18 @@ def test_preview_serves_cached_wav_without_model(client):
     assert r.content == dummy
 
 
-# ── Materialize-on-use idempotency (dedup, no re-render) ───────────────────────
-def test_use_is_idempotent_dedup(client, tmp_path, monkeypatch, symlinks_supported):
-    """The 2nd `/use` of the same archetype reuses its one materialized profile
-    and does NOT render again — the guarantee that materialize-on-select in any
-    voice picker can't spawn duplicate rows on repeated picks.
-
-    The render boundary (``_render_archetype_wav``) is mocked so no model/GPU is
-    needed: it just drops a stub WAV where the row expects one.
-    """
+# ── Save-on-use idempotency (dedup, deferred render) ──────────────────────────
+def test_use_is_idempotent_and_defers_render(client, monkeypatch):
+    """Choosing a recipe is instant; only preview/generate may load the model."""
     from core import event_bus
-    from core.db import init_db
+    from core.db import db_conn, init_db
 
     init_db()  # ensure the voice_profiles table exists in the hermetic tmp DB
 
-    render_calls = {"n": 0}
+    async def _unexpected_render(*_args, **_kwargs):
+        raise AssertionError("Use voice must not load or run the synthesis model")
 
-    async def _fake_render(a, out_path):
-        render_calls["n"] += 1
-        _write_wav(Path(out_path))
-
-    monkeypatch.setattr(arch_router, "_render_archetype_wav", _fake_render)
+    monkeypatch.setattr(arch_router, "_render_archetype_wav", _unexpected_render)
     emitted = []
     monkeypatch.setattr(
         event_bus, "emit", lambda topic, payload: emitted.append((topic, payload)),
@@ -193,15 +183,11 @@ def test_use_is_idempotent_dedup(client, tmp_path, monkeypatch, symlinks_support
     assert first.status_code == 200
     pid = first.json()["profile_id"]
     assert pid
-    assert render_calls["n"] == 1
 
     second = client.post(f"/archetypes/{sample['id']}/use")
     assert second.status_code == 200
     assert second.json()["profile_id"] == pid  # same row reused
-    assert render_calls["n"] == 1  # NOT re-rendered
 
-    # Exactly one row exists for this archetype (no duplicate materialization).
-    from core.db import db_conn
     with db_conn() as conn:
         rows = conn.execute(
             "SELECT * FROM voice_profiles WHERE personality = ?",
@@ -216,132 +202,21 @@ def test_use_is_idempotent_dedup(client, tmp_path, monkeypatch, symlinks_support
     assert row["kind"] == "design"
     assert row["instruct"] == sample["instruct"]
     assert json.loads(row["vd_states"]) == sample["attrs"]
-
-    # A missing sample or synthesis-input drift must be repaired before the
-    # existing profile is returned; Preview and Use must describe one voice.
-    audio_path = arch_router._profile_audio_path(row["ref_audio_path"])
-    assert audio_path is not None
-    audio_path.unlink()
-    repaired = client.post(f"/archetypes/{sample['id']}/use")
-    assert repaired.status_code == 200 and repaired.json()["profile_id"] == pid
-    assert render_calls["n"] == 2
-    assert audio_path.read_bytes().startswith(b"RIFF")
+    assert row["ref_audio_path"] is None
 
     with db_conn() as conn:
         conn.execute("UPDATE voice_profiles SET instruct='male' WHERE id=?", (pid,))
     refreshed = client.post(f"/archetypes/{sample['id']}/use")
     assert refreshed.status_code == 200
     assert refreshed.json()["profile_id"] != pid
-    assert render_calls["n"] == 3
     with db_conn() as conn:
         edited = conn.execute("SELECT instruct FROM voice_profiles WHERE id=?", (pid,)).fetchone()
-    assert edited["instruct"] == "male"
-
-    # Continue corruption checks against the new canonical materialization.
-    pid = refreshed.json()["profile_id"]
-    with db_conn() as conn:
-        row = conn.execute("SELECT * FROM voice_profiles WHERE id=?", (pid,)).fetchone()
-    audio_path = arch_router._profile_audio_path(row["ref_audio_path"])
-    assert audio_path is not None
-
-    audio_path.write_bytes(b"not a WAV")
-    repaired_corrupt = client.post(f"/archetypes/{sample['id']}/use")
-    assert repaired_corrupt.status_code == 200
-    assert render_calls["n"] == 4
-
-    if symlinks_supported:  # Windows needs Developer Mode to create symlinks
-        outside = tmp_path / "outside.wav"
-        outside_bytes = _write_wav(outside)
-        audio_path.unlink()
-        audio_path.symlink_to(outside)
-        repaired_symlink = client.post(f"/archetypes/{sample['id']}/use")
-        assert repaired_symlink.status_code == 200
-        assert render_calls["n"] == 5
-        assert not audio_path.is_symlink()
-        assert outside.read_bytes() == outside_bytes
-
-    # A valid header with a missing payload is not playable and must self-heal.
-    renders_before = render_calls["n"]
-    truncated = _wav_bytes()[:44]
-    audio_path.write_bytes(truncated)
-    repaired_truncated = client.post(f"/archetypes/{sample['id']}/use")
-    assert repaired_truncated.status_code == 200
-    assert render_calls["n"] == renders_before + 1
-    assert audio_path.read_bytes() != truncated
-
-
-def test_archetype_staged_repair_preserves_concurrently_edited_profile(
-    client, monkeypatch,
-):
-    """A repair may publish only if the row still belongs to the archetype."""
-    from core.config import VOICES_DIR
-    from core.db import db_conn, init_db
-
-    init_db()
-    sample = archetypes.list_archetypes(featured=True)[3]
-    personality = arch_router._archetype_personality(sample)
-    edited_personality = f"user-edited:{sample['id']}"
-    with db_conn() as conn:
-        conn.execute(
-            "DELETE FROM voice_profiles WHERE personality IN (?, ?, ?)",
-            (sample["id"], personality, edited_personality),
-        )
-
-    original_id = {"value": None}
-    mutation_seen = {"value": False}
-
-    async def racing_render(_item, path):
-        destination = Path(path)
-        if destination.name.endswith(".staged.wav"):
-            assert original_id["value"] is not None
-            with db_conn() as conn:
-                conn.execute(
-                    "UPDATE voice_profiles SET name='User edit', personality=? WHERE id=?",
-                    (edited_personality, original_id["value"]),
-                )
-            mutation_seen["value"] = True
-        _write_wav(destination)
-
-    monkeypatch.setattr(arch_router, "_render_archetype_wav", racing_render)
-    first = client.post(f"/archetypes/{sample['id']}/use")
-    assert first.status_code == 200
-    original_id["value"] = first.json()["profile_id"]
-
-    with db_conn() as conn:
-        original = conn.execute(
+        replacement = conn.execute(
             "SELECT ref_audio_path FROM voice_profiles WHERE id=?",
-            (original_id["value"],),
+            (refreshed.json()["profile_id"],),
         ).fetchone()
-    original_audio = arch_router._profile_audio_path(original["ref_audio_path"])
-    assert original_audio is not None
-    corrupt_bytes = b"corrupt user-owned sample"
-    original_audio.write_bytes(corrupt_bytes)
-
-    repaired = client.post(f"/archetypes/{sample['id']}/use")
-    assert repaired.status_code == 200
-    repaired_id = repaired.json()["profile_id"]
-    assert mutation_seen["value"]
-    assert repaired_id != original_id["value"]
-
-    with db_conn() as conn:
-        edited = conn.execute(
-            "SELECT * FROM voice_profiles WHERE id=?", (original_id["value"],),
-        ).fetchone()
-        canonical = conn.execute(
-            "SELECT * FROM voice_profiles WHERE id=?", (repaired_id,),
-        ).fetchone()
-        canonical_count = conn.execute(
-            "SELECT count(*) FROM voice_profiles WHERE personality=?", (personality,),
-        ).fetchone()[0]
-    assert edited["name"] == "User edit"
-    assert edited["personality"] == edited_personality
-    assert edited["instruct"] == sample["instruct"]
-    assert original_audio.read_bytes() == corrupt_bytes
-    assert canonical["personality"] == personality
-    assert canonical["ref_audio_path"] == arch_router._profile_audio_filename(repaired_id)
-    assert canonical_count == 1
-    assert (Path(VOICES_DIR) / canonical["ref_audio_path"]).read_bytes() == _wav_bytes()
-    assert not list(Path(VOICES_DIR).glob(f".{original_id['value']}-*.staged.wav"))
+    assert edited["instruct"] == "male"
+    assert replacement["ref_audio_path"] is None
 
 
 def test_archetype_use_adopts_only_a_compatible_legacy_row(client, monkeypatch):
@@ -381,6 +256,8 @@ def test_archetype_use_adopts_only_a_compatible_legacy_row(client, monkeypatch):
     assert row["personality"] == arch_router._archetype_personality(sample)
     assert row["kind"] == "design"
     assert json.loads(row["vd_states"]) == sample["attrs"]
+    assert row["ref_audio_path"] == legacy_audio.name
+    assert legacy_audio.is_file()
 
 
 def test_archetype_use_does_not_rewrite_an_imported_personality_collision(
@@ -449,3 +326,61 @@ def test_archetype_use_does_not_rewrite_an_imported_personality_collision(
     assert imported_ns["vd_states"] is None
     assert imported_ns_audio.read_bytes() == original_ns_audio
     assert created["personality"] == arch_router._archetype_personality(sample)
+
+
+# ── Preview render single-flight ──────────────────────────────────────────────
+def test_concurrent_previews_share_one_render(monkeypatch, tmp_path):
+    """Re-clicks, media re-requests and a second view previewing the same voice
+    join one render instead of each queueing their own on the GPU pool."""
+    import asyncio
+
+    calls = []
+
+    async def render(_a, out_path):
+        calls.append(out_path)
+        await asyncio.sleep(0.05)
+        _write_wav(Path(out_path))
+
+    monkeypatch.setattr(arch_router, "_render_archetype_wav", render)
+    monkeypatch.setattr(arch_router.gallery, "cached_preview", lambda _key: None)
+
+    async def fetch_none(_key, **_kw):
+        return None
+
+    monkeypatch.setattr(arch_router.gallery, "fetch_preview", fetch_none)
+    monkeypatch.setattr(arch_router, "_PREVIEW_DIR", tmp_path)
+    sample = archetypes.list_archetypes(featured=True)[1]
+
+    async def run():
+        return await asyncio.gather(
+            *(arch_router.preview_archetype(sample["id"], local=False) for _ in range(3))
+        )
+
+    responses = asyncio.run(run())
+    assert len(calls) == 1
+    assert {r.headers["X-OmniVoice-Preview-Source"] for r in responses} == {"local"}
+    assert not arch_router._renders
+
+
+def test_dropped_preview_request_still_finishes_the_render(monkeypatch, tmp_path):
+    """A cancelled request (user cancels, client disconnects) must not discard
+    the render: the clip lands in the cache so the next click is instant."""
+    import asyncio
+
+    out = tmp_path / "clip.wav"
+
+    async def render():
+        await asyncio.sleep(0.05)
+        _write_wav(out)
+
+    async def run():
+        waiter = asyncio.ensure_future(arch_router._render_once(str(out), render))
+        await asyncio.sleep(0)
+        waiter.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await waiter
+        await asyncio.sleep(0.1)
+
+    asyncio.run(run())
+    assert out.is_file()
+    assert not arch_router._renders

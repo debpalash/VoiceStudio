@@ -5,10 +5,10 @@ const state = vi.hoisted(() => ({ stage: 'ready' as string }));
 // `apiFetch` reads the stage through this module, so the real one is replaced
 // with a controllable snapshot. `isBackendReachable` stays REAL: it is the
 // predicate under test, and stubbing it would make these assertions vacuous.
-vi.mock('@/hooks/use-backend-status', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/hooks/use-backend-status')>();
-  return { ...actual, getBackendStatusSnapshot: () => ({ stage: state.stage }) };
-});
+vi.mock('@/hooks/use-backend-status', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/hooks/use-backend-status')>()),
+  getBackendStatusSnapshot: () => ({ stage: state.stage }),
+}));
 
 const { apiFetch, apiJson } = await import('./client');
 

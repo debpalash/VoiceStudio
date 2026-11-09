@@ -126,12 +126,7 @@ describe('CaptureWidget — mic permission pre-flight (Tauri)', () => {
     window.__TAURI_INTERNALS__ = {};
   });
 
-  // #1884: the pill clips its label, so every state that can clip needs a
-  // hover title. This covers the error branch that carries a message — the
-  // title is the detailed message, which is strictly more than the clipped
-  // label shows. The no-message branch falls through to the label and is
-  // covered by the setup-state test in CaptureWidget.test.jsx.
-  it('uses the error detail as the title, not just the clipped label', async () => {
+  it('puts the detailed denial hint in the error label hover title', async () => {
     stubInvoke({ mic: 'denied' });
     installGum(async () => {
       throw notFound();
@@ -139,12 +134,8 @@ describe('CaptureWidget — mic permission pre-flight (Tauri)', () => {
     render(<CaptureWidget />);
     pressShortcut();
 
-    const labelEl = await screen.findByText(/Mic access denied/);
-    // Assert the detail itself, not merely "some different string". This
-    // phrase lives only in `errorInfo.message` (capture.mic_hint_linux) and
-    // never in the label, so a regression that fell back to the label — or
-    // any unrelated tooltip — fails here.
-    expect(labelEl.title).toMatch(/audio group/);
+    const label = await screen.findByText(/Mic access denied/);
+    expect(label.getAttribute('title')).toMatch(/audio group/);
   });
 
   it('OS-denied → guided error pill with Open Settings, getUserMedia never called', async () => {

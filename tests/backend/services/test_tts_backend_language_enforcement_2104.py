@@ -89,7 +89,10 @@ def _StubBackend():
         # BCP-47 / region suffix → first 2 alpha chars of the head (BCP-47
         # form: language[-region[-script]]; the head is the language).
         ("zh-CN", "zh"),
-        ("cmn-Hans", "cmn"),  # 3-letter base — preserved for engine-side match
+        # The app's own Chinese script tag is Chinese (#3685); a bare
+        # 3-letter "cmn" below stays exact.
+        ("cmn-Hans", "zh"),
+        ("Chinese (Traditional)", "zh"),
         ("ZH_CN", "zh"),       # underscore separator, not BCP-47 — noise
         # Display-name → ISO (the picker sometimes sends the label).
         ("English", "en"),
@@ -198,7 +201,7 @@ def test_every_picker_label_resolves_to_an_explicit_code(_StubBackend):
     root = Path(__file__).resolve().parents[3]
     be = _StubBackend(["en"])
     for picker in [root / "electron/src/shared/languages.json", root / "electron/src/renderer/src/lib/languages.json"]:
-        for label in json.loads(picker.read_text()):
+        for label in json.loads(picker.read_text(encoding="utf-8")):
             code = be._normalize_language_code(label)
             if label.lower() == "auto":
                 assert code is None
@@ -351,3 +354,36 @@ def test_gptsovits_uses_canonical_target_language(monkeypatch, language):
     with pytest.raises(RuntimeError, match='captured request'):
         backend.generate('hello', ref_audio='voice.wav', language=language)
     assert seen[0]['text_lang'] == 'ko'
+
+
+def _cosyvoice3_backend(monkeypatch, calls):
+    from services.tts_backend import CosyVoiceBackend
+    import torch
+
+    class CosyVoice3:
+        def _record(self, name):
+            def call(*args, **kwargs):
+                calls.append((name, args))
+                return [{'tts_speech': torch.zeros(1, 10)}]
+            return call
+
+        def __getattr__(self, name):
+            return self._record(name)
+
+    backend = object.__new__(CosyVoiceBackend)
+    backend._model = CosyVoice3()
+    monkeypatch.setattr(backend, '_ensure_loaded', lambda: None)
+    return backend
+
+
+def test_cosyvoice3_in_process_prompts_carry_the_system_prompt(monkeypatch):
+    """The in-process adapter builds v3 prompts like the sidecar does."""
+    calls = []
+    backend = _cosyvoice3_backend(monkeypatch, calls)
+    backend.generate('hi', ref_audio='v.wav', instruct='Speak sadly', language='en')
+    backend.generate('hi', ref_audio='v.wav', ref_text='hello there', language='en')
+    backend.generate('hi', ref_audio='v.wav', language='en')
+    prefix = 'You are a helpful assistant.'
+    assert calls[0] == ('inference_instruct2', ('hi', f'{prefix} Speak sadly<|endofprompt|>', 'v.wav'))
+    assert calls[1] == ('inference_zero_shot', ('hi', f'{prefix}<|endofprompt|>hello there', 'v.wav'))
+    assert calls[2] == ('inference_cross_lingual', (f'{prefix}<|endofprompt|>hi', 'v.wav'))

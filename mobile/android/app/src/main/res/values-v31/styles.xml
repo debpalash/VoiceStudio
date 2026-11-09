@@ -1,0 +1,7 @@
+<resources>
+    <style name="AppTheme.Launch" parent="AppTheme">
+        <item name="android:windowBackground">@drawable/vs_splash</item>
+        <item name="android:windowSplashScreenBackground">@color/vs_canvas</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/vs_launcher_foreground</item>
+    </style>
+</resources>

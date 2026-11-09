@@ -34,78 +34,54 @@ from typing import Iterator, Optional
 
 logger = logging.getLogger("omnivoice.llm")
 
-#: Local reasoning models (Qwen3, DeepSeek-R1 derivatives, gpt-oss…) emit their
-#: chain of thought in a <think> block ahead of the answer. It is not part of
-#: the answer — on the dictation path it would be pasted straight into the
-#: user's transcript.
-_THINK_TAG_RE = re.compile(r"^\s*<(think|thinking|reasoning)>.*?</\1>", re.DOTALL | re.IGNORECASE)
-#: Output truncated mid-thought (token cap, or a stop that never came) leaves
-#: the block unclosed. Still not an answer: drop from the tag to the end.
-_OPEN_THINK_RE = re.compile(r"^\s*<(think|thinking|reasoning)>.*\Z", re.DOTALL | re.IGNORECASE)
-#: Some chat templates open the block themselves (Spark-X2.5, Qwen3 thinking
-#: variants, DeepSeek-R1-0528 put ``<think>`` in the generation prompt), so a
-#: server without a reasoning parser returns only ``…reasoning</think>answer``.
-#: A closing tag with no opening tag before it marks the end of that block,
-#: unless the prompt itself contains the tag (see _strip_reasoning).
-_PREFILLED_THINK_RE = re.compile(
-    r"^(?:(?!<(?:think|thinking|reasoning)>).)*?</(think|thinking|reasoning)>",
-    re.DOTALL | re.IGNORECASE,
-)
+_REASONING_NAMES = r"think|thinking|reasoning"
+_OPEN_REASONING_TAG = re.compile(rf"<({_REASONING_NAMES})>", re.IGNORECASE)
+_CLOSE_REASONING_TAG = re.compile(rf"</({_REASONING_NAMES})>", re.IGNORECASE)
+_REASONING_EFFORT_REJECTED: set[str] = set()
 
 
-def _prompt_text(messages: list[dict]) -> str:
-    return "\n".join(m["content"] for m in messages if isinstance(m.get("content"), str))
+def _conversation_text(messages: list[dict]) -> str:
+    parts: list[str] = []
+    for turn in messages:
+        value = turn.get("content")
+        if isinstance(value, str):
+            parts.append(value)
+    return "\n".join(parts)
+
+
+def _reasoning_option_was_rejected(exc: Exception) -> bool:
+    provider_message = str(exc).casefold()
+    return any(
+        term in provider_message
+        for term in ("reasoning_effort", "reasoning effort")
+    )
 
 
 def _strip_reasoning(raw: str, prompt: str = "") -> str:
-    """Return the answer with any reasoning block removed.
+    """Discard reasoning markup only when it occupies the reply prefix."""
+    answer = raw
+    first_closer = _CLOSE_REASONING_TAG.search(answer)
+    if first_closer is not None:
+        prefix = answer[:first_closer.start()]
+        closer = first_closer.group(0).casefold()
+        is_prefilled = _OPEN_REASONING_TAG.search(prefix) is None
+        repeats_input = answer.casefold().count(closer) <= prompt.casefold().count(closer)
+        if is_prefilled and not repeats_input:
+            answer = answer[first_closer.end():]
 
-    Returns ``""`` when the response was *only* reasoning. That is deliberate:
-    every caller treats an empty completion as "no result" and keeps its own
-    input (dictation keeps the raw transcript, translation keeps the source),
-    whereas handing back the model's private monologue as if it were the answer
-    would silently overwrite the user's words with it.
+    while True:
+        candidate = answer.lstrip()
+        opening = _OPEN_REASONING_TAG.match(candidate)
+        if opening is None:
+            break
+        tag_name = opening.group(1)
+        after_open = candidate[opening.end():]
+        closing = re.search(rf"</{re.escape(tag_name)}>", after_open, re.IGNORECASE)
+        if closing is None:
+            return ""
+        answer = after_open[closing.end():]
 
-    ``prompt`` is the text the reply answers. A bare closing tag only ends a
-    prefilled block when the reply has more of that tag than the prompt does:
-    an answer that translates or quotes input with a literal ``</think>`` must
-    keep it, yet reasoning that ends in the same tag is still removed.
-    """
-    prefilled = _PREFILLED_THINK_RE.match(raw)
-    if prefilled:
-        tag = f"</{prefilled.group(1)}>".lower()
-        # Quoted tags the answer legitimately repeats from the prompt are
-        # kept; the reasoning boundary is the first tag beyond that count.
-        if raw.lower().count(tag) > prompt.lower().count(tag):
-            raw = raw[prefilled.end():]
-    while match := _THINK_TAG_RE.match(raw):
-        raw = raw[match.end():]
-    cleaned = _OPEN_THINK_RE.sub("", raw)
-    return cleaned.strip()
-
-
-def _rejects_reasoning_effort(exc: BaseException) -> bool:
-    """True when a failed request looks like "this endpoint has no such param".
-
-    ``reasoning_effort`` is only understood by reasoning models and by newer
-    SDKs. An older SDK raises TypeError locally; a server that doesn't know the
-    field answers 400 — which is NOT a TypeError, so catching only that left
-    refinement permanently broken against such an endpoint.
-    """
-    # Only when the server names the field: OpenAI ("Unsupported parameter:
-    # 'reasoning_effort' …"), Azure ("Unrecognized request argument supplied:
-    # reasoning_effort"), pydantic-validated servers (field listed). A generic
-    # "unsupported parameter" could be about temperature, and retrying without
-    # the wrong field would just fail twice.
-    text = str(exc).lower()
-    return "reasoning_effort" in text or "reasoning effort" in text
-
-
-#: ``base_url|model`` pairs that rejected ``reasoning_effort``. Module-level on
-#: purpose: get_active_llm_backend() builds a FRESH backend instance per call,
-#: so an instance attribute would forget the rejection before the next request
-#: and every refinement would pay the rejected round trip again.
-_REASONING_EFFORT_REJECTED: set[str] = set()
+    return answer.strip()
 
 
 class LLMBackend(ABC):
@@ -135,30 +111,36 @@ class LLMBackend(ABC):
         Raises on failure — callers decide whether to fallback gracefully.
         ``temperature`` is only sent to the provider when set — callers that
         leave it None keep the provider default (existing behavior).
+        ``reasoning_effort`` hints that latency-sensitive work should skip or
+        shorten model thinking; backends without that capability may ignore it.
         """
+        ...
 
     def chat_messages(self, *, messages: list[dict], timeout: Optional[float] = None,
                       temperature: Optional[float] = None,
                       reasoning_effort: Optional[str] = None) -> str:
-        """One-shot completion over a full message list.
+        """Adapt message turns for a two-message backend.
 
-        Fallback for backends that only implement the two-message
-        :meth:`chat`: it keeps the system prompt and the final user turn.
-        Any few-shot turns in between are DROPPED — small local models lean on
-        those examples heavily, so a backend that callers pass few-shot turns
-        to should override this rather than inherit it. Logged, because a
-        silently truncated prompt looks like a model-quality problem.
+        Backends that need complete few-shot conversations must override this.
         """
-        sys_msg = messages[0]["content"] if messages and messages[0].get("role") == "system" else ""
-        usr_msg = messages[-1]["content"] if messages else ""
-        dropped = max(len(messages) - (2 if sys_msg else 1), 0)
-        if dropped:
+        begins_with_system = bool(messages and messages[0].get("role") == "system")
+        system_text = messages[0]["content"] if begins_with_system else ""
+        user_text = messages[-1]["content"] if messages else ""
+        retained_turns = 2 if system_text else 1
+        omitted_turns = max(len(messages) - retained_turns, 0)
+        if omitted_turns:
             logger.warning(
-                "%s has no chat_messages(): dropping %d few-shot turn(s) from the prompt.",
-                type(self).__name__, dropped,
+                "%s omitted %d intermediate turn(s) from its two-message request",
+                type(self).__name__,
+                omitted_turns,
             )
-        return self.chat(system=sys_msg, user=usr_msg, timeout=timeout,
-                         temperature=temperature, reasoning_effort=reasoning_effort)
+        return self.chat(
+            system=system_text,
+            user=user_text,
+            timeout=timeout,
+            temperature=temperature,
+            reasoning_effort=reasoning_effort,
+        )
 
     def chat_messages_stream(self, *, messages: list[dict], timeout: Optional[float] = None,
                              temperature: Optional[float] = None) -> Iterator[str]:
@@ -193,13 +175,14 @@ class OpenAICompatBackend(LLMBackend):
         return llm_providers.active_provider()
 
     def _base_url(self) -> Optional[str]:
-        """Endpoint this instance will talk to, or None when unconfigured.
-        Never raises — used for bookkeeping keys, not for the request itself."""
-        from services import llm_providers
-        p = self._resolve_provider()
-        if p is not None:
-            return llm_providers.resolve_base_url(p)
-        return os.environ.get("TRANSLATE_BASE_URL") or None
+        try:
+            provider = self._resolve_provider()
+            if provider is not None:
+                from services import llm_providers
+                return llm_providers.resolve_base_url(provider)
+            return os.environ.get("TRANSLATE_BASE_URL") or None
+        except Exception:
+            return None
 
     @classmethod
     def is_available(cls) -> tuple[bool, str]:
@@ -215,9 +198,9 @@ class OpenAICompatBackend(LLMBackend):
         p = llm_providers.active_provider()
         if p is None:
             return False, (
-                "No LLM configured. Add a provider key in Settings → LLM Providers "
-                "(OpenAI/OpenRouter/OrcaRouter/Cheaper Inference/Groq/… or a local "
-                "Ollama), or set TRANSLATE_BASE_URL (+ TRANSLATE_API_KEY)."
+                "Add a provider key in Settings -> LLM Providers (for example OpenAI, "
+                "Cheaper Inference, or Groq), choose local Ollama, or set "
+                "TRANSLATE_BASE_URL with optional TRANSLATE_API_KEY."
             )
         error = llm_providers.configuration_error(p)
         if error:
@@ -246,11 +229,12 @@ class OpenAICompatBackend(LLMBackend):
     def chat(self, *, system: str, user: str, timeout: Optional[float] = None,
              temperature: Optional[float] = None,
              reasoning_effort: Optional[str] = None) -> str:
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ]
         return self.chat_messages(
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user},
-            ],
+            messages=messages,
             timeout=timeout,
             temperature=temperature,
             reasoning_effort=reasoning_effort,
@@ -259,59 +243,52 @@ class OpenAICompatBackend(LLMBackend):
     def chat_messages(self, *, messages: list[dict], timeout: Optional[float] = None,
                       temperature: Optional[float] = None,
                       reasoning_effort: Optional[str] = None) -> str:
-        """One-shot completion over a full message list.
+        """Complete a structured conversation without flattening few-shot turns.
 
-        Additive surface for callers that need structured few-shot turns
-        (dictation refinement, Wave 2.1) — small local models pattern-match
-        and echo inline examples, so examples must arrive as prior chat
-        turns, not inside the system prompt.
-
-        ``temperature`` is only forwarded when set (Cinematic/Autofit pin 0.2
-        — the provider default of 1.0 makes local models drift and invent);
-        every other caller leaves it None and keeps the provider default.
-
-        ``reasoning_effort`` allows latency-critical paths (dictation refinement)
-        to explicitly request 'none' to bypass 25+ second thinking pauses on
-        reasoning models.
+        Inline examples are often echoed by small local models, so examples
+        remain earlier chat turns. Temperature is omitted unless selected;
+        Cinematic and Autofit use 0.2 to avoid drift from provider defaults.
+        Latency-sensitive callers may pass ``reasoning_effort="none"`` to
+        avoid long reasoning pauses.
         """
         if timeout is None:
             try:
                 timeout = float(os.environ.get("OMNIVOICE_LLM_TIMEOUT", "45"))
             except ValueError:
                 timeout = 45.0
-        model = self.model_name
-        endpoint = f"{self._base_url() or ''}|{model}"
-        kw = {}
+        selected_model = self.model_name
+        route_signature = f"{self._base_url() or ''}|{selected_model}"
+        optional_fields = {}
         if temperature is not None:
-            kw["temperature"] = temperature
-        if reasoning_effort is not None and endpoint not in _REASONING_EFFORT_REJECTED:
-            kw["reasoning_effort"] = reasoning_effort
+            optional_fields["temperature"] = temperature
+        if reasoning_effort is not None and route_signature not in _REASONING_EFFORT_REJECTED:
+            optional_fields["reasoning_effort"] = reasoning_effort
 
-        def _create(**extra):
-            return self._get_client().chat.completions.create(
-                model=model,
+        client = self._get_client()
+        try:
+            response = client.chat.completions.create(
+                model=selected_model,
                 timeout=timeout,
                 messages=messages,
-                **extra,
+                **optional_fields,
+            )
+        except Exception as exc:
+            sent_reasoning_hint = "reasoning_effort" in optional_fields
+            if not sent_reasoning_hint or not _reasoning_option_was_rejected(exc):
+                raise
+            _REASONING_EFFORT_REJECTED.add(route_signature)
+            logger.debug("Disabling the reasoning hint for endpoint %s", route_signature)
+            optional_fields.pop("reasoning_effort")
+            response = client.chat.completions.create(
+                model=selected_model,
+                timeout=timeout,
+                messages=messages,
+                **optional_fields,
             )
 
-        try:
-            res = _create(**kw)
-        except Exception as exc:  # noqa: BLE001 — re-raised unless it's the param
-            if "reasoning_effort" not in kw or not _rejects_reasoning_effort(exc):
-                raise
-            # This SDK or endpoint doesn't take the field. Remember it for the
-            # endpoint so the rejected round trip is paid once — not once per
-            # request, since callers get a fresh instance each time — and run
-            # the request again without it rather than failing the feature.
-            logger.debug("reasoning_effort not supported by %s (%s); retrying without it",
-                         endpoint, exc)
-            _REASONING_EFFORT_REJECTED.add(endpoint)
-            kw.pop("reasoning_effort", None)
-            res = _create(**kw)
-
-        return _strip_reasoning(res.choices[0].message.content or "",
-                                prompt=_prompt_text(messages))
+        reply_text = response.choices[0].message.content or ""
+        source_text = _conversation_text(messages)
+        return _strip_reasoning(reply_text, prompt=source_text)
 
     def chat_messages_stream(self, *, messages: list[dict], timeout: Optional[float] = None,
                              temperature: Optional[float] = None) -> Iterator[str]:

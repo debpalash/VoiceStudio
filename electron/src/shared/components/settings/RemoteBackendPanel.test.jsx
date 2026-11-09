@@ -112,7 +112,7 @@ describe('RemoteBackendPanel', () => {
     clickSave();
 
     await waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/Save failed/i)),
+      expect(toast.error).toHaveBeenCalledWith(expect.stringMatching(/Could not save settings/i)),
     );
     expect(reload).toHaveBeenCalledOnce();
   });

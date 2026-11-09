@@ -56,7 +56,7 @@ try {
   assert.equal(state.configured, 'https://mirror.example.com');
   assert.equal(await page.getByText('private diagnostic').count(), 0);
   fail = false;
-  await page.getByRole('button', { name: 'Auto', exact: true }).click();
+  await page.getByRole('radio', { name: /^Auto/ }).click();
   await page.getByText('Mirror setting saved', { exact: true }).waitFor();
   assert.deepEqual(writes.at(-1), { url: '', mode: 'auto' });
   assert.equal(tests, 1);

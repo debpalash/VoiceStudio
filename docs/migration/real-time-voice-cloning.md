@@ -27,8 +27,8 @@ on your own machine: no accounts, no API keys, no cloud.
 | Saved speaker embeddings (`.npy`) | **Voice Profiles** — save a clone once, reuse it everywhere | Exportable as portable `.ovsvoice` bundles |
 | Synthesizer + vocoder choice (Tacotron 2 · WaveRNN / Griffin-Lim) | **TTS engine choice** — Model Catalogue | 14 engines, from CPU-realtime to GPU heavyweights; per-engine GPU preflight |
 | The Toolbox GUI (`demo_toolbox.py`) | The app itself | Record or drop a clip, type text, synthesize — same loop, no `python demo_toolbox.py` |
-| `demo_cli.py` / scripting your own pipeline | Local REST API (OpenAI-compatible, `http://localhost:3900/v1`), `omnivoice-infer` CLI, MCP server | See the [API section of the README](../../README.md#openai-api) |
-| Training your own encoder / synthesizer / vocoder | Partial — see ["What RTVC did that VoiceStudio doesn't"](#what-rtvc-did-that-omnivoice-doesnt) | Fine-tuning the bundled model is documented; RTVC-style three-stage research training is not what this project is |
+| `demo_cli.py` / scripting your own pipeline | Local REST API (OpenAI-compatible, `http://localhost:3900/v1`), `omnivoice-infer` CLI, MCP server | See the [local API guide](../speech-platform.md) |
+| Training your own encoder / synthesizer / vocoder | Partial — see ["What RTVC did that VoiceStudio doesn't"](#what-rtvc-did-that-voicestudio-doesnt) | Fine-tuning the bundled model is documented; RTVC-style three-stage research training is not what this project is |
 
 ## What you gain
 
@@ -78,7 +78,7 @@ Honesty where it's due:
   any use including commercial, but if you modify it and serve the
   modified version over a network, you must share your changes. A
   commercial license is available for closed-source embedding — see
-  the [README's License section](../../README.md#license).
+  the [README's License section](../../README.md#license--responsible-use).
 
 One more honesty note: despite the name, RTVC's "real-time" was about
 vocoding speed. VoiceStudio generation speed depends on the engine and

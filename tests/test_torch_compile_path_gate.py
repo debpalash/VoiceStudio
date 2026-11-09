@@ -29,12 +29,8 @@ def _env(monkeypatch, *, torch_file, triton=True):
         lambda name: object() if (triton and name == "triton") else None,
     )
     monkeypatch.setattr(engine_env, "_compile_runtime_failure", None, raising=False)
-    # #2135: should_torch_compile() now also honours the TORCH_COMPILE_DISABLE
-    # family. `backend/main.py` setdefaults those on win32, so on a Windows
-    # runner they leak into os.environ as soon as any test imports main — and
-    # would then decide these tests instead of the path logic under test.
-    for _name in engine_env._COMPILE_DISABLE_ENVS:
-        monkeypatch.delenv(_name, raising=False)
+    for name in ("TORCH_COMPILE_DISABLE", "TORCHDYNAMO_DISABLE", "TORCHINDUCTOR_DISABLE"):
+        monkeypatch.delenv(name, raising=False)
     # Isolate the Settings gate: should_torch_compile() otherwise reads the real
     # settings_store, so a persisted perf.torch_compile_disabled=1 (or a missing
     # settings table) would decide these tests instead of the path logic.

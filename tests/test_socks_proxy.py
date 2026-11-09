@@ -45,7 +45,7 @@ _SOCKS_MSG = (
 def test_socksio_declared_in_pyproject_dependencies():
     import tomllib
 
-    data = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text())
+    data = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     deps = data["project"]["dependencies"]
     assert any(re.match(r"socksio\b", d) for d in deps), (
         "#959 regression: socksio must be a [project] dependency — without it "
@@ -123,6 +123,7 @@ def _fail_model_info(monkeypatch):
     monkeypatch.setattr(huggingface_hub, "model_info", boom)
 
 
+@pytest.mark.usefixtures("cpu_host")
 def test_preload_warms_up_from_cache_when_network_probe_fails(monkeypatch):
     # Pre-fix, ANY model_info failure silently skipped warm-up — under a SOCKS
     # proxy env that meant a fully cached model never preloaded and the first
@@ -198,6 +199,7 @@ def client():
     )
 
 
+@pytest.mark.usefixtures("cpu_host")
 def test_generate_500_detail_carries_socks_hint(client, monkeypatch):
     # get_model() is called OUTSIDE /generate's try block, so the ImportError
     # reaches the global handler bare. Pre-fix the 500 detail was the raw

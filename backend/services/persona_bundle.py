@@ -110,6 +110,7 @@ def build_manifest(
             "seed": profile.get("seed"),                 # int or None (A16)
             "is_locked": bool(profile.get("is_locked")),
             "vd_states": profile.get("vd_states"),        # JSON string or None (A15) — never re-parsed
+            "design_recipe": profile.get("design_recipe"),  # original free-form Voice Design prompt
         },
         "engine": {"id": engine_id or "", "design_params": None},
         "license": {"spdx": normalize_spdx(license_spdx), "custom_text": custom_license_text or None},
@@ -163,6 +164,7 @@ def _legacy_metadata(profile: dict, omnivoice_version: str) -> dict:
         "seed": profile.get("seed"),
         "kind": profile.get("kind") or "clone",
         "vd_states": profile.get("vd_states"),
+        "design_recipe": profile.get("design_recipe"),
         "is_locked": bool(profile.get("is_locked")),
         "omnivoice_version": omnivoice_version or "",
     }
@@ -392,6 +394,7 @@ def parse_persona_bundle(content: bytes) -> ParsedPersona:
                 "seed": legacy.get("seed"),
                 "is_locked": bool(legacy.get("is_locked")),
                 "vd_states": legacy.get("vd_states"),
+                "design_recipe": legacy.get("design_recipe"),
             },
             "license": {"spdx": DEFAULT_LICENSE, "custom_text": None},
             "tags": [],

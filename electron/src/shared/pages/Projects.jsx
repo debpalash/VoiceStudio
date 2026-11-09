@@ -126,17 +126,16 @@ export default function Projects({
   const [query, setQuery] = useState('');
   const [view, setView] = useState('grid'); // grid | list
   const { t } = useTranslation();
-
   const FILTERS = [
-    { id: 'all', label: t('projects.all'), Icon: FolderOpen },
-    { id: 'dubs', label: t('projects.dub_projects'), Icon: Film },
-    { id: 'stories', label: t('projects.stories'), Icon: BookOpen },
-    { id: 'profiles', label: t('projects.voice_profiles'), Icon: Fingerprint },
-    { id: 'transcripts', label: t('projects.transcripts'), Icon: Mic },
-    { id: 'audiobooks', label: t('projects.audiobooks'), Icon: BookMarked },
-    { id: 'history', label: t('projects.history'), Icon: Music },
-    { id: 'exports', label: t('projects.exports'), Icon: Download },
-  ];
+    ['all', 'projects.all', FolderOpen],
+    ['dubs', 'projects.dub_projects', Film],
+    ['stories', 'projects.stories', BookOpen],
+    ['profiles', 'projects.voice_profiles', Fingerprint],
+    ['transcripts', 'projects.transcripts', Mic],
+    ['audiobooks', 'projects.audiobooks', BookMarked],
+    ['history', 'projects.history', Music],
+    ['exports', 'projects.exports', Download],
+  ].map(([id, key, Icon]) => ({ id, label: t(key), Icon }));
 
   // Finished Audiobook + Story renders (server-side longform library).
   const [longformJobs, setLongformJobs] = useState([]);
@@ -263,19 +262,17 @@ export default function Projects({
       });
     }
     for (const tr of transcriptions) {
+      const text = tr.text || '';
+      const seconds = tr.duration_s ? `${Math.round(tr.duration_s)}s` : '';
       list.push({
         type: 'transcripts',
         id: tr.id || String(Math.random()),
-        title: (tr.text || t('projects.transcription')).slice(0, 120),
-        subtitle: [tr.language, tr.duration_s ? `${Math.round(tr.duration_s)}s` : '']
-          .filter(Boolean)
-          .join(' · '),
+        title: (text || t('projects.transcription')).slice(0, 120),
+        subtitle: [tr.language, seconds].filter(Boolean).join(' · '),
         ts: toMillis(tr.timestamp) ?? 0,
         accent: '#83a598',
         Icon: FileText,
-        onClick: () => {
-          copyText(tr.text || '');
-        },
+        onClick: () => copyText(text),
       });
     }
     list.sort((a, b) => (b.ts || 0) - (a.ts || 0));

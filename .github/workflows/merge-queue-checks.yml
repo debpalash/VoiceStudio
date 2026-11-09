@@ -1,0 +1,53 @@
+# The merge queue's required checks that belong to the pull request, not the code.
+#
+# `main`'s ruleset requires "CLA gate", "Commit identities", "CLA" and "Commit
+# identity policy". They are computed from the PR (its authors and signatures) by
+# cla.yml and commit-identity.yml on pull_request_target, so they cannot run on the
+# merge group's temporary commit. GitHub only enqueues a PR whose required checks
+# already pass, so this workflow reports them as passed on the merge group commit.
+# The code checks (Tests, security) still run for real on that commit via ci.yml.
+#
+# tests/test_merge_queue.py keeps these names equal to the ruleset's required list.
+
+name: merge-queue
+
+on:
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+jobs:
+  cla:
+    name: CLA gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - run: echo "CLA was checked on the pull request before it was queued."
+
+  identities:
+    name: Commit identities
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - run: echo "Commit identities were checked on the pull request before it was queued."
+
+  statuses:
+    name: Queue statuses
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      statuses: write
+    steps:
+      - name: Report the pull request statuses on the merge group commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          for context in "CLA" "Commit identity policy"; do
+            gh api "repos/$REPO/statuses/$SHA" \
+              -f state=success -f context="$context" \
+              -f description="Checked on the pull request before it was queued"
+          done

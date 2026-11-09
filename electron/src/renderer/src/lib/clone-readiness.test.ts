@@ -31,3 +31,19 @@ describe('clone readiness', () => {
     expect(cloneBlocker({ ...ready, busy: true })).toBe('preparing');
   });
 });
+
+it('needs only text on a preset-only engine, whatever voice is selected', () => {
+  // KittenTTS / Supertonic-3 speak with their own preset voices: no reference.
+  expect(
+    cloneBlocker({
+      text: 'Hello',
+      profileId: 'missing',
+      profiles: [],
+      fileSize: 0,
+      needsReference: false,
+    }),
+  ).toBeNull();
+  expect(
+    cloneBlocker({ text: ' ', profileId: null, profiles: [], fileSize: 0, needsReference: false }),
+  ).toBe('text');
+});

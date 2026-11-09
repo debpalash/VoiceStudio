@@ -1,11 +1,7 @@
 import type { ReactNode } from 'react';
-import {
-  inlineSegments,
-  parseBlocks,
-  type MarkdownBlock,
-} from '@shared/utils/markdownLite';
+import { inlineSegments, parseBlocks, type MarkdownBlock } from '@shared/utils/markdownLite';
 
-function InlineMarkdown({ text }: { text: string }) {
+export function InlineMarkdown({ text }: { text: string }) {
   return inlineSegments(text).map((segment, index) => {
     const key = `${segment.type}-${index}`;
     if (segment.type === 'bold')
@@ -16,7 +12,10 @@ function InlineMarkdown({ text }: { text: string }) {
       );
     if (segment.type === 'code')
       return (
-        <code key={key} className="rounded bg-muted px-1 py-0.5 font-mono text-[0.92em] text-foreground">
+        <code
+          key={key}
+          className="rounded bg-muted px-1 py-0.5 font-mono text-[0.92em] text-foreground"
+        >
           {segment.text}
         </code>
       );

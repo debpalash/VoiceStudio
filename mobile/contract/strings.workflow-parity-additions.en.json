@@ -1,0 +1,27 @@
+{
+  "mobile": {
+    "workflowParity": {
+      "bind_hint": "Re-select voices after moving JSON. Translation uses the chosen phone model. Attach audio again; conversion accepts clips up to 30 seconds.",
+      "bind_voices": "Choose a local voice for every speech or conversion step.",
+      "branch_template": "Yes / no workflow",
+      "choose_next": "Choose next step",
+      "export_json": "Export desktop JSON",
+      "graph_hint": "Connect each card to its next step. Both condition routes may rejoin. Every route must reach End.",
+      "import_json": "Import desktop JSON",
+      "incompatible_merge": "These steps exchange incompatible text or audio. Rejoining routes must carry the same value type.",
+      "input_type": "Input",
+      "invalid_graph": "Connect every step from one input to End. Conditions need one Yes and one No route; loops are not allowed.",
+      "invalid_language": "Choose source and target languages for every translation step.",
+      "next_route": "Next step",
+      "no_route": "No route",
+      "runs": "Saved runs",
+      "saved_steps": "{{count}} visited steps saved",
+      "single_input": "Use one script or one audio source per workflow. Split desktop batches before importing.",
+      "source_language": "Source language",
+      "unsupported": "This phone cannot execute the {{kind}} node. Remove or replace it on desktop before importing.",
+      "unsupported_settings": "Unsupported or out-of-range workflow settings.",
+      "yes_route": "Yes route",
+      "auto_voice_language": "Saved phone voices detect language from the text. Select Auto for their speech language."
+    }
+  }
+}

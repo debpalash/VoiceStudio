@@ -27,6 +27,44 @@ def test_every_studio_docker_run_passes_the_admin_key(relative_path):
         assert '-e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY"' in command
 
 
+@pytest.mark.parametrize(
+    "relative_path",
+    [
+        "README.md",
+        "docs/readme/README_CN.md",
+        "docs/readme/README_JA.md",
+        "docs/readme/README_KO.md",
+        "docs/readme/README_RU.md",
+        "docs/install/docker.md",
+        "deploy/dockerhub-overview.md",
+    ],
+)
+def test_docker_commands_use_the_mounted_data_directory(relative_path):
+    """Keep saved work on the named volume when a container is replaced."""
+    text = (ROOT / relative_path).read_text(encoding="utf-8")
+    commands = [
+        block
+        for block in re.findall(r"```(?:bash|sh)\n(.*?)```", text, flags=re.DOTALL)
+        if "docker run" in block and ":/app/omnivoice_data" in block
+    ]
+    assert commands
+    for command in commands:
+        assert "-e OMNIVOICE_DATA_DIR=/app/omnivoice_data" in command
+
+
+def test_quadlet_uses_the_mounted_data_directory():
+    """Podman must persist the same application data as Docker."""
+    text = (ROOT / "docs/install/docker.md").read_text(encoding="utf-8")
+    units = [block for block in re.findall(r"```ini\n(.*?)```", text, re.DOTALL)
+             if "[Container]" in block]
+    assert units
+    for unit in units:
+        destination = re.search(r"^Volume=[^:]+:(.+)$", unit, re.MULTILINE)
+        data_dir = re.search(r"^Environment=OMNIVOICE_DATA_DIR=(.+)$", unit, re.MULTILINE)
+        assert destination and data_dir
+        assert data_dir[1] == destination[1]
+
+
 def test_every_compose_studio_service_receives_the_admin_key():
     text = (ROOT / "deploy/docker-compose.yml").read_text(encoding="utf-8")
     studio_half = text.split("worker-gpu:", 1)[0]
@@ -97,3 +135,22 @@ def test_wsl_rocm_matrix_marks_rx_6700_xt_unverified():
     assert "CPU fallback stage and reason" in section
     assert "CPU-only completion" in section
     assert "successful GPU validation" in section
+
+
+def test_pin_recovery_distinguishes_server_sessions_from_browser_storage():
+    text = (ROOT / "docs/install/docker.md").read_text(encoding="utf-8")
+    section = text.split("### Recovering from a lost share PIN", 1)[1].split(
+        "###", 1
+    )[0]
+    paragraph = " ".join(section.split())
+
+    assert "server-side administrator sessions" in paragraph
+    assert (
+        "does not erase the administrator credential stored in the browser" in paragraph
+    )
+    assert "in-memory sharing state" in paragraph
+    assert "sign in with the same `OMNIVOICE_API_KEY`" in paragraph
+    assert "Restarting keeps the existing data volume" in paragraph
+    assert "browser administrator sessions" not in paragraph
+    assert "OMNIVOICE_TRUST_HOST_LOOPBACK=1" in paragraph
+    assert "#trust-host-loopback" in paragraph

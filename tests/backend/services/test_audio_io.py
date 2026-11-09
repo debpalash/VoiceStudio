@@ -394,87 +394,81 @@ def test_atomic_save_wav_delegates_to_safe_helper(tmp_path):
     assert abs(decoded).max() > 0.5
 
 
-# ── torchaudio 2.9 + no TorchCodec (#1931 follow-up) ───────────────────────
-#
-# torchaudio >= 2.9 routes save() through TorchCodec, which needs FFmpeg
-# *shared libraries* on the system. Where those are absent every write raises
-# ImportError. #1931 guarded set_audio_backend() against that torchaudio but
-# left save() unprotected; arm64 CUDA hosts reach it unavoidably, since torch
-# 2.8.0 publishes no aarch64 wheel. Without the soundfile fallback these three
-# tests raise instead of producing a file.
+@pytest.fixture
+def torchaudio_save_fails(monkeypatch):
+    """Make torchaudio.save raise whatever the test asks for; returns the setter."""
+    from services import audio_io
+
+    state = {"exc": ImportError("no torchcodec here"), "scribble": b""}
+
+    def failing_save(target, *args, **kwargs):
+        if state["scribble"] and hasattr(target, "write"):
+            target.write(state["scribble"])
+        raise state["exc"]
+
+    monkeypatch.setattr(audio_io.torchaudio, "save", failing_save)
+    return state
 
 
-def _torchcodec_missing(*_a, **_kw):
-    raise ImportError(
-        "TorchCodec is required for save_with_torchcodec. "
-        "Please install torchcodec to use this function."
-    )
+def _decode(buf_or_path):
+    if isinstance(buf_or_path, io.BytesIO):
+        buf_or_path = io.BytesIO(buf_or_path.getvalue())
+    return sf.read(buf_or_path, dtype="float32")
 
 
-def test_safe_save_falls_back_to_soundfile_when_torchcodec_missing(
-    tmp_path, monkeypatch
-):
-    import torchaudio
-
-    monkeypatch.setattr(torchaudio, "save", _torchcodec_missing)
-
-    target = tmp_path / "fallback.wav"
-    _safe_torchaudio_save(str(target), _sine_tensor(), 24000)
-
-    info = sf.info(str(target))
-    assert info.subtype == "PCM_16"
-    assert info.frames == 24000
-    decoded, sr = sf.read(str(target))
-    assert sr == 24000
-    assert abs(decoded).max() > 0.1
+def test_import_error_from_save_still_yields_a_pcm16_wav_on_disk(tmp_path, torchaudio_save_fails):
+    out = tmp_path / "nested" / "take.wav"
+    _safe_torchaudio_save(out, _sine_tensor(), 24000)
+    assert sf.info(str(out)).subtype == "PCM_16"
+    audio, rate = _decode(out)
+    assert (len(audio), rate) == (24000, 24000)
+    assert float(np.abs(audio).max()) > 0.2
 
 
-def test_safe_save_buffer_falls_back_when_torchcodec_missing(monkeypatch):
-    """The OpenAI-compatible /v1/audio/speech path writes to a BytesIO."""
-    import torchaudio
-
-    monkeypatch.setattr(torchaudio, "save", _torchcodec_missing)
-
-    buf = io.BytesIO()
-    _safe_torchaudio_save(buf, _sine_tensor(), 24000, format="wav")
-
-    assert buf.getvalue()[:4] == b"RIFF"
-    buf.seek(0)
-    decoded, sr = sf.read(buf)
-    assert sr == 24000
-    assert len(decoded) == 24000
+@pytest.mark.parametrize("fmt,magic", [("wav", b"RIFF"), ("flac", b"fLaC")])
+def test_buffers_get_their_container_when_save_is_unavailable(torchaudio_save_fails, fmt, magic):
+    sink = io.BytesIO()
+    _safe_torchaudio_save(sink, _sine_tensor(sample_rate=22050), 22050, format=fmt)
+    assert sink.getvalue().startswith(magic)
+    audio, rate = _decode(sink)
+    assert (len(audio), rate) == (22050, 22050)
 
 
-def test_safe_save_flac_buffer_fallback_names_the_format(monkeypatch):
-    """soundfile cannot infer a container from a file-like object, so the
-    fallback must pass ``format=`` explicitly — otherwise this raises."""
-    import torchaudio
-
-    monkeypatch.setattr(torchaudio, "save", _torchcodec_missing)
-
-    buf = io.BytesIO()
-    _safe_torchaudio_save(buf, _sine_tensor(), 24000, format="flac")
-
-    assert buf.getvalue()[:4] == b"fLaC"
-    buf.seek(0)
-    decoded, sr = sf.read(buf)
-    assert sr == 24000
-    assert len(decoded) == 24000
+def test_garbage_left_by_the_failed_attempt_is_discarded(torchaudio_save_fails):
+    torchaudio_save_fails["scribble"] = b"half-written-junk" * 10
+    sink = io.BytesIO()
+    _safe_torchaudio_save(sink, _sine_tensor(), 24000, format="wav")
+    assert sink.getvalue().startswith(b"RIFF")
+    assert len(_decode(sink)[0]) == 24000
 
 
-@pytest.mark.parametrize("message, fallback", [
-    ("Could not load libtorchcodec. Missing FFmpeg shared libraries", True),
-    ("unrelated encoder failure", False),
+@pytest.mark.parametrize("text", [
+    "Could not load libtorchcodec: libavutil.so.58 not found",
+    "COULD NOT LOAD LIBTORCHCODEC",
 ])
-def test_save_native_loader_failure_only_uses_fallback(tmp_path, monkeypatch, message, fallback):
-    import torchaudio
-    def fail(*args, **kwargs):
-        raise RuntimeError(message)
-    monkeypatch.setattr(torchaudio, "save", fail)
-    target = tmp_path / "codec.wav"
-    if fallback:
-        _safe_torchaudio_save(str(target), _sine_tensor(), 24000)
-        assert sf.info(target).frames == 24000
-    else:
-        with pytest.raises(RuntimeError, match="unrelated encoder failure"):
-            _safe_torchaudio_save(str(target), _sine_tensor(), 24000)
+def test_torchcodec_loading_runtime_errors_use_the_fallback(tmp_path, torchaudio_save_fails, text):
+    torchaudio_save_fails["exc"] = RuntimeError(text)
+    out = tmp_path / "x.wav"
+    _safe_torchaudio_save(out, _sine_tensor(), 24000)
+    assert sf.info(str(out)).frames == 24000
+
+
+def test_unrelated_runtime_errors_are_not_swallowed(tmp_path, torchaudio_save_fails):
+    torchaudio_save_fails["exc"] = RuntimeError("encoder exploded")
+    out = tmp_path / "x.wav"
+    with pytest.raises(RuntimeError, match="encoder exploded"):
+        _safe_torchaudio_save(out, _sine_tensor(), 24000)
+    assert not out.exists()
+
+
+@pytest.mark.parametrize("fmt", ["wav", "flac", "ogg", "mp3"])
+def test_without_torchaudio_module_soundfile_does_the_write(tmp_path, monkeypatch, fmt):
+    from services import audio_io
+
+    if fmt.upper() not in sf.available_formats():
+        pytest.skip(f"libsndfile lacks {fmt}")
+    monkeypatch.setattr(audio_io, "torchaudio", None)
+    out = tmp_path / f"direct.{fmt}"
+    _safe_torchaudio_save(out, _sine_tensor(), 24000, format=fmt)
+    info = sf.info(str(out))
+    assert info.samplerate == 24000 and info.frames > 0

@@ -103,18 +103,18 @@ def test_unconfirmed_checkpoint_keeps_original(checkpoint, monkeypatch, failure)
 
 def test_completed_resume_retires_old_checkpoint_if_replacement_failed(checkpoint, monkeypatch):
     from api.routers import audiobook
-    from services import longform_resume, ffmpeg_utils, gpu_gateway
+    from services import longform_resume, ffmpeg_utils
     path, _manifest = checkpoint
     monkeypatch.setattr(longform_resume, "write_manifest", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(ffmpeg_utils, "find_ffmpeg", lambda: "ffmpeg")
     monkeypatch.setattr(audiobook, "_resolve_default_language", lambda *_args: "en")
-    monkeypatch.setattr(gpu_gateway, "decide", lambda *_args: object())
     async def chapter(*_args, **_kwargs):
         audio = path.parent / "cached.wav"
         audio.write_bytes(b"existing chapter")
         return str(audio), 1.0, True, None
     async def mux(command, **_kwargs):
         Path(command[-1]).write_bytes(b"completed output")
+        return 0, b"", b""
     monkeypatch.setattr(audiobook, "_run_chapter", chapter)
     monkeypatch.setattr(ffmpeg_utils, "run_ffmpeg", mux)
     async def run():
@@ -166,7 +166,7 @@ def test_sync_syscall_failure_does_not_retire_original(checkpoint, monkeypatch, 
 
 def test_partial_completed_resume_retains_original_when_checkpoint_save_fails(checkpoint, monkeypatch):
     from api.routers import audiobook
-    from services import longform_resume, ffmpeg_utils, gpu_gateway
+    from services import longform_resume, ffmpeg_utils
     path, manifest = checkpoint
     manifest["plan"].append({"title": "Failed chapter", "spans": [{"voice_id": "v", "text": "Missing prose", "pause_ms_after": 0, "speed": None}]})
     manifest["total_chapters"] = 2
@@ -177,7 +177,6 @@ def test_partial_completed_resume_retains_original_when_checkpoint_save_fails(ch
     monkeypatch.setattr(longform_resume.os, "replace", replace)
     monkeypatch.setattr(ffmpeg_utils, "find_ffmpeg", lambda: "ffmpeg")
     monkeypatch.setattr(audiobook, "_resolve_default_language", lambda *_args: "en")
-    monkeypatch.setattr(gpu_gateway, "decide", lambda *_args: object())
     async def chapter(chapter, **_kwargs):
         if chapter.title == "Failed chapter":
             raise RuntimeError("isolated chapter failure")
@@ -186,6 +185,7 @@ def test_partial_completed_resume_retains_original_when_checkpoint_save_fails(ch
         return str(audio), 1.0, True, None
     async def mux(command, **_kwargs):
         Path(command[-1]).write_bytes(b"partial output")
+        return 0, b"", b""
     monkeypatch.setattr(audiobook, "_run_chapter", chapter)
     monkeypatch.setattr(ffmpeg_utils, "run_ffmpeg", mux)
     async def run():

@@ -265,3 +265,27 @@ def test_generate_voice_design_output_tail_is_trimmed(fresh_ref_cache):
         ]))
     out = backend.generate("hello", description="young female, warm tone")
     assert out.shape == (1, sr + int(0.3 * sr))
+
+
+def test_in_process_load_disables_cuda_graph_compile(monkeypatch):
+    """#3567: voxcpm's default optimize=True compiles with CUDA graph trees,
+    whose thread-local state asserts when generation runs on another thread.
+    The in-process backend must load the same way as the isolated sidecar."""
+    seen = {}
+
+    class _FakeVoxCPM:
+        @staticmethod
+        def from_pretrained(checkpoint, **kw):
+            seen.update(kw)
+            return types.SimpleNamespace()
+
+    monkeypatch.setitem(sys.modules, "voxcpm", types.SimpleNamespace(VoxCPM=_FakeVoxCPM))
+    monkeypatch.setattr(
+        tts_backend.VoxCPM2Backend, "is_available", classmethod(lambda cls: (True, ""))
+    )
+    monkeypatch.setattr(tts_backend, "_voxcpm_upgrade_hint", lambda: None)
+
+    tts_backend.VoxCPM2Backend()._ensure_loaded()
+
+    assert seen.get("optimize") is False
+    assert seen.get("load_denoiser") is False

@@ -306,24 +306,11 @@ export default function PronunciationPanel() {
               />
               <Badge tone="neutral">{typeLabel(e.type)}</Badge>
               <Badge tone="neutral">{scopeLabel(e.scope || e.language)}</Badge>
-              {/* An IPA or CMU row saves, validates and toggles on, and is
-                  then dropped before term matching — Phase 1 only substitutes
-                  respelling. #1984 said so in the test preview, which a user
-                  only sees if they run a test. The list is where they look at
-                  what they have saved, so it says so there too (#1949, #2002
-                  by @utkarsha741).
-
-                  Enabled only, matching `inert_entries_for_language`: a row the
-                  user switched OFF is also not applied, but for a reason the
-                  toggle already shows, and saying "not applied yet" there
-                  reads as a defect rather than their own choice.
-
-                  The type test mirrors the backend's — everything that is not
-                  respelling is inert today. Naming ipa/cmu explicitly would
-                  silently stop badging a notation added later, which is the
-                  invisibility this exists to remove. */}
-              {!!e.enabled && e.type !== 'respelling' && (
-                <Badge tone="warning" data-testid={`pron-not-applied-${e.id}`}>
+              {/* The engine only substitutes respelling entries for now; any
+                  other type is stored but skipped at synthesis time, so flag
+                  live entries the user might expect to take effect. */}
+              {e.enabled && e.type !== 'respelling' && (
+                <Badge tone="warn" data-testid={`pron-inert-${e.id}`}>
                   {t('pronunciation.not_applied_badge')}
                 </Badge>
               )}

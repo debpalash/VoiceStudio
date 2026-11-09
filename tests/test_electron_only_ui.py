@@ -19,6 +19,8 @@ def test_tauri_shell_and_legacy_ui_entrypoints_are_removed():
         "scripts/desktop-prod.sh",
         "scripts/desktop-prod.mjs",
         "scripts/desktop-fresh.mjs",
+        "scripts/capture-screenshots.cjs",
+        "scripts/package_for_friend.sh",
     ):
         assert not (ROOT / path).exists(), f"retired Tauri entrypoint remains: {path}"
 
@@ -35,12 +37,6 @@ def test_supported_ui_commands_target_electron_only():
 
     electron_package = json.loads((ROOT / "electron/package.json").read_text(encoding="utf-8"))
     assert "vite.shared.config.ts" in electron_package["scripts"]["test"]
-
-
-def test_remote_worker_acceptance_uses_the_electron_workspace():
-    script = (ROOT / "scripts/verify-remote-worker.sh").read_text(encoding="utf-8")
-    assert "--cwd frontend" not in script
-    assert script.count("bun run --cwd electron test -- src/shared/") == 2
 
 
 def test_docker_builds_the_electron_renderer():

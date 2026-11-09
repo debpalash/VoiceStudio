@@ -33,12 +33,14 @@ def _reset_models(monkeypatch, watermark):
     watermark._detector = None
     watermark._last_used = 0.0
     watermark._prefetched_unused = False
+    watermark._generator_failed_at = None
     monkeypatch.setattr(watermark, "_audioseal_available", None, raising=False)
     yield
     watermark._generator = None
     watermark._detector = None
     watermark._last_used = 0.0
     watermark._prefetched_unused = False
+    watermark._generator_failed_at = None
 
 
 def _fake_audioseal(monkeypatch, load_s: float) -> list[int]:
@@ -512,3 +514,37 @@ def test_prefetched_model_gets_one_extra_idle_window(monkeypatch, watermark):
     # re-establish it, or a failing embed would pass unnoticed.
     assert watermark._prefetched_unused is False
     assert real_release(900, now=far_future) is True
+
+
+def test_failed_generator_load_is_not_retried_on_every_embed(monkeypatch, watermark, caplog):
+    """A host that cannot fetch the AudioSeal checkpoint paid the network
+    timeout (~3 min) on EVERY render, though the audio passed through
+    unmarked each time (#2929 comment). One failed load must be remembered
+    for a cooldown, then retried so a transient outage does not disable
+    marking for the whole session."""
+    import torch as _torch
+
+    calls: list[int] = []
+
+    def _failing_load(name):
+        calls.append(1)
+        raise OSError("<urlopen error [Errno 60] Operation timed out>")
+
+    fake = types.ModuleType("audioseal")
+    fake.AudioSeal = SimpleNamespace(load_generator=_failing_load)
+    monkeypatch.setitem(sys.modules, "audioseal", fake)
+    monkeypatch.setattr(watermark, "is_enabled", lambda: True)
+    monkeypatch.setattr(watermark, "_check_available", lambda: True)
+
+    audio = _torch.zeros(1, 2400)
+    assert watermark.embed_watermark(audio, 24000) is audio
+    caplog.clear()
+    assert watermark.embed_watermark(audio, 24000) is audio
+    assert len(calls) == 1
+    # An expected skip during the cooldown logs without a traceback.
+    assert caplog.records and not any(r.exc_info for r in caplog.records)
+
+    # Once the cooldown has elapsed the load is attempted again.
+    watermark._generator_failed_at -= watermark._GENERATOR_RETRY_SECONDS + 1
+    assert watermark.embed_watermark(audio, 24000) is audio
+    assert len(calls) == 2

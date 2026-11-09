@@ -207,9 +207,9 @@ def _reason_for(diagnostic, **row):
 @pytest.mark.parametrize(
     ("diagnostic", "one_click", "points_at"),
     [
-        ("voxcpm package not installed.", True, "Model Catalogue"),
+        ("voxcpm package not installed.", True, "Settings → Models"),
         ("voxcpm package not installed.", False, "guide"),
-        ("file is missing", True, "Model Catalogue"),
+        ("file is missing", True, "Settings → Models"),
         ("file is missing", False, "guide"),
     ],
 )
@@ -219,9 +219,38 @@ def test_the_next_step_matches_whether_the_app_can_install_it(diagnostic, one_cl
     reason = _reason_for(diagnostic, one_click_install=one_click)
     assert points_at in reason
     if not one_click:
-        assert "Model Catalogue" not in reason
+        assert "Settings → Models" not in reason
 
 
-def test_rows_without_the_install_field_keep_the_catalogue_wording():
+def test_rows_without_the_install_field_name_the_current_settings_page():
     # ASR / LLM / translation rows carry no one_click_install field.
-    assert "Model Catalogue" in _reason_for("transformers not installed")
+    assert "Settings → Models" in _reason_for("transformers not installed")
+
+
+@pytest.mark.parametrize(
+    "diagnostic",
+    ["License not accepted", "Configure a server endpoint in Model Catalogue"],
+)
+def test_public_configuration_guidance_names_current_settings_navigation(diagnostic):
+    reason = _reason_for(diagnostic)
+    assert "Settings → Models" in reason
+    assert "Model Catalogue" not in reason
+
+
+def test_renderer_asr_guidance_matrix_matches_real_owned_backend_payloads():
+    import ast
+    import json
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    tree = ast.parse((root / "backend/services/asr_backend.py").read_text(encoding="utf-8"))
+    hints = ast.literal_eval(next(
+        node.value for node in tree.body
+        if isinstance(node, ast.AnnAssign) and getattr(node.target, "id", None) == "_INSTALL_HINTS"
+    ))
+    fixture = root / "electron/src/renderer/src/features/settings/model-list/fixtures/asr-unavailable.json"
+    for case in json.loads(fixture.read_text(encoding="utf-8")):
+        expected = case["engine"]
+        actual = public_backends([{**expected, "reason": case["diagnostic"]}])[0]
+        assert actual == expected
+        assert actual["install_hint"] == hints[actual["id"]]

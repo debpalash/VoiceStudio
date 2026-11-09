@@ -7,6 +7,7 @@ import AZ from 'country-flag-icons/react/3x2/AZ';
 import BA from 'country-flag-icons/react/3x2/BA';
 import BD from 'country-flag-icons/react/3x2/BD';
 import BG from 'country-flag-icons/react/3x2/BG';
+import BR from 'country-flag-icons/react/3x2/BR';
 import BY from 'country-flag-icons/react/3x2/BY';
 import CN from 'country-flag-icons/react/3x2/CN';
 import CZ from 'country-flag-icons/react/3x2/CZ';
@@ -144,6 +145,8 @@ export const LANGUAGE_FLAGS = {
   fa: IR,
   pl: PL,
   pt: PT,
+  'pt-BR': BR,
+  'pt-PT': PT,
   pa: IN,
   ro: RO,
   ru: RU,

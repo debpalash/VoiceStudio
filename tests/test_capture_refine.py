@@ -104,7 +104,7 @@ def test_no_refine_flag_returns_raw_only(client, monkeypatch):
     body = r.json()
     # REST now polishes the final exactly like the WS socket (leading capital +
     # terminal punctuation) — no more raw "um so like…" leaking to the widget
-    # fallback / MCP / CLI.
+    # fallback / MCP / CLI. Without dictation=true the words stay as spoken.
     assert body["text"] == "Um so like the meeting is at 3pm you know."
     assert "refined_text" not in body
     assert called["n"] == 0
@@ -156,3 +156,18 @@ def test_flag_parsing(client, monkeypatch, flag, expect_refine):
     r = _post(client, refine=flag)
     assert r.status_code == 200
     assert ("refined_text" in r.json()) is expect_refine
+
+
+def test_dictation_callers_get_dictation_cleanup(client):
+    # The hotkey-dictation POST fallback types the same cleaned text as the
+    # socket: the English hesitation "um" goes.
+    body = _post(client, dictation="true").json()
+    assert body["text"] == "So like the meeting is at 3pm you know."
+
+
+def test_reference_mode_keeps_spoken_words_even_for_dictation(client, monkeypatch):
+    # A voice-clone reference transcript must match the audio word for word.
+    monkeypatch.setattr(
+        "services.asr_backend.load_active_asr_backend", lambda *_a, **_k: _StubBackend())
+    body = _post(client, dictation="true", mode="reference").json()
+    assert body["text"].startswith("Um so like")

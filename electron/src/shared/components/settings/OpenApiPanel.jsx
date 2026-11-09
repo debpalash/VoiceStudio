@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, Braces, Copy, ExternalLink, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useTranslation } from 'react-i18next';
+import { DEFAULT_BACKEND_PORT } from '../../app-config.ts';
 import { API, apiFetch } from '../../api/client';
 import { getAdminSession } from '../../api/authSession';
 import { openExternal } from '../../api/external';
@@ -28,52 +29,48 @@ const SPEC_PATH = '/openapi.json';
 
 const ScalarApiReference = lazy(() => import('./ScalarApiReference'));
 
-/**
- * Fetch the spec from the backend base first — apiFetch is the path every other
- * call takes (remote-backend override, LAN PIN, API key). When that transport
- * fails and this page is itself served over http(s), try the SAME-ORIGIN copy:
- * the dev server proxies `/openapi.json` to the backend (vite.config.js), and
- * the packaged web build is served by the backend, so on those origins the
- * relative URL IS the backend. This is what keeps the reference working in an
- * embedded webview that walls off every origin but the page's own (the Claude
- * desktop browser pane, for one) — there the direct base is unreachable while
- * the same-origin route is fine. A file:// / app:// shell has no same-origin
- * spec; the fallback fails too and the original error surfaces as before.
- */
 async function fetchSpec() {
   try {
-    const res = await apiFetch(SPEC_PATH);
-    return await res.json();
+    const response = await apiFetch(SPEC_PATH);
+    return await response.json();
   } catch (err) {
-    const proto = typeof window !== 'undefined' ? window.location?.protocol : '';
-    if (!/^https?:$/.test(proto)) throw err;
+    if (typeof window === 'undefined' || !['http:', 'https:'].includes(window.location.protocol)) {
+      throw err;
+    }
+
     const base = new URL(API, window.location.href);
+    const localHosts = new Set(['localhost', '127.0.0.1', '[::1]']);
     const sameOrigin = base.origin === window.location.origin;
-    // vite.config.js forwards to this one fixed local backend, not overrides.
     const knownDevProxy =
       import.meta.env.DEV &&
-      ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname) &&
+      localHosts.has(window.location.hostname) &&
       base.protocol === 'http:' &&
-      ['localhost', '127.0.0.1', '[::1]'].includes(base.hostname) &&
-      base.port === '3900';
+      localHosts.has(base.hostname) &&
+      base.port === String(DEFAULT_BACKEND_PORT);
     if (!sameOrigin && !knownDevProxy) throw err;
+
     const headers = new Headers();
-    const session = getAdminSession(API);
-    if (session) headers.set('Authorization', `Bearer ${session.token}`);
+    const adminSession = getAdminSession(API);
+    if (adminSession) headers.set('Authorization', `Bearer ${adminSession.token}`);
     try {
       const pin = sessionStorage.getItem('ov_pin');
       if (pin) headers.set('X-OmniVoice-Pin', pin);
     } catch {
-      /* Cookie-authenticated requests also work without storage. */
+      // Storage can be unavailable in embedded browser views.
     }
-    let res;
+
+    let response;
     try {
-      res = await fetch(SPEC_PATH, { cache: 'no-store', headers, credentials: 'include' });
+      response = await fetch(SPEC_PATH, {
+        cache: 'no-store',
+        credentials: 'include',
+        headers,
+      });
     } catch {
       throw err;
     }
-    if (!res.ok) throw err;
-    return await res.json();
+    if (!response.ok) throw err;
+    return await response.json();
   }
 }
 
@@ -103,9 +100,7 @@ export default function OpenApiPanel() {
       setSpec(await fetchSpec());
       setPhase('ready');
     } catch {
-      // apiFetch already retried transient transport failures and the
-      // same-origin fallback was tried; a throw here means the backend
-      // genuinely isn't serving the spec right now.
+      // Both the normal request retries and the constrained fallback failed.
       setSpec(null);
       setPhase('error');
     }

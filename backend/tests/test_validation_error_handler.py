@@ -19,6 +19,8 @@ binary cases 500, and the oversized-string case mirrors the whole body back.
 """
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -43,7 +45,7 @@ def client():
     def echo(body: _Body):  # pragma: no cover - never reached by these tests
         return {"ok": body.path}
 
-    return TestClient(app, raise_server_exceptions=False)
+    return TestClient(app, client=("127.0.0.1", 50000), raise_server_exceptions=False)
 
 
 # ── The regression ─────────────────────────────────────────────────────────
@@ -85,6 +87,37 @@ def test_handler_is_registered_on_the_real_app():
     """The throwaway app above proves the handler works; this proves main.py
     actually installs it (the bug was purely a missing registration)."""
     assert RequestValidationError in real_app.exception_handlers
+
+
+@pytest.mark.parametrize("field", [
+    "max_audio_only_rate", "audio_rate_cap", "video_slow_cap", "gap_guard_s",
+    "min_audio_rate",
+])
+@pytest.mark.parametrize("token", ["NaN", "Infinity", "-Infinity", "1e309", "-1e309"])
+def test_nonfinite_smart_fit_input_is_422_before_engine_resolution(monkeypatch, field, token):
+    """Overflowing JSON numbers and Python's accepted NaN tokens must not 500."""
+    from api.routers import dub_generate as dg
+
+    resolve = AsyncMock(side_effect=AssertionError("invalid request reached the engine"))
+    monkeypatch.setattr(dg, "resolve_generation_backend", resolve)
+    app = FastAPI()
+    app.include_router(dg.router)
+    app.add_exception_handler(RequestValidationError, validation_exception_handler)
+    body = (
+        '{"segments":[{"start":0,"end":1,"text":"synthetic fixture"}],'
+        '"timing_strategy":"smart_fit","fit_options":{"' + field + '":' + token + '}}'
+    )
+    with TestClient(app, client=("127.0.0.1", 50000), raise_server_exceptions=False) as client:
+        response = client.post(
+            "/dub/generate/test-job", content=body,
+            headers={"Content-Type": "application/json"},
+        )
+
+    assert response.status_code == 422, response.text
+    error = response.json()["detail"][0]
+    assert error["loc"] == ["body", "fit_options", field]
+    assert error["type"] == "finite_number"
+    resolve.assert_not_called()
 
 
 # ── The sanitizer, as a unit ───────────────────────────────────────────────

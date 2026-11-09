@@ -248,11 +248,6 @@ Design constraints:
   attack lifetime, avoids a database verifier for a possibly weak operator key,
   and matches VoiceStudio's single-process backend architecture.
 
-Do not reuse `backend.worker.identity.Session` directly. Its worker/stream
-binding semantics are different. Follow its established random-token,
-hash-only, TTL-tested pattern without coupling API authentication to the worker
-package.
-
 ### Canonical authentication resolver
 
 Add one resolver used by HTTP middleware, HTTP dependencies, and WebSocket
@@ -595,7 +590,7 @@ Extend `tests/test_loopback_server_mode.py` and
 `tests/test_admin_route_policy.py`.
 
 For representative read, write, and side-effectful GET routes across settings,
-system, engines, media tools, MCP bindings, pronunciation, and workers, test:
+system, engines, media tools, MCP bindings and pronunciation, test:
 
 | Context                                   |                                            Read-only admin | Write/side-effect admin | Native host-path action |
 | ----------------------------------------- | ---------------------------------------------------------: | ----------------------: | ----------------------: |
@@ -982,7 +977,7 @@ The three deterministic regressions were corrected; all four are included in
 the 324-test compatibility gate above. Re-running the remaining last-failed set
 produced 33 failures, three
 setup errors, and one pass, all confined to unmodified engine/FFmpeg/IndexTTS,
-AppRun/shell, dubbing-export, worker-permission, and Windows path/permission
+AppRun/shell, dubbing-export and Windows path/permission
 tests. No failing assertion targets the new auth/session behavior, and the
 affected route/middleware suites pass in the compatibility gate above. These
 existing Windows/offline failures are recorded rather than hidden; the required

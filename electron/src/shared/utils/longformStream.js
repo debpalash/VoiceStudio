@@ -4,6 +4,7 @@
  * Both editors compile to a chapter/span plan and stream progress from the same
  * server-side renderer (`_render_longform_sse`), emitting the same event shapes:
  *   { type: 'started', chapters }
+ *   { type: 'progress', index, total, fraction, eta_s, rtf, chunk_s, elapsed_s }  (#3417, live-only)
  *   { type: 'chapter' | 'chapter_error', index, total, title }
  *   { type: 'assembling' }
  *   { type: 'done', output, cached_chapters?, failed_chapters? }

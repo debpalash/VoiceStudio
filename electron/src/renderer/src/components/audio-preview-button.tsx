@@ -6,7 +6,6 @@ import {
   audioSource,
   audioLoaders,
   MediaProvider,
-  useMediaState,
   type MediaPlayerInstance,
 } from './media-player';
 import { Button } from './ui/button';
@@ -16,14 +15,22 @@ interface PreviewProps {
   source: string;
   fallbackSrc?: string;
   activity?: AppActivityKind;
+  /** Called once playback of a successfully loaded clip stops (pause or end). */
   onReady?: () => void;
   disabled?: boolean;
   disabledLabel?: string;
 }
+type Status = 'idle' | 'loading' | 'playing' | 'paused' | 'error';
 export function AudioPreviewButton(props: PreviewProps) {
-  return <PreviewPlayer key={props.source + ':' + props.src} {...props} />;
+  return <PreviewButton key={props.source + ':' + props.src} {...props} />;
 }
-function PreviewPlayer({
+/**
+ * One-shot preview control. The player is mounted only after the first click:
+ * preview routes may render on demand (tens of seconds on a cold engine), so
+ * every state must stay clickable — loading cancels, an error retries with a
+ * fresh request, and nothing waits on a play() promise that may never settle.
+ */
+function PreviewButton({
   src,
   source,
   fallbackSrc,
@@ -32,116 +39,109 @@ function PreviewPlayer({
   disabled,
   disabledLabel,
 }: PreviewProps) {
-  const [fallback, setFallback] = useState(false);
-  const retried = useRef(false);
-  const resolved = fallback && fallbackSrc ? fallbackSrc : src;
-  const player = useRef<MediaPlayerInstance>(null);
-  return (
-    <StudioMediaPlayer
-      key={resolved}
-      playerRef={player}
-      sourceKey={source}
-      src={audioSource(resolved)}
-      viewType="audio"
-      load={fallback ? 'eager' : 'play'}
-      autoPlay={fallback}
-      onError={() => {
-        if (!retried.current && fallbackSrc && fallbackSrc !== src) {
-          retried.current = true;
-          setFallback(true);
-        }
-      }}
-      className="inline-flex"
-    >
-      <MediaProvider loaders={audioLoaders} className="hidden" />
-      <PreviewControl
-        player={player}
-        activity={activity}
-        onReady={onReady}
-        disabled={disabled}
-        disabledLabel={disabledLabel}
-      />
-    </StudioMediaPlayer>
-  );
-}
-function PreviewControl({
-  player,
-  activity,
-  onReady,
-  disabled,
-  disabledLabel,
-}: {
-  player: React.RefObject<MediaPlayerInstance | null>;
-  activity?: AppActivityKind;
-  onReady?: () => void;
-  disabled?: boolean;
-  disabledLabel?: string;
-}) {
   const { t } = useTranslation();
-  const paused = useMediaState('paused');
-  const mediaError = useMediaState('error');
-  const waiting = useMediaState('waiting');
-  const [pending, setPending] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const mounted = useRef(true);
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-  const busy = pending || waiting;
-  const error = failed || Boolean(mediaError);
+  const [status, setStatus] = useState<Status>('idle');
+  const [attempt, setAttempt] = useState(0);
+  const [fallback, setFallback] = useState(false);
+  const player = useRef<MediaPlayerInstance>(null);
+  const played = useRef(false);
+  const readyFired = useRef(false);
+  const finishActivity = useRef<(() => void) | null>(null);
+  const settle = () => {
+    finishActivity.current?.();
+    finishActivity.current = null;
+  };
+  useEffect(() => settle, []);
+  const stopped = () => {
+    setStatus('paused');
+    // Deferred to the end of playback: onReady typically refetches the item,
+    // which changes src and remounts this button mid-clip.
+    if (played.current && !readyFired.current) {
+      readyFired.current = true;
+      onReady?.();
+    }
+  };
+  const start = () => {
+    if (activity && !finishActivity.current) finishActivity.current = beginAppActivity(activity);
+    setAttempt((n) => n + 1);
+    setStatus('loading');
+  };
+  const click = () => {
+    if (status === 'idle' || status === 'error') start();
+    else if (status === 'loading') {
+      // Unmounting drops the request; the backend keeps rendering into its
+      // cache, so the next click picks the finished clip up.
+      settle();
+      setStatus('idle');
+    } else if (status === 'playing') void player.current?.pause().catch(() => {});
+    else void player.current?.play().catch(() => setStatus('error'));
+  };
+  const resolved = fallback && fallbackSrc ? fallbackSrc : src;
   const label =
     disabled && disabledLabel
       ? disabledLabel
-      : t(
-          error
-            ? 'player.unavailable'
-            : busy
-              ? 'common.loading'
-              : paused
-                ? 'clone.preview_voice'
-                : 'player.pause',
-        );
-  const toggle = async () => {
-    setFailed(false);
-    if (!paused) {
-      await player.current?.pause();
-      return;
-    }
-    setPending(true);
-    const finishActivity = activity ? beginAppActivity(activity) : null;
-    try {
-      await player.current?.play();
-      if (mounted.current) onReady?.();
-    } catch {
-      if (mounted.current) setFailed(true);
-    } finally {
-      finishActivity?.();
-      if (mounted.current) setPending(false);
-    }
-  };
+      : status === 'error'
+        ? t('player.unavailable') + ' · ' + t('common.retry')
+        : status === 'loading'
+          ? t('common.loading') + ' · ' + t('common.cancel')
+          : status === 'playing'
+            ? t('player.pause')
+            : t('clone.preview_voice');
   return (
-    <Button
-      variant="ghost"
-      size="icon-xs"
-      title={label}
-      aria-label={label}
-      aria-pressed={!paused}
-      aria-busy={busy}
-      disabled={disabled || pending}
-      onClick={() => void toggle()}
-    >
-      {error ? (
-        <CircleAlertIcon className="text-destructive" />
-      ) : busy ? (
-        <LoaderCircleIcon className="animate-spin" />
-      ) : paused ? (
-        <PlayIcon />
-      ) : (
-        <PauseIcon />
+    <span className="inline-flex">
+      {status !== 'idle' && (
+        <StudioMediaPlayer
+          key={resolved + ':' + attempt}
+          playerRef={player}
+          sourceKey={source}
+          src={audioSource(resolved)}
+          viewType="audio"
+          load="eager"
+          autoPlay
+          onPlaying={() => {
+            played.current = true;
+            settle();
+            setStatus('playing');
+          }}
+          onPause={stopped}
+          onEnded={stopped}
+          onAutoPlayFail={() => {
+            settle();
+            setStatus('paused');
+          }}
+          onError={() => {
+            if (!fallback && fallbackSrc && fallbackSrc !== src) {
+              setFallback(true);
+              return;
+            }
+            settle();
+            setStatus('error');
+          }}
+          className="hidden"
+        >
+          <MediaProvider loaders={audioLoaders} className="hidden" />
+        </StudioMediaPlayer>
       )}
-    </Button>
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        title={label}
+        aria-label={label}
+        aria-pressed={status === 'playing'}
+        aria-busy={status === 'loading'}
+        disabled={disabled}
+        onClick={click}
+      >
+        {status === 'error' ? (
+          <CircleAlertIcon className="text-destructive" />
+        ) : status === 'loading' ? (
+          <LoaderCircleIcon className="animate-spin" />
+        ) : status === 'playing' ? (
+          <PauseIcon />
+        ) : (
+          <PlayIcon />
+        )}
+      </Button>
+    </span>
   );
 }

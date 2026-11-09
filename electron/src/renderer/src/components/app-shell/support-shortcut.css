@@ -1,78 +1,64 @@
-.support-shortcut {
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
-  border: 1px solid color-mix(in oklab, #b99afa 35%, var(--border));
-  border-radius: 9px;
-  color: color-mix(in oklab, #b99afa 60%, var(--foreground));
-  background: linear-gradient(
-    115deg,
-    color-mix(in oklab, #9874df 15%, var(--card)),
-    color-mix(in oklab, #ecb2d5 7%, var(--card))
-  );
-  box-shadow:
-    inset 0 1px 0 rgb(220 200 255 / 10%),
-    0 2px 10px rgb(133 94 196 / 5%);
+/* Title bar shortcuts (Get Pro, GitHub Star): quiet ghost controls that share
+   the search button's height and hover, so the work area keeps the attention. */
+.support-shortcut,
+.github-star-shortcut {
+  height: 1.75rem;
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius) - 2px);
+  color: var(--toolbar-control-foreground, var(--muted-foreground));
   transition:
-    border-color 180ms ease,
-    box-shadow 180ms ease,
-    color 180ms ease;
+    color 150ms ease,
+    background-color 150ms ease,
+    border-color 150ms ease;
 }
 .support-shortcut:hover,
-.support-shortcut:focus-visible {
-  color: color-mix(in oklab, #d1b8ff 50%, var(--foreground));
-  border-color: color-mix(in oklab, #b99afa 60%, var(--border));
-  box-shadow:
-    inset 0 1px 0 rgb(220 200 255 / 18%),
-    0 0 16px rgb(160 119 220 / 13%);
-}
-.support-shortcut::before {
-  position: absolute;
-  z-index: -1;
-  inset: -70% -40%;
-  content: '';
-  background: linear-gradient(110deg, transparent 35%, rgb(222 196 255 / 12%) 50%, transparent 65%);
-  transform: translateX(-35%);
-  transition: transform 500ms ease;
-}
-.support-shortcut:hover::before,
-.support-shortcut:focus-visible::before {
-  transform: translateX(35%);
-}
-.github-star-shortcut {
-  border: 1px solid color-mix(in oklab, #d9b36a 22%, var(--border));
-  border-radius: 9px;
-  color: color-mix(in oklab, #d9b36a 18%, var(--foreground));
-  background: linear-gradient(120deg, color-mix(in oklab, #d9b36a 5%, var(--card)), var(--card));
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--foreground) 5%, transparent);
-  transition:
-    border-color 180ms ease,
-    box-shadow 180ms ease;
-}
+.support-shortcut:focus-visible,
 .github-star-shortcut:hover,
 .github-star-shortcut:focus-visible {
-  border-color: color-mix(in oklab, #d9b36a 50%, var(--border));
-  box-shadow: 0 0 14px rgb(217 179 106 / 9%);
+  color: var(--foreground);
+  background: var(--toolbar-control-hover, var(--accent));
+}
+.support-shortcut svg {
+  color: var(--primary);
+}
+.github-star-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 2px 0 6px;
+}
+.github-star-label svg {
+  color: var(--warning);
+  transition:
+    fill 150ms ease,
+    transform 260ms ease;
+}
+.github-star-shortcut:hover .github-star-label svg,
+.github-star-shortcut:focus-visible .github-star-label svg {
+  fill: var(--warning);
+  transform: rotate(72deg);
 }
 .github-star-count {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  margin-left: 2px;
-  padding: 3px 6px;
-  border-radius: 5px;
-  background: color-mix(in oklab, #d9b36a 9%, transparent);
+  padding: 0 6px 0 2px;
+  color: var(--muted-foreground);
   font-size: 11px;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
-.github-star-count svg {
-  color: color-mix(in oklab, #d9b36a 70%, var(--foreground));
-  fill: color-mix(in srgb, #d9b36a 22%, transparent);
+.github-star-shortcut:hover .github-star-count,
+.github-star-shortcut:focus-visible .github-star-count {
+  color: var(--foreground);
 }
 @media (prefers-reduced-motion: reduce) {
   .support-shortcut,
-  .support-shortcut::before,
-  .github-star-shortcut {
+  .github-star-shortcut,
+  .github-star-label svg {
     transition: none;
+  }
+  .github-star-shortcut:hover .github-star-label svg,
+  .github-star-shortcut:focus-visible .github-star-label svg {
+    transform: none;
   }
 }

@@ -63,6 +63,7 @@ const getSystemLanguage = () => {
     'id',
     'uk',
     'ar',
+    'gl',
   ].find((code) => navLang.startsWith(code.split('-')[0]));
   return match || 'en';
 };
@@ -120,12 +121,15 @@ const STEPS = [
   'starting_backend',
 ];
 
-// Stages that only occur when there is actual first-run/repair work to do.
-// `awaiting_setup` renders its own screen (FirstRunSetup) rather than the
-// step list below, but it still counts as "install work observed" (#1894):
-// reaching it means Rust found no venv and is about to do real work, so the
-// journey chrome should already be armed by the time the step list appears.
-const INSTALL_STAGES = ['downloading_uv', 'creating_venv', 'installing_deps', 'awaiting_setup'];
+// Stages that mean real install work is underway. `awaiting_setup` counts: Rust
+// found no venv, so work is about to start even though FirstRunSetup (not the
+// step list) is what renders for it.
+const INSTALL_WORK_STAGES = [
+  'downloading_uv',
+  'creating_venv',
+  'installing_deps',
+  'awaiting_setup',
+];
 
 // How many log lines the <pre> shows. `logs` state holds exactly this tail and
 // nothing more, so the per-event array copy stays bounded no matter how long a
@@ -463,9 +467,7 @@ export function BootstrapSplash({ stage, message, attempt = 0 }) {
   const [progress, setProgress] = useState(null);
   const [region, setRegionState] = useState('auto');
   const [retrying, setRetrying] = useState(false);
-  // Stages actually seen during the CURRENT bootstrap attempt (see the
-  // tracking effect below). Drives "done" ticks and journey visibility off
-  // observed reality instead of list position (#1894).
+  // Stages the status poll has reported during the current attempt.
   const [polledStages, setPolledStages] = useState(() => new Set([stage]));
   // Every line of this bootstrap. `logs` above is only the rendered tail.
   const [totalLines, setTotalLines] = useState(0);
@@ -478,31 +480,18 @@ export function BootstrapSplash({ stage, message, attempt = 0 }) {
   const prevProgRef = useRef(null); // {bytes, t} — last progress event
   const rateRef = useRef(0); // EMA bytes/sec across events
 
-  // The union of what we polled and what actually logged.
-  //
-  // Neither source alone is complete. `bootstrap_status` is sampled ~1/s, so
-  // a stage that starts and finishes between samples is never polled — on a
-  // fast disk `creating_venv` routinely does. Stage-tagged `bootstrap-log`
-  // lines close that gap: the Rust side emits them as the work happens, so a
-  // line tagged with a stage is proof that stage ran, whether or not the
-  // poll ever saw it.
-  //
-  // Lines are scoped to the current attempt so a retry cannot inherit the
-  // previous one's evidence. The attempt is the id Rust stamps on both the
-  // status reply and every log line (#1900) — an exact match, rather than a
-  // clock comparison against a boundary this side had to guess at. (The
-  // VISIBLE log is left alone: clearing it on a restart nobody asked for
-  // would destroy the user's context, cf. #1847.)
+  // A stage counts as observed when the poll reported it OR a stage-tagged log
+  // line of this attempt proves it ran. Polling is ~1/s, so a quick stage can
+  // slip between two ticks; its log lines are separate evidence. Lines are
+  // matched on attempt id equality, so a retry never inherits proof from a
+  // previous run.
   const observedStages = useMemo(() => {
     const seen = new Set(polledStages);
     for (const entry of allLogsRef.current) {
-      if (entry?.stage && entry.attempt === attempt) seen.add(entry.stage);
+      if (entry.stage && entry.attempt === attempt) seen.add(entry.stage);
     }
     return seen;
-    // totalLines is the render signal for allLogsRef, which is a ref and so
-    // cannot itself be a dependency. Reading the full run rather than the
-    // rendered tail is the point: a stage whose only evidence scrolled out of
-    // the capped tail would otherwise read as never having run (#1847).
+    // allLogsRef is a ref; totalLines is the signal that it changed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [polledStages, totalLines, attempt]);
 
@@ -523,19 +512,10 @@ export function BootstrapSplash({ stage, message, attempt = 0 }) {
     setLogs([]);
   };
 
-  // True once any genuine install stage has been observed this session. On a
-  // warm start the Rust stage jumps straight from `checking` to
-  // `starting_backend` — nothing here ever fires — so the first-run install
-  // chrome (journey rail, "Installing" heading, step list) stays suppressed
-  // instead of fabricating completed work (#1894).
-  const installWorkSeen = INSTALL_STAGES.some((s) => observedStages.has(s));
+  const installWorkSeen = INSTALL_WORK_STAGES.some((s) => observedStages.has(s));
 
-  // Clear the splash for a retry the user just asked for. The attempt
-  // BOUNDARY is no longer this side's business (#1900) — Rust bumps its
-  // attempt id inside `respawn_backend`, before the stage moves, and the
-  // reset effect below follows that. What is left here is presentation: empty
-  // the visible log and the polled-stage set so the user watches a fresh run
-  // start, instead of the failed one's output sitting under a spinner.
+  // Fresh-run presentation reset for a user-requested retry. Where an attempt
+  // begins is decided by Rust (#1900); this only clears what is on screen.
   const beginAttempt = () => {
     resetLogs();
     setPolledStages(new Set());
@@ -570,32 +550,20 @@ export function BootstrapSplash({ stage, message, attempt = 0 }) {
     }
   };
 
-  // Record `stage` as observed the moment it's seen, and reset when a new
-  // attempt begins.
-  //
-  // Sticky WITHIN an attempt: the functional updater bails out (same Set
-  // reference) once a stage is recorded, so it never un-observes and never
-  // loops. But NOT across attempts — a Retry restarts the bootstrap from
-  // `checking`, and what the previous attempt did says nothing about what
-  // this one will do. Without the reset, stages the new attempt skips would
-  // still render as completed, which is the very fabrication this change
-  // exists to remove.
-  //
-  // A new attempt is a fact Rust reports, not something this side infers from
-  // a sampled stage (#1900). Every real restart bumps the id — both retry
-  // commands via `respawn_backend`, and the supervisor's own venv rebuild — so
-  // the id changing IS the boundary, whether or not the poll ever sampled the
-  // restart stage. The heuristics this replaces (arriving at
-  // `checking`/`awaiting_setup`, leaving `failed`) could miss a Rust-initiated
-  // restart by up to a poll interval and discard that attempt's earliest
-  // evidence. Equality on an id cannot.
+  // Track observed stages. Within an attempt the set only grows; a new attempt
+  // id (compared by equality alone) starts it over from the current stage.
   useEffect(() => {
     if (prevAttemptRef.current !== attempt) {
       prevAttemptRef.current = attempt;
       setPolledStages(new Set([stage]));
       return;
     }
-    setPolledStages((p) => (p.has(stage) ? p : new Set(p).add(stage)));
+    setPolledStages((prev) => {
+      if (prev.has(stage)) return prev;
+      const next = new Set(prev);
+      next.add(stage);
+      return next;
+    });
   }, [stage, attempt]);
 
   // Load persisted region on mount.
@@ -778,9 +746,6 @@ export function BootstrapSplash({ stage, message, attempt = 0 }) {
           data-tauri-drag-region
         >
           <Waveform />
-          {/* Suppressed until real install work is observed — otherwise a
-              warm start (or a repair sync) shows "Setup done / Installing
-              active" for work that never happened (#1894). */}
           {installWorkSeen && <JourneyRail t={t} />}
           <div className="mt-2 flex flex-wrap items-end justify-between gap-6">
             <div className="min-w-0">
@@ -903,11 +868,6 @@ export function BootstrapSplash({ stage, message, attempt = 0 }) {
           </section>
         ) : (
           <section className="fr-rise flex flex-col gap-2.5" style={{ '--rise': 1 }}>
-            {/* Heading, step list and resume note only make sense once real
-                install work has actually been observed — otherwise a warm
-                start or a repair sync narrates a first-run install that
-                never happened (#1894). The live stage label in the masthead
-                and the progress meter below stay visible either way. */}
             {installWorkSeen && (
               <h2 className="m-0 font-mono text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-fg-muted">
                 {t('firstrun.installing_title', 'Installing')}
@@ -921,51 +881,50 @@ export function BootstrapSplash({ stage, message, attempt = 0 }) {
               aria-valuenow={Math.round(overallPct)}
             />
             {installWorkSeen && (
-              <ol className="m-0 mt-1 flex list-none flex-col gap-2 p-0">
+              <ol className="m-0 flex list-none flex-col gap-1.5 p-0">
                 {STEPS.map((s, i) => {
-                  const activeStep = i === stepIndex;
-                  // Done only if this stage was actually observed AND it isn't
-                  // the one currently in progress — list POSITION alone lies on
-                  // a warm start or a repair sync, where earlier stages in the
-                  // fixed STEPS order are skipped by Rust entirely (#1894).
-                  const done = !activeStep && observedStages.has(s);
+                  const active = i === stepIndex;
+                  // Never infer "done" from list position: warm starts and repair
+                  // syncs skip the earlier stages entirely.
+                  const done = !active && observedStages.has(s);
+                  const total = stageProgress?.bytes_total ?? stageProgress?.total_bytes;
+                  const bytesDone = stageProgress?.bytes_done;
+                  const hasTotal = total > 0;
+                  const showEta =
+                    hasTotal && rateRef.current > 0 && bytesDone != null && bytesDone < total;
                   return (
                     <li
                       key={s}
-                      className={cn(
-                        'flex min-w-0 items-center gap-2 text-sm',
-                        !done && !activeStep && 'opacity-45',
-                      )}
+                      data-step={s}
+                      data-state={done ? 'done' : active ? 'active' : 'pending'}
+                      className="flex items-center gap-2.5 text-sm"
                     >
                       <span
-                        className={cn(
-                          'h-1.5 w-1.5 shrink-0 rounded-full',
-                          done
-                            ? 'bg-success shadow-[0_0_5px_1px_color-mix(in_srgb,var(--color-success)_50%,transparent)]'
-                            : activeStep
-                              ? 'bg-primary shadow-[0_0_6px_1px_var(--color-brand-glow)] fr-pulse'
-                              : 'bg-fg-subtle/40',
-                        )}
                         aria-hidden="true"
+                        className={cn(
+                          'h-2 w-2 shrink-0 rounded-full',
+                          done && 'bg-success',
+                          active && 'animate-pulse bg-primary',
+                          !done && !active && 'bg-fg-subtle/40',
+                        )}
                       />
-                      <span className={cn(activeStep && 'font-semibold', done && 'text-fg-muted')}>
+                      <span
+                        className={cn(
+                          done && 'text-fg-muted',
+                          active && 'font-semibold text-fg',
+                          !done && !active && 'text-fg-subtle/60',
+                        )}
+                      >
                         {t(`bootstrap.${s}`, STAGE_LABEL[s])}
                       </span>
-                      {activeStep && stageProgress && (
-                        <span className="ml-auto whitespace-nowrap font-mono text-[0.64rem] tabular-nums text-fg-muted">
-                          {formatBytes(stageProgress.bytes_done)}
-                          {stageProgress.bytes_total > 0
-                            ? ` / ${formatBytes(stageProgress.bytes_total)}`
-                            : ''}
-                          {pctFromBytes != null ? ` (${pctFromBytes}%)` : ''}
-                          {stageProgress.bytes_total > 0 &&
-                            rateRef.current > 0 &&
-                            stageProgress.bytes_done < stageProgress.bytes_total &&
+                      {active && stageProgress && (
+                        <span className="ml-auto font-mono text-[0.64rem] tabular-nums text-fg-muted">
+                          {formatBytes(bytesDone)}
+                          {hasTotal && ` / ${formatBytes(total)}`}
+                          {pctFromBytes != null && ` (${Math.round(pctFromBytes)}%)`}
+                          {showEta &&
                             ` · ${t('firstrun.eta_left', {
-                              eta: formatEta(
-                                (stageProgress.bytes_total - stageProgress.bytes_done) /
-                                  rateRef.current,
-                              ),
+                              eta: formatEta((total - bytesDone) / rateRef.current),
                               defaultValue: '~{{eta}} left',
                             })}`}
                         </span>
@@ -976,10 +935,10 @@ export function BootstrapSplash({ stage, message, attempt = 0 }) {
               </ol>
             )}
             {installWorkSeen && (
-              <p className="m-0 text-xs text-fg-subtle">
+              <p className="m-0 text-xs leading-snug text-fg-subtle">
                 {t(
                   'firstrun.resume_note',
-                  'Interrupted downloads resume automatically — closing the app is safe.',
+                  'Interrupted downloads pick up where they left off. You can close the app safely.',
                 )}
               </p>
             )}

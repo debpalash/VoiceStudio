@@ -10,7 +10,7 @@ WhisperX remains the cross-platform default.
 ## Selecting it
 
 - Install it into the app venv: `uv pip install funasr`.
-- Then **Model Catalogue**, ASR tab → **Use** on the FunASR row, or
+- Then **Settings → Models**, ASR tab → **Use** on the FunASR row, or
   `OMNIVOICE_ASR_BACKEND=funasr`.
 
 Auto-detect never picks it; it's an explicit opt-in.

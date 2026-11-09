@@ -1,6 +1,11 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
-import { SetupProgressTracker, cleanProcessLine, parseByteSize } from './setup-progress';
+import {
+  DOWNLOAD_STALL_MS,
+  SetupProgressTracker,
+  cleanProcessLine,
+  parseByteSize,
+} from './setup-progress';
 
 describe('SetupProgressTracker', () => {
   it('turns uv package and byte output into progress with rate and ETA', () => {
@@ -137,5 +142,80 @@ describe('SetupProgressTracker', () => {
   it('normalizes uv units and terminal escape sequences', () => {
     expect(parseByteSize('1.5', 'GiB')).toBe(1.5 * 1024 ** 3);
     expect(cleanProcessLine('\u001b[2K Downloaded torch\r')).toBe('Downloaded torch');
+  });
+
+  // #3411: uv prints nothing while a large wheel downloads.
+  it('does not let repeated byte reports or announcements hide five minutes without progress', () => {
+    const tracker = new SetupProgressTracker();
+    tracker.ingest('Downloading torch (3 GiB)', 0);
+    tracker.ingest('torch 12 MiB/3 GiB', 1_000);
+    tracker.ingest('torch 13 MiB/3 GiB', 2_000);
+    expect(tracker.snapshot(2_000).bytesPerSecond).toBeGreaterThan(0);
+    for (let at = 32_000; at <= 302_000; at += 30_000) {
+      tracker.ingest('Downloading torch (3 GiB)', at);
+      tracker.ingest('torch 13 MiB/3 GiB', at);
+    }
+    expect(tracker.snapshot(302_000)).toMatchObject({ stalled: true, stalledSeconds: 300 });
+    expect(tracker.snapshot(302_000).bytesPerSecond).toBeUndefined();
+    expect(tracker.snapshot(302_000).etaSeconds).toBeUndefined();
+    tracker.ingest('torch 14 MiB/3 GiB', 303_000);
+    expect(tracker.snapshot(303_000).stalled).toBeUndefined();
+  });
+
+  it('names the source host and flags a stall only when no bytes arrive', () => {
+    const tracker = new SetupProgressTracker();
+    tracker.setDownloadHosts(new Map([['nvidia_cudnn_cu12', 'files.pythonhosted.org']]));
+    tracker.ingest('Downloading nvidia-cudnn-cu12 (634.0MiB)', 0);
+    expect(tracker.snapshot(1_000)).toMatchObject({
+      activePackage: 'nvidia-cudnn-cu12',
+      downloadHost: 'files.pythonhosted.org',
+    });
+
+    // Bytes landing in uv's cache keep a silent download live.
+    for (let at = 10_000; at <= 120_000; at += 10_000) tracker.observeInFlight(at, at);
+    expect(tracker.snapshot(120_000 + DOWNLOAD_STALL_MS - 1).stalled).toBeUndefined();
+    expect(tracker.snapshot(120_000 + DOWNLOAD_STALL_MS)).toMatchObject({
+      stalled: true,
+      stalledSeconds: DOWNLOAD_STALL_MS / 1000,
+      downloadHost: 'files.pythonhosted.org',
+    });
+    // A finished wheel leaving the temp area is not growth; the next one is.
+    tracker.observeInFlight(5, 200_000);
+    expect(tracker.snapshot(200_000).stalled).toBe(true);
+    tracker.observeInFlight(10, 201_000);
+    expect(tracker.snapshot(201_000).stalled).toBeUndefined();
+  });
+
+  it('never reports a stall once downloads are complete', () => {
+    const tracker = new SetupProgressTracker();
+    tracker.ingest('Downloading torch (2.0 GiB)', 0);
+    tracker.ingest('Downloaded torch', 1_000);
+    expect(tracker.snapshot(1_000 + DOWNLOAD_STALL_MS * 3).stalled).toBeUndefined();
+    tracker.reset();
+    expect(tracker.snapshot(DOWNLOAD_STALL_MS * 3).stalled).toBeUndefined();
+  });
+
+  it('shows wheel downloads the shell runs itself, with rate, stall and hand-back to uv (#3411)', () => {
+    const tracker = new SetupProgressTracker();
+    tracker.setDownloadHosts(new Map([['torch', 'download-r2.pytorch.org']]));
+    tracker.observeTransfer('torch', 0, 3_000_000_000, 0);
+    tracker.observeTransfer('torch', 500_000_000, 3_000_000_000, 10_000);
+    const moving = tracker.observeTransfer('torch', 1_000_000_000, 3_000_000_000, 20_000);
+    expect(moving).toMatchObject({
+      activePackage: 'torch',
+      downloadHost: 'download-r2.pytorch.org',
+      downloadedBytes: 1_000_000_000,
+      totalBytes: 3_000_000_000,
+      downloadsComplete: false,
+    });
+    expect(moving.bytesPerSecond).toBeCloseTo(50_000_000);
+    expect(tracker.snapshot(20_000 + DOWNLOAD_STALL_MS).stalled).toBe(true);
+    expect(tracker.observeTransfer('torch', 3_000_000_000, 3_000_000_000, 80_000)).toMatchObject({
+      completedDownloads: 1,
+      downloadsComplete: true,
+    });
+    // A failed fast download is withdrawn: uv announces its own download next.
+    tracker.observeTransfer('torch', 0, 0, 90_000);
+    expect(tracker.snapshot(90_000 + DOWNLOAD_STALL_MS).stalled).toBeUndefined();
   });
 });

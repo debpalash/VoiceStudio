@@ -60,6 +60,18 @@ _detector_lock = threading.Lock()
 # 20 still finds it warm (code-review finding 2 on the prefetch PR).
 _prefetched_unused = False
 
+# Monotonic stamp of the last failed generator load. A host that cannot fetch
+# the checkpoint otherwise waits out the network timeout (~3 min) on every
+# render while the audio passes through unmarked anyway. A failure is retried
+# after the cooldown, so a transient outage does not disable marking for the
+# whole session.
+_generator_failed_at: Optional[float] = None
+_GENERATOR_RETRY_SECONDS = 600.0
+
+
+class _GeneratorLoadDeferred(RuntimeError):
+    """The generator load failed recently and its retry is deferred."""
+
 # 16-bit message: "OM" in ASCII = 0x4F 0x4D = 0100_1111 0100_1101
 # This is our signature — every VoiceStudio-generated audio carries it.
 OMNI_MESSAGE = [0, 1, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1]
@@ -70,6 +82,9 @@ OMNI_MESSAGE = [0, 1, 0, 0, 1, 1, 1, 1, 0, 1, 0, 0, 1, 1, 0, 1]
 # 30 s bounds each call to tens of MB; the 16-bit message repeats throughout
 # the audio, so per-chunk embedding/detection is equivalent.
 _CHUNK_SECONDS = 30
+
+# Re-embeds allowed to fit a marked take under full scale (see embed_watermark).
+_HEADROOM_PASSES = 3
 
 
 # AudioSeal vendors moshi's ``@torch_compile_lazy`` on SEANetEncoder.forward,
@@ -188,12 +203,24 @@ def _get_generator(mark_prefetched: bool = False):
     window between two lock scopes where the claim could land on an
     already-used model.
     """
-    global _generator, _last_used, _prefetched_unused
+    global _generator, _last_used, _prefetched_unused, _generator_failed_at
     with _generator_lock:
         _last_used = time.monotonic()
         if _generator is None:
+            if (
+                _generator_failed_at is not None
+                and _last_used - _generator_failed_at < _GENERATOR_RETRY_SECONDS
+            ):
+                raise _GeneratorLoadDeferred(
+                    "AudioSeal generator load failed recently; retry deferred"
+                )
             from audioseal import AudioSeal
-            _generator = AudioSeal.load_generator("audioseal_wm_16bits")
+            try:
+                _generator = AudioSeal.load_generator("audioseal_wm_16bits")
+            except Exception:
+                _generator_failed_at = time.monotonic()
+                raise
+            _generator_failed_at = None
             _generator.eval()
             logger.info("AudioSeal generator loaded (16-bit message mode)")
             _prefetched_unused = mark_prefetched
@@ -237,7 +264,8 @@ def prefetch_generator(*, allow_download: bool = False) -> None:
     macOS deployment), serialized inside the first synthesis and 3 s short of
     a 90 s client timeout. Warming here overlaps that span with the TTS model
     load. No-op when watermarking is off or audioseal is absent; a failure
-    logs and leaves the lazy path to retry on first embed. Default startup is
+    logs and leaves the lazy path to retry once the load cooldown has passed
+    (``_GENERATOR_RETRY_SECONDS``). Default startup is
     also cache-only; a download is allowed only when the user explicitly set
     ``OMNIVOICE_PRELOAD_WATERMARK=1``.
     """
@@ -252,7 +280,7 @@ def prefetch_generator(*, allow_download: bool = False) -> None:
         logger.info("AudioSeal generator prefetched in the background")
     except Exception:
         logger.warning(
-            "Watermark prefetch failed; the first embed will retry inline",
+            "Watermark prefetch failed; embeds retry inline after the load cooldown",
             exc_info=True,
         )
 
@@ -496,14 +524,35 @@ def embed_watermark(
 
         # AudioSeal 0.2 ignores sample_rate: normalize each bounded chunk
         # explicitly, then add only the resampled watermark to the source.
-        with _eager_audioseal():
-            watermarked = torch.cat(
-                [
-                    _embed_chunk(generator, seg, sample_rate, msg)
-                    for seg in _iter_chunks(audio, sample_rate)
-                ],
-                dim=-1,
-            )
+        def _embed(host: torch.Tensor) -> torch.Tensor:
+            with _eager_audioseal():
+                return torch.cat(
+                    [
+                        _embed_chunk(generator, seg, sample_rate, msg)
+                        for seg in _iter_chunks(host, sample_rate)
+                    ],
+                    dim=-1,
+                )
+
+        watermarked = _embed(audio)
+        # Every exit (PCM16 stream frames, WAV, MP3) is fixed-point, so any
+        # marked sample over full scale is clipped AFTER the mark and the mark
+        # is damaged there. A take peak-normalized close to 0 dBFS (or a raw
+        # take) leaves the residual no headroom. Never touch audio after
+        # marking: when the residual pushes an in-range take over full scale,
+        # attenuate the HOST and re-embed until it fits (bounded; one extra
+        # embed for a real AudioSeal residual). A host that is already over
+        # full scale before marking is left as it came in.
+        host_peak = float(audio.abs().max()) if audio.numel() else 0.0
+        gain = 1.0
+        for _ in range(_HEADROOM_PASSES if 0.0 < host_peak <= 1.0 else 0):
+            excess = float(watermarked.abs().max()) - 1.0
+            scaled_peak = host_peak * gain
+            if not excess > 0.0 or excess >= scaled_peak:
+                break
+            # Lower the host peak by the overshoot (the residual stays put).
+            gain *= (scaled_peak - excess) / scaled_peak
+            watermarked = _embed(audio * gain)
 
         # Restore original shape
         if len(original_shape) == 2:
@@ -513,6 +562,9 @@ def embed_watermark(
 
         return watermarked
 
+    except _GeneratorLoadDeferred as e:
+        logger.warning("Watermark embedding skipped (passing through original): %s", e)
+        return waveform
     except Exception as e:
         logger.warning("Watermark embedding failed (passing through original): %s", e, exc_info=True)
         return waveform

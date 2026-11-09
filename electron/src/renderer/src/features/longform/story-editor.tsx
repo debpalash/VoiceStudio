@@ -1,49 +1,15 @@
 import { StoryStems } from './story-stems';
-import { WaveformPlayer } from '@/components/waveform-player';
 import { previewStoryLine } from './story-preview';
 import { storyVoicesReady } from './story-inputs';
-import {
-  DEFAULT_SPLIT_MODE,
-  SPLIT_MODES,
-  splitStoryText,
-  type SplitMode,
-} from '@shared/utils/splitStoryText';
+import { DEFAULT_SPLIT_MODE, splitStoryText, type SplitMode } from '@shared/utils/splitStoryText';
 import { useEffect, useRef, useState } from 'react';
 import { buildAutoCast } from '@shared/utils/autoCast';
-import {
-  SAMPLE_STORY_CAST,
-  SAMPLE_STORY_LINES,
-  SAMPLE_STORY_NAME,
-} from '@shared/data/sampleStory';
+import { SAMPLE_STORY_CAST, SAMPLE_STORY_LINES, SAMPLE_STORY_NAME } from '@shared/data/sampleStory';
 import { useTranslation } from 'react-i18next';
-import {
-  ArrowDownIcon,
-  ArrowUpIcon,
-  BookOpenTextIcon,
-  ChevronRightIcon,
-  CircleCheckIcon,
-  CircleQuestionMarkIcon,
-  LaughIcon,
-  AnnoyedIcon,
-  PauseIcon,
-  PlayIcon,
-  PlusIcon,
-  SlidersHorizontalIcon,
-  SparklesIcon,
-  TrashIcon,
-  UsersIcon,
-  WindIcon,
-  ZapIcon,
-} from 'lucide-react';
+import { BookOpenTextIcon, ChevronRightIcon, PlusIcon, SparklesIcon } from 'lucide-react';
+import { StoryBlock } from './story-block';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { SplitPresetPicker } from './split-preset-picker';
 import { PipelineFailure } from '@/components/pipeline-failure';
 import { describeError } from '@/lib/api/client';
 import { reorder } from '@shared/utils/storyReorder';
@@ -56,15 +22,6 @@ interface Props {
   onChange: (patch: Partial<Draft>) => void;
   onBusy?: (busy: boolean) => void;
 }
-
-const STORY_TONES = [
-  { tag: '[laughter]', icon: LaughIcon, key: 'laugh' },
-  { tag: '[sigh]', icon: WindIcon, key: 'sigh' },
-  { tag: '[question-en]', icon: CircleQuestionMarkIcon, key: 'question' },
-  { tag: '[surprise-wa]', icon: ZapIcon, key: 'surprise' },
-  { tag: '[confirmation-en]', icon: CircleCheckIcon, key: 'confirm' },
-  { tag: '[dissatisfaction-hnn]', icon: AnnoyedIcon, key: 'dissatisfaction' },
-] as const;
 
 function insertStoryToken(text: string, caret: number, token: string) {
   const before = text.slice(0, caret);
@@ -82,94 +39,6 @@ function applyInlineVoice(text: string, start: number, end: number, profileId: s
   return selected
     ? `${before}${token}${selected}[voice:default]${after}`
     : `${before}${token}${after}`;
-}
-export function StoryCast({ draft, profiles, disabled, onChange }: Props) {
-  const { t } = useTranslation();
-  return (
-    <details className="space-y-3">
-      <summary className="cursor-pointer text-sm font-medium">{t('stories.castTitle')}</summary>
-      {draft.cast.map((character) => (
-        <div key={character.id} className="space-y-2 border-b border-border/40 pb-3">
-          <div className="flex gap-1">
-            <Input
-              aria-label={t('stories.characterName')}
-              value={character.name}
-              disabled={disabled}
-              onChange={(e) =>
-                onChange({
-                  cast: draft.cast.map((c) =>
-                    c.id === character.id ? { ...c, name: e.target.value } : c,
-                  ),
-                })
-              }
-            />
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label={t('stories.removeCharacter')}
-              disabled={disabled}
-              onClick={() =>
-                onChange({
-                  cast: draft.cast.filter((c) => c.id !== character.id),
-                  lines: draft.lines.map((line) =>
-                    line.character === character.id ? { ...line, character: undefined } : line,
-                  ),
-                })
-              }
-            >
-              <TrashIcon />
-            </Button>
-          </div>
-          <details>
-            <summary className="cursor-pointer text-xs text-muted-foreground">
-              {profiles.find((p) => p.id === character.profileId)?.name ||
-                t('stories.defaultVoice')}
-            </summary>
-            <div className="max-h-40 overflow-y-auto">
-              {[{ id: null, name: t('stories.defaultVoice') }, ...profiles].map((profile) => (
-                <Button
-                  key={profile.id || 'default'}
-                  variant={character.profileId === profile.id ? 'secondary' : 'ghost'}
-                  size="sm"
-                  className="w-full justify-start"
-                  disabled={disabled}
-                  onClick={() =>
-                    onChange({
-                      cast: draft.cast.map((c) =>
-                        c.id === character.id ? { ...c, profileId: profile.id } : c,
-                      ),
-                    })
-                  }
-                >
-                  {profile.name}
-                </Button>
-              ))}
-            </div>
-          </details>
-        </div>
-      ))}
-      <Button
-        variant="ghost"
-        size="sm"
-        disabled={disabled}
-        onClick={() =>
-          onChange({
-            cast: [
-              ...draft.cast,
-              {
-                id: crypto.randomUUID(),
-                name: t('stories.character'),
-                profileId: null,
-              },
-            ],
-          })
-        }
-      >
-        <PlusIcon />
-        {t('stories.addCharacter')}
-      </Button>
-    </details>
-  );
 }
 export function StoryEditor({
   draft,
@@ -225,9 +94,8 @@ export function StoryEditor({
   };
   const script = draft.importText;
   const setScript = (importText: string) => onChange({ importText });
-  const [splitMode, setSplitMode] = useState<SplitMode>(DEFAULT_SPLIT_MODE);
-  // Electron's Sentences preset keeps its established 500-char ceiling.
-  const [maximum, setMaximum] = useState(500);
+  const [preset, setPreset] = useState<SplitMode>(DEFAULT_SPLIT_MODE);
+  const [charLimit, setCharLimit] = useState(500);
   const [inputOpen, setInputOpen] = useState(Boolean(script));
   useEffect(() => {
     if (script) setInputOpen(true);
@@ -254,7 +122,7 @@ export function StoryEditor({
     setNotice(
       t('stories.autocastDone', {
         lines: result.tracks.length,
-        voices: result.speakers.length,
+        count: result.speakers.length,
       }),
     );
   };
@@ -311,10 +179,9 @@ export function StoryEditor({
       })),
     });
   return (
-    // No `min-h-0` here: the page column is the scroll container, and a
-    // shrinkable flex item let a long script paint over the generation
-    // progress panel and the footer instead of pushing them down.
-    <div data-slot="story-editor" className="flex-1 space-y-4">
+    // Deliberately not min-h-0: the page column is what scrolls. A root that could
+    // shrink would let a tall script spill over the pinned generate controls.
+    <div data-slot="story-editor" className="space-y-4 flex-1">
       {previewError && (
         <PipelineFailure fallback={previewError} onDismiss={() => setPreviewError(null)} />
       )}
@@ -332,6 +199,7 @@ export function StoryEditor({
             {t('stories.autocastHint')}
           </p>
           <textarea
+            dir="auto"
             aria-label={t('stories.autocast')}
             placeholder={t('stories.splitPlaceholder')}
             className="min-h-32 w-full rounded-lg border border-border/60 bg-background/40 p-3 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -353,7 +221,7 @@ export function StoryEditor({
               variant="ghost"
               disabled={disabled || !script.trim()}
               onClick={() => {
-                const parts = splitStoryText(script, splitMode, maximum);
+                const parts = splitStoryText(script, preset, charLimit);
                 onChange({
                   lines: [
                     ...draft.lines,
@@ -370,46 +238,13 @@ export function StoryEditor({
             >
               {t('stories.splitIntoTracks')}
             </Button>
-            <label className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
-              {t('stories.splitMode')}
-              <Select
-                items={SPLIT_MODES.map((mode) => ({
-                  value: mode,
-                  label: t(`stories.split_${mode}`),
-                }))}
-                value={splitMode}
-                disabled={disabled}
-                onValueChange={(value) => setSplitMode(value as SplitMode)}
-              >
-                <SelectTrigger aria-label={t('stories.splitMode')} className="h-8 min-w-32">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent align="end">
-                  {SPLIT_MODES.map((mode) => (
-                    <SelectItem key={mode} value={mode}>
-                      {t(`stories.split_${mode}`)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </label>
-            {splitMode === 'sentences' && (
-              <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                {t('stories.maxChars')}
-                <Input
-                  type="number"
-                  min="40"
-                  max="2000"
-                  step="10"
-                  className="h-8 w-20"
-                  disabled={disabled}
-                  value={maximum}
-                  onChange={(e) =>
-                    setMaximum(Math.max(40, Math.min(2000, Number(e.target.value) || 40)))
-                  }
-                />
-              </label>
-            )}
+            <SplitPresetPicker
+              preset={preset}
+              onPreset={setPreset}
+              charLimit={charLimit}
+              onCharLimit={setCharLimit}
+              disabled={disabled}
+            />
           </div>
           <p className="text-xs text-muted-foreground">{t('stories.splitModeHint')}</p>
           {notice && (
@@ -431,6 +266,7 @@ export function StoryEditor({
           </p>
           <div className="mt-5 flex flex-wrap justify-center gap-2">
             <Button
+              variant="secondary"
               disabled={disabled}
               title={t('audiobook.load_sample_hint')}
               onClick={loadSample}
@@ -446,210 +282,42 @@ export function StoryEditor({
         </div>
       )}
 
-      {draft.lines.map((line, index) => (
-        <div key={line.id} className="space-y-3 rounded-xl border border-border/60 bg-muted/15 p-4">
-          <div className="flex items-start gap-3">
-            <textarea
-              ref={(node) => {
+      {draft.lines.length > 0 && (
+        <div data-slot="story-script" className="space-y-1">
+          {draft.lines.map((line, index) => (
+            <StoryBlock
+              key={line.id}
+              line={line}
+              index={index}
+              count={draft.lines.length}
+              draft={draft}
+              profiles={profiles}
+              disabled={disabled}
+              canPreview={canSynthesize && storyVoicesReady({ ...draft, lines: [line] }, profiles)}
+              previewing={previewing === line.id}
+              previewUrl={preview?.id === line.id ? preview.url : null}
+              inputRef={(node) => {
                 if (node) lineInputs.current.set(line.id, node);
                 else lineInputs.current.delete(line.id);
               }}
-              aria-label={t('stories.linePlaceholder')}
-              className="min-h-24 min-w-0 flex-1 resize-y bg-transparent text-sm leading-6 outline-none"
-              value={line.text}
-              disabled={disabled}
-              onChange={(e) => update(line.id, { text: e.target.value })}
+              onUpdate={(patch) => update(line.id, patch)}
+              onPreview={() => void audition(line)}
+              onStopPreview={() => controller.current?.abort()}
+              onInsert={(token) => insertIntoLine(line, token)}
+              onInlineVoice={(profileId) => setInlineVoice(line, profileId)}
+              onMove={(direction) =>
+                onChange({
+                  lines:
+                    direction < 0
+                      ? reorder(draft.lines, line.id, draft.lines[index - 1].id)
+                      : reorder(draft.lines, draft.lines[index + 1].id, line.id),
+                })
+              }
+              onRemove={() => onChange({ lines: draft.lines.filter((l) => l.id !== line.id) })}
             />
-            <div className="flex flex-col">
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                aria-label={t('stories.preview')}
-                disabled={
-                  disabled ||
-                  !canSynthesize ||
-                  !storyVoicesReady({ ...draft, lines: [line] }, profiles)
-                }
-                onClick={() => void audition(line)}
-              >
-                <PlayIcon />
-              </Button>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                aria-label={t('stories.insertPause')}
-                title={t('stories.insertPause')}
-                disabled={disabled}
-                onClick={() => insertIntoLine(line, '[pause 0.5s]')}
-              >
-                <PauseIcon />
-              </Button>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                aria-label={t('stories.moveUp')}
-                disabled={disabled || index === 0}
-                onClick={() =>
-                  onChange({
-                    lines: reorder(draft.lines, line.id, draft.lines[index - 1].id),
-                  })
-                }
-              >
-                <ArrowUpIcon />
-              </Button>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                aria-label={t('stories.moveDown')}
-                disabled={disabled || index === draft.lines.length - 1}
-                onClick={() =>
-                  onChange({
-                    lines: reorder(draft.lines, draft.lines[index + 1].id, line.id),
-                  })
-                }
-              >
-                <ArrowDownIcon />
-              </Button>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                aria-label={t('stories.removeLine')}
-                disabled={disabled}
-                onClick={() =>
-                  onChange({
-                    lines: draft.lines.filter((l) => l.id !== line.id),
-                  })
-                }
-              >
-                <TrashIcon />
-              </Button>
-            </div>
-          </div>
-          {previewing === line.id && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span role="status">{t('common.loading')}</span>
-              <Button size="sm" variant="ghost" onClick={() => controller.current?.abort()}>
-                {t('common.stop')}
-              </Button>
-            </div>
-          )}
-          {preview?.id === line.id && (
-            <WaveformPlayer showWaveform={false} src={preview.url} source="story-line-preview" />
-          )}
-          <details>
-            <summary className="cursor-pointer text-xs text-muted-foreground">
-              {draft.cast.find((c) => c.id === line.character)?.name || t('stories.defaultVoice')}
-            </summary>
-            <div className="mt-2 flex flex-wrap gap-1">
-              {[{ id: '', name: t('stories.defaultVoice') }, ...draft.cast].map((character) => (
-                <Button
-                  key={character.id}
-                  size="sm"
-                  variant={line.character === character.id ? 'secondary' : 'ghost'}
-                  disabled={disabled}
-                  onClick={() => update(line.id, { character: character.id || undefined })}
-                >
-                  {character.name}
-                </Button>
-              ))}
-            </div>
-          </details>
-          <details>
-            <summary className="cursor-pointer text-xs text-muted-foreground">
-              {t('stories.voice')} ?{' '}
-              {profiles.find((p) => p.id === line.profileId)?.name || t('stories.defaultVoice')}
-            </summary>
-            <div className="mt-2 flex flex-wrap gap-1">
-              {[{ id: null, name: t('stories.defaultVoice') }, ...profiles].map((profile) => (
-                <Button
-                  key={profile.id || 'default'}
-                  size="sm"
-                  variant={line.profileId === profile.id ? 'secondary' : 'ghost'}
-                  disabled={disabled}
-                  onClick={() => update(line.id, { profileId: profile.id })}
-                >
-                  {profile.name}
-                </Button>
-              ))}
-            </div>
-          </details>
-          <details>
-            <summary className="cursor-pointer text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1.5">
-                <UsersIcon className="size-3.5" />
-                {t('stories.inlineVoice')}
-              </span>
-            </summary>
-            <p className="mt-2 text-xs text-muted-foreground">{t('stories.inlineVoiceHint')}</p>
-            <div className="mt-2 flex flex-wrap gap-1">
-              {profiles.map((profile) => (
-                <Button
-                  key={profile.id}
-                  size="xs"
-                  variant="outline"
-                  disabled={disabled}
-                  onClick={() => setInlineVoice(line, profile.id)}
-                >
-                  {profile.name}
-                </Button>
-              ))}
-              <Button
-                size="xs"
-                variant="ghost"
-                disabled={disabled}
-                onClick={() => setInlineVoice(line, 'default')}
-              >
-                {t('stories.resetInlineVoice')}
-              </Button>
-            </div>
-          </details>
-          <details>
-            <summary className="cursor-pointer text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1.5">
-                <SlidersHorizontalIcon className="size-3.5" />
-                {t('stories.tune')} · {(line.speed ?? draft.globalSpeed).toFixed(2)}×
-              </span>
-            </summary>
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {STORY_TONES.map((tone) => {
-                const Icon = tone.icon;
-                return (
-                  <Button
-                    key={tone.tag}
-                    size="xs"
-                    variant="outline"
-                    disabled={disabled}
-                    title={tone.tag}
-                    onClick={() => insertIntoLine(line, tone.tag)}
-                  >
-                    <Icon />
-                    {t(`stories.tones.${tone.key}`)}
-                  </Button>
-                );
-              })}
-            </div>
-            <input
-              className="mt-3 w-full accent-primary"
-              aria-label={t('stories.speed')}
-              type="range"
-              min="0.5"
-              max="2"
-              step="0.05"
-              value={line.speed ?? draft.globalSpeed}
-              disabled={disabled}
-              onChange={(e) => update(line.id, { speed: Number(e.target.value) })}
-            />
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={disabled}
-              onClick={() => update(line.id, { speed: null })}
-            >
-              {t('stories.reset')}
-            </Button>
-          </details>
+          ))}
         </div>
-      ))}
+      )}
       {draft.lines.length > 0 && (
         <div className="flex gap-2">
           <Button variant="ghost" disabled={disabled} onClick={() => add()}>

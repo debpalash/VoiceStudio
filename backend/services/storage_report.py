@@ -58,9 +58,9 @@ def default_engines_dir() -> str:
     IndexTTS-2 install silently rolled up into the data dir's "other" subtotal.
     Mirrors ``backend/services/sidecar_install.py`` (`DATA_DIR/engines/<id>`).
     """
-    from core.config import DATA_DIR
+    from core.config import get_engines_dir
 
-    return str(Path(DATA_DIR) / "engines")
+    return str(Path(get_engines_dir()))
 
 
 def _has_venv(entry_path: str) -> bool:
@@ -493,7 +493,8 @@ def build_report(
             warnings.append({"kind": "low_disk", "severity": "critical", **base})
         elif free_gb < 2 * min_free_gb:
             warnings.append({"kind": "low_disk", "severity": "low", **base})
-        if v["used_percent"] > VOLUME_PRESSURE_PERCENT and ({"hf_cache", "data"} & set(v["roots"])):
+        # One warning per disk: a low-space warning already says it is full.
+        elif v["used_percent"] > VOLUME_PRESSURE_PERCENT and ({"hf_cache", "data"} & set(v["roots"])):
             warnings.append({
                 "kind": "volume_pressure",
                 "severity": "warning",

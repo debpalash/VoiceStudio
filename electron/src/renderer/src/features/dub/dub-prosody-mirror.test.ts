@@ -11,170 +11,176 @@ import {
   type DubSegment,
 } from './dub-session';
 
-vi.mock('@/lib/api/client', () => ({ apiJson: vi.fn() }));
+vi.mock('@/lib/api/client', async (load) => ({
+  ...(await load<typeof import('@/lib/api/client')>()),
+  apiJson: vi.fn(),
+}));
 
-const segment = (id: string, start: number, extra: Partial<DubSegment> = {}): DubSegment => ({
+const seg = (id: string, start: number, extra: Partial<DubSegment> = {}): DubSegment => ({
   id,
   start,
   end: start + 1,
-  text: id,
-  text_original: id,
-  speaker_id: 'Speaker 1',
+  text: `Line ${id}`,
+  text_original: `Line ${id}`,
   ...extra,
 });
 
-function editing(segments: DubSegment[]) {
+function open(phase: 'editing' | 'done', segments: DubSegment[], jobId: string | null = 'job-1') {
+  clearDubEditHistory();
   dubSession.setState((current) => ({
     ...current,
-    jobId: 'job',
-    phase: 'editing',
+    jobId,
+    phase,
+    segments,
     recovery: null,
     error: null,
-    tracks: [],
-    segments,
+    taskId: null,
   }));
 }
 
 beforeEach(() => {
   vi.mocked(apiJson).mockReset();
-  clearDubEditHistory();
 });
 
-it('fills empty directions from the source delivery without overwriting the user', async () => {
-  editing([
-    segment('a', 0),
-    segment('b', 1, { direction: 'whispered' }),
-    segment('c', 2, { sync_ratio: 1.1 }),
+const reply = (rows: Array<{ id: string; direction?: string; measured?: boolean }>) => ({
+  source: 'vocals' as const,
+  segments: rows.map((r) => ({ direction: '', tokens: {}, z: {}, measured: true, ...r })),
+});
+
+it('fills only empty directions and is one undo step', async () => {
+  open('editing', [
+    seg('a', 0),
+    seg('b', 2, { direction: 'sad' }),
+    seg('c', 4, { direction: '   ' }),
+    seg('d', 6),
   ]);
-  vi.mocked(apiJson).mockResolvedValueOnce({
-    source: 'vocals',
-    segments: [
-      { id: 'a', direction: '', measured: true },
-      { id: 'b', direction: 'urgent, quick', measured: true },
-      { id: 'c', direction: 'calm, slow', measured: true },
-    ],
-  });
-
-  await expect(mirrorDubSourceDelivery()).resolves.toEqual({
-    applied: 1,
-    measured: 3,
-    source: 'vocals',
-  });
-
-  const [path, init] = vi.mocked(apiJson).mock.calls[0];
-  expect(path).toBe('/dub/prosody-mirror/job');
-  expect(JSON.parse(String(init?.body))).toEqual({
-    segments: [
-      { id: 'a', start: 0, end: 1, speaker_id: 'Speaker 1' },
-      { id: 'b', start: 1, end: 2, speaker_id: 'Speaker 1' },
-      { id: 'c', start: 2, end: 3, speaker_id: 'Speaker 1' },
-    ],
-  });
-  const byId = new Map(dubSession.state.segments.map((row) => [row.id, row]));
-  expect(byId.get('a')?.direction).toBeUndefined();
-  expect(byId.get('b')?.direction).toBe('whispered');
-  expect(byId.get('c')?.direction).toBe('calm, slow');
-  expect(byId.get('c')?.sync_ratio).toBeUndefined();
+  vi.mocked(apiJson).mockResolvedValueOnce(
+    reply([
+      { id: 'a', direction: 'urgent, quick' },
+      { id: 'b', direction: 'whispered' },
+      { id: 'c', direction: 'calm' },
+      { id: 'd', direction: '', measured: true },
+    ]),
+  );
+  const outcome = await mirrorDubSourceDelivery();
+  expect(outcome).toEqual({ applied: 2, measured: 4, source: 'vocals' });
+  expect(apiJson).toHaveBeenCalledWith(
+    '/dub/prosody-mirror/job-1',
+    expect.objectContaining({ method: 'POST' }),
+  );
+  const body = JSON.parse(vi.mocked(apiJson).mock.calls[0][1]!.body as string);
+  expect(body.segments[0]).toEqual({ id: 'a', start: 0, end: 1, speaker_id: '' });
+  expect(dubSession.state.segments.map((s) => s.direction)).toEqual([
+    'urgent, quick',
+    'sad',
+    'calm',
+    undefined,
+  ]);
   expect(dubSession.state.phase).toBe('editing');
-
   undoDubEdit();
-  expect(dubSession.state.segments.find((row) => row.id === 'c')?.direction).toBeUndefined();
+  expect(dubSession.state.segments.map((s) => s.direction)).toEqual([
+    undefined,
+    'sad',
+    '   ',
+    undefined,
+  ]);
 });
 
-it('reports failure and leaves segments untouched when analysis fails', async () => {
-  const before = [segment('a', 0)];
-  editing(before);
-  vi.mocked(apiJson).mockRejectedValueOnce(new Error('No audio track available'));
+it('applies nothing and records no edit when no line needs a direction', async () => {
+  open('editing', [seg('a', 0)]);
+  vi.mocked(apiJson).mockResolvedValueOnce(reply([{ id: 'a', direction: '' }]));
+  const before = dubSession.state.segments;
+  expect(await mirrorDubSourceDelivery()).toEqual({ applied: 0, measured: 1, source: 'vocals' });
+  expect(dubSession.state.segments).toBe(before);
+});
 
-  await expect(mirrorDubSourceDelivery()).resolves.toBeNull();
-  expect(dubSession.state.segments).toEqual(before);
+it('leaves segments untouched on failure and keeps an edited dub editing', async () => {
+  open('editing', [seg('a', 0)]);
+  const before = dubSession.state.segments;
+  vi.mocked(apiJson).mockRejectedValueOnce(new Error('analysis failed'));
+  expect(await mirrorDubSourceDelivery()).toBeNull();
+  expect(dubSession.state.segments).toBe(before);
   expect(dubSession.state.phase).toBe('editing');
-  expect(dubSession.state.error).toBe('No audio track available');
+  expect(dubSession.state.error).toBe('analysis failed');
 });
 
 it('keeps a finished dub finished when analysis fails', async () => {
-  editing([segment('a', 0)]);
-  dubSession.setState((current) => ({ ...current, phase: 'done', tracks: ['es'] }));
-  vi.mocked(apiJson).mockRejectedValueOnce(new Error('No audio track available'));
-
-  await expect(mirrorDubSourceDelivery()).resolves.toBeNull();
+  open('done', [seg('a', 0)]);
+  vi.mocked(apiJson).mockRejectedValueOnce(new Error('boom'));
+  expect(await mirrorDubSourceDelivery()).toBeNull();
   expect(dubSession.state.phase).toBe('done');
 });
 
-it('leaves an edited dub in editing even though earlier tracks exist', async () => {
-  editing([segment('a', 0), segment('b', 1), segment('c', 2)]);
-  dubSession.setState((current) => ({ ...current, tracks: ['es'] }));
-  vi.mocked(apiJson).mockResolvedValueOnce({
-    source: 'vocals',
-    segments: [{ id: 'a', direction: 'calm', measured: true }],
-  });
-  await mirrorDubSourceDelivery();
-  expect(dubSession.state.phase).toBe('editing');
-
-  vi.mocked(apiJson).mockRejectedValueOnce(new Error('No audio track available'));
-  await mirrorDubSourceDelivery();
-  expect(dubSession.state.phase).toBe('editing');
+it('keeps a finished dub finished after a successful pass', async () => {
+  open('done', [seg('a', 0)]);
+  vi.mocked(apiJson).mockResolvedValueOnce(reply([{ id: 'a', direction: 'calm' }]));
+  expect((await mirrorDubSourceDelivery())?.applied).toBe(1);
+  expect(dubSession.state.phase).toBe('done');
 });
 
-it('does nothing without a job', async () => {
-  editing([segment('a', 0)]);
-  dubSession.setState((current) => ({ ...current, jobId: null }));
-  await expect(mirrorDubSourceDelivery()).resolves.toBeNull();
+it('does nothing without a job or segments', async () => {
+  open('editing', [seg('a', 0)], null);
+  expect(await mirrorDubSourceDelivery()).toBeNull();
+  expect(await cleanupDubSegments()).toBeNull();
+  open('editing', []);
+  expect(await mirrorDubSourceDelivery()).toBeNull();
   expect(apiJson).not.toHaveBeenCalled();
 });
 
-it('applies the cleaned segments that Clean Up reports', async () => {
-  editing([segment('a', 0), segment('b', 1)]);
-  vi.mocked(apiJson).mockResolvedValueOnce({
-    segments: [{ id: 'a', start: 0, end: 2, text: 'a b' }],
-    before: 2,
-    after: 1,
-  });
-
-  await expect(cleanupDubSegments()).resolves.toBe(1);
-  const [, init] = vi.mocked(apiJson).mock.calls[0];
-  expect(JSON.parse(String(init?.body)).segments.map((row: DubSegment) => row.id)).toEqual([
-    'a',
-    'b',
-  ]);
-  expect(dubSession.state.segments).toEqual([
-    { id: 'a', start: 0, end: 2, text: 'a b', text_original: 'a b' },
-  ]);
+it('discards a late response after the run was cancelled', async () => {
+  open('editing', [seg('a', 0)]);
+  let release!: (value: unknown) => void;
+  vi.mocked(apiJson).mockImplementationOnce(
+    () => new Promise((resolve) => (release = resolve)) as never,
+  );
+  vi.mocked(apiJson).mockResolvedValue({});
+  const pending = mirrorDubSourceDelivery();
+  expect(dubSession.state.phase).toBe('mirroring');
+  await cancelDub();
+  release(reply([{ id: 'a', direction: 'urgent' }]));
+  expect(await pending).toBeNull();
+  expect(dubSession.state.segments[0].direction).toBeUndefined();
   expect(dubSession.state.phase).toBe('editing');
 });
 
-it('discards a Mirror response that arrives after the run was cancelled', async () => {
-  editing([segment('a', 0)]);
-  let settle: (value: unknown) => void = () => {};
-  vi.mocked(apiJson).mockImplementation((path: string) =>
-    path.startsWith('/dub/prosody-mirror/')
-      ? new Promise((resolve) => {
-          settle = resolve;
-        })
-      : Promise.resolve({}),
-  );
-
-  const pending = mirrorDubSourceDelivery();
-  await Promise.resolve();
-  await cancelDub();
-  settle({ source: 'vocals', segments: [{ id: 'a', direction: 'calm', measured: true }] });
-
-  await expect(pending).resolves.toBeNull();
-  expect(dubSession.state.segments[0].direction).toBeUndefined();
+it('Clean Up posts the editor segments and applies the returned ones as one edit', async () => {
+  const editor = [seg('0', 0, { text: 'edited' }), seg('1', 1), seg('2', 2)];
+  open('editing', editor);
+  vi.mocked(apiJson).mockResolvedValueOnce({
+    segments: [{ id: 0, start: 0, end: 2, text: 'edited merged' }],
+    before: 3,
+    after: 1,
+  });
+  expect(await cleanupDubSegments()).toBe(2);
+  const call = vi.mocked(apiJson).mock.calls[0];
+  expect(call[0]).toBe('/dub/cleanup-segments/job-1');
+  expect(JSON.parse(call[1]!.body as string).segments).toHaveLength(3);
+  expect(dubSession.state.segments).toMatchObject([
+    { id: '0', text: 'edited merged', text_original: 'edited merged' },
+  ]);
+  expect(dubSession.state.phase).toBe('editing');
+  undoDubEdit();
+  expect(dubSession.state.segments).toHaveLength(3);
+  expect(dubSession.state.segments[0].text).toBe('edited');
 });
 
-it('sends each line\'s direction, mirrored or typed, with the translation request', async () => {
-  editing([segment('a', 0, { direction: ' urgent, quick ' }), segment('b', 1)]);
-  vi.mocked(apiJson).mockImplementation((path: string) =>
-    Promise.resolve(path === '/dub/translate' ? { translated: [] } : []),
-  );
+it('Clean Up failure keeps segments and the starting phase', async () => {
+  open('done', [seg('0', 0)]);
+  const before = dubSession.state.segments;
+  vi.mocked(apiJson).mockRejectedValueOnce(new Error('nope'));
+  expect(await cleanupDubSegments()).toBeNull();
+  expect(dubSession.state.segments).toBe(before);
+  expect(dubSession.state.phase).toBe('done');
+});
 
+it('sends mirrored and typed directions with translation', async () => {
+  open('editing', [seg('a', 0), seg('b', 2, { direction: ' sad ' })]);
+  vi.mocked(apiJson).mockResolvedValueOnce(reply([{ id: 'a', direction: 'urgent' }]));
+  await mirrorDubSourceDelivery();
+  vi.mocked(apiJson).mockReset();
+  vi.mocked(apiJson).mockResolvedValueOnce([]).mockResolvedValueOnce({ translated: [] });
   await translateDub('es', 'google');
-
-  const call = vi.mocked(apiJson).mock.calls.find(([path]) => path === '/dub/translate');
-  const body = JSON.parse(String(call?.[1]?.body));
-  expect(body.segments.map((row: { direction?: string }) => row.direction)).toEqual([
-    'urgent, quick',
-    undefined,
-  ]);
+  const translate = vi.mocked(apiJson).mock.calls.find((c) => c[0] === '/dub/translate')!;
+  const sent = JSON.parse(translate[1]!.body as string).segments;
+  expect(sent.map((s: { direction?: string }) => s.direction)).toEqual(['urgent', 'sad']);
 });

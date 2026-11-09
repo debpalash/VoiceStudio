@@ -10,6 +10,83 @@ import { apiJson, describeError } from '@/lib/api/client';
 import { queryKeys } from '@/lib/query';
 import type { Profile } from '@/lib/api/types';
 
+/** "This is my voice" / "I have the speaker's permission": a voice syncs only with one of these. */
+function SyncConsent({ profile }: { profile: Profile }) {
+  const { t } = useTranslation();
+  const client = useQueryClient();
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
+  const path = `/profiles/${encodeURIComponent(profile.id)}/attestation`;
+  const send = async (basis: 'own_voice' | 'speaker_permission' | null) => {
+    setBusy(true);
+    setFailed(null);
+    try {
+      await apiJson(
+        path,
+        basis ? { method: 'POST', body: JSON.stringify({ basis }) } : { method: 'DELETE' },
+      );
+      await client.invalidateQueries({ queryKey: queryKeys.profiles });
+    } catch (error) {
+      setFailed(describeError(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const basis = profile.consent_attested_at ? profile.consent_basis : null;
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">{t('voice_profile.attest_explain')}</p>
+      {basis === 'own_voice' || basis === 'speaker_permission' ? (
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <ShieldCheckIcon className="size-4 text-success" />
+          <span>
+            {t(
+              basis === 'own_voice'
+                ? 'voice_profile.attested_own_voice'
+                : 'voice_profile.attested_permission',
+            )}
+          </span>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={busy}
+            onClick={() => void send(null)}
+          >
+            {t('voice_profile.attest_clear')}
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => void send('own_voice')}
+          >
+            {t('voice_profile.attest_own_voice')}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={() => void send('speaker_permission')}
+          >
+            {t('voice_profile.attest_permission')}
+          </Button>
+        </div>
+      )}
+      {failed && (
+        <p role="alert" className="text-xs text-destructive">
+          {t('voice_profile.consent_failed', { message: failed })}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function ProfileConsent({ profile }: { profile: Profile }) {
   const { t } = useTranslation();
   const client = useQueryClient();
@@ -67,6 +144,7 @@ export function ProfileConsent({ profile }: { profile: Profile }) {
       <summary className="cursor-pointer text-sm font-medium">
         {t('voice_profile.consent_title')}
       </summary>
+      <SyncConsent profile={profile} />
       {profile.verified_own_voice ? (
         <>
           <p className="flex items-center gap-2 text-sm">

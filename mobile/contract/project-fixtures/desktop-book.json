@@ -1,0 +1,62 @@
+{
+  "format": "voicestudio.project",
+  "version": 1,
+  "kind": "audiobook",
+  "title": "Portable book",
+  "document": {
+    "script": "# First chapter\nA portable book.",
+    "defaultVoice": "preset:0",
+    "cast": {},
+    "speed": 1.25,
+    "pronunciations": {
+      "portable": "port able"
+    },
+    "desktop": {
+      "id": "desktop-original",
+      "name": "Portable book",
+      "mode": "audiobook",
+      "updatedAt": 1730000000000,
+      "draft": {
+        "projectId": "desktop-original",
+        "script": "# First chapter\nA portable book.",
+        "title": "Portable book",
+        "lines": [],
+        "cast": [],
+        "globalSpeed": 1.25,
+        "voice": null,
+        "voiceCast": {},
+        "lexicon": [
+          {
+            "word": "portable",
+            "pronunciation": "port able"
+          }
+        ],
+        "metadata": {
+          "author": "Fixture author",
+          "narrator": "Fixture narrator",
+          "description": "Preserve this book identity"
+        },
+        "overrides": {
+          "numStep": 42,
+          "guidanceScale": 2.5,
+          "postprocess": false
+        },
+        "loudness": "podcast",
+        "language": "English",
+        "format": "m4b",
+        "cover": null,
+        "output": "",
+        "outputScript": "",
+        "outputChapters": [],
+        "customFutureSetting": {
+          "enabled": true,
+          "value": 7
+        }
+      }
+    },
+    "roles": {}
+  },
+  "voices": [],
+  "assets": [],
+  "createdAt": 1730000000.0
+}

@@ -13,7 +13,7 @@ describe('expandable workspace rail', () => {
     const voice = screen.getByRole('button', { name: 'Voice', exact: true });
     expect(voice).not.toHaveAttribute('title');
     expect(voice).toHaveAttribute('data-expanded', 'true');
-    expect(screen.getByRole('button', { name: 'Launchpad', exact: true })).toHaveAttribute(
+    expect(screen.getByRole('button', { name: 'Home studio', exact: true })).toHaveAttribute(
       'aria-current',
       'page',
     );

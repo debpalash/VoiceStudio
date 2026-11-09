@@ -1,0 +1,48 @@
+# Scam guard — removes malware commands posted in issues and comments.
+#
+# Scammers post fake "[GUIDE] backend fix" issues (#3208, #3211) and replies
+# telling people to paste `irm <their site> | iex` into PowerShell, with fake
+# "+1 works now" replies seconds later. .github/scripts/scam_guard.py removes
+# commands that download and run code from anywhere the README/docs do not
+# use: a flagged issue is redacted, closed, locked and labelled
+# `malware-removed`; a flagged comment is deleted and the thread warned once.
+# A maintainer still deletes the issue (GitHub keeps edit history) and reports
+# and blocks the account; GitHub has no API for abuse reports.
+#
+# Security: issues and issue_comment run with a write token on text anyone can
+# post. The job checks out only the default branch's .github/scripts and reads
+# the text from the event file; it is never interpolated into a command.
+
+name: scam-guard
+
+on:
+  issues:
+    types: [opened, edited, reopened]
+  issue_comment:
+    types: [created, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    name: Scam guard
+    # Review bots comment on every PR event and each comment used to take a runner
+    # (171 queued at once). Bots cannot be the scammers this guards against; every
+    # human author, including repository members, is still checked.
+    if: ${{ github.event.sender.type != 'Bot' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write  # deleting comments on pull requests
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+      - name: Remove malware commands
+        run: python3 .github/scripts/scam_guard.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

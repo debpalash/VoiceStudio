@@ -6,7 +6,8 @@
 # "CLA" commit status that branch protection requires alongside the native
 # "CLA gate" job, which blocks merging if a status API write fails. Past contributors can
 # also sign on any issue a maintainer labels `cla`; a maintainer can apply
-# `cla-override` to a pull request after reviewing it by hand.
+# `cla-override` to a pull request after reviewing it by hand. The check also
+# keeps the informational `cla-signed` label in step with its result.
 #
 # Security: pull_request_target and issue_comment run with a write token, even
 # for fork PRs. This workflow therefore checks out only the base branch (the
@@ -44,7 +45,7 @@ jobs:
       pull-requests: write
       statuses: write
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           sparse-checkout: .github/scripts

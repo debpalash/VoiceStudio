@@ -43,7 +43,7 @@ export default function DubWorkspaceFixture() {
     dubLang: 'Bengali',
     dubLangCode: 'bn',
     dubStep: 'done',
-    profiles: [{ id: 'demo', name: 'VoiceStudio Demo Voice' }],
+    profiles: [{ id: 'demo', name: 'Demo Voice' }],
     speakerClones: { 'Speaker 1': { duration: 5.6 }, 'Speaker 2': { duration: 8.2 } },
     isTranslating: false,
     setDubLang: noop,

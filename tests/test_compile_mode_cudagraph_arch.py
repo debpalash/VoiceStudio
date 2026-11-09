@@ -1,114 +1,79 @@
-"""#2135 — CUDA-graph capture must not be attempted on pre-Ampere GPUs.
-
-`torch.compile(mode="reduce-overhead")` captures CUDA graphs. On a Turing
-Tesla T4 (sm_75, Google Colab) that took the **entire backend process** down on
-the first `/generate`: no Python traceback, no HTTP response, just a dead PID
-and `ConnectionRefused` on the next `/health`. The capture aborts below the
-interpreter, so neither the #278 eager-fallback wrapper nor any `except` in the
-generate path can observe it — the only defence is not entering that path.
-
-`_resolve_compile_mode()` keeps the compiled Inductor kernels (and most of the
-speedup) while dropping graph capture on any device older than sm_80, and fails
-*open* — a probe error or an unknown device keeps today's behaviour, so this
-can only ever remove the optimization where it was measured to be dangerous.
-"""
 from __future__ import annotations
 
+import importlib
 import sys
 from types import SimpleNamespace
 
 import pytest
 
-@pytest.fixture
-def model_manager():
-    import importlib
-    return importlib.import_module("services.model_manager")
 
-
-
-class _FakeCuda:
-    def __init__(self, capability, available=True, name="NVIDIA Tesla T4"):
-        self._cap = tuple(capability)
-        self._available = available
-        self._name = name
+class CudaProbe:
+    def __init__(self, *, compute=(8, 0), present=True, error=None):
+        self.compute = compute
+        self.present = present
+        self.error = error
 
     def is_available(self):
-        return self._available
+        return self.present
 
-    def get_device_capability(self, idx=0):
-        return self._cap
+    def get_device_capability(self, _device=0):
+        if self.error:
+            raise self.error
+        return self.compute
 
-    def get_device_name(self, idx=0):
-        return self._name
-
-
-@pytest.fixture(autouse=True)
-def _no_force_env(monkeypatch, model_manager):
-    monkeypatch.delenv(model_manager._FORCE_CUDAGRAPH_ENV, raising=False)
+    def get_device_name(self, _device=0):
+        return "Fixture adapter"
 
 
-def _fake_torch(monkeypatch, cuda):
-    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(cuda=cuda))
+@pytest.fixture
+def compile_policy(monkeypatch):
+    module = importlib.import_module("services.model_manager")
+    monkeypatch.delenv("OMNIVOICE_FORCE_CUDAGRAPH", raising=False)
+
+    def resolve(probe, requested=None):
+        monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(cuda=probe))
+        if requested is None:
+            return module._resolved_compile_mode()
+        return module._resolved_compile_mode(requested)
+
+    return module, resolve
 
 
-# ── the regression ──────────────────────────────────────────────────────────
+@pytest.mark.parametrize("compute", [(6, 1), (7, 5), (7, 9)])
+def test_pre_ampere_adapters_drop_graph_capture(compile_policy, compute):
+    module, resolve = compile_policy
+    chosen = resolve(CudaProbe(compute=compute))
+    assert chosen == "default"
+    assert chosen not in module._CUDAGRAPH_COMPILE_MODES
 
 
-def test_turing_t4_drops_cudagraph_mode(monkeypatch, model_manager):
-    """The exact reporter configuration: Tesla T4, sm_75."""
-    _fake_torch(monkeypatch, _FakeCuda((7, 5)))
-    assert model_manager._resolve_compile_mode() == "default"
+@pytest.mark.parametrize("compute", [(8, 0), (8, 9), (9, 0), (12, 1)])
+def test_supported_adapters_retain_requested_mode(compile_policy, compute):
+    module, resolve = compile_policy
+    assert resolve(CudaProbe(compute=compute)) == module._TORCH_COMPILE_MODE
 
 
-def test_volta_also_drops_cudagraph_mode(monkeypatch, model_manager):
-    """sm_70 is likewise below the Ampere floor (V100, also common on Colab)."""
-    _fake_torch(monkeypatch, _FakeCuda((7, 0), name="Tesla V100-SXM2-16GB"))
-    assert model_manager._resolve_compile_mode() == "default"
+def test_modes_without_cuda_graphs_bypass_hardware_detection(compile_policy):
+    _module, resolve = compile_policy
+    assert resolve(CudaProbe(error=AssertionError("must not probe")), "default") == "default"
 
 
-def test_downgraded_mode_is_not_a_cudagraph_mode(monkeypatch, model_manager):
-    """The point of the downgrade: no graph capture, so no #315 pinning either.
-
-    Guards the property rather than the string — if the fallback mode is ever
-    retuned, it must still be one that does not capture graphs.
-    """
-    _fake_torch(monkeypatch, _FakeCuda((7, 5)))
-    assert model_manager._resolve_compile_mode() not in model_manager._CUDAGRAPH_COMPILE_MODES
+def test_explicit_override_wins_on_an_older_adapter(compile_policy, monkeypatch):
+    module, resolve = compile_policy
+    monkeypatch.setenv("OMNIVOICE_FORCE_CUDAGRAPH", " YES ")
+    assert resolve(CudaProbe(compute=(5, 2))) == module._TORCH_COMPILE_MODE
 
 
-# ── no regression for GPUs that work today ──────────────────────────────────
+@pytest.mark.parametrize(
+    "probe",
+    [CudaProbe(present=False), CudaProbe(error=RuntimeError("driver unavailable"))],
+)
+def test_indeterminate_hardware_preserves_existing_mode(compile_policy, probe):
+    module, resolve = compile_policy
+    assert resolve(probe) == module._TORCH_COMPILE_MODE
 
 
-@pytest.mark.parametrize("capability", [(8, 0), (8, 6), (8, 9), (9, 0), (12, 0)])
-def test_ampere_and_newer_keep_cudagraph_mode(monkeypatch, capability, model_manager):
-    _fake_torch(monkeypatch, _FakeCuda(capability, name="NVIDIA RTX (fake)"))
-    assert model_manager._resolve_compile_mode() == model_manager._TORCH_COMPILE_MODE
-
-
-def test_force_env_restores_cudagraph_mode(monkeypatch, model_manager):
-    """Operators benchmarking old GPUs can opt back in explicitly."""
-    _fake_torch(monkeypatch, _FakeCuda((7, 5)))
-    monkeypatch.setenv(model_manager._FORCE_CUDAGRAPH_ENV, "1")
-    assert model_manager._resolve_compile_mode() == model_manager._TORCH_COMPILE_MODE
-
-
-# ── fail-open: never lose the optimization to a bad probe ───────────────────
-
-
-def test_capability_probe_error_keeps_configured_mode(monkeypatch, model_manager):
-    class _BrokenCuda(_FakeCuda):
-        def get_device_capability(self, idx=0):
-            raise RuntimeError("driver error")
-
-    _fake_torch(monkeypatch, _BrokenCuda((8, 0)))
-    assert model_manager._resolve_compile_mode() == model_manager._TORCH_COMPILE_MODE
-
-
-def test_cuda_unavailable_keeps_configured_mode(monkeypatch, model_manager):
-    _fake_torch(monkeypatch, _FakeCuda((7, 5), available=False))
-    assert model_manager._resolve_compile_mode() == model_manager._TORCH_COMPILE_MODE
-
-
-def test_missing_torch_keeps_configured_mode(monkeypatch, model_manager):
+def test_absent_torch_module_preserves_existing_mode(compile_policy, monkeypatch):
+    module, _resolve = compile_policy
     monkeypatch.setitem(sys.modules, "torch", None)
-    assert model_manager._resolve_compile_mode() == model_manager._TORCH_COMPILE_MODE
+    assert module._resolved_compile_mode() == module._TORCH_COMPILE_MODE

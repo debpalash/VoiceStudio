@@ -6,7 +6,7 @@ it in a normal browser. It is built from the same maintained renderer as the
 Electron desktop app; controls that require native desktop access are hidden.
 
 Inference runs inside the container. Nothing is sent off the machine without
-your explicit yes: product analytics are opt-in (PostHog, content-free usage
+your explicit yes: product analytics are opt-in (Supermetry, content-free usage
 metadata only) behind the same first-run consent prompt as the desktop app,
 and declining or skipping it keeps them off. Set
 `-e OMNIVOICE_ANALYTICS_DISABLED=1` to switch analytics off entirely. Model
@@ -16,22 +16,29 @@ weights download from Hugging Face when you install a model.
 and [`palashdeb/omnivoice-studio` on Docker Hub](https://hub.docker.com/r/palashdeb/omnivoice-studio) — same images, same tags.
 The former `ghcr.io/debpalash/omnivoice-studio` path remains a compatible alias.
 
+**Upgrading an existing container?** Follow the
+[backup and path-preserving migration procedure](docker-data-recovery.md)
+**before** recreating or removing it. The commands below are for a fresh
+installation; older commands may have kept application data inside the container.
+
 ## Architecture
 
-The published images are **`linux/amd64` (x86-64) only**, including `:stable`,
-`:latest`, and the ROCm variants. There is no native `linux/arm64` image.
-On an ARM64 host, pulling without an explicit platform can fail with
-`no matching manifest for linux/arm64/v8 in the manifest list entries`.
+The standard CUDA/CPU images and all ROCm variants are `linux/amd64`. The only
+native `linux/arm64` image is the NVIDIA CUDA build, identified by
+`-cuda-arm64` tags. On an ARM64 machine, pulling an unsuffixed tag may fail
+with `no matching manifest for linux/arm64/v8`.
 
-- **Apple Silicon (M-series Macs):** use the [native macOS app](macos.md),
-  which supports Apple GPU acceleration. The Linux container cannot access
-  the Mac's Apple GPU through MPS or MLX.
-- **AMD64 emulation on ARM64 (including Apple Silicon):** if your Docker
-  installation supports it, place `--platform linux/amd64` **before the image
-  name** in both `docker pull` and `docker run` from the CPU instructions
-  below. This is an emulated CPU option, not native
-  ARM64 support; inference can be much slower and is not a GPU workaround.
-  Without emulation, use an AMD64 server for this Docker deployment.
+- **Apple Silicon:** use the [native macOS app](macos.md). Linux containers
+  cannot use an Apple GPU through MPS or MLX.
+- **AMD64 emulation on ARM64:** if Docker supports emulation, put
+  `--platform linux/amd64` before the image name in both `docker pull` and
+  `docker run` from the CPU instructions below. This is emulated CPU execution,
+  not native ARM64 support or a GPU workaround, and it can be much slower. Use
+  an AMD64 server when emulation is unavailable.
+- **ARM64 with an NVIDIA GPU:** run `:stable-cuda-arm64` as described in
+  [Pull and run (ARM64 NVIDIA GPU)](#pull-and-run-arm64-nvidia-gpu). Jetson
+  devices using L4T/JetPack are outside this image's support because they need
+  JetPack-specific PyTorch packages.
 
 ## Image tags
 
@@ -47,10 +54,15 @@ On an ARM64 host, pulling without an explicit platform can fail with
 > | `:sha-xxxxxxx` | Exact commit — produced by every image build (main, releases, manual runs) |
 > | `:rocm` | **AMD GPU (ROCm) build** of the rolling preview — the ROCm analogue of `:latest` |
 > | `:stable-rocm`, `:0.5.6-rocm`, `:0.5-rocm`, `:sha-xxxxxxx-rocm` | ROCm builds of the corresponding CUDA tags above |
+> | `:cuda-arm64` | **ARM64 NVIDIA GPU build** (`linux/arm64`) of the rolling preview |
+> | `:stable-cuda-arm64`, `:0.5.6-cuda-arm64`, `:0.5-cuda-arm64`, `:sha-xxxxxxx-cuda-arm64` | ARM64 NVIDIA builds of the corresponding CUDA tags above |
+> | `:beta`, `:0.5.9-beta.1` | Newest beta prerelease and its exact version. A beta never moves `:stable` or `:0.5`; `-rocm` and `-cuda-arm64` forms exist too (`:beta-rocm`, `:beta-cuda-arm64`) |
 >
-> Release tags (`:X.Y.Z`, `:X.Y`, `:stable` and their `-rocm` forms) are
-> published only when the GitHub Release is published. Previews come only from
-> `main` (`:latest`, `:main`, `:rocm`); to follow previews, use `:latest`.
+> Release tags (`:X.Y.Z`, `:X.Y`, `:stable` and their `-rocm` and `-cuda-arm64`
+> forms) are published only when the GitHub Release is published. Previews come
+> only from `main` (`:latest`, `:main`, `:rocm`, `:cuda-arm64`); to follow
+> previews, use `:latest`. The `-cuda-arm64` tags start with the first release
+> after they were added; older versions have no arm64 image.
 >
 > **Note on desktop-only controls:** Electron updates, global shortcuts, native
 > file pickers, and runtime management do **not** apply to Docker. To update a
@@ -78,6 +90,7 @@ docker pull ghcr.io/debpalash/voicestudio:stable
 docker run -d --name omnivoice \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   ghcr.io/debpalash/voicestudio:stable
 ```
@@ -97,6 +110,7 @@ Open [http://localhost:3900](http://localhost:3900). The first run downloads
 docker run -d --name omnivoice --gpus all \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   ghcr.io/debpalash/voicestudio:stable
 ```
@@ -104,6 +118,50 @@ docker run -d --name omnivoice --gpus all \
 GPU mode requires the
 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
 on the host.
+
+## Pull and run (ARM64 NVIDIA GPU)
+
+<a id="pull-and-run-arm64-nvidia-gpu"></a>
+
+For ARM servers with an NVIDIA GPU (DGX Spark / GB10, GH200, GB200), use the
+native `linux/arm64` image:
+
+```bash
+docker run -d --name omnivoice --gpus all \
+  -p 127.0.0.1:3900:3900 \
+  -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
+  -v omnivoice-data:/app/omnivoice_data \
+  ghcr.io/debpalash/voicestudio:stable-cuda-arm64
+```
+
+It needs the NVIDIA Container Toolkit and a driver that supports CUDA 12.9.
+The image is built from Ubuntu 24.04 with PyTorch 2.10.0 for CUDA 12.9 on
+GitHub's native arm64 runners. Differences from the x86-64 CUDA image:
+
+- CTranslate2-based ASR engines (faster-whisper, WhisperX) report unavailable:
+  NVIDIA ships no aarch64 build of the cuDNN 8 libraries they need. Use
+  `pytorch-whisper` for GPU transcription.
+- PyTorch engines such as OmniVoice and CosyVoice use the GPU.
+- Jetson (L4T/JetPack) is not supported.
+
+CI builds this image but cannot run it on a GPU; please report problems with
+your host and `docker logs` output.
+
+To build it yourself on an arm64 host:
+
+```bash
+docker build -f deploy/Dockerfile --build-arg BASE_IMAGE=cuda-arm64-base -t voicestudio:cuda-arm64 .
+```
+
+All image variants verify installed dependency versions against
+`deploy/uv-overrides.txt` after installation. The check strips surrounding
+whitespace and line endings before parsing requirements, including with
+`packaging` 26.3; an installed version below the required floor still fails the build.
+They also apply the security floors from `pyproject.toml`
+(`deploy/security-constraints.txt`): `deploy/security_floors.py` upgrades any
+package the base image ships below its floor, and a package still below it
+fails the build.
 
 ## Pull and run (AMD GPU / ROCm)
 
@@ -117,6 +175,7 @@ docker run -d --name omnivoice \
   --device /dev/kfd --device /dev/dri \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   ghcr.io/debpalash/voicestudio:stable-rocm
 ```
@@ -126,7 +185,8 @@ docker run -d --name omnivoice \
 WSL exposes AMD compute through `/dev/dxg`, not native Linux's `/dev/kfd` and
 `/dev/dri`. First install ROCm and `librocdxg` in the WSL distribution and
 confirm the host-side `rocminfo` lists the GPU. Then use the WSL-specific
-bridge flags from AMD's `librocdxg` container contract:
+bridge flags from AMD's `librocdxg` container contract (to run it in a WSL
+distro directly, without a container, see [wsl-amd-rocm.md](wsl-amd-rocm.md)):
 
 ```bash
 docker run -d --name omnivoice \
@@ -140,6 +200,7 @@ docker run -d --name omnivoice \
   --ipc=host --shm-size 8G \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   ghcr.io/debpalash/voicestudio:stable-rocm
 ```
@@ -190,20 +251,25 @@ AddDevice=/dev/dri
 PublishPort=127.0.0.1:3900:3900
 Volume=omnivoice-data:/app/omnivoice_data
 Environment=OMNIVOICE_API_KEY=replace-with-a-long-random-key
+Environment=OMNIVOICE_DATA_DIR=/app/omnivoice_data
 ```
 
 Release pins exist too: `:stable-rocm`, `:0.5.6-rocm`, `:0.5-rocm` mirror
 the CUDA tags exactly.
 
-> **Consumer cards and APUs (RX 6000/7000, Strix Point/Halo):** the backend
+> **Consumer cards and APUs (RX 6000/7000/9000, Strix Point/Halo):** the backend
 > auto-sets `HSA_OVERRIDE_GFX_VERSION` when — and only when — your card's GFX
-> ID is missing from the shipped ROCm build's architecture list, so try
-> without any override first. Overriding a natively-supported GPU (gfx1151 on
+> ID is missing from the shipped ROCm build's architecture list, picking the
+> closest same-generation target that list contains (never across a
+> generation), so try without any override first. Overriding a natively-supported GPU (gfx1151 on
 > ROCm 7.x, for example) only forces it onto foreign kernels. If the GPU still
-> isn't used, force it explicitly with `-e HSA_OVERRIDE_GFX_VERSION=11.0.0`
-> (user-set on the container — it is deliberately **not** baked into the
-> image, because the right value depends on your card); a value you set is
-> always respected as-is.
+> isn't used, force a same-generation value on the container, for example
+> `-e HSA_OVERRIDE_GFX_VERSION=11.0.0` for an RX 7000 (gfx11xx) card or
+> `10.3.0` for an RX 6000 (gfx103x) card. It is deliberately **not** baked into
+> the image, because the right value depends on your card, and a value you set
+> is always respected as-is. **Never set it on an RX 9000 (RDNA4, gfx12xx)
+> card:** the ROCm image supports those natively, and an RDNA3 value maps them
+> onto kernels they cannot run.
 >
 > **Rootless / non-root hosts:** if `/dev/kfd` is group-owned, the container
 > user needs those groups too — add `--group-add` for your host's `render` and
@@ -278,23 +344,21 @@ docker compose -f deploy/docker-compose.yml --profile rocm up -d
 > docker compose -f deploy/docker-compose.yml --profile cpu up -d
 > ```
 >
-> In PowerShell, set both the administrator key and the platform for the
-> session before running the same two commands:
+> In PowerShell, set both the administrator key and target platform for the
+> current session before issuing the same Compose commands. This uses .NET and
+> does not require Python on the host:
 >
 > ```powershell
-> $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+> $randomBytes = [byte[]]::new(32)
+> $generator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
 > try {
->     $keyBytes = New-Object byte[] 32
->     $rng.GetBytes($keyBytes)
->     # URL-safe, like the `secrets.token_urlsafe` the Bash line uses: the
->     # key is also accepted as an `?api_key=` query parameter, where a
->     # raw Base64 `+` decodes to a space and silently mismatches.
->     $env:OMNIVOICE_API_KEY =
->         [Convert]::ToBase64String($keyBytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+>   $generator.GetBytes($randomBytes)
+> } finally {
+>   $generator.Dispose()
 > }
-> finally {
->     $rng.Dispose()
-> }
+> # URL-safe encoding matters when the key is supplied through ?api_key=,
+> # where an unescaped plus sign would otherwise decode as a space.
+> $env:OMNIVOICE_API_KEY = [Convert]::ToBase64String($randomBytes).Replace('+', '-').Replace('/', '_').TrimEnd('=')
 > $env:DOCKER_DEFAULT_PLATFORM = 'linux/amd64'
 > docker compose -f deploy/docker-compose.yml --profile cpu pull
 > docker compose -f deploy/docker-compose.yml --profile cpu up -d
@@ -308,31 +372,6 @@ The `docker-compose.yml` shipped in `deploy/` defaults to `127.0.0.1:3900`
 on the host. The backend inside the container binds to `0.0.0.0` so the
 host port mapping can forward — the host-side `127.0.0.1` binding is what
 enforces loopback-only.
-
-### Worker-only GPU container
-
-To lend a headless GPU to VoiceStudio running on another machine, generate a
-join code on that control plane and start one of the worker profiles:
-
-```bash
-# NVIDIA
-OMNIVOICE_WORKER_TOKEN='ovw_…' docker compose \
-  -f deploy/docker-compose.yml --profile worker-gpu up -d
-
-# AMD / ROCm
-OMNIVOICE_WORKER_TOKEN='ovw_…' docker compose \
-  -f deploy/docker-compose.yml --profile worker-rocm up -d
-```
-
-These profiles publish no HTTP port and require no browser UI. The join code
-must advertise a LAN or private-overlay address the container can reach, not
-the control plane's `127.0.0.1`. Enrollment state persists in a dedicated
-volume, so the container reconnects after a restart even though the join code
-is single-use. Container health becomes green only after the control plane
-accepts that registration; a missing or invalid token stays unhealthy instead
-of reporting the generic web backend as ready. See [Remote GPU
-workers](../remote-workers.md) for enrollment, approval, routing, and security
-details.
 
 ## LAN access
 
@@ -387,6 +426,46 @@ breaks them).
 > do not expose it directly to the public internet. See [API
 > authentication](../api-auth.md) for the complete access model.
 
+### Share PIN for the host's own browser (opt-in)
+
+<a id="trust-host-loopback"></a>
+
+When network sharing is on, the share PIN also applies to the browser on the
+Docker host itself: Docker forwards a published port through its proxy, so
+`http://127.0.0.1:3900` arrives inside the container from the bridge gateway
+(for example `172.17.0.1`), not from loopback. That is the default and stays
+so. If the host is yours alone, you can let it skip the PIN:
+
+```bash
+docker run -d -p 127.0.0.1:3900:3900 \
+  -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_TRUST_HOST_LOOPBACK=1 \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
+  -v voicestudio_data:/app/omnivoice_data \
+  ghcr.io/debpalash/voicestudio:stable
+```
+
+With `OMNIVOICE_TRUST_HOST_LOOPBACK=1`, requests whose socket address is
+exactly the container's default gateway skip the PIN on the main port.
+Everything else is unchanged:
+
+- Other LAN machines, other containers and requests on the LAN-share port
+  still need the PIN.
+- `X-Forwarded-For`, `X-Real-IP` and `Forwarded` headers are never used for
+  this check; Uvicorn only applies them for peers listed in
+  `FORWARDED_ALLOW_IPS` (default `127.0.0.1`).
+- It replaces the PIN only. It does not replace `OMNIVOICE_API_KEY` and never
+  unlocks admin routes.
+
+> **Risk:** anything that can reach the gateway address skips the PIN, which
+> means every local user and process on the host, and anything a host-side
+> proxy forwards. Keep the main port published on `127.0.0.1` only. Docker
+> Desktop (macOS, Windows) does not keep the real client address for
+> published ports, so on `0.0.0.0:3900:3900` it would present LAN clients
+> from the same gateway address, and they would skip the PIN too. Do not set
+> this behind a reverse proxy on the host unless that proxy is listed in
+> `FORWARDED_ALLOW_IPS`.
+
 ## Volume mounts
 
 Persist one path across container restarts:
@@ -404,11 +483,12 @@ as root, so files it adds there are root-owned on the host.
 
 ## Troubleshooting
 
+- **"Enter access PIN" on the Docker host:** see [Recovering from a lost share PIN](#recovering-from-a-lost-share-pin) below.
 - **Container reports an older or newer version than expected:** `:latest`
   follows `main`, not releases. For a released version, pull `:stable` or the
   exact `:X.Y.Z` tag and recreate the container. The running version is shown
   in **Settings → About → Version** (read live from the backend).
-- **Checking which version is running:** `docker exec <container> python3 -c "import importlib.metadata; print(importlib.metadata.version('omnivoice'))"`, or hit the `/health` endpoint — it returns `{"status": "ok", "device": ..., "version": "0.3.x"}`. Use the container name listed by `docker compose ps` (or `omnivoice` for the `docker run` examples).
+- **Checking which version is running:** `docker exec <container> python3 -c "import importlib.metadata; print(importlib.metadata.version('omnivoice'))"`, or hit the `/health` endpoint — it returns `{"status": "ok", "device": ..., "engine": ..., "version": "0.3.x"}`, where `device` is what the active TTS engine generates on (`vulkan (...)`, `cuda (...)`, `rocm (...)`, `xpu (...)`, `mps` or `cpu`). GPU names are included only when the runtime identifies them or the host has a single accelerator family; otherwise the label is the bare family. An unverified native device is `unknown`; a conservative CPU timeout budget does not establish CPU execution. Explicit native CPU selection still reports `cpu`. Use the container name listed by `docker compose ps` (or `omnivoice` for the `docker run` examples).
 - **Watching startup:** the port answers within about a second of container
   start, but heavy initialization (PyTorch, API routes, database migration)
   continues in the background. During that window `/health` returns **503**
@@ -449,6 +529,48 @@ as root, so files it adds there are root-owned on the host.
   [Pull and run (AMD GPU / ROCm)](#pull-and-run-amd-gpu--rocm) above for when
   to set one by hand.
 - More entries: [docs/install/troubleshooting.md](troubleshooting.md).
+
+### Recovering from a lost share PIN
+
+If you enable **Settings → Sharing & Remote Access** and then lose the browser's
+PIN cookie, even `http://127.0.0.1:3900/` on the Docker host can ask for the PIN.
+Docker forwards that connection through its bridge, so the backend sees a
+non-loopback peer (for example, `172.17.0.1`). The host's loopback port binding
+limits who can connect; it does not make the peer inside the container loopback.
+
+The PIN lives only in the running backend process, not in `prefs.json`. The API
+key and share PIN are separate gates: signing in with `OMNIVOICE_API_KEY` does
+not bypass an active PIN gate on ordinary HTTP requests.
+
+To recover, restart the existing container. This interrupts running jobs and
+clears the in-memory sharing state and server-side administrator sessions. It
+does not erase the administrator credential stored in the browser:
+
+```bash
+docker restart omnivoice
+```
+
+Replace `omnivoice` with your container's name if different. Reopen
+`http://127.0.0.1:3900/` once startup completes and sign in with the same
+`OMNIVOICE_API_KEY` supplied when the container was created. Restarting keeps
+the existing data volume, voices, projects, settings and downloaded models;
+there is no need to delete the container or its volume.
+
+For host-only Docker use, leave in-app network sharing off and retain
+`-p 127.0.0.1:3900:3900`. For access from another device, follow
+[LAN access](#lan-access) and keep the administrator API key configured.
+
+On a host you alone use, set `OMNIVOICE_TRUST_HOST_LOOPBACK=1` to let that
+browser skip the share PIN without trusting a Docker subnet. It applies only
+to the container's default gateway on the main port, and it does not replace
+`OMNIVOICE_API_KEY`. See
+[Share PIN for the host's own browser](#trust-host-loopback).
+
+`OMNIVOICE_TRUSTED_NETWORKS` can exempt selected peer addresses from the PIN
+and API-key consumption gates, but it does **not** grant administrator access.
+Do not trust an entire Docker subnet just to dismiss the PIN prompt: other
+containers or forwarded clients may share that network identity. See
+[trusted networks](../api-auth.md#trusted-networks) before choosing this deployment policy.
 
 ### CTranslate2 compatibility
 

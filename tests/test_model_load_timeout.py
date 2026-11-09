@@ -13,17 +13,11 @@ import threading
 
 import pytest
 
-
 @pytest.fixture
-def model_manager(monkeypatch):
-    for mod_name in ("core.config", "services.model_manager"):
-        if getattr(sys.modules.get(mod_name), "__file__", None) is None:
-            sys.modules.pop(mod_name, None)
-
-    import services.model_manager as mm
-
-    monkeypatch.setattr(mm, "model", None)
-    return mm
+def model_manager(fresh_model_manager, monkeypatch):
+    manager = fresh_model_manager()
+    monkeypatch.setattr(manager, "model", None)
+    return manager
 
 
 def test_model_load_timeout_respects_env(model_manager, monkeypatch):

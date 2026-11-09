@@ -13,6 +13,17 @@ produces): for each segment it scans the waveform inside ``[start, end]``
 for the first *sustained* rise of frame RMS above an adaptive threshold
 and moves ``start`` forward to just before that onset.
 
+VAD gate (#3419): energy alone still let a *sustained* non-speech sound —
+a sigh, a breath, rustling — set a line's start, and Whisper's end-stretch
+over trailing breaths and silence made slots longer than the line. Speech is
+voiced (periodic vocal-fold vibration, 70–400 Hz); breaths, sighs, footsteps
+and rustles are not. So when a window contains voiced speech, the start snaps
+to the first *sustained voiced* onset (keeping a short unvoiced lead for
+consonants such as "s" or "h"), long snaps are allowed over audible content
+that holds no voiced speech, and ``trim_segment_ends`` pulls the end back to
+the last voiced speech plus a short tail. A window with no voiced frames at
+all (whispered lines) keeps the energy-only behaviour.
+
 Design constraints:
 
 * **Forward-only.** A segment start is never moved earlier — that could
@@ -91,6 +102,96 @@ SKIPPED_AUDIBLE_FRAC = 0.10
 SKIPPED_FLOOR_PEAK_FRAC = 0.02
 
 
+# ── Voicing (#3419) ────────────────────────────────────────────────────────
+# Pitch search range and the normalised-autocorrelation peak a frame needs to
+# count as voiced: the same method and threshold Prosody Mirror measures
+# deliveries with. Analysis windows are two frames (40 ms) long so the lowest
+# pitch still has a couple of periods in view.
+F0_MIN_HZ = 70.0
+F0_MAX_HZ = 400.0
+VOICING_THRESHOLD = 0.45
+# Voiced frames an onset needs within its sustain window to read as speech.
+VOICED_MIN_S = 0.06
+# Unvoiced lead kept before the first voiced frame (initial consonants).
+CONSONANT_LEAD_S = 0.15
+# Audio kept after the last voiced frame (final consonants, decay).
+TAIL_PAD_S = 0.15
+# Frames per voicing block, bounding memory on long windows.
+_VOICING_BLOCK = 512
+
+
+def _voiced_frames(x: np.ndarray, sr: int, frame_len: int, n_frames: int) -> np.ndarray:
+    """Per-frame voicing for the ``n_frames`` ``frame_len``-sample frames of ``x``.
+
+    Normalised autocorrelation of a Hann-windowed 2-frame window, divided by
+    the window's own autocorrelation so low voices are not penalised. Noise,
+    breaths and transients have no strong periodic peak in the pitch range.
+    """
+    if n_frames <= 0:
+        return np.zeros(0, dtype=bool)
+    win = 2 * frame_len
+    lo = max(1, int(sr / F0_MAX_HZ))
+    hi = min(win - 2, int(sr / F0_MIN_HZ))
+    if hi <= lo:
+        return np.zeros(n_frames, dtype=bool)
+    need = n_frames * frame_len + frame_len
+    data = np.asarray(x[:need], dtype=np.float64)
+    if data.size < need:
+        data = np.pad(data, (0, need - data.size))
+    # Pre-emphasis: low rumble (thuds, handling noise) is strongly correlated
+    # at short lags and would otherwise read as voiced; speech harmonics keep
+    # their periodicity.
+    data = np.concatenate(([data[0]], data[1:] - 0.97 * data[:-1]))
+    hann = np.hanning(win)
+    nfft = 1 << (win + hi + 1).bit_length()
+    w_acf = np.fft.irfft(np.abs(np.fft.rfft(hann, nfft)) ** 2, nfft)[: hi + 1]
+    w_norm = w_acf / w_acf[0]
+    out = np.zeros(n_frames, dtype=bool)
+    for b0 in range(0, n_frames, _VOICING_BLOCK):
+        b1 = min(n_frames, b0 + _VOICING_BLOCK)
+        frames = np.lib.stride_tricks.sliding_window_view(
+            data[b0 * frame_len: b1 * frame_len + frame_len], win
+        )[::frame_len][: b1 - b0]
+        centred = (frames - frames.mean(axis=1, keepdims=True)) * hann
+        acf = np.fft.irfft(np.abs(np.fft.rfft(centred, nfft, axis=1)) ** 2, nfft, axis=1)[:, : hi + 1]
+        energy = acf[:, :1]
+        acf = np.divide(acf, energy, out=np.zeros_like(acf), where=energy > 0)
+        corr = acf[:, lo:] / w_norm[lo:]
+        out[b0:b1] = corr.max(axis=1) >= VOICING_THRESHOLD
+    return out
+
+
+def _window_frames(audio: np.ndarray, sr: int, start_s: float, end_s: float):
+    """(rms, voiced, above, frame_s) for ``[start_s, end_s]``, or None."""
+    if sr <= 0 or end_s <= start_s:
+        return None
+    i0 = max(0, int(start_s * sr))
+    i1 = min(len(audio), int(end_s * sr))
+    if i1 <= i0:
+        return None
+    window = audio[i0:i1]
+    frame_len = max(1, int(FRAME_S * sr))
+    rms = _frame_rms(window, frame_len)
+    if rms.size == 0:
+        return None
+    peak = float(rms.max())
+    if peak < ABS_RMS_FLOOR:
+        return None
+    above = rms >= max(RELATIVE_THRESHOLD * peak, ABS_RMS_FLOOR)
+    voiced = _voiced_frames(window, sr, frame_len, rms.size)
+    return rms, voiced, above, frame_len / sr
+
+
+def _region_has_voiced_speech(audio: np.ndarray, sr: int, start_s: float, end_s: float) -> bool:
+    """True when ``[start_s, end_s]`` holds audible voiced frames worth a syllable."""
+    frames = _window_frames(audio, sr, start_s, end_s)
+    if frames is None:
+        return False
+    rms, voiced, _above, frame_s = frames
+    need = max(1, int(round(VOICED_MIN_S / frame_s)))
+    return int(np.count_nonzero(voiced & (rms >= ABS_RMS_FLOOR))) >= need
+
+
 def _frame_rms(x: np.ndarray, frame_len: int) -> np.ndarray:
     """RMS per non-overlapping frame; the ragged tail frame is dropped."""
     n = (len(x) // frame_len) * frame_len
@@ -147,6 +248,22 @@ def detect_speech_onset(
     sustained = candidates[counts >= need_frames]
     if sustained.size == 0:
         return None  # only transient bursts in this window
+    # #3419 VAD gate: with voiced speech in the window, a sustained but
+    # unvoiced sound (sigh, breath, rustle) is not where the line starts.
+    voiced = _voiced_frames(window, sr, frame_len, rms.size) & above
+    if voiced.any():
+        vcum = np.concatenate(([0], np.cumsum(voiced)))
+        vc = np.nonzero(voiced)[0]
+        ends = np.minimum(vc + win_frames, above.size)
+        voiced_need = max(1, int(round(VOICED_MIN_S / frame_s)))
+        ok = vc[((cum[ends] - cum[vc]) >= need_frames) & ((vcum[ends] - vcum[vc]) >= voiced_need)]
+        if ok.size:
+            first = int(ok[0])
+            lead = max(0, int(round(CONSONANT_LEAD_S / frame_s)))
+            k = first
+            while k > 0 and first - k < lead and above[k - 1]:
+                k -= 1
+            return start_s + float(k) * frame_s
     return start_s + float(sustained[0]) * frame_s
 
 
@@ -172,7 +289,8 @@ def detect_speech_onsets(audio: np.ndarray, sr: int) -> list[float]:
     if sr <= 0 or audio is None or len(audio) == 0:
         return []
     if audio.ndim > 1:
-        audio = audio.mean(axis=1)
+        # Energy analysis must not cancel opposite-polarity stereo channels.
+        audio = np.max(np.abs(audio), axis=1)
     frame_len = max(1, int(FRAME_S * sr))
     rms = _frame_rms(audio, frame_len)
     if rms.size == 0:
@@ -225,6 +343,87 @@ def _region_mostly_silent(
     return float((rms >= floor).mean()) <= SKIPPED_AUDIBLE_FRAC
 
 
+def _skipped_span_is_non_speech(
+    audio: np.ndarray, sr: int, start_s: float, end_s: float, onset_s: float,
+) -> bool:
+    """A long snap may cross audible sound only when it holds no speech (#3419).
+
+    Requires voiced speech after ``onset_s`` (so the window really has a voiced
+    reference) and none in the span being skipped: a minute of rustling or a
+    long sigh before the first word is skipped, quiet voiced speech is not.
+    """
+    if not _region_has_voiced_speech(audio, sr, onset_s, end_s):
+        return False
+    return not _region_has_voiced_speech(audio, sr, start_s, onset_s)
+
+
+def trim_segment_ends(
+    segments: Sequence[dict],
+    audio: np.ndarray,
+    sr: int,
+    *,
+    min_shift_s: float = MIN_SHIFT_S,
+    separated_vocals: bool = True,
+) -> int:
+    """Pull each segment's ``end`` back to its last voiced speech (#3419).
+
+    Whisper stretches ends over trailing breaths, sighs and silence, which
+    makes a line's slot longer than the line. Backward-only and conservative:
+    segments without voiced speech (whispered lines) are left alone, an
+    unvoiced final consonant right after the last voiced frame is kept, a
+    ``TAIL_PAD_S`` tail is kept, and a minimum duration is preserved. Like
+    :func:`snap_segment_starts`, only on a separated vocals track.
+    """
+    if not separated_vocals or sr <= 0 or audio is None or len(audio) == 0:
+        return 0
+    if audio.ndim > 1:
+        audio = audio.mean(axis=1)
+    adjusted = 0
+    for seg in segments:
+        try:
+            start = float(seg.get("start", 0.0))
+            end = float(seg.get("end", 0.0))
+        except (TypeError, ValueError):
+            continue
+        if end - start < MIN_SEG_DUR_S + min_shift_s:
+            continue
+        frames = _window_frames(audio, sr, start, end)
+        if frames is None:
+            continue
+        _rms, voiced, above, frame_s = frames
+        speech = voiced & above
+        need = max(1, int(round(VOICED_MIN_S / frame_s)))
+        if int(np.count_nonzero(speech)) < need:
+            continue  # no voiced speech: nothing to anchor the end on
+        last = int(np.nonzero(speech)[0][-1])
+        lead = max(0, int(round(CONSONANT_LEAD_S / frame_s)))
+        k = last
+        while k + 1 < above.size and k - last < lead and above[k + 1]:
+            k += 1
+        new_end = start + (k + 1) * frame_s + TAIL_PAD_S
+        new_end = max(new_end, start + MIN_SEG_DUR_S)
+        if end - new_end < min_shift_s:
+            continue
+        seg["end"] = round(new_end, 3)
+        adjusted += 1
+    if adjusted:
+        logger.info("onset-align: trimmed %d/%d segment end(s) to the last speech",
+                    adjusted, len(segments))
+    return adjusted
+
+
+def snap_segments_to_speech(
+    segments: Sequence[dict],
+    audio: np.ndarray,
+    sr: int,
+    *,
+    separated_vocals: bool = True,
+) -> int:
+    """Start lines on detected speech and end them on it (#280, #963, #3419)."""
+    moved = snap_segment_starts(segments, audio, sr, separated_vocals=separated_vocals)
+    return moved + trim_segment_ends(segments, audio, sr, separated_vocals=separated_vocals)
+
+
 def snap_segment_starts(
     segments: Sequence[dict],
     audio: np.ndarray,
@@ -271,7 +470,11 @@ def snap_segment_starts(
         shift = new_start - start
         if shift < min_shift_s:
             continue
-        if shift > MAX_SNAP_S and not _region_mostly_silent(audio, sr, start, onset):
+        if (
+            shift > MAX_SNAP_S
+            and not _region_mostly_silent(audio, sr, start, onset)
+            and not _skipped_span_is_non_speech(audio, sr, start, end, onset)
+        ):
             # Long jump over audible content (#963): the "onset" is more
             # likely a louder late event than the true start — quiet speech
             # under the relative threshold would be skipped wholesale and

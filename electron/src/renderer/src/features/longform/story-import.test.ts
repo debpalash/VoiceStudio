@@ -1,9 +1,6 @@
 import { expect, it } from 'vitest';
 import { importToText } from '@shared/utils/importStory';
-import {
-  splitIntoChunks,
-  splitStoryText,
-} from '@shared/utils/splitStoryText';
+import { splitIntoChunks, splitStoryText } from '@shared/utils/splitStoryText';
 it('removes SRT metadata and retains spoken lines', () => {
   expect(
     importToText(
@@ -19,27 +16,31 @@ it('splits locally with bounded chunks and stable text order', () => {
   expect(chunks.join(' ')).toBe(text);
   expect(splitIntoChunks('', 500)).toEqual([]);
 });
-it('split presets give one line per paragraph or per chapter, headings kept separate', () => {
-  const book = '# One\nFirst para.\n\nSecond para.\n# Two\nLast.';
-  expect(splitStoryText(book, 'paragraphs')).toEqual([
+it('splits by paragraph or chapter and keeps each heading as its own line', () => {
+  const text =
+    'Prologue words.\r\n\r\n# One\nFirst para\nstill first.\n\nSecond para.\n## Not a chapter\n# Two\nOnly body';
+  expect(splitStoryText(text, 'paragraphs')).toEqual([
+    'Prologue words.',
     '# One',
-    'First para.',
-    'Second para.',
+    'First para\nstill first.',
+    'Second para.\n## Not a chapter',
     '# Two',
-    'Last.',
+    'Only body',
   ]);
-  expect(splitStoryText(book, 'chapters')).toEqual([
+  expect(splitStoryText(text, 'chapters')).toEqual([
+    'Prologue words.',
     '# One',
-    'First para.\n\nSecond para.',
+    'First para\nstill first.\n\nSecond para.\n## Not a chapter',
     '# Two',
-    'Last.',
+    'Only body',
   ]);
-  expect(splitStoryText(book, 'sentences', 500)).toEqual([
-    '# One',
-    'First para.\n\nSecond para.',
-    '# Two',
-    'Last.',
-  ]);
+  // One block without a blank line falls back to its single newlines.
+  expect(splitStoryText('a\nb\nc', 'paragraphs')).toEqual(['a', 'b', 'c']);
+  expect(splitStoryText('One. Two. Three.', 'sentences', 40)).toEqual(['One. Two. Three.']);
+  expect(splitStoryText('# Heading\nBody here.', 'sentences')).toEqual(['# Heading', 'Body here.']);
+  for (const mode of ['sentences', 'paragraphs', 'chapters'] as const) {
+    expect(splitStoryText('  \n ', mode)).toEqual([]);
+  }
 });
 
 it('decodes a UTF-16 manuscript before extracting subtitle speech', async () => {

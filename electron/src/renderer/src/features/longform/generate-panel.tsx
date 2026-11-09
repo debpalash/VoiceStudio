@@ -1,11 +1,16 @@
+import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
+import { LongformActivityCard } from '@/components/longform-activity-card';
+import { cn } from '@/lib/utils';
 import { GenerationProgress } from './generation-progress';
 import type { GenerateBlocker } from './generate-blocker';
 import type { AudiobookRenderChapter } from './longform-session';
+import type { RenderProgressSnapshot } from './render-eta';
 
-/** The slice of the render session this panel reads. */
+/** The slice of the long-form render state the panel needs. */
 export interface GenerateSession {
+  /** Workspace that started the render in flight, if any. */
   active: 'stories' | 'audiobook' | null;
   stage: string;
   completed: number;
@@ -13,12 +18,45 @@ export interface GenerateSession {
   failed: number;
   stopped: boolean;
   chapters: AudiobookRenderChapter[];
+  progress?: RenderProgressSnapshot | null;
+  startedAt?: number | null;
+  lastActivityAt?: number | null;
+}
+
+const STATUS_ID = 'generate-status';
+
+/** One line saying what the render is doing, or why it cannot start. */
+function statusLine(
+  t: TFunction,
+  session: GenerateSession,
+  mine: boolean,
+  blocker: GenerateBlocker | null,
+): string {
+  if (!mine) return blocker ? t(`audiobook.blocked.${blocker}`) : '';
+  switch (session.stage) {
+    case 'assembling':
+      return t('audiobook.assembling');
+    case 'starting':
+      return t('common.loading');
+    default:
+      return t('audiobook.progress_summary', {
+        current: Math.min(session.completed + 1, session.total),
+        total: session.total,
+      });
+  }
+}
+
+function Note({ children }: { children: string }) {
+  return (
+    <p role="status" aria-live="polite" className="shrink-0 text-xs text-muted-foreground">
+      {children}
+    </p>
+  );
 }
 
 /**
- * Generate / Stop, the chapter tracker and the render status in one block, so
- * the primary action and its progress are always in the same, visible place
- * (pinned in the setup column) instead of below the last line of a long script.
+ * Footer of a long-form workspace: notes about the last run, live progress
+ * when this workspace owns the render, and the start/stop button.
  */
 export function GeneratePanel({
   mode,
@@ -34,56 +72,49 @@ export function GeneratePanel({
   onStop: () => void;
 }) {
   const { t } = useTranslation();
-  const active = session.active === mode;
-  const status = active
-    ? session.stage === 'assembling'
-      ? t('audiobook.assembling')
-      : session.stage === 'starting'
-        ? t('common.loading')
-        : t('audiobook.progress_summary', {
-            current: Math.min(session.completed + 1, session.total),
-            total: session.total,
-          })
-    : blocker
-      ? t('audiobook.blocked.' + blocker)
-      : '';
+  const mine = session.active === mode;
+  const busyElsewhere = session.active !== null && !mine;
+  const status = statusLine(t, session, mine, blocker);
+  const hideStatus = session.active === null && blocker === 'engine';
+
   return (
-    <div data-slot="generate-panel" className="flex min-h-0 flex-col gap-3">
-      {session.failed > 0 && (
-        <p role="status" className="shrink-0 text-xs text-muted-foreground">
-          {t('audiobook.failed_note', { count: session.failed })}
-        </p>
-      )}
-      {session.stopped && !session.active && (
-        <p role="status" className="shrink-0 text-xs text-muted-foreground">
-          {t('audiobook.stopped_note')}
-        </p>
-      )}
-      {active && session.stage !== 'starting' && (
-        <div className="min-h-0 max-h-[38vh] overflow-y-auto">
+    <div data-slot="generate-panel" className="flex min-h-0 flex-col gap-2">
+      {session.failed > 0 && <Note>{t('audiobook.failed_note', { count: session.failed })}</Note>}
+      {session.stopped && session.active === null && <Note>{t('audiobook.stopped_note')}</Note>}
+      {mine && session.stage !== 'starting' && (
+        <div className="max-h-[38vh] min-h-0 overflow-y-auto">
           <GenerationProgress
             chapters={session.chapters}
             assembling={session.stage === 'assembling'}
+            stage={session.stage}
+            progress={session.progress ?? null}
+            startedAt={session.startedAt ?? null}
+            lastActivityAt={session.lastActivityAt ?? null}
           />
         </div>
       )}
+      {busyElsewhere && <LongformActivityCard className="shrink-0" />}
       {status && (
-        <p id="generate-status" role="status" className="shrink-0 text-xs text-muted-foreground">
+        <p
+          id={STATUS_ID}
+          role="status"
+          className={cn('text-xs text-muted-foreground', hideStatus && 'sr-only')}
+        >
           {status}
         </p>
       )}
-      {active ? (
-        <Button variant="outline" className="w-full shrink-0" onClick={onStop}>
+      {mine ? (
+        <Button variant="outline" className="w-full" onClick={onStop}>
           {t('common.stop')}
         </Button>
       ) : (
         <Button
-          className="w-full shrink-0"
-          disabled={blocker !== null}
-          aria-describedby={status ? 'generate-status' : undefined}
+          className="w-full"
           onClick={onGenerate}
+          disabled={blocker !== null}
+          aria-describedby={status ? STATUS_ID : undefined}
         >
-          {t(mode === 'stories' ? 'stories.generateAll' : 'audiobook.create')}
+          {mode === 'stories' ? t('stories.generateAll') : t('audiobook.create')}
         </Button>
       )}
     </div>

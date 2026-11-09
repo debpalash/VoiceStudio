@@ -3,7 +3,7 @@ flat 600 s compute budget with the worker still computing. The default CPU
 budget now scales with input length at CPU speed, stays bounded so a wedged
 engine is still caught, leaves GPU behaviour alone, and an explicit setting
 stays authoritative. The same arithmetic backs the torch-free worker fallback
-and the MCP client timeout, so a remote worker / tool never gives up first.
+and the MCP client timeout, so a tool never gives up first.
 """
 from __future__ import annotations
 
@@ -192,20 +192,6 @@ def test_wedged_job_is_still_caught(mm):
 
 
 # ── the mirrors must agree with the real budget ──────────────────────────────
-
-@pytest.mark.parametrize("n", [0, 50, 400, 1200, 5000, 100_000])
-def test_worker_fallback_matches_model_manager(mm, monkeypatch, n):
-    from worker import deadlines
-
-    _host(monkeypatch, "cpu")
-    real = mm.generate_timeout_s("x" * n, execution_device="cpu")
-    monkeypatch.setattr(
-        mm, "generate_timeout_s",
-        lambda *a, **k: (_ for _ in ()).throw(ImportError("no torch")),
-    )
-    monkeypatch.setattr(deadlines, "_CPU_GENERATE_TIMEOUT_S", 600.0)
-    assert deadlines._base_execution_seconds("x" * n) == pytest.approx(real)
-
 
 @pytest.mark.parametrize("raw", [
     "hi", "x" * 400, "x" * 5_000,

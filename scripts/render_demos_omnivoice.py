@@ -117,11 +117,11 @@ def watermark_file(path: Path, sample_rate: int, *, context: str) -> None:
     its way to disk.
     """
     import torch
-    import torchaudio
 
+    from services.audio_io import _safe_torchaudio_save, load_audio
     from services.watermark import mark_synthetic
 
-    waveform, rate = torchaudio.load(str(path))
+    waveform, rate = load_audio(str(path))
     marked = mark_synthetic(waveform, rate, context=context, force=True)
     if marked is waveform and os.environ.get("OMNIVOICE_DEMO_ALLOW_UNMARKED") == "1":
         print(f"  ! {path.name} is NOT watermarked (OMNIVOICE_DEMO_ALLOW_UNMARKED=1)")
@@ -139,18 +139,14 @@ def watermark_file(path: Path, sample_rate: int, *, context: str) -> None:
             "Set OMNIVOICE_DEMO_ALLOW_UNMARKED=1 only for a local listen — never "
             "for a render you intend to commit."
         )
-    torchaudio.save(
-        str(path),
-        marked.to(torch.float32),
-        rate,
-        encoding="PCM_S", bits_per_sample=16,
-    )
+    _safe_torchaudio_save(str(path), marked.to(torch.float32), rate, bits_per_sample=16)
 
 
 def _save_wav(audio_tensor, sample_rate: int, out_path: Path):
     """Save a torch tensor (C, T) or (T,) to a 16-bit PCM WAV."""
     import torch
-    import torchaudio
+
+    from services.audio_io import _safe_torchaudio_save
 
     if audio_tensor.dim() == 1:
         audio_tensor = audio_tensor.unsqueeze(0)
@@ -167,12 +163,7 @@ def _save_wav(audio_tensor, sample_rate: int, out_path: Path):
     peak = audio_tensor.abs().max().item()
     if peak > 0:
         audio_tensor = audio_tensor / peak * 0.97
-    torchaudio.save(
-        str(out_path),
-        audio_tensor.to(torch.float32),
-        sample_rate,
-        encoding="PCM_S", bits_per_sample=16,
-    )
+    _safe_torchaudio_save(str(out_path), audio_tensor.to(torch.float32), sample_rate, bits_per_sample=16)
     _normalize_loudness(out_path, sample_rate)
     watermark_file(out_path, sample_rate, context=f"demo:{out_path.stem}")
 

@@ -1,6 +1,6 @@
 ﻿import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await chromium.launch({ channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge', headless: true });
 const page = await browser.newPage();
 try {
   await page.goto('http://localhost:3912/#/design');
@@ -23,7 +23,7 @@ try {
   const after = await page.evaluate(() =>
     JSON.parse(localStorage.getItem('voicestudio.design.v1')),
   );
-  assert.equal(after.attrs.Pitch, 'moderate pitch');
+  assert.equal(after.attrs.Pitch, 'Medium');
   assert.equal(after.attrs.Gender, 'Auto');
   assert.equal(after.seed, before.seed);
   assert.equal(after.text, 'Preserve this script');

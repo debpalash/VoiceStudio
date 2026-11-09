@@ -197,7 +197,9 @@ def gallery_client():
     gallery._init_gallery_db()
     app = FastAPI()
     app.include_router(gallery.router)
-    return TestClient(app)
+    # Loopback peer so the router's require_consumer / require_admin gates let
+    # these handler tests through; denial is covered in test_gallery_profiles.
+    return TestClient(app, client=("127.0.0.1", 50000))
 
 
 def _gallery_row(audio_path: str) -> str:
@@ -267,7 +269,7 @@ def profiles_client(tmp_path, monkeypatch):
     db.init_db()
     app = FastAPI()
     app.include_router(profiles.router)
-    with TestClient(app) as client:
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
         yield client, tmp_path
 
 
@@ -280,3 +282,16 @@ def test_profile_upload_rejects_unusable_extensions(profiles_client):
     assert client.get("/profiles").json() == []
     voices = tmp_path / "voices"
     assert not voices.exists() or not any(voices.iterdir())
+
+
+def test_clone_profile_upload_is_size_capped_and_leaves_no_file(profiles_client, monkeypatch):
+    from api.routers import profiles
+
+    client, tmp_path = profiles_client
+    monkeypatch.setattr(profiles, "_MAX_REF_AUDIO_BYTES", 1024)
+    response = client.post("/profiles", data={"name": "Big"}, files={
+        "ref_audio": ("clip.wav", io.BytesIO(b"RIFF" + bytes(4096)), "audio/wav"),
+    })
+    assert response.status_code == 413
+    voices = tmp_path / "voices"
+    assert not voices.exists() or not list(voices.glob("*"))

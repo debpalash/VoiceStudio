@@ -42,11 +42,22 @@ _ESTIMATES: dict[str, dict] = {
         "destination": "hf_model_cache",
         "deduplication": None,
     },
+    "audiocpp-dots": {
+        "package_download_bytes": None,
+        "unique_installed_bytes": None,
+        "potentially_shared_bytes": None,
+        "temporary_free_bytes": None,
+        "confidence": "estimated",
+        "destination": "hf_model_cache",
+        "deduplication": None,
+    },
 }
 _MODEL_REPOS = {
     "omnivoice": "k2-fsa/OmniVoice",
     "kittentts": "KittenML/kitten-tts-mini-0.8",
     "audiocpp": "audio-cpp/audio.cpp-gguf",
+    # Catalogue identity of a package in the shared audio.cpp repo (#2665).
+    "audiocpp-dots": "audio-cpp/audio.cpp-gguf:dots-tts-soar-q8_0",
 }
 
 
@@ -84,7 +95,7 @@ def _catalog_model_bytes(engine_id: str) -> int | None:
 
         catalog_path = Path(__file__).resolve().parents[1] / "config" / "models.yaml"
         entries = yaml.safe_load(catalog_path.read_text(encoding="utf-8"))["models"]
-        model = next(item for item in entries if item["repo_id"] == repo_id)
+        model = next(item for item in entries if (item.get("id") or item["repo_id"]) == repo_id)
         return round(float(model["size_gb"]) * _GIB)
     except (OSError, KeyError, StopIteration, TypeError, ValueError):
         return None
@@ -175,18 +186,26 @@ def _measure_sidecar(engine_id: str) -> dict | None:
 
 
 def _measure_model_cache(engine_id: str) -> dict | None:
-    repo_id = _MODEL_REPOS.get(engine_id)
-    if repo_id is None:
+    key = _MODEL_REPOS.get(engine_id)
+    if key is None:
         return None
     try:
-        from huggingface_hub import scan_cache_dir
+        from services.model_catalogue import catalogue_entry, package_cache_usage, shares_repo
 
-        repo = next((item for item in scan_cache_dir().repos if item.repo_id == repo_id), None)
+        entry = catalogue_entry(key)
+        if entry is not None and shares_repo(entry):
+            # Only this entry's package: the repo also holds other entries' files.
+            usage = package_cache_usage(entry)
+            size = int(usage["size_on_disk"]) if usage else 0
+        else:
+            from huggingface_hub import scan_cache_dir
+
+            repo = next((item for item in scan_cache_dir().repos if item.repo_id == key), None)
+            size = int(repo.size_on_disk) if repo is not None else 0
     except Exception:
         return None
-    if repo is None or repo.size_on_disk <= 0:
+    if size <= 0:
         return None
-    size = int(repo.size_on_disk)
     return {
         "model_bytes": size,
         # The model lives in this cache; cache overhead is not separately

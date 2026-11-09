@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 64 64" role="img" aria-labelledby="title description">
+  <title id="title">VoiceStudio</title>
+  <desc id="description">A warm pink speech waveform with a small spark on a dark rounded tile.</desc>
+  <defs>
+    <linearGradient id="tile" x1="7" y1="4" x2="58" y2="62" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#211B2B"/>
+      <stop offset="1" stop-color="#120F18"/>
+    </linearGradient>
+    <radialGradient id="warmth" cx="0" cy="0" r="1" gradientTransform="translate(49 13) rotate(132) scale(42)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6A2D4C" stop-opacity="0.44"/>
+      <stop offset="1" stop-color="#6A2D4C" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="voice" x1="7" y1="18" x2="59" y2="46" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD0DB"/>
+      <stop offset="0.5" stop-color="#F47FA3"/>
+      <stop offset="1" stop-color="#F7AE73"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" fill="url(#tile)"/>
+  <rect width="64" height="64" fill="url(#warmth)"/>
+  <path d="M6 34c4 0 5-7 9-7 5 0 4 14 9 14 5 0 4-23 9-23s4 28 9 28 4-21 9-21c4 0 5 9 8 9" fill="none" stroke="url(#voice)" stroke-width="5.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M50 9c.7 4.3 3.7 7.3 8 8-4.3.7-7.3 3.7-8 8-.7-4.3-3.7-7.3-8-8 4.3-.7 7.3-3.7 8-8Z" fill="#FFE5B5"/>
+</svg>

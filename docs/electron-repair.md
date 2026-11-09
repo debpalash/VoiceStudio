@@ -39,6 +39,9 @@ required-model installer, follows that local or remote job to completion, refres
 workflow, and activates the engine. An installer or activation failure becomes an `ACTION_REQUEST`
 for the user's opted-in default agent with the current route and logs already attached. Clicking
 **Fix** is the explicit authorization for that recovery; merely viewing the notice changes nothing.
+On the Clone and Voice Design composers the same recovery is the primary **Set up** action, which
+replaces Synthesize until text-to-speech is ready; a model finished elsewhere clears it within 15
+seconds.
 Unresolved ASR setup in Dubbing, Dictation and Voice Conversion exposes the same agent action while
 keeping prepared media, selected voices and retry state intact. Voice Design, voice comparison and
 saved-profile previews use the same compact one-click TTS recovery instead of sending the user to a
@@ -48,7 +51,7 @@ checkout-free action while preserving the selected media, editable transcript an
 
 For checkout-free app operations, the agent discovers supported actions from the bridge OpenAPI
 document, chooses ordinary model and engine settings from current hardware and recommendations, and
-verifies the final state. A setup request sent in Autopilot authorizes its required model downloads and engine selection. Licenses, credentials, privacy or telemetry consent, data deletion and remote-device
+verifies the final state. A setup request sent in Autopilot authorizes its required model downloads and engine selection. Licenses, credentials, privacy or telemetry consent, data deletion and remote-backend
 connections remain explicit user decisions; the agent stops at that one decision instead of filling
 it in silently.
 
@@ -66,8 +69,7 @@ token never appears in agent arguments, configuration or output.
 Explicit source diagnosis and code repair require a writable VoiceStudio source checkout and must follow its
 `AGENTS.md`, `CLAUDE.md`, `CONTEXT.md`, and installed skills. Source builds select the current
 checkout automatically. Packaged builds ask the user to choose a checkout only when source work is
-actually required and remember that location. The picker rejects read-only folders and unrelated
-repositories.
+actually required and remember that location (see [Source checkout](#source-checkout)).
 
 The repair prompt prohibits opening an issue, pushing, publishing, merging, or creating a pull
 request. A successful fix ends with a review prompt so the user can inspect the diff and targeted
@@ -113,6 +115,35 @@ Bug reports include the scrubbed backend exception class when available, from
 streaming error frames or parsed API error responses. This distinguishes otherwise
 identical generic engine failures; absent or non-text class values are omitted.
 
+## Source checkout
+
+Code repair edits VoiceStudio's source, so the agent needs your own copy of the repository: a
+*source checkout*. The installed app (for example `/Applications/VoiceStudio.app`,
+`C:\Program Files\VoiceStudio` or the AppImage) holds packaged files, not source, and cannot be
+edited. A ZIP download from GitHub is not a checkout either, because it has no git history to diff
+against. Make one with:
+
+```sh
+git clone https://github.com/debpalash/VoiceStudio.git
+```
+
+Then turn on **Allow source-code repair**, click **Choose folder…** and pick the new `VoiceStudio` folder.
+Choosing the folder you ran `git clone` in, or any folder inside the clone, also works: VoiceStudio
+finds the clone root. Picking does not need a build, a Python environment or `bun install`.
+
+A rejected folder shows the reason under the picker:
+
+| Message | Fix |
+| --- | --- |
+| That's the installed app | Pick your `git clone` folder instead. |
+| That folder isn't a git clone | Run the `git clone` command above; a ZIP download does not work. |
+| No VoiceStudio clone found | Pick the clone itself, or the folder holding exactly one clone. |
+| VoiceStudio can't write to that folder | Clone into a folder you own, such as your home or Documents folder. |
+
+The check is the same on macOS, Windows and Linux: the folder must be inside a git repository whose
+root contains `backend/main.py`, `electron/package.json` and `package.json`, and VoiceStudio must be
+able to create (and immediately remove) a file there. Verification:
+`electron/src/main/source-checkout.test.ts` and `voice-studio-agent.test.tsx`.
 
 ## Short audiobook test
 

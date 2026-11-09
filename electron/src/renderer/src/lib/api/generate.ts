@@ -2,13 +2,16 @@ import { generateAbortMs } from '@shared/utils/generateBudget';
 import { generationFailureMessage } from '@shared/utils/generationFailureMessage.ts';
 import i18next from 'i18next';
 import { languageRejectionMessage } from '@shared/utils/languageRejection.ts';
+import { announceModelLicenceRequired } from '@/features/settings/model-license-contract';
 import { ApiError, apiFetch, isAbortError } from './client';
 import {
   generateBudgetPending,
   generateBudgetSettled,
   reportedGenerateBudget,
 } from './generate-budget';
-import type { CloneGenerateInput, GenerateResult } from './types';
+import type { CloneGenerateInput, EnginesResponse, GenerateResult } from './types';
+import { effectiveSamplingSteps } from '@/lib/audio/quality';
+import { queryClient, queryKeys } from '@/lib/query';
 import { beginAppActivity } from '@/lib/app-activity';
 import { createStreamingPreview } from '@/lib/audio/streaming-preview';
 
@@ -127,17 +130,36 @@ export function sanitizeInstruct(free: string): SanitizedInstruct {
 
 // ── Request ────────────────────────────────────────────────────────────────
 
-/** Multipart body for `POST /generate` (classic whole-file path). */
-export function toGenerateForm(input: CloneGenerateInput): FormData {
+/** The `instruct` field to send, or '' for none. Free-form engines keep the user's wording. */
+function instructField(input: CloneGenerateInput): string {
+  const written = input.instruct ?? '';
+  if (!written) return '';
+  return input.instructVocabulary === 'freeform'
+    ? written.trim()
+    : sanitizeInstruct(written).instruct;
+}
+
+/** Multipart body for `POST /generate` (classic whole-file path).
+ *
+ * Steps resolve against `engineId` (default: the active TTS engine), so every
+ * caller sends the engine's best quality unless the user chose a value.
+ */
+export function toGenerateForm(
+  input: CloneGenerateInput,
+  engineId: string | null | undefined = queryClient.getQueryData<EnginesResponse>(
+    queryKeys.engines,
+  )?.tts?.active,
+): FormData {
   const form = new FormData();
   form.append('text', input.text);
   if (input.seed !== undefined && Number.isInteger(input.seed))
     form.append('seed', String(input.seed));
   // Auto must be explicit: omission inherits the saved profile's default.
   if (input.language) form.append('language', input.language);
-  form.append('num_step', String(input.steps));
+  form.append('num_step', String(effectiveSamplingSteps(input.steps, engineId)));
   form.append('wav_bits', String(input.wavBits ?? 16));
   form.append('effect_preset', input.effectPreset ?? 'broadcast');
+  if (input.presetVoice) form.append('preset_voice', input.presetVoice);
   form.append('guidance_scale', String(input.cfg));
   form.append('speed', String(input.speed));
   form.append('denoise', String(input.denoise));
@@ -151,6 +173,9 @@ export function toGenerateForm(input: CloneGenerateInput): FormData {
 
   if (input.profileId) {
     form.append('profile_id', input.profileId);
+    // A manual correction overrides the saved transcript. Omit blank input so
+    // whitespace cannot shadow the profile's existing reference text.
+    if (input.refText?.trim()) form.append('ref_text', input.refText);
   } else if (input.refAudio) {
     const name =
       input.refAudioName ||
@@ -160,14 +185,17 @@ export function toGenerateForm(input: CloneGenerateInput): FormData {
     form.append('ref_text', input.refText ?? '');
   }
 
-  if (input.instruct) {
-    const instruct =
-      input.instructVocabulary === 'freeform'
-        ? input.instruct.trim()
-        : sanitizeInstruct(input.instruct).instruct;
-    if (instruct) form.append('instruct', instruct);
+  const instruct = instructField(input);
+  if (instruct) form.append('instruct', instruct);
+  if (input.designRecipe !== undefined) {
+    form.append('design_recipe', JSON.stringify(input.designRecipe));
   }
-  if (input.designRecipe) form.append('design_recipe', JSON.stringify(input.designRecipe));
+  if (input.emoVector) {
+    form.append('emo_vector', JSON.stringify(input.emoVector));
+  } else if (input.emoText?.trim()) {
+    form.append('emo_text', input.emoText.trim());
+    if (input.emoAlpha !== undefined) form.append('emo_alpha', String(input.emoAlpha));
+  }
   return form;
 }
 
@@ -231,12 +259,7 @@ export interface GenerateOptions {
 export class StreamingPreviewError extends Error {
   readonly retryable: boolean;
   readonly terminal: boolean;
-  /**
-   * The backend exception TYPE behind an otherwise generic failure. Every
-   * unclassified engine failure renders one fixed floor message, so without
-   * this an auto-filed report cannot be told apart from any other (#1800).
-   * Never the exception message — only its class name.
-   */
+  /** Backend exception class name (never a message), or null when absent. */
   readonly errorClass: string | null;
   constructor(
     message: string,
@@ -252,16 +275,6 @@ export class StreamingPreviewError extends Error {
 
 export function shouldFallbackToClassic(error: unknown): boolean {
   return error instanceof StreamingPreviewError && !error.retryable && !error.terminal;
-}
-
-export async function resolveRemoteTtsTarget(signal?: AbortSignal): Promise<boolean> {
-  try {
-    const response = await apiFetch('/workers/target?op=tts', { signal });
-    const payload = (await response.json()) as { active?: { remote?: boolean } };
-    return payload.active?.remote === true;
-  } catch {
-    return false;
-  }
 }
 
 interface StreamEvent {
@@ -328,6 +341,7 @@ export async function generateCloneStreaming(
       } else if (event.type === 'done') {
         meta = event;
       } else if (event.type === 'error') {
+        announceModelLicenceRequired(event);
         const message =
           languageRejectionMessage(event, i18next.t) ||
           generationFailureMessage(event, i18next.t) ||

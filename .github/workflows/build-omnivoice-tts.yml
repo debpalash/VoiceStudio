@@ -12,10 +12,13 @@
 # runtime gracefully reports unavailable on a missing binary (falls back to the
 # in-process OmniVoiceBackend), so this build is not on the critical PR path.
 #
-# The Intel `darwin-x86_64` (`macos-13`) leg is intentionally dropped: those
-# hosted runners are unusably contended and Apple's platform momentum is on
-# arm64; Intel-Mac users get the in-process fallback. Re-add a `macos-13` matrix
-# entry here if first-class Intel binaries are ever needed.
+# No `darwin-x86_64` leg: Intel Macs cannot run the local Python backend at
+# all (docs/install/macos.md), so a binary for them would never be spawned.
+#
+# electron-release.yml and electron-build.yml call this workflow
+# (`workflow_call`, `desktop: true`) and package each leg's artifact into the
+# installer under `resources/bin/` (#2780). One build definition serves the
+# standalone check and every installer.
 name: Build omnivoice-tts
 
 on:
@@ -24,14 +27,26 @@ on:
     paths:
       - backend/engines/omnivoice_gguf/quant_map.json
       - scripts/build-omnivoice-tts.sh
+      - scripts/lib/omnivoice-vulkan.sh
       - .github/workflows/build-omnivoice-tts.yml
   push:
     branches: [main]
     paths:
       - backend/engines/omnivoice_gguf/quant_map.json
       - scripts/build-omnivoice-tts.sh
+      - scripts/lib/omnivoice-vulkan.sh
       - .github/workflows/build-omnivoice-tts.yml
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Git ref to build (defaults to the calling run's ref)"
+        type: string
+        default: ''
+      desktop:
+        description: "Build only the platforms the desktop installers ship"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -39,36 +54,29 @@ permissions:
 jobs:
   build-omnivoice-tts:
     name: Build omnivoice-tts (${{ matrix.platform }})
-    runs-on: ${{ matrix.os }}
-    continue-on-error: ${{ matrix.experimental }}
+    # Runner per platform. A lookup (not `include` entries) so `exclude` can
+    # drop a platform: an `include` that matches no combination re-adds one.
+    runs-on: ${{ fromJSON('{"linux-x86_64":"ubuntu-latest","linux-aarch64":"ubuntu-24.04-arm","windows-x86_64":"windows-latest","darwin-arm64":"macos-15"}')[matrix.platform] }}
+    # linux-aarch64 (Apple Silicon under Asahi Linux) is experimental: the
+    # Vulkan (Honeykrisp GPU) build path is new and the hosted arm64 runner has
+    # no GPU — it validates that the binary builds; on-host Vulkan acceleration
+    # is exercised by users. darwin-arm64 compiles cleanly with
+    # -DGGML_METAL=ON at the pinned SHA (#2105) and is not experimental.
+    continue-on-error: ${{ matrix.platform == 'linux-aarch64' }}
     # Bound worst-case cost: a hung leg (esp. the experimental darwin-arm64
     # Metal build) shouldn't run to GitHub's 6h ceiling burning runner minutes.
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-latest
-            platform: linux-x86_64
-            experimental: false
-          - os: ubuntu-24.04-arm
-            platform: linux-aarch64
-            # Apple Silicon under Asahi Linux. Experimental: the Vulkan
-            # (Honeykrisp GPU) build path is new and the hosted arm64
-            # runner has no GPU — it validates that the binary builds;
-            # on-host Vulkan acceleration is exercised by users.
-            experimental: true
-          - os: windows-latest
-            platform: windows-x86_64
-            experimental: false
-          - os: macos-14
-            platform: darwin-arm64
-            # Apple Silicon Metal build compiles cleanly with -DGGML_METAL=ON
-            # at the pinned SHA (#2105); non-experimental to catch regressions.
-            experimental: false
+        platform: [linux-x86_64, linux-aarch64, windows-x86_64, darwin-arm64]
+        # The installers ship no Linux ARM64 build, so desktop calls skip it.
+        exclude:
+          - platform: ${{ inputs.desktop && 'linux-aarch64' || 'none' }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.ref }}
           persist-credentials: false
       - name: Read pinned omnivoice.cpp SHA from quant_map.json
         id: pin
@@ -83,20 +91,45 @@ jobs:
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
-      # Linux-only: upstream `buildcpu.sh` enables `-DGGML_BLAS=ON` which
-      # requires a system BLAS implementation at cmake configure time.
-      - name: Linux system deps (BLAS for ggml-blas backend)
-        if: startsWith(matrix.platform, 'linux')
+      # Linux: let the build script's Vulkan path engage instead of silently
+      # falling back to CPU — the installers' AMD/Intel GPU path on x64, and
+      # the Honeykrisp GPU on Asahi (aarch64). The module is loaded at runtime
+      # (GGML_BACKEND_DL), so a host without a Vulkan driver still starts on CPU.
+      - name: Vulkan dev deps (Linux GPU backend)
+        if: startsWith(matrix.platform, 'linux-')
         run: |
           sudo apt-get update
-          sudo apt-get install -y libopenblas-dev pkg-config
-
-      # linux-aarch64: let the build script's Vulkan path (Honeykrisp GPU
-      # on Asahi) engage instead of silently falling back to CPU.
-      - name: Vulkan dev deps (linux-aarch64 GPU backend)
-        if: matrix.platform == 'linux-aarch64'
-        run: |
           sudo apt-get install -y glslc libvulkan-dev spirv-headers
+
+      # Windows: the LunarG SDK provides glslc and the headers; the build script
+      # detects it through VULKAN_SDK. Desktop releases require the Vulkan
+      # module so AMD/Intel users do not silently receive a CPU-only runtime.
+      - name: Vulkan SDK (Windows GPU backend)
+        id: vulkan_sdk_1
+        if: matrix.platform == 'windows-x86_64'
+        # Transient download failures retry below; only the final attempt fails the build.
+        continue-on-error: true
+        uses: jakoch/install-vulkan-sdk-action@7fe84289ddbf750f7eff9f8e4588e600e1dd06c8 # v1.8.1
+        with:
+          vulkan_version: 1.4.309.0
+          cache: true
+
+      - name: Retry Vulkan SDK download
+        id: vulkan_sdk_2
+        if: matrix.platform == 'windows-x86_64' && steps.vulkan_sdk_1.outcome == 'failure'
+        continue-on-error: true
+        uses: jakoch/install-vulkan-sdk-action@7fe84289ddbf750f7eff9f8e4588e600e1dd06c8 # v1.8.1
+        with:
+          vulkan_version: 1.4.309.0
+          cache: true
+
+      - name: Final Vulkan SDK download attempt
+        id: vulkan_sdk_3
+        if: matrix.platform == 'windows-x86_64' && steps.vulkan_sdk_2.outcome == 'failure'
+        uses: jakoch/install-vulkan-sdk-action@7fe84289ddbf750f7eff9f8e4588e600e1dd06c8 # v1.8.1
+        with:
+          vulkan_version: 1.4.309.0
+          cache: true
 
       - name: Build omnivoice-tts
         shell: bash
@@ -109,12 +142,30 @@ jobs:
           bash scripts/build-omnivoice-tts.sh \
             --platform "$PLATFORM" \
             --commit-sha "$PIN_SHA"
+      # The installers' AMD/Intel GPU acceleration is the optional ggml-vulkan
+      # module beside the binary. Both desktop platforms must ship it;
+      # CPU-only computers still use the runtime's CPU fallback.
+      - name: Check the Vulkan GPU module was built
+        if: matrix.platform == 'linux-x86_64' || matrix.platform == 'windows-x86_64'
+        shell: bash
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          if ls bin/ | grep -q 'ggml-vulkan'; then
+            echo "Vulkan module: $(ls bin/ | grep 'ggml-vulkan')"
+          else
+            echo "::error::$PLATFORM built without the ggml-vulkan module"; exit 1
+          fi
       - name: Upload binary artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: omnivoice-tts-${{ matrix.platform }}
+          if-no-files-found: error
           path: |
             bin/omnivoice-tts-${{ matrix.platform }}*
             bin/libggml*
             bin/ggml*.dll
+            bin/vcruntime140*.dll
+            bin/msvcp140*.dll
+            bin/vcomp140.dll
             bin/checksums.sha256

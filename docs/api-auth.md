@@ -73,8 +73,10 @@ Notes on the PIN gate (`NetworkAccessMiddleware`, `backend/main.py`):
   always served un-PIN'd so the PIN-prompt UI can load.
 - It is a **consumption** credential: a valid PIN never unlocks the admin surface
   (it is 6 digits, brute-forceable). Admin needs loopback or the API key.
-- It is completely inert when no PIN is set (the default, and every Docker
-  deploy).
+- It is completely inert when no PIN is set (including Docker until in-app
+  network sharing is enabled). Docker's bridge can make the host's own browser
+  a non-loopback client; if the PIN is lost, follow the
+  [Docker recovery steps](install/docker.md#recovering-from-a-lost-share-pin).
 
 ---
 
@@ -268,14 +270,36 @@ proxies are unwrapped so they match IPv4 CIDRs; the value is read at request
 time, so in production **restart the backend** to apply a change. Default empty
 — no change to the strict loopback default.
 
+### Docker host loopback
+
+`OMNIVOICE_TRUST_HOST_LOOPBACK=1` (server mode only) lets the Docker host's own
+browser skip the **share PIN**. Inside the container that browser arrives from
+the default gateway, so only that exact socket address qualifies, only on the
+main port (not the LAN-share listener), and forwarded headers are never read
+for it. It grants the PIN's consumption rights only: the API-key gate and admin
+routes are unaffected. Default off. Risks and setup:
+[Docker install](install/docker.md#trust-host-loopback).
+
 ---
 
 ## Admin routes and server mode
 
 Admin routes — `/system/*` (including `set-env`, **RCE-class**),
 `/api/settings/*`, engine selection/install/uninstall, media tools, MCP
-bindings, pronunciation settings, and remote-worker management — sit on a
+bindings and pronunciation settings — sit on a
 stricter gate (`require_admin`, `backend/api/dependencies.py`) than consumption.
+Editing, deleting and importing stored content (voice/profile, project,
+glossary, persona, watermark settings, marketplace, batch-job delete) also uses
+this admin gate. Their read-only metadata and saved audio remain available to
+authenticated consumers, including PIN-paired phones, and so do the routes that
+only run a generation (translate, dub, batch submit/cancel/retry, voice convert,
+capture, describe voice, audiobook render, clone creation), marked with
+`@consumer_generation`. The OpenAI-compatible
+`/v1` API retains its consumption gate. A pending designed-voice preview can
+synthesize and save audio even though it is a GET, so it requires an admin
+credential too. Same-origin media requests can use an admin-session cookie
+without the JavaScript CSRF header; cross-site GETs remain rejected.
+
 On the desktop build they are **true-loopback-only**: no PIN, key, or trusted
 network reaches them from another machine.
 
@@ -446,3 +470,11 @@ call the API directly need their origin in `OMNIVOICE_ALLOWED_ORIGINS`.
 - [docs/agentic-voice.md](agentic-voice.md) — pointing OpenAI-compatible agent
   frameworks at VoiceStudio.
 - [docs/mcp.md](mcp.md) — the MCP server for AI agents.
+
+
+## Gallery permissions
+
+Gallery browsing and preview requests use the consumption gate. Importing,
+uploading, editing, deleting or copying a gallery voice into a profile requires
+administrator authorization. A share PIN alone does not authorize those
+mutations; server deployments must configure an API key for remote management.

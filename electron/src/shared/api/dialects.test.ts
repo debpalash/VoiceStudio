@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { DIALECTS, dialectOptionsFor, dialectMatchesLang, dialectLabel } from './dialects';
+import {
+  DIALECTS,
+  dialectLabel,
+  dialectMatchesLang,
+  dialectOptionsFor,
+  dialectWasIgnored,
+} from './dialects';
 
 // #280 item 2: regional dialect / vocabulary for dub translation.
 describe('dialectOptionsFor', () => {
@@ -59,5 +65,56 @@ describe('dialectLabel', () => {
 
   it('falls back to the region code for nonsense input', () => {
     expect(typeof dialectLabel('zz', 'en')).toBe('string');
+  });
+});
+
+/**
+ * #2752 — whether a requested dialect actually counted.
+ *
+ * A dialect is a prompt instruction, so only an LLM-backed translation can act
+ * on it. A neural MT model has one code per language — NLLB's `por_Latn` is
+ * just "Portuguese", with no European variant — so asking it for pt-PT returns
+ * whatever its training favoured. The backend says so with `dialect_applied`,
+ * and the client's only job is to not throw that answer away.
+ */
+describe('dialectWasIgnored', () => {
+  it('is true when a dialect was asked for and the engine did not apply it', () => {
+    expect(dialectWasIgnored({ dialect: 'pt-PT', dialect_applied: false })).toBe(true);
+  });
+
+  it('is false when the engine applied it', () => {
+    expect(dialectWasIgnored({ dialect: 'pt-PT', dialect_applied: true })).toBe(false);
+  });
+
+  it('is false when no dialect was asked for', () => {
+    expect(dialectWasIgnored({ dialect_applied: false })).toBe(false);
+    expect(dialectWasIgnored({ dialect: '', dialect_applied: false })).toBe(false);
+  });
+
+  it('stays quiet when the backend never answered', () => {
+    // A build older than the flag omits the field entirely. An absent answer is
+    // not a "no", and claiming the dialect was dropped would be a guess.
+    expect(dialectWasIgnored({ dialect: 'pt-PT' })).toBe(false);
+    expect(dialectWasIgnored({})).toBe(false);
+    expect(dialectWasIgnored(null)).toBe(false);
+    expect(dialectWasIgnored(undefined)).toBe(false);
+  });
+
+  it('defers to the quality notice when that one is already showing', () => {
+    // #372: both at once sends the user in a circle — "pick Cinematic", then
+    // "Cinematic needs an LLM". The quality notice names the same remedy.
+    expect(
+      dialectWasIgnored({
+        dialect: 'pt-PT',
+        dialect_applied: false,
+        cinematic_skipped: 'no-llm-configured',
+      }),
+    ).toBe(false);
+  });
+
+  it('still speaks when the quality was skipped for some other reason', () => {
+    expect(
+      dialectWasIgnored({ dialect: 'pt-PT', dialect_applied: false, cinematic_skipped: 'budget' }),
+    ).toBe(true);
   });
 });

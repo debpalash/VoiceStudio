@@ -28,7 +28,6 @@ import pytest
 
 from services.fit_planner import FitParams, FitPlan, MAX_AUDIO_RATE_HARD, plan_fit
 from services.incremental import fit_fingerprint
-from api.routers.dub_export import _build_video_stretch_filter_graph
 
 
 def _single_seg_plan(natural: float, *, slot: float = 1.0, params: FitParams | None = None) -> FitPlan:
@@ -141,6 +140,27 @@ def test_custom_caps_are_respected():
     assert sf.overflow_s == pytest.approx(4.0 / 1.3 - 1.5, abs=1e-3)
 
 
+def test_unit_caps_preserve_timing_and_report_residual_overflow():
+    params = FitParams(max_audio_only_rate=1.0, audio_rate_cap=1.0, video_slow_cap=1.0)
+    p = _single_seg_plan(2.0, params=params)
+    sf = p.segments[0]
+    assert sf.audio_rate == 1.0
+    assert sf.video_ratio == 1.0
+    assert sf.status == "overflow_trimmed"
+    assert sf.overflow_s == pytest.approx(1.0)
+    assert p.total_duration == pytest.approx(1.0)
+    assert not p.needs_video_retime
+
+
+def test_caps_above_defaults_remain_supported():
+    p = _single_seg_plan(9.0, params=FitParams(audio_rate_cap=10.0, video_slow_cap=10.0))
+    sf = p.segments[0]
+    assert sf.audio_rate == pytest.approx(3.0)
+    assert sf.video_ratio == pytest.approx(3.0)
+    assert sf.status == "hybrid"
+    assert sf.overflow_s == 0.0
+
+
 # ── Slack absorption ───────────────────────────────────────────────────
 
 
@@ -160,6 +180,22 @@ def test_gap_slack_absorbed_minus_gap_guard():
     assert a.status == "fits"                      # 1.9 / 1.95 < 1.0
     # The unretimed guard sliver keeps b anchored at its original start.
     assert b.new_start == pytest.approx(2.0)
+
+
+@pytest.mark.parametrize("guard, effective_end", [(0.0, 2.0), (60.0, 1.0)])
+def test_gap_guard_boundaries_preserve_the_next_onset(guard, effective_end):
+    p = plan_fit(
+        [
+            {"id": "a", "start": 0.0, "end": 1.0},
+            {"id": "b", "start": 2.0, "end": 3.0},
+        ],
+        [1.0, 1.0],
+        3.0,
+        FitParams(gap_guard_s=guard),
+    )
+    assert p.segments[0].effective_end == pytest.approx(effective_end)
+    assert p.segments[1].new_start == pytest.approx(2.0)
+    assert p.total_duration == pytest.approx(3.0)
 
 
 def test_back_to_back_segments_do_not_shrink_the_slot():
@@ -252,6 +288,9 @@ def test_audio_only_mode_within_hard_limit_has_no_overflow():
 
 
 def test_video_plan_feeds_the_stretch_filter_graph_builder():
+    """Planner chunks satisfy the export router's filter-graph contract."""
+    from api.routers.dub_export import _build_video_stretch_filter_graph
+
     p = plan_fit(
         [
             {"id": "a", "start": 1.0, "end": 3.0},
@@ -272,6 +311,9 @@ def test_video_plan_feeds_the_stretch_filter_graph_builder():
 
 
 def test_empty_segment_list_yields_empty_plan():
+    """An empty track retains source duration and needs no video filter."""
+    from api.routers.dub_export import _build_video_stretch_filter_graph
+
     p = plan_fit([], [], 10.0)
     assert p.segments == []
     assert p.video_plan == []
@@ -410,3 +452,11 @@ def test_fit_fingerprint_is_stable():
         json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")
     ).hexdigest()[:16]
     assert fit_fingerprint({}) == expected
+
+
+def test_fit_fingerprint_min_audio_rate_only_counts_when_not_default():
+    # Tracks fitted before the knob existed must not look stale after upgrade.
+    assert fit_fingerprint({"min_audio_rate": 0.85}) == fit_fingerprint({})
+    assert fit_fingerprint({"min_audio_rate": None}) == fit_fingerprint({})
+    assert fit_fingerprint({"min_audio_rate": 0.6}) != fit_fingerprint({})
+    assert fit_fingerprint({"min_audio_rate": 0.6}) == fit_fingerprint({"min_audio_rate": 0.60})

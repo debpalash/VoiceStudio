@@ -190,21 +190,18 @@ export function selectionPlayhead(startSec, endSec, elapsedSec, loop) {
   return Math.min(endSec, startSec + e);
 }
 
-// Loop window for a BufferSource previewing selection [startSec, endSec] of a
-// `durationSec`-long buffer. A plain canvas click anchors a fresh selection with
-// start === end; if a loop source is started with loopStart === loopEnd (or an
-// inverted range), the Web Audio node IGNORES the loop points and loops the
-// WHOLE buffer — the preview≠selection failure #1210 exists to prevent. Floor
-// the segment at MIN_LOOP_SEC so loopStart < loopEnd always holds, and clamp the
-// window into the buffer. Pure so the guarantee is unit-tested, not eyeballed.
 export const MIN_LOOP_SEC = 0.01;
+
+// Web Audio falls back to looping the complete buffer when its loop points
+// collapse or reverse. Always return a positive window for non-empty audio.
 export function loopWindow(startSec, endSec, durationSec) {
-  const start = clamp(startSec, 0, Math.max(0, durationSec));
-  const seg = Math.max(MIN_LOOP_SEC, endSec - start);
-  const loopEnd = Math.min(durationSec, start + seg);
-  // At the buffer boundary there is no room to extend forward. Use the last
-  // available samples instead so Web Audio never ignores a collapsed loop.
-  const loopStart = Math.min(start, Math.max(0, loopEnd - Math.min(MIN_LOOP_SEC, durationSec)));
+  const duration = Math.max(0, durationSec);
+  let loopStart = clamp(startSec, 0, duration);
+  const segment = Math.max(MIN_LOOP_SEC, endSec - loopStart);
+  const loopEnd = Math.min(duration, loopStart + segment);
+  if (loopEnd - loopStart < Math.min(MIN_LOOP_SEC, duration)) {
+    loopStart = Math.max(0, loopEnd - Math.min(MIN_LOOP_SEC, duration));
+  }
   return { loopStart, loopEnd, seg: loopEnd - loopStart };
 }
 

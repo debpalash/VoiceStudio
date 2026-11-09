@@ -47,7 +47,7 @@ describe('DubHeader command bar', () => {
     const bar = screen.getByTestId('dub-command-bar');
     expect(within(bar).getByText("trying the WORLD'S SMALLEST curling iron.")).toBeInTheDocument();
     expect(within(bar).getByText('1:03.6')).toBeInTheDocument();
-    expect(within(bar).getByText(/14 segs/i)).toBeInTheDocument();
+    expect(within(bar).getByText(/14 Segments/i)).toBeInTheDocument();
     expect(within(bar).getByRole('list', { name: 'Dubbing pipeline' })).toHaveClass(
       'dub-stepper--command',
     );

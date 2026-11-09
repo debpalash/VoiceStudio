@@ -5,8 +5,10 @@ import { apiJson } from '@/lib/api/client';
 import { consumeTaskStream, IncompleteTaskStreamError } from '@/lib/api/event-stream';
 import {
   applyDubTranslationRows,
+  replaceDubSegmentTexts,
   uploadDub,
   setDubProduction,
+  setDubFitOptions,
   dubSession,
   generateDub,
   resumeDub,
@@ -31,6 +33,8 @@ import {
   setDubTarget,
   splitDubSegment,
   undoDubEdit,
+  nextDubSpeakerId,
+  setDubSegmentsSpeaker,
 } from './dub-session';
 vi.mock('@/lib/api/client', async (load) => ({
   ...(await load<typeof import('@/lib/api/client')>()),
@@ -183,6 +187,121 @@ it('keeps timing-fit provenance for every agent-translated target language', asy
   delete (window as Partial<Window>).voicestudio;
 });
 
+it('replaces spoken text from find-and-replace as one undoable edit', () => {
+  dubSession.setState((current) => ({
+    ...current,
+    phase: 'editing',
+    recovery: null,
+    segments: [
+      {
+        id: 'a',
+        start: 0,
+        end: 1,
+        text: 'Hello ACME',
+        text_original: 'Hello ACME',
+        translations: { es: 'Hola ACME' },
+      },
+      {
+        id: 'b',
+        start: 1,
+        end: 2,
+        text: 'Later',
+        text_original: 'Later',
+        translations: { es: 'Luego' },
+      },
+    ],
+  }));
+  clearDubEditHistory();
+  expect(replaceDubSegmentTexts([{ id: 'a', text: 'Hello Apex' }], 'es')).toBe(1);
+  expect(dubSession.state.segments[0]).toMatchObject({
+    text: 'Hello Apex',
+    translations: { es: 'Hello Apex' },
+  });
+  expect(dubSession.state.segments[1].text).toBe('Later');
+  undoDubEdit();
+  expect(dubSession.state.segments[0].text).toBe('Hello ACME');
+  expect(dubSession.state.segments[0].translations).toEqual({ es: 'Hola ACME' });
+});
+
+it('does not mark untranslated rows as translated when find-and-replace edits them', () => {
+  dubSession.setState((current) => ({
+    ...current,
+    phase: 'editing',
+    recovery: null,
+    segments: [
+      { id: 'a', start: 0, end: 1, text: 'Hello ACME', text_original: 'Hello ACME' },
+      {
+        id: 'b',
+        start: 1,
+        end: 2,
+        text: 'Bye ACME',
+        text_original: 'Bye ACME',
+        translations: { fr: 'Au revoir ACME' },
+      },
+    ],
+  }));
+  clearDubEditHistory();
+  expect(
+    replaceDubSegmentTexts(
+      [
+        { id: 'a', text: 'Hello Apex' },
+        { id: 'b', text: 'Bye Apex' },
+      ],
+      'es',
+    ),
+  ).toBe(2);
+  expect(dubSession.state.segments[0].text).toBe('Hello Apex');
+  expect(dubSession.state.segments[0].translations).toBeUndefined();
+  // Like a row edit, the corrected source replaces stale translations of the old words.
+  expect(dubSession.state.segments[1].translations).toBeUndefined();
+});
+
+it('keeps find-and-replace corrections on untranslated rows as the source for translation', () => {
+  dubSession.setState((current) => ({
+    ...current,
+    phase: 'editing',
+    recovery: null,
+    segments: [{ id: 'a', start: 0, end: 1, text: 'Hello ACME', text_original: 'Hello ACME' }],
+  }));
+  clearDubEditHistory();
+  expect(replaceDubSegmentTexts([{ id: 'a', text: 'Hello Apex' }], 'es')).toBe(1);
+  // Translation and target switches read text_original; it must carry the fix.
+  expect(dubSession.state.segments[0]).toMatchObject({
+    text: 'Hello Apex',
+    text_original: 'Hello Apex',
+  });
+  undoDubEdit();
+  expect(dubSession.state.segments[0]).toMatchObject({
+    text: 'Hello ACME',
+    text_original: 'Hello ACME',
+  });
+});
+
+it('keeps back-to-back find-and-replace actions as separate undo steps', () => {
+  dubSession.setState((current) => ({
+    ...current,
+    phase: 'editing',
+    recovery: null,
+    segments: [
+      { id: 'a', start: 0, end: 1, text: 'ACME one', text_original: 'ACME one' },
+      { id: 'b', start: 1, end: 2, text: 'ACME two', text_original: 'ACME two' },
+    ],
+  }));
+  clearDubEditHistory();
+  expect(replaceDubSegmentTexts([{ id: 'a', text: 'Apex one' }])).toBe(1);
+  expect(replaceDubSegmentTexts([{ id: 'b', text: 'Apex two' }])).toBe(1);
+  undoDubEdit();
+  expect(dubSession.state.segments.map((segment) => segment.text)).toEqual([
+    'Apex one',
+    'ACME two',
+  ]);
+  undoDubEdit();
+  expect(dubSession.state.segments.map((segment) => segment.text)).toEqual([
+    'ACME one',
+    'ACME two',
+  ]);
+});
+
 it('supports reversible insert, delete, merge, and split edits without losing speaker attribution', () => {
   const original = [
     {
@@ -258,6 +377,80 @@ it('supports reversible insert, delete, merge, and split edits without losing sp
     'voice-new',
     'voice-new',
   ]);
+});
+
+it('moves lines to another or a new speaker and follows that speaker voice (#3515)', () => {
+  const original = [
+    {
+      id: 'a',
+      start: 0,
+      end: 1,
+      text: 'Hi',
+      text_original: 'Hi',
+      speaker_id: 'Speaker 1',
+      profile_id: 'auto:speaker_1',
+    },
+    {
+      id: 'b',
+      start: 1,
+      end: 2,
+      text: 'Hey',
+      text_original: 'Hey',
+      speaker_id: 'Speaker 1',
+      profile_id: 'auto:speaker_1',
+    },
+    {
+      id: 'c',
+      start: 2,
+      end: 3,
+      text: 'Yo',
+      text_original: 'Yo',
+      speaker_id: 'Speaker 2',
+      profile_id: 'voice-two',
+    },
+    {
+      id: 'd',
+      start: 3,
+      end: 4,
+      text: 'Mine',
+      text_original: 'Mine',
+      speaker_id: 'Speaker 1',
+      profile_id: 'picked',
+    },
+  ];
+  dubSession.setState((current) => ({
+    ...current,
+    phase: 'editing',
+    recovery: null,
+    segments: original,
+  }));
+  clearDubEditHistory();
+
+  setDubSegmentsSpeaker(new Set(['b', 'd']), 'Speaker 2');
+  expect(dubSession.state.segments.map((s) => [s.speaker_id, s.profile_id])).toEqual([
+    ['Speaker 1', 'auto:speaker_1'],
+    ['Speaker 2', 'voice-two'],
+    ['Speaker 2', 'voice-two'],
+    // An explicitly picked line voice is kept.
+    ['Speaker 2', 'picked'],
+  ]);
+  undoDubEdit();
+  expect(dubSession.state.segments).toEqual(original);
+
+  // Moving a whole speaker keeps following cast voices, not freezing the old one.
+  setDubSegmentsSpeaker(new Set(['a', 'b']), 'Speaker 2');
+  expect(dubSession.state.segments.slice(0, 2).map((s) => s.profile_id)).toEqual([
+    'voice-two',
+    'voice-two',
+  ]);
+  undoDubEdit();
+
+  expect(nextDubSpeakerId(original)).toBe('Speaker 3');
+  setDubSegmentsSpeaker(new Set(['a']), nextDubSpeakerId(original));
+  expect(dubSession.state.segments[0]).toMatchObject({ speaker_id: 'Speaker 3' });
+  // A new speaker has no voice yet: the line falls back to the default voice
+  // instead of keeping the old speaker's clone.
+  expect(dubSession.state.segments[0].profile_id).toBeUndefined();
 });
 
 it('coalesces a burst of transcript typing into one undo step', () => {
@@ -605,6 +798,24 @@ it('uses saved Smart Fit overrides only for Smart Fit generation', async () => {
   }
 });
 
+it('sets and clears Smart Fit speed limits, keeping the rest of the overrides', () => {
+  dubSession.setState((current) => ({
+    ...current,
+    phase: 'editing',
+    recovery: null,
+    fitOptions: { allow_video_retime: false },
+  }));
+  setDubFitOptions({ min_audio_rate: 0.7 });
+  setDubFitOptions({ audio_rate_cap: 1.3 });
+  expect(dubSession.state.fitOptions).toEqual({
+    allow_video_retime: false,
+    min_audio_rate: 0.7,
+    audio_rate_cap: 1.3,
+  });
+  setDubFitOptions({ min_audio_rate: undefined, audio_rate_cap: undefined });
+  expect(dubSession.state.fitOptions).toEqual({ allow_video_retime: false });
+});
+
 it('does not recreate a cleared draft from a pending write or pagehide', async () => {
   localStorage.setItem('voicestudio.dub.session.v1', 'old');
   dubSession.setState((current) => ({ ...current, speed: 1.1 }));
@@ -816,7 +1027,6 @@ it.each([
   'validates only requested dub regeneration languages: $regenOnly',
   async ({ regenOnly, allowed, silent }) => {
     const { queryClient } = await import('@/lib/query');
-    queryClient.setQueryData(['workers', 'target', 'dub'], { active: { remote: false } });
     queryClient.setQueryData(['engines'], {
       tts: { active: 'test', backends: [{ id: 'test', supported_language_names: ['English'] }] },
     });
@@ -862,7 +1072,6 @@ it.each([
         expect(apiJson).not.toHaveBeenCalled();
       }
     } finally {
-      queryClient.removeQueries({ queryKey: ['workers', 'target', 'dub'], exact: true });
       queryClient.removeQueries({ queryKey: ['engines'], exact: true });
       resetDubSession();
     }

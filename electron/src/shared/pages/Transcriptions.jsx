@@ -148,17 +148,17 @@ export default function TranscriptionsPage() {
     toast.success(t('transcriptions.exported'));
   }, [transcriptions]);
 
-  // toMillis keeps this unit-safe (ISO strings today; seconds/ms tolerated)
-  // and guards unparseable stamps, which used to render "Invalid Date".
-  const formatTime = (iso) => {
-    const ms = toMillis(iso);
+  // Short "how long ago" label; older entries fall back to a local date + time.
+  const formatTime = (timestamp) => {
+    const ms = toMillis(timestamp);
     if (ms == null) return null;
-    const d = new Date(ms);
-    const diff = Date.now() - ms;
-    if (diff < 60000) return t('transcriptions.just_now');
-    if (diff < 3600000) return t('transcriptions.m_ago', { count: Math.floor(diff / 60000) });
-    if (diff < 86400000) return t('transcriptions.h_ago', { count: Math.floor(diff / 3600000) });
-    return d.toLocaleDateString(undefined, {
+    const age = Date.now() - ms;
+    const MINUTE = 60_000;
+    const HOUR = 60 * MINUTE;
+    if (age < MINUTE) return t('transcriptions.just_now');
+    if (age < HOUR) return t('transcriptions.m_ago', { count: Math.floor(age / MINUTE) });
+    if (age < 24 * HOUR) return t('transcriptions.h_ago', { count: Math.floor(age / HOUR) });
+    return new Date(ms).toLocaleString(undefined, {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',

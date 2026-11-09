@@ -46,7 +46,7 @@ import { useTranslation } from 'react-i18next';
 import { Button, Menu } from '../ui';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import VoiceSelector from './VoiceSelector';
-import SearchableSelect from './SearchableSelect';
+import SplitPresetBar from './SplitPresetBar';
 import { useAppStore } from '../store';
 import { recordValueMoment } from '../utils/donationMoments';
 import {
@@ -57,12 +57,7 @@ import {
 } from '../utils/storyTokens';
 import { parseScript } from '../utils/parseScript';
 import { importToText } from '../utils/importStory';
-import {
-  DEFAULT_SPLIT_MODE,
-  DEFAULT_SPLIT_MAX,
-  SPLIT_MODES,
-  splitStoryText,
-} from '../utils/splitStoryText';
+import { DEFAULT_SPLIT_MAX, DEFAULT_SPLIT_MODE, splitStoryText } from '../utils/splitStoryText';
 import { readTextFile } from '../utils/readTextFile';
 import { generateSpeech, audioUrl } from '../api/generate';
 import { playBlobAudio } from '../utils/media';
@@ -182,15 +177,13 @@ export default function StoriesEditor({ profiles = [] }) {
   }, []);
 
   const [activeTrack, setActiveTrack] = useState(null);
-  // Bumped by clearScript so a preview that was still generating when the
-  // script went away never plays or writes audio back for a deleted line.
-  const previewGenRef = useRef(0);
+  const previewEpochRef = useRef(0);
   const playingPreviewRef = useRef(null);
   const [activeTab, setActiveTab] = useState('script');
   const [splitOpen, setSplitOpen] = useState(false);
   const [splitText, setSplitText] = useState('');
-  const [splitMode, setSplitMode] = useState(DEFAULT_SPLIT_MODE);
-  const [splitMax, setSplitMax] = useState(DEFAULT_SPLIT_MAX.sentences);
+  const [splitPreset, setSplitPreset] = useState(DEFAULT_SPLIT_MODE);
+  const [splitCap, setSplitCap] = useState(DEFAULT_SPLIT_MAX.sentences);
   const [exporting, setExporting] = useState(false);
   const [exportPct, setExportPct] = useState(0);
   const [expandedLine, setExpandedLine] = useState(null);
@@ -396,42 +389,50 @@ export default function StoriesEditor({ profiles = [] }) {
     setTracks((prev) => [...prev, makeTrack('narrator', `# ${t('stories.chapterN', { n })}`)]);
   }, [tracks, setTracks, t]);
 
-  // Clear every line and chapter at once (an import can add hundreds; the
-  // per-line trash icon was the only way to undo one). Cast is kept.
   const clearScript = useCallback(async () => {
-    const count = tracks.length + (splitText.trim() ? 1 : 0);
-    if (!count) return;
-    const ok = await askConfirm(t('stories.clearConfirm', { count }), t('stories.clearScript'));
-    if (!ok) return;
-    // Invalidate previews still generating for lines that are about to go,
-    // and stop whatever is playing (#2203 review).
-    previewGenRef.current += 1;
+    const hasImportedDraft = splitText.trim().length > 0;
+    const entriesToRemove = tracks.length + Number(hasImportedDraft);
+    if (entriesToRemove === 0) return;
+    const accepted = await askConfirm(
+      t('stories.clearConfirm', { count: entriesToRemove }),
+      t('stories.clearScript'),
+    );
+    if (!accepted) return;
+
+    previewEpochRef.current += 1;
     stopActivePlayback();
-    // An empty script is exactly what the first-run bootstrap below treats as
-    // "pristine", so mark the sample as shown or it would reseed the demo.
+    playingPreviewRef.current = null;
     sampleBootstrapRef.current = true;
     try {
       localStorage.setItem(DEFAULT_SAMPLE_KEY, '1');
     } catch {
-      // Storage unavailable: the ref alone covers this mounted session.
+      // The in-memory guard above still prevents reseeding for this mount.
     }
-    setTracks((prev) => {
-      prev.forEach(releasePreview);
+    setTracks((liveTracks) => {
+      for (const item of liveTracks) releasePreview(item);
       return [];
     });
     setSplitText('');
     setSplitOpen(false);
     toast.success(t('stories.cleared'));
-  }, [tracks.length, splitText, setTracks, t]);
+  }, [setTracks, splitText, t, tracks.length]);
+
+  const splitStatus = useMemo(() => {
+    if (!splitText) return t('stories.pasteAbove');
+    const count = splitStoryText(splitText, splitPreset, splitCap).length;
+    return splitPreset === 'sentences'
+      ? t('stories.segmentsHint', { count, max: splitCap })
+      : t('stories.lines', { count });
+  }, [splitText, splitPreset, splitCap, t]);
 
   // ── Paste & auto-split ───────────────────────────────────────────────────
   const applySplit = useCallback(() => {
-    const chunks = splitStoryText(splitText, splitMode, splitMax);
+    const chunks = splitStoryText(splitText, splitPreset, splitCap);
     if (!chunks.length) return;
     setTracks((prev) => [...prev, ...chunks.map((tx) => makeTrack('narrator', tx))]);
     setSplitText('');
     setSplitOpen(false);
-  }, [splitText, splitMode, splitMax, setTracks]);
+  }, [splitText, splitPreset, splitCap, setTracks]);
 
   const setVoiceForSelection = useCallback(
     (trackId, voiceId) => {
@@ -504,10 +505,10 @@ export default function StoriesEditor({ profiles = [] }) {
     async (track) => {
       const raw = (track.text || '').trim();
       if (!raw) return;
-      const gen = previewGenRef.current;
-      const stale = () =>
-        previewGenRef.current !== gen ||
-        !useAppStore.getState().storyTracks.some((tk) => tk.id === track.id);
+      const startingEpoch = previewEpochRef.current;
+      const previewWasInvalidated = () =>
+        startingEpoch !== previewEpochRef.current ||
+        !useAppStore.getState().storyTracks.some((candidate) => candidate.id === track.id);
       const playback = { id: track.id };
       const releasePlayback = () => {
         if (playingPreviewRef.current === playback) playingPreviewRef.current = null;
@@ -521,7 +522,7 @@ export default function StoriesEditor({ profiles = [] }) {
       if (!hasStoryMarkers(raw)) {
         try {
           const blob = await fetchChunkBlob(raw, pid, spd);
-          if (stale()) return;
+          if (previewWasInvalidated()) return;
           const url = URL.createObjectURL(blob);
           setTracks((prev) =>
             prev.map((tk) => {
@@ -556,7 +557,7 @@ export default function StoriesEditor({ profiles = [] }) {
             seg.type === 'chunk' ? await fetchChunkBlob(seg.text, seg.profileId, spd) : null,
           );
         }
-        if (stale()) return;
+        if (previewWasInvalidated()) return;
         let cursor = 0;
         const finish = () => {
           setTracks((prev) =>
@@ -568,7 +569,7 @@ export default function StoriesEditor({ profiles = [] }) {
           );
         };
         const step = () => {
-          if (stale()) return;
+          if (previewWasInvalidated()) return;
           while (cursor < parsed.length) {
             const seg = parsed[cursor];
             const blob = chunkBlobs[cursor];
@@ -1053,49 +1054,15 @@ export default function StoriesEditor({ profiles = [] }) {
                   autoComplete="off"
                 />
                 <div className="flex items-center gap-[12px] flex-wrap">
-                  <label className="flex items-center gap-[6px] [font-size:var(--text-xs)] text-fg-muted">
-                    {t('stories.splitMode')}
-                    <SearchableSelect
-                      value={splitMode}
-                      onChange={setSplitMode}
-                      options={SPLIT_MODES.map((mode) => ({
-                        value: mode,
-                        label: t(`stories.split_${mode}`),
-                      }))}
-                      ariaLabel={t('stories.splitMode')}
-                      menuPortal
-                      size="sm"
-                    />
-                  </label>
-                  {splitMode === 'sentences' && (
-                    <label className="flex items-center gap-[6px] [font-size:var(--text-xs)] text-fg-muted">
-                      {t('stories.maxChars')}
-                      <input
-                        type="number"
-                        min={60}
-                        max={1000}
-                        step={10}
-                        value={splitMax}
-                        onChange={(e) =>
-                          setSplitMax(parseInt(e.target.value, 10) || DEFAULT_SPLIT_MAX.sentences)
-                        }
-                        name="story-segment-length"
-                        inputMode="numeric"
-                        className="w-[64px] px-[6px] py-[4px] bg-bg-elev-2 border border-border rounded-sm text-fg [font-family:var(--font-mono)] [font-size:var(--text-xs)]"
-                      />
-                    </label>
-                  )}
+                  <SplitPresetBar
+                    t={t}
+                    preset={splitPreset}
+                    onPreset={setSplitPreset}
+                    cap={splitCap}
+                    onCap={setSplitCap}
+                  />
                   <span className="flex-1 [font-size:var(--text-xs)] text-fg-subtle">
-                    {!splitText
-                      ? t('stories.pasteAbove')
-                      : splitMode === 'sentences'
-                        ? t('stories.segmentsHint', {
-                            count: splitStoryText(splitText, splitMode, splitMax).length,
-                            max: splitMax,
-                          })
-                        : t('stories.lines', {
-                            count: splitStoryText(splitText, splitMode).length,
-                          })}
+                    {splitStatus}
                   </span>
                   <Button
                     size="sm"

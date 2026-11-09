@@ -1,0 +1,1 @@
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android" android:minWidth="180dp" android:minHeight="48dp" android:targetCellWidth="3" android:targetCellHeight="1" android:initialLayout="@layout/phone_widget" android:resizeMode="horizontal" android:widgetCategory="home_screen" android:updatePeriodMillis="0" />

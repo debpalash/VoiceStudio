@@ -13,7 +13,19 @@ export interface SetupProgress {
   downloadsComplete?: boolean;
   /** uv only announces sizeable artifacts, so byte totals are approximate. */
   estimatedBytes?: boolean;
+  /** Host serving `activePackage`, from the wheel URLs pinned in uv.lock (#3411). */
+  downloadHost?: string;
+  /** Pending downloads received no bytes for `stalledSeconds` (#3411). */
+  stalled?: boolean;
+  stalledSeconds?: number;
 }
+
+/**
+ * Silence on a slow-but-moving link never reaches this: uv streams every
+ * in-flight wheel into its cache, so growth there counts as progress even
+ * while a multi-gigabyte wheel prints nothing for minutes.
+ */
+export const DOWNLOAD_STALL_MS = 45_000;
 
 const ANSI_ESCAPE = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/g;
 const SIZE = '(\\d+(?:\\.\\d+)?)\\s*(B|KB|KiB|MB|MiB|GB|GiB)';
@@ -45,7 +57,10 @@ function escapeRegExp(value: string): string {
  * land on the same planned entry.
  */
 export function normalizePackageName(name: string): string {
-  return name.trim().toLowerCase().replace(/[-_.]+/g, '-');
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[-_.]+/g, '-');
 }
 
 /** Converts uv's human output into stable, renderer-safe progress data. */
@@ -57,6 +72,10 @@ export class SetupProgressTracker {
   private readonly completed = new Set<string>();
   private readonly samples: Array<{ at: number; bytes: number }> = [];
   private progress: SetupProgress = { completedDownloads: 0 };
+  private hosts = new Map<string, string>();
+  /** Last time any download made progress: an announcement, a completion, or in-flight bytes. */
+  private advancedAt: number | undefined;
+  private inFlightBytes = 0;
 
   reset(): void {
     this.planned.clear();
@@ -65,6 +84,22 @@ export class SetupProgressTracker {
     this.completed.clear();
     this.samples.length = 0;
     this.progress = { completedDownloads: 0 };
+    this.advancedAt = undefined;
+    this.inFlightBytes = 0;
+  }
+
+  /** Package (any spelling) to the host its locked wheel downloads from. */
+  setDownloadHosts(hosts: ReadonlyMap<string, string>): void {
+    this.hosts = new Map([...hosts].map(([name, host]) => [normalizePackageName(name), host]));
+  }
+
+  /**
+   * Bytes uv has streamed into its cache for downloads that have not finished.
+   * Any growth is progress; a drop is a finished wheel moving into the cache.
+   */
+  observeInFlight(bytes: number, now = Date.now()): void {
+    if (bytes > this.inFlightBytes) this.advancedAt = now;
+    this.inFlightBytes = bytes;
   }
 
   ingest(rawLine: string, now = Date.now()): SetupProgress | null {
@@ -90,6 +125,7 @@ export class SetupProgressTracker {
     const starting = line.match(new RegExp(`^Downloading\\s+(.+?)\\s+\\(${SIZE}\\)`, 'i'));
     if (starting) {
       const name = normalizePackageName(starting[1]);
+      if (!this.planned.has(name) || this.completed.has(name)) this.advancedAt = now;
       if (!this.labels.has(name)) this.labels.set(name, starting[1].trim());
       this.planned.set(name, parseByteSize(starting[2], starting[3]));
       this.completed.delete(name);
@@ -101,6 +137,7 @@ export class SetupProgressTracker {
     const finished = line.match(/^Downloaded\s+(.+?)\s*$/i);
     if (finished) {
       const name = normalizePackageName(finished[1]);
+      if (!this.completed.has(name)) this.advancedAt = now;
       this.completed.add(name);
       const size = this.planned.get(name);
       if (size !== undefined) this.received.set(name, size);
@@ -115,6 +152,7 @@ export class SetupProgressTracker {
       const total = parseByteSize(bytePair[3], bytePair[4]);
       const name = this.packageOnLine(line);
       if (name) {
+        if (received > (this.received.get(name) ?? 0)) this.advancedAt = now;
         this.planned.set(name, total);
         this.received.set(name, Math.min(received, total));
         this.progress.activePackage = this.labels.get(name) ?? name;
@@ -123,6 +161,34 @@ export class SetupProgressTracker {
     }
 
     if (!changed) return null;
+    return this.recompute(now);
+  }
+
+  /**
+   * Byte progress of a download the shell runs itself (the multi-connection
+   * wheel prefetch, #3411). `total <= 0` withdraws the package: its download
+   * failed over to uv, which announces it again.
+   */
+  observeTransfer(name: string, received: number, total: number, now = Date.now()): SetupProgress {
+    const key = normalizePackageName(name);
+    this.progress.activityUpdatedAt = now;
+    if (total <= 0) {
+      this.planned.delete(key);
+      this.received.delete(key);
+      this.completed.delete(key);
+    } else {
+      if (!this.labels.has(key)) this.labels.set(key, name.trim());
+      if (received > (this.received.get(key) ?? 0) || !this.planned.has(key)) this.advancedAt = now;
+      this.planned.set(key, total);
+      this.received.set(key, Math.min(received, total));
+      if (received >= total) this.completed.add(key);
+      else this.completed.delete(key);
+    }
+    this.refreshDownloadState();
+    return this.recompute(now);
+  }
+
+  private recompute(now: number): SetupProgress {
     this.progress.completedDownloads = this.completed.size;
     const totalBytes = [...this.planned.values()].reduce((sum, value) => sum + value, 0);
     const downloadedBytes = [...this.received.values()].reduce((sum, value) => sum + value, 0);
@@ -132,7 +198,7 @@ export class SetupProgressTracker {
       this.progress.estimatedBytes = true;
       this.updateRate(now, downloadedBytes, totalBytes);
     }
-    return { ...this.progress };
+    return this.snapshot(now);
   }
 
   /**
@@ -162,8 +228,23 @@ export class SetupProgressTracker {
     else delete this.progress.downloadsComplete;
   }
 
-  snapshot(): SetupProgress {
-    return { ...this.progress };
+  snapshot(now = Date.now()): SetupProgress {
+    const snapshot: SetupProgress = { ...this.progress };
+    if (snapshot.transferUpdatedAt === undefined || now - snapshot.transferUpdatedAt >= 15_000) {
+      delete snapshot.bytesPerSecond;
+      delete snapshot.etaSeconds;
+    }
+    const host = snapshot.activePackage
+      ? this.hosts.get(normalizePackageName(snapshot.activePackage))
+      : undefined;
+    if (host) snapshot.downloadHost = host;
+    const pending = this.planned.size > 0 && snapshot.downloadsComplete === false;
+    const idleMs = this.advancedAt === undefined ? 0 : now - this.advancedAt;
+    if (pending && idleMs >= DOWNLOAD_STALL_MS) {
+      snapshot.stalled = true;
+      snapshot.stalledSeconds = Math.floor(idleMs / 1000);
+    }
+    return snapshot;
   }
 
   private updateRate(now: number, bytes: number, totalBytes: number): void {

@@ -1,6 +1,11 @@
 import { PipelineFailure } from '@/components/pipeline-failure';
-import { openTake } from '@/lib/store/takes';
-import { setWorkspace } from '@/lib/store/workspace';
+import {
+  EngineSetupButton,
+  EngineSetupStatus,
+  useEngineSetup,
+  type EngineSetup,
+} from '@/components/engine-notice';
+import { AddTranscriptButton } from './add-transcript-button';
 import { Progress as ProgressPrimitive } from '@base-ui/react/progress';
 import {
   AudioLinesIcon,
@@ -14,7 +19,6 @@ import {
   RotateCcwIcon,
   Settings2Icon,
   ShuffleIcon,
-  SlidersHorizontalIcon,
   SparklesIcon,
   ThermometerIcon,
   TimerIcon,
@@ -22,7 +26,6 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useId, useState } from 'react';
-import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/popover';
@@ -37,16 +40,22 @@ import { useGenerateClone } from '@/hooks/use-generate';
 import {
   resetVoiceControls,
   setCloneSetting,
+  useCloneSetting,
   useCloneSettings,
   type CloneSettings,
 } from '@/lib/store/clone-settings';
 import { cn } from '@/lib/utils';
 import { EngineLanguagePicker } from './engine-language-picker';
+import { PresetVoicePicker } from './preset-voice-picker';
+import { CloneReadinessNotice } from './clone-readiness-notice';
 import { QualityControls } from './quality-controls';
+import { QualityOffer } from './quality-offer';
+import { EmotionControls } from './emotion-controls';
+import { ExpressionTip } from './expression-tip';
 import { CloneDemoAction } from './clone-demo';
 import { useCloneDemo } from '@/hooks/use-clone-demo';
 
-type NumericKey = 'steps' | 'cfg' | 'speed' | 'tShift' | 'posTemp' | 'classTemp' | 'layerPenalty';
+type NumericKey = 'cfg' | 'speed' | 'tShift' | 'posTemp' | 'classTemp' | 'layerPenalty';
 
 interface SliderSpec {
   key: NumericKey;
@@ -59,14 +68,6 @@ interface SliderSpec {
 }
 
 const SLIDERS: SliderSpec[] = [
-  {
-    key: 'steps',
-    labelKey: 'clone.steps',
-    icon: SlidersHorizontalIcon,
-    min: 8,
-    max: 64,
-    step: 1,
-  },
   {
     key: 'cfg',
     labelKey: 'voiceControls.guidance',
@@ -136,10 +137,7 @@ function SliderRow({ spec, value }: SliderRowProps) {
   return (
     <div className="flex min-w-0 flex-col gap-2 px-1 py-2">
       <div className="flex items-center justify-between gap-2">
-        <span
-          id={labelId}
-          className="inline-flex items-center gap-1.5 text-xs font-medium"
-        >
+        <span id={labelId} className="inline-flex items-center gap-1.5 text-xs font-medium">
           <Icon className="size-3.5 text-muted-foreground" aria-hidden="true" />
           {t(spec.labelKey)}
         </span>
@@ -243,7 +241,7 @@ function Overrides({ settings }: OverridesProps) {
         </summary>
         <p className="mt-2 px-1 text-[11px] text-muted-foreground">{t('voiceControls.hint')}</p>
         <div className="mt-1 grid gap-x-4 sm:grid-cols-2">
-          {SLIDERS.filter((spec) => spec.key !== 'speed' && spec.key !== 'steps').map((spec) => (
+          {SLIDERS.filter((spec) => spec.key !== 'speed').map((spec) => (
             <SliderRow key={spec.key} spec={spec} value={settings[spec.key]} />
           ))}
         </div>
@@ -318,7 +316,8 @@ export function VoiceControls({ size = 'icon-lg' }: { size?: 'icon-sm' | 'icon-l
   );
 }
 
-export function ActionBar() {
+/** Render the Voice Cloning composer including engine-aware emotion controls. */
+export function ActionBar({ setup: shared }: { setup?: EngineSetup } = {}) {
   const { t } = useTranslation();
   const demo = useCloneDemo();
   const mac = isMac();
@@ -333,6 +332,7 @@ export function ActionBar() {
     modelStage,
     modelProgress,
     error,
+    errorTopic,
     clearError,
     cloneBlocker: blocker,
   } = useGenerateClone();
@@ -349,77 +349,54 @@ export function ActionBar() {
               : 'clone.generating_status',
       )
     : t('clone.synthesize');
+  // Not ready: the primary action is the setup that fixes it, not a dead Synthesize.
+  // The page passes its own setup so a download outlives the notice above.
+  const own = useEngineSetup('clone');
+  const setup = shared ?? own;
+  const needsSetup = blocker === 'engine' && !demo && !isGenerating;
+  const script = useCloneSetting('text');
 
   return (
     <section className="@container/composer">
-      {blocker && !isGenerating && (
-        <div
-          id={readinessId}
-          className="mb-3 flex flex-wrap items-center justify-between gap-2 px-1 text-sm text-muted-foreground"
-        >
-          <span role="status">
-            {t(
-              blocker === 'cloning'
-                ? 'convert.cloning_required'
-                : blocker === 'engine'
-                ? demo
-                  ? 'demo.prerendered_chip'
-                  : 'engines.none_ready_title'
-                : blocker === 'reference'
-                  ? 'tts_errors.upload_or_select'
-                  : blocker === 'text'
-                    ? 'tts_errors.enter_text'
-                    : 'preferences.loading',
-            )}
-          </span>
-          {blocker === 'reference' && (
-            <div className="flex gap-1">
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={() => {
-                  openTake(null);
-                  setWorkspace({ panel: 'voice' });
-                }}
-              >
-                {t('clone.reference_audio')}
-              </Button>
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={() => setWorkspace({ libraryOpen: true, libraryTab: 'voices' })}
-              >
-                {t('clone.saved_profiles')}
-              </Button>
-            </div>
-          )}
-          {(blocker === 'engine' || blocker === 'cloning') && !demo && (
-            <Link
-              to="/settings/models/$family"
-              params={{ family: 'tts' }}
-              className={buttonVariants({ variant: 'ghost', size: 'xs' })}
-            >
-              {t('engineSidebar.tts')}
-            </Link>
-          )}
-        </div>
+      {needsSetup ? (
+        <EngineSetupStatus setup={setup} id={readinessId} />
+      ) : (
+        blocker &&
+        !isGenerating && <CloneReadinessNotice id={readinessId} blocker={blocker} demo={demo} />
       )}
-      {error && <PipelineFailure className="mb-3" fallback={error} onDismiss={clearError} />}
+      {error && (
+        <PipelineFailure
+          className="mb-3"
+          fallback={error}
+          topic={errorTopic}
+          action={errorTopic === 'REFERENCE_STT_MISSING' ? <AddTranscriptButton /> : undefined}
+          onDismiss={clearError}
+        />
+      )}
+      {!demo && !isGenerating && <ExpressionTip />}
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1 rounded-lg bg-background/50 p-1 ring-1 ring-border/50">
           <EngineLanguagePicker />
+          <PresetVoicePicker disabled={isGenerating} />
           <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />
           <QualityControls disabled={isGenerating} />
           <VoiceControls />
+          <EmotionControls disabled={isGenerating} />
         </div>
 
         <div className="relative ml-auto flex shrink-0 gap-2">
           {demo ? (
             <CloneDemoAction />
+          ) : needsSetup ? (
+            <EngineSetupButton
+              setup={setup}
+              primary
+              className="h-10 w-60 max-w-full shrink-0 rounded-lg px-4 shadow-sm"
+            />
           ) : (
             <Button
               size="lg"
-              className="h-10 w-60 shrink-0 justify-between overflow-hidden rounded-lg ps-4 pe-2.5 shadow-sm transition-colors"
+              className="h-10 w-60 max-w-full shrink-0 justify-between overflow-hidden rounded-lg ps-4 pe-2.5 shadow-sm transition-colors"
               onClick={() => void generate()}
               disabled={isGenerating || blocker !== null}
               aria-describedby={blocker ? readinessId : undefined}
@@ -484,6 +461,9 @@ export function ActionBar() {
           ) : null}
         </div>
       </div>
+      {!demo && !needsSetup && (
+        <QualityOffer text={script} isGenerating={isGenerating} className="mt-2 justify-end" />
+      )}
     </section>
   );
 }

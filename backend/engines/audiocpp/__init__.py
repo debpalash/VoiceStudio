@@ -190,7 +190,13 @@ class AudioCPPBackend(TTSBackend):
         "weights research/non-commercial)"
     )
     supports_voice_design = True
+    # The seed travels in the request body; the C++ server's sampler never
+    # sees the parent's torch RNG, so /generate must forward it (#3413).
+    supports_generation_seed = True
     applies_own_mastering = True  # model-decoded 24 kHz studio output
+    # The server payload carries guidance_scale but no step count — explicit
+    # num_step 400s instead of silently doing nothing (#3654).
+    supports_num_step = False
     gpu_compat = ("cpu",)
     runs_out_of_process = True
     # Same marker SubprocessBackend sets: this engine lives in another OS
@@ -199,6 +205,15 @@ class AudioCPPBackend(TTSBackend):
     # here; nothing assumes the stdio protocol from it.
     _is_subprocess_isolated = True
     _DEFAULT_SAMPLE_RATE = 24000  # Breeze-TTS-2 native rate
+    #: audio.cpp model package this engine serves (bootstrap.ModelPackage).
+    #: Resolved lazily so importing this module never imports bootstrap.
+    _package_name = "BREEZE"
+
+    @classmethod
+    def _package(cls):
+        from engines.audiocpp import bootstrap
+
+        return getattr(bootstrap, cls._package_name)
 
     def __init__(self) -> None:
         self._proc: Any | None = None
@@ -219,7 +234,7 @@ class AudioCPPBackend(TTSBackend):
 
         try:
             bootstrap.resolve_server_binary()
-            bootstrap.resolve_model_file()
+            bootstrap.resolve_model_file(cls._package())
         except RuntimeError as exc:
             return False, str(exc)
         return True, "ready"
@@ -295,7 +310,8 @@ class AudioCPPBackend(TTSBackend):
     def model_identity(self) -> str | None:
         from engines.audiocpp import bootstrap
 
-        return f"{bootstrap.FAMILY}/{bootstrap.package_filename()}"
+        package = self._package()
+        return f"{package.family}/{bootstrap.package_filename(package)}"
 
     # ── server lifecycle ────────────────────────────────────────────────
 
@@ -310,18 +326,19 @@ class AudioCPPBackend(TTSBackend):
             self._proc = None  # stale handle — respawn below
             from engines.audiocpp import bootstrap
 
+            package = self._package()
             binary = bootstrap.resolve_server_binary()
             selection = bootstrap.resolve_compute_selection()
-            model_file = bootstrap.resolve_model_file()
-            self._port = bootstrap.server_port()
+            model_file = bootstrap.resolve_model_file(package)
+            self._port = bootstrap.server_port(package)
             # The random model id is a per-launch challenge. Before sending
             # speech text or a reference path, _verify_server_identity asks
             # /v1/models to prove this is the child configured by this process,
             # not an unrelated listener that pre-bound the loopback port.
-            self._server_model_id = f"{bootstrap.MODEL_ID}-{secrets.token_hex(16)}"
+            self._server_model_id = f"{package.model_id}-{secrets.token_hex(16)}"
             config = build_server_config(
                 model_id=self._server_model_id,
-                family=bootstrap.FAMILY,
+                family=package.family,
                 model_path=str(model_file),
                 port=self._port,
                 backend=selection.device.backend,
@@ -333,7 +350,7 @@ class AudioCPPBackend(TTSBackend):
             self._provider = selection.device.backend
             from core.config import DATA_DIR
 
-            workdir = Path(str(DATA_DIR)) / "audiocpp"
+            workdir = Path(str(DATA_DIR)) / package.workdir
             workdir.mkdir(parents=True, exist_ok=True)
             self._server_json = workdir / "server.json"
             flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
@@ -473,6 +490,25 @@ class AudioCPPBackend(TTSBackend):
 
     # ── generate ────────────────────────────────────────────────────────
 
+    def _request_options(self, kw: dict, ref_audio) -> tuple[str | None, float]:
+        """``(instructions, guidance_scale)`` for one Breeze-TTS-2 request."""
+        # Voice design: our `description=` (no ref) and voice direction
+        # (`instruct=` + ref) both ride the server's `instructions` field —
+        # verified spelling against app/server/runtime.cpp.
+        instruct = kw.get("instruct") or kw.get("description") or None
+
+        language = kw.get("language")
+        # Same resolution as the language check, so "Chinese (Simplified)"
+        # or "zh-CN" is recognised as Chinese rather than logged as ignored.
+        if isinstance(language, str) and self._normalize_language_code(language) not in {
+            None, "en", "zh",
+        }:
+            logger.info(
+                "audio.cpp (Breeze-TTS-2) is en+zh only; ignoring "
+                "language=%r.", language,
+            )
+        return instruct, kw.get("guidance_scale", 1.0)
+
     def generate(self, text: str, **kw) -> torch.Tensor:
         self._check_language(kw.get("language"))
         import torch
@@ -495,19 +531,7 @@ class AudioCPPBackend(TTSBackend):
             )
             ref_text = None
 
-        # Voice design: our `description=` (no ref) and voice direction
-        # (`instruct=` + ref) both ride the server's `instructions` field —
-        # verified spelling against app/server/runtime.cpp.
-        instruct = kw.get("instruct") or kw.get("description") or None
-
-        language = kw.get("language")
-        if language and str(language).strip().lower() not in {
-            "auto", "en", "english", "zh", "chinese",
-        }:
-            logger.info(
-                "audio.cpp (Breeze-TTS-2) is en+zh only; ignoring "
-                "language=%r.", language,
-            )
+        instruct, guidance_scale = self._request_options(kw, ref_audio)
         if kw.get("speed", 1.0) != 1.0:
             logger.info("audio.cpp: speed is not supported; ignoring.")
 
@@ -532,7 +556,7 @@ class AudioCPPBackend(TTSBackend):
                 ref_audio=str(ref_audio) if ref_audio else None,
                 ref_text=ref_text,
                 instructions=instruct,
-                guidance_scale=kw.get("guidance_scale", 1.0),
+                guidance_scale=guidance_scale,
                 seed=kw.get("seed"),
             )
             # Device discovery and server startup can consume part of the soft
@@ -582,9 +606,53 @@ class AudioCPPBackend(TTSBackend):
         super().unload()
 
 
+#: Engine id of the dots.tts package (#2665).
+DOTS_ENGINE_ID = "audiocpp-dots"
+
+
+class AudioCPPDotsBackend(AudioCPPBackend):
+    """dots.tts SOAR through the same managed ``audiocpp_server`` runtime.
+
+    The pinned audio.cpp release runs the ``dots_tts`` family natively on
+    Windows, macOS and Linux, so this is dots.tts without the Python stack the
+    ``dots-tts`` engine needs (which has no Windows install path). Zero-shot
+    voice cloning only: ``instructions`` belong to the separate Edit package,
+    so no voice design is offered and none is sent.
+    """
+
+    id = DOTS_ENGINE_ID
+    display_name = "audio.cpp · dots.tts (native GGUF, multilingual voice cloning; Apache-2.0)"
+    supports_voice_design = False
+    _package_name = "DOTS"
+    #: dots.tts SOAR's vocoder emits 48 kHz (checkpoint ``vocoder.sample_rate``,
+    #: as in ``engines.dots_tts``). ``sample_rate`` is read before the first
+    #: generate sets ``_sr``, so the default must already be the real rate.
+    _DEFAULT_SAMPLE_RATE = 48000
+    #: Upstream default for dots.tts SOAR (``model_specs`` guidance_scale).
+    _DEFAULT_GUIDANCE_SCALE = 1.2
+    # _request_options always returns the upstream default — caller-supplied
+    # knobs never reach the server, so explicit values 400 (#3654).
+    supports_num_step = False
+    supports_guidance_scale = False
+
+    @property
+    def supported_languages(self) -> list[str]:
+        # Multilingual: the model reads the language from the text.
+        return ["multi"]
+
+    def _request_options(self, kw: dict, ref_audio) -> tuple[str | None, float]:
+        if kw.get("instruct") or kw.get("description"):
+            logger.info("audio.cpp dots.tts: voice design is not supported; ignoring.")
+        # The shared guidance control is calibrated for OmniVoice (default
+        # 2.0); dots.tts is tuned for its own upstream default instead.
+        return None, self._DEFAULT_GUIDANCE_SCALE
+
+
 __all__ = [
+    "DOTS_ENGINE_ID",
     "ENGINE_ID",
     "AudioCPPBackend",
+    "AudioCPPDotsBackend",
     "build_server_config",
     "build_speech_payload",
     "decode_speech_json",

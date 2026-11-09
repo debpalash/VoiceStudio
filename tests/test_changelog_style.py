@@ -103,7 +103,9 @@ def lint_changelog(text):
         subsection = None  # current "### X" title, None = section preamble
         has_subsections = any(ln.startswith("### ") for _, ln in body)
         has_highlights = any(ln.strip() == "**Highlights**" for _, ln in body)
-        if has_subsections and not has_highlights:
+        # Highlights are curated when a release is cut (scripts/release.py runs
+        # this lint on the new section), so a growing Unreleased may lack them.
+        if has_subsections and not has_highlights and heading != "## [Unreleased]":
             violations.append(
                 f"{heading}: entry subsections exist but no `**Highlights**` "
                 f"block — quiet style opens with a short Highlights bullet "
@@ -256,7 +258,7 @@ def test_linter_accepts_quiet_sample_and_grandfathers_old_sections():
 
 
 def test_linter_flags_missing_highlights():
-    bad = "## [Unreleased]\n\n### Fixed\n\n- A bug (#1)\n"
+    bad = "## [9.9.9] — 2099-01-01\n\n### Fixed\n\n- A bug (#1)\n"
     v = lint_changelog(bad)
     assert len(v) == 1 and "**Highlights**" in v[0]
 
@@ -340,3 +342,12 @@ def test_highlight_cardinality_preserves_published_and_work_in_progress_notes():
     for heading in ("## [0.5.3] — 2026-09-17", "## [Unreleased]"):
         text = heading + "\n\n**Highlights**\n\n- One item\n\n### Fixed\n\n- Fix (#1)\n"
         assert lint_changelog(text) == []
+
+
+def test_unreleased_may_grow_without_highlights_until_the_release_is_cut():
+    """After a release, fragments land in an empty Unreleased with no Highlights."""
+    unreleased = "## [Unreleased]\n\n### Fixed\n\n- A fix (#1)\n"
+    assert lint_changelog(unreleased) == []
+    released = unreleased.replace("[Unreleased]", "[9.9.9] — 2099-01-01")
+    assert any("**Highlights**" in v for v in lint_changelog(released))
+

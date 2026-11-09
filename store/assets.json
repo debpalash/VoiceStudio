@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "iconSource": "docs/logo.png",
+  "snapBannerSource": "store/snap/banner-1920x640.png",
+  "screenshots": [
+    {
+      "source": "docs/media/electron/voice-cloning.png",
+      "caption": "Clone a voice from a reference recording"
+    },
+    {
+      "source": "docs/media/electron/voice-design.png",
+      "caption": "Design a voice with words and traits"
+    },
+    {
+      "source": "docs/media/electron/dubbing.png",
+      "caption": "Translate and dub audio or video"
+    },
+    {
+      "source": "docs/media/electron/models.png",
+      "caption": "Choose and manage local speech engines"
+    },
+    {
+      "source": "docs/media/electron/model-packs.png",
+      "caption": "Review model packs before downloading"
+    },
+    {
+      "source": "docs/media/electron/overview.png",
+      "caption": "Choose a workflow from the workspace overview"
+    }
+  ]
+}

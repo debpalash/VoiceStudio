@@ -1,0 +1,44 @@
+{
+  "capturedAt": "2026-10-29T05:30:59.158Z",
+  "sourceCommit": "471c95a27de817b3c329655ee81407125f830409",
+  "version": "0.5.7",
+  "theme": {
+    "mode": "dark",
+    "palette": "default"
+  },
+  "appViewport": {
+    "width": 1360,
+    "height": 850
+  },
+  "screenshotSize": {
+    "width": 2880,
+    "height": 2000
+  },
+  "deviceScaleFactor": 2,
+  "state": "browser-only demo readiness fixture; bundled samples; no live generation",
+  "profiles": [
+    "demo0001"
+  ],
+  "blockedMutations": [],
+  "files": {
+    "voice-cloning.png": 1813353,
+    "voice-cloning.webp": 272514,
+    "voice-design.png": 2063489,
+    "voice-design.webp": 320918,
+    "dubbing.png": 1865178,
+    "dubbing.webp": 311120,
+    "models.png": 2011210,
+    "models.webp": 352996,
+    "overview.png": 2131267,
+    "overview.webp": 336854,
+    "model-packs.png": 1760845,
+    "model-packs.webp": 284592,
+    "voicestudio.mp4": 1954726,
+    "voicestudio.gif": 7716401
+  },
+  "previewSize": {
+    "width": 1440,
+    "height": 1000,
+    "format": "lossless WebP"
+  }
+}

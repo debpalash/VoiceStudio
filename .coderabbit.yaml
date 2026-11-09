@@ -191,6 +191,12 @@ reviews:
       enabled: false
     unit_tests:
       enabled: false
+    autofix:
+      enabled: false
+    fix_ci:
+      enabled: false
+    resolve_merge_conflict:
+      enabled: false
 
 # Feed the bot the project constitution and docs, and let it accumulate
 # learnings from review conversations ("@coderabbitai always/never …").

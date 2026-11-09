@@ -130,7 +130,37 @@ def test_is_available_when_sha_mismatch(monkeypatch, tmp_path):
     assert "checksum mismatch" in reason.lower()
 
 
-def test_is_available_passes_when_manifest_absent(monkeypatch, tmp_path):
+@pytest.fixture
+def cached_weights(monkeypatch, tmp_path):
+    """Install the pinned GGUF pair in a throwaway HuggingFace cache.
+
+    Readiness covers the weights as well as the binary, so a test that
+    expects "ready" has to supply the pair it claims to have — the
+    engine loads only from the local cache and never downloads.
+    """
+    from huggingface_hub import constants
+
+    from engines.omnivoice_gguf.backend import _load_quant_map
+
+    quant_map = _load_quant_map()
+    revision = quant_map["_meta"]["source_commit_sha"]
+    entry = quant_map["cpu"]
+    cache = tmp_path / "hub"
+    folder = cache / "models--Serveurperso--OmniVoice-GGUF" / "snapshots" / revision
+    folder.mkdir(parents=True)
+    for name in (entry["base"], entry["tokenizer"]):
+        (folder / name).write_bytes(b"gguf-weights")
+    monkeypatch.setattr(constants, "HF_HUB_CACHE", str(cache))
+    # A clean compute environment: an ambient CPU pin or native backend
+    # would change which quant the engine looks for.
+    for variable in ("OMNIVOICE_DEVICE", "OMNIVOICE_GGUF_BACKEND",
+                     "OMNIVOICE_GGUF_DEVICE", "GGML_BACKEND"):
+        monkeypatch.delenv(variable, raising=False)
+    monkeypatch.setenv("OMNIVOICE_DEVICE", "auto")
+    return cache
+
+
+def test_is_available_passes_when_manifest_absent(monkeypatch, tmp_path, cached_weights):
     """When checksums.sha256 is missing we still report ready — the manifest
     is an integrity check, not a hard requirement (binaries are bundled
     via the installer, not by `pip`)."""
@@ -259,110 +289,112 @@ def test_generate_returns_tensor_from_stub_wav(monkeypatch, tmp_path):
     assert captured["stdin"] == "hello world"
 
 
-def test_generate_forwards_control_arguments(monkeypatch, tmp_path):
-    """The GGUF binary exposes quality/prosody controls; the adapter must not
-    silently drop them."""
-    from engines.omnivoice_gguf import backend as gguf_backend
+class _GgufRig:
+    """Wires a backend instance to throwaway model files and a fake runner."""
 
-    cls = gguf_backend._make_backend_class()
-    backend = cls()
+    def __init__(self, monkeypatch, root: Path, runner=None):
+        from engines.omnivoice_gguf import backend as mod
 
-    fake_base = tmp_path / "omnivoice-base-Q8_0.gguf"
-    fake_tok = tmp_path / "omnivoice-tokenizer-Q8_0.gguf"
-    fake_base.write_bytes(b"x")
-    fake_tok.write_bytes(b"x")
-    monkeypatch.setattr(
-        backend,
-        "_resolve_quant_paths",
-        lambda: (fake_base, fake_tok, {"base": "omnivoice-base-Q8_0.gguf",
-                                       "tokenizer": "omnivoice-tokenizer-Q8_0.gguf"}),
+        self.mod = mod
+        self.root = root
+        self.argvs: list = []
+        self.instance = mod._make_backend_class()()
+        weights, codec = root / "w-Q8_0.gguf", root / "c-Q8_0.gguf"
+        weights.write_bytes(b"0")
+        codec.write_bytes(b"0")
+        monkeypatch.setattr(
+            self.instance, "_resolve_quant_paths",
+            lambda: (weights, codec, {"base": weights.name, "tokenizer": codec.name}),
+        )
+        exe = root / "stub-tts-exe"
+        exe.write_bytes(b"\x7fELF" + b"\x00" * 16)
+        exe.chmod(0o755)
+        monkeypatch.setattr(mod, "_binary_path", lambda slug=None: exe)
+        self._runner = runner
+
+        def fake_run(argv, **_kw):
+            self.argvs.append(list(argv))
+            if self._runner:
+                self._runner(list(argv))
+            _write_3s_wav(Path(argv[argv.index("-o") + 1]))
+            return subprocess.CompletedProcess(argv, 0, "", "")
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+    def flag_value(self, flag):
+        argv = self.argvs[-1]
+        return argv[argv.index(flag) + 1]
+
+
+def test_generate_translates_controls_into_flags(monkeypatch, tmp_path):
+    rig = _GgufRig(monkeypatch, tmp_path)
+    rig.instance.generate(
+        "x", instruct="whispering", duration=1.75, seed=99,
+        denoise=False, preprocess_prompt=False, chunk_duration=0, chunk_threshold=500,
     )
-    # The #1172 pre-exec preflight reads the binary, so the stub must exist
-    # on disk with a real executable magic.
-    fake_tts = tmp_path / "fake-omnivoice-tts"
-    fake_tts.write_bytes(b"\x7fELF-real-enough")
-    monkeypatch.setattr(gguf_backend, "_binary_path", lambda slug=None: fake_tts)
-
-    captured: dict = {}
-
-    def _stub_run(argv, *, input=None, text=None, capture_output=None,
-                  timeout=None, check=None, **_kw):
-        for i, a in enumerate(argv):
-            if a == "-o":
-                _write_3s_wav(Path(argv[i + 1]))
-                break
-        captured["argv"] = argv
-        return subprocess.CompletedProcess(args=argv, returncode=0, stdout="", stderr="")
-
-    monkeypatch.setattr(subprocess, "run", _stub_run)
-
-    backend.generate(
-        "hello world",
-        instruct="calm narrator",
-        duration=3.2,
-        seed=1234,
-        denoise=False,
-        preprocess_prompt=False,
-        chunk_duration=0,
-        chunk_threshold=999,
-    )
-
-    argv = captured["argv"]
-    assert argv[argv.index("--instruct") + 1] == "calm narrator"
-    assert argv[argv.index("--duration") + 1] == "3.2"
-    assert argv[argv.index("--seed") + 1] == "1234"
-    assert "--no-denoise" in argv
-    assert "--no-preprocess-prompt" in argv
-    assert argv[argv.index("--chunk-duration") + 1] == "0.0"
-    assert argv[argv.index("--chunk-threshold") + 1] == "999.0"
+    assert rig.flag_value("--instruct") == "whispering"
+    assert rig.flag_value("--duration") == "1.75"
+    assert rig.flag_value("--seed") == "99"
+    assert rig.flag_value("--chunk-duration") == "0.0"
+    assert rig.flag_value("--chunk-threshold") == "500.0"
+    assert {"--no-denoise", "--no-preprocess-prompt"} <= set(rig.argvs[-1])
 
 
-def test_generate_passes_ref_text_as_temporary_file(monkeypatch, tmp_path):
-    from engines.omnivoice_gguf import backend as gguf_backend
+def test_generate_without_controls_emits_no_extra_flags(monkeypatch, tmp_path):
+    rig = _GgufRig(monkeypatch, tmp_path)
+    rig.instance.generate("x")
+    optional = {"--instruct", "--duration", "--seed", "--no-denoise", "--no-preprocess-prompt",
+                "--chunk-duration", "--chunk-threshold", "--ref-text", "--ref-wav"}
+    assert optional.isdisjoint(rig.argvs[-1])
 
-    cls = gguf_backend._make_backend_class()
-    backend = cls()
-    fake_base = tmp_path / "omnivoice-base-Q8_0.gguf"
-    fake_tok = tmp_path / "omnivoice-tokenizer-Q8_0.gguf"
-    fake_ref = tmp_path / "reference.wav"
-    fake_base.write_bytes(b"x")
-    fake_tok.write_bytes(b"x")
-    fake_ref.write_bytes(b"x")
-    monkeypatch.setattr(
-        backend,
-        "_resolve_quant_paths",
-        lambda: (fake_base, fake_tok, {"base": fake_base.name,
-                                       "tokenizer": fake_tok.name}),
-    )
-    # The #1172 pre-exec preflight reads the binary, so the stub must exist
-    # on disk with a real executable magic.
-    fake_tts = tmp_path / "fake-omnivoice-tts"
-    fake_tts.write_bytes(b"\x7fELF-real-enough")
-    monkeypatch.setattr(gguf_backend, "_binary_path", lambda slug=None: fake_tts)
 
-    captured: dict = {}
+def test_transcript_is_handed_over_as_a_file_then_deleted(monkeypatch, tmp_path):
+    clip = tmp_path / "prompt.wav"
+    _write_3s_wav(clip)
+    seen = {}
 
-    def _stub_run(argv, *, input=None, text=None, capture_output=None,
-                  timeout=None, check=None, **_kw):
-        ref_text_path = Path(argv[argv.index("--ref-text") + 1])
-        captured["ref_text_path"] = ref_text_path
-        captured["ref_text"] = ref_text_path.read_text(encoding="utf-8")
-        for i, arg in enumerate(argv):
-            if arg == "-o":
-                _write_3s_wav(Path(argv[i + 1]))
-                break
-        return subprocess.CompletedProcess(args=argv, returncode=0, stdout="", stderr="")
+    def peek(argv):
+        path = Path(argv[argv.index("--ref-text") + 1])
+        seen["path"], seen["body"] = path, path.read_bytes().decode("utf-8")
 
-    monkeypatch.setattr(subprocess, "run", _stub_run)
+    rig = _GgufRig(monkeypatch, tmp_path, runner=peek)
+    rig.instance.generate("x", ref_audio=str(clip), ref_text="caf\u00e9 au lait")
+    assert seen["body"] == "caf\u00e9 au lait"
+    assert not seen["path"].exists()
 
-    backend.generate(
-        "hello world",
-        ref_audio=str(fake_ref),
-        ref_text="reference transcript",
-    )
 
-    assert captured["ref_text"] == "reference transcript"
-    assert not captured["ref_text_path"].exists()
+def test_transcript_without_ref_audio_is_ignored(monkeypatch, tmp_path):
+    rig = _GgufRig(monkeypatch, tmp_path)
+    rig.instance.generate("x", ref_text="orphan words")
+    assert "--ref-text" not in rig.argvs[-1]
+
+
+@pytest.mark.parametrize("how", ["runner_raises", "bad_ref_audio"])
+def test_transcript_file_never_outlives_a_failed_call(monkeypatch, tmp_path, how):
+    clip = tmp_path / "prompt.wav"
+    _write_3s_wav(clip)
+    staged: list = []
+    real_mkstemp = tempfile.mkstemp
+
+    def spy(*a, **kw):
+        fd, name = real_mkstemp(*a, **kw)
+        if kw.get("suffix") == ".transcript":
+            staged.append(Path(name))
+        return fd, name
+
+    monkeypatch.setattr(tempfile, "mkstemp", spy)
+
+    def explode(_argv):
+        raise RuntimeError("runner failed")
+
+    rig = _GgufRig(monkeypatch, tmp_path, runner=explode if how == "runner_raises" else None)
+    if how == "runner_raises":
+        with pytest.raises(RuntimeError):
+            rig.instance.generate("x", ref_audio=str(clip), ref_text="abc")
+    else:
+        with pytest.raises(FileNotFoundError):
+            rig.instance.generate("x", ref_audio="/nonexistent-root/p.wav", ref_text="abc")
+    assert len(staged) == 1 and not staged[0].exists()
 
 
 def test_generate_blocks_freeform_ref_audio(monkeypatch, tmp_path):
@@ -557,79 +589,51 @@ def test_is_available_does_not_chmod_placeholder(monkeypatch, tmp_path):
     )
 
 
-def test_generate_zero_byte_binary_raises_typed_actionable_error(
-    monkeypatch, tmp_path
-):
-    """#1172 end-to-end at the engine layer: generate() against a 0-byte
-    binary raises InvalidBinaryError (typed, actionable) BEFORE exec —
-    never the raw OSError '[Errno 8] Exec format error'."""
-    from engines.omnivoice_gguf import backend as gguf_backend
+def _rig_without_exe(monkeypatch, root: Path, exe_bytes: bytes):
+    from engines.omnivoice_gguf import backend as mod
+
+    inst = mod._make_backend_class()()
+    weights, codec = root / "m-Q8_0.gguf", root / "k-Q8_0.gguf"
+    weights.write_bytes(b"0")
+    codec.write_bytes(b"0")
+    monkeypatch.setattr(
+        inst, "_resolve_quant_paths",
+        lambda: (weights, codec, {"base": weights.name, "tokenizer": codec.name}),
+    )
+    exe = root / "tts-candidate"
+    exe.write_bytes(exe_bytes)
+    exe.chmod(0o755)
+    monkeypatch.setattr(mod, "_binary_path", lambda slug=None: exe)
+    return inst
+
+
+def test_empty_executable_is_refused_before_spawn(monkeypatch, tmp_path):
     from services.binary_preflight import InvalidBinaryError
 
-    cls = gguf_backend._make_backend_class()
-    backend = cls()
-
-    fake_base = tmp_path / "omnivoice-base-Q8_0.gguf"
-    fake_tok = tmp_path / "omnivoice-tokenizer-Q8_0.gguf"
-    fake_base.write_bytes(b"x")
-    fake_tok.write_bytes(b"x")
-    monkeypatch.setattr(
-        backend,
-        "_resolve_quant_paths",
-        lambda: (fake_base, fake_tok, {"base": fake_base.name,
-                                       "tokenizer": fake_tok.name}),
-    )
-    placeholder = tmp_path / "omnivoice-tts-darwin-arm64"
-    placeholder.write_bytes(b"")
-    placeholder.chmod(0o755)
-    monkeypatch.setattr(gguf_backend, "_binary_path", lambda slug=None: placeholder)
-
-    def _explode(*a, **kw):
-        raise AssertionError("subprocess.run must not be called for a placeholder")
-
-    monkeypatch.setattr(subprocess, "run", _explode)
-
-    with pytest.raises(InvalidBinaryError) as exc_info:
-        backend.generate("hello")
-    msg = str(exc_info.value)
-    assert "Exec format error" not in msg
-    assert "build-omnivoice-tts.sh" in msg
+    inst = _rig_without_exe(monkeypatch, tmp_path, b"")
+    spawned = []
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: spawned.append(a))
+    with pytest.raises(InvalidBinaryError) as err:
+        inst.generate("say this")
+    assert spawned == []
+    text = str(err.value)
+    assert "build-omnivoice-tts.sh" in text
+    assert "Exec format error" not in text
 
 
-def test_generate_enoexec_at_spawn_becomes_typed_error(monkeypatch, tmp_path):
-    """#1172 TOCTOU leg: the file passes preflight but the OS still refuses
-    to exec it (wrong arch) — the OSError is converted to the same typed,
-    actionable InvalidBinaryError."""
+def test_kernel_refusal_at_spawn_surfaces_as_typed_error(monkeypatch, tmp_path):
     import errno
 
-    from engines.omnivoice_gguf import backend as gguf_backend
     from services.binary_preflight import InvalidBinaryError
 
-    cls = gguf_backend._make_backend_class()
-    backend = cls()
+    inst = _rig_without_exe(monkeypatch, tmp_path, b"\x7fELF" + b"\x01" * 12)
 
-    fake_base = tmp_path / "omnivoice-base-Q8_0.gguf"
-    fake_tok = tmp_path / "omnivoice-tokenizer-Q8_0.gguf"
-    fake_base.write_bytes(b"x")
-    fake_tok.write_bytes(b"x")
-    monkeypatch.setattr(
-        backend,
-        "_resolve_quant_paths",
-        lambda: (fake_base, fake_tok, {"base": fake_base.name,
-                                       "tokenizer": fake_tok.name}),
-    )
-    fake_tts = tmp_path / "omnivoice-tts-linux-x86_64"
-    fake_tts.write_bytes(b"\x7fELF-wrong-arch")
-    monkeypatch.setattr(gguf_backend, "_binary_path", lambda slug=None: fake_tts)
+    def refuse(*_a, **_k):
+        raise OSError(errno.ENOEXEC, "wrong architecture")
 
-    def _enoexec(argv, **kw):
-        raise OSError(errno.ENOEXEC, "Exec format error", argv[0])
-
-    monkeypatch.setattr(subprocess, "run", _enoexec)
-
-    with pytest.raises(InvalidBinaryError) as exc_info:
-        backend.generate("hello")
-    assert "build-omnivoice-tts.sh" in str(exc_info.value)
+    monkeypatch.setattr(subprocess, "run", refuse)
+    with pytest.raises(InvalidBinaryError, match="build-omnivoice-tts.sh"):
+        inst.generate("say this")
 
 
 def test_select_default_falls_back_on_zero_byte_placeholder(monkeypatch, tmp_path):
@@ -646,3 +650,530 @@ def test_select_default_falls_back_on_zero_byte_placeholder(monkeypatch, tmp_pat
     monkeypatch.setattr(gguf_backend, "_is_macos_quarantined", lambda p: False)
 
     assert gguf_backend.select_default_engine() == "omnivoice"
+
+
+# ── #3655 — the CLI reads WAV containers only ────────────────────────────────
+
+
+def _cli_wav_format(data: bytes) -> tuple[int, int]:
+    """Return ``(audio_format, bits_per_sample)`` the way the runtime reads it.
+
+    Mirrors ``read_wav_buf`` in the pinned ``omnivoice.cpp`` (``src/wav.h``):
+    the container must start with ``RIFF``/``WAVE`` and the ``fmt `` chunk
+    must declare a format the runtime decodes — PCM (1) at 16/24 bits or
+    IEEE float (3) at 32 bits. Anything else makes the CLI exit with
+    "[WAV] Not a valid WAV buffer".
+    """
+    assert len(data) >= 12, "too short to be a RIFF file"
+    assert data[:4] == b"RIFF" and data[8:12] == b"WAVE", (
+        "not a RIFF/WAVE container"
+    )
+    audio_format = 0
+    bits = 0
+    pos = 12
+    while pos + 8 <= len(data):
+        chunk_id = data[pos:pos + 4]
+        size = int.from_bytes(data[pos + 4:pos + 8], "little")
+        body = data[pos + 8:pos + 8 + size]
+        if chunk_id == b"fmt " and len(body) >= 16:
+            audio_format = int.from_bytes(body[0:2], "little")
+            bits = int.from_bytes(body[14:16], "little")
+            if audio_format == 0xFFFE and len(body) >= 40:
+                # WAVE_FORMAT_EXTENSIBLE collapses to its sub-format.
+                sub = int.from_bytes(body[24:26], "little")
+                if sub in (1, 3):
+                    audio_format = sub
+        pos += 8 + size + (size & 1)
+    assert audio_format in (1, 3), f"unsupported WAV format tag {audio_format}"
+    if audio_format == 1:
+        assert bits in (16, 24), f"unsupported PCM width {bits}"
+    else:
+        assert bits == 32, f"unsupported float width {bits}"
+    return audio_format, bits
+
+
+def _fmt_chunk(
+    audio_format: int,
+    channels: int,
+    sample_rate: int,
+    bits: int,
+    sub_format: int | None = None,
+) -> bytes:
+    """Build a ``fmt `` chunk body.
+
+    ``sub_format`` turns it into a 40-byte WAVE_FORMAT_EXTENSIBLE header
+    that carries the effective sample format at the offset ``read_wav_buf``
+    reads it from.
+    """
+    body = bytearray(16)
+    body[0:2] = audio_format.to_bytes(2, "little")
+    body[2:4] = channels.to_bytes(2, "little")
+    body[4:8] = sample_rate.to_bytes(4, "little")
+    body[8:12] = (sample_rate * channels * bits // 8).to_bytes(4, "little")
+    body[12:14] = (channels * bits // 8).to_bytes(2, "little")
+    body[14:16] = bits.to_bytes(2, "little")
+    if sub_format is not None:
+        body[16:18] = (22).to_bytes(2, "little")
+        body[18:20] = bits.to_bytes(2, "little")
+        body[20:24] = b"\x00\x00\x00\x00"
+        body[24:26] = sub_format.to_bytes(2, "little")
+        body += b"\x00" * 14
+    return bytes(body)
+
+
+def _write_wav_with_fmt(out_path: Path, fmt_body: bytes) -> None:
+    """Write a minimal RIFF/WAVE file with a hand-made ``fmt `` chunk."""
+    data = b"\x00" * 64
+    body = (
+        b"WAVE"
+        + b"fmt "
+        + len(fmt_body).to_bytes(4, "little")
+        + fmt_body
+        + b"data"
+        + len(data).to_bytes(4, "little")
+        + data
+    )
+    out_path.write_bytes(b"RIFF" + len(body).to_bytes(4, "little") + body)
+
+
+def _write_3s_ogg(out_path: Path, sr: int = 24_000) -> None:
+    """Write a 3-second mono Ogg Vorbis clip — a non-WAV profile reference.
+
+    The profile editor keeps the reference in whatever container the user
+    uploaded, so an MP3/M4A/Ogg reference reaches the engine verbatim.
+    """
+    import math
+
+    import numpy as np
+    import soundfile as sf
+
+    t = np.arange(sr * 3, dtype="float32") / sr
+    sf.write(out_path, (0.05 * np.sin(2 * math.pi * 440 * t)).astype("float32"),
+             sr, format="OGG")
+
+
+class _PromptRig:
+    """Backend wired to a stub runner that records the CLI argv.
+
+    Unlike :class:`_GgufRig` this patches the engine's own spawn method
+    instead of ``subprocess.run``, so a test that reaches ffmpeg (the
+    fallback decoder) still runs the real subprocess.
+    """
+
+    def __init__(self, monkeypatch, tmp_path):
+        from engines.omnivoice_gguf import backend as mod
+
+        self.mod = mod
+        self.argvs: list[list[str]] = []
+        self.ref_bytes: bytes = b""
+        self.instance = mod._make_backend_class()()
+        weights, codec = tmp_path / "w.gguf", tmp_path / "c.gguf"
+        weights.write_bytes(b"0")
+        codec.write_bytes(b"0")
+        monkeypatch.setattr(
+            self.instance, "_resolve_quant_paths",
+            lambda: (weights, codec, {"base": weights.name, "codec": codec.name}),
+        )
+        exe = tmp_path / "stub-tts-exe"
+        exe.write_bytes(b"\x7fELF" + b"\x00" * 16)
+        exe.chmod(0o755)
+        monkeypatch.setattr(mod, "_binary_path", lambda slug=None: exe)
+
+        def fake_run(argv, *, stdin_text):
+            self.argvs.append(list(argv))
+            # Read the prompt while it still exists: the converted copy is
+            # deleted once the call returns.
+            ref = Path(argv[argv.index("--ref-wav") + 1]) if "--ref-wav" in argv else None
+            self.ref_bytes = ref.read_bytes() if ref is not None else b""
+            _write_3s_wav(Path(argv[argv.index("-o") + 1]))
+
+        monkeypatch.setattr(self.instance, "_run_subprocess", fake_run)
+
+    def ref_wav(self) -> Path:
+        argv = self.argvs[-1]
+        return Path(argv[argv.index("--ref-wav") + 1])
+
+
+def test_non_wav_reference_is_converted_before_it_reaches_the_cli(monkeypatch, tmp_path):
+    """#3655 — a profile reference stored as a non-WAV container must not be
+    handed to the CLI verbatim.
+
+    The bundled runtime parses RIFF/WAVE only, so an MP3 (or Ogg, M4A, …)
+    reference killed every generation with "[WAV] Not a valid WAV buffer".
+    """
+    reference = tmp_path / "profile-ref.ogg"
+    _write_3s_ogg(reference)
+
+    rig = _PromptRig(monkeypatch, tmp_path)
+    rig.instance.generate("x", ref_audio=str(reference), ref_text="hello there")
+
+    handed_over = rig.ref_wav()
+    assert handed_over != reference.resolve(), "the raw profile clip was handed to the CLI"
+    # The file the CLI receives must satisfy the runtime's WAV contract.
+    _cli_wav_format(rig.ref_bytes)
+    # The converted copy is transient.
+    assert not handed_over.exists()
+    # The stored profile clip is left untouched.
+    assert reference.exists()
+
+
+def test_wav_reference_is_handed_to_the_cli_unchanged(monkeypatch, tmp_path):
+    """A WAV reference is already CLI-readable — it must not be re-encoded."""
+    reference = tmp_path / "profile-ref.wav"
+    _write_3s_wav(reference)
+
+    rig = _PromptRig(monkeypatch, tmp_path)
+    rig.instance.generate("x", ref_audio=str(reference), ref_text="hello there")
+
+    assert rig.ref_wav() == reference.resolve()
+
+
+def test_wav_reference_in_a_format_the_runtime_cannot_read_is_converted(monkeypatch, tmp_path):
+    """A RIFF/WAVE clip the runtime cannot decode is converted, not forwarded.
+
+    ``read_wav_buf`` in the pinned ``omnivoice.cpp`` decodes PCM16, PCM24
+    and float32 only, so a PCM8 clip is a RIFF/WAVE file the CLI rejects
+    with "[WAV] Unsupported" — the same opaque failure as a non-WAV
+    reference, and the same fix.
+    """
+    import math
+
+    import numpy as np
+    import soundfile as sf
+
+    reference = tmp_path / "profile-ref.wav"
+    t = np.arange(24_000 * 3, dtype="float32") / 24_000
+    sf.write(reference, (0.05 * np.sin(2 * math.pi * 440 * t)).astype("float32"),
+             24_000, format="WAV", subtype="PCM_U8")
+
+    rig = _PromptRig(monkeypatch, tmp_path)
+    rig.instance.generate("x", ref_audio=str(reference), ref_text="hello there")
+
+    handed_over = rig.ref_wav()
+    assert handed_over != reference.resolve(), "an unreadable WAV was handed to the CLI"
+    # The file the CLI receives must satisfy the runtime's WAV contract.
+    _cli_wav_format(rig.ref_bytes)
+    assert not handed_over.exists()
+    assert reference.exists()
+
+
+@pytest.mark.parametrize(
+    "audio_format,bits,readable",
+    [
+        (1, 16, True),   # PCM16 — the runtime's classic format
+        (1, 24, True),   # PCM24
+        (3, 32, True),   # IEEE float32
+        (1, 8, False),   # PCM8 — RIFF/WAVE, but not decodable
+        (1, 32, False),  # 32-bit integer PCM
+        (7, 8, False),   # mu-law
+    ],
+)
+def test_wav_decision_matches_the_runtime_contract(tmp_path, audio_format, bits, readable):
+    """The engine forwards a WAV exactly when the runtime's reader accepts it.
+
+    ``read_wav_buf`` decodes PCM16, PCM24 and float32 only; every other
+    RIFF/WAVE combination makes the CLI exit with "[WAV] Unsupported", so
+    such a reference has to be converted instead of forwarded.
+    """
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    reference = tmp_path / "profile-ref.wav"
+    _write_wav_with_fmt(reference, _fmt_chunk(audio_format, 1, 24_000, bits))
+
+    assert gguf_backend._is_cli_readable_wav(reference) == readable
+
+
+@pytest.mark.parametrize(
+    "sub_format,bits,readable",
+    [
+        (1, 16, True),     # extensible PCM16
+        (3, 32, True),     # extensible IEEE float32
+        (0xF1AC, 16, False),  # extensible ALAC — no sub-format the runtime decodes
+    ],
+)
+def test_extensible_wav_decision_matches_the_runtime_contract(tmp_path, sub_format, bits, readable):
+    """A WAVE_FORMAT_EXTENSIBLE header is judged by its sub-format.
+
+    ``read_wav_buf`` collapses an extensible header to the sub-format it
+    carries and rejects the rest with "[WAV] Unsupported".
+    """
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    reference = tmp_path / "profile-ref.wav"
+    _write_wav_with_fmt(reference, _fmt_chunk(0xFFFE, 1, 24_000, bits, sub_format=sub_format))
+
+    assert gguf_backend._is_cli_readable_wav(reference) == readable
+
+
+def test_unreadable_reference_reports_an_actionable_error(monkeypatch, tmp_path):
+    """A reference that cannot be decoded fails with a readable message
+    instead of the CLI's "Not a valid WAV buffer"."""
+    broken = tmp_path / "profile-ref.ogg"
+    broken.write_bytes(b"this is not audio")
+
+    rig = _PromptRig(monkeypatch, tmp_path)
+    with pytest.raises(ValueError) as exc_info:
+        rig.instance.generate("x", ref_audio=str(broken), ref_text="hello there")
+    assert "reference" in str(exc_info.value).lower()
+    assert not rig.argvs, "the CLI must not be spawned with an unusable reference"
+
+def test_oversized_reference_is_refused_before_it_is_decoded(monkeypatch, tmp_path):
+    """A reference whose decoded size does not fit the backend's budget is
+    refused with an actionable message instead of being decoded.
+
+    The upload path caps a reference at 128 MB on disk, but a lossy
+    container decodes to far more than that, and the conversion decodes it
+    in the backend process.
+    """
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    reference = tmp_path / "profile-ref.ogg"
+    _write_3s_ogg(reference)
+    monkeypatch.setattr(
+        gguf_backend,
+        "_reference_decoded_bytes",
+        lambda path: gguf_backend._MAX_REFERENCE_DECODED_BYTES + 1,
+    )
+
+    rig = _PromptRig(monkeypatch, tmp_path)
+    with pytest.raises(ValueError) as exc_info:
+        rig.instance.generate("x", ref_audio=str(reference), ref_text="hello there")
+    assert "too long" in str(exc_info.value).lower()
+    assert not rig.argvs, "the CLI must not be spawned with an oversized reference"
+
+
+def test_reference_size_is_read_without_decoding(monkeypatch, tmp_path):
+    """The size guard reads the clip's header, so nothing is decoded.
+
+    A guard that decoded the clip to size it would defeat itself, so the
+    sample-reading path is made to fail: the size must still come back.
+    """
+    import soundfile as sf
+
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    reference = tmp_path / "profile-ref.ogg"
+    _write_3s_ogg(reference)
+
+    def _explode(*_a, **_k):
+        raise AssertionError("the reference must not be decoded to size it")
+
+    monkeypatch.setattr(sf, "read", _explode)
+
+    size = gguf_backend._reference_decoded_bytes(reference)
+    assert size == pytest.approx(3 * 24_000 * 4, rel=0.01)
+
+
+def test_reference_of_unknown_size_is_refused_before_it_is_decoded(monkeypatch, tmp_path):
+    """A reference whose header cannot be read is refused, not decoded.
+
+    An unbounded decode is exactly what the budget exists to prevent, so a
+    clip of unknown size never reaches the decoder.
+    """
+    import services.audio_io as audio_io
+
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    unknown = tmp_path / "profile-ref.m4a"
+    unknown.write_bytes(b"not a container libsndfile can size")
+
+    decoded: list = []
+
+    def _explode(*_a, **_k):
+        decoded.append(True)
+        raise AssertionError("an unsized reference must not be decoded")
+
+    monkeypatch.setattr(audio_io, "load_audio", _explode)
+
+    with pytest.raises(ValueError) as exc_info:
+        gguf_backend._convert_reference_to_wav(unknown)
+    assert not decoded, "an unsized reference must not be decoded"
+    assert "could not be read" in str(exc_info.value)
+
+
+def test_loader_size_limit_error_is_kept(monkeypatch, tmp_path):
+    """The loader's own size-limit error stays as it is.
+
+    It already says "use a shorter clip"; turning it into a re-upload
+    hint would send the user after the wrong fix.
+    """
+    import services.audio_io as audio_io
+
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    reference = tmp_path / "profile-ref.ogg"
+    _write_3s_ogg(reference)
+
+    def _too_big(*_a, **_k):
+        raise ValueError("Audio exceeds the decoding size limit; use a shorter clip.")
+
+    monkeypatch.setattr(audio_io, "load_audio", _too_big)
+
+    with pytest.raises(ValueError) as exc_info:
+        gguf_backend._convert_reference_to_wav(reference)
+    assert "shorter clip" in str(exc_info.value)
+    assert "re-upload" not in str(exc_info.value)
+
+
+def _fake_ffprobe(monkeypatch, payload: dict, seen: dict | None = None) -> None:
+    """Make the engine's ffprobe probe report ``payload``.
+
+    The probe's *result* is mocked rather than a stand-in binary: a
+    shebang script is not launchable on Windows, and the probe is the
+    only thing under test here. Pass ``seen`` to capture the spawn's
+    keyword arguments.
+    """
+    def _fake_run(argv, **kw):
+        if seen is not None:
+            seen.update(kw)
+        return subprocess.CompletedProcess(argv, 0, json.dumps(payload).encode("utf-8"), b"")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+    monkeypatch.setattr("services.ffmpeg_utils.find_ffprobe", lambda: "ffprobe")
+
+
+def test_reference_size_falls_back_to_the_audio_stream(monkeypatch, tmp_path):
+    """A container libsndfile cannot read is measured with ffprobe.
+
+    The audio stream's own duration is used, not the container's: a video
+    whose audio track is short is a short reference.
+    """
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    reference = tmp_path / "profile-ref.m4a"
+    reference.write_bytes(b"not a container libsndfile can read")
+
+    _fake_ffprobe(monkeypatch, {
+        "streams": [{"duration": "3.000000", "channels": 1, "sample_rate": 24000}],
+    })
+
+    size = gguf_backend._reference_decoded_bytes(reference)
+    assert size == pytest.approx(3 * 24_000 * 4, rel=0.01)
+
+
+def test_oversized_reference_is_refused_when_ffprobe_sizes_it(monkeypatch, tmp_path):
+    """The limit applies to a clip ffprobe had to measure."""
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    reference = tmp_path / "profile-ref.m4a"
+    reference.write_bytes(b"not a container libsndfile can read")
+
+    # Two hours of 48 kHz stereo float32 is well past the budget.
+    _fake_ffprobe(monkeypatch, {
+        "streams": [{"duration": "7200.000000", "channels": 2, "sample_rate": 48000}],
+    })
+
+    with pytest.raises(ValueError) as exc_info:
+        gguf_backend._convert_reference_to_wav(reference)
+    assert "too long" in str(exc_info.value).lower()
+
+
+def test_reference_size_uses_container_duration_without_stream_duration(monkeypatch, tmp_path):
+    """MediaRecorder WebM has no stream duration; the container's is used."""
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    reference = tmp_path / "profile-ref.webm"
+    reference.write_bytes(b"not a container libsndfile can read")
+    _fake_ffprobe(monkeypatch, {
+        "streams": [{"channels": 1, "sample_rate": 24000}],
+        "format": {"duration": "3.000000"},
+    })
+    assert gguf_backend._reference_decoded_bytes(reference) == pytest.approx(3 * 24_000 * 4, rel=0.01)
+
+
+def test_unsized_reference_is_converted_and_capped_on_output(monkeypatch, tmp_path):
+    """No duration anywhere: convert, then refuse an oversized result."""
+    import numpy as np
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    reference = tmp_path / "profile-ref.webm"
+    reference.write_bytes(b"not a container libsndfile can read")
+    _fake_ffprobe(monkeypatch, {"streams": [{"channels": 1, "sample_rate": 24000}], "format": {}})
+    assert gguf_backend._reference_decoded_bytes(reference) == 0
+
+    monkeypatch.setattr(gguf_backend, "_decode_unsized_capped", lambda p: p)
+    monkeypatch.setattr(gguf_backend, "_MAX_REFERENCE_DECODED_BYTES", 1000)
+    monkeypatch.setattr("services.audio_io.load_audio", lambda p: (np.zeros(2000, dtype=np.float32), 24000))
+    with pytest.raises(ValueError, match="too long"):
+        gguf_backend._convert_reference_to_wav(reference)
+
+    saved = {}
+    monkeypatch.setattr(gguf_backend, "_MAX_REFERENCE_DECODED_BYTES", 10_000)
+    monkeypatch.setattr("services.audio_io.atomic_save_wav", lambda path, w, r: saved.update(path=path))
+    out = gguf_backend._convert_reference_to_wav(reference)
+    assert saved["path"] == str(out)
+    out.unlink(missing_ok=True)
+
+
+def test_unsized_over_limit_decode_is_capped_by_ffmpeg_and_refused(monkeypatch, tmp_path):
+    """The cap is enforced during decoding (ffmpeg -fs), before load_audio."""
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    reference = tmp_path / "profile-ref.webm"
+    reference.write_bytes(b"x")
+    monkeypatch.setattr(gguf_backend, "_MAX_REFERENCE_DECODED_BYTES", 1000)
+    monkeypatch.setattr(gguf_backend, "_reference_decoded_bytes", lambda p: gguf_backend._UNSIZED)
+    monkeypatch.setattr("services.ffmpeg_utils.find_ffmpeg", lambda: "ffmpeg")
+    seen = {}
+
+    def fake_run(cmd, **kw):
+        seen["cmd"] = cmd
+        Path(cmd[-1]).write_bytes(b"\0" * 1000)  # hit the -fs cap
+        return subprocess.CompletedProcess(cmd, 0, b"", b"")
+
+    monkeypatch.setattr(gguf_backend.subprocess, "run", fake_run)
+
+    def no_load(_p):
+        raise AssertionError("an over-limit decode must not be loaded")
+
+    monkeypatch.setattr("services.audio_io.load_audio", no_load)
+    with pytest.raises(ValueError, match="too long"):
+        gguf_backend._convert_reference_to_wav(reference)
+    assert seen["cmd"][seen["cmd"].index("-fs") + 1] == "1000"
+    assert not Path(seen["cmd"][-1]).exists()
+
+
+def test_ffprobe_probe_carries_the_loader_env(monkeypatch, tmp_path):
+    """The ffprobe probe is a spawn in this module, so it carries the loader
+    env every other spawn here carries (#1348).
+
+    The repository policy test only checks that an ``env`` keyword is
+    present; this one pins *which* env, so the probe cannot silently lose
+    it.
+    """
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    reference = tmp_path / "profile-ref.m4a"
+    reference.write_bytes(b"not a container libsndfile can read")
+
+    seen: dict = {}
+    _fake_ffprobe(monkeypatch, {
+        "streams": [{"duration": "3.000000", "channels": 1, "sample_rate": 24000}],
+    }, seen)
+
+    gguf_backend._reference_decoded_bytes(reference)
+    assert seen["env"] == gguf_backend._spawn_env()
+
+
+def test_generate_leaves_quality_knobs_to_the_caller(monkeypatch):
+    """#3654 review: the engine itself stays permissive — it cannot tell an
+    explicit user request (num_step=32) from an internal default fill
+    (dubbing previews always pass num_step=8), so validation lives at the
+    API boundary (400 there) and every value here proceeds identically to
+    normal binary handling. The class flag advertises the lack of support.
+    """
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    cls = gguf_backend._make_backend_class()
+    assert cls.supports_num_step is False
+    assert cls.supports_guidance_scale is False
+    backend = cls()
+    monkeypatch.setattr(
+        backend, "_resolve_quant_paths",
+        lambda: (_ for _ in ()).throw(FileNotFoundError("test-no-binary")),
+    )
+
+    for kw in ({}, {"num_step": 16}, {"num_step": 8}, {"num_step": 32},
+               {"guidance_scale": 5.0}):
+        with pytest.raises(FileNotFoundError, match="test-no-binary"):
+            backend.generate("hello world", **kw)

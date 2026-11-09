@@ -17,6 +17,7 @@ import logging
 import posixpath
 import re
 import zipfile
+from typing import Optional
 from html.parser import HTMLParser
 from xml.etree import ElementTree as ET
 from urllib.parse import unquote, urlsplit
@@ -125,13 +126,9 @@ def chapterize_plaintext(text: str) -> str:
 
 
 class _TextExtractor(HTMLParser):
-    """Collect visible text from XHTML, dropping script/style and collapsing
-    whitespace. First <h1>/<h2>/<title> seen is kept as the chapter title."""
+    """Extract a chapter heading, visible prose, and EPUB semantic types."""
 
     _SKIP = {"script", "style", "head"}
-    #: Block-level elements: each starts a new line when it opens AND when it
-    #: closes, so text after ``</p>`` / ``</td>`` / ``</li>`` never joins the
-    #: previous paragraph. ``br`` is void, so only its start tag breaks.
     _BREAK = {
         "p", "br", "div", "h1", "h2", "h3", "h4", "h5", "h6", "li", "ul", "ol",
         "tr", "td", "th", "table", "caption", "thead", "tbody", "tfoot",
@@ -139,120 +136,136 @@ class _TextExtractor(HTMLParser):
         "footer", "nav", "main", "figure", "figcaption", "dl", "dt", "dd",
         "address", "details", "summary", "fieldset", "form",
     }
-    #: A print page number carried into the EPUB (EPUB 3 ``epub:type="pagebreak"``,
-    #: ARIA ``role="doc-pagebreak"``, or a publisher class such as
-    #: ``pagebreak-rw``). Inline, it glues onto prose ("happily as 2Zoe threw");
-    #: block-level, it becomes a lone "120" / "iv" paragraph. Never narrated.
     _PAGEBREAK_CLASS = re.compile(r"page-?(?:break|num(?:ber)?)(?:-rw)?", re.I)
     _VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
     _EPUB_NS = "http://www.idpf.org/2007/ops"
+    _STRUCTURAL = {"body", "main", "section", "article", "div"}
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self._parts: list[str] = []
         self._skip_depth = 0
-        self._pagebreak_stack: list[str] = []
+        self._pagebreak_depth = 0
+        self._pending_page_gap = False
         self._in_title = False
-        #: The element whose text is the title, and that text as it arrives: a
-        #: heading such as ``<h1>Chapter <em>One</em></h1>`` reaches
-        #: ``handle_data`` in several pieces.
         self._title_tag = ""
         self._title_parts: list[str] = []
         self.title = ""
-        self._elements: list[tuple[str, dict[str, str]]] = []
-        #: ``epub:type`` tokens seen on the document's structural elements
-        #: (``body``/``main``/``section``/``article``/``div``): "frontmatter chapter" →
-        #: {"frontmatter", "chapter"}. Lets the caller drop title pages,
-        #: dedications, copyright pages and other non-narrated matter.
         self.epub_types: set[str] = set()
+        self._elements: list[tuple[str, dict[str, str], bool, bool]] = []
 
     @classmethod
-    def _is_pagebreak(cls, attrs, types: set[str]) -> bool:
+    def _is_pagebreak(cls, attrs: list[tuple[str, str | None]], types: set[str]) -> bool:
         if "pagebreak" in types:
             return True
         for name, value in attrs:
-            if not value:
-                continue
-            if name == "role" and "doc-pagebreak" in value.split():
+            tokens = (value or "").split()
+            if name == "role" and "doc-pagebreak" in tokens:
                 return True
-            if name == "class" and any(cls._PAGEBREAK_CLASS.fullmatch(token) for token in value.split()):
+            if name == "class" and any(cls._PAGEBREAK_CLASS.fullmatch(token) for token in tokens):
                 return True
         return False
 
-    def handle_starttag(self, tag, attrs):
-        # Resolve semantic attributes by namespace URI, preserving XML scope.
+    def _separator(self, tag: str) -> None:
+        separator = "\n" if tag in self._BREAK else " "
+        if self._in_title:
+            self._title_parts.append(" ")
+        else:
+            self._parts.append(separator)
+
+    def _pagebreak_separator(self, tag: str) -> None:
+        if tag in self._BREAK and tag not in {"br", "hr"}:
+            self._separator(tag)
+            self._pending_page_gap = False
+        else:
+            self._pending_page_gap = True
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        tag = tag.lower()
         namespaces = dict(self._elements[-1][1] if self._elements else {"epub": self._EPUB_NS})
         for name, value in attrs:
             if name.startswith("xmlns:"):
                 namespaces[name[6:]] = value or ""
-        types = set()
+        types: set[str] = set()
         for name, value in attrs:
             prefix, separator, local = name.partition(":")
             if separator and local == "type" and namespaces.get(prefix) == self._EPUB_NS:
                 types.update((value or "").split())
+
+        is_hidden = tag in self._SKIP
+        is_pagebreak = self._is_pagebreak(attrs, types)
         if tag not in self._VOID:
-            self._elements.append((tag, namespaces))
-        if tag in self._SKIP:
+            self._elements.append((tag, namespaces, is_hidden, is_pagebreak))
+        if is_hidden:
             self._skip_depth += 1
-        if tag in ("body", "main", "section", "article", "div"):
+        if tag in self._STRUCTURAL:
             self.epub_types.update(types)
-        if self._pagebreak_stack:
-            if tag not in self._VOID:
-                self._pagebreak_stack.append(tag)
-            return
-        if self._is_pagebreak(attrs, types):
-            if tag not in self._VOID:
-                self._pagebreak_stack.append(tag)
-            return
-        if tag in ("h1", "h2", "title") and not self.title and not self._in_title:
+
+        was_in_pagebreak = self._pagebreak_depth > 0
+        if is_pagebreak and not was_in_pagebreak:
+            self._pagebreak_separator(tag)
+        if is_pagebreak and tag not in self._VOID:
+            self._pagebreak_depth += 1
+
+        if (
+            tag in ("h1", "h2", "title")
+            and not self.title
+            and not self._in_title
+            and not self._pagebreak_depth
+            and not any(frame[0] in {"script", "style"} for frame in self._elements)
+        ):
             self._in_title = True
             self._title_tag = tag
             self._title_parts = []
-        if tag in self._BREAK:
-            # A <br> inside the title separates its words ("CHAPTER I<br/>THE BOY
-            # WHO LIVED"); anywhere else a block break is a new body line.
-            if self._in_title and tag != self._title_tag:
+        if tag in self._BREAK and not is_pagebreak and not self._skip_depth and not self._pagebreak_depth:
+            if not (self._in_title and tag == self._title_tag):
+                self._separator(tag)
+
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        removed: list[tuple[str, dict[str, str], bool, bool]] = []
+        for index in range(len(self._elements) - 1, -1, -1):
+            if self._elements[index][0] == tag:
+                removed = self._elements[index:]
+                del self._elements[index:]
+                break
+        was_in_pagebreak = self._pagebreak_depth > 0
+        self._skip_depth -= sum(frame[2] for frame in removed)
+        self._pagebreak_depth -= sum(frame[3] for frame in removed)
+
+        if self._in_title and tag == self._title_tag:
+            self._in_title = False
+            candidate = " ".join("".join(self._title_parts).split())
+            if candidate:
+                self.title = candidate
+            self._title_tag = ""
+            self._title_parts = []
+        if was_in_pagebreak and not self._pagebreak_depth:
+            self._pagebreak_separator(tag)
+        elif tag in self._BREAK and tag not in self._VOID and not self._skip_depth:
+            if self._in_title:
                 self._title_parts.append(" ")
             else:
                 self._parts.append("\n")
 
-    def handle_endtag(self, tag):
-        for index in range(len(self._elements) - 1, -1, -1):
-            if self._elements[index][0] == tag:
-                del self._elements[index:]
-                break
-        if tag in self._SKIP and self._skip_depth:
-            self._skip_depth -= 1
-        if self._pagebreak_stack:
-            for index in range(len(self._pagebreak_stack) - 1, -1, -1):
-                if self._pagebreak_stack[index] == tag:
-                    del self._pagebreak_stack[index:]
-                    break
+    def handle_data(self, data: str) -> None:
+        if self._pagebreak_depth or any(frame[0] in {"script", "style"} for frame in self._elements):
             return
-        if self._in_title and tag == self._title_tag:
-            self._in_title = False
-            self.title = " ".join("".join(self._title_parts).split())
-        if tag in self._BREAK and tag not in self._VOID:
-            if self._in_title:
-                self._title_parts.append(" ")  # a block closing inside the title
-            else:
-                self._parts.append("\n")
-
-    def handle_data(self, data):
-        if self._skip_depth or self._pagebreak_stack:
+        if self._skip_depth and not self._in_title:
             return
+        if self._pending_page_gap:
+            destination = self._title_parts if self._in_title else self._parts
+            previous = destination[-1] if destination else ""
+            if previous and not previous[-1].isspace() and data and not data[0].isspace():
+                destination.append(" ")
+            self._pending_page_gap = False
         if self._in_title:
-            # The first heading becomes the chapter's `# Title` (metadata, not
-            # narrated) — capture all of its text, nested inline elements
-            # included, but keep it out of the body. Later headings (title
-            # already set) fall through and are narrated as subheadings.
             self._title_parts.append(data)
             return
         self._parts.append(data)
 
     def text(self) -> str:
         raw = "".join(self._parts)
-        # Collapse runs of blank lines / trailing spaces into tidy paragraphs.
         lines = [ln.strip() for ln in raw.split("\n")]
         out: list[str] = []
         for ln in lines:
@@ -262,22 +275,33 @@ class _TextExtractor(HTMLParser):
 
 
 def _html_to_title_body(xhtml: str) -> tuple[str, str]:
-    """(title, body) — see :func:`_html_extract` for the epub:type tokens too."""
-    _, title, body = _html_extract(xhtml)
+    """Title and narratable text of one XHTML document."""
+    _types, title, body = _html_extract(xhtml)
     return title, body
 
 
 def _html_extract(xhtml: str) -> tuple[set[str], str, str]:
-    p = _TextExtractor()
+    """Parse one XHTML entry into its structural epub types, title and body.
+
+    Malformed markup is tolerated: whatever was read before the parser gave up
+    is still returned.
+    """
+    extractor = _TextExtractor()
     try:
-        p.feed(xhtml)
+        extractor.feed(xhtml)
+        extractor.close()
     except Exception:
-        # Keep whatever the extractor collected before the failure: an empty
-        # return would make the caller's `if not body.strip(): continue` drop
-        # the whole chapter from the audiobook silently — a partial chapter
-        # plus this log line is strictly more recoverable than a missing one.
-        logger.warning("HTML parsing failed for EPUB entry; using partial text", exc_info=True)
-    return p.epub_types, p.title, p.text()
+        logger.warning(
+            "EPUB entry: HTML parsing failed part-way; importing the text read before the error",
+            exc_info=True,
+        )
+    body = extractor.text()
+    title = extractor.title
+    if title:
+        first, newline, rest = body.partition("\n")
+        if first == title:
+            body = rest.lstrip("\n") if newline else ""
+    return extractor.epub_types, title, body
 
 
 _OPF_NS = {"opf": "http://www.idpf.org/2007/opf", "c": "urn:oasis:names:tc:opendocument:xmlns:container"}
@@ -287,11 +311,14 @@ def _member_path(base: str, href: str) -> str:
     """Resolve an EPUB URI reference to its ZIP member, decoding exactly once."""
     try:
         reference = urlsplit(href)
-    except ValueError:
+        if re.search(r"%(?![0-9A-Fa-f]{2})", reference.path):
+            return ""
+        decoded_path = unquote(reference.path, errors="strict")
+    except (TypeError, UnicodeError, ValueError):
         return ""
     if reference.scheme or reference.netloc:
         return ""  # remote references are never book members
-    return posixpath.normpath(posixpath.join(base, unquote(reference.path)))
+    return posixpath.normpath(posixpath.join(base, decoded_path))
 
 
 def _opf_path(zf: zipfile.ZipFile, budget: _ReadBudget) -> str:
@@ -305,57 +332,70 @@ def _opf_path(zf: zipfile.ZipFile, budget: _ReadBudget) -> str:
     rootfile = root.find(".//c:rootfiles/c:rootfile", _OPF_NS)
     if rootfile is None or not rootfile.get("full-path"):
         raise ValueError("EPUB container.xml has no rootfile")
-    return rootfile.get("full-path")
+    return _member_path("", rootfile.get("full-path"))
 
 
-#: EPUB 3 structural semantics (``epub:type``) that mark matter a narrator
-#: would not read: covers, title/copyright pages, dedications, contents,
-#: acknowledgements, landmarks. ``bodymatter``/``chapter``/``part`` override
-#: (a chapter tagged "bodymatter chapter" is narrated even inside a "part").
-_ANCILLARY_TYPES = frozenset({
+_BODY_TYPES = {
+    "bodymatter", "chapter", "part", "prologue", "epilogue", "introduction",
+    "preface", "foreword", "volume",
+}
+# EPUB 3 structural-semantics values for matter that is not read aloud.
+_ANCILLARY_TYPES = {
     "frontmatter", "backmatter", "cover", "titlepage", "halftitlepage",
     "copyright-page", "toc", "landmarks", "dedication", "acknowledgments",
     "imprint", "colophon", "contributors", "other-credits", "epigraph",
     "loi", "lot", "index", "glossary", "bibliography", "appendix",
-})
-_BODY_TYPES = frozenset({"bodymatter", "chapter", "part", "prologue", "epilogue", "introduction", "preface", "foreword", "volume"})
-#: Fallback for EPUBs without ``epub:type``: the section's TOC label / title.
-_ANCILLARY_TITLE = re.compile(
-    r"^\s*(cover|half[ -]?title|title[ -]?page|copyright|dedication|contents|"
-    r"table of contents|acknowledg\w*|about the (author|illustrator|book)|"
-    r"also (by|available)|praise for|imprint|colophon|newsletter|look out for|"
-    r"(other )?(works|books|titles) by|about the publisher|footnotes?|endnotes?)\b",
-    re.I,
+}
+_ANCILLARY_TITLE_RE = re.compile(
+    r"^(?:"
+    r"cover|half[ -]?title|title[ -]?page|copyright|dedication|contents|"
+    r"table[ -]of[ -]contents|acknowledg\w*|"
+    r"about[ -]the[ -](?:author|illustrator|book)|about[ -]the[ -]publisher|"
+    r"also[ -]by|also[ -]available|praise[ -]for|imprint|colophon|newsletter|"
+    r"look[ -]out[ -]for|(?:other[ -])?(?:works|books|titles)[ -]by|"
+    r"footnotes?|endnotes?"
+    r")\b",
+    re.IGNORECASE,
 )
 
 
-def _is_ancillary(types: set[str], title: str) -> bool:
+def _is_ancillary(types: set[str], title: str | None) -> bool:
     if types & _BODY_TYPES:
         return False
     if types & _ANCILLARY_TYPES:
         return True
-    return bool(title and _ANCILLARY_TITLE.match(title))
+    return bool(title and _ANCILLARY_TITLE_RE.match(title.strip()))
+
+
+def _landmarks_start(navs, nav_dir: str, type_attribute: str, local_name) -> Optional[str]:
+    """Return the first EPUB landmark that declares the start of body matter."""
+    for nav in navs:
+        if "landmarks" not in nav.get(type_attribute, "").split():
+            continue
+        for element in nav.iter():
+            href = element.get("href")
+            if (
+                local_name(element) == "a"
+                and href
+                and "bodymatter" in element.get(type_attribute, "").split()
+            ):
+                return _member_path(nav_dir, href) or None
+    return None
 
 
 def _toc_titles(
     zf: zipfile.ZipFile, base: str, nav_hrefs: list[str], names: set[str], budget: _ReadBudget
-) -> tuple[dict[str, str], str | None]:
-    """Map each spine document (full zip path) to its table-of-contents label.
-
-    Also returns the EPUB 3 landmarks ``bodymatter`` target (the publisher's
-    "the book starts here"), or ``None`` — see :func:`_front_matter_end`.
-
-    Publishers label sections better than their headings do ("Chapter One:
-    A New Arrival" versus an ``<h1>`` holding only "A New Arrival"). Reads
-    the EPUB 3 nav document (``<a href>`` entries) and the EPUB 2 NCX
-    (``navPoint/content@src``); the first label for a document wins.
-
-    Navigation documents come from the user's file like every other member,
-    so they are read through the same zip-bomb ``budget`` as the spine.
+) -> tuple[dict[str, str], Optional[str]]:
     """
-    body_start: str | None = None
-    nav_titles: dict[str, str] = {}  # EPUB 3 nav — authoritative
-    ncx_titles: dict[str, str] = {}  # EPUB 2 NCX — fallback
+    Returns ``(titles, body_start)``. ``body_start`` is the member path the EPUB 3
+    ``landmarks`` list marks as ``bodymatter`` (where the book proper begins), or
+    ``None`` when the navigation declares no such entry.
+
+    Navigation files use the same bounded reader as every other archive member.
+    """
+    nav_titles: dict[str, str] = {}
+    ncx_titles: dict[str, str] = {}
+    body_start: Optional[str] = None
     for href in nav_hrefs:
         full = _member_path(base, href)
         if full not in names:
@@ -368,10 +408,12 @@ def _toc_titles(
         except ET.ParseError:
             logger.warning("Malformed EPUB navigation; using chapter headings", exc_info=True)
             continue
-        nav_dir = posixpath.dirname(full)
-        pairs = []
+        pairs: list[tuple[str, str]] = []
+
         def local_name(element):
             return element.tag.rsplit("}", 1)[-1]
+
+        nav_dir = posixpath.dirname(full)
         if local_name(root) == "ncx":
             target = ncx_titles
             for point in root.iter():
@@ -392,47 +434,37 @@ def _toc_titles(
                 for anchor in scope.iter():
                     if local_name(anchor) == "a" and anchor.get("href"):
                         pairs.append((anchor.get("href"), "".join(anchor.itertext())))
-            for nav in navs:
-                if "landmarks" not in nav.get(type_attribute, "").split():
-                    continue
-                for anchor in nav.iter():
-                    if (body_start is None and local_name(anchor) == "a" and anchor.get("href")
-                            and "bodymatter" in anchor.get(type_attribute, "").split()):
-                        body_start = _member_path(nav_dir, anchor.get("href"))
+            if body_start is None:
+                body_start = _landmarks_start(navs, nav_dir, type_attribute, local_name)
         for src, label in pairs:
             path = _member_path(nav_dir, src)
             label = " ".join(label.split())
             if path and label:
                 target.setdefault(path, label)
-    titles = {**ncx_titles, **nav_titles}
-    return {k: v for k, v in titles.items() if v}, body_start
+    return {**ncx_titles, **nav_titles}, body_start
 
 
-#: Ceiling for dropping an unlisted page on the TOC alone (no declared start):
-#: a teaser, epigraph or blurb is a few dozen words; an unlisted prologue is not.
+# Short unlisted pages before the narrative are usually publisher furniture
+# (a teaser, epigraph, or blurb), rather than chapters to narrate.
 _FRONT_MATTER_MAX_WORDS = 400
 
 
 def _front_matter_end(
-    sections: list[tuple[str, set[str], str, str]], toc: dict[str, str], declared: str | None
+    sections: list, toc: dict[str, str], declared: Optional[str]
 ) -> tuple[int, bool]:
-    """Index of the first spine section that belongs to the book, and whether
-    the publisher DECLARED it.
-
-    Untagged EPUBs put unmarked pages — a teaser excerpt, an epigraph, a blurb —
-    ahead of chapter one: no ``epub:type``, no heading, not in the contents. The
-    only things that say "this is not a chapter" are structural: the package's
-    declared reading start (EPUB 2 ``guide`` ``text`` reference / EPUB 3
-    landmarks ``bodymatter``) and, failing that, the first section the table of
-    contents lists that is not itself front matter.
-    """
-    paths = [full for full, *_ in sections]
-    if declared in paths:
-        return paths.index(declared), True
-    for i, (full, types, _title, _body) in enumerate(sections):
-        if full in toc and not _is_ancillary(types, toc[full]):
+    """Return the inferred reading start and whether the publisher declared it."""
+    if declared is not None:
+        for i, section in enumerate(sections):
+            if section[0] == declared:
+                return i, True
+    for i, (path, types, _heading, _body) in enumerate(sections):
+        if path in toc and not _is_ancillary(types, toc[path]):
             return i, False
     return 0, False
+
+
+def _book_start_index(sections: list, toc: dict[str, str], declared: Optional[str]) -> int:
+    return _front_matter_end(sections, toc, declared)[0]
 
 
 class _ReadBudget:
@@ -457,13 +489,7 @@ def _read_member(zf: zipfile.ZipFile, name: str, budget: _ReadBudget, *, require
 
     ``required`` members (container.xml, the OPF) raise instead of returning
     ``None`` when they are missing or oversized — without them there is no
-    book to import, and a crafted upload must not be able to make the route
-    decompress an unbounded member before the limits apply.
-
-    A truncated, CRC-broken or encrypted member surfaces from ``zipfile`` as
-    ``BadZipFile`` / ``RuntimeError`` (and ``NotImplementedError`` for an
-    unsupported compression) — all "this EPUB is unreadable", so they become
-    the ``ValueError`` the import route already maps to a 400 with the reason.
+    book to import, and a crafted upload must not decompress an unbounded member.
     """
     try:
         info = zf.getinfo(name)
@@ -478,9 +504,35 @@ def _read_member(zf: zipfile.ZipFile, name: str, budget: _ReadBudget, *, require
     try:
         raw = zf.read(name)
     except (zipfile.BadZipFile, RuntimeError, NotImplementedError, EOFError) as e:
-        raise ValueError(f"EPUB member {name!r} is unreadable: {e}") from e
+        raise ValueError(f"EPUB member {name!r} is unreadable") from e
     budget.used += len(raw)
     return raw
+
+
+def _narrated(sections: list, toc: dict[str, str], declared: Optional[str]):
+    """Yield ``(title, body)`` for the sections a narrator should read.
+
+    Drops ancillary pages, unlisted teaser/publisher pages that precede the book
+    start, and stray unlisted pages once listed back matter has begun.
+    """
+    first = _book_start_index(sections, toc, declared)
+    back_matter = False
+    for pos, (path, types, heading, body) in enumerate(sections):
+        label = toc.get(path) or heading
+        in_toc = path in toc
+        if _is_ancillary(types, label):
+            back_matter = back_matter or (pos > first and in_toc)
+            continue
+        loose = not in_toc and not (types & _BODY_TYPES)
+        short = len(body.split()) <= _FRONT_MATTER_MAX_WORDS
+        if loose and short and pos < first:
+            publisher_like = re.match(r"\s*(novels|published) by\b", heading, re.I)
+            if not heading or publisher_like:
+                continue
+        if back_matter and loose and short and not heading:
+            continue
+        back_matter = False
+        yield label, body
 
 
 def epub_to_chapter_script(
@@ -502,82 +554,58 @@ def epub_to_chapter_script(
     except zipfile.BadZipFile as e:
         raise ValueError(f"not a valid EPUB (zip) file: {e}") from e
 
-    budget = _ReadBudget(max_entry_bytes, max_total_bytes)
-    opf_path = _opf_path(zf, budget)
-    opf_raw = _read_member(zf, opf_path, budget, required=True)
-    try:
-        opf = ET.fromstring(opf_raw)  # nosec B314 — local user EPUB; see _opf_path
-    except ET.ParseError as e:
-        raise ValueError(f"EPUB package document is not well-formed XML: {e}") from e
-    base = posixpath.dirname(opf_path)
+    with zf:
+        budget = _ReadBudget(max_entry_bytes, max_total_bytes)
+        opf_path = _opf_path(zf, budget)
+        opf_raw = _read_member(zf, opf_path, budget, required=True)
+        try:
+            opf = ET.fromstring(opf_raw)  # nosec B314
+        except ET.ParseError as e:
+            raise ValueError(f"EPUB package {opf_path!r} is not well-formed XML: {e}") from e
+        base = posixpath.dirname(opf_path)
 
-    manifest: dict[str, str] = {}
-    nav_hrefs: list[str] = []
-    for item in opf.findall(".//opf:manifest/opf:item", _OPF_NS):
-        iid, href = item.get("id"), item.get("href")
-        if iid and href:
+        manifest: dict[str, str] = {}
+        nav_hrefs: list[str] = []
+        for item in opf.findall(".//opf:manifest/opf:item", _OPF_NS):
+            iid, href = item.get("id"), item.get("href")
+            if not iid or not href:
+                continue
             manifest[iid] = href
-            props = (item.get("properties") or "").split()
-            if "nav" in props or item.get("media-type") == "application/x-dtbncx+xml":
+            properties = (item.get("properties") or "").split()
+            if "nav" in properties or item.get("media-type") == "application/x-dtbncx+xml":
                 nav_hrefs.append(href)
 
-    names = set(zf.namelist())
-    toc, declared_start = _toc_titles(zf, base, nav_hrefs, names, budget)
-    for ref in opf.findall(".//opf:guide/opf:reference", _OPF_NS):  # EPUB 2 equivalent
-        if declared_start is None and (ref.get("type") or "").lower() == "text" and ref.get("href"):
-            declared_start = _member_path(base, ref.get("href"))
+        names = set(zf.namelist())
+        nav_paths = {_member_path(base, href) for href in nav_hrefs}
+        toc, declared_start = _toc_titles(zf, base, nav_hrefs, names, budget)
+        if declared_start is None:
+            for reference in opf.findall(".//opf:guide/opf:reference", _OPF_NS):
+                if (reference.get("type") or "").lower() == "text" and reference.get("href"):
+                    declared_start = _member_path(base, reference.get("href")) or None
+                    break
 
-    sections: list[tuple[str, set[str], str, str]] = []  # (path, epub:types, heading, body)
-    for ref in opf.findall(".//opf:spine/opf:itemref", _OPF_NS):
-        href = manifest.get(ref.get("idref") or "")
-        if not href or href in nav_hrefs:
-            continue  # the table of contents itself is never narrated
-        if (ref.get("linear") or "yes").lower() == "no":
-            continue  # publisher marked it as outside the reading order
-        full = _member_path(base, href)
-        if full not in names:
-            continue
-        # Bound decompression through the shared budget (an oversized entry is
-        # skipped; once the cumulative total is spent nothing more is read).
-        if budget.used >= budget.max_total_bytes:
-            break
-        raw = _read_member(zf, full, budget)
-        if raw is None:
-            continue
-        types, title, body = _html_extract(_decode_epub_entry(raw))
-        if not body.strip():
-            continue  # nav docs, empty pages
-        sections.append((full, types, title, body))
+        sections: list[tuple[str, set[str], str, str]] = []
+        for ref in opf.findall(".//opf:spine/opf:itemref", _OPF_NS):
+            href = manifest.get(ref.get("idref") or "")
+            if not href or (ref.get("linear") or "").lower() == "no":
+                continue
+            full = _member_path(base, href)
+            if not full or full in nav_paths or full not in names:
+                continue
+            if budget.used >= budget.max_total_bytes:
+                break
+            raw = _read_member(zf, full, budget)
+            if raw is None:
+                continue
+            types, title, body = _html_extract(_decode_epub_entry(raw))
+            if not body.strip():
+                continue
+            sections.append((full, types, title, body))
 
-    start, _declared = _front_matter_end(sections, toc, declared_start)
-    # Reading-start metadata can skip a real unlisted prologue. Only discard
-    # short, headingless stray pages, never substantive opening sections.
-    blocks: list[str] = []
-    in_back_matter = False
-    for index, (full, types, heading, body) in enumerate(sections):
-        title = toc.get(full) or heading
-        if _is_ancillary(types, title):
-            # Only a section the contents LISTS opens back matter: an unlisted page
-            # that merely looks ancillary must not cost the next chapter's
-            # continuation file.
-            # Once open it stays open through further ancillary pages, listed or not.
-            in_back_matter = in_back_matter or (index > start and full in toc)
-            continue  # cover, title page, dedication, copyright, contents, …
-        unlisted = full not in toc and not (types & _BODY_TYPES)
-        stray = not heading and len(body.split()) <= _FRONT_MATTER_MAX_WORDS
-        front_furniture = bool(heading and re.match(r"^\s*(novels by|published by)\b", heading, re.I))
-        if (index < start and unlisted
-                and len(body.split()) <= _FRONT_MATTER_MAX_WORDS
-                and (not heading or front_furniture)):
-            continue  # unlisted page ahead of the book: a teaser/epigraph/blurb
-        if in_back_matter and unlisted and stray:
-            # Footnotes, a stray ad — but ONLY once listed back matter has begun:
-            # an unlisted file straight after a chapter is that chapter's
-            # continuation (split chapters list only their first file).
-            continue
-        in_back_matter = False
-        title = title or f"Chapter {len(blocks) + 1}"
-        blocks.append(f"# {title}\n\n{body}")
+    blocks = [
+        f"# {title or f'Chapter {n}'}\n\n{body}"
+        for n, (title, body) in enumerate(_narrated(sections, toc, declared_start), start=1)
+    ]
 
     if not blocks:
         raise ValueError("no readable chapters found in the EPUB")

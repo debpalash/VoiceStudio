@@ -45,7 +45,7 @@ See [downloading-models.md](../downloading-models.md).
 - The model emits 48 kHz stereo; VoiceStudio downmixes to mono, matching the
   rest of the pipeline (the dub mixer treats TTS output as mono per
   segment).
-- Runs on CPU or CUDA.
+- Runs on CPU, CUDA, or a supported Linux ROCm stack.
 
 ## Upstream is unpinned
 
@@ -72,8 +72,8 @@ The one-click install is not affected: it pins a reviewed commit
 
 Click **Install** in **Model Catalogue → MOSS-TTS-Nano**.
 VoiceStudio clones a reviewed upstream commit into its own folder under the
-data directory, gives it its own Python environment (the CUDA build of
-PyTorch on an NVIDIA GPU), and runs it there in a separate process.
+data directory, gives it its own Python environment (CUDA PyTorch on an NVIDIA
+GPU or a matching ROCm build on Linux ROCm hosts), and runs it in a separate process.
 
 Nothing it installs touches VoiceStudio itself or any other engine, and
 **Uninstall** in the same row removes only that folder. The button is not
@@ -83,6 +83,12 @@ The first synthesis downloads the model and its audio tokenizer. The
 generation stays alive while the download makes progress; if a stalled
 download runs out of time, raise the compute-time budget in
 **Settings → Performance & Device** and try again.
+
+The text tokenizer reuses the configured Hugging Face Hub cache, including
+`HF_HOME` / `HF_HUB_CACHE` overrides. Loading it preserves `HF_MODULES_CACHE`
+instead of creating a nested cache beside the downloaded model code, keeping
+the app's short Windows cache paths effective. Tokenizers already downloaded
+into an older nested cache remain usable offline without another download.
 
 ## Troubleshooting
 

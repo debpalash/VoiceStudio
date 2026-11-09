@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 const browser = await chromium.launch({
   ...(process.env.PLAYWRIGHT_EXECUTABLE_PATH
     ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH }
-    : { channel: "msedge" }),
+    : { channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge' }),
   headless: true,
 });
 const page = await browser.newPage();
-const baseUrl = process.env.VOICESTUDIO_SMOKE_URL ?? "http://localhost:3912";
+const baseUrl = process.env.VOICESTUDIO_UI_URL || "http://localhost:3912";
 await page.addInitScript(() => {
   localStorage.setItem("voicestudio.setup.complete.v1", "1");
 });
@@ -31,68 +31,56 @@ try {
       await sideCandidates.first().waitFor({ state: "attached" });
       await sideCandidates.first().getByRole("separator").waitFor({ state: "visible" });
       const compactMain = page.locator("[data-slot=compact-main-sidebar]");
-      if (width <= 1680) {
-        await compactMain.waitFor();
-        assert.equal(Math.round((await compactMain.boundingBox()).width), 48);
-        assert.equal(
-          await compactMain.locator("button .lucide-bell").count(),
-          1,
-        );
-        assert.ok(
-          (await compactMain
-            .getByRole("navigation", { name: "Workspaces" })
-            .getByRole("link")
-            .count()) >= 9,
-        );
-        assert.equal(
-          await page
-            .locator(".brand-sidebar")
-            .filter({ hasText: "Saved voices" })
-            .count(),
-          0,
-        );
-        const openMain = compactMain.getByRole("button", {
-          name: "Toggle Sidebar",
-        });
-        await openMain.click();
-        await compactMain.waitFor({ state: "detached" });
-        const expandedMain = page
-          .locator(".brand-sidebar")
-          .filter({ hasText: "Saved voices" });
-        await expandedMain.waitFor();
-        const before = await expandedMain.boundingBox();
-        const separator = expandedMain.getByRole("separator");
-        await separator.focus();
-        const currentWidth = Number(
-          await separator.getAttribute("aria-valuenow"),
-        );
-        const minimumWidth = Number(
-          await separator.getAttribute("aria-valuemin"),
-        );
-        const maximumWidth = Number(
-          await separator.getAttribute("aria-valuemax"),
-        );
-        const grow = currentWidth <= minimumWidth;
-        await separator.press(grow ? "ArrowRight" : "ArrowLeft");
-        const after = await expandedMain.boundingBox();
-        const resizeDelta = Math.round(Math.abs(before.width - after.width));
-        assert.ok(
-          resizeDelta > 0 && resizeDelta <= 20,
-          `${route} main sidebar did not resize: ${before.width}px -> ${after.width}px (now ${currentWidth}, min ${minimumWidth}, max ${maximumWidth})`,
-        );
-        await expandedMain.getByRole("button", { name: "Close" }).click();
-        await compactMain.waitFor();
-      } else {
-        assert.equal(await compactMain.count(), 0);
-        const expandedMain = page
-          .locator(".brand-sidebar")
-          .filter({ hasText: "Saved voices" });
-        assert.equal(await expandedMain.count(), 1);
-        assert.equal(
-          await expandedMain.locator("button .lucide-bell").count(),
-          1,
-        );
-      }
+      // A section with its own pane keeps navigation to the icon rail at every width.
+      await compactMain.waitFor();
+      assert.equal(Math.round((await compactMain.boundingBox()).width), 48);
+      // The notifications bell lives in the top-right account corner on every page and
+      // platform, not in the sidebar.
+      assert.equal(await compactMain.locator("button .lucide-bell").count(), 0);
+      assert.equal(
+        await page.locator('[data-slot="account-corner"] button .lucide-bell').count(),
+        1,
+      );
+      // Voice, Stories and Dubbing are flyout group buttons; the other five are direct links.
+      const compactNav = compactMain.getByRole("navigation", {
+        name: "Workspaces",
+      });
+      assert.equal(await compactNav.getByRole("button").count(), 3);
+      assert.equal(await compactNav.getByRole("link").count(), 5);
+      assert.equal(
+        await page.locator(".brand-sidebar:not([data-slot=compact-main-sidebar])")
+          .count(),
+        0,
+      );
+      const openMain = compactMain.getByRole("button", {
+        name: "Toggle sidebar",
+      });
+      await openMain.click();
+      await compactMain.waitFor({ state: "detached" });
+      const expandedMain = page.locator(".brand-sidebar:not([data-slot=compact-main-sidebar])");
+      await expandedMain.waitFor();
+      const before = await expandedMain.boundingBox();
+      const separator = expandedMain.getByRole("separator");
+      await separator.focus();
+      const currentWidth = Number(
+        await separator.getAttribute("aria-valuenow"),
+      );
+      const minimumWidth = Number(
+        await separator.getAttribute("aria-valuemin"),
+      );
+      const maximumWidth = Number(
+        await separator.getAttribute("aria-valuemax"),
+      );
+      const grow = currentWidth <= minimumWidth;
+      await separator.press(grow ? "ArrowRight" : "ArrowLeft");
+      const after = await expandedMain.boundingBox();
+      const resizeDelta = Math.round(Math.abs(before.width - after.width));
+      assert.ok(
+        resizeDelta > 0 && resizeDelta <= 20,
+        `${route} main sidebar did not resize: ${before.width}px -> ${after.width}px (now ${currentWidth}, min ${minimumWidth}, max ${maximumWidth})`,
+      );
+      await expandedMain.getByRole("button", { name: "Close" }).click();
+      await compactMain.waitFor();
       await page.waitForFunction(() => {
         const elements = document.querySelectorAll(
           '[data-slot="secondary-sidebar"]',
@@ -122,14 +110,15 @@ try {
           `Dubbing transcript was squeezed to ${transcript?.width ?? 0}px at ${width}px viewport`,
         );
       }
-      const toggle = side.locator("button[aria-expanded]").first();
-      await toggle.click();
+      await side.getByRole("button", { name: "Collapse pane", exact: true }).click();
       assert.ok(
         await side.evaluate(
           (element) => element.getBoundingClientRect().width < 50,
         ),
       );
-      await toggle.click();
+      // Collapsed, the pane has one expand control and an empty titlebar row.
+      assert.equal(await side.locator("[data-slot=secondary-sidebar-header] button").count(), 0);
+      await side.locator("[data-slot=secondary-sidebar-expand]").click();
       await page.waitForFunction((expected) =>
         document.querySelector("[data-slot=secondary-sidebar]")?.getBoundingClientRect().width === expected,
         expanded.width,
@@ -145,12 +134,14 @@ try {
   await page.goto(baseUrl + "/#/audiobook");
   await page
     .locator("[data-slot=compact-main-sidebar]")
-    .getByRole("link", { name: "Clone", exact: true })
+    .getByRole("button", { name: "Voice", exact: true })
     .click();
+  await page.getByRole("link", { name: "Clone", exact: true }).click();
   await page.waitForURL("**/#/clone");
+  // Clone shows its library as a context pane, so navigation stays an icon rail.
   assert.equal(
     await page.locator("[data-slot=compact-main-sidebar]").count(),
-    0,
+    1,
   );
   await page.getByRole("tab", { name: "Saved voices", exact: true }).waitFor();
   await page.setViewportSize({ width: 640, height: 900 });
@@ -175,8 +166,10 @@ try {
       narrowSide && narrowSide.width >= 580 && narrowSide.height <= 360,
       `${route} controls did not stack above its workspace`,
     );
+    // Routes with their own tab bar (Gallery) push the stack down by that bar's height.
+    const extraChrome = narrowSide ? Math.max(0, narrowSide.y - 52) : 0;
     assert.ok(
-      narrowPrimary && narrowPrimary.width >= 580 && narrowPrimary.height >= 480,
+      narrowPrimary && narrowPrimary.width >= 580 && narrowPrimary.height >= 480 - extraChrome,
       `${route} primary workspace disappeared at compact width`,
     );
     assert.ok(
@@ -191,7 +184,9 @@ try {
     await row.waitFor();
     const bounds = await row.boundingBox();
     assert.ok(
-      bounds.width > width - 256 - 100,
+      // Settings now sits beside both the main sidebar and its own nav; the content must
+      // still reach the right edge of the window (minus the page gutter).
+      bounds.x + bounds.width >= width - 48,
       "Settings content should fill available width",
     );
     assert.ok(

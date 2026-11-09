@@ -64,13 +64,13 @@ describe('SupportPage — Sponsors', () => {
         name: 'Acme Corp',
         logoUrl: 'https://acme.example/logo.svg',
         url: 'https://acme.example',
-        tier: 'gold',
+        tier: 'strategic',
       },
       {
         name: 'Globex',
         logoUrl: 'https://globex.example/logo.png',
         url: 'https://globex.example',
-        tier: 'silver',
+        tier: 'company',
       },
     ];
     renderSupport();

@@ -8,12 +8,16 @@ export interface ConvertResult {
   text: string;
   duration_s: number;
   gen_time_s: number;
+  /** Engine that converted the recording (Keep my delivery only). */
+  engine?: string;
 }
 export async function convertSpeech(
   audio: File,
   profileId: string,
   matchDuration: boolean,
   signal: AbortSignal,
+  language = 'Auto',
+  keepDelivery = false,
 ): Promise<ConvertResult> {
   signal.throwIfAborted();
   const release = acquireSynthesis();
@@ -24,6 +28,8 @@ export async function convertSpeech(
     body.append('audio', audio);
     body.append('profile_id', profileId);
     body.append('match_duration', matchDuration ? '1' : '0');
+    if (language !== 'Auto') body.append('language', language);
+    if (keepDelivery) body.append('keep_delivery', '1');
     return await apiJson<ConvertResult>('/convert', { method: 'POST', body, signal });
   } finally {
     finishActivity();

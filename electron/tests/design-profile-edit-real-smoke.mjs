@@ -1,7 +1,7 @@
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-const browser = await chromium.launch({ channel: 'msedge', headless: true });
+const browser = await chromium.launch({ channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge', headless: true });
 const page = await browser.newPage();
 const name = 'Design editor verification ' + Date.now();
 let id;
@@ -27,7 +27,7 @@ try {
   const pane = page.getByRole('complementary', { name: 'Edit voice profile', exact: true });
   if (process.env.VOICESTUDIO_TEST_PREVIEW === '1') {
     await page.locator('#design-script').fill('Preserved design draft');
-    await pane.locator('summary', { hasText: 'Try this voice' }).click();
+    await pane.locator('summary', { hasText: 'Test this voice' }).click();
     await pane
       .getByRole('textbox', { name: 'Test phrase', exact: true })
       .fill('This is a short voice preview.');
@@ -35,7 +35,7 @@ try {
       (res) => res.url().endsWith('/generate') && res.request().method() === 'POST',
       { timeout: 120000 },
     );
-    await pane.getByRole('button', { name: 'Generate preview', exact: true }).click();
+    await pane.getByRole('button', { name: 'Create preview', exact: true }).click();
     const result = await generated;
     assert.equal(result.status(), 200);
     previewId = result.headers()['x-audio-id'];

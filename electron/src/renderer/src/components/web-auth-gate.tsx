@@ -112,7 +112,7 @@ export function WebAuthGate({ children }: { children: ReactNode }) {
               </p>
             )}
             <Button className="w-full" type="submit" disabled={pending || !value.trim()}>
-              {t('settings.inbound_connect')}
+              {t('network.connect')}
             </Button>
           </form>
         </CardContent>

@@ -27,7 +27,7 @@ def attrs_of(description: str) -> dict:
 def client():
     app = FastAPI()
     app.include_router(describe_router.router)
-    return TestClient(app)
+    return TestClient(app, client=("127.0.0.1", 50000))
 
 
 # ── Varied descriptions ───────────────────────────────────────────────────────
@@ -72,6 +72,16 @@ def test_numeric_age_does_not_misfire_elderly():
     assert a2["Age"] == "young adult"
     a3 = attrs_of("a 70 year old man")
     assert a3["Age"] == "elderly"
+
+
+def test_aged_number_maps_to_its_bracket_not_elderly():
+    """'aged 22' is a number, not elderly's bare "aged" synonym."""
+    assert attrs_of("a young man, aged 22")["Age"] == "young adult"
+    assert attrs_of("a woman aged 30, calm and clear")["Age"] == "young adult"
+    assert attrs_of("narrator, age: 45")["Age"] == "middle-aged"
+    assert attrs_of("a man aged 8")["Age"] == "child"
+    assert attrs_of("a man aged 72")["Age"] == "elderly"
+    assert attrs_of("an aged sea captain")["Age"] == "elderly"
 
 
 def test_sichuan_dialect_grandma():
@@ -197,3 +207,15 @@ def test_endpoint_empty_description(client):
 def test_endpoint_rejects_oversized_description(client):
     r = client.post("/design/describe", json={"description": "x" * 2001})
     assert r.status_code == 422
+
+
+def test_age_number_shapes_still_parse_and_do_not_backtrack():
+    """The age regex must keep matching its ambiguous shapes (#3819 ReDoS fix)."""
+    assert attrs_of("a young man, aged 22")["Age"] == "young adult"
+    assert attrs_of("a man aged: 22")["Age"] == "young adult"
+    assert attrs_of("a woman age:   70")["Age"] == "elderly"
+    assert attrs_of("a boy age 8")["Age"] == "child"
+    import time
+    start = time.perf_counter()
+    parse_description("age" + " " * 5000 + "x")
+    assert time.perf_counter() - start < 1.0

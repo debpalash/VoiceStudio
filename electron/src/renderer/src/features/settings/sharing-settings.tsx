@@ -5,8 +5,9 @@ import {
   ExternalLinkIcon,
   Globe2Icon,
   LoaderCircleIcon,
-  NetworkIcon,
+  RefreshCwIcon,
   ShieldCheckIcon,
+  TriangleAlertIcon,
   WifiIcon,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -15,12 +16,12 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { getBridge } from '@/components/bridge';
 import { apiJson, describeError } from '@/lib/api/client';
 import { SettingsRow, SettingsSection } from './settings-layout';
 import { McpBindingsSettings } from './mcp-bindings-settings';
 import { RemoteBackendSettings } from './remote-backend-settings';
+import { SharingPorts } from './sharing-ports';
 
 interface NetworkState {
   enabled: boolean;
@@ -29,11 +30,11 @@ interface NetworkState {
   lan_addresses: string[];
 }
 
-interface PortInfo {
-  backend_port: number;
-  /** Null for the packaged app, whose UI is served from app:// rather than a port. */
-  ui_port: number | null;
-  share_port_base: number;
+interface NetworkCheck {
+  enabled: boolean;
+  bind_host: string | null;
+  share_port: number | null;
+  addresses: { address: string; listening: boolean }[];
 }
 
 interface TailscaleStatus {
@@ -90,9 +91,10 @@ export function SharingSettings() {
     queryKey: ['network-share'],
     queryFn: ({ signal }) => apiJson<NetworkState>('/system/network/state', { signal }),
   });
-  const ports = useQuery({
-    queryKey: ['system-info'],
-    queryFn: ({ signal }) => apiJson<PortInfo>('/system/info', { signal }),
+  const check = useQuery({
+    queryKey: ['network-share-check'],
+    queryFn: ({ signal }) => apiJson<NetworkCheck>('/system/network/check', { signal }),
+    enabled: network.data?.enabled === true,
   });
   const tailscale = useQuery({
     queryKey: ['tailscale-status'],
@@ -101,18 +103,11 @@ export function SharingSettings() {
   const [confirming, setConfirming] = useState(false);
   const [networkBusy, setNetworkBusy] = useState(false);
   const [networkError, setNetworkError] = useState('');
-  const [sharePort, setSharePort] = useState('');
-  const [portBusy, setPortBusy] = useState(false);
-  const [portError, setPortError] = useState('');
   const [tailscaleBusy, setTailscaleBusy] = useState(false);
   const [tailscaleError, setTailscaleError] = useState('');
   const [tailscaleUrl, setTailscaleUrl] = useState('');
   const [tailscaleNote, setTailscaleNote] = useState('');
   const [qrCodes, setQrCodes] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    if (ports.data && !sharePort) setSharePort(String(ports.data.share_port_base));
-  }, [ports.data, sharePort]);
 
   useEffect(() => {
     const state = network.data;
@@ -141,8 +136,21 @@ export function SharingSettings() {
     };
   }, [network.data]);
 
+  // The self-check re-reads this machine's addresses; a network change since
+  // sharing started (new Wi-Fi, VPN) replaces the stale URLs and QR codes.
+  useEffect(() => {
+    if (!check.data?.enabled) return;
+    const fresh = check.data.addresses.map((entry) => entry.address);
+    client.setQueryData<NetworkState>(['network-share'], (current) =>
+      current?.enabled && current.lan_addresses.join() !== fresh.join()
+        ? { ...current, lan_addresses: fresh }
+        : current,
+    );
+  }, [check.data, client]);
+
   const setNetworkState = (state: NetworkState) => {
     client.setQueryData(['network-share'], state);
+    client.removeQueries({ queryKey: ['network-share-check'] });
     setConfirming(false);
   };
 
@@ -170,27 +178,6 @@ export function SharingSettings() {
       setNetworkError(describeError(error));
     } finally {
       setNetworkBusy(false);
-    }
-  };
-
-  const savePort = async () => {
-    const value = Number(sharePort);
-    if (!Number.isInteger(value) || value < 1024 || value > 65535) {
-      setPortError(t('sharing.port_error'));
-      return;
-    }
-    setPortBusy(true);
-    setPortError('');
-    try {
-      await post('/system/set-env', { key: 'OMNIVOICE_SHARE_PORT', value: String(value) });
-      client.setQueryData<PortInfo>(['system-info'], (current) =>
-        current ? { ...current, share_port_base: value } : current,
-      );
-      toast.success(t('sharing.port_saved'));
-    } catch (error) {
-      setPortError(describeError(error));
-    } finally {
-      setPortBusy(false);
     }
   };
 
@@ -328,6 +315,56 @@ export function SharingSettings() {
             )}
           </div>
         )}
+        {state?.enabled && (
+          <div
+            data-testid="sharing-self-check"
+            className="space-y-2 border-t border-border/60 px-4 py-3 text-xs text-muted-foreground"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span>
+                {check.data?.enabled
+                  ? t('network.listening_on', {
+                      host: check.data.bind_host,
+                      port: check.data.share_port,
+                    })
+                  : t('network.self_check')}
+              </span>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                aria-label={t('network.recheck')}
+                title={t('network.recheck')}
+                disabled={check.isFetching}
+                onClick={() => void check.refetch()}
+              >
+                {check.isFetching ? (
+                  <LoaderCircleIcon aria-hidden="true" className="animate-spin" />
+                ) : (
+                  <RefreshCwIcon aria-hidden="true" />
+                )}
+              </Button>
+            </div>
+            {check.data?.enabled && (
+              <ul className="flex flex-wrap gap-x-4 gap-y-1">
+                {check.data.addresses.map((entry) => (
+                  <li key={entry.address} className="flex items-center gap-1">
+                    {entry.listening ? (
+                      <CheckIcon aria-hidden="true" className="size-3.5 text-emerald-500" />
+                    ) : (
+                      <TriangleAlertIcon aria-hidden="true" className="size-3.5 text-amber-500" />
+                    )}
+                    <code>{entry.address}</code>
+                    <span className="sr-only">
+                      {entry.listening ? t('network.address_ok') : t('network.address_down')}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p>{t('network.firewall_hint')}</p>
+          </div>
+        )}
         {(network.isError || networkError) && (
           <p role="alert" className="px-4 py-3 text-sm text-destructive">
             {networkError || t('common.error')}
@@ -335,45 +372,7 @@ export function SharingSettings() {
         )}
       </SettingsSection>
 
-      {ports.data && (
-        <SettingsSection icon={NetworkIcon} title={t('sharing.ports_title')}>
-          <SettingsRow id="sharing-backend-port" title={t('sharing.backend_port')}>
-            <code className="rounded-md bg-muted px-2 py-1 text-xs">{ports.data.backend_port}</code>
-          </SettingsRow>
-          {ports.data.ui_port !== null && (
-            <SettingsRow id="sharing-ui-port" title={t('sharing.ui_port')}>
-              <code className="rounded-md bg-muted px-2 py-1 text-xs">{ports.data.ui_port}</code>
-            </SettingsRow>
-          )}
-          <SettingsRow
-            id="sharing-share-port"
-            title={t('sharing.lan_share_port')}
-            description={t('sharing.ports_note')}
-          >
-            <Input
-              type="number"
-              min={1024}
-              max={65535}
-              value={sharePort}
-              className="w-28 font-mono"
-              aria-label={t('sharing.lan_share_port')}
-              disabled={portBusy || state?.enabled}
-              onChange={(event) => {
-                setSharePort(event.target.value);
-                setPortError('');
-              }}
-            />
-            <Button size="sm" disabled={portBusy || state?.enabled} onClick={() => void savePort()}>
-              {portBusy ? t('common.saving') : t('common.save')}
-            </Button>
-          </SettingsRow>
-          {portError && (
-            <p role="alert" className="px-4 py-3 text-sm text-destructive">
-              {portError}
-            </p>
-          )}
-        </SettingsSection>
-      )}
+      <SharingPorts sharing={Boolean(state?.enabled)} />
 
       <SettingsSection icon={Globe2Icon} title={t('sharing.tailscale_title')}>
         <SettingsRow

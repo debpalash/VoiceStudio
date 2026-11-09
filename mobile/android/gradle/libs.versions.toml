@@ -1,0 +1,50 @@
+[versions]
+agp = "8.12.0"
+kotlin = "2.2.21"
+compose = "2025.10.01"
+coroutines = "1.10.2"
+serialization = "1.6.3"
+okhttp = "4.12.0"
+[libraries]
+compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose" }
+compose-ui = { module = "androidx.compose.ui:ui" }
+compose-foundation = { module = "androidx.compose.foundation:foundation" }
+compose-material = { module = "androidx.compose.material3:material3" }
+compose-icons = { module = "androidx.compose.material:material-icons-core" }
+compose-tooling = { module = "androidx.compose.ui:ui-tooling" }
+compose-test = { module = "androidx.compose.ui:ui-test-junit4" }
+compose-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
+activity = { module = "androidx.activity:activity-compose", version = "1.11.0" }
+lifecycle = { module = "androidx.lifecycle:lifecycle-runtime-compose", version = "2.9.4" }
+viewmodel = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version = "2.9.4" }
+navigation = { module = "androidx.navigation:navigation-compose", version = "2.9.5" }
+core = { module = "androidx.core:core-ktx", version = "1.17.0" }
+coroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+serialization = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+mockwebserver = { module = "com.squareup.okhttp3:mockwebserver", version.ref = "okhttp" }
+datastore = { module = "androidx.datastore:datastore-preferences", version = "1.1.7" }
+work = { module = "androidx.work:work-runtime-ktx", version = "2.10.0" }
+work-testing = { module = "androidx.work:work-testing", version = "2.10.0" }
+media = { module = "androidx.media3:media3-exoplayer", version = "1.8.0" }
+media-okhttp = { module = "androidx.media3:media3-datasource-okhttp", version = "1.8.0" }
+camera-core = { module = "androidx.camera:camera-core", version = "1.5.0" }
+camera-camera2 = { module = "androidx.camera:camera-camera2", version = "1.5.0" }
+camera-lifecycle = { module = "androidx.camera:camera-lifecycle", version = "1.5.0" }
+camera-view = { module = "androidx.camera:camera-view", version = "1.5.0" }
+zxing = { module = "com.google.zxing:core", version = "3.5.3" }
+junit = { module = "junit:junit", version = "4.13.2" }
+robolectric = { module = "org.robolectric:robolectric", version = "4.16" }
+robolectric-legacy-sdk = { module = "org.robolectric:android-all-instrumented", version = "13-robolectric-9030017-i7" }
+robolectric-sdk = { module = "org.robolectric:android-all-instrumented", version = "14-robolectric-10818077-i7" }
+test-core = { module = "androidx.test:core-ktx", version = "1.7.0" }
+test-runner = { module = "androidx.test:runner", version = "1.7.0" }
+test-ext-junit = { module = "androidx.test.ext:junit", version = "1.3.0" }
+mockito = { module = "org.mockito:mockito-core", version = "5.14.2" }
+[plugins]
+android-app = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

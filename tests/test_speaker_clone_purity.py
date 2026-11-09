@@ -11,16 +11,16 @@ These tests pin the three guards:
 
 Pure tests over a synthetic vocals wav — no model, no main import.
 """
+
 import asyncio
-import threading
-from concurrent.futures import ThreadPoolExecutor
-from concurrent.futures import TimeoutError as FuturesTimeout
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+from queue import Queue
+from threading import Semaphore
 
 import numpy as np
 import pytest
 import soundfile as sf
 
-from services.asr_backend import ASRTimeoutError, run_transcribe_guarded
 from services.speaker_clone import (
     ADJACENT_TURN_GUARD_S,
     MIN_REF_DURATION_S,
@@ -31,6 +31,7 @@ from services.speaker_clone import (
     refine_ref_text,
     refine_ref_texts,
 )
+from services.asr_backend import ASRTimeoutError, run_transcribe_guarded
 
 SR = 16000
 
@@ -49,13 +50,15 @@ def _seg(start, end, speaker="Speaker 1", text="hello there"):
 
 class TestPickReferenceSlices:
     def test_rejects_slices_below_minimum_duration(self):
-        # Six 1.0 s fragments total 6 s (> MIN_REF_DURATION_S) — pre-fix they
-        # were all picked; now every one is under MIN_SLICE_DURATION_S so the
-        # speaker yields no reference at all (default voice beats a bad clone).
-        items = [(i, _seg(i * 3.0, i * 3.0 + 1.0)) for i in range(6)]
+        # Fragments under MIN_SLICE_DURATION_S never join a reference while the
+        # speaker has enough long slices. (A speaker with ONLY short turns uses
+        # the guarded short-turn fallback instead — tests/test_dub_multispeaker_3419.py.)
+        long_items = [(10 + i, _seg(30.0 + i * 5.0, 34.0 + i * 5.0)) for i in range(2)]
+        short_items = [(i, _seg(i * 3.0, i * 3.0 + 1.0)) for i in range(6)]
         assert MIN_SLICE_DURATION_S > 1.0  # test premise
-        assert 6 * 1.0 > MIN_REF_DURATION_S  # pre-fix these WOULD have passed
-        assert _pick_reference_slices(items) == []
+        assert 2 * 4.0 >= MIN_REF_DURATION_S
+        chosen = _pick_reference_slices(short_items + long_items)
+        assert [idx for idx, _ in chosen] == [10, 11]
 
     def test_prefers_slice_not_adjacent_to_other_speaker(self):
         # Two equal-length candidates for Speaker 1; the first is 0.1 s away
@@ -252,57 +255,55 @@ class TestRefineRefTexts:
         assert clones["Speaker 2"]["ref_text"] == "buenos dias"
 
 
-class _HangingASR:
-    """An ASR backend whose .transcribe() *wedges* (blocks) instead of raising
-    — the #730 whisperx/CTranslate2 hang. `refine_ref_text`'s try/except only
-    catches a raised Exception, so on its own this dispatch has no wall-clock
-    bound; it must go through the same `run_transcribe_guarded` every other
-    transcribe in dub_core.py uses."""
+class _PausedRecognizer:
     def __init__(self):
-        self.started = threading.Event()
-        self.release = threading.Event()
+        self.arrivals = Queue(maxsize=1)
+        self.permission = Semaphore(0)
 
     def transcribe(self, path, *, word_timestamps=True):
-        self.started.set()
-        self.release.wait()  # blocks until the test releases it
-        return {"chunks": [{"text": "arrived too late"}]}
+        self.arrivals.put_nowait(path)
+        self.permission.acquire()
+        return {"chunks": [{"text": "replacement text"}], "language": "en"}
+
+    def wait_until_called(self):
+        return self.arrivals.get(timeout=1)
+
+    def resume(self):
+        self.permission.release()
 
 
-class TestRefineWedgeIsGuarded:
-    # Issue #730 class: a re-transcribe can hang rather than raise. The other
-    # transcribe dispatches in dub_core.py bound this via run_transcribe_guarded
-    # (chunk loop + whole-file "Dub"); the clone/segment refine dispatches must
-    # too, or a wedge holds the 1-worker GPU pool forever ("can't reach backend").
+def test_refine_ref_texts_has_no_internal_wall_clock_timeout():
+    recognizer = _PausedRecognizer()
+    originals = {"Speaker 1": {"ref_audio": "/tmp/pause.wav", "ref_text": "source"}}
+    worker = ThreadPoolExecutor(max_workers=1)
+    pending = worker.submit(refine_ref_texts, originals, recognizer)
+    assert recognizer.wait_until_called() == "/tmp/pause.wav"
+    try:
+        with pytest.raises(FutureTimeoutError):
+            pending.result(timeout=0.02)
+    finally:
+        recognizer.resume()
+        worker.shutdown(wait=False)
 
-    def test_refine_ref_texts_alone_has_no_wall_clock_bound(self):
-        # Proves the gap: dispatched raw (as #1008 did), a wedged transcribe
-        # never returns — refine_ref_text's except can't catch a hang.
-        asr = _HangingASR()
-        clones = {"S1": {"ref_audio": "/tmp/a.wav", "ref_text": "orig"}}
-        pool = ThreadPoolExecutor(max_workers=1)
-        fut = pool.submit(refine_ref_texts, clones, asr)
-        assert asr.started.wait(timeout=2.0)
-        with pytest.raises(FuturesTimeout):
-            fut.result(timeout=0.3)  # still blocked — no internal bound
-        asr.release.set()            # let the worker unwind before teardown
-        pool.shutdown(wait=False)
 
-    def test_run_transcribe_guarded_bounds_the_wedge_and_falls_back(self):
-        # Proves the fix: routing the same call through the guard bounds the
-        # hang, raises ASRTimeoutError, and the original ref_text is preserved
-        # (matching refine_ref_text's "failure is a strict no-op" fallback).
-        asr = _HangingASR()
-        clones = {"S1": {"ref_audio": "/tmp/a.wav", "ref_text": "orig"}}
-        pool = ThreadPoolExecutor(max_workers=1)
+def test_guarded_refine_times_out_without_changing_original_text():
+    recognizer = _PausedRecognizer()
+    originals = {"Speaker 1": {"ref_audio": "/tmp/guard.wav", "ref_text": "unchanged"}}
+    worker = ThreadPoolExecutor(max_workers=1)
 
-        async def _go():
-            with pytest.raises(ASRTimeoutError):
-                await run_transcribe_guarded(
-                    pool, lambda: refine_ref_texts(clones, asr),
-                    what="Dub clone ref-text refine", timeout=0.3,
-                )
+    async def guarded_call():
+        return await run_transcribe_guarded(
+            worker,
+            lambda: refine_ref_texts(originals, recognizer),
+            what="blocked reference-text check",
+            timeout=0.02,
+        )
 
-        asyncio.run(_go())
-        assert clones["S1"]["ref_text"] == "orig"  # fallback kept the original
-        asr.release.set()
-        pool.shutdown(wait=False)
+    try:
+        with pytest.raises(ASRTimeoutError):
+            asyncio.run(guarded_call())
+        assert recognizer.wait_until_called() == "/tmp/guard.wav"
+        assert originals["Speaker 1"]["ref_text"] == "unchanged"
+    finally:
+        recognizer.resume()
+        worker.shutdown(wait=False)

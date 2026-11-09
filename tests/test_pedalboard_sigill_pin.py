@@ -1,56 +1,36 @@
-"""Regression for #2052: pedalboard 0.9.21+ Linux wheels SIGILL on import.
-
-spotify/pedalboard#454 — 0.9.21+ manylinux wheels are compiled with
-``-march=native``, so ``import pedalboard`` raises SIGILL on CPUs that
-lack the builder host's SIMD set. VoiceStudio reported this as a Docker
-first-synthesis crash; 0.9.20 is the last known-good wheel.
-
-The specifier must keep the 0.9.14 floor (effects-chain API) and exclude
-0.9.21+. ``uv.lock`` must resolve inside that range so ``uv sync`` /
-Docker ``--frozen-lockfile`` cannot pull a crashing wheel.
-"""
-from __future__ import annotations
-
+"""pedalboard must stay below the 0.9.21 wheels that crash on older CPUs (#2052)."""
 import tomllib
 from pathlib import Path
 
+import pytest
 from packaging.requirements import Requirement
+from packaging.specifiers import SpecifierSet
 from packaging.version import Version
 
-_ROOT = Path(__file__).resolve().parents[1]
-_KNOWN_GOOD = "0.9.20"
-_FIRST_BAD = "0.9.21"
+ROOT = Path(__file__).resolve().parents[1]
 
 
-def _pedalboard_requirement() -> Requirement:
-    data = tomllib.loads((_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    requirements = [Requirement(item) for item in data["project"]["dependencies"]]
-    return next(req for req in requirements if req.name.lower() == "pedalboard")
+def _specifier() -> SpecifierSet:
+    deps = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["dependencies"]
+    reqs = [Requirement(d) for d in deps]
+    found = [r for r in reqs if r.name.lower() == "pedalboard"]
+    assert len(found) == 1, "pedalboard must be declared exactly once"
+    return found[0].specifier
 
 
-def _locked_pedalboard_versions() -> list[Version]:
-    lock = tomllib.loads((_ROOT / "uv.lock").read_text(encoding="utf-8"))
-    return [
-        Version(package["version"])
-        for package in lock["package"]
-        if package["name"].lower() == "pedalboard"
-    ]
+@pytest.mark.parametrize("version,allowed", [
+    ("0.9.14", True), ("0.9.20", True),
+    ("0.9.13", False), ("0.9.21", False), ("0.9.24", False),
+])
+def test_specifier_window(version, allowed):
+    assert (Version(version) in _specifier()) is allowed
 
 
-def test_specifier_keeps_known_good_and_excludes_sigill_wheels():
-    pedalboard = _pedalboard_requirement()
-    assert pedalboard.specifier.contains("0.9.14")
-    assert not pedalboard.specifier.contains("0.9.13")
-    assert pedalboard.specifier.contains(_KNOWN_GOOD)
-    assert not pedalboard.specifier.contains(_FIRST_BAD)
-    assert not pedalboard.specifier.contains("0.9.24")
-
-
-def test_lockfile_resolves_inside_the_safe_range():
-    locked = _locked_pedalboard_versions()
-    assert locked, "uv.lock must pin pedalboard"
-    specifier = _pedalboard_requirement().specifier
-    too_new = [str(version) for version in locked if version >= Version(_FIRST_BAD)]
-    out_of_range = [str(version) for version in locked if not specifier.contains(version)]
-    assert too_new == []
-    assert out_of_range == []
+def test_locked_pedalboard_versions_obey_the_pin():
+    lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
+    versions = [Version(p["version"]) for p in lock["package"] if p["name"] == "pedalboard"]
+    assert versions, "uv.lock has no pedalboard entry"
+    spec = _specifier()
+    for v in versions:
+        assert v in spec
+        assert v < Version("0.9.21")

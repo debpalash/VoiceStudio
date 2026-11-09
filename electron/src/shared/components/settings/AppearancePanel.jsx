@@ -16,8 +16,9 @@ const THEMES = [
   {
     id: 'auto',
     labelKey: 'settings.theme_auto',
-    defaultLabel: 'System Auto',
-    dot: 'linear-gradient(135deg, #fdf6e3 50%, #1d2021 50%)',
+    defaultLabel: 'Match system',
+    // Half light, half dark: the theme follows the OS setting.
+    dot: 'linear-gradient(135deg, #fdf6e3 0 50%, #1d2021 50% 100%)',
   },
   { id: 'gruvbox', label: 'Gruvbox', dot: '#d3869b' },
   { id: 'midnight', label: 'Midnight', dot: '#8b5cf6' },
@@ -25,7 +26,12 @@ const THEMES = [
   { id: 'solarized', label: 'Solarized', dot: '#268bd2' },
   { id: 'rose-pine', label: 'Rosé Pine', dot: '#ebbcba' },
   { id: 'catppuccin', label: 'Catppuccin', dot: '#cba6f7' },
-  { id: 'light', labelKey: 'settings.theme_light', defaultLabel: 'Light', dot: '#1d6b9f' },
+  {
+    id: 'light',
+    labelKey: 'settings.theme_light',
+    defaultLabel: 'Light',
+    dot: '#1d6b9f',
+  },
 ];
 
 /**
@@ -203,24 +209,28 @@ export default function AppearancePanel() {
             role="radiogroup"
             aria-label={themeLabel}
           >
-            {THEMES.map((th) => (
-              <button
-                key={th.id}
-                type="button"
-                className={`appearance-panel__theme-dot ${theme === th.id ? 'is-active' : ''}`}
-                style={{ '--dot-color': th.dot }}
-                onClick={() => setTheme(th.id)}
-                onKeyDown={(e) => radioGroupKeyDown(e, themeIds, theme, setTheme)}
-                title={th.labelKey ? t(th.labelKey, { defaultValue: th.defaultLabel }) : th.label}
-                aria-label={
-                  th.labelKey ? t(th.labelKey, { defaultValue: th.defaultLabel }) : th.label
-                }
-                aria-checked={theme === th.id}
-                role="radio"
-                tabIndex={radioTabIndex(themeIds, theme, th.id)}
-                data-radio-value={th.id}
-              />
-            ))}
+            {THEMES.map((entry) => {
+              const selected = theme === entry.id;
+              const name = entry.labelKey
+                ? t(entry.labelKey, { defaultValue: entry.defaultLabel })
+                : entry.label;
+              return (
+                <button
+                  key={entry.id}
+                  type="button"
+                  role="radio"
+                  className={`appearance-panel__theme-dot ${selected ? 'is-active' : ''}`}
+                  style={{ '--dot-color': entry.dot }}
+                  title={name}
+                  aria-label={name}
+                  aria-checked={selected}
+                  tabIndex={radioTabIndex(themeIds, theme, entry.id)}
+                  data-radio-value={entry.id}
+                  onClick={() => setTheme(entry.id)}
+                  onKeyDown={(e) => radioGroupKeyDown(e, themeIds, theme, setTheme)}
+                />
+              );
+            })}
           </div>
         }
       />

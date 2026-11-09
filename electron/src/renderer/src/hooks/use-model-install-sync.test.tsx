@@ -6,7 +6,7 @@ import { ModelInstallSync, type ModelInstallJobsResponse } from './use-model-ins
 const mock = vi.hoisted(() => ({
   api: vi.fn(),
   jobs: {
-    jobs: [{ repo_id: 'k2-fsa/OmniVoice', target: 'local', state: 'downloading' }],
+    jobs: [{ repo_id: 'k2-fsa/OmniVoice', state: 'downloading' }],
   } as ModelInstallJobsResponse,
 }));
 
@@ -19,7 +19,7 @@ afterEach(() => {
   cleanup();
   mock.api.mockReset();
   mock.jobs = {
-    jobs: [{ repo_id: 'k2-fsa/OmniVoice', target: 'local', state: 'downloading' }],
+    jobs: [{ repo_id: 'k2-fsa/OmniVoice', state: 'downloading' }],
   };
 });
 
@@ -30,7 +30,6 @@ it('invalidates every readiness surface when an observed install completes', asy
   });
   client.setQueryData(['model-install-jobs'], mock.jobs);
   client.setQueryData(['engines'], { stale: false });
-  client.setQueryData(['workers'], { stale: false });
   render(
     <QueryClientProvider client={client}>
       <ModelInstallSync />
@@ -44,6 +43,5 @@ it('invalidates every readiness surface when an observed install completes', asy
 
   await waitFor(() => {
     expect(client.getQueryState(['engines'])?.isInvalidated).toBe(true);
-    expect(client.getQueryState(['workers'])?.isInvalidated).toBe(true);
   });
 });

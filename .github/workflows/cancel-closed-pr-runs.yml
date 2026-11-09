@@ -1,0 +1,61 @@
+# Cancel the CI of a pull request the moment it is merged or closed.
+#
+# Unfinished runs of a closed PR are never read, yet they hold runner slots that
+# other PRs are queued for (the repository is capped at 20 concurrent jobs). The
+# script cancels only pull_request / pull_request_target runs that started before
+# the close, so runs the close itself triggers (CLA recording) finish normally.
+# `--sweep` (workflow_dispatch) is the same cleanup for the whole repository.
+#
+# Security: pull_request_target holds a write token, so this checks out only the
+# base commit and never runs pull-request code; tests/test_cla_workflow.py
+# enforces that for every privileged workflow.
+name: cancel-closed-pr-runs
+
+on:
+  pull_request_target:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "List what would be cancelled without cancelling"
+        type: boolean
+        default: true
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: cancel-closed-pr-runs-${{ github.event.pull_request.number || 'sweep' }}
+  cancel-in-progress: false
+
+jobs:
+  cancel:
+    name: Cancel unfinished runs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The default ref (the base branch tip when the PR closes), not
+          # pull_request.base.sha: that is the base as of the PR's last update and
+          # predates this script for every PR opened before it was merged.
+          persist-credentials: false
+
+      - name: Cancel the closed pull request's runs
+        if: ${{ github.event_name == 'pull_request_target' }}
+        run: python3 .github/scripts/cancel_stale_runs.py --pr "$PR"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+
+      - name: Sweep every closed pull request's runs
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: |
+          flags=""
+          [ "$DRY_RUN" = "true" ] && flags="--dry-run"
+          python3 .github/scripts/cancel_stale_runs.py --sweep $flags
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DRY_RUN: ${{ inputs.dry_run }}

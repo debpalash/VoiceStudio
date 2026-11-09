@@ -90,6 +90,7 @@ def is_app_quarantined(bundle_path: Optional[str] = None) -> bool:
             ["xattr", "-l", bundle],
             capture_output=True,
             text=True,
+            errors="replace",
             timeout=5,
             check=False,
         )

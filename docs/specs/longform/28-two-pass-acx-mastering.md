@@ -1,5 +1,9 @@
 # TASK #28 — Two-pass ACX loudness mastering
 
+> **Historical design reference.** Paths, status and instructions below describe
+> the original implementation snapshot. For current behavior see the
+> [longform guide](../../electron-longform.md); follow current repository rules for new changes.
+
 ## TL;DR
 
 Today the longform renderer (Audiobook + Stories) applies a **single-pass** `loudnorm` filter built by `build_loudnorm_filter()` (`backend/services/longform_render.py:159`). Single-pass `loudnorm` is a *dynamic* normalizer that does **not** reliably hit a target integrated LUFS or a hard true-peak ceiling — it's documented by FFmpeg as "the result will not be as accurate" as two-pass. ACX submission requires integrated loudness inside −23…−18 LUFS and a peak ≤ −3 dBTP; single-pass routinely lands outside that window.

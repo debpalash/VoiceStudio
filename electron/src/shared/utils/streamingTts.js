@@ -37,38 +37,6 @@ export const supportsStreamingPreview = () =>
   typeof window !== 'undefined' &&
   typeof (window.AudioContext || window.webkitAudioContext) === 'function';
 
-/**
- * The resolved GPU target for synthesis, when it is a remote worker.
- *
- * `/generate?stream=true` renders in THIS process — there is no streaming
- * path to a worker — so a progressive preview would quietly run the job on
- * this machine after the user picked their 4090. That is the one thing the
- * whole picker exists to prevent, so the caller takes the classic (remote-
- * capable) path instead and says why.
- *
- * Resolved per generate rather than once at mount, deliberately: a worker can
- * go to sleep between two clicks, and this asks routing the same question the
- * generation path asks, so the two cannot disagree.
- *
- * Any failure answers "local". Remote workers are opt-in and the endpoint is
- * loopback-only; a picker that cannot be reached must never stand between a
- * user and an ordinary local render, and transport retries are off so a dead
- * backend fails here in one round trip instead of stalling the click.
- *
- * @returns {Promise<{workerId: string|null, label: string}|null>}
- */
-export async function resolveRemoteTtsTarget({ signal } = {}) {
-  try {
-    const res = await apiFetch('/workers/target?op=tts', { signal, retryTransport: false });
-    if (!res?.ok) return null;
-    const active = (await res.json())?.active;
-    if (!active?.remote) return null;
-    return { workerId: active.worker_id || null, label: active.label || '' };
-  } catch {
-    return null;
-  }
-}
-
 /** A failure AFTER the stream started — the signal to fall back to the
  *  classic whole-file /generate flow. */
 export class StreamingPreviewError extends Error {
@@ -142,230 +110,222 @@ export const peaksFromChunkList = (chunkArrays, buckets = 240) => {
   return peaks.map((p) => p / top);
 };
 
-/**
- * Progressive chunk player: schedules each appended PCM chunk on a shared
- * AudioContext timeline with the backend's crossfade, so playback runs
- * continuously while later chunks are still being synthesized. If synthesis
- * is slower than playback, the playhead waits at the buffered edge and
- * resumes when the next chunk lands (re-anchoring the schedule).
- *
- * Registered as a tracked 'output' playback: live time, growing duration,
- * progressive peaks, seek within the buffered region, pause/resume, stop.
- * Exported for tests; production entry point is streamGenerateSpeech below.
- */
-export const createStreamingChunkPlayer = ({ label, sampleRate, crossfadeMs = 0, onDone } = {}) => {
-  const Ctx = window.AudioContext || window.webkitAudioContext;
-  let ctx;
+export function createStreamingChunkPlayer({ label, sampleRate, crossfadeMs = 0, onDone } = {}) {
+  const Context = window.AudioContext || window.webkitAudioContext;
+  let audioClock;
   try {
-    ctx = new Ctx({ sampleRate });
+    audioClock = new Context({ sampleRate });
   } catch {
-    // Some output devices cannot open a context at the PCM rate.
-    ctx = new Ctx();
+    audioClock = new Context();
   }
-  if (ctx.state === 'suspended') ctx.resume().catch(() => {});
-  const xf = Math.max(0, crossfadeMs) / 1000;
-  const startLeadSeconds = 0.08;
-  const endPaddingSeconds = 0.05;
+  if (audioClock.state === 'suspended') Promise.resolve(audioClock.resume()).catch(() => {});
 
-  const chunks = []; // Float32Array per received chunk
-  const starts = []; // timeline start (s) of each chunk, crossfade-overlapped
-  let totalDuration = 0; // buffered timeline seconds
-  let scheduled = []; // live nodes: { src, gain, index }
-  let baseOffset = 0; // timeline position where the current chain started
-  let anchor = null; // ctx.currentTime when the current chain started
-  let finished = false;
-  let complete = false; // all chunks received (finalize() called)
-  let timer = null;
+  const initialDelay = 0.08;
+  const drainAllowance = 0.05;
+  const restartDelay = 0.02;
+  const lateThreshold = 0.01;
+  const maximumBlend = Math.max(0, crossfadeMs) / 1000;
+  const blocks = [];
+  const liveVoices = new Map();
+  let voiceNumber = 0;
+  let lastVoice = null;
+  let duration = 0;
+  let clockStart = null;
+  let mediaOrigin = 0;
+  let inputComplete = false;
+  let closed = false;
 
-  const dur = (i) => chunks[i].length / sampleRate;
-  const fadeFor = (i) => (i > 0 ? Math.min(xf, dur(i - 1), dur(i)) : 0);
-  const currentPos = () =>
-    Math.max(
-      0,
-      Math.min(baseOffset + (anchor === null ? 0 : ctx.currentTime - anchor), totalDuration),
-    );
-
-  const disconnectScheduled = () => {
-    for (const node of scheduled) {
-      try {
-        node.src.disconnect();
-        node.gain.disconnect();
-      } catch {
-        /* noop */
-      }
-    }
-    scheduled = [];
+  const displayedTime = () => {
+    if (clockStart === null) return 0;
+    const elapsed = mediaOrigin + audioClock.currentTime - clockStart;
+    return Math.max(0, Math.min(duration, elapsed));
   };
 
-  const stopScheduled = () => {
-    for (const node of scheduled) {
-      try {
-        node.src.stop();
-      } catch {
-        /* not started / already stopped */
+  const clearVoices = ({ halt }) => {
+    for (const voice of liveVoices.values()) {
+      if (halt) {
+        try {
+          voice.source.stop();
+        } catch {
+          /* Web Audio rejects stop calls for some unstarted sources. */
+        }
       }
       try {
-        node.src.disconnect();
-        node.gain.disconnect();
+        voice.source.disconnect();
+        voice.level.disconnect();
       } catch {
-        /* noop */
+        /* A prior teardown may already have removed the graph. */
       }
     }
-    scheduled = [];
+    liveVoices.clear();
+    lastVoice = null;
   };
 
-  const finish = (reason) => {
-    if (finished) return;
-    finished = true;
-    if (timer) clearInterval(timer);
-    if (reason === 'ended') disconnectScheduled();
-    else stopScheduled();
+  const complete = (reason) => {
+    if (closed) return;
+    closed = true;
+    clearInterval(progressTimer);
+    clearVoices({ halt: reason !== 'ended' });
+    playback.release();
     try {
-      ctx.close();
+      Promise.resolve(audioClock.close()).catch(() => {});
     } catch {
-      /* already closed */
+      /* The device may have closed this context already. */
     }
     try {
       onDone?.(reason);
     } catch {
-      /* consumer callbacks must not break the manager */
+      /* Completion observers are isolated from playback cleanup. */
     }
   };
 
-  // Schedule chunk `i` at its timeline slot on the current anchor. `intra`
-  // starts mid-chunk (seek); `withFade` crossfades against the chain's tail.
-  const scheduleChunk = (i, intra = 0, withFade = true) => {
-    const buffer = ctx.createBuffer(1, chunks[i].length, sampleRate);
-    // copyToChannel is on every real AudioBuffer; fall back for old shims.
-    if (buffer.copyToChannel) buffer.copyToChannel(chunks[i], 0);
-    else buffer.getChannelData(0).set(chunks[i]);
-    const src = ctx.createBufferSource();
-    const gain = ctx.createGain();
-    src.buffer = buffer;
-    src.connect(gain);
-    gain.connect(ctx.destination);
+  const queueBlock = (blockIndex, { skip = 0, blend = true } = {}) => {
+    const block = blocks[blockIndex];
+    const audioBuffer = audioClock.createBuffer(1, block.samples.length, sampleRate);
+    const channel = audioBuffer.getChannelData(0);
+    if (typeof audioBuffer.copyToChannel === 'function')
+      audioBuffer.copyToChannel(block.samples, 0);
+    else channel.set(block.samples);
 
-    const when = anchor + (starts[i] + intra - baseOffset);
-    const startAt = Math.max(when, ctx.currentTime);
-    const tail = scheduled[scheduled.length - 1];
-    const fade =
-      withFade && intra === 0 && tail?.endsAt > startAt
-        ? Math.min(fadeFor(i), tail.endsAt - startAt)
-        : 0;
-    if (fade > 0 && tail) {
-      // Linear crossfade — same shape the backend bakes into the final file.
-      tail.gain.gain.setValueAtTime(1, startAt);
-      tail.gain.gain.linearRampToValueAtTime(0, startAt + fade);
-      gain.gain.setValueAtTime(0, startAt);
-      gain.gain.linearRampToValueAtTime(1, startAt + fade);
+    const source = audioClock.createBufferSource();
+    const level = audioClock.createGain();
+    source.buffer = audioBuffer;
+    source.connect(level);
+    level.connect(audioClock.destination);
+
+    const timelineTime = block.at + skip - mediaOrigin;
+    const begins = Math.max(clockStart + timelineTime, audioClock.currentTime);
+    if (blend && skip === 0 && lastVoice && lastVoice.until > begins) {
+      const overlap = Math.min(block.fade, lastVoice.until - begins);
+      if (overlap > 0) {
+        const fadeEnds = begins + overlap;
+        lastVoice.level.gain.setValueAtTime(1, begins);
+        lastVoice.level.gain.linearRampToValueAtTime(0, fadeEnds);
+        level.gain.setValueAtTime(0, begins);
+        level.gain.linearRampToValueAtTime(1, fadeEnds);
+      }
     }
-    src.start(startAt, intra);
-    scheduled.push({ src, gain, index: i, endsAt: startAt + dur(i) - intra });
+    source.start(begins, skip);
+    const voice = {
+      source,
+      level,
+      blockIndex,
+      until: begins + block.length - skip,
+    };
+    liveVoices.set(++voiceNumber, voice);
+    lastVoice = voice;
   };
 
-  const session = claimTrackedPlayback({
+  const seek = (value) => {
+    if (closed || blocks.length === 0) return;
+    const destination = Math.max(0, Math.min(value, Math.max(0, duration - 0.02)));
+    clearVoices({ halt: true });
+    let containingBlock = 0;
+    blocks.forEach((block, index) => {
+      if (block.at <= destination) containingBlock = index;
+    });
+    mediaOrigin = destination;
+    clockStart = audioClock.currentTime + restartDelay;
+    queueBlock(containingBlock, {
+      skip: destination - blocks[containingBlock].at,
+      blend: false,
+    });
+    for (let index = containingBlock + 1; index < blocks.length; index += 1) {
+      queueBlock(index);
+    }
+    playback.update({ currentTime: destination });
+  };
+
+  const pause = () => {
+    if (closed) return;
+    const at = displayedTime();
+    try {
+      Promise.resolve(audioClock.suspend()).catch(() => {});
+    } catch {
+      /* Pausing remains best effort on older webviews. */
+    }
+    playback.update({ paused: true, currentTime: at });
+  };
+
+  const resume = () => {
+    if (closed) return;
+    try {
+      Promise.resolve(audioClock.resume()).catch(() => {});
+    } catch {
+      /* Resuming remains best effort on older webviews. */
+    }
+    playback.update({ paused: false, currentTime: displayedTime() });
+  };
+
+  const playback = claimTrackedPlayback({
     source: 'output',
     label,
-    stop: () => finish('stopped'),
-    seek: (t) => {
-      if (finished || !chunks.length) return;
-      const target = Math.max(0, Math.min(t, Math.max(0, totalDuration - 0.02)));
-      stopScheduled();
-      let j = 0;
-      for (let i = 0; i < starts.length; i++) if (starts[i] <= target) j = i;
-      baseOffset = target;
-      anchor = ctx.currentTime + 0.02;
-      scheduleChunk(j, target - starts[j], false);
-      for (let i = j + 1; i < chunks.length; i++) scheduleChunk(i);
-      session.update({ currentTime: target });
-    },
-    pause: () => {
-      if (finished) return;
-      ctx
-        .suspend()
-        .then(() => session.update({ paused: true, currentTime: currentPos() }))
-        .catch(() => {});
-    },
-    resume: () => {
-      if (finished) return;
-      ctx
-        .resume()
-        .then(() => session.update({ paused: false }))
-        .catch(() => {});
-    },
+    stop: () => complete('stopped'),
+    seek,
+    pause,
+    resume,
   });
 
-  timer = setInterval(() => {
-    if (finished || ctx.state !== 'running') return;
-    const pos = currentPos();
-    session.update({ currentTime: pos });
-    const endAt =
-      anchor === null ? ctx.currentTime : anchor + (totalDuration - baseOffset) + endPaddingSeconds;
-    if (complete && ctx.currentTime >= endAt) {
-      session.update({ currentTime: totalDuration });
-      session.release();
-      finish('ended');
+  const playbackEnd = () => {
+    if (clockStart === null) return audioClock.currentTime;
+    return clockStart + duration - mediaOrigin + drainAllowance;
+  };
+
+  const progressTimer = setInterval(() => {
+    if (closed || audioClock.state !== 'running') return;
+    playback.update({ currentTime: displayedTime() });
+    if (inputComplete && audioClock.currentTime >= playbackEnd()) {
+      playback.update({ currentTime: duration });
+      complete('ended');
     }
   }, 250);
 
-  // Schedule one decoded Float32 chunk for gapless playback. Shared by the
-  // NDJSON (base64) and binary-WebSocket (raw PCM16 frame) append shapes.
-  const appendSamples = (data) => {
-    if (finished) return;
-    if (!data.length) return;
-    const i = chunks.length;
-    chunks.push(data);
-    starts.push(i === 0 ? 0 : starts[i - 1] + dur(i - 1) - fadeFor(i));
-    totalDuration = starts[i] + dur(i);
+  const acceptSamples = (samples) => {
+    if (closed || !samples?.length) return;
+    const previous = blocks.at(-1);
+    const length = samples.length / sampleRate;
+    const fade = previous ? Math.min(maximumBlend, previous.length, length) : 0;
+    const at = previous ? previous.at + previous.length - fade : 0;
+    const block = { samples, length, fade, at };
+    blocks.push(block);
+    duration = at + length;
 
-    if (i === 0) {
-      // Start the playhead with the first source, not when its context was
-      // created, and leave the renderer time to schedule the first quantum.
-      anchor = ctx.currentTime + startLeadSeconds;
-      scheduleChunk(i, 0, false);
+    if (clockStart === null) {
+      mediaOrigin = 0;
+      clockStart = audioClock.currentTime + initialDelay;
+      queueBlock(0, { blend: false });
     } else {
-      const when = anchor + (starts[i] - baseOffset);
-      if (when < ctx.currentTime - 0.01) {
-        // Underrun: playback drained the buffered chunks before this one
-        // arrived. Re-anchor so the new chunk starts now (the playhead sat at
-        // the buffered edge) instead of clipping its head.
-        baseOffset = starts[i];
-        anchor = ctx.currentTime + 0.02;
-        scheduleChunk(i, 0, true);
-      } else {
-        scheduleChunk(i);
+      const due = clockStart + at - mediaOrigin;
+      if (due < audioClock.currentTime - lateThreshold) {
+        mediaOrigin = at;
+        clockStart = audioClock.currentTime + restartDelay;
       }
+      queueBlock(blocks.length - 1);
     }
-    session.update({
-      duration: totalDuration,
-      peaks: peaksFromChunkList(chunks),
+    playback.update({
+      duration,
+      peaks: peaksFromChunkList(blocks.map((item) => item.samples)),
     });
   };
 
   return {
-    /** Append one base64 PCM16 chunk and schedule it for gapless playback. */
-    appendPcm16Base64: (b64) => appendSamples(decodePcm16Base64(b64)),
-    /** Append one raw PCM16 binary frame (ArrayBuffer) — the `/ws/tts` shape. */
-    appendPcm16Bytes: (buf) => appendSamples(pcm16BytesToFloat32(buf)),
-    /** All chunks received: freeze the duration and retitle the bar. */
+    appendPcm16Base64: (b64) => acceptSamples(decodePcm16Base64(b64)),
+    appendPcm16Bytes: (bytes) => acceptSamples(pcm16BytesToFloat32(bytes)),
     finalize: ({ label: finalLabel } = {}) => {
-      if (finished) return;
-      complete = true;
-      const patch = { duration: totalDuration };
-      if (finalLabel) patch.label = finalLabel;
-      session.update(patch);
+      if (closed) return;
+      inputComplete = true;
+      const state = { duration };
+      if (finalLabel !== undefined) state.label = finalLabel;
+      playback.update(state);
     },
-    /** Mid-stream failure: tear down silently (the caller falls back). */
     fail: () => {
-      if (finished) return;
-      session.release();
-      finish('error');
+      if (!closed) complete('error');
     },
     get stopped() {
-      return finished;
+      return closed;
     },
   };
-};
+}
 
 /**
  * Run one streaming generation end-to-end: POST /generate (stream=true),

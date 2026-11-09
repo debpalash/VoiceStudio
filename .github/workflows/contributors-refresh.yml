@@ -1,0 +1,64 @@
+# Contributors refresh — weekly snapshot of the Home contributor credits.
+#
+# Runs scripts/update_contributors.py against the GitHub contributors API and,
+# when the list or any avatar changed, force-pushes the result to the fixed
+# bot/contributors-refresh branch and opens (or updates) one pull request.
+# The apps keep bundling the avatars, so they make no runtime network call.
+# Never auto-merges: a maintainer reviews and merges the PR. PRs opened with
+# the default GITHUB_TOKEN do not start other workflows, so close and reopen
+# the PR (or push to it) to run CI before merging.
+
+name: contributors-refresh
+
+on:
+  schedule:
+    # Mondays 04:17 UTC.
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: contributors-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    if: github.repository == 'debpalash/VoiceStudio'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      BRANCH: bot/contributors-refresh
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+
+      - uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39 # v3.2.4
+
+      - name: Refresh contributors snapshot
+        run: uv run scripts/update_contributors.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Open or update the refresh PR
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "Contributors snapshot is current."
+            exit 0
+          fi
+          # github-actions[bot] is the CLA- and commit-identity-exempt automation identity.
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -C "$BRANCH"
+          git add -A
+          git commit -m "chore(home): refresh contributor credits and avatars"
+          git push --force origin "$BRANCH"
+          if [ -z "$(gh pr list --head "$BRANCH" --state open --json number --jq '.[].number')" ]; then
+            gh pr create --base main --head "$BRANCH" \
+              --title "chore(home): refresh contributor credits and avatars" \
+              --body "Weekly run of \`scripts/update_contributors.py\`: bundled Home contributor list and avatars (Electron, iOS, Android) plus the README Team rows. Close and reopen this PR to run CI, then review and merge by hand."
+          fi

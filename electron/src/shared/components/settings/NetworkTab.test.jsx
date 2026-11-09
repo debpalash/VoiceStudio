@@ -48,7 +48,7 @@ describe('NetworkTab', () => {
     // Input is prefilled from the persisted value, the "Set" badge shows,
     // and Clear is available immediately.
     expect(screen.getByLabelText('Proxy URL')).toHaveValue('http://127.0.0.1:7890');
-    expect(screen.getByText('✓ Set')).toBeInTheDocument();
+    expect(screen.getByText('Credentials applied')).toBeInTheDocument();
     const clear = screen.getByTestId('proxy-clear');
 
     fireEvent.click(clear);
@@ -76,14 +76,14 @@ describe('NetworkTab', () => {
       expect(screen.queryByTestId('proxy-clear')).not.toBeInTheDocument();
     });
     expect(screen.getByLabelText('Proxy URL')).toHaveValue('');
-    expect(screen.queryByText('✓ Set')).not.toBeInTheDocument();
+    expect(screen.queryByText('Credentials applied')).not.toBeInTheDocument();
   });
 
   it('hides Clear when no proxy is configured', () => {
     useSystemInfo.mockReturnValue({ data: { proxy_url: '' } });
     render(<NetworkTab />);
     expect(screen.queryByTestId('proxy-clear')).not.toBeInTheDocument();
-    expect(screen.queryByText('✓ Set')).not.toBeInTheDocument();
+    expect(screen.queryByText('Credentials applied')).not.toBeInTheDocument();
   });
 
   it('shows Clear (and the badge) right after saving in this session', async () => {
@@ -93,11 +93,11 @@ describe('NetworkTab', () => {
     fireEvent.change(screen.getByLabelText('Proxy URL'), {
       target: { value: 'socks5://127.0.0.1:7890' },
     });
-    fireEvent.click(screen.getByText('Save'));
+    fireEvent.click(screen.getByText('Apply credentials'));
 
     await waitFor(() => expect(toast.success).toHaveBeenCalled());
     expect(screen.getByTestId('proxy-clear')).toBeInTheDocument();
-    expect(screen.getByText('✓ Set')).toBeInTheDocument();
+    expect(screen.getByText('Credentials applied')).toBeInTheDocument();
   });
 
   it('labels the proxy input for assistive tech', () => {

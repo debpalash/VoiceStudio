@@ -37,22 +37,41 @@ it('resumes a manifest without submitting edited script and accepts only termina
   expect(longformSession.state.drafts.audiobook.output).toBe('new.m4b');
   expect(longformSession.state.failed).toBe(1);
 });
-it('keeps the exact chapter milliseconds the cue sheet needs', async () => {
+it('stores exact timing on delivered chapters and leaves errors untimed', async () => {
   fetchMock.mockResolvedValue(
     eventResponse([
       { type: 'started', chapters: 3 },
-      { type: 'chapter', index: 0, title: 'One', duration_s: 60, duration_ms: 59996 },
-      { type: 'chapter_error', index: 1, title: 'Two', error: 'boom' },
-      { type: 'chapter', index: 2, title: 'Three', duration_s: 1.5, cached: true },
-      { type: 'done', output: 'new.m4b', failed_chapters: [1] },
+      { type: 'chapter', index: 0, title: 'Ember', duration_s: 2.71, duration_ms: 2718 },
+      { type: 'chapter_error', index: 1, title: 'Ash', error: 'synthesis stopped' },
+      { type: 'chapter', index: 2, title: 'Flame', duration_s: 0.75, cached: true },
+      { type: 'done', output: 'edition.m4b', failed_chapters: [1] },
     ]),
   );
   await renderLongform('audiobook');
   expect(longformSession.state.drafts.audiobook.outputChapters).toEqual([
-    { title: 'One', status: 'done', duration_s: 60, duration_ms: 59996 },
-    { title: 'Two', status: 'failed', error: 'boom' },
-    { title: 'Three', status: 'cached', duration_s: 1.5 },
+    { title: 'Ember', status: 'done', duration_s: 2.71, duration_ms: 2718 },
+    { title: 'Ash', status: 'failed', error: 'synthesis stopped' },
+    { title: 'Flame', status: 'cached', duration_s: 0.75 },
   ]);
+});
+
+it('maps progress telemetry and timestamps the most recent activity', async () => {
+  fetchMock.mockResolvedValue(
+    eventResponse([
+      { type: 'started', chapters: 1 },
+      { type: 'progress', fraction: 0.625, eta_s: 19, rtf: 0.82, chunk_s: 3.125 },
+      { type: 'done', output: 'edition.m4b', failed_chapters: [] },
+    ]),
+  );
+  await renderLongform('audiobook');
+  expect(longformSession.state.progress).toMatchObject({
+    fraction: 0.625,
+    etaS: 19,
+    rtf: 0.82,
+    chunkS: 3.125,
+  });
+  expect(longformSession.state.startedAt).toEqual(expect.any(Number));
+  expect(longformSession.state.lastActivityAt).toBe(longformSession.state.progress?.receivedAt);
 });
 it('stop aborts the network request and blocks duplicate renders', async () => {
   fetchMock.mockImplementation(
@@ -171,19 +190,20 @@ it('sends identical explicit production overrides to preview and full render', (
   }
 });
 
-it('seamless-join gaps reach preview and full render only once touched', () => {
-  const base = longformSession.state.drafts.audiobook;
-  for (const body of [renderBody('audiobook', base), chapterPreviewBody(base, 0)]) {
-    expect(body).not.toHaveProperty('line_gap_ms');
-    expect(body).not.toHaveProperty('trim_edges');
-  }
-  const draft = {
-    ...base,
-    overrides: { ...base.overrides, lineGapMs: 0, paragraphGapMs: 900, trimEdges: false },
-  };
-  for (const body of [renderBody('audiobook', draft), chapterPreviewBody(draft, 0)]) {
-    expect(body).toMatchObject({ line_gap_ms: 0, paragraph_gap_ms: 900, trim_edges: false });
-  }
+it.each([
+  ['full render', (d: Parameters<typeof renderBody>[1]) => renderBody('audiobook', d)],
+  ['chapter preview', (d: Parameters<typeof renderBody>[1]) => chapterPreviewBody(d, 1)],
+])('%s: join knobs appear on the wire only after being set', (_name, build) => {
+  const pristine = longformSession.state.drafts.audiobook;
+  const untouched = build(pristine) as Record<string, unknown>;
+  expect(['line_gap_ms', 'paragraph_gap_ms', 'trim_edges'].filter((k) => k in untouched)).toEqual(
+    [],
+  );
+  const tuned = build({
+    ...pristine,
+    overrides: { ...pristine.overrides, lineGapMs: 200, paragraphGapMs: 0, trimEdges: true },
+  }) as Record<string, unknown>;
+  expect(tuned).toMatchObject({ line_gap_ms: 200, paragraph_gap_ms: 0, trim_edges: true });
 });
 
 it('does not recreate a cleared draft during pagehide persistence', async () => {

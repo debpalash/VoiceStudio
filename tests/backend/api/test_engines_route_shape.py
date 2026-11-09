@@ -18,9 +18,11 @@ fully importable.
 """
 from __future__ import annotations
 
+import asyncio
 import re
 import sys
 
+import httpx
 import pytest
 
 
@@ -295,54 +297,64 @@ def test_indextts2_entry_has_subprocess_isolation_mode(fresh_app):
     assert by_id["indextts2"]["isolation_mode"] == "subprocess"
 
 
-def test_omnivoice_entry_has_in_process_isolation_mode(fresh_app, monkeypatch):
-    _force_cpu_host(monkeypatch)
-    client = _client(fresh_app)
-    r = client.get("/engines")
-    assert r.status_code == 200
-    by_id = {b["id"]: b for b in r.json()["tts"]["backends"]}
-    assert "omnivoice" in by_id
-    assert by_id["omnivoice"]["isolation_mode"] == "in-process"
+def _pin_omnivoice_inventory(monkeypatch, engines, *, with_alias):
+    from engines.omnivoice_subprocess import OmniVoiceSubprocessBackend
+    from services import model_manager
+
+    registry = {"omnivoice": engines.tts_backend.OmniVoiceBackend}
+    if with_alias:
+        registry["omnivoice-subprocess"] = OmniVoiceSubprocessBackend
+    monkeypatch.setattr(engines.tts_backend, "_REGISTRY", registry)
+    monkeypatch.setattr(model_manager, "resolve_omnivoice_checkpoint", lambda: "fixture/model")
+    for backend in registry.values():
+        monkeypatch.setattr(
+            backend,
+            "is_available",
+            classmethod(lambda cls: (True, "fixture ready")),
+        )
 
 
-def test_mps_picker_hides_redundant_omnivoice_sidecar_but_api_accepts_it(
-    fresh_app, monkeypatch
-):
-    """Keep stored/direct compatibility ids valid without advertising a duplicate."""
-    from engines.omnivoice_subprocess import (
-        OmniVoiceMPSSubprocessBackend,
-        OmniVoiceSubprocessBackend,
-    )
-    from services import tts_backend
+def _asgi_request(app, method, path, **kwargs):
+    async def make_request():
+        transport = httpx.ASGITransport(app=app, client=("127.0.0.1", 48152))
+        async with httpx.AsyncClient(transport=transport, base_url="http://local.test") as client:
+            return await client.request(method, path, **kwargs)
+
+    return asyncio.run(make_request())
+
+
+def test_cpu_api_describes_canonical_omnivoice_as_in_process(fresh_app, monkeypatch):
+    from api.routers import engines
+
+    _force_host(monkeypatch, "cpu")
+    _pin_omnivoice_inventory(monkeypatch, engines, with_alias=False)
+    response = _asgi_request(fresh_app, "GET", "/engines")
+    canonical = {row["id"]: row for row in response.json()["tts"]["backends"]}["omnivoice"]
+    assert (response.status_code, canonical["isolation_mode"]) == (200, "in-process")
+
+
+def test_mps_api_hides_alias_but_accepts_it_for_selection(fresh_app, monkeypatch):
+    from api.routers import engines
 
     _force_host(monkeypatch, "mps")
     monkeypatch.delenv("OMNIVOICE_TTS_BACKEND", raising=False)
-    monkeypatch.setattr(
-        OmniVoiceSubprocessBackend,
-        "is_available",
-        classmethod(lambda cls: (True, "ready")),
+    _pin_omnivoice_inventory(monkeypatch, engines, with_alias=True)
+    monkeypatch.setattr(engines.tts_backend, "active_backend_id", lambda: "omnivoice-subprocess")
+    catalogue = _asgi_request(fresh_app, "GET", "/engines/tts").json()
+    ids = [entry["id"] for entry in catalogue["backends"]]
+    assert ids == ["omnivoice"]
+    assert (catalogue["active"], catalogue["backends"][0]["isolation_mode"]) == (
+        "omnivoice",
+        "subprocess",
     )
 
-    client = _client(fresh_app)
-    payload = client.get("/engines/tts").json()
-    rows = {row["id"] for row in payload["backends"]}
-    assert "omnivoice" in rows
-    assert "omnivoice-subprocess" not in rows
-    assert payload["active"] == "omnivoice"
-
-    canonical = next(
-        row for row in payload["backends"] if row["id"] == "omnivoice"
-    )
-    assert canonical["isolation_mode"] == "subprocess"
-    assert tts_backend.get_backend_class("omnivoice") is OmniVoiceMPSSubprocessBackend
-
-    response = client.post(
+    selection = _asgi_request(
+        fresh_app,
+        "POST",
         "/engines/select",
-        json={"family": "tts", "backend_id": "omnivoice-subprocess"},
+        json={"backend_id": "omnivoice-subprocess", "family": "tts"},
     )
-    assert response.status_code == 200, response.text
-    assert response.json()["active"] == "omnivoice-subprocess"
-    assert tts_backend.get_backend_class("omnivoice-subprocess") is OmniVoiceSubprocessBackend
+    assert (selection.status_code, selection.json()["active"]) == (200, "omnivoice-subprocess")
 
 
 def test_gpu_compat_omnivoice_variants_include_rocm(fresh_app, monkeypatch):

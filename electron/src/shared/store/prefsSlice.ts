@@ -254,7 +254,6 @@ export interface PrefsSlice {
 
   locale: string;
   setLocale: (l: string) => void;
-
   /**
    * True once the user has made an EXPLICIT UI-language choice — via the
    * Settings → General picker or the first-run "Switch to English?" offer.
@@ -426,6 +425,7 @@ export const createPrefsSlice: StateCreator<PrefsSlice, [], [], PrefsSlice> = (s
             'id',
             'uk',
             'ar',
+            'gl',
           ].find((code) => nav.startsWith(code.split('-')[0]));
           return match || 'en';
         })()

@@ -1,118 +1,145 @@
-"""The pytorch-whisper fallback must survive a CUDA OOM instead of losing a chunk.
+"""PyTorch Whisper: CUDA OOM steps down the batch size, then finishes on CPU."""
+from __future__ import annotations
 
-The VRAM preflight sizes the *weights*; generation adds a workspace that scales
-with the batch, and word timestamps keep every layer's cross-attention for the
-whole batch. So a card with room for the model still OOMs at the first
-transcribe — and the dub path merely retried the identical call, gave up, and
-emitted nothing for that chunk: a silent hole in the transcript, indistinguishable
-from silence. Step the batch down, then finish on CPU.
-"""
+import numpy as np
+import soundfile as sf
 import pytest
 
-from services.asr_backend import PyTorchWhisperBackend
-
-_OOM = RuntimeError("CUDA out of memory. Tried to allocate 2.00 GiB")
+from services import asr_backend as ab
 
 
-class _FakePipe:
-    """Stands in for a transformers ASR pipeline on CUDA."""
+class _Model:
+    def __init__(self):
+        self.moved = None
 
-    def __init__(self, oom_below_batch):
-        self.device = "cuda:0"
-        self.oom_below_batch = oom_below_batch
+    def to(self, **kw):
+        self.moved = kw
+        return self
+
+
+class FakePipe:
+    """Callable pipeline whose behaviour depends on batch size and device."""
+
+    def __init__(self, device="cuda:0", fail_above=None, error=None):
+        self.device = device
+        self.fail_above = fail_above  # OOM when batch_size > this (on cuda)
+        self.error = error
+        self.model = _Model()
+        self.processor = object()
         self.calls = []
 
-    def __call__(self, _audio, *, return_timestamps, chunk_length_s, batch_size):
-        self.calls.append(batch_size)
-        if batch_size > self.oom_below_batch:
-            raise _OOM
-        return {"text": "ok", "chunks": [{"text": "ok", "timestamp": (0.0, 1.0)}]}
+    def __call__(self, inputs, **kw):
+        self.calls.append((str(self.device), kw["batch_size"], kw))
+        if self.error is not None:
+            raise self.error
+        if str(self.device).startswith("cuda") and (
+            self.fail_above is not None and kw["batch_size"] > self.fail_above
+        ):
+            raise RuntimeError("CUDA out of memory. Tried to allocate 2 GiB")
+        return {"text": "hello", "chunks": []}
 
 
-@pytest.fixture()
-def audio(tmp_path):
-    import numpy as np
-    import soundfile as sf
+@pytest.fixture
+def backend(monkeypatch):
+    monkeypatch.setattr(sf, "read",
+                        lambda p, dtype="float32": (np.zeros(1600, dtype=np.float32), 16000))
 
-    path = tmp_path / "a.wav"
-    sf.write(path, np.zeros(16000, dtype="float32"), 16000)
-    return str(path)
+    def make(pipe):
+        be = ab.PyTorchWhisperBackend(asr_pipe=pipe)
+        return be
+
+    return make
 
 
-def test_oom_steps_down_the_batch_and_still_returns_text(audio):
-    pipe = _FakePipe(oom_below_batch=2)
-    backend = PyTorchWhisperBackend(asr_pipe=pipe)
-    out = backend.transcribe(audio, word_timestamps=True)
-    assert out["text"] == "ok"
-    # Tried the word-timestamp ladder in order, stopping at the first that fits.
-    assert pipe.calls == [8, 2]
+def _batches(pipe):
+    return [b for _d, b, _k in pipe.calls]
+
+
+def test_oom_steps_down_and_still_returns_text(backend):
+    pipe = FakePipe(fail_above=4)
+    out = backend(pipe).transcribe("x.wav", word_timestamps=False)
+    assert out["text"] == "hello"
+    assert _batches(pipe) == [16, 4]
+
+
+def test_word_timestamp_ladder_is_smaller(backend):
+    pipe = FakePipe(fail_above=2)
+    backend(pipe).transcribe("x.wav", word_timestamps=True)
+    assert _batches(pipe) == [8, 2]
+    assert pipe.calls[0][2]["return_timestamps"] == "word"
+    assert pipe.calls[0][2]["chunk_length_s"] == 15
+
+
+def test_exhausted_ladder_falls_back_to_cpu(backend):
+    pipe = FakePipe(fail_above=0)
+    be = backend(pipe)
+    out = be.transcribe("x.wav", word_timestamps=False)
+    assert out["text"] == "hello"
+    assert _batches(pipe) == [16, 4, 1, 2]
+    assert pipe.calls[-1][0] == "cpu"
+    assert pipe.model.moved is not None
+
+
+def test_cpu_fallback_keeps_injected_model_and_processor(backend):
+    pipe = FakePipe(fail_above=0)
+    model, processor = pipe.model, pipe.processor
+    be = backend(pipe)
+    be.transcribe("x.wav")
+    assert be._pipe is pipe
+    assert pipe.model is model and pipe.processor is processor
+
+
+def test_non_oom_errors_are_not_retried(backend):
+    pipe = FakePipe(error=ValueError("bad audio"))
+    with pytest.raises(ValueError, match="bad audio"):
+        backend(pipe).transcribe("x.wav")
+    assert _batches(pipe) == [8]
+
+
+def test_cpu_pipeline_uses_small_batch(backend):
+    pipe = FakePipe(device="cpu")
+    backend(pipe).transcribe("x.wav", word_timestamps=False)
+    assert _batches(pipe) == [2]
+
+
+def test_oom_classifier():
+    assert ab.PyTorchWhisperBackend._is_oom(RuntimeError("CUDA Out Of Memory"))
+    assert not ab.PyTorchWhisperBackend._is_oom(RuntimeError("nope"))
 
 
 @pytest.mark.parametrize(
-    "word_timestamps,expected", [(True, [8, 2, 1]), (False, [16, 4, 1])]
+    "oom",
+    [
+        RuntimeError("level_zero backend failed with error: 39 (UR_RESULT_ERROR_OUT_OF_DEVICE_MEMORY)"),
+        RuntimeError("XPU out of memory. Tried to allocate 1.50 GiB"),
+    ],
 )
-def test_batch_ladder_is_smaller_when_word_timestamps_are_requested(
-    audio, monkeypatch, word_timestamps, expected
-):
-    """Word timestamps retain per-layer cross-attention for the whole batch, so
-    the ladder must start lower than for plain transcription."""
-    pipe = _FakePipe(oom_below_batch=0)
-    backend = PyTorchWhisperBackend(asr_pipe=pipe)
-    sentinel = RuntimeError("cpu rebuild reached")
-    monkeypatch.setattr(
-        backend, "_rebuild_on_cpu", lambda: (_ for _ in ()).throw(sentinel)
-    )
-    with pytest.raises(RuntimeError, match="cpu rebuild reached"):
-        backend.transcribe(audio, word_timestamps=word_timestamps)
-    assert pipe.calls == expected
+def test_intel_xpu_pipeline_gets_the_same_ladder_and_release(backend, monkeypatch, oom):
+    """get_best_device() picks XPU on Intel Arc. Its OOMs must step the batch
+    down and release the failed batch exactly like CUDA, not fail the chunk."""
+    import services.model_manager as mm
 
+    class _XpuPipe(FakePipe):
+        def __call__(self, inputs, **kw):
+            self.calls.append((str(self.device), kw["batch_size"], kw))
+            if kw["batch_size"] > 2:
+                raise oom
+            return {"text": "ok", "chunks": []}
 
-def test_exhausted_ladder_falls_back_to_cpu(audio, monkeypatch):
-    pipe = _FakePipe(oom_below_batch=0)
-    backend = PyTorchWhisperBackend(asr_pipe=pipe)
-
-    cpu = _FakePipe(oom_below_batch=99)
-    cpu.device = "cpu"
-
-    def _rebuild():
-        backend._pipe = cpu
-
-    monkeypatch.setattr(backend, "_rebuild_on_cpu", _rebuild)
-    out = backend.transcribe(audio, word_timestamps=True)
+    released = []
+    monkeypatch.setattr(mm, "release_after_oom", released.append)
+    pipe = _XpuPipe(device="xpu:0")
+    out = backend(pipe).transcribe("x.wav", word_timestamps=True)
     assert out["text"] == "ok"
-    assert pipe.calls == [8, 2, 1] and cpu.calls == [2]
+    assert _batches(pipe) == [8, 2]
+    assert released == [oom]
 
 
-def test_non_oom_errors_are_not_retried(audio):
-    class _Boom(_FakePipe):
-        def __call__(self, *a, **kw):
-            self.calls.append(kw["batch_size"])
-            raise ValueError("bad audio")
+@pytest.mark.parametrize("device", ["cuda:0", "xpu:0"])
+def test_cpu_fallback_releases_the_gpu_it_left(monkeypatch, device):
+    import services.model_manager as mm
 
-    pipe = _Boom(oom_below_batch=99)
-    with pytest.raises(ValueError):
-        PyTorchWhisperBackend(asr_pipe=pipe).transcribe(audio)
-    assert pipe.calls == [8]  # one attempt, no ladder
-
-
-def test_cpu_pipeline_keeps_the_small_batch(audio):
-    pipe = _FakePipe(oom_below_batch=99)
-    pipe.device = "cpu"
-    PyTorchWhisperBackend(asr_pipe=pipe).transcribe(audio)
-    assert pipe.calls == [2]
-
-
-def test_cpu_fallback_preserves_injected_model_and_processor(monkeypatch):
-    import torch
-    from types import SimpleNamespace
-    calls = []
-    model = SimpleNamespace(to=lambda **kw: calls.append(kw))
-    processor = object()
-    pipe = SimpleNamespace(model=model, tokenizer=processor, feature_extractor=processor, device="cuda:0")
-    backend = PyTorchWhisperBackend(asr_pipe=pipe)
-    monkeypatch.setattr(backend, "_model_name", lambda: pytest.fail("must not resolve another checkpoint"))
-    backend._rebuild_on_cpu()
-    assert backend._pipe is pipe and pipe.model is model
-    assert pipe.tokenizer is processor and pipe.feature_extractor is processor
-    assert str(pipe.device) == "cpu"
-    assert calls == [{"device": "cpu", "dtype": torch.float32}]
+    released = []
+    monkeypatch.setattr(mm, "release_device_cache", lambda **kw: released.append(kw))
+    ab.PyTorchWhisperBackend(asr_pipe=FakePipe(device=device))._rebuild_on_cpu()
+    assert released == [{"device": device}]

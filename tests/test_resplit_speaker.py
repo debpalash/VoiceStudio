@@ -57,6 +57,20 @@ def test_segment_with_fewer_than_two_words_unchanged():
     assert resplit_segments_by_turns([seg], words, turns) == [seg]
 
 
+
+def test_neighbour_boundary_word_inside_rounding_is_not_borrowed():
+    # Segment bounds are rounded to 0.01s; word times are not. "I" starts at
+    # 5.2273, 2.7ms before the rounded 5.23 end of the previous segment, and
+    # must not be split off (and spoken twice) as a one-word Speaker 2 piece.
+    first = _seg(0.0, 5.23, "my good friend?", _id="seg1")
+    second = _seg(5.23, 7.0, "I am fine.", sid="Speaker 2", _id="seg2")
+    words = [_w(0.0, 2.0, "my"), _w(2.0, 4.0, "good"), _w(4.0, 5.2273, "friend?"),
+             _w(5.2273, 5.6, "I"), _w(5.6, 6.2, "am"), _w(6.2, 7.0, "fine.")]
+    turns = [{"start": 0.0, "end": 5.2273, "speaker": "Speaker 1"},
+             {"start": 5.2273, "end": 7.0, "speaker": "Speaker 2"}]
+    out = resplit_segments_by_turns([dict(first), dict(second)], words, turns)
+    assert out == [first, second]
+
 # ── The fix: a two-speaker segment splits at the boundary ────────────────────
 
 def test_two_speaker_segment_splits():
@@ -164,3 +178,15 @@ def test_diarization_wrapper_formats_labels_and_splits():
     out = resplit_segments_by_diarization([seg], words, diar)
     assert [s["speaker_id"] for s in out] == ["Speaker 1", "Speaker 2"]
     assert [s["text"] for s in out] == ["left side", "right side"]
+
+
+def test_tiny_word_fully_inside_segment_is_kept():
+    # A word shorter than 5ms lying fully inside the segment belongs to it.
+    seg = _seg(0.0, 4.0, "one two three four")
+    words = [_w(0.0, 1.0, "one"), _w(1.0, 1.003, "two"),
+             _w(1.003, 2.5, "three"), _w(2.5, 4.0, "four")]
+    turns = [{"start": 0.0, "end": 2.5, "speaker": "Speaker 1"},
+             {"start": 2.5, "end": 4.0, "speaker": "Speaker 2"}]
+    out = resplit_segments_by_turns([seg], words, turns)
+    assert len(out) == 2
+    assert out[0]["text"].split() == ["one", "two", "three"]

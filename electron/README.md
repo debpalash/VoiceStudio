@@ -1,11 +1,35 @@
 # VoiceStudio — Electron desktop app
 
+![VoiceStudio in its default dark theme, using the demo workspace.](../docs/media/electron/overview.png)
+
 Electron is the only maintained desktop app for voice cloning, stories, dubbing,
 transcription, voice design, and workflows. Tauri is archived at v0.5.3. For
 existing installations, see [migration notes](../docs/electron-migration.md).
 
 The runtime supervisor manages the local FastAPI backend. Network integrations
-and remote workers require configuration; local generation stays on your machine.
+and remote-backend connections require configuration; local generation stays on your machine.
+Once setup and the required models are installed, saving cloned voice profiles
+works without internet access. Desktop API requests follow the supervisor's
+backend readiness rather than the browser's internet connectivity; they still
+pause during startup or a backend failure. Remote backend requests also wait
+for network connectivity before resuming queued operations.
+
+## Packaged app: first-run setup
+
+Installing the app installs the desktop interface, not its local AI runtime or
+voice models. On the first-run screen, choose the runtime folder and download
+region, then start setup to download Python and the AI libraries. Models are
+separate downloads when you choose them; allow additional disk space for them.
+
+The free-space line uses the same minimum as the installer preflight: 5 GiB for
+macOS or CPU-only wheels, 9 GiB for the other wheel variants. This is runtime
+free space, not the download size or a total including models.
+
+Already running a compatible VoiceStudio server? Expand **Remote backend** on
+the setup screen, enter its URL and optional API key, then **Test connection**
+and **Save & reload**. This reuses the connection editor in Settings and does not
+install a local runtime. Intel Macs show this editor directly. Selecting an
+existing Python environment is not part of this connection option.
 
 ## Stack
 
@@ -21,12 +45,13 @@ and remote workers require configuration; local generation stays on your machine
 
 ```sh
 # From the repository root
-bun install
-bun run setup:api  # prepare Python dependencies before starting Electron
-bun run dev        # electron-vite: main + preload + renderer with HMR
+bun run dev  # install dependencies, then start main + preload + renderer with HMR
 ```
 
-The development launcher resolves Electron's binary before starting Vite.
+The root `predev` script prepares JavaScript and supported local Python
+dependencies before the development launcher resolves Electron's binary and
+starts Vite. It skips local API setup when an external backend is configured or
+on an Intel Mac, where local PyTorch wheels are unavailable.
 Electron 42+ downloads it on the first launch, so that launch needs network
 access; subsequent launches reuse the installed binary.
 
@@ -90,7 +115,10 @@ app-relative `/api/...`:
 
 - dev — the renderer dev server proxies `/api` to the backend;
 - prod — the renderer is served from the privileged `app://voicestudio/`
-  scheme and the main process proxies `/api/*` with `net.fetch`.
+  scheme and the main process proxies `/api/*` with `net.fetch`. Dubbing uploads
+  to a local HTTP backend stream from the main process so large media starts
+  reaching the backend before the entire upload has been read. Remote backends
+  use the normal proxy path.
 
 ## Quality gates
 
@@ -159,8 +187,8 @@ The workspace footer shows Integrations, Become a Sponsor, and a right-aligned X
 They open the integration directory, partner inquiry form, and dedicated
 VoiceStudio Pro page respectively. The sponsor hover/focus card shows dated
 GitHub reach data. The Pro page compares Free and Pro, opens website pricing,
-and offers licence activation and deactivation when the live product IDs are
-configured. Checkout remains gated until the paid tools and terms are ready.
+and leaves licence activation to the separate Pro distribution. Checkout remains
+gated until the paid tools and terms are ready.
 
 The composer groups language and generation options beside a single primary action.
 Its shortcut appears inline when the composer has space, and controls wrap in narrow panes.
@@ -263,9 +291,7 @@ Transcribe, Projects, Tools, and Integrations remain directly accessible.
 
 ### Desktop Pro licence configuration
 
-The Pro page opens the public pricing site. Licence activation requires the live
-Lemon Squeezy store, product, and variant IDs at build time:
-`VOICESTUDIO_PRO_STORE_ID`, `VOICESTUDIO_PRO_PRODUCT_ID`,
-`VOICESTUDIO_PRO_YEARLY_VARIANT_ID`, and `VOICESTUDIO_PRO_LIFETIME_VARIANT_ID`.
-Builds without all four IDs keep activation
-unavailable. See `docs/specs/desktop-pro-page.md` for the checkout release gates.
+The open-source Pro page opens the public pricing site. The open-source app
+contains no licence client and makes no licensing network calls; any licence
+activation belongs to a separate Pro distribution. See
+`docs/specs/desktop-pro-page.md` for the checkout release gates.

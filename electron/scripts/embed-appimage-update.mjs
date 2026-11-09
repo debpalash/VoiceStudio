@@ -12,16 +12,22 @@ import { inflateRawSync } from 'node:zlib';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const releaseDir = resolve(root, process.argv[2] || 'release');
 const version = JSON.parse(readFileSync(resolve(root, '../package.json'), 'utf8')).version;
-const filename = `VoiceStudio-Electron-${version}-linux-x64.AppImage`;
+const filename = `VoiceStudio-${version}-linux-x64.AppImage`;
 const image = resolve(releaseDir, filename);
 const zsync = `${image}.zsync`;
 const channel = process.env.VOICESTUDIO_UPDATE_CHANNEL || 'electron-stable-linux-x64';
-// Stable is the only Linux update feed (no `preview` release exists).
-assert.equal(channel, 'electron-stable-linux-x64', 'Known Linux updater channel');
+assert(
+  ['electron-stable-linux-x64', 'electron-beta-linux-x64'].includes(channel),
+  'Known Linux updater channel',
+);
+// AppImageUpdate's `latest` skips prereleases and could roll a beta back to an
+// older stable, so a beta image is pinned to its own tag (it updates in-app).
+const isBeta = channel === 'electron-beta-linux-x64';
 const releaseTag = `v${version}`;
 const manifestPath = resolve(releaseDir, `${channel}-linux.yml`);
-const updateInfo =
-  'gh-releases-zsync|debpalash|VoiceStudio|latest|VoiceStudio-Electron-*-linux-x64.AppImage.zsync';
+const updateInfo = `gh-releases-zsync|debpalash|VoiceStudio|${
+  isBeta ? releaseTag : 'latest'
+}|VoiceStudio-*-linux-x64.AppImage.zsync`;
 
 // The pinned electron-builder runtime reserves a fixed-size .upd_info ELF
 // section. Read its actual offset instead of assuming a particular runtime

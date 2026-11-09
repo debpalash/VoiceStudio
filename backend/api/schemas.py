@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from core.app_config import DEFAULT_BACKEND_PORT, DEFAULT_WEB_PORT
+
 
 # ── System ────────────────────────────────────────────────────────────────
 
@@ -33,6 +35,9 @@ class SystemInfoResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     app_version: str = ""
+    # First 9 characters of the commit this backend was built from (the desktop app
+    # and Docker image set OMNIVOICE_BUILD_COMMIT), "unknown" when it cannot be told.
+    build_commit: str = "unknown"
     # Effective compute-time budgets (seconds) for one synthesis job — the
     # values services/model_manager.py's GPU_JOB_TIMEOUT_S / CPU_JOB_TIMEOUT_S
     # captured at backend import time (#1787). A value just saved via
@@ -77,9 +82,9 @@ class SystemInfoResponse(BaseModel):
     share_port: int | None = None
     lan_addresses: list[str] = []
     pin_required: bool = False
-    backend_port: int = 3900
-    share_port_base: int = 3901
-    ui_port: int | None = 3901
+    backend_port: int = DEFAULT_BACKEND_PORT
+    share_port_base: int = DEFAULT_WEB_PORT
+    ui_port: int | None = DEFAULT_WEB_PORT
 
 
 class ModelStatusResponse(BaseModel):

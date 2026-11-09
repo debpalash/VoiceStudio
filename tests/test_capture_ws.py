@@ -91,7 +91,7 @@ def test_demoted_sherpa_query_keeps_pcm_transport_for_legacy_fallback(
     monkeypatch.setattr(sd, "is_demoted", lambda mid: mid == model_id)
     sample_rates = []
 
-    async def fallback(_chunks, *, pcm_sr=None, dictation=False):
+    async def fallback(_chunks, *, pcm_sr=None, **_ignored):
         sample_rates.append(pcm_sr)
         return {
             "text": "legacy fallback heard pcm",
@@ -254,10 +254,13 @@ def test_capture_preload_defaults_on(monkeypatch):
     import main
     monkeypatch.delenv("OMNIVOICE_PRELOAD_CAPTURE_ASR", raising=False)
     assert main._env_flag("OMNIVOICE_PRELOAD_CAPTURE_ASR", default=True)
-    monkeypatch.setenv("OMNIVOICE_PRELOAD_CAPTURE_ASR", "0")
-    assert not main._env_flag("OMNIVOICE_PRELOAD_CAPTURE_ASR", default=True)
-    monkeypatch.setenv("OMNIVOICE_PRELOAD_CAPTURE_ASR", "1")
-    assert main._env_flag("OMNIVOICE_PRELOAD_CAPTURE_ASR", default=True)
+    assert not main._env_flag("OMNIVOICE_PRELOAD_CAPTURE_ASR", default=False)
+    for value in ("1", " true ", "TRUE", "yes", "on"):
+        monkeypatch.setenv("OMNIVOICE_PRELOAD_CAPTURE_ASR", value)
+        assert main._env_flag("OMNIVOICE_PRELOAD_CAPTURE_ASR", default=False)
+    for value in ("", "0", "false", "disabled", "garbage"):
+        monkeypatch.setenv("OMNIVOICE_PRELOAD_CAPTURE_ASR", value)
+        assert not main._env_flag("OMNIVOICE_PRELOAD_CAPTURE_ASR", default=True)
 
 
 def test_capture_preload_delay_default_and_override(monkeypatch):

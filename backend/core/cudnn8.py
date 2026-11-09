@@ -144,7 +144,7 @@ def _torch_wants_cudnn8() -> tuple[bool, str]:
     except Exception as e:  # noqa: BLE001 — no torch: nothing will run anyway
         return False, f"torch unavailable ({type(e).__name__})"
     if getattr(getattr(torch, "version", None), "hip", None):
-        return False, "ROCm build — CTranslate2 has no ROCm backend, runs on CPU"
+        return False, "ROCm/HIP build — NVIDIA cuDNN 8 is not required"
     try:
         if not torch.cuda.is_available():
             return False, "no CUDA device — CTranslate2 runs on CPU"

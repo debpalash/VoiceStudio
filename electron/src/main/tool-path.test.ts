@@ -1,8 +1,8 @@
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { envWithToolPath, toolSearchDirs } from './tool-path';
+import { describe, expect, it, vi } from 'vitest';
+import { envWithToolPath, toolSearchDirs, toolSearchDirsAsync } from './tool-path';
 
 describe('toolSearchDirs', () => {
   it('adds user-level install locations after the inherited PATH on macOS and Linux', () => {
@@ -65,6 +65,37 @@ describe('NVM discovery order', () => {
       expect(dirs[0]).toBe('/usr/bin');
     } finally {
       rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('toolSearchDirsAsync', () => {
+  it('matches the sync result', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'vs-nvm-'));
+    try {
+      mkdirSync(join(home, '.nvm', 'versions', 'node', 'v22.1.0'), { recursive: true });
+      const opts = { env: { PATH: '/usr/bin' }, platform: 'linux' as const, home };
+      expect(await toolSearchDirsAsync(opts)).toEqual(toolSearchDirs(opts));
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('never blocks the event loop on a stalled home directory', async () => {
+    vi.useFakeTimers();
+    try {
+      const hang = () => new Promise<string[]>(() => {});
+      let settled = false;
+      void toolSearchDirsAsync({ platform: 'linux', home: '/stalled', readdirAsync: hang }).then(
+        () => (settled = true),
+      );
+      let deadline = false;
+      setTimeout(() => (deadline = true), 1500);
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(deadline).toBe(true);
+      expect(settled).toBe(false);
+    } finally {
+      vi.useRealTimers();
     }
   });
 });

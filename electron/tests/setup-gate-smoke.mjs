@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 const browser = await chromium.launch({
   ...(process.env.CHROME_PATH
     ? { executablePath: process.env.CHROME_PATH }
-    : { channel: 'msedge' }),
+    : { channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge' }),
   headless: true,
 });
 const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
@@ -94,7 +94,7 @@ try {
     if (req.url().endsWith('/models/install') || req.url().includes('/engines/install')) installs++;
   });
   await page.goto('http://localhost:3912/#/clone');
-  const next = page.getByRole('button', { name: /All good/ });
+  const next = page.getByRole('button', { name: 'Continue', exact: true });
   await page.locator('summary', { hasText: 'Credentials' }).click();
   await page.locator('input[type=password]').first().waitFor();
   await page.locator('summary', { hasText: 'Credentials' }).click();

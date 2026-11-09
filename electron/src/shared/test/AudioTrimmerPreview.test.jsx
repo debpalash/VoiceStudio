@@ -137,4 +137,23 @@ describe('AudioTrimmer preview (#1210)', () => {
     expect(src.loopStart).toBeCloseTo(2.5, 6);
     expect(src.loopEnd).toBeCloseTo(5.5, 6);
   });
+
+  it('shows decoded metadata, becomes ready, and clamps the initial selection', async () => {
+    const file = new File([new Uint8Array([1])], 'ref.wav', { type: 'audio/wav' });
+    const first = render(
+      <AudioTrimmer file={file} maxSeconds={3} onConfirm={() => {}} onCancel={() => {}} />,
+    );
+
+    await screen.findByText(/Length 0:08\.00 · 22050 Hz/i);
+    const firstInputs = screen.getAllByRole('textbox');
+    await waitFor(() => expect(firstInputs[1]).toHaveValue('3.00'));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /preview selection/i })).not.toBeDisabled(),
+    );
+    first.unmount();
+
+    render(<AudioTrimmer file={file} maxSeconds={15} onConfirm={() => {}} onCancel={() => {}} />);
+    const secondInputs = await screen.findAllByRole('textbox');
+    await waitFor(() => expect(secondInputs[1]).toHaveValue('8.00'));
+  });
 });

@@ -6,9 +6,12 @@ import { listLoadedModels } from '../api/system';
 import { useEngines, useSelectEngine } from '../api/hooks';
 import { notifyEngineSelected } from '../utils/engineSelectToast';
 import { useAppStore } from '../store';
-import { MENU_SURFACE } from './computeTarget';
 import { engineDisplayName } from '../utils/engineDisplayName';
 import DictationModelPicker from './DictationModelPicker';
+
+const MENU_SURFACE =
+  'rounded-[8px] border-0 p-1 bg-[color-mix(in_srgb,var(--chrome-fg)_6%,var(--chrome-bg))] ' +
+  'shadow-[0_8px_24px_rgba(0,0,0,0.45)] [color:var(--chrome-fg)]';
 
 /**
  * A compact TTS/ASR/LLM picker for chrome that needs to expose the active

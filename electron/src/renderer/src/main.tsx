@@ -1,3 +1,4 @@
+import './lib/random-uuid';
 import { CaptureWidget } from './features/transcriptions/capture-widget';
 import { SiteBrowserHost } from './features/browser/site-browser-host';
 import { installConsoleCapture } from '@shared/utils/consoleBuffer';
@@ -10,7 +11,9 @@ import './hooks/use-appearance';
 import { App } from './app';
 import { installPreloadRecovery } from './lib/preload-recovery';
 import { installGlobalErrorRecovery } from './lib/global-error-recovery';
+import { installForeignDomGuard } from './lib/foreign-dom-guard';
 
+installForeignDomGuard();
 installConsoleCapture();
 installGlobalErrorRecovery();
 installPreloadRecovery();

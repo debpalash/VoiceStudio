@@ -63,8 +63,9 @@ def test_backend_port_honors_env(monkeypatch):
 
 
 def test_backend_port_bad_env_falls_back(monkeypatch):
-    monkeypatch.setenv("OMNIVOICE_PORT", "not-a-number")
-    assert ns.backend_port() == 3900
+    for value in ("", "not-a-number"):
+        monkeypatch.setenv("OMNIVOICE_PORT", value)
+        assert ns.backend_port() == 3900
 
 
 def test_share_port_base_defaults_to_backend_plus_one(monkeypatch):

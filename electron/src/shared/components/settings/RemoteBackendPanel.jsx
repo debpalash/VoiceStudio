@@ -17,6 +17,7 @@ import React, { useState } from 'react';
 import { Server } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Trans, useTranslation } from 'react-i18next';
+import { DEFAULT_BACKEND_PORT } from '../../app-config.ts';
 import { LS_BACKEND_URL, LS_API_KEY, API } from '../../api/client';
 import { clearAdminSession, exchangeApiKey, getAdminSession } from '../../api/authSession';
 import { askConfirm } from '../../utils/dialog';
@@ -118,8 +119,7 @@ export default function RemoteBackendPanel({ reload = reloadAfterApplicationPers
         if (!isValidBackendUrl(normalized)) {
           toast.error(
             t('settings.remote_backend_invalid_url', {
-              defaultValue:
-                'Enter a valid URL starting with http:// or https:// (e.g. http://gpu-box:3900).',
+              defaultValue: `Enter a valid URL starting with http:// or https:// (e.g. http://gpu-box:${DEFAULT_BACKEND_PORT}).`,
             }),
           );
           return;
@@ -207,7 +207,7 @@ export default function RemoteBackendPanel({ reload = reloadAfterApplicationPers
             type="text"
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="http://gpu-box.tailnet.ts.net:3900"
+            placeholder={`http://gpu-box.tailnet.ts.net:${DEFAULT_BACKEND_PORT}`}
             aria-label={t('settings.remote_backend_url', { defaultValue: 'Backend URL' })}
             data-testid="remote-backend-url"
           />

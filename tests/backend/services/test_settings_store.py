@@ -13,6 +13,7 @@ Behaviors covered:
 - Concurrent reads from two threads return consistent values
 """
 import os
+import logging
 import sqlite3
 import sys
 import threading
@@ -479,3 +480,36 @@ def test_quant_override_rejects_non_string(isolated_db):
 
     with pytest.raises(ValueError):
         settings_store.set_quant_override(42)  # type: ignore[arg-type]
+
+
+def test_reads_before_the_store_exists_are_unset_not_errors(monkeypatch, tmp_path, caplog):
+    """Startup restores prefs before init_db; a fresh install has no table yet."""
+    monkeypatch.setenv("OMNIVOICE_DATA_DIR", str(tmp_path))
+    for mod in list(sys.modules):
+        if mod in ("core", "services") or mod.startswith(("core.", "services.")):
+            del sys.modules[mod]
+    from core import prefs
+    from services import settings_store
+
+    caplog.set_level(logging.DEBUG)
+    caplog.clear()
+    assert settings_store.get_hf_token() is None
+    assert settings_store.get_secret("llm_key.openai") is None
+    assert settings_store.list_secret_names() == []
+    assert settings_store.get_text("perf.example", default="d") == "d"
+    assert settings_store.get_license_accepted("supertonic3") is False
+    prefs.restore_env({})
+    assert [r for r in caplog.records if r.levelno >= logging.WARNING] == []
+
+
+def test_a_missing_other_table_is_still_reported(isolated_db, monkeypatch, caplog):
+    from core import db
+    from services import settings_store
+
+    def fail_db_conn():
+        raise sqlite3.OperationalError("no such table: voices")
+
+    monkeypatch.setattr(db, "db_conn", fail_db_conn)
+    caplog.clear()
+    assert settings_store.get_secret("llm_key.openai") is None
+    assert "settings_store.get_secret: SQLite read failed" in caplog.text

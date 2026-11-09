@@ -107,8 +107,8 @@ def test_unavailable_without_base_url(asr_mod):
     ok, msg = asr_mod.OpenAICompatASRBackend.is_available()
     assert ok is False
     # The hint must name where the endpoint is actually configured — the
-    # Model Catalogue's Engines pane, not the Settings category it used to be.
-    assert "Model Catalogue" in msg
+    # Settings Models page, ASR tab.
+    assert "Settings → Models → ASR" in msg
 
 
 def test_available_once_base_url_configured(asr_mod, ss):

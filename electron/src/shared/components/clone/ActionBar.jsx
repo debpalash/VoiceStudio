@@ -289,7 +289,7 @@ export default function ActionBar({
         </Button>
       )}
       {isGenerating && (
-        <Progress value={generationProgress} tone="brand" size="sm" className="mt-[6px]" />
+        <Progress value={generationProgress} tone="brand" size="sm" className="mt-2" />
       )}
       {/* 10x P4 a11y (spec §3): persistent polite live region — screen
             readers hear generation start AND finish in-workspace, without

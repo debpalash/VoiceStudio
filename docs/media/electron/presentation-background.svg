@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="1000" viewBox="0 0 1440 1000">
+  <defs>
+    <linearGradient id="canvas" x2="1" y2="1">
+      <stop stop-color="#111522"/>
+      <stop offset=".52" stop-color="#101017"/>
+      <stop offset="1" stop-color="#21151e"/>
+    </linearGradient>
+    <radialGradient id="rose">
+      <stop stop-color="#bb648b" stop-opacity=".42"/>
+      <stop offset="1" stop-color="#bb648b" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="peach">
+      <stop stop-color="#f1b78c" stop-opacity=".24"/>
+      <stop offset="1" stop-color="#f1b78c" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="blue">
+      <stop stop-color="#5c82c9" stop-opacity=".23"/>
+      <stop offset="1" stop-color="#5c82c9" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="signal">
+      <stop stop-color="#d6a4c1" stop-opacity="0"/>
+      <stop offset=".4" stop-color="#e7a6bb" stop-opacity=".48"/>
+      <stop offset=".72" stop-color="#f3c4a4" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#f3c4a4" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="grain">
+      <feTurbulence type="fractalNoise" baseFrequency=".74" numOctaves="3" stitchTiles="stitch"/>
+      <feColorMatrix type="saturate" values="0"/>
+    </filter>
+  </defs>
+  <path fill="url(#canvas)" d="M0 0h1440v1000H0z"/>
+  <ellipse cx="170" cy="850" rx="660" ry="620" fill="url(#rose)"/>
+  <ellipse cx="1290" cy="130" rx="640" ry="460" fill="url(#peach)"/>
+  <ellipse cx="480" cy="0" rx="820" ry="400" fill="url(#blue)"/>
+  <g fill="none" stroke="url(#signal)" stroke-width="1.1">
+    <path d="M-240 910C80 810 30 1130 300 970S650 780 970 940s450-70 720-190"/>
+    <path d="M-240 928C80 828 30 1148 300 988S650 798 970 958s450-70 720-190"/>
+    <path d="M-240 946C80 846 30 1166 300 1006S650 816 970 976s450-70 720-190"/>
+    <path d="M-240 964C80 864 30 1184 300 1024S650 834 970 994s450-70 720-190"/>
+    <path d="M760-110c240 270 190-60 410 100s240 30 440-60"/>
+    <path d="M760-92c240 270 190-60 410 100s240 30 440-60"/>
+    <path d="M760-74c240 270 190-60 410 100s240 30 440-60"/>
+  </g>
+  <path fill="#fff" opacity=".028" filter="url(#grain)" d="M0 0h1440v1000H0z"/>
+</svg>

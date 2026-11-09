@@ -1,0 +1,26 @@
+{
+  "mobile": {
+    "processing": {
+      "audio_editor": "Audio editor",
+      "hint": "Offline speech editing: 24 kHz mono. Your source stays unchanged.",
+      "select_audio": "Choose audio",
+      "fade_in": "Fade in (seconds)",
+      "fade_out": "Fade out (seconds)",
+      "gain_db": "Gain (dB)",
+      "normalize": "Normalize peak",
+      "target_peak": "Target peak (dBFS)",
+      "noise_gate": "Noise gate",
+      "gate_threshold": "Gate threshold (dBFS)",
+      "process": "Apply edits",
+      "result": "Processed audio",
+      "peak": "Peak",
+      "changed_settings": "Settings changed. Apply edits to preview or export the updated audio.",
+      "preview_hint": "Source preview plays up to 30 seconds from the trim start.",
+      "invalid": "Check the trim times, fade lengths, and audio levels.",
+      "segment_gain": "Segment volume",
+      "mute": "Mute segment",
+      "record_consent": "I have permission to use this recording for voice conversion.",
+      "merge_levels": "Use the same volume and mute settings before combining segments."
+    }
+  }
+}

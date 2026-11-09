@@ -35,11 +35,11 @@ lower call overhead.
 - **Model Catalogue** on CUDA, ROCm, or CPU, or
 - `OMNIVOICE_TTS_BACKEND=omnivoice-subprocess`
 
-The explicit engine is opt-in on CUDA, ROCm, and CPU. On Apple Silicon it is
-not listed separately: the canonical `omnivoice` choice automatically uses the
-same isolation while keeping that default id in APIs, Settings, and saved
-projects. Existing explicit `omnivoice-subprocess` configuration remains
-accepted for compatibility.
+The explicit engine is an opt-in choice on CUDA, ROCm and CPU. Apple Silicon
+shows only the canonical `omnivoice` choice because it automatically uses the
+same process isolation there; its canonical id remains visible in APIs,
+Settings and saved projects. Existing `omnivoice-subprocess` configurations
+remain valid and accepted.
 
 ## Platform support
 

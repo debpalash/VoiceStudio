@@ -36,14 +36,19 @@ gives CosyVoice its own folder under the data directory and its own Python
 It differs from upstream's own setup:
 
 - **PyTorch 2.7.0.** The CUDA 12.8 build on an NVIDIA GPU, the CPU build on
-  other Windows and Linux machines, the regular build on Apple Silicon.
+  Linux ROCm build on a ROCm host, the CPU build on other Windows and Linux
+  machines, and the regular build on Apple Silicon.
   Upstream's 2.3.1 exists only for CUDA 12.1 and cannot run on RTX 50-series
-  GPUs.
+  GPUs. On Linux ARM64 (for example DGX Spark) only torch takes that build
+  and torchaudio installs the plain 2.7.0 wheel, because PyTorch publishes
+  its ARM64 torchaudio 2.7.0 without a `+cu128` or `+cpu` label.
 - **Leaner dependencies.** No TensorRT, DeepSpeed or GPU onnxruntime, and no
   third-party package index. Upstream uses them for extra speed on Linux;
   synthesis works without them. PyWORLD requires a C++ compiler: Xcode Command
   Line Tools on macOS, Visual Studio Build Tools with C++ on Windows, or the
-  distribution’s C++ build tools on Linux. SoX is not needed.
+  distribution’s C++ build tools on Linux. Without one, the install stops
+  with "no C++ compiler found" and names the tools for your system; install
+  them and click **Install** again to resume. SoX is not needed.
 - **Patched dependencies.** Where upstream pins a release with a published
   security advisory (diffusers, hydra-core, lightning, modelscope, onnx,
   protobuf, transformers), the install uses the fixed release. That set was

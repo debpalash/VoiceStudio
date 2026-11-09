@@ -165,15 +165,7 @@ fn pump() {
 }
 #[cfg(target_os = "macos")]
 fn pump() {
-    use std::ffi::c_void;
-    #[link(name = "CoreFoundation", kind = "framework")]
-    unsafe extern "C" {
-        static kCFRunLoopDefaultMode: *const c_void;
-        fn CFRunLoopRunInMode(mode: *const c_void, seconds: f64, return_after_source: bool) -> i32;
-    }
-    unsafe {
-        CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.001, true);
-    }
+    crate::macos_event_pump::pump();
 }
 #[cfg(target_os = "linux")]
 fn pump() {} // global-hotkey owns the X11 connection's event thread.

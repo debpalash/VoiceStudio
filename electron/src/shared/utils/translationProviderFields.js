@@ -1,52 +1,60 @@
-export const PROVIDER_FIELDS = [
+/**
+ * Online translator credentials, grouped by provider so Settings shows one
+ * card and one Save per provider. Provider names are brands (not translated).
+ */
+export const PROVIDER_GROUPS = [
   {
-    key: 'GOOGLE_TRANSLATE_API_KEY',
-    labelKey: 'settings.llmp_api_key',
-    labelPrefix: 'Google Cloud',
-    helpKey: 'settings.llmp_api_key',
-    isPassword: true,
+    id: 'google',
+    name: 'Google Cloud',
+    fields: [
+      {
+        key: 'GOOGLE_TRANSLATE_API_KEY',
+        labelKey: 'settings.llmp_api_key',
+        isPassword: true,
+      },
+    ],
   },
   {
-    key: 'MICROSOFT_REGION',
-    labelKey: 'credentials.region',
-    labelPrefix: 'Microsoft Azure',
-    helpKey: 'credentials.region',
+    id: 'deepl',
+    name: 'DeepL',
+    fields: [
+      {
+        key: 'DEEPL_API_KEY',
+        labelKey: 'settings.llmp_api_key',
+        placeholderKey: 'credentials.deepl_key_placeholder',
+        isPassword: true,
+      },
+      {
+        key: 'DEEPL_BASE_URL',
+        labelKey: 'credentials.base_url',
+        placeholder: 'https://api.deepl.com/v2',
+      },
+    ],
   },
   {
-    key: 'AWS_PROFILE',
-    labelKey: 'credentials.aws_profile',
-    helpKey: 'credentials.aws_profile',
+    id: 'microsoft',
+    name: 'Microsoft Azure',
+    fields: [
+      {
+        key: 'MICROSOFT_API_KEY',
+        labelKey: 'settings.llmp_api_key',
+        placeholderKey: 'credentials.microsoft_key_placeholder',
+        isPassword: true,
+      },
+      { key: 'MICROSOFT_REGION', labelKey: 'credentials.region' },
+      {
+        key: 'MICROSOFT_BASE_URL',
+        labelKey: 'credentials.base_url',
+        placeholder: 'https://api.cognitive.microsofttranslator.com',
+      },
+    ],
   },
   {
-    key: 'AWS_REGION',
-    labelKey: 'credentials.region',
-    labelPrefix: 'AWS',
-    helpKey: 'credentials.region',
-  },
-  {
-    key: 'DEEPL_API_KEY',
-    labelKey: 'credentials.deepl_key',
-    placeholder: 'DeepL API key',
-    helpKey: 'credentials.deepl_key',
-    isPassword: true,
-  },
-  {
-    key: 'DEEPL_BASE_URL',
-    labelKey: 'credentials.deepl_base_url',
-    placeholder: 'https://api.deepl.com/v2',
-    helpKey: 'credentials.deepl_base_url_help',
-  },
-  {
-    key: 'MICROSOFT_API_KEY',
-    labelKey: 'credentials.microsoft_key',
-    placeholder: 'Microsoft API key',
-    helpKey: 'credentials.microsoft_key',
-    isPassword: true,
-  },
-  {
-    key: 'MICROSOFT_BASE_URL',
-    labelKey: 'credentials.microsoft_base_url',
-    placeholder: 'https://api.cognitive.microsofttranslator.com',
-    helpKey: 'credentials.microsoft_base_url_help',
+    id: 'aws',
+    name: 'AWS',
+    fields: [
+      { key: 'AWS_PROFILE', labelKey: 'credentials.aws_profile' },
+      { key: 'AWS_REGION', labelKey: 'credentials.region' },
+    ],
   },
 ];

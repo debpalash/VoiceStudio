@@ -112,6 +112,67 @@ def _speak(client, voice):
     )
 
 
+def test_imported_clone_keeps_prose_on_freeform_engine(client, engine, profiles):
+    """A legacy imported clone's style prose is not reduced to taxonomy tags."""
+    from core.db import db_conn
+    from services.voice_design_profiles import profile_instruct
+    from omnivoice.utils.voice_design import heal_design_instruct
+
+    pid = profiles(f"Imported clone {profiles.stem}")
+    original = "Speak gently, with airy breathiness and an intimate, tired voice."
+    with db_conn() as conn:
+        conn.execute(
+            "UPDATE voice_profiles SET instruct=? WHERE id=?", (original, pid),
+        )
+        row = conn.execute("SELECT * FROM voice_profiles WHERE id=?", (pid,)).fetchone()
+
+    assert row["kind"] == "clone"
+    assert profile_instruct(row, "voxcpm2") == original
+    assert profile_instruct(row, "omnivoice") == heal_design_instruct(original, None)
+    assert profile_instruct(row) == heal_design_instruct(original, None)
+    assert profile_instruct(row, "omnivoice") != original
+
+    engine.instruct_vocabulary = "freeform"
+    try:
+        res = _speak(client, pid)
+        assert res.status_code == 200, res.text
+        assert engine.calls[-1]["instruct"] == original
+        assert engine.calls[-1]["ref_audio"].endswith(f"{pid}.wav")
+
+        # A tag-restricted backend continues receiving only known taxonomy.
+        engine.instruct_vocabulary = "tags"
+        res = _speak(client, pid)
+        assert res.status_code == 200, res.text
+        assert engine.calls[-1].get("instruct", "") == heal_design_instruct(original, None)
+    finally:
+        engine.instruct_vocabulary = "tags"
+
+
+def test_native_profile_keeps_full_description_in_openai_speech(client, engine, profiles):
+    """OpenAI-compatible synthesis uses the authoring engine's voice recipe."""
+    import json
+    from core.db import db_conn
+
+    engine.instruct_vocabulary = "freeform"
+    pid = profiles(f"Native {profiles.stem}")
+    desc = "A warm, breathy adult voice with intimate cinematic delivery."
+    with db_conn() as conn:
+        conn.execute(
+            "UPDATE voice_profiles SET kind='design', instruct='female', "
+            "design_recipe=?, vd_states=? WHERE id=?",
+            (json.dumps({
+                "description": desc, "picks": {"Pitch": "low pitch"},
+                "engine": engine.id,
+            }), json.dumps({"Gender": "female"}), pid),
+        )
+    try:
+        res = _speak(client, pid)
+        assert res.status_code == 200, res.text
+        assert engine.calls[-1]["instruct"] == desc + ", low pitch"
+    finally:
+        engine.instruct_vocabulary = "tags"
+
+
 def test_profile_name_resolves_case_insensitively(client, engine, profiles):
     name = f"Narrator {profiles.stem}"
     pid = profiles(name, ref_text="reference words")
@@ -148,10 +209,50 @@ def test_duplicate_names_are_a_409_listing_ids(client, engine, profiles):
 
 def test_id_wins_over_a_profile_named_like_that_id(client, engine, profiles):
     target = profiles(f"Target {profiles.stem}")
-    profiles(target)  # a second profile whose NAME is the first one's id
+    impostor = profiles(target)  # a second profile whose NAME is the first one's id
     res = _speak(client, target)
     assert res.status_code == 200, res.text
     assert engine.calls[-1]["ref_audio"].endswith(f"{target}.wav")
+    voices = {v["voice_id"]: v for v in client.get("/v1/audio/voices").json()["voices"]}
+    assert voices[target]["addressable_by_name"] is True
+    assert voices[impostor]["addressable_by_name"] is False
+
+
+def test_id_shaped_names_follow_exact_id_precedence(client, engine, profiles):
+    # A catalogue name shaped like an id, while no profile carries that id,
+    # selects its named profile (exact and case-variant spellings).
+    named = profiles("abcdef12")
+    for spelled in ("abcdef12", "ABCDEF12"):
+        res = _speak(client, spelled)
+        assert res.status_code == 200, res.text
+        assert engine.calls[-1]["ref_audio"].endswith(f"{named}.wav"), spelled
+    # Once a profile owns that exact id, the exact spelling selects the
+    # owner while the case-variant still resolves by name.
+    owner = profiles("Id Owner", pid="abcdef12")
+    res = _speak(client, "abcdef12")
+    assert res.status_code == 200, res.text
+    assert engine.calls[-1]["ref_audio"].endswith(f"{owner}.wav")
+    res = _speak(client, "ABCDEF12")
+    assert res.status_code == 200, res.text
+    assert engine.calls[-1]["ref_audio"].endswith(f"{named}.wav")
+    voices = {v["voice_id"]: v for v in client.get("/v1/audio/voices").json()["voices"]}
+    assert voices[named]["addressable_by_name"] is False
+    assert voices[owner]["addressable_by_name"] is True
+    # A second normalized name makes both flags false; nonexact requests
+    # are a 409, while the exact id still wins.
+    twin = profiles("ABCDEF12")
+    res = _speak(client, "abcdef12")
+    assert res.status_code == 200, res.text
+    assert engine.calls[-1]["ref_audio"].endswith(f"{owner}.wav")
+    n_calls = len(engine.calls)
+    res = _speak(client, "ABCDEF12")
+    assert res.status_code == 409, res.text
+    assert res.json()["error"]["code"] == "ambiguous_voice"
+    assert res.json()["detail"]["matching_ids"] == [named, twin]
+    assert len(engine.calls) == n_calls  # refused before any generate
+    voices = {v["voice_id"]: v for v in client.get("/v1/audio/voices").json()["voices"]}
+    assert voices[named]["addressable_by_name"] is False
+    assert voices[twin]["addressable_by_name"] is False
 
 
 def test_openai_alias_and_default_keep_their_meaning(client, engine, profiles):
@@ -179,10 +280,30 @@ def test_voice_list_marks_name_addressable_profiles(client, profiles):
     dup_a = profiles(f"Pair {profiles.stem}")
     dup_b = profiles(f"pair {profiles.stem}")
     reserved = profiles("Nova")
+    self_pid = f"{profiles.stem}-selfid"
+    profiles(self_pid, pid=self_pid)  # named after its own id: still addressable
+    case_target = profiles(f"Case {profiles.stem}")
+    case_variant = profiles(case_target.upper())  # differs from an id by case: still by name
+    whitespace_variant = profiles(f" {unique} ")  # differs from another id by whitespace: still by name
     voices = {v["voice_id"]: v for v in client.get("/v1/audio/voices").json()["voices"]}
     assert voices[unique]["addressable_by_name"] is True
     assert voices[unique]["name"] == f"Solo {profiles.stem}"
     assert voices[dup_a]["addressable_by_name"] is False
     assert voices[dup_b]["addressable_by_name"] is False
     assert voices[reserved]["addressable_by_name"] is False
+    assert voices[self_pid]["addressable_by_name"] is True
+    assert voices[case_variant]["addressable_by_name"] is True
+    assert voices[whitespace_variant]["addressable_by_name"] is True
     assert "addressable_by_name" not in voices["nova"]  # the alias entry itself
+
+
+def test_voice_list_entries_carry_an_openai_style_id(client, profiles):
+    """#2679: Open WebUI reads ``{v['id']: v['name'] for v in data['voices']}``
+    from ``/audio/voices``. Without ``id`` the lookup raised KeyError and the
+    client fell back to OpenAI's stock voices, hiding every profile."""
+    profile = profiles(f"Listed {profiles.stem}")
+    voices = client.get("/v1/audio/voices").json()["voices"]
+    assert voices and all(v["id"] == v["voice_id"] for v in voices)
+    by_id = {v["id"]: v["name"] for v in voices}
+    assert by_id[profile] == f"Listed {profiles.stem}"
+    assert by_id["nova"] == "Nova"

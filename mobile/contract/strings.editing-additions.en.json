@@ -1,0 +1,27 @@
+{
+  "mobile": {
+    "editing": {
+      "undo": "Undo",
+      "redo": "Redo",
+      "subtitles": "Subtitles",
+      "import_subtitles": "Import SRT / VTT",
+      "export_srt": "Export SRT",
+      "export_vtt": "Export VTT",
+      "source_text": "Source text",
+      "original": "Original audio",
+      "generated": "Generated audio",
+      "split_at": "Split at",
+      "split": "Split segment",
+      "merge": "Merge with next",
+      "replace_subtitles": "Replace subtitle timeline?",
+      "replace": "Replace",
+      "replace_subtitles_detail": "This replaces the segment timeline for this language. Other languages may need translation again. You can undo before generating.",
+      "preview_unavailable": "Generate this segment before previewing its audio.",
+      "subtitle_invalid": "Choose a valid SRT or VTT file with cues of 30 seconds or less.",
+      "subtitle_missing": "Translate every segment before exporting subtitles.",
+      "split_invalid": "Choose a split point inside a segment with enough text on both sides.",
+      "merge_invalid": "Merge adjacent segments with the same voice and a combined duration of 30 seconds or less.",
+      "waveform": "Audio waveform"
+    }
+  }
+}

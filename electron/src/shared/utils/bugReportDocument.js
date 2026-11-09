@@ -2,15 +2,20 @@ import { scrubText } from './scrub';
 import { REPO_URL } from './contactLinks';
 const ISSUES_URL = `${REPO_URL}/issues/new`;
 const MAX_STACK_CHARS = 1800;
-const MAX_MSG_CHARS = 1200;
+/** A report quotes this many characters of an error message. */
+export const MAX_MSG_CHARS = 1200;
 const MAX_ENCODED_BODY = 7000;
+// A cut at a fixed length can split an emoji, and encodeURIComponent throws on
+// the lone half: replace any lone surrogate so a report always opens.
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+const encode = (text) => encodeURIComponent(String(text).replace(LONE_SURROGATE, '\uFFFD'));
 function fitEncoded(text, maxEncoded) {
-  if (encodeURIComponent(text).length <= maxEncoded) return text;
+  if (encode(text).length <= maxEncoded) return text;
   let lo = 0;
   let hi = text.length;
   while (lo < hi) {
     const mid = Math.ceil((lo + hi) / 2);
-    if (encodeURIComponent(text.slice(0, mid)).length <= maxEncoded) lo = mid;
+    if (encode(text.slice(0, mid)).length <= maxEncoded) lo = mid;
     else hi = mid - 1;
   }
   return `${text.slice(0, lo)}\n… (truncated)`;
@@ -18,6 +23,8 @@ function fitEncoded(text, maxEncoded) {
 
 export function composeBugReportUrl({
   title = '[Bug] ',
+  labels = 'bug',
+  factsSection = [],
   error,
   ctx = '',
   crashSection = [],
@@ -38,22 +45,24 @@ export function composeBugReportUrl({
       msg.length > MAX_MSG_CHARS ? `${msg.slice(0, MAX_MSG_CHARS)}\n… (truncated)` : msg;
     let stack = error?.stack ? scrubText(error.stack) : '';
     if (stack.length > MAX_STACK_CHARS) stack = `${stack.slice(0, MAX_STACK_CHARS)}\n… (truncated)`;
-    // A generic failure message plus a stack of minified bundle frames is the
-    // same report every time; the backend class name is what separates one
-    // unclassified engine failure from another (#1800). Taken from the error
-    // itself, then from a parsed 500 body — the Electron client keeps that on
-    // `payload` instead of lifting the field onto the error (lib/api/client.ts).
+    // Backend exception class: an explicit errorClass wins, then the 500
+    // handler's error_type, then the diagnosis-taxonomy error_class.
+    const payload = error?.payload;
+    const pickString = (value) => (typeof value === 'string' && value ? value : '');
     const rawClass =
-      typeof error?.errorClass === 'string' && error.errorClass
-        ? error.errorClass
-        : error?.payload?.error_class;
-    const klass = typeof rawClass === 'string' && rawClass ? scrubText(rawClass) : '';
+      pickString(error?.errorClass) ||
+      pickString(payload?.error_type) ||
+      pickString(payload?.error_class);
+    const errorClassText = rawClass ? scrubText(rawClass) : '';
+    const rawTopic = pickString(payload?.docs_topic) || pickString(payload?.detail?.docs_topic);
+    const failureTopicText = rawTopic ? scrubText(rawTopic) : '';
     errorSection.push(
       '## Error',
       '',
       '```',
       msgForBody,
-      ...(klass ? [`Backend error class: ${klass}`] : []),
+      ...(errorClassText ? [`Backend error class: ${errorClassText}`] : []),
+      ...(failureTopicText ? [`Backend failure topic: ${failureTopicText}`] : []),
       ...(stack && stack !== msgForBody ? [stack] : []),
       '```',
       '',
@@ -74,6 +83,8 @@ export function composeBugReportUrl({
     '',
     '<!-- e.g. "Synthesize failed in Design mode after picking Narrator personality" -->',
     '',
+    // Ahead of everything fitEncoded may cut; the logs are what get truncated.
+    ...factsSection,
     ...errorSection,
     '## Environment',
     '',
@@ -90,7 +101,7 @@ export function composeBugReportUrl({
   ].join('\n');
   body = fitEncoded(scrubText(body), MAX_ENCODED_BODY);
 
-  return `${ISSUES_URL}?title=${encodeURIComponent(title)}&labels=${encodeURIComponent('bug')}&body=${encodeURIComponent(body)}`;
+  return `${ISSUES_URL}?title=${encode(title)}&labels=${encode(labels)}&body=${encode(body)}`;
 }
 
 export function buildIssueSearchUrl(error) {

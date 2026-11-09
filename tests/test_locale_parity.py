@@ -1,4 +1,4 @@
-"""Locale key parity — all 21 i18n files stay in lockstep with en.json.
+"""Locale key parity — every i18n file stay in lockstep with en.json.
 
 Two catalogs exist. ``electron/src/renderer/src/i18n/locales`` is the one the
 app loads at runtime; it must have full key parity (see the ``renderer``
@@ -17,7 +17,7 @@ tokens. Real bug classes this pins down:
 
 Missing keys degrade gracefully (i18next falls back to en), so full key parity
 is enforced as a RATCHET: each locale's missing-key count may only go down.
-When en.json gains keys, add them to all 21 locales in the same change — that
+When en.json gains keys, add them to every locale in the same change — that
 is exactly the house rule this test automates.
 """
 
@@ -101,7 +101,7 @@ _ENGINE_AGNOSTIC_KEYS = (
 # Never raise one: if this fails after adding en.json keys, add the keys to
 # every locale (translated) in the same change instead.
 _MISSING_BASELINE = {
-    "ar": 464, "de": 464, "es": 464, "fr": 464, "hi": 464, "id": 464,
+    "ar": 464, "de": 464, "es": 464, "fr": 464, "gl": 0, "hi": 464, "id": 464,
     "it": 464, "ja": 464, "ko": 0, "nl": 464, "pl": 464, "pt": 464,
     "ru": 464, "sv": 464, "th": 464, "tr": 464, "uk": 464, "vi": 464,
     "zh-CN": 0, "zh-TW": 464,
@@ -224,7 +224,7 @@ def test_missing_keys_ratchet(locale):
     allowed = _MISSING_BASELINE[locale]
     assert len(missing) <= allowed, (
         f"{locale}.json is missing {len(missing)} en.json keys — the ratchet "
-        f"allows at most {allowed}. New en.json keys must land in all 21 "
+        f"allows at most {allowed}. New en.json keys must land in all "
         f"locales (translated) in the same change (CLAUDE.md, Localization). "
         f"Newly missing keys include: {missing[:20]}"
     )

@@ -1,5 +1,13 @@
 import { formatTimestamp } from '@shared/utils/timeFormat';
-import { HeadphonesIcon, LoaderCircleIcon, PlayIcon, TriangleAlertIcon, ZoomInIcon, ZoomOutIcon, MaximizeIcon } from 'lucide-react';
+import {
+  HeadphonesIcon,
+  LoaderCircleIcon,
+  PlayIcon,
+  TriangleAlertIcon,
+  ZoomInIcon,
+  ZoomOutIcon,
+  MaximizeIcon,
+} from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -64,7 +72,11 @@ export function DubTimeline({
   const segmentRefs = useRef(new Map<string, HTMLDivElement>());
   const gesture = useRef<Gesture | null>(null);
   const liveRef = useRef<{ id: string; start: number; end: number } | null>(null);
-  const [live, setLive] = useState<{ id: string; start: number; end: number } | null>(null);
+  const [live, setLive] = useState<{
+    id: string;
+    start: number;
+    end: number;
+  } | null>(null);
   const [focusId, setFocusId] = useState<string | null>(selectedId || segments[0]?.id || null);
   const [editMode, setEditMode] = useState(false);
   const duration = Math.max(
@@ -218,7 +230,10 @@ export function DubTimeline({
     gesture.current = null;
     const current = liveRef.current;
     if (commit && active && current?.id === active.id)
-      moveResizeDubSegment(active.id, { start: current.start, end: current.end });
+      moveResizeDubSegment(active.id, {
+        start: current.start,
+        end: current.end,
+      });
     liveRef.current = null;
     setLive(null);
     try {
@@ -263,7 +278,7 @@ export function DubTimeline({
       setEditMode(false);
       return;
     }
-    if (event.key.toLowerCase() === 's') {
+    if (event.key.toLowerCase() === 's' && !(event.metaKey || event.ctrlKey || event.altKey)) {
       event.preventDefault();
       event.stopPropagation();
       const adjustEnd = event.shiftKey;
@@ -306,140 +321,179 @@ export function DubTimeline({
   return (
     <section
       aria-label={t('segmentEditing.timeline')}
-      className="rounded-xl border border-border/60 bg-card/35 p-3 shadow-sm"
+      className="rounded-xl border border-border/60 bg-card/35 p-3 shadow-sm [@media(max-height:700px)]:p-2"
     >
       <div className="mb-2 flex justify-end gap-1">
-        <Button size="icon-sm" variant="ghost" aria-label={t('trimmer.zoom_out')} disabled={zoom <= 1} onClick={() => setZoom((z) => Math.max(1, z / 2))}><ZoomOutIcon /></Button>
-        <Button size="icon-sm" variant="ghost" aria-label={t('trimmer.zoom_in')} disabled={zoom >= 16} onClick={() => setZoom((z) => Math.min(16, z * 2))}><ZoomInIcon /></Button>
-        <Button size="icon-sm" variant="ghost" aria-label={t('trimmer.fit_all')} onClick={() => setZoom(1)}><MaximizeIcon /></Button>
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          aria-label={t('trimmer.zoom_out')}
+          disabled={zoom <= 1}
+          onClick={() => setZoom((z) => Math.max(1, z / 2))}
+        >
+          <ZoomOutIcon />
+        </Button>
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          aria-label={t('trimmer.zoom_in')}
+          disabled={zoom >= 16}
+          onClick={() => setZoom((z) => Math.min(16, z * 2))}
+        >
+          <ZoomInIcon />
+        </Button>
+        <Button
+          size="icon-sm"
+          variant="ghost"
+          aria-label={t('trimmer.fit_all')}
+          onClick={() => setZoom(1)}
+        >
+          <MaximizeIcon />
+        </Button>
       </div>
       <div ref={viewport} className="overflow-x-auto rounded-lg [scrollbar-width:thin]">
-      <div
-        ref={host}
-        style={{ width: `${zoom * 100}%` }}
-        role="listbox"
-        aria-orientation="horizontal"
-        onClick={(event) => {
-          if ((event.target as HTMLElement).closest('[data-timeline-segment]')) return;
-          const bounds = event.currentTarget.getBoundingClientRect();
-          if (bounds.width > 0)
-            requestPlaybackSeek(
-              playbackSource,
-              ((event.clientX - bounds.left) / bounds.width) * duration,
-            );
-        }}
-        className="relative h-16 touch-none overflow-hidden rounded-lg border border-border/50 bg-muted/20 [background-image:repeating-linear-gradient(90deg,transparent_0,transparent_calc(10%_-_1px),color-mix(in_oklch,var(--border),transparent_55%)_10%)]"
-      >
-        <canvas
-          ref={onsetCanvas}
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 text-muted-foreground/45"
-        />
-        {playback.duration > 0 && (
-          <span
+        <div
+          ref={host}
+          style={{ width: `${zoom * 100}%` }}
+          role="listbox"
+          aria-orientation="horizontal"
+          onClick={(event) => {
+            if ((event.target as HTMLElement).closest('[data-timeline-segment]')) return;
+            const bounds = event.currentTarget.getBoundingClientRect();
+            if (bounds.width > 0)
+              requestPlaybackSeek(
+                playbackSource,
+                ((event.clientX - bounds.left) / bounds.width) * duration,
+              );
+          }}
+          className="relative h-16 touch-none overflow-hidden rounded-lg border border-border/50 bg-muted/20 [background-image:repeating-linear-gradient(90deg,transparent_0,transparent_calc(10%_-_1px),color-mix(in_oklch,var(--border),transparent_55%)_10%)] [@media(max-height:700px)]:h-14"
+        >
+          <canvas
+            ref={onsetCanvas}
             aria-hidden="true"
-            className="pointer-events-none absolute inset-y-0 z-[1] w-px bg-primary shadow-[0_0_8px_color-mix(in_oklch,var(--primary),transparent_20%)]"
-            style={{ left: `${(Math.min(playback.time, duration) / duration) * 100}%` }}
+            className="pointer-events-none absolute inset-0 text-muted-foreground/45"
           />
-        )}
-        {effective.map((segment, index) => (
-          <div
-            key={segment.id}
-            ref={(element) => {
-              if (element) segmentRefs.current.set(segment.id, element);
-              else segmentRefs.current.delete(segment.id);
-            }}
-            role="option"
-            tabIndex={focusId === segment.id || (!focusId && index === 0) ? 0 : -1}
-            data-timeline-segment={segment.id}
-            aria-label={`${t('clone.text_label')} ${index + 1}, ${formatTime(segment.start)} - ${formatTime(segment.end)}`}
-            aria-selected={selectedId === segment.id}
-            onClick={() => selectAndFocus(segment.id)}
-            onDoubleClick={() => requestPlaybackRange(playbackSource, segment.start, segment.end)}
-            onKeyDown={(event) => nudge(event, index)}
-            onFocus={() => setFocusId(segment.id)}
-            onBlur={(event) => {
-              if (!event.currentTarget.parentElement?.contains(event.relatedTarget))
-                setEditMode(false);
-            }}
-            onPointerDown={(event) => begin(event, index)}
-            onPointerMove={move}
-            onPointerUp={finish}
-            onPointerCancel={(event) => finish(event, false)}
-            className={cn(
-              'absolute top-2 flex h-10 min-w-0 cursor-grab items-center overflow-hidden rounded-sm bg-primary/30 px-0 text-[10px] font-medium text-foreground outline-none transition-[box-shadow,background-color] active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-ring',
-              selectedId === segment.id && 'border-primary/70 bg-primary/35 shadow-sm',
-              focusId === segment.id &&
-                editMode &&
-                'ring-2 ring-primary ring-offset-1 ring-offset-background',
-              overlaps.has(segment.id) && 'border-destructive bg-destructive/20',
-            )}
-            style={{
-              left: `${(segment.start / duration) * 100}%`,
-              width: `${((segment.end - segment.start) / duration) * 100}%`,
-            }}
-          >
-            {((segment.end - segment.start) / duration) * timelineWidth >= 24 && <span
-              data-edge="start"
+          {playback.duration > 0 && (
+            <span
               aria-hidden="true"
-              className="absolute inset-y-0 left-0 w-1.5 cursor-ew-resize bg-foreground/15"
-            />}
-            {((segment.end - segment.start) / duration) * timelineWidth >= 18 && <span className="pointer-events-none truncate px-1">{index + 1}</span>}
-            {selectedId === segment.id && ((segment.end - segment.start) / duration) * timelineWidth > 60 && (
-              <span className="ml-auto flex shrink-0 gap-0.5">
-                <button
-                  type="button"
-                  aria-label={`${t('player.play')} ${index + 1}`}
-                  title={t('player.play')}
-                  className="flex size-5 items-center justify-center rounded-sm bg-background/75 text-foreground shadow-sm hover:bg-background"
-                  onPointerDown={(event) => event.stopPropagation()}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    requestPlaybackRange(playbackSource, segment.start, segment.end);
-                  }}
-                >
-                  <PlayIcon className="size-3 fill-current" />
-                </button>
-                {onPreviewSegment && ((segment.end - segment.start) / duration) * timelineWidth > 100 && (
-                  <button
-                    type="button"
-                    aria-label={t('dub.live_preview')}
-                    title={t('dub.live_preview')}
-                    disabled={Boolean(previewingId)}
-                    className="flex size-5 items-center justify-center rounded-sm bg-background/75 text-foreground shadow-sm hover:bg-background disabled:opacity-50"
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onPreviewSegment(segment);
-                    }}
-                  >
-                    {previewingId === segment.id ? (
-                      <LoaderCircleIcon className="size-3 animate-spin" />
-                    ) : (
-                      <HeadphonesIcon className="size-3" />
-                    )}
-                  </button>
+              className="pointer-events-none absolute inset-y-0 z-[1] w-px bg-primary shadow-[0_0_8px_color-mix(in_oklch,var(--primary),transparent_20%)]"
+              style={{
+                left: `${(Math.min(playback.time, duration) / duration) * 100}%`,
+              }}
+            />
+          )}
+          {effective.map((segment, index) => (
+            <div
+              key={segment.id}
+              ref={(element) => {
+                if (element) segmentRefs.current.set(segment.id, element);
+                else segmentRefs.current.delete(segment.id);
+              }}
+              role="option"
+              tabIndex={focusId === segment.id || (!focusId && index === 0) ? 0 : -1}
+              data-timeline-segment={segment.id}
+              aria-label={`${t('clone.text_label')} ${index + 1}, ${formatTime(segment.start)} - ${formatTime(segment.end)}`}
+              aria-selected={selectedId === segment.id}
+              onClick={() => selectAndFocus(segment.id)}
+              onDoubleClick={() => requestPlaybackRange(playbackSource, segment.start, segment.end)}
+              onKeyDown={(event) => nudge(event, index)}
+              onFocus={() => setFocusId(segment.id)}
+              onBlur={(event) => {
+                if (!event.currentTarget.parentElement?.contains(event.relatedTarget))
+                  setEditMode(false);
+              }}
+              onPointerDown={(event) => begin(event, index)}
+              onPointerMove={move}
+              onPointerUp={finish}
+              onPointerCancel={(event) => finish(event, false)}
+              className={cn(
+                'absolute top-2 flex h-10 min-w-0 cursor-grab items-center overflow-hidden rounded-sm bg-primary/30 px-0 text-[10px] font-medium text-foreground outline-none transition-[box-shadow,background-color] active:cursor-grabbing focus-visible:ring-2 focus-visible:ring-ring [@media(max-height:700px)]:top-1',
+                selectedId === segment.id && 'border-primary/70 bg-primary/35 shadow-sm',
+                focusId === segment.id &&
+                  editMode &&
+                  'ring-2 ring-primary ring-offset-1 ring-offset-background',
+                overlaps.has(segment.id) && 'border-destructive bg-destructive/20',
+              )}
+              style={{
+                left: `${(segment.start / duration) * 100}%`,
+                width: `${((segment.end - segment.start) / duration) * 100}%`,
+              }}
+            >
+              {((segment.end - segment.start) / duration) * timelineWidth >= 24 && (
+                <span
+                  data-edge="start"
+                  aria-hidden="true"
+                  className="absolute inset-y-0 left-0 w-1.5 cursor-ew-resize bg-foreground/15"
+                />
+              )}
+              {((segment.end - segment.start) / duration) * timelineWidth >= 18 && (
+                <span className="pointer-events-none truncate px-1">{index + 1}</span>
+              )}
+              {selectedId === segment.id &&
+                ((segment.end - segment.start) / duration) * timelineWidth > 60 && (
+                  <span className="ml-auto flex shrink-0 gap-0.5">
+                    <button
+                      type="button"
+                      aria-label={`${t('player.play')} ${index + 1}`}
+                      title={t('player.play')}
+                      className="flex size-5 items-center justify-center rounded-sm bg-background/75 text-foreground shadow-sm hover:bg-background"
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        requestPlaybackRange(playbackSource, segment.start, segment.end);
+                      }}
+                    >
+                      <PlayIcon className="size-3 fill-current" />
+                    </button>
+                    {onPreviewSegment &&
+                      ((segment.end - segment.start) / duration) * timelineWidth > 100 && (
+                        <button
+                          type="button"
+                          aria-label={t('dub.live_preview')}
+                          title={t('dub.live_preview')}
+                          disabled={Boolean(previewingId)}
+                          className="flex size-5 items-center justify-center rounded-sm bg-background/75 text-foreground shadow-sm hover:bg-background disabled:opacity-50"
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onPreviewSegment(segment);
+                          }}
+                        >
+                          {previewingId === segment.id ? (
+                            <LoaderCircleIcon className="size-3 animate-spin" />
+                          ) : (
+                            <HeadphonesIcon className="size-3" />
+                          )}
+                        </button>
+                      )}
+                  </span>
                 )}
-              </span>
-            )}
-            {((segment.end - segment.start) / duration) * timelineWidth >= 24 && <span
-              data-edge="end"
-              aria-hidden="true"
-              className="absolute inset-y-0 right-0 w-1.5 cursor-ew-resize bg-foreground/15"
-            />}
-          </div>
-        ))}
-      </div>
+              {((segment.end - segment.start) / duration) * timelineWidth >= 24 && (
+                <span
+                  data-edge="end"
+                  aria-hidden="true"
+                  className="absolute inset-y-0 right-0 w-1.5 cursor-ew-resize bg-foreground/15"
+                />
+              )}
+            </div>
+          ))}
+        </div>
       </div>
       <div className="mt-1 flex items-center justify-between font-mono text-[10px] text-muted-foreground tabular-nums">
         <span>0:00.0</span>
         {overlaps.size > 0 && (
-          <button type="button" className="flex items-center gap-1 text-destructive text-left" onClick={() => {
-            const id = [...overlaps][0];
-            setZoom(16);
-            selectAndFocus(id);
-            requestAnimationFrame(() => segmentRefs.current.get(id)?.scrollIntoView({ block: 'nearest', inline: 'center' }));
-          }}>
+          <button
+            type="button"
+            className="flex items-center gap-1 text-destructive text-left"
+            onClick={() => {
+              const id = [...overlaps][0];
+              setZoom(16);
+              selectAndFocus(id);
+              requestAnimationFrame(() =>
+                segmentRefs.current.get(id)?.scrollIntoView({ block: 'nearest', inline: 'center' }),
+              );
+            }}
+          >
             <TriangleAlertIcon className="size-3" />
             {t('segmentEditing.overlap')}
           </button>

@@ -1,0 +1,18 @@
+[
+  {"name": "base word", "cue": "Please <ruby>read<rt>reed</rt></ruby> once.", "spoken": "Please read once."},
+  {"name": "multiple annotations", "cue": "<ruby>漢<rt>かん</rt>字<rt>じ</rt></ruby>", "spoken": "漢字"},
+  {"name": "annotation container", "cue": "<ruby>read<rtc><rt>reed</rt><rt>more</rt></rtc></ruby> once.", "spoken": "read once."},
+  {"name": "nested containers", "cue": "<ruby>read<rtc><rtc>reed</rtc>more</rtc></ruby> once.", "spoken": "read once."},
+  {"name": "ruby inside annotation", "cue": "<ruby>base<rtc>annotation<ruby>nested<rt>pronunciation</rt></ruby>more</rtc></ruby> end", "spoken": "base end"},
+  {"name": "fallback parentheses", "cue": "<ruby>read<rp>(</rp><rt>reed</rt><rp>)</rp></ruby> once.", "spoken": "read once."},
+  {"name": "uppercase tags", "cue": "<RUBY>read<RT>reed</RT></RUBY> once.", "spoken": "read once."},
+  {"name": "classed tags", "cue": "<ruby>read<rt.note>reed</rt></ruby> once.", "spoken": "read once."},
+  {"name": "implicit annotation end", "cue": "<ruby>read<rt>reed</ruby> once.", "spoken": "read once."},
+  {"name": "cue end", "cue": "<ruby>read<rt>reed", "spoken": "read"},
+  {"name": "multiline annotation", "cue": "<ruby>read<rtc>reed\nmore</rtc></ruby> once.", "spoken": "read once."},
+  {"name": "following ruby", "cue": "<ruby>read<rt>reed</rt></ruby> <ruby>this<rt>annotation</rt></ruby>.", "spoken": "read this."},
+  {"name": "non-annotation tags", "cue": "<ruby><b>read</b><rt><i>reed</i></rt></ruby> once.", "spoken": "read once."},
+  {"name": "ruby without annotation", "cue": "<ruby>read</ruby> once.", "spoken": "read once."},
+  {"name": "annotation-like tags outside ruby", "cue": "<rt>note</rt> is speech.", "spoken": "note is speech."},
+  {"name": "plain dialogue", "cue": "Please read once.", "spoken": "Please read once."}
+]

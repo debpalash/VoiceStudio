@@ -446,7 +446,7 @@ export const SPECS = {
           t={i18n.t.bind(i18n)}
           count={353}
           profiles={[
-            { id: 'demo', name: 'VoiceStudio Demo Voice' },
+            { id: 'demo', name: 'Demo Voice' },
             { id: 'narrator', name: 'Studio Narrator', instruct: 'calm' },
           ]}
           speakerClones={{ 'Speaker 1': {}, 'Speaker 2': {} }}

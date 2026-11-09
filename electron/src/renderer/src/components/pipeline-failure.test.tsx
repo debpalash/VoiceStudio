@@ -1,14 +1,34 @@
 import i18next from 'i18next';
-import { cleanup, render, screen } from '@testing-library/react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { publicFailureFromEvent } from '@/lib/api/failure';
 import { PipelineFailure } from './pipeline-failure';
 
+const JA_PROXY = 'プロキシがHTTP 504を返しました。proxy_read_timeout を延ばしてください。';
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({
+    t: (key: string, options?: { status?: number }) =>
+      key === 'tts_errors.proxy_gateway_error'
+        ? JA_PROXY.replace('504', String(options?.status))
+        : key,
+  }),
 }));
 
-afterEach(cleanup);
+const { navigate, apiJson } = vi.hoisted(() => ({
+  navigate: vi.fn(),
+  apiJson: vi.fn(() => Promise.resolve({ ram_after: 1, vram_after: 0, unloaded_model: true })),
+}));
+vi.mock('@/router', () => ({ router: { navigate } }));
+vi.mock('@/lib/api/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/api/client')>()),
+  apiJson,
+}));
+vi.mock('./install-stt-button', () => ({ InstallSttButton: () => <button>install-stt</button> }));
+
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
 
 it("preserves and opens the backend's exact contextual documentation URL", () => {
   const docsUrl =
@@ -117,4 +137,81 @@ it.each([
   } finally {
     translate.mockRestore();
   }
+});
+
+it.each([
+  ['CUDA out of memory. Tried to allocate 2.00 GiB', 'vram'],
+  ['Model is not downloaded yet', 'model_missing'],
+  ['A generation is already running', 'busy'],
+  ['Request timed out after 300s', 'timeout'],
+])('turns "%s" into a %s cause with fix chips and the raw text under Details', (raw, cause) => {
+  render(<PipelineFailure fallback={raw} />);
+  expect(screen.getByText(`failureCause.${cause}.title`)).toBeInTheDocument();
+  expect(screen.getByText(`failureCause.${cause}.fix1`)).toBeInTheDocument();
+  expect(screen.getByText('failureCause.details')).toBeInTheDocument();
+  expect(screen.getByText(raw)).toBeInTheDocument();
+});
+
+it('never renders an HTML gateway page as the message', () => {
+  const html = '<html><head><title>504 Gateway Time-out</title></head><body>nginx</body></html>';
+  render(<PipelineFailure fallback={html} />);
+  expect(screen.getByText('failureCause.timeout.title')).toBeInTheDocument();
+  expect(screen.queryByText(html)).not.toBeInTheDocument();
+  expect(document.body.innerHTML).not.toContain('<title>');
+});
+
+it('keeps a failure that already carries curated guidance', () => {
+  render(
+    <PipelineFailure
+      failure={{ reason: 'GPU ran out of memory, close apps', hint: 'Use CPU' }}
+      fallback="x"
+    />,
+  );
+  expect(screen.getByText('GPU ran out of memory, close apps')).toBeInTheDocument();
+  expect(screen.queryByText('failureCause.details')).not.toBeInTheDocument();
+});
+
+it('keeps our own translated proxy advice instead of the generic timeout cause', () => {
+  render(<PipelineFailure fallback={JA_PROXY.replace('504', '504')} />);
+  expect(screen.getByText(JA_PROXY)).toBeInTheDocument();
+  expect(screen.queryByText('failureCause.timeout.title')).not.toBeInTheDocument();
+});
+
+describe('diagnosed failure classes', () => {
+  const RAW_STT =
+    'Automatic reference transcription needs an installed speech-to-text model. Provide a matching reference transcript, or install and select a speech-to-text model in Model Catalogue, then try again.';
+
+  it('localizes backend English text it recognises and offers the install fix', () => {
+    render(<PipelineFailure fallback={RAW_STT} />);
+    const alert = screen.getByRole('alert');
+    expect(alert.querySelector('p')).toHaveTextContent('tts_errors.reference_stt_missing');
+    expect(screen.getByText('install-stt')).toBeInTheDocument();
+    // The English sentence stays reachable, never as the headline.
+    expect(screen.getByText('failureCause.details')).toBeInTheDocument();
+  });
+
+  it('uses the topic the caller holds and opens the matching settings page', async () => {
+    render(<PipelineFailure fallback="Couldn't write the file." topic="DISK_FULL" />);
+    expect(screen.getByText('tts_errors.disk_full')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /failureAction.storage/ }));
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith({ to: '/settings/storage' }));
+  });
+
+  it('frees memory in place for an out-of-memory failure', async () => {
+    render(<PipelineFailure failure={{ reason: 'x', docsTopic: 'GPU_OOM' }} fallback="x" />);
+    fireEvent.click(screen.getByRole('button', { name: /failureAction.free_memory/ }));
+    await waitFor(() =>
+      expect(apiJson).toHaveBeenCalledWith('/system/flush-memory?unload_model=true', {
+        method: 'POST',
+      }),
+    );
+  });
+
+  it('shows no action for a class the app cannot fix itself', () => {
+    render(
+      <PipelineFailure failure={{ reason: 'x', docsTopic: 'VIDEO_DRM_PROTECTED' }} fallback="x" />,
+    );
+    expect(screen.getByText('failureClass.video_drm_protected')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /failureAction/ })).not.toBeInTheDocument();
+  });
 });

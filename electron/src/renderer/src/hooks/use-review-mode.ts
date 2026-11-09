@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { onStorageKey } from '@/lib/storage-events';
 
 export type ReviewMode = 'on' | 'off';
 
@@ -14,6 +15,12 @@ function read(): ReviewMode {
 }
 
 let current = read();
+onStorageKey(storageKey, () => {
+  const next = read();
+  if (next === current) return;
+  current = next;
+  listeners.forEach((listener) => listener());
+});
 
 function subscribe(listener: () => void) {
   listeners.add(listener);

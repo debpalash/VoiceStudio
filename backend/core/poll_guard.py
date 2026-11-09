@@ -1,7 +1,7 @@
 """Keep high-frequency status polls from starving the shared worker pool.
 
 The renderer polls a few cheap status routes (``/model/status``,
-``/model/loaded``, ``/workers/target``) every second while anything is
+``/model/loaded``) every second while anything is
 running, from several widgets at once. They were plain sync routes, so each
 poll took a thread from the 40-thread pool shared with every other sync route
 (and with the sync ``require_admin`` dependency in front of them). Their

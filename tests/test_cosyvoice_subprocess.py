@@ -35,6 +35,7 @@ def _fake_model_class(name, calls, sample_rate=24000):
         "inference_zero_shot": method("zero_shot"),
         "inference_cross_lingual": method("cross_lingual"),
         "inference_sft": method("sft"),
+        "inference_vc": method("vc"),
         "list_available_spks": lambda self: ["spk-a"],
     })
 
@@ -237,12 +238,12 @@ def test_a_missing_model_override_is_an_error_not_a_silent_swap(monkeypatch, tmp
 
 
 # The first release of each package that fixes the advisories upstream's pins
-# fall under, per OSV and GitHub's advisory database (checked 2026-09-10;
+# fall under, per OSV and GitHub's advisory database (checked 2026-09-10, hydra-core 2026-10-12;
 # only GitHub listed the protobuf and transformers ones). Raising a pin is
 # fine; going below one of these reintroduces a known vulnerability.
 _ADVISORY_FLOORS = {
     "diffusers": "0.38.0",
-    "hydra-core": "1.3.4",
+    "hydra-core": "1.3.7",
     "lightning": "2.6.6",
     "modelscope": "1.27.0",
     "onnx": "1.21.0",
@@ -283,13 +284,13 @@ def test_load_uses_full_precision_without_cuda(monkeypatch, tmp_path, cuda):
 def test_managed_install_probes_late_imports_and_restores_dependencies():
     from services import sidecar_install
     spec = sidecar_install.SPECS['cosyvoice']
-    reqs = _REQUIREMENTS.read_text()
+    reqs = _REQUIREMENTS.read_text(encoding="utf-8")
     for dependency in ('gdown==6.4.0', 'wget==3.2', 'pyarrow==25.0.1'):
         assert dependency in reqs
     assert 'cosyvoice.dataset.processor' in spec.probe_code
     assert 'matcha.utils' in spec.probe_code
     assert '{checkout}/third_party/PyWorld' in spec.install_args
-    assert spec.install_revision == 'inference-imports-v2'
+    assert spec.install_revision == 'rocm-routing-v5'
     sources = {source.path: source for source in spec.extra_sources}
     assert sources['third_party/PyWorld'].revision == 'f31ad88d543fdaebbda2d0c9a5e4d4f991ae0b6c'
     assert sources['third_party/PyWorld/lib/World'].revision == 'd625e7608ca23a870018f01e7c562ac683d9847f'
@@ -363,3 +364,86 @@ def test_load_preserves_legacy_non_qwen_checkout(monkeypatch, tmp_path):
     monkeypatch.delattr(sys.modules['cosyvoice.llm.llm'], 'Qwen2Encoder')
     monkeypatch.setitem(sys.modules, 'transformers', types.ModuleType('transformers'))
     assert sidecar._load_model(io.BytesIO()) is not None
+
+
+# The requirements each managed install revision installs. A changed
+# requirements.txt needs a new revision, or existing installs keep their old
+# completion marker and never receive the change.
+_REQUIREMENTS_BY_REVISION = {
+    "security-floors-v3": "10d15c52b78ae41cfd040880f97a3b9b71c2fa2dab9893bceb982fc46b72d9dd",
+    "rocm-routing-v5": "eb92a6a6dc01fc02e46c72654f91c33169d77824c8e88d468a6003d09b6bfc80",
+    "security-floors-v4": "607deac39c6ee97e595d05426af10e87070b4b52a3df2ad809d71e20d5058658",
+}
+
+
+def test_requirement_changes_bump_the_managed_install_revision():
+    import hashlib
+    from services import sidecar_install
+
+    spec = sidecar_install.SPECS["cosyvoice"]
+    digest = hashlib.sha256(_REQUIREMENTS.read_text(encoding="utf-8").encode()).hexdigest()
+    assert _REQUIREMENTS_BY_REVISION.get(spec.install_revision) == digest, (
+        "cosyvoice requirements.txt changed: bump install_revision in "
+        "services/sidecar_install.py and record the new digest here"
+    )
+
+
+def test_an_install_from_the_previous_revision_is_offered_a_repair(tmp_path):
+    from services import sidecar_install
+
+    spec = sidecar_install.SPECS["cosyvoice"]
+    marker = tmp_path / sidecar_install._INSTALL_COMPLETE_MARKER
+    marker.write_text(f"{spec.probe_module}\ninference-imports-v2\n", encoding="utf-8")
+    assert not sidecar_install._install_marker_valid(spec, tmp_path)
+    marker.write_text(f"{spec.probe_module}\n{spec.install_revision}\n", encoding="utf-8")
+    assert sidecar_install._install_marker_valid(spec, tmp_path)
+
+
+# -- Keep my delivery (#3421): speech-to-speech through upstream inference_vc --
+
+
+def test_convert_keeps_the_source_tokens_through_inference_vc(monkeypatch, tmp_path):
+    calls = []
+    sidecar, _ = _load_sidecar(monkeypatch, tmp_path, calls)
+    source, ref = tmp_path / "source.wav", tmp_path / "ref.wav"
+    source.write_bytes(b"RIFF")
+    ref.write_bytes(b"RIFF")
+    out = io.BytesIO()
+    sidecar._handle_convert({"source_audio": str(source), "ref_audio": str(ref)}, out)
+    kind, args, kwargs = _last_call(calls)
+    assert kind == "vc"
+    assert args == (str(source), str(ref)) and kwargs == {"stream": False}
+    assert _frames(out)[-1]["op"] == "audio"
+
+
+def test_convert_refuses_urls_and_missing_files(monkeypatch, tmp_path):
+    calls = []
+    sidecar, _ = _load_sidecar(monkeypatch, tmp_path, calls)
+    ref = tmp_path / "ref.wav"
+    ref.write_bytes(b"RIFF")
+    with pytest.raises(ValueError, match="local file path"):
+        sidecar._handle_convert({"source_audio": "https://x.test/a.wav", "ref_audio": str(ref)}, io.BytesIO())
+    with pytest.raises(ValueError, match="not found"):
+        sidecar._handle_convert({"source_audio": str(tmp_path / "gone.wav"), "ref_audio": str(ref)}, io.BytesIO())
+    assert not any(c[0] == "vc" for c in calls)
+
+
+def test_the_sidecar_class_sends_a_convert_op(monkeypatch):
+    from engines.cosyvoice_subprocess import CosyVoiceSubprocessBackend
+    from services.tts_backend import CosyVoiceBackend, TTSBackend
+
+    sent = []
+    monkeypatch.setattr(
+        CosyVoiceSubprocessBackend, "_exchange",
+        lambda self, msg, *, deadline_text: sent.append(msg) or torch.zeros(1, 10),
+    )
+    backend = CosyVoiceSubprocessBackend()
+    try:
+        backend.convert_voice("/s.wav", ref_audio="/r.wav", seed=7)
+    finally:
+        backend.shutdown()
+    assert sent == [{"op": "convert", "source_audio": "/s.wav", "ref_audio": "/r.wav", "seed": 7}]
+    assert CosyVoiceSubprocessBackend.supports_voice_conversion is True
+    # The in-process scaffold and every other engine keep re-speaking.
+    assert CosyVoiceBackend.supports_voice_conversion is False
+    assert TTSBackend.supports_voice_conversion is False

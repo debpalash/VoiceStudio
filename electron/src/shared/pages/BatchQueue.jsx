@@ -38,6 +38,7 @@ import { absoluteTime, timeAgo } from '../utils/relativeTime';
  * Shows real-time progress (extract → transcribe → translate → generate → mix).
  */
 
+// Badge styling per job status; `label` is an i18n key.
 const STATUS_TONE = {
   queued: { tone: 'neutral', icon: Circle, label: 'batch.status_queued' },
   running: { tone: 'brand', icon: Activity, label: 'batch.status_running' },
@@ -52,6 +53,7 @@ const CARD_BORDER = {
   failed: 'border-transparent',
 };
 
+// i18n key for each pipeline stage the backend reports.
 const STAGE_LABELS = {
   extract: 'batch.stage_extract',
   transcribe: 'batch.stage_transcribe',

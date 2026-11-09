@@ -79,3 +79,19 @@ def _clean_model_manager_shutdown_state(request):
     _clean()
     yield
     _clean()
+
+
+_MAX_PARAM_ID = 64
+
+
+def pytest_make_parametrize_id(config, val, argname):
+    """Keep long string parameters out of the test id.
+
+    pytest copies the full test id into ``PYTEST_CURRENT_TEST``. A 200 000
+    character parameter therefore errors every such test on Windows, whose
+    environment variables are capped at 32 767 characters. Long strings get a
+    short, stable id instead; everything else keeps pytest's default.
+    """
+    if isinstance(val, (str, bytes)) and len(val) > _MAX_PARAM_ID:
+        return f"{argname}-len{len(val)}"
+    return None

@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
+import { expect } from 'playwright/test';
 
 const browser = await chromium.launch({
-  ...(process.env.PLAYWRIGHT_BUNDLED === '1' ? {} : { channel: 'msedge' }),
+  ...(process.env.PLAYWRIGHT_BUNDLED === '1'
+    ? {}
+    : { channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge' }),
   headless: true,
 });
 const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
@@ -12,6 +15,10 @@ let currentTier = 'fast';
 let fail = false;
 let releaseSave;
 let releaseEngines;
+let releaseAutoSave;
+const autoSaveGate = new Promise((resolve) => {
+  releaseAutoSave = resolve;
+});
 const saveGate = new Promise((resolve) => {
   releaseSave = resolve;
 });
@@ -65,7 +72,14 @@ const profile = () => ({
   },
 });
 try {
-  await page.addInitScript(() => localStorage.setItem('voicestudio.setup.complete.v1', '1'));
+  await page.addInitScript(() => {
+    localStorage.setItem('voicestudio.setup.complete.v1', '1');
+    // These checks inspect the expanded navigation, so keep it open beside the library.
+    localStorage.setItem(
+      'voicestudio.workspace-layout',
+      JSON.stringify({ autoCollapseSidebar: false }),
+    );
+  });
   await page.route('**/api/**', async (route) => {
     const request = route.request();
     const path = new URL(request.url()).pathname;
@@ -73,7 +87,8 @@ try {
       if (request.method() === 'PUT') {
         writes.push(request.postDataJSON());
         if (fail) return route.fulfill({ status: 409, json: { detail: 'Test: engine busy' } });
-        await saveGate;
+        if (request.postDataJSON().tier === 'auto') await autoSaveGate;
+        else await saveGate;
         changed = true;
         currentTier = request.postDataJSON().tier;
       }
@@ -148,15 +163,19 @@ try {
   });
   await page.goto(ui + '/#/clone');
   const footer = page.locator('aside').first().locator('footer');
-  const slider = footer.getByRole('slider');
+  // Speed / quality: a four-notch slider (Fast/Balanced/Quality/Max) plus a separate Auto toggle.
+  const slider = footer.getByRole('slider', { name: 'Speed / quality', exact: true });
+  const checkedTier = () => slider.getAttribute('aria-valuetext');
   await slider.waitFor();
-  await page.waitForFunction(() => !document.querySelector('footer input[type=range]')?.disabled);
+  await expect(slider).toBeEnabled();
   await slider.focus();
-  await slider.press('ArrowRight');
-  await page.waitForFunction(() => document.querySelector('footer input[type=range]')?.disabled);
+  await page.keyboard.press('ArrowRight');
+  await expect(slider).toBeDisabled();
   releaseSave();
-  await footer.locator('[data-detail-level=models]').waitFor();
-  const asr = footer.locator('[data-slot=engine-row]').filter({ hasText: 'Speech to text' });
+  // Changing the tier opens the models popover so the switch is visible without a tall sidebar footer.
+  const popup = page.locator('[data-slot=popover-content]');
+  await popup.waitFor();
+  const asr = popup.locator('[data-slot=engine-row]').filter({ hasText: 'Speech to text' });
   await asr.getByRole('status').filter({ hasText: 'Switching' }).waitFor();
   assert.ok(
     (await asr.innerText()).includes('medium'),
@@ -166,31 +185,32 @@ try {
   releaseEngines();
   await asr.getByRole('status').filter({ hasText: 'Available' }).waitFor();
   assert.equal(await asr.getAttribute('aria-busy'), 'false');
-  assert.equal(await slider.getAttribute('aria-valuetext'), 'Balanced');
+  assert.equal(await checkedTier(), 'Balanced');
   assert.deepEqual(writes, [{ tier: 'balanced', family: null }]);
   fail = true;
   await slider.focus();
-  await slider.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
   await footer.getByRole('alert').waitFor();
-  assert.equal(
-    await slider.getAttribute('aria-valuetext'),
-    'Balanced',
-    'A rejected save restores the confirmed preset',
-  );
+  assert.equal(await checkedTier(), 'Balanced', 'A rejected save restores the confirmed preset');
   assert.ok(
     (await asr.innerText()).includes('medium'),
     'A rejected save preserves the confirmed model',
   );
   fail = false;
-  await slider.focus();
-  await slider.press('End');
-  await page.waitForFunction(
-    () =>
-      document.querySelector('footer input[type=range]')?.getAttribute('aria-valuetext') === 'Auto',
-  );
-  await page.waitForFunction(() => !document.querySelector('footer input[type=range]')?.disabled);
+  await footer.getByRole('button', { name: 'Auto', exact: true }).click();
+  await expect(slider).toBeDisabled();
+  await expect(slider).toHaveAttribute('aria-valuetext', 'Balanced');
+  releaseAutoSave();
+  await footer.getByRole('button', { name: 'Auto', exact: true, pressed: true }).waitFor();
+  await expect(slider).toBeEnabled();
+  await expect(slider).toHaveAttribute('aria-valuetext', 'Quality');
+  // The popover opened with the tier change and polled live usage; start counting afresh once closed.
+  await page.keyboard.press('Escape');
+  await popup.waitFor({ state: 'hidden' });
+  telemetryReads = 0;
+  await page.waitForTimeout(2_300);
   assert.equal(telemetryReads, 0, 'Closed hardware panel does not poll');
-  await footer.getByRole('button', { name: 'Quality · Adapted to your hardware' }).click();
+  await footer.getByRole('button', { name: 'Adapted to your hardware' }).click();
   const live = page.getByRole('region', { name: 'Live usage' });
   await live.getByText('12%', { exact: true }).waitFor();
   await live.getByText('37%', { exact: true }).waitFor();
@@ -206,8 +226,9 @@ try {
   assert.equal(await hardwareSpecs.isVisible(), false, 'Details collapse with the keyboard');
   await details.blur();
   await page.getByText('Memory limit', { exact: true }).first().waitFor();
-  await footer.getByText('OmniVoice', { exact: true }).waitFor();
-  await footer.getByText('Parakeet TDT v3', { exact: true }).waitFor();
+  // The engines now sit in the same popover as the hardware fit.
+  await popup.getByText('OmniVoice', { exact: true }).waitFor();
+  await popup.getByText('Parakeet TDT v3', { exact: true }).waitFor();
   assert.deepEqual(writes.at(-1), { tier: 'auto', family: null });
   await page
     .locator('[data-slot=popover-content]')
@@ -231,9 +252,10 @@ try {
   await page.waitForTimeout(2_300);
   assert.equal(telemetryReads, afterClose, 'Polling stops when the panel closes');
   console.log(
-    'Slider: confirmed model feedback, loading, rollback, Auto selection and hardware explanation passed; all writes mocked.',
+    'Speed/quality tiers: confirmed model feedback, loading, rollback, Auto selection and hardware explanation passed; all writes mocked.',
   );
 } finally {
+  releaseAutoSave();
   releaseSave();
   releaseEngines();
   await browser.close();

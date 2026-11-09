@@ -26,10 +26,7 @@ const ONSET_STRIP_H = 8; // px — non-interactive onset tick strip
 const KB_STEP_S = 0.01; // ←/→ nudge
 const KB_STEP_BIG_S = 0.1; // Ctrl+←/→ nudge
 const DRAG_DEADZONE_PX = 3;
-// Small/medium dubbing jobs are cheap enough to render in full. Avoid tying
-// visibility to transient WaveSurfer resize/zoom metrics until the transcript
-// is genuinely large; this also keeps short multi-speaker clips complete.
-const VIRTUALIZE_THRESHOLD = 200;
+const VIRTUALIZE_ABOVE = 200;
 
 const fmt = (t) => formatTimestamp(t, { decimals: 2 });
 
@@ -479,8 +476,7 @@ export default function SegmentTrack({
 
   const innerWidth = Math.max(viewWidth, Math.ceil(duration * pxPerSec));
   const playheadX = currentTime * pxPerSec - effScroll;
-  const windowed =
-    effSegments.length <= VIRTUALIZE_THRESHOLD ? effSegments : effSegments.slice(lo, hi);
+  const windowed = effSegments.length <= VIRTUALIZE_ABOVE ? effSegments : effSegments.slice(lo, hi);
   // Scroll offset baked into each box's `left` (viewport coordinates) instead
   // of a `translateX` on the lane — an animated lane transform is composited
   // by Chromium and flashes on some Windows GPU/WebView2 drivers (#373). In

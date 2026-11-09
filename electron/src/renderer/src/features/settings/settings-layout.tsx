@@ -1,8 +1,15 @@
 // Adapted from T3 Code's settingsLayout and WorkspacePageContainer (MIT).
 // See electron/T3CODE-LICENSE.txt.
-import type { ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+/**
+ * The current Settings page title (the breadcrumb). A section with the same
+ * title keeps its heading for screen readers only, so the page never repeats
+ * its name as a small heading right under the breadcrumb.
+ */
+export const SettingsPageTitleContext = createContext<string | null>(null);
 
 export function SettingsContent({
   children,
@@ -41,9 +48,16 @@ export function SettingsSection({
   icon?: LucideIcon;
   contentVariant?: 'rows' | 'cards';
 }) {
+  const repeatsPageTitle = useContext(SettingsPageTitleContext) === title;
   return (
     <section className="min-w-0 space-y-2.5">
-      <h2 className="flex min-h-7 items-center gap-2 px-1 text-sm font-normal tracking-[-0.005em] text-foreground/80">
+      <h2
+        className={
+          repeatsPageTitle
+            ? 'sr-only'
+            : 'flex min-h-7 items-center gap-2 px-1 text-sm font-normal tracking-[-0.005em] text-foreground/80'
+        }
+      >
         {Icon && <Icon aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />}
         {title}
       </h2>

@@ -9,6 +9,7 @@ try {
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.addInitScript(() => {
+    localStorage.setItem('voicestudio.setup.complete.v1', '1');
     const stream = { getTracks: () => [{ stop() {} }] };
     Object.defineProperty(navigator.mediaDevices, 'getUserMedia', {
       configurable: true,
@@ -86,7 +87,7 @@ try {
   const worklet = await page.request.get(base + '/aec-worklet.js');
   assert.equal(worklet.status(), 200);
   assert((await worklet.text()).includes('registerProcessor'));
-  await page.getByRole('button', { name: 'Dictation', exact: true }).click();
+  await page.getByRole('button', { name: 'Start dictation', exact: true }).click();
   await page.getByText('Listening…', { exact: true }).waitFor();
   socket.send(JSON.stringify({ type: 'partial', text: 'Live words' }));
   await page.getByText('Live words', { exact: true }).waitFor();

@@ -26,7 +26,7 @@ from dataclasses import dataclass
 
 
 # Captures: HH MM SS sep(`,` or `.`) ms (1-3 digits)
-_TS = r"(?:(\d{1,2}):)?([0-5]?\d):([0-5]?\d)[,.](\d{1,3})"
+_TS = r"(?:(\d+):)?([0-5]?\d):([0-5]?\d)[,.](\d{1,3})"
 # Horizontal whitespace only — NEVER plain `\s`, which matches newlines.
 # A timing line lives on ONE line, so `\s*` bought nothing but catastrophic
 # backtracking: under re.MULTILINE the engine restarts at every line start,
@@ -46,17 +46,14 @@ def _ts_to_seconds(h: str, m: str, s: str, ms: str) -> float:
 
 
 def _is_index_line(line: str) -> bool:
-    """True when `line` is a bare SubRip cue number.
+    """True when ``line`` is nothing but ASCII digits (a SubRip cue number).
 
-    Stricter than `str.isdigit()` on purpose: that also accepts non-ASCII
-    numerals (Arabic-Indic "١٩٩٩", Devanagari "२०२६", and the full-width
-    forms), which in a 646-language dubbing app are dialogue, never the
-    ASCII cue indices SubRip actually writes.
+    Deliberately narrower than ``str.isdigit()``, which also accepts
+    Arabic-Indic, Devanagari and full-width numerals. Those are spoken text in
+    their own scripts and must never be mistaken for a cue index.
     """
     stripped = line.strip()
-    return stripped.isascii() and stripped.isdigit()
-
-
+    return bool(stripped) and all("0" <= ch <= "9" for ch in stripped)
 @dataclass
 class SrtParseResult:
     segments: list[dict]
@@ -125,43 +122,45 @@ def parse_srt(content: str) -> SrtParseResult:
     # timing line (or end of file). This is robust to missing index
     # numbers and to spec deviations in the blank-line separator.
     matches = list(_TIMING_RE.finditer(text))
-    # A mixed file can stop numbering at any cue. Track each boundary;
-    # never treat an initial index as permission to discard later numbers.
+    # Running cue number, when the file numbers its cues: seeded from the line
+    # right before the first timing line.
     head = text[:matches[0].start()].strip() if matches else ""
     first_marker = head.split("\n")[-1].strip() if head else ""
     cue_index = int(first_marker) if _is_index_line(first_marker) and len(first_marker) <= 12 else None
     for i, m in enumerate(matches):
-        body_start = m.end()
         has_next = i + 1 < len(matches)
-        body_end = matches[i + 1].start() if has_next else len(text)
-        body = text[body_start:body_end]
-        if is_webvtt:
-            # The blank separator ends WebVTT dialogue; following identifiers,
-            # NOTE/STYLE blocks belong outside the cue, even when numeric.
-            body = re.split(r"\n[^\S\n]*\n", body, maxsplit=1)[0]
-        # An index must directly precede the next timing line. A blank line
-        # AFTER a number instead marks that number as preceding dialogue.
+        body = text[m.end():matches[i + 1].start() if has_next else len(text)]
         next_index = None
-        if has_next and not is_webvtt:
-            # Inspect lines rather than a backtracking regex on uploaded text.
-            # One newline terminates the marker; a second means it is dialogue.
-            marker_lines = body.split("\n")
-            if marker_lines and not marker_lines[-1].strip(" \t"):
-                marker_lines.pop()
-            marker = marker_lines[-1].strip(" \t") if marker_lines else ""
-            numeric = bool(marker) and marker.isascii() and marker.isdecimal()
-            separated = len(marker_lines) > 2 and not marker_lines[-2].strip()
-            expected_index = cue_index + 1 if cue_index is not None else i + 2
-            expected = marker.lstrip("0") == str(expected_index)
-            has_dialogue = any(line.strip() for line in marker_lines[:-1])
-            if numeric and expected and (has_dialogue or separated) and (cue_index is not None or separated):
-                body = "\n".join(marker_lines[:-1])
-                next_index = expected_index
+        if is_webvtt:
+            # Whatever follows the first blank separator (identifiers, NOTE and
+            # STYLE blocks) is not dialogue, numeric or not.
+            body = re.split(r"\n[^\S\n]*\n", body, maxsplit=1)[0]
+        elif has_next:
+            # The last line of this body is the NEXT cue's number when the file
+            # numbers its cues. Plain line inspection (no backtracking regex)
+            # because the text is user-uploaded.
+            pieces = body.split("\n")
+            if pieces and not pieces[-1].strip(" \t"):
+                pieces.pop()
+            marker = pieces[-1].strip(" \t") if pieces else ""
+            expected = cue_index + 1 if cue_index is not None else i + 2
+            before = pieces[:-1]
+            has_dialogue = any(piece.strip() for piece in before)
+            separated = len(pieces) > 2 and not pieces[-2].strip(" \t")
+            if (
+                marker
+                and _is_index_line(marker)
+                and marker.lstrip("0") == str(expected)
+                and (has_dialogue or separated)
+                and (cue_index is not None or separated)
+            ):
+                body = "\n".join(before)
+                next_index = expected
         cue_index = next_index
         try:
             start = _ts_to_seconds(m.group(1), m.group(2), m.group(3), m.group(4))
             end = _ts_to_seconds(m.group(5), m.group(6), m.group(7), m.group(8))
-        except (ValueError, IndexError):
+        except (ValueError, IndexError, OverflowError):
             skipped += 1
             continue
         if end <= start:
@@ -233,7 +232,7 @@ def format_cue_timestamp(seconds: float, ms_separator: str) -> str:
 # Cue markup a segment may carry: WebVTT's tags (`<i>`, `<c.yellow>`,
 # `<v Roger>`), SubRip's `<font>` (players skip it) and timestamp tags.
 _CUE_MARKUP_RE = re.compile(
-    r"</?(?:[biu]|c|v|lang|ruby|rt|font)(?=[\s.>])[^<>\n]*>|<(?:\d+:)?\d{2}:\d{2}\.\d{3}>",
+    r"</?(?:[biu]|c|v|lang|ruby|rt|rtc|rp|font)(?=[\s.>])[^<>\n]*>|<(?:\d+:)?\d{2}:\d{2}\.\d{3}>",
     re.IGNORECASE,
 )
 # In WebVTT an unescaped `<` always opens a tag and players drop unknown
@@ -245,12 +244,17 @@ _WEBVTT_TAG_RE = re.compile(r"<[^<>\n]*>")
 # `<font color=...>` and karaoke timestamps. Mirrored in
 # electron/src/shared/utils/importStory.js (CUE_MARKUP); keep the two in step.
 _SRT_MARKUP_RE = re.compile(
-    r"</?(?:[biu]|c|ruby|rt)(?:\.[^\s.<>]+)*>"
+    r"</?(?:[biu]|c|ruby|rt|rtc|rp)(?:\.[^\s.<>]+)*>"
     r"|<(?:v|lang)(?:\.[^\s.<>]+)*[ \t][^<>\n]*>|</(?:v|lang)>"
     r"|<font[ \t][^<>\n]*>|</?font>"
     r"|<(?:\d+:)?\d{2}:\d{2}\.\d{3}>",
     re.IGNORECASE,
 )
+# Ruby elements are markup, but ``rt``/``rtc``/``rp`` also contain fallback
+# speech that must be omitted.  The scanner below handles nesting without a
+# backtracking expression and is mirrored in Electron's story importer.
+_RUBY_TAG_RE = re.compile(r"<(/?)(ruby|rt|rtc|rp)(?=[\s.>/])[^<>\n]*>", re.IGNORECASE)
+_SRT_RUBY_TAG_RE = re.compile(r"</?(?:ruby|rt|rtc|rp)(?:\.[^\s.<>]+)*>", re.IGNORECASE)
 # SubRip/ASS overrides (`{\an8}`, `{\i1}`). A `{` in dialogue has no backslash.
 # The body excludes `{` for the same linear-time reason.
 _ASS_OVERRIDE_RE = re.compile(r"\{\\[^{}\n]*\}")
@@ -259,6 +263,52 @@ _ASS_OVERRIDE_RE = re.compile(r"\{\\[^{}\n]*\}")
 _LINE_BREAK_RE = re.compile(r"<br[ \t]*/?>", re.IGNORECASE)
 # An `&` that does not already start a character reference.
 _BARE_AMPERSAND_RE = re.compile(r"&(?!#\d+;|#[xX][0-9a-fA-F]+;|[A-Za-z][A-Za-z0-9]*;)")
+
+
+def _strip_ruby_annotations(text: str, *, webvtt: bool) -> str:
+    """Drop ruby annotation bodies while keeping the base text.
+
+    Ruby annotations can contain nested ``rt`` elements (usually inside an
+    ``rtc`` container), and malformed captions sometimes omit a closing tag.
+    A small tag scanner keeps the operation linear. An unclosed annotation
+    ends at the enclosing ruby or cue boundary, never in the next cue.
+    """
+    out: list[str] = []
+    annotation = None
+    depth = 0
+    ruby_depth = 0
+    annotation_ruby_depth = 0
+    last = 0
+    for match in _RUBY_TAG_RE.finditer(text):
+        if annotation is None:
+            out.append(text[last:match.start()])
+        tag = match.group(0)
+        if webvtt or _SRT_RUBY_TAG_RE.fullmatch(tag):
+            name = match.group(2).lower()
+            closing = bool(match.group(1))
+            if name == "ruby":
+                if closing:
+                    if ruby_depth == annotation_ruby_depth:
+                        annotation, depth = None, 0
+                    ruby_depth = max(0, ruby_depth - 1)
+                elif not tag.endswith("/>"):
+                    ruby_depth += 1
+            elif closing and name == annotation:
+                depth -= 1
+                if depth == 0:
+                    annotation = None
+            elif ruby_depth and not closing and not tag.endswith("/>"):
+                if annotation is None:
+                    annotation, depth = name, 1
+                    annotation_ruby_depth = ruby_depth
+                elif name == annotation:
+                    depth += 1
+        elif annotation is None:
+            out.append(tag)
+        last = match.end()
+    if annotation is None:
+        out.append(text[last:])
+    return "".join(out)
 
 
 def spoken_cue_text(text: str, *, webvtt: bool = False) -> str:
@@ -271,6 +321,7 @@ def spoken_cue_text(text: str, *, webvtt: bool = False) -> str:
     timestamps) and ASS overrides are removed.
     """
     out = _LINE_BREAK_RE.sub(" ", _ASS_OVERRIDE_RE.sub("", text))
+    out = _strip_ruby_annotations(out, webvtt=webvtt)
     out = (_WEBVTT_TAG_RE if webvtt else _SRT_MARKUP_RE).sub("", out)
     if webvtt:
         out = html.unescape(out)

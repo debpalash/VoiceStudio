@@ -1,192 +1,129 @@
-"""FunASR CAM++ speaker IDs must be clustered over the whole recording."""
-
+"""Whole-recording transcription for backends with per-call speaker labels."""
 from __future__ import annotations
 
 import asyncio
 import json
-import struct
-import wave
-from pathlib import Path
+from dataclasses import dataclass, field
 
 import pytest
-# These tests exercise ASR-consumer mechanics and assume ASR weights are
-# installed - neutralize the no-ASR preflight (its own suite:
-# tests/test_asr_model_missing.py).
+
+from services.asr_backend import FunASRBackend
+
 pytestmark = pytest.mark.usefixtures("asr_model_installed")
 
 
-from api.routers import dub_core as dc
-from services.asr_backend import FunASRBackend
+def _silent_wav(path, seconds, sr=16000):
+    import numpy as np
+    import soundfile as sf
+
+    sf.write(str(path), np.zeros(int(round(seconds * sr)), dtype="float32"), sr, subtype="PCM_16")
 
 
-def _make_wav(path: Path, seconds: float, sr: int = 16000) -> None:
-    samples = int(seconds * sr)
-    with wave.open(str(path), "wb") as wav:
-        wav.setnchannels(1)
-        wav.setsampwidth(2)
-        wav.setframerate(sr)
-        wav.writeframes(struct.pack(f"<{samples}h", *([0] * samples)))
+@dataclass
+class _Recorder:
+    """Fake ASR backend; remembers the length in seconds of each submitted file."""
+    full_audio_needed: bool
+    seen_seconds: list = field(default_factory=list)
 
-
-def _wav_duration(path: str) -> float:
-    with wave.open(path, "rb") as wav:
-        return wav.getnframes() / float(wav.getframerate())
-
-
-def _events(body: str) -> list[tuple[str, dict]]:
-    events = []
-    for block in body.strip().split("\n\n"):
-        lines = block.splitlines()
-        event = next(
-            (
-                line.removeprefix("event: ")
-                for line in lines
-                if line.startswith("event: ")
-            ),
-            None,
-        )
-        data = next(
-            (
-                line.removeprefix("data: ")
-                for line in lines
-                if line.startswith("data: ")
-            ),
-            None,
-        )
-        if event and data:
-            events.append((event, json.loads(data)))
-    return events
-
-
-class _RecordingASR:
-    id = "recording"
-
-    def __init__(self, *, whole_file: bool):
-        self.requires_full_audio_for_speaker_consistency = whole_file
-        self.durations = []
+    @property
+    def requires_full_audio_for_speaker_consistency(self):
+        return self.full_audio_needed
 
     def ensure_loaded(self):
         pass
 
     def transcribe(self, path, *, word_timestamps=True):
-        duration = _wav_duration(path)
-        self.durations.append(duration)
+        import soundfile as sf
+
+        info = sf.info(path)
+        self.seen_seconds.append(info.frames / info.samplerate)
         return {
-            "chunks": [
-                {
-                    "text": "A complete recording with enough words.",
-                    "timestamp": (0.0, duration),
-                }
-            ],
-            "segments": [
-                {
-                    "text": "A complete recording with enough words.",
-                    "start": 0.0,
-                    "end": duration,
-                    "speaker": "Speaker 1",
-                }
-            ],
+            "chunks": [{"text": "ok then", "timestamp": (0.2, 1.4)}],
+            "segments": [{"text": "ok then", "start": 0.2, "end": 1.4, "speaker": "Speaker 2"}],
             "language": "en",
         }
 
-    def unload(self):
-        pass
 
+def _run(monkeypatch, tmp_path, backend, seconds):
+    from api.routers import dub_core as dc
+    import services.asr_backend as ab
+    import services.speaker_clone as sc
 
-def _run_stream(tmp_path, monkeypatch, *, job_id: str, backend: _RecordingASR):
-    audio = tmp_path / f"{job_id}.wav"
-    _make_wav(audio, seconds=65.0)
-    dc._dub_jobs[job_id] = {
-        "audio_path": str(audio),
-        "vocals_path": None,
-        "scene_cuts": [],
-    }
-
-    monkeypatch.setattr(dc, "should_preload_tts_asr", lambda: False)
-    monkeypatch.setattr(
-        "services.asr_backend.get_active_asr_backend",
-        lambda *args, **kwargs: backend,
-    )
-    monkeypatch.setattr(dc, "offload_tts_for_asr", lambda *args, **kwargs: None)
-    monkeypatch.setattr(dc, "restore_tts_after_asr", lambda *args, **kwargs: None)
-    monkeypatch.setattr(dc, "_save_job", lambda *args, **kwargs: None)
-    monkeypatch.setattr(
-        "services.speaker_clone.extract_speaker_clones",
-        lambda *args, **kwargs: {},
-    )
-    monkeypatch.setattr(
-        dc,
-        "get_diarization_pipeline",
-        lambda *args, **kwargs: pytest.fail("inline turns must skip pyannote"),
-    )
+    wav = tmp_path / "in.wav"
+    _silent_wav(wav, seconds)
+    job_id = f"t_global_{id(backend)}"
+    dc._dub_jobs[job_id] = {"audio_path": str(wav), "vocals_path": None, "scene_cuts": []}
 
     guarded_calls = []
 
-    async def _run_guarded(executor, fn, **kwargs):
-        guarded_calls.append(kwargs)
+    async def _stub_guarded(pool, fn, **kw):
+        guarded_calls.append(kw)
         return fn()
 
-    monkeypatch.setattr(dc, "run_transcribe_guarded", _run_guarded)
-    monkeypatch.setattr(dc, "ASR_TRANSCRIBE_TIMEOUT_S", 321.0, raising=False)
-    monkeypatch.setattr(dc, "TRANSCRIBE_CHUNK_TIMEOUT_S", 123.0)
+    def _no_pyannote(*a, **k):
+        pytest.fail("pyannote must be skipped when the backend supplies speaker turns")
+
+    async def _noop(*a, **k):
+        return None
+
+    monkeypatch.setattr(dc, "should_preload_tts_asr", lambda: False)
+    monkeypatch.setattr(ab, "get_active_asr_backend", lambda *a, **k: backend)
+    monkeypatch.setattr(dc, "offload_tts_for_asr", lambda *a, **k: None)
+    monkeypatch.setattr(dc, "restore_tts_after_asr", lambda *a, **k: None)
+    monkeypatch.setattr(dc, "_save_job", lambda *a, **k: None)
+    monkeypatch.setattr(sc, "extract_speaker_clones", lambda *a, **k: {})
+    monkeypatch.setattr(dc, "get_diarization_pipeline", _no_pyannote)
+    monkeypatch.setattr(dc, "run_transcribe_guarded", _stub_guarded)
+    monkeypatch.setattr(dc, "ASR_TRANSCRIBE_TIMEOUT_S", 777.5)
+    monkeypatch.setattr(dc, "TRANSCRIBE_CHUNK_TIMEOUT_S", 44.25)
 
     async def _collect():
-        response = await dc.dub_transcribe_stream(job_id, per_segment_refs=False)
-        chunks = []
-        async for chunk in response.body_iterator:
-            chunks.append(chunk.decode() if isinstance(chunk, bytes) else str(chunk))
-        return "".join(chunks)
+        resp = await dc.dub_transcribe_stream(job_id, per_segment_refs=False)
+        out = []
+        async for part in resp.body_iterator:
+            out.append(part.decode() if isinstance(part, (bytes, bytearray)) else str(part))
+        return "".join(out)
 
     try:
-        return asyncio.run(_collect()), guarded_calls
+        body = asyncio.run(_collect())
     finally:
         dc._dub_jobs.pop(job_id, None)
+    return body, guarded_calls
 
 
-def test_funasr_campp_requires_one_global_transcription(monkeypatch):
-    monkeypatch.setenv("ASR_FUNASR_SPK", "cam++")
-    assert FunASRBackend().requires_full_audio_for_speaker_consistency is True
-
-    monkeypatch.setenv("ASR_FUNASR_SPK", "")
-    assert FunASRBackend().requires_full_audio_for_speaker_consistency is False
+def _start_payload(body):
+    lines = body.split("\n")
+    idx = lines.index("event: start")
+    return json.loads(lines[idx + 1].split("data:", 1)[1])
 
 
-def test_global_speaker_backend_receives_the_whole_recording(tmp_path, monkeypatch):
-    backend = _RecordingASR(whole_file=True)
-    body, guarded_calls = _run_stream(
-        tmp_path,
-        monkeypatch,
-        job_id="global_speakers",
-        backend=backend,
-    )
-
-    assert backend.durations == pytest.approx([65.0], abs=0.01)
-    assert guarded_calls == [
-        {
-            "what": "Dub chunk 1/1",
-            "timeout": 321.0,
-            "timeout_env": "OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S",
-        }
-    ]
-    start = next(data for event, data in _events(body) if event == "start")
-    assert start["chunks"] == 1
-    assert start["chunk_s"] == pytest.approx(65.0)
+@pytest.mark.parametrize("env_value, flag", [("cam++", True), ("", False)])
+def test_funasr_reports_whole_audio_need_per_env(monkeypatch, env_value, flag):
+    monkeypatch.setenv("ASR_FUNASR_SPK", env_value)
+    assert FunASRBackend().requires_full_audio_for_speaker_consistency is flag
 
 
-def test_ordinary_backend_keeps_bounded_chunks(tmp_path, monkeypatch):
-    backend = _RecordingASR(whole_file=False)
-    body, guarded_calls = _run_stream(
-        tmp_path,
-        monkeypatch,
-        job_id="ordinary_chunks",
-        backend=backend,
-    )
+def test_speaker_backend_receives_entire_file_once(monkeypatch, tmp_path):
+    rec = _Recorder(full_audio_needed=True)
+    body, guarded = _run(monkeypatch, tmp_path, rec, 71)
+    assert len(rec.seen_seconds) == 1
+    assert rec.seen_seconds[0] == pytest.approx(71.0, abs=0.1)
+    assert [g["what"] for g in guarded] == ["Dub chunk 1/1"]
+    assert guarded[0]["timeout"] == 777.5
+    assert guarded[0]["timeout_env"] == "OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S"
+    ev = _start_payload(body)
+    assert ev["chunks"] == 1
+    assert ev["chunk_s"] == pytest.approx(71.0, abs=0.1)
 
-    assert backend.durations == pytest.approx([30.0, 30.0, 5.0], abs=0.01)
-    assert [call["timeout"] for call in guarded_calls] == [123.0, 123.0, 123.0]
-    assert {call["timeout_env"] for call in guarded_calls} == {
-        "OMNIVOICE_TRANSCRIBE_CHUNK_TIMEOUT_S",
+
+def test_regular_backend_still_sliced_into_windows(monkeypatch, tmp_path):
+    rec = _Recorder(full_audio_needed=False)
+    body, guarded = _run(monkeypatch, tmp_path, rec, 71)
+    assert [round(x) for x in rec.seen_seconds] == [30, 30, 11]
+    assert len(guarded) == 3
+    assert {(g["timeout"], g["timeout_env"]) for g in guarded} == {
+        (44.25, "OMNIVOICE_TRANSCRIBE_CHUNK_TIMEOUT_S")
     }
-    start = next(data for event, data in _events(body) if event == "start")
-    assert start["chunks"] == 3
-    assert start["chunk_s"] == pytest.approx(30.0)
+    ev = _start_payload(body)
+    assert ev["chunks"] == 3
+    assert ev["chunk_s"] == pytest.approx(30.0)

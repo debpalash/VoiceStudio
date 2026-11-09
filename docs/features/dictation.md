@@ -15,13 +15,12 @@ audio to the versioned WebSocket API or transcribe files over HTTP. See the
 3. Put the cursor in a text field, press the shortcut, speak, then release or
    press again.
 
-The **Transcriptions** page offers the same recorder as one contextual
-**Start dictation** action: it appears in the empty state before the first
-transcript and moves to the page header once history exists. A desktop start
-wakes the recorder window before dispatch, so a hidden WebView cannot silently
-miss the request. The in-app action confirms listener receipt, then resolves
-only after microphone startup is accepted. Disabled, rejected, timed-out, or
-failed starts are reported back on the page.
+The Transcriptions page opens this recorder with one **Start dictation** action.
+Before you have any transcripts, this action is in the empty state; after the
+first transcript, it appears in the page header. On desktop, the action wakes
+the recorder window, waits for its acknowledgement, and confirms success only
+after the microphone start is accepted. The page reports when dictation is
+disabled, the request is rejected or times out, or the recorder fails to start.
 
 Whisper Tiny is the recommended default on macOS, Windows, and Linux. It
 auto-detects more than 90 languages. Parakeet TDT v3 remains available for its
@@ -33,6 +32,10 @@ ready for a normal paste. VoiceStudio retries a speech-level empty Sherpa decode
 only through another ASR model whose weights are already installed; when that
 fallback confirms the audio contains words, the silent model is demoted. This
 recovery never starts a download.
+
+Final transcript cleanup respects Arabic question marks, Urdu full stops, and
+Indic single/double danda as complete sentences, including before closing
+quotes. It does not append an extra Latin period to these marks.
 
 ## Destination and clipboard safety
 

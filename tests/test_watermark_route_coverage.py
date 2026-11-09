@@ -70,11 +70,6 @@ _PRODUCERS = [
     "api/routers/audiobook.py",
     "api/routers/archetypes.py",
     "services/persona_bundle.py",
-    # Remote execution: the synthesis happens on another machine, so the mark
-    # has to be embedded there — the control plane only ever sees encoded
-    # bytes. The guard walked api/ and services/ only, so this producer would
-    # have shipped unmarked with every check green.
-    "worker/executor.py",
 ]
 
 

@@ -1,4 +1,6 @@
+import { UsersIcon } from 'lucide-react';
 import { castVoice } from './cast-map';
+import { SettingsSection } from './settings-section';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 export function CastSettings({
@@ -16,16 +18,20 @@ export function CastSettings({
 }) {
   const { t } = useTranslation();
   return (
-    <details className="space-y-3" open={names.length > 0}>
-      <summary className="cursor-pointer text-sm font-medium">{t('audiobook.cast')}</summary>
+    <SettingsSection
+      title={t('audiobook.cast')}
+      icon={UsersIcon}
+      meta={names.length || undefined}
+      open={names.length > 0}
+    >
       {!names.length && (
         <p className="text-xs text-muted-foreground">{t('audiobook.cast_empty')}</p>
       )}
       {names.map((name) => (
         <details key={name} className="space-y-2">
-          <summary className="cursor-pointer text-sm">
+          <summary className="flex cursor-pointer items-baseline gap-2 rounded-md text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <span className="font-medium">{name}</span>
-            <span className="ml-2 text-xs text-muted-foreground">
+            <span className="min-w-0 truncate text-xs text-muted-foreground">
               {castVoice(cast, name)
                 ? profiles.find((profile) => profile.id === castVoice(cast, name))?.name ||
                   t('modelSettings.unavailable')
@@ -65,6 +71,6 @@ export function CastSettings({
           </div>
         </details>
       ))}
-    </details>
+    </SettingsSection>
   );
 }

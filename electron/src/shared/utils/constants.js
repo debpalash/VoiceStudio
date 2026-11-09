@@ -66,6 +66,25 @@ export const CATEGORIES = {
   ],
 };
 
+/**
+ * Stable ids for the Chinese-dialect tokens. The tokens are model vocabulary
+ * and stay as they are; the UI shows a translated `clone.dialect_<id>` label.
+ */
+export const CHINESE_DIALECT_IDS = {
+  河南话: 'henan',
+  陕西话: 'shaanxi',
+  四川话: 'sichuan',
+  贵州话: 'guizhou',
+  云南话: 'yunnan',
+  桂林话: 'guilin',
+  济南话: 'jinan',
+  石家庄话: 'shijiazhuang',
+  甘肃话: 'gansu',
+  宁夏话: 'ningxia',
+  青岛话: 'qingdao',
+  东北话: 'dongbei',
+};
+
 export const PRESETS = [
   {
     id: 'narrator',

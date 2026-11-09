@@ -18,6 +18,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { throttle } from '@tanstack/react-pacer';
 import { toast } from 'sonner';
 import { ApiError, apiJson, describeError, isAbortError } from '@/lib/api/client';
+import { failureTopicOf } from '@shared/utils/failureCatalog';
 import { generateClone, sanitizeInstruct } from '@/lib/api/generate';
 import type {
   DesignRecipe,
@@ -30,14 +31,17 @@ import { effectiveSamplingSteps } from '@/lib/audio/quality';
 import { cachedTtsLanguagesSupported } from '@/lib/language-options';
 import { tr } from '@/lib/i18n-text';
 import { queryKeys } from '@/lib/query';
-import { cloneSettingsStore } from '@/lib/store/clone-settings';
+import { cloneSettingsStore, DEFAULT_CLONE_SETTINGS } from '@/lib/store/clone-settings';
 import { setLatestOutput } from '@/lib/store/output';
 import { referenceStore } from '@/lib/store/reference';
 import { beginAppActivity } from '@/lib/app-activity';
-import { useTtsReadiness } from './use-tts-readiness';
+import { isPresetOnly, useTtsReadiness } from './use-tts-readiness';
 import { useEngines } from './use-engines';
+import { expressionCaps } from '@/lib/expression';
 import { recordActionBreadcrumb } from '@/lib/report-breadcrumb';
+import { useResolvedLicenceError } from './use-resolved-licence-error';
 import { announceDroppedSpeech } from '@/lib/dropped-speech';
+import { recordTakeSpeed } from '@/lib/store/quality-offer';
 
 const TIMER_TICK_MS = 100;
 const PROGRESS_THROTTLE_MS = 100;
@@ -58,7 +62,7 @@ export interface DesignGenerateInput {
   seed?: number;
   language?: string;
   profileId?: string | null;
-  /** Stored with the take so reopening it rebuilds the same draft (#2389). */
+  /** Draft to record alongside the take (display only; the audio ignores it). */
   recipe?: DesignRecipe;
 }
 
@@ -67,7 +71,7 @@ export interface DesignGenerateInput {
  * `cloning`: a saved sample would be re-rendered, but the engine ignores
  * reference audio, so it would speak with a preset voice instead.
  */
-type DesignBlocker = 'engine' | 'loading' | 'design' | 'cloning' | null;
+export type DesignBlocker = 'engine' | 'loading' | 'design' | 'cloning' | null;
 
 /**
  * True when re-rendering this linked design profile clones its saved sample
@@ -93,6 +97,8 @@ export interface UseGenerateClone {
   /** 0..100 reported while model weights or runtime are loading. */
   modelProgress: number | null;
   error: string | null;
+  /** Stable backend failure topic of `error` (e.g. `REFERENCE_STT_MISSING`), when it sent one. */
+  errorTopic: string | null;
   clearError(): void;
   canGenerate: boolean;
   canGenerateDesign: boolean;
@@ -104,8 +110,17 @@ export interface UseGenerateClone {
    */
   designBlockerFor(profile: Profile | null | undefined): DesignBlocker;
   cloneBlocker: CloneBlocker;
-  /** How the active engine reads `instruct`: OmniVoice tags or as written (#2389). */
+  /** The active engine's reading of `instruct`; the OmniVoice tag list unless it says otherwise. */
   instructVocabulary: InstructVocabulary;
+}
+
+/** A saved voice carries its own transcript; send only a manual correction (#3192),
+ * so unchanged or blank text keeps the server's stored-transcript path. */
+export function manualProfileTranscript(
+  typed: string,
+  stored: string | null | undefined,
+): string | undefined {
+  return typed.trim() && typed !== (stored ?? '') ? typed : undefined;
 }
 
 function isModelNotDownloaded(err: unknown): boolean {
@@ -147,6 +162,11 @@ function announceResultNotices(result: GenerateResult): void {
   }
 }
 
+/** Drive a single synthesis lifecycle and forward per-take engine capabilities.
+ *
+ * Cloning may include IndexTTS2 text or vector emotion; unsupporting engines
+ * and the independent Voice Design workspace never inherit those controls.
+ */
 function useGenerateController(): UseGenerateClone {
   const queryClient = useQueryClient();
   const inputBlocker = useCloneInputsReadiness();
@@ -155,11 +175,13 @@ function useGenerateController(): UseGenerateClone {
   const blocker = cloneEngineBlocker ?? inputBlocker;
   const activeTts = useEngines().activeTts;
   const instructVocabulary = activeTts?.instruct_vocabulary ?? 'tags';
+  const sendsDirection = expressionCaps(activeTts).emotion === 'direction';
   // An engine that declares it can't design would only fail inside the
   // engine (and /generate refuses it); say so before anything starts.
   const designBlocker: DesignBlocker =
     activeTts?.supports_voice_design === false ? 'design' : ttsBlocker;
   const cannotClone = activeTts?.supports_cloning === false;
+  const presetOnly = isPresetOnly(activeTts);
   const designBlockerFor = useCallback(
     (profile: Profile | null | undefined): DesignBlocker => {
       if (!clonesSavedSample(profile)) return designBlocker;
@@ -169,6 +191,14 @@ function useGenerateController(): UseGenerateClone {
     [cannotClone, designBlocker, ttsBlocker],
   );
   const [error, setError] = useState<string | null>(null);
+  const [errorTopic, setErrorTopic] = useState<string | null>(null);
+  const [errorCause, setErrorCause] = useState<unknown>(null);
+  const clearError = useCallback(() => {
+    setError(null);
+    setErrorTopic(null);
+    setErrorCause(null);
+  }, []);
+  useResolvedLicenceError(errorCause, clearError);
   const [isGenerating, setIsGenerating] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [progress, setProgress] = useState<number | null>(null);
@@ -180,6 +210,8 @@ function useGenerateController(): UseGenerateClone {
   const cancelledRef = useRef(false);
   const activeRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // A take that waited for model loading says nothing about render speed.
+  const sawModelLoadRef = useRef(false);
 
   // Trailing-edge throttle can fire after completion; `activeRef` gates it so
   // a stale 100% never lands on an idle form.
@@ -225,6 +257,8 @@ function useGenerateController(): UseGenerateClone {
           ].includes(model.sub_stage ?? '')
             ? (model.sub_stage as UseGenerateClone['modelStage'])
             : null;
+          if (nextModelStage || model.loading || model.status === 'loading')
+            sawModelLoadRef.current = true;
           setModelStage(nextModelStage);
           setModelProgress(
             typeof model.progress === 'number' ? Math.max(0, Math.min(100, model.progress)) : null,
@@ -257,6 +291,7 @@ function useGenerateController(): UseGenerateClone {
     [],
   );
 
+  /** Synthesize a clone or designed take; only supported clone engines get emotion. */
   const generate = useCallback(
     async (design?: DesignGenerateInput) => {
       const settings = cloneSettingsStore.state;
@@ -266,6 +301,7 @@ function useGenerateController(): UseGenerateClone {
           design?.language ?? settings.language,
         ])
       ) {
+        setErrorCause(null);
         setError(tr('languagePicker.chooseSupported'));
         return;
       }
@@ -280,7 +316,8 @@ function useGenerateController(): UseGenerateClone {
             ) || !design.text.trim()
           : blocker ||
             !settings.text.trim() ||
-            (!settings.selectedProfileId && !reference.file?.size)
+            // A preset-only engine speaks its preset voice: no clip or profile.
+            (!presetOnly && !settings.selectedProfileId && !reference.file?.size)
       ) {
         if (blocker === 'reference') setWorkspace({ panel: 'voice' });
         return;
@@ -297,7 +334,10 @@ function useGenerateController(): UseGenerateClone {
 
       activeRef.current = true;
       cancelledRef.current = false;
+      sawModelLoadRef.current = false;
       setError(null);
+      setErrorTopic(null);
+      setErrorCause(null);
       setIsGenerating(true);
       setElapsedSeconds(0);
       setProgress(null);
@@ -311,30 +351,66 @@ function useGenerateController(): UseGenerateClone {
       const controller = new AbortController();
       abortRef.current = controller;
       try {
-        const free = design?.instruct ?? settings.instruct;
-        // Only OmniVoice's closed tag set needs reducing; other engines read
-        // the description natively and would lose whatever the sanitizer drops.
-        const instruct = !free.trim()
-          ? ''
-          : instructVocabulary === 'freeform'
-            ? free.trim()
-            : announceInstructWarnings(free);
+        // A preset-only engine that can't design never reads a style
+        // instruct, and /generate refuses one there as a design request: the
+        // preset voice take keeps working with a leftover instruct (#3413).
+        const style =
+          design?.instruct ??
+          (presetOnly && activeTts?.supports_voice_design === false ? '' : settings.instruct);
+        // Delivery direction is a per-engine draft like IndexTTS2 emotion: only
+        // engines whose instruct steers a clone receive it; others never see it.
+        const direction = !design && sendsDirection ? settings.direction.trim() : '';
+        const free = [style.trim(), direction].filter(Boolean).join(', ');
+        // Only tag-list engines need the text filtered (with warnings); a
+        // free-form engine reads whatever was written.
+        const wording = free.trim();
+        let instruct = wording;
+        if (wording && instructVocabulary !== 'freeform') instruct = announceInstructWarnings(free);
         const input = {
           text: design?.text ?? settings.text,
           seed: design?.seed,
           language: design?.language ?? settings.language,
-          profileId: design ? (design.profileId ?? null) : settings.selectedProfileId,
-          refAudio: design || settings.selectedProfileId ? null : reference.file,
-          refText: design ? undefined : settings.refText,
+          // A preset-only engine renders its preset voice; sending the saved
+          // voice or clip would be refused (it cannot clone).
+          profileId: design
+            ? (design.profileId ?? null)
+            : presetOnly
+              ? null
+              : settings.selectedProfileId,
+          refAudio: design || settings.selectedProfileId || presetOnly ? null : reference.file,
+          refText:
+            design || presetOnly
+              ? undefined
+              : settings.selectedProfileId
+                ? manualProfileTranscript(
+                    settings.refText,
+                    queryClient
+                      .getQueryData<Profile[]>(queryKeys.profiles)
+                      ?.find((profile) => profile.id === settings.selectedProfileId)?.ref_text,
+                  )
+                : settings.refText,
           instruct,
           instructVocabulary,
           designRecipe: design?.recipe,
+          // IndexTTS2's emotion controls affect the performance, not the
+          // reference voice. Never leak stale emotion options to other engines
+          // or to the separate Voice Design workspace.
+          ...(!design && activeTts?.supports_emotion
+            ? settings.emotionMode === 'vector'
+              ? { emoVector: [...settings.emotionVector] }
+              : settings.emotionMode === 'text' && settings.emotionText.trim()
+                ? { emoText: settings.emotionText.trim(), emoAlpha: settings.emotionAlpha }
+                : {}
+            : {}),
           steps: effectiveSamplingSteps(
             settings.steps,
             queryClient.getQueryData<EnginesResponse>(queryKeys.engines)?.tts?.active,
           ),
           wavBits: settings.wavBits,
           effectPreset: settings.effectPreset,
+          presetVoice: activeTts?.preset_voices?.includes(settings.presetVoice)
+            ? settings.presetVoice
+            : undefined,
           cfg: settings.cfg,
           speed: settings.speed,
           tShift: settings.tShift,
@@ -350,10 +426,43 @@ function useGenerateController(): UseGenerateClone {
           onProgress,
         });
         announceResultNotices(result);
+        const spokenText = (design?.text ?? settings.text).trim();
+        if (
+          activeTts &&
+          !sawModelLoadRef.current &&
+          result.genTimeSeconds !== null &&
+          result.durationSeconds !== null
+        )
+          // Local only: per engine and device, so the next estimate is this machine's.
+          recordTakeSpeed(activeTts.id, activeTts.effective_device, {
+            chars: spokenText.length,
+            audioSeconds: result.durationSeconds,
+            renderSeconds: result.genTimeSeconds,
+            steps: input.steps,
+            at: Date.now(),
+          });
         setLatestOutput(result, design?.text ?? settings.text);
         recordActionBreadcrumb(`generate:${reportMode}:complete`);
-        toast.success(tr('tts.generationComplete'));
-        if (!design) rememberTake(result.id, settings);
+        toast.success(tr('tts.generationComplete'), { position: 'top-right' });
+        if (!design)
+          // Record what was actually rendered: a take sent without emotion (an
+          // engine without IndexTTS2 controls, or Off) or without a delivery
+          // direction is saved without it, so reusing it later never adds
+          // direction the recording did not use.
+          rememberTake(result.id, {
+            ...settings,
+            // The steps actually rendered, not "best quality" for whichever engine is active later.
+            steps: input.steps,
+            direction,
+            ...('emoText' in input || 'emoVector' in input
+              ? {}
+              : {
+                  emotionMode: DEFAULT_CLONE_SETTINGS.emotionMode,
+                  emotionText: DEFAULT_CLONE_SETTINGS.emotionText,
+                  emotionAlpha: DEFAULT_CLONE_SETTINGS.emotionAlpha,
+                  emotionVector: [...DEFAULT_CLONE_SETTINGS.emotionVector],
+                }),
+          });
         void Promise.all([
           queryClient.invalidateQueries({ queryKey: queryKeys.history }),
           queryClient.invalidateQueries({ queryKey: ['loaded-models'] }),
@@ -362,6 +471,8 @@ function useGenerateController(): UseGenerateClone {
       } catch (err) {
         if (!cancelledRef.current) {
           recordActionBreadcrumb(`generate:${reportMode}:error`);
+          setErrorCause(err);
+          setErrorTopic(failureTopicOf(err) ?? null);
           setError(
             isAbortError(err)
               ? tr('tts_errors.timeout')
@@ -389,7 +500,16 @@ function useGenerateController(): UseGenerateClone {
           .catch(() => {});
       }
     },
-    [queryClient, onProgress, blocker, designBlockerFor, instructVocabulary],
+    [
+      queryClient,
+      onProgress,
+      blocker,
+      designBlockerFor,
+      instructVocabulary,
+      activeTts,
+      presetOnly,
+      sendsDirection,
+    ],
   );
 
   const cancel = useCallback(() => {
@@ -411,7 +531,8 @@ function useGenerateController(): UseGenerateClone {
     modelStage,
     modelProgress,
     error,
-    clearError: () => setError(null),
+    errorTopic,
+    clearError,
     canGenerate: blocker === null && !isGenerating,
     canGenerateDesign: designBlocker === null && !isGenerating,
     designBlocker,

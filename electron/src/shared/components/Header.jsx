@@ -1,6 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import GpuTarget from './GpuTarget';
 import EngineQuickSwitch from './EngineQuickSwitch';
 import { engineDisplayName } from '../utils/engineDisplayName';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
@@ -305,14 +304,16 @@ export default function Header({
           <TitleTabs mode={mode} setMode={setMode} />
         </div>
       ) : (
-        /* Left: view title + breadcrumb */
+        /* Left: view title + breadcrumb. On macOS the native traffic lights
+           float over this corner, so the block gets an extra start inset. */
         <div
-          className={`flex items-center gap-[14px] justify-self-start min-w-0 ${
-            hasMacTrafficLights ? 'header-area__left--mac-inset' : ''
+          className={`flex items-center gap-[14px] justify-self-start min-w-0${
+            hasMacTrafficLights ? ' header-area__lead--mac-inset' : ''
           }`}
         >
           <div className="inline-flex items-center gap-[6px] h-[var(--chrome-pill-h)] [font-family:var(--font-sans)] max-[961px]:gap-[5px]">
             <span
+              /* Decorative pulse: stop it when the OS asks for reduced motion. */
               className="w-[7px] h-[7px] rounded-full shrink-0 [animation:hqPulse_2.4s_ease-in-out_infinite] motion-reduce:[animation:none] max-[821px]:hidden"
               style={dotStyle}
             />
@@ -400,10 +401,6 @@ export default function Header({
                 </span>
               </>
             )}
-            {/* Where the next job runs. Renders nothing until at least one
-                remote worker is enrolled, so a user who never opts in sees
-                no change to the header at all. */}
-            <GpuTarget />
             <span className="[border-left:1px_solid_var(--chrome-border)] pl-[6px] flex items-center gap-1">
               <Badge
                 tone={

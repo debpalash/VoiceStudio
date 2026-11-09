@@ -60,6 +60,16 @@ def test_transcribe_round_trip(asr):
     assert result["segments"][0]["text"] == "echo:/tmp/clip.wav"
 
 
+def test_transcribe_exposes_chunks_from_segments(asr):
+    # Dub reads only `chunks`; a sidecar reply with just `segments` used to
+    # produce "Transcription produced no segments" (#2786).
+    result = asr.transcribe("/tmp/clip.wav", word_timestamps=False)
+    seg = result["segments"][0]
+    assert result["chunks"] == [
+        {"text": seg["text"], "timestamp": (seg.get("start"), seg.get("end"))}
+    ]
+
+
 def test_two_calls_reuse_one_sidecar(asr):
     asr.transcribe("/a.wav")
     proc1 = asr._proc.pid
@@ -123,7 +133,8 @@ def test_isolated_backend_listed_in_settings_with_explanatory_hint():
         assert entry["reason"]  # unavailable must always say why
     # Wraps the same CTranslate2 engine as faster-whisper → same device support
     # (the registry default ("cpu",) would dishonestly hide CUDA routing).
-    assert entry["gpu_compat"] == ["cuda", "cpu"]
+    # Lists and tuples serialise to the same JSON array; compare the contents.
+    assert list(entry["gpu_compat"]) == ["cuda", "cpu"]
 
 
 def test_get_active_asr_backend_caches_isolated_singleton(monkeypatch):
@@ -172,7 +183,8 @@ def test_sidecar_accepts_max_profile_decode_width(monkeypatch):
     assert calls == [
         (
             "/max.wav",
-            {"word_timestamps": False, "beam_size": 8, "best_of": 8},
+            {"word_timestamps": False, "condition_on_previous_text": False,
+             "beam_size": 8, "best_of": 8},
         )
     ]
     assert result["text"] == "heard"

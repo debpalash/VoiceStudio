@@ -1,5 +1,5 @@
 name: 🤝 Sponsorship inquiry
-description: Support VoiceStudio and (optionally) claim a logo slot. Not for bugs or feature requests.
+description: Ask for sponsor recognition after you pay. Not for bugs or feature requests.
 title: "Sponsorship inquiry: "
 labels: ["sponsor"]
 body:
@@ -10,7 +10,9 @@ body:
 
         VoiceStudio is free, local-first, and AGPL-3.0 — sponsorship keeps development going.
         See **[SPONSORS.md](https://github.com/debpalash/VoiceStudio/blob/main/SPONSORS.md)** for tiers, placements, and logo guidelines.
-        Prefer to just donate? [Ko-fi](https://ko-fi.com/debpalash) (recurring) or [PayPal](https://paypal.me/palashCoder) (one-time) — you don't need this form for that.
+        Prefer to just donate? [GitHub Sponsors](https://github.com/sponsors/debpalash) (monthly or one-time), [Ko-fi](https://ko-fi.com/debpalash) (recurring), or [PayPal](https://paypal.me/palashCoder) (one-time) — you don't need this form for that.
+
+        **This issue is public.** Only enter what you want shown. Send receipts and private details to partner@voicestudio.sh. Recognition starts after payment is verified.
   - type: input
     id: name
     attributes:
@@ -36,10 +38,11 @@ body:
       label: Tier you're interested in
       description: See SPONSORS.md for what each tier includes. Not sure? Pick "Not sure yet".
       options:
-        - Backer
-        - Bronze
-        - Silver
-        - Gold
+        - Supporter ($5+)
+        - Community Sponsor ($25)
+        - Development Sponsor ($100)
+        - Company Sponsor ($500)
+        - Strategic Sponsor ($1,000)
         - Not sure yet — let's talk
         - Custom / annual arrangement
     validations:
@@ -47,8 +50,10 @@ body:
   - type: dropdown
     id: method
     attributes:
-      label: How you'd like to support
+      label: How you pay or plan to pay
       options:
+        - GitHub Sponsors (monthly)
+        - GitHub Sponsors (one-time)
         - Ko-fi (recurring)
         - Ko-fi (one-time)
         - PayPal (one-time)
@@ -58,10 +63,8 @@ body:
   - type: input
     id: contact
     attributes:
-      label: How should we reach you?
-      description: Email or another contact. (GitHub will also notify you on this issue.)
-    validations:
-      required: true
+      label: Public contact (optional)
+      description: GitHub notifies you on this issue. Don't enter a private email here; use partner@voicestudio.sh for that.
   - type: textarea
     id: notes
     attributes:

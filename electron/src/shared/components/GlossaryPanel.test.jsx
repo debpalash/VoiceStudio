@@ -23,12 +23,12 @@ describe('Glossary term entry', () => {
     const onChange = vi.fn();
     addGlossaryTerm.mockResolvedValue({ id: 1, source: 'Studio', target: 'Estudio', note: '' });
     render(<GlossaryPanel projectId="test" targetLang="es" onChange={onChange} />);
-    await screen.findByText('No terms yet. Add one below or click Auto.');
+    await screen.findByText('No terms yet. Add one below or find them automatically.');
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Add term' })).toBeDisabled();
-    fireEvent.change(screen.getByLabelText('Source'), { target: { value: 'Studio' } });
-    fireEvent.change(screen.getByLabelText('Target'), { target: { value: 'Estudio' } });
-    fireEvent.submit(screen.getByLabelText('Target').closest('form'));
+    fireEvent.change(screen.getByLabelText('Source term'), { target: { value: 'Studio' } });
+    fireEvent.change(screen.getByLabelText('Preferred translation'), { target: { value: 'Estudio' } });
+    fireEvent.submit(screen.getByLabelText('Preferred translation').closest('form'));
     await waitFor(() =>
       expect(addGlossaryTerm).toHaveBeenCalledWith('test', {
         source: 'Studio',
@@ -37,7 +37,7 @@ describe('Glossary term entry', () => {
       }),
     );
     expect(await screen.findByRole('table')).toBeInTheDocument();
-    expect(screen.getByLabelText('Source')).toHaveValue('');
+    expect(screen.getByLabelText('Source term')).toHaveValue('');
   });
 
   it('makes editing an existing term available through a named button', async () => {
@@ -51,7 +51,7 @@ describe('Glossary term entry', () => {
     render(<GlossaryPanel projectId="test" targetLang="es" />);
     fireEvent.click(await screen.findByRole('button', { name: 'Edit' }));
     const table = screen.getByRole('table');
-    const target = table.querySelector('input[aria-label="Target"]');
+    const target = table.querySelector('input[aria-label="Preferred translation"]');
     fireEvent.change(target, { target: { value: 'Estudio nuevo' } });
     fireEvent.keyDown(target, { key: 'Enter' });
     await waitFor(() =>

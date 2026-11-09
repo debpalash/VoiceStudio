@@ -1,39 +1,56 @@
-import { generationFailureMessage } from '@shared/utils/generationFailureMessage.ts';
-import { languageRejectionMessage } from '@shared/utils/languageRejection.ts';
+import { generationFailureMessage } from "@shared/utils/generationFailureMessage.ts";
+import { languageRejectionMessage } from "@shared/utils/languageRejection.ts";
 /** Native builds use Electron's `/api` protocol proxy. The production web
  * bundle is served by FastAPI itself, whose routes live at the origin root. */
-import type { ApiErrorPayload } from './types';
-import { tr } from '@/lib/i18n-text';
-import { getBackendStatusSnapshot } from '@/hooks/use-backend-status';
-import { isBackendReachable } from '@shared/utils/backendStage';
-import { recordBackendContact } from '@shared/utils/backendContact';
+import type { ApiErrorPayload } from "./types";
+import { tr } from "@/lib/i18n-text";
+import { getBackendStatusSnapshot } from "@/hooks/use-backend-status";
+import { isBackendReachable } from "@shared/utils/backendStage";
+import { recordBackendContact } from "@shared/utils/backendContact";
 import {
   clearAdminSession,
   CSRF_HEADER_NAME,
   getAdminSession,
   isSameOriginApi,
-} from '@shared/api/authSession';
-import { joinApiPath } from '../../../../shared/web-api-routing';
-export { joinApiPath } from '../../../../shared/web-api-routing';
+} from "@shared/api/authSession";
+import { joinApiPath } from "../../../../shared/web-api-routing";
+import {
+  announceModelLicenceRequired,
+  modelLicenceRequirements,
+} from "@/features/settings/model-license-contract";
+export { joinApiPath } from "../../../../shared/web-api-routing";
 
 type ApiBaseWindow = Window & { __OMNIVOICE_API_BASE__?: string };
 
-export function resolveApiBase(webDeployment: boolean, dev: boolean, win?: ApiBaseWindow): string {
-  if (!webDeployment || dev) return '/api';
+export function resolveApiBase(
+  webDeployment: boolean,
+  dev: boolean,
+  win?: ApiBaseWindow,
+): string {
+  if (!webDeployment || dev) return "/api";
   const runtime = win?.__OMNIVOICE_API_BASE__?.trim();
-  return runtime ? runtime.replace(/\/+$/, '') : '';
+  return runtime ? runtime.replace(/\/+$/, "") : "";
 }
 
 export const API_BASE = resolveApiBase(
   __WEB_DEPLOYMENT__,
   import.meta.env.DEV,
-  typeof window === 'undefined' ? undefined : (window as ApiBaseWindow),
+  typeof window === "undefined" ? undefined : (window as ApiBaseWindow),
 );
 
 export function absoluteApiBase(): string {
-  if (typeof window === 'undefined') return API_BASE;
-  return new URL(API_BASE || '/', window.location.href).toString().replace(/\/+$/, '');
+  if (typeof window === "undefined") return API_BASE;
+  return new URL(API_BASE || "/", window.location.href)
+    .toString()
+    .replace(/\/+$/, "");
 }
+
+const BACKEND_MARKER = "x-omnivoice-backend";
+// nginx's 502/503/504 and Cloudflare's 520-527/530: a proxy answering for a slow
+// or unreachable backend.
+const PROXY_GATEWAY_STATUSES = new Set([
+  502, 503, 504, 520, 521, 522, 523, 524, 525, 526, 527, 530,
+]);
 
 export class ApiError extends Error {
   readonly status: number;
@@ -42,9 +59,13 @@ export class ApiError extends Error {
   /** The parsed JSON error body when there was one. */
   readonly payload: ApiErrorPayload | null;
 
-  constructor(status: number, detail: string, payload: ApiErrorPayload | null = null) {
+  constructor(
+    status: number,
+    detail: string,
+    payload: ApiErrorPayload | null = null,
+  ) {
     super(detail);
-    this.name = 'ApiError';
+    this.name = "ApiError";
     this.status = status;
     this.detail = detail;
     this.payload = payload;
@@ -60,7 +81,9 @@ export function apiPath(path: string): string {
 
 export function isAbortError(err: unknown): boolean {
   return (
-    typeof err === 'object' && err !== null && (err as { name?: unknown }).name === 'AbortError'
+    typeof err === "object" &&
+    err !== null &&
+    (err as { name?: unknown }).name === "AbortError"
   );
 }
 
@@ -72,28 +95,37 @@ export function describeError(err: unknown): string {
 }
 
 function detailToString(detail: unknown): string {
-  const localized = languageRejectionMessage(detail, tr) || generationFailureMessage(detail, tr);
+  const localized =
+    languageRejectionMessage(detail, tr) ||
+    generationFailureMessage(detail, tr);
   if (localized) return localized;
   if (
     detail &&
-    typeof detail === 'object' &&
-    'code' in detail &&
-    detail.code === 'argos_runtime_unavailable'
+    typeof detail === "object" &&
+    "code" in detail &&
+    detail.code === "argos_runtime_unavailable"
   )
-    return tr('engines.argosRuntimeUnavailable');
+    return tr("engines.argosRuntimeUnavailable");
   if (
     detail &&
-    typeof detail === 'object' &&
-    'code' in detail &&
-    detail.code === 'dub_background_unavailable'
+    typeof detail === "object" &&
+    "code" in detail &&
+    detail.code === "dub_background_unavailable"
   )
-    return tr('dubIntegrity.backgroundUnavailable');
-  if (typeof detail === 'string') return detail;
-  if (detail == null) return '';
+    return tr("dubIntegrity.backgroundUnavailable");
   if (
-    typeof detail === 'object' &&
-    'message' in detail &&
-    typeof detail.message === 'string' &&
+    detail &&
+    typeof detail === "object" &&
+    "code" in detail &&
+    detail.code === "source_language_required"
+  )
+    return tr("workflowRun.invalid_language");
+  if (typeof detail === "string") return detail;
+  if (detail == null) return "";
+  if (
+    typeof detail === "object" &&
+    "message" in detail &&
+    typeof detail.message === "string" &&
     detail.message.trim()
   )
     return detail.message;
@@ -106,7 +138,7 @@ function detailToString(detail: unknown): string {
 
 /** Build the ApiError for a non-2xx response: JSON `detail` when present, else the body text. */
 export async function errorFromResponse(res: Response): Promise<ApiError> {
-  let text = '';
+  let text = "";
   try {
     text = await res.text();
   } catch {
@@ -116,46 +148,91 @@ export async function errorFromResponse(res: Response): Promise<ApiError> {
   if (text) {
     try {
       const parsed: unknown = JSON.parse(text);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
         payload = parsed as ApiErrorPayload;
       }
     } catch {
       // Plain-text body.
     }
   }
+  // A gateway status that is not JSON did not come from VoiceStudio: a reverse
+  // proxy (nginx, Caddy, a tunnel, Cloudflare) gave up waiting and answered with
+  // its own HTML page (#2781, #3219). Echoing that page told the user nothing about the real
+  // situation, which is that the backend may well still be rendering.
+  if (
+    !payload &&
+    text.trim() &&
+    PROXY_GATEWAY_STATUSES.has(res.status) &&
+    !res.headers?.get?.(BACKEND_MARKER)
+  ) {
+    return new ApiError(
+      res.status,
+      tr("tts_errors.proxy_gateway_error", { status: res.status }),
+      null,
+    );
+  }
+  // Starlette's unrouted-path reply. The running backend has no such route, so
+  // name where the request went instead of an unexplained "Not Found" (#2627).
+  if (
+    res.status === 404 &&
+    payload &&
+    payload.detail === "Not Found" &&
+    Object.keys(payload).length === 1
+  ) {
+    let route = "";
+    try {
+      route = new URL(res.url).pathname;
+    } catch {
+      // No URL on a synthetic response; the message still reads correctly.
+    }
+    return new ApiError(
+      404,
+      tr("tts_errors.route_not_found", { route: route || "/" }),
+      payload,
+    );
+  }
+  // Any feature can hit a model whose licence is not yet accepted; one
+  // app-level dialog handles them all.
+  const licence = announceModelLicenceRequired(payload)
+    ? modelLicenceRequirements(payload)
+    : null;
   const detail =
+    (licence && tr("modelLicense.requiredError")) ||
     generationFailureMessage(payload, tr) ||
-    (payload && 'detail' in payload
+    (payload && "detail" in payload
       ? detailToString(payload.detail)
-      : payload && typeof payload.error === 'string'
+      : payload && typeof payload.error === "string"
         ? payload.error.trim()
-        : payload && typeof payload.message === 'string'
+        : payload && typeof payload.message === "string"
           ? payload.message.trim()
           : text.trim());
-  const statusLine = `HTTP ${res.status}${res.statusText ? ` ${res.statusText}` : ''}`;
+  const statusLine = `HTTP ${res.status}${res.statusText ? ` ${res.statusText}` : ""}`;
   return new ApiError(res.status, detail || statusLine, payload);
 }
 
 /** Fired after a successful `POST /engines/select`. */
-export const ENGINE_SELECTED_EVENT = 'ov:engine-selected';
+export const ENGINE_SELECTED_EVENT = "ov:engine-selected";
 
 /**
  * fetch() against the API. Throws ApiError on any non-2xx response and an
  * ApiError with status 0 when the backend is unreachable. Deliberate aborts
  * are re-thrown untouched so callers can tell them apart.
  */
-export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+export async function apiFetch(
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
   // #2430: only a stage that cannot answer at all short-circuits here. A
   // live-but-busy `unresponsive` backend is still listening, so the request is
   // issued and simply resolves late, when the job holding the event loop
   // finishes. Rejecting it up front is what made fetching the audio of an
   // already-succeeded streamed generation fail.
   if (
-    typeof window !== 'undefined' &&
+    typeof window !== "undefined" &&
     window.voicestudio?.backend &&
     !isBackendReachable(getBackendStatusSnapshot().stage)
   )
-    throw new ApiError(0, tr('tts_errors.backend_unreachable'));
+    throw new ApiError(0, tr("tts_errors.backend_unreachable"));
   let res: Response;
   let sentSession: ReturnType<typeof getAdminSession> = null;
   try {
@@ -164,41 +241,49 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
       const headers = new Headers(init?.headers);
       let pin: string | null = null;
       try {
-        pin = sessionStorage.getItem('ov_pin');
+        pin = sessionStorage.getItem("ov_pin");
       } catch {
         // Cookie and bearer-session authentication still work when storage is blocked.
       }
       sentSession = getAdminSession(apiBase);
-      if (pin) headers.set('X-OmniVoice-Pin', pin);
-      if (sentSession) headers.set('Authorization', `Bearer ${sentSession.token}`);
-      if (isSameOriginApi(apiBase)) headers.set(CSRF_HEADER_NAME, '1');
-      init = { ...init, headers, credentials: 'include' };
+      if (pin) headers.set("X-OmniVoice-Pin", pin);
+      if (sentSession)
+        headers.set("Authorization", `Bearer ${sentSession.token}`);
+      if (isSameOriginApi(apiBase)) headers.set(CSRF_HEADER_NAME, "1");
+      init = { ...init, headers, credentials: "include" };
     }
     res = await fetch(apiPath(path), init);
   } catch (err) {
     if (isAbortError(err)) throw err;
-    throw new ApiError(0, tr('tts_errors.backend_unreachable'));
+    throw new ApiError(0, tr("tts_errors.backend_unreachable"));
   }
   // Any HTTP response, including an error status, proves the backend answered.
   recordBackendContact();
   if (!res.ok) {
     const error = await errorFromResponse(res);
     const detail = error.detail.toLowerCase();
-    const adminGate = error.status === 403 && detail.includes('admin api key');
+    const adminGate = error.status === 403 && detail.includes("admin api key");
     if (__WEB_DEPLOYMENT__ && (error.status === 401 || adminGate)) {
-      const mode = detail.includes('api key') ? 'apikey' : 'pin';
+      const mode = detail.includes("api key") ? "apikey" : "pin";
       const currentSession = getAdminSession(absoluteApiBase());
-      const staleResponse = mode === 'apikey' && currentSession?.token !== sentSession?.token;
+      const staleResponse =
+        mode === "apikey" && currentSession?.token !== sentSession?.token;
       if (!staleResponse) {
-        if (mode === 'apikey' && sentSession) clearAdminSession();
-        window.dispatchEvent(new CustomEvent('ov:auth-required', { detail: { mode } }));
+        if (mode === "apikey" && sentSession) clearAdminSession();
+        window.dispatchEvent(
+          new CustomEvent("ov:auth-required", { detail: { mode } }),
+        );
       }
     }
     throw error;
   }
   // The active engine decides which compute route (and so which generate
   // budget) a take gets; consumers re-read their derived state on this event.
-  if (typeof window !== 'undefined' && path === '/engines/select' && init?.method === 'POST')
+  if (
+    typeof window !== "undefined" &&
+    path === "/engines/select" &&
+    init?.method === "POST"
+  )
     window.dispatchEvent(new CustomEvent(ENGINE_SELECTED_EVENT));
   return res;
 }
@@ -206,9 +291,10 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
 export async function apiJson<T>(path: string, init?: RequestInit): Promise<T> {
   // String bodies on this helper are serialized JSON; never label FormData,
   // whose multipart boundary must be supplied by the browser.
-  if (typeof init?.body === 'string') {
+  if (typeof init?.body === "string") {
     const headers = new Headers(init.headers);
-    if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+    if (!headers.has("Content-Type"))
+      headers.set("Content-Type", "application/json");
     init = { ...init, headers };
   }
   const res = await apiFetch(path, init);
@@ -220,12 +306,18 @@ export function audioUrl(filename: string): string {
   return `${API_BASE}/audio/${encodeURIComponent(filename)}`;
 }
 
+/** MP3 export of a generated take, or undefined when the path is not a backend render. */
+export function audioMp3Url(filename: string): string | undefined {
+  const id = /^([0-9a-f]{8})\.wav$/.exec(filename)?.[1];
+  return id ? `${API_BASE}/audio/${id}.mp3` : undefined;
+}
+
 /**
  * Playable URL for a saved voice's reference clip. Pass the profile's
  * `audio_url` when available: its version token changes whenever the clip is
  * replaced, so players and HTTP caches never keep the previous sample.
  */
 export function profileAudioUrl(id: string, audioUrl?: string | null): string {
-  if (audioUrl?.startsWith('/profiles/')) return apiPath(audioUrl);
+  if (audioUrl?.startsWith("/profiles/")) return apiPath(audioUrl);
   return `${API_BASE}/profiles/${encodeURIComponent(id)}/audio`;
 }

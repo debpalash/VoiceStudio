@@ -52,7 +52,8 @@ class TestGetEffectChain:
         assert len(chain) > 0
         types = [fx["type"] for fx in chain]
         assert "highpass" in types
-        assert "compressor" in types
+        assert "leveler" in types  # #3412: levels, no fast compressor
+        assert "compressor" not in types
         assert "limiter" in types
 
     def test_cinematic_has_reverb(self):

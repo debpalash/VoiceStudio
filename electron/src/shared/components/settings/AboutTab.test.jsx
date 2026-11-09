@@ -51,16 +51,16 @@ describe('AboutTab — fixable problems deep-link into Settings', () => {
     useAppStore.getState().setPendingSettingsTab(null);
   });
 
-  it('HF token "no" offers an Open Credentials action instead of dead-ending', () => {
+  it('HF token "no" offers an Open API credentials action instead of dead-ending', () => {
     render(<AboutTab {...baseProps} info={{ has_hf_token: false }} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Open Credentials' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open API credentials' }));
     expect(useAppStore.getState().mode).toBe('settings');
     expect(useAppStore.getState().pendingSettingsTab).toBe('credentials');
   });
 
   it('HF token "yes" renders no Credentials action', () => {
     render(<AboutTab {...baseProps} info={{ has_hf_token: true }} />);
-    expect(screen.queryByRole('button', { name: 'Open Credentials' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Open API credentials' })).toBeNull();
   });
 
   it('a failing self-check renders an "Open <category>" button for its fix destination', () => {

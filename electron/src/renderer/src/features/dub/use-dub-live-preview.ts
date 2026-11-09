@@ -1,4 +1,5 @@
 import { createStreamingPreview, supportsStreamingPreview } from '@/lib/audio/streaming-preview';
+import { announceModelLicenceRequired } from '@/features/settings/model-license-contract';
 import { backendWebSocketUrl } from '@/lib/api/websocket';
 import { beginAppActivity } from '@/lib/app-activity';
 import { acquireSynthesis } from '@/lib/synthesis-lock';
@@ -113,7 +114,13 @@ export function useDubLivePreview({ enabled, language }: { enabled: boolean; lan
             active.player?.appendPcm16Bytes(event.data);
             return;
           }
-          let message: { type?: string; sample_rate?: number; detail?: string };
+          let message: {
+            type?: string;
+            sample_rate?: number;
+            detail?: string;
+            code?: string;
+            models?: unknown;
+          };
           try {
             message = JSON.parse(String(event.data)) as typeof message;
           } catch {
@@ -139,6 +146,7 @@ export function useDubLivePreview({ enabled, language }: { enabled: boolean; lan
               setLiveSegmentId(null);
             }
           } else if (message.type === 'error') {
+            announceModelLicenceRequired(message);
             notify('stream', t('tts_errors.error_prefix', { message: message.detail || '' }));
             stop();
           }

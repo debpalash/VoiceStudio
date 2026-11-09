@@ -31,4 +31,4 @@ and displays the source thumbnail while a first preview is prepared. Audio previ
 buttons show pending/buffering and unavailable states instead of silently swallowing
 playback failures. An audio-only dub's preview mixes the dubbed track with the
 background once and reuses that file for every seek; regenerating the track
-replaces the old mix. Playback labels are translated in all 21 locales.
+replaces the old mix. Playback labels are translated in every app locale.

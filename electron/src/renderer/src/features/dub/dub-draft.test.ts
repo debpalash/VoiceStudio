@@ -1,6 +1,7 @@
 import { expect, it } from 'vitest';
 import { restoreDubDraft } from './dub-draft';
 import type { DubSession } from './dub-session';
+import { getDubTranslationError } from './transcript-issues';
 const defaults: DubSession = {
   jobId: null,
   taskId: null,
@@ -184,6 +185,184 @@ it('recovers provider error pages saved as translated dialogue', () => {
 
 it('restores the project translation brief without changing its wording', () => {
   const translationInstructions = 'Conversational Bengali. Preserve jokes and adapt idioms.';
-  const result = restoreDubDraft(JSON.stringify({ ...defaults, translationInstructions }), defaults);
+  const result = restoreDubDraft(
+    JSON.stringify({ ...defaults, translationInstructions }),
+    defaults,
+  );
   expect(result?.translationInstructions).toBe(translationInstructions);
+});
+
+it('restores a valid Smart Fit slowest-speed floor and drops out-of-range overrides', () => {
+  const restore = (fitOptions: object) =>
+    restoreDubDraft(JSON.stringify({ ...defaults, fitOptions }), defaults).fitOptions;
+  expect(restore({ min_audio_rate: 0.7, audio_rate_cap: 1.3 })).toEqual({
+    min_audio_rate: 0.7,
+    audio_rate_cap: 1.3,
+  });
+  expect(restore({ min_audio_rate: 0.2 })).toEqual({});
+  expect(restore({ min_audio_rate: 1.4, audio_rate_cap: 0.9 })).toEqual({});
+});
+
+it('keeps a rejected source file flagged after a reload', () => {
+  const saved = { ...defaults, jobId: 'job', filename: 'empty.mp4' };
+  expect(
+    restoreDubDraft(JSON.stringify({ ...saved, inputIssue: 'empty' }), defaults).inputIssue,
+  ).toBe('empty');
+  expect(
+    restoreDubDraft(JSON.stringify({ ...saved, inputIssue: 'bogus' }), defaults).inputIssue,
+  ).toBeNull();
+});
+
+it('keeps discarded translations flagged by language alongside existing failures', () => {
+  const errorPage = '<html>Translation provider unavailable</html>';
+  const restored = restoreDubDraft(
+    JSON.stringify({
+      ...defaults,
+      target: 'French',
+      segments: [
+        {
+          id: '1',
+          start: 0,
+          end: 2,
+          text: errorPage,
+          text_original: 'Hello',
+          translations: { fr: errorPage, es: errorPage, de: 'Hallo' },
+          translate_errors: { it: 'Italian translation failed' },
+        },
+      ],
+    }),
+    defaults,
+  ).segments[0];
+  expect(restored.text).toBe('Hello');
+  expect(restored.translations).toEqual({ de: 'Hallo' });
+  expect(getDubTranslationError(restored, 'fr')).toBe(
+    'translation provider returned invalid output',
+  );
+  expect(getDubTranslationError(restored, 'es')).toBe(
+    'translation provider returned invalid output',
+  );
+  expect(getDubTranslationError(restored, 'it')).toBe('Italian translation failed');
+  expect(getDubTranslationError(restored, 'de')).toBeUndefined();
+});
+
+it.each([
+  { target: 'French', language: 'fr' },
+  { target: undefined, language: 'es' },
+])(
+  'flags invalid active text for the restored target $language without a saved translation',
+  ({ target, language }) => {
+    const restored = restoreDubDraft(
+      JSON.stringify({
+        ...defaults,
+        target,
+        segments: [
+          {
+            id: '1',
+            start: 0,
+            end: 2,
+            text: '<html>Unavailable</html>',
+            text_original: 'Hello',
+            translate_errors: { de: 'German translation failed' },
+          },
+        ],
+      }),
+      defaults,
+    );
+    expect(restored.target).toBe(target || defaults.target);
+    expect(restored.segments[0].text).toBe('Hello');
+    expect(getDubTranslationError(restored.segments[0], language)).toBe(
+      'translation provider returned invalid output',
+    );
+    expect(getDubTranslationError(restored.segments[0], 'de')).toBe('German translation failed');
+  },
+);
+
+it.each([
+  { name: 'no prior failures', translate_errors: undefined, translate_error: undefined },
+  { name: 'an empty authoritative map', translate_errors: {}, translate_error: 'Stale failure' },
+  {
+    name: 'another language failure',
+    translate_errors: { de: 'German translation failed' },
+    translate_error: 'Stale failure',
+  },
+])(
+  'does not flag healthy active text when discarding another language with $name',
+  ({ translate_errors, translate_error }) => {
+    const restored = restoreDubDraft(
+      JSON.stringify({
+        ...defaults,
+        target: 'French',
+        segments: [
+          {
+            id: '1',
+            start: 0,
+            end: 2,
+            text: 'Bonjour',
+            text_original: 'Hello',
+            translations: { fr: 'Bonjour', es: '<html>Unavailable</html>' },
+            translate_errors,
+            translate_error,
+          },
+        ],
+      }),
+      defaults,
+    ).segments[0];
+    expect(restored.text).toBe('Bonjour');
+    expect(restored.translations).toEqual({ fr: 'Bonjour' });
+    expect(getDubTranslationError(restored, 'fr')).toBeUndefined();
+    expect(getDubTranslationError(restored, 'es')).toBe(
+      'translation provider returned invalid output',
+    );
+    expect(getDubTranslationError(restored, 'de')).toBe(translate_errors?.de);
+  },
+);
+
+it('preserves a legacy active-language failure when rejecting another saved translation', () => {
+  const restored = restoreDubDraft(
+    JSON.stringify({
+      ...defaults,
+      target: 'French',
+      segments: [
+        {
+          id: '1',
+          start: 0,
+          end: 2,
+          text: 'Hello',
+          text_original: 'Hello',
+          translations: { de: '<html>Unavailable</html>' },
+          translate_error: 'French translation failed',
+        },
+      ],
+    }),
+    defaults,
+  ).segments[0];
+  expect(getDubTranslationError(restored, 'fr')).toBe('French translation failed');
+  expect(getDubTranslationError(restored, 'de')).toBe(
+    'translation provider returned invalid output',
+  );
+  expect(getDubTranslationError(restored, 'es')).toBeUndefined();
+});
+
+it('keeps a healthy restored language clear when an empty saved error map overrides a stale scalar', () => {
+  const restored = restoreDubDraft(
+    JSON.stringify({
+      ...defaults,
+      target: 'French',
+      segments: [
+        {
+          id: '1',
+          start: 0,
+          end: 2,
+          text: 'Bonjour',
+          text_original: 'Hello',
+          translations: { fr: 'Bonjour' },
+          translate_errors: {},
+          translate_error: 'Stale failure',
+        },
+      ],
+    }),
+    defaults,
+  ).segments[0];
+  expect(getDubTranslationError(restored, 'fr')).toBeUndefined();
+  expect(getDubTranslationError(restored, 'de')).toBeUndefined();
 });
