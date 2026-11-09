@@ -1,10 +1,27 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import {
+  AudioLinesIcon,
+  FileTextIcon,
+  FolderIcon,
+  KeyboardIcon,
+  LanguagesIcon,
+  LaptopIcon,
+  LockIcon,
+  MicIcon,
+  MonitorIcon,
+  SlidersHorizontalIcon,
+  StarIcon,
+  type LucideIcon,
+} from 'lucide-react';
+import { ExternalLink } from '@/components/external-link';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
+import { formatRelative } from '@/features/clone/format';
 import { apiJson } from '@/lib/api/client';
-import { SettingsRow } from './settings-layout';
+import { cn } from '@/lib/utils';
 
 type ChoiceKey = 'settings' | 'shortcuts' | 'favorites';
 const CHOICES: ChoiceKey[] = ['settings', 'shortcuts', 'favorites'];
@@ -15,6 +32,16 @@ const LATER: Record<string, string> = {
   pronunciation: 'cloudsync.projects',
   'dub-projects': 'cloudsync.dub_projects',
   transcriptions: 'cloudsync.dictation_history',
+};
+const ICONS: Record<string, LucideIcon> = {
+  settings: SlidersHorizontalIcon,
+  shortcuts: KeyboardIcon,
+  favorites: StarIcon,
+  voices: AudioLinesIcon,
+  takes: MicIcon,
+  pronunciation: FolderIcon,
+  'dub-projects': LanguagesIcon,
+  transcriptions: FileTextIcon,
 };
 
 interface Collection {
@@ -61,9 +88,67 @@ function size(bytes = 0): string {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }
 
-/** Settings → Account → Sync: what this device syncs, its devices, and what went wrong. */
-export function CloudSyncPanel() {
-  const { t } = useTranslation();
+/** One dense row of the sync lists: icon, name, inline status, and its control. */
+function SyncRow({
+  id,
+  icon: Icon,
+  name,
+  badge,
+  meta,
+  muted = false,
+  children,
+}: {
+  id: string;
+  icon: LucideIcon;
+  name: ReactNode;
+  badge?: ReactNode;
+  meta?: ReactNode;
+  muted?: boolean;
+  children?: ReactNode;
+}) {
+  return (
+    <li data-slot="sync-row" className="flex min-h-11 items-center gap-3 py-1.5">
+      <Icon
+        aria-hidden="true"
+        className={cn(
+          'size-4 shrink-0',
+          muted ? 'text-muted-foreground/60' : 'text-muted-foreground',
+        )}
+      />
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5">
+        <span id={id} className={cn('min-w-0 truncate text-sm', muted && 'text-muted-foreground')}>
+          {name}
+        </span>
+        {badge}
+        {meta ? (
+          <span className="min-w-0 truncate text-xs text-muted-foreground">{meta}</span>
+        ) : null}
+      </div>
+      {children ? <div className="flex shrink-0 items-center gap-2">{children}</div> : null}
+    </li>
+  );
+}
+
+function SyncGroup({ id, title, children }: { id: string; title: string; children: ReactNode }) {
+  return (
+    <section aria-labelledby={id}>
+      <h3 id={id} className="text-xs font-medium text-muted-foreground">
+        {title}
+      </h3>
+      <ul className="mt-1 divide-y divide-border/40">{children}</ul>
+    </section>
+  );
+}
+
+const CALLOUT = 'rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-sm';
+
+/**
+ * Settings → Account → Sync: what this device syncs, its devices, and what
+ * went wrong. Rendered inside the account card, so it carries the card's inset.
+ */
+export function CloudSyncPanel({ planUrl }: { planUrl?: string | null } = {}) {
+  const { t, i18n } = useTranslation();
+  const locale = i18n?.resolvedLanguage || i18n?.language || undefined;
   const client = useQueryClient();
   const status = useQuery({
     queryKey: STATUS_KEY,
@@ -99,38 +184,43 @@ export function CloudSyncPanel() {
     }
   };
 
+  const error = failed ? (
+    <p role="alert" className="text-sm text-destructive">
+      {t('common.error')}
+    </p>
+  ) : null;
+
   if (status.isError)
     return (
-      <p role="status" className="text-sm text-muted-foreground">
-        {t('cloudsync.unavailable')}
-      </p>
+      <div className="px-4 py-3">
+        <p role="status" className="text-sm text-muted-foreground">
+          {t('cloudsync.unavailable')}
+        </p>
+      </div>
     );
   if (!view) return null;
 
   if (!view.enabled)
     return (
-      <div className="space-y-3">
-        <p className="text-sm font-medium">{t('cloudsync.choose')}</p>
-        {CHOICES.map((key) => (
-          <SettingsRow key={key} id={`sync-${key}`} title={t(`cloudsync.${key}`)}>
-            <Switch
-              aria-label={t(`cloudsync.${key}`)}
-              checked={draft[key]}
-              onCheckedChange={(on) => setDraft({ ...draft, [key]: on })}
-            />
-          </SettingsRow>
-        ))}
+      <div data-slot="cloud-sync-panel" className="space-y-3 px-4 py-3">
+        <SyncGroup id="sync-choose-heading" title={t('cloudsync.choose')}>
+          {CHOICES.map((key) => (
+            <SyncRow key={key} id={`sync-${key}`} icon={ICONS[key]} name={t(`cloudsync.${key}`)}>
+              <Switch
+                aria-label={t(`cloudsync.${key}`)}
+                checked={draft[key]}
+                onCheckedChange={(on) => setDraft({ ...draft, [key]: on })}
+              />
+            </SyncRow>
+          ))}
+        </SyncGroup>
         <Button
           variant="outline"
           onClick={() => void act('/api/cloud-sync/on', { choices: draft })}
         >
           {t('cloudsync.turn_on')}
         </Button>
-        {failed && (
-          <p role="alert" className="text-sm text-destructive">
-            {t('common.error')}
-          </p>
-        )}
+        {error}
       </div>
     );
 
@@ -144,13 +234,17 @@ export function CloudSyncPanel() {
       'PUT',
     );
   const nameOf = (id: string) => devices.data?.devices.find((d) => d.id === id)?.name ?? id;
+  const later = view.collections.filter((c) => LATER[c.name]);
+  const locked = later.some((c) => !c.entitled);
+  const deviceList = devices.data?.devices ?? [];
 
   return (
-    <div className="space-y-3">
+    <div data-slot="cloud-sync-panel" className="space-y-4 px-4 py-3">
       {stopped === 'device_revoked' && (
-        <div role="alert" className="space-y-2 text-sm">
-          <p>{t('cloudsync.device_revoked')}</p>
+        <div role="alert" className={cn(CALLOUT, 'flex flex-wrap items-center gap-2')}>
+          <span className="min-w-0 flex-1">{t('cloudsync.device_revoked')}</span>
           <Button
+            size="sm"
             variant="outline"
             onClick={() =>
               void act('/api/cloud-sync/on', { choices: view.choices, new_device: true })
@@ -161,12 +255,12 @@ export function CloudSyncPanel() {
         </div>
       )}
       {stopped === 'account_suspended' && (
-        <p role="alert" className="text-sm">
+        <p role="alert" className={CALLOUT}>
           {t('cloudsync.account_suspended')}
         </p>
       )}
       {view.status.storage_full && (
-        <p role="alert" className="text-sm">
+        <p role="alert" className={CALLOUT}>
           {t('cloudsync.storage_full', {
             used: size(view.usage.used_bytes),
             limit: size(view.usage.limit_bytes),
@@ -179,11 +273,15 @@ export function CloudSyncPanel() {
         </p>
       )}
       {view.status.pending_mass_delete && (
-        <div role="alert" className="flex flex-wrap items-center gap-2 text-sm">
-          <span>
+        <div role="alert" className={cn(CALLOUT, 'flex flex-wrap items-center gap-2')}>
+          <span className="min-w-0 flex-1">
             {t('cloudsync.mass_delete', { count: view.status.pending_mass_delete.count })}
           </span>
-          <Button variant="outline" onClick={() => void act('/api/cloud-sync/confirm-deletes')}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => void act('/api/cloud-sync/confirm-deletes')}
+          >
             {t('cloudsync.confirm_remove')}
           </Button>
         </div>
@@ -194,130 +292,175 @@ export function CloudSyncPanel() {
         </p>
       )}
 
-      <p className="text-sm font-medium">{t('cloudsync.choose')}</p>
-      {CHOICES.map((key) => {
-        const server = listed(key);
-        const paused = server ? !server.enabled : Boolean(view.status.paused[key]);
-        const used = usageOf(key);
-        return (
-          <SettingsRow
-            key={key}
-            id={`sync-${key}`}
-            title={t(`cloudsync.${key}`)}
-            description={
-              paused
-                ? t('cloudsync.paused')
-                : view.status.needs_update.includes(key)
-                  ? t('cloudsync.needs_update', { area: t(`cloudsync.${key}`) })
-                  : used
-                    ? t('cloudsync.size', { size: size(used.bytes) })
-                    : undefined
-            }
-          >
-            <Switch
-              aria-label={t(`cloudsync.${key}`)}
-              checked={view.choices[key]}
-              onCheckedChange={(on) => (on ? setChoice(key, true, false) : setTurningOff(key))}
-            />
-          </SettingsRow>
-        );
-      })}
-      {turningOff && (
-        <div role="dialog" className="space-y-2 rounded-md border p-3 text-sm">
-          <p>{t('cloudsync.turned_off_prompt', { area: t(`cloudsync.${turningOff}`) })}</p>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                setChoice(turningOff, false, false);
-                setTurningOff(null);
-              }}
+      <div>
+        <SyncGroup id="sync-choose-heading" title={t('cloudsync.choose')}>
+          {CHOICES.map((key) => {
+            const server = listed(key);
+            const paused = server ? !server.enabled : Boolean(view.status.paused[key]);
+            const used = usageOf(key);
+            return (
+              <SyncRow
+                key={key}
+                id={`sync-${key}`}
+                icon={ICONS[key]}
+                name={t(`cloudsync.${key}`)}
+                meta={
+                  paused
+                    ? t('cloudsync.paused')
+                    : view.status.needs_update.includes(key)
+                      ? t('cloudsync.needs_update', { area: t(`cloudsync.${key}`) })
+                      : used
+                        ? t('cloudsync.size', { size: size(used.bytes) })
+                        : undefined
+                }
+              >
+                <Switch
+                  aria-label={t(`cloudsync.${key}`)}
+                  checked={view.choices[key]}
+                  onCheckedChange={(on) => (on ? setChoice(key, true, false) : setTurningOff(key))}
+                />
+              </SyncRow>
+            );
+          })}
+          {later.map((c) => (
+            <SyncRow
+              key={c.name}
+              id={`sync-${c.name}`}
+              icon={ICONS[c.name] ?? FolderIcon}
+              name={t(LATER[c.name])}
+              muted={!c.entitled}
+              badge={
+                c.entitled ? undefined : (
+                  <Badge
+                    variant="outline"
+                    data-testid="sync-pro-badge"
+                    className="h-4 px-1.5 text-[10px]"
+                  >
+                    {t('cloudsync.pro')}
+                  </Badge>
+                )
+              }
+              meta={c.entitled && !c.enabled ? t('cloudsync.paused') : undefined}
             >
-              {t('cloudsync.keep_in_cloud')}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setChoice(turningOff, false, true);
-                setTurningOff(null);
-              }}
-            >
-              {t('cloudsync.remove_from_cloud', {
-                count: usageOf(turningOff)?.items ?? 0,
-                size: size(usageOf(turningOff)?.bytes),
-              })}
-            </Button>
+              <Switch
+                aria-label={t(LATER[c.name])}
+                aria-describedby={c.entitled ? undefined : 'sync-pro-upsell'}
+                checked={false}
+                disabled
+              />
+            </SyncRow>
+          ))}
+        </SyncGroup>
+        {turningOff && (
+          <div role="dialog" className={cn(CALLOUT, 'mt-2 space-y-2')}>
+            <p>{t('cloudsync.turned_off_prompt', { area: t(`cloudsync.${turningOff}`) })}</p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setChoice(turningOff, false, false);
+                  setTurningOff(null);
+                }}
+              >
+                {t('cloudsync.keep_in_cloud')}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setChoice(turningOff, false, true);
+                  setTurningOff(null);
+                }}
+              >
+                {t('cloudsync.remove_from_cloud', {
+                  count: usageOf(turningOff)?.items ?? 0,
+                  size: size(usageOf(turningOff)?.bytes),
+                })}
+              </Button>
+            </div>
           </div>
+        )}
+        {locked && (
+          <p
+            id="sync-pro-upsell"
+            data-testid="sync-pro-upsell"
+            className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground"
+          >
+            <LockIcon aria-hidden="true" className="size-3.5 shrink-0" />
+            <span>{t('cloudsync.pro_upsell')}</span>
+            {planUrl ? (
+              <ExternalLink
+                href={planUrl}
+                variant="link"
+                showIcon={false}
+                className="h-auto px-0 text-xs"
+              >
+                {t('supportPlans.get_pro')}
+              </ExternalLink>
+            ) : null}
+          </p>
+        )}
+      </div>
+
+      {view.other_devices.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {view.other_devices.map((other) => (
+            <Button
+              key={other.device_id}
+              size="sm"
+              variant="outline"
+              onClick={() => void act(`/api/cloud-sync/use-choices-of/${other.device_id}`)}
+            >
+              {t('cloudsync.use_choices_of', { device: nameOf(other.device_id) })}
+            </Button>
+          ))}
         </div>
       )}
-      {view.collections
-        .filter((c) => LATER[c.name])
-        .map((c) => (
-          <SettingsRow
-            key={c.name}
-            id={`sync-${c.name}`}
-            title={t(LATER[c.name])}
-            description={
-              !c.entitled ? t('cloudsync.pro') : !c.enabled ? t('cloudsync.paused') : undefined
-            }
-          >
-            <Switch aria-label={t(LATER[c.name])} checked={false} disabled />
-          </SettingsRow>
-        ))}
 
-      {view.other_devices.map((other) => (
-        <Button
-          key={other.device_id}
-          variant="ghost"
-          onClick={() => void act(`/api/cloud-sync/use-choices-of/${other.device_id}`)}
-        >
-          {t('cloudsync.use_choices_of', { device: nameOf(other.device_id) })}
-        </Button>
-      ))}
-
-      {(devices.data?.devices.length ?? 0) > 0 && (
-        <div className="space-y-2">
-          <p className="text-sm font-medium">{t('cloudsync.devices')}</p>
-          {devices.data!.devices.map((device) => {
+      {deviceList.length > 0 && (
+        <SyncGroup id="sync-devices-heading" title={t('cloudsync.devices')}>
+          {deviceList.map((device) => {
             const here = device.current || device.id === view.device_id;
+            const seen = device.last_seen_at
+              ? formatRelative(device.last_seen_at, locale ?? 'en')
+              : '';
             const details = [
               device.os_version || device.platform,
-              device.last_seen_at ? new Date(device.last_seen_at).toLocaleDateString() : null,
+              seen ? t('cloudsync.last_active', { time: seen }) : null,
             ].filter(Boolean);
             return (
-              <div key={device.id} className="flex items-center justify-between gap-2 text-sm">
-                <span className="min-w-0">
-                  <span className="block truncate">
-                    {device.name}
-                    {here && (
-                      <span className="text-muted-foreground"> · {t('cloudsync.this_device')}</span>
-                    )}
-                  </span>
-                  {details.length > 0 && (
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {details.join(' · ')}
-                    </span>
-                  )}
-                </span>
+              <SyncRow
+                key={device.id}
+                id={`sync-device-${device.id}`}
+                icon={device.platform === 'macos' ? LaptopIcon : MonitorIcon}
+                name={device.name}
+                badge={
+                  here ? (
+                    <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">
+                      {t('cloudsync.this_device')}
+                    </Badge>
+                  ) : undefined
+                }
+                meta={details.length > 0 ? details.join(' · ') : undefined}
+              >
                 {/* This device leaves sync by switching it off; Remove is for the others. */}
                 {!here && (
                   <Button
+                    size="sm"
                     variant="ghost"
+                    className="-me-2"
                     onClick={() => void act(`/api/cloud-sync/devices/${device.id}/revoke`)}
                   >
                     {t('cloudsync.remove_device')}
                   </Button>
                 )}
-              </div>
+              </SyncRow>
             );
           })}
-        </div>
+        </SyncGroup>
       )}
-      {failed && (
-        <p role="alert" className="text-sm text-destructive">
-          {t('common.error')}
-        </p>
-      )}
+      {error}
     </div>
   );
 }

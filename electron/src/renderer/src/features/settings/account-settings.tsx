@@ -76,7 +76,9 @@ export function AccountSettings() {
             />
           </SettingsRow>
         )}
-        {enabled && state.signedIn && state.syncEnabled && <CloudSyncPanel />}
+        {enabled && state.signedIn && state.syncEnabled && (
+          <CloudSyncPanel planUrl={state.links?.plan} />
+        )}
       </SettingsSection>
       {enabled && state.notice && (
         <p role="status" className={CALLOUT}>
