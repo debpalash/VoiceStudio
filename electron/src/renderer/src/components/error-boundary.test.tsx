@@ -86,5 +86,9 @@ it('reloads a transient dynamic module once in Strict Mode, then asks an agent o
     />,
   );
   expect(listener).toHaveBeenCalledOnce();
+  // Try Again must reload too: resetting would replay the cached rejected import.
+  fireEvent.click(screen.getByRole('button', { name: 'errors.tryAgain' }));
+  expect(reload).toHaveBeenCalledTimes(2);
+  expect(reset).not.toHaveBeenCalled();
   window.removeEventListener('voicestudio:repair-agent-open', listener);
 });

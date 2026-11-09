@@ -5,6 +5,7 @@ import importlib.util
 import json
 import random
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -123,3 +124,39 @@ def test_loopback_checks_ignore_proxy_settings(monkeypatch):
         isinstance(h, urllib.request.ProxyHandler) and h.proxies.get("http")
         for h in urllib.request.build_opener().handlers
     )  # with HTTP_PROXY set, the default opener WOULD proxy
+
+
+def test_app_launch_gets_a_throwaway_home(tmp_path):
+    """A packaged app links its terminal command into HOME; the bench must not touch the real one."""
+    script = (
+        "import { launchEnv } from './scripts/bench/launch_env.mjs';"
+        "const env = launchEnv({ HOME: '/real', USERPROFILE: 'C:/real', XDG_CONFIG_HOME: '/real/.config',"
+        " XDG_RUNTIME_DIR: '/run/user/1', HTTPS_PROXY: 'http://p', OMNIVOICE_DATA_DIR: '/real/data' },"
+        f" {{ port: 3900, profile: {json.dumps(str(tmp_path))} }});"
+        "console.log(JSON.stringify(env));"
+    )
+    out = subprocess.run(["node", "--input-type=module", "-e", script], capture_output=True, text=True, cwd=ROOT)
+    assert out.returncode == 0, out.stderr
+    env = json.loads(out.stdout)
+    home = tmp_path / "home"
+    for key in ("HOME", "USERPROFILE", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"):
+        assert Path(env[key]).is_relative_to(home), key
+        assert Path(env[key]).is_dir(), key
+    assert env["XDG_RUNTIME_DIR"] == "/run/user/1"  # display/audio sockets stay reachable
+    assert "HTTPS_PROXY" not in env and "OMNIVOICE_DATA_DIR" not in env
+    assert env["OMNIVOICE_PORT"] == "3900" and env["VOICESTUDIO_DISABLE_UPDATER"] == "1"
+
+
+@pytest.mark.parametrize("window", [0, 0.001])
+def test_idle_reports_a_sample_for_a_zero_window(monkeypatch, window):
+    monkeypatch.setattr(bench, "tree_rss_mb", lambda pid: 120.0)
+    monkeypatch.setattr(bench, "tree_cpu_seconds", lambda pid: 0.0)
+    monkeypatch.setattr(bench, "_tree", lambda pid: [pid])
+    backend = object.__new__(bench.Backend)
+    backend.proc = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(5)"])
+    try:
+        result = backend.idle(settle=0, window=window)
+    finally:
+        backend.proc.kill()
+        backend.proc.wait()
+    assert result == {"rss_mb": 120.0, "cpu_percent": 0.0, "children": 0}

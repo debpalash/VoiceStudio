@@ -10,11 +10,14 @@
 // English), so the numbers are a returning user's launch, not first-run setup.
 // The app runs with the updater off and without managing a backend, and every
 // renderer request to a non-local host is aborted, so a run never goes online.
+// HOME points inside the throwaway profile, so the packaged app's terminal
+// command setup cannot touch ~/.local/bin or shell profiles.
 // Prints JSON on stdout; progress on stderr.
 import { _electron as electron } from 'playwright';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { launchEnv } from './launch_env.mjs';
 
 const repo = resolve(import.meta.dirname, '../..');
 const option = (name, fallback) => {
@@ -54,31 +57,11 @@ const isLocal = (url) =>
   !/^(https?|wss?):$/.test(url.protocol) || ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname);
 
 async function launch(profile, seed) {
-  // Same isolation as bench.py's isolated_env: none of this machine's app or
-  // proxy settings may redirect the data folder or the network.
-  const inherited = Object.fromEntries(
-    Object.entries(process.env).filter(
-      ([key]) =>
-        key !== 'ELECTRON_RUN_AS_NODE' &&
-        !key.toUpperCase().endsWith('_PROXY') &&
-        !key.startsWith('OMNIVOICE_') &&
-        !key.startsWith('VOICESTUDIO_'),
-    ),
-  );
   const startedAt = Date.now();
   const app = await electron.launch({
     executablePath: packaged ?? devElectron(),
     args: [...(packaged ? [] : [join(repo, 'electron/out/main/index.js')]), `--user-data-dir=${profile}`],
-    env: {
-      ...inherited,
-      ELECTRON_RENDERER_URL: '',
-      OMNIVOICE_PORT: String(port),
-      VOICESTUDIO_SKIP_BACKEND: '1',
-      VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES: '1',
-      VOICESTUDIO_DISABLE_UPDATER: '1',
-      VOICESTUDIO_ELECTRON_PROXY_PORT: '0',
-      OMNIVOICE_ANALYTICS_DISABLED: '1',
-    },
+    env: launchEnv(process.env, { port, profile }),
     timeout: 60000,
   });
   const context = app.context();

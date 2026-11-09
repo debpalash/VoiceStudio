@@ -213,11 +213,13 @@ class Backend:
             if self.proc.poll() is not None:
                 raise RuntimeError(f"backend exited with code {self.proc.returncode} while idling")
             rss.append(tree_rss_mb(self.proc.pid))
+        if not rss:  # a zero or tiny --idle-window: still report one sample
+            rss.append(tree_rss_mb(self.proc.pid))
         elapsed = time.monotonic() - started
         cpu = tree_cpu_seconds(self.proc.pid) - cpu_start
         return {
             "rss_mb": percentile(rss, 50),
-            "cpu_percent": 100 * cpu / elapsed,
+            "cpu_percent": 100 * cpu / max(elapsed, 1e-6),
             "children": len(_tree(self.proc.pid)) - 1,
         }
 

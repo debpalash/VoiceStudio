@@ -1,8 +1,4 @@
-import {
-  classifyError,
-  urlFor,
-  type ErrorClass,
-} from '@shared/utils/errorDocsMap';
+import { classifyError, urlFor, type ErrorClass } from '@shared/utils/errorDocsMap';
 import { ExternalLink } from './external-link';
 import { buildIssueSearchUrl } from '@shared/utils/bugReportDocument';
 import { Component, useEffect, type ReactNode, type ErrorInfo } from 'react';
@@ -17,14 +13,17 @@ import { captureException } from '@shared/utils/analytics';
 const MODULE_RETRY_PREFIX = 'voicestudio.moduleRetry:';
 const reloadRenderer = () => window.location.reload();
 
+// A failed dynamic import (a lazy route or the lazy setup wizard) is cached by
+// the module loader and by React.lazy, so only a full renderer reload can
+// request the chunk again; resetting the boundary would replay the rejection.
+function isModuleLoadError(message: string): boolean {
+  return /(?:failed to fetch dynamically imported module|error loading dynamically imported module|importing a module script failed)/i.test(
+    message,
+  );
+}
+
 function claimModuleRetry(message: string): string | null {
-  if (
-    !/(?:failed to fetch dynamically imported module|error loading dynamically imported module|importing a module script failed)/i.test(
-      message,
-    )
-  ) {
-    return null;
-  }
+  if (!isModuleLoadError(message)) return null;
   const key = MODULE_RETRY_PREFIX + message.slice(0, 240);
   try {
     if (sessionStorage.getItem(key) === 'attempted') return null;
@@ -79,7 +78,7 @@ export function ErrorRecovery({
           </pre>
         </details>
         <div className="flex flex-wrap items-start gap-2">
-          <Button size="sm" onClick={reset}>
+          <Button size="sm" onClick={isModuleLoadError(failure.message) ? reload : reset}>
             {t('errors.tryAgain')}
           </Button>
           <Button
