@@ -44,6 +44,7 @@ def probe_gates_open(monkeypatch):
     monkeypatch.setattr("core.device_caps.mlx_supported", lambda: (True, ""))
     monkeypatch.setattr("core.windows_rocm.ct2.availability_status", lambda *a, **k: None)
     monkeypatch.setattr("core.windows_rocm.pipelines.pipeline_error", lambda *a, **k: None)
+    monkeypatch.setattr("core.windows_rocm.pipelines.whisperx_error", lambda *a, **k: None)
     monkeypatch.setattr(ab, "_ctranslate2_execstack_ok", lambda: (True, "ok"))
     monkeypatch.setattr(ab, "_ctranslate2_cudnn_ok", lambda: (True, "ready"))
 
