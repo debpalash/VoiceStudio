@@ -59,8 +59,12 @@ class IsolatedFasterWhisperBackend(SubprocessASRBackend):
         try:
             from core.windows_rocm.ct2 import prepare_import
 
+            from core import import_probe
+
             prepare_import()
-            import faster_whisper  # noqa: F401
+            import_probe.ensure_importable(
+                "faster_whisper", prepare="core.windows_rocm.ct2:prepare_import"
+            )
         except Exception as e:
             return False, f"faster-whisper not installed: {e}"
         if not cls.sidecar_script().is_file():

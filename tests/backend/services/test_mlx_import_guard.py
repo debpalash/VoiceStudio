@@ -5,6 +5,7 @@ OSError/RuntimeError on import — not ImportError. is_available() must report
 unavailable instead of letting that propagate and crash the registry scan.
 """
 import builtins
+import sys
 
 import pytest
 
@@ -20,16 +21,30 @@ def _block_import(monkeypatch, name, exc):
     monkeypatch.setattr(builtins, "__import__", fake)
 
 
+def _broken_package(monkeypatch, tmp_path, name, exc):
+    """A package whose import raises ``exc``. The ASR probe imports in a child
+    process (#3924), so a patched ``__import__`` here would not reach it."""
+    from core import import_probe
+
+    pkg = tmp_path / name
+    pkg.mkdir()
+    (pkg / "__init__.py").write_text(f"raise {exc!r}\n")
+    monkeypatch.delitem(sys.modules, name, raising=False)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    import_probe.clear_cache()
+    monkeypatch.setattr(import_probe, "_cache", {})
+
+
 @pytest.mark.parametrize("exc", [OSError("dlopen metallib failed"),
                                  RuntimeError("metal device init failed"),
                                  ImportError("No module named mlx_whisper")])
-def test_mlx_whisper_unavailable_not_crash(monkeypatch, exc):
+def test_mlx_whisper_unavailable_not_crash(monkeypatch, tmp_path, exc):
     # #390: is_available now gates on the shared mlx_supported() platform check
     # BEFORE importing the package. Force the gate open so this test exercises
     # the import-guard branch (its actual subject) rather than the platform gate.
     monkeypatch.setattr("core.device_caps.mlx_supported", lambda: (True, ""))
     from services.asr_backend import MLXWhisperBackend
-    _block_import(monkeypatch, "mlx_whisper", exc)
+    _broken_package(monkeypatch, tmp_path, "mlx_whisper", exc)
     ok, msg = MLXWhisperBackend.is_available()
     assert ok is False
     assert "mlx-whisper" in msg

@@ -35,6 +35,7 @@ import threading
 import time
 import weakref
 from urllib.parse import urlsplit
+from core import import_probe
 from utils.containment import contain_system_exit
 
 from abc import ABC, abstractmethod
@@ -783,7 +784,9 @@ class WhisperXBackend(ASRBackend):
             return False, f"whisperx cannot load CTranslate2: {detail}"
         try:
             prepare_audio_imports()
-            import whisperx  # noqa: F401
+            import_probe.ensure_importable(
+                "whisperx", prepare="core.windows_rocm.pipelines:prepare_audio_imports"
+            )
         except ImportError as e:
             return False, f"whisperx not installed: {e}"
         except Exception as e:  # noqa: BLE001
@@ -1193,7 +1196,9 @@ class FasterWhisperBackend(ASRBackend):
             from core.windows_rocm.ct2 import prepare_import
 
             prepare_import()
-            import faster_whisper  # noqa: F401
+            import_probe.ensure_importable(
+                "faster_whisper", prepare="core.windows_rocm.ct2:prepare_import"
+            )
         except ImportError as e:
             return False, f"faster-whisper not installed: {e}"
         except Exception as e:  # noqa: BLE001
@@ -1415,7 +1420,7 @@ class MLXWhisperBackend(ASRBackend):
         if not ok:
             return False, why
         try:
-            import mlx_whisper  # noqa: F401
+            import_probe.ensure_importable("mlx_whisper")
             return True, "ready"
         # Catch OSError/RuntimeError too, not just ImportError: in a
         # PyInstaller bundle mlx's native dylib/metallib can fail to load
@@ -1849,7 +1854,7 @@ class NeMoASRBackend(ASRBackend):
         except ImportError:
             return False, "PyTorch not installed"
         try:
-            import nemo.collections.asr  # noqa: F401
+            import_probe.ensure_importable("nemo.collections.asr")
             return True, "ready"
         except ImportError as e:
             return False, f"nemo_toolkit[asr] not installed: {e}"
@@ -1968,7 +1973,7 @@ class ParakeetMLXBackend(ASRBackend):
         if not ok:
             return False, why
         try:
-            import parakeet_mlx  # noqa: F401
+            import_probe.ensure_importable("parakeet_mlx")
             return True, "ready"
         # OSError/RuntimeError too, not just ImportError: in a PyInstaller
         # bundle mlx's native dylib/metallib can fail to load even when the
@@ -2399,7 +2404,7 @@ class FunASRBackend(ASRBackend):
     @classmethod
     def is_available(cls) -> tuple[bool, str]:
         try:
-            import funasr  # noqa: F401
+            import_probe.ensure_importable("funasr")
             return True, "ready"
         except ImportError:
             return False, "funasr not installed. Install with: uv pip install funasr"
