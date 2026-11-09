@@ -144,6 +144,15 @@ Everything above is free, runs on your own hardware and needs no account. Pro an
 
 ## Platforms
 
+Experimental [Windows ROCm setup](docs/install/windows-rocm.md) supports selected RDNA 2 RX 6000 GPUs with targets `gfx1030`, `gfx1031` or `gfx1032`; RX 6500 XT (`gfx1034`) is excluded. GPU transcription uses a CTranslate2 build with native
+`gfx1031` kernels that this repository builds from upstream source; until it is
+published, transcription runs on the CPU, and setup checks actual GPU kernel
+execution. RX 6700 XT tests also cover native Torch speech generation and
+PyTorch Whisper. ROCm 10 faster-whisper uses a separate inference process to
+preserve safe CPU selection and fallback. Other cards and workloads retain the qualification limits in the guide.
+Performance presets validate changed engine selections in an offline child
+process before saving them, preserving fallback when an installed runtime fails.
+
 Choose your system, then expand an installation method.
 
 Native GGUF engines additionally support engine-specific Vulkan acceleration on AMD, Intel and NVIDIA GPUs ([OmniVoice](docs/engines/omnivoice-gguf.md#vulkan-acceleration), [CosyVoice](docs/engines/cosyvoice-gguf.md)). OmniVoice GGUF selects its GPU and model size automatically on Windows and Linux. Vulkan discovery retries a stalled hidden probe with a native summary; Windows and Linux desktop builds fail rather than silently ship without their Vulkan module.
@@ -496,7 +505,7 @@ Upgrading from 0.5.3 or older (the Tauri app)? [Install the new app separately](
 | Setup help | [Troubleshooting](docs/install/troubleshooting.md) · [Model downloads](docs/downloading-models.md) |
 | Guides | [Multi-speaker dubbing](docs/dubbing/multi-speaker-guide.md) · [Expressive speech](docs/expressive-speech.md) · [Exporting dubs](docs/dubbing/export.md) |
 | Models & quality | [Engine guides](docs/engines/README.md) · [whisper.cpp ASR](docs/engines/whisper-cpp.md) · [Benchmarks](docs/benchmarks.md) |
-| Integrations | [Local API](docs/speech-platform.md) · [MCP](docs/mcp.md) · [Examples](examples/README.md) |
+| Integrations | [CLI](docs/install/script.md#terminal-command) · [Local API](docs/speech-platform.md) · [MCP](docs/mcp.md) · [Examples](examples/README.md) |
 | Phone apps | [iOS and Android](docs/mobile.md) |
 | Development | [Contributing](.github/CONTRIBUTING.md) ([sign the CLA](.github/CONTRIBUTING.md#contribution-licensing) before your first PR) · [Changelog](CHANGELOG.md) |
 

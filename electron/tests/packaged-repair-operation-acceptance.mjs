@@ -17,7 +17,7 @@ const defaultExecutable =
     ? resolve('electron/release/win-unpacked/VoiceStudio.exe')
     : process.platform === 'darwin'
       ? resolve('electron/release/mac/VoiceStudio.app/Contents/MacOS/VoiceStudio')
-      : resolve('electron/release/linux-unpacked/voicestudio-electron');
+      : resolve('electron/release/linux-unpacked/voicestudio-desktop');
 const executablePath = process.env.VOICESTUDIO_PACKAGED_EXE
   ? resolve(process.env.VOICESTUDIO_PACKAGED_EXE)
   : defaultExecutable;
