@@ -12,6 +12,7 @@ import asyncio
 import base64
 import json
 
+import httpx
 import pytest
 
 pytest.importorskip("mcp")
@@ -146,3 +147,57 @@ def test_redirect_is_a_failure_not_empty_audio():
     with pytest.raises(httpx.HTTPStatusError) as raised:
         mcp_server._raise_for_backend_status(redirect)
     assert raised.value.response is redirect
+
+
+class _CountingStream(httpx.AsyncByteStream):
+    """An async byte stream that records how many chunks were pulled from it."""
+
+    def __init__(self, chunks):
+        """Serve ``chunks`` in order."""
+        self.chunks, self.pulled = chunks, 0
+
+    async def __aiter__(self):
+        """Yield each chunk, counting as it goes."""
+        for chunk in self.chunks:
+            self.pulled += 1
+            yield chunk
+
+    async def aclose(self):
+        """Nothing to release."""
+
+
+def _streamed(status, chunks, content_type="application/json"):
+    """A streamed httpx response, as ``client.stream()`` hands it over."""
+    import httpx
+
+    stream = _CountingStream(chunks)
+    request = httpx.Request("GET", "http://127.0.0.1/audio/a1.opus")
+    return httpx.Response(
+        status, headers={"content-type": content_type}, stream=stream, request=request
+    ), stream
+
+
+def test_streamed_error_keeps_a_small_json_detail():
+    """A streamed 4xx still surfaces the backend's detail."""
+    import httpx
+    import mcp_server
+
+    body = json.dumps({"detail": "Encoder unavailable"}).encode()
+    response, _stream = _streamed(503, [body[:10], body[10:]])
+    buffered = asyncio.run(mcp_server._buffered_error_response(response))
+    with pytest.raises(httpx.HTTPStatusError, match="Encoder unavailable"):
+        mcp_server._raise_for_backend_status(buffered)
+
+
+def test_streamed_error_body_is_read_only_up_to_the_cap():
+    """A huge error page is cut off at the cap and dropped, not buffered whole."""
+    import httpx
+    import mcp_server
+
+    chunk = b"x" * 16 * 1024
+    response, stream = _streamed(502, [chunk] * 640, content_type="text/html")  # 10 MiB
+    buffered = asyncio.run(mcp_server._buffered_error_response(response))
+    assert buffered.content == b""
+    assert stream.pulled * len(chunk) <= mcp_server._MAX_ERROR_BODY_BYTES + len(chunk)
+    with pytest.raises(httpx.HTTPStatusError, match="502 Bad Gateway"):
+        mcp_server._raise_for_backend_status(buffered)

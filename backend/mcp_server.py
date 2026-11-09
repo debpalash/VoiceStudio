@@ -135,6 +135,38 @@ def _raise_for_backend_status(response) -> None:
     )
 
 
+# A JSON error detail is a few hundred bytes; anything past this is a proxy
+# or HTML error page, not worth holding in the agent process.
+_MAX_ERROR_BODY_BYTES = 64 * 1024
+
+
+async def _buffered_error_response(response):
+    """A buffered copy of a failed *streamed* response, safe to read ``detail`` from.
+
+    Reads at most ``_MAX_ERROR_BODY_BYTES`` of the body. A larger body is
+    dropped (the copy is empty), so ``_raise_for_backend_status`` falls back to
+    the plain status message instead of buffering an unbounded error page.
+    Only the content type is carried over: the chunks are already decoded, so
+    the original Content-Encoding/Length would no longer describe them."""
+    import httpx
+
+    body = bytearray()
+    async for chunk in response.aiter_bytes():
+        body += chunk
+        if len(body) > _MAX_ERROR_BODY_BYTES:
+            body.clear()
+            break
+    headers = {}
+    if content_type := response.headers.get("content-type"):
+        headers["content-type"] = content_type
+    return httpx.Response(
+        response.status_code,
+        headers=headers,
+        content=bytes(body),
+        request=response.request,
+    )
+
+
 # ── Output mode + the base path boundary ─────────────────────────────────
 # An LLM agent that receives a WAV as base64 pays for every byte in context:
 # a 1.4 s clip already brushes per-result token caps, and a paragraph of
@@ -673,9 +705,8 @@ def create_mcp_server(app=None):
             # buffering another full audio copy in the agent process.
             async with _client(300) as c:
                 async with c.stream("GET", f"/audio/{audio_id}.{format}") as encoded:
-                    if encoded.is_error:
-                        await encoded.aread()  # an error body is small JSON
-                    _raise_for_backend_status(encoded)
+                    if not encoded.is_success:
+                        _raise_for_backend_status(await _buffered_error_response(encoded))
 
         return json.dumps(await _speech_result(
             audio_id, gen_time, duration, r.content, _api_base(), format
