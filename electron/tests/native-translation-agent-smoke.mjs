@@ -13,7 +13,7 @@ const executablePath = process.env.VOICESTUDIO_PACKAGED_EXE
         ? 'electron/release/win-unpacked/VoiceStudio.exe'
         : process.platform === 'darwin'
           ? 'electron/release/mac/VoiceStudio.app/Contents/MacOS/VoiceStudio'
-          : 'electron/release/linux-unpacked/voicestudio-electron',
+          : 'electron/release/linux-unpacked/voicestudio-desktop',
     );
 assert.ok(existsSync(executablePath), `Packaged executable does not exist: ${executablePath}`);
 const profile = mkdtempSync(join(tmpdir(), 'voicestudio-translation-agent-'));

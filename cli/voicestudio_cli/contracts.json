@@ -1,0 +1,1611 @@
+{
+  "audio clean": {
+    "encoding": "multipart/form-data",
+    "fields": [
+      "audio"
+    ],
+    "query": [],
+    "required": [
+      "audio"
+    ],
+    "required_query": []
+  },
+  "audio convert-voice": {
+    "encoding": "multipart/form-data",
+    "fields": [
+      "audio",
+      "keep_delivery",
+      "language",
+      "match_duration",
+      "profile_id"
+    ],
+    "query": [],
+    "required": [
+      "audio",
+      "profile_id"
+    ],
+    "required_query": []
+  },
+  "audio direction": {
+    "encoding": "application/json",
+    "fields": [
+      "text"
+    ],
+    "query": [],
+    "required": [
+      "text"
+    ],
+    "required_query": []
+  },
+  "audio effects": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "audio normalize": {
+    "encoding": "multipart/form-data",
+    "fields": [
+      "audio",
+      "target_dbfs"
+    ],
+    "query": [],
+    "required": [
+      "audio"
+    ],
+    "required_query": []
+  },
+  "audio plugins": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "audio rate-fit": {
+    "encoding": "application/json",
+    "fields": [
+      "slot_seconds",
+      "source_text",
+      "target_lang",
+      "text"
+    ],
+    "query": [],
+    "required": [
+      "text",
+      "slot_seconds",
+      "target_lang"
+    ],
+    "required_query": []
+  },
+  "audio watermark detect": {
+    "encoding": "multipart/form-data",
+    "fields": [
+      "file"
+    ],
+    "query": [],
+    "required": [
+      "file"
+    ],
+    "required_query": []
+  },
+  "audio watermark settings": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "invisible",
+      "visible_audio",
+      "visible_video"
+    ],
+    "required": [],
+    "required_query": []
+  },
+  "audio watermark status": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "audiobook cover": {
+    "encoding": "multipart/form-data",
+    "fields": [
+      "cover"
+    ],
+    "query": [],
+    "required": [
+      "cover"
+    ],
+    "required_query": []
+  },
+  "audiobook import": {
+    "encoding": "multipart/form-data",
+    "fields": [
+      "file"
+    ],
+    "query": [],
+    "required": [
+      "file"
+    ],
+    "required_query": []
+  },
+  "audiobook jobs": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "audiobook plan": {
+    "encoding": "application/json",
+    "fields": [
+      "default_voice",
+      "text"
+    ],
+    "query": [],
+    "required": [
+      "text"
+    ],
+    "required_query": []
+  },
+  "audiobook preview": {
+    "encoding": "application/json",
+    "fields": [
+      "chapter_index",
+      "class_temperature",
+      "default_voice",
+      "emo_alpha",
+      "emo_text",
+      "emo_vector",
+      "guidance_scale",
+      "language",
+      "lexicon",
+      "line_gap_ms",
+      "num_step",
+      "paragraph_gap_ms",
+      "position_temperature",
+      "postprocess_output",
+      "seed",
+      "text",
+      "trim_edges",
+      "vary_repeats",
+      "voice_map"
+    ],
+    "query": [],
+    "required": [
+      "text"
+    ],
+    "required_query": []
+  },
+  "audiobook render": {
+    "encoding": "application/json",
+    "fields": [
+      "bitrate",
+      "class_temperature",
+      "cover_path",
+      "default_voice",
+      "emo_alpha",
+      "emo_text",
+      "emo_vector",
+      "format",
+      "guidance_scale",
+      "language",
+      "lexicon",
+      "line_gap_ms",
+      "loudness",
+      "metadata",
+      "num_step",
+      "paragraph_gap_ms",
+      "position_temperature",
+      "postprocess_output",
+      "seed",
+      "text",
+      "trim_edges",
+      "vary_repeats",
+      "voice_map"
+    ],
+    "query": [],
+    "required": [
+      "text"
+    ],
+    "required_query": []
+  },
+  "audiobook resume": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "batch cancel": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "batch delete": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "batch download": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "batch enqueue": {
+    "encoding": "multipart/form-data",
+    "fields": [
+      "langs",
+      "preserve_bg",
+      "translation_provider",
+      "video",
+      "voice_id"
+    ],
+    "query": [],
+    "required": [
+      "video"
+    ],
+    "required_query": []
+  },
+  "batch list": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "status",
+      "limit"
+    ],
+    "required": [],
+    "required_query": []
+  },
+  "batch retry": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "batch show": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "calls configure": {
+    "encoding": "application/json",
+    "fields": [
+      "allow_remote_control",
+      "disclosure_template",
+      "from_number",
+      "inbound_brief",
+      "inbound_mode",
+      "max_concurrent",
+      "record_calls",
+      "user_name"
+    ],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "calls delete": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "calls events": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "calls hangup": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "calls list": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "limit"
+    ],
+    "required": [],
+    "required_query": []
+  },
+  "calls options": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "calls readiness": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "calls recording": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "calls say": {
+    "encoding": "application/json",
+    "fields": [
+      "text"
+    ],
+    "query": [],
+    "required": [
+      "text"
+    ],
+    "required_query": []
+  },
+  "calls show": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "calls start": {
+    "encoding": "application/json",
+    "fields": [
+      "brief",
+      "disclosure",
+      "engine",
+      "language",
+      "max_minutes",
+      "profile_id",
+      "to"
+    ],
+    "query": [],
+    "required": [
+      "to",
+      "brief",
+      "profile_id"
+    ],
+    "required_query": []
+  },
+  "calls takeover": {
+    "encoding": "application/json",
+    "fields": [
+      "enabled"
+    ],
+    "query": [],
+    "required": [
+      "enabled"
+    ],
+    "required_query": []
+  },
+  "diagnostics bundle": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "network"
+    ],
+    "required": [],
+    "required_query": []
+  },
+  "diagnostics crashes": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "diagnostics errors": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "limit"
+    ],
+    "required": [],
+    "required_query": []
+  },
+  "diagnostics flush-memory": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "unload_model"
+    ],
+    "required": [],
+    "required_query": []
+  },
+  "diagnostics logs": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "tail"
+    ],
+    "required": [],
+    "required_query": []
+  },
+  "diagnostics media-tools": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "diagnostics notifications": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "diagnostics preflight": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "diagnostics system": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "diagnostics usage": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "dictation models": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "dictation preferences set": {
+    "encoding": "application/json",
+    "fields": [
+      "enabled",
+      "mode",
+      "model_id",
+      "prompt"
+    ],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "dictation preferences show": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "dictation readiness": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "model_id",
+      "purpose"
+    ],
+    "required": [],
+    "required_query": []
+  },
+  "dub cancel": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "dub fit": {
+    "encoding": "application/json",
+    "fields": [
+      "segments",
+      "target_lang",
+      "translation_instructions"
+    ],
+    "query": [],
+    "required": [
+      "segments",
+      "target_lang"
+    ],
+    "required_query": []
+  },
+  "dub generate": {
+    "encoding": "application/json",
+    "fields": [
+      "fit_options",
+      "guidance_scale",
+      "instruct",
+      "language",
+      "language_code",
+      "num_step",
+      "overflow_budget_s",
+      "preview",
+      "regen_only",
+      "segment_ids",
+      "segments",
+      "slot_fit",
+      "speed",
+      "timing_strategy",
+      "voice_match"
+    ],
+    "query": [],
+    "required": [
+      "segments"
+    ],
+    "required_query": []
+  },
+  "dub history": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "dub history-delete": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "dub ingest": {
+    "encoding": "application/json",
+    "fields": [
+      "cookie_file",
+      "fetch_subs",
+      "job_id",
+      "source_lang",
+      "sub_langs",
+      "url"
+    ],
+    "query": [],
+    "required": [
+      "url"
+    ],
+    "required_query": []
+  },
+  "dub preview": {
+    "encoding": "application/json",
+    "fields": [
+      "duration",
+      "instruct",
+      "language",
+      "profile_id",
+      "segment_id",
+      "speed",
+      "text"
+    ],
+    "query": [],
+    "required": [
+      "text"
+    ],
+    "required_query": []
+  },
+  "dub quality": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "lang",
+      "drift_threshold"
+    ],
+    "required": [],
+    "required_query": []
+  },
+  "dub subtitles import": {
+    "encoding": "multipart/form-data",
+    "fields": [
+      "file"
+    ],
+    "query": [],
+    "required": [
+      "file"
+    ],
+    "required_query": []
+  },
+  "dub tracks": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "dub transcribe": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "num_speakers"
+    ],
+    "required": [],
+    "required_query": []
+  },
+  "dub transcript clean": {
+    "encoding": "application/json",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "dub transcript get": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "lang"
+    ],
+    "required": [],
+    "required_query": [
+      "lang"
+    ]
+  },
+  "dub transcript set": {
+    "encoding": "application/json",
+    "fields": [
+      "segments"
+    ],
+    "query": [],
+    "required": [
+      "segments"
+    ],
+    "required_query": []
+  },
+  "dub translate": {
+    "encoding": "application/json",
+    "fields": [
+      "auto_glossary",
+      "condense",
+      "dialect",
+      "glossary",
+      "job_id",
+      "provider",
+      "quality",
+      "reflect",
+      "segments",
+      "source_lang",
+      "target_lang",
+      "translation_instructions"
+    ],
+    "query": [],
+    "required": [
+      "segments",
+      "target_lang"
+    ],
+    "required_query": []
+  },
+  "dub upload": {
+    "encoding": "multipart/form-data",
+    "fields": [
+      "input_type",
+      "job_id",
+      "source_lang",
+      "video"
+    ],
+    "query": [],
+    "required": [
+      "video"
+    ],
+    "required_query": []
+  },
+  "engines disk-usage": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "engines health": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "engines quants download": {
+    "encoding": "application/json",
+    "fields": [
+      "quant"
+    ],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "engines quants list": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "engines quants select": {
+    "encoding": "application/json",
+    "fields": [
+      "quant"
+    ],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "engines selftest": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "gallery community list": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "use_case",
+      "gender",
+      "type",
+      "lang",
+      "q",
+      "pack",
+      "limit",
+      "offset",
+      "refresh"
+    ],
+    "required": [],
+    "required_query": []
+  },
+  "gallery community preview": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "local"
+    ],
+    "required": [],
+    "required_query": []
+  },
+  "gallery community submit": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "type",
+      "source"
+    ],
+    "required": [],
+    "required_query": []
+  },
+  "gallery community use": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "name"
+    ],
+    "required": [],
+    "required_query": []
+  },
+  "gallery delete": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "gallery download": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "video_url",
+      "start_time",
+      "duration",
+      "character_name",
+      "category",
+      "description"
+    ],
+    "required": [],
+    "required_query": [
+      "video_url",
+      "character_name"
+    ]
+  },
+  "gallery import": {
+    "encoding": "multipart/form-data",
+    "fields": [
+      "audio",
+      "category",
+      "character",
+      "description",
+      "name"
+    ],
+    "query": [],
+    "required": [
+      "name",
+      "audio"
+    ],
+    "required_query": []
+  },
+  "gallery list": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "category",
+      "search",
+      "limit"
+    ],
+    "required": [],
+    "required_query": []
+  },
+  "gallery presets list": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "q",
+      "use_case",
+      "gender",
+      "age",
+      "pitch",
+      "accent",
+      "whisper",
+      "lang",
+      "featured",
+      "limit",
+      "offset"
+    ],
+    "required": [],
+    "required_query": []
+  },
+  "gallery presets use": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "name"
+    ],
+    "required": [],
+    "required_query": []
+  },
+  "gallery preview": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "gallery save-voice": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "profile_name"
+    ],
+    "required": [],
+    "required_query": [
+      "profile_name"
+    ]
+  },
+  "gallery search": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "query",
+      "category",
+      "max_results"
+    ],
+    "required": [],
+    "required_query": [
+      "query"
+    ]
+  },
+  "gallery update": {
+    "encoding": "application/json",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "history clear": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "history delete": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "history list": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "history quality": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "integrations mcp bindings delete": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "integrations mcp bindings list": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "jobs cancel": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "jobs events": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "after_seq",
+      "limit"
+    ],
+    "required": [],
+    "required_query": []
+  },
+  "jobs list": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "status",
+      "project_id",
+      "limit"
+    ],
+    "required": [],
+    "required_query": []
+  },
+  "jobs longform delete": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "jobs longform list": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "limit"
+    ],
+    "required": [],
+    "required_query": []
+  },
+  "jobs show": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "models access": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "repo_id"
+    ],
+    "required": [],
+    "required_query": [
+      "repo_id"
+    ]
+  },
+  "models delete": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "models install-status": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "models license revoke": {
+    "encoding": "application/json",
+    "fields": [
+      "repo_id"
+    ],
+    "query": [],
+    "required": [
+      "repo_id"
+    ],
+    "required_query": []
+  },
+  "models license show": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "models loaded": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "models recommend": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "models unload": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "projects create": {
+    "encoding": "application/json",
+    "fields": [
+      "audio_path",
+      "duration",
+      "name",
+      "state",
+      "video_path"
+    ],
+    "query": [],
+    "required": [
+      "name",
+      "state"
+    ],
+    "required_query": []
+  },
+  "projects delete": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "projects export": {
+    "encoding": "application/json",
+    "fields": [
+      "kind",
+      "project",
+      "project_id"
+    ],
+    "query": [],
+    "required": [
+      "kind"
+    ],
+    "required_query": []
+  },
+  "projects glossary add": {
+    "encoding": "application/json",
+    "fields": [
+      "note",
+      "source",
+      "target"
+    ],
+    "query": [],
+    "required": [
+      "source",
+      "target"
+    ],
+    "required_query": []
+  },
+  "projects glossary delete": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "projects glossary extract": {
+    "encoding": "application/json",
+    "fields": [
+      "max_terms",
+      "segments",
+      "source_lang",
+      "target_lang"
+    ],
+    "query": [],
+    "required": [
+      "target_lang"
+    ],
+    "required_query": []
+  },
+  "projects glossary list": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "projects glossary update": {
+    "encoding": "application/json",
+    "fields": [
+      "note",
+      "source",
+      "target"
+    ],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "projects import": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "allow_voices"
+    ],
+    "required": [],
+    "required_query": []
+  },
+  "projects list": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "projects show": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "projects update": {
+    "encoding": "application/json",
+    "fields": [
+      "audio_path",
+      "duration",
+      "name",
+      "state",
+      "video_path"
+    ],
+    "query": [],
+    "required": [
+      "name",
+      "state"
+    ],
+    "required_query": []
+  },
+  "pronunciation add": {
+    "encoding": "application/json",
+    "fields": [
+      "enabled",
+      "language",
+      "replacement",
+      "term",
+      "type"
+    ],
+    "query": [],
+    "required": [
+      "term"
+    ],
+    "required_query": []
+  },
+  "pronunciation delete": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "pronunciation export": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "pronunciation import": {
+    "encoding": "application/json",
+    "fields": [
+      "entries",
+      "replace"
+    ],
+    "query": [],
+    "required": [
+      "entries"
+    ],
+    "required_query": []
+  },
+  "pronunciation list": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "pronunciation test": {
+    "encoding": "application/json",
+    "fields": [
+      "language",
+      "text"
+    ],
+    "query": [],
+    "required": [
+      "text"
+    ],
+    "required_query": []
+  },
+  "pronunciation update": {
+    "encoding": "application/json",
+    "fields": [
+      "enabled",
+      "language",
+      "replacement",
+      "term",
+      "type"
+    ],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "settings hf-token clear": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "also_clear_hf_cli"
+    ],
+    "required": [],
+    "required_query": []
+  },
+  "settings hf-token status": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "fresh"
+    ],
+    "required": [],
+    "required_query": []
+  },
+  "settings providers configure": {
+    "encoding": "application/json",
+    "fields": [
+      "account_id",
+      "activate_if_unset",
+      "api_key",
+      "base_url",
+      "make_active",
+      "model"
+    ],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "settings providers list": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "settings providers select": {
+    "encoding": "application/json",
+    "fields": [
+      "provider"
+    ],
+    "query": [],
+    "required": [
+      "provider"
+    ],
+    "required_query": []
+  },
+  "settings providers test": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "settings skills list": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "settings skills set": {
+    "encoding": "application/json",
+    "fields": [
+      "enabled",
+      "provider_override"
+    ],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "settings storage clear-temp": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "settings storage show": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "refresh"
+    ],
+    "required": [],
+    "required_query": []
+  },
+  "sharing disable": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "sharing enable": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "sharing status": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "sharing tailscale disable": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "sharing tailscale enable": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "sharing tailscale status": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "stories encode": {
+    "encoding": "multipart/form-data",
+    "fields": [
+      "bitrate",
+      "file",
+      "format"
+    ],
+    "query": [],
+    "required": [
+      "file"
+    ],
+    "required_query": []
+  },
+  "stories render": {
+    "encoding": "application/json",
+    "fields": [
+      "bitrate",
+      "chapters",
+      "class_temperature",
+      "cover_path",
+      "default_voice",
+      "emo_alpha",
+      "emo_text",
+      "emo_vector",
+      "format",
+      "guidance_scale",
+      "language",
+      "lexicon",
+      "line_gap_ms",
+      "loudness",
+      "metadata",
+      "num_step",
+      "paragraph_gap_ms",
+      "position_temperature",
+      "postprocess_output",
+      "seed",
+      "trim_edges",
+      "vary_repeats",
+      "voice_map"
+    ],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "stories resume": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "voices consent revoke": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "voices consent set": {
+    "encoding": "multipart/form-data",
+    "fields": [
+      "consent_audio",
+      "consent_text"
+    ],
+    "query": [],
+    "required": [
+      "consent_audio",
+      "consent_text"
+    ],
+    "required_query": []
+  },
+  "voices delete": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "voices describe": {
+    "encoding": "application/json",
+    "fields": [
+      "description"
+    ],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "voices export": {
+    "encoding": "",
+    "fields": [],
+    "query": [
+      "license_spdx",
+      "tags",
+      "include_reference"
+    ],
+    "required": [],
+    "required_query": []
+  },
+  "voices image set": {
+    "encoding": "multipart/form-data",
+    "fields": [
+      "image"
+    ],
+    "query": [],
+    "required": [
+      "image"
+    ],
+    "required_query": []
+  },
+  "voices import": {
+    "encoding": "multipart/form-data",
+    "fields": [
+      "file"
+    ],
+    "query": [],
+    "required": [
+      "file"
+    ],
+    "required_query": []
+  },
+  "voices inspect": {
+    "encoding": "multipart/form-data",
+    "fields": [
+      "file"
+    ],
+    "query": [],
+    "required": [
+      "file"
+    ],
+    "required_query": []
+  },
+  "voices list": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "voices lock": {
+    "encoding": "application/x-www-form-urlencoded",
+    "fields": [
+      "history_id",
+      "seed"
+    ],
+    "query": [],
+    "required": [
+      "history_id"
+    ],
+    "required_query": []
+  },
+  "voices reference get": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "voices reference set": {
+    "encoding": "multipart/form-data",
+    "fields": [
+      "instruct",
+      "language",
+      "name",
+      "personality",
+      "ref_audio",
+      "ref_text"
+    ],
+    "query": [],
+    "required": [
+      "ref_audio"
+    ],
+    "required_query": []
+  },
+  "voices show": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "voices unlock": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "voices update": {
+    "encoding": "application/json",
+    "fields": [
+      "instruct",
+      "language",
+      "name",
+      "personality",
+      "ref_text"
+    ],
+    "query": [],
+    "required": [],
+    "required_query": []
+  },
+  "voices usage": {
+    "encoding": "",
+    "fields": [],
+    "query": [],
+    "required": [],
+    "required_query": []
+  }
+}

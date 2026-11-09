@@ -101,7 +101,8 @@ def test_eager_boots_keep_the_classic_synchronous_startup():
 
 
 def test_shutdown_waits_for_a_running_reconcile_thread():
-    source = inspect.getsource(main.lifespan)
+    # lifespan holds the data-directory lease around the application lifespan.
+    source = inspect.getsource(main._application_lifespan)
     assert "_wait_for_profile_reconcile_thread(app)" in source
 
 
