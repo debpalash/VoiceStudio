@@ -126,7 +126,17 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
         inferenceIsClone=true
         inference=scope.launch {
             mutable.update {it.copy(progress=0f,interrupted=false)}
-            try {voices.create(name,file,consent,model,cloneModel,engine,decoder,progress={p -> mutable.update {it.copy(progress=p)}});refresh();withContext(Dispatchers.IO) {file.delete()};mutable.update {it.copy(progress=null)};created()}
+            try {
+                voices.create(name,file,consent,model,cloneModel,engine,decoder,progress={p -> mutable.update {it.copy(progress=p)}})
+                // The voice is saved: a cancel or an interruption from here on must not turn it into a failed or interrupted
+                // clone (Retry would make a duplicate). No progress means interruptInference leaves it alone.
+                mutable.update {it.copy(progress=null)}
+                withContext(NonCancellable) {
+                    try {refresh()} catch(e:Exception) {failure(e)}
+                    withContext(Dispatchers.IO) {file.delete()}
+                    created()
+                }
+            }
             catch(e:CancellationException) {throw e} catch(e:Exception) {retryFailure(e) {clone(name,file,model,cloneModel,consent,created)}}
             catch(e:Throwable) {retryFailure(ClientFailure(if(e is LinkageError) "mobile.local.runtime_failed" else "mobile.local.inference_failed")) {clone(name,file,model,cloneModel,consent,created)}}
             finally {clearProgress(coroutineContext[Job])}

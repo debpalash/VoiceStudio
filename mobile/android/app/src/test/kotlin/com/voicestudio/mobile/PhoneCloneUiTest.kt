@@ -178,7 +178,8 @@ class PhoneCloneUiTest {
         assertTrue(runBlocking {vm.phone.voices.list()}.isEmpty())
     }
     @Test fun leavingTheForegroundDuringSpeechIsNotReportedAsAnInterruptedClone() {
-        vm.phone.cancelInference();await {cancelled&&vm.phone.state.value.progress==null}
+        // The clone is still waiting in the decoder, so only its cleared progress shows it stopped.
+        vm.phone.cancelInference();await {vm.phone.state.value.progress==null}
         vm.phone.speak(vm.phone.state.value.models.first {it.capability=="clone"},"Hello",0)
         await {vm.phone.state.value.progress==.2f}
         compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.CREATED)
