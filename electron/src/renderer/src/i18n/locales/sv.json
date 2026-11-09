@@ -2648,9 +2648,11 @@
     "dub_projects": "Dubbningsprojekt",
     "dictation_history": "Dikteringshistorik",
     "pro": "Pro",
+    "pro_upsell": "Objekt märkta Pro synkroniseras med VoiceStudio Pro.",
     "use_choices_of": "Använd samma val som {{device}}",
     "devices": "Enheter",
     "this_device": "Den här enheten",
+    "last_active": "Senast aktiv: {{time}}",
     "remove_device": "Ta bort"
   },
   "firstrun": {
