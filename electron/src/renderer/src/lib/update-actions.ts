@@ -1,12 +1,14 @@
 import { toast } from "sonner";
 import type { TFunction } from "i18next";
+import { Store } from "@tanstack/store";
 import { getBridge } from "@/components/bridge";
 import { dubSession, flushDubDraft } from "@/features/dub/dub-session";
 import { ApiError, apiJson } from "@/lib/api/client";
-import { hasActiveAppWork } from "@/lib/app-activity";
+import { activeAppWorkCount } from "@/lib/app-activity";
+import { updateReleaseUrl } from "@/lib/update-format";
 import type { UpdateState } from "../../../preload/index.d";
 
-export type UpdateAction = "download" | "install" | "retry";
+export type UpdateAction = "download" | "install" | "retry" | "later" | "manual";
 
 export interface ModelInstallJobs {
   jobs: { state: string }[];
@@ -15,19 +17,17 @@ export interface ModelInstallJobs {
 export const MODEL_INSTALL_STATUS_PATH = "/models/install/status";
 export const ACTIVE_BATCH_JOBS_PATH = "/batch/jobs?status=active&limit=1";
 
-/** Model installs or batch jobs the managed backend is still running. */
-export const serverWorkActive = (
-  models?: ModelInstallJobs,
-  batches?: unknown[],
-) =>
+const ACTIVE_INSTALL_STATES = ["queued", "downloading", "running", "installing"];
+
+/** Model installs and batch jobs the managed backend is still running. */
+export const serverWorkCount = (models?: ModelInstallJobs, batches?: unknown[]) =>
   // Older backends answer with other shapes; anything unrecognised is idle.
-  Boolean(
-    (Array.isArray(models?.jobs) &&
-      models.jobs.some((job) =>
-        ["queued", "downloading", "running", "installing"].includes(job?.state),
-      )) ||
-      (Array.isArray(batches) && batches.length > 0),
-  );
+  (Array.isArray(models?.jobs)
+    ? models.jobs.filter((job) => ACTIVE_INSTALL_STATES.includes(job?.state)).length
+    : 0) + (Array.isArray(batches) ? batches.length : 0);
+
+export const serverWorkActive = (models?: ModelInstallJobs, batches?: unknown[]) =>
+  serverWorkCount(models, batches) > 0;
 
 /** A dub that is still processing or recovering; editing and done are safe to restart. */
 export const dubBusy = (value: typeof dubSession.state) =>
@@ -59,26 +59,69 @@ async function workStatus<T>(
   }
 }
 
+/** Running tasks a restart would stop; `unknown` when the backend could not say. */
+export interface RestartWork {
+  count: number;
+  unknown: boolean;
+}
+
 /**
- * True when restarting now would interrupt work: renderer activity, a dub, or
- * server-side model installs and batch jobs (which outlive their uploads). An
- * unknown server status defers the restart rather than risk a running job.
- * Every restart-to-update entry point must use this one check.
+ * The work restarting now would interrupt: renderer activity, a dub, and
+ * server-side model installs and batch jobs (which outlive their uploads).
  */
-export async function updateRestartBlocked(
+export async function updateRestartWork(
   timeoutMs = WORK_STATUS_TIMEOUT_MS,
-): Promise<boolean> {
-  if (hasActiveAppWork() || dubBusy(dubSession.state)) return true;
+): Promise<RestartWork> {
   const [models, batches] = await Promise.all([
     workStatus<ModelInstallJobs>(MODEL_INSTALL_STATUS_PATH, timeoutMs),
     workStatus<unknown[]>(ACTIVE_BATCH_JOBS_PATH, timeoutMs),
   ]);
-  if (models === UNKNOWN || batches === UNKNOWN) return true;
-  return (
-    hasActiveAppWork() ||
-    dubBusy(dubSession.state) ||
-    serverWorkActive(models, batches)
-  );
+  const unknown = models === UNKNOWN || batches === UNKNOWN;
+  return {
+    count:
+      activeAppWorkCount() +
+      (dubBusy(dubSession.state) ? 1 : 0) +
+      serverWorkCount(
+        models === UNKNOWN ? undefined : models,
+        batches === UNKNOWN ? undefined : batches,
+      ),
+    unknown,
+  };
+}
+
+/** True when restarting now would interrupt work, or the backend could not say. */
+export async function updateRestartBlocked(
+  timeoutMs = WORK_STATUS_TIMEOUT_MS,
+): Promise<boolean> {
+  const work = await updateRestartWork(timeoutMs);
+  return work.unknown || work.count > 0;
+}
+
+/** A restart waiting for the user to confirm; shown by UpdateRestartConfirm. */
+export const restartConfirmation = new Store<RestartWork | null>(null);
+
+/** Restarts into the downloaded update now, saving the dub draft first. */
+export async function restartIntoUpdate(): Promise<void> {
+  flushDubDraft();
+  await getBridge()?.updates.install();
+}
+
+/**
+ * Every restart-to-update entry point goes through here: it restarts at once
+ * when nothing is running, and otherwise asks first.
+ */
+export async function requestUpdateRestart(): Promise<void> {
+  const work = await updateRestartWork();
+  if (work.unknown || work.count > 0) {
+    restartConfirmation.setState(() => work);
+    return;
+  }
+  await restartIntoUpdate();
+}
+
+/** Opens the version's GitHub release page in the user's browser. */
+export async function openUpdateRelease(version?: string): Promise<void> {
+  await getBridge()?.files.openExternal(updateReleaseUrl(version));
 }
 
 /** The one action a state offers in place, or null when none applies. */
@@ -92,7 +135,7 @@ export function primaryUpdateAction(
   return null;
 }
 
-/** Runs a primary update action through the preload bridge; install defers while work is running. */
+/** Runs an update action through the preload bridge; install asks first while work is running. */
 export async function runUpdateAction(
   action: UpdateAction,
   state: UpdateState,
@@ -102,20 +145,17 @@ export async function runUpdateAction(
   if (!updates) return;
   try {
     if (action === "download") await updates.download();
+    else if (action === "later") {
+      if (state.status === "error") await updates.dismiss();
+      else await updates.later();
+    } else if (action === "manual") await openUpdateRelease(state.availableVersion);
     else if (action === "retry") {
       // The updater only downloads from `available`, so a failed download
       // re-checks first and downloads only when the update is offered again.
       const next = await updates.check();
       if (state.availableVersion && next?.status === "available")
         await updates.download();
-    } else {
-      if (await updateRestartBlocked()) {
-        toast.info(t("update.busy"));
-        return;
-      }
-      flushDubDraft();
-      await updates.install();
-    }
+    } else await requestUpdateRestart();
   } catch {
     toast.error(t("update.failed"));
   }

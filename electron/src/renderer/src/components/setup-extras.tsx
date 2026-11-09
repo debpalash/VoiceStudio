@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { primaryUpdateAction, runUpdateAction } from '@/lib/update-actions';
-import { updateErrorKey } from '@/lib/update-format';
+import { updateErrorTitleKey } from '@/lib/update-format';
 import { DISCORD_URL, ISSUES_URL } from '@shared/utils/contactLinks';
 import type { BackendStatus, UpdateState } from '../../../preload/index.d';
 import { appVersion, getBridge, platformFamily } from './bridge';
@@ -88,7 +88,7 @@ export function SetupUpdateNotice() {
   const action = primaryUpdateAction(state);
   const title =
     state.status === 'error'
-      ? t(updateErrorKey(state.error))
+      ? t(updateErrorTitleKey(state), { version: state.availableVersion })
       : state.status === 'downloaded'
       ? t('update.prompt_ready')
       : state.status === 'downloading'
