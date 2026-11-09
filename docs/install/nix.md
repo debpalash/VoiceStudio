@@ -47,6 +47,7 @@ nix run .   # launch it straight from this checkout
 ```
 
 - **First run installs Python like the AppImage does.** The app downloads uv's managed CPython into its data folder. That interpreter needs a standard ELF loader, so on NixOS enable [nix-ld](https://github.com/nix-community/nix-ld) (`programs.nix-ld.enable = true;`) or run from source in the FHS environment instead.
+- **OmniVoice GGUF runtime included.** The package builds the pinned `omnivoice.cpp` runtime (Vulkan and CPU) and its `bin/checksums.sha256` manifest, as the installers ship them.
 - **Updates come from Nix.** The package is a read-only store path, so its launcher sets `VOICESTUDIO_DISABLE_UPDATER=1`; update it with Nix.
 - **No installer artifacts.** `bun run dist` cannot run under Nix: electron-builder downloads its own tool binaries (the AppImage runtime and `fpm`) from GitHub at build time, which the Nix sandbox blocks. Release AppImage and `.deb` artifacts come from CI.
 

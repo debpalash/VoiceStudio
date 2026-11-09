@@ -398,6 +398,107 @@
           done
         '';
 
+      # ── omnivoice-tts (OmniVoice GGUF runtime) ───────────────────────────
+      # The installers ship the runtime build-omnivoice-tts.yml builds with
+      # scripts/build-omnivoice-tts.sh as resources/bin/, and the backend
+      # refuses it unless every file matches bin/checksums.sha256. Build the
+      # same pinned omnivoice.cpp the same way (Vulkan + CPU backends loaded at
+      # runtime) and write the same manifest.
+      #
+      # The rev must equal quant_map.json's runtime_commit_sha (asserted
+      # below); the ggml rev is that commit's submodule gitlink. When the pin
+      # moves, update both revs and both hashes.
+      omnivoiceRuntimeRev = "886fc079838ca7400cb2b42b36e2a65aa1daabe8";
+      omnivoiceGgmlRev = "f3bc6505c4e2ede83a193e0fb4695938ff3804fd";
+      pinnedRuntimeRev =
+        (lib.importJSON ./backend/engines/omnivoice_gguf/quant_map.json)._meta.runtime_commit_sha;
+
+      omnivoiceTts =
+        pkgs:
+        assert lib.assertMsg (omnivoiceRuntimeRev == pinnedRuntimeRev) ''
+          flake.nix pins omnivoice.cpp ${omnivoiceRuntimeRev}, but
+          backend/engines/omnivoice_gguf/quant_map.json pins ${pinnedRuntimeRev}.
+          Update omnivoiceRuntimeRev, omnivoiceGgmlRev and both hashes.
+        '';
+        let
+          ggml = pkgs.fetchFromGitHub {
+            owner = "ServeurpersoCom";
+            repo = "ggml";
+            rev = omnivoiceGgmlRev;
+            hash = "sha256-qACf1TNsoCK/ekM9vwSbdjgknV3q1u1+cpGIHNttTq0=";
+          };
+        in
+        pkgs.stdenv.mkDerivation {
+          pname = "omnivoice-tts";
+          version = "0-unstable-${builtins.substring 0 7 omnivoiceRuntimeRev}";
+
+          src = pkgs.fetchFromGitHub {
+            owner = "ServeurpersoCom";
+            repo = "omnivoice.cpp";
+            rev = omnivoiceRuntimeRev;
+            hash = "sha256-brw2LnalGCm7lDBksW2IDs6+XFiDhvbGv1xfhBerpe4=";
+          };
+
+          # GitHub archives leave the ggml submodule as an empty directory.
+          postUnpack = ''
+            rmdir "$sourceRoot/ggml"
+            cp -r ${ggml} "$sourceRoot/ggml"
+            chmod -R u+w "$sourceRoot/ggml"
+          '';
+
+          nativeBuildInputs = [
+            pkgs.cmake
+            (lib.getBin pkgs.shaderc) # glslc
+          ];
+          buildInputs = [
+            pkgs.vulkan-headers
+            pkgs.vulkan-loader
+            pkgs.spirv-headers
+          ];
+
+          # scripts/build-omnivoice-tts.sh's Linux Vulkan configuration.
+          dontUseCmakeConfigure = true;
+          buildPhase = ''
+            runHook preBuild
+            cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_VULKAN=ON \
+              -DGGML_BACKEND_DL=ON -DBUILD_SHARED_LIBS=ON \
+              -DGGML_NATIVE=OFF -DGGML_CPU_ALL_VARIANTS=ON
+            cmake --build build --config Release -j "$NIX_BUILD_CORES"
+            runHook postBuild
+          '';
+
+          # Flat layout, as the build script copies it: the binary next to every
+          # libggml* it loads, so ggml finds its backends beside the executable.
+          installPhase = ''
+            runHook preInstall
+            mkdir -p "$out"
+            cp -v build/omnivoice-tts "$out/omnivoice-tts-linux-x86_64"
+            find build -name 'libggml*.so*' -type f -exec cp -v {} "$out/" \;
+            find build -name 'libggml*.so*' -type l -exec cp -vL {} "$out/" \;
+            for file in "$out"/*; do
+              isELF "$file" || continue
+              rpath=$(patchelf --print-rpath "$file" | tr ':' '\n' |
+                { grep -v -e "^$NIX_BUILD_TOP" -e '^$' || true; } | paste -sd: -)
+              patchelf --set-rpath "\$ORIGIN''${rpath:+:$rpath}" "$file"
+            done
+            runHook postInstall
+          '';
+
+          # The manifest must describe the bytes that ship, so it is written
+          # after fixup; shrinking the RPATH would drop $ORIGIN.
+          dontPatchELF = true;
+          postFixup = ''
+            (cd "$out" && sha256sum -- * | sort -k2) > "$TMPDIR/checksums.sha256"
+            mv "$TMPDIR/checksums.sha256" "$out/checksums.sha256"
+          '';
+
+          meta = {
+            description = "OmniVoice GGUF inference runtime (omnivoice.cpp)";
+            homepage = "https://github.com/ServeurpersoCom/omnivoice.cpp";
+            platforms = [ "x86_64-linux" ];
+          };
+        };
+
       # ── Package ──────────────────────────────────────────────────────────
       mkPackage =
         pkgs:
@@ -479,14 +580,27 @@
             # extraMetadata (electron-builder.config.mjs), and
             # tests/test_app_version.py pins the root package.json as the single
             # source of truth. Do the same substitution here.
-            appVersion=$(node -p "require('$sourceRoot/package.json').version")
-            node -e '
-              const fs = require("node:fs");
-              const file = process.argv[1];
+            # The rest of extraMetadata matters too: Electron names the
+            # userData folder after productName (the AppImage's
+            # ~/.config/VoiceStudio) and takes the Linux app id from
+            # desktopName.
+            node --input-type=module -e '
+              import fs from "node:fs";
+              import { pathToFileURL } from "node:url";
+              const [file, root] = process.argv.slice(1);
+              const load = (rel) => import(pathToFileURL(root + "/" + rel).href);
+              const { PRODUCT_NAME } = await load("config/app-config.mjs");
+              const { DISTRIBUTION_TARGET, DISTRIBUTION_PROFILE } = await load("config/distributions.mjs");
               const pkg = JSON.parse(fs.readFileSync(file, "utf8"));
-              pkg.version = process.argv[2];
+              Object.assign(pkg, {
+                version: JSON.parse(fs.readFileSync(root + "/package.json", "utf8")).version,
+                productName: PRODUCT_NAME,
+                desktopName: PRODUCT_NAME,
+                voicestudioDistribution: DISTRIBUTION_TARGET,
+                voicestudioUpdateOwner: DISTRIBUTION_PROFILE.applicationUpdates,
+              });
               fs.writeFileSync(file, JSON.stringify(pkg, null, 2) + "\n");
-            ' "$out/electron/package.json" "$appVersion"
+            ' "$out/electron/package.json" "$sourceRoot"
           '';
 
           # The same cargo build electron-builder's afterPack hook performs,
@@ -644,6 +758,13 @@
             install -Dm644 electron/build/icons/icon.ico "$resources/brand/icon.ico"
             install -Dm644 electron/build/icons/32x32.png "$resources/brand/32x32.png"
             install -Dm644 electron/build/icons/tray-recording.png "$resources/brand/tray-recording.png"
+            install -Dm644 electron/build/icons/icon-macos.png "$resources/brand/icon-macos.png"
+            install -Dm644 electron/build/icons/trayTemplate.png "$resources/brand/trayTemplate.png"
+            install -Dm644 electron/build/icons/trayRecordingTemplate.png "$resources/brand/trayRecordingTemplate.png"
+
+            # The OmniVoice GGUF runtime with its checksum manifest.
+            mkdir -p "$resources/bin"
+            cp ${omnivoiceTts pkgs}/* "$resources/bin/"
 
             cp -r backend "$resources/backend"
             cp -r omnivoice "$resources/omnivoice"
@@ -849,6 +970,7 @@
           pkgs = nixpkgs.legacyPackages.${system};
           app = mkPackage pkgs;
           bridge = app + "/libexec/electron/resources/native/voicestudio-desktop-bridge";
+          runtime = app + "/libexec/electron/resources/bin/omnivoice-tts-linux-x86_64";
           nodeDepsDev = nodeDeps { inherit pkgs; };
         in
         {
@@ -870,6 +992,13 @@
               echo "expected the helper to link libxdo (enigo's default xdo feature)"
               exit 1
             }
+            # The GGUF runtime resolves its libggml* through $ORIGIN.
+            missing=$(ldd ${runtime} 2>/dev/null | grep "not found" || true)
+            if [ -n "$missing" ]; then
+              echo "omnivoice-tts has unresolved libraries:"
+              echo "$missing"
+              exit 1
+            fi
             touch $out
           '';
 
@@ -899,6 +1028,14 @@
               scripts/windows-rocm-recipe.json \
               scripts/smoke_windows_rocm.py \
               brand/icon.png \
+              brand/icon.ico \
+              brand/32x32.png \
+              brand/tray-recording.png \
+              brand/icon-macos.png \
+              brand/trayTemplate.png \
+              brand/trayRecordingTemplate.png \
+              bin/omnivoice-tts-linux-x86_64 \
+              bin/checksums.sha256 \
               tools/uv \
               native/voicestudio-desktop-bridge \
               node_modules/@electron-toolkit/utils \
@@ -919,6 +1056,28 @@
               echo "packaged app version is $version, expected the root package.json version"
               exit 1
             fi
+            productName=$(node -p "require('$resources/app/package.json').productName" 2>/dev/null || echo none)
+            if [ "$productName" != "VoiceStudio" ]; then
+              echo "packaged productName is $productName; userData would leave the AppImage's folder"
+              exit 1
+            fi
+
+            # The backend rejects the GGUF runtime unless every file in bin/
+            # matches the manifest and the manifest covers every file.
+            (cd "$resources/bin" && sha256sum --check --strict checksums.sha256)
+            for file in "$resources"/bin/*; do
+              name=$(basename "$file")
+              [ "$name" = checksums.sha256 ] && continue
+              if ! grep -q "  $name\$" "$resources/bin/checksums.sha256"; then
+                echo "bin/$name is not listed in bin/checksums.sha256"
+                exit 1
+              fi
+            done
+            if [ ! -x "$resources/bin/omnivoice-tts-linux-x86_64" ]; then
+              echo "bin/omnivoice-tts-linux-x86_64 is not executable"
+              exit 1
+            fi
+            ls "$resources"/bin/libggml*.so* >/dev/null
             touch $out
           '';
 

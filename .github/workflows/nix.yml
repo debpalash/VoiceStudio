@@ -19,6 +19,8 @@ on:
       - 'electron/package.json'
       - 'config/**'
       - 'native/desktop-bridge/Cargo.lock'
+      - 'backend/engines/omnivoice_gguf/quant_map.json'
+      - 'electron/build/icons/**'
       - 'scripts/prune-runtime-node-modules.mjs'
       - 'scripts/windows-rocm-recipe.json'
       - 'scripts/smoke_windows_rocm.py'
@@ -35,6 +37,8 @@ on:
       - 'electron/package.json'
       - 'config/**'
       - 'native/desktop-bridge/Cargo.lock'
+      - 'backend/engines/omnivoice_gguf/quant_map.json'
+      - 'electron/build/icons/**'
       - 'scripts/prune-runtime-node-modules.mjs'
       - 'scripts/windows-rocm-recipe.json'
       - 'scripts/smoke_windows_rocm.py'
@@ -73,6 +77,7 @@ jobs:
           changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- \
             flake.nix flake.lock nix docs/install/nix.md package.json bun.lock \
             electron/package.json config native/desktop-bridge/Cargo.lock \
+            backend/engines/omnivoice_gguf/quant_map.json electron/build/icons \
             scripts/prune-runtime-node-modules.mjs scripts/windows-rocm-recipe.json \
             scripts/smoke_windows_rocm.py .github/workflows/nix.yml)
           if [ -n "$changed" ]; then
