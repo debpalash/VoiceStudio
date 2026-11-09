@@ -39,8 +39,9 @@ const PROFILE_BLOCK =
   'case ":$PATH:" in\n    *":$HOME/.local/bin:"*) ;;\n' +
   '    *) export PATH="$HOME/.local/bin:$PATH" ;;\nesac\n';
 const FISH_LINE = 'fish_add_path --path "$HOME/.local/bin"\n';
-// Bash login shells read .bash_profile instead of .profile when it exists.
-const PROFILES = ['.profile', '.bash_profile', '.bashrc', '.zshrc'];
+// Bash login shells read the first of .bash_profile, .bash_login and .profile;
+// existing ones are configured, never created (a new one would hide .profile).
+const PROFILES = ['.profile', '.bash_profile', '.bash_login', '.bashrc', '.zshrc'];
 
 function commandTarget(options: TerminalCommandOptions): string | null {
   // Windows installers own PATH; Snap exposes its own command; a translocated

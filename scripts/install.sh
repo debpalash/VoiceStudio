@@ -171,7 +171,13 @@ install_command() {
     # entry point is this command. Linking there would replace the app with a
     # link to itself.
     [ "$command_path" -ef "$1" ] || ln -sf "$1" "$command_path"
-    for profile in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.zshrc"; do
+    # Bash login shells read the first of .bash_profile, .bash_login and
+    # .profile, and many .bash_profile files never source .bashrc. Configure
+    # the existing Bash login files too; creating one would hide .profile.
+    for profile in "$HOME/.profile" "$HOME/.bash_profile" "$HOME/.bash_login" "$HOME/.bashrc" "$HOME/.zshrc"; do
+        case "$profile" in
+            */.bash_profile|*/.bash_login) [ -f "$profile" ] || continue ;;
+        esac
         if ! grep -q '^# VoiceStudio terminal command$' "$profile" 2>/dev/null; then
             cat >> "$profile" <<'COMMAND_PATH'
 

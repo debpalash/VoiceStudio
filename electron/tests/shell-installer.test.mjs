@@ -186,6 +186,23 @@ for (const mac of [false, true]) {
   });
 }
 
+test('Bash login files that exist get the PATH entry; absent ones are not created', (t) => {
+  for (const login of ['.bash_profile', '.bash_login']) {
+    const f = fixture(t, { cli: true });
+    // A login file that does not source .bashrc: only its own PATH line helps.
+    writeFileSync(join(f.home, login), '# login settings\n');
+    assert.equal(f.run().status, 0);
+    const text = readFileSync(join(f.home, login), 'utf8');
+    assert(text.startsWith('# login settings\n'));
+    assert.equal(text.match(/# VoiceStudio terminal command/g).length, 1);
+    assert.equal(f.run().status, 0);
+    const again = readFileSync(join(f.home, login), 'utf8');
+    assert.equal(again.match(/# VoiceStudio terminal command/g).length, 1);
+    const other = login === '.bash_profile' ? '.bash_login' : '.bash_profile';
+    assert.equal(existsSync(join(f.home, other)), false);
+  }
+});
+
 test('command collisions preserve the existing app and launcher', (t) => {
   const f = fixture(t);
   // Two files differing only by case cannot coexist there; nothing to collide.

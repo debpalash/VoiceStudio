@@ -133,6 +133,16 @@ test('a live relative link is kept, whatever the working directory', () => {
   expect(readlinkSync(command)).toBe('../../Apps/VoiceStudio-mine.AppImage');
 });
 
+test('a .bash_login that Bash reads gets the PATH entry; absent login files stay absent', () => {
+  const f = fixture();
+  const appImage = join(f.home, 'VoiceStudio.AppImage');
+  writeFileSync(appImage, 'fixture');
+  writeFileSync(join(f.home, '.bash_login'), '# login settings\n');
+  addTerminalCommandToPath({ ...f, platform: 'linux', appImage });
+  expect(readFileSync(join(f.home, '.bash_login'), 'utf8')).toContain('.local/bin');
+  expect(existsSync(join(f.home, '.bash_profile'))).toBe(false);
+});
+
 test('bash login shells that read .bash_profile get the PATH entry there', () => {
   const f = fixture();
   const appImage = join(f.home, 'VoiceStudio.AppImage');
