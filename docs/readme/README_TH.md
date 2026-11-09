@@ -325,14 +325,12 @@ chmod +x VoiceStudio-*-linux-x64.AppImage
 <details>
 <summary>Nix / NixOS · สภาพแวดล้อมต้นทาง</summary>
 
-เข้าสู่สภาพแวดล้อมการพัฒนาของพื้นที่เก็บข้อมูล จากนั้นเรียกใช้จากแหล่งที่มา:
+เข้าสู่สภาพแวดล้อมการพัฒนา FHS ของพื้นที่เก็บข้อมูล จากนั้นเรียกใช้จากแหล่งที่มา:
 
 ```sh
 git clone https://github.com/debpalash/VoiceStudio.git
 cd VoiceStudio
-nix develop
-bun install
-bun run setup:api
+nix develop .#fhs
 bun run dev
 ```
 

@@ -325,14 +325,12 @@ chmod +x VoiceStudio-*-linux-x64.AppImage
 <details>
 <summary>Nix / NixOS · bronomgeving</summary>
 
-Ga naar de ontwikkelomgeving van de repository en voer deze vervolgens uit vanaf de bron:
+Ga naar de FHS-ontwikkelomgeving van de repository en voer deze vervolgens uit vanaf de bron:
 
 ```sh
 git clone https://github.com/debpalash/VoiceStudio.git
 cd VoiceStudio
-nix develop
-bun install
-bun run setup:api
+nix develop .#fhs
 bun run dev
 ```
 

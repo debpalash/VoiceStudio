@@ -325,14 +325,12 @@ chmod +x VoiceStudio-*-linux-x64.AppImage
 <details>
 <summary>Nix / NixOS · 原始碼環境</summary>
 
-進入倉庫提供的開發環境，再從原始碼啟動：
+進入倉庫提供的 FHS 開發環境，再從原始碼啟動：
 
 ```sh
 git clone https://github.com/debpalash/VoiceStudio.git
 cd VoiceStudio
-nix develop
-bun install
-bun run setup:api
+nix develop .#fhs
 bun run dev
 ```
 

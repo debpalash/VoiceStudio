@@ -124,10 +124,9 @@ Prerequisites:
   `bun run dist` also needs `readelf` (binutils) and `zsyncmake` (part of the
   `zsync` package) to embed AppImage update information.
 
-  `libxdo` is required and is not implied by anything else in that list: the
-  dictation helper pulls in `enigo`, whose default `xdo` feature declares
-  `#[link(name = "xdo")]`. On NixOS none of these packages ship a shared
-  `libxdo` — see [NixOS](#nixos) below.
+  The dictation helper links the shared `libxdo` (through `enigo`'s default
+  `xdo` feature). nixpkgs' `xdotool` ships no shared `libxdo`, so the Nix flake
+  builds it — see [Nix / NixOS](#nix--nixos) below.
 
 Then, from a clone of the repository:
 
@@ -182,56 +181,19 @@ installs. Model and Python runtime setup remain explicit in the app.
 
 ### Nix / NixOS
 
-A community-maintained Nix flake provides development shells for running from source (not tested in CI). See the [Nix / NixOS guide](nix.md):
+A community-maintained Nix flake (not tested in CI) provides development shells,
+an FHS environment for NixOS and a Nix-built Linux x64 app. See the
+[Nix / NixOS guide](nix.md):
 
 ```bash
-nix develop
-bun install
-bun run setup:api
+nix develop .#fhs   # recommended for NixOS; `nix develop` for the plain shell
 bun run dev
 ```
 
-### NixOS
-
-The repository ships a `flake.nix`. It provides the development toolchain and a
-Nix-built package; you do not need to install the prerequisites above by hand.
-
-```bash
-nix develop            # full toolchain: bun, Node 22, Python 3.11, uv, Rust, ffmpeg
-bun install
-bun run setup:api
-bun run dev
-```
-
-`nix develop` sets `UV_PYTHON_PREFERENCE=only-system`, so uv uses the shell's
-Python 3.11 and the venv still lands in the repository's gitignored `.venv` —
-identical to `bun run setup:api` on any other distribution. A backend-only shell
-is available as `nix develop .#backend`.
-
-To build and install the app itself:
-
-```bash
-nix build          # the unpacked Linux app
-nix run .          # launch it straight from the flake
-```
-
-Two differences from the AppImage are worth knowing:
-
-- **The Nix package is not an installer.** It is a store path with a wrapper, so
-  the in-app updater cannot replace it in place. Update it with Nix, or set
-  `VOICESTUDIO_DISABLE_UPDATER=1`.
-- **No installer artifacts.** `bun run dist` cannot run under Nix:
-  electron-builder downloads its own tool binaries (the AppImage runtime and
-  `fpm` for `.deb`) from GitHub at build time, which a Nix sandbox blocks.
-  `nix build` therefore produces the unpacked application, and `nix flake check`
-  verifies the result. Release AppImage and `.deb` artifacts still come from CI.
-
-The flake is also the reason the native helper's `libxdo` dependency is
-documented: `pkgs.xdo` and `pkgs.xdotool` in nixpkgs ship only the executable,
-never a shared `libxdo`, and `enigo` (a dependency of the dictation helper)
-links it via `#[link(name = "xdo")]`. The flake builds that library from
-xdotool's own pinned sources. `nix flake check` fails if the helper's libraries
-stop resolving.
+`nix run .` launches the Nix-built app from a checkout. Its first run installs
+uv's managed Python like the AppImage does, which on NixOS needs
+[nix-ld](https://github.com/nix-community/nix-ld). Its launcher sets
+`VOICESTUDIO_DISABLE_UPDATER=1`; update it with Nix.
 
 ## ChromeOS, iPad and other devices
 

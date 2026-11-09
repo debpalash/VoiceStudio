@@ -9,12 +9,14 @@
       inherit (nixpkgs) lib;
 
       # VoiceStudio publishes Linux desktop artifacts for x86_64 only
-      # (docs/install/linux.md, "Requirements"). The devShell is offered on
-      # aarch64 too, because building from source works there.
-      devSystems = [
+      # (docs/install/linux.md, "Requirements"). The Linux shells are offered
+      # on aarch64 too, because building from source works there; Apple
+      # Silicon gets a plain toolchain shell.
+      linuxSystems = [
         "x86_64-linux"
         "aarch64-linux"
       ];
+      devSystems = linuxSystems ++ [ "aarch64-darwin" ];
       buildSystems = [ "x86_64-linux" ];
 
       forDevSystems = f: lib.genAttrs devSystems (system: f nixpkgs.legacyPackages.${system});
@@ -183,6 +185,15 @@
           # for `cargo build` of the dictation helper to succeed here.
           NIX_LDFLAGS = "-L${libxdo pkgs}/lib -rpath ${libxdo pkgs}/lib";
 
+          # `bun run dev` would otherwise launch the generic Electron binary
+          # the npm package downloads, which needs /lib64/ld-linux-*.so and
+          # FHS library paths that NixOS lacks. Point the npm package at
+          # nixpkgs' patched build of the same major instead (electron's
+          # index.js honours ELECTRON_OVERRIDE_DIST_PATH) and skip the
+          # download it would never use.
+          ELECTRON_OVERRIDE_DIST_PATH = "${pkgs.electron_44-bin}/libexec/electron";
+          ELECTRON_SKIP_BINARY_DOWNLOAD = "1";
+
           shellHook = ''
             echo "VoiceStudio dev shell"
             echo "  1. bun install"
@@ -193,6 +204,101 @@
             echo "downloads its own tool binaries from GitHub at build time. For a Nix"
             echo "build of the unpacked Linux app use: nix build"
           '';
+        };
+
+      # ── FHS environment ──────────────────────────────────────────────────
+      # The fallback for NixOS hosts without nix-ld: an FHS sandbox in which
+      # the npm-downloaded Electron, uv's managed CPython and arbitrary
+      # manylinux wheels find /lib64 and /usr/lib exactly as on other
+      # distributions. Kept as `.#fhs` so existing instructions keep working.
+      fhsLibs =
+        pkgs: with pkgs; [
+          alsa-lib
+          at-spi2-atk
+          at-spi2-core
+          atk
+          cairo
+          cups
+          dbus
+          expat
+          glib
+          gtk3
+          libGL
+          libdrm
+          libgbm
+          libpulseaudio
+          libx11
+          libxkbcommon
+          libxcomposite
+          libxdamage
+          libxext
+          libxfixes
+          libxrandr
+          libxcb
+          libxtst
+          mesa
+          nspr
+          nss
+          openssl
+          pango
+          systemd
+          vulkan-loader
+          wayland
+          xdotool
+          zlib
+        ];
+
+      fhsEnv =
+        pkgs:
+        pkgs.buildFHSEnv {
+          name = "voicestudio-fhs";
+          targetPkgs =
+            p:
+            (with p; [
+              bun
+              nodejs_22
+              uv
+              rustc
+              cargo
+              pkg-config
+              ffmpeg
+              git
+              gcc
+              gnumake
+              binutils
+              zsync
+            ])
+            ++ fhsLibs p
+            # xdotool ships no shared libxdo; the helper links it.
+            ++ [ (libxdo p) ];
+          # uv must use its own managed CPython, not a Nix store Python.
+          # No OMNIVOICE_PORT here: an explicit port disables the app's
+          # fallback when the default backend port is reserved.
+          profile = ''
+            export UV_PYTHON_PREFERENCE="only-managed"
+          '';
+          # Headers and .pc files for native builds inside the FHS env.
+          extraOutputsToInstall = [ "dev" ];
+          runScript = "bash";
+        };
+
+      # macOS needs none of the Linux loader work: the downloaded Electron
+      # and uv's managed CPython run as they do outside Nix.
+      darwinShell =
+        pkgs:
+        pkgs.mkShell {
+          name = "voicestudio";
+          packages = with pkgs; [
+            bun
+            nodejs_22
+            uv
+            rustc
+            cargo
+            pkg-config
+            ffmpeg
+            git
+            apple-sdk
+          ];
         };
 
       # ── node dependencies ────────────────────────────────────────────────
@@ -395,7 +501,10 @@
           desktopEntry = pkgs.makeDesktopItem {
             name = "VoiceStudio";
             desktopName = "VoiceStudio";
-            exec = "${placeholder "out"}/bin/voicestudio";
+            # makeDesktopItem is its own derivation, so a placeholder here
+            # would name the desktop item's output, which has no bin/. The
+            # install phase rewrites this to the package's absolute launcher.
+            exec = "voicestudio";
             icon = "VoiceStudio";
             comment = "Local voice cloning studio";
             categories = [ "AudioVideo" "Audio" ];
@@ -448,7 +557,9 @@
           inherit src;
 
           nativeBuildInputs = [
-            pkgs.makeBinaryWrapper
+            # The shell wrapper, for its --run hook (the NixOS-only GCC
+            # runtime path below); the binary wrapper has no equivalent.
+            pkgs.makeShellWrapper
             pkgs.patchelf
             pkgs.installShellFiles
             pkgs.desktop-file-utils
@@ -545,6 +656,12 @@
             install -Dm644 LICENSE "$resources/LICENSE"
             install -Dm644 LICENSE-NOTICE.md "$resources/LICENSE-NOTICE.md"
             install -Dm644 electron/T3CODE-LICENSE.txt "$resources/electron/T3CODE-LICENSE.txt"
+            install -Dm644 config/app.json "$resources/config/app.json"
+            install -Dm644 config/analytics.json "$resources/config/analytics.json"
+            # stageRuntimeSources (runtime-project.ts SOURCES) copies these on
+            # every platform and fails setup when one is missing.
+            install -Dm644 scripts/windows-rocm-recipe.json "$resources/scripts/windows-rocm-recipe.json"
+            install -Dm644 scripts/smoke_windows_rocm.py "$resources/scripts/smoke_windows_rocm.py"
 
             # runtime-project.ts looks for <resources>/tools/uv before falling
             # back to a download, so ship nixpkgs' uv and skip the installer
@@ -561,6 +678,8 @@
             # ── Desktop integration ───────────────────────────────────────
             install -Dm644 ${desktopEntry}/share/applications/VoiceStudio.desktop \
               "$out/share/applications/VoiceStudio.desktop"
+            substituteInPlace "$out/share/applications/VoiceStudio.desktop" \
+              --replace-fail "Exec=voicestudio" "Exec=$out/bin/voicestudio"
 
             # icon.png is 512x512; ship it at the sizes desktops actually ask
             # for rather than re-encoding, which would need imagemagick.
@@ -584,9 +703,16 @@
             # argument is needed, and none is wanted: passing one would leave
             # resourcesPath pointing back at the wrong dist.
             #
-            # Only PATH additions are missing. LD_LIBRARY_PATH is not: nixpkgs
-            # patchelf'd the binary with an RPATH (see the patchelf call below)
-            # and the copied dist resolves every library without it.
+            # Electron itself needs no LD_LIBRARY_PATH: nixpkgs patchelf'd the
+            # binary with an RPATH (see the patchelf call below). The backend
+            # it spawns does: PyTorch's wheels load libstdc++/libgomp, which
+            # NixOS has no /usr/lib to provide. Only add the GCC runtime on
+            # NixOS: on other distributions the host's own libstdc++ serves the
+            # uv-managed Python, and a newer Nix one could demand glibc symbols
+            # the host lacks.
+            #
+            # The store path is read-only, so Nix, not the in-app updater,
+            # updates this package (same as the AUR launcher).
             #
             # This runs in installPhase because dontFixup skips the fixup phase
             # that would normally host it.
@@ -628,14 +754,18 @@
               )$out/libexec/electron" \
               "$out/libexec/electron/chrome_crashpad_handler"
 
-            makeWrapper "$out/libexec/electron/voicestudio" "$out/bin/voicestudio" \
+            makeShellWrapper "$out/libexec/electron/voicestudio" "$out/bin/voicestudio" \
               --prefix PATH : ${lib.makeBinPath [
                 pkgs.ffmpeg
                 pkgs.ripgrep
                 pkgs.uv
                 pkgs.git
                 pkgs.which
-              ]}
+              ]} \
+              --set-default VOICESTUDIO_DISABLE_UPDATER 1 \
+              --run 'if [ -e /etc/NIXOS ]; then export LD_LIBRARY_PATH="${
+                lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ]
+              }''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"; fi'
 
             runHook postInstall
           '';
@@ -656,34 +786,59 @@
         };
     in
     {
-      devShells = forDevSystems (pkgs: {
-        default = devShell pkgs;
+      devShells = forDevSystems (
+        pkgs:
+        let
+          isLinux = pkgs.stdenv.hostPlatform.isLinux;
+        in
+        {
+          default = if isLinux then devShell pkgs else darwinShell pkgs;
 
-        # Backend-only: no Electron runtime, no Rust.
-        backend = pkgs.mkShell {
-          name = "voicestudio-backend";
-          packages = with pkgs; [
-            python311
-            uv
-            ffmpeg
-            git
-            curl
-            ripgrep
-            which
-          ];
-          UV_PYTHON_PREFERENCE = "only-system";
-          # See the default shell: the PyTorch wheels need the GCC runtime.
-          LD_LIBRARY_PATH = lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ];
-          shellHook = ''
-            echo "VoiceStudio backend shell"
-            echo "  bun run setup:api && bun run dev:api"
-          '';
-        };
-      });
+          # Backend-only: no Electron runtime, no Rust. bun + Node run the
+          # setup and supervisor scripts the hint below names.
+          backend = pkgs.mkShell (
+            {
+              name = "voicestudio-backend";
+              packages = with pkgs; [
+                bun
+                nodejs_22
+                python311
+                uv
+                ffmpeg
+                git
+                curl
+                ripgrep
+                which
+              ];
+              UV_PYTHON_PREFERENCE = "only-system";
+              shellHook = ''
+                echo "VoiceStudio backend shell"
+                echo "  bun run setup:api && bun run dev:api"
+              '';
+            }
+            // lib.optionalAttrs isLinux {
+              # See the default shell: the PyTorch wheels need the GCC runtime.
+              LD_LIBRARY_PATH = lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ];
+            }
+          );
+        }
+        // lib.optionalAttrs isLinux {
+          fhs = (fhsEnv pkgs).env;
+        }
+      );
 
-      packages = lib.genAttrs buildSystems (system: {
-        default = mkPackage nixpkgs.legacyPackages.${system};
-      });
+      packages = lib.genAttrs linuxSystems (
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+        in
+        {
+          fhs = fhsEnv pkgs;
+        }
+        // lib.optionalAttrs (lib.elem system buildSystems) {
+          default = mkPackage pkgs;
+        }
+      );
 
       # Guards for the ways this flake could silently regress: a helper that
       # no longer resolves its shared libraries (the libxdo case), a package
@@ -702,7 +857,8 @@
           # failure in the packaged app.
           helperLinks = pkgs.runCommand "voicestudio-check-helper-links"
             {
-              nativeBuildInputs = [ pkgs.binutils ];
+              # ldd ships in glibc's bin output, not binutils.
+              nativeBuildInputs = [ pkgs.glibc.bin ];
             } ''
             missing=$(ldd ${bridge} 2>/dev/null | grep "not found" || true)
             if [ -n "$missing" ]; then
@@ -738,6 +894,10 @@
               LICENSE \
               LICENSE-NOTICE.md \
               electron/T3CODE-LICENSE.txt \
+              config/app.json \
+              config/analytics.json \
+              scripts/windows-rocm-recipe.json \
+              scripts/smoke_windows_rocm.py \
               brand/icon.png \
               tools/uv \
               native/voicestudio-desktop-bridge \
@@ -792,6 +952,19 @@
             fi
             if grep -q 'electron_[0-9]*-bin' ${app}/bin/voicestudio; then
               echo "bin/voicestudio still points into the electron_44-bin output"
+              exit 1
+            fi
+
+            # Nix owns updates for this read-only store path.
+            if ! grep -q VOICESTUDIO_DISABLE_UPDATER ${app}/bin/voicestudio; then
+              echo "bin/voicestudio does not disable the in-app updater"
+              exit 1
+            fi
+
+            # The menu entry must launch this package, not a bare name or the
+            # desktop item's own output (which has no bin/).
+            if ! grep -qx "Exec=${app}/bin/voicestudio" ${app}/share/applications/VoiceStudio.desktop; then
+              echo "VoiceStudio.desktop does not exec ${app}/bin/voicestudio"
               exit 1
             fi
 
