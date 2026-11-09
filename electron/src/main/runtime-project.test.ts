@@ -1754,3 +1754,39 @@ describe('outdated Visual C++ runtime behind a native import crash (#3293)', () 
     ).rejects.not.toMatchObject({ code: OUTDATED_SYSTEM_LIBRARY_CODE });
   });
 });
+
+describe('retryTransientDownload (#3882)', () => {
+  const gateway = Object.assign(new Error('Runtime setup exited with code 2'), {
+    stderr:
+      'Failed to download `en-core-web-sm`\n  Request failed after 5 retries in 30.6s\n  HTTP status server error (504 Gateway Timeout)',
+  });
+  const noWait = async () => {};
+  const signal = () => new AbortController().signal;
+
+  it('repeats the sync after a 5xx and succeeds', async () => {
+    const sync = vi.fn().mockRejectedValueOnce(gateway).mockResolvedValue(undefined);
+    const { retryTransientDownload } = await import('./runtime-project');
+    await retryTransientDownload(sync, signal(), undefined, [1, 1], noWait);
+    expect(sync).toHaveBeenCalledTimes(2);
+  });
+
+  it('explains a persistent server error and points to Retry', async () => {
+    const sync = vi.fn().mockRejectedValue(gateway);
+    const { retryTransientDownload } = await import('./runtime-project');
+    const failure = await retryTransientDownload(sync, signal(), undefined, [1, 1], noWait).catch(
+      (error: Error) => error,
+    );
+    expect((failure as Error).message).toMatch(/temporary error.*press Retry/s);
+    expect(sync).toHaveBeenCalledTimes(3);
+  });
+
+  it('does not repeat a non-network failure', async () => {
+    const sync = vi.fn().mockRejectedValue(new Error('No solution found'));
+    const { retryTransientDownload } = await import('./runtime-project');
+    const failure = await retryTransientDownload(sync, signal(), undefined, [1, 1], noWait).catch(
+      (error: Error) => error,
+    );
+    expect((failure as Error).message).toBe('No solution found');
+    expect(sync).toHaveBeenCalledTimes(1);
+  });
+});

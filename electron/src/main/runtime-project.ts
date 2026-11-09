@@ -1150,6 +1150,57 @@ function errorSummary(error: unknown): string {
   return message.split(/\r?\n/)[0]!.slice(0, 200);
 }
 
+const TRANSIENT_DOWNLOAD_RE =
+  /HTTP status server error|\b50[0234]\b|Gateway Time-?out|Service Unavailable|Bad Gateway|Request failed after \d+ retries|timed out|ECONNRESET|connection (?:reset|closed)|error sending request|dns error|Temporary failure/i;
+
+/** Delays before the extra whole-sync attempts when a download hit a temporary server/network fault. */
+export const TRANSIENT_SYNC_DELAYS_MS: readonly number[] = [5_000, 20_000];
+
+/** True when uv's output shows a temporary server or network fault rather than a bad lock or disk. */
+export function isTransientDownloadFailure(error: unknown): boolean {
+  const text = `${(error as { stderr?: unknown } | null)?.stderr ?? ''}\n${
+    error instanceof Error ? error.message : String(error)
+  }`;
+  return TRANSIENT_DOWNLOAD_RE.test(text);
+}
+
+/**
+ * Run a sync, repeating it when a download failed on a temporary server or
+ * network fault (5xx, timeout, reset). uv keeps finished wheels in its cache, so
+ * each repeat only fetches what is missing: one 504 must not end a multi-GB install.
+ */
+export async function retryTransientDownload(
+  sync: () => Promise<unknown>,
+  signal: AbortSignal,
+  log: (line: string) => void = () => {},
+  delays: readonly number[] = TRANSIENT_SYNC_DELAYS_MS,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await sync();
+      return;
+    } catch (error) {
+      if (signal.aborted || !isTransientDownloadFailure(error)) throw error;
+      if (attempt >= delays.length) {
+        throw Object.assign(
+          new Error(
+            `A download server returned a temporary error (${errorSummary(error)}). ` +
+              'This is a server or network problem, not your computer: press Retry, finished downloads are kept.',
+          ),
+          { cause: error },
+        );
+      }
+      log(
+        `Download failed on a temporary server error; retrying in ${Math.round(delays[attempt]! / 1000)}s ` +
+          `(attempt ${attempt + 2} of ${delays.length + 1}). Finished downloads are kept.`,
+      );
+      await sleep(delays[attempt]!);
+      signal.throwIfAborted();
+    }
+  }
+}
+
 /** Called only by the user's install action; normal startup never downloads. */
 /**
  * Runs the pinned interpreter once before gigabytes of wheels arrive, so a machine
@@ -1415,7 +1466,8 @@ export async function installRuntime(
   await syncLockedWithMirror(
     project,
     mirror,
-    () => run(uv!, syncArgs, project, env),
+    () =>
+      retryTransientDownload(() => run(uv!, syncArgs, project, env), signal, downloads.log),
     signal,
     downloads,
     localUrls,

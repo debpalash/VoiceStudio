@@ -26,6 +26,19 @@ export interface SetupProgress {
  * while a multi-gigabyte wheel prints nothing for minutes.
  */
 export const DOWNLOAD_STALL_MS = 45_000;
+/**
+ * A download with no new bytes this long is stopped and retried: uv's own
+ * timeout (900 s) would leave setup frozen for a quarter of an hour (#3950).
+ */
+export const DOWNLOAD_ABORT_MS = 120_000;
+
+/** True once a pending download has been silent long enough that uv should be restarted. */
+export function downloadStallExceeded(
+  snapshot: { stalled?: boolean; stalledSeconds?: number },
+  limitMs = DOWNLOAD_ABORT_MS,
+): boolean {
+  return Boolean(snapshot.stalled) && (snapshot.stalledSeconds ?? 0) * 1000 >= limitMs;
+}
 
 const ANSI_ESCAPE = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/g;
 const SIZE = '(\\d+(?:\\.\\d+)?)\\s*(B|KB|KiB|MB|MiB|GB|GiB)';
@@ -226,6 +239,11 @@ export class SetupProgressTracker {
     else delete this.progress.activePackage;
     if (this.planned.size > 0) this.progress.downloadsComplete = pending.length === 0;
     else delete this.progress.downloadsComplete;
+  }
+
+  /** Start the stall clock over: a restarted uv gets a full window before it counts as stalled. */
+  restartStallClock(now = Date.now()): void {
+    if (this.advancedAt !== undefined) this.advancedAt = now;
   }
 
   snapshot(now = Date.now()): SetupProgress {
