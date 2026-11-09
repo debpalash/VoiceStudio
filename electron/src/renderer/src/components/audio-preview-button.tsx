@@ -1,4 +1,4 @@
-import { Suspense, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { PlayIcon, PauseIcon, LoaderCircleIcon, CircleAlertIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { MediaPlayerInstance } from './media-player';
@@ -95,32 +95,30 @@ function PreviewButton({
             setStatus('error');
           }}
         >
-          <Suspense fallback={null}>
-            <AudioPreviewPlayer
-              playerRef={player}
-              sourceKey={source}
-              src={resolved}
-              onPlaying={() => {
-                played.current = true;
-                settle();
-                setStatus('playing');
-              }}
-              onPause={stopped}
-              onEnded={stopped}
-              onAutoPlayFail={() => {
-                settle();
-                setStatus('paused');
-              }}
-              onError={() => {
-                if (!fallback && fallbackSrc && fallbackSrc !== src) {
-                  setFallback(true);
-                  return;
-                }
-                settle();
-                setStatus('error');
-              }}
-            />
-          </Suspense>
+          <AudioPreviewPlayer
+            playerRef={player}
+            sourceKey={source}
+            src={resolved}
+            onPlaying={() => {
+              played.current = true;
+              settle();
+              setStatus('playing');
+            }}
+            onPause={stopped}
+            onEnded={stopped}
+            onAutoPlayFail={() => {
+              settle();
+              setStatus('paused');
+            }}
+            onError={() => {
+              if (!fallback && fallbackSrc && fallbackSrc !== src) {
+                setFallback(true);
+                return;
+              }
+              settle();
+              setStatus('error');
+            }}
+          />
         </LazyBoundary>
       )}
       <Button

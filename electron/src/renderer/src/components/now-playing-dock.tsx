@@ -1,5 +1,4 @@
 import { AudioLinesIcon, PauseIcon, PlayIcon, XIcon } from 'lucide-react';
-import { Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { stopActivePlayback, usePlaybackSource } from '@/lib/audio/playback';
@@ -22,10 +21,12 @@ import { cn } from '@/lib/utils';
  */
 // The app shell mounts the dock on every page, so the player (Vidstack and
 // WaveSurfer) loads with the first clip played, not at startup.
-const WaveformPlayer = retryableLazy(() =>
-  import('@/components/waveform-player').then((m) => ({
-    default: m.WaveformPlayer,
-  })),
+const WaveformPlayer = retryableLazy(
+  () =>
+    import('@/components/waveform-player').then((m) => ({
+      default: m.WaveformPlayer,
+    })),
+  <div className="min-w-0 flex-1" />,
 );
 
 /** What fits the 15rem title column, so the word-boundary cut wins over the CSS one. */
@@ -52,18 +53,16 @@ export function NowPlayingDock() {
         <p className="truncate text-xs leading-4 text-muted-foreground">{label}</p>
       </div>
       <LazyBoundary key={clip.nonce} fallback={<div className="min-w-0 flex-1" />}>
-        <Suspense fallback={<div className="min-w-0 flex-1" />}>
-          <WaveformPlayer
-            key={clip.nonce}
-            src={clip.src}
-            source={dockSource(clip.source)}
-            durationHint={clip.duration ?? undefined}
-            autoPlay
-            compact
-            height={32}
-            className="min-w-0 flex-1 bg-transparent px-0"
-          />
-        </Suspense>
+        <WaveformPlayer
+          key={clip.nonce}
+          src={clip.src}
+          source={dockSource(clip.source)}
+          durationHint={clip.duration ?? undefined}
+          autoPlay
+          compact
+          height={32}
+          className="min-w-0 flex-1 bg-transparent px-0"
+        />
       </LazyBoundary>
       <Button
         variant="ghost"

@@ -1,10 +1,10 @@
 import {
   Component,
-  lazy,
+  useEffect,
+  useState,
   type ComponentProps,
   type ComponentType,
   type ErrorInfo,
-  type JSX,
   type ReactNode,
 } from 'react';
 
@@ -30,22 +30,48 @@ export class LazyBoundary extends Component<
 }
 
 /**
- * `React.lazy` caches a rejected import forever; this drops the cache on
- * failure so the next mount requests the chunk again.
+ * A code-split component that loads its module before it mounts, and whose
+ * failed load can be retried by remounting (change the key of the enclosing
+ * `LazyBoundary`, which renders its fallback on a failure).
+ *
+ * Deliberately not `React.lazy` + `<Suspense>`: React creates a suspended
+ * tree's DOM when the module resolves but may commit it up to ~300 ms later
+ * (Suspense reveal throttling). A media element in that DOM starts fetching its
+ * source while still detached and fetches it again once mounted, so a preview
+ * clip was requested two or three times. Here the module loads first and the
+ * component mounts in one ordinary commit. `React.lazy` would also cache a
+ * rejected import forever; this requests the chunk again on the next mount.
  */
 export function retryableLazy<C extends ComponentType<any>>(
   load: () => Promise<{ default: C }>,
-): (props: ComponentProps<C>) => JSX.Element {
-  const make = (): ComponentType<any> =>
-    lazy(() =>
-      load().catch((error: unknown) => {
-        current = make();
+  placeholder: ReactNode = null,
+): (props: ComponentProps<C>) => ReactNode {
+  let loaded: C | null = null;
+  let pending: Promise<C> | null = null;
+  const request = () =>
+    (pending ??= load().then(
+      (module) => (loaded = module.default),
+      (error: unknown) => {
+        pending = null;
         throw error;
-      }),
-    );
-  let current = make();
-  return (props) => {
-    const Current = current;
-    return <Current {...props} />;
+      },
+    ));
+  return function RetryableLazy(props: ComponentProps<C>) {
+    const [, setReady] = useState(false);
+    const [failure, setFailure] = useState<{ error: unknown } | null>(null);
+    useEffect(() => {
+      if (loaded) return;
+      let live = true;
+      request().then(
+        () => live && setReady(true),
+        (error: unknown) => live && setFailure({ error }),
+      );
+      return () => {
+        live = false;
+      };
+    }, []);
+    if (failure) throw failure.error; // the enclosing LazyBoundary renders its fallback
+    const Loaded = loaded as ComponentType<any> | null;
+    return Loaded ? <Loaded {...props} /> : placeholder;
   };
 }
