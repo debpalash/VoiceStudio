@@ -127,6 +127,23 @@ describe('quality-first sampling steps', () => {
     expect(reloaded.state).toMatchObject({ steps: 16, language: 'French' });
   });
 
+  it('keeps an explicit 16 pulled by Cloud sync, which carries only the generation fields', async () => {
+    // A fresh device: nothing stored yet, so the pulled object has no schema marker.
+    const { cloneSettingsStore } = await loadModule();
+    const { notifyStorageKey } = await import('@/lib/storage-events');
+    localStorage.setItem(KEY, JSON.stringify({ steps: 16, speed: 1.1 }));
+    notifyStorageKey(KEY);
+    expect(cloneSettingsStore.state).toMatchObject({ steps: 16, speed: 1.1 });
+  });
+
+  it('migrates a legacy payload only once per device, even if a later start reads it unmarked', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ steps: 16 }));
+    expect((await loadModule()).cloneSettingsStore.state.steps).toBeNull();
+    // The marked write never happened (quota, crash) and a synced 16 lands unmarked.
+    localStorage.setItem(KEY, JSON.stringify({ steps: 16 }));
+    expect((await loadModule()).cloneSettingsStore.state.steps).toBe(16);
+  });
+
   it('resetAudioQuality returns steps to best quality', async () => {
     const { cloneSettingsStore, patchCloneSettings, resetAudioQuality } = await loadModule();
     patchCloneSettings({ steps: 8 });

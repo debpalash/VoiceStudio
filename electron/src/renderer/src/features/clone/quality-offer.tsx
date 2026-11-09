@@ -22,10 +22,22 @@ import {
 } from '@/lib/store/quality-offer';
 import { cn } from '@/lib/utils';
 
+/** Faster settings accepted from an offer and still in effect. */
+interface AppliedChange {
+  from: number;
+  to: number;
+}
+
 export type QualityOfferView =
-  | { kind: 'before'; engineId: string; seconds: number; atBest: boolean; plan: FasterPlan }
-  | { kind: 'after'; engineId: string; seconds: number; atBest: boolean; plan: FasterPlan }
-  | { kind: 'applied'; from: number; to: number };
+  | {
+      kind: 'before' | 'after';
+      engineId: string;
+      seconds: number;
+      atBest: boolean;
+      plan: FasterPlan;
+      applied: AppliedChange | null;
+    }
+  | ({ kind: 'applied' } & AppliedChange);
 
 /** What, if anything, to say about speed beside the Generate button. Never changes settings. */
 export function useQualityOfferView(text: string, isGenerating: boolean): QualityOfferView | null {
@@ -43,26 +55,28 @@ export function useQualityOfferView(text: string, isGenerating: boolean): Qualit
   if (!engineId || isGenerating) return null;
   const current = effectiveSamplingSteps(steps, engineId);
   const atBest = current >= (bestSamplingSteps(engineId) ?? current);
-  if (offer.applied?.engineId === engineId && belowBestQuality(steps, engineId))
-    return { kind: 'applied', from: offer.applied.from, to: current };
-  if (offer.muted.includes(engineId) || offer.dismissed.includes(engineId)) return null;
-  const last = offer.lastTake?.key === key ? offer.lastTake : null;
-  if (last && isSlowRender(last)) {
-    const plan = fasterPlan(engineId, current, samples, last.chars);
-    if (plan) return { kind: 'after', engineId, seconds: last.renderSeconds, atBest, plan };
-  }
-  const chars = text.trim().length;
-  const estimate = estimateRender(samples, chars, current);
-  if (!estimate || !isSlowRender(estimate)) return null;
-  const plan = fasterPlan(engineId, current, samples, chars);
-  if (!plan) return null;
-  return {
-    kind: 'before',
-    engineId,
-    seconds: estimate.renderSeconds,
-    atBest,
-    plan,
+  const applied =
+    offer.applied?.engineId === engineId && belowBestQuality(steps, engineId)
+      ? { from: offer.applied.from, to: current }
+      : null;
+  const ask = (): QualityOfferView | null => {
+    if (offer.muted.includes(engineId) || offer.dismissed.includes(engineId)) return null;
+    const last = offer.lastTake?.key === key ? offer.lastTake : null;
+    if (last && isSlowRender(last)) {
+      const plan = fasterPlan(engineId, current, samples, last.chars);
+      if (plan)
+        return { kind: 'after', engineId, seconds: last.renderSeconds, atBest, plan, applied };
+    }
+    const chars = text.trim().length;
+    const estimate = estimateRender(samples, chars, current);
+    if (!estimate || !isSlowRender(estimate)) return null;
+    const plan = fasterPlan(engineId, current, samples, chars);
+    if (!plan) return null;
+    return { kind: 'before', engineId, seconds: estimate.renderSeconds, atBest, plan, applied };
   };
+  // Accepted faster settings can still prove slow; offer the next step then,
+  // with Restore best quality alongside.
+  return ask() ?? (applied ? { kind: 'applied', ...applied } : null);
 }
 
 /** "45 s" / "2 min", rounded the way a wait is felt, in the UI language. */
@@ -151,6 +165,11 @@ export function QualityOffer({
         <Button variant="ghost" size="xs" onClick={() => dontAskAgain(engineId)}>
           {t('cloneQuality.dontAsk')}
         </Button>
+        {view.applied && (
+          <Button variant="ghost" size="xs" onClick={restoreBestQuality}>
+            {t('cloneQuality.restore')}
+          </Button>
+        )}
       </span>
     </div>
   );

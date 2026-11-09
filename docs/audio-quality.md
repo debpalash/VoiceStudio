@@ -50,7 +50,9 @@ setting:
 | Other TTS engines | Engine manages sampling; no ineffective slider | — | 16/24/32-bit WAV |
 
 Settings saved by an earlier version that still hold the old fast default (16)
-move to best quality; any other value you chose is kept.
+move to best quality once, on the first start of this version on that computer;
+any other value you chose is kept, and values Cloud sync brings in later are
+never migrated.
 
 ### Faster settings when a take is slow
 

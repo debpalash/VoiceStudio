@@ -12,6 +12,12 @@ export const CLONE_SETTINGS_STORAGE_KEY = 'voicestudio.clone.settings.v1';
 const SCHEMA_FIELD = 'schema';
 const SCHEMA = 2;
 const LEGACY_DEFAULT_STEPS = 16;
+/**
+ * Device-local: this device already moved its own pre-change settings to best
+ * quality. Cloud sync carries only the generation fields (never `schema`), so
+ * values it pulls later are user choices and must not be migrated again.
+ */
+export const STEPS_MIGRATED_STORAGE_KEY = 'voicestudio.clone.steps-quality-first';
 const PERSIST_DEBOUNCE_MS = 250;
 
 export interface CloneSettings {
@@ -109,9 +115,13 @@ export function acceptsCloneSetting(key: keyof CloneSettings, value: unknown): b
  *
  * A payload from before quality-first defaults holding the old default step
  * count is read as "never chosen" and moves to best quality; any other stored
- * value is the user's explicit choice and is kept.
+ * value is the user's explicit choice and is kept. Pass `migrateLegacySteps:
+ * false` once this device has migrated, so a synced 16 stays a choice.
  */
-export function parsePersistedCloneSettings(raw: string | null | undefined): CloneSettings {
+export function parsePersistedCloneSettings(
+  raw: string | null | undefined,
+  { migrateLegacySteps = true }: { migrateLegacySteps?: boolean } = {},
+): CloneSettings {
   if (!raw) return { ...DEFAULT_CLONE_SETTINGS };
   let parsed: unknown;
   try {
@@ -129,7 +139,11 @@ export function parsePersistedCloneSettings(raw: string | null | undefined): Clo
       Object.assign(accepted, { [key]: record[key] });
     }
   }
-  if (record[SCHEMA_FIELD] !== SCHEMA && accepted.steps === LEGACY_DEFAULT_STEPS)
+  if (
+    migrateLegacySteps &&
+    record[SCHEMA_FIELD] !== SCHEMA &&
+    accepted.steps === LEGACY_DEFAULT_STEPS
+  )
     accepted.steps = null;
   return { ...DEFAULT_CLONE_SETTINGS, ...accepted };
 }
@@ -159,16 +173,27 @@ function writeStorage(settings: CloneSettings): void {
   }
 }
 
-export const cloneSettingsStore = new Store<CloneSettings>(
-  parsePersistedCloneSettings(readStorage()),
-);
+/** Hydrate once, migrating pre-quality-first steps only on this device's first start. */
+function hydrate(): CloneSettings {
+  let migrated = false;
+  try {
+    migrated = localStorage.getItem(STEPS_MIGRATED_STORAGE_KEY) === '1';
+    localStorage.setItem(STEPS_MIGRATED_STORAGE_KEY, '1');
+  } catch {
+    // Without storage nothing persisted can be legacy either.
+  }
+  return parsePersistedCloneSettings(readStorage(), { migrateLegacySteps: !migrated });
+}
+
+export const cloneSettingsStore = new Store<CloneSettings>(hydrate());
 
 const persist = debounce(writeStorage, { wait: PERSIST_DEBOUNCE_MS });
 cloneSettingsStore.subscribe((settings) => persist(settings));
 // A value pulled by Cloud sync (or written by another window) replaces the in-memory copy,
 // so the next save never writes the old defaults back.
 onStorageKey(CLONE_SETTINGS_STORAGE_KEY, () => {
-  const next = parsePersistedCloneSettings(readStorage());
+  // Cloud sync and other windows deliver current values, never legacy defaults.
+  const next = parsePersistedCloneSettings(readStorage(), { migrateLegacySteps: false });
   if (JSON.stringify(next) !== JSON.stringify(cloneSettingsStore.state))
     cloneSettingsStore.setState(() => next);
 });

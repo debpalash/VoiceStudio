@@ -66,7 +66,12 @@ export function applyFasterSettings(engineId: string, from: number, to: number):
   qualityOfferStore.setState((prev) => ({
     ...prev,
     lastTake: null,
-    applied: { engineId, from, to },
+    // A further step keeps the original starting point, so Restore names it.
+    applied: {
+      engineId,
+      from: prev.applied?.engineId === engineId ? prev.applied.from : from,
+      to,
+    },
   }));
 }
 

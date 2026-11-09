@@ -67,6 +67,31 @@ it('offers faster settings before a slow take but changes nothing until clicked'
   expect(cloneSettingsStore.state.steps).toBeNull();
 });
 
+it('offers the next step after accepted faster settings prove slow too, keeping Restore', () => {
+  seed(60);
+  render(<QualityOffer text={text} isGenerating={false} />);
+  fireEvent.click(screen.getByRole('button', { name: 'cloneQuality.useFaster' }));
+  expect(cloneSettingsStore.state.steps).toBe(16);
+  // A much longer take at 16 steps is still slow: 16 → 8 is now worth offering.
+  act(() =>
+    recordTakeSpeed('omnivoice', 'cuda', {
+      chars: 400,
+      audioSeconds: 20,
+      renderSeconds: 140,
+      steps: 16,
+      at: 0,
+    }),
+  );
+  expect(screen.getByRole('status')).toHaveTextContent('"from":16,"to":8');
+  expect(screen.getByRole('button', { name: 'cloneQuality.restore' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'cloneQuality.useFaster' }));
+  expect(cloneSettingsStore.state.steps).toBe(8);
+  // Restore still names the original best → current change.
+  expect(screen.getByRole('status')).toHaveTextContent('"from":32,"to":8');
+  fireEvent.click(screen.getByRole('button', { name: 'cloneQuality.restore' }));
+  expect(cloneSettingsStore.state.steps).toBeNull();
+});
+
 it('hides while generating', () => {
   seed(120);
   const view = render(<QualityOffer text={text} isGenerating />);
