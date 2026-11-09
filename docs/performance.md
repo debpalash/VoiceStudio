@@ -330,6 +330,10 @@ RAM/VRAM) turns a guessing game into a bisect.
 Measured results per engine/device — and how to contribute yours — live in
 [benchmarks.md](benchmarks.md).
 
+App startup, idle memory, idle CPU and renderer bundle size have their own
+offline harness, `scripts/bench/bench.py`; how to run it and the recorded
+baselines are in [performance-baselines.md](performance-baselines.md).
+
 ## Performance budgets
 
 CI guards the hot paths above against regressions — not with wall-clock
@@ -350,6 +354,11 @@ but with **operation-count budgets** in
 - **NLLB dubbing translation**: rows sharing a target language render in
   bounded batches instead of one model forward per subtitle. Mixed targets
   retain their request order, and a failed batch retries per row.
+
+The renderer bundle has a size budget too: CI's Linux desktop UI job runs
+`node scripts/bench/bundle.mjs --check` on the app it already builds and flags
+(without failing the job) startup or total gzip size more than 10 % over
+`scripts/bench/bundle-baseline.json`.
 
 Updating a budget is a deliberate act: if a change legitimately adds an
 operation to a guarded path, change the expected count in the same PR with a
