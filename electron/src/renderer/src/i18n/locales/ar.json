@@ -2630,7 +2630,9 @@
     "help_label": "مساعدة الإعداد",
     "help_install": "دليل التثبيت",
     "help_troubleshooting": "استكشاف الأخطاء وإصلاحها",
-    "help_report": "الإبلاغ عن مشكلة"
+    "help_report": "الإبلاغ عن مشكلة",
+    "options": "الخيارات",
+    "more_fixes": "حلول أخرى"
   },
   "consent": {
     "title": "المساعدة في تحسين VoiceStudio؟",

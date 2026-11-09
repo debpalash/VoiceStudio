@@ -50,6 +50,9 @@ beforeEach(() => {
   platform.current = 'linux';
 });
 
+const openPanel = (key: 'setup.options' | 'setup.more_fixes' | 'backend.details') =>
+  fireEvent.click(screen.getByRole('button', { name: i18n.t(key) }));
+
 it('presents an interrupted runtime as a resumable install', () => {
   render(
     <BackendGate>
@@ -251,6 +254,7 @@ it('keeps agent repair available when the backend is down', () => {
   );
 
   expect(screen.getByText('repair dock')).toBeInTheDocument();
+  openPanel('setup.more_fixes');
   expect(screen.getByRole('button', { name: i18n.t('repairAgent.fix') })).toBeEnabled();
 });
 
@@ -285,6 +289,7 @@ it('passes failed-backend output to the repair request as delimited untrusted da
       <div>workspace</div>
     </BackendGate>,
   );
+  openPanel('setup.more_fixes');
   fireEvent.click(screen.getByRole('button', { name: i18n.t('repairAgent.fix') }));
 
   await waitFor(() => expect(listener).toHaveBeenCalledOnce());
@@ -307,6 +312,7 @@ it('passes setup-failed output to the repair request as delimited untrusted data
       <div>workspace</div>
     </BackendGate>,
   );
+  openPanel('setup.more_fixes');
   fireEvent.click(screen.getByRole('button', { name: i18n.t('repairAgent.fix') }));
 
   await waitFor(() => expect(listener).toHaveBeenCalledOnce());
@@ -424,8 +430,8 @@ it.each([
 
     renderGate('failed');
 
-    // The raw message moves under Details once a cause is named.
-    fireEvent.click(screen.getByRole('button', { name: i18n.t('backend.details') }));
+    // The raw message moves under More fixes once a cause is named.
+    openPanel('setup.more_fixes');
     expect(screen.getByLabelText(i18n.t('backend.log_label'))).toHaveTextContent(message);
     expect(screen.getByTestId('backend-hint')).toHaveTextContent(i18n.t(key));
   },
@@ -594,7 +600,7 @@ it('shows one status pill with the stage and elapsed time while starting', () =>
   expect(pill).toHaveTextContent(i18n.t('backend.elapsed', { seconds: 12 }));
 });
 
-it('shows a failed pill and keeps the raw log tail under Details', () => {
+it('shows a failed pill and keeps the raw log tail under More fixes', () => {
   backendStatus.message = 'Backend exited unexpectedly (exit code 3221225477).';
   backendStatus.logTail = ['line one', 'line two'];
 
@@ -602,7 +608,7 @@ it('shows a failed pill and keeps the raw log tail under Details', () => {
 
   expect(screen.getByTestId('backend-status-pill')).toHaveAttribute('data-state', 'failed');
   expect(screen.queryByText('line one', { exact: false })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: i18n.t('backend.details') }));
+  openPanel('setup.more_fixes');
   expect(screen.getByLabelText(i18n.t('backend.log_label'))).toHaveTextContent('line two');
 });
 
@@ -677,6 +683,7 @@ it('explains a stuck install and holds back setup actions until it stops', () =>
 
   expect(screen.getByText(i18n.t('backend.setup_install_stuck'))).toBeVisible();
   expect(screen.getByRole('button', { name: i18n.t('common.resume') })).toBeDisabled();
+  openPanel('setup.more_fixes');
   expect(screen.getByRole('button', { name: i18n.t('bootstrap.clean_retry') })).toBeDisabled();
   expect(screen.getByRole('button', { name: /^Change/ })).toBeDisabled();
 });
@@ -699,6 +706,7 @@ it('offers the existing server editor before installing a local runtime without 
     },
   };
   renderGate('setup_required');
+  openPanel('setup.options');
   fireEvent.click(screen.getByRole('button', { name: i18n.t('setup.use_other_computer') }));
   const input = await screen.findByRole('textbox', { name: i18n.t('settings.remote_backend_url') });
   expect(testRemote).not.toHaveBeenCalled();
@@ -770,6 +778,7 @@ it('offers help links before anything fails, and names the remote option plainly
     'href',
     expect.stringContaining('docs/install/linux.md'),
   );
+  openPanel('setup.options');
   expect(screen.getByRole('button', { name: i18n.t('setup.use_other_computer') })).toBeInTheDocument();
   backendStatus.runtimeInterrupted = true;
 });
@@ -931,4 +940,143 @@ it('shows no hardware line when none was detected', () => {
     </BackendGate>,
   );
   expect(screen.queryByTestId('setup-hardware')).not.toBeInTheDocument();
+});
+
+it('leads with the essentials and keeps every option collapsed by default', () => {
+  backendStatus.runtimeInterrupted = false;
+  backendStatus.runtimeFreeGib = 120;
+  try {
+    renderGate('setup_required');
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent(
+      i18n.t('backend.setup_required'),
+    );
+    expect(screen.getByRole('button', { name: i18n.t('backend.setup_required') })).toBeEnabled();
+    expect(screen.getByTestId('setup-free-space')).toBeVisible();
+    const toggle = screen.getByRole('button', { name: i18n.t('setup.options') });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    for (const name of ['settings.language', 'firstrun.region_label']) {
+      expect(screen.queryByRole('combobox', { name: i18n.t(name) })).not.toBeInTheDocument();
+    }
+    expect(screen.queryByTestId('python-runtime-quick-search')).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: i18n.t('setup.use_other_computer') }),
+    ).not.toBeInTheDocument();
+    // A fresh install has nothing to recover from: no recovery disclosure or actions.
+    expect(screen.queryByRole('button', { name: i18n.t('setup.more_fixes') })).toBeNull();
+    expect(screen.queryByRole('button', { name: i18n.t('bootstrap.clean_retry') })).toBeNull();
+
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(toggle).toHaveAttribute('aria-controls', 'setup-panel-options');
+    expect(document.getElementById('setup-panel-options')).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: i18n.t('settings.language') })).toBeVisible();
+    expect(screen.getByRole('combobox', { name: i18n.t('firstrun.region_label') })).toBeVisible();
+    expect(screen.getByTestId('python-runtime-quick-search')).toBeVisible();
+  } finally {
+    backendStatus.runtimeInterrupted = true;
+  }
+});
+
+it('offers each help destination once, swapping in the prefilled report after a failure', () => {
+  backendStatus.message = 'uv sync failed';
+  backendStatus.runtimeInterrupted = false;
+  try {
+    renderGate('setup_required');
+    const help = screen.getByTestId('setup-help-links');
+    const names = [...help.querySelectorAll('a, button')].map((el) => el.textContent?.trim());
+    expect(names).toEqual([
+      i18n.t('setupHelp.download_log'),
+      i18n.t('setup.help_install'),
+      i18n.t('setup.help_troubleshooting'),
+      i18n.t('reportBug.label'),
+      i18n.t('setupHelp.discord'),
+    ]);
+    expect(screen.getAllByRole('link', { name: i18n.t('setupHelp.discord') })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: i18n.t('setupHelp.download_log') })).toHaveLength(1);
+    expect(screen.queryByRole('link', { name: i18n.t('setup.help_report') })).toBeNull();
+    // Secondary recovery waits behind one disclosure instead of three stacked buttons.
+    expect(screen.queryByRole('button', { name: i18n.t('bootstrap.clean_retry') })).toBeNull();
+    expect(screen.queryByRole('button', { name: i18n.t('repairAgent.fix') })).toBeNull();
+    openPanel('setup.more_fixes');
+    expect(screen.getByRole('button', { name: i18n.t('bootstrap.clean_retry') })).toBeEnabled();
+    expect(screen.getByRole('button', { name: i18n.t('repairAgent.fix') })).toBeEnabled();
+    expect(
+      screen.getByRole('button', { name: i18n.t('setupHelp.check_connection') }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole('link', { name: i18n.t('setupHelp.discord') })).toHaveLength(1);
+  } finally {
+    backendStatus.runtimeInterrupted = true;
+  }
+});
+
+it('makes moving the runtime the primary fix for a full drive (DISK_FULL)', async () => {
+  const chooseRuntimeLocation = vi.fn().mockResolvedValue({ path: 'D:\\VoiceStudio' });
+  const restart = vi.fn();
+  const setupRuntime = vi.fn().mockResolvedValue(undefined);
+  bridgeStub.current = { backend: { chooseRuntimeLocation, restart, setupRuntime } };
+  backendStatus.message = 'Not enough free space for the runtime.';
+  backendStatus.setupIssue = 'space';
+  backendStatus.runtimeInterrupted = false;
+  backendStatus.runtimeFreeGib = 3;
+  try {
+    renderGate('setup_required');
+    expect(screen.getByText(i18n.t('backend.setup_space', { gib: 9 }))).toBeVisible();
+    expect(screen.getByTestId('setup-free-space')).toHaveTextContent(
+      i18n.t('firstrun.free_space', { free: 3, needed: 9 }),
+    );
+    expect(screen.getByTestId('setup-free-space')).toHaveClass('text-warning');
+    // The code is a muted detail beside the docs link, not the headline.
+    expect(screen.getByTestId('backend-failure-code')).toHaveTextContent('DISK_FULL');
+    expect(screen.getByRole('heading', { level: 1 })).not.toHaveTextContent('DISK_FULL');
+    expect(screen.getByRole('link', { name: i18n.t('backend.fix_docs') })).toHaveAttribute(
+      'href',
+      expect.stringContaining('#disk_full'),
+    );
+    const buttons = screen.getAllByRole('button').map((button) => button.textContent?.trim());
+    const fix = buttons.indexOf(i18n.t('backend.choose_folder'));
+    expect(fix).toBeGreaterThanOrEqual(0);
+    expect(fix).toBeLessThan(buttons.indexOf(i18n.t('backend.retry')));
+    // One way to move the runtime, not a second Change… beside the path.
+    expect(screen.queryByRole('button', { name: /^Change/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: i18n.t('backend.choose_folder') }));
+    await waitFor(() => expect(chooseRuntimeLocation).toHaveBeenCalledOnce());
+    expect(restart).not.toHaveBeenCalled();
+    expect(setupRuntime).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: i18n.t('backend.retry') }));
+    await waitFor(() => expect(setupRuntime).toHaveBeenCalledOnce());
+  } finally {
+    backendStatus.runtimeInterrupted = true;
+  }
+});
+
+it('keeps an in-flight interpreter check and its result across closing and reopening Options', async () => {
+  let resolveChoice: (value: unknown) => void = () => {};
+  const choosePythonRuntime = vi.fn(
+    () => new Promise((resolve) => (resolveChoice = resolve)),
+  );
+  bridgeStub.current = {
+    backend: {
+      getPythonRuntime: vi.fn(async () => ({ selection: null, overrideActive: false })),
+      choosePythonRuntime,
+    },
+  };
+  renderGate('setup_required');
+  openPanel('setup.options');
+  fireEvent.click(
+    await screen.findByRole('button', { name: i18n.t('settings.python_runtime_choose') }),
+  );
+  expect(await screen.findByText(i18n.t('settings.python_runtime_validating'))).toBeVisible();
+
+  // Closing hides the panel without unmounting the running check.
+  openPanel('setup.options');
+  expect(document.getElementById('setup-panel-options')).not.toBeVisible();
+  await act(async () =>
+    resolveChoice({ ok: true, pythonPath: '/opt/py/bin/python', version: '3.11.9', token: 't' }),
+  );
+
+  openPanel('setup.options');
+  expect(screen.getByTestId('python-runtime-staged')).toHaveTextContent('/opt/py/bin/python');
+  expect(screen.getByTestId('python-runtime-confirm')).toBeEnabled();
+  expect(choosePythonRuntime).toHaveBeenCalledOnce();
 });
