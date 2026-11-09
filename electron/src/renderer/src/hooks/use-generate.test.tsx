@@ -39,6 +39,8 @@ const engine = vi.hoisted(() => ({
 vi.mock('./use-engines', () => ({
   useEngines: () => ({
     activeTts: {
+      id: 'omnivoice',
+      effective_device: 'cuda',
       instruct_vocabulary: engine.vocabulary,
       supports_voice_design: engine.design,
       supports_cloning: engine.cloning,
@@ -767,3 +769,58 @@ it.each([['clone', false], ['design', false], ['clone', true], ['design', true]]
     }
   },
 );
+
+it.each([
+  ['records a warm take', { status: 'ready', loading: false }, 1],
+  ['skips a take that waited for model loading', { status: 'loading', loading: true }, 0],
+] as const)('measures render speed locally per engine and device (%s)', async (_name, status, count) => {
+  modelStatus.value = { ...status };
+  localStorage.removeItem('voicestudio.render-speed.v1');
+  patchCloneSettings({
+    text: 'A cloned voice line long enough to measure.',
+    selectedProfileId: 'speaker-speed',
+    steps: null,
+    autoPlay: false,
+  });
+  vi.mocked(generateClone)
+    .mockReset()
+    .mockImplementation(
+      () =>
+        new Promise((resolve) =>
+          setTimeout(
+            () =>
+              resolve({
+                id: `take-speed-${count}`,
+                durationSeconds: 3,
+                genTimeSeconds: 9,
+              } as Awaited<ReturnType<typeof generateClone>>),
+            50,
+          ),
+        ),
+    );
+  const client = new QueryClient();
+  client.setQueryData(queryKeys.engines, { tts: { active: 'omnivoice', backends: [] } });
+  render(
+    <QueryClientProvider client={client}>
+      <GenerationProvider>
+        <Consumer name={`speed-${count}`} />
+      </GenerationProvider>
+    </QueryClientProvider>,
+  );
+  fireEvent.click(screen.getByText(`speed-${count}:idle`));
+  await waitFor(() => {
+    const takes = JSON.parse(localStorage.getItem('voicestudio.take-settings.v1') ?? '{}');
+    // The take keeps the steps it rendered with, not "best for whatever engine is active".
+    expect(takes[`take-speed-${count}`]?.steps).toBe(32);
+  });
+  expect(vi.mocked(generateClone).mock.calls[0][0].steps).toBe(32);
+  const stored = JSON.parse(localStorage.getItem('voicestudio.render-speed.v1') ?? '{}');
+  expect(stored['omnivoice|cuda'] ?? []).toHaveLength(count);
+  if (count)
+    expect(stored['omnivoice|cuda'][0]).toMatchObject({
+      chars: 43,
+      audioSeconds: 3,
+      renderSeconds: 9,
+      steps: 32,
+    });
+});

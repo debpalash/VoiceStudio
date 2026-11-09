@@ -164,6 +164,8 @@ export type UpdateStatus =
   | 'downloaded'
   | 'error';
 export type UpdateChannel = 'stable' | 'beta';
+/** Which step failed; `not-applied` means an installed update did not take effect. */
+export type UpdateErrorKind = 'check' | 'download' | 'verify' | 'install' | 'not-applied';
 export interface UpdateState {
   status: UpdateStatus;
   currentVersion: string;
@@ -180,6 +182,13 @@ export interface UpdateState {
   etaSeconds?: number;
   lastCheckedAt?: number;
   error?: string;
+  errorKind?: UpdateErrorKind;
+  /** Downloads a found update without asking (packaged builds that update themselves). */
+  autoDownload?: boolean;
+  /** Quitting installs a downloaded update on this install type (not on .deb). */
+  installOnQuit?: boolean;
+  /** The version the user chose "Later" for; it still installs on quit. */
+  dismissedVersion?: string;
 }
 export interface UpdateReleaseInfo {
   version: string;
@@ -451,6 +460,8 @@ export interface VoiceStudioBridge {
     download(): Promise<UpdateState>;
     dismiss(): Promise<UpdateState>;
     setChannel(channel: UpdateChannel): Promise<UpdateState>;
+    setAutoDownload(enabled: boolean): Promise<UpdateState>;
+    later(): Promise<UpdateState>;
     install(): Promise<void>;
     listReleases(): Promise<UpdateReleaseInfo[]>;
     onState(cb: (state: UpdateState) => void): () => void;

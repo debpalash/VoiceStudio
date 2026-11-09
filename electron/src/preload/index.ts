@@ -54,6 +54,9 @@ const bridge: VoiceStudioBridge = {
     dismiss: () => ipcRenderer.invoke('updates:dismiss') as Promise<UpdateState>,
     setChannel: (channel) =>
       ipcRenderer.invoke('updates:setChannel', channel) as Promise<UpdateState>,
+    setAutoDownload: (enabled) =>
+      ipcRenderer.invoke('updates:setAutoDownload', enabled) as Promise<UpdateState>,
+    later: () => ipcRenderer.invoke('updates:later') as Promise<UpdateState>,
     install: () => ipcRenderer.invoke('updates:install') as Promise<void>,
     listReleases: () => ipcRenderer.invoke('updates:listReleases') as Promise<UpdateReleaseInfo[]>,
     onState: (cb) => subscribe<UpdateState>('updates:state', cb),

@@ -24,6 +24,9 @@ const mocks = vi.hoisted(() => ({
   download: vi.fn(),
   dismiss: vi.fn(),
   setChannel: vi.fn(),
+  setAutoDownload: vi.fn(),
+  later: vi.fn(),
+  openExternal: vi.fn(),
   install: vi.fn(),
   listReleases: vi.fn(),
   flushDubDraft: vi.fn(),
@@ -44,6 +47,8 @@ vi.mock('@/components/bridge', () => {
       download: mocks.download,
       dismiss: mocks.dismiss,
       setChannel: mocks.setChannel,
+      setAutoDownload: mocks.setAutoDownload,
+      later: mocks.later,
       install: mocks.install,
       listReleases: mocks.listReleases,
       onState: (listener: (state: UpdateState) => void) => {
@@ -53,6 +58,7 @@ vi.mock('@/components/bridge', () => {
         };
       },
     },
+    files: { openExternal: mocks.openExternal },
   };
   return { appVersion: () => '0.5.2', getBridge: () => (mocks.noBridge ? null : bridge) };
 });
@@ -65,6 +71,7 @@ vi.mock('@/features/dub/dub-session', () => ({
 
 vi.mock('@/lib/app-activity', () => ({
   hasActiveAppWork: () => mocks.activeWork,
+  activeAppWorkCount: () => (mocks.activeWork ? 1 : 0),
   useAppActivityCount: () => (mocks.activeWork ? 1 : 0),
 }));
 
@@ -77,6 +84,7 @@ vi.mock('sonner', () => ({ toast: { error: mocks.toastError, info: vi.fn() } }))
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 
 import { UpdateSettings } from './update-settings';
+import { UpdateRestartConfirm } from '@/components/update-restart-confirm';
 
 // The release workflow runs this on shared Linux runners, where the default 1s
 // wait for the async update flow timed out once (v0.5.7-beta.1 packaging).
@@ -87,6 +95,7 @@ function renderSettings() {
   return render(
     <QueryClientProvider client={client}>
       <UpdateSettings />
+      <UpdateRestartConfirm />
     </QueryClientProvider>,
   );
 }
@@ -112,6 +121,11 @@ describe('UpdateSettings', () => {
     mocks.download.mockResolvedValue(mocks.state);
     mocks.dismiss.mockResolvedValue(mocks.state);
     mocks.install.mockResolvedValue(undefined);
+    mocks.setAutoDownload.mockImplementation(async (enabled: boolean) => ({
+      ...mocks.state,
+      autoDownload: enabled,
+    }));
+    mocks.openExternal.mockResolvedValue(undefined);
     mocks.listReleases.mockResolvedValue([]);
     mocks.api.mockImplementation(async (path: string) => {
       if (path.includes('/models/install/status')) return { jobs: [] };
@@ -326,24 +340,101 @@ describe('UpdateSettings', () => {
     await waitFor(() => expect(mocks.dismiss).toHaveBeenCalledOnce());
   });
 
-  test('downloads during active work but waits for a safe restart', async () => {
+  test('asks before a restart stops running work, and restarts only when confirmed', async () => {
     mocks.activeWork = true;
     mocks.state = {
       ...mocks.state,
-      status: 'available',
+      status: 'downloaded',
       availableVersion: '0.5.3',
+      progress: 100,
     };
-    const view = renderSettings();
-    expect(await screen.findByRole('button', { name: 'update.download' })).toBeEnabled();
+    renderSettings();
 
-    mocks.state = { ...mocks.state, status: 'downloaded', progress: 100 };
-    view.rerender(
-      <QueryClientProvider client={new QueryClient()}>
-        <UpdateSettings />
-      </QueryClientProvider>,
+    fireEvent.click(await screen.findByRole('button', { name: 'update.restart' }));
+    expect(await screen.findByText('update.restart_confirm')).toBeInTheDocument();
+    expect(mocks.install).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'update.toast_later' }));
+    await waitFor(() => expect(screen.queryByText('update.restart_confirm')).toBeNull());
+    expect(mocks.install).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'update.restart' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'update.restart_anyway' }));
+    await waitFor(() => expect(mocks.install).toHaveBeenCalledOnce());
+    expect(mocks.flushDubDraft).toHaveBeenCalledOnce();
+  });
+
+  test('shows a ready update with a success icon and says when it installs', async () => {
+    mocks.state = {
+      ...mocks.state,
+      status: 'downloaded',
+      availableVersion: '0.5.3',
+      progress: 100,
+      installOnQuit: true,
+    };
+    renderSettings();
+    expect(await screen.findByText('update.ready_hint_quit')).toBeInTheDocument();
+    const icon = document.querySelector('[data-slot="update-status-icon"] svg');
+    expect(icon).toHaveClass('text-success');
+    expect(icon?.getAttribute('class')).not.toMatch(/rotate|refresh/);
+  });
+
+  test('toggles automatic downloads', async () => {
+    mocks.state = { ...mocks.state, autoDownload: true, installOnQuit: false };
+    renderSettings();
+    const toggle = await screen.findByRole('switch');
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByText('update.auto_download_hint_restart')).toBeInTheDocument();
+    fireEvent.click(toggle);
+    await waitFor(() => expect(mocks.setAutoDownload).toHaveBeenCalledWith(false));
+  });
+
+  test('hides the automatic download setting where the app cannot update itself', async () => {
+    mocks.state = { ...mocks.state, status: 'unsupported', unsupportedReason: 'development' };
+    renderSettings();
+    expect(await screen.findByText('settings.updater_development')).toBeInTheDocument();
+    expect(screen.queryByRole('switch')).toBeNull();
+  });
+
+  test.each([
+    ['check', 'update.error_check'],
+    ['download', 'update.error_download'],
+    ['verify', 'update.error_verify'],
+    ['install', 'update.error_install'],
+    ['not-applied', 'update.error_not_applied'],
+  ] as const)('names a %s failure and offers a manual download', async (errorKind, title) => {
+    mocks.state = {
+      ...mocks.state,
+      status: 'error',
+      availableVersion: '0.5.3',
+      error: 'boom',
+      errorKind,
+    };
+    renderSettings();
+    expect(await screen.findByText(title)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'update.download_manually' }));
+    await waitFor(() =>
+      expect(mocks.openExternal).toHaveBeenCalledWith(
+        'https://github.com/debpalash/VoiceStudio/releases/tag/v0.5.3',
+      ),
     );
-    act(() => mocks.listener?.(mocks.state));
-    expect(await screen.findByRole('button', { name: 'update.restart' })).toBeDisabled();
+  });
+
+  test('keeps the chosen channel legible while switching is locked', async () => {
+    mocks.state = {
+      ...mocks.state,
+      status: 'downloaded',
+      availableVersion: '0.5.3',
+      channel: 'beta',
+    };
+    renderSettings();
+    const beta = await screen.findByRole('radio', { name: 'update.channel_beta' });
+    const stable = screen.getByRole('radio', { name: 'update.channel_stable' });
+    expect(beta).toHaveAttribute('aria-checked', 'true');
+    expect(stable).toHaveAttribute('aria-checked', 'false');
+    expect(beta).toBeDisabled();
+    // The selected option is not dimmed with the locked one.
+    expect(beta.className).not.toMatch(/opacity/);
+    expect(stable.className).toMatch(/disabled:opacity/);
   });
 
   test('flushes the current draft before restarting into a downloaded update', async () => {
@@ -432,6 +523,34 @@ describe('UpdateSettings', () => {
     mocks.listReleases.mockResolvedValue([]);
     fireEvent.click(retry);
     expect(await screen.findByText('updates.none')).toBeInTheDocument();
+  });
+
+  test('shows skeletons, then an error with Retry after 10 seconds, never a bare Loading', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      mocks.listReleases.mockReturnValue(new Promise(() => undefined));
+      mocks.api.mockImplementation((path: string) =>
+        path.includes('/db-backup') ? new Promise(() => undefined) : Promise.resolve({}),
+      );
+      renderSettings();
+      expect(await screen.findByRole('status', { name: 'common.loading' })).toBeInTheDocument();
+      expect(screen.getByRole('status', { name: 'updates.loading' })).toBeInTheDocument();
+      expect(screen.queryByText('common.loading')).toBeNull();
+      expect(screen.queryByText('updates.loading')).toBeNull();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10_500);
+      });
+      expect(await screen.findByText('updates.backup_load_error')).toBeInTheDocument();
+      expect(screen.getByText('updates.load_error')).toBeInTheDocument();
+      fireEvent.click(screen.getByText('updates.open_releases'));
+      await waitFor(() =>
+        expect(mocks.openExternal).toHaveBeenCalledWith(
+          'https://github.com/debpalash/VoiceStudio/releases',
+        ),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('stops loading releases when GitHub never answers', async () => {
