@@ -1027,6 +1027,9 @@ async def _ensure_browser_playable_mp4_for_job(job_id: str, video_path: str) -> 
 # level retry on top, cleaning up the partial download between attempts so a
 # half-written `original.*` can't poison the next try.
 _YT_DOWNLOAD_RETRIES = 2  # total attempts = 1 + retries = 3
+# How long a cancelled import waits for yt-dlp's thread to notice and stop
+# (its next progress tick, or the end of an ffmpeg merge already running).
+_DOWNLOAD_STOP_TIMEOUT_S = 30.0
 
 
 def _with_target_facts(exc: BaseException, job_dir: str) -> BaseException:
@@ -1158,10 +1161,13 @@ def yt_download_sync(
     sub_langs: list[str] | None = None,
     progress_hook=None,
     cookie_file: str | None = None,
+    cancel_event: threading.Event | None = None,
 ) -> tuple[str, str, list[str]]:
     """Blocking yt-dlp download into `job_dir`.
 
-    Returns (video_path, title, downloaded_sub_files).
+    Returns (video_path, title, downloaded_sub_files). Setting `cancel_event`
+    stops the download at yt-dlp's next progress or post-processing step,
+    removes its partial files and raises ``yt_dlp.utils.DownloadCancelled``.
 
     Captions are downloaded in a separate, best-effort pass after the video
     so subtitle failures (rate-limits, missing tracks) can never derail the
@@ -1173,6 +1179,7 @@ def yt_download_sync(
     """
     import glob
     import yt_dlp
+    from yt_dlp.utils import DownloadCancelled
     from core.url_safety import (
         check_public_url,
         guard_outbound_connections,
@@ -1257,8 +1264,13 @@ def yt_download_sync(
     _ffmpeg_bin = find_ffmpeg()
     if _ffmpeg_bin:
         ydl_opts["ffmpeg_location"] = _ffmpeg_bin
-    if progress_hook is not None:
-        ydl_opts["progress_hooks"] = [progress_hook]
+    def _stop_if_cancelled(*_args) -> None:
+        if cancel_event is not None and cancel_event.is_set():
+            raise DownloadCancelled("Download cancelled")
+
+    # yt-dlp re-raises DownloadCancelled from its hooks, ending the transfer.
+    ydl_opts["progress_hooks"] = [_stop_if_cancelled, *([progress_hook] if progress_hook else [])]
+    ydl_opts["postprocessor_hooks"] = [_stop_if_cancelled]
 
     # Download with a bounded retry on transient/broken-pipe-class failures
     # (#579/#598). A broken pipe mid-mux isn't recoverable inside yt-dlp's own
@@ -1271,6 +1283,7 @@ def yt_download_sync(
     client_idx = 0
     while True:
         try:
+            _stop_if_cancelled()
             # Native downloaders only and no live streams: everything must
             # connect through the guard above, never through ffmpeg.
             with guard_outbound_connections(), yt_dlp.YoutubeDL(harden_ytdlp_options(ydl_opts)) as ydl:
@@ -1280,6 +1293,8 @@ def yt_download_sync(
             break
         except Exception as exc:
             _cleanup_partial_download(job_dir)
+            if cancel_event is not None and cancel_event.is_set():
+                raise DownloadCancelled("Download cancelled") from None
             # 403 Forbidden: not transient — escalate the YouTube player client,
             # which commonly bypasses a signature-protected format set (#625).
             if _is_forbidden_download_error(exc) and client_idx < len(_YT_PLAYER_CLIENTS):
@@ -1322,10 +1337,12 @@ def yt_download_sync(
     # mp4 container, and refuses .webm/.mkv outright. We probe the actual
     # codecs and transcode only when needed — `<video>` rendering is
     # what we care about, not what extension yt-dlp ended up writing.
+    _stop_if_cancelled()
     video_path = _ensure_browser_playable_mp4(video_path)
     title = info.get("title") or os.path.basename(video_path)
 
     sub_files: list[str] = []
+    _stop_if_cancelled()
     if fetch_subs:
         if sub_langs:
             langs = list(sub_langs)
@@ -1462,6 +1479,23 @@ def parse_vtt_segments(vtt_path: str) -> list[dict]:
     return segments
 
 
+async def _stop_download(dl_task, stop: threading.Event, job_id: str, job_dir: str) -> None:
+    """Stop a still-running yt-dlp thread, bounded, and drop its partial files."""
+    if dl_task.done():
+        return
+    stop.set()
+    done, _ = await asyncio.wait({dl_task}, timeout=_DOWNLOAD_STOP_TIMEOUT_S)
+    if not done:
+        logger.warning("Download for job %s did not stop within %.0f s", log_safe(job_id), _DOWNLOAD_STOP_TIMEOUT_S)
+        return
+    if not dl_task.cancelled():
+        dl_task.exception()  # retrieved: the cancellation is the expected outcome
+    try:
+        _cleanup_partial_download(job_dir)
+    except RuntimeError:
+        logger.warning("Cancelled download for job %s left partial files", log_safe(job_id))
+
+
 async def ingest_pipeline(
     job_id: str,
     job_dir: str,
@@ -1511,11 +1545,13 @@ async def ingest_pipeline(
                             }
                             loop.call_soon_threadsafe(dl_queue.put_nowait, payload)
 
+            stop_download = threading.Event()
             dl_task = asyncio.create_task(asyncio.to_thread(
                 yt_download_sync, url, job_dir,
                 fetch_subs=fetch_subs, sub_langs=sub_langs,
                 progress_hook=_yt_progress,
                 cookie_file=cookie_file,
+                cancel_event=stop_download,
             ))
             try:
                 while not dl_task.done():
@@ -1531,11 +1567,16 @@ async def ingest_pipeline(
                 video_path, title, sub_files = await dl_task
             except Exception as e:
                 logger.error("Download failed for job %s: %s", log_safe(job_id), log_safe(e))
-                if not dl_task.done():
-                    dl_task.cancel()
+                await _stop_download(dl_task, stop_download, job_id, job_dir)
                 yield prep_event("error", **failure.build_failure(e, stage="download"))
                 shutil.rmtree(job_dir, ignore_errors=True)
                 return
+            finally:
+                # Cancelled from any client (app, CLI, API): this generator is
+                # closed here, but yt-dlp's thread would keep downloading and
+                # reading the cookie export. Stop it before the outer cleanup
+                # removes process records and the cookie file.
+                await _stop_download(dl_task, stop_download, job_id, job_dir)
             # yt-dlp (including its optional subtitle pass) is finished. Drop
             # the login credential before the much longer audio-prep stages.
             if _delete_cookie_export(cookie_file):
