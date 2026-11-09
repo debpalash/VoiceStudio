@@ -1,0 +1,12 @@
+{
+  "chunks": 299,
+  "js_chunks": 291,
+  "js_raw": 23041948,
+  "js_gzip": 5919514,
+  "css_raw": 718459,
+  "css_gzip": 102009,
+  "eager_files": 79,
+  "eager_raw": 3925364,
+  "eager_gzip": 941975,
+  "largest_eager_gzip": 435174
+}
