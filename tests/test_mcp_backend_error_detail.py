@@ -149,6 +149,37 @@ def test_redirect_is_a_failure_not_empty_audio():
     assert raised.value.response is redirect
 
 
+@pytest.mark.parametrize(
+    ("detail", "expected"),
+    [
+        ("Plain reason", "Plain reason"),
+        ({"code": "x", "message": "Readable"}, "Readable"),
+        ({"code": "x", "message": {"nested": 1}}, '{"code": "x", "message": {"nested": 1}}'),
+        ({"code": "x", "message": ""}, '{"code": "x", "message": ""}'),
+        ([{"msg": "First"}, {"msg": 2}, "bare"], 'First; {"msg": 2}; bare'),
+        ({"count": 3}, '{"count": 3}'),
+    ],
+)
+def test_detail_shapes_render_as_text_or_json_never_a_repr(detail, expected):
+    """Non-string messages come out as JSON, not Python reprs like ``{'nested': 1}``."""
+    import mcp_server
+
+    request = httpx.Request("GET", "http://127.0.0.1/x")
+    response = httpx.Response(400, json={"detail": detail}, request=request)
+    assert mcp_server._backend_error_detail(response) == expected
+
+
+def test_missing_or_empty_detail_is_none():
+    """No detail to add means the caller keeps httpx's own message."""
+    import mcp_server
+
+    request = httpx.Request("GET", "http://127.0.0.1/x")
+    for body in ({"detail": ""}, {"detail": None}, {"other": 1}, ["detail"]):
+        assert mcp_server._backend_error_detail(
+            httpx.Response(400, json=body, request=request)
+        ) is None
+
+
 class _CountingStream(httpx.AsyncByteStream):
     """An async byte stream that records how many chunks were pulled from it."""
 

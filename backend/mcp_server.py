@@ -96,20 +96,30 @@ def _backend_error_detail(response) -> "str | None":
 
     FastAPI errors carry ``detail`` as a string, a structured object (typed
     errors such as ``model_licence_required`` put the readable text in
-    ``message``) or a list of validation errors (each with a ``msg``)."""
+    ``message``) or a list of validation errors (each with a ``msg``). Only a
+    non-empty string counts as readable text; any other shape is rendered as
+    JSON rather than a Python repr. The value came from ``response.json()``,
+    so ``json.dumps`` always accepts it."""
     try:
         body = response.json()
     except ValueError:
         return None
     detail = body.get("detail") if isinstance(body, dict) else None
-    if isinstance(detail, dict):
-        detail = detail.get("message") or json.dumps(detail)
-    elif isinstance(detail, list):
-        detail = "; ".join(
-            str(item.get("msg") or item) if isinstance(item, dict) else str(item)
-            for item in detail
-        )
-    return str(detail) if detail else None
+    if not detail:
+        return None
+    if isinstance(detail, str):
+        return detail
+    if isinstance(detail, list):
+        return "; ".join(_readable(item, "msg") for item in detail)
+    return _readable(detail, "message")
+
+
+def _readable(value, text_key: str) -> str:
+    """``value[text_key]`` when it is a non-empty string, else ``value`` as JSON."""
+    text = value.get(text_key) if isinstance(value, dict) else value
+    if isinstance(text, str) and text:
+        return text
+    return json.dumps(value)
 
 
 def _raise_for_backend_status(response) -> None:
