@@ -2582,7 +2582,9 @@
     "help_label": "セットアップのヘルプ",
     "help_install": "インストールガイド",
     "help_troubleshooting": "トラブルシューティング",
-    "help_report": "問題を報告"
+    "help_report": "問題を報告",
+    "options": "オプション",
+    "more_fixes": "その他の解決策"
   },
   "consent": {
     "title": "VoiceStudio の改善に協力しますか？",

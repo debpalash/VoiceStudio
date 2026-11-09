@@ -17,7 +17,7 @@ VoiceStudio/
 ├── package.json                 ⟵ monorepo manifest (Bun workspaces) and THE app
 │                                   version (pyproject.toml + backend/core/version.py mirror it)
 ├── bun.lock                     ⟵ JS lockfile — repo-root, covers the electron/ workspace
-├── flake.nix, flake.lock        ⟵ community Nix dev shells + NixOS FHS env (docs/install/nix.md)
+├── flake.nix, flake.lock        ⟵ community Nix dev shells + a Nix-built Linux app (docs/install/nix.md)
 │
 ├── .coderabbit.yaml / greptile.json   ⟵ bot-review setup; CLAUDE.md supplies both rule sets
 ├── skills-lock.json             ⟵ records the origin and digest of each .agents/skills/ copy
@@ -88,6 +88,7 @@ VoiceStudio/
 │   ├── install.sh / install.ps1 installers delivered from voicestudio.sh/install
 │   ├── dev-backend.mjs          supervisor behind `bun run dev:api`
 │   ├── setup.py                 platform finishing step for `bun run setup:api`, including ROCm opt-in
+│   ├── prune-runtime-node-modules.mjs   Nix build: keeps only the main process's runtime deps
 │   ├── electron-smoke-test.mjs  packaged-launch probe invoked by `bun run smoke-test`
 │   ├── prepare_electron_release.py, check_electron_release_assets.py   artifact verification
 │   ├── check-docs-drift.py      checks docs-drift.yml against authoritative docs/features.yaml

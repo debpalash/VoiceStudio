@@ -2582,7 +2582,9 @@
     "help_label": "Hjälp med installationen",
     "help_install": "Installationsguide",
     "help_troubleshooting": "Felsökning",
-    "help_report": "Rapportera ett problem"
+    "help_report": "Rapportera ett problem",
+    "options": "Alternativ",
+    "more_fixes": "Fler lösningar"
   },
   "consent": {
     "title": "Hjälpa till att förbättra VoiceStudio?",

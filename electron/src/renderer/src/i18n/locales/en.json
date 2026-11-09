@@ -2663,7 +2663,9 @@
     "help_label": "Setup help",
     "help_install": "Install guide",
     "help_troubleshooting": "Troubleshooting",
-    "help_report": "Report a problem"
+    "help_report": "Report a problem",
+    "options": "Options",
+    "more_fixes": "More fixes"
   },
   "consent": {
     "title": "Help improve VoiceStudio?",

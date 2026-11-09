@@ -2582,7 +2582,9 @@
     "help_label": "सेटअप सहायता",
     "help_install": "इंस्टॉल गाइड",
     "help_troubleshooting": "समस्या निवारण",
-    "help_report": "समस्या की रिपोर्ट करें"
+    "help_report": "समस्या की रिपोर्ट करें",
+    "options": "विकल्प",
+    "more_fixes": "अन्य समाधान"
   },
   "consent": {
     "title": "VoiceStudio को बेहतर बनाने में मदद करें?",

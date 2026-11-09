@@ -2,7 +2,13 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import i18n from '@/i18n';
 import type { BackendStatus } from '../../../preload/index.d';
-import { SetupSupport } from './setup-support';
+import {
+  SetupCpuFallback,
+  SetupLogButton,
+  SetupStallNotice,
+  setupConnectionError,
+  setupNeedsHelp,
+} from './setup-support';
 
 const mock = vi.hoisted(() => ({
   diagnostics: vi.fn(),
@@ -20,11 +26,6 @@ vi.mock('./bridge', () => ({
     },
     files: { saveData: mock.save, openExternal: mock.external },
   }),
-}));
-vi.mock('./report-bug', () => ({
-  ReportBug: ({ setup }: { setup: boolean }) => (
-    <button>{setup ? 'Setup GitHub report' : 'Other report'}</button>
-  ),
 }));
 const status = (seconds: number): BackendStatus => ({
   stage: 'installing',
@@ -53,39 +54,34 @@ beforeEach(() => {
     bytesPerSecond: 1024,
   });
 });
-it('escalates at five minutes without progress and clears help when bytes resume', () => {
-  const { rerender } = render(<SetupSupport status={status(299)} />);
-  expect(screen.queryByText('Setup GitHub report')).not.toBeInTheDocument();
-  rerender(<SetupSupport status={status(300)} />);
-  expect(screen.getByText('Setup GitHub report')).toBeVisible();
-  expect(screen.getByRole('link', { name: i18n.t('setupHelp.discord') })).toHaveAttribute(
-    'href',
-    'https://discord.gg/bzQavDfVV9',
-  );
+it('escalates at five minutes without progress and clears when bytes resume', () => {
+  const { rerender } = render(<SetupStallNotice status={status(299)} />);
+  expect(screen.queryByTestId('setup-stall-help')).not.toBeInTheDocument();
+  expect(setupNeedsHelp(status(299))).toBe(false);
+  rerender(<SetupStallNotice status={status(300)} />);
+  expect(screen.getByTestId('setup-stall-help')).toHaveTextContent(i18n.t('setupHelp.title'));
+  expect(setupNeedsHelp(status(300))).toBe(true);
   const moving = status(0);
   moving.setupProgress!.stalled = false;
-  rerender(<SetupSupport status={moving} />);
-  expect(screen.queryByText('Setup GitHub report')).not.toBeInTheDocument();
+  rerender(<SetupStallNotice status={moving} />);
+  expect(screen.queryByTestId('setup-stall-help')).not.toBeInTheDocument();
   expect(mock.check).not.toHaveBeenCalled();
   expect(mock.diagnostics).not.toHaveBeenCalled();
 });
-it('offers support immediately after a setup failure and explains TLS errors', () => {
-  render(
-    <SetupSupport
-      status={{
-        ...status(0),
-        stage: 'setup_required',
-        message: 'Runtime setup exited with code 1',
-        logTail: ["cannot decrypt peer's message"],
-      }}
-    />,
-  );
-  expect(screen.getByText('Setup GitHub report')).toBeVisible();
-  expect(screen.getByRole('alert')).toHaveTextContent(i18n.t('setupHelp.connection_error'));
+it('needs help immediately after a setup failure and recognises TLS errors', () => {
+  const failed: BackendStatus = {
+    ...status(0),
+    stage: 'setup_required',
+    message: 'Runtime setup exited with code 1',
+    logTail: ["cannot decrypt peer's message"],
+  };
+  expect(setupNeedsHelp(failed)).toBe(true);
+  expect(setupConnectionError(failed)).toBe(true);
+  expect(setupConnectionError({ ...failed, logTail: ['uv sync failed'] })).toBe(false);
 });
 it('exports during setup without requiring a backend and handles save cancellation', async () => {
   mock.save.mockResolvedValue({ canceled: true });
-  render(<SetupSupport status={status(0)} />);
+  render(<SetupLogButton />);
   fireEvent.click(screen.getByRole('button', { name: i18n.t('setupHelp.download_log') }));
   await waitFor(() => expect(mock.save).toHaveBeenCalled());
   expect(new TextDecoder().decode(mock.save.mock.calls[0][0].data)).toBe('Setup log: redacted');
@@ -94,7 +90,7 @@ it('exports during setup without requiring a backend and handles save cancellati
   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
 });
 it('checks only on a user click and shows the bounded sample result', async () => {
-  render(<SetupSupport status={status(300)} />);
+  render(<SetupStallNotice status={status(300)} />);
   expect(mock.check).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: i18n.t('setupHelp.check_connection') }));
   await waitFor(() =>
@@ -107,7 +103,7 @@ it('checks only on a user click and shows the bounded sample result', async () =
 });
 it('keeps log export retryable if saving fails', async () => {
   mock.save.mockRejectedValue(new Error('disk full'));
-  render(<SetupSupport status={status(0)} />);
+  render(<SetupLogButton />);
   const button = screen.getByRole('button', { name: i18n.t('setupHelp.download_log') });
   fireEvent.click(button);
   expect(await screen.findByRole('alert')).toHaveTextContent(i18n.t('common.error'));
@@ -116,10 +112,10 @@ it('keeps log export retryable if saving fails', async () => {
 
 it('offers the CPU install only when main says it would help, and starts it', async () => {
   mock.useCpu.mockResolvedValue(undefined);
-  const { rerender } = render(<SetupSupport status={status(300)} />);
+  const { rerender } = render(<SetupCpuFallback status={status(300)} />);
   expect(screen.queryByRole('button', { name: i18n.t('setupHelp.use_cpu') })).toBeNull();
 
-  rerender(<SetupSupport status={{ ...status(300), cpuSetupAvailable: true }} />);
+  rerender(<SetupCpuFallback status={{ ...status(300), cpuSetupAvailable: true }} />);
   expect(screen.getByText(i18n.t('setupHelp.use_cpu_hint'))).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: i18n.t('setupHelp.use_cpu') }));
   await waitFor(() => expect(mock.useCpu).toHaveBeenCalledOnce());

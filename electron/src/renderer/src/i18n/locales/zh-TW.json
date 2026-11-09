@@ -2582,7 +2582,9 @@
     "help_label": "安裝說明",
     "help_install": "安裝指南",
     "help_troubleshooting": "疑難排解",
-    "help_report": "回報問題"
+    "help_report": "回報問題",
+    "options": "選項",
+    "more_fixes": "更多修復方法"
   },
   "consent": {
     "title": "協助改進 VoiceStudio？",
