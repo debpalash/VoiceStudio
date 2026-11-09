@@ -4,6 +4,14 @@ import { debounce } from '@tanstack/react-pacer';
 import { onStorageKey } from '@/lib/storage-events';
 
 export const CLONE_SETTINGS_STORAGE_KEY = 'voicestudio.clone.settings.v1';
+/**
+ * Stored beside the settings once steps became quality-first. Payloads without
+ * it predate the change and carry the old fast default (16) whether or not the
+ * user ever touched the slider.
+ */
+const SCHEMA_FIELD = 'schema';
+const SCHEMA = 2;
+const LEGACY_DEFAULT_STEPS = 16;
 const PERSIST_DEBOUNCE_MS = 250;
 
 export interface CloneSettings {
@@ -21,7 +29,8 @@ export interface CloneSettings {
   emotionVector: number[];
   /** Written delivery direction, sent only to engines whose instruct steers a clone (#3422). */
   direction: string;
-  steps: number;
+  /** Sampling steps; null = the active engine's best quality (the default). */
+  steps: number | null;
   wavBits: 16 | 24 | 32;
   effectPreset: 'broadcast' | 'raw';
   /** Built-in voice id for preset engines; '' = the engine's default. */
@@ -51,7 +60,8 @@ export const DEFAULT_CLONE_SETTINGS: CloneSettings = {
   emotionAlpha: 0.6,
   emotionVector: [0, 0, 0, 0, 0, 0, 0, 0],
   direction: '',
-  steps: 16, // ~16 avoids ODE destabilisation in the flow-matcher.
+  // Quality first: each engine's best value until the user picks one.
+  steps: null,
   wavBits: 16,
   effectPreset: 'broadcast',
   presetVoice: '',
@@ -82,6 +92,8 @@ export function acceptsCloneSetting(key: keyof CloneSettings, value: unknown): b
     );
   if (key === 'emotionAlpha')
     return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 0.6;
+  if (key === 'steps')
+    return value === null || (typeof value === 'number' && Number.isFinite(value));
   if (key === 'wavBits') return value === 16 || value === 24 || value === 32;
   if (key === 'effectPreset') return value === 'broadcast' || value === 'raw';
   if (key === 'selectedProfileId') return value === null || typeof value === 'string';
@@ -94,6 +106,10 @@ export function acceptsCloneSetting(key: keyof CloneSettings, value: unknown): b
  * Merge a persisted JSON string over the defaults. Malformed JSON, non-object
  * payloads and fields of the wrong type are ignored field-by-field so an old
  * or hand-edited entry can never poison the form.
+ *
+ * A payload from before quality-first defaults holding the old default step
+ * count is read as "never chosen" and moves to best quality; any other stored
+ * value is the user's explicit choice and is kept.
  */
 export function parsePersistedCloneSettings(raw: string | null | undefined): CloneSettings {
   if (!raw) return { ...DEFAULT_CLONE_SETTINGS };
@@ -113,7 +129,14 @@ export function parsePersistedCloneSettings(raw: string | null | undefined): Clo
       Object.assign(accepted, { [key]: record[key] });
     }
   }
+  if (record[SCHEMA_FIELD] !== SCHEMA && accepted.steps === LEGACY_DEFAULT_STEPS)
+    accepted.steps = null;
   return { ...DEFAULT_CLONE_SETTINGS, ...accepted };
+}
+
+/** The JSON stored for `settings`, marked with the current schema. */
+export function serializeCloneSettings(settings: CloneSettings): string {
+  return JSON.stringify({ ...settings, [SCHEMA_FIELD]: SCHEMA });
 }
 
 function readStorage(): string | null {
@@ -129,7 +152,7 @@ function readStorage(): string | null {
 function writeStorage(settings: CloneSettings): void {
   try {
     if (typeof localStorage !== 'undefined') {
-      localStorage.setItem(CLONE_SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+      localStorage.setItem(CLONE_SETTINGS_STORAGE_KEY, serializeCloneSettings(settings));
     }
   } catch {
     // Quota / privacy mode — the in-memory store is still authoritative.
