@@ -70,6 +70,8 @@ once. Open a new terminal afterwards. `voicestudio` opens
 the app, and commands start it in the background when it is not running; no
 separate Python installation is needed. Existing custom launchers are not
 replaced; see [Terminal command](script.md#terminal-command).
+The .deb also keeps the pre-rename `voicestudio-electron` command as a link to
+`voicestudio`, so existing scripts keep working.
 
 **.deb:**
 

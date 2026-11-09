@@ -67,6 +67,17 @@ def split_arguments(argv):
     return commands, desktop
 
 
+def launcher_targets(argv):
+    """Files or URLs from a desktop launcher (``Exec=... %U``), not a command.
+
+    A file dropped on the menu entry arrives as an absolute path or a URL;
+    no command name has either form, so this opens the app instead of failing.
+    """
+    import re
+    return bool(argv) and all(os.path.isabs(item) or re.match(r'[A-Za-z][A-Za-z0-9+.-]*:', item)
+                              for item in argv)
+
+
 def launcher_config() -> Path:
     # Separate from HTTP credentials: corrupt connection settings must not block launch.
     return config_path().with_name('desktop.json')

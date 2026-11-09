@@ -48,6 +48,18 @@ class DesktopTests(unittest.TestCase):
             self.assertEqual(main([]), 0)
             launch.assert_called_once_with([])
 
+    def test_files_from_the_desktop_launcher_open_the_app(self):
+        # Exec=... %U: a file dropped on the menu entry, or a URL, is not a command.
+        dropped = str(self.root / 'take one.wav')
+        for launcher_args in ([dropped], ['file:///tmp/take%20one.wav'], [dropped, 'https://example.com/a.wav']):
+            with self.subTest(launcher_args=launcher_args), \
+                    patch('voicestudio_cli.__main__.launch_desktop', return_value=0) as launch:
+                self.assertEqual(main(['--no-sandbox', *launcher_args]), 0)
+                launch.assert_called_once_with(['--no-sandbox'])
+        # A command with a path argument is still a command.
+        self.assertFalse(desktop.launcher_targets(['voices', 'show-file', dropped]))
+        self.assertFalse(desktop.launcher_targets(['./take.wav']))
+
     def test_commands_never_launch_gui(self):
         with patch('voicestudio_cli.__main__.launch_desktop') as launch, \
              patch('voicestudio_cli.__main__.app_version', return_value='9.8.7'):
