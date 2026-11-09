@@ -425,6 +425,31 @@ def neutral_asr_host(monkeypatch, request):
         mod.release_transcription_backend(0.0, now=float("inf"))
 
 
+@pytest.fixture
+def cpu_host(monkeypatch):
+    """Pin host capabilities to a plain CPU machine.
+
+    On Apple Silicon the configured ``omnivoice`` engine resolves to the
+    crash-isolated MPS sidecar, which loads the real checkpoint in a child
+    process and never sees a test's in-process ``get_model`` stub — so tests
+    that stub the native OmniVoice path passed on Linux CI and failed on every
+    Mac (#3695). Patches ``core.device_caps.detect_host_caps`` on the canonical
+    module and every loaded backend module that bound it at import time.
+    """
+    import importlib
+
+    device_caps = importlib.import_module("core.device_caps")
+    real = device_caps.detect_host_caps
+    caps = device_caps.HostCaps(family="cpu", available_families=("cpu",))
+    fake = lambda: caps  # noqa: E731 — a stand-in with the probe's signature
+    monkeypatch.setattr(device_caps, "detect_host_caps", fake)
+    for name, mod in list(sys.modules.items()):
+        if (name.split(".")[0] in {"api", "core", "engines", "main", "services"}
+                and getattr(mod, "detect_host_caps", None) is real):
+            monkeypatch.setattr(mod, "detect_host_caps", fake)
+    return caps
+
+
 _MODEL_MANAGER_TEST_REPO = "test/checkpoint"
 
 
