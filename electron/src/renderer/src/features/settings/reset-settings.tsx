@@ -93,6 +93,8 @@ export const UI_PREFERENCE_KEYS = [
   'voicestudio.locale',
   'voicestudio.clone.settings.v1',
   'voicestudio.take-settings.v1',
+  'voicestudio.render-speed.v1',
+  'voicestudio.quality-offer.v1',
   'voicestudio.review-mode.v1',
   'voicestudio.settings.last-route',
   'voicestudio.transcription.mode',

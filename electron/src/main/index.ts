@@ -66,6 +66,9 @@ let closeRepairAgents: (() => void) | null = null;
 let closeAccount: (() => void) | null = null;
 let closeDirectoryScopes: (() => void) | null = null;
 let quitPreparation: Promise<void> | null = null;
+// False for quits that must not install a downloaded update: a relaunch, or
+// the uninstall exit. Read when the updater is torn down.
+let installUpdateOnQuit = true;
 
 const PERSISTENCE_FLUSH_REQUEST = 'app:flush-persistence';
 const PERSISTENCE_FLUSHED = 'app:persistence-flushed';
@@ -196,6 +199,7 @@ function createWindow(): BrowserWindow {
     process.env.ELECTRON_RENDERER_URL,
     async () => {
       await win.webContents.session.clearCache();
+      installUpdateOnQuit = false;
       app.relaunch();
       // The independent fallback has no mounted persistence handler to flush.
       await beginOrderlyQuit(false);
@@ -277,6 +281,7 @@ if (process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1' && !app.requestSing
         () => mainWindow,
         async () => {
           quitting = true;
+          installUpdateOnQuit = false;
           await tearDownNativeResources();
           app.exit(0);
         },
@@ -329,6 +334,9 @@ if (process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1' && !app.requestSing
         return check;
       });
       closeUpdates = () => {
+        // A downloaded update installs as the app quits (electron-updater's
+        // autoInstallOnAppQuit, on the "quit" event after this teardown).
+        updater.prepareForQuit(installUpdateOnQuit);
         stopUpdateChecks();
         closeUpdateIpc();
       };

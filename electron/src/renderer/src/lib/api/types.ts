@@ -193,7 +193,8 @@ export interface CloneGenerateInput {
   emoText?: string;
   emoAlpha?: number;
   emoVector?: number[];
-  steps: number;
+  /** Sampling steps; null = the active engine's best quality. Clamped to its range. */
+  steps: number | null;
   cfg: number;
   speed: number;
   tShift: number;

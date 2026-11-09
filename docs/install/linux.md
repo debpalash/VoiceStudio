@@ -68,9 +68,10 @@ downloads the latest AppImage, verifies it against the release's
 sudo apt install ./VoiceStudio-<version>-linux-x64.deb
 ```
 
-The in-app updater's Linux feed carries the AppImage. Update a `.deb`
-installation by installing the newer `.deb`; remove it with your package
-manager.
+The in-app updater's Linux feed carries the AppImage, which installs a
+downloaded update when you quit. A `.deb` installation never installs on quit
+(that needs an administrator prompt); update it with **Restart** in the app or
+by installing the newer `.deb`, and remove it with your package manager.
 
 Compare any download with the release's `SHA256SUMS.txt` before installing.
 

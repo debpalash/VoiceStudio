@@ -19,7 +19,6 @@ import {
   RotateCcwIcon,
   Settings2Icon,
   ShuffleIcon,
-  SlidersHorizontalIcon,
   SparklesIcon,
   ThermometerIcon,
   TimerIcon,
@@ -41,6 +40,7 @@ import { useGenerateClone } from '@/hooks/use-generate';
 import {
   resetVoiceControls,
   setCloneSetting,
+  useCloneSetting,
   useCloneSettings,
   type CloneSettings,
 } from '@/lib/store/clone-settings';
@@ -49,12 +49,13 @@ import { EngineLanguagePicker } from './engine-language-picker';
 import { PresetVoicePicker } from './preset-voice-picker';
 import { CloneReadinessNotice } from './clone-readiness-notice';
 import { QualityControls } from './quality-controls';
+import { QualityOffer } from './quality-offer';
 import { EmotionControls } from './emotion-controls';
 import { ExpressionTip } from './expression-tip';
 import { CloneDemoAction } from './clone-demo';
 import { useCloneDemo } from '@/hooks/use-clone-demo';
 
-type NumericKey = 'steps' | 'cfg' | 'speed' | 'tShift' | 'posTemp' | 'classTemp' | 'layerPenalty';
+type NumericKey = 'cfg' | 'speed' | 'tShift' | 'posTemp' | 'classTemp' | 'layerPenalty';
 
 interface SliderSpec {
   key: NumericKey;
@@ -67,14 +68,6 @@ interface SliderSpec {
 }
 
 const SLIDERS: SliderSpec[] = [
-  {
-    key: 'steps',
-    labelKey: 'clone.steps',
-    icon: SlidersHorizontalIcon,
-    min: 8,
-    max: 64,
-    step: 1,
-  },
   {
     key: 'cfg',
     labelKey: 'voiceControls.guidance',
@@ -248,7 +241,7 @@ function Overrides({ settings }: OverridesProps) {
         </summary>
         <p className="mt-2 px-1 text-[11px] text-muted-foreground">{t('voiceControls.hint')}</p>
         <div className="mt-1 grid gap-x-4 sm:grid-cols-2">
-          {SLIDERS.filter((spec) => spec.key !== 'speed' && spec.key !== 'steps').map((spec) => (
+          {SLIDERS.filter((spec) => spec.key !== 'speed').map((spec) => (
             <SliderRow key={spec.key} spec={spec} value={settings[spec.key]} />
           ))}
         </div>
@@ -361,6 +354,7 @@ export function ActionBar({ setup: shared }: { setup?: EngineSetup } = {}) {
   const own = useEngineSetup('clone');
   const setup = shared ?? own;
   const needsSetup = blocker === 'engine' && !demo && !isGenerating;
+  const script = useCloneSetting('text');
 
   return (
     <section className="@container/composer">
@@ -467,6 +461,9 @@ export function ActionBar({ setup: shared }: { setup?: EngineSetup } = {}) {
           ) : null}
         </div>
       </div>
+      {!demo && !needsSetup && (
+        <QualityOffer text={script} isGenerating={isGenerating} className="mt-2 justify-end" />
+      )}
     </section>
   );
 }

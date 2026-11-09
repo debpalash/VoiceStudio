@@ -9,7 +9,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { queryClient } from '@/lib/query';
 import { router } from './router';
 import { ErrorBoundary } from '@/components/error-boundary';
-import { UpdatePrompt } from '@/components/update-prompt';
+import { UpdateRestartConfirm } from '@/components/update-restart-confirm';
 import { AnalyticsConsentBanner, AnalyticsRuntime } from '@/components/analytics-consent';
 import { GpuOfferBanner } from '@/components/gpu-offer';
 import { CloudSyncRuntime } from '@/features/account/cloud-sync-runtime';
@@ -92,7 +92,6 @@ export function App() {
           <ModelInstallSync />
           <RealtimeEventSync />
           <GenerateBudgetSync />
-          <UpdatePrompt />
           <AnalyticsRuntime />
           <CloudSyncRuntime />
           <AnalyticsConsentBanner />
@@ -102,6 +101,7 @@ export function App() {
             <TooltipProvider>
               <RouterProvider router={router} />
               <ModelLicenceGate />
+              <UpdateRestartConfirm />
               <Toaster richColors position="bottom-right" />
             </TooltipProvider>
           </GenerationProvider>

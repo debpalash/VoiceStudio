@@ -77,7 +77,10 @@ vi.mock('node:fs', () => ({ ...mocks.fs, default: mocks.fs }));
 vi.mock('./trusted-renderer', () => ({ isTrustedRenderer: mocks.trusted }));
 
 import {
+  classifyUpdateError,
+  compareAppVersions,
   DesktopUpdater,
+  installsOnQuit,
   isTransientUpdateError,
   feedManifestName,
   listDesktopReleases,
@@ -119,7 +122,7 @@ describe('DesktopUpdater', () => {
     updater.subscribe((state) => observed.push(state.status));
 
     expect(mocks.autoUpdater.autoDownload).toBe(false);
-    expect(mocks.autoUpdater.autoInstallOnAppQuit).toBe(false);
+    expect(mocks.autoUpdater.autoInstallOnAppQuit).toBe(installsOnQuit());
     expect(mocks.autoUpdater.allowDowngrade).toBe(false);
     expect(mocks.autoUpdater.allowPrerelease).toBe(false);
     expect(mocks.autoUpdater).toHaveProperty('disableWebInstaller', true);
@@ -891,6 +894,22 @@ describe('download stall watchdog', () => {
     expect(token?.cancelled).toBe(true);
     expect((await download).status).toBe('error');
   });
+
+  test('stops watching once every byte is in (macOS then hands the file to Squirrel)', async () => {
+    let token: { cancelled: boolean } | undefined;
+    let finish!: () => void;
+    mocks.autoUpdater.downloadUpdate.mockImplementation((value: any) => {
+      token = value;
+      return new Promise<void>((resolve) => (finish = resolve));
+    });
+    const { download } = startDownload();
+    emit('download-progress', { percent: 100, transferred: 10_000, total: 10_000 });
+    emit('update-downloaded', { version: '0.5.9' });
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(token?.cancelled).toBe(false);
+    finish();
+    expect((await download).status).toBe('downloaded');
+  });
 });
 
 describe('update feed selection', () => {
@@ -934,6 +953,7 @@ describe('update IPC', () => {
     const webContents = {
       mainFrame: { url: 'app://voicestudio/index.html' },
       send: vi.fn(),
+      isDestroyed: () => false,
     };
     const owner = { webContents, isDestroyed: () => false } as any;
     const dispose = registerUpdateIpc(updater, () => owner, beforeInstall);
@@ -964,8 +984,15 @@ describe('update IPC', () => {
       setChannel({ sender: {}, senderFrame: { url: 'https://attacker.invalid' } }, 'beta'),
     ).toThrow('Untrusted update request');
 
+    const setAutoDownload = mocks.ipcHandlers.get(UPDATE_CHANNELS.setAutoDownload)!;
+    expect(() => setAutoDownload(trustedEvent, 'yes')).toThrow('Invalid automatic download');
+    expect(setAutoDownload(trustedEvent, false)).toMatchObject({ autoDownload: false });
+    expect(mocks.ipcHandlers.get(UPDATE_CHANNELS.later)!(trustedEvent)).toMatchObject({
+      dismissedVersion: '0.5.3',
+    });
+
     dispose();
-    expect(mocks.ipcMain.removeHandler).toHaveBeenCalledTimes(7);
+    expect(mocks.ipcMain.removeHandler).toHaveBeenCalledTimes(9);
   });
 });
 
@@ -997,5 +1024,225 @@ describe('offered update size', () => {
     expect(
       releaseSize({ files: [{ url: 'a.zip', sha512: 'a', size: 0 }], path: 'a.zip' }, 'darwin'),
     ).toBeUndefined();
+  });
+});
+
+describe('background download and install on quit', () => {
+  const offer = (version = '0.5.3') =>
+    mocks.autoUpdater.checkForUpdates.mockImplementation(async () => {
+      emit('update-available', { version, releaseNotes: null });
+      return { isUpdateAvailable: true, updateInfo: { version } };
+    });
+
+  beforeEach(() => {
+    mocks.handlers.clear();
+    mocks.ipcHandlers.clear();
+    mocks.disk.file = undefined;
+    mocks.app.isPackaged = true;
+    vi.clearAllMocks();
+    mocks.autoUpdater.checkForUpdates.mockResolvedValue(undefined);
+    mocks.autoUpdater.downloadUpdate.mockResolvedValue(undefined);
+  });
+
+  test('a found update downloads in the background by default', async () => {
+    const updater = new DesktopUpdater('direct', vi.fn(), []);
+    expect(updater.snapshot()).toMatchObject({ autoDownload: true });
+    offer();
+    mocks.autoUpdater.downloadUpdate.mockImplementation(async () => {
+      emit('update-downloaded', { version: '0.5.3', releaseNotes: null });
+      return [];
+    });
+
+    expect(await updater.checkInBackground()).toBe(true);
+    expect(mocks.autoUpdater.downloadUpdate).toHaveBeenCalledOnce();
+    expect(updater.snapshot()).toMatchObject({ status: 'downloaded', availableVersion: '0.5.3' });
+  });
+
+  test('with automatic downloads off a found update waits for a click', async () => {
+    mocks.disk.file = '{"autoDownload":false}';
+    const updater = new DesktopUpdater('direct', vi.fn(), []);
+    offer();
+
+    await updater.checkInBackground();
+    expect(updater.snapshot()).toMatchObject({ status: 'available', autoDownload: false });
+    expect(mocks.autoUpdater.downloadUpdate).not.toHaveBeenCalled();
+
+    // Turning it back on downloads the offer already found, and is saved.
+    updater.setAutoDownload(true);
+    await vi.waitFor(() => expect(mocks.autoUpdater.downloadUpdate).toHaveBeenCalledOnce());
+    expect(JSON.parse(mocks.disk.file!)).toMatchObject({ autoDownload: true });
+  });
+
+  test('a network failure of a background download stays quiet and retries sooner', async () => {
+    const offline = vi.fn(async () => {
+      throw new Error('getaddrinfo ENOTFOUND api.github.com');
+    });
+    const updater = new DesktopUpdater('direct', offline as unknown as typeof fetch, []);
+    offer();
+    mocks.autoUpdater.downloadUpdate.mockRejectedValue(new Error('ENETUNREACH'));
+
+    expect(await updater.checkInBackground()).toBe(false);
+    expect(updater.snapshot()).toMatchObject({ status: 'available', availableVersion: '0.5.3' });
+    expect(updater.snapshot().error).toBeUndefined();
+  });
+
+  test('a checksum failure is shown as a verification failure, even in the background', async () => {
+    const updater = new DesktopUpdater('direct', vi.fn(), []);
+    offer();
+    mocks.autoUpdater.downloadUpdate.mockRejectedValue(
+      new Error('sha512 checksum mismatch, expected abc, got def'),
+    );
+
+    expect(await updater.checkInBackground()).toBe(false);
+    expect(updater.snapshot()).toMatchObject({ status: 'error', errorKind: 'verify' });
+  });
+
+  test('a verification failure after a network fallback still shows', async () => {
+    const offline = vi.fn(async () => {
+      throw new Error('getaddrinfo ENOTFOUND api.github.com');
+    });
+    const updater = new DesktopUpdater('direct', offline as unknown as typeof fetch, []);
+    offer();
+    // The release host times out, then the asset route serves a corrupt file.
+    vi.spyOn(updater as any, 'downloadThroughAssetRoute').mockRejectedValue(
+      new Error('sha512 checksum mismatch, expected abc, got def'),
+    );
+    mocks.autoUpdater.downloadUpdate.mockRejectedValue(new Error('504 Gateway Timeout'));
+
+    expect(await updater.checkInBackground()).toBe(false);
+    expect(updater.snapshot()).toMatchObject({ status: 'error', errorKind: 'verify' });
+  });
+
+  test('installs on quit where the package replaces itself silently', () => {
+    expect(installsOnQuit('darwin', undefined)).toBe(true);
+    expect(installsOnQuit('win32', undefined)).toBe(true);
+    expect(installsOnQuit('linux', '/home/me/VoiceStudio.AppImage')).toBe(true);
+    // A .deb needs an administrator prompt: restart-to-install only.
+    expect(installsOnQuit('linux', undefined)).toBe(false);
+  });
+
+  test('records the version a quit installs, and skips install for a relaunch', () => {
+    const updater = new DesktopUpdater();
+    emit('update-downloaded', { version: '0.5.3', releaseNotes: null });
+
+    updater.prepareForQuit(true);
+    expect(JSON.parse(mocks.disk.file ?? '{}').pendingVersion).toBe(
+      installsOnQuit() ? '0.5.3' : undefined,
+    );
+
+    updater.prepareForQuit(false);
+    expect(mocks.autoUpdater.autoInstallOnAppQuit).toBe(false);
+  });
+
+  test('restart records the pending version before quitAndInstall', () => {
+    const updater = new DesktopUpdater();
+    emit('update-downloaded', { version: '0.5.3', releaseNotes: null });
+    mocks.autoUpdater.quitAndInstall.mockImplementationOnce(() => {
+      expect(JSON.parse(mocks.disk.file!).pendingVersion).toBe('0.5.3');
+    });
+    updater.install();
+    expect(mocks.autoUpdater.quitAndInstall).toHaveBeenCalledOnce();
+  });
+
+  test('an update that did not apply is reported once and waits for the user', async () => {
+    mocks.disk.file = '{"channel":"beta","pendingVersion":"99.0.0"}';
+    const updater = new DesktopUpdater();
+    expect(updater.snapshot()).toMatchObject({
+      status: 'error',
+      errorKind: 'not-applied',
+      availableVersion: '99.0.0',
+    });
+    expect(JSON.parse(mocks.disk.file)).toEqual({ channel: 'beta' });
+
+    // Background checks do not loop it through another download and install.
+    await updater.checkInBackground();
+    expect(mocks.autoUpdater.checkForUpdates).not.toHaveBeenCalled();
+    expect(updater.snapshot().errorKind).toBe('not-applied');
+  });
+
+  test('an update that applied clears the pending version quietly', () => {
+    mocks.disk.file = JSON.stringify({ pendingVersion: __APP_VERSION__ });
+    const updater = new DesktopUpdater();
+    expect(updater.snapshot()).toMatchObject({ status: 'idle' });
+    expect(updater.snapshot().errorKind).toBeUndefined();
+    expect(JSON.parse(mocks.disk.file)).toEqual({});
+  });
+
+  test('"Later" remembers the version across launches', () => {
+    const updater = new DesktopUpdater();
+    emit('update-downloaded', { version: '0.5.3', releaseNotes: null });
+    expect(updater.later()).toMatchObject({ dismissedVersion: '0.5.3' });
+    expect(new DesktopUpdater().snapshot().dismissedVersion).toBe('0.5.3');
+  });
+
+  test('development runs never download or install on their own', async () => {
+    mocks.app.isPackaged = false;
+    const updater = new DesktopUpdater();
+    expect(updater.snapshot()).toMatchObject({ status: 'unsupported' });
+    expect(updater.snapshot().autoDownload).toBeUndefined();
+    updater.setAutoDownload(true);
+    updater.prepareForQuit(true);
+    expect(mocks.fs.writeFileSync).not.toHaveBeenCalled();
+  });
+});
+
+describe('update error classification', () => {
+  beforeEach(() => {
+    mocks.handlers.clear();
+    mocks.disk.file = undefined;
+    mocks.app.isPackaged = true;
+    vi.clearAllMocks();
+    mocks.autoUpdater.checkForUpdates.mockResolvedValue(undefined);
+    mocks.autoUpdater.downloadUpdate.mockResolvedValue(undefined);
+    mocks.autoUpdater.quitAndInstall.mockImplementation(() => undefined);
+  });
+
+  test('names the failed step', () => {
+    expect(classifyUpdateError(new Error('504'), 'check')).toBe('check');
+    expect(classifyUpdateError(new Error('HttpError: 404'), 'download')).toBe('download');
+    expect(classifyUpdateError(new Error('sha512 checksum mismatch'), 'download')).toBe('verify');
+    expect(
+      classifyUpdateError(
+        new Error('New version 0.5.9 is not signed by the application owner'),
+        'download',
+      ),
+    ).toBe('verify');
+    expect(
+      classifyUpdateError(
+        new Error('Update failed', { cause: new Error('Code signature did not pass validation') }),
+        'install',
+      ),
+    ).toBe('verify');
+    expect(classifyUpdateError(new Error('spawn EACCES'), 'install')).toBe('install');
+  });
+
+  test('reports check, download and install failures with their step', async () => {
+    const updater = new DesktopUpdater('direct', vi.fn(), []);
+    mocks.autoUpdater.checkForUpdates.mockRejectedValueOnce(new Error('feed unavailable'));
+    expect(await updater.check()).toMatchObject({ status: 'error', errorKind: 'check' });
+
+    updater.dismiss();
+    emit('update-available', { version: '0.5.3' });
+    mocks.autoUpdater.downloadUpdate.mockRejectedValueOnce(new Error('HttpError: 404'));
+    expect(await updater.download()).toMatchObject({ status: 'error', errorKind: 'download' });
+
+    emit('update-downloaded', { version: '0.5.3' });
+    mocks.autoUpdater.quitAndInstall.mockImplementationOnce(() => {
+      throw new Error('spawn EACCES');
+    });
+    updater.install();
+    expect(updater.snapshot()).toMatchObject({ status: 'error', errorKind: 'install' });
+    // A failed start is not reported as "did not apply" next launch.
+    expect(JSON.parse(mocks.disk.file!).pendingVersion).toBeUndefined();
+
+    emit('update-downloaded', { version: '0.5.3' });
+    emit('error', new Error('installer exited with code 2'));
+    expect(updater.snapshot()).toMatchObject({ status: 'error', errorKind: 'install' });
+  });
+
+  test('orders release versions', () => {
+    expect(compareAppVersions('0.5.8-beta.3', '0.5.8')).toBe(-1);
+    expect(compareAppVersions('0.5.8', '0.5.8')).toBe(0);
+    expect(compareAppVersions('0.5.9', '0.5.8')).toBe(1);
   });
 });
