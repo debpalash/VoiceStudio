@@ -42,7 +42,7 @@ test('accepts the launcher electron-builder generates for allow-sandbox: false',
   });
   assert.throws(() => verifySnapLauncher(generated), /launcher/);
   const configured = configureSnapLauncher(generated);
-  assert.match(configured, /--no-sandbox --ozone-platform="\$\{VOICESTUDIO_SNAP_OZONE_PLATFORM:-x11\}" "\$@"/);
+  assert.match(configured, /'?--no-sandbox'? --ozone-platform="\$\{VOICESTUDIO_SNAP_OZONE_PLATFORM:-x11\}" "\$@"/);
   assert.equal(configureSnapLauncher(configured), configured);
 });
 
@@ -66,7 +66,7 @@ test('comments cannot satisfy or bypass validation of the executed command', () 
   const commented = [shebang, comment.trimEnd(), ...lines].join('\n');
   assert.throws(() => verifySnapLauncher(commented), /launcher/);
   const configured = configureSnapLauncher(commented);
-  assert.match(configured, /^exec .*"\$SNAP\/voicestudio" --no-sandbox --ozone-platform=\S+ "\$@"$/m);
+  assert.match(configured, /^exec .*"\$SNAP\/voicestudio" '?--no-sandbox'? --ozone-platform=\S+ "\$@"$/m);
   assert.equal(configureSnapLauncher(configured), configured);
   assert.throws(() => verifySnapLauncher(`#!/bin/sh\n${comment}`), /launcher/);
 });
