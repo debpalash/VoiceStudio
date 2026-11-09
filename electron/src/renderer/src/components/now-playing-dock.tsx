@@ -1,5 +1,5 @@
 import { AudioLinesIcon, PauseIcon, PlayIcon, XIcon } from 'lucide-react';
-import { lazy, Suspense } from 'react';
+import { Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { stopActivePlayback, usePlaybackSource } from '@/lib/audio/playback';
@@ -12,6 +12,7 @@ import {
   useNowPlaying,
   type NowPlaying,
 } from '@/lib/store/now-playing';
+import { LazyBoundary, retryableLazy } from '@/lib/lazy-boundary';
 import { cn } from '@/lib/utils';
 
 /**
@@ -21,7 +22,7 @@ import { cn } from '@/lib/utils';
  */
 // The app shell mounts the dock on every page, so the player (Vidstack and
 // WaveSurfer) loads with the first clip played, not at startup.
-const WaveformPlayer = lazy(() =>
+const WaveformPlayer = retryableLazy(() =>
   import('@/components/waveform-player').then((m) => ({
     default: m.WaveformPlayer,
   })),
@@ -50,18 +51,20 @@ export function NowPlayingDock() {
         </p>
         <p className="truncate text-xs leading-4 text-muted-foreground">{label}</p>
       </div>
-      <Suspense fallback={<div className="min-w-0 flex-1" />}>
-        <WaveformPlayer
-          key={clip.nonce}
-          src={clip.src}
-          source={dockSource(clip.source)}
-          durationHint={clip.duration ?? undefined}
-          autoPlay
-          compact
-          height={32}
-          className="min-w-0 flex-1 bg-transparent px-0"
-        />
-      </Suspense>
+      <LazyBoundary key={clip.nonce} fallback={<div className="min-w-0 flex-1" />}>
+        <Suspense fallback={<div className="min-w-0 flex-1" />}>
+          <WaveformPlayer
+            key={clip.nonce}
+            src={clip.src}
+            source={dockSource(clip.source)}
+            durationHint={clip.duration ?? undefined}
+            autoPlay
+            compact
+            height={32}
+            className="min-w-0 flex-1 bg-transparent px-0"
+          />
+        </Suspense>
+      </LazyBoundary>
       <Button
         variant="ghost"
         size="icon-sm"

@@ -1,8 +1,9 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { PlayIcon, PauseIcon, LoaderCircleIcon, CircleAlertIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { MediaPlayerInstance } from './media-player';
 import { Button } from './ui/button';
+import { LazyBoundary, retryableLazy } from '@/lib/lazy-boundary';
 import { beginAppActivity, type AppActivityKind } from '@/lib/app-activity';
 interface PreviewProps {
   src: string;
@@ -16,7 +17,7 @@ interface PreviewProps {
 }
 type Status = 'idle' | 'loading' | 'playing' | 'paused' | 'error';
 // Loaded on the first click (the button shows its loading state meanwhile).
-const AudioPreviewPlayer = lazy(() => import('./audio-preview-player'));
+const AudioPreviewPlayer = retryableLazy(() => import('./audio-preview-player'));
 export function AudioPreviewButton(props: PreviewProps) {
   return <PreviewButton key={props.source + ':' + props.src} {...props} />;
 }
@@ -86,33 +87,34 @@ function PreviewButton({
   return (
     <span className="inline-flex">
       {status !== 'idle' && (
-        <Suspense fallback={null}>
-          <AudioPreviewPlayer
-            key={resolved + ':' + attempt}
-            playerRef={player}
-            sourceKey={source}
-            src={resolved}
-            onPlaying={() => {
-              played.current = true;
-              settle();
-              setStatus('playing');
-            }}
-            onPause={stopped}
-            onEnded={stopped}
-            onAutoPlayFail={() => {
-              settle();
-              setStatus('paused');
-            }}
-            onError={() => {
-              if (!fallback && fallbackSrc && fallbackSrc !== src) {
-                setFallback(true);
-                return;
-              }
-              settle();
-              setStatus('error');
-            }}
-          />
-        </Suspense>
+        <LazyBoundary key={resolved + ':' + attempt} fallback={null}>
+          <Suspense fallback={null}>
+            <AudioPreviewPlayer
+              playerRef={player}
+              sourceKey={source}
+              src={resolved}
+              onPlaying={() => {
+                played.current = true;
+                settle();
+                setStatus('playing');
+              }}
+              onPause={stopped}
+              onEnded={stopped}
+              onAutoPlayFail={() => {
+                settle();
+                setStatus('paused');
+              }}
+              onError={() => {
+                if (!fallback && fallbackSrc && fallbackSrc !== src) {
+                  setFallback(true);
+                  return;
+                }
+                settle();
+                setStatus('error');
+              }}
+            />
+          </Suspense>
+        </LazyBoundary>
       )}
       <Button
         variant="ghost"

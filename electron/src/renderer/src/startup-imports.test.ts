@@ -24,10 +24,24 @@ const sources = new Map<string, string>([
   ),
 ]);
 
-// `import x from`, `import {a} from`, `export * from`, `import 'side-effect'`;
-// not `import type`/`export type` and not `import(...)`.
+// Every static module edge: `import x from`, `import {a} from` (also across
+// lines), `import * as ns from`, `export * from`, `export * as ns from`,
+// `export {x} from` and side-effect `import 'x'`. Type-only edges and
+// `import(...)` are not static runtime edges.
 const STATIC_IMPORT =
-  /(?:^|[;\n])\s*(?:import|export)\s+(type\s+)?(?:[\w$*{}\s,]+?\s+from\s+)?['"]([^'"]+)['"]/g;
+  /\b(?:import|export)\b(?!\s*\()\s*(type\b\s*(?=[{*\w]))?(?:(?:(?!\b(?:import|export)\b)[^'";])*?\bfrom\s*)?['"]([^'"\n]+)['"]/g;
+
+function stripComments(src: string): string {
+  return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
+}
+
+/** Runtime (non-type) specifiers imported or re-exported by `src`. */
+export function staticSpecifiers(src: string): string[] {
+  const out: string[] = [];
+  for (const [, typeOnly, spec] of stripComments(src).matchAll(STATIC_IMPORT))
+    if (!typeOnly) out.push(spec);
+  return out;
+}
 
 function join(dir: string, spec: string): string {
   const parts = dir ? dir.split('/') : [];
@@ -67,8 +81,7 @@ function staticPackages(entry: string): Map<string, string[]> {
   };
   while (queue.length) {
     const file = queue.shift()!;
-    for (const [, typeOnly, spec] of sources.get(file)!.matchAll(STATIC_IMPORT)) {
-      if (typeOnly) continue;
+    for (const spec of staticSpecifiers(sources.get(file)!)) {
       const target = resolve(file, spec);
       if (target) {
         if (!parent.has(target)) {
@@ -82,6 +95,30 @@ function staticPackages(entry: string): Map<string, string[]> {
   }
   return packages;
 }
+
+describe('staticSpecifiers', () => {
+  it.each([
+    ["import x from 'a';", ['a']],
+    ["import { x, y as z } from 'a';", ['a']],
+    ["import x, { y } from 'a';", ['a']],
+    ["import * as ns from 'a';", ['a']],
+    ["import 'a';", ['a']],
+    ["import {\n  x,\n  y,\n} from 'a';", ['a']],
+    ["export * from 'a';", ['a']],
+    ["export * as ns from 'a';", ['a']],
+    ["export { x } from 'a';", ['a']],
+    ["export {\n  x,\n  y\n} from 'a'", ['a']],
+    ["export { default } from 'a'", ['a']],
+    ["const a = 1\nimport x from 'a'\nexport { y } from 'b'", ['a', 'b']],
+    ["import type { X } from 'a';", []],
+    ["export type { X } from 'a';", []],
+    ["import('a').then((m) => m.x);", []],
+    ["export const x = 1;\nconst y = await import('a');", []],
+    ["// import x from 'a'\n/* export * from 'b' */", []],
+  ] as [string, string[]][])('%j', (src, expected) => {
+    expect(staticSpecifiers(src)).toEqual(expected);
+  });
+});
 
 describe('renderer startup imports', () => {
   it('finds the entry and its static imports', () => {
