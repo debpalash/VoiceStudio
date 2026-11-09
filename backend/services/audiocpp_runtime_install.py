@@ -21,6 +21,10 @@ _CHUNK = 256 * 1024
 _lock = threading.Lock()
 _job = {"state": "idle", "progress": 0.0, "error": None}
 
+from core import activity as _activity  # noqa: E402
+
+_activity.register_probe("runtime-install", lambda: _job.get("state") == "running")
+
 
 def _snapshot() -> dict:
     with _lock:

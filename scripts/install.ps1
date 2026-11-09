@@ -61,7 +61,7 @@ $work = Join-Path ([IO.Path]::GetTempPath()) ('voicestudio-install-' + [Guid]::N
 New-Item -ItemType Directory -Path $work | Out-Null
 try {
     if ($mode -eq 'main') {
-        foreach ($tool in @('git', 'node', 'bun', 'cargo')) {
+        foreach ($tool in @('git', 'node', 'bun', 'cargo', 'uv')) {
             if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "Main builds require $tool; see docs/install/script.md." }
         }
         Run-Checked node @('-e', 'if (Number(process.versions.node.split(".")[0]) < 22) process.exit(1)')
