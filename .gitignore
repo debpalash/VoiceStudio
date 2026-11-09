@@ -127,6 +127,9 @@ test-results/
 # Local benchmark output (scripts/bench/bench.py)
 bench-results/
 
+# Nix build symlinks
+/result
+
 # Research repos (local only)
 research/
 !.planning/research/

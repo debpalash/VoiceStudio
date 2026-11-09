@@ -2582,7 +2582,9 @@
     "help_label": "ความช่วยเหลือในการตั้งค่า",
     "help_install": "คู่มือการติดตั้ง",
     "help_troubleshooting": "การแก้ไขปัญหา",
-    "help_report": "รายงานปัญหา"
+    "help_report": "รายงานปัญหา",
+    "options": "ตัวเลือก",
+    "more_fixes": "วิธีแก้ไขอื่น"
   },
   "consent": {
     "title": "ช่วยปรับปรุง VoiceStudio ไหม?",
