@@ -573,6 +573,14 @@ jobs:
       - name: Build Electron app
         run: bun run --cwd electron build
 
+      # Non-blocking renderer size budget (#3924): reads the build above, builds nothing.
+      # Fails the step (not the job) when startup or total gzip size grows >10% over
+      # scripts/bench/bundle-baseline.json; refresh it with --write-baseline when intended.
+      - name: Renderer bundle budget
+        if: runner.os == 'Linux'
+        continue-on-error: true
+        run: node scripts/bench/bundle.mjs --check
+
       # `bun install` does not run Electron's postinstall here, so fetch the binary the tests launch.
       - name: Download Electron binary
         run: node electron/node_modules/electron/install.js
