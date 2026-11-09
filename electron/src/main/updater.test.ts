@@ -894,6 +894,22 @@ describe('download stall watchdog', () => {
     expect(token?.cancelled).toBe(true);
     expect((await download).status).toBe('error');
   });
+
+  test('stops watching once every byte is in (macOS then hands the file to Squirrel)', async () => {
+    let token: { cancelled: boolean } | undefined;
+    let finish!: () => void;
+    mocks.autoUpdater.downloadUpdate.mockImplementation((value: any) => {
+      token = value;
+      return new Promise<void>((resolve) => (finish = resolve));
+    });
+    const { download } = startDownload();
+    emit('download-progress', { percent: 100, transferred: 10_000, total: 10_000 });
+    emit('update-downloaded', { version: '0.5.9' });
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(token?.cancelled).toBe(false);
+    finish();
+    expect((await download).status).toBe('downloaded');
+  });
 });
 
 describe('update feed selection', () => {

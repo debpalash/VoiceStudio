@@ -841,14 +841,23 @@ export class DesktopUpdater {
         stalled(downloadStalledError(this.stallTimeoutMs));
       }, this.stallTimeoutMs);
     };
+    let received = false;
     const onProgress = (progress: ProgressInfo) => {
       const bytes = Number(progress?.transferred) || 0;
-      if (bytes > transferred) {
+      if (bytes > transferred && !received) {
         transferred = bytes;
         arm();
       }
     };
+    // Every byte is in and verified; on macOS the download then hands the file
+    // to Squirrel.Mac (install on quit) without progress events, so the
+    // watchdog stops here.
+    const onDownloaded = () => {
+      received = true;
+      clearTimeout(timer);
+    };
     autoUpdater.on('download-progress', onProgress);
+    autoUpdater.on('update-downloaded', onDownloaded);
     arm();
     try {
       const download = autoUpdater.downloadUpdate(token);
@@ -858,6 +867,7 @@ export class DesktopUpdater {
     } finally {
       clearTimeout(timer);
       autoUpdater.removeListener('download-progress', onProgress);
+      autoUpdater.removeListener('update-downloaded', onDownloaded);
     }
   }
 
