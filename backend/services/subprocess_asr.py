@@ -57,9 +57,8 @@ class IsolatedFasterWhisperBackend(SubprocessASRBackend):
         if not ok:
             return False, f"faster-whisper cannot load CTranslate2: {detail}"
         try:
-            from core.windows_rocm.ct2 import prepare_import
-
             from core import import_probe
+            from core.windows_rocm.ct2 import prepare_import
 
             prepare_import()
             import_probe.ensure_importable(

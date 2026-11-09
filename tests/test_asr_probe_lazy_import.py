@@ -42,8 +42,8 @@ def fake_packages(tmp_path, monkeypatch):
 def probe_gates_open(monkeypatch):
     """Open the platform/native gates so each probe reaches its import check."""
     monkeypatch.setattr("core.device_caps.mlx_supported", lambda: (True, ""))
-    monkeypatch.setattr("core.windows_rocm.ct2.availability_status", lambda: None)
-    monkeypatch.setattr("core.windows_rocm.pipelines.pipeline_error", lambda: None)
+    monkeypatch.setattr("core.windows_rocm.ct2.availability_status", lambda *a, **k: None)
+    monkeypatch.setattr("core.windows_rocm.pipelines.pipeline_error", lambda *a, **k: None)
     monkeypatch.setattr(ab, "_ctranslate2_execstack_ok", lambda: (True, "ok"))
     monkeypatch.setattr(ab, "_ctranslate2_cudnn_ok", lambda: (True, "ready"))
 
@@ -109,7 +109,10 @@ def test_not_installed_answers_without_a_child(monkeypatch):
     monkeypatch.setattr(import_probe, "_run_child", lambda *a: pytest.fail("spawned a child"))
     with pytest.raises(ModuleNotFoundError) as info:
         import_probe.ensure_importable("voicestudio_no_such_package.sub")
-    assert info.value.name == "voicestudio_no_such_package.sub"
+    # The same error ``import`` gives, so user-facing reasons are unchanged.
+    with pytest.raises(ModuleNotFoundError) as real:
+        import voicestudio_no_such_package.sub  # noqa: F401
+    assert (str(info.value), info.value.name) == (str(real.value), real.value.name)
 
 
 def test_verdict_is_cached_per_installed_copy(fake_packages, monkeypatch):
@@ -134,3 +137,33 @@ def test_no_child_falls_back_to_importing_here(fake_packages, monkeypatch):
     monkeypatch.setattr(import_probe, "_run_child", lambda *a: None)
     import_probe.ensure_importable("vs_probe_fallback")
     assert "vs_probe_fallback" in sys.modules
+
+
+def test_failure_is_rechecked_after_the_ttl(fake_packages, monkeypatch):
+    """A fix made while the app runs is seen without a restart, as before."""
+    fake_packages(vs_probe_flaky='raise OSError("libfoo.so: cannot open")\n')
+    calls = []
+    real = import_probe._run_child
+    monkeypatch.setattr(import_probe, "_run_child", lambda *a: calls.append(a) or real(*a))
+    for _ in range(2):
+        with pytest.raises(OSError, match="libfoo"):
+            import_probe.ensure_importable("vs_probe_flaky")
+    assert len(calls) == 1
+    monkeypatch.setattr(import_probe, "_FAILURE_TTL_S", -1.0)
+    with pytest.raises(OSError, match="libfoo"):
+        import_probe.ensure_importable("vs_probe_flaky")
+    assert len(calls) == 2
+
+
+def test_verdicts_survive_a_reimport_of_the_module(fake_packages, monkeypatch):
+    """Suites purge ``core.*`` between tests; the children must not re-run."""
+    import importlib
+
+    fake_packages(vs_probe_reimport="")
+    import_probe.ensure_importable("vs_probe_reimport")
+    monkeypatch.setattr(sys.modules["core"], "import_probe", import_probe)  # restored after
+    monkeypatch.delitem(sys.modules, "core.import_probe")
+    fresh = importlib.import_module("core.import_probe")
+    assert fresh is not import_probe
+    monkeypatch.setattr(fresh, "_run_child", lambda *a: pytest.fail("spawned a child"))
+    fresh.ensure_importable("vs_probe_reimport")

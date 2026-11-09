@@ -14,9 +14,10 @@ interpreter, with this process's ``sys.path`` and environment, does the import
 and reports the outcome. A failure is re-raised here as the same exception
 type and message the in-process import would have raised, so callers keep
 their ``try: ... except`` blocks and their user-facing reasons unchanged. The
-answer is cached per installed copy of the package; where no child can be used
-(frozen bundles, a spawn failure, a timeout) the import runs in-process as
-before.
+answer is cached per installed copy of the package (a failure only for a
+minute, so a fix made while the app runs is picked up), so each package costs
+one child per backend run; where no child can be used (frozen bundles, a spawn
+failure, a timeout) the import runs in-process as before.
 """
 from __future__ import annotations
 
@@ -28,15 +29,20 @@ import os
 import subprocess
 import sys
 import threading
+import time
 
 logger = logging.getLogger(__name__)
 
 #: Cold imports of large packages on a slow disk have taken tens of seconds.
 _TIMEOUT_S = 180.0
+#: A failed import is re-checked after this long, so a fix made while the app
+#: runs (``patchelf``, a system library) is seen without a restart, as it was
+#: when every probe re-ran the import. A working import is cached for the run.
+_FAILURE_TTL_S = 60.0
 _MARKER = "__voicestudio_import_probe__"
 
 _CHILD = r"""
-import json, sys
+import json, os, sys
 marker, paths, module, prepare = sys.argv[1], json.loads(sys.argv[2]), sys.argv[3], sys.argv[4]
 sys.path[:] = paths
 try:
@@ -50,11 +56,16 @@ except BaseException as exc:
            "name": getattr(exc, "name", None)}
 else:
     out = {"ok": True}
-sys.stdout.write("\n" + marker + json.dumps(out) + "\n")
-sys.stdout.flush()
+# fd 1 directly: works even where sys.stdout is None or was replaced on import.
+os.write(1, ("\n" + marker + json.dumps(out) + "\n").encode())
 """
 
-_cache: dict[tuple, dict] = {}
+# Held by the interpreter, not this module: a verdict describes installed
+# files, so it stays true if this module is imported again (test suites purge
+# ``core.*`` between tests, which would otherwise re-spawn every child).
+_cache: dict[tuple, tuple[dict, float]] = sys.__dict__.setdefault(
+    "_voicestudio_import_probe_cache", {}
+)
 _locks: dict[str, threading.Lock] = {}
 _locks_guard = threading.Lock()
 
@@ -64,7 +75,11 @@ class ImportProbeError(Exception):
 
 
 def _not_installed(module: str) -> ModuleNotFoundError:
-    return ModuleNotFoundError(f"No module named {module!r}", name=module)
+    """What ``import module`` raises when its top-level package is missing."""
+    top = module.partition(".")[0]
+    if top in sys.modules and sys.modules[top] is None:
+        return ModuleNotFoundError(f"import of {top} halted; None in sys.modules", name=top)
+    return ModuleNotFoundError(f"No module named {top!r}", name=top)
 
 
 def _cache_key(module: str):
@@ -145,7 +160,9 @@ def ensure_importable(module: str, *, prepare: str = "") -> None:
     """
     if module in sys.modules:
         if sys.modules[module] is None:
-            raise _not_installed(module)
+            raise ModuleNotFoundError(
+                f"import of {module} halted; None in sys.modules", name=module
+            )
         return
     if getattr(sys, "frozen", False):
         _import_here(module, prepare)
@@ -156,13 +173,15 @@ def ensure_importable(module: str, *, prepare: str = "") -> None:
     with _locks_guard:
         lock = _locks.setdefault(module, threading.Lock())
     with lock:
-        verdict = _cache.get(key)
-        if verdict is None:
+        verdict, checked = _cache.get(key, (None, 0.0))
+        if verdict is None or (
+            not verdict.get("ok") and time.monotonic() - checked > _FAILURE_TTL_S
+        ):
             verdict = _run_child(module, prepare)
             if verdict is None:
                 _import_here(module, prepare)
                 return
-            _cache[key] = verdict
+            _cache[key] = (verdict, time.monotonic())
     if not verdict.get("ok"):
         _raise(verdict, module)
 
