@@ -221,6 +221,18 @@ async def _buffered_error_response(response):
     )
 
 
+async def _raise_for_streamed_status(response) -> None:
+    """``_raise_for_backend_status`` for a *streamed* response.
+
+    Only a 4xx/5xx body can hold a ``detail``, so only those are buffered
+    (bounded). Anything else that is not a 2xx, such as a redirect, is raised
+    on the original response without touching its body, so a slow body
+    cannot stall the call and the ``Location`` header stays available."""
+    if response.is_error:
+        _raise_for_backend_status(await _buffered_error_response(response))
+    _raise_for_backend_status(response)
+
+
 # ── Output mode + the base path boundary ─────────────────────────────────
 # An LLM agent that receives a WAV as base64 pays for every byte in context:
 # a 1.4 s clip already brushes per-result token caps, and a paragraph of
@@ -759,8 +771,7 @@ def create_mcp_server(app=None):
             # buffering another full audio copy in the agent process.
             async with _client(300) as c:
                 async with c.stream("GET", f"/audio/{audio_id}.{format}") as encoded:
-                    if not encoded.is_success:
-                        _raise_for_backend_status(await _buffered_error_response(encoded))
+                    await _raise_for_streamed_status(encoded)
 
         return json.dumps(await _speech_result(
             audio_id, gen_time, duration, r.content, _api_base(), format

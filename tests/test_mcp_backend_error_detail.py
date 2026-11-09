@@ -329,3 +329,31 @@ def test_plain_text_json_fallback_hides_home_paths(platform, monkeypatch):
     error = _result(server, "clone_voice", name="me", ref_audio_base64=AUDIO)["error"]
     assert "alice" not in error
     assert json.loads(error) == {"error": f"cannot read {scrubbed}"}
+
+
+def test_streamed_redirect_raises_without_reading_the_body():
+    """A streamed 3xx fails at once on the original response: no body read
+    (a slow one would stall the call) and its ``Location`` header is kept."""
+    import mcp_server
+
+    response, stream = _streamed(302, [b"x" * 1024] * 4, content_type="text/html")
+    response.headers["Location"] = "https://proxy.example/login"
+    with pytest.raises(httpx.HTTPStatusError) as raised:
+        asyncio.run(mcp_server._raise_for_streamed_status(response))
+    assert stream.pulled == 0
+    assert raised.value.response is response
+    assert raised.value.response.headers["Location"] == "https://proxy.example/login"
+
+
+def test_streamed_success_passes_and_streamed_error_keeps_its_detail():
+    """A streamed 2xx passes untouched; a streamed 4xx/5xx still carries its detail."""
+    import mcp_server
+
+    ok, ok_stream = _streamed(200, [b"OggS"])
+    asyncio.run(mcp_server._raise_for_streamed_status(ok))
+    assert ok_stream.pulled == 0
+
+    body = json.dumps({"detail": "Encoder unavailable"}).encode()
+    failed, _stream = _streamed(503, [body])
+    with pytest.raises(httpx.HTTPStatusError, match="Encoder unavailable"):
+        asyncio.run(mcp_server._raise_for_streamed_status(failed))
