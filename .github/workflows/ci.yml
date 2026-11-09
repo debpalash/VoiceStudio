@@ -562,9 +562,13 @@ jobs:
       - name: Install Electron deps
         run: bun install --frozen-lockfile
 
-      - name: Development launcher and install doctor tests
+      # Main-process unit tests on every OS: the release workflow runs them on
+      # Windows and macOS, so a POSIX-only path assumption must fail here first
+      # (v0.5.8-beta.3's Windows package failed on #3701's discovery tests).
+      - name: Main-process unit tests
+        if: runner.os != 'Linux'
         working-directory: electron
-        run: bunx --no-install vp test --run src/main/dev-bundle.test.ts src/main/dev-instance.test.ts src/main/install-doctor.test.ts
+        run: bunx --no-install vp test --run src/main
 
       - name: Build Electron app
         run: bun run --cwd electron build
