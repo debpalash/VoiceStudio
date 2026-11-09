@@ -1,1 +1,0 @@
-Returning users' launches no longer load the first-run setup screens, cutting the startup bundle by about 6% (#3924)

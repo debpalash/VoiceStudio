@@ -1,1 +1,0 @@
-An offline benchmark (scripts/bench) records startup, idle memory, idle CPU and bundle-size baselines, and CI flags renderer bundle growth over 10% (#3924)
