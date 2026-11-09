@@ -15,7 +15,7 @@ export function SupportShortcut() {
             <Link
               to="/pro"
               aria-label={t('supportPlans.get_pro')}
-              className="support-shortcut app-no-drag flex items-center gap-1.5 px-2 focus-visible:outline-2 focus-visible:outline-ring"
+              className="support-shortcut app-no-drag flex items-center gap-1 px-1.5 focus-visible:outline-2 focus-visible:outline-ring"
             />
           }
         >
