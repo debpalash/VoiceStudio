@@ -28,6 +28,7 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_BACKEND_PORT } from "../config/app-config.mjs";
+import { asciiSafePthFilesSync } from "../electron/scripts/pth-ascii.mjs";
 
 export { DEFAULT_BACKEND_PORT };
 
@@ -158,6 +159,9 @@ export function uvRunArgs(env = process.env) {
  */
 export function createBackendSupervisor({
   spawnBackend = () => spawn("uv", uvRunArgs(), { stdio: "inherit" }),
+  // A manual `uv sync` rewrites the editable .pth with the checkout path, which
+  // a non-ASCII folder on a non-UTF-8 Windows code page cannot start (#1783).
+  healPthFiles = () => asciiSafePthFilesSync(path.resolve(".venv")),
   watchBackend = (onChange) =>
     watch("backend", { recursive: true }, (_event, filename) => onChange(filename?.toString())),
   killBackend = (proc, sig) => killProcessTree(proc, sig),
@@ -243,6 +247,12 @@ export function createBackendSupervisor({
         report(`[dev-backend] backend source watcher failed: ${err.message}`);
         stop("SIGTERM", 1);
       });
+    }
+
+    try {
+      healPthFiles();
+    } catch {
+      // Best effort: the launch below reports a Python that still cannot start.
     }
 
     let current;
