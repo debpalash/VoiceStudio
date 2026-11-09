@@ -1112,6 +1112,7 @@
               nativeBuildInputs = [ pkgs.binutils ];
             } ''
             dist=${app}/libexec/electron
+            electron=${pkgs.electron_44-bin}
 
             # App::IsPackaged compares the executable basename against
             # "electron"; shipping that name reports the app as unpackaged.
@@ -1125,12 +1126,13 @@
             fi
 
             # The wrapper has to exec that binary, not a store path belonging
-            # to electron_44-bin.
+            # to electron_44-bin. Match its exact output path: nixpkgs names
+            # that output "electron-<version>", so a name pattern never fires.
             if ! grep -q "$dist/voicestudio" ${app}/bin/voicestudio; then
               echo "bin/voicestudio does not exec $dist/voicestudio"
               exit 1
             fi
-            if grep -q 'electron_[0-9]*-bin' ${app}/bin/voicestudio; then
+            if grep -qF "$electron" ${app}/bin/voicestudio; then
               echo "bin/voicestudio still points into the electron_44-bin output"
               exit 1
             fi
@@ -1157,7 +1159,7 @@
             # Bundled .so files must resolve inside this output, not in
             # electron_44-bin's dist directory.
             for binary in "$dist/voicestudio" "$dist/chrome_crashpad_handler"; do
-              if readelf -d "$binary" | grep -q 'electron_[0-9]*-bin'; then
+              if readelf -d "$binary" | grep -qF "$electron"; then
                 echo "$binary still resolves libraries from the electron_44-bin dist"
                 exit 1
               fi
