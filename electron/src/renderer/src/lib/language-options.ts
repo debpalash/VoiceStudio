@@ -19,20 +19,24 @@ const codes: Record<string, string> = {
     ]),
   ),
 };
-const codeValues = new Set(Object.values(codes));
+// Codes compare case-insensitively: dub segments store picker tags such as
+// "cmn-Hans", which must meet the engine's "chinese (simplified)" (#3685).
+const codeValues = new Set(Object.values(codes).map((code) => code.toLowerCase()));
 // These display names are accepted by the backend; keep persisted values unchanged.
 export function languageCode(name: string) {
   return codes[name.toLowerCase()] || '';
 }
 
 export function languageSupported(name: string, supported?: readonly string[] | null) {
-  if (name.toLowerCase() === 'auto' || supported == null) return true;
-  const code = languageCode(name) || (codeValues.has(name.toLowerCase()) ? name.toLowerCase() : '');
-  return supported.some(
-    (candidate) =>
-      candidate.toLowerCase() === name.toLowerCase() ||
-      Boolean(code && (languageCode(candidate) || candidate.toLowerCase()) === code),
-  );
+  const key = name.toLowerCase();
+  if (key === 'auto' || supported == null) return true;
+  const code = languageCode(name).toLowerCase() || (codeValues.has(key) ? key : '');
+  return supported.some((candidate) => {
+    const other = candidate.toLowerCase();
+    return (
+      other === key || Boolean(code && (languageCode(candidate).toLowerCase() || other) === code)
+    );
+  });
 }
 
 /** Shared guard for persisted selections after an engine switch. Unknown metadata remains open. */
