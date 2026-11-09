@@ -46,6 +46,7 @@ import {
   type BackendActivity,
   type LaunchIntent,
 } from './headless';
+import { devInstanceFile, recordDevInstance, waitForPreviousDevInstance } from './dev-lock-handoff';
 
 // Packaged GUI launches can inherit a short-lived terminal pipe. When that
 // launcher exits, diagnostic console writes emit EPIPE asynchronously and can
@@ -405,12 +406,18 @@ async function openOutside(url: string): Promise<void> {
   }
 }
 
-if (process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1' && !app.requestSingleInstanceLock()) {
+const singleInstance = process.env.VOICESTUDIO_ALLOW_MULTIPLE_INSTANCES !== '1';
+// A dev restart starts the new Electron before the old one has let go of the lock.
+const devInstance =
+  singleInstance && !app.isPackaged ? devInstanceFile(app.getPath('userData')) : null;
+if (devInstance) waitForPreviousDevInstance({ file: devInstance });
+if (singleInstance && !app.requestSingleInstanceLock()) {
   app.quit();
 } else if (launchIntent.stop) {
   // `--stop` with nothing running: there is nothing to stop or start.
   app.exit(0);
 } else {
+  if (devInstance) recordDevInstance(devInstance);
   let initialized: Promise<void> = Promise.resolve();
   app.on('second-instance', (_event, argv) => {
     const intent = parseLaunchIntent(argv);

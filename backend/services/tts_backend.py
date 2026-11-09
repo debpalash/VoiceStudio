@@ -208,6 +208,25 @@ class TTSInputError(ValueError):
     surface as opaque 500s like "need at least one array to concatenate")."""
 
 
+def declared_language_code(code: Optional[str], declared) -> Optional[str]:
+    """The declared code an engine speaks a normalized request ``code`` as.
+
+    An exact match wins, so an engine that lists a variety keeps it; a
+    variety of a declared macrolanguage ("arz" on an engine declaring "ar")
+    is spoken as the macrolanguage (#3816). ``None`` means unsupported. The
+    synthesis check and the picker inventory both use this, so the languages
+    an engine advertises are exactly the ones it accepts.
+    """
+    if code is None:
+        return None
+    if code in declared:
+        return code
+    from core.language_variants import macrolanguage_of
+
+    macro = macrolanguage_of(code)
+    return macro if macro is not None and macro in declared else None
+
+
 def _lease_render(method):
     """Keep engines resident for every render caller, including dub and batch.
 
@@ -361,12 +380,20 @@ class TTSBackend(ABC):
         value = language.strip().lower()
         if not value or value == "auto":
             return None
-        from omnivoice.utils.lang_map import LANG_NAME_TO_ID
+        from omnivoice.utils.lang_map import APP_LANGUAGE_IDS, APP_LANGUAGE_NAMES, LANG_NAME_TO_ID
 
         from core.language_variants import VARIANT_CODES
 
-        # Reuse the same complete, bundled mapping as the language picker.
-        aliases = {"mandarin": "zh", "arabic": "ar", "tagalog": "tl", **VARIANT_CODES}
+        # Reuse the same complete, bundled mapping as the language picker,
+        # plus the app's own picker names and tags that the vocabulary spells
+        # differently ("Chinese (Simplified)" / "cmn-Hans" -> "zh", #3685).
+        # Only their ISO 639-1 ids apply here: OmniVoice's three-letter
+        # varieties ("arb", "npi") are not what other engines declare.
+        aliases = {
+            **{name: code for name, code in {**APP_LANGUAGE_NAMES, **APP_LANGUAGE_IDS}.items()
+               if len(code) == 2},
+            "mandarin": "zh", "arabic": "ar", "tagalog": "tl", **VARIANT_CODES,
+        }
         if value in aliases:
             return aliases[value]
         if value in LANG_NAME_TO_ID:
@@ -402,7 +429,10 @@ class TTSBackend(ABC):
         advertise a 3-letter set must override ``_check_language`` (or
         accept the 3-letter token as-is and validate themselves); the
         base class only enforces exact 2-letter matches against the
-        declared set, which covers the common case.
+        declared set, which covers the common case. The one fold is a
+        named variety of a declared macrolanguage ("Standard Arabic" /
+        ``arb`` on an engine declaring ``ar``, #3816), which returns the
+        declared code so the engine never sees a variety it does not list.
         """
         supported = self.supported_languages
         # open-ended: the engine handles its own checks.
@@ -413,8 +443,9 @@ class TTSBackend(ABC):
             return  # no preference → caller leaves it to the engine
         # Region tags resolve to their base language; three-letter codes
         # remain exact rather than guessing from their first two letters.
-        if code in supported:
-            return code
+        declared = declared_language_code(code, supported)
+        if declared is not None:
+            return declared
         # Build the user-facing list. ``multi`` is not in here because
         # ``supported`` already short-circuited above; entries are rendered
         # in declared order so the message matches ``list_backends()``.
@@ -1695,6 +1726,30 @@ def _get_clone_prompt(
                     "failed to remove reference window %s",
                     os.path.basename(passage_file),
                 )
+
+
+def backend_accepts_seed(backend) -> bool:
+    """Whether this adapter accepts a per-request ``seed`` kwarg."""
+    return bool(
+        getattr(backend, "supports_native_omnivoice_controls", False)
+        or getattr(backend, "supports_generation_seed", False)
+    )
+
+
+def seed_engine_call(seed, backend=None) -> dict:
+    """Seed one engine call of a take; returns the kwargs to forward.
+
+    A take's seed identifies its voice (a Voice Design speaker, #3254 /
+    #3413), so every call that renders part of one take — each chunk of a
+    long text, each ``[pause]`` span, each Batch segment — restarts from that
+    same seed. Advancing it per call rotated through speakers mid-take
+    (#3730). The in-process RNG is re-seeded, and an out-of-process engine
+    that accepts a seed gets it with every call, not just the first.
+    """
+    if seed is None:
+        return {}
+    torch.manual_seed(seed)
+    return {"seed": seed} if backend is not None and backend_accepts_seed(backend) else {}
 
 
 def generate_with_cached_ref(model, *, ref_audio, ref_text, **gen_kw):
@@ -3248,8 +3303,10 @@ class MLXAudioBackend(TTSBackend):
                 # 2-letter code). Kokoro's strict validation doesn't apply to
                 # them. Curated models are checked against their documented
                 # set instead of silently speaking a language they don't know.
-                self._check_language(language)
-                code = self._normalize_language_code(language)
+                # The checked code is what the curated model declares
+                # ("Standard Arabic" -> "ar", #3816); open sets keep the
+                # request's own code.
+                code = self._check_language(language) or self._normalize_language_code(language)
                 if self._curated_key() == "qwen3-tts":
                     # mlx-audio Qwen's codec_language_id uses full names.
                     qwen_languages = {
@@ -4458,10 +4515,12 @@ def language_options(backend_id: str) -> Optional[list[str]]:
         if not declared or "multi" in declared:
             return None
         codes = {backend._normalize_language_code(code) for code in declared}
-        candidates = set(LANG_NAME_TO_ID) | {"mandarin", "arabic", "tagalog"}
+        candidates = set(LANG_NAME_TO_ID) | set(APP_LANGUAGE_NAMES) | {"mandarin", "arabic", "tagalog"}
         candidates.update(name.lower() for name in backend.language_display_names.values())
-        return with_variant_names(sorted(name for name in candidates
-                                         if backend._normalize_language_code(name) in codes))
+        return with_variant_names(sorted(
+            name for name in candidates
+            if declared_language_code(backend._normalize_language_code(name), codes) is not None
+        ))
     except Exception:  # Optional metadata must not take down discovery.
         logger.debug("Could not resolve language options for %s", backend_id, exc_info=True)
         return None

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { asciiSafePthFiles, asciiSafePthText, pythonLiteral } from './pth-ascii';
+import { asciiSafePthFilesSync } from '../../scripts/pth-ascii.mjs';
 
 const CJK_USER = '\u5f20\u4e09'; // a typical non-English Windows username
 
@@ -63,6 +64,28 @@ describe('asciiSafePthFiles (#1783)', () => {
     }
     expect(readFileSync(join(posix, '_virtualenv.pth'), 'utf8')).toBe(ascii);
     expect(await asciiSafePthFiles(venv)).toEqual([]);
+  });
+
+  it('heals the same way for the synchronous dev-backend caller', async () => {
+    const make = () => {
+      const venv = mkdtempSync(join(tmpdir(), 'vs-pth-sync-'));
+      const site = join(venv, 'lib', 'python3.11', 'site-packages');
+      mkdirSync(site, { recursive: true });
+      writeFileSync(join(site, '_editable_impl_omnivoice.pth'), join(venv, CJK_USER), 'utf8');
+      writeFileSync(join(site, 'latin1.pth'), Buffer.from([0x2f, 0xe9]));
+      return site;
+    };
+    const [syncSite, asyncSite] = [make(), make()];
+    expect(asciiSafePthFilesSync(join(syncSite, '..', '..', '..'))).toHaveLength(1);
+    await asciiSafePthFiles(join(asyncSite, '..', '..', '..'));
+    const healed = (site: string) =>
+      readFileSync(join(site, '_editable_impl_omnivoice.pth'), 'utf8').replace(
+        /vs-pth-sync-\w+/,
+        '',
+      );
+    expect(healed(syncSite)).toBe(healed(asyncSite));
+    expect([...readFileSync(join(syncSite, 'latin1.pth'))]).toEqual([0x2f, 0xe9]);
+    expect(asciiSafePthFilesSync(join(syncSite, '..', '..', '..'))).toEqual([]);
   });
 
   it('drops non-ASCII comments and escapes code lines', () => {

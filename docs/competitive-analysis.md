@@ -287,8 +287,9 @@ Engine-agnostic wrapper around any `generate()`. Text ≤ `max_chunk_chars` (def
 splits greedily left-to-right with descending boundary priority: sentence end
 (`[.!?]` + CJK equivalents, skipping a 25-entry abbreviation set and decimals) →
 clause boundary (`;:,—`) → whitespace → safe hard cut. Paralinguistic tags
-(`[laugh]`) are atomic — a regex guards every split candidate. Per-chunk seed is
-`seed + i` (decorrelates RNG artifacts, keeps (text, seed) reproducible). Optional
+(`[laugh]`) are atomic — a regex guards every split candidate. Every chunk and
+`[pause]` span restarts from the take's seed, so a designed voice stays one speaker
+and (text, seed) stays reproducible (#3730). Optional
 per-chunk `trim_fn` for engines that hallucinate trailing noise. Joining is a linear
 crossfade, default **50 ms** (0 = hard cut), overlap clamped to the shorter side.
 Known latent bug: sample rate is taken from the *first* chunk; later mismatches are

@@ -439,10 +439,13 @@ def synthesize_chapter(
     from services.chunked_tts import (concatenate_audio_chunks,
                                       join_rendered_chunks,
                                       split_text_into_chunks)
-    from services.pronunciation import apply_lexicon
+    from services.pronunciation import apply_lexicon_and_overrides
 
     items: list = []  # ("a", tensor) for audio, ("s", n_samples) for silence
-    texts_by_span = [apply_lexicon(span.text, lexicon) if span.text else "" for span in spans]
+    # The same text /generate sends: dictionary around inline [[…]] overrides,
+    # which then resolve, so brackets never reach the engine (#3561).
+    texts_by_span = [apply_lexicon_and_overrides(span.text, lexicon) if span.text else ""
+                     for span in spans]
     # Read the gap fill once (#3611): the caller keys its caches on the same
     # value, so a switch flipped mid-render cannot mix fills under one key.
     if pause_fill is None:

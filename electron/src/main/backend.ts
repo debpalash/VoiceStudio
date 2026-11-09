@@ -636,6 +636,9 @@ export async function resolveSpawnPlan(
   // Name the import that failed (#2555): "incomplete" alone cannot tell a
   // setup that never ran from one that finished but cannot load a module.
   let failure = '';
+  // A source checkout under a non-ASCII folder gets the same #1783 healing as an
+  // installed runtime: each `uv sync` rewrites the editable .pth with that path.
+  await asciiSafePthFiles(join(root, '.venv')).catch(() => []);
   if (devProbeStamped(root, python)) {
     return { argv: [python, '-m', ...UVICORN_ARGS, ...portArg], cwd: root };
   }

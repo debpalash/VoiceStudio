@@ -498,8 +498,10 @@ class AudioCPPBackend(TTSBackend):
         instruct = kw.get("instruct") or kw.get("description") or None
 
         language = kw.get("language")
-        if language and str(language).strip().lower() not in {
-            "auto", "en", "english", "zh", "chinese",
+        # Same resolution as the language check, so "Chinese (Simplified)"
+        # or "zh-CN" is recognised as Chinese rather than logged as ignored.
+        if isinstance(language, str) and self._normalize_language_code(language) not in {
+            None, "en", "zh",
         }:
             logger.info(
                 "audio.cpp (Breeze-TTS-2) is en+zh only; ignoring "

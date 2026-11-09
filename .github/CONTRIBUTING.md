@@ -109,7 +109,15 @@ On macOS, development launches coordinate bundle preparation and retain each
 active dev server’s branded Electron bundle across main-process restarts.
 Unused bundles are removed on later launches; cleanup failures do not prevent
 a valid cached bundle from starting. Native OS locks release automatically when
-all holders exit, including after a crash.
+all holders exit, including after a crash. The launcher calls `/bin/cp`,
+`/usr/bin/plutil` and `/usr/bin/codesign` by full path, so GNU coreutils ahead
+of `/bin` on `PATH` does not break it, and the app asks the Keychain only when a
+saved account sign-in exists or account features are on.
+
+Editing a main-process file restarts Electron. Each dev instance records its
+process ID in its user-data folder, and the replacement waits up to 20 seconds
+for the previous one to exit before taking the single-instance lock, so the
+restart does not end the dev session. Packaged builds never wait.
 
 Product builds read the app name, application ID, and the backend/web/Electron
 development ports from `config/app.json`. Change that manifest instead of

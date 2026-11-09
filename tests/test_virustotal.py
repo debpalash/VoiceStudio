@@ -26,7 +26,8 @@ class VirusTotalTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
-        self.path = Path(self.temporary.name) / 'public "sample".zip'
+        # The script resolves its input; macOS reports /var temp dirs as /private/var.
+        self.path = Path(self.temporary.name).resolve() / 'public "sample".zip'
         self.path.write_bytes(b"public sample bytes\x00\xff")
         self.client = vt.Client("private-test-key")
         self.client.opener = Mock()
