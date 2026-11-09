@@ -3079,7 +3079,8 @@
     "pill_update": "Atualizar",
     "pill_restart": "Reiniciar",
     "restart_confirm_title": "Reiniciar para atualizar?",
-    "restart_confirm": "Reiniciar vai parar as tarefas em andamento ({{n}}).",
+    "restart_confirm_one": "Reiniciar vai parar as tarefas em andamento ({{count}}).",
+    "restart_confirm_other": "Reiniciar vai parar as tarefas em andamento ({{count}}).",
     "restart_confirm_unknown": "Reiniciar pode parar trabalhos ainda em andamento.",
     "restart_anyway": "Reiniciar mesmo assim"
   },

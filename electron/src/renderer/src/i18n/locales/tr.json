@@ -3077,7 +3077,8 @@
     "pill_update": "Güncelle",
     "pill_restart": "Yeniden başlat",
     "restart_confirm_title": "Güncellemek için yeniden başlatılsın mı?",
-    "restart_confirm": "Yeniden başlatmak çalışan görevleri durdurur ({{n}}).",
+    "restart_confirm_one": "Yeniden başlatmak çalışan görevleri durdurur ({{count}}).",
+    "restart_confirm_other": "Yeniden başlatmak çalışan görevleri durdurur ({{count}}).",
     "restart_confirm_unknown": "Yeniden başlatmak hâlâ süren işleri durdurabilir.",
     "restart_anyway": "Yine de yeniden başlat"
   },

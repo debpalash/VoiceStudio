@@ -3077,7 +3077,8 @@
     "pill_update": "アップデート",
     "pill_restart": "再起動",
     "restart_confirm_title": "再起動して更新しますか？",
-    "restart_confirm": "再起動すると実行中のタスクが停止します（{{n}}）。",
+    "restart_confirm_one": "再起動すると実行中のタスクが停止します（{{count}}）。",
+    "restart_confirm_other": "再起動すると実行中のタスクが停止します（{{count}}）。",
     "restart_confirm_unknown": "再起動すると実行中の作業が停止する可能性があります。",
     "restart_anyway": "再起動する"
   },

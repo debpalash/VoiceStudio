@@ -3077,7 +3077,8 @@
     "pill_update": "Cập nhật",
     "pill_restart": "Khởi động lại",
     "restart_confirm_title": "Khởi động lại để cập nhật?",
-    "restart_confirm": "Khởi động lại sẽ dừng các tác vụ đang chạy ({{n}}).",
+    "restart_confirm_one": "Khởi động lại sẽ dừng các tác vụ đang chạy ({{count}}).",
+    "restart_confirm_other": "Khởi động lại sẽ dừng các tác vụ đang chạy ({{count}}).",
     "restart_confirm_unknown": "Khởi động lại có thể dừng công việc vẫn đang chạy.",
     "restart_anyway": "Vẫn khởi động lại"
   },

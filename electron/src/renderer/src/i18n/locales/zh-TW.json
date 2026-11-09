@@ -3077,7 +3077,8 @@
     "pill_update": "更新",
     "pill_restart": "重新啟動",
     "restart_confirm_title": "重新啟動以更新？",
-    "restart_confirm": "重新啟動會停止正在執行的工作（{{n}}）。",
+    "restart_confirm_one": "重新啟動會停止正在執行的工作（{{count}}）。",
+    "restart_confirm_other": "重新啟動會停止正在執行的工作（{{count}}）。",
     "restart_confirm_unknown": "重新啟動可能會停止仍在執行的工作。",
     "restart_anyway": "仍要重新啟動"
   },

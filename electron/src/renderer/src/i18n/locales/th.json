@@ -3077,7 +3077,8 @@
     "pill_update": "อัปเดต",
     "pill_restart": "รีสตาร์ท",
     "restart_confirm_title": "รีสตาร์ทเพื่ออัปเดตไหม",
-    "restart_confirm": "การรีสตาร์ทจะหยุดงานที่กำลังทำงานอยู่ ({{n}})",
+    "restart_confirm_one": "การรีสตาร์ทจะหยุดงานที่กำลังทำงานอยู่ ({{count}})",
+    "restart_confirm_other": "การรีสตาร์ทจะหยุดงานที่กำลังทำงานอยู่ ({{count}})",
     "restart_confirm_unknown": "การรีสตาร์ทอาจหยุดงานที่ยังทำอยู่",
     "restart_anyway": "รีสตาร์ทต่อไป"
   },

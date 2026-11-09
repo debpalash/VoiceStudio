@@ -3077,7 +3077,8 @@
     "pill_update": "Uppdatera",
     "pill_restart": "Starta om",
     "restart_confirm_title": "Starta om för att uppdatera?",
-    "restart_confirm": "En omstart stoppar pågående uppgifter ({{n}}).",
+    "restart_confirm_one": "En omstart stoppar pågående uppgifter ({{count}}).",
+    "restart_confirm_other": "En omstart stoppar pågående uppgifter ({{count}}).",
     "restart_confirm_unknown": "En omstart kan stoppa arbete som fortfarande pågår.",
     "restart_anyway": "Starta om ändå"
   },

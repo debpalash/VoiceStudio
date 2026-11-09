@@ -747,7 +747,9 @@ export class DesktopUpdater {
         }
       } catch (error) {
         this.lastDownloadFailed = true;
-        if (quiet && (networkFailure || isTransientUpdateError(error)))
+        const errorKind = classifyUpdateError(error, 'download');
+        // A failed verification always shows, even after a network fallback.
+        if (quiet && errorKind !== 'verify' && (networkFailure || isTransientUpdateError(error)))
           this.patch({
             status: 'available',
             progress: 0,
@@ -759,7 +761,7 @@ export class DesktopUpdater {
           this.patch({
             status: 'error',
             error: error instanceof Error ? error.message : String(error),
-            errorKind: classifyUpdateError(error, 'download'),
+            errorKind,
           });
       }
       return this.snapshot();

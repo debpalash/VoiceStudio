@@ -3079,7 +3079,8 @@
     "pill_update": "Aggiorna",
     "pill_restart": "Riavvia",
     "restart_confirm_title": "Riavviare per aggiornare?",
-    "restart_confirm": "Il riavvio interromperà le attività in corso ({{n}}).",
+    "restart_confirm_one": "Il riavvio interromperà le attività in corso ({{count}}).",
+    "restart_confirm_other": "Il riavvio interromperà le attività in corso ({{count}}).",
     "restart_confirm_unknown": "Il riavvio potrebbe interrompere lavoro ancora in corso.",
     "restart_anyway": "Riavvia comunque"
   },

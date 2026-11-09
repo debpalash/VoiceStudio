@@ -3077,7 +3077,8 @@
     "pill_update": "Perbarui",
     "pill_restart": "Mulai ulang",
     "restart_confirm_title": "Mulai ulang untuk memperbarui?",
-    "restart_confirm": "Memulai ulang akan menghentikan tugas yang berjalan ({{n}}).",
+    "restart_confirm_one": "Memulai ulang akan menghentikan tugas yang berjalan ({{count}}).",
+    "restart_confirm_other": "Memulai ulang akan menghentikan tugas yang berjalan ({{count}}).",
     "restart_confirm_unknown": "Memulai ulang dapat menghentikan pekerjaan yang masih berjalan.",
     "restart_anyway": "Tetap mulai ulang"
   },

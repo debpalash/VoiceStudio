@@ -3077,7 +3077,8 @@
     "pill_update": "Update",
     "pill_restart": "Neu starten",
     "restart_confirm_title": "Neu starten und aktualisieren?",
-    "restart_confirm": "Ein Neustart beendet laufende Aufgaben ({{n}}).",
+    "restart_confirm_one": "Ein Neustart beendet laufende Aufgaben ({{count}}).",
+    "restart_confirm_other": "Ein Neustart beendet laufende Aufgaben ({{count}}).",
     "restart_confirm_unknown": "Ein Neustart kann laufende Arbeit beenden.",
     "restart_anyway": "Trotzdem neu starten"
   },

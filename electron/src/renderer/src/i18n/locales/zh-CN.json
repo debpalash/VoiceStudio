@@ -3073,7 +3073,8 @@
     "pill_update": "更新",
     "pill_restart": "重启",
     "restart_confirm_title": "重启以更新？",
-    "restart_confirm": "重启会停止正在运行的任务（{{n}}）。",
+    "restart_confirm_one": "重启会停止正在运行的任务（{{count}}）。",
+    "restart_confirm_other": "重启会停止正在运行的任务（{{count}}）。",
     "restart_confirm_unknown": "重启可能会停止仍在运行的工作。",
     "restart_anyway": "仍然重启"
   },

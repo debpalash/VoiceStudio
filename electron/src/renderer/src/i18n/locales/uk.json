@@ -3103,7 +3103,8 @@
     "pill_update": "Оновити",
     "pill_restart": "Перезапустити",
     "restart_confirm_title": "Перезапустити для оновлення?",
-    "restart_confirm": "Перезапуск зупинить активні завдання ({{n}}).",
+    "restart_confirm_one": "Перезапуск зупинить активні завдання ({{count}}).",
+    "restart_confirm_other": "Перезапуск зупинить активні завдання ({{count}}).",
     "restart_confirm_unknown": "Перезапуск може зупинити незавершену роботу.",
     "restart_anyway": "Усе одно перезапустити"
   },

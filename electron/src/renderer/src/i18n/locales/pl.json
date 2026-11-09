@@ -3103,7 +3103,8 @@
     "pill_update": "Aktualizuj",
     "pill_restart": "Uruchom ponownie",
     "restart_confirm_title": "Uruchomić ponownie, aby zaktualizować?",
-    "restart_confirm": "Ponowne uruchomienie zatrzyma trwające zadania ({{n}}).",
+    "restart_confirm_one": "Ponowne uruchomienie zatrzyma trwające zadania ({{count}}).",
+    "restart_confirm_other": "Ponowne uruchomienie zatrzyma trwające zadania ({{count}}).",
     "restart_confirm_unknown": "Ponowne uruchomienie może zatrzymać trwającą pracę.",
     "restart_anyway": "Uruchom ponownie mimo to"
   },

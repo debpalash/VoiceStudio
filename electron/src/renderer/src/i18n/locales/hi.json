@@ -3077,7 +3077,8 @@
     "pill_update": "अपडेट",
     "pill_restart": "रीस्टार्ट",
     "restart_confirm_title": "अपडेट के लिए रीस्टार्ट करें?",
-    "restart_confirm": "रीस्टार्ट करने से चल रहे कार्य रुक जाएँगे ({{n}})।",
+    "restart_confirm_one": "रीस्टार्ट करने से चल रहे कार्य रुक जाएँगे ({{count}})।",
+    "restart_confirm_other": "रीस्टार्ट करने से चल रहे कार्य रुक जाएँगे ({{count}})।",
     "restart_confirm_unknown": "रीस्टार्ट करने से अभी चल रहा काम रुक सकता है।",
     "restart_anyway": "फिर भी रीस्टार्ट करें"
   },

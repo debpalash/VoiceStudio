@@ -3079,7 +3079,8 @@
     "pill_update": "Actualizar",
     "pill_restart": "Reiniciar",
     "restart_confirm_title": "¿Reiniciar para actualizar?",
-    "restart_confirm": "Reiniciar detendrá las tareas en curso ({{n}}).",
+    "restart_confirm_one": "Reiniciar detendrá las tareas en curso ({{count}}).",
+    "restart_confirm_other": "Reiniciar detendrá las tareas en curso ({{count}}).",
     "restart_confirm_unknown": "Reiniciar puede detener trabajo que aún está en curso.",
     "restart_anyway": "Reiniciar de todos modos"
   },

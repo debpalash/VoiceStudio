@@ -3077,7 +3077,8 @@
     "pill_update": "Bijwerken",
     "pill_restart": "Herstarten",
     "restart_confirm_title": "Herstarten om bij te werken?",
-    "restart_confirm": "Herstarten stopt lopende taken ({{n}}).",
+    "restart_confirm_one": "Herstarten stopt lopende taken ({{count}}).",
+    "restart_confirm_other": "Herstarten stopt lopende taken ({{count}}).",
     "restart_confirm_unknown": "Herstarten kan werk stoppen dat nog loopt.",
     "restart_anyway": "Toch herstarten"
   },

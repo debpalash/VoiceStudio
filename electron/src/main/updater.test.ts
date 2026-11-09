@@ -1097,6 +1097,22 @@ describe('background download and install on quit', () => {
     expect(updater.snapshot()).toMatchObject({ status: 'error', errorKind: 'verify' });
   });
 
+  test('a verification failure after a network fallback still shows', async () => {
+    const offline = vi.fn(async () => {
+      throw new Error('getaddrinfo ENOTFOUND api.github.com');
+    });
+    const updater = new DesktopUpdater('direct', offline as unknown as typeof fetch, []);
+    offer();
+    // The release host times out, then the asset route serves a corrupt file.
+    vi.spyOn(updater as any, 'downloadThroughAssetRoute').mockRejectedValue(
+      new Error('sha512 checksum mismatch, expected abc, got def'),
+    );
+    mocks.autoUpdater.downloadUpdate.mockRejectedValue(new Error('504 Gateway Timeout'));
+
+    expect(await updater.checkInBackground()).toBe(false);
+    expect(updater.snapshot()).toMatchObject({ status: 'error', errorKind: 'verify' });
+  });
+
   test('installs on quit where the package replaces itself silently', () => {
     expect(installsOnQuit('darwin', undefined)).toBe(true);
     expect(installsOnQuit('win32', undefined)).toBe(true);

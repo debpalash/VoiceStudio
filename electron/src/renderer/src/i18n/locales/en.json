@@ -3158,7 +3158,8 @@
     "pill_update": "Update",
     "pill_restart": "Restart",
     "restart_confirm_title": "Restart to update?",
-    "restart_confirm": "Restarting will stop running tasks ({{n}}).",
+    "restart_confirm_one": "Restarting will stop {{count}} running task.",
+    "restart_confirm_other": "Restarting will stop {{count}} running tasks.",
     "restart_confirm_unknown": "Restarting may stop work that is still running.",
     "restart_anyway": "Restart anyway"
   },
