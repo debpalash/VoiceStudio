@@ -83,6 +83,58 @@ def _sniff_audio_ext(raw: bytes) -> str:
     return ".wav"
 
 
+# ── Backend errors ───────────────────────────────────────────────────────
+# A failed backend call usually explains itself in the response body (a
+# licence to accept, a model to download, a duplicate name). httpx's own
+# raise_for_status() message keeps only the status line and URL — and the
+# in-process transport's URL has no port — so agents were told "403 Forbidden
+# for url http://127.0.0.1/transcribe" instead of what to do about it.
+
+
+def _backend_error_detail(response) -> "str | None":
+    """The backend's own explanation of a failed response, or None.
+
+    FastAPI errors carry ``detail`` as a string, a structured object (typed
+    errors such as ``model_licence_required`` put the readable text in
+    ``message``) or a list of validation errors (each with a ``msg``)."""
+    try:
+        body = response.json()
+    except ValueError:
+        return None
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if isinstance(detail, dict):
+        detail = detail.get("message") or json.dumps(detail)
+    elif isinstance(detail, list):
+        detail = "; ".join(
+            str(item.get("msg") or item) if isinstance(item, dict) else str(item)
+            for item in detail
+        )
+    return str(detail) if detail else None
+
+
+def _raise_for_backend_status(response) -> None:
+    """``response.raise_for_status()``, keeping the backend's explanation.
+
+    Raises the same ``httpx.HTTPStatusError`` (with ``.response`` intact) so
+    callers that already catch it keep working; only the message changes.
+    Anything but a 2xx is still refused: the clients do not follow redirects,
+    so a 3xx (a proxy bouncing to HTTPS or a login page) is a failed request,
+    not an empty success."""
+    if response.is_success:
+        return
+    detail = _backend_error_detail(response) if response.is_error else None
+    if not detail:
+        response.raise_for_status()
+    import httpx
+
+    raise httpx.HTTPStatusError(
+        f"VoiceStudio returned HTTP {response.status_code} for "
+        f"{response.request.method} {response.request.url.path}: {detail}",
+        request=response.request,
+        response=response,
+    )
+
+
 # ── Output mode + the base path boundary ─────────────────────────────────
 # An LLM agent that receives a WAV as base64 pays for every byte in context:
 # a 1.4 s clip already brushes per-result token caps, and a paragraph of
@@ -503,7 +555,7 @@ def create_mcp_server(app=None):
     async def _api_get(path: str):
         async with _client(30) as c:
             r = await c.get(path)
-            r.raise_for_status()
+            _raise_for_backend_status(r)
             return r.json()
 
     async def _api_post_form(
@@ -512,14 +564,14 @@ def create_mcp_server(app=None):
         wait = _post_timeout_s() if timeout is None else timeout
         async with _client(wait) as c:
             r = await c.post(path, data=data, files=files or {})
-            r.raise_for_status()
+            _raise_for_backend_status(r)
             return r
 
     async def _submit_json(path: str, body: dict):
         timeout = _post_timeout_s()
         async with _client(timeout) as client:
             response = await client.post(path, json=body)
-            response.raise_for_status()
+            _raise_for_backend_status(response)
             decoded = response.json()
         return decoded
 
@@ -621,7 +673,9 @@ def create_mcp_server(app=None):
             # buffering another full audio copy in the agent process.
             async with _client(300) as c:
                 async with c.stream("GET", f"/audio/{audio_id}.{format}") as encoded:
-                    encoded.raise_for_status()
+                    if encoded.is_error:
+                        await encoded.aread()  # an error body is small JSON
+                    _raise_for_backend_status(encoded)
 
         return json.dumps(await _speech_result(
             audio_id, gen_time, duration, r.content, _api_base(), format
@@ -780,12 +834,9 @@ def create_mcp_server(app=None):
             # Cloning commonly fails validation (duplicate name, audio too
             # short, quality gate) — surface the backend's own detail as the
             # structured error the agent expects, not a framework traceback.
-            try:
-                detail = exc.response.json().get("detail")
-            except ValueError:
-                detail = None
-            return json.dumps({"error": str(detail or exc.response.text
-                                             or f"HTTP {exc.response.status_code}")})
+            detail = _backend_error_detail(exc.response)
+            return json.dumps({"error": detail or exc.response.text
+                                        or f"HTTP {exc.response.status_code}"})
         except (httpx.HTTPError, ValueError) as exc:
             # Transport failures + non-JSON success bodies (proxy error page).
             return json.dumps({"error": f"backend request failed: {exc}"})
@@ -860,16 +911,12 @@ def create_mcp_server(app=None):
                 timeout=_post_timeout_s("generate"),
             )
         except httpx.HTTPStatusError as status_error:
-            try:
-                backend_detail = status_error.response.json().get("detail")
-            except ValueError:
-                backend_detail = None
             explanation = (
-                backend_detail
+                _backend_error_detail(status_error.response)
                 or status_error.response.text
                 or f"HTTP {status_error.response.status_code}"
             )
-            return json.dumps({"error": str(explanation)})
+            return json.dumps({"error": explanation})
         except httpx.HTTPError as request_error:
             return _request_failure(request_error)
 
