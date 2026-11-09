@@ -177,10 +177,21 @@ def _argos_native_blocker() -> str | None:
     return None if loadable else why
 
 
+def _argos_policy_blocker() -> str | None:
+    """Windows ROCm 10 keeps CTranslate2 out of Torch's process (no import)."""
+    from core.windows_rocm.isolation_policy import argos_error
+
+    return argos_error()
+
+
 def _probe(entry: dict, *, import_check: bool = True) -> tuple[bool, str | None]:
     mod = entry.get("probe_module")
     if not mod:
         return True, None
+    if mod.split(".")[0] == "argostranslate":
+        blocked = _argos_policy_blocker()
+        if blocked:
+            return False, blocked
     if not import_check:
         # Inventory-only answer: is the package installed? Importing it is the
         # expensive part (argostranslate is 8-54 s cold), and the real

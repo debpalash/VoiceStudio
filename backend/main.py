@@ -1257,7 +1257,7 @@ async def _phase_b(app: FastAPI) -> None:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def _application_lifespan(app: FastAPI):
     from api.dependencies import validate_server_admin_key
 
     validate_server_admin_key()
@@ -1478,6 +1478,18 @@ async def lifespan(app: FastAPI):
 
 
 from core.version import APP_VERSION  # single source of truth (pyproject metadata)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    from core.runtime_owner import DataDirectoryLease
+    from core.config import DATA_DIR
+    # One backend per data directory: two would race on the database, job
+    # recovery and model files. Held through teardown, where workers can still
+    # write. The short wait covers a restart whose predecessor is still exiting.
+    with DataDirectoryLease(DATA_DIR, timeout=15):
+        async with _application_lifespan(app):
+            yield
+
 
 app = FastAPI(
     title=f"{PRODUCT_NAME} API",
@@ -1990,6 +2002,9 @@ _allowed = allowed_origin_values()
 # Registered FIRST → innermost: the startup gate holds every request except
 # the two probe paths until the deferred startup completes (and is a no-op
 # forever after).
+from core.activity import ActivityMiddleware
+# Innermost: only requests that passed every gate count as use of the backend.
+app.add_middleware(ActivityMiddleware)
 from core.render_trace import RenderTraceMiddleware
 app.add_middleware(RenderTraceMiddleware)
 app.add_middleware(StartupGateMiddleware)
@@ -2174,6 +2189,14 @@ async def health():
         "engine": engine,
         "version": APP_VERSION,
     }
+
+
+# The desktop app polls this to stop a backend it started for terminal
+# commands once nothing has used it for a while (see core/activity.py).
+@app.get("/system/activity", include_in_schema=False)
+async def system_activity():
+    from core import activity
+    return activity.snapshot()
 
 
 # ── Startup progress ────────────────────────────────────────────────────

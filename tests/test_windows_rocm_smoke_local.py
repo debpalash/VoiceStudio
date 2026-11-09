@@ -37,6 +37,12 @@ def test_missing_tokenizer_refused_to_prevent_library_network_fallback(tmp_path)
         smoke().validate_inputs(model, wav)
 
 
+def test_local_whisper_model_without_optional_preprocessor_is_valid(tmp_path):
+    model, wav = assets(tmp_path)
+    (model / "preprocessor_config.json").unlink()
+    assert smoke().validate_inputs(model, wav) == (model.resolve(), wav.resolve())
+
+
 def test_no_inputs_are_honestly_model_free(monkeypatch):
     module = smoke()
     monkeypatch.setattr(module, "verify_environment", lambda: {"ready": True, "scope": "model-free"})
