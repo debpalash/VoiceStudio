@@ -1,5 +1,7 @@
 """Shared source-language normalization without importing router runtimes."""
 
+from core.language_variants import macrolanguage_of
+
 # Source-language choices exposed by the first-party dub UI, plus every
 # language code Whisper can write back after auto-detection. A restored job
 # may reuse that detected value as the next upload's override, so rejecting our
@@ -54,8 +56,9 @@ def asr_source_language(source_language: str | None, backend_id: str | None) -> 
 # the dub code they mean. YouTube caption tracks and older ISO 639
 # assignments use several of these: ``fil`` is Filipino (``tl`` here),
 # ``iw`` is the retired Hebrew code (``he``), ``jv`` is Javanese
-# (Whisper writes ``jw``). Arabic varieties (``arb``/``aec``/``arz``)
-# collapse to the macrolanguage ``ar``, the only Arabic code dubbing knows.
+# (Whisper writes ``jw``). Arabic varieties (``arb``/``aec``/``arz``/``apc``
+# ...) collapse to the macrolanguage ``ar``, the only Arabic code dubbing
+# knows, through the shared ``core.language_variants`` table (#3816).
 # ISO 639-2/3 codes for a dub language map to that language, never to the
 # first two letters of the code.
 _CODE_ALIASES = {
@@ -64,10 +67,6 @@ _CODE_ALIASES = {
     "jv": "jw",
     "in": "id",
     "ara": "ar",
-    "arb": "ar",
-    "aec": "ar",
-    "arz": "ar",
-    "arq": "ar",
     "est": "et",
     "swe": "sv",
     "kan": "kn",
@@ -324,7 +323,7 @@ def detected_source_language(value: str | None) -> str | None:
                     if part in _ZH_VARIETY_SUBTAGS:
                         return None
             return prefix
-        alias = _CODE_ALIASES.get(prefix)
+        alias = _CODE_ALIASES.get(prefix) or macrolanguage_of(prefix)
         if alias is not None:
             return alias
     # Names match whole: "myanmar-english" is English, not Burmese.

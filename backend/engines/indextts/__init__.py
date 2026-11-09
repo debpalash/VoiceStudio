@@ -302,7 +302,7 @@ class IndexTTS2Backend(SubprocessBackend):
 
     def generate(self, text: str, **kw) -> "torch.Tensor":
         """Synthesize cloned speech with resolved emotion, duration and seed controls."""
-        self._check_language(kw.get("language"))
+        checked_language = self._check_language(kw.get("language"))
         ref_audio = kw.get("ref_audio")
         if not ref_audio:
             raise RuntimeError(
@@ -323,7 +323,10 @@ class IndexTTS2Backend(SubprocessBackend):
         if description and not emo_text and not emo_vector and not emo_audio:
             emo_text = description
 
-        language = _normalize_indextts25_language(kw.get("language"), text)
+        # The checked code is the one IndexTTS declares ("Standard Arabic"
+        # -> "ar", #3816); a picker name it has no alias for would otherwise
+        # fall back to script detection.
+        language = _normalize_indextts25_language(checked_language or kw.get("language"), text)
         forwarded: dict = {"ref_audio": ref_audio, "lang": language}
         if kw.get("seed") is not None:
             forwarded["seed"] = int(kw["seed"])
