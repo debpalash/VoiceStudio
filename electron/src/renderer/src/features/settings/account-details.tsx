@@ -15,6 +15,7 @@ import {
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getBridge } from '@/components/bridge';
+import { isImeComposing } from '@/lib/ime';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -69,7 +70,27 @@ const TILE_LABEL = 'flex items-center gap-1.5 text-xs text-muted-foreground';
  * (Settings → Account). Styled after the home page's primary cards: an accent
  * glow, an inset highlight, and stat tiles below the identity line.
  */
-export function AccountDetails({
+export function AccountDetails(props: AccountDetailsProps) {
+  const profile = props.state.profile;
+  // Edit state belongs to one account: a different sign-in starts fresh.
+  const identity = `${profile?.personalOrganizationId ?? ''}|${profile?.email ?? ''}`;
+  return <AccountDetailsBody key={props.state.signedIn ? identity : 'signed-out'} {...props} />;
+}
+
+/** Whether the plan is a paid one: entitlements decide when read, else the plan code. */
+export function isProPlan(plan: AccountPublicState['plan']): boolean {
+  if (!plan) return false;
+  return plan.proDesktop ?? plan.planCode !== 'free';
+}
+
+type AccountDetailsProps = {
+  state: AccountPublicState;
+  onRetry?: () => void | Promise<void>;
+  onSignOut?: () => void;
+  onRename?: (name: string) => Promise<void>;
+};
+
+function AccountDetailsBody({
   state,
   onRetry,
   onSignOut,
@@ -89,6 +110,7 @@ export function AccountDetails({
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const [renameFailed, setRenameFailed] = useState(false);
+  const [linkFailed, setLinkFailed] = useState(false);
   const refresh = async () => {
     if (!onRetry || refreshing) return;
     setRefreshing(true);
@@ -116,7 +138,7 @@ export function AccountDetails({
   if (!state.signedIn || !profile) return null;
   const name = profile.displayName || profile.email || '';
   const plan = state.plan;
-  const pro = plan?.proDesktop === true;
+  const pro = isProPlan(plan);
   const PlanIcon = pro ? CrownIcon : SproutIcon;
   const share =
     plan && plan.storageLimitBytes > 0
@@ -186,7 +208,9 @@ export function AccountDetails({
               className="group/avatar relative shrink-0 rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
               onClick={() => {
                 const bridge = getBridge();
-                if (bridge) void bridge.files.openExternal(profileUrl).catch(() => {});
+                setLinkFailed(false);
+                if (bridge)
+                  void bridge.files.openExternal(profileUrl).catch(() => setLinkFailed(true));
                 else window.open(profileUrl, '_blank', 'noopener,noreferrer');
               }}
             >
@@ -216,6 +240,7 @@ export function AccountDetails({
                 className="h-8 max-w-72 text-base font-semibold"
                 onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={(event) => {
+                  if (isImeComposing(event)) return;
                   if (event.key === 'Escape') {
                     event.preventDefault();
                     setEditing(false);
@@ -270,6 +295,11 @@ export function AccountDetails({
             <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground">
               <MailIcon className="size-3.5 shrink-0" aria-hidden="true" />
               <span className="truncate">{profile.email}</span>
+            </p>
+          )}
+          {linkFailed && (
+            <p role="alert" className="mt-1 text-xs text-destructive">
+              {t('common.error')}
             </p>
           )}
           {renameFailed && (
