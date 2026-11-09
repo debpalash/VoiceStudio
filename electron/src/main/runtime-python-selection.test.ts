@@ -16,8 +16,10 @@ describe('existing Python runtime selection', () => {
   afterEach(() => clearPythonRuntimeSelection());
 
   it('persists and reloads an absolute interpreter path', () => {
-    savePythonRuntimeSelection('/tmp/fixture/.venv/bin/python');
-    expect(loadPythonRuntimeSelection()).toEqual({ pythonPath: '/tmp/fixture/.venv/bin/python' });
+    // Saved paths are resolved, so Windows hosts store a drive-qualified path.
+    const python = resolve('/tmp/fixture/.venv/bin/python');
+    savePythonRuntimeSelection(python);
+    expect(loadPythonRuntimeSelection()).toEqual({ pythonPath: python });
   });
 
   it('rejects a missing interpreter without spawning it', async () => {
@@ -108,7 +110,7 @@ describe('existing Python runtime selection', () => {
     const project = mkdtempSync(join(tmpdir(), 'voicestudio-manifest-'));
     writeFileSync(join(project, 'pyproject.toml'), '[project]\ndependencies = [\n  "torch>=2.4",\n  "torchaudio>=2.4",\n  "setuptools>=75,<80",\n]\n');
     expect(buildPythonRepairPlan('/tmp/requirements/project', ['torch'], project)).toEqual({
-      interpreter: '/tmp/requirements/project', packages: ['torch>=2.4'],
+      interpreter: resolve('/tmp/requirements/project'), packages: ['torch>=2.4'],
     });
     expect(buildPythonRepairPlan('/tmp/requirements/project', ['torch', 'NoSuchModule'], project)).toBeNull();
     expect(buildPythonRepairPlan('/tmp/requirements/project', ['torchaudio'], project)?.packages).toEqual(['torchaudio>=2.4']);
