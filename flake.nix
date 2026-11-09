@@ -24,16 +24,17 @@
       # and stops git metadata from churning the hash.
       src = lib.cleanSourceWith {
         src = lib.cleanSource self;
+        # cleanSource already drops .git and result; node_modules and .venv are
+        # gitignored but `nix build path:.` would otherwise copy them.
         filter =
           path: type:
           let
             name = baseNameOf (toString path);
           in
-          !(lib.hasPrefix "/.git" path)
+          name != "node_modules"
+          && name != ".venv"
           && name != "result"
-          && !(lib.hasPrefix "result-" name)
-          # nix/store is not in the tree, but a stale one is cheap to exclude.
-          && !(lib.hasPrefix "/node_modules" path);
+          && !(lib.hasPrefix "result-" name);
       };
 
       # ── libxdo ───────────────────────────────────────────────────────────
@@ -107,41 +108,38 @@
       # search path so cargo's linker finds -lxdo.
       toolchain =
         pkgs:
-        with pkgs;
-        [
-          bun
-          nodejs_22
-          uv
-          python311
-          cargo
-          rustc
-          clippy
-          rustfmt
-          cmake
-          ninja
-          pkg-config
-          clang
-          gnumake
-          binutils
-          wayland
-          openssl
-          alsa-lib
-          libx11
-          libXtst
-          libxkbcommon
-          libGL
-          nss
-          nspr
-          at-spi2-atk
-          libdrm
-          libgbm
+          with pkgs;
+          [
+            bun
+            nodejs_22
+            uv
+            python311
+            cargo
+            rustc
+            clippy
+            rustfmt
+            cmake
+            ninja
+            pkg-config
+            clang
+            gnumake
+            binutils
+            wayland
+            openssl
+            alsa-lib
+            libx11
+            libXtst
+            libxkbcommon
+            libGL
+            nss
+            nspr
+            at-spi2-atk
+            libdrm
+            libgbm
             libxshmfence
             libpulseaudio
             libjack2
             dbus
-            # nixpkgs' zsync installs BOTH zsync and zsyncmake; `bun run dist`
-            # needs the latter to embed AppImage update information.
-            zsync
             git
             curl
             ripgrep
@@ -202,14 +200,10 @@
       # and only here, then verify the result by hash". The sandbox itself stays
       # hermetic, so no --impure flag is needed anywhere.
       #
-      # First build prints the correct hash; paste it over fakeHash below.
-      #   nix build .#nodeDepsDev
+      # First build prints the correct hash; paste it over the outputHash below.
       nodeDeps =
-        { pkgs
-        , production ? false
-        ,
-        }:
-        pkgs.runCommand "voicestudio-node-deps${lib.optionalString production "-prod"}"
+        { pkgs }:
+        pkgs.runCommand "voicestudio-node-deps"
           {
             nativeBuildInputs = [
               pkgs.bun
@@ -232,8 +226,7 @@
           # would rather not make.
           export ELECTRON_SKIP_BINARY_DOWNLOAD=1
 
-          bun install --frozen-lockfile \
-            ${lib.optionalString production "--production"}
+          bun install --frozen-lockfile
 
           # bun writes .bin entries as absolute symlinks into the build tree.
           # Copy, then re-point any absolute symlink so the result is
@@ -320,13 +313,8 @@
           # Everything after this point is hermetic.
           appBundle = pkgs.runCommand "voicestudio-app-bundle"
             {
-              nativeBuildInputs = with pkgs; [ bun nodejs_22 coreutils ];
-              sourceProvenance = null;
+              nativeBuildInputs = with pkgs; [ nodejs_22 ];
             } ''
-            export HOME=$TMPDIR
-            export BUN_INSTALL="$TMPDIR/.bun"
-            export PATH="$BUN_INSTALL/bin:$PATH"
-
             cp -r ${src} ./source
             chmod -R u+w ./source
             sourceRoot="$PWD/source"
@@ -364,6 +352,21 @@
             cp -r electron/out "$out/electron/out"
             cp -r frontend/dist "$out/frontend/dist"
             cp electron/package.json "$out/electron/package.json"
+
+            # Vite/Rolldown records source module paths as `//#region`
+            # comments. With node_modules coming from a store path those
+            # comments would make the output reference the whole
+            # voicestudio-node-deps derivation, keeping a duplicate
+            # node_modules in the runtime closure. The comments are inert, so
+            # drop the store path and keep the bundle self-contained.
+            find "$out/electron/out" "$out/frontend/dist" -type f \
+              \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' \) -print0 |
+              xargs -0 -r sed -i "s|${nodeDepsDev}||g"
+
+            # Ship only the modules the main process loads at runtime; the
+            # renderer is bundled and the dev toolchain is build-only.
+            node "$sourceRoot/scripts/prune-runtime-node-modules.mjs" \
+              "$sourceRoot" "$out/runtime-node-modules"
 
             # electron/package.json carries the placeholder 0.0.0-electron;
             # electron-builder substitutes the real version through
@@ -421,9 +424,7 @@
 
             nativeBuildInputs = [
               pkgs.pkg-config
-              pkgs.wayland
               pkgs.cmake
-              libXdo
             ];
 
             # enigo links libxdo via #[link(name = "xdo")], which the linker
@@ -431,7 +432,6 @@
             NIX_LDFLAGS = "-L${libxdo pkgs}/lib -rpath ${libxdo pkgs}/lib";
 
             buildInputs = [
-              pkgs.pkg-config
               pkgs.wayland
               libXdo
             ];
@@ -460,12 +460,6 @@
             pkgs.ripgrep
             pkgs.uv
             pkgs.git
-            # libxdo's own dependencies plus libwayland-client, which the
-            # dictation helper links directly (buildRustPackage records them in
-            # the binary's RPATH, so these are for anything resolved at runtime
-            # through the dynamic loader rather than baked in).
-            libXdo
-            pkgs.wayland
           ];
 
           # The Electron runtime from nixpkgs is already patchelf'd with the
@@ -522,20 +516,16 @@
             # ── App payload ───────────────────────────────────────────────
             # resources/app mirrors what electron-builder packs into app.asar:
             # out/ + package.json. electron-vite's externalizeDepsPlugin leaves
-            # the main process importing its dependencies at runtime, so
-            # node_modules ships alongside it rather than inside an asar.
+            # the main process importing its dependencies at runtime, so the
+            # runtime node_modules ships as a sibling of app/ (Node resolves it
+            # by walking up from app/out/main) rather than inside an asar.
             mkdir -p "$resources/app"
             cp -r ${appBundle}/electron/. "$resources/app/"
 
-            # bun's isolated layout writes symlinks like
-            #   app/node_modules/<pkg> -> ../../node_modules/.bun/<pkg>@<v>/node_modules/<pkg>
-            # i.e. they walk out of the electron workspace tree and into a
-            # SIBLING node_modules holding the real packages. Renaming or
-            # dereferencing either tree breaks the whole chain, so ship both
-            # with the same relative layout bun produced.
-            cp -r ${nodeDepsDev}/node_modules "$resources/node_modules"
-            cp -r ${nodeDepsDev}/electron/node_modules "$resources/app/node_modules"
-            rm -rf "$resources/node_modules/.cache" "$resources/app/node_modules/.cache"
+            # appBundle already reduced bun's isolated layout to the modules
+            # the main process loads; copy it verbatim so the relative symlinks
+            # into .bun stay intact.
+            cp -a ${appBundle}/runtime-node-modules "$resources/node_modules"
 
             # ── extraResources (electron-builder.config.mjs) ──────────────
             mkdir -p "$resources/brand"
@@ -704,6 +694,7 @@
           pkgs = nixpkgs.legacyPackages.${system};
           app = mkPackage pkgs;
           bridge = app + "/libexec/electron/resources/native/voicestudio-desktop-bridge";
+          nodeDepsDev = nodeDeps { inherit pkgs; };
         in
         {
           # Every NEEDED entry must resolve inside the Nix store. A missing
@@ -749,7 +740,11 @@
               electron/T3CODE-LICENSE.txt \
               brand/icon.png \
               tools/uv \
-              native/voicestudio-desktop-bridge
+              native/voicestudio-desktop-bridge \
+              node_modules/@electron-toolkit/utils \
+              node_modules/electron-updater \
+              node_modules/proxy-agent \
+              node_modules/word-extractor
             do
               if [ ! -e "$resources/$path" ]; then
                 echo "missing packaged resource: $path"
@@ -809,6 +804,55 @@
               fi
             done
 
+            touch $out
+          '';
+
+          # The runtime node_modules is pruned to what the main process
+          # imports; this fails if a new import is added without extending
+          # scripts/prune-runtime-node-modules.mjs.
+          runtimeModulesResolve = pkgs.runCommand "voicestudio-check-runtime-modules"
+            {
+              nativeBuildInputs = [ pkgs.nodejs_22 ];
+            } ''
+            cd ${app}/libexec/electron/resources
+            node -e '
+              const fs = require("node:fs");
+              const path = require("node:path");
+              const { createRequire } = require("node:module");
+              const requireFromApp = createRequire(path.resolve("app/out/main/index.js"));
+              const files = [
+                "app/out/main/index.js",
+                "app/out/main/repair-mcp-server.js",
+                "app/out/preload/index.mjs",
+              ];
+              // The .docx worker resolves this by name instead of importing it.
+              const specifiers = new Set(["word-extractor"]);
+              const pattern = /(?:require\(|from\s*)[\x22\x27]([^\x22\x27]+)[\x22\x27]/g;
+              for (const file of files) {
+                for (const match of fs.readFileSync(file, "utf8").matchAll(pattern)) {
+                  const spec = match[1];
+                  if (spec.startsWith(".") || spec.startsWith("node:") || spec === "electron") continue;
+                  specifiers.add(spec);
+                }
+              }
+              for (const spec of specifiers) requireFromApp.resolve(spec);
+              console.log("resolved " + specifiers.size + " runtime module specifiers");
+            '
+            touch $out
+          '';
+
+          # The bundle must not reference the node-deps derivation: that would
+          # pull a duplicate node_modules into every install's closure.
+          noNodeDepsReference = pkgs.runCommand "voicestudio-check-no-node-deps"
+            {
+              nativeBuildInputs = [ pkgs.gnugrep ];
+            } ''
+            if grep -rIl -- '${nodeDepsDev}' \
+              ${app}/libexec/electron/resources/app/out \
+              ${app}/libexec/electron/resources/frontend >&2; then
+              echo "built bundles still reference the node deps store path" >&2
+              exit 1
+            fi
             touch $out
           '';
         });
