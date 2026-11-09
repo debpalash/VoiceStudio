@@ -147,6 +147,20 @@ export function SecondarySidebar({
   // macOS traffic lights take ~90px of the header; two tabs beside them and the
   // collapse button truncate to "D…" / "S…", so they move to their own row there.
   const headerTabs = tabsInHeader && library != null && !lightsInset;
+  // Entering or leaving fullscreen moves the tabs between rows, which remounts
+  // them: keep keyboard focus on the selected tab when one had it.
+  const lastHeaderTabs = useRef(headerTabs);
+  const refocusTab = useRef(false);
+  if (lastHeaderTabs.current !== headerTabs) {
+    lastHeaderTabs.current = headerTabs;
+    const active = typeof document === 'undefined' ? null : document.activeElement;
+    refocusTab.current = !!active?.id && active.id.startsWith(`${tabsId}-`);
+  }
+  useLayoutEffect(() => {
+    if (!refocusTab.current) return;
+    refocusTab.current = false;
+    document.getElementById(`${tabsId}-${view}`)?.focus();
+  }, [headerTabs, tabsId, view]);
   const tabList = (className: string) => (
     <div
       role="tablist"
