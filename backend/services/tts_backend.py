@@ -380,12 +380,20 @@ class TTSBackend(ABC):
         value = language.strip().lower()
         if not value or value == "auto":
             return None
-        from omnivoice.utils.lang_map import LANG_NAME_TO_ID
+        from omnivoice.utils.lang_map import APP_LANGUAGE_IDS, APP_LANGUAGE_NAMES, LANG_NAME_TO_ID
 
         from core.language_variants import VARIANT_CODES
 
-        # Reuse the same complete, bundled mapping as the language picker.
-        aliases = {"mandarin": "zh", "arabic": "ar", "tagalog": "tl", **VARIANT_CODES}
+        # Reuse the same complete, bundled mapping as the language picker,
+        # plus the app's own picker names and tags that the vocabulary spells
+        # differently ("Chinese (Simplified)" / "cmn-Hans" -> "zh", #3685).
+        # Only their ISO 639-1 ids apply here: OmniVoice's three-letter
+        # varieties ("arb", "npi") are not what other engines declare.
+        aliases = {
+            **{name: code for name, code in {**APP_LANGUAGE_NAMES, **APP_LANGUAGE_IDS}.items()
+               if len(code) == 2},
+            "mandarin": "zh", "arabic": "ar", "tagalog": "tl", **VARIANT_CODES,
+        }
         if value in aliases:
             return aliases[value]
         if value in LANG_NAME_TO_ID:
@@ -4483,7 +4491,7 @@ def language_options(backend_id: str) -> Optional[list[str]]:
         if not declared or "multi" in declared:
             return None
         codes = {backend._normalize_language_code(code) for code in declared}
-        candidates = set(LANG_NAME_TO_ID) | {"mandarin", "arabic", "tagalog"}
+        candidates = set(LANG_NAME_TO_ID) | set(APP_LANGUAGE_NAMES) | {"mandarin", "arabic", "tagalog"}
         candidates.update(name.lower() for name in backend.language_display_names.values())
         return with_variant_names(sorted(
             name for name in candidates
