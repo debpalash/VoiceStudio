@@ -847,7 +847,7 @@ class SubprocessBackend(TTSBackend):
         sample rate. Negotiates float32 with capable sidecars and accepts
         legacy int16 frames from existing installations.
         """
-        self._check_language(kw.get("language"))
+        language = self._check_language(kw.get("language"))
         msg = {"op": "synthesize", "text": text}
         # Filter kwargs to JSON-safe primitives. Tensor / Path / etc.
         # don't survive json.dumps and are silently dropped — the
@@ -855,6 +855,12 @@ class SubprocessBackend(TTSBackend):
         for k, v in kw.items():
             if _is_jsonable(v):
                 msg[k] = v
+        if language is not None:
+            # A finite engine gets the code it declared, not the picker
+            # name: sidecars parse codes, and "Standard Arabic" or
+            # "Chinese" would otherwise reach them as an unknown token
+            # (#3816). Open-ended engines keep the caller's value.
+            msg["language"] = language
         return self._exchange(msg, deadline_text=text)
 
     def _retry_changed_download_endpoint(self, proc, reply: dict) -> bool:

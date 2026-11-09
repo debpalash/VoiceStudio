@@ -2,7 +2,7 @@
 import { mkdtemp, mkdir, symlink, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, parse } from 'node:path';
+import { join, parse, sep } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import {
   isValidVoiceStudioRoot,
@@ -164,4 +164,46 @@ it('treats a bare app-named folder as owned only under an app-data parent or wit
   expect(await isValidVoiceStudioRoot(personal, join(root, 'Documents'))).toBe(true);
   await writeFile(join(personal, 'omnivoice.db'), 'db');
   expect(await isValidVoiceStudioRoot(personal, home)).toBe(true);
+});
+
+it('never removes the app data through a models root that is the same folder (#3512)', async () => {
+  const roots = await fixture();
+  const alias = join(roots.root, 'models-alias');
+  await symlink(roots.data, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  expect(await modelsAreShared(alias, roots.data)).toBe(true);
+  expect(await modelsAreShared(`${roots.data}${sep}`, roots.data)).toBe(true);
+  const report = await purgeResetScopes({ ...roots, models: alias }, ['models'], null);
+  expect(report.refused).toContain(alias);
+  expect(existsSync(join(roots.data, 'voices', 'voice.wav'))).toBe(true);
+});
+
+it('never removes the app data through a models root that contains it (#3512)', async () => {
+  const roots = await fixture();
+  const data = join(roots.models, 'OmniVoice', 'data');
+  await mkdir(data, { recursive: true });
+  await writeFile(join(data, 'prefs.json'), 'prefs');
+  const report = await purgeResetScopes({ ...roots, data }, ['models'], null);
+  expect(report.refused).toContain(roots.models);
+  expect(existsSync(join(data, 'prefs.json'))).toBe(true);
+});
+
+it('keeps a model cache inside another scope opt-in and counts it once (#3512)', async () => {
+  const roots = await fixture();
+  const engines = join(roots.data, 'engines');
+  const models = join(engines, 'hf-cache');
+  await mkdir(join(models, 'models--fixture'), { recursive: true });
+  await writeFile(join(engines, 'engine.bin'), '1234');
+  await writeFile(join(models, 'models--fixture', 'weights.bin'), '12345678');
+  const nested = { ...roots, models };
+  const scopes = await scanResetScopes(nested);
+  expect(scopes.find((scope) => scope.key === 'engines')?.size_bytes).toBe(4);
+  expect(scopes.find((scope) => scope.key === 'models')?.size_bytes).toBe(8);
+
+  const kept = await purgeResetScopes(nested, ['engines'], null);
+  expect(kept.refused).toContain(engines);
+  expect(existsSync(join(models, 'models--fixture', 'weights.bin'))).toBe(true);
+
+  const both = await purgeResetScopes(nested, ['engines', 'models'], null);
+  expect(both.refused).toEqual([]);
+  expect(existsSync(engines)).toBe(false);
 });

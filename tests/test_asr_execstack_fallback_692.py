@@ -6,6 +6,8 @@ than raise, and engine auto-detect must fall back to a non-CTranslate2 engine
 """
 import builtins
 
+import pytest
+
 from services import asr_backend as ab
 
 _EXECSTACK = OSError(
@@ -22,6 +24,7 @@ def test_probe_available_never_raises():
     assert ab._probe_available(Boom) is False
 
 
+@pytest.mark.usefixtures("neutral_asr_host")
 def test_auto_detect_falls_back_to_pytorch_when_ctranslate2_so_fails(monkeypatch):
     def boom():
         raise _EXECSTACK

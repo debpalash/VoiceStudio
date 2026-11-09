@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { RefreshTokenStore, type SafeStorageLike } from './token-store';
 
 const fakeSafe = (over: Partial<SafeStorageLike> = {}): SafeStorageLike => ({
@@ -106,4 +106,36 @@ it('does not resurrect a signed-out session by rereading stale disk state', () =
   writeFileSync(p, stale);
   expect(store.load()).toBeNull();
   expect(store.accountId()).toBeNull();
+});
+
+it('never asks the keyring until a token is read from disk or saved (#3813)', () => {
+  const p = path();
+  const isEncryptionAvailable = vi.fn(() => true);
+  const store = new RefreshTokenStore(p, fakeSafe({ isEncryptionAvailable }), 'darwin');
+  expect(store.load()).toBeNull();
+  expect(store.accountId()).toBeNull();
+  store.clear();
+  expect(isEncryptionAvailable).not.toHaveBeenCalled();
+  store.save('refresh');
+  expect(isEncryptionAvailable).toHaveBeenCalledTimes(1);
+  const restarted = new RefreshTokenStore(p, fakeSafe({ isEncryptionAvailable }), 'darwin');
+  expect(restarted.load()).toBe('refresh');
+  expect(isEncryptionAvailable).toHaveBeenCalledTimes(2);
+});
+
+it('a keyring that throws keeps the session in memory only', () => {
+  const p = path();
+  const store = new RefreshTokenStore(
+    p,
+    fakeSafe({
+      isEncryptionAvailable: () => {
+        throw new Error('keychain locked');
+      },
+    }),
+    'darwin',
+  );
+  store.save('t');
+  expect(store.persistent).toBe(false);
+  expect(existsSync(p)).toBe(false);
+  expect(store.load()).toBe('t');
 });
