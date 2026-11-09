@@ -5,9 +5,9 @@ import { MAC_TRAFFIC_LIGHTS_INLINE_END } from '@shared/utils/windowChrome';
 import { SecondarySidebar } from './workspace-sidebar';
 import { WorkspaceHeader } from '@/components/app-shell/workspace-header';
 
-const platform = vi.hoisted(() => ({ mac: false }));
+const platform = vi.hoisted(() => ({ mac: false, fullscreen: false }));
 vi.mock('@/components/bridge', () => ({ isMac: () => platform.mac }));
-vi.mock('@/hooks/use-window-fullscreen', () => ({ useWindowFullscreen: () => false }));
+vi.mock('@/hooks/use-window-fullscreen', () => ({ useWindowFullscreen: () => platform.fullscreen }));
 vi.mock('@/components/app-shell/support-shortcut', () => ({ SupportShortcut: () => null }));
 vi.mock('@/components/app-shell/sidebar-toggle', () => ({ SidebarToggle: () => null }));
 
@@ -169,6 +169,43 @@ describe('macOS traffic lights', () => {
   it('leaves the header alone far from them', () => {
     columnStartingAt(300);
     expect(header().style.paddingInlineStart).toBe('');
+  });
+
+  it('moves header tabs to their own row beside the lights so labels stay readable', () => {
+    platform.mac = true;
+    vi.stubGlobal('ResizeObserver', NoopObserver);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 64 } as DOMRect);
+    render(pane({ tabsInHeader: true, libraryLabel: 'Saved', library: <p>lib</p> }));
+    const list = screen.getByRole('tablist');
+    expect(header().contains(list)).toBe(false);
+    expect(screen.getByRole('tab', { name: 'Saved' })).toHaveAttribute('title', 'Saved');
+  });
+
+  it('keeps keyboard focus on the selected tab when fullscreen moves the tabs', () => {
+    platform.mac = true;
+    vi.stubGlobal('ResizeObserver', NoopObserver);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 64 } as DOMRect);
+    const view = render(pane({ tabsInHeader: true, libraryLabel: 'Saved', library: <p>lib</p> }));
+    const saved = screen.getByRole('tab', { name: 'Saved' });
+    fireEvent.click(saved);
+    saved.focus();
+    expect(header().contains(screen.getByRole('tablist'))).toBe(false);
+    platform.fullscreen = true;
+    try {
+      view.rerender(pane({ tabsInHeader: true, libraryLabel: 'Saved', library: <p>lib</p> }));
+      expect(header().contains(screen.getByRole('tablist'))).toBe(true);
+      expect(screen.getByRole('tab', { name: 'Saved' })).toHaveFocus();
+    } finally {
+      platform.fullscreen = false;
+    }
+  });
+
+  it('keeps header tabs in the header far from the lights', () => {
+    platform.mac = true;
+    vi.stubGlobal('ResizeObserver', NoopObserver);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 300 } as DOMRect);
+    render(pane({ tabsInHeader: true, libraryLabel: 'Saved', library: <p>lib</p> }));
+    expect(header().contains(screen.getByRole('tablist'))).toBe(true);
   });
 });
 
