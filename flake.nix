@@ -216,7 +216,7 @@
               pkgs.nodejs_22
             ];
             outputHashMode = "recursive";
-            outputHash = "sha256-h5TsoM7qGnKGh6t0m5kdLK8vl5exaYsd9VEbxt6vQ6A=";
+            outputHash = "sha256-ZEhiHyyUoVNANDYs2bRYsqgh5sNQ6omZyWf7KbU7p7E=";
             sourceProvenance = null;
           } ''
           export HOME=$TMPDIR
@@ -408,6 +408,16 @@
             # carries a checksum, so importCargoLock resolves them without any
             # outputHashes (that option only applies to git dependencies).
             cargoLock.lockFile = ./native/desktop-bridge/Cargo.lock;
+
+            # nixpkgs' cargo setup hook exports AWS_LC_SYS_USE_SYSTEM=1 for
+            # every buildRustPackage, demanding a system AWS-LC. The matching
+            # per-crate override (default-crate-overrides.nix) only feeds the
+            # legacy buildRustCrate path, so buildRustPackage gets the "use the
+            # system library" flag without the buildInputs that would provide
+            # it, and aws-lc-sys (pulled in by reqwest's rustls feature) panics
+            # in its build script. This tree has no other -sys crate that the
+            # hook helps, so let aws-lc-sys build its vendored copy instead.
+            dontCargoUseSystemLibs = true;
 
             nativeBuildInputs = [
               pkgs.pkg-config
