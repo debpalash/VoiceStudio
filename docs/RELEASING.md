@@ -318,9 +318,18 @@ for `VoiceStudio-Electron-*-linux-x64.AppImage.zsync`, so AppImageUpdate cannot
 move them to a renamed release; they update through the in-app updater. Verify both update paths
 against the final downloaded artifact, not the pre-publish build.
 
-Windows ROCm RDNA 2 GPU speech needs the in-repo HIP CTranslate2: run the
-**CTranslate2 ROCm (Windows)** workflow once, then pin its printed hashes in
-`rocm10.ctranslate2` of `scripts/windows-rocm-recipe.json`.
+Windows ROCm RDNA 2 GPU speech uses the in-repo HIP CTranslate2 pinned in
+`rocm10.ctranslate2` of `scripts/windows-rocm-recipe.json` (release
+`ct2-rocm-4.8.4-78b1e17`). It is a dependency asset, not part of a release:
+releases reuse it unchanged. To rebuild (new upstream source or targets), edit the workflow's source pins
+(`CT2_BASE`, `CT2_TARGETS`, `CT2_TREE`, `CT2_VERSION`) and the recipe's target
+list, and set a new `RELEASE_TAG` in `.github/workflows/ct2-rocm-windows.yml`
+(the publish job fails if the tag already exists, since the recipe pins its
+bytes and `gh release create` would otherwise reuse the old tag). Add the new
+archive URL to `_SOURCES` in `backend/core/windows_rocm/ct2_recipe.py`, run the
+**CTranslate2 ROCm (Windows)** workflow, verify the downloaded archive's size and
+SHA-256 independently, then copy the run's printed pins (`pins.json`) into the
+recipe and update the exact-pin test in `tests/test_windows_rocm_rocm10.py`.
 
 Electron update manifests use platform and architecture channels. Confirm every
 manifest names an uploaded installer, reports the tagged version, and matches the
