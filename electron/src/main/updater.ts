@@ -8,6 +8,7 @@ import { sendToLiveWindow } from './window-safety';
 import { applicationUpdatesUnsupportedReason, CURRENT_DISTRIBUTION } from './distribution';
 import type { DistributionTarget } from '../../../config/distributions.mjs';
 import { GitHubAssetProvider, releaseAssets, type ReleaseAssets } from './github-asset-provider';
+import { cleanInstalledUpdateDownload } from './updater-cache';
 
 // electron-updater is CommonJS. Electron executes our main bundle as ESM, so
 // named runtime imports fail before the app can create a window.
@@ -468,6 +469,8 @@ export class DesktopUpdater {
   private installOnQuit = false;
   private installing = false;
   private differentialDisabledByDefault = false;
+  // Removes an already-installed download; checks wait so it never races one.
+  private cacheCleanup: Promise<void> | null = null;
 
   constructor(
     private readonly distribution: DistributionTarget = CURRENT_DISTRIBUTION,
@@ -488,6 +491,14 @@ export class DesktopUpdater {
       unsupportedReason: this.unsupportedReason() ?? undefined,
     };
     if (!supported) return;
+    this.cacheCleanup = cleanInstalledUpdateDownload(
+      autoUpdater,
+      this.state.currentVersion,
+      compareAppVersions,
+    );
+    void this.cacheCleanup?.then(() => {
+      this.cacheCleanup = null;
+    });
 
     const prefs = readUpdatePrefs();
     this.autoDownload = prefs.autoDownload !== false;
@@ -648,6 +659,7 @@ export class DesktopUpdater {
     });
     let offered = false;
     const operation = (async () => {
+      if (this.cacheCleanup) await this.cacheCleanup;
       try {
         // Set once the feed is resolved, so only a failure of the release
         // download host itself (not of the API lookup) uses the asset route.
