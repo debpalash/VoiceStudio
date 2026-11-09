@@ -4,6 +4,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 const mock = vi.hoisted(() => ({ mac: false }));
 vi.mock('@/components/bridge', () => ({ isMac: () => mock.mac }));
 vi.mock('./account-menu', () => ({ AccountMenu: () => <button type="button">account</button> }));
+vi.mock('./update-pill', () => ({ UpdatePill: () => <button type="button">update</button> }));
 vi.mock('./system-notifications', () => ({
   SystemNotifications: ({ enabled, titlebar }: { enabled: boolean; titlebar?: boolean }) => (
     <button type="button" data-enabled={String(enabled)} data-titlebar={String(Boolean(titlebar))}>
@@ -20,9 +21,10 @@ afterEach(() => {
   document.documentElement.style.removeProperty('--corner-space');
 });
 
-it('puts the notifications bell to the right of the account control', () => {
+it('puts the update pill left of the account control and the bell to its right', () => {
   render(<AccountCorner notificationsEnabled />);
-  const [account, bell] = screen.getAllByRole('button');
+  const [update, account, bell] = screen.getAllByRole('button');
+  expect(update).toHaveTextContent('update');
   expect(account).toHaveTextContent('account');
   expect(bell).toHaveTextContent('bell');
   expect(bell).toHaveAttribute('data-enabled', 'true');

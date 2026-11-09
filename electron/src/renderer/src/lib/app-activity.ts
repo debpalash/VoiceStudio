@@ -39,7 +39,12 @@ export function beginAppActivity(kind: AppActivityKind): () => void {
 }
 
 export function hasActiveAppWork(): boolean {
-  return Object.values(appActivity.state).some((count) => count > 0);
+  return activeAppWorkCount() > 0;
+}
+
+/** How many interruptible tasks are running right now. */
+export function activeAppWorkCount(): number {
+  return Object.values(appActivity.state).reduce((total, count) => total + count, 0);
 }
 
 export function useAppActivityCount(): number {

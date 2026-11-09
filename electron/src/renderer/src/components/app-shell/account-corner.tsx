@@ -3,6 +3,7 @@ import { isMac } from '@/components/bridge';
 import { cn } from '@/lib/utils';
 import { AccountMenu } from './account-menu';
 import { SystemNotifications } from './system-notifications';
+import { UpdatePill } from './update-pill';
 
 const SPACE_VAR = '--corner-space';
 /** Clear space kept between a page's own title bar buttons and the corner. */
@@ -10,7 +11,8 @@ const CORNER_GAP = 12;
 
 /**
  * The window's top-right corner, on every page: the icon-only account control
- * (profile photo, or a Sign in icon) with the notifications bell to its right.
+ * (profile photo, or a Sign in icon) with the notifications bell to its right,
+ * and the update pill to its left while an update needs attention.
  *
  * Windows/Linux draw their window buttons over the right 148px (titleBarOverlay),
  * so the corner sits just left of them; on macOS it sits at the edge. While it
@@ -50,6 +52,7 @@ export function AccountCorner({ notificationsEnabled }: { notificationsEnabled: 
         isMac() ? 'right-3.5' : 'right-[148px]',
       )}
     >
+      <UpdatePill />
       <AccountMenu />
       <SystemNotifications enabled={notificationsEnabled} titlebar />
     </div>

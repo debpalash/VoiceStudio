@@ -36,13 +36,31 @@ There is no separate preview desktop feed. To try changes between betas:
 - **Docker** — `ghcr.io/debpalash/voicestudio:latest` follows `main`; see
   [image tags](install/docker.md#image-tags).
 
-Downloads show transferred size, total size, speed, percentage and ETA, and
-can continue while synthesis, transcription or dubbing work runs. A download
-that receives no data for 45 seconds is cancelled and retried once; if it
-still fails, **Retry** starts it again. VoiceStudio
-only enables **Restart to update** after the package has downloaded and passed
-the updater's checksum verification, and blocks that restart until active work
-has finished and current drafts are flushed.
+When a check finds an update, the installer downloads and is verified in the
+background (**Settings → Updates → Download updates automatically**, on by
+default; turn it off to download only when you click **Download update**).
+A background download that fails on the network stays quiet and is retried at
+the next check. While an update downloads, is ready, or has failed, a small
+pill sits in the title bar left of your account picture: a progress ring,
+**Restart**, or **Retry**. Click it for the version change, progress (size,
+speed, percentage and ETA), the release notes, and a link to the GitHub
+release.
+
+Downloads continue while synthesis, transcription or dubbing work runs. A
+download that receives no data for 45 seconds is cancelled and retried once;
+if it still fails, **Retry** starts it again and **Download manually** opens
+the version's GitHub release page. VoiceStudio only offers **Restart** after
+the package has downloaded and passed the updater's checksum verification.
+Restarting while work runs asks first ("Restarting will stop running
+tasks"); drafts are flushed before the restart.
+
+A verified update also installs when you quit VoiceStudio on macOS, Windows
+and the Linux AppImage, so **Later** just hides the prompt for that version.
+A `.deb` install does not install on quit, because installing needs an
+administrator prompt: use **Restart**, or install the newer `.deb`. If an
+update did not take effect, the next launch says so and offers **Retry** and
+**Download manually**. Errors name the step that failed: checking, download,
+verification or install.
 
 Updates download only the parts of the installer that changed when they can,
 and the full installer otherwise; the app picks automatically and checks the

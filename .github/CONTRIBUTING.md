@@ -576,8 +576,10 @@ test-only PR. Docker Hub overview edits still publish through the small
     (`backend/api/routers/community.py`); the voice-preview gallery's signed
     downloads from `omnivoice-gallery` GitHub Releases, only after it is turned
     on in Settings (`backend/services/gallery.py`).
-  - **Packaged-app update checks** against GitHub Releases; downloads wait for
-    the user (`electron/src/main/updater.ts`).
+  - **Packaged-app update checks** against GitHub Releases, and the background
+    download of a found update from the same release (on by default; Settings
+    → Updates → Download updates automatically turns it off, so downloads wait
+    for the user) (`electron/src/main/updater.ts`).
   - **yt-dlp updates** from PyPI, only when the user clicks update
     (`backend/services/media_tools.py`).
   - **VoiceStudio Cloud account features, only after the user turns them on**

@@ -12,33 +12,27 @@ import {
   SparklesIcon,
   ChevronDownIcon,
   Clock3Icon,
+  ExternalLinkIcon,
   XIcon,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useQuery } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
 import { InlineMarkdown, MarkdownLite } from '@/components/markdown-lite';
 import { appVersion, getBridge } from '@/components/bridge';
-import { flushDubDraft, useDubSession } from '@/features/dub/dub-session';
-import { useAppActivityCount } from '@/lib/app-activity';
 import { useBackendStatus, isBackendReachable } from '@/hooks/use-backend-status';
 import { apiJson, describeError } from '@/lib/api/client';
-import { formatBytes, updateErrorKey } from '@/lib/update-format';
-import {
-  ACTIVE_BATCH_JOBS_PATH,
-  MODEL_INSTALL_STATUS_PATH,
-  dubBusy,
-  serverWorkActive,
-  updateRestartBlocked,
-  type ModelInstallJobs,
-} from '@/lib/update-actions';
+import { formatBytes, updateErrorTitleKey, updateReleaseUrl } from '@/lib/update-format';
+import { openUpdateRelease, requestUpdateRestart } from '@/lib/update-actions';
 import { SettingsSection } from './settings-layout';
 import type { UpdateChannel, UpdateReleaseInfo, UpdateState } from '../../../../preload/index.d';
 
 // Sections must settle (data, empty or error) rather than load forever when
 // the backend or GitHub is slow or down.
-const LOAD_TIMEOUT_MS = 12_000;
+export const LOAD_TIMEOUT_MS = 10_000;
 
 function withTimeout<T>(promise: Promise<T>, ms = LOAD_TIMEOUT_MS): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -54,6 +48,31 @@ function withTimeout<T>(promise: Promise<T>, ms = LOAD_TIMEOUT_MS): Promise<T> {
       },
     );
   });
+}
+
+/**
+ * True once a load has stayed pending for `ms`, so its section shows an error
+ * with Retry instead of loading through every retry. `restart` re-arms it.
+ */
+function useLoadDeadline(pending: boolean, ms = LOAD_TIMEOUT_MS) {
+  const [expired, setExpired] = useState(false);
+  const [round, setRound] = useState(0);
+  useEffect(() => {
+    setExpired(false);
+    if (!pending) return;
+    const timer = setTimeout(() => setExpired(true), ms);
+    return () => clearTimeout(timer);
+  }, [pending, ms, round]);
+  return { expired: pending && expired, restart: () => setRound((value) => value + 1) };
+}
+
+function SectionSkeleton({ label }: { label: string }) {
+  return (
+    <div role="status" aria-label={label} className="space-y-2 px-4 py-3.5">
+      <Skeleton className="h-3.5 w-2/3" />
+      <Skeleton className="h-3.5 w-1/3" />
+    </div>
+  );
 }
 
 const UPDATE_CHANNELS = ['stable', 'beta'] as const;
@@ -100,26 +119,11 @@ export function UpdateSettings() {
   const { t } = useTranslation();
   const updates = getBridge()?.updates;
   const canListReleases = typeof updates?.listReleases === 'function';
-  const dub = useDubSession();
-  const activityCount = useAppActivityCount();
   const [state, setState] = useState(initial);
   const [action, setAction] = useState(false);
   const channelGroup = useRef<HTMLDivElement>(null);
   const refocusChannel = useRef(false);
   const [expandedRelease, setExpandedRelease] = useState<string | null | undefined>(undefined);
-  const watchServerWork = state.status === 'available' || state.status === 'downloaded';
-  const modelInstalls = useQuery({
-    queryKey: ['model-install-jobs'],
-    queryFn: () => apiJson<ModelInstallJobs>(MODEL_INSTALL_STATUS_PATH),
-    enabled: watchServerWork,
-    refetchInterval: 2_000,
-  });
-  const batchJobs = useQuery({
-    queryKey: ['batch-jobs', 'active'],
-    queryFn: () => apiJson<unknown[]>(ACTIVE_BATCH_JOBS_PATH),
-    enabled: watchServerWork,
-    refetchInterval: 3_000,
-  });
   const changelog = useQuery({
     queryKey: ['changelog', 5],
     queryFn: ({ signal }) =>
@@ -145,6 +149,8 @@ export function UpdateSettings() {
     retryDelay: 1_000,
     staleTime: 15 * 60_000,
   });
+  const backupDeadline = useLoadDeadline(backendUp && backup.isPending);
+  const releasesDeadline = useLoadDeadline(canListReleases && releaseHistory.isPending);
   const releaseRows = (releaseHistory.data || [])
     // Betas are tagged prereleases; only beta users are offered them.
     .filter((release) => state.channel === 'beta' || !release.prerelease)
@@ -154,8 +160,6 @@ export function UpdateSettings() {
       ...release,
       current: release.version === state.currentVersion,
     }));
-  const busy =
-    activityCount > 0 || dubBusy(dub) || serverWorkActive(modelInstalls.data, batchJobs.data);
 
   useEffect(() => {
     if (!updates) return;
@@ -196,15 +200,11 @@ export function UpdateSettings() {
       const next = await updates.setChannel(channel);
       return next.channel === channel ? updates.check() : next;
     });
+  // Asks first when work is running (UpdateRestartConfirm).
   const restart = async () => {
     setAction(true);
     try {
-      if (await updateRestartBlocked()) {
-        toast.info(t('update.busy'));
-        return;
-      }
-      flushDubDraft();
-      await updates?.install();
+      await requestUpdateRestart();
     } catch {
       toast.error(t('update.failed'));
     } finally {
@@ -219,7 +219,7 @@ export function UpdateSettings() {
     ) : state.status === 'available' ? (
       <DownloadIcon className="size-5 text-primary" />
     ) : state.status === 'downloaded' ? (
-      <RotateCwIcon className="size-5 text-primary" />
+      <CheckCircle2Icon className="size-5 text-success" />
     ) : (
       <CheckCircle2Icon className="size-5 text-success" />
     );
@@ -242,7 +242,11 @@ export function UpdateSettings() {
             aria-hidden="true"
           />
           <div className="flex min-w-0 flex-1 items-start gap-3">
-            <span className="relative mt-0.5 shrink-0" aria-hidden="true">
+            <span
+              data-slot="update-status-icon"
+              className="relative mt-0.5 shrink-0"
+              aria-hidden="true"
+            >
               {statusIcon}
             </span>
             <div className="relative min-w-0 flex-1">
@@ -260,7 +264,9 @@ export function UpdateSettings() {
                             pct: Math.round(state.progress),
                           })
                         : state.status === 'error'
-                          ? t(updateErrorKey(state.error))
+                          ? t(updateErrorTitleKey(state), {
+                              version: state.availableVersion || '',
+                            })
                           : t('updates.up_to_date', {
                               version: state.currentVersion,
                             })}
@@ -294,6 +300,11 @@ export function UpdateSettings() {
                   )}
                 </>
               )}
+              {state.status === 'downloaded' && (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {t(state.installOnQuit ? 'update.ready_hint_quit' : 'update.ready_hint_restart')}
+                </p>
+              )}
               {state.status === 'error' && state.error && (
                 <details className="mt-2 text-xs text-muted-foreground">
                   <summary className="cursor-pointer">{t('common.more_info')}</summary>
@@ -312,6 +323,20 @@ export function UpdateSettings() {
               >
                 <RefreshCwIcon />
                 {t(state.status === 'error' ? 'update.retry' : 'updates.check_now')}
+              </Button>
+            )}
+            {state.status === 'error' && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() =>
+                  void openUpdateRelease(state.availableVersion).catch(() =>
+                    toast.error(t('update.failed')),
+                  )
+                }
+              >
+                <ExternalLinkIcon />
+                {t('update.download_manually')}
               </Button>
             )}
             {state.status === 'error' && (
@@ -337,18 +362,37 @@ export function UpdateSettings() {
               </Button>
             )}
             {state.status === 'downloaded' && (
-              <Button
-                size="sm"
-                disabled={action || busy}
-                title={busy ? t('update.busy') : undefined}
-                onClick={() => void restart()}
-              >
+              <Button size="sm" disabled={action} onClick={() => void restart()}>
                 <RotateCwIcon />
                 {t('update.restart')}
               </Button>
             )}
           </div>
         </div>
+        {state.autoDownload !== undefined && (
+          <div className="flex items-center gap-3 px-4 py-3">
+            <div className="min-w-0 flex-1">
+              <p id="update-auto-download-label" className="text-sm font-medium">
+                {t('update.auto_download')}
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {t(
+                  state.installOnQuit
+                    ? 'update.auto_download_hint'
+                    : 'update.auto_download_hint_restart',
+                )}
+              </p>
+            </div>
+            <Switch
+              aria-labelledby="update-auto-download-label"
+              checked={state.autoDownload}
+              disabled={action}
+              onCheckedChange={(checked) =>
+                updates && void run(() => updates.setAutoDownload(checked))
+              }
+            />
+          </div>
+        )}
         {state.channel && (
           <div className="flex flex-col gap-2 px-4 py-3 @2xl:flex-row @2xl:items-center">
             <div className="min-w-0 flex-1">
@@ -380,13 +424,16 @@ export function UpdateSettings() {
                     type="button"
                     role="radio"
                     aria-checked={selected}
+                    data-selected={selected || undefined}
                     tabIndex={selected ? 0 : -1}
                     disabled={locked}
                     className={cn(
-                      'inline-flex min-w-20 items-center justify-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60',
+                      'inline-flex min-w-20 items-center justify-center gap-1.5 rounded-md px-3 py-1 text-sm font-medium transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed',
+                      // The chosen channel stays legible while switching is
+                      // locked (an update is downloading or ready).
                       selected
-                        ? 'bg-primary text-primary-foreground shadow-sm'
-                        : 'text-muted-foreground hover:text-foreground',
+                        ? 'bg-background text-foreground shadow-sm ring-1 ring-border'
+                        : 'text-muted-foreground hover:text-foreground disabled:opacity-50 disabled:hover:text-muted-foreground',
                     )}
                     onClick={() => !selected && switchChannel(channel)}
                     onKeyDown={(event) => {
@@ -407,7 +454,7 @@ export function UpdateSettings() {
                     }}
                     data-channel={channel}
                   >
-                    {selected && <CheckIcon className="size-3.5" aria-hidden="true" />}
+                    {selected && <CheckIcon className="size-3.5 text-primary" aria-hidden="true" />}
                     {t(`update.channel_${channel}`)}
                   </button>
                 );
@@ -436,21 +483,28 @@ export function UpdateSettings() {
       )}
 
       <SettingsSection icon={ShieldCheckIcon} title={t('updates.backup_line')}>
-        {backup.isError && backendUp ? (
+        {(backup.isError || backupDeadline.expired) && backendUp ? (
           <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm text-muted-foreground">
             <span>{t('updates.backup_load_error')}</span>
-            <Button size="sm" variant="ghost" onClick={() => void backup.refetch()}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                backupDeadline.restart();
+                void backup.refetch();
+              }}
+            >
               <RefreshCwIcon />
               {t('updates.retry_load')}
             </Button>
           </div>
+        ) : backendUp && backup.isPending ? (
+          <SectionSkeleton label={t('common.loading')} />
         ) : (
           <div className="px-4 py-3 text-sm text-muted-foreground">
             {!backendUp
               ? t('updates.backup_needs_runtime')
-              : backup.isPending
-                ? t('common.loading')
-                : backup.data?.available && backup.data.latest
+              : backup.data?.available && backup.data.latest
                   ? t('updates.backup_latest', {
                       when: new Date(backup.data.latest.created_at * 1000).toLocaleString(),
                     })
@@ -508,16 +562,34 @@ export function UpdateSettings() {
 
       {canListReleases && (
         <SettingsSection icon={Clock3Icon} title={t('updates.releases')}>
-          {releaseHistory.isPending ? (
-            <p className="px-4 py-4 text-sm text-muted-foreground">{t('updates.loading')}</p>
-          ) : releaseHistory.isError ? (
-            <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm text-muted-foreground">
-              <span>{t('updates.load_error')}</span>
-              <Button size="sm" variant="ghost" onClick={() => void releaseHistory.refetch()}>
+          {releaseHistory.isError || releasesDeadline.expired ? (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-sm text-muted-foreground">
+              <span className="min-w-0 flex-1">{t('updates.load_error')}</span>
+              <a
+                href={updateReleaseUrl()}
+                className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                onClick={(event) => {
+                  event.preventDefault();
+                  void openUpdateRelease().catch(() => toast.error(t('update.failed')));
+                }}
+              >
+                <ExternalLinkIcon className="size-3" aria-hidden="true" />
+                {t('updates.open_releases')}
+              </a>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  releasesDeadline.restart();
+                  void releaseHistory.refetch();
+                }}
+              >
                 <RefreshCwIcon />
                 {t('updates.retry_load')}
               </Button>
             </div>
+          ) : releaseHistory.isPending ? (
+            <SectionSkeleton label={t('updates.loading')} />
           ) : releaseRows.length === 0 ? (
             <p className="px-4 py-4 text-sm text-muted-foreground">{t('updates.none')}</p>
           ) : (
