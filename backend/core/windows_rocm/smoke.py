@@ -9,6 +9,7 @@ import wave
 from pathlib import Path
 
 from .probe import probe
+from .recipe import ct2_supported, load_recipe
 from .verify import PROJECT_ROOT, verify_environment
 
 
@@ -19,7 +20,9 @@ def validate_inputs(model, wav):
     if any("://" in str(value) for value in (model, wav)):
         raise ValueError("Remote model/audio URLs are not supported")
     model, wav = Path(model).resolve(), Path(wav).resolve()
-    for name in ("model.bin", "config.json", "tokenizer.json", "preprocessor_config.json"):
+    # faster-whisper derives feature dimensions from the model when the
+    # optional preprocessor file is absent (for example Systran small.en).
+    for name in ("model.bin", "config.json", "tokenizer.json"):
         if not (model / name).is_file():
             raise FileNotFoundError(f"Local CT2 model requires {name}")
     if not wav.is_file():
@@ -33,6 +36,14 @@ def validate_inputs(model, wav):
 def infer_local(model, wav):
     """Only the child calls this; iterating segments executes actual CT2 work."""
     probe()  # Initializes DLL handles and checks exact HIP binary before import.
+    # Refuse before importing faster-whisper when the device has no HIP CT2
+    # (gfx1010): the 7.2.1 binary loads on ROCm 10 and then fails at kernel
+    # launch, so the only honest answer is "not available", not a runtime error.
+    if not ct2_supported(load_recipe()):
+        raise RuntimeError(
+            "This Windows ROCm recipe installs no verified HIP CTranslate2; "
+            "local CT2 speech inference is unavailable"
+        )
     from faster_whisper import WhisperModel
 
     engine = WhisperModel(str(model), device="cuda", device_index=0,
@@ -54,6 +65,13 @@ def infer_local(model, wav):
 def run_smoke(model=None, wav=None):
     if model is None and wav is None:
         return verify_environment()
+    # Fail here, in the parent, so a caller gets one clear answer instead of a
+    # child-process exit code it has to re-classify.
+    if not load_recipe().get("ctranslate2", {}).get("supported", True):
+        raise RuntimeError(
+            "This Windows ROCm recipe installs no verified HIP CTranslate2; "
+            "local CT2 speech inference is unavailable"
+        )
     model, wav = validate_inputs(model, wav)
     environment = dict(os.environ, HF_HUB_OFFLINE="1", TRANSFORMERS_OFFLINE="1")
     try:

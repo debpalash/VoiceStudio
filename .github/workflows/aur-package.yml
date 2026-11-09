@@ -29,21 +29,32 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
+          # pkgver() counts commits; makepkg clones this checkout below.
+          fetch-depth: 0
       - name: Create unprivileged package builder
         run: |
           useradd -m builder
           printf 'builder ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/builder
-          install -d -o builder -g builder /tmp/aur-build
-          cp packaging/aur/voicestudio-git/PKGBUILD /tmp/aur-build/
-          chown builder:builder /tmp/aur-build/PKGBUILD
+          install -d -o builder -g builder /tmp/aur-build /tmp/aur-publish
+          cp packaging/aur/voicestudio-git/PKGBUILD /tmp/aur-publish/
+          # Build this checkout, not GitHub's main: a PKGBUILD change must be
+          # tested with the source it ships beside (e.g. a renamed executable).
+          git config --system --add safe.directory "$GITHUB_WORKSPACE"
+          git branch -f aur-ci HEAD
+          sed "s|^source=.*|source=('voicestudio::git+file://$GITHUB_WORKSPACE#branch=aur-ci')|" \
+            packaging/aur/voicestudio-git/PKGBUILD > /tmp/aur-build/PKGBUILD
+          grep -q "^source=('voicestudio::git+file://" /tmp/aur-build/PKGBUILD
+          chown builder:builder /tmp/aur-build/PKGBUILD /tmp/aur-publish/PKGBUILD
       - name: Build the actual VCS package
         run: |
           cd /tmp/aur-build
           sudo -u builder env OMNIVOICE_BUILD_JOBS=4 CARGO_BUILD_JOBS=2 \
             NODE_OPTIONS=--max-old-space-size=4096 \
             makepkg --syncdeps --noconfirm --cleanbuild
-          sudo -u builder makepkg --printsrcinfo > /tmp/aur-build/.SRCINFO
           namcap PKGBUILD
+          # Publish the recipe as maintained (GitHub main source) with the built version.
+          sed -i "s|^pkgver=.*|$(grep '^pkgver=' PKGBUILD)|" /tmp/aur-publish/PKGBUILD
+          (cd /tmp/aur-publish && sudo -u builder makepkg --printsrcinfo > .SRCINFO)
           desktop-file-validate pkg/voicestudio-git/usr/share/applications/VoiceStudio.desktop
       - name: Install and launch the package without downloading models
         run: |
@@ -51,16 +62,19 @@ jobs:
           pacman -U --noconfirm voicestudio-git-*.pkg.tar.zst
           sudo -u builder env HF_HUB_OFFLINE=1 HF_HUB_CACHE=/tmp/aur-empty-hf-cache \
             VOICESTUDIO_DISABLE_UPDATER=1 \
-            VOICESTUDIO_PACKAGED_EXE=/usr/bin/voicestudio \
+            VOICESTUDIO_PACKAGED_EXE=/opt/VoiceStudio/voicestudio-desktop \
             xvfb-run -a node src/voicestudio/electron/tests/packaged-smoke.mjs --setup
+          # /usr/bin/voicestudio is the terminal command, which opens the app above.
+          expected=$(node -p "require('./src/voicestudio/package.json').version")
+          sudo -u builder /usr/bin/voicestudio version | grep -F "$expected"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: voicestudio-git-aur
           include-hidden-files: true
           path: |
-            /tmp/aur-build/PKGBUILD
-            /tmp/aur-build/.SRCINFO
+            /tmp/aur-publish/PKGBUILD
+            /tmp/aur-publish/.SRCINFO
           retention-days: 14
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: failure()

@@ -867,6 +867,15 @@ async def dub_translate(req: TranslateRequest):
 
         # Offline Argos Translate
         if provider == "argos" or provider == "libretranslate":
+            # Windows ROCm 10: CTranslate2 must not load beside Torch (no import).
+            from core.windows_rocm.isolation_policy import argos_error
+
+            blocked = argos_error()
+            if blocked:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": blocked, "detail": {"code": "argos_runtime_unavailable", "message": blocked}},
+                )
             try:
                 import argostranslate  # noqa: F401
             except ImportError:

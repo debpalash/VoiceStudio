@@ -25,6 +25,7 @@ import { setWorkspace, useWorkspace } from '@/lib/store/workspace';
 import i18n, { APP_LANGUAGE_ITEMS, APP_LANGUAGES, setAppLanguage, type AppLocale } from '@/i18n';
 import { PalettePicker } from './palette-picker';
 import { SettingsRow, SettingsSection } from './settings-layout';
+import { TerminalCommandSettings } from './terminal-command-settings';
 
 /** Settings → Appearance. */
 export function AppearanceSettings() {
@@ -197,6 +198,7 @@ export function GeneralSettings() {
             ))}
           </div>
         </SettingsRow>
+        <TerminalCommandSettings />
       </>
     </SettingsSection>
   );

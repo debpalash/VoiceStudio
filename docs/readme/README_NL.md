@@ -207,6 +207,8 @@ De app-gebruikersinterface draait op Intel; sluit het aan op een VoiceStudio bac
 <details>
 <summary><img src="../../docs/assets/platforms/windows.svg" alt="" width="20" height="20" /> <strong>Windows</strong> · PowerShell · EXE</summary>
 
+De experimentele [Windows ROCm-installatie](../../docs/install/windows-rocm.md) ondersteunt bepaalde RDNA 2 RX 6000-GPU’s met doelarchitectuur `gfx1030`, `gfx1031` of `gfx1032`; de RX 6500 XT (`gfx1034`) valt hierbuiten. De afzonderlijk vastgezette CTranslate2-build bevat native `gfx1031`-kernels voor transcriptie op de RX 6700 XT; de installatie controleert of deze daadwerkelijk op de GPU draaien. Tests op de RX 6700 XT omvatten ook native spraakgeneratie met Torch en PyTorch Whisper. Onder ROCm 10 gebruikt faster-whisper een apart inferentieproces voor veilige CPU-selectie en terugval naar de CPU. Voor andere kaarten en taken gelden de verificatiebeperkingen in de handleiding. Prestatieprofielen controleren gewijzigde enginekeuzes vóór het opslaan in een offline kindproces en behouden de terugvaloptie als een geïnstalleerde runtime faalt.
+
 <blockquote>
 
 **Stabiel · x64**<br />Windows 10/11 x64 · NVIDIA CUDA · AMD ROCm (opt-in) · CPU.
@@ -499,7 +501,7 @@ Upgraden vanaf 0.5.3 of ouder (de Tauri-app)? [Installeer de nieuwe app afzonder
 | Hulp bij het instellen | [Problemen oplossen](../../docs/install/troubleshooting.md) · [Modeldownloads](../../docs/downloading-models.md) |
 | Gidsen | [Nasynchronisatie met meerdere sprekers](../../docs/dubbing/multi-speaker-guide.md) · [Expressieve spraak](../../docs/expressive-speech.md) · [Nasynchronisaties exporteren](../../docs/dubbing/export.md) |
 | Modellen & kwaliteit | [Enginehandleidingen](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [Benchmarks](../../docs/benchmarks.md) |
-| Integraties | [Lokale API](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [Voorbeelden](../../examples/README.md) |
+| Integraties | [CLI](../../docs/install/script.md#terminal-command) · [Lokale API](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [Voorbeelden](../../examples/README.md) |
 | Telefoon-apps | [iOS en Android](../../docs/mobile.md) |
 | Ontwikkeling | [Bijdragen](../../.github/CONTRIBUTING.md) ([teken de CLA](../../.github/CONTRIBUTING.md#contribution-licensing) vóór uw eerste PR) · [Changelog](../../CHANGELOG.md) |
 

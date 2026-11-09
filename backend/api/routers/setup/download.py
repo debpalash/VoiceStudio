@@ -99,6 +99,10 @@ _active_installs_lock = threading.Lock()
 _install_tasks: set[asyncio.Task] = set()
 _install_tasks_by_repo: dict[str, asyncio.Task] = {}
 
+from core import activity as _activity  # noqa: E402
+
+_activity.register_probe("model-downloads", lambda: bool(_active_installs or _install_tasks))
+
 
 def _download_max_workers() -> int:
     """Parallel-FILES worker count for snapshot_download (FDL-02). Default 8 —

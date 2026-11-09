@@ -207,6 +207,8 @@ UI ของแอปทำงานบน Intel เชื่อมต่อก�
 <details>
 <summary><img src="../../docs/assets/platforms/windows.svg" alt="" width="20" height="20" /> <strong>Windows</strong> · PowerShell · EXE</summary>
 
+[การตั้งค่า Windows ROCm แบบทดลอง](../../docs/install/windows-rocm.md) รองรับ GPU RDNA 2 RX 6000 บางรุ่นที่มีเป้าหมายเป็น `gfx1030`, `gfx1031` หรือ `gfx1032` โดยไม่รวม RX 6500 XT (`gfx1034`) บิลด์ CTranslate2 ที่ตรึงเวอร์ชันแยกต่างหากมีเคอร์เนล `gfx1031` แบบเนทีฟสำหรับการถอดเสียงบน RX 6700 XT โดยขั้นตอนตั้งค่าจะตรวจสอบการทำงานจริงของเคอร์เนลบน GPU การทดสอบ RX 6700 XT ยังครอบคลุมการสร้างเสียงพูดด้วย Torch แบบเนทีฟและ PyTorch Whisper ด้วย faster-whisper บน ROCm 10 ใช้กระบวนการอนุมานแยกต่างหากเพื่อให้เลือก CPU และสลับกลับไปใช้ CPU ได้อย่างปลอดภัย การ์ดและงานประเภทอื่นยังอยู่ภายใต้ข้อจำกัดการตรวจสอบในคู่มือ ค่าประสิทธิภาพที่ตั้งไว้ล่วงหน้าจะตรวจสอบความพร้อมของรันไทม์สำหรับเอนจินที่เปลี่ยนในกระบวนการลูกแบบออฟไลน์ก่อนบันทึก และคงทางเลือกสำรองไว้หากรันไทม์ที่ติดตั้งล้มเหลว
+
 <blockquote>
 
 **เสถียร · x64**<br />Windows 10/11 x64 · NVIDIA CUDA · AMD ROCm (เลือกใช้) · CPU
@@ -499,7 +501,7 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 | ความช่วยเหลือในการติดตั้ง | [การแก้ไขปัญหา](../../docs/install/troubleshooting.md) · [ดาวน์โหลดแบบจำลอง](../../docs/downloading-models.md) |
 | คู่มือ | [การพากย์เสียงสำหรับผู้พูดหลายคน](../../docs/dubbing/multi-speaker-guide.md) · [เสียงพูดที่แสดงอารมณ์](../../docs/expressive-speech.md) · [ส่งออกเสียงพากย์](../../docs/dubbing/export.md) |
 | โมเดลและคุณภาพ | [คู่มือเครื่องยนต์](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [เกณฑ์มาตรฐาน](../../docs/benchmarks.md) |
-| การเชื่อมต่อกับเครื่องมืออื่น | [API ท้องถิ่น](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [ตัวอย่าง](../../examples/README.md) |
+| การเชื่อมต่อกับเครื่องมืออื่น | [CLI](../../docs/install/script.md#terminal-command) · [API ท้องถิ่น](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [ตัวอย่าง](../../examples/README.md) |
 | แอปบนโทรศัพท์ | [iOS และ Android](../../docs/mobile.md) |
 | การพัฒนา | [การสนับสนุน](../../.github/CONTRIBUTING.md) ([ลงนาม CLA](../../.github/CONTRIBUTING.md#contribution-licensing) ก่อน PR ครั้งแรกของคุณ) · [บันทึกการเปลี่ยนแปลง](../../CHANGELOG.md) |
 

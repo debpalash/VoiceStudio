@@ -318,6 +318,10 @@ for `VoiceStudio-Electron-*-linux-x64.AppImage.zsync`, so AppImageUpdate cannot
 move them to a renamed release; they update through the in-app updater. Verify both update paths
 against the final downloaded artifact, not the pre-publish build.
 
+Windows ROCm RDNA 2 GPU speech needs the in-repo HIP CTranslate2: run the
+**CTranslate2 ROCm (Windows)** workflow once, then pin its printed hashes in
+`rocm10.ctranslate2` of `scripts/windows-rocm-recipe.json`.
+
 Electron update manifests use platform and architecture channels. Confirm every
 manifest names an uploaded installer, reports the tagged version, and matches the
 artifact bytes. Exercise at least one installed update hop before publication.
