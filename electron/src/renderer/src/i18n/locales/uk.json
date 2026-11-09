@@ -2599,7 +2599,9 @@
     "help_label": "Допомога з налаштуванням",
     "help_install": "Посібник із встановлення",
     "help_troubleshooting": "Усунення несправностей",
-    "help_report": "Повідомити про проблему"
+    "help_report": "Повідомити про проблему",
+    "options": "Параметри",
+    "more_fixes": "Інші рішення"
   },
   "consent": {
     "title": "Допомогти покращити VoiceStudio?",

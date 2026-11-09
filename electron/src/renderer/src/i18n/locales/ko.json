@@ -2575,7 +2575,9 @@
     "help_label": "설정 도움말",
     "help_install": "설치 가이드",
     "help_troubleshooting": "문제 해결",
-    "help_report": "문제 신고"
+    "help_report": "문제 신고",
+    "options": "옵션",
+    "more_fixes": "다른 해결 방법"
   },
   "consent": {
     "title": "VoiceStudio 개선에 참여하시겠어요?",

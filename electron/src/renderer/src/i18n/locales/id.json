@@ -2575,7 +2575,9 @@
     "help_label": "Bantuan penyiapan",
     "help_install": "Panduan instalasi",
     "help_troubleshooting": "Pemecahan masalah",
-    "help_report": "Laporkan masalah"
+    "help_report": "Laporkan masalah",
+    "options": "Opsi",
+    "more_fixes": "Solusi lain"
   },
   "consent": {
     "title": "Bantu meningkatkan VoiceStudio?",
