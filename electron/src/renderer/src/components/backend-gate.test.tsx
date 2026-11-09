@@ -1049,3 +1049,34 @@ it('makes moving the runtime the primary fix for a full drive (DISK_FULL)', asyn
     backendStatus.runtimeInterrupted = true;
   }
 });
+
+it('keeps an in-flight interpreter check and its result across closing and reopening Options', async () => {
+  let resolveChoice: (value: unknown) => void = () => {};
+  const choosePythonRuntime = vi.fn(
+    () => new Promise((resolve) => (resolveChoice = resolve)),
+  );
+  bridgeStub.current = {
+    backend: {
+      getPythonRuntime: vi.fn(async () => ({ selection: null, overrideActive: false })),
+      choosePythonRuntime,
+    },
+  };
+  renderGate('setup_required');
+  openPanel('setup.options');
+  fireEvent.click(
+    await screen.findByRole('button', { name: i18n.t('settings.python_runtime_choose') }),
+  );
+  expect(await screen.findByText(i18n.t('settings.python_runtime_validating'))).toBeVisible();
+
+  // Closing hides the panel without unmounting the running check.
+  openPanel('setup.options');
+  expect(document.getElementById('setup-panel-options')).not.toBeVisible();
+  await act(async () =>
+    resolveChoice({ ok: true, pythonPath: '/opt/py/bin/python', version: '3.11.9', token: 't' }),
+  );
+
+  openPanel('setup.options');
+  expect(screen.getByTestId('python-runtime-staged')).toHaveTextContent('/opt/py/bin/python');
+  expect(screen.getByTestId('python-runtime-confirm')).toBeEnabled();
+  expect(choosePythonRuntime).toHaveBeenCalledOnce();
+});

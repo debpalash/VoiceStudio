@@ -130,6 +130,8 @@ export function SetupOptions({
   const { t } = useTranslation();
   const [choosingRegion, setChoosingRegion] = useState(false);
   const [connectionOpen, setConnectionOpen] = useState(false);
+  // Mounted on first open and kept, so a typed address or a running test survives a toggle.
+  const [connectionShown, setConnectionShown] = useState(false);
   const regionItems = REGIONS.map((region) => ({
     value: region,
     label: t(region === 'auto' ? 'bootstrap.auto_detect' : `bootstrap.region_${region}`),
@@ -186,7 +188,13 @@ export function SetupOptions({
       </div>
       {showPython ? <ExistingPythonSettings /> : null}
       {showRemote ? (
-        <Collapsible open={connectionOpen} onOpenChange={setConnectionOpen}>
+        <Collapsible
+          open={connectionOpen}
+          onOpenChange={(open) => {
+            if (open) setConnectionShown(true);
+            setConnectionOpen(open);
+          }}
+        >
           <CollapsibleTrigger
             render={
               <Button
@@ -202,8 +210,8 @@ export function SetupOptions({
               aria-hidden="true"
             />
           </CollapsibleTrigger>
-          <CollapsibleContent className="pt-3">
-            {connectionOpen ? <RemoteBackendSettings /> : null}
+          <CollapsibleContent keepMounted className="pt-3">
+            {connectionShown ? <RemoteBackendSettings /> : null}
           </CollapsibleContent>
         </Collapsible>
       ) : null}

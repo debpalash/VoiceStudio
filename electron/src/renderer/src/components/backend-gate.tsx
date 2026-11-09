@@ -129,6 +129,13 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
   const status = useBackendStatus();
   const [reachedReady, setReachedReady] = useState(false);
   const [panel, setPanel] = useState<SetupPanel | null>(null);
+  // A panel stays mounted once opened and is only hidden when closed, so work
+  // started inside it (validating or installing into a Python interpreter, a
+  // connection check) keeps its in-flight state and result across a toggle.
+  const [mounted, setMounted] = useState<Record<SetupPanel, boolean>>({
+    options: false,
+    troubleshoot: false,
+  });
   const [restarting, setRestarting] = useState(false);
   const [choosingLocation, setChoosingLocation] = useState(false);
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
@@ -297,7 +304,10 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
       : null;
   const logText = [cause && status.message, ...status.logTail].filter(Boolean).join('\n');
   const canTroubleshoot = !installing && (setupFailed || failed || logText.length > 0);
-  const togglePanel = (next: SetupPanel) => setPanel((open) => (open === next ? null : next));
+  const togglePanel = (next: SetupPanel) => {
+    setMounted((current) => (current[next] ? current : { ...current, [next]: true }));
+    setPanel((open) => (open === next ? null : next));
+  };
 
   const gate = (
     <div
@@ -561,9 +571,10 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
               </div>
             </div>
           ) : null}
-          {canTroubleshoot && panel === 'troubleshoot' ? (
+          {canTroubleshoot && mounted.troubleshoot ? (
             <section
               id="setup-panel-troubleshoot"
+              hidden={panel !== 'troubleshoot'}
               aria-labelledby="setup-toggle-troubleshoot"
               className="space-y-3 rounded-xl border border-border/50 bg-card/20 p-3"
             >
@@ -601,9 +612,10 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
               ) : null}
             </section>
           ) : null}
-          {setup && panel === 'options' ? (
+          {setup && mounted.options ? (
             <section
               id="setup-panel-options"
+              hidden={panel !== 'options'}
               aria-labelledby="setup-toggle-options"
               className="rounded-xl border border-border/50 bg-card/20 p-3"
             >
