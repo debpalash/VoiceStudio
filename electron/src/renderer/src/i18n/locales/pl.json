@@ -2653,6 +2653,10 @@
     "retry": "Spróbuj ponownie",
     "refresh": "Odśwież",
     "manage_profile": "Zarządzaj profilem",
+    "change_photo": "Zmień zdjęcie na stronie profilu",
+    "edit_name": "Edytuj nazwę",
+    "name_label": "Nazwa wyświetlana",
+    "rename_failed": "Nie udało się zapisać nazwy. Spróbuj ponownie.",
     "manage_plan": "Zarządzaj planem"
   },
   "cloudsync": {

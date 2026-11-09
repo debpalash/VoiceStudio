@@ -2629,6 +2629,10 @@
     "retry": "再試行",
     "refresh": "更新",
     "manage_profile": "プロフィールを管理",
+    "change_photo": "プロフィールページで写真を変更",
+    "edit_name": "名前を編集",
+    "name_label": "表示名",
+    "rename_failed": "名前を保存できませんでした。もう一度お試しください。",
     "manage_plan": "プランを管理"
   },
   "cloudsync": {
