@@ -12,6 +12,7 @@ import pytest
 def installer(monkeypatch):
     module = importlib.import_module("core.windows_rocm.install")
     monkeypatch.setattr(module, "validate_target", lambda: None)
+    monkeypatch.setattr(module, "validate_repair_selection", lambda recipe: None)
     return module
 
 

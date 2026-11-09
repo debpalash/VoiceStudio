@@ -7,6 +7,12 @@ from types import SimpleNamespace
 
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def sdk_integrity_test_without_host_selection(monkeypatch):
+    module = importlib.import_module("core.windows_rocm.install")
+    monkeypatch.setattr(module, "validate_repair_selection", lambda recipe: None)
+
 SDK_FILES = [
     ("rocm-sdk-core", "_rocm_sdk_core/bin/amdhip64_7.dll"),
     ("rocm-sdk-libraries-custom", "_rocm_sdk_libraries_custom/bin/hipblas.dll"),

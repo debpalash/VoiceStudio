@@ -207,6 +207,8 @@ curl -fsSL https://voicestudio.sh/install | sh
 <details>
 <summary><img src="../../docs/assets/platforms/windows.svg" alt="" width="20" height="20" /> <strong>Windows</strong> · PowerShell · EXE</summary>
 
+प्रयोगात्मक [Windows ROCm सेटअप](../../docs/install/windows-rocm.md) केवल `gfx1030`, `gfx1031` या `gfx1032` लक्ष्य वाले चुनिंदा RDNA 2 RX 6000 GPU का समर्थन करता है; RX 6500 XT (`gfx1034`) इसमें शामिल नहीं है। अलग से निश्चित संस्करण वाले CTranslate2 बिल्ड में RX 6700 XT पर ट्रांसक्रिप्शन के लिए मूल `gfx1031` कर्नेल शामिल हैं; सेटअप GPU पर उनका वास्तविक निष्पादन जाँचता है। RX 6700 XT के परीक्षणों में मूल Torch वाक् निर्माण और PyTorch Whisper भी शामिल हैं। ROCm 10 पर faster-whisper सुरक्षित CPU चयन और CPU पर वापसी के लिए अलग इन्फरेंस प्रक्रिया इस्तेमाल करता है। अन्य कार्ड और कार्यभार गाइड में दी गई सत्यापन सीमाओं के अधीन हैं। प्रदर्शन प्रीसेट बदले हुए इंजन चयन को सहेजने से पहले ऑफलाइन चाइल्ड प्रक्रिया में रनटाइम की तत्परता जाँचते हैं और स्थापित रनटाइम विफल होने पर वैकल्पिक विकल्प बनाए रखते हैं।
+
 <blockquote>
 
 **स्थिर · x64**<br />विंडोज़ 10/11 x64 · एनवीडिया सीयूडीए · एएमडी आरओसीएम (ऑप्ट-इन) · सीपीयू।
@@ -499,7 +501,7 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 | सेटअप सहायता | [समस्या निवारण](../../docs/install/troubleshooting.md) · [मॉडल डाउनलोड](../../docs/downloading-models.md) |
 | गाइड | [कई वक्ताओं की डबिंग](../../docs/dubbing/multi-speaker-guide.md) · [भावपूर्ण आवाज़](../../docs/expressive-speech.md) · [डब किए गए ऑडियो का निर्यात](../../docs/dubbing/export.md) |
 | मॉडल और गुणवत्ता | [इंजन गाइड](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [बेंचमार्क](../../docs/benchmarks.md) |
-| एकीकरण | [स्थानीय एपीआई](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [उदाहरण](../../examples/README.md) |
+| एकीकरण | [CLI](../../docs/install/script.md#terminal-command) · [स्थानीय एपीआई](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [उदाहरण](../../examples/README.md) |
 | फ़ोन ऐप्स | [आईओएस और एंड्रॉइड](../../docs/mobile.md) |
 | विकास | [योगदान](../../.github/CONTRIBUTING.md) ([अपने पहले पीआर से पहले CLA पर हस्ताक्षर करें](../../.github/CONTRIBUTING.md#contribution-licensing)) · [Changelog](../../CHANGELOG.md) |
 

@@ -6,10 +6,11 @@ The two disagree on the commonest broken host (an AMD card + the NVIDIA-CUDA
 torch wheel the Windows installer ships), and the gap between them is the
 explanation.
 
-Contract (same as ``device_caps``): never raises, no network, **no subprocess**
+Advisory default: never raises, no network, **no subprocess**
 and no torch import — a registry read on Windows, a sysfs read on Linux — so it
 is safe to call from the cold-start probe. macOS returns ``()`` (Apple Silicon
 is reported through torch MPS, and Intel Macs have no accelerated path anyway).
+``require_complete=True`` propagates registry errors for safe provisioning.
 """
 from __future__ import annotations
 
@@ -81,43 +82,10 @@ def _vram_from_registry(value) -> float:
         return 0.0
 
 
-def _read_windows(winreg) -> tuple[HostGPU, ...]:
-    gpus: list[HostGPU] = []
-    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, _WIN_DISPLAY_CLASS) as cls:
-        index = 0
-        while True:
-            try:
-                sub = winreg.EnumKey(cls, index)
-            except OSError:
-                break
-            index += 1
-            if not sub.isdigit():
-                continue  # "Configuration", "Properties"
-            try:
-                with winreg.OpenKey(cls, sub) as key:
-
-                    def val(name, default=""):
-                        try:
-                            return winreg.QueryValueEx(key, name)[0]
-                        except OSError:
-                            return default
-
-                    matching = str(val("MatchingDeviceId"))
-                    vendor = _vendor_for(_vendor_id_from_matching(matching))
-                    if vendor is None:
-                        continue  # Basic Display, Hyper-V, remote-desktop adapters
-                    name = str(val("DriverDesc") or val("HardwareInformation.AdapterString"))
-                    vram = _vram_from_registry(val("HardwareInformation.qwMemorySize", 0))
-                    gpus.append(HostGPU(
-                        vendor=vendor,
-                        name=name.strip() or f"{vendor.upper()} GPU",
-                        vram_gb=vram,
-                        pci_device_id=_device_id_from_matching(matching),
-                        discrete=vram >= 2,
-                    ))
-            except OSError:
-                continue
-    return tuple(gpus)
+def _read_windows(winreg, *, require_complete: bool = False) -> tuple[HostGPU, ...]:
+    """Retain public inventory hooks while delegating registry enumeration."""
+    from .gpu_inventory_windows import read_windows
+    return read_windows(winreg, api=sys.modules[__name__], require_complete=require_complete)
 
 
 def _read_text(path: str) -> str:
@@ -159,8 +127,8 @@ def _read_linux(drm_root: str = _LINUX_DRM) -> tuple[HostGPU, ...]:
 
 
 @functools.lru_cache(maxsize=1)
-def detect_host_gpus() -> tuple[HostGPU, ...]:
-    """Every PCI GPU from AMD/NVIDIA/Intel the OS knows about. Never raises.
+def detect_host_gpus(*, require_complete: bool = False) -> tuple[HostGPU, ...]:
+    """Enumerate PCI GPUs; strict provisioning propagates registry failures.
 
     ``OMNIVOICE_DISABLE_GPU_INVENTORY=1`` returns ``()`` - the test suite sets it
     so a developer's own GPUs never change what a routing test resolves."""
@@ -170,10 +138,12 @@ def detect_host_gpus() -> tuple[HostGPU, ...]:
         if sys.platform == "win32":
             import winreg  # type: ignore[import-not-found]
 
-            return _read_windows(winreg)
+            return _read_windows(winreg, require_complete=require_complete)
         if sys.platform.startswith("linux"):
             return _read_linux()
-    except Exception:  # noqa: BLE001 - inventory is advisory, never fatal
+    except Exception:  # noqa: BLE001 - advisory by default; strict provisioning fails closed
+        if require_complete:
+            raise
         pass
     return ()
 

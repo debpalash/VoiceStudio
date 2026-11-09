@@ -10,6 +10,12 @@ from types import SimpleNamespace
 
 import pytest
 
+
+@pytest.fixture(autouse=True)
+def native_import_test_without_host_selection(monkeypatch):
+    module = importlib.import_module("core.windows_rocm.install")
+    monkeypatch.setattr(module, "validate_repair_selection", lambda recipe: None)
+
 SOURCES = [
     b"def broken(:\n",  # A damaged Python source must exercise a real SyntaxError.
     b"raise ValueError('import failed')\n",

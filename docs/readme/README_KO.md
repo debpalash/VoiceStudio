@@ -208,6 +208,8 @@ Intel Mac에서는 앱 UI를 사용할 수 있습니다. 다른 컴퓨터의 Voi
 <details>
 <summary><img src="../../docs/assets/platforms/windows.svg" alt="" width="20" height="20" /> <strong>Windows</strong> · PowerShell · EXE</summary>
 
+실험적인 [Windows ROCm 설정](../../docs/install/windows-rocm.md)은 대상이 `gfx1030`, `gfx1031` 또는 `gfx1032`인 일부 RDNA 2 RX 6000 GPU를 지원하며, RX 6500 XT(`gfx1034`)는 제외됩니다. 별도로 버전을 고정한 CTranslate2 빌드에는 RX 6700 XT 전사용 네이티브 `gfx1031` 커널이 포함되며, 설정 중 GPU 커널의 실제 실행을 확인합니다. RX 6700 XT 테스트에는 네이티브 Torch 음성 생성과 PyTorch Whisper도 포함됩니다. ROCm 10의 faster-whisper는 안전한 CPU 선택과 CPU 대체 실행을 위해 별도의 추론 프로세스를 사용합니다. 다른 카드와 작업에는 가이드에 명시된 검증 범위 제한이 적용됩니다. 성능 프리셋은 변경된 엔진 선택을 저장하기 전에 오프라인 자식 프로세스에서 런타임 준비 상태를 검증하며, 설치된 런타임이 실패해도 대체 경로를 유지합니다.
+
 <blockquote>
 
 **안정 · x64**<br />Windows 10/11 x64 · NVIDIA CUDA · AMD ROCm(선택하여 활성화) · CPU.
@@ -502,7 +504,7 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 | 설치 도움말 | [문제 해결](../../docs/install/troubleshooting.md) · [모델 다운로드](../../docs/downloading-models.md) |
 | 가이드 | [다중 화자 더빙](../../docs/dubbing/multi-speaker-guide.md) · [표현력 있는 음성](../../docs/expressive-speech.md) · [더빙 내보내기](../../docs/dubbing/export.md) |
 | 모델과 음질 | [엔진 가이드](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [벤치마크](../../docs/benchmarks.md) |
-| 연동 | [로컬 API](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [예제](../../examples/README.md) |
+| 연동 | [CLI](../../docs/install/script.md#terminal-command) · [로컬 API](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [예제](../../examples/README.md) |
 | 휴대폰 앱 | [iOS 및 Android](../../docs/mobile.md) |
 | 개발 | [기여하기](../../.github/CONTRIBUTING.md) (첫 PR 전에 [CLA 서명](../../.github/CONTRIBUTING.md#contribution-licensing) 필요) · [변경 기록](../../CHANGELOG.md) |
 

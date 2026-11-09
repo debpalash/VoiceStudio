@@ -21,6 +21,10 @@ logger = logging.getLogger("omnivoice.api")
 _active_procs: dict[str, list] = {}
 _active_procs_lock = threading.Lock()
 
+from core import activity as _activity  # noqa: E402
+
+_activity.register_probe("subprocesses", lambda: any(list(_active_procs.values())))
+
 
 def register_proc(job_id: str, proc) -> None:
     """Track an in-flight subprocess so /dub/abort can kill it."""
