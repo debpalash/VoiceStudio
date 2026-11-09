@@ -155,9 +155,13 @@ def isolated_env(data_dir: str) -> dict[str, str]:
     return env
 
 
+# Loopback checks must never go through a developer's HTTP(S)_PROXY.
+_LOCAL_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
 def _get(port: int, path: str) -> tuple[int, dict | None]:
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=2) as response:
+        with _LOCAL_OPENER.open(f"http://127.0.0.1:{port}{path}", timeout=2) as response:
             return response.status, json.load(response)
     except urllib.error.HTTPError as error:
         return error.code, None

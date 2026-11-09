@@ -98,3 +98,20 @@ def test_recorded_bundle_baseline_has_every_checked_metric():
     baseline = json.loads((ROOT / "scripts/bench/bundle-baseline.json").read_text())
     for key in ("eager_gzip", "js_gzip", "css_gzip", "largest_eager_gzip"):
         assert baseline[key] > 0, key
+
+
+def test_loopback_checks_ignore_proxy_settings(monkeypatch):
+    """Readiness checks talk to 127.0.0.1 directly, never via HTTP(S)_PROXY."""
+    import importlib.util
+    import urllib.request
+    from pathlib import Path
+
+    monkeypatch.setenv("HTTP_PROXY", "http://proxy.invalid:3128")
+    monkeypatch.setenv("http_proxy", "http://proxy.invalid:3128")
+    spec = importlib.util.spec_from_file_location(
+        "bench_proxy_check", Path(__file__).resolve().parents[1] / "scripts/bench/bench.py"
+    )
+    bench = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bench)
+    handlers = [h for h in bench._LOCAL_OPENER.handlers if isinstance(h, urllib.request.ProxyHandler)]
+    assert handlers and all(h.proxies == {} for h in handlers)
