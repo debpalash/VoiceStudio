@@ -548,6 +548,10 @@ test-only PR. Docker Hub overview edits still publish through the small
     and the optional local-model smoke test never acquire models or use the network.
     The VC++ Redistributable is a manual prerequisite; opted-in Windows ROCm
     source setup checks it locally and stops when it is missing.
+  - **Dependency repair for an existing Python the user selected**
+    (owner-approved 2026-11-09): after the user reviews the plan and confirms,
+    `pip install` of the listed missing packages from PyPI into that
+    interpreter (`electron/src/main/ipc.ts`).
   - **Optional engine installs the user starts** (owner-approved 2026-11-07):
     clicking Install or Repair on an optional engine fetches its upstream
     source from GitHub (a shallow clone of the branch tip, then the reviewed
