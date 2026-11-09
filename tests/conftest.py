@@ -450,6 +450,56 @@ def cpu_host(monkeypatch):
     return caps
 
 
+def threads_to_join(before, pool_before, pool_now, current):
+    """Threads a test must join: everything it started, plus GPU-pool workers
+    that were live before it but whose pool it reset (no longer live)."""
+    retired = set(pool_before) - set(pool_now)
+    exempt = (set(before) - retired) | set(pool_now)
+    return [t for t in current if t not in exempt]
+
+
+@pytest.fixture
+def join_test_threads(monkeypatch):
+    """Join every thread the test started before its state is torn down.
+
+    Tests that wedge a model load and then abandon it (``release.set()`` plus
+    ``pool.shutdown(wait=False)``) leave the woken worker still finishing
+    ``_load_model_exclusive``: it then publishes the module-global ``model``,
+    clears ``_load_abandoned`` and releases whatever load lock is current —
+    which on a slow runner is already the NEXT test's freshly patched state,
+    so that test's cold load returns a model nobody loaded (flaky on Linux CI
+    only). Requesting ``monkeypatch`` sets it up first, so it is undone last:
+    the workers finish against this test's patches, which are then restored
+    over whatever they wrote.
+
+    Workers of the app's live GPU pool are exempt: that pool is built
+    lazily and is meant to outlive the call. A pool that was reset after a
+    timeout is no longer live, so its wedged worker is still joined.
+    """
+    import threading
+
+    def _live_gpu_pool_workers() -> set:
+        mm = sys.modules.get("services.model_manager")
+        wrapper = getattr(mm, "_gpu_pool_singleton", None)
+        return set(getattr(getattr(wrapper, "_pool", None), "_threads", ()))
+
+    before = set(threading.enumerate())
+    pool_before = _live_gpu_pool_workers()
+    yield
+    pool_now = _live_gpu_pool_workers()
+    # A GPU worker that existed before the test but whose pool the test reset
+    # (e.g. after a load timeout) is no longer live: join it like any other.
+    started = threads_to_join(before, pool_before, pool_now, threading.enumerate())
+    deadline = time.monotonic() + 35.0  # test stubs park on bounded 30 s waits
+    for thread in started:
+        thread.join(timeout=max(0.0, deadline - time.monotonic()))
+    alive = [t.name for t in started if t.is_alive()]
+    assert not alive, (
+        "threads started by this test are still running and would act on the "
+        f"next test's state: {alive}"
+    )
+
+
 _MODEL_MANAGER_TEST_REPO = "test/checkpoint"
 
 

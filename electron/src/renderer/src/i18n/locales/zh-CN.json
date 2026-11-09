@@ -2578,7 +2578,9 @@
     "help_label": "安装帮助",
     "help_install": "安装指南",
     "help_troubleshooting": "故障排除",
-    "help_report": "报告问题"
+    "help_report": "报告问题",
+    "options": "选项",
+    "more_fixes": "更多修复方法"
   },
   "consent": {
     "title": "帮助改进 VoiceStudio？",

@@ -1,5 +1,5 @@
 import { CpuIcon } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { primaryUpdateAction, runUpdateAction } from '@/lib/update-actions';
@@ -123,25 +123,32 @@ export function SetupUpdateNotice() {
   );
 }
 
-/** Help that is there before anything goes wrong, not only after a failure. */
-export function SetupHelpLinks() {
+/**
+ * The one help row on the setup screen, there before anything goes wrong. A
+ * failure swaps the plain issue link for its prefilled report (`report`), so
+ * no destination is offered twice.
+ */
+export function SetupHelpLinks({ leading, report }: { leading?: ReactNode; report?: ReactNode }) {
   const { t } = useTranslation();
   return (
     <nav
       aria-label={t('setup.help_label')}
       data-testid="setup-help-links"
-      className="flex flex-wrap justify-center gap-1"
+      className="-mx-2 flex flex-wrap items-start gap-x-0.5 gap-y-1 text-muted-foreground [&_:is(a,button)]:h-7 [&_:is(a,button)]:px-2 [&_:is(a,button)]:text-xs [&_:is(a,button)]:font-normal [&_:is(a,button)]:text-muted-foreground [&_:is(a,button):hover]:text-foreground"
     >
-      <ExternalLink href={INSTALL_GUIDES[platformFamily()]} variant="ghost">
+      {leading}
+      <ExternalLink href={INSTALL_GUIDES[platformFamily()]} variant="ghost" showIcon={false}>
         {t('setup.help_install')}
       </ExternalLink>
-      <ExternalLink href={TROUBLESHOOTING} variant="ghost">
+      <ExternalLink href={TROUBLESHOOTING} variant="ghost" showIcon={false}>
         {t('setup.help_troubleshooting')}
       </ExternalLink>
-      <ExternalLink href={ISSUES_URL} variant="ghost">
-        {t('setup.help_report')}
-      </ExternalLink>
-      <ExternalLink href={DISCORD_URL} variant="ghost">
+      {report ?? (
+        <ExternalLink href={ISSUES_URL} variant="ghost" showIcon={false}>
+          {t('setup.help_report')}
+        </ExternalLink>
+      )}
+      <ExternalLink href={DISCORD_URL} variant="ghost" showIcon={false}>
         {t('setupHelp.discord')}
       </ExternalLink>
     </nav>
