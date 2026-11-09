@@ -31,7 +31,7 @@ it('keeps the preview badge offline when requested', async () => {
   const fetchCount = vi.fn();
   vi.stubGlobal('fetch', fetchCount);
   const client = mount();
-  expect(screen.getByText('43,638')).toBeVisible();
+  expect(screen.getByText('43.6K')).toBeVisible();
   expect(fetchCount).not.toHaveBeenCalled();
   client.clear();
 });
@@ -40,16 +40,16 @@ it('shows an exact live count and refreshes it every 20 minutes', async () => {
   const fetchCount = vi
     .fn()
     .mockResolvedValueOnce({ ok: true, json: async () => ({ stargazers_count: 43_768 }) })
-    .mockResolvedValueOnce({ ok: true, json: async () => ({ stargazers_count: 43_769 }) });
+    .mockResolvedValueOnce({ ok: true, json: async () => ({ stargazers_count: 43_900 }) });
   vi.stubGlobal('fetch', fetchCount);
   vi.useFakeTimers();
   const client = mount();
 
-  expect(screen.getByText('43,638')).toBeVisible();
+  expect(screen.getByText('43.6K')).toBeVisible();
   await act(async () => {
     await vi.advanceTimersByTimeAsync(1);
   });
-  expect(screen.getByText('43,768')).toBeVisible();
+  expect(screen.getByText('43.8K')).toBeVisible();
   expect(fetchCount).toHaveBeenCalledOnce();
   expect(fetchCount.mock.calls[0][0]).toBe(
     'https://api.github.com/repos/debpalash/VoiceStudio',
@@ -67,7 +67,7 @@ it('shows an exact live count and refreshes it every 20 minutes', async () => {
   });
   expect(fetchCount).toHaveBeenCalledTimes(2);
   vi.useRealTimers();
-  await waitFor(() => expect(screen.getByText('43,769')).toBeVisible());
+  await waitFor(() => expect(screen.getByText('43.9K')).toBeVisible());
   expect(screen.getByRole('link', { name: 'support.star_github' })).toHaveAttribute(
     'href',
     'https://github.com/debpalash/VoiceStudio',
@@ -86,12 +86,12 @@ it('keeps the last live count when a later request fails', async () => {
   await act(async () => {
     await vi.advanceTimersByTimeAsync(1);
   });
-  expect(screen.getByText('45,001')).toBeVisible();
+  expect(screen.getByText('45K')).toBeVisible();
   await act(async () => {
     await vi.advanceTimersByTimeAsync(REFRESH_MS + 1);
   });
   expect(fetchCount).toHaveBeenCalledTimes(2);
-  expect(screen.getByText('45,001')).toBeVisible();
+  expect(screen.getByText('45K')).toBeVisible();
   client.clear();
 });
 
@@ -102,6 +102,6 @@ it('shows the bundled count if the first request is offline', async () => {
   await act(async () => {
     await vi.advanceTimersByTimeAsync(1);
   });
-  expect(screen.getByText('43,638')).toBeVisible();
+  expect(screen.getByText('43.6K')).toBeVisible();
   client.clear();
 });

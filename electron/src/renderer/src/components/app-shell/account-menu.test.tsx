@@ -49,11 +49,14 @@ afterEach(() => {
   mock.navigate.mockReset();
 });
 
-it('signed in: shows only the photo (or initials) and the name', async () => {
+it('signed in: an icon-only avatar whose label, tooltip and menu carry the name', async () => {
   await show(signedIn);
-  const trigger = screen.getByRole('button', { name: /Ana Lima/ });
-  expect(trigger).toHaveTextContent('ALAna Lima');
+  const trigger = screen.getByRole('button', { name: 'Ana Lima' });
+  expect(trigger).toHaveTextContent(/^AL$/);
+  expect(trigger).toHaveAttribute('title', 'Ana Lima');
   expect(screen.queryByText(/signed_in_as/)).toBeNull();
+  fireEvent.click(trigger);
+  expect(await screen.findByText('Ana Lima')).toBeInTheDocument();
 });
 
 it('shows the uploaded profile photo instead of initials', async () => {
@@ -75,15 +78,22 @@ it('the menu opens Account settings in the app, or signs out', async () => {
   expect(account.signOut).toHaveBeenCalled();
 });
 
-it('signed out: a Sign in button that starts the browser sign-in', async () => {
+it('signed out: an icon-only Sign in button that starts the browser sign-in', async () => {
   const { account } = await show({ ...signedIn, signedIn: false, profile: null });
-  fireEvent.click(screen.getByRole('button', { name: 'account.sign_in' }));
+  const button = screen.getByRole('button', { name: 'account.sign_in' });
+  expect(button).toHaveTextContent(/^$/);
+  expect(button).toHaveAttribute('title', 'account.sign_in');
+  fireEvent.click(button);
   expect(account.signIn).toHaveBeenCalled();
 });
 
 it('while signing in it says to continue in the browser', async () => {
   await show({ ...signedIn, signedIn: false, signingIn: true, profile: null });
-  expect(screen.getByRole('button', { name: 'account.continue_in_browser' })).toBeDisabled();
+  const button = screen.getByRole('button', { name: 'account.continue_in_browser' });
+  expect(button).toBeDisabled();
+  // The pending instruction is announced, not only left in a tooltip.
+  expect(screen.getByRole('status')).toHaveTextContent('account.continue_in_browser');
+  expect(button.querySelector('.animate-spin')).not.toBeNull();
 });
 
 it.each([
