@@ -87,7 +87,14 @@ function PreviewButton({
   return (
     <span className="inline-flex">
       {status !== 'idle' && (
-        <LazyBoundary key={resolved + ':' + attempt} fallback={null}>
+        <LazyBoundary
+          key={resolved + ':' + attempt}
+          fallback={null}
+          onError={() => {
+            settle();
+            setStatus('error');
+          }}
+        >
           <Suspense fallback={null}>
             <AudioPreviewPlayer
               playerRef={player}

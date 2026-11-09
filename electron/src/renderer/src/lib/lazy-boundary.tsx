@@ -13,7 +13,7 @@ import {
  * fails (a chunk that cannot load). Remount it (change its key) to try again.
  */
 export class LazyBoundary extends Component<
-  { fallback: ReactNode; children: ReactNode },
+  { fallback: ReactNode; children: ReactNode; onError?: (error: unknown) => void },
   { failed: boolean }
 > {
   state = { failed: false };
@@ -22,6 +22,7 @@ export class LazyBoundary extends Component<
   }
   componentDidCatch(error: unknown, _info: ErrorInfo) {
     console.warn('Lazy component failed to load', error);
+    this.props.onError?.(error);
   }
   render() {
     return this.state.failed ? this.props.fallback : this.props.children;
