@@ -2582,7 +2582,9 @@
     "help_label": "Kurulum yardımı",
     "help_install": "Kurulum kılavuzu",
     "help_troubleshooting": "Sorun giderme",
-    "help_report": "Sorun bildir"
+    "help_report": "Sorun bildir",
+    "options": "Seçenekler",
+    "more_fixes": "Diğer çözümler"
   },
   "consent": {
     "title": "VoiceStudio'un gelişmesine yardım eder misiniz?",
