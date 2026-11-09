@@ -1,6 +1,6 @@
 import { Menu } from '@base-ui/react/menu';
 import { useNavigate } from '@tanstack/react-router';
-import { LogOutIcon, UserRoundCogIcon, UserRoundIcon } from 'lucide-react';
+import { Loader2Icon, LogOutIcon, UserRoundCogIcon, UserRoundIcon } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { useAccount } from '@/features/account/use-account';
@@ -63,7 +63,16 @@ export function AccountMenu({ className }: { className?: string }) {
         title={label}
         className={cn('shrink-0 rounded-full text-muted-foreground hover:text-foreground', className)}
       >
-        <UserRoundIcon className="size-4" aria-hidden="true" />
+        {state.signingIn ? (
+          <Loader2Icon className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+        ) : (
+          <UserRoundIcon className="size-4" aria-hidden="true" />
+        )}
+        {state.signingIn && (
+          <span role="status" className="sr-only">
+            {label}
+          </span>
+        )}
       </Button>
     );
   }

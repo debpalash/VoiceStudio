@@ -89,7 +89,11 @@ it('signed out: an icon-only Sign in button that starts the browser sign-in', as
 
 it('while signing in it says to continue in the browser', async () => {
   await show({ ...signedIn, signedIn: false, signingIn: true, profile: null });
-  expect(screen.getByRole('button', { name: 'account.continue_in_browser' })).toBeDisabled();
+  const button = screen.getByRole('button', { name: 'account.continue_in_browser' });
+  expect(button).toBeDisabled();
+  // The pending instruction is announced, not only left in a tooltip.
+  expect(screen.getByRole('status')).toHaveTextContent('account.continue_in_browser');
+  expect(button.querySelector('.animate-spin')).not.toBeNull();
 });
 
 it.each([
