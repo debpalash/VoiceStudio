@@ -23,6 +23,7 @@ import {
   runtimeInstallInterrupted,
   runtimePython,
   runtimeUvCache,
+  type RuntimeRunner,
   stageRuntimeSources,
   type RuntimeRegion,
   runtimeRequiredGib,
@@ -90,8 +91,19 @@ import {
   type RemoteSession,
 } from './remote-backend';
 import { toolSearchDirs, toolSearchDirsAsync } from './tool-path';
-import { SetupProgressTracker, cleanProcessLine } from './setup-progress';
-import { SetupDownloadReporter, inFlightDownloadBytes } from './setup-downloads';
+import {
+  DOWNLOAD_STALL_ATTEMPTS,
+  DOWNLOAD_STALL_RETRY_MS,
+  SetupProgressTracker,
+  cleanProcessLine,
+} from './setup-progress';
+
+const STALLED_DOWNLOAD_CODE = 'RUNTIME_DOWNLOAD_STALLED';
+import {
+  SetupDownloadReporter,
+  inFlightDownloadBytes,
+  pruneInterruptedUvDownloads,
+} from './setup-downloads';
 import { scrubText } from '../shared/utils/scrub';
 import { DEFAULT_BACKEND_PORT } from '../../../config/app-config.mjs';
 
@@ -1614,7 +1626,7 @@ export class BackendSupervisor extends EventEmitter<{
         backendRoot(),
         project,
         findUv(),
-        (command, args, cwd, env, options) => {
+        this.retryStalledDownloads(project, (command, args, cwd, env, options) => {
           // A planning run (uv's dry run) is read, not shown: its package list
           // would read as installs to the progress tracker.
           if (options?.quiet)
@@ -1685,7 +1697,15 @@ export class BackendSupervisor extends EventEmitter<{
             child.on('close', (code) => {
               if (this.child === child) this.child = null;
               if (code === 0) resolve(capturedStdout);
-              else
+              else if (this.stallRestart) {
+                this.stallRestart = false;
+                reject(
+                  Object.assign(new Error('Download stalled; restarted'), {
+                    code: STALLED_DOWNLOAD_CODE,
+                    stdout: capturedStdout,
+                  }),
+                );
+              } else
                 reject(
                   Object.assign(new Error(`Runtime setup exited with code ${code}`), {
                     code,
@@ -1694,7 +1714,7 @@ export class BackendSupervisor extends EventEmitter<{
                 );
             });
           });
-        },
+        }),
         controller.signal,
         (phase) => {
           if (gen !== this.generation) return;
@@ -1761,6 +1781,30 @@ export class BackendSupervisor extends EventEmitter<{
    * in-flight bytes: the setup screen names the source host, and a download
    * that stops receiving data shows as stalled instead of frozen (#3411).
    */
+  /** Set when the watchdog killed uv for a stalled download, so the runner reports it as retryable. */
+  private stallRestart = false;
+
+  /** Re-run a uv command whose download went silent; finished wheels stay in uv's cache. */
+  private retryStalledDownloads(project: string, runner: RuntimeRunner): RuntimeRunner {
+    return async (...args) => {
+      for (let attempt = 1; ; attempt += 1) {
+        try {
+          return await runner(...args);
+        } catch (error) {
+          this.stallRestart = false;
+          const stalled = (error as { code?: unknown })?.code === STALLED_DOWNLOAD_CODE;
+          if (!stalled || attempt >= DOWNLOAD_STALL_ATTEMPTS) throw error;
+          await pruneInterruptedUvDownloads(runtimeUvCache(project));
+          this.setupProgress.restartStallClock();
+          this.pushLog(
+            'out',
+            `Retrying the download (attempt ${attempt + 1} of ${DOWNLOAD_STALL_ATTEMPTS}).`,
+          );
+        }
+      }
+    };
+  }
+
   private watchSetupDownloads(gen: number, signal: AbortSignal): () => void {
     const reporter = new SetupDownloadReporter();
     void Promise.resolve()
@@ -1787,6 +1831,19 @@ export class BackendSupervisor extends EventEmitter<{
           const snapshot = this.setupProgress.snapshot();
           for (const line of reporter.lines(snapshot)) this.pushLog('out', line);
           if (snapshot.downloadsComplete === false) this.emitStatus();
+          if (
+            snapshot.stalled &&
+            (snapshot.stalledSeconds ?? 0) * 1000 >= DOWNLOAD_STALL_RETRY_MS &&
+            this.child &&
+            !this.stallRestart
+          ) {
+            this.stallRestart = true;
+            this.pushLog(
+              'out',
+              `Download stalled for ${snapshot.stalledSeconds} s; restarting it. Finished packages are kept.`,
+            );
+            void this.killChild();
+          }
         })
         .catch(() => undefined)
         .finally(() => {

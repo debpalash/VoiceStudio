@@ -1465,6 +1465,8 @@ Setup defaults to `UV_HTTP_TIMEOUT=900` (15 minutes),
 sync retries and fallbacks. Explicit environment overrides are preserved.
 The five-minute support prompt is independent of these timeouts. A large file
 may take longer than 15 minutes in total while continuing to make progress.
+A download that receives no data for two minutes is stopped and restarted
+automatically (up to three tries); packages already downloaded are kept.
 
 If the error chain ends with `cannot decrypt peer's message`, the package
 connection failed while reading encrypted data. The preceding cache-write error

@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DOWNLOAD_STALL_MS,
+  DOWNLOAD_STALL_RETRY_MS,
   SetupProgressTracker,
   cleanProcessLine,
   parseByteSize,
@@ -160,6 +161,16 @@ describe('SetupProgressTracker', () => {
     expect(tracker.snapshot(302_000).etaSeconds).toBeUndefined();
     tracker.ingest('torch 14 MiB/3 GiB', 303_000);
     expect(tracker.snapshot(303_000).stalled).toBeUndefined();
+  });
+
+  // #3950: a restarted download must not inherit the abandoned attempt's silence.
+  it('restarts the stall clock when a stalled download is retried', () => {
+    const tracker = new SetupProgressTracker();
+    tracker.ingest('Downloading torch (3 GiB)', 0);
+    expect(tracker.snapshot(DOWNLOAD_STALL_RETRY_MS).stalledSeconds).toBe(120);
+    tracker.restartStallClock(DOWNLOAD_STALL_RETRY_MS);
+    expect(tracker.snapshot(DOWNLOAD_STALL_RETRY_MS + 1_000).stalled).toBeUndefined();
+    expect(tracker.snapshot(DOWNLOAD_STALL_RETRY_MS + 46_000).stalled).toBe(true);
   });
 
   it('names the source host and flags a stall only when no bytes arrive', () => {

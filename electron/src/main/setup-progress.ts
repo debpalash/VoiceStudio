@@ -26,6 +26,10 @@ export interface SetupProgress {
  * while a multi-gigabyte wheel prints nothing for minutes.
  */
 export const DOWNLOAD_STALL_MS = 45_000;
+/** A download silent this long is abandoned and retried; uv's own read timeout is 15 minutes (#3950). */
+export const DOWNLOAD_STALL_RETRY_MS = 120_000;
+/** Attempts per uv command before a stalled download becomes a setup failure. */
+export const DOWNLOAD_STALL_ATTEMPTS = 3;
 
 const ANSI_ESCAPE = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/g;
 const SIZE = '(\\d+(?:\\.\\d+)?)\\s*(B|KB|KiB|MB|MiB|GB|GiB)';
@@ -85,6 +89,12 @@ export class SetupProgressTracker {
     this.samples.length = 0;
     this.progress = { completedDownloads: 0 };
     this.advancedAt = undefined;
+    this.inFlightBytes = 0;
+  }
+
+  /** A restarted download counts from zero: forget the abandoned attempt's bytes and silence. */
+  restartStallClock(now = Date.now()): void {
+    this.advancedAt = now;
     this.inFlightBytes = 0;
   }
 
