@@ -14,6 +14,7 @@ What this suite pins down, and why each case exists:
 """
 import json
 import re
+from pathlib import Path
 
 import pytest
 
@@ -138,6 +139,16 @@ def test_a_gfx1010_report_without_ct2_is_ready(monkeypatch):
     assert verify.validate_report(report, recipe.load_recipe(architecture="gfx1010"))["ready"] is True
 
 
+_LOCKED_CT2 = "ctranslate2==4.4.0 --hash=sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+
+def _capture(command):
+    """Inline the CPU CT2 requirements file, deleted with its temp folder."""
+    if str(command[-1]).endswith("cpu-ctranslate2.txt"):
+        command = [*command[:-2], Path(command[-1]).read_text(encoding="utf-8")]
+    return command
+
+
 def test_installer_skips_the_ct2_archive_but_restores_the_locked_cpu_build(monkeypatch):
     """The overlay must leave a working CPU CTranslate2 behind.
 
@@ -165,10 +176,10 @@ def test_installer_skips_the_ct2_archive_but_restores_the_locked_cpu_build(monke
     )
     monkeypatch.setattr(installer, "checked_wheel", lambda *a: pytest.fail("unexpected CT2 wheel"))
     # The locked pin is resolved through uv, never hardcoded here.
-    monkeypatch.setattr(installer, "locked_ct2_requirement", lambda uv: "ctranslate2==4.4.0")
+    monkeypatch.setattr(installer, "locked_ct2_requirement", lambda uv: _LOCKED_CT2)
 
     commands = []
-    monkeypatch.setattr(installer, "run_install", lambda command: commands.append(command))
+    monkeypatch.setattr(installer, "run_install", lambda command: commands.append(_capture(command)))
     with pytest.raises(failures.VerificationFailure):
         installer.provision("uv-custom")
 
@@ -176,13 +187,10 @@ def test_installer_skips_the_ct2_archive_but_restores_the_locked_cpu_build(monke
     assert len(commands) == 2
     overlay, cpu_ct2 = commands
     assert "-r" in overlay
-    # The requirement is an exact lock pin, never a bare name (that would install
-    # today's PyPI release instead of what the frozen sync would have left).
-    assert cpu_ct2[-1] == "ctranslate2==4.4.0"
-    # A bare ``ctranslate2`` may only appear as --reinstall-package's argument,
-    # which is the token right before the pinned requirement.
+    # The requirement is the lock's hash-pinned artifact, never a bare name (that
+    # would install today's PyPI release instead of what the frozen sync left).
+    assert cpu_ct2[-1] == _LOCKED_CT2 + "\n"
     assert cpu_ct2[cpu_ct2.index("--reinstall-package") + 1] == "ctranslate2"
-    assert cpu_ct2[-1] != "ctranslate2"
     assert not any(str(arg).startswith("http") for arg in cpu_ct2)
 
 
@@ -193,21 +201,40 @@ def test_locked_ct2_requirement_reads_the_lock_through_uv(monkeypatch):
 
     installer = importlib.import_module("core.windows_rocm.install")
 
+    a, b = "a" * 64, "b" * 64
     export = (
-        "torch==2.13.0+cpu ; python_full_version < '3.13'\n"
-        "ctranslate2==4.4.0 ; python_full_version < '3.13'\n"
-        "ctranslate2==4.8.1 ; python_full_version >= '3.13'\n"
+        f"torch==2.13.0+cpu ; python_full_version < '3.13' \\\n    --hash=sha256:{a}\n"
+        f"ctranslate2==4.4.0 ; python_full_version < '3.13' \\\n"
+        f"    --hash=sha256:{a} \\\n    --hash=sha256:{b}\n"
+        "    # via faster-whisper\n"
+        f"ctranslate2==4.8.1 ; python_full_version >= '3.13' \\\n    --hash=sha256:{b}\n"
     )
 
     def run(command, **kwargs):
-        assert command[1:] == ["export", "--frozen", "--no-dev", "--no-hashes",
-                               "--format", "requirements-txt"]
+        assert command[1:] == ["export", "--frozen", "--no-dev", "--format", "requirements-txt"]
         assert kwargs["check"] is True and kwargs["timeout"] == 600
         return subprocess.CompletedProcess(command, 0, export, "")
 
     monkeypatch.setattr(installer.subprocess, "run", run)
-    # Both marker branches appear in the export; the first is this interpreter's.
-    assert installer.locked_ct2_requirement("uv-custom") == "ctranslate2==4.4.0"
+    # Every marker branch is kept with its hashes; uv picks this interpreter's.
+    assert installer.locked_ct2_requirement("uv-custom") == (
+        f"ctranslate2==4.4.0 ; python_full_version < '3.13' --hash=sha256:{a} --hash=sha256:{b}\n"
+        f"ctranslate2==4.8.1 ; python_full_version >= '3.13' --hash=sha256:{b}"
+    )
+
+
+def test_locked_ct2_requirement_refuses_an_unhashed_pin(monkeypatch):
+    """An export without hashes would let the index serve any 4.4.0 file."""
+    import importlib
+    import subprocess
+
+    installer = importlib.import_module("core.windows_rocm.install")
+    monkeypatch.setattr(
+        installer.subprocess, "run",
+        lambda command, **kwargs: subprocess.CompletedProcess(command, 0, "ctranslate2==4.4.0\n", ""),
+    )
+    with pytest.raises(RuntimeError, match="no artifact hashes"):
+        installer.locked_ct2_requirement("uv-custom")
 
 
 def test_locked_ct2_requirement_refuses_to_guess(monkeypatch):
@@ -242,17 +269,17 @@ def test_a_healthy_overlay_still_restores_a_missing_cpu_ct2(monkeypatch):
     monkeypatch.setattr(installer, "verify_environment", lambda: {"ready": True})
     # ... but ctranslate2 is absent.
     monkeypatch.setattr(installer, "_cpu_ct2_missing", lambda: True)
-    monkeypatch.setattr(installer, "locked_ct2_requirement", lambda uv: "ctranslate2==4.4.0")
+    monkeypatch.setattr(installer, "locked_ct2_requirement", lambda uv: _LOCKED_CT2)
     monkeypatch.setattr(installer, "download_archive", lambda *a: pytest.fail("no AMD re-download"))
     monkeypatch.setattr(installer, "checked_wheel", lambda *a: pytest.fail("no CT2 archive"))
 
     commands = []
-    monkeypatch.setattr(installer, "run_install", lambda command: commands.append(command))
+    monkeypatch.setattr(installer, "run_install", lambda command: commands.append(_capture(command)))
 
     assert installer.provision("uv-custom") == {"ready": True}
     # Exactly one install pass, for the missing package only.
     assert len(commands) == 1
-    assert commands[0][-1] == "ctranslate2==4.4.0"
+    assert commands[0][-1] == _LOCKED_CT2 + "\n"
 
 
 def test_a_healthy_overlay_with_cpu_ct2_installs_nothing(monkeypatch):

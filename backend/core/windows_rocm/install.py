@@ -99,43 +99,43 @@ def _cpu_ct2_missing():
 
 
 def locked_ct2_requirement(uv):
-    """The lockfile's own CTranslate2 pin for this interpreter.
+    """The lockfile's CTranslate2 requirement lines, with markers and artifact hashes.
 
     Asking ``uv export`` keeps environment-marker evaluation in uv's hands
     instead of reimplementing it here (this module is stdlib-only), and keeps
-    the version on the lockfile's supply-chain review instead of whatever PyPI
-    serves today. A bare ``ctranslate2`` would install the current release,
-    which is not what the frozen sync would have installed.
+    the artifact on the lockfile's supply-chain review instead of whatever PyPI
+    serves today: the returned ``--hash`` options make uv reject any file the
+    lock did not record. A bare ``ctranslate2`` would install the current release.
     """
     try:
         result = subprocess.run(
-            [str(uv), "export", "--frozen", "--no-dev", "--no-hashes", "--format", "requirements-txt"],
+            [str(uv), "export", "--frozen", "--no-dev", "--format", "requirements-txt"],
             cwd=PROJECT_ROOT, capture_output=True, text=True, errors="replace",
             check=True, timeout=600,
         )
     except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         raise RuntimeError(f"Windows ROCm could not read the locked CTranslate2 version: {exc}") from exc
-    for line in result.stdout.splitlines():
-        requirement = line.split("#", 1)[0].split(";", 1)[0].strip()
-        if requirement.startswith("ctranslate2=="):
-            return requirement
+    # Keep every marker branch: uv evaluates the markers for this interpreter at
+    # install time, so this module never has to.
+    entries = [" ".join(line.split()) for line in result.stdout.replace("\\\n", " ").splitlines()
+               if line.startswith("ctranslate2==")]
+    if any("--hash=sha256:" not in entry for entry in entries):
+        raise RuntimeError("The locked CTranslate2 pin carries no artifact hashes")
+    if entries:
+        return "\n".join(entries)
     raise RuntimeError("The lockfile pins no CTranslate2 the CPU fallback could install")
 
 
-def _install_locked_cpu_ct2(uv):
-    """Install exactly the locked CPU CTranslate2, nothing else.
+def _install_locked_cpu_ct2(uv, folder, constraints):
+    """Install exactly the locked, hash-checked CPU CTranslate2, nothing else.
 
-    The overlay skipped ctranslate2 with the rest of the HIP replacement, so a
-    ROCm 10 environment can verify healthy while ``faster_whisper`` cannot even
-    import. Repairing only this package keeps a healthy install from re-fetching
-    the AMD wheels.
+    The overlay excludes ctranslate2 from the frozen sync along with its HIP
+    replacement, so a recipe without a HIP build owes the environment this one
+    package; its dependencies stay at their installed versions via constraints.
     """
-    with tempfile.TemporaryDirectory(prefix="voicestudio-windows-rocm-") as temporary:
-        constraints = Path(temporary) / "constraints.txt"
-        constraints.write_text(constraints_text(), encoding="utf-8")
-        run_install(install_command(
-            uv, [locked_ct2_requirement(uv)], ["ctranslate2"], constraints,
-        ))
+    requirements = Path(folder) / "cpu-ctranslate2.txt"
+    requirements.write_text(locked_ct2_requirement(uv) + "\n", encoding="utf-8")
+    run_install(install_command(uv, ["-r", str(requirements)], ["ctranslate2"], constraints))
 
 
 def provision(uv):
@@ -156,7 +156,10 @@ def provision(uv):
         # The overlay itself is healthy; only the CPU speech dependency is absent.
         # Reinstalling AMD wheels here would be an unnecessary multi-GB download,
         # so repair exactly the one missing package and re-verify.
-        _install_locked_cpu_ct2(uv)
+        with tempfile.TemporaryDirectory(prefix="voicestudio-windows-rocm-") as temporary:
+            constraints = Path(temporary) / "constraints.txt"
+            constraints.write_text(constraints_text(), encoding="utf-8")
+            _install_locked_cpu_ct2(uv, temporary, constraints)
         return verify_environment()
     except VerificationFailure as exc:
         if not exc.repairable:
@@ -185,14 +188,9 @@ def provision(uv):
             # at their installed versions through the same constraints.
             run_install(install_command(uv, [str(wheel)], ["ctranslate2"], constraints))
         else:
-            # The overlay skipped the locked CPU CTranslate2 along with its HIP
-            # replacement (torch-variant.mjs excludes it from the frozen sync), so
-            # this is the only pass that can put it back. Without it a fresh ROCm 10
-            # environment has no ctranslate2 at all: faster-whisper cannot import,
-            # the app's own import check fails, and even the CPU fallback is gone.
-            run_install(install_command(
-                uv, [locked_ct2_requirement(uv)], ["ctranslate2"], constraints,
-            ))
+            # ROCm 10 pins no HIP CT2; without the locked CPU build faster-whisper
+            # cannot import and even the CPU fallback is gone.
+            _install_locked_cpu_ct2(uv, folder, constraints)
     return verify_environment()
 
 
