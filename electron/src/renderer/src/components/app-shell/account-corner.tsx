@@ -9,8 +9,8 @@ const SPACE_VAR = '--corner-space';
 const CORNER_GAP = 12;
 
 /**
- * The window's top-right corner, on every page: the account control (photo and
- * name, or Sign in) with the notifications bell to its right.
+ * The window's top-right corner, on every page: the icon-only account control
+ * (profile photo, or a Sign in icon) with the notifications bell to its right.
  *
  * Windows/Linux draw their window buttons over the right 148px (titleBarOverlay),
  * so the corner sits just left of them; on macOS it sits at the edge. While it

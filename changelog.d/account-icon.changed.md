@@ -1,0 +1,1 @@
+The account button in the top bar is now just your profile photo, or a person icon when signed out.
