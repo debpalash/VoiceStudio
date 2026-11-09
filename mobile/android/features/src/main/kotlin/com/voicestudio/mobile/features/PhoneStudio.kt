@@ -44,6 +44,8 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
     private var inference: Job?=null
     /** Only an interrupted clone gets the clone editor's Retry notice; other on-device work is just stopped. */
     private var inferenceIsClone=false
+    /** Set once a clone's voice is saved: its cleanup still shows progress but can no longer be interrupted. */
+    private var cloneSaved=false
     /** A cancelled job finishing late must not clear the progress of the job that replaced it. */
     private fun clearProgress(owner: Job?) {if(inference===owner||inference?.isActive!=true) mutable.update {it.copy(progress=null)}}
     init {scope.launch {
@@ -123,17 +125,18 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
     }}
     fun clone(name: String, file: File, model: PhoneModel, cloneModel: PhoneModel, consent: Boolean, created: ()->Unit = {}) {
         if(inference?.isActive==true) {failure(ClientFailure("mobile.android.operation_busy"));return}
-        inferenceIsClone=true
+        inferenceIsClone=true;cloneSaved=false
         inference=scope.launch {
             mutable.update {it.copy(progress=0f,interrupted=false)}
             try {
                 voices.create(name,file,consent,model,cloneModel,engine,decoder,progress={p -> mutable.update {it.copy(progress=p)}})
                 // The voice is saved: a cancel or an interruption from here on must not turn it into a failed or interrupted
-                // clone (Retry would make a duplicate). No progress means interruptInference leaves it alone.
-                mutable.update {it.copy(progress=null)}
+                // clone (Retry would make a duplicate). Progress stays up so the editor remains busy until cleanup ends.
+                cloneSaved=true
                 withContext(NonCancellable) {
                     try {refresh()} catch(e:Exception) {failure(e)}
                     withContext(Dispatchers.IO) {file.delete()}
+                    mutable.update {it.copy(progress=null)}
                     created()
                 }
             }
@@ -154,7 +157,7 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
     /** Leaving the foreground or tearing the screen down stops on-device work; unlike a user cancel it never clears the
      *  interrupted notice, so the task can be retried after the screen returns or is recreated. */
     fun interruptInference() {
-        if(mutable.value.progress==null) return
+        if(mutable.value.progress==null||(inferenceIsClone&&cloneSaved)) return
         val job=inference?.takeIf {it.isActive} ?: return
         if(inferenceIsClone) mutable.update {it.copy(interrupted=true)}
         job.cancel()
