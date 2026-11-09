@@ -80,7 +80,7 @@ async function wireAccount(opts: StartOptions): Promise<() => void> {
     switches,
     session,
     api,
-    remembered: store.persistent,
+    remembered: () => store.persistent,
     links: dashboardLinks(env),
   });
   const appCheck = new AppCheck({
