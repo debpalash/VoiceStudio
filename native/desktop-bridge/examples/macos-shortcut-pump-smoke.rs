@@ -87,8 +87,29 @@ fn main() {
         "queued Carbon hotkey was never dispatched"
     );
     // Empty queues must also return promptly so the helper can process Stop.
-    macos_event_pump::pump();
+    assert!(!macos_event_pump::pump(), "idle pump reported a backlog");
+    // The helper sleeps in the run loop between events (#3924): a bounded wait
+    // must return, and the cross-thread wake (an empty main-queue block) must
+    // end a sleep long before its limit.
+    use std::time::{Duration, Instant};
+    let started = Instant::now();
+    macos_event_pump::wait(Some(Duration::from_millis(50)));
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "bounded wait overran"
+    );
+    std::thread::spawn(|| {
+        std::thread::sleep(Duration::from_millis(100));
+        dispatch2::DispatchQueue::main().exec_async(|| {});
+    });
+    let started = Instant::now();
+    macos_event_pump::wait(Some(Duration::from_secs(20)));
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "a main-queue wake did not end the run-loop sleep"
+    );
     println!("PASS: Carbon application hotkey dispatch and idle pump");
+    println!("PASS: run-loop sleep ends on the cross-thread wake");
 }
 
 #[cfg(not(target_os = "macos"))]
