@@ -304,6 +304,7 @@ def test_structured_detail_hides_home_paths_on_every_platform(platform, shape):
         400, json={"detail": STRUCTURED_SHAPES[shape](raw)}, request=request
     )
     text = mcp_server._backend_error_detail(response)
+    assert text is not None
     assert "alice" not in text
     assert json.dumps(scrubbed)[1:-1] in text
 
