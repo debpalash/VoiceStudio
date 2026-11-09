@@ -940,6 +940,7 @@
     "source_language": "Langue source",
     "retry_failed": "Réessayer {{count}} échecs",
     "skip_failed": "Ignorer les échecs",
+    "keep_source_text": "Garder le texte d’origine (sans traduction)",
     "transcript_after_extract": "La transcription apparaît après l'extraction.",
     "qc_btn": "Vérifier le timing du doublage (vérification du deuxième passage)",
     "verify": "Vérifier",

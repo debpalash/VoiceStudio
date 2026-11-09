@@ -940,6 +940,7 @@
     "source_language": "ソース言語",
     "retry_failed": "失敗した{{count}}件を再試行",
     "skip_failed": "失敗をスキップ",
+    "keep_source_text": "元のテキストを維持（翻訳なし）",
     "transcript_after_extract": "文字起こしは抽出後に表示されます。",
     "qc_btn": "ダビングタイミングの検証（2パス目チェック）",
     "verify": "検証",

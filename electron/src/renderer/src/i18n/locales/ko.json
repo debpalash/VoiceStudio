@@ -926,6 +926,7 @@
     "source_language": "원본 언어",
     "retry_failed": "실패한 {{count}}개 다시 시도",
     "skip_failed": "실패 항목 건너뛰기",
+    "keep_source_text": "원문 유지(번역 안 함)",
     "qc_btn": "더빙 타이밍 확인(두 번째 통과 확인)",
     "verify": "확인",
     "qc_running": "더빙 타이밍 확인 중…",

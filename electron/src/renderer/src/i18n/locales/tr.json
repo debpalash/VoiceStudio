@@ -940,6 +940,7 @@
     "source_language": "Kaynak dil",
     "retry_failed": "Başarısız {{count}} öğeyi yeniden dene",
     "skip_failed": "Başarısızları atla",
+    "keep_source_text": "Özgün metni koru (çeviri yok)",
     "transcript_after_extract": "Transkript, çıkarma işleminden sonra görünür.",
     "qc_btn": "Dub zamanlamasını doğrulayın (ikinci geçiş kontrolü)",
     "verify": "Doğrula",

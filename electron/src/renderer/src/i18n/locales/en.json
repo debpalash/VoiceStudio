@@ -1199,6 +1199,7 @@
     "source_language": "Spoken language",
     "retry_failed": "Retry {{count}} failed",
     "skip_failed": "Skip failed",
+    "keep_source_text": "Keep original text (no translation)",
     "transcript_after_extract": "Transcript appears after extraction.",
     "paste_translation_btn": "Paste Translation",
     "paste_translation_title": "Paste a translation",

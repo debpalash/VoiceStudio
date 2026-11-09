@@ -948,6 +948,7 @@
     "source_language": "Język źródłowy",
     "retry_failed": "Ponów {{count}} nieudanych",
     "skip_failed": "Pomiń nieudane",
+    "keep_source_text": "Zachowaj tekst oryginalny (bez tłumaczenia)",
     "transcript_after_extract": "Transkrypcja pojawi się po ekstrakcji.",
     "qc_btn": "Sprawdź czas dubowania (kontrola drugiego przejścia)",
     "verify": "Sprawdź",

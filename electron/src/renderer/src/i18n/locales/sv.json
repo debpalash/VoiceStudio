@@ -940,6 +940,7 @@
     "source_language": "Källspråk",
     "retry_failed": "Försök igen med {{count}} misslyckade",
     "skip_failed": "Hoppa över misslyckade",
+    "keep_source_text": "Behåll originaltexten (ingen översättning)",
     "transcript_after_extract": "Avskriften visas efter extraktionen.",
     "qc_btn": "Verifiera dubbningstid (second-pass check)",
     "verify": "Verifiera",

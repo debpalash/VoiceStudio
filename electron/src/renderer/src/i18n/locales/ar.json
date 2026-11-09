@@ -959,6 +959,7 @@
     "source_language": "لغة المصدر",
     "retry_failed": "إعادة محاولة {{count}} فاشلة",
     "skip_failed": "تخطي الفاشلة",
+    "keep_source_text": "الاحتفاظ بالنص الأصلي (بدون ترجمة)",
     "transcript_after_extract": "يظهر النص بعد الاستخراج.",
     "qc_btn": "التحقق من توقيت الدبلجة (فحص المرور الثاني)",
     "verify": "تحقق",

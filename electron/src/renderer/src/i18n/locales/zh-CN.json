@@ -908,6 +908,7 @@
     "source_language": "源语言",
     "retry_failed": "重试 {{count}} 个失败项",
     "skip_failed": "跳过失败项",
+    "keep_source_text": "保留原文（不翻译）",
     "transcript_after_extract": "提取完成后将显示转录文本。",
     "qc_btn": "验证配音时序（第二遍检查）",
     "verify": "验证",

@@ -940,6 +940,7 @@
     "source_language": "Bahasa sumber",
     "retry_failed": "Coba lagi {{count}} yang gagal",
     "skip_failed": "Lewati yang gagal",
+    "keep_source_text": "Pertahankan teks asli (tanpa terjemahan)",
     "transcript_after_extract": "Transkrip muncul setelah ekstraksi.",
     "qc_btn": "Verifikasi waktu sulih suara (pemeriksaan jalur kedua)",
     "verify": "Verifikasi",

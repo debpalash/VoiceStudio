@@ -938,6 +938,7 @@
     "source_language": "Brontaal",
     "retry_failed": "{{count}} mislukte opnieuw proberen",
     "skip_failed": "Mislukte overslaan",
+    "keep_source_text": "Originele tekst behouden (geen vertaling)",
     "transcript_after_extract": "Het afschrift verschijnt na extractie.",
     "qc_btn": "Controleer de dub-timing (tweede-doorgangscontrole)",
     "verify": "Controleren",

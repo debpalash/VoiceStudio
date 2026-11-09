@@ -1199,6 +1199,7 @@
     "source_language": "Lingua falada",
     "retry_failed": "Fallou o reintento {{count}}",
     "skip_failed": "Fallou o salto",
+    "keep_source_text": "Manter o texto orixinal (sen traducir)",
     "transcript_after_extract": "A transcrición aparece despois da extracción.",
     "paste_translation_btn": "Pegar tradución",
     "paste_translation_title": "Pega unha tradución",

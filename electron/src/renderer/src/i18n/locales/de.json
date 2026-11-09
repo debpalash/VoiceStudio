@@ -938,6 +938,7 @@
     "source_language": "Ausgangssprache",
     "retry_failed": "{{count}} fehlgeschlagene erneut versuchen",
     "skip_failed": "Fehlgeschlagene überspringen",
+    "keep_source_text": "Originaltext behalten (ohne Übersetzung)",
     "transcript_after_extract": "Das Transkript erscheint nach der Extraktion.",
     "qc_btn": "Überprüfen des Dub-Timings (Second-Pass-Check)",
     "verify": "Prüfen",

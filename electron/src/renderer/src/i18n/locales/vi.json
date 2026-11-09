@@ -940,6 +940,7 @@
     "source_language": "Ngôn ngữ nguồn",
     "retry_failed": "Thử lại {{count}} mục lỗi",
     "skip_failed": "Bỏ qua mục lỗi",
+    "keep_source_text": "Giữ nguyên văn bản gốc (không dịch)",
     "transcript_after_extract": "Bản chép lời sẽ xuất hiện sau khi trích xuất.",
     "qc_btn": "Xác minh thời gian lồng tiếng (kiểm tra lần thứ hai)",
     "verify": "Xác minh",

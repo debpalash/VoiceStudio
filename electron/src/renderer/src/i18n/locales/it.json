@@ -940,6 +940,7 @@
     "source_language": "Lingua di origine",
     "retry_failed": "Riprova {{count}} non riuscite",
     "skip_failed": "Salta non riuscite",
+    "keep_source_text": "Mantieni il testo originale (senza traduzione)",
     "transcript_after_extract": "La trascrizione appare dopo l'estrazione.",
     "qc_btn": "Verifica i tempi di duplicazione (controllo del secondo passaggio)",
     "verify": "Verifica",

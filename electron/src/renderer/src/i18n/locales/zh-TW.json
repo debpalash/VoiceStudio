@@ -940,6 +940,7 @@
     "source_language": "來源語言",
     "retry_failed": "重試 {{count}} 個失敗項目",
     "skip_failed": "跳過失敗項目",
+    "keep_source_text": "保留原文（不翻譯）",
     "transcript_after_extract": "擷取完成後將顯示逐字稿。",
     "qc_btn": "驗證配音時序（第二遍檢視）",
     "verify": "驗證",
