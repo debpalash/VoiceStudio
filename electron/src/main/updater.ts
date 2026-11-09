@@ -3,7 +3,7 @@ import updaterPackage, { type ProgressInfo, type UpdateInfo } from 'electron-upd
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isTrustedRenderer } from './trusted-renderer';
-import type { UpdateReleaseInfo, UpdateState } from '../preload/index.d';
+import type { UpdateErrorKind, UpdateReleaseInfo, UpdateState } from '../preload/index.d';
 import { sendToLiveWindow } from './window-safety';
 import { applicationUpdatesUnsupportedReason, CURRENT_DISTRIBUTION } from './distribution';
 import type { DistributionTarget } from '../../../config/distributions.mjs';
@@ -150,24 +150,99 @@ export async function resolveLatestRelease(
   return { tag, assets: releaseAssets((release as Record<string, unknown>).assets) };
 }
 
-const CHANNEL_FILE = 'updates.json';
+const PREFS_FILE = 'updates.json';
 
-/** Anything but an explicit "beta" (including the retired "preview") is Stable. */
-export function readSavedUpdateChannel(userData: string = app.getPath('userData')): UpdateChannel {
+/** Update preferences and bookkeeping, kept together in `updates.json`. */
+interface UpdatePrefs {
+  channel?: string;
+  /** Absent means on: a found update downloads in the background. */
+  autoDownload?: boolean;
+  /** The version the user chose "Later" for. */
+  dismissedVersion?: string;
+  /** Set just before an install; the next launch checks it took effect. */
+  pendingVersion?: string;
+}
+
+function readUpdatePrefs(userData: string = app.getPath('userData')): UpdatePrefs {
   try {
-    const saved: unknown = JSON.parse(readFileSync(join(userData, CHANNEL_FILE), 'utf8'));
-    return saved && (saved as Record<string, unknown>).channel === 'beta' ? 'beta' : 'stable';
+    const saved: unknown = JSON.parse(readFileSync(join(userData, PREFS_FILE), 'utf8'));
+    if (!saved || typeof saved !== 'object') return {};
+    const item = saved as Record<string, unknown>;
+    const text = (value: unknown) => (typeof value === 'string' && value ? value : undefined);
+    return {
+      channel: text(item.channel),
+      autoDownload: typeof item.autoDownload === 'boolean' ? item.autoDownload : undefined,
+      dismissedVersion: text(item.dismissedVersion),
+      pendingVersion: text(item.pendingVersion),
+    };
   } catch {
-    return 'stable';
+    return {};
   }
 }
 
-function saveUpdateChannel(channel: UpdateChannel, userData: string = app.getPath('userData')) {
+/** Merges `patch` into the saved preferences; an undefined field is removed. */
+function saveUpdatePrefs(patch: UpdatePrefs, userData: string = app.getPath('userData')) {
   try {
-    writeFileSync(join(userData, CHANNEL_FILE), JSON.stringify({ channel }));
+    writeFileSync(
+      join(userData, PREFS_FILE),
+      JSON.stringify({ ...readUpdatePrefs(userData), ...patch }),
+    );
   } catch {
     // Best effort: the choice still applies for this session.
   }
+}
+
+/** Anything but an explicit "beta" (including the retired "preview") is Stable. */
+export function readSavedUpdateChannel(userData: string = app.getPath('userData')): UpdateChannel {
+  return readUpdatePrefs(userData).channel === 'beta' ? 'beta' : 'stable';
+}
+
+/**
+ * Whether quitting installs a downloaded update. macOS (Squirrel), Windows
+ * (NSIS) and the AppImage replace themselves silently on quit. A .deb install
+ * needs an administrator prompt, which must not appear after the window is
+ * gone, so it installs only from an explicit restart.
+ */
+export function installsOnQuit(
+  platform: NodeJS.Platform = process.platform,
+  appImage: string | undefined = process.env.APPIMAGE,
+): boolean {
+  return platform === 'darwin' || platform === 'win32' || (platform === 'linux' && !!appImage);
+}
+
+/** -1, 0 or 1; versions this app never tags compare by equality only. */
+export function compareAppVersions(left: string, right: string): number {
+  const a = releaseRank(`v${left.replace(/^v/, '')}`);
+  const b = releaseRank(`v${right.replace(/^v/, '')}`);
+  if (!a || !b) return left === right ? 0 : -1;
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] !== b[index]) return a[index] < b[index] ? -1 : 1;
+  }
+  return 0;
+}
+
+// electron-updater's sha512 check, the Windows publisher check and Squirrel's
+// code-signature check all fail with one of these words.
+const VERIFY_FAILURE =
+  /sha-?512|sha-?256|checksum|signature|not signed|signed by|code ?sign|verif|integrity/i;
+
+function errorText(error: unknown): string {
+  const parts: string[] = [];
+  for (let current = error, depth = 0; current && depth < 4; depth += 1) {
+    const message = (current as { message?: unknown }).message;
+    parts.push(typeof message === 'string' ? message : String(current));
+    current = (current as { cause?: unknown }).cause;
+  }
+  return parts.join(' ');
+}
+
+/** Which step an update failure belongs to, so the UI can say what went wrong. */
+export function classifyUpdateError(
+  error: unknown,
+  phase: 'check' | 'download' | 'install',
+): UpdateErrorKind {
+  if (phase !== 'check' && VERIFY_FAILURE.test(errorText(error))) return 'verify';
+  return phase;
 }
 
 export async function resolveUpdateFeedUrl(
@@ -236,6 +311,8 @@ export const UPDATE_CHANNELS = {
   check: 'updates:check',
   download: 'updates:download',
   dismiss: 'updates:dismiss',
+  later: 'updates:later',
+  setAutoDownload: 'updates:setAutoDownload',
   install: 'updates:install',
   listReleases: 'updates:listReleases',
   setChannel: 'updates:setChannel',
@@ -386,6 +463,10 @@ export class DesktopUpdater {
   // that hidden check does not flip the visible state back to "available".
   private silentCheck = false;
   private lastCheckFailed = false;
+  private lastDownloadFailed = false;
+  private autoDownload = true;
+  private installOnQuit = false;
+  private installing = false;
   private differentialDisabledByDefault = false;
 
   constructor(
@@ -408,8 +489,31 @@ export class DesktopUpdater {
     };
     if (!supported) return;
 
+    const prefs = readUpdatePrefs();
+    this.autoDownload = prefs.autoDownload !== false;
+    this.installOnQuit = installsOnQuit();
+    this.state = {
+      ...this.state,
+      autoDownload: this.autoDownload,
+      installOnQuit: this.installOnQuit,
+      dismissedVersion: prefs.dismissedVersion,
+    };
+    // An install was started last session: it either took effect or did not.
+    if (prefs.pendingVersion) {
+      saveUpdatePrefs({ pendingVersion: undefined });
+      if (compareAppVersions(this.state.currentVersion, prefs.pendingVersion) < 0)
+        this.state = {
+          ...this.state,
+          status: 'error',
+          errorKind: 'not-applied',
+          availableVersion: prefs.pendingVersion,
+        };
+    }
+
+    // DesktopUpdater decides when to download (see check()); electron-updater
+    // only installs a downloaded update when the app quits.
     autoUpdater.autoDownload = false;
-    autoUpdater.autoInstallOnAppQuit = false;
+    autoUpdater.autoInstallOnAppQuit = this.installOnQuit;
     autoUpdater.allowDowngrade = false;
     // The NSIS installer is not a web installer; this also silences the
     // per-download warning electron-updater logs otherwise.
@@ -425,6 +529,7 @@ export class DesktopUpdater {
         bytesPerSecond: undefined,
         etaSeconds: undefined,
         error: undefined,
+        errorKind: undefined,
       });
     });
     autoUpdater.on('update-available', (info) => {
@@ -439,6 +544,7 @@ export class DesktopUpdater {
         etaSeconds: undefined,
         lastCheckedAt: Date.now(),
         error: undefined,
+        errorKind: undefined,
       });
     });
     autoUpdater.on('update-not-available', () => {
@@ -454,6 +560,7 @@ export class DesktopUpdater {
         etaSeconds: undefined,
         lastCheckedAt: Date.now(),
         error: undefined,
+        errorKind: undefined,
       });
     });
     autoUpdater.on('download-progress', (progress: ProgressInfo) => {
@@ -484,12 +591,24 @@ export class DesktopUpdater {
         bytesPerSecond: undefined,
         etaSeconds: 0,
         error: undefined,
+        errorKind: undefined,
       });
     });
     autoUpdater.on('error', (error) => {
       // A running check/download reports (or retries) its own failure.
       if (this.operating) return;
-      this.patch({ status: 'error', error: error.message || String(error) });
+      const phase =
+        this.installing || this.state.status === 'downloaded'
+          ? 'install'
+          : this.state.status === 'downloading'
+            ? 'download'
+            : 'check';
+      this.installing = false;
+      this.patch({
+        status: 'error',
+        error: error?.message || String(error),
+        errorKind: classifyUpdateError(error, phase),
+      });
     });
     if (this.distribution !== 'microsoft-store')
       this.configureFeed({ url: STABLE_FEED, channel: feedChannelName() });
@@ -508,7 +627,10 @@ export class DesktopUpdater {
     if (
       !this.updatesSupported() ||
       this.downloadInFlight ||
-      ['downloading', 'downloaded'].includes(this.state.status)
+      ['downloading', 'downloaded'].includes(this.state.status) ||
+      // An update that did not apply waits for the user, so a background
+      // check cannot loop it through download and install again.
+      (quiet && this.state.errorKind === 'not-applied')
     )
       return this.snapshot();
     if (this.checkInFlight) return this.checkInFlight;
@@ -522,7 +644,9 @@ export class DesktopUpdater {
       bytesPerSecond: undefined,
       etaSeconds: undefined,
       error: undefined,
+      errorKind: undefined,
     });
+    let offered = false;
     const operation = (async () => {
       try {
         // Set once the feed is resolved, so only a failure of the release
@@ -560,6 +684,7 @@ export class DesktopUpdater {
         if (this.state.status === 'checking') {
           this.patch({ status: 'idle', lastCheckedAt: Date.now() });
         }
+        offered = this.state.status === 'available';
       } catch (error) {
         this.lastCheckFailed = true;
         if (quiet) {
@@ -569,20 +694,32 @@ export class DesktopUpdater {
           this.patch({
             status: 'error',
             error: error instanceof Error ? error.message : String(error),
+            errorKind: 'check',
           });
       }
       return this.snapshot();
     })();
     this.checkInFlight = operation;
+    let result: UpdateState;
     try {
-      return await operation;
+      result = await operation;
     } finally {
       this.operating = false;
       if (this.checkInFlight === operation) this.checkInFlight = null;
     }
+    // A found update downloads and verifies in the background; a background
+    // check keeps a network failure of that download quiet, too.
+    if (offered && this.autoDownload && this.state.status === 'available')
+      void this.download({ quiet });
+    return result;
   }
 
-  async download(): Promise<UpdateState> {
+  /**
+   * Downloads the offered update. `quiet` (background) downloads return to
+   * "available" on a network failure instead of showing an error; the check
+   * schedule retries them later.
+   */
+  async download({ quiet = false }: { quiet?: boolean } = {}): Promise<UpdateState> {
     if (!this.updatesSupported() || this.checkInFlight || this.state.status !== 'available')
       return this.snapshot();
     if (this.downloadInFlight) return this.downloadInFlight;
@@ -595,19 +732,37 @@ export class DesktopUpdater {
         bytesPerSecond: undefined,
         etaSeconds: undefined,
         error: undefined,
+        errorKind: undefined,
       });
+      // A network failure stays quiet even when its asset-route fallback then
+      // fails another way (an API rate limit, say).
+      let networkFailure = false;
       try {
         try {
           await this.withRetry(this.retryDelaysMs.slice(0, 1), () => this.watchedDownload());
         } catch (error) {
+          networkFailure = isTransientUpdateError(error);
           if (!this.feed || !this.canUseAssetRoute(error)) throw error;
           await this.downloadThroughAssetRoute(this.feed);
         }
       } catch (error) {
-        this.patch({
-          status: 'error',
-          error: error instanceof Error ? error.message : String(error),
-        });
+        this.lastDownloadFailed = true;
+        const errorKind = classifyUpdateError(error, 'download');
+        // A failed verification always shows, even after a network fallback.
+        if (quiet && errorKind !== 'verify' && (networkFailure || isTransientUpdateError(error)))
+          this.patch({
+            status: 'available',
+            progress: 0,
+            transferredBytes: 0,
+            bytesPerSecond: undefined,
+            etaSeconds: undefined,
+          });
+        else
+          this.patch({
+            status: 'error',
+            error: error instanceof Error ? error.message : String(error),
+            errorKind,
+          });
       }
       return this.snapshot();
     })();
@@ -620,11 +775,16 @@ export class DesktopUpdater {
     }
   }
 
-  /** A background check; resolves false when it failed, for the check schedule. */
+  /**
+   * A background check, and the download it starts; resolves false when
+   * either failed, so the check schedule retries sooner.
+   */
   async checkInBackground(): Promise<boolean> {
     this.lastCheckFailed = false;
+    this.lastDownloadFailed = false;
     await this.check(true);
-    return !this.lastCheckFailed;
+    if (this.downloadInFlight) await this.downloadInFlight;
+    return !this.lastCheckFailed && !this.lastDownloadFailed;
   }
 
   /**
@@ -683,14 +843,23 @@ export class DesktopUpdater {
         stalled(downloadStalledError(this.stallTimeoutMs));
       }, this.stallTimeoutMs);
     };
+    let received = false;
     const onProgress = (progress: ProgressInfo) => {
       const bytes = Number(progress?.transferred) || 0;
-      if (bytes > transferred) {
+      if (bytes > transferred && !received) {
         transferred = bytes;
         arm();
       }
     };
+    // Every byte is in and verified; on macOS the download then hands the file
+    // to Squirrel.Mac (install on quit) without progress events, so the
+    // watchdog stops here.
+    const onDownloaded = () => {
+      received = true;
+      clearTimeout(timer);
+    };
     autoUpdater.on('download-progress', onProgress);
+    autoUpdater.on('update-downloaded', onDownloaded);
     arm();
     try {
       const download = autoUpdater.downloadUpdate(token);
@@ -700,6 +869,7 @@ export class DesktopUpdater {
     } finally {
       clearTimeout(timer);
       autoUpdater.removeListener('download-progress', onProgress);
+      autoUpdater.removeListener('update-downloaded', onDownloaded);
     }
   }
 
@@ -723,9 +893,46 @@ export class DesktopUpdater {
       progress: 0,
       channel: this.state.channel,
       lastCheckedAt: this.state.lastCheckedAt,
+      autoDownload: this.state.autoDownload,
+      installOnQuit: this.state.installOnQuit,
+      dismissedVersion: this.state.dismissedVersion,
     };
     this.emit();
     return this.snapshot();
+  }
+
+  /** "Later": stop prompting for this version. It still installs on quit. */
+  later(): UpdateState {
+    const version = this.state.availableVersion;
+    if (!this.updatesSupported() || !version) return this.snapshot();
+    saveUpdatePrefs({ dismissedVersion: version });
+    this.patch({ dismissedVersion: version });
+    return this.snapshot();
+  }
+
+  /** Turning automatic downloads on starts one for an update already offered. */
+  setAutoDownload(enabled: boolean): UpdateState {
+    if (!this.updatesSupported()) return this.snapshot();
+    this.autoDownload = enabled;
+    saveUpdatePrefs({ autoDownload: enabled });
+    this.patch({ autoDownload: enabled });
+    if (enabled && this.state.status === 'available') void this.download({ quiet: true });
+    return this.snapshot();
+  }
+
+  /**
+   * Called as the app quits. Records the version a quit is about to install,
+   * so the next launch can tell whether it applied; `install` false (a
+   * relaunch or uninstall exit) skips the install-on-quit for this quit.
+   */
+  prepareForQuit(install = true): void {
+    if (!this.updatesSupported()) return;
+    if (!install) {
+      autoUpdater.autoInstallOnAppQuit = false;
+      return;
+    }
+    if (this.installOnQuit && this.state.status === 'downloaded' && this.state.availableVersion)
+      saveUpdatePrefs({ pendingVersion: this.state.availableVersion });
   }
 
   /** Switches channel. Refused mid-download; clears any offer from the old channel. */
@@ -738,7 +945,7 @@ export class DesktopUpdater {
     )
       return this.snapshot();
     this.channel = channel;
-    saveUpdateChannel(channel);
+    saveUpdatePrefs({ channel });
     if (!this.updatesSupported()) {
       this.patch({ channel });
       return this.snapshot();
@@ -748,6 +955,9 @@ export class DesktopUpdater {
       currentVersion: this.state.currentVersion,
       progress: 0,
       channel,
+      autoDownload: this.state.autoDownload,
+      installOnQuit: this.state.installOnQuit,
+      dismissedVersion: this.state.dismissedVersion,
     };
     this.emit();
     return this.snapshot();
@@ -755,7 +965,20 @@ export class DesktopUpdater {
 
   install(): void {
     if (!this.updatesSupported() || this.state.status !== 'downloaded') return;
-    autoUpdater.quitAndInstall(false, true);
+    if (this.state.availableVersion)
+      saveUpdatePrefs({ pendingVersion: this.state.availableVersion });
+    this.installing = true;
+    try {
+      autoUpdater.quitAndInstall(false, true);
+    } catch (error) {
+      this.installing = false;
+      saveUpdatePrefs({ pendingVersion: undefined });
+      this.patch({
+        status: 'error',
+        error: error instanceof Error ? error.message : String(error),
+        errorKind: classifyUpdateError(error, 'install'),
+      });
+    }
   }
 
   private configureFeed(feed: UpdateFeed, viaApi = false): void {
@@ -844,6 +1067,15 @@ export function registerUpdateIpc(
   ipcMain.handle(UPDATE_CHANNELS.dismiss, (event) => {
     trusted(event);
     return updater.dismiss();
+  });
+  ipcMain.handle(UPDATE_CHANNELS.later, (event) => {
+    trusted(event);
+    return updater.later();
+  });
+  ipcMain.handle(UPDATE_CHANNELS.setAutoDownload, (event, enabled: unknown) => {
+    trusted(event);
+    if (typeof enabled !== 'boolean') throw new Error('Invalid automatic download setting');
+    return updater.setAutoDownload(enabled);
   });
   ipcMain.handle(UPDATE_CHANNELS.install, async (event) => {
     trusted(event);

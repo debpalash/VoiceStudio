@@ -24,6 +24,7 @@ vi.mock('@/features/clone/engine-language-picker', () => ({
 vi.mock('@/features/clone/quality-controls', () => ({
   QualityControls: () => <button type="button">Standard</button>,
 }));
+vi.mock('@/features/clone/quality-offer', () => ({ QualityOffer: () => null }));
 vi.mock('@/features/clone/action-bar', () => ({
   VoiceControls: () => <button type="button">Voice controls</button>,
 }));

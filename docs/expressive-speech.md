@@ -117,9 +117,11 @@ parentheses; details in [generation-parameters.md](generation-parameters.md)):
 - `position_temperature` (5.0) and `class_temperature` (0.0) — 0 is greedy;
   higher is more random, which means more expressive variation *and* more
   artifacts.
-- `num_step` — the Voice page defaults to 16 (fast); Audiobook renders default
-  to 32 (cleaner), overridable in the Audiobook panel. Fewer steps = rougher,
-  occasionally more "human-sounding" edges.
+- `num_step` — Voice and Design default to the engine's best quality (32 for
+  OmniVoice, see [audio-quality.md](audio-quality.md)) and offer faster settings
+  only when a take is measured to be slow; Audiobook renders default to 32,
+  overridable in the Audiobook panel. Fewer steps = rougher, occasionally more
+  "human-sounding" edges.
 - **Seed** — unpinned by default, so every render differs. The history rail
   shows the seed each take used; "Keep this seed" (Design tab) or locking a
   profile from history pins reference + seed, making the voice

@@ -135,5 +135,5 @@ successful exit means the upload was accepted, not that a clean scan completed.
 - **Do not expose VoiceStudio beyond loopback without authentication.** The API is unauthenticated on loopback by default. Before remote access, set `OMNIVOICE_API_KEY` (or enable the in-app share PIN for LAN guests) as described in [API authentication](../docs/api-auth.md), and use TLS through a reverse proxy or a private network such as Tailscale.
 - **Browser access is limited to VoiceStudio's own interface.** Other websites cannot send requests to the local API, and requests must address it by `localhost`, an IP address or a configured host name (`OMNIVOICE_ALLOWED_HOSTS`); see [API authentication](../docs/api-auth.md#requests-from-other-websites-and-host-names).
 - **URL imports fetch public addresses only.** Set `OMNIVOICE_ALLOW_PRIVATE_URL_IMPORTS=1` only if you need to import from a server on your own network.
-- **Keep your installation updated.** The desktop app auto-checks for updates via the built-in updater.
+- **Keep your installation updated.** The desktop app checks for updates via the built-in updater, downloads and verifies them in the background (Settings → Updates can turn that off), and installs them on restart or quit.
 - **Review model sources.** Only download models from trusted Hugging Face repositories.
