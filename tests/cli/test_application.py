@@ -25,7 +25,8 @@ def asar(path, metadata):
 class ApplicationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(); self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        # The CLI resolves executables (symlinks, macOS /private, Windows 8.3 names).
+        self.root = Path(self.temp.name).resolve()
         environment = patch.dict(os.environ, {'VOICESTUDIO_CONFIG': str(self.root / 'config.json')})
         environment.start(); self.addCleanup(environment.stop)
 

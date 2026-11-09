@@ -28,7 +28,8 @@ class DesktopTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        # The CLI resolves executables (symlinks, macOS /private, Windows 8.3 names).
+        self.root = Path(self.temp.name).resolve()
         self.env = patch.dict(os.environ, {
             'VOICESTUDIO_CONFIG': str(self.root / 'config.json'),
             'VOICESTUDIO_DESKTOP_APP': str(self.root / 'missing'),
@@ -177,7 +178,8 @@ class InstallTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.root = Path(self.temp.name)
+        # The CLI resolves executables (symlinks, macOS /private, Windows 8.3 names).
+        self.root = Path(self.temp.name).resolve()
         self.bin = self.root / 'bin'
         self.bin.mkdir()
         self.target = self.bin / ('voicestudio.exe' if sys.platform == 'win32' else 'voicestudio')
