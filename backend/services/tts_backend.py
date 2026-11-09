@@ -1728,6 +1728,30 @@ def _get_clone_prompt(
                 )
 
 
+def backend_accepts_seed(backend) -> bool:
+    """Whether this adapter accepts a per-request ``seed`` kwarg."""
+    return bool(
+        getattr(backend, "supports_native_omnivoice_controls", False)
+        or getattr(backend, "supports_generation_seed", False)
+    )
+
+
+def seed_engine_call(seed, backend=None) -> dict:
+    """Seed one engine call of a take; returns the kwargs to forward.
+
+    A take's seed identifies its voice (a Voice Design speaker, #3254 /
+    #3413), so every call that renders part of one take — each chunk of a
+    long text, each ``[pause]`` span, each Batch segment — restarts from that
+    same seed. Advancing it per call rotated through speakers mid-take
+    (#3730). The in-process RNG is re-seeded, and an out-of-process engine
+    that accepts a seed gets it with every call, not just the first.
+    """
+    if seed is None:
+        return {}
+    torch.manual_seed(seed)
+    return {"seed": seed} if backend is not None and backend_accepts_seed(backend) else {}
+
+
 def generate_with_cached_ref(model, *, ref_audio, ref_text, **gen_kw):
     """``model.generate()`` with the reference clip encoded once, not once per call.
 
