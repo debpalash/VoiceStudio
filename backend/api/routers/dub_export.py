@@ -2213,6 +2213,9 @@ async def dub_export_ass(
     )
 
 
+_ZIP_SNAPSHOT_PREFIX = ".zip-snapshot-"
+
+
 def _snapshot_zip_entries(
     job_id: str,
     entries: list[tuple[str, str]],
@@ -2228,7 +2231,20 @@ def _snapshot_zip_entries(
     """
     from services.dub_pipeline import _dub_jobs_lock
 
-    snap_dir = tempfile.mkdtemp(prefix=".zip-snapshot-", dir=_job_dir_or_400(job_id))
+    job_dir = _job_dir_or_400(job_id)
+    # A crash mid-download leaves its snapshot behind; drop day-old ones here.
+    try:
+        with os.scandir(job_dir) as scan:
+            for entry in scan:
+                if (
+                    entry.name.startswith(_ZIP_SNAPSHOT_PREFIX)
+                    and entry.is_dir(follow_symlinks=False)
+                    and time.time() - entry.stat(follow_symlinks=False).st_mtime > 86400
+                ):
+                    shutil.rmtree(entry.path, ignore_errors=True)
+    except OSError:
+        pass
+    snap_dir = tempfile.mkdtemp(prefix=_ZIP_SNAPSHOT_PREFIX, dir=job_dir)
     kept: list[tuple[str, str]] = []
     try:
         with _dub_jobs_lock:
@@ -2238,8 +2254,10 @@ def _snapshot_zip_entries(
                     if not stat.S_ISREG(os.lstat(source).st_mode):
                         raise FileNotFoundError(source)  # symlink or non-file
                     try:
-                        os.link(source, target, follow_symlinks=False)
-                    except (OSError, NotImplementedError) as exc:
+                        # No follow_symlinks argument: Windows does not accept it,
+                        # and the source was just checked to be a regular file.
+                        os.link(source, target)
+                    except OSError as exc:
                         if isinstance(exc, FileNotFoundError):
                             raise
                         logger.info("Dub ZIP snapshot copying: hard link unavailable (%s)", type(exc).__name__)

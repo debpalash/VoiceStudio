@@ -2,6 +2,8 @@
 import asyncio
 import importlib.util
 import io
+import os
+import time
 import random
 from pathlib import Path
 import sys
@@ -335,3 +337,23 @@ def test_dub_zip_removes_snapshot_dir(export_module, monkeypatch, tmp_path, fail
     with pytest.raises(RuntimeError if failure == "compression" else ClientDisconnect):
         asyncio.run(download())
     assert not list(tmp_path.glob(".zip-snapshot-*"))
+
+
+def test_zip_snapshot_drops_day_old_leftovers(export_module, monkeypatch, tmp_path):
+    """A snapshot left by a crashed download is removed by the next export; a fresh one is kept."""
+    module = export_module
+    audio = tmp_path / "voice.wav"
+    audio.write_bytes(b"voice")
+    stale = tmp_path / ".zip-snapshot-stale"
+    fresh = tmp_path / ".zip-snapshot-fresh"
+    for leftover in (stale, fresh):
+        leftover.mkdir()
+        (leftover / "0001").write_bytes(b"old")
+    old = time.time() - 2 * 86400
+    os.utime(stale, (old, old))
+    monkeypatch.setattr(module, "_job_dir_or_400", lambda _: str(tmp_path))
+    snap_dir, kept = module._snapshot_zip_entries("job", [(str(audio), "voice.wav")])
+    assert not stale.exists()
+    assert fresh.exists()
+    assert [name for _, name in kept] == ["voice.wav"]
+    assert Path(snap_dir).parent == tmp_path
