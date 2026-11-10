@@ -4728,5 +4728,16 @@
     "check_failed": "Could not complete the check for {{host}}. Details are in the setup log.",
     "check_unavailable": "No package download is available to check yet.",
     "connection_error": "The package download connection failed. Resume to try again; completed downloads are kept."
+  },
+  "videoExport": {
+    "title": "Video export",
+    "encoder": "Video encoder",
+    "encoder_note": "Software (CPU) works the same everywhere. Hardware uses your graphics card's encoder when ffmpeg offers one, and falls back to software if it fails.",
+    "encoder_detected": "Hardware encoder found: {{names}}. If it fails, the export falls back to software.",
+    "encoder_software": "Software (CPU)",
+    "encoder_hardware": "Hardware when available",
+    "max_resolution": "Maximum resolution",
+    "max_resolution_note": "Larger videos are scaled down when exported. Smaller videos are never enlarged.",
+    "res_original": "Original"
   }
 }

@@ -55,6 +55,7 @@ GET /api/settings/perf/torch-compile-disabled
 GET /api/settings/performance-profile
 GET /api/settings/storage
 GET /api/settings/storage/models-dir
+GET /api/settings/video-export
 GET /archetypes
 GET /archetypes/categories
 GET /archetypes/previews/status
@@ -359,6 +360,7 @@ PUT /api/settings/perf/offload-after-generation
 PUT /api/settings/perf/torch-compile-disabled
 PUT /api/settings/performance-profile
 PUT /api/settings/storage/models-dir
+PUT /api/settings/video-export
 PUT /archetypes/previews
 PUT /calls/settings
 PUT /glossary/{project_id}/{term_id}

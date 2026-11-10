@@ -5,6 +5,7 @@ import { PrivacySettings } from './privacy-settings';
 import { AccountSettings } from './account-settings';
 import { useAccount } from '@/features/account/use-account';
 import { PerformanceSettings } from './performance-settings';
+import { VideoExportSettings } from './video-export-settings';
 import { CredentialSettings } from './credential-settings';
 import { NetworkSettings } from './network-settings';
 import { SharingSettings } from './sharing-settings';
@@ -52,6 +53,7 @@ function PerformanceAndPythonSettings() {
     <>
       <ExistingPythonSettings />
       <PerformanceSettings />
+      <VideoExportSettings />
     </>
   );
 }
@@ -146,6 +148,8 @@ const extraSettings = [
       'setup.system_preflight',
       'settings.perf_torch_compile',
       'settings.generate_budget_title',
+      'videoExport.title',
+      'videoExport.max_resolution',
     ],
   },
   {

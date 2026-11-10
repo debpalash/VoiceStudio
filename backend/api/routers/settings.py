@@ -285,6 +285,54 @@ def set_pause_fill(body: _PauseFillBody):
     return _pause_fill_state()
 
 
+# ── Dub video export: encoder + maximum resolution (#3732) ────────────────
+
+
+class _VideoExportBody(BaseModel):
+    encoder: Literal["software", "hardware"] | None = Field(
+        None, description="software: libx264 (default); hardware: NVENC/QSV/AMF/VideoToolbox when available",
+    )
+    max_resolution: Literal["original", "2160p", "1440p", "1080p", "720p"] | None = Field(
+        None, description="Cap for dub exports; only ever downscales. original = no cap",
+    )
+
+
+def _video_export_state() -> dict:
+    from services import video_encoder
+    from services.ffmpeg_utils import find_ffmpeg
+
+    ffmpeg = find_ffmpeg()
+    return {
+        "encoder": video_encoder.encoder_mode(),
+        "max_resolution": video_encoder.max_resolution(),
+        "hardware_encoders": list(video_encoder.available_hw_encoders(ffmpeg)) if ffmpeg else [],
+        "resolutions": list(video_encoder.MAX_RESOLUTIONS),
+    }
+
+
+@router.get("/video-export")
+def get_video_export():
+    """How dub video exports are encoded and capped."""
+    return _video_export_state()
+
+
+@router.put("/video-export")
+def set_video_export(body: _VideoExportBody):
+    """Persist either field. Applies from the next export, no restart."""
+    from core import prefs
+    from services import video_encoder
+
+    try:
+        if body.encoder is not None:
+            prefs.set_(video_encoder.ENCODER_PREF, body.encoder)
+        if body.max_resolution is not None:
+            prefs.set_(video_encoder.MAX_RES_PREF, body.max_resolution)
+    except Exception:
+        logger.exception("set_video_export failed")
+        raise HTTPException(status_code=500, detail="Failed to persist setting")
+    return _video_export_state()
+
+
 # ── Compute-device override (Settings → Performance) ──────────────────────
 
 

@@ -4728,5 +4728,16 @@
     "check_failed": "无法完成对 {{host}} 的检查。详情请查看安装日志。",
     "check_unavailable": "目前还没有可供检查的软件包下载。",
     "connection_error": "软件包下载连接失败。请继续安装以重试；已完成的下载会保留。"
+  },
+  "videoExport": {
+    "title": "视频导出",
+    "encoder": "视频编码器",
+    "encoder_note": "软件(CPU)在所有系统上表现一致。硬件会在 ffmpeg 提供时使用显卡的编码器,失败时回退到软件。",
+    "encoder_detected": "找到硬件编码器:{{names}}。如果失败,导出会回退到软件编码。",
+    "encoder_software": "软件(CPU)",
+    "encoder_hardware": "有硬件时使用硬件",
+    "max_resolution": "最大分辨率",
+    "max_resolution_note": "导出时会缩小更大的视频,较小的视频不会被放大。",
+    "res_original": "原始"
   }
 }

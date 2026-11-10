@@ -42,6 +42,7 @@ from dataclasses import dataclass
 # Module access (not ``from core.config import DUB_DIR``) so the containment
 # guards below read the live value — tests reload core.config with a
 # sandboxed data dir.
+from services import video_encoder
 from services.ffmpeg_utils import probe_duration, probe_frame_rates, run_ffmpeg
 
 logger = logging.getLogger("omnivoice.api")
@@ -70,6 +71,17 @@ H264_SIZE_FILTER = "pad=ceil(iw/2)*2:ceil(ih/2)*2"
 
 VIDEO_ENC_ARGS = ("-c:v", "libx264", "-preset", "medium", "-crf", "20",
                   "-pix_fmt", "yuv420p")
+
+
+def _slice_encoder_args(ffmpeg: str) -> tuple[str, ...]:
+    """Slice encoder args: libx264 unless the user opted into hardware."""
+    try:
+        name = video_encoder.select_encoder(ffmpeg)
+    except Exception:  # noqa: BLE001 — never let a pref read break an export
+        return VIDEO_ENC_ARGS
+    if name == video_encoder.SOFTWARE:
+        return VIDEO_ENC_ARGS
+    return video_encoder.encoder_args(name)
 
 
 class RetimeError(Exception):
@@ -259,6 +271,10 @@ async def render_retimed_video(
 
     Raises :class:`RetimeError` on any failure (stage encode/concat/aborted).
     """
+    # One encoder for every slice (the concat join is ``-c copy``). Hardware
+    # is opt-in (#3732); if it fails on the first slice we drop to libx264
+    # for the whole render, and a later-slice failure is a normal failure.
+    enc_args = _slice_encoder_args(ffmpeg)
     # ``out_path`` is server-built (under DUB_DIR) by every caller, but
     # realpath-normalise + containment-check inline at the sink anyway so
     # slices_dir / slice_path / list_path all derive from the validated
@@ -308,7 +324,7 @@ async def render_retimed_video(
                 "-t", f"{win_dur + 0.5:.4f}",
                 "-i", video_path,
                 "-filter_complex", graph, "-map", label, "-an",
-                *VIDEO_ENC_ARGS,
+                *enc_args,
                 "-force_key_frames", "0",
                 slice_path,
             ]
@@ -316,6 +332,17 @@ async def render_retimed_video(
                 rc, _, stderr = await run_ffmpeg(
                     cmd, timeout=timeout_per_batch, job_id=job_id,
                 )
+                if rc > 0 and bi == 0 and enc_args != VIDEO_ENC_ARGS:
+                    logger.warning(
+                        "Hardware encoder %s failed on the first retime slice; "
+                        "using libx264: %s", enc_args[1],
+                        (stderr or b"").decode(errors="replace")[-300:],
+                    )
+                    cmd = video_encoder.replace_args(cmd, enc_args, VIDEO_ENC_ARGS)
+                    enc_args = VIDEO_ENC_ARGS
+                    rc, _, stderr = await run_ffmpeg(
+                        cmd, timeout=timeout_per_batch, job_id=job_id,
+                    )
             except asyncio.TimeoutError:
                 raise RetimeError(
                     f"retime batch {bi + 1}/{len(batches)} timed out",

@@ -4728,5 +4728,16 @@
     "check_failed": "{{host}} kontrolü tamamlanamadı. Ayrıntılar kurulum günlüğünde.",
     "check_unavailable": "Henüz kontrol edilecek bir paket indirmesi yok.",
     "connection_error": "Paket indirme bağlantısı başarısız oldu. Yeniden denemek için sürdürün; tamamlanan indirmeler korunur."
+  },
+  "videoExport": {
+    "title": "Video dışa aktarma",
+    "encoder": "Video kodlayıcı",
+    "encoder_note": "Yazılım (CPU) her yerde aynı çalışır. Donanım, ffmpeg sunuyorsa ekran kartınızın kodlayıcısını kullanır ve başarısız olursa yazılıma döner.",
+    "encoder_detected": "Donanım kodlayıcı bulundu: {{names}}. Başarısız olursa dışa aktarma yazılıma döner.",
+    "encoder_software": "Yazılım (CPU)",
+    "encoder_hardware": "Varsa donanım",
+    "max_resolution": "Azami çözünürlük",
+    "max_resolution_note": "Daha büyük videolar dışa aktarırken küçültülür. Daha küçük videolar asla büyütülmez.",
+    "res_original": "Orijinal"
   }
 }

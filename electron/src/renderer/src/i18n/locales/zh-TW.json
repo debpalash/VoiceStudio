@@ -4728,5 +4728,16 @@
     "check_failed": "無法完成對 {{host}} 的檢查。詳情請查看安裝記錄。",
     "check_unavailable": "目前還沒有可供檢查的套件下載。",
     "connection_error": "套件下載連線失敗。請繼續安裝以重試；已完成的下載會保留。"
+  },
+  "videoExport": {
+    "title": "影片匯出",
+    "encoder": "影片編碼器",
+    "encoder_note": "軟體(CPU)在所有系統上表現一致。硬體會在 ffmpeg 提供時使用顯示卡的編碼器,失敗時回退到軟體。",
+    "encoder_detected": "找到硬體編碼器:{{names}}。如果失敗,匯出會回退到軟體編碼。",
+    "encoder_software": "軟體(CPU)",
+    "encoder_hardware": "有硬體時使用硬體",
+    "max_resolution": "最大解析度",
+    "max_resolution_note": "匯出時會縮小較大的影片,較小的影片不會被放大。",
+    "res_original": "原始"
   }
 }

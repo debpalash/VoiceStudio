@@ -1,0 +1,160 @@
+"""Hardware video encoding opt-in and the maximum-resolution cap (#3732)."""
+import asyncio
+import shutil
+import subprocess
+
+import pytest
+
+from services import video_encoder as ve
+
+ENCODERS_OUT = """Encoders:
+ V....D libx264              libx264 H.264 / AVC
+ V....D h264_nvenc           NVIDIA NVENC H.264 encoder (codec h264)
+ V....D h264_qsv             H.264 (Intel Quick Sync Video acceleration)
+ V....D h264_videotoolbox    VideoToolbox H.264 Encoder
+ A....D aac                  AAC
+"""
+
+
+def test_parse_encoder_list_orders_by_platform(monkeypatch):
+    monkeypatch.setattr(ve.sys, "platform", "linux")
+    assert ve.parse_encoder_list(ENCODERS_OUT) == ["h264_nvenc", "h264_qsv"]
+    monkeypatch.setattr(ve.sys, "platform", "darwin")
+    assert ve.parse_encoder_list(ENCODERS_OUT) == ["h264_videotoolbox"]
+    assert ve.parse_encoder_list(" V....D libx264 x") == []
+
+
+def test_detection_runs_once_and_is_cached(monkeypatch):
+    monkeypatch.setattr(ve.sys, "platform", "linux")
+    monkeypatch.setattr(ve, "_detected", {})
+    calls = []
+
+    def fake_run(cmd, **kw):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, 0, ENCODERS_OUT, "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    assert ve.available_hw_encoders("/x/ffmpeg") == ("h264_nvenc", "h264_qsv")
+    assert ve.available_hw_encoders("/x/ffmpeg") == ("h264_nvenc", "h264_qsv")
+    assert len(calls) == 1 and calls[0][-1] == "-encoders"
+
+
+def test_selection_software_default_and_hardware_opt_in(monkeypatch):
+    monkeypatch.setattr(ve, "_detected", {"f": ("h264_nvenc",), "none": ()})
+    assert ve.select_encoder("f", "software") == "libx264"
+    assert ve.select_encoder("f", "hardware") == "h264_nvenc"
+    assert ve.select_encoder("none", "hardware") == "libx264"  # nothing listed
+    assert ve.encoder_args("libx264")[:2] == ("-c:v", "libx264")
+    assert "yuv420p" in ve.encoder_args("h264_nvenc")
+
+
+def test_default_pref_is_software(monkeypatch):
+    from core import prefs
+
+    monkeypatch.setattr(prefs, "get", lambda k, d=None: d)
+    assert ve.encoder_mode() == "software"
+    assert ve.max_resolution() == "original"
+    monkeypatch.setattr(prefs, "get", lambda k, d=None: "bogus")
+    assert ve.encoder_mode() == "software"
+    assert ve.max_resolution() == "original"
+
+
+def _runner(results):
+    seen = []
+
+    async def run(cmd):
+        seen.append(list(cmd))
+        return results[len(seen) - 1]
+
+    return run, seen
+
+
+def test_hardware_failure_retries_with_libx264(caplog):
+    enc = ve.encoder_args("h264_nvenc")
+    cmd = ["ffmpeg", "-i", "in.mp4", *enc, "-c:a", "aac", "out.mp4"]
+    run, seen = _runner([(1, b"", b"No NVENC capable devices"), (0, b"", b"")])
+    with caplog.at_level("WARNING"):
+        rc, _, _ = asyncio.run(ve.run_with_encoder_fallback(cmd, enc, run))
+    assert rc == 0 and len(seen) == 2
+    assert "h264_nvenc" in seen[0] and "h264_nvenc" not in seen[1]
+    assert "libx264" in seen[1] and seen[1][-1] == "out.mp4"
+    assert "No NVENC capable devices" in caplog.text
+
+
+def test_no_retry_for_software_failure_or_abort():
+    sw = ve.software_args()
+    run, seen = _runner([(1, b"", b"boom")])
+    assert asyncio.run(ve.run_with_encoder_fallback(["f", *sw], sw, run))[0] == 1
+    assert len(seen) == 1  # a software failure is a real failure
+    hw = ve.encoder_args("h264_amf")
+    run, seen = _runner([(-9, b"", b"")])
+    assert asyncio.run(ve.run_with_encoder_fallback(["f", *hw], hw, run))[0] == -9
+    assert len(seen) == 1  # aborted, not retried
+
+
+@pytest.mark.parametrize("w,h,limit,expected", [
+    (3840, 2160, "1080p", (1920, 1080)),
+    (1920, 1080, "1080p", (1920, 1080)),      # already inside: untouched
+    (1280, 720, "1080p", (1280, 720)),        # never upscales
+    (1080, 1920, "1080p", (1080, 1920)),      # portrait inside the box
+    (2160, 3840, "1080p", (1080, 1920)),      # portrait scaled by its long side
+    (4096, 2160, "1080p", (1920, 1012)),      # rounded down to even
+    (3840, 2160, "original", (3840, 2160)),
+    (1920, 1080, "720p", (1280, 720)),
+    (1281, 721, "2160p", (1281, 721)),        # odd source untouched when no scale
+])
+def test_capped_size(w, h, limit, expected):
+    out = ve.capped_size(w, h, limit)
+    assert out == expected
+    assert ve.needs_downscale(w, h, limit) == (out != (w, h))
+    if out != (w, h):
+        assert out[0] % 2 == 0 and out[1] % 2 == 0
+
+
+def test_scale_filter_shape():
+    assert ve.scale_filter("original") == ""
+    f = ve.scale_filter("1080p")
+    assert f.startswith("scale=w='") and ":h='" in f
+    assert "1920/max(iw,ih)" in f and "1080/min(iw,ih)" in f and "trunc(" in f
+
+
+@pytest.mark.parametrize("src,expected", [("1280x720", "960x540"), ("720x1280", "540x960"),
+                                           ("640x360", "640x360")])
+def test_scale_filter_matches_ffmpeg(tmp_path, src, expected):
+    ffmpeg, ffprobe = shutil.which("ffmpeg"), shutil.which("ffprobe")
+    if not ffmpeg or not ffprobe:
+        pytest.skip("ffmpeg needed")
+    # 960x540 box via the real filter template (limit values swapped in)
+    f = ve.scale_filter("1080p").replace("1920", "960").replace("1080", "540")
+    out = tmp_path / "o.mp4"
+    r = subprocess.run(
+        [ffmpeg, "-v", "error", "-y", "-f", "lavfi", "-i", f"testsrc=size={src}:rate=5:duration=0.4",
+         "-vf", f, "-c:v", "libx264", "-pix_fmt", "yuv420p", str(out)],
+        capture_output=True,
+    )
+    assert r.returncode == 0, r.stderr.decode(errors="replace")
+    p = subprocess.run([ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries",
+                        "stream=width,height", "-of", "csv=p=0", str(out)],
+                       capture_output=True, text=True)
+    w, h = p.stdout.strip().split(",")
+    assert f"{w}x{h}" == expected
+
+
+def test_settings_roundtrip(monkeypatch):
+    from pydantic import ValidationError
+
+    from api.routers import settings as sr
+    from core import prefs
+
+    store = {}
+    monkeypatch.setattr(prefs, "get", lambda k, d=None: store.get(k, d))
+    monkeypatch.setattr(prefs, "set_", lambda k, v: store.__setitem__(k, v))
+    monkeypatch.setattr("services.ffmpeg_utils.find_ffmpeg", lambda: None)
+    base = sr.get_video_export()
+    assert base["encoder"] == "software" and base["max_resolution"] == "original"
+    r = sr.set_video_export(sr._VideoExportBody(encoder="hardware", max_resolution="1080p"))
+    assert r["encoder"] == "hardware" and r["max_resolution"] == "1080p"
+    r = sr.set_video_export(sr._VideoExportBody(max_resolution="720p"))
+    assert r["encoder"] == "hardware" and r["max_resolution"] == "720p"
+    with pytest.raises(ValidationError):
+        sr._VideoExportBody(encoder="gpu")

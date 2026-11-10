@@ -4730,5 +4730,16 @@
     "check_failed": "Não foi possível concluir a verificação de {{host}}. Os detalhes estão no registro da instalação.",
     "check_unavailable": "Ainda não há um download de pacote disponível para verificar.",
     "connection_error": "A conexão de download do pacote falhou. Retome para tentar novamente; os downloads concluídos são preservados."
+  },
+  "videoExport": {
+    "title": "Exportação de vídeo",
+    "encoder": "Codificador de vídeo",
+    "encoder_note": "O software (CPU) funciona igual em todo lugar. O hardware usa o codificador da placa de vídeo quando o ffmpeg oferece um e volta ao software se falhar.",
+    "encoder_detected": "Codificador de hardware encontrado: {{names}}. Se falhar, a exportação volta ao software.",
+    "encoder_software": "Software (CPU)",
+    "encoder_hardware": "Hardware quando disponível",
+    "max_resolution": "Resolução máxima",
+    "max_resolution_note": "Vídeos maiores são reduzidos ao exportar. Vídeos menores nunca são ampliados.",
+    "res_original": "Original"
   }
 }

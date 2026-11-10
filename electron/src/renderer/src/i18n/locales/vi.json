@@ -4728,5 +4728,16 @@
     "check_failed": "Không thể hoàn tất kiểm tra {{host}}. Chi tiết có trong nhật ký thiết lập.",
     "check_unavailable": "Chưa có lượt tải gói nào để kiểm tra.",
     "connection_error": "Kết nối tải gói thất bại. Tiếp tục để thử lại; các bản tải xuống hoàn tất được giữ nguyên."
+  },
+  "videoExport": {
+    "title": "Xuất video",
+    "encoder": "Bộ mã hóa video",
+    "encoder_note": "Phần mềm (CPU) hoạt động giống nhau ở mọi nơi. Phần cứng dùng bộ mã hóa của card đồ họa khi ffmpeg cung cấp và quay lại phần mềm nếu thất bại.",
+    "encoder_detected": "Đã tìm thấy bộ mã hóa phần cứng: {{names}}. Nếu thất bại, quá trình xuất sẽ quay lại phần mềm.",
+    "encoder_software": "Phần mềm (CPU)",
+    "encoder_hardware": "Phần cứng khi có",
+    "max_resolution": "Độ phân giải tối đa",
+    "max_resolution_note": "Video lớn hơn sẽ được thu nhỏ khi xuất. Video nhỏ hơn không bao giờ bị phóng to.",
+    "res_original": "Gốc"
   }
 }

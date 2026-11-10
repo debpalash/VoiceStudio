@@ -4730,5 +4730,16 @@
     "check_failed": "Impossibile completare la verifica di {{host}}. I dettagli sono nel registro di configurazione.",
     "check_unavailable": "Non è ancora disponibile un download di pacchetto da verificare.",
     "connection_error": "La connessione di download del pacchetto non è riuscita. Riprendi per riprovare; i download completati vengono conservati."
+  },
+  "videoExport": {
+    "title": "Esportazione video",
+    "encoder": "Encoder video",
+    "encoder_note": "Il software (CPU) funziona allo stesso modo ovunque. L'hardware usa l'encoder della scheda grafica quando ffmpeg ne offre uno e torna al software se fallisce.",
+    "encoder_detected": "Encoder hardware trovato: {{names}}. Se fallisce, l'esportazione torna al software.",
+    "encoder_software": "Software (CPU)",
+    "encoder_hardware": "Hardware se disponibile",
+    "max_resolution": "Risoluzione massima",
+    "max_resolution_note": "I video più grandi vengono ridotti all'esportazione. Quelli più piccoli non vengono mai ingranditi.",
+    "res_original": "Originale"
   }
 }

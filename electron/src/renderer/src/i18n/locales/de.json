@@ -4728,5 +4728,16 @@
     "check_failed": "Die Prüfung für {{host}} konnte nicht abgeschlossen werden. Details stehen im Einrichtungsprotokoll.",
     "check_unavailable": "Es ist noch kein Paketdownload zum Prüfen verfügbar.",
     "connection_error": "Die Verbindung zum Paketdownload ist fehlgeschlagen. Zum erneuten Versuch fortsetzen; abgeschlossene Downloads bleiben erhalten."
+  },
+  "videoExport": {
+    "title": "Videoexport",
+    "encoder": "Video-Encoder",
+    "encoder_note": "Software (CPU) funktioniert überall gleich. Hardware nutzt den Encoder der Grafikkarte, wenn ffmpeg einen anbietet, und fällt bei einem Fehler auf Software zurück.",
+    "encoder_detected": "Hardware-Encoder gefunden: {{names}}. Bei einem Fehler wechselt der Export auf Software.",
+    "encoder_software": "Software (CPU)",
+    "encoder_hardware": "Hardware, wenn verfügbar",
+    "max_resolution": "Maximale Auflösung",
+    "max_resolution_note": "Größere Videos werden beim Export verkleinert. Kleinere Videos werden nie vergrößert.",
+    "res_original": "Original"
   }
 }

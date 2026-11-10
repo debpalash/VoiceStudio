@@ -4756,5 +4756,16 @@
     "check_failed": "Nie udało się ukończyć testu {{host}}. Szczegóły są w dzienniku konfiguracji.",
     "check_unavailable": "Nie ma jeszcze pobierania pakietu, które można sprawdzić.",
     "connection_error": "Połączenie pobierania pakietu nie powiodło się. Wznów, aby spróbować ponownie; ukończone pobrania zostają zachowane."
+  },
+  "videoExport": {
+    "title": "Eksport wideo",
+    "encoder": "Koder wideo",
+    "encoder_note": "Programowy (CPU) działa tak samo wszędzie. Sprzętowy używa kodera karty graficznej, gdy ffmpeg go oferuje, a przy błędzie wraca do programowego.",
+    "encoder_detected": "Znaleziono koder sprzętowy: {{names}}. Przy błędzie eksport wraca do programowego.",
+    "encoder_software": "Programowy (CPU)",
+    "encoder_hardware": "Sprzętowy, gdy dostępny",
+    "max_resolution": "Maksymalna rozdzielczość",
+    "max_resolution_note": "Większe filmy są zmniejszane przy eksporcie. Mniejsze nigdy nie są powiększane.",
+    "res_original": "Oryginalna"
   }
 }
