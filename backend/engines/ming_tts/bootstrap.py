@@ -95,7 +95,7 @@ def resolve_ming_tts_venv() -> Path:
         if cand.is_file():
             verdict = _venv_can_import(cand)
             if verdict == "yes":
-                logger.info("Ming-3.0-tts venv resolved from %s: %s", _CLONE_DIR_ENV, cand)
+                logger.info("Ming-3.0-tts venv resolved from %s: %s", _CLONE_DIR_ENV, log_safe(cand))
                 _resolved_python = cand
                 return cand
             if verdict == "unproven":
@@ -105,7 +105,7 @@ def resolve_ming_tts_venv() -> Path:
     if cand.is_file():
         verdict = _venv_can_import(cand)
         if verdict == "yes":
-            logger.info("Ming-3.0-tts venv resolved from engines path: %s", cand)
+            logger.info("Ming-3.0-tts venv resolved from engines path: %s", log_safe(cand))
             _resolved_python = cand
             return cand
         if verdict == "unproven" and unproven is None:
@@ -193,7 +193,7 @@ def _bootstrap_engines_venv(clone_dir: Path) -> Path:
 
     logger.info(
         "Bootstrapping Ming-3.0-tts venv at %s from %s (several minutes on first "
-        "launch)", _ENGINES_VENV_DIR, clone_dir,
+        "launch)", log_safe(_ENGINES_VENV_DIR), log_safe(clone_dir),
     )
     try:
         subprocess.run(
@@ -244,7 +244,7 @@ def _bootstrap_engines_venv(clone_dir: Path) -> Path:
             "See docs/engines/ming-tts.md."
         )
 
-    logger.info("Ming-3.0-tts venv bootstrap successful: %s", python_path)
+    logger.info("Ming-3.0-tts venv bootstrap successful: %s", log_safe(python_path))
     return python_path
 
 

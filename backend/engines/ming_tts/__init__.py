@@ -167,7 +167,9 @@ class MingTTSBackend(SubprocessBackend):
         declared = self._check_language(kw.get("language"))
         ref_audio = kw.get("ref_audio")
         if not ref_audio:
-            raise RuntimeError(
+            from services.tts_backend import TTSInputError
+
+            raise TTSInputError(
                 "Ming-3.0-tts requires a reference audio for voice cloning. "
                 "Pass ref_audio= with a path to a speaker reference clip."
             )

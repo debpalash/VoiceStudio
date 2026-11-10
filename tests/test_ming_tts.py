@@ -158,7 +158,7 @@ def test_clone_kwargs_are_forwarded(monkeypatch):
 
 def test_a_reference_clip_is_required(monkeypatch):
     _capture_generate(monkeypatch)
-    with pytest.raises(RuntimeError, match="reference audio"):
+    with pytest.raises(ValueError, match="reference audio"):
         _backend_cls()().generate("hello", ref_text="orphan")
 
 
