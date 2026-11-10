@@ -81,6 +81,37 @@ def test_status_not_installed_offers_size_and_licence(client, monkeypatch):
     assert (body["min_seconds"], body["max_seconds"]) == (1.0, 30.0)
 
 
+def test_missing_weights_report_not_installed_with_a_repair_reason(client, monkeypatch, tmp_path):
+    import engines.moss_sfx.bootstrap as boot
+
+    _host(monkeypatch, "cuda")
+    monkeypatch.setattr(boot, "venv_python", lambda: tmp_path / "python")
+    monkeypatch.setattr(boot, "sfx_weights_present", lambda: False)
+    body = client.get("/api/sfx/status").json()
+    assert body["installed"] is False and body["available"] is False
+    assert "repair" in body["reason"].lower() and "never downloads" in body["reason"]
+    monkeypatch.setattr(boot, "sfx_weights_present", lambda: True)
+    assert client.get("/api/sfx/status").json()["installed"] is True
+
+
+def test_weights_probe_needs_the_pinned_completion_marker(monkeypatch, tmp_path):
+    import services.sidecar_install as si
+    from engines.moss_sfx.bootstrap import sfx_weights_present
+
+    spec = si.SPECS["moss-soundeffect"]
+    monkeypatch.setattr(si, "managed_checkout", lambda s: tmp_path)
+    wdir = tmp_path / spec.weights_subdir
+    wdir.mkdir()
+    (wdir / "model_index.json").write_text("{}")
+    (wdir / "big.safetensors").write_bytes(b"\0" * (6 * 1024 * 1024))
+    assert sfx_weights_present() is False  # no completion marker
+    (wdir / si._WEIGHTS_COMPLETE_MARKER).write_text(
+        f"{spec.weights_repo_id}\n{spec.weights_revision}\n", encoding="utf-8")
+    assert sfx_weights_present() is True
+    (wdir / "big.safetensors").unlink()
+    assert sfx_weights_present() is False  # weights deleted
+
+
 @pytest.mark.parametrize("family", ["mps", "rocm", "cpu"])
 def test_status_unsupported_host_names_the_reason(client, monkeypatch, family):
     _host(monkeypatch, family)

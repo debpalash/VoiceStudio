@@ -27,9 +27,20 @@ def venv_python() -> Optional[Path]:
     return engine_venv_python(SFX_ENV_VAR)
 
 
+def sfx_weights_present() -> bool:
+    """The pinned checkpoints are complete on disk (local check, no network)."""
+    from services.sidecar_install import SPECS, _weights_present
+
+    return _weights_present(SPECS["moss-soundeffect"])
+
+
 def is_sfx_installed() -> bool:
-    """Cheap file probe: venv interpreter plus the installer's completion marker."""
-    return venv_python() is not None
+    """Cheap file probe: venv interpreter, install marker and the pinned weights.
+
+    Missing weights count as not installed so the page offers Install/Repair
+    (the installer resumes the weights download) instead of a dead Generate.
+    """
+    return venv_python() is not None and sfx_weights_present()
 
 
 __all__ = [
@@ -37,5 +48,6 @@ __all__ = [
     "SFX_SIDECAR_SCRIPT",
     "SFX_WEIGHTS_SUBDIR",
     "is_sfx_installed",
+    "sfx_weights_present",
     "venv_python",
 ]

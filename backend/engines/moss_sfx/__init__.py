@@ -68,9 +68,19 @@ class MossSfxBackend(SubprocessBackend):
         ok, reason = host_support()
         if not ok:
             return False, reason
-        from engines.moss_sfx.bootstrap import SFX_SIDECAR_SCRIPT, is_sfx_installed
+        from engines.moss_sfx.bootstrap import (
+            SFX_SIDECAR_SCRIPT,
+            is_sfx_installed,
+            sfx_weights_present,
+            venv_python,
+        )
 
         if not is_sfx_installed():
+            if venv_python() is not None and not sfx_weights_present():
+                return False, (
+                    "The sound-effects weights are missing or incomplete. Use "
+                    "Repair to download them; generation never downloads."
+                )
             return False, "Sound effects are not installed yet."
         if not SFX_SIDECAR_SCRIPT.exists():
             return False, "The sound-effects sidecar script is missing; reinstall VoiceStudio."
