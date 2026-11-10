@@ -32,7 +32,8 @@ jobs:
   package:
     # Beta tags (vX.Y.Z-beta.N) are not Snap releases: the Snap Store track is stable-only.
     if: ${{ !inputs.promote_revision && !(github.ref_type == 'tag' && contains(github.ref_name, '-beta.')) }}
-    runs-on: ubuntu-24.04
+    # Jammy (glibc 2.35) matches the core22 base; 24.04 builds need GLIBC_2.38/2.39 (#3879).
+    runs-on: ubuntu-22.04
     timeout-minutes: 75
     env:
       VOICESTUDIO_DISTRIBUTION: snap-store
@@ -103,6 +104,7 @@ jobs:
           bun x electron-builder --config electron-builder.config.mjs --linux snap --x64 --publish never
           node tests/packaging-contract.mjs --artifact
           node ../scripts/verify_snap_artifact.mjs
+          python3 ../scripts/check_glibc_floor.py release/linux-unpacked/resources/native
           node ../scripts/create_store_artifact_manifest.mjs --distribution=snap-store --platform=linux --arch=x64
           node ../scripts/create_snap_store_assets.mjs
           node --input-type=module <<'NODE'

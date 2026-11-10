@@ -7,6 +7,9 @@
 - Package: Electron x64 Snap alongside the existing AppImage and Debian packages.
 - Confinement: `strict`, using the `core22` base supported by the pinned
   electron-builder. Recheck the supported bases before the first submission.
+  The package is built on `ubuntu-22.04` (glibc 2.35, the base's glibc) and
+  `scripts/check_glibc_floor.py` fails the build if bundled native code needs
+  a newer glibc.
 - Update owner: Snap Store. The in-app updater is unavailable in this build.
 - Snap name: `voicestudio` (`SNAP_NAME` in the workflow).
 
