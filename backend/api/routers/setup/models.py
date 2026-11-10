@@ -575,6 +575,10 @@ def list_models():
     out = []
     host_tags = set(platform_tags)
     for m in KNOWN_MODELS:
+        # Sound effects (#3577) are not speech: they install only from Tools >
+        # Sound effects, never from this library (whose families are speech).
+        if str(m.get("role", "")).upper() == "SFX":
+            continue
         cached = cached_by_repo.get(m["repo_id"])
         if cached is not None and shares_repo(m):
             # The repository also holds other entries' packages: only this

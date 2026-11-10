@@ -244,6 +244,50 @@ def set_offload_after_generation(body: _OffloadAfterGenerationBody):
     return _offload_after_generation_state()
 
 
+# ── OmniVoice GGUF resident server (#3654) ────────────────────────────────
+
+
+class _GgufResidentBody(BaseModel):
+    enabled: bool = Field(..., description="True to keep the GGUF runtime loaded between requests")
+
+
+def _gguf_resident_state() -> dict:
+    """`enabled` is the effective value (env > saved > off; opt-in
+    because upstream tts-server has no API key). `available` means a
+    verified tts-server binary is bundled; without one every request spawns the
+    CLI and the toggle has nothing to switch."""
+    from engines.omnivoice_gguf import resident
+
+    return {
+        "enabled": resident.resident_enabled(),
+        "env_pinned": bool(os.environ.get(resident.RESIDENT_ENV)),
+        "available": resident.server_status()[0],
+    }
+
+
+# Verifying the server binary hashes it, so refuse cross-site loads.
+@router.get("/perf/gguf-resident", dependencies=[Depends(reject_cross_site_get)])
+def get_gguf_resident():
+    """Whether the OmniVoice GGUF runtime stays loaded between requests."""
+    return _gguf_resident_state()
+
+
+@router.put("/perf/gguf-resident")
+def set_gguf_resident(body: _GgufResidentBody):
+    """Persist the toggle. Turning it off stops a running server at once."""
+    from core import prefs
+    from engines.omnivoice_gguf import resident
+
+    try:
+        prefs.set_(resident.RESIDENT_PREF, bool(body.enabled))
+    except Exception:
+        logger.exception("set_gguf_resident failed")
+        raise HTTPException(status_code=500, detail="Failed to persist setting")
+    if not resident.resident_enabled():
+        resident.stop_all()
+    return _gguf_resident_state()
+
+
 # ── Pause fill: digital silence or room tone (#3611) ──────────────────────
 
 

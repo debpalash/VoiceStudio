@@ -3690,6 +3690,16 @@ def _release_idle_side_models(idle_timeout: float) -> None:
         contain_system_exit(_release_asr, "idle capture-ASR release")()
     except Exception:  # noqa: BLE001 — the reaper must never kill idle_worker
         logger.warning("idle capture-ASR release failed", exc_info=True)
+    # Engines that keep a model server between requests (the opt-in OmniVoice
+    # GGUF resident server) hold VRAM in a child process the paths above never see.
+    try:
+        from services.tts_backend import release_idle_resident_servers
+
+        contain_system_exit(
+            lambda: release_idle_resident_servers(idle_timeout), "idle resident-server release"
+        )()
+    except Exception:  # noqa: BLE001 — the reaper must never kill idle_worker
+        logger.warning("idle resident-server release failed", exc_info=True)
     # Same bargain for the AudioSeal watermark models, which loaded on the
     # first embed and were never released. Deliberately only here and not
     # in the make-room paths: watermarking runs immediately *after* a
