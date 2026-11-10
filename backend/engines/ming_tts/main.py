@@ -44,6 +44,34 @@ MAX_FRAME_BYTES = 64 * 1024 * 1024
 MING_SAMPLE_RATE = 44100
 
 _DEFAULT_MODEL = "inclusionAI/Ming-3.0-tts-0.5b"
+#: Reviewed immutable revision of the default repo (kept equal to the pin in
+#: backend/config/model_licenses.json by tests/test_ming_tts.py).
+_DEFAULT_REVISION = "7247f4c94a5b2e987404ed28a5cfec41b1a4ca61"
+
+
+def _model_source() -> str:
+    """Local checkpoint path, or the pinned snapshot of a Hub repo.
+
+    A local directory is used as given. A Hub repo id is resolved to a local
+    snapshot at an immutable commit, never a branch: the default repo uses the
+    reviewed revision, any other needs ``OMNIVOICE_MING_TTS_REVISION``.
+    """
+    import re
+
+    model = os.environ.get("OMNIVOICE_MING_TTS_MODEL", "").strip() or _DEFAULT_MODEL
+    if os.path.isdir(model):
+        return model
+    revision = _DEFAULT_REVISION if model == _DEFAULT_MODEL else (
+        os.environ.get("OMNIVOICE_MING_TTS_REVISION", "").strip())
+    if not re.fullmatch(r"[0-9a-f]{40}", revision):
+        raise RuntimeError(
+            "A custom Ming model needs OMNIVOICE_MING_TTS_REVISION=<40-character "
+            "commit SHA>; branches and tags are mutable. A local directory "
+            "needs no revision."
+        )
+    from huggingface_hub import snapshot_download
+
+    return snapshot_download(model, revision=revision)
 
 #: ISO code -> the ``language_id`` name upstream's README passes. Upstream
 #: lists exactly these seven (tts_tasks._TARGET_LANGUAGE_NAMES).
@@ -163,7 +191,7 @@ def _load_model(stdout):
         normalize = False
 
     _send(stdout, {"op": "progress", "stage": "loading_model", "percent": 50})
-    model_path = os.environ.get("OMNIVOICE_MING_TTS_MODEL", "").strip() or _DEFAULT_MODEL
+    model_path = _model_source()
     _model = MingTTS(model_path, device="cuda:0", text_normalization=normalize)
 
     _send(stdout, {"op": "progress", "stage": "loading_model", "percent": 100})

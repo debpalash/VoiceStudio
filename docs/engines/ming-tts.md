@@ -62,7 +62,9 @@ Then point VoiceStudio at the clone and restart:
 Select **Ming-3.0-tts** in Model Catalogue (TTS tab → **Use**).
 
 Optional: `OMNIVOICE_MING_TTS_MODEL` points at a local checkpoint directory
-instead of `inclusionAI/Ming-3.0-tts-0.5b`, and
+instead of `inclusionAI/Ming-3.0-tts-0.5b`. The default repo always loads its
+reviewed commit; any other Hub repo id also needs
+`OMNIVOICE_MING_TTS_REVISION=<40-character commit SHA>`.
 `OMNIVOICE_MING_TTS_RECV_TIMEOUT_S` raises the per-request wait (default 900 s)
 for a slow first download.
 

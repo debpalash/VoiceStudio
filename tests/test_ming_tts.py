@@ -194,6 +194,36 @@ def test_sidecar_rejects_unsupported_languages(sc, raw):
         sc._normalize_language(raw)
 
 
+def test_default_weights_load_at_the_pinned_revision(sc, monkeypatch):
+    import huggingface_hub
+    from services.hf_revisions import revision_for
+
+    assert sc._DEFAULT_REVISION == revision_for(sc._DEFAULT_MODEL)
+    calls = []
+    monkeypatch.delenv("OMNIVOICE_MING_TTS_MODEL", raising=False)
+    monkeypatch.setattr(
+        huggingface_hub, "snapshot_download",
+        lambda repo, revision=None, **kw: calls.append((repo, revision)) or "/snap",
+    )
+    assert sc._model_source() == "/snap"
+    assert calls == [(sc._DEFAULT_MODEL, sc._DEFAULT_REVISION)]
+
+
+def test_custom_repo_needs_a_commit_sha_and_a_local_dir_needs_none(sc, monkeypatch, tmp_path):
+    import huggingface_hub
+
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", lambda *a, **k: pytest.fail("download"))
+    monkeypatch.setenv("OMNIVOICE_MING_TTS_MODEL", "someone/other-ming")
+    monkeypatch.delenv("OMNIVOICE_MING_TTS_REVISION", raising=False)
+    with pytest.raises(RuntimeError, match="OMNIVOICE_MING_TTS_REVISION"):
+        sc._model_source()
+    monkeypatch.setenv("OMNIVOICE_MING_TTS_REVISION", "main")
+    with pytest.raises(RuntimeError):
+        sc._model_source()
+    monkeypatch.setenv("OMNIVOICE_MING_TTS_MODEL", str(tmp_path))
+    assert sc._model_source() == str(tmp_path)
+
+
 def test_synthesis_calls_upstream_with_the_documented_arguments(sc, monkeypatch):
     torch = pytest.importorskip("torch")
     calls: dict = {}
