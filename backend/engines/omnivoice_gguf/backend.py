@@ -51,6 +51,7 @@ Public surface:
 from __future__ import annotations
 
 import hashlib
+import http.client
 import json
 import logging
 import math
@@ -1338,7 +1339,9 @@ def _make_backend_class():
                             "using the per-request runtime", exc.code,
                         )
                         return None
-                    except (OSError, ValueError) as exc:
+                    # IncompleteRead (a body cut off mid-WAV) is an HTTPException,
+                    # not an OSError: it takes the same restart-then-spawn path.
+                    except (OSError, ValueError, http.client.HTTPException) as exc:
                         server.stop()
                         if isinstance(exc, TimeoutError) or isinstance(
                             getattr(exc, "reason", None), TimeoutError

@@ -246,6 +246,20 @@ def test_a_crash_gets_one_restart_and_re_registers_the_voice(rig, tmp_path):
     assert rig.cli_argvs == []
 
 
+def test_a_body_cut_off_mid_wav_takes_the_crash_path(rig, caplog):
+    rig.instance.generate("hello")
+    rig.flag("truncate_next_speech")
+    with caplog.at_level("WARNING", logger="omnivoice.gguf"):
+        out = rig.instance.generate("hello")
+    assert out.shape == (1, 2400) and rig.cli_argvs == []  # the restart served it
+    assert len(rig.events("start")) == 2
+    assert "restarting it once" in caplog.text
+    rig.flag("crash_every_speech")
+    rig.flag("truncate_next_speech")
+    rig.instance.generate("hello")
+    assert len(rig.cli_argvs) == 1  # a second failure spawns per request
+
+
 def test_a_server_that_died_between_requests_is_restarted(rig):
     rig.instance.generate("hello")
     rig.server.process.kill()

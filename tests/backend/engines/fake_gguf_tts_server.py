@@ -8,6 +8,8 @@ Speaks the endpoints the resident mode uses and records every call in
 * ``crash_every_speech`` exit on every speech request;
 * ``no_voice_registry``  answer 404 on /v1/audio/voices (pre-registry server);
 * ``reject_speech``      answer 400 on speech;
+* ``truncate_next_speech``  send the headers, half the WAV, then drop the
+                        connection, once (removed first);
 * ``slow_speech``        take 5 s to answer speech.
 """
 from __future__ import annotations
@@ -88,6 +90,18 @@ class Handler(BaseHTTPRequestHandler):
                 os._exit(3)
             if _flag("crash_every_speech"):
                 os._exit(3)
+            if _flag("truncate_next_speech"):
+                (STATE / "truncate_next_speech").unlink()
+                wav = _wav()
+                self.send_response(200)
+                self.send_header("Content-Type", "audio/wav")
+                self.send_header("Content-Length", str(len(wav)))
+                self.end_headers()
+                self.wfile.write(wav[: len(wav) // 2])
+                self.wfile.flush()
+                self.close_connection = True
+                self.connection.close()
+                return
             if _flag("slow_speech"):
                 time.sleep(5)
             if _flag("reject_speech") or (body.get("voice") and body["voice"] not in VOICES):
