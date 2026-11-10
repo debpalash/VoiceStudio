@@ -154,6 +154,11 @@ use the default in-process OmniVoice engine there, which is the same model.
 Select the engine via **Model Catalogue** (TTS tab → **Use**) or
 `OMNIVOICE_TTS_BACKEND=omnivoice-gguf`.
 
+The voice-cloning composer also has a TTS engine picker for engines currently
+available on this machine. With OmniVoice GGUF selected, **Test engine** runs a
+short real synthesis and reports the Vulkan adapter when the native runtime
+logs one; its diagnostic log is available from the result tooltip.
+
 **GPU offer.** When Compute device is Auto, PyTorch has no GPU, and the bundled
 runtime with its Vulkan module finds a GPU, VoiceStudio asks once: *Use your
 GPU for faster speech?* The prompt names the GPU, the quant it would run and
@@ -201,9 +206,12 @@ NVIDIA.
 To size the quant and report the device, VoiceStudio finds the adapter GGML
 will open without PyTorch:
 
-1. `vulkaninfo` (installed with the GPU driver on Windows, `vulkan-tools` on
-   Linux) gives each GPU's type and its device-local memory heap as a 64-bit
-   byte count.
+1. `vulkaninfo --summary` (installed with the GPU driver on Windows,
+   `vulkan-tools` on Linux) verifies the working driver and gives the GPUs in
+   Vulkan order. The OS GPU list supplies memory for quant sizing: the 64-bit
+   `HardwareInformation.qwMemorySize` registry value on Windows, or DRM sysfs
+   on Linux. A summary probe stays within the startup timeout on switchable
+   graphics drivers that can take too long to print the full Vulkan report.
 2. Without it, the OS GPU list is used when the Vulkan loader is installed:
    the 64-bit `HardwareInformation.qwMemorySize` registry value on Windows, or
    DRM sysfs on Linux. WMI's `AdapterRAM` is never used; it is 32-bit and
@@ -277,10 +285,15 @@ Expected automatic picks:
 | GPU | Device | Effective memory | Quant |
 | --- | --- | --- | --- |
 | Radeon 890M APU, 32 GB RAM | Vulkan0, shared memory | ~15–16 GB (half the RAM) | Q8_0 (BF16 if `bf16: 1`) |
+| Radeon RX 5500M 4 GB | Vulkan1 when an iGPU is Vulkan0; otherwise Vulkan0 | ~4 GB | Q8_0 |
 | Radeon RX 6700 XT 12 GB (`bf16: 0`) | Vulkan0 | ~12 GB | Q8_0 |
 | RX 7600 / Arc A750 8 GB | Vulkan0 (or the discrete card's index) | ~8 GB | Q8_0 |
 | Intel UHD iGPU + Arc A770 / B580 | Vulkan1 (the Arc card) | 16 / 12 GB | Q8_0 (BF16 if `bf16: 1`) |
 | Compute device set to CPU | — | — | Q4_K_M |
+
+On a hybrid laptop where the integrated GPU is Vulkan0 and the RX 5500M is
+Vulkan1, automatic selection prefers the discrete GPU. To pin it explicitly,
+set `OMNIVOICE_GGUF_BACKEND=vulkan` and `OMNIVOICE_GGUF_DEVICE=1`.
 
 If yours differs, report the `vulkaninfo --summary` device list, the
 `/engines/omnivoice-gguf/quants` response, and your OS, GPU driver version and

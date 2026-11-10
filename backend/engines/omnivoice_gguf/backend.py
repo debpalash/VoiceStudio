@@ -575,6 +575,7 @@ def _make_backend_class():
             """
             self._quant_override = quant_override
             self._quant_map: Optional[dict] = None
+            self._last_runtime_log = ""
 
         # ── TTSBackend protocol ───────────────────────────────────────
 
@@ -901,6 +902,7 @@ def _make_backend_class():
             os.close(fd)
             out_path = Path(out_name)
             transcript_path: Optional[Path] = None
+            self._last_runtime_log = ""
             try:
                 if ref_audio and ref_text:
                     # A file keeps arbitrary transcript text out of argv.
@@ -923,7 +925,11 @@ def _make_backend_class():
                     chunk_duration=kw.get("chunk_duration"),
                     chunk_threshold=kw.get("chunk_threshold"),
                 )
-                self._run_subprocess(argv, stdin_text=text)
+                self._last_runtime_log = self._run_subprocess(
+                    argv,
+                    stdin_text=text,
+                    timeout_s=kw.get("_timeout_s"),
+                )
                 samples, _rate = sf.read(str(out_path), dtype="float32")
             finally:
                 for leftover in (out_path, transcript_path):
@@ -1005,7 +1011,13 @@ def _make_backend_class():
                     argv += ["--ref-text", str(ref_text)]
             return argv
 
-        def _run_subprocess(self, argv: list[str], *, stdin_text: str) -> None:
+        def _run_subprocess(
+            self,
+            argv: list[str],
+            *,
+            stdin_text: str,
+            timeout_s: float | None = None,
+        ) -> str:
             """Spawn the binary, feed ``stdin_text``, enforce timeout.
 
             Never uses ``shell=True``. Stderr is captured and HF-token-redacted
@@ -1021,7 +1033,7 @@ def _make_backend_class():
                 validate_executable,
             )
             validate_executable(Path(argv[0]), hint=_binary_repair_hint())
-            timeout_s = _generate_timeout_s()
+            timeout_s = timeout_s or _generate_timeout_s()
             try:
                 proc = subprocess.run(
                     argv,
@@ -1058,8 +1070,12 @@ def _make_backend_class():
                 )
             # On success the binary may still write progress/info to
             # stderr — log at info, redacted.
+            runtime_log = "\n".join(
+                part.strip() for part in (proc.stdout, proc.stderr) if part.strip()
+            )
             if proc.stderr:
                 logger.info("[omnivoice-gguf] %s", _mask_token(proc.stderr.strip()))
+            return runtime_log
 
     _OmniVoiceGGUFBackend_cls = OmniVoiceGGUFBackend
     return _OmniVoiceGGUFBackend_cls

@@ -10,12 +10,14 @@ can it address?*
 
 Sources, in order:
 
-1. ``vulkaninfo`` (ships with the AMD/Intel/NVIDIA drivers on Windows and
-   with ``vulkan-tools`` on Linux). It proves a working driver and reports the
-   ``MEMORY_HEAP_DEVICE_LOCAL_BIT`` heap sizes as 64-bit byte counts.
+1. ``vulkaninfo --summary`` (ships with the AMD/Intel/NVIDIA drivers on
+   Windows and with ``vulkan-tools`` on Linux). It proves a working driver and
+   gives Vulkan's physical-device order. Since the summary omits memory heaps,
+   VRAM is matched by GPU name from the OS inventory.
 2. Without it, the OS GPU inventory (``core.gpu_inventory``: the 64-bit
    ``HardwareInformation.qwMemorySize`` registry value on Windows, DRM sysfs on
-   Linux), counted only when the platform Vulkan loader is installed. The WMI
+   Linux), counted only when the platform Vulkan loader is installed. This can
+   size a quant but does not prove Vulkan can open the adapter. The WMI
    ``Win32_VideoController.AdapterRAM`` field is never used: it is 32-bit and
    wraps at 4 GB.
 
@@ -43,7 +45,7 @@ import os
 import shutil
 import subprocess  # nosec B404 -- fixed argv, resolved vulkaninfo path
 import sys
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Literal, Optional
 
@@ -297,13 +299,18 @@ def adapters_from_vulkaninfo(devices: list[dict], ram_gb: float) -> tuple[Vulkan
 
 
 def _run_vulkaninfo() -> Optional[str]:
-    """Full ``vulkaninfo`` output, or None when it is absent, fails or lists no device."""
+    """The short adapter summary, or None when Vulkan cannot enumerate GPUs.
+
+    The full dump can exceed the 10-second probe budget on switchable-graphics
+    drivers (including some AMD laptops). ``--summary`` proves the driver and
+    preserves Vulkan's device order; VRAM is enriched from the OS inventory.
+    """
     exe = shutil.which("vulkaninfo")
     if not exe:
         return None
     try:
         proc = subprocess.run(  # nosec B603 -- fixed argv
-            [exe],
+            [exe, "--summary"],
             capture_output=True, text=True, encoding="utf-8", errors="replace",
             timeout=_VULKANINFO_TIMEOUT_S, check=False,
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
@@ -336,6 +343,43 @@ def adapters_from_inventory(gpus, ram_gb: float) -> tuple[VulkanAdapter, ...]:
     return tuple(out)
 
 
+def _enrich_vulkan_memory(
+    adapters: tuple[VulkanAdapter, ...], ram_gb: float,
+) -> tuple[VulkanAdapter, ...]:
+    """Fill summary-only adapters' VRAM from the OS inventory by GPU name.
+
+    ``vulkaninfo --summary`` is enough to verify the driver and device order,
+    but it omits memory heaps. Keep the authoritative Vulkan indices and use
+    the OS inventory only for memory sizing.
+    """
+    if not adapters or all(adapter.dedicated_vram_gb > 0 for adapter in adapters):
+        return adapters
+    try:
+        from core.gpu_inventory import detect_host_gpus
+
+        inventory = {
+            (gpu.vendor, gpu.name.casefold()): gpu
+            for gpu in detect_host_gpus()
+        }
+    except Exception:  # noqa: BLE001 - memory inventory is advisory
+        return adapters
+
+    enriched = []
+    for adapter in adapters:
+        gpu = inventory.get((adapter.vendor, adapter.name.casefold()))
+        if adapter.dedicated_vram_gb > 0 or gpu is None or gpu.vram_gb <= 0:
+            enriched.append(adapter)
+            continue
+        budget, shared = effective_vram(adapter.device_type, gpu.vram_gb, ram_gb)
+        enriched.append(replace(
+            adapter,
+            dedicated_vram_gb=gpu.vram_gb,
+            effective_vram_gb=budget,
+            shared_memory=shared,
+        ))
+    return tuple(enriched)
+
+
 # ── public entry points ─────────────────────────────────────────────────────
 
 
@@ -344,7 +388,9 @@ def _probe() -> VulkanProfile:
     ram = system_ram_gb()
     text = _run_vulkaninfo()
     if text is not None:
-        adapters = adapters_from_vulkaninfo(parse_vulkaninfo(text), ram)
+        adapters = _enrich_vulkan_memory(
+            adapters_from_vulkaninfo(parse_vulkaninfo(text), ram), ram,
+        )
         return VulkanProfile(
             verified=bool(adapters), source="vulkaninfo", system_ram_gb=ram, adapters=adapters,
         )

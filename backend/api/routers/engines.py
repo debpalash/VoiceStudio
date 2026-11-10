@@ -789,20 +789,21 @@ def engine_health(engine_id: str):
     }
 
 
-# ── Real-synthesis self-test (in-process TTS engines) ──────────────────────
+# ── Real-synthesis self-test (in-process TTS + OmniVoice GGUF) ─────────────
 #
 # ``/health`` above is a liveness/import probe — for an in-process backend it
 # only calls ``is_available()`` and the UI labels the result "deps OK". This
-# route goes one step further: for an AVAILABLE, IN-PROCESS TTS engine it runs
-# a *tiny real synthesis* from a fixed short phrase and reports duration +
-# sample-rate + sample count, proving the engine actually emits audio rather
-# than merely importing. The Compat Matrix's "Self-test" button calls it.
+# route goes one step further: for an AVAILABLE, IN-PROCESS TTS engine or
+# OmniVoice GGUF it runs a *tiny real synthesis* from a fixed short phrase and
+# reports duration, sample rate and sample count, proving the engine actually
+# emits audio rather than merely importing. The Compat Matrix's "Self-test"
+# button calls it.
 #
 # Guardrails (kept identical across macOS/Windows/Linux per the default-feature
 # rule — the phrase, timeout and gating don't branch on OS):
-#   * TTS family + available + in-process only. Subprocess engines keep their
-#     spawn-and-ping ``health_check`` (a real synth there is a sidecar
-#     cold-start — out of scope for a click-to-test affordance).
+#   * TTS family + available; persistent subprocess engines keep their
+#     spawn-and-ping ``health_check``. OmniVoice GGUF is a one-shot native
+#     process, so the bounded real synthesis also captures its Vulkan log.
 #   * Bounded wall-clock timeout (``OMNIVOICE_SELFTEST_TIMEOUT_S``, default 90s):
 #     a runaway synth returns ``ok=False`` / ``timed_out=True`` instead of
 #     hanging the Settings panel. The orphaned worker is best-effort daemon.
@@ -846,8 +847,14 @@ def _run_synth_bounded(backend, timeout_s: float) -> dict | None:
     def _worker():
         t0 = perf_counter()
         try:
-            audio = backend.generate(_SELFTEST_PHRASE, language="en", num_step=8)
+            kwargs = {"language": "en", "num_step": 8}
+            if getattr(backend, "id", None) == "omnivoice-gguf":
+                # This engine owns a native child process. Bound the process
+                # itself too, so a diagnostic click cannot outlive its route.
+                kwargs["_timeout_s"] = timeout_s
+            audio = backend.generate(_SELFTEST_PHRASE, **kwargs)
             box["audio"] = audio
+            box["runtime_log"] = getattr(backend, "_last_runtime_log", "")
         except Exception as exc:  # noqa: BLE001 — surfaced to the caller as ok=False
             box["error"] = exc
         finally:
@@ -870,6 +877,8 @@ class SelfTestResponse(BaseModel):
     num_samples: int | None = None
     audio_seconds: float | None = None
     timed_out: bool = False
+    runtime_device: str | None = None
+    runtime_log: str | None = None
 
 
 @router.post(
@@ -878,10 +887,10 @@ class SelfTestResponse(BaseModel):
     dependencies=[Depends(require_admin)],
 )
 def engine_selftest(engine_id: str):
-    """Run a bounded, real synthesis on an available in-process TTS engine.
+    """Run a bounded, real synthesis on an available TTS engine.
 
-    404 for an unknown TTS id; 400 when the engine is subprocess-isolated or
-    not currently available (a real synth on either is meaningless). Never
+    404 for an unknown TTS id; 400 when an unsupported subprocess engine is
+    selected or this engine is not currently available. Never
     raises through to a 500 on a synth failure — the exception is captured into
     ``ok=False`` / ``message`` so the panel renders a per-row failure."""
     if engine_id not in tts_backend._REGISTRY:
@@ -890,7 +899,10 @@ def engine_selftest(engine_id: str):
             detail=f"unknown TTS engine id: {engine_id!r}",
         )
     cls = tts_backend._REGISTRY[engine_id]
-    if getattr(cls, "_is_subprocess_isolated", False):
+    # OmniVoice GGUF manages its own one-shot native process and can therefore
+    # be safely real-synthesized here; other persistent sidecars stay on the
+    # cheaper health-check path.
+    if getattr(cls, "_is_subprocess_isolated", False) and engine_id != "omnivoice-gguf":
         raise HTTPException(
             status_code=400,
             detail=(
@@ -928,10 +940,12 @@ def engine_selftest(engine_id: str):
         )
     if "error" in res:
         exc = res["error"]
+        from core.scrub import scrub_text
+
         return SelfTestResponse(
             id=engine_id,
             ok=False,
-            message=tts_backend._mask_hf_tokens(f"{type(exc).__name__}: {exc}"),
+            message=scrub_text(tts_backend._mask_hf_tokens(f"{type(exc).__name__}: {exc}")),
             duration_ms=res.get("duration_ms", 0.0),
         )
 
@@ -941,6 +955,27 @@ def engine_selftest(engine_id: str):
     except Exception:
         sr = None
     secs = round(n / sr, 3) if (sr and n) else None
+    runtime_log = None
+    runtime_device = None
+    if engine_id == "omnivoice-gguf":
+        from core.scrub import scrub_text
+
+        raw_runtime_log = str(res.get("runtime_log") or "")
+        lines = [
+            line.strip()
+            for line in raw_runtime_log.splitlines()
+            if "vulkan" in line.lower() or "device" in line.lower() or "backend" in line.lower()
+        ]
+        runtime_log = scrub_text("\n".join(lines[-12:]))[:2400] or None
+        if any("ggml_vulkan" in line.lower() for line in lines):
+            try:
+                from engines.omnivoice_gguf.compute import selected_vulkan_adapter
+
+                adapter = selected_vulkan_adapter()
+                if adapter is not None:
+                    runtime_device = scrub_text(f"Vulkan {adapter.index}: {adapter.name}")
+            except Exception:  # noqa: BLE001 - diagnostic metadata is optional
+                runtime_device = None
     return SelfTestResponse(
         id=engine_id,
         ok=n > 0,
@@ -949,6 +984,8 @@ def engine_selftest(engine_id: str):
         sample_rate=sr,
         num_samples=n or None,
         audio_seconds=secs,
+        runtime_device=runtime_device,
+        runtime_log=runtime_log,
     )
 
 
