@@ -378,7 +378,7 @@ metadata and the backend fallback mirror it.
 
 ### CI
 
-- The iOS UI smoke suite waits for every screen and control on slow runners and retries a failed test once, so it no longer fails at random (#3982)
+- The iOS UI smoke suite waits for every screen and control on slow runners, so it no longer fails at random (#3982)
 - Pull requests wait as drafts with heavy CI skipped until their opener signs the CLA, which now has a 3-day deadline, and a new agent guide helps AI-assisted pull requests arrive merge-ready (#3974)
 - The UI crawler waits for lazily loaded code before leaving a screen, and dev servers no longer send /api-reference pages to the backend, fixing a recurring CI flake (#3952)
 - CI skips heavy jobs whose exact inputs already passed, and merge-queue runs skip the Electron jobs a change cannot affect (#3933)
