@@ -216,10 +216,10 @@ def split_stream_sentences(text: str, language: str | None) -> list[str]:
     abbreviations/acronyms/decimals and CJK / non-Latin terminators; a
     single-sentence request behaves exactly like a single-shot render.
     """
-    from services.text_normalization import normalize_for_tts
+    from services.pronunciation import prepare_tts_text
     from services.sentence_chunker import SentenceChunker
 
-    text = normalize_for_tts(text, language)
+    text = prepare_tts_text(text, language)
     chunker = SentenceChunker(language=(language or "en"))
     sentences = chunker.push(text)
     sentences.extend(chunker.flush())

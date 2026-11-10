@@ -84,7 +84,10 @@ lists the reaction tags its tokenizer renders.
   reliable expressive control in the app.
 - **Pronunciation overrides** — `[[Nuh-VAD-uh]]` inline, or the pronunciation
   dictionary. An inline override always wins: the dictionary never rewrites
-  inside its brackets, in Generate and in audiobook chapters alike. Not
+  inside its brackets. Both apply everywhere text becomes speech: Generate,
+  dubbing (full render, segment preview and batch), audiobook chapters, the
+  OpenAI-compatible API, streaming TTS and voice conversion. Audiobooks also
+  layer the project's own lexicon on top. Not
   expression, but often what a "it says this weirdly" problem actually needs.
 
 Pronunciation dictionary matching uses Unicode case-insensitive literal matches. Each matched term uses its own respelling; distinct terms such as Straße and STRASSE can have different respellings. Longer terms win overlaps, and later equal-length case variants retain precedence. Because that precedence follows entry order, reordering such variants re-renders cached longform chapters; reordering unrelated entries does not.

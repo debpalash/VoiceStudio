@@ -487,9 +487,9 @@ async def convert_speech(
 
         # ── Same text choke point as /generate: engine-agnostic normalization
         # (numbers→words, junk strip) on the fully resolved language.
-        from services.text_normalization import normalize_for_tts
+        from services.pronunciation import prepare_tts_text
         language = cond["language"]
-        text = normalize_for_tts(text, language)
+        text = prepare_tts_text(text, language)
 
         used_seed = cond["seed"]
         if used_seed is None:

@@ -546,3 +546,56 @@ def load_dict_for_request(language: Optional[str] = None) -> dict[str, str]:
         return entries_for_language(load_entries_from_db(), language)
     except Exception:  # noqa: BLE001 — table missing / DB locked → no-op
         return {}
+
+
+# ── The one text → engine choke point ─────────────────────────────────────────
+
+
+def pronunciation_enabled() -> bool:
+    """The pronunciation dictionary is on unless OMNIVOICE_PRONUNCIATION is
+    "0"/"false"/"no"/"off". Env only: a prefs key was once read here too, but
+    no Settings surface ever wrote it."""
+    import os
+
+    value = os.environ.get("OMNIVOICE_PRONUNCIATION")
+    return value is None or value.strip().lower() not in ("0", "false", "no", "off", "")
+
+
+def apply_user_pronunciation(
+    text: str, language: Optional[str], *, use_dictionary: bool = True
+) -> str:
+    """Apply the saved dictionary (when on) and inline ``[[…]]`` overrides.
+
+    With the dictionary off, inline overrides are still resolved: they are an
+    explicit in-text choice, and literal double brackets would be spoken.
+    Never raises on a missing table or locked DB — synthesis always proceeds.
+    """
+    if not text:
+        return text or ""
+    if use_dictionary and pronunciation_enabled():
+        try:
+            rows = load_entries_from_db()
+        except Exception:  # noqa: BLE001 — table missing / DB locked → no-op
+            rows = []
+        return apply_pronunciation(text, rows, language)
+    return apply_inline_overrides(text)
+
+
+def prepare_tts_text(
+    text: str, language: Optional[str], *, use_dictionary: bool = True
+) -> str:
+    """Return the text an engine should speak: normalized, then respelled.
+
+    Every route that hands user text to a TTS engine calls this once, after
+    the language is resolved, so Generate, dubbing (render, preview, batch),
+    the OpenAI-compatible API, streaming TTS and voice conversion all honour
+    the same dictionary (dubbing used to skip it). Normalization runs
+    first so dictionary entries see normalized text and respellings are never
+    re-mangled (see services/text_normalization.py). Longform audiobooks keep
+    their own per-project lexicon pass and cache keys.
+    """
+    from services.text_normalization import normalize_for_tts
+
+    return apply_user_pronunciation(
+        normalize_for_tts(text, language), language, use_dictionary=use_dictionary
+    )

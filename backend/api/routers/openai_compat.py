@@ -772,8 +772,8 @@ async def create_speech(req: SpeechRequest):
     # pre-pass as /generate, applied exactly once per request. `req.language`
     # is everything this route knows about the language (None → universal
     # safety filters only). Pref-gated (default ON), idempotent, never raises.
-    from services.text_normalization import normalize_for_tts
-    text = normalize_for_tts(req.input, req.language)
+    from services.pronunciation import prepare_tts_text
+    text = prepare_tts_text(req.input, req.language)
 
     # VRAM eviction runs in get_model()'s warm-return path now, covering every
     # native TTS generate (this route, WS TTS, dub, batch, audiobook).
