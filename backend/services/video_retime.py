@@ -333,7 +333,10 @@ async def render_retimed_video(
                 rc, _, stderr = await run_ffmpeg(
                     cmd, timeout=timeout_per_batch, job_id=job_id,
                 )
-                if rc > 0 and bi == 0 and enc_args != VIDEO_ENC_ARGS:
+                # Same rule as video_encoder.run_with_encoder_fallback: a signal
+                # death (crashing GPU driver) falls back unless the user aborted.
+                cancelled = rc < 0 and (abort_check is None or abort_check())
+                if rc != 0 and not cancelled and bi == 0 and enc_args != VIDEO_ENC_ARGS:
                     logger.warning(
                         "Hardware encoder %s failed on the first retime slice; "
                         "using libx264: %s", enc_args[1],

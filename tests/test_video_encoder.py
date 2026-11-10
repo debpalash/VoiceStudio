@@ -188,3 +188,31 @@ def test_retime_resolves_encoder_off_the_event_loop(monkeypatch, tmp_path):
             out_path=str(tmp_path / "o.mp4"),
         ))
     assert seen == [False]
+
+
+@pytest.mark.parametrize("aborted, falls_back", [(False, True), (True, False)])
+def test_retime_first_slice_signal_death_falls_back_unless_aborted(
+        monkeypatch, tmp_path, aborted, falls_back):
+    import core.config
+    from services import video_retime as vr
+
+    monkeypatch.setattr(core.config, "DUB_DIR", str(tmp_path))
+    monkeypatch.setattr(vr, "_slice_encoder_args", lambda ff: ("-c:v", "h264_nvenc"))
+    encoders = []
+
+    async def fake_run(cmd, timeout=None, job_id=None):
+        encoders.append(cmd[cmd.index("-c:v") + 1])
+        return (-9 if len(encoders) == 1 else 0), b"", b""
+
+    monkeypatch.setattr(vr, "run_ffmpeg", fake_run)
+    with pytest.raises(vr.RetimeError) as ei:
+        asyncio.run(vr.render_retimed_video(
+            job_id=None, ffmpeg="ffmpeg", video_path="x.mp4",
+            chunks=[(0.0, 1.0, 1.0)], out_path=str(tmp_path / "o.mp4"),
+            abort_check=lambda: aborted and len(encoders) >= 1,
+        ))
+    assert (len(encoders) > 1) is falls_back
+    if falls_back:
+        assert encoders[1] == "libx264"  # retried in software, failed later on missing output
+    else:
+        assert ei.value.stage == "aborted"
