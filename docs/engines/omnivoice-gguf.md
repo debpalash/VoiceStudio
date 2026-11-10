@@ -312,9 +312,10 @@ Each generation normally spawns `omnivoice-tts`, which reloads the model
 every time (a few seconds per request, whatever the text length). When the
 build also bundles omnivoice.cpp's `tts-server` as
 `bin/tts-server-<platform>` (next to `omnivoice-tts-<platform>`, same
-integrity rules), the engine keeps one server per loaded quant running
-instead, so later requests skip the reload
-([#3654](https://github.com/debpalash/VoiceStudio/issues/3654)).
+integrity rules), you can opt in to keeping one server per loaded quant
+running instead, so later requests skip the reload
+([#3654](https://github.com/debpalash/VoiceStudio/issues/3654)). It is off
+by default.
 
 - Started on the first request; listens on `127.0.0.1` on a random port.
 - A cloned voice is sent to it once per reference clip and transcript.
@@ -328,12 +329,24 @@ instead, so later requests skip the reload
   the per-request binary, because the server does not take those controls.
 - The server needs omnivoice.cpp `040c8b344d8c` or newer (voice registry).
   An older server is detected at start-up and not used.
-- Upstream `tts-server` has no API key: any local program that finds the
-  port can use it while it runs. Turn the setting off if that matters.
+- Upstream `tts-server` has no API key and answers any origin
+  (`Access-Control-Allow-Origin: *`): while it runs, other programs on this
+  computer, and web pages that find the port, can reach it, including your
+  registered cloned voices. This is why it is opt-in.
 
-Turn it off in **Settings → Performance → Keep the GGUF engine loaded
+Turn it on in **Settings → Performance → Keep the GGUF engine loaded
 between requests** (shown only when the server is bundled), or with
-`OMNIVOICE_GGUF_RESIDENT=0`. Without a bundled server, nothing changes.
+`OMNIVOICE_GGUF_RESIDENT=1`; `0` keeps it off and overrides Settings.
+Without a bundled server, nothing changes.
+
+### Before making this the default
+
+- Upstream `tts-server` support for `--api-key` (or an equivalent
+  per-launch secret), sent by the engine on every request, so other
+  programs cannot use the server.
+- A reference-audio trim parity check: confirm a voice registered with
+  the server gets the same silence trim and transcript handling as the
+  CLI's `--ref-wav` / `--ref-text` path, and compare the output.
 
 ## Behaviour notes
 
@@ -352,7 +365,7 @@ between requests** (shown only when the server is bundled), or with
 | --- | --- | --- |
 | `OMNIVOICE_GGUF_GENERATE_TIMEOUT_S` | (generous built-in) | Per-generation timeout for the spawned binary |
 | `OMNIVOICE_GGUF_QUANT` | `auto` | Pin a quant (`Q4_K_M`, `Q8_0`, `BF16`, `F32`); overrides Settings |
-| `OMNIVOICE_GGUF_RESIDENT` | `1` | `0` always spawns the binary per request, even when `tts-server` is bundled; overrides Settings |
+| `OMNIVOICE_GGUF_RESIDENT` | `0` | `1` keeps a bundled `tts-server` loaded between requests (opt-in, see Resident server); overrides Settings |
 
 ## Troubleshooting
 

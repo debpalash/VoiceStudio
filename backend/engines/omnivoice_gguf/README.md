@@ -153,8 +153,9 @@ not list it refuses it). It speaks upstream's OpenAI-compatible API
 duration, chunk settings, no-denoise or no-preprocess-prompt, or pass a clip
 without a transcript, use the spawn path. One restart on crash, then the
 spawn path; `unload()` (idle release, engine switch) stops the process. The
-toggle is the `omnivoice_gguf_resident` pref / `OMNIVOICE_GGUF_RESIDENT`
-(default on). `docs/engines/omnivoice-gguf.md` has the user-facing notes.
+toggle is the `omnivoice_gguf_resident` pref / `OMNIVOICE_GGUF_RESIDENT`,
+**off by default**: upstream `tts-server` has no API key and sends
+`Access-Control-Allow-Origin: *`. `docs/engines/omnivoice-gguf.md` has the user-facing notes.
 
 ## Settings override
 

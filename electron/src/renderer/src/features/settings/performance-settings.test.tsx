@@ -123,8 +123,8 @@ it('saves the offload-to-RAM toggle and locks it when an env var pins it (#2618)
   expect(screen.getByText('settings.generate_timeout_shadowed_note')).toBeInTheDocument();
 });
 
-it('shows the GGUF resident toggle only when its server is bundled, and saves it (#3654)', async () => {
-  let state = { enabled: true, env_pinned: false, available: false };
+it('shows the opt-in GGUF resident toggle only when its server is bundled, and saves it (#3654)', async () => {
+  let state = { enabled: false, env_pinned: false, available: false };
   mock.api.mockImplementation(async (path: string, init?: RequestInit) => {
     if (path === '/api/settings/perf/gguf-resident') {
       if (init?.method === 'PUT') {
@@ -156,11 +156,12 @@ it('shows the GGUF resident toggle only when its server is bundled, and saves it
     </QueryClientProvider>,
   );
   const toggle = await screen.findByRole('switch', { name: 'settings.gguf_resident' });
-  expect(toggle).toBeChecked();
+  expect(toggle).not.toBeChecked();
+  expect(screen.getByText('settings.gguf_resident_caution')).toBeInTheDocument();
   fireEvent.click(toggle);
-  await waitFor(() => expect(toggle).not.toBeChecked());
+  await waitFor(() => expect(toggle).toBeChecked());
   expect(mock.api).toHaveBeenCalledWith(
     '/api/settings/perf/gguf-resident',
-    expect.objectContaining({ method: 'PUT', body: JSON.stringify({ enabled: false }) }),
+    expect.objectContaining({ method: 'PUT', body: JSON.stringify({ enabled: true }) }),
   );
 });

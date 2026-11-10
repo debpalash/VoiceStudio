@@ -252,7 +252,8 @@ class _GgufResidentBody(BaseModel):
 
 
 def _gguf_resident_state() -> dict:
-    """`enabled` is the effective value (env > saved > on). `available` means a
+    """`enabled` is the effective value (env > saved > off; opt-in
+    because upstream tts-server has no API key). `available` means a
     verified tts-server binary is bundled; without one every request spawns the
     CLI and the toggle has nothing to switch."""
     from engines.omnivoice_gguf import resident

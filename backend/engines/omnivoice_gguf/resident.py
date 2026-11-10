@@ -9,8 +9,9 @@ keeps generation at generation time.
 
 Resident mode is only ever an accelerator for the spawn path:
 
-* it is used only when a verified ``tts-server-<platform>`` binary sits next
-  to ``omnivoice-tts-<platform>`` and the Settings toggle is on;
+* it is opt-in (off by default) and used only when a verified
+  ``tts-server-<platform>`` binary sits next to ``omnivoice-tts-<platform>``
+  and the Settings toggle is on;
 * requests that need a control the server does not take (duration, chunk
   settings, no-denoise, no-preprocess-prompt, a reference without a
   transcript) go to the spawn path;
@@ -19,9 +20,11 @@ Resident mode is only ever an accelerator for the spawn path:
 * the process is stopped on unload (idle release, engine switch, Unload
   all) and when the toggle is turned off, so its VRAM is returned.
 
-The server binds 127.0.0.1 on an ephemeral port. Upstream has no API key, so
-the process is identified by its PID being alive plus the model id it
-reports (the base GGUF file name).
+The server binds 127.0.0.1 on an ephemeral port. Upstream has no API key and
+answers any origin (CORS ``*``), so while it runs other programs on this
+computer can reach it; that is why it is opt-in. The process is identified
+by its PID being alive plus the model id it reports (the base GGUF file
+name).
 """
 from __future__ import annotations
 
@@ -131,16 +134,20 @@ def _verify_server_binary(path: Path) -> tuple[bool, str]:
 
 
 def resident_enabled() -> bool:
-    """Env ``OMNIVOICE_GGUF_RESIDENT`` > prefs.json > on. Read per call."""
+    """Env ``OMNIVOICE_GGUF_RESIDENT`` > prefs.json > off. Read per call.
+
+    Opt-in: upstream ``tts-server`` has no API key and sends
+    ``Access-Control-Allow-Origin: *``, so it must not run unasked.
+    """
     try:
         from core import prefs
 
-        value = prefs.resolve(RESIDENT_PREF, env=RESIDENT_ENV, default=True)
+        value = prefs.resolve(RESIDENT_PREF, env=RESIDENT_ENV, default=False)
     except Exception:  # noqa: BLE001 -- an unreadable setting keeps the default
-        return True
+        return False
     if isinstance(value, bool):
         return value
-    return str(value).strip().lower() not in ("0", "false", "no", "off")
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
 
 
 def spawn_only_reason(kw: dict, *, has_transcript: bool) -> Optional[str]:

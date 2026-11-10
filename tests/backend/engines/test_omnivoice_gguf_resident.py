@@ -3,7 +3,8 @@
 A per-request ``omnivoice-tts`` spawn reloads the LM + codec every time
 (~3.5 s). When a verified ``tts-server`` binary is bundled, one loopback
 server per quant pair stays loaded between requests; every case it cannot
-serve keeps today's spawn path. These tests drive a real child process
+serve keeps today's spawn path. Resident mode is opt-in (off by default), so
+the rig opts in with ``OMNIVOICE_GGUF_RESIDENT=1``. These tests drive a real child process
 (``fake_gguf_tts_server.py``, speaking the upstream API) through the real
 process owner, and a stubbed CLI spawn.
 """
@@ -152,23 +153,39 @@ def test_the_setting_off_uses_the_cli_and_stops_a_running_server(rig, monkeypatc
     assert proc.poll() is not None and not rig.instance.execution_evidence_loaded()
 
 
-def test_the_setting_defaults_on_and_the_api_toggle_stops_the_server(rig, monkeypatch):
+def test_resident_mode_is_opt_in_and_the_api_toggle_controls_it(rig, monkeypatch):
+    """Off by default: upstream tts-server has no API key and sends CORS *."""
     from api.routers import settings as router
     from core import prefs
 
     monkeypatch.delenv(rig.resident.RESIDENT_ENV)
     prefs.delete(rig.resident.RESIDENT_PREF)
     try:
-        assert router.get_gguf_resident() == {"enabled": True, "env_pinned": False, "available": True}
+        assert rig.resident.resident_enabled() is False
+        assert router.get_gguf_resident() == {"enabled": False, "env_pinned": False, "available": True}
         rig.instance.generate("hello")
+        assert len(rig.cli_argvs) == 1 and rig.server_argvs == [] and rig.events("start") == []
+
+        assert router.set_gguf_resident(router._GgufResidentBody(enabled=True))["enabled"] is True
+        rig.instance.generate("hello")
+        assert len(rig.cli_argvs) == 1 and len(rig.events("start")) == 1
         proc = rig.server.process
+
         state = router.set_gguf_resident(router._GgufResidentBody(enabled=False))
         assert state["enabled"] is False
         assert proc.poll() is not None
         rig.instance.generate("hello")
-        assert len(rig.cli_argvs) == 1
+        assert len(rig.cli_argvs) == 2
     finally:
         prefs.delete(rig.resident.RESIDENT_PREF)
+
+
+@pytest.mark.parametrize("value, enabled", [("1", True), ("on", True), ("0", False), ("bogus", False)])
+def test_the_env_override_opts_in_only_on_a_truthy_value(monkeypatch, value, enabled):
+    from engines.omnivoice_gguf import resident
+
+    monkeypatch.setenv(resident.RESIDENT_ENV, value)
+    assert resident.resident_enabled() is enabled
 
 
 # ── lifecycle ─────────────────────────────────────────────────────────────

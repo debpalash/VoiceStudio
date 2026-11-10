@@ -457,8 +457,9 @@ interface GgufResidentState {
   env_pinned: boolean;
   available: boolean;
 }
-// #3654: keep the OmniVoice GGUF runtime loaded between requests. Shown only
-// when the build bundles its tts-server; otherwise every request spawns the CLI.
+// #3654: opt-in — keep the OmniVoice GGUF runtime loaded between requests.
+// Shown only when the build bundles its tts-server; otherwise every request
+// spawns the CLI. Off by default: upstream tts-server has no API key.
 function GgufResident() {
   const { t } = useTranslation();
   const client = useQueryClient();
@@ -492,6 +493,7 @@ function GgufResident() {
           }
         />
       </SettingsRow>
+      <p className="p-4 text-sm text-muted-foreground">{t('settings.gguf_resident_caution')}</p>
       {state.env_pinned && (
         <p className="p-4 text-sm text-muted-foreground">
           {t('settings.generate_timeout_shadowed_note')}

@@ -1369,6 +1369,7 @@
     "offload_after_generation_cpu": "Burada üretim CPU üzerinde çalışıyor; model zaten sistem RAM'inde olduğundan bu ayarın etkisi yoktur.",
     "gguf_resident": "GGUF motorunu istekler arasında yüklü tut",
     "gguf_resident_note": "Her OmniVoice GGUF üretiminden önceki birkaç saniyelik yeniden yüklemeyi atlar. Motor boşta kaldığında veya kaldırıldığında belleği serbest bırakılır.",
+    "gguf_resident_caution": "Bu açıkken bu bilgisayardaki diğer programlar yerel konuşma sunucusuna erişebilir.",
     "generate_timeout_shadowed_note": "VoiceStudio dışındaki bir ortam değişkeni (kabuk, .env dosyası veya konteyner) şu anda bu değeri ayarlıyor — o değişken kaldırılana kadar burada kaydedilen değer yok sayılır.",
     "device_family_cpu": "CPU",
     "device_family_gpu": "GPU",

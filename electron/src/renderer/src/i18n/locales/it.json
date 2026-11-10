@@ -1371,6 +1371,7 @@
     "offload_after_generation_cpu": "Qui la generazione avviene sulla CPU, quindi il modello è già nella RAM di sistema e questa opzione non ha effetto.",
     "gguf_resident": "Mantieni il motore GGUF caricato tra le richieste",
     "gguf_resident_note": "Evita il ricaricamento di alcuni secondi prima di ogni generazione OmniVoice GGUF. La sua memoria viene liberata quando il motore è inattivo o viene scaricato.",
+    "gguf_resident_caution": "Finché è attivo, altri programmi su questo computer possono raggiungere il server vocale locale.",
     "generate_timeout_shadowed_note": "Una variabile d'ambiente esterna a VoiceStudio (shell, file .env o container) sta attualmente impostando questo valore — il valore salvato qui viene ignorato finché quella variabile non viene rimossa.",
     "device_family_cpu": "CPU",
     "device_family_gpu": "GPU",
