@@ -1,4 +1,11 @@
-"""Maintain CLA waiting labels and a public, 14-day reminder on open PRs."""
+"""Maintain CLA waiting labels and a public, 3-day reminder on open PRs.
+
+The deadline is stored in the timer comment (`<!-- cla-deadline:DATE -->`) the
+first time it is posted, and is never recomputed: a pull request keeps the date
+it was shown. Timers posted before the deadline marker existed carry only
+`<!-- cla-start:DATE -->` and were shown start + 14 days, which stays their
+deadline (see `deadline_for`).
+"""
 import datetime as dt
 import os
 import re
@@ -10,6 +17,9 @@ REMINDER = "<!-- voicestudio-cla-reminder:{start} -->"
 WAITING = "awaiting-cla"
 DUE = "cla-wait-expired"
 DATE = re.compile(r"<!-- cla-start:(\d{4}-\d\d-\d\d) -->")
+DEADLINE = re.compile(r"<!-- cla-deadline:(\d{4}-\d\d-\d\d) -->")
+WAIT_DAYS = 3  # for deadlines not posted yet
+LEGACY_WAIT_DAYS = 14  # what timers without a deadline marker displayed
 SIGNERS = re.compile(r"<!-- cla-signers:([A-Za-z0-9,\-]*) -->")
 
 
@@ -18,6 +28,19 @@ def request(gh, method, path, body=None):
     if status >= 400 and not (method == "DELETE" and status == 404):
         raise RuntimeError(f"{method} {path}: {status} {payload}")
     return payload
+
+
+def deadline_for(carried_timer, start):
+    """The deadline to show; `carried_timer` is the body of the timer still running, or None.
+
+    A posted deadline never moves; only a new or restarted timer gets the 3-day period.
+    """
+    if carried_timer:
+        posted = DEADLINE.search(carried_timer)
+        if posted:
+            return dt.date.fromisoformat(posted.group(1))
+        return start + dt.timedelta(days=LEGACY_WAIT_DAYS)
+    return start + dt.timedelta(days=WAIT_DAYS)
 
 
 def reconcile(gh, pr, today):
@@ -51,12 +74,13 @@ def reconcile(gh, pr, today):
     if old_names and not names.issubset(set(old_names.group(1).split(","))):
         match = None  # A newly unsigned contributor gets the full waiting period.
     start = dt.date.fromisoformat(match.group(1)) if match else today
-    deadline = start + dt.timedelta(days=14)
+    deadline = deadline_for(timer["body"] if match else None, start)
     remaining = max(0, (deadline - today).days)
     body = (f"{MARKER}\n<!-- cla-active -->\n<!-- cla-start:{start.isoformat()} -->\n"
+            f"<!-- cla-deadline:{deadline.isoformat()} -->\n"
             f"<!-- cla-signers:{','.join(sorted(names))} -->\n"
             f"**CLA deadline: {deadline.isoformat()} UTC** ({remaining} days remaining). "
-            "Please sign using the instructions in the CLA check above. After 14 days, "
+            "Signing takes a minute: follow the instructions in the CLA check above. After the deadline, "
             "maintainers may independently fix the underlying issue without using your contribution. "
             "You can still sign after the deadline; this timer does not close your pull request.")
     if timer:
@@ -65,7 +89,8 @@ def reconcile(gh, pr, today):
     else:
         request(gh, "POST", issue + "/comments", {"body": body})
     reminder = REMINDER.format(start=start.isoformat())
-    if today >= start + dt.timedelta(days=7) and not any(reminder in (c.get("body") or "") for c in bot_comments):
+    # Halfway: day 1 of a 3-day period, day 7 of a legacy 14-day one.
+    if today >= start + (deadline - start) // 2 and not any(reminder in (c.get("body") or "") for c in bot_comments):
         request(gh, "POST", issue + "/comments", {"body": f"{reminder}\n{signers} — a reminder that the CLA deadline is {deadline.isoformat()} UTC. Please see the CLA instructions above."})
     desired = {WAITING} | ({DUE} if today >= deadline else set())
     missing = desired - labels

@@ -663,12 +663,13 @@ AGPL-3.0 or another OSI-approved licence (CLA section 4). AI agents can't be co-
 [Contributing with AI agents](#contributing-with-ai-agents)); the person
 submitting the work signs for it.
 
-For an unsigned pull request, the daily CLA reminder starts a 14-day waiting
-period, displays its UTC deadline, and sends one reminder after seven days. At
-the deadline maintainers may independently address the underlying issue without
-using the contribution. The pull request stays open and signatures remain
-welcome after the deadline. The timer begins when the reminder first detects an
-unsigned contributor, including for existing pull requests.
+For an unsigned pull request, the daily CLA reminder starts a 3-day waiting
+period, displays its UTC deadline, and sends one reminder halfway through.
+Signing takes a minute. After the deadline maintainers may independently address
+the underlying issue without using the contribution. The pull request stays open
+and signatures remain welcome after the deadline. The timer begins when the
+reminder first detects an unsigned contributor; a deadline already shown on a
+pull request (14 days, before this changed) keeps its date.
 
 The **CLA** check comments on your pull request when someone still needs to
 sign. To sign, post this as a new comment, on its own line:
