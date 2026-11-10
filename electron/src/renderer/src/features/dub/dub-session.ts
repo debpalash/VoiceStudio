@@ -1119,6 +1119,9 @@ async function finishPreparation(jobId: string, taskId: string, signal: AbortSig
         patch({ duration: Number(event.duration) });
       if (Array.isArray(event.youtube_subs) && event.youtube_subs.length > 0)
         hasDownloadedCaptions = true;
+      // Tell the user now, not at export, that the dub will be speech only.
+      if (event.type === 'demucs_done' && event.has_bg === false)
+        toast.warning(tr('dub.bg_separation_failed'));
       return taskEvent(event, 'ready');
     },
     signal,

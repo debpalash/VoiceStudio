@@ -822,6 +822,7 @@
     "prep_chip_scene": "cena",
     "prep_chip_cached": "armazenado em cache",
     "prep_demucs_note": "Demucs pode levar vários minutos em vídeos longos. Áudio longo = espera mais longa.",
+    "bg_separation_failed": "Não foi possível separar o áudio de fundo. A dublagem terá apenas fala, a menos que você tente novamente.",
     "transcribing": "Transcrevendo áudio…",
     "elapsed": "decorrido",
     "remaining": "resta",
@@ -4739,5 +4740,29 @@
     "check_failed": "Não foi possível concluir a verificação de {{host}}. Os detalhes estão no registro da instalação.",
     "check_unavailable": "Ainda não há um download de pacote disponível para verificar.",
     "connection_error": "A conexão de download do pacote falhou. Retome para tentar novamente; os downloads concluídos são preservados."
+  },
+  "sfx": {
+    "title": "Efeitos sonoros",
+    "prompt_label": "Descreva o som",
+    "prompt_placeholder": "Chuva num telhado de zinco, trovão distante",
+    "prompt_required": "Descreva primeiro o som.",
+    "duration": "Duração: {{seconds}} s",
+    "generate": "Gerar",
+    "generating": "Gerando…",
+    "install_title": "Os efeitos sonoros não estão instalados",
+    "install_hint": "Download de {{size}} GB ({{license}}), só ao clicar em Instalar. Requer uma GPU NVIDIA.",
+    "unsupported_title": "Indisponível neste computador",
+    "result": "Resultado",
+    "failed": "Falha no efeito sonoro.",
+    "reason_host_unsupported": "Os efeitos sonoros precisam de uma GPU NVIDIA. Seus outros mecanismos não são afetados.",
+    "reason_weights_missing": "Os arquivos do modelo de efeitos sonoros estão ausentes ou incompletos. Use Reparar para baixá-los.",
+    "reason_not_installed": "Os efeitos sonoros ainda não estão instalados.",
+    "reason_sidecar_missing": "O componente de efeitos sonoros está ausente. Reinstale o VoiceStudio.",
+    "reason_unknown": "Os efeitos sonoros não estão disponíveis no momento.",
+    "error_prompt_too_long": "A descrição é longa demais (máximo de {{max_chars}} caracteres).",
+    "error_bad_duration": "A duração deve ficar entre {{min}} e {{max}} segundos.",
+    "error_busy": "A GPU está ocupada com outra tarefa. Tente novamente em instantes.",
+    "error_timeout": "A geração deste efeito sonoro demorou demais. Tente uma duração menor.",
+    "error_out_of_memory": "A GPU ficou sem memória. Feche outros apps que usam muito a GPU ou tente uma duração menor."
   }
 }

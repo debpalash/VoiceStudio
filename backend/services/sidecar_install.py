@@ -406,6 +406,16 @@ def _moss_host() -> tuple[bool, str]:
     )
 
 
+def _sfx_installed() -> bool:
+    from engines.moss_sfx.bootstrap import is_sfx_installed
+    return is_sfx_installed()
+
+
+def _sfx_host() -> tuple[bool, str]:
+    from engines.moss_sfx import host_support
+    return host_support()
+
+
 def _dots_host() -> tuple[bool, str]:
     if sys.platform != "win32":
         return True, ""
@@ -578,6 +588,41 @@ SPECS: dict[str, SidecarSpec] = {
         disk_confidence="estimated",
         invalidate=_dots_invalidate,
         installed_probe=_dots_installed,
+    ),
+    # MOSS-SoundEffect v2.0 (#3577): text to sound effects, not speech. Upstream
+    # pins numpy==1.26.4 / transformers==4.57.1 and CUDA 12.8 torch 2.9.0, so it
+    # gets its own Python 3.12 venv; the weights are the diffusers-style v2.0
+    # repository, downloaded only when the user clicks Install.
+    "moss-soundeffect": SidecarSpec(
+        engine_id="moss-soundeffect",
+        display_name="MOSS-SoundEffect v2.0",
+        repo_url="https://github.com/OpenMOSS/MOSS-TTS.git",
+        tarball_url=(
+            "https://github.com/OpenMOSS/MOSS-TTS/archive/"
+            "934d6826b084c46a0d033402174d5f8ac4ed2519.tar.gz"
+        ),
+        checkout_dirname="MOSS-TTS",
+        env_var="OMNIVOICE_MOSS_SFX_DIR",
+        probe_module="moss_soundeffect_v2",
+        source_revision="934d6826b084c46a0d033402174d5f8ac4ed2519",
+        source_required_path="moss_soundeffect_v2/pyproject.toml",
+        # Upstream requires-python is >=3.12.
+        venv_args=("--python", "3.12"),
+        install_args=("-e", "{checkout}/moss_soundeffect_v2"),
+        torch_pins=("torch==2.9.0", "torchaudio==2.9.0", "torchvision==0.24.0"),
+        weights_repo_id="OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+        weights_revision="e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+        weights_subdir="checkpoints",
+        weights_config_names=("model_index.json",),
+        host_supported=_sfx_host,
+        docs_path="docs/engines/moss-soundeffect.md",
+        # ~8 GB venv (CUDA torch + gradio + audiotools) and 11.2 GB of weights.
+        required_bytes=22 * _GIB,
+        weights_bytes=11_230_170_282,
+        dependency_bytes=8 * _GIB,
+        temporary_free_bytes=8 * _GIB,
+        disk_confidence="estimated",
+        installed_probe=_sfx_installed,
     ),
     # PyPI packages rather than repositories: nothing to clone, and the managed
     # root holds only the engine's own venv. The pins are the app's own

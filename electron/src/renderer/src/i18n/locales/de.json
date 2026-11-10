@@ -820,6 +820,7 @@
     "prep_chip_scene": "Szene",
     "prep_chip_cached": "zwischengespeichert",
     "prep_demucs_note": "Demucs kann bei langen Videos mehrere Minuten dauern. Langes Audio = längere Wartezeit.",
+    "bg_separation_failed": "Der Hintergrundton konnte nicht getrennt werden. Die Synchronisation enthält nur Sprache, sofern du nicht erneut versuchst.",
     "transcribing": "Audio transkribieren…",
     "elapsed": "verstrichen",
     "remaining": "Es bleibt übrig",
@@ -4737,5 +4738,29 @@
     "check_failed": "Die Prüfung für {{host}} konnte nicht abgeschlossen werden. Details stehen im Einrichtungsprotokoll.",
     "check_unavailable": "Es ist noch kein Paketdownload zum Prüfen verfügbar.",
     "connection_error": "Die Verbindung zum Paketdownload ist fehlgeschlagen. Zum erneuten Versuch fortsetzen; abgeschlossene Downloads bleiben erhalten."
+  },
+  "sfx": {
+    "title": "Soundeffekte",
+    "prompt_label": "Den Klang beschreiben",
+    "prompt_placeholder": "Regen auf einem Blechdach, fernes Donnern",
+    "prompt_required": "Beschreibe zuerst den Klang.",
+    "duration": "Dauer: {{seconds}} s",
+    "generate": "Erzeugen",
+    "generating": "Wird erzeugt…",
+    "install_title": "Soundeffekte sind nicht installiert",
+    "install_hint": "{{size}} GB Download ({{license}}), nur nach Klick auf Installieren. Benötigt eine NVIDIA-GPU.",
+    "unsupported_title": "Auf diesem Computer nicht verfügbar",
+    "result": "Ergebnis",
+    "failed": "Soundeffekt fehlgeschlagen.",
+    "reason_host_unsupported": "Soundeffekte benötigen eine NVIDIA-GPU. Deine anderen Engines sind nicht betroffen.",
+    "reason_weights_missing": "Die Modelldateien für Soundeffekte fehlen oder sind unvollständig. Lade sie mit Reparieren herunter.",
+    "reason_not_installed": "Soundeffekte sind noch nicht installiert.",
+    "reason_sidecar_missing": "Die Soundeffekt-Komponente fehlt. Installiere VoiceStudio neu.",
+    "reason_unknown": "Soundeffekte sind derzeit nicht verfügbar.",
+    "error_prompt_too_long": "Die Beschreibung ist zu lang (höchstens {{max_chars}} Zeichen).",
+    "error_bad_duration": "Die Dauer muss zwischen {{min}} und {{max}} Sekunden liegen.",
+    "error_busy": "Die GPU ist mit einer anderen Aufgabe beschäftigt. Versuche es gleich noch einmal.",
+    "error_timeout": "Das Erzeugen dieses Soundeffekts hat zu lange gedauert. Wähle eine kürzere Dauer.",
+    "error_out_of_memory": "Der GPU ist der Speicher ausgegangen. Schließe andere GPU-intensive Apps oder wähle eine kürzere Dauer."
   }
 }
