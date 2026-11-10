@@ -17,10 +17,17 @@ from __future__ import annotations
 import os
 import threading
 from collections import Counter
-from typing import Optional
+from typing import Callable, Optional
 
 _lock = threading.Lock()
 _held: Counter[str] = Counter()
+_release_hooks: list[Callable[[list[str]], None]] = []
+
+
+def on_release(hook: Callable[[list[str]], None]) -> None:
+    """Call ``hook(keys)`` after a lease frees ``keys``, so deferred deletes can retry."""
+    if hook not in _release_hooks:
+        _release_hooks.append(hook)
 
 
 def _key(path: str) -> str:
@@ -50,11 +57,17 @@ class VoiceFileLease:
             if self._released:
                 return
             self._released = True
-            for key in self._paths:
+            freed = list(self._paths)
+            for key in freed:
                 _held[key] -= 1
                 if _held[key] <= 0:
                     del _held[key]
             self._paths.clear()
+        for hook in list(_release_hooks):
+            try:
+                hook(freed)
+            except Exception:  # noqa: BLE001 — a retry hook never breaks a render
+                pass
 
     def __enter__(self) -> "VoiceFileLease":
         return self

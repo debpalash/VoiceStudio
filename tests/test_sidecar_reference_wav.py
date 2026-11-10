@@ -269,3 +269,14 @@ def test_conversion_without_a_relative_source_keeps_no_absolute_metadata(tmp_pat
     assert not list(cache.glob("*.source"))
     rw.prune_reference_copies()
     assert not os.path.exists(converted)
+
+
+def test_copy_of_a_source_deleted_mid_generation_goes_on_release(tmp_path, cache, rw):
+    source = tmp_path / "gone.flac"
+    sf.write(source, _tone(seconds=0.1), RATE, format="FLAC")
+    with rw.voice_leases.VoiceFileLease() as lease:
+        copy = rw.sidecar_reference_wav(str(source), lease=lease)
+        source.unlink()
+        rw.prune_reference_copies()
+        assert os.path.exists(copy)  # held while the render runs
+    assert not os.path.exists(copy)  # releasing retries the deferred delete

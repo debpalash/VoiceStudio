@@ -177,6 +177,16 @@ def prune_reference_copies() -> None:
     _prune(_cache_dir())
 
 
+def _retry_after_release(freed: list[str]) -> None:
+    """A lease that held a cached copy just ended: retry the deletion _prune deferred."""
+    prefix = os.path.normcase(os.path.realpath(_cache_dir())) + os.sep
+    if any(key.startswith(prefix) for key in freed):
+        _prune(_cache_dir())
+
+
+voice_leases.on_release(_retry_after_release)
+
+
 def sidecar_reference_wav(path: str, lease: Optional[voice_leases.VoiceFileLease] = None) -> str:
     """``path`` if it is already a 16-bit PCM ``.wav``, else a cached PCM16 mono copy.
 
