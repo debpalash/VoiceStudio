@@ -20,8 +20,13 @@ test('Snap launches without a sandbox permission probe and preserves desktop ini
       env: { SNAP: dir, PATH: dir }, encoding: 'utf8',
     });
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(result.stdout, '--no-sandbox\na b\n--example\n');
+    assert.equal(result.stdout, '--no-sandbox\n--ozone-platform=x11\na b\n--example\n');
     assert.equal(result.stderr, '');
+    // Opt back into native Wayland (#3878).
+    const optIn = spawnSync('/bin/bash', ['-c', configureSnapLauncher(command), 'launcher'], {
+      env: { SNAP: dir, PATH: dir, VOICESTUDIO_SNAP_OZONE_PLATFORM: 'wayland' }, encoding: 'utf8',
+    });
+    assert.equal(optIn.stdout, '--no-sandbox\n--ozone-platform=wayland\n');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -35,8 +40,10 @@ test('accepts the launcher electron-builder generates for allow-sandbox: false',
     executableName: 'voicestudio',
     extraAppArgs: ['--no-sandbox'],
   });
-  assert.doesNotThrow(() => verifySnapLauncher(generated));
-  assert.equal(configureSnapLauncher(generated), generated);
+  assert.throws(() => verifySnapLauncher(generated), /launcher/);
+  const configured = configureSnapLauncher(generated);
+  assert.match(configured, /'?--no-sandbox'? --ozone-platform="\$\{VOICESTUDIO_SNAP_OZONE_PLATFORM:-x11\}" "\$@"/);
+  assert.equal(configureSnapLauncher(configured), configured);
 });
 
 test('launcher configuration is idempotent', () => {
@@ -59,7 +66,7 @@ test('comments cannot satisfy or bypass validation of the executed command', () 
   const commented = [shebang, comment.trimEnd(), ...lines].join('\n');
   assert.throws(() => verifySnapLauncher(commented), /launcher/);
   const configured = configureSnapLauncher(commented);
-  assert.match(configured, /^exec .*"\$SNAP\/voicestudio" --no-sandbox "\$@"$/m);
+  assert.match(configured, /^exec .*"\$SNAP\/voicestudio" '?--no-sandbox'? --ozone-platform=\S+ "\$@"$/m);
   assert.equal(configureSnapLauncher(configured), configured);
   assert.throws(() => verifySnapLauncher(`#!/bin/sh\n${comment}`), /launcher/);
 });
