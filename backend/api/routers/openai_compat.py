@@ -688,9 +688,10 @@ def _native_pcm_busy() -> HTTPException:
     )
 
 
-async def _native_pcm_stream(backend, text, kw, *, sse):
+async def _native_pcm_stream(backend, text, kw, *, sse, timed=False):
     from services.model_manager import generate_timeout_s
     from contextvars import copy_context
+    from time import perf_counter
     from services.inference_cancellation import current_cancellation
     from services.tts_backend import EngineBusyError, MLXAudioBackend, engine_in_use
     from services.watermark import mark_synthetic
@@ -700,11 +701,14 @@ async def _native_pcm_stream(backend, text, kw, *, sse):
     def encode_next():
         if closed:
             return None
+        started = perf_counter()
         wav = next(iterator, None)
         if wav is None:
             return None
         rate = backend.sample_rate
-        return _pcm24k(mark_synthetic(wav, rate, context="openai_compat.speech"), rate)
+        context = "tts_stream.native" if timed else "openai_compat.speech"
+        pcm = _pcm24k(mark_synthetic(wav, rate, context=context), rate)
+        return (pcm, perf_counter() - started) if timed else pcm
 
     def encode_mlx_next():
         # Reserve a shared GPU slot only while the thread-affine step runs.
@@ -757,7 +761,7 @@ async def _native_pcm_stream(backend, text, kw, *, sse):
         iterator = backend.stream_audio(text, **kw)
         while (chunk := await run_on_gpu_pool_guarded(
             encode_mlx_next if mlx else encode_next,
-            what="Native OpenAI TTS generate",
+            what="Native TTS generate" if timed else "Native OpenAI TTS generate",
             executor=None if mlx else _native_pcm_worker,
             timeout=generate_timeout_s(text, engine=backend),
         )) is not None:

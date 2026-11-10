@@ -192,3 +192,80 @@ def test_ws_holds_the_engine_during_routing_and_releases_after(tts, engines, mon
     assert seen["swept"] == []
     assert tts._ENGINE_IN_USE == {}
     assert engines.b in tts._ENGINE_INSTANCES
+
+
+@pytest.mark.parametrize("disconnect", [False, True])
+def test_ws_native_stream_sends_first_chunk_before_next_decode(tts, engines, monkeypatch, disconnect):
+    import threading
+
+    import torch
+    from fastapi import WebSocketDisconnect
+
+    from api.routers import openai_compat, tts_stream
+    from services import engine_memory, engine_routing, watermark
+
+    first_sent = threading.Event()
+    closed = threading.Event()
+    decoded = []
+    marked = []
+    engine = engines.b()
+    worker = openai_compat.ThreadPoolExecutor(max_workers=1)
+    monkeypatch.setattr(openai_compat, "_native_pcm_worker", worker)
+    monkeypatch.setattr(openai_compat, "_native_pcm_lock", threading.Lock())
+    monkeypatch.setattr(engine, "can_stream", lambda **kwargs: True, raising=False)
+
+    def stream_audio(text, **kwargs):
+        assert text == "A single long sentence."
+        try:
+            decoded.append(1)
+            yield torch.ones((1, 240), dtype=torch.float32) * 0.1
+            assert first_sent.is_set()
+            decoded.append(2)
+            yield torch.ones((1, 240), dtype=torch.float32) * 0.2
+        finally:
+            closed.set()
+
+    async def profile(*args):
+        return {"routing_status": "accelerated", "routing_reason": ""}
+
+    async def noop(*args):
+        pass
+
+    async def resolve(*args):
+        return engine
+
+    def mark(audio, rate, **kwargs):
+        marked.append((rate, kwargs["context"]))
+        return audio
+
+    monkeypatch.setattr(engine, "stream_audio", stream_audio, raising=False)
+    monkeypatch.setattr(tts_stream, "_resolve_stream_backend", resolve)
+    monkeypatch.setattr(engine_routing, "runtime_compute_profile_async", profile)
+    monkeypatch.setattr(engine_memory, "evict_other_tts_engines", noop)
+    monkeypatch.setattr(watermark, "mark_synthetic", mark)
+
+    class Socket(_FakeSocket):
+        async def send_bytes(self, data):
+            self.sent.append(data)
+            if disconnect:
+                raise WebSocketDisconnect()
+            first_sent.set()
+
+    socket = Socket({"text": "A single long sentence.", "engine": "stream-b"})
+    try:
+        asyncio.run(tts_stream.ws_tts(socket))
+    finally:
+        worker.shutdown()
+
+    assert closed.is_set()
+    assert not tts._ENGINE_IN_USE
+    assert socket.sent[0]["type"] == "start"
+    assert socket.sent[0]["sample_rate"] == 24000
+    assert len(socket.sent[1]) == 480
+    if disconnect:
+        assert decoded == [1]
+    else:
+        assert decoded == [1, 2]
+        assert socket.sent[-1]["type"] == "done"
+        assert socket.sent[-1]["samples"] == 480
+    assert marked == [(24000, "tts_stream.native")] * len(decoded)
