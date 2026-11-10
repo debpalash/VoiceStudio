@@ -269,3 +269,119 @@ def test_ws_native_stream_sends_first_chunk_before_next_decode(tts, engines, mon
         assert socket.sent[-1]["type"] == "done"
         assert socket.sent[-1]["samples"] == 480
     assert marked == [(24000, "tts_stream.native")] * len(decoded)
+
+
+def _native_fake(engines, monkeypatch, chunks=2):
+    """A native-streaming engine plus a private worker/lock and lease probe."""
+    import threading
+    import time
+    from contextlib import contextmanager
+
+    import torch
+
+    from api.routers import openai_compat
+    from services import tts_backend
+
+    engine = engines.b()
+    worker = openai_compat.ThreadPoolExecutor(max_workers=1)
+    lock = threading.Lock()
+    exited = []
+    monkeypatch.setattr(openai_compat, "_native_pcm_worker", worker)
+    monkeypatch.setattr(openai_compat, "_native_pcm_lock", lock)
+    monkeypatch.setattr(engine, "can_stream", lambda **kwargs: True, raising=False)
+
+    def stream_audio(text, **kwargs):
+        for _ in range(chunks):
+            yield torch.ones((1, 240), dtype=torch.float32) * 0.1
+
+    monkeypatch.setattr(engine, "stream_audio", stream_audio, raising=False)
+
+    @contextmanager
+    def lease(backend, native=False, **kwargs):
+        try:
+            yield
+        finally:
+            if native:
+                # Widen the window in which the queued cleanup is pending.
+                time.sleep(0.2)
+                exited.append(True)
+
+    monkeypatch.setattr(tts_backend, "engine_in_use", lease)
+    return engine, worker, lock, exited
+
+
+@pytest.mark.parametrize("sse", [False, True])
+def test_native_stream_releases_lock_and_lease_before_completion(engines, monkeypatch, sse):
+    from api.routers import openai_compat
+
+    engine, worker, lock, exited = _native_fake(engines, monkeypatch)
+
+    async def run():
+        async for _ in openai_compat._native_pcm_stream(engine, "Hi.", {}, sse=sse):
+            pass
+
+    try:
+        asyncio.run(run())
+        assert exited == [True]
+        assert lock.acquire(blocking=False)
+        lock.release()
+    finally:
+        worker.shutdown()
+
+
+def test_native_stream_early_close_returns_promptly_and_still_cleans_up(engines, monkeypatch):
+    from api.routers import openai_compat
+
+    engine, worker, lock, exited = _native_fake(engines, monkeypatch, chunks=5)
+
+    async def run():
+        stream = openai_compat._native_pcm_stream(engine, "Hi.", {}, sse=False)
+        await anext(stream)
+        await stream.aclose()
+
+    try:
+        asyncio.run(run())
+        worker.shutdown(wait=True)  # drains the queued cleanup
+        assert exited == [True]
+        assert not lock.locked()
+    finally:
+        worker.shutdown()
+
+
+def test_ws_native_back_to_back_requests_never_report_busy(tts, engines, monkeypatch):
+    from api.routers import tts_stream
+    from services import engine_memory, engine_routing
+
+    engine, worker, lock, exited = _native_fake(engines, monkeypatch)
+
+    async def profile(*args):
+        return {"routing_status": "accelerated", "routing_reason": ""}
+
+    async def noop(*args):
+        pass
+
+    async def resolve(*args):
+        return engine
+
+    monkeypatch.setattr(tts_stream, "_resolve_stream_backend", resolve)
+    monkeypatch.setattr(engine_routing, "runtime_compute_profile_async", profile)
+    monkeypatch.setattr(engine_memory, "evict_other_tts_engines", noop)
+
+    class Socket(_FakeSocket):
+        def __init__(self, *requests):
+            super().__init__(requests[0])
+            self._requests = list(requests)
+
+        async def send_bytes(self, data):
+            self.sent.append(data)
+
+    request = {"text": "A single long sentence.", "engine": "stream-b"}
+    socket = Socket(request, dict(request))
+    try:
+        asyncio.run(tts_stream.ws_tts(socket))
+    finally:
+        worker.shutdown()
+
+    frames = [m["type"] for m in socket.sent if isinstance(m, dict)]
+    assert frames == ["start", "done", "start", "done"]
+    assert exited == [True, True]

@@ -748,6 +748,7 @@ async def _native_pcm_stream(backend, text, kw, *, sse, timed=False):
                 _native_pcm_lock.release()
 
     emitted = False
+    cleanup = None
     try:
         # Entering the lease can fail; the lock is already held, so the
         # ``finally`` below must see it and release it.
@@ -781,7 +782,15 @@ async def _native_pcm_stream(backend, text, kw, *, sse, timed=False):
     finally:
         # The iterator must close on the same thread, after any abandoned
         # generation step finishes. Do not make the client await that step.
-        _native_pcm_worker.submit(close_on_worker)
+        cleanup = _native_pcm_worker.submit(close_on_worker)
+    # Reached only on normal exhaustion (errors, cancellation and early close
+    # leave through the ``finally`` above without waiting). Release the lock and
+    # lease before the caller reports completion so a back-to-back request
+    # is not rejected as busy. Shield it: a timeout must not cancel the cleanup.
+    try:
+        await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(cleanup)), timeout=5)
+    except asyncio.TimeoutError:
+        logger.warning("Native speech stream cleanup is still pending; continuing")
     if sse:
         yield _speech_done()
 
