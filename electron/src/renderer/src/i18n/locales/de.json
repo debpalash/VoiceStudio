@@ -820,6 +820,7 @@
     "prep_chip_scene": "Szene",
     "prep_chip_cached": "zwischengespeichert",
     "prep_demucs_note": "Demucs kann bei langen Videos mehrere Minuten dauern. Langes Audio = längere Wartezeit.",
+    "bg_separation_failed": "Der Hintergrundton konnte nicht getrennt werden. Die Synchronisation enthält nur Sprache, sofern du nicht erneut versuchst.",
     "transcribing": "Audio transkribieren…",
     "elapsed": "verstrichen",
     "remaining": "Es bleibt übrig",

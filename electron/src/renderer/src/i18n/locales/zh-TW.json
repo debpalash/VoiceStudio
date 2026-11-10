@@ -820,6 +820,7 @@
     "prep_chip_scene": "場景",
     "prep_chip_cached": "快取的",
     "prep_demucs_note": "演示長視頻可能需要幾分鐘的時間。長音頻=更長的等待。",
+    "bg_separation_failed": "無法分離背景音。除非重試，否則配音將僅包含語音。",
     "transcribing": "正在轉錄音訊...",
     "elapsed": "過去了",
     "remaining": "剩餘 s",

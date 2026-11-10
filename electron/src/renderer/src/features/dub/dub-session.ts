@@ -10,6 +10,7 @@ import { MAX_COOKIE_EXPORT_BYTES, _cookieTransportAllowed } from '@shared/utils/
 import { projectSession, type DubProject } from '../projects/project-format';
 import { DUB_DRAFT_KEY, restoreDubDraft } from './dub-draft';
 import { dubInputIssue, type DubInputIssue } from './dub-input-issue';
+import { toast } from 'sonner';
 import { Store } from '@tanstack/store';
 import { useStore } from '@tanstack/react-store';
 import { apiJson, ApiError } from '@/lib/api/client';
@@ -1106,6 +1107,9 @@ async function finishPreparation(jobId: string, taskId: string, signal: AbortSig
         patch({ duration: Number(event.duration) });
       if (Array.isArray(event.youtube_subs) && event.youtube_subs.length > 0)
         hasDownloadedCaptions = true;
+      // Tell the user now, not at export, that the dub will be speech only.
+      if (event.type === 'demucs_done' && event.has_bg === false)
+        toast.warning(tr('dub.bg_separation_failed'));
       return taskEvent(event, 'ready');
     },
     signal,

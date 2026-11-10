@@ -820,6 +820,7 @@
     "prep_chip_scene": "scen",
     "prep_chip_cached": "cachad",
     "prep_demucs_note": "Demucs kan ta flera minuter på långa videor. Långt ljud = längre väntan.",
+    "bg_separation_failed": "Bakgrundsljudet kunde inte separeras. Dubbningen innehåller bara tal om du inte försöker igen.",
     "transcribing": "Transkriberar ljud...",
     "elapsed": "förflutit",
     "remaining": "s kvar",

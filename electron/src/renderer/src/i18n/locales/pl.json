@@ -830,6 +830,7 @@
     "prep_chip_scene": "scena",
     "prep_chip_cached": "buforowane",
     "prep_demucs_note": "W przypadku długich filmów Demucs może zająć kilka minut. Długi dźwięk = dłuższe oczekiwanie.",
+    "bg_separation_failed": "Nie udało się oddzielić dźwięku tła. Dubbing będzie zawierał tylko mowę, chyba że spróbujesz ponownie.",
     "transcribing": "Transkrypcja dźwięku…",
     "elapsed": "upłynął",
     "remaining": "pozostało",

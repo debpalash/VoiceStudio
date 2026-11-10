@@ -820,6 +820,7 @@
     "prep_chip_scene": "sahne",
     "prep_chip_cached": "önbelleğe alınmış",
     "prep_demucs_note": "Demucs uzun videolarda birkaç dakika sürebilir. Uzun ses = daha uzun bekleme.",
+    "bg_separation_failed": "Arka plan sesi ayrıştırılamadı. Yeniden denemezseniz dublaj yalnızca konuşma içerecek.",
     "transcribing": "Ses yazıya aktarılıyor…",
     "elapsed": "geçti",
     "remaining": "kaldı",

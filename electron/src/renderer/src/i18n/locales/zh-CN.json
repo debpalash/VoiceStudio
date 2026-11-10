@@ -812,6 +812,7 @@
     "prep_chip_scene": "场景",
     "prep_chip_cached": "缓存",
     "prep_demucs_note": "Demucs 处理长视频可能需要几分钟；音频越长，等待越久。",
+    "bg_separation_failed": "无法分离背景音。除非重试，否则配音将仅包含语音。",
     "transcribing": "正在转录音频…",
     "elapsed": "已用",
     "remaining": "秒剩余",
