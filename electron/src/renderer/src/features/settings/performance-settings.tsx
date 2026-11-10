@@ -396,6 +396,7 @@ function MemoryManagement() {
         </Button>
       </SettingsRow>
       <OffloadAfterGeneration />
+      <GgufResident />
     </SettingsSection>
   );
 }
@@ -448,6 +449,57 @@ function OffloadAfterGeneration() {
         </p>
       )}
       {(action.error || query.isError) && <ErrorRow retry={() => void query.refetch()} />}
+    </>
+  );
+}
+interface GgufResidentState {
+  enabled: boolean;
+  env_pinned: boolean;
+  available: boolean;
+}
+// #3654: opt-in — keep the OmniVoice GGUF runtime loaded between requests.
+// Shown only when the build bundles its tts-server; otherwise every request
+// spawns the CLI. Off by default: upstream tts-server has no API key.
+function GgufResident() {
+  const { t } = useTranslation();
+  const client = useQueryClient();
+  const action = useSettingsAction();
+  const query = useQuery({
+    queryKey: ['gguf-resident'],
+    queryFn: ({ signal }) =>
+      apiJson<GgufResidentState>('/api/settings/perf/gguf-resident', { signal }),
+  });
+  const state = query.data;
+  if (!state?.available) return null;
+  return (
+    <>
+      <SettingsRow
+        id="gguf-resident"
+        title={t('settings.gguf_resident')}
+        description={t('settings.gguf_resident_note')}
+      >
+        <Switch
+          aria-label={t('settings.gguf_resident')}
+          checked={state.enabled}
+          disabled={action.busy || state.env_pinned}
+          onCheckedChange={(enabled) =>
+            void action.run(async () => {
+              const saved = await apiJson<GgufResidentState>('/api/settings/perf/gguf-resident', {
+                method: 'PUT',
+                body: JSON.stringify({ enabled }),
+              });
+              client.setQueryData(['gguf-resident'], saved);
+            })
+          }
+        />
+      </SettingsRow>
+      <p className="p-4 text-sm text-muted-foreground">{t('settings.gguf_resident_caution')}</p>
+      {state.env_pinned && (
+        <p className="p-4 text-sm text-muted-foreground">
+          {t('settings.generate_timeout_shadowed_note')}
+        </p>
+      )}
+      {action.error && <ErrorRow retry={() => void query.refetch()} />}
     </>
   );
 }
