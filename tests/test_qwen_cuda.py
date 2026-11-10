@@ -74,3 +74,29 @@ def test_qwen_cuda_ready_does_not_wait_for_generation_lock():
 
     engine._lock = HeldByStream()
     engine.ensure_ready()
+
+
+def test_qwen_cuda_buffered_generation_retries_while_native_stream_holds_engine(tmp_path):
+    from services.model_manager import GpuPoolBusyError
+
+    reference = tmp_path / "reference.wav"
+    sf.write(reference, np.zeros(480, dtype=np.float32), 24000)
+
+    def generate_stream(**kw):
+        yield np.ones(2, dtype=np.float32), 24000, {}
+
+    engine = QwenCUDABackend()
+    engine._model = SimpleNamespace(
+        model=SimpleNamespace(create_voice_clone_prompt=lambda **kwargs: None),
+        generate_voice_clone_streaming=generate_stream,
+    )
+    kwargs = dict(ref_audio=reference, ref_text="Reference")
+    stream = engine.stream_audio("First.", **kwargs)
+    try:
+        next(stream)
+        with pytest.raises(GpuPoolBusyError) as busy:
+            engine.generate("Competing buffered request.", **kwargs)
+        assert busy.value.retry_after == 1
+    finally:
+        stream.close()
+    torch.testing.assert_close(engine.generate("After disconnect.", **kwargs), torch.ones(1, 2))

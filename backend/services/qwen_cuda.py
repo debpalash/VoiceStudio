@@ -81,7 +81,13 @@ class QwenCUDABackend(TTSBackend):
             raise TTSInputError("The reference audio file is missing or unreadable.") from exc
         key = (sha256(audio).digest(), ref_text)
         self._ensure_loaded()
-        with self._lock:
+        # A native response can hold the engine across network writes.
+        # Buffered callers must not park the shared GPU worker behind it.
+        if not self._lock.acquire(blocking=False):
+            from services.model_manager import GpuPoolBusyError
+
+            raise GpuPoolBusyError("Qwen3-TTS Base is already generating speech.", retry_after=1)
+        try:
             if key not in self._prompts:
                 try:
                     samples, rate = sf.read(BytesIO(audio), dtype="float32", always_2d=True)
@@ -107,6 +113,8 @@ class QwenCUDABackend(TTSBackend):
                             raise RuntimeError(f"Unexpected Qwen sample rate {rate}")
                         if len(audio):
                             yield torch.from_numpy(np.array(audio, dtype=np.float32, copy=True)).reshape(1, -1)
+        finally:
+            self._lock.release()
 
     def generate(self, text, **kw):
         if not self.can_stream(**kw):
