@@ -329,7 +329,7 @@ async def _convert_keeping_delivery(
                 backend, source_path, cond["ref_audio_path"], workdir,
                 seed=used_seed, run_job=_run, mark=_mark,
             )
-            return _publish_video_swap(swap, backend.id, start_time)
+            return await asyncio.to_thread(_publish_video_swap, swap, backend.id, start_time)
         audio_tensor = await convert_recording(
             backend, source_path, cond["ref_audio_path"],
             seed=used_seed, run_job=_run,
@@ -377,11 +377,37 @@ _SWAP_NOTE_MESSAGES = {
         "No background separation was available, so the whole soundtrack was "
         "converted, background included."
     ),
+    "no_background": (
+        "The background could not be mixed back in, so the result has the "
+        "converted voice only."
+    ),
     "audio_only": (
         "The video could not be rebuilt with the new voice, so here is the "
         "converted audio instead. Your original file is untouched."
     ),
 }
+
+
+#: Newest video-swap takes kept in OUTPUTS_DIR; they have no History row, so
+#: nothing else would ever delete them.
+_KEEP_VIDEO_SWAPS = 10
+
+
+def _prune_video_swaps(outputs_dir: str, keep: int = _KEEP_VIDEO_SWAPS) -> None:
+    import glob
+
+    takes: dict = {}
+    for path in glob.glob(os.path.join(outputs_dir, "voiceswap-*")):
+        try:
+            takes.setdefault(os.path.splitext(path)[0], []).append((os.path.getmtime(path), path))
+        except OSError:
+            pass
+    for _, files in sorted(takes.items(), key=lambda kv: max(m for m, _p in kv[1]), reverse=True)[keep:]:
+        for _m, path in files:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
 
 
 def _publish_video_swap(swap, engine_id: str, start_time: float) -> dict:
@@ -408,6 +434,7 @@ def _publish_video_swap(swap, engine_id: str, start_time: float) -> dict:
         video_name = f"voiceswap-{take}{os.path.splitext(swap.video_path)[1]}"
         shutil.copy2(swap.video_path, os.path.join(OUTPUTS_DIR, video_name))
         result["video_url"] = f"/audio/{video_name}"
+    _prune_video_swaps(OUTPUTS_DIR)
     return result
 
 

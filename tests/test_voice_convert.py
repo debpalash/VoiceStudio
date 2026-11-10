@@ -871,19 +871,20 @@ def test_keep_delivery_refuses_an_overlong_source(client, monkeypatch, profile):
 # ── Video voice swap (#3750) ────────────────────────────────────────────────
 
 
-def _swap_stubs(monkeypatch, *, separation=True, mux_ok=(True, True)):
+def _swap_stubs(monkeypatch, *, separation=True, mux_ok=(True, True), mix_ok=True):
     """Stub every ffmpeg/Demucs step of the swap; record what each one saw."""
     import soundfile as sf
     import services.video_voice_swap as vs
     import services.voice_conversion as vc
 
-    seen = {"decoded": [], "mux": [], "mixed": 0}
+    seen = {"decoded": [], "mux": [], "mixed": 0, "separated": 0}
     tone = np.zeros(24000, dtype=np.float32)
 
     async def extract(video, out_wav):
         sf.write(out_wav, tone, 24000)
 
     async def separate(track, workdir):
+        seen["separated"] += 1
         if not separation:
             return None
         vocals, bed = os.path.join(workdir, "v.wav"), os.path.join(workdir, "b.wav")
@@ -894,7 +895,7 @@ def _swap_stubs(monkeypatch, *, separation=True, mux_ok=(True, True)):
     async def mix(voice, bed, out):
         seen["mixed"] += 1
         sf.write(out, tone, 24000)
-        return True
+        return mix_ok
 
     attempts = iter(mux_ok)
 
@@ -966,6 +967,40 @@ def test_video_swap_without_separation_converts_the_whole_track(client, monkeypa
     assert body["notes"] == ["no_separation"] and "whole soundtrack" in body["message"]
     assert body["video_url"]  # never a failure
     assert seen["decoded"][0] == "track.wav" and seen["mixed"] == 0
+
+
+def test_video_swap_failed_mix_says_the_background_is_missing(client, monkeypatch, profile):
+    _swap_engine(monkeypatch)
+    _swap_stubs(monkeypatch, mix_ok=False)
+    body = _post_video(client, profile).json()
+    assert body["notes"] == ["no_background"] and "voice only" in body["message"]
+    assert body["video_url"]
+
+
+def test_video_swap_rejects_an_overlong_soundtrack_before_separation(client, monkeypatch, profile):
+    import services.voice_conversion as vc
+
+    _swap_engine(monkeypatch)
+    seen = _swap_stubs(monkeypatch)
+    monkeypatch.setattr(vc, "MAX_SOURCE_S", 0.5)  # the stub soundtrack is 1 s
+    r = _post_video(client, profile)
+    assert r.status_code == 422 and "longer than" in r.json()["detail"]
+    assert seen["separated"] == 0 and seen["mux"] == []
+
+
+def test_video_swap_keeps_only_the_newest_takes(tmp_path):
+    from api.routers.voice_convert import _prune_video_swaps
+
+    for i in range(4):
+        for ext in (".wav", ".mp4"):
+            p = tmp_path / f"voiceswap-{i}{ext}"
+            p.write_bytes(b"x")
+            os.utime(p, (1000 + i, 1000 + i))
+    (tmp_path / "other.wav").write_bytes(b"x")
+    _prune_video_swaps(str(tmp_path), keep=2)
+    assert sorted(p.name for p in tmp_path.iterdir()) == [
+        "other.wav", "voiceswap-2.mp4", "voiceswap-2.wav", "voiceswap-3.mp4", "voiceswap-3.wav",
+    ]
 
 
 def test_video_swap_retries_with_a_compatible_mp4_remux(client, monkeypatch, profile):

@@ -12,8 +12,9 @@ export interface ConvertResult {
   engine?: string;
   /** Video with the new voice (video sources only; null when it fell back to audio). */
   video_url?: string | null;
-  /** Fallbacks taken on a video swap: `no_separation`, `audio_only`. */
+  /** Fallbacks taken on a video swap: `no_separation`, `no_background`, `audio_only`. */
   notes?: string[];
+  message?: string;
 }
 export async function convertSpeech(
   audio: File,

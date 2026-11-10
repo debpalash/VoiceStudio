@@ -24,8 +24,7 @@ import { beginAppActivity } from '@/lib/app-activity';
 
 // Containers the backend can swap the voice in (#3750). WebM stays audio.
 const VIDEO_PATTERN = /\.(mp4|mov|m4v|mkv)$/i;
-const isVideoFile = (file: File | null) =>
-  !!file && (VIDEO_PATTERN.test(file.name) || file.type.startsWith('video/'));
+const isVideoFile = (file: File | null) => !!file && VIDEO_PATTERN.test(file.name);
 
 export function ConvertVoice() {
   const { t } = useTranslation();
@@ -371,7 +370,7 @@ export function ConvertVoice() {
             <h3 className="text-sm font-medium">{t('convert.result_kicker')}</h3>
             <SaveAudioButton
               url={apiPath(result.video_url ?? result.audio_url)}
-              suggestedName={`voicestudio-${result.id}${result.video_url ? '.mp4' : '.wav'}`}
+              suggestedName={`voicestudio-${result.id}${result.video_url ? (/\.\w+$/.exec(result.video_url)?.[0] ?? '.mp4') : '.wav'}`}
             />
           </div>
           {result.video_url ? (
@@ -387,6 +386,11 @@ export function ConvertVoice() {
           {result.notes?.includes('no_separation') && (
             <p role="status" className="text-xs text-muted-foreground">
               {t('convert.video_no_separation')}
+            </p>
+          )}
+          {result.notes?.includes('no_background') && (
+            <p role="status" className="text-xs text-muted-foreground">
+              {result.message}
             </p>
           )}
           {result.notes?.includes('audio_only') && (

@@ -40,6 +40,7 @@ SUPPORTED_VIDEO_NAMES = "MP4, MOV, M4V and MKV"
 #: Result notes the UI turns into a localized sentence.
 NOTE_NO_SEPARATION = "no_separation"
 NOTE_AUDIO_ONLY = "audio_only"
+NOTE_NO_BACKGROUND = "no_background"
 
 _EXTRACT_SR = 44_100
 
@@ -87,10 +88,13 @@ async def _ffmpeg(cmd: list, timeout: float = 1800.0) -> "tuple[int, bytes]":
 async def extract_track(video: str, out_wav: str) -> None:
     """Decode the video's soundtrack to full-quality stereo WAV."""
     from services.ffmpeg_utils import find_ffmpeg
+    from services.voice_conversion import MAX_SOURCE_S
 
+    # Bounded like convert_recording's own decode: an hour-long video must not
+    # become gigabytes of WAV before the length check below rejects it.
     rc, err = await _ffmpeg([
         find_ffmpeg(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-        "-i", video, "-vn", "-acodec", "pcm_s16le", "-ar", str(_EXTRACT_SR), "-ac", "2", out_wav,
+        "-i", video, "-t", f"{MAX_SOURCE_S + 1.0:.3f}", "-vn", "-acodec", "pcm_s16le", "-ar", str(_EXTRACT_SR), "-ac", "2", out_wav,
     ])
     if rc != 0 or not os.path.isfile(out_wav):
         from services.ffmpeg_utils import raise_for_audio_extract_failure
@@ -199,13 +203,20 @@ async def swap_video_voice(
     or too-long soundtrack, unreadable file); everything else degrades.
     """
     from services.ffmpeg_utils import require_audio_stream, validate_media_source
-    from services.voice_conversion import convert_recording
+    from services.voice_conversion import MAX_SOURCE_S, convert_recording
 
     await asyncio.to_thread(validate_media_source, video_path)
     await asyncio.to_thread(require_audio_stream, video_path)
 
     track = os.path.join(workdir, "track.wav")
     await extract_track(video_path, track)
+    import soundfile as sf
+
+    if await asyncio.to_thread(lambda: sf.info(track).duration) > MAX_SOURCE_S:
+        raise ValueError(
+            f"The source clip is longer than {int(MAX_SOURCE_S // 60)} minutes. "
+            "Trim it, or convert it in parts."
+        )
 
     notes: list = []
     split = await separate_vocals(track, workdir)
@@ -227,7 +238,7 @@ async def swap_video_voice(
             audio_path = mixed
         else:
             # Mixing is polish: the converted voice alone beats a failed swap.
-            notes.append(NOTE_NO_SEPARATION)
+            notes.append(NOTE_NO_BACKGROUND)
 
     ext = os.path.splitext(video_path)[1].lower()
     same = os.path.join(workdir, "swapped" + ext)
