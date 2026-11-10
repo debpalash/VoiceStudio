@@ -207,3 +207,131 @@ def test_dub_zip_closes_temporary_archive_on_failure(export_module, monkeypatch,
         asyncio.run(download())
     assert len(opened) == 1
     assert opened[0].closed
+
+
+def _segments_job(module, monkeypatch, tmp_path, count=3):
+    """Segment files named like generation's output, one job dir."""
+    job = {"filename": "talk.mp4",
+           "segments": [{"start": i, "end": i + 1, "speaker_id": "S"} for i in range(count)]}
+    for i in range(count):
+        (tmp_path / f"seg_de_{i}.wav").write_bytes(b"old%d" % i)
+    monkeypatch.setattr(module, "_job_dir_or_400", lambda _: str(tmp_path))
+    monkeypatch.setattr(module, "_existing_job_dir_or_404", lambda _: str(tmp_path))
+    monkeypatch.setattr(module, "_get_job", lambda _: job)
+    monkeypatch.setattr(module, "_seg_wav_candidates",
+                        lambda job, lang, ids: [f"{lang}_{ids[1]}"])
+    return job
+
+
+def _fetch_zip(module):
+    async def download():
+        response = await module.dub_export_segments_zip("job", lang="de")
+        body = []
+
+        async def send(message):
+            body.append(message.get("body", b""))
+
+        async def receive():
+            pytest.fail("unexpected receive")
+
+        await response({"type": "http", "asgi": {"spec_version": "2.4"}}, receive, send)
+        return b"".join(body)
+
+    return asyncio.run(download())
+
+
+def test_segments_zip_is_a_stable_snapshot_during_publication(export_module, monkeypatch, tmp_path):
+    """A regeneration publishing mid-compression must not leak into the archive."""
+    import os
+    module = export_module
+    _segments_job(module, monkeypatch, tmp_path)
+    real_write = zipfile.ZipFile.write
+    state = {"done": False}
+
+    def write_then_publish(self, filename, arcname=None, *a, **kw):
+        real_write(self, filename, arcname, *a, **kw)
+        if not state["done"]:
+            state["done"] = True
+            for i in range(3):  # what _install_staged_segments does
+                tmp = tmp_path / f"new{i}.tmp"
+                tmp.write_bytes(b"new%d" % i)
+                os.replace(tmp, tmp_path / f"seg_de_{i}.wav")
+
+    monkeypatch.setattr(zipfile.ZipFile, "write", write_then_publish)
+    data = _fetch_zip(module)
+    assert state["done"]
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        assert [archive.read(n) for n in archive.namelist()] == [b"old0", b"old1", b"old2"]
+    assert (tmp_path / "seg_de_0.wav").read_bytes() == b"new0"
+    assert not list(tmp_path.glob(".zip-snapshot-*"))
+
+
+def test_segments_zip_copies_when_hard_links_are_unavailable(export_module, monkeypatch, tmp_path):
+    import os
+    module = export_module
+    _segments_job(module, monkeypatch, tmp_path, count=2)
+
+    def no_link(*a, **kw):
+        raise OSError("cross-device")
+
+    monkeypatch.setattr(os, "link", no_link)
+    with zipfile.ZipFile(io.BytesIO(_fetch_zip(module))) as archive:
+        assert [archive.read(n) for n in archive.namelist()] == [b"old0", b"old1"]
+    assert not list(tmp_path.glob(".zip-snapshot-*"))
+
+
+def test_zip_snapshot_skips_vanished_segments_and_symlinks(export_module, monkeypatch, tmp_path):
+    import shutil
+    module = export_module
+    _segments_job(module, monkeypatch, tmp_path, count=3)
+    (tmp_path / "seg_de_0.wav").unlink()
+    (tmp_path / "seg_de_1.wav").unlink()
+    outside = tmp_path / "outside.bin"
+    outside.write_bytes(b"secret")
+    (tmp_path / "seg_de_1.wav").symlink_to(outside)
+    snap, kept = module._snapshot_zip_entries(
+        "job", [(str(tmp_path / f"seg_de_{i}.wav"), f"{i}.wav") for i in range(3)])
+    try:
+        assert [name for _, name in kept] == ["2.wav"]
+    finally:
+        shutil.rmtree(snap)
+    with pytest.raises(module.HTTPException) as err:
+        module._snapshot_zip_entries("job", [(str(tmp_path / "gone.wav"), "a.wav")])
+    assert err.value.status_code == 400
+    with pytest.raises(module.HTTPException) as err:
+        module._snapshot_zip_entries("job", [(str(tmp_path / "gone.wav"), "v.wav")],
+                                     required=frozenset({"v.wav"}))
+    assert err.value.status_code == 404
+    assert not list(tmp_path.glob(".zip-snapshot-*"))
+
+
+@pytest.mark.parametrize("failure", ["compression", "disconnect"])
+def test_dub_zip_removes_snapshot_dir(export_module, monkeypatch, tmp_path, failure):
+    """The private snapshot never outlives the response, however it ends."""
+    from starlette.requests import ClientDisconnect
+
+    module = export_module
+    _segments_job(module, monkeypatch, tmp_path, count=1)
+    snap, entries = module._snapshot_zip_entries("job", [(str(tmp_path / "seg_de_0.wav"), "a.wav")])
+    assert list(tmp_path.glob(".zip-snapshot-*"))
+    if failure == "compression":
+        def boom(*a, **kw):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(zipfile.ZipFile, "write", boom)
+
+    async def download():
+        response = module._DubZipResponse(entries, "dub.zip", snap)
+
+        async def send(message):
+            if message["type"] == "http.response.body":
+                raise OSError("client disconnected")
+
+        async def receive():
+            pytest.fail("unexpected receive")
+
+        await response({"type": "http", "asgi": {"spec_version": "2.4"}}, receive, send)
+
+    with pytest.raises(RuntimeError if failure == "compression" else ClientDisconnect):
+        asyncio.run(download())
+    assert not list(tmp_path.glob(".zip-snapshot-*"))

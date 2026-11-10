@@ -191,6 +191,8 @@ karaoke (disabled with dual layout). Audio supports WAV or MP3 with bitrate choi
 SRT/VTT/ASS sidecars and per-language stem/segment ZIPs use the existing backend.
 The backend compresses ZIP exports into a temporary file and sends the download
 in chunks, so a long project does not require holding its entire archive in memory.
+Each ZIP is built from a snapshot of the files taken when the download starts, so
+a regeneration finishing mid-download cannot mix old and new audio.
 Each download is explicit and targets the selected language. Export errors retain
 all choices for retry. Native save filters match the encoded file format.
 Settings -> Performance -> Video export sets how video exports are encoded. The

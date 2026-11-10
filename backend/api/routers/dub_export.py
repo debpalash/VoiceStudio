@@ -4,6 +4,9 @@ import logging
 import ntpath
 import os
 import re
+import shutil
+import stat
+import tempfile
 import time
 import uuid
 import weakref
@@ -2210,11 +2213,57 @@ async def dub_export_ass(
     )
 
 
+def _snapshot_zip_entries(
+    job_id: str,
+    entries: list[tuple[str, str]],
+    *,
+    required: frozenset[str] = frozenset(),
+    missing_detail: str = "File not found",
+    empty_detail: str = "No segments available",
+) -> tuple[str, list[tuple[str, str]]]:
+    """Pin one version of each export source in a private dir, under the jobs lock.
+
+    Generation publishes with ``os.replace`` under the same lock, so links made
+    here never mix old and new files; a later replace leaves our inode intact.
+    """
+    from services.dub_pipeline import _dub_jobs_lock
+
+    snap_dir = tempfile.mkdtemp(prefix=".zip-snapshot-", dir=_job_dir_or_400(job_id))
+    kept: list[tuple[str, str]] = []
+    try:
+        with _dub_jobs_lock:
+            for index, (source, arc_name) in enumerate(entries, 1):
+                target = os.path.join(snap_dir, f"{index:04d}")
+                try:
+                    if not stat.S_ISREG(os.lstat(source).st_mode):
+                        raise FileNotFoundError(source)  # symlink or non-file
+                    try:
+                        os.link(source, target, follow_symlinks=False)
+                    except (OSError, NotImplementedError) as exc:
+                        if isinstance(exc, FileNotFoundError):
+                            raise
+                        logger.info("Dub ZIP snapshot copying: hard link unavailable (%s)", type(exc).__name__)
+                        shutil.copy2(source, target, follow_symlinks=False)
+                except FileNotFoundError:
+                    continue
+                kept.append((target, arc_name))
+        present = {name for _, name in kept}
+        if not required <= present:
+            raise HTTPException(status_code=404, detail=missing_detail)
+        if not kept:
+            raise HTTPException(status_code=400, detail=empty_detail)
+    except BaseException:
+        shutil.rmtree(snap_dir, ignore_errors=True)
+        raise
+    return snap_dir, kept
+
+
 class _DubZipResponse(StreamingResponse):
     """Compress off the event loop and release the temporary archive on disconnect."""
 
-    def __init__(self, entries: list[tuple[str, str]], filename: str):
+    def __init__(self, entries: list[tuple[str, str]], filename: str, snapshot_dir: str | None = None):
         self._entries = entries
+        self._snapshot_dir = snapshot_dir
         super().__init__((), media_type="application/zip", headers={
             "Content-Disposition": content_disposition(filename),
         })
@@ -2230,11 +2279,15 @@ class _DubZipResponse(StreamingResponse):
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         """Own the archive across both compression and streaming."""
-        with TemporaryFile() as archive:
-            size = await run_in_threadpool(self._write_archive, archive)
-            self.headers["Content-Length"] = str(size)
-            self.body_iterator = iterate_in_threadpool(iter(partial(archive.read, 64 * 1024), b""))
-            await super().__call__(scope, receive, send)
+        try:
+            with TemporaryFile() as archive:
+                size = await run_in_threadpool(self._write_archive, archive)
+                self.headers["Content-Length"] = str(size)
+                self.body_iterator = iterate_in_threadpool(iter(partial(archive.read, 64 * 1024), b""))
+                await super().__call__(scope, receive, send)
+        finally:
+            if self._snapshot_dir:
+                shutil.rmtree(self._snapshot_dir, ignore_errors=True)
 
 
 @router.get("/dub/export-segments/{job_id}", dependencies=[Depends(reject_cross_site_get)])
@@ -2266,7 +2319,8 @@ async def dub_export_segments_zip(job_id: str, lang: str = Query(None)):
 
     base_name = os.path.splitext(job.get('filename', 'video'))[0]
     safe_name = ''.join(c for c in base_name if c.isalnum() or c in '-_ ').strip() or 'segments'
-    return _DubZipResponse(entries, f"segments_{safe_name}.zip")
+    snap_dir, entries = _snapshot_zip_entries(job_id, entries)
+    return _DubZipResponse(entries, f"segments_{safe_name}.zip", snap_dir)
 
 @router.get("/dub/download-mp3/{job_id}", dependencies=[Depends(reject_cross_site_get)])
 @router.get("/dub/download-mp3/{job_id}/{filename}", dependencies=[Depends(reject_cross_site_get)])
@@ -2405,4 +2459,9 @@ async def dub_export_stems(job_id: str, lang: str = Query(None)):
 
     base_name = os.path.splitext(job.get('filename', 'video'))[0]
     safe_name = ''.join(c for c in base_name if c.isalnum() or c in '-_ ').strip() or 'stems'
-    return _DubZipResponse(entries, f"stems_{safe_name}.zip")
+    snap_dir, entries = _snapshot_zip_entries(
+        job_id, entries,
+        required=frozenset({f"vocals_dubbed_{lang_label}.wav"}),
+        missing_detail="Dubbed audio file not found",
+    )
+    return _DubZipResponse(entries, f"stems_{safe_name}.zip", snap_dir)
