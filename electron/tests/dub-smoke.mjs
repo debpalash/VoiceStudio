@@ -806,6 +806,12 @@ try {
   await generationNotice.waitFor({ state: 'hidden' });
   await timeline.locator('[data-timeline-segment="long-0"]').click();
   await assertTimelineCueVisible('long-0');
+  // A mix failure carries the row index even when the backend omits its ID.
+  generationFailure = { error_code: 'dub_speech_missing', segment: 90 };
+  await page.getByRole('button', { name: 'Generate Dub', exact: true }).click();
+  await generationNotice.getByRole('button', { name: /^Segment 91 of / }).click({ timeout: 5000 });
+  await assertTimelineCueVisible('long-90');
+  await generationNotice.getByRole('button', { name: 'Dismiss', exact: true }).click();
   generationFailure = null;
   await page.setViewportSize({ width: 1400, height: 900 });
   await page.evaluate(() => sessionStorage.setItem('voicestudio.test.reset-dub', '1'));
