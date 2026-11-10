@@ -5,8 +5,20 @@ opening it: https://github.com/debpalash/VoiceStudio/issues/2586
 Your signature covers your future contributions. Every other non-exempt human commit
 author and co-author must also sign before merge. If this pull request contains
 `Supersedes #N`, that also includes the non-exempt human opener, commit authors
-and co-authors of pull request #N.
+and co-authors of pull request #N. Until the opener signs, the CLA check keeps
+the pull request a draft and its heavy CI waits. Signing restarts CI and marks
+the pull request ready for review, except one you made a draft yourself: that
+stays a draft until you mark it ready.
 -->
+
+<details>
+<summary>Using an AI agent? Give it this</summary>
+
+```text
+Before changing anything, read https://github.com/debpalash/VoiceStudio/blob/main/.github/AGENT_PR_GUIDE.md and follow every step in it. Finish every step before you ask for review.
+```
+
+</details>
 
 ## Summary
 

@@ -1,4 +1,5 @@
 """Documentation and test-only changes skip builds without hiding runtime edits."""
+import base64
 import importlib.util
 import json
 import subprocess
@@ -85,7 +86,7 @@ def test_detection_failure_emits_runtime_true(tmp_path, monkeypatch):
         raise subprocess.CalledProcessError(1, "gh")
     monkeypatch.setattr(scope.subprocess, "run", fail)
     scope.main()
-    assert output.read_text(encoding="utf-8") == "runtime=true\n"
+    assert output.read_text(encoding="utf-8") == "runtime=true\ncla=clear\n"
 
 
 @pytest.mark.parametrize("event", ["workflow_dispatch", "schedule", "release"])
@@ -127,3 +128,113 @@ def test_backend_smokes_run_after_success_despite_a_skipped_internal_approval():
     # the skipped approve-external ancestor through an otherwise successful job.
     assert "!cancelled()" in smoke.get("if", "")
     assert "needs.test-python.result == 'success'" in smoke["if"]
+
+
+# ── The CLA hold ────────────────────────────────────────────────────────
+
+ALICE = {"login": "alice", "id": 1001, "type": "User"}
+
+
+@pytest.mark.parametrize("pr,signed,held", [
+    ({"user": ALICE}, set(), True),
+    ({"user": ALICE}, {1001}, False),
+    ({"user": ALICE}, None, False),  # signatures unreadable: run CI
+    ({"user": ALICE, "labels": [{"name": "cla-signed"}]}, set(), False),
+    ({"user": ALICE, "labels": [{"name": "cla-override"}]}, set(), False),
+    ({"user": {"login": "debpalash", "id": 4178343, "type": "User"}}, set(), False),
+    ({"user": {"login": "dependabot[bot]", "id": 49699333, "type": "Bot"}}, set(), False),
+    ({"user": {"login": "renovate[bot]", "id": 29139614, "type": "Bot"}}, set(), False),
+    ({"user": {"login": "ghost", "type": "User"}}, set(), False),
+])
+def test_cla_held(pr, signed, held):
+    assert scope.cla_held(pr, signed) is held
+
+
+def _scope_main(tmp_path, monkeypatch, event_name, event, api, argv=()):
+    path = tmp_path / "event.json"
+    path.write_text(json.dumps(event))
+    output = tmp_path / "output"
+    for key, value in {"GITHUB_EVENT_PATH": str(path), "GITHUB_EVENT_NAME": event_name,
+                       "GITHUB_REPOSITORY": "owner/repo", "GITHUB_OUTPUT": str(output)}.items():
+        monkeypatch.setenv(key, value)
+    calls = []
+
+    def run(args, **kwargs):
+        calls.append(args[2])
+        return subprocess.CompletedProcess(args, 0, json.dumps(api(args[2])))
+
+    monkeypatch.setattr(scope.subprocess, "run", run)
+    monkeypatch.setattr(scope.sys, "argv", ["ci_scope.py", *argv])
+    scope.main()
+    return output.read_text(encoding="utf-8"), calls
+
+
+def _api(signed_ids, labels=()):
+    store = {"signatures": [{"id": i} for i in signed_ids]}
+
+    def answer(endpoint):
+        if endpoint.endswith("/files"):
+            return [[{"status": "modified", "filename": "backend/core/config.py"}]]
+        if "/contents/" in endpoint:
+            assert endpoint.endswith("?ref=cla-signatures")
+            return {"content": base64.b64encode(json.dumps(store).encode()).decode()}
+        return {"user": ALICE, "labels": [{"name": n} for n in labels]}
+    return answer
+
+
+def test_unsigned_opener_skips_runtime_ci_explicitly(tmp_path, monkeypatch):
+    event = {"number": 7, "pull_request": {"user": ALICE}}
+    out, _ = _scope_main(tmp_path, monkeypatch, "pull_request", event, _api(set()))
+    assert out == "runtime=false\ncla=held\n"
+
+
+@pytest.mark.parametrize("signed,labels", [({1001}, ()), (set(), ("cla-override",))])
+def test_signed_or_overridden_opener_runs_everything(tmp_path, monkeypatch, signed, labels):
+    event = {"number": 7, "pull_request": {"user": ALICE, "labels": []}}  # stale labels in a re-run
+    out, _ = _scope_main(tmp_path, monkeypatch, "pull_request", event, _api(signed, labels))
+    assert out == "runtime=true\ncla=clear\n"
+
+
+def test_owner_needs_no_cla_lookup(tmp_path, monkeypatch):
+    event = {"number": 7, "pull_request": {"user": {"login": "debpalash", "id": 4178343, "type": "User"}}}
+    out, calls = _scope_main(tmp_path, monkeypatch, "pull_request", event, _api(set()))
+    assert out == "runtime=true\ncla=clear\n" and all(c.endswith("/files") for c in calls)
+
+
+def test_documentation_only_change_needs_no_cla_lookup(tmp_path, monkeypatch):
+    def api(endpoint):
+        assert endpoint.endswith("/files")
+        return [[{"status": "modified", "filename": "README.md"}]]
+    out, _ = _scope_main(tmp_path, monkeypatch, "pull_request", {"number": 7, "pull_request": {"user": ALICE}}, api)
+    assert out == "runtime=false\ncla=clear\n"
+
+
+def test_cla_lookup_failure_runs_everything(tmp_path, monkeypatch):
+    def api(endpoint):
+        if "/contents/" in endpoint:
+            raise subprocess.CalledProcessError(1, "gh")
+        return _api(set())(endpoint)
+    out, _ = _scope_main(tmp_path, monkeypatch, "pull_request", {"number": 7, "pull_request": {"user": ALICE}}, api)
+    assert out == "runtime=true\ncla=clear\n"
+
+
+@pytest.mark.parametrize("event_name", ["push", "merge_group"])
+def test_main_and_the_merge_queue_are_never_held(event_name):
+    assert not scope.cla_hold(event_name, {"pull_request": {"user": ALICE}}, "owner/repo")
+
+
+def test_cla_only_mode_writes_just_the_hold(tmp_path, monkeypatch):
+    out, calls = _scope_main(tmp_path, monkeypatch, "pull_request", {"number": 7, "pull_request": {"user": ALICE}},
+                             _api(set()), argv=("--cla",))
+    assert out == "cla=held\n" and not any(c.endswith("/files") for c in calls)
+
+
+def test_the_required_check_names_the_cla_hold():
+    workflow = yaml.load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
+    assert workflow["jobs"]["changes"]["outputs"]["cla"] == "${{ steps.scope.outputs.cla }}"
+    gate = workflow["jobs"]["test"]
+    assert gate["env"]["CLA_HOLD"] == "${{ needs.changes.outputs.cla }}"
+    env = {"RUNTIME_NEEDED": "false", "CHANGES_RESULT": "success", "PYTHON": "skipped", "ELECTRON": "skipped",
+           "SMOKES": "skipped", "ELECTRON_NEEDED": "true", "CLA_HOLD": "held"}
+    result = subprocess.run(["bash", "-eu", "-c", gate["steps"][0]["run"]], env=env, capture_output=True, text=True)
+    assert result.returncode == 0 and "CLA not signed yet" in result.stdout
