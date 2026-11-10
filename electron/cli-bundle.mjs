@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Arch } from 'builder-util';
+import { assertBundleSymlinks } from './packaging/bundle-symlinks.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const CLI_BUILD_REQUIREMENT = 'pyinstaller==6.22.3';
@@ -56,7 +57,9 @@ export function wirePackagedCli(context, bundle) {
   const platform = context.electronPlatformName;
   const resources = context.packager.getResourcesDir(context.appOutDir);
   const destination = join(resources, 'cli');
-  cpSync(bundle, destination, { recursive: true });
+  // Keep PyInstaller's relative links (macOS _internal/Python -> Python.framework/...):
+  // by default cpSync rewrites them to absolute paths into the deleted build folder.
+  cpSync(bundle, destination, { recursive: true, verbatimSymlinks: true });
   let desktop;
   if (platform === 'linux') {
     desktop = join(context.appOutDir, 'voicestudio-desktop');
@@ -109,13 +112,14 @@ export async function packageCli(context) {
     throw new Error('Build the CLI on a runner matching the desktop target OS and architecture.');
   }
   const work = mkdtempSync(join(tmpdir(), 'voicestudio-cli-build-'));
+  let command;
   try {
     execFileSync(process.env.VOICESTUDIO_BUILD_UV || 'uv', cliBuildArguments(work), {
       cwd: root,
       stdio: 'inherit',
       windowsHide: true,
     });
-    const command = wirePackagedCli(context, join(work, 'dist/voicestudio'));
+    command = wirePackagedCli(context, join(work, 'dist/voicestudio'));
     if (context.electronPlatformName === 'win32') {
       const signFiles = async (directory) => {
         for (const item of readdirSync(directory, { withFileTypes: true })) {
@@ -126,12 +130,14 @@ export async function packageCli(context) {
       };
       await signFiles(dirname(command));
     }
-    const version = JSON.parse(execFileSync(command, ['version', '--json'], { encoding: 'utf8' }));
-    const expected = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
-    if (version.version !== expected)
-      throw new Error('Bundled command reports a different application version.');
-    execFileSync(command, ['--help'], { stdio: 'pipe' });
   } finally {
     rmSync(work, { recursive: true, force: true });
   }
+  // Check the shipped copy only once its build folder is gone, so it cannot lean on it.
+  assertBundleSymlinks(dirname(command));
+  const version = JSON.parse(execFileSync(command, ['version', '--json'], { encoding: 'utf8' }));
+  const expected = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
+  if (version.version !== expected)
+    throw new Error('Bundled command reports a different application version.');
+  execFileSync(command, ['--help'], { stdio: 'pipe' });
 }
