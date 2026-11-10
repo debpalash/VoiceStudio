@@ -692,6 +692,8 @@ class _LLMProviderBody(BaseModel):
     base_url: str | None = None
     model: str | None = None
     account_id: str | None = Field(None, description="Cloudflare account id")
+    allow_plain_http: bool | None = Field(
+        None, description="Allow an API key over plain HTTP to a private-IP LAN host")
     make_active: bool = False
     activate_if_unset: bool = True  # Legacy clients; editors opt out for save/test.
 
@@ -736,7 +738,7 @@ def save_llm_provider(provider_id: str, body: _LLMProviderBody):
         llm_providers.save_key(provider_id, body.api_key.strip())
     llm_providers.save_overrides(
         provider_id, base_url=body.base_url, model=body.model,
-        account_id=body.account_id,
+        account_id=body.account_id, allow_plain_http=body.allow_plain_http,
     )
     # An explicit save also claims the active slot when the user has never
     # chosen a provider (#963). Without this, a saved-and-tested local

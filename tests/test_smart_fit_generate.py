@@ -629,6 +629,13 @@ def test_natural_cache_decode_failure_blocks_export(
         return original_load(path, *args, **kwargs)
 
     monkeypatch.setattr(audio_io.torchaudio, "load", fail_cached_decode)
+
+    def fail_fallback(*_args, **_kwargs):
+        raise RuntimeError("truncated cached audio")
+
+    # load_audio now retries other decoders (#3689); a truly corrupt clip
+    # fails in all of them.
+    monkeypatch.setattr(audio_io, "_load_audio_fallback", fail_fallback)
     model.calls.clear()
 
     parsed = run(_body(segs, timing_strategy="concise", regen_only=[]))

@@ -31,6 +31,7 @@ import {
   translateDubBatchWithAgent,
   translateDubWithAgent,
   setDubTarget,
+  keepDubSourceText,
   splitDubSegment,
   undoDubEdit,
   nextDubSpeakerId,
@@ -1131,4 +1132,33 @@ it('removing an interrupted run cancels its backend task before clearing the sou
   vi.mocked(apiJson).mockReset();
   await expect(removeDubSource()).resolves.toBe(true);
   expect(apiJson).not.toHaveBeenCalled();
+});
+
+it('keeps the original transcript and source language when translation is skipped (#3747)', () => {
+  dubSession.setState((current) => ({
+    ...current,
+    jobId: 'job',
+    phase: 'editing',
+    recovery: null,
+    target: 'Spanish',
+    sourceLanguage: 'en',
+    segments: [
+      {
+        id: 'a',
+        start: 0,
+        end: 1,
+        text: 'Hola',
+        text_original: 'Hello',
+        translations: { es: 'Hola' },
+        translate_error: 'boom',
+      },
+    ],
+  }));
+  keepDubSourceText('en');
+  const [segment] = dubSession.state.segments;
+  expect(segment.text).toBe('Hello');
+  expect(segment.translations).toBeUndefined();
+  expect(segment.translate_error).toBeUndefined();
+  expect(segment.translation_skipped).toBe(true);
+  expect(dubSession.state.target).toBe('English');
 });

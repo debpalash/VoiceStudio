@@ -1431,6 +1431,7 @@
     "fields": [
       "account_id",
       "activate_if_unset",
+      "allow_plain_http",
       "api_key",
       "base_url",
       "make_active",

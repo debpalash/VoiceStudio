@@ -92,3 +92,11 @@ for this model.
 
 See also: [benchmarks.md](../benchmarks.md),
 [performance.md](../performance.md), [disk usage](disk-usage.md).
+
+## Reference audio formats
+
+Voice cloning accepts M4A, MP3, FLAC and WAV references through VoiceStudio's
+local decoder. Add-on engines receive a compatible PCM WAV copy; install or
+repair FFmpeg in **Settings → Audio tools** if the format requires it. Converted
+references are cached locally and removed when the original voice is deleted
+or the cache is pruned. Cache metadata uses relative source references.
