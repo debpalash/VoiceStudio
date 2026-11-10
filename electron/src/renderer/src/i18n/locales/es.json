@@ -822,6 +822,7 @@
     "prep_chip_scene": "escena",
     "prep_chip_cached": "almacenado en caché",
     "prep_demucs_note": "Demucs puede tardar varios minutos en vídeos largos. Audio largo = espera más larga.",
+    "bg_separation_failed": "No se pudo separar el audio de fondo. El doblaje solo contendrá voz, salvo que lo reintentes.",
     "transcribing": "Transcribiendo audio…",
     "elapsed": "transcurrido",
     "remaining": "queda lo que queda",

@@ -820,6 +820,7 @@
     "prep_chip_scene": "scène",
     "prep_chip_cached": "in de cache opgeslagen",
     "prep_demucs_note": "Demucs kunnen enkele minuten nodig hebben bij lange video's. Lang geluid = langer wachten.",
+    "bg_separation_failed": "De achtergrondgeluiden konden niet worden gescheiden. De nasynchronisatie bevat alleen spraak, tenzij je het opnieuw probeert.",
     "transcribing": "Audio transcriberen…",
     "elapsed": "verstreken",
     "remaining": "er resteert",

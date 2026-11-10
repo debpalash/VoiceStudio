@@ -820,6 +820,7 @@
     "prep_chip_scene": "adegan",
     "prep_chip_cached": "di-cache",
     "prep_demucs_note": "Demucs dapat memakan waktu beberapa menit untuk video berdurasi panjang. Audio panjang = menunggu lebih lama.",
+    "bg_separation_failed": "Audio latar tidak dapat dipisahkan. Dubbing hanya berisi suara ucapan kecuali Anda mencoba lagi.",
     "transcribing": "Mentranskripsikan audio…",
     "elapsed": "berlalu",
     "remaining": "tersisa",

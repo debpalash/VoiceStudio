@@ -1069,6 +1069,7 @@
     "prep_chip_scene": "scene",
     "prep_chip_cached": "cached",
     "prep_demucs_note": "Demucs can take several minutes on long videos; longer audio means a longer wait.",
+    "bg_separation_failed": "Background audio could not be separated. The dub will contain speech only unless you retry.",
     "transcribing": "Transcribing audio…",
     "elapsed": "elapsed",
     "remaining": "s remaining",

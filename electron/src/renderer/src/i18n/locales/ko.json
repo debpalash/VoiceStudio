@@ -812,6 +812,7 @@
     "prep_chip_scene": "장면",
     "prep_chip_cached": "캐시된",
     "prep_demucs_note": "Demucs는 긴 비디오의 경우 몇 분 정도 걸릴 수 있습니다. 긴 오디오 = 더 오랜 기다림.",
+    "bg_separation_failed": "배경 오디오를 분리하지 못했습니다. 다시 시도하지 않으면 더빙에는 음성만 포함됩니다.",
     "elapsed": "경과",
     "remaining": "s 남음",
     "sidebar_toggle": "사이드바 전환",

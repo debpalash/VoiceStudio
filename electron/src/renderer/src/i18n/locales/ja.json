@@ -820,6 +820,7 @@
     "prep_chip_scene": "シーン",
     "prep_chip_cached": "キャッシュされた",
     "prep_demucs_note": "Demucs は長いビデオでは数分かかる場合があります。音声が長い = 待ち時間が長くなります。",
+    "bg_separation_failed": "背景音を分離できませんでした。再試行しない限り、吹き替えは音声のみになります。",
     "transcribing": "音声を文字起こし中…",
     "elapsed": "経過した",
     "remaining": "残り",

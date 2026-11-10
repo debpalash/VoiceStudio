@@ -820,6 +820,7 @@
     "prep_chip_scene": "bối cảnh",
     "prep_chip_cached": "được lưu vào bộ nhớ đệm",
     "prep_demucs_note": "Demucs có thể mất vài phút trên các video dài. Âm thanh dài = chờ đợi lâu hơn.",
+    "bg_separation_failed": "Không thể tách âm thanh nền. Bản lồng tiếng sẽ chỉ có giọng nói trừ khi bạn thử lại.",
     "transcribing": "Đang phiên âm…",
     "elapsed": "trôi qua",
     "remaining": "còn lại",
