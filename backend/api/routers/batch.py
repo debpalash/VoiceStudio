@@ -634,6 +634,10 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
                     if not getattr(backend, "applies_own_mastering", False):
                         audio_out = apply_mastering(audio_out, sample_rate=sr)
                     return normalize_audio(audio_out, target_dBFS=-2.0)
+                except TimeoutError:
+                    # Let the pipeline fail the job rather than export silence
+                    # when a stream is temporarily using the engine.
+                    raise
                 except Exception as e:
                     logger.warning("TTS failed for seg %d (lang=%s): %s", i, lang, e)
                     # #1190: the silence still stands in for the segment (one
