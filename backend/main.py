@@ -878,12 +878,15 @@ def _phase_a_finalize() -> None:
                 "MCP server not mounted (%s); /mcp disabled.", _mcp_err
             )
 
-    app.mount("/audio", StaticFiles(directory=OUTPUTS_DIR), name="audio")
-    app.mount("/voice_audio", StaticFiles(directory=VOICES_DIR), name="voice_audio")
+    # User and engine files: never served as a page (core/safe_static.py).
+    from core.safe_static import SafeMediaFiles
+
+    app.mount("/audio", SafeMediaFiles(directory=OUTPUTS_DIR), name="audio")
+    app.mount("/voice_audio", SafeMediaFiles(directory=VOICES_DIR), name="voice_audio")
     # Bundled demo assets — read-only, ships with the app, no network.
     _demo_dir = os.path.join(os.path.dirname(__file__), "assets", "samples")
     if os.path.isdir(_demo_dir):
-        app.mount("/demo_audio", StaticFiles(directory=_demo_dir), name="demo_audio")
+        app.mount("/demo_audio", SafeMediaFiles(directory=_demo_dir), name="demo_audio")
 
     # SPA shell LAST so the "/" StaticFiles mount can't shadow any router.
     from core.spa_inject import (

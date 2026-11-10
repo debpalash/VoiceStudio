@@ -21,11 +21,11 @@ Endpoints:
 """
 from __future__ import annotations
 
+import contextlib
 import io
 import json
 import logging
 import os
-import re
 import time
 import uuid
 import zipfile
@@ -42,6 +42,7 @@ from core import event_bus
 from core.version import APP_VERSION
 from core.http_headers import content_disposition
 from core.logging_utils import log_safe
+from core.media_types import MEDIA_EXTS
 from core.path_security import UnsafePath, resolve_within, safe_filename
 from core.safe_archive import ArchiveError, copy_member, open_bounded_zip, read_member
 
@@ -60,7 +61,6 @@ BUNDLE_VERSION = 1
 MAX_BUNDLE_BYTES = 100 * 1024 * 1024
 
 
-_MEMBER_EXT_RE = re.compile(r"\.[A-Za-z0-9]{1,8}")
 
 
 def _open_bundle(content: bytes) -> "tuple[zipfile.ZipFile, dict]":
@@ -90,6 +90,22 @@ def _open_bundle(content: bytes) -> "tuple[zipfile.ZipFile, dict]":
     return zf, metadata
 
 
+async def _require_bundle_audio(*filenames: "str | None") -> None:
+    """Refuse the bundle, removing what it wrote, unless every clip decodes as audio."""
+    from api.routers.profiles import _is_decodable_audio
+
+    paths = [os.path.join(VOICES_DIR, f) for f in filenames if f]
+    for path in paths:
+        if not await _is_decodable_audio(path):
+            for written in paths:
+                with contextlib.suppress(OSError):
+                    os.remove(written)
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid .omnivoice bundle: its audio could not be read.",
+            )
+
+
 def _extract_bundle_audio(zf: zipfile.ZipFile, profile_id: str) -> "tuple[str | None, str | None]":
     """Copy the bundle's reference and locked audio into VOICES_DIR.
 
@@ -106,8 +122,10 @@ def _extract_bundle_audio(zf: zipfile.ZipFile, profile_id: str) -> "tuple[str | 
             name = found.get(prefix)
             if not name:
                 continue
-            ext = os.path.splitext(name)[1]
-            if not _MEMBER_EXT_RE.fullmatch(ext):
+            # A known media extension only: the file is served back from
+            # /voice_audio, so "ref_audio.html" must not keep its name.
+            ext = os.path.splitext(name)[1].lower()
+            if ext not in MEDIA_EXTS:
                 ext = ".wav"
             filename = f"{profile_id}{suffix}{ext}"
             copy_member(zf, name, os.path.join(VOICES_DIR, filename))
@@ -301,6 +319,7 @@ async def import_profile(
             status_code=400,
             detail="Invalid .omnivoice bundle: no reference audio found.",
         )
+    await _require_bundle_audio(ref_audio_filename, locked_audio_filename)
 
     is_locked = _insert_bundle_profile(
         metadata, profile_id, ref_audio_filename, locked_audio_filename,
@@ -455,6 +474,7 @@ async def install_from_marketplace(filename: str):
 
     if not ref_audio_filename:
         raise HTTPException(status_code=400, detail="No reference audio in bundle.")
+    await _require_bundle_audio(ref_audio_filename, locked_audio_filename)
 
     _insert_bundle_profile(
         metadata, profile_id, ref_audio_filename, locked_audio_filename,
