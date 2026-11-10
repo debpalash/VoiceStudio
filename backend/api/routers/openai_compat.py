@@ -679,6 +679,7 @@ async def _stream_speech_pcm(first: bytes, sentences: list[str], render, *, sse:
 
 _native_pcm_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="native-tts")
 _native_pcm_lock = Lock()
+_NATIVE_PCM_CLEANUP_TIMEOUT_S = 5.0
 
 
 def _native_pcm_busy() -> HTTPException:
@@ -788,8 +789,12 @@ async def _native_pcm_stream(backend, text, kw, *, sse, timed=False):
     # lease before the caller reports completion so a back-to-back request
     # is not rejected as busy. Shield it: a timeout must not cancel the cleanup.
     try:
-        await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(cleanup)), timeout=5)
-    except asyncio.TimeoutError:
+        await asyncio.wait_for(
+            asyncio.shield(asyncio.wrap_future(cleanup)), timeout=_NATIVE_PCM_CLEANUP_TIMEOUT_S,
+        )
+    except asyncio.TimeoutError as exc:
+        if timed:
+            raise RuntimeError("Native speech cleanup is still pending. Retry once the engine is free.") from exc
         logger.warning("Native speech stream cleanup is still pending; continuing")
     if sse:
         yield _speech_done()
