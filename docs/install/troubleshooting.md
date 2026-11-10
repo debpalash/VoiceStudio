@@ -942,7 +942,11 @@ the backend, a wedged job fails after a timeout with this exact guidance. Tune
 the bounds with `OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S` (whole-file transcription)
 and `OMNIVOICE_GENERATE_TIMEOUT_S` (generation) — both in seconds, default 300
 — and `OMNIVOICE_TRANSCRIBE_CHUNK_TIMEOUT_S` (per-chunk dub transcription,
-default 120). **Raise** them for very long single files/generations, **lower**
+default 120). A whole-file transcription's budget is never below
+`OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S` and grows with the recording's length —
+`OMNIVOICE_ASR_TIMEOUT_REALTIME_FACTOR` seconds per second of audio (default
+`2`; `0` turns the scaling off) — so a 25-minute file gets 50 minutes, not 5.
+**Raise** them for very long single files/generations, **lower**
 them to fail faster on a small machine.
 
 Saving a cloned voice without a transcript transcribes the reference with an

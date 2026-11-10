@@ -77,6 +77,7 @@ to the CPU and finishes there, so no chunk is dropped.
   [#1376](https://github.com/debpalash/VoiceStudio/issues/1376)).
 - Transcribes are time-bounded like every local engine:
   `OMNIVOICE_TRANSCRIBE_CHUNK_TIMEOUT_S` (default 120 s per dub chunk),
-  `OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S` (default 300 s whole-file).
+  `OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S` (default 300 s whole-file floor, scaled up
+  to `OMNIVOICE_ASR_TIMEOUT_REALTIME_FACTOR` × the audio's length, default 2×).
 
 Speed comparisons across engines live in [performance](../performance.md).

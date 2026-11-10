@@ -33,6 +33,7 @@ File inputs (OMNIVOICE_MCP_BASE_PATH):
 from __future__ import annotations
 
 import argparse
+import asyncio
 import base64
 import json
 import logging
@@ -451,7 +452,42 @@ def _env_seconds(name: str, default: float) -> float:
     return value if value > 0 else default
 
 
-def _backend_budget_s(kind: str, text: str = "") -> float | None:
+def _env_factor(name: str, default: float) -> float:
+    """A non-negative multiplier from the environment (0 is meaningful)."""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning("%s=%r is not a number; using %g", name, raw, default)
+        return default
+    return value if value >= 0 else default
+
+
+def _audio_seconds(raw: bytes) -> float | None:
+    """Duration of in-memory audio via the backend's ffprobe helper, or None."""
+    import tempfile
+
+    try:
+        from services.asr_backend import probe_audio_duration_s
+    except Exception:  # noqa: BLE001 — standalone install without the backend
+        return None
+    fd, path = tempfile.mkstemp(suffix=_sniff_audio_ext(raw))
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(raw)
+        return probe_audio_duration_s(path)
+    finally:
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+
+
+def _backend_budget_s(
+    kind: str, text: str = "", audio_s: float | None = None
+) -> float | None:
     """The backend's own execution budget for this kind of request, read from
     the environment variables and defaults the backend itself uses.
 
@@ -461,8 +497,14 @@ def _backend_budget_s(kind: str, text: str = "") -> float | None:
     """
     if kind == "transcribe":
         # run_transcribe_guarded starts this clock when the job is submitted,
-        # so time spent queued in the pool already counts against it.
-        return _env_seconds("OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S", 300.0)
+        # so time spent queued in the pool already counts against it. The
+        # backend scales it with the recording's length; mirror that rule so
+        # the tool never gives up on a long file the backend is still on.
+        floor = _env_seconds("OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S", 300.0)
+        if not audio_s or audio_s <= 0:
+            return floor
+        factor = _env_factor("OMNIVOICE_ASR_TIMEOUT_REALTIME_FACTOR", 2.0)
+        return max(floor, audio_s * factor)
     if kind == "generate":
         base = max(
             _env_seconds("OMNIVOICE_GENERATE_TIMEOUT_S", 300.0),
@@ -504,7 +546,9 @@ def _backend_budget_s(kind: str, text: str = "") -> float | None:
     return None
 
 
-def _post_timeout_s(kind: str = "", text: str = "") -> float:
+def _post_timeout_s(
+    kind: str = "", text: str = "", audio_s: float | None = None
+) -> float:
     """Seconds a tool waits on a backend POST.
 
     An explicit OMNIVOICE_MCP_TIMEOUT_S wins. Otherwise the tool waits for the
@@ -514,7 +558,7 @@ def _post_timeout_s(kind: str = "", text: str = "") -> float:
     """
     if os.environ.get("OMNIVOICE_MCP_TIMEOUT_S", "").strip():
         return _env_seconds("OMNIVOICE_MCP_TIMEOUT_S", 120.0)
-    budget = _backend_budget_s(kind, text)
+    budget = _backend_budget_s(kind, text, audio_s)
     return 120.0 if budget is None else max(120.0, budget + _BACKEND_GRACE_S)
 
 
@@ -846,7 +890,9 @@ def create_mcp_server(app=None):
             "/transcribe", data=data,
             files={"audio": (f"audio{_sniff_audio_ext(raw)}", raw,
                              "application/octet-stream")},
-            timeout=_post_timeout_s("transcribe"),
+            timeout=_post_timeout_s(
+                "transcribe", audio_s=await asyncio.to_thread(_audio_seconds, raw)
+            ),
         )
         return json.dumps(r.json())
 

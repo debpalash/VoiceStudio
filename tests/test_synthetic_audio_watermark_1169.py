@@ -384,7 +384,7 @@ def test_batch_dub_track_is_watermarked(tmp_path, monkeypatch, fake_engine, mark
     monkeypatch.setattr(b, "DATA_DIR", str(tmp_path))
     monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", "fake-wm-1169")
 
-    async def _fake_run_transcribe_guarded(pool, fn, what=None):
+    async def _fake_run_transcribe_guarded(pool, fn, what=None, **_kw):
         return (
             [{"id": "s0", "start": 0.0, "end": 1.0,
               "text": "Hello there", "text_original": "Hello there"}],

@@ -214,7 +214,7 @@ def batch_env(monkeypatch, tmp_path):
 
     monkeypatch.setattr(b, "DATA_DIR", str(tmp_path))
 
-    async def _fake_run_transcribe_guarded(pool, fn, what=None):
+    async def _fake_run_transcribe_guarded(pool, fn, what=None, **_kw):
         return (
             [{"id": "s0", "start": 0.0, "end": 1.0,
               "text": "Dr. Smith has 2 cats",
@@ -332,7 +332,7 @@ def test_batch_uses_native_tts_batches(batch_env, monkeypatch):
         lambda wav, _sr, **_kw: wav,
     )
 
-    async def _fake_transcribe_guarded(pool, fn, what=None):
+    async def _fake_transcribe_guarded(pool, fn, what=None, **_kw):
         return (
             [
                 {"id": f"s{i:05x}", "start": float(i), "end": float(i + 1),

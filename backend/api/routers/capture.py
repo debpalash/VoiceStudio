@@ -207,12 +207,16 @@ async def transcribe_audio(
             ASRModelMissingError,
             ASRTimeoutError,
             run_transcribe_guarded,
+            whole_file_transcribe_timeout_for,
         )
         from services.model_acceptance import ModelLicenceNotAccepted
+        # Budget scales with the upload's length: a flat 300 s abandoned every
+        # recording longer than a few minutes, even on a healthy GPU.
+        budget = await asyncio.to_thread(whole_file_transcribe_timeout_for, tmp.name)
         t0 = time.perf_counter()
         try:
             result, engine_id, sherpa_model_id = await run_transcribe_guarded(
-                _gpu_pool, _run, what="Dictation",
+                _gpu_pool, _run, what="Dictation", timeout=budget,
             )
         except ASRTimeoutError as e:
             # Backend is alive — ASR couldn't finish. 504 with guidance, not a

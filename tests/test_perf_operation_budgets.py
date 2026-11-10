@@ -459,7 +459,7 @@ def test_batch_budget_exact_native_batch_calls(monkeypatch, tmp_path):
 
     monkeypatch.setattr(b, "DATA_DIR", str(tmp_path))
 
-    async def _fake_run_transcribe_guarded(pool, fn, what=None):
+    async def _fake_run_transcribe_guarded(pool, fn, what=None, **_kw):
         return (
             [
                 {"id": f"s{i}", "start": float(i), "end": float(i) + 0.9,

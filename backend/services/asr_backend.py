@@ -55,6 +55,59 @@ logger = logging.getLogger("omnivoice.asr")
 # but valid); override with the env var for very long single files.
 ASR_TRANSCRIBE_TIMEOUT_S = float(os.environ.get("OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S", "300.0"))
 
+# A flat budget cannot fit every whole-file transcribe: 300 s is generous for
+# a dictation clip and a guaranteed failure for a 25-minute recording, which
+# even a healthy GPU needs minutes for. The 504 then ran every retry into the
+# still-running native call ("capacity remains reserved"), so a long file could
+# not be transcribed at all through /transcribe, the OpenAI route, the MCP
+# tool, or a batch job. The budget is therefore the flat floor OR this many
+# seconds per second of audio, whichever is larger: a stuck call on a short clip
+# still fails fast, and a long file gets time proportional to its length.
+ASR_TIMEOUT_REALTIME_FACTOR = float(
+    os.environ.get("OMNIVOICE_ASR_TIMEOUT_REALTIME_FACTOR", "2.0")
+)
+
+
+def probe_audio_duration_s(path: str) -> Optional[float]:
+    """Duration of ``path`` in seconds via ffprobe, or None. Never raises."""
+    try:
+        import subprocess
+
+        from services.ffmpeg_utils import find_ffprobe, local_inputs_only
+
+        ffprobe = find_ffprobe()
+        if not ffprobe:
+            return None
+        out = subprocess.run(
+            local_inputs_only(
+                [ffprobe, "-v", "error", "-show_entries", "format=duration",
+                 "-of", "default=noprint_wrappers=1:nokey=1", path],
+                tool="ffprobe",
+            ),
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=30, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        value = float(out.stdout.strip())
+        return value if value > 0 else None
+    except Exception:  # noqa: BLE001 — best-effort; the flat floor still applies
+        return None
+
+
+def whole_file_transcribe_timeout(duration_s: Optional[float]) -> float:
+    """The wall-clock budget for transcribing a whole file of ``duration_s``.
+
+    ``max(OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S, duration × OMNIVOICE_ASR_TIMEOUT_REALTIME_FACTOR)``;
+    an unknown duration gets the flat floor, never less."""
+    floor = ASR_TRANSCRIBE_TIMEOUT_S
+    if not duration_s or duration_s <= 0 or ASR_TIMEOUT_REALTIME_FACTOR <= 0:
+        return floor
+    return max(floor, duration_s * ASR_TIMEOUT_REALTIME_FACTOR)
+
+
+def whole_file_transcribe_timeout_for(path: str) -> float:
+    """:func:`whole_file_transcribe_timeout` for a file on disk (probes it)."""
+    return whole_file_transcribe_timeout(probe_audio_duration_s(path))
+
 
 class ASRTimeoutError(TimeoutError):
     """Raised when a whole-file transcribe exceeds ASR_TRANSCRIBE_TIMEOUT_S.

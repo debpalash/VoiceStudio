@@ -1322,9 +1322,13 @@ async def _transcribe_request(
         # Run transcription in the thread pool to avoid blocking the event loop,
         # bounded so a stuck/starved ASR returns a 504 with guidance instead of
         # hanging the request forever (see run_transcribe_guarded).
-        from services.asr_backend import run_transcribe_guarded
+        from services.asr_backend import (
+            run_transcribe_guarded,
+            whole_file_transcribe_timeout_for,
+        )
         # Word timestamps cost an alignment pass: only when they're returned.
         word_ts = want_words
+        budget = await asyncio.to_thread(whole_file_transcribe_timeout_for, tmp_path)
 
         # `load_active_asr_backend`, not `get_active_asr_backend`: the latter is
         # a pure selector, so a backend whose shallow `is_available()` probe
@@ -1352,7 +1356,9 @@ async def _transcribe_request(
                 raise _TaskUnsupported(backend.id)
             return backend.transcribe(tmp_path, word_timestamps=word_ts, **extra)
 
-        result = await run_transcribe_guarded(_gpu_pool, _run, what="OpenAI")
+        result = await run_transcribe_guarded(
+            _gpu_pool, _run, what="OpenAI", timeout=budget,
+        )
 
         segments = _result_segments(result)
         full_text = (result.get("text") or "").strip() if not segments else " ".join(

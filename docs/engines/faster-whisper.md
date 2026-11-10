@@ -68,6 +68,8 @@ transcription.
   ([#730](https://github.com/debpalash/VoiceStudio/issues/730)).
 - Transcribes are time-bounded: `OMNIVOICE_TRANSCRIBE_CHUNK_TIMEOUT_S`
   (default 120 s per dub chunk) and `OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S`
-  (default 300 s whole-file).
+  (whole-file floor, default 300 s; the budget grows to
+  `OMNIVOICE_ASR_TIMEOUT_REALTIME_FACTOR` × the audio's length, default 2×,
+  so long recordings are not cut off).
 
 Speed comparisons across engines live in [performance](../performance.md).

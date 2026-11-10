@@ -308,7 +308,7 @@ def batch_job_env(monkeypatch, tmp_path):
 
     monkeypatch.setattr(b, "DATA_DIR", str(tmp_path))
 
-    async def _fake_run_transcribe_guarded(pool, fn, what=None):
+    async def _fake_run_transcribe_guarded(pool, fn, what=None, **_kw):
         # Bypass real ASR entirely — the engine-selection gate under test
         # runs right after transcription, before translate/generate.
         return (
