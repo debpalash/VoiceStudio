@@ -73,6 +73,12 @@ export const DEFAULT_FIXTURES = {
     override_ignored: false,
     restart_required: false,
   },
+  '/api/settings/video-export': {
+    encoder: 'software',
+    max_resolution: 'original',
+    hardware_encoders: [],
+    resolutions: ['original', '2160p', '1440p', '1080p', '720p'],
+  },
   '/api/settings/perf/torch-compile-disabled': { platform: process.platform, enabled: false },
   '/model/status': { status: 'not_loaded', message: '' },
   '/model/loaded': { models: [] },
