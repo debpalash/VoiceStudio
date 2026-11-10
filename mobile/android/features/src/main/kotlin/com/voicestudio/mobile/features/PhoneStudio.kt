@@ -127,6 +127,7 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
         if(inference?.isActive==true) {failure(ClientFailure("mobile.android.operation_busy"));return}
         inferenceIsClone=true;cloneSaved=false
         inference=scope.launch {
+            val job=coroutineContext[Job]
             mutable.update {it.copy(progress=0f,interrupted=false)}
             try {
                 voices.create(name,file,consent,model,cloneModel,engine,decoder,progress={p -> mutable.update {it.copy(progress=p)}})
@@ -137,7 +138,8 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
                     try {refresh()} catch(e:Exception) {failure(e)}
                     withContext(Dispatchers.IO) {file.delete()}
                     mutable.update {it.copy(progress=null)}
-                    created()
+                    // Saving and cleanup finish even after the screen is gone, but a screen that already cancelled must not navigate.
+                    if(job?.isActive==true) created()
                 }
             }
             catch(e:CancellationException) {throw e} catch(e:Exception) {retryFailure(e) {clone(name,file,model,cloneModel,consent,created)}}
