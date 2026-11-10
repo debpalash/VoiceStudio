@@ -39,6 +39,8 @@ import math
 import os
 import re
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
+from threading import Lock
 from typing import Annotated, Any, Literal, Optional, Union
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -291,7 +293,8 @@ class SpeechRequest(BaseModel):
     stream_format: Optional[Literal["audio", "sse"]] = Field(
         default=None,
         description="'audio' streams raw audio bytes (the default); 'sse' streams "
-        "`speech.audio.delta` / `speech.audio.done` server-sent events.",
+        "`speech.audio.delta` / `speech.audio.done` server-sent events. "
+        "PCM without an explicit duration is synthesized sentence by sentence.",
     )
     # VoiceStudio extensions (not part of OpenAI spec, but accepted if sent)
     language: Optional[str] = Field(default=None, description="Language code (ISO 639-1)")
@@ -631,16 +634,135 @@ def _engine_instructions(backend, instructions: Optional[str]) -> Optional[str]:
 _STREAM_CHUNK = 32 * 1024
 
 
+def _speech_event(event: dict) -> str:
+    return f"data: {json.dumps(event)}\n\n"
+
+
+def _speech_delta(audio: bytes) -> str:
+    return _speech_event({"type": "speech.audio.delta", "audio": base64.b64encode(audio).decode("ascii")})
+
+
+def _speech_done() -> str:
+    return _speech_event({
+        "type": "speech.audio.done",
+        "usage": {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0},
+    })
+
+
 def _sse_events(audio: bytes):
-    """OpenAI's speech SSE stream: base64 `speech.audio.delta` events, then a
-    `speech.audio.done`. VoiceStudio synthesises the whole clip first, so the
-    events carry the finished audio in chunks (no token usage to report)."""
-    for i in range(0, len(audio), _STREAM_CHUNK):
-        delta = base64.b64encode(audio[i:i + _STREAM_CHUNK]).decode("ascii")
-        yield f"data: {json.dumps({'type': 'speech.audio.delta', 'audio': delta})}\n\n"
-    done = {"type": "speech.audio.done",
-            "usage": {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}}
-    yield f"data: {json.dumps(done)}\n\n"
+    for chunk in _audio_chunks(audio):
+        yield _speech_delta(chunk)
+    yield _speech_done()
+
+
+async def _stream_speech_pcm(first: bytes, sentences: list[str], render, *, sse: bool):
+    """Render on demand so a disconnected client does not queue more speech."""
+    for chunk in _audio_chunks(first):
+        yield _speech_delta(chunk) if sse else chunk
+    for sentence in sentences:
+        try:
+            audio = await render(sentence)
+        except Exception:
+            if not sse:
+                raise
+            logger.warning("Progressive OpenAI TTS failed after the first segment")
+            yield _speech_event({
+                "type": "error",
+                "error": {"code": "speech_generation_failed", "message": "Speech generation failed."},
+            })
+            return
+        for chunk in _audio_chunks(audio):
+            yield _speech_delta(chunk) if sse else chunk
+    if sse:
+        yield _speech_done()
+
+
+_native_pcm_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="native-tts")
+_native_pcm_lock = Lock()
+
+
+async def _native_pcm_stream(backend, text, kw, *, sse):
+    from services.model_manager import generate_timeout_s
+    from services.tts_backend import engine_in_use
+    from services.watermark import mark_synthetic
+
+    def encode_next():
+        wav = next(iterator, None)
+        if wav is None:
+            return None
+        rate = backend.sample_rate
+        return _pcm24k(mark_synthetic(wav, rate, context="openai_compat.speech"), rate)
+
+    # Reject contention before committing response headers. Never enqueue an
+    # unbounded number of streams behind a backpressured or stalled reader.
+    if not _native_pcm_lock.acquire(blocking=False):
+        raise HTTPException(
+            status_code=429, detail="Native speech streaming is busy.",
+            headers={"Retry-After": "1", "X-OmniVoice-Retryable": "true"},
+        )
+    lease = engine_in_use(backend)
+    lease.__enter__()
+    iterator = None
+
+    def close_on_worker():
+        try:
+            if iterator is not None:
+                iterator.close()
+        except Exception:
+            logger.exception("Native speech stream cleanup failed")
+        finally:
+            try:
+                lease.__exit__(None, None, None)
+            finally:
+                _native_pcm_lock.release()
+
+    emitted = False
+    try:
+        iterator = backend.stream_audio(text, **kw)
+        while (chunk := await run_on_gpu_pool_guarded(
+            encode_next, what="Native OpenAI TTS generate", executor=_native_pcm_worker,
+            timeout=generate_timeout_s(text, engine=backend),
+        )) is not None:
+            emitted = True
+            yield _speech_delta(chunk) if sse else chunk
+        if not emitted:
+            raise RuntimeError("Native speech generation produced no audio.")
+    except Exception:
+        if not emitted or not sse:
+            raise
+        logger.exception("Native OpenAI TTS failed after the first chunk")
+        yield _speech_event({
+            "type": "error",
+            "error": {"code": "speech_generation_failed", "message": "Speech generation failed."},
+        })
+        return
+    finally:
+        # The iterator must close on the same thread, after any abandoned
+        # generation step finishes. Do not make the client await that step.
+        _native_pcm_worker.submit(close_on_worker)
+    if sse:
+        yield _speech_done()
+
+
+class _PrimedSpeechResponse(StreamingResponse):
+    def __init__(self, first, stream, **kwargs):
+        self._stream = stream
+
+        async def body():
+            yield first
+            async for chunk in stream:
+                yield chunk
+
+        super().__init__(body(), **kwargs)
+
+    async def __call__(self, scope, receive, send):
+        from anyio import CancelScope
+
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            with CancelScope(shield=True):
+                await self._stream.aclose()
 
 
 def _audio_chunks(audio: bytes):
@@ -860,27 +982,52 @@ async def create_speech(req: SpeechRequest):
                      "X-OmniVoice-Retryable": "true"},
         ) from e
 
-    try:
-        # Bounded + pool-reset on hang so a wedged TTS request can't starve the
-        # GPU pool and brick the backend (#730 class). The budget is the shared
-        # length-scaled one (#1190) — this route used to hardcode the flat 300s,
-        # so long inputs failed here even after v0.3.22 shipped the scaling.
-        from services.model_manager import generate_timeout_s
+    can_stream = getattr(backend, "can_stream", None)
+    native = (
+        req.stream_format and req.response_format == "pcm" and req.duration is None
+        and can_stream is not None and can_stream(**kw)
+    )
+
+    # PCM segments can be joined without a container header or an encoder
+    # reset. Preserve whole-utterance timing for an explicit duration.
+    sentences = [text]
+    if not native and req.stream_format and req.response_format == "pcm" and req.duration is None:
+        from api.routers.tts_stream import split_normalized_sentences
+
+        sentences = split_normalized_sentences(text, req.language)
+
+    from services.model_manager import generate_timeout_s
+    from services.tts_backend import engine_in_use
+
+    async def render(segment: str) -> tuple[bytes, str, str]:
+        def generate():
+            with engine_in_use(backend):
+                return _run_tts(backend, segment, kw)
+
         wav, sr = await run_on_gpu_pool_guarded(
-            lambda: _run_tts(backend, text, kw), what="OpenAI TTS generate",
-            timeout=generate_timeout_s(text, engine=backend))
+            generate, what="OpenAI TTS generate",
+            timeout=generate_timeout_s(segment, engine=backend))
+        return await _encode_audio(wav, sr, req.response_format, ffmpeg)
+
+    # Finish the first segment before sending headers so validation and
+    # first-render errors retain their normal HTTP status.
+    try:
+        if native:
+            sse = req.stream_format == "sse"
+            stream = _native_pcm_stream(backend, text, kw, sse=sse)
+            first = await anext(stream)
+            mime_type, ext = ("text/event-stream" if sse else "audio/pcm"), "pcm"
+        else:
+            audio_bytes, mime_type, ext = await render(sentences[0])
+    except HTTPException:
+        raise
     except Exception as e:
-        # #1172/#1173: typed failures get their real status + actionable
-        # message (400 bad input / 503 broken engine binary) instead of a
-        # generic 500 wrapping an errno or an ONNX abort.
         http = _typed_speech_http_error(e)
         if http is not None:
             logger.warning("OpenAI TTS failed (typed): %s", e)
             raise http from e
         logger.exception("OpenAI TTS failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
-
-    audio_bytes, mime_type, ext = await _encode_audio(wav, sr, req.response_format, ffmpeg)
 
     _headers = {
         "Content-Disposition": content_disposition(f"speech.{ext}", disposition="inline"),
@@ -891,6 +1038,25 @@ async def create_speech(req: SpeechRequest):
         _hr = header_safe_reason(_routing_notice[1])
         if _hr:
             _headers["X-OmniVoice-Routing-Reason"] = _hr
+    if native:
+        if sse:
+            _headers.pop("Content-Disposition")
+            _headers["Cache-Control"] = "no-cache"
+        return _PrimedSpeechResponse(first, stream, media_type=mime_type, headers=_headers)
+    if len(sentences) > 1:
+        async def render_pcm(segment: str) -> bytes:
+            audio, _, _ = await render(segment)
+            return audio
+
+        sse = req.stream_format == "sse"
+        if sse:
+            _headers.pop("Content-Disposition")
+            _headers["Cache-Control"] = "no-cache"
+        return StreamingResponse(
+            _stream_speech_pcm(audio_bytes, sentences[1:], render_pcm, sse=sse),
+            media_type="text/event-stream" if sse else mime_type,
+            headers=_headers,
+        )
     if req.stream_format == "sse":
         _headers.pop("Content-Disposition")
         return StreamingResponse(_sse_events(audio_bytes), media_type="text/event-stream",

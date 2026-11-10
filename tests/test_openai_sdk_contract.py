@@ -221,6 +221,111 @@ def test_stream_format_audio_and_sse(client, engine):
     assert len(audio) == 4800
 
 
+def test_pcm_stream_yields_first_sentence_before_rendering_second(engine):
+    import asyncio
+
+    from api.routers.openai_compat import SpeechRequest, create_speech
+
+    async def exercise():
+        first = "This is the first sentence."
+        second = "Here is the second sentence."
+        response = await create_speech(SpeechRequest(
+            model="tts-1", input=f"{first} {second}", response_format="pcm",
+            stream_format="audio", num_step=8, language="en",
+        ))
+        assert [text for text, _ in engine.calls] == [first]
+        stream = response.body_iterator
+        assert len(await anext(stream)) == 4800
+        assert [text for text, _ in engine.calls] == [first]
+        assert len(await anext(stream)) == 4800
+        assert engine.calls[-1] == (second, engine.calls[0][1])
+        assert engine.calls[-1][1]["num_step"] == 8
+        with pytest.raises(StopAsyncIteration):
+            await anext(stream)
+
+        response = await create_speech(SpeechRequest(
+            model="tts-1", input=f"{first} {second}", response_format="pcm", stream_format="sse",
+        ))
+        stream = response.body_iterator
+        assert '"type": "speech.audio.delta"' in await anext(stream)
+        await stream.aclose()
+        assert [text for text, _ in engine.calls] == [first, second, first]
+
+    asyncio.run(exercise())
+
+
+def test_native_pcm_reports_input_failure_before_sending_headers(client, engine, monkeypatch):
+    def chunks(self, text, **kwargs):
+        if text:
+            raise _tts_mod().TTSInputError("A reference is required.")
+        yield torch.zeros(1, 4800)
+
+    monkeypatch.setattr(engine, "can_stream", lambda self, **kw: True, raising=False)
+    monkeypatch.setattr(engine, "stream_audio", chunks, raising=False)
+    with pytest.raises(openai.BadRequestError, match="A reference is required"):
+        client.audio.speech.create(
+            model="tts-1", voice="alloy", input="Hello.", response_format="pcm",
+            stream_format="audio",
+        )
+
+
+def test_native_pcm_reports_late_sse_error_and_closes_on_the_worker(engine, monkeypatch):
+    import threading
+
+    from api.routers import openai_compat
+
+    worker = openai_compat.ThreadPoolExecutor(max_workers=1)
+    monkeypatch.setattr(openai_compat, "_native_pcm_worker", worker)
+    monkeypatch.setattr(openai_compat, "_native_pcm_lock", threading.Lock())
+    threads = []
+
+    def chunks(self, text, **kwargs):
+        threads.append(threading.get_ident())
+        try:
+            yield torch.zeros(1, 4800)
+            threads.append(threading.get_ident())
+            raise RuntimeError("late synthesis failure")
+        finally:
+            threads.append(threading.get_ident())
+
+    monkeypatch.setattr(engine, "can_stream", lambda self, **kw: True, raising=False)
+    monkeypatch.setattr(engine, "stream_audio", chunks, raising=False)
+    from services import engine_routing
+
+    async def profile(*args, **kwargs):
+        return {"routing_status": "cpu_fallback", "routing_reason": "test routing notice"}
+
+    monkeypatch.setattr(engine_routing, "runtime_compute_profile_async", profile)
+    from main import app
+
+    try:
+        response = TestClient(app, client=("127.0.0.1", 50000)).post("/v1/audio/speech", json={
+            "model": "tts-1", "voice": "alloy", "input": "Hello.",
+            "response_format": "pcm", "stream_format": "sse",
+        })
+    finally:
+        worker.shutdown()
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-cache"
+    assert response.headers["x-omnivoice-routing"] == "cpu_fallback"
+    assert response.headers["x-omnivoice-routing-reason"] == "test routing notice"
+    assert '"type": "speech.audio.delta"' in response.text
+    assert '"type": "error"' in response.text
+    assert '"type": "speech.audio.done"' not in response.text
+    assert len(threads) == 3 and len(set(threads)) == 1
+    assert not openai_compat._native_pcm_lock.locked()
+
+
+@pytest.mark.parametrize("fmt,duration", [("wav", None), ("pcm", 2)])
+def test_speech_stream_keeps_container_and_duration_whole(client, engine, fmt, duration):
+    text = "This is the first sentence. Here is the second sentence."
+    client.audio.speech.create(
+        model="tts-1", voice="alloy", input=text, response_format=fmt, stream_format="audio",
+        extra_body={"duration": duration},
+    )
+    assert [value for value, _ in engine.calls] == [text]
+
+
 def test_unknown_model_is_openai_error(client, engine):
     with pytest.raises(openai.BadRequestError) as ei:
         client.audio.speech.create(model="no-such-model", voice="alloy", input="Hi.")

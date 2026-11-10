@@ -36,7 +36,7 @@ import threading
 import re
 import sys
 import zlib
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields, replace
 from functools import partial
 from typing import Any, List, Optional, Union
 
@@ -173,10 +173,11 @@ class OmniVoiceGenerationConfig:
     postprocess_output: bool = True
     audio_chunk_duration: float = 15.0
     audio_chunk_threshold: float = 30.0
+    _generator: Optional[torch.Generator] = field(default=None, repr=False, compare=False)
 
     @classmethod
     def from_dict(cls, kwargs_dict):
-        valid_keys = {f.name for f in fields(cls)}
+        valid_keys = {f.name for f in fields(cls) if not f.name.startswith("_")}
         filtered = {k: v for k, v in kwargs_dict.items() if k in valid_keys}
         return cls(**filtered)
 
@@ -869,6 +870,7 @@ class OmniVoice(PreTrainedModel):
         duration: Union[float, list[Optional[float]], None] = None,
         speed: Union[float, list[Optional[float]], None] = None,
         generation_config: Optional[OmniVoiceGenerationConfig] = None,
+        seed: Optional[int] = None,
         **kwargs,
     ) -> list[torch.Tensor]:
         """Generate speech audio given text in various modes.
@@ -931,6 +933,13 @@ class OmniVoice(PreTrainedModel):
             if generation_config is not None
             else OmniVoiceGenerationConfig.from_dict(kwargs)
         )
+
+        if seed is not None:
+            # Isolate the random draws from other requests sharing this model.
+            # The generator follows the request through every text chunk.
+            device = self.device if self.device.type in {"cpu", "cuda"} else "cpu"
+            generator = torch.Generator(device=device).manual_seed(seed)
+            gen_config = replace(gen_config, _generator=generator)
 
         self.eval()
 
@@ -1800,7 +1809,7 @@ class OmniVoice(PreTrainedModel):
                 scores = scores - (layer_ids * gen_config.layer_penalty_factor)
 
                 if gen_config.position_temperature > 0.0:
-                    scores = _gumbel_sample(scores, gen_config.position_temperature)
+                    scores = _gumbel_sample(scores, gen_config.position_temperature, gen_config._generator)
 
                 sample_tokens = tokens[i : i + 1, :, :t_len]
                 scores.masked_fill_(
@@ -1835,7 +1844,7 @@ class OmniVoice(PreTrainedModel):
         if gen_config.class_temperature > 0.0:
             filtered_probs = _filter_top_k(log_probs, ratio=0.1)
             pred_tokens = _gumbel_sample(
-                filtered_probs, gen_config.class_temperature
+                filtered_probs, gen_config.class_temperature, gen_config._generator
             ).argmax(dim=-1)
         else:
             pred_tokens = log_probs.argmax(dim=-1)
@@ -2034,9 +2043,16 @@ def _filter_top_k(logits: torch.Tensor, ratio: float = 0.1) -> torch.Tensor:
     return probs
 
 
-def _gumbel_sample(logits: torch.Tensor, temperature: float) -> torch.Tensor:
+def _gumbel_sample(
+    logits: torch.Tensor, temperature: float, generator: Optional[torch.Generator] = None
+) -> torch.Tensor:
     scaled_logits = logits / temperature
-    u = torch.rand_like(scaled_logits)
+    if generator is None:
+        u = torch.rand_like(scaled_logits)
+    else:
+        u = torch.rand(
+            logits.shape, dtype=logits.dtype, device=generator.device, generator=generator
+        ).to(logits.device)
     gumbel_noise = -torch.log(-torch.log(u + 1e-10) + 1e-10)
     return scaled_logits + gumbel_noise
 

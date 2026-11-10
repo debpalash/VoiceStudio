@@ -425,7 +425,7 @@
   },
   "modelSettings": {
     "localModelEnvironmentOverride": "Una variabile d’ambiente ha la precedenza; la cartella salvata non è in uso:",
-    "localModelHint": "Solo checkpoint completi OmniVoice o MLX Qwen3-TTS VoiceDesign quantizzati. I file locali mancanti o incompatibili causano un errore, mai un download automatico.",
+    "localModelHint": "Solo checkpoint completi OmniVoice o MLX Qwen3-TTS Base o VoiceDesign quantizzati. I file locali mancanti o incompatibili causano un errore, mai un download automatico.",
     "localModelReset": "Usa predefinito",
     "localModelChoose": "Scegli cartella",
     "localModelDefault": "Modello predefinito del motore",

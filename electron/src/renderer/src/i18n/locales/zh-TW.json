@@ -423,7 +423,7 @@
   },
   "modelSettings": {
     "localModelEnvironmentOverride": "環境變數覆寫已啟用，目前未使用已儲存的資料夾：",
-    "localModelHint": "僅支援完整的 OmniVoice 或量化 MLX Qwen3-TTS VoiceDesign 檢查點。本機檔案遺失或不相容時將顯示錯誤，不會自動下載。",
+    "localModelHint": "僅支援完整的 OmniVoice 或量化 MLX Qwen3-TTS Base 或 VoiceDesign 檢查點。本機檔案遺失或不相容時將顯示錯誤，不會自動下載。",
     "localModelReset": "使用預設模型",
     "localModelChoose": "選擇資料夾",
     "localModelDefault": "引擎預設模型",

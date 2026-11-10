@@ -1961,6 +1961,8 @@ class OmniVoiceBackend(TTSBackend):
         # used to be dropped on the floor here — the API accepted it and gen_kw
         # never carried it, so it silently did nothing.
         gen_kw["preprocess_prompt"] = bool(kw.get("preprocess_prompt", True))
+        if kw.get("seed") is not None:
+            gen_kw["seed"] = kw["seed"]
         # Single-use reference hint (dub per-segment clips) — see
         # generate_with_cached_ref, which pops it before the model sees it.
         gen_kw["cache_ref"] = bool(kw.get("cache_ref", True))
@@ -3031,7 +3033,7 @@ class MLXAudioBackend(TTSBackend):
     gpu_compat = ("mps", "cpu")
     # generate() seeds mlx's RNG from the request's seed.
     supports_generation_seed = True
-    cloning_model_keys = ("csm",)
+    cloning_model_keys = ("csm", "qwen3-tts-base")
 
     @classmethod
     def cloning_model_labels(cls) -> tuple[str, ...]:
@@ -3046,6 +3048,7 @@ class MLXAudioBackend(TTSBackend):
         "kokoro":      "mlx-community/Kokoro-82M-bf16",
         "csm":         "mlx-community/csm-1b-8bit",
         "qwen3-tts":   "mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-4bit",
+        "qwen3-tts-base": "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit",
         "dia":         "mlx-community/Dia-1.6B",
         "chatterbox":  "mlx-community/Chatterbox-TTS-4bit",
         "melotts":     "mlx-community/MeloTTS-English-v3-MLX",
@@ -3074,6 +3077,7 @@ class MLXAudioBackend(TTSBackend):
         "kokoro": ("en", "es", "fr", "hi", "it", "pt", "ja", "zh"),
         "csm": ("en",),
         "qwen3-tts": ("zh", "en", "ja", "ko", "de", "fr", "ru", "pt", "es", "it"),
+        "qwen3-tts-base": ("zh", "en", "ja", "ko", "de", "fr", "ru", "pt", "es", "it"),
         "dia": ("en",),
         "chatterbox": ("en",),
         "melotts": ("en",),
@@ -3193,9 +3197,21 @@ class MLXAudioBackend(TTSBackend):
         return self._model_id
 
     def _curated_key(self) -> Optional[str]:
-        return next(
+        key = next(
             (key for key, repo in self.CURATED_MODELS.items() if repo == self._model_id), None
         )
+        if key or not self._model_id or not os.path.isabs(self._model_id):
+            return key
+        import json
+        from pathlib import Path
+
+        try:
+            config = json.loads((Path(self._model_id) / "config.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if isinstance(config, dict) and config.get("model_type") == "qwen3_tts" and config.get("tts_model_type") == "base":
+            return "qwen3-tts-base"
+        return None
 
     def _check_language(self, language: object) -> Optional[str]:
         # Kokoro's installed tables are authoritative and accept labels such
@@ -3214,12 +3230,7 @@ class MLXAudioBackend(TTSBackend):
 
     @property
     def supports_cloning(self) -> bool:
-        """Model-dependent — this adapter multiplexes 7+ curated models and
-        only some take a reference-audio speaker prompt. Other models may
-        ignore reference audio even when their signatures accept it. Of the
-        curated set, only CSM (`mlx-community/csm-1b-8bit`) is confirmed to
-        accept a reference prompt — default False for every other model,
-        curated or user-supplied, until positively confirmed."""
+        """Only curated or positively identified reference-capable models clone."""
         return self._curated_key() in self.cloning_model_keys
 
     def _ensure_loaded(self):
@@ -3275,8 +3286,22 @@ class MLXAudioBackend(TTSBackend):
             return kind == "voice_design"
         return "voicedesign" in (self._model_id or "").lower()
 
-    def generate(self, text: str, **kw) -> torch.Tensor:
+    def can_stream(self, **kw):
+        return self._curated_key() == "qwen3-tts-base" and kw.get("speed", 1.0) == 1.0
+
+    def stream_audio(self, text, **kw):
         import numpy as np
+        from contextlib import closing
+
+        with closing(self._generate_results(text, streaming=True, **kw)) as results:
+            for result in results:
+                if result.sample_rate != self.sample_rate:
+                    raise RuntimeError(f"Unexpected Qwen sample rate {result.sample_rate}")
+                audio = np.asarray(result.audio, dtype=np.float32).copy()
+                if audio.size:
+                    yield torch.from_numpy(audio).reshape(1, -1)
+
+    def _generate_results(self, text: str, *, streaming=False, **kw):
         self._ensure_loaded()
 
         voice     = kw.get("voice")
@@ -3314,7 +3339,12 @@ class MLXAudioBackend(TTSBackend):
         # mlx-audio refuses to run without one — so the engine was unusable no
         # matter what the user typed, and the reported failure was a bare
         # 400 quoting a library message (#1405).
-        if instruct:
+        if self._curated_key() == "qwen3-tts-base":
+            if not ref_audio:
+                raise TTSInputError("Qwen3-TTS Base needs a saved voice with reference audio.")
+            if getattr(getattr(self._model, "config", None), "tts_model_type", None) != "base":
+                raise ValueError("Select a Qwen3-TTS Base checkpoint for voice cloning.")
+        elif instruct:
             kwargs["instruct"] = instruct
         elif self._is_voice_design():
             raise ValueError(
@@ -3361,7 +3391,7 @@ class MLXAudioBackend(TTSBackend):
                 # ("Standard Arabic" -> "ar", #3816); open sets keep the
                 # request's own code.
                 code = self._check_language(language) or self._normalize_language_code(language)
-                if self._curated_key() == "qwen3-tts":
+                if self._curated_key() in {"qwen3-tts", "qwen3-tts-base"}:
                     # mlx-audio Qwen's codec_language_id uses full names.
                     qwen_languages = {
                         "zh": "chinese", "en": "english", "ja": "japanese",
@@ -3412,6 +3442,13 @@ class MLXAudioBackend(TTSBackend):
                     )
                 }
 
+        if streaming:
+            kwargs.update(stream=True, streaming_interval=0.48)
+        yield from generate(**kwargs)
+
+    def generate(self, text: str, **kw) -> torch.Tensor:
+        import numpy as np
+
         def collect(results):
             groups = []
             rate = None
@@ -3441,7 +3478,7 @@ class MLXAudioBackend(TTSBackend):
             flush()
             return groups
 
-        pieces = collect(generate(**kwargs))
+        pieces = collect(self._generate_results(text, **kw))
 
         if not pieces:
             raise RuntimeError(f"mlx-audio ({self._model_id}) produced no audio")
@@ -4004,6 +4041,7 @@ class SherpaOnnxBackend(TTSBackend):
 # the descriptor below.
 
 _LAZY_REGISTRY: dict[str, tuple[str, str]] = {
+    "qwen3-tts": ("services.qwen_cuda", "QwenCUDABackend"),
     "indextts2": ("engines.indextts", "IndexTTS2Backend"),
     # Phase 4 Plan 04-01 (GGUF-03): hardware-adaptive GGUF runtime wrapper.
     # Lazy so the import of services.tts_backend doesn't pull
@@ -4145,6 +4183,7 @@ _INSTALL_HINTS: dict[str, str] = {
     "cosyvoice":     "git clone --recursive FunAudioLLM/CosyVoice + pip install -r requirements.txt + SoX",
     "kittentts":     "pip install kittentts  (ONNX, CPU-only, ~80 MB)",
     "mlx-audio":     "pip install mlx-audio  (Apple Silicon only)",
+    "qwen3-tts":     "Operator-provisioned CUDA engine. See docs/engines/mlx-audio.md for setup.",
     "voxcpm2":       'pip install "voxcpm>=2.0.3"  (floor: 2.0.3 fixed Apple-Silicon audio quality; CPU/MPS supported, CUDA recommended for speed)',
     "moss-tts-nano": "git clone OpenMOSS/MOSS-TTS-Nano && pip install -e .  (not on PyPI)",
     "indextts2":     "git clone --branch indextts-2.5 https://github.com/index-tts/index-tts.git && cd index-tts && uv venv .venv && uv pip install --python .venv/bin/python -e .  (Windows: .venv\\Scripts\\python.exe; NOT uv sync --all-extras)",
@@ -4234,6 +4273,7 @@ _MLX_AUDIO_MODEL_LABELS: dict[str, str] = {
     "kokoro":     "Kokoro (default, fast)",
     "csm":        "CSM (voice cloning)",
     "qwen3-tts":  "Qwen3-TTS (voice design)",
+    "qwen3-tts-base": "Qwen3-TTS Base (voice cloning)",
     "dia":        "Dia",
     "chatterbox": "Chatterbox",
     "melotts":    "MeloTTS (lightweight)",

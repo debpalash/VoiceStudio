@@ -423,7 +423,7 @@
   },
   "modelSettings": {
     "localModelEnvironmentOverride": "ตัวแปรสภาพแวดล้อมมีผลเหนือกว่า จึงไม่ได้ใช้โฟลเดอร์ที่บันทึกไว้:",
-    "localModelHint": "รองรับเฉพาะเช็กพอยต์ OmniVoice ที่ครบถ้วน หรือ MLX Qwen3-TTS VoiceDesign แบบควอนไทซ์ หากไฟล์ในเครื่องขาดหายหรือไม่เข้ากันจะแสดงข้อผิดพลาด โดยไม่ดาวน์โหลดอัตโนมัติ",
+    "localModelHint": "รองรับเฉพาะเช็กพอยต์ OmniVoice ที่ครบถ้วน หรือ MLX Qwen3-TTS Base หรือ VoiceDesign แบบควอนไทซ์ หากไฟล์ในเครื่องขาดหายหรือไม่เข้ากันจะแสดงข้อผิดพลาด โดยไม่ดาวน์โหลดอัตโนมัติ",
     "localModelReset": "ใช้ค่าเริ่มต้น",
     "localModelChoose": "เลือกโฟลเดอร์",
     "localModelDefault": "โมเดลเริ่มต้นของเอนจิน",

@@ -423,7 +423,7 @@
   },
   "modelSettings": {
     "localModelEnvironmentOverride": "Eine Umgebungsvariable hat Vorrang; der gespeicherte Ordner wird nicht verwendet:",
-    "localModelHint": "Nur vollständige OmniVoice- oder quantisierte MLX-Qwen3-TTS-VoiceDesign-Checkpoints. Fehlende oder inkompatible lokale Dateien führen zu einem Fehler, niemals zu einem automatischen Download.",
+    "localModelHint": "Nur vollständige OmniVoice- oder quantisierte MLX-Qwen3-TTS-Base oder VoiceDesign-Checkpoints. Fehlende oder inkompatible lokale Dateien führen zu einem Fehler, niemals zu einem automatischen Download.",
     "localModelReset": "Standard verwenden",
     "localModelChoose": "Ordner auswählen",
     "localModelDefault": "Standardmodell der Engine",

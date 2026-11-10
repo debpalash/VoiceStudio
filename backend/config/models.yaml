@@ -395,6 +395,23 @@ models:
     note: "Apple Silicon only — via mlx-audio backend."
     platforms: [darwin-arm64]
 
+  - repo_id: "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit"
+    label: "Qwen3-TTS 0.6B Base 8bit (voice cloning, mlx-audio)"
+    role: TTS
+    engines: [mlx-audio]
+    size_gb: 2.0
+    note: "Apple Silicon only. Clones a saved voice from its reference audio and transcript."
+    platforms: [darwin-arm64]
+    required_files:
+      - "config.json"
+      - "model.safetensors"
+      - "tokenizer_config.json"
+      - "vocab.json"
+      - "merges.txt"
+      - "speech_tokenizer/config.json"
+      - "speech_tokenizer/model.safetensors"
+      - "speech_tokenizer/preprocessor_config.json"
+
   - repo_id: "mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-4bit"
     label: "Qwen3-TTS 1.7B 4bit (voice design, mlx-audio)"
     role: TTS

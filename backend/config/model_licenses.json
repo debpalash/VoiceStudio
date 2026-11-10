@@ -1779,6 +1779,53 @@
       }
     },
     {
+      "id": "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit",
+      "license": "apache-2.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit",
+      "source_url": "https://huggingface.co/mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit",
+      "evidence_url": "https://huggingface.co/mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit/blob/50f45ef0047cde7e84c2ef04326acb8ada2436a7/README.md",
+      "revision": "50f45ef0047cde7e84c2ef04326acb8ada2436a7",
+      "engines": [
+        "mlx-audio"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "50f45ef0047cde7e84c2ef04326acb8ada2436a7",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": [
+          "MLX converted Qwen3-TTS Base weights",
+          "Qwen3-TTS-Tokenizer-12Hz",
+          "text tokenizer",
+          "base Qwen terms/provenance"
+        ]
+      }
+    },
+    {
       "id": "mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-4bit",
       "license": "apache-2.0",
       "commercial_use": false,
