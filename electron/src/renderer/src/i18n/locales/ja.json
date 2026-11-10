@@ -4732,5 +4732,19 @@
     "check_failed": "{{host}} の確認を完了できませんでした。詳細はセットアップログに記録されています。",
     "check_unavailable": "確認できるパッケージのダウンロードはまだありません。",
     "connection_error": "パッケージのダウンロード接続に失敗しました。再開して再試行してください。完了済みのダウンロードは保持されます。"
+  },
+  "sfx": {
+    "title": "効果音",
+    "prompt_label": "音を説明してください",
+    "prompt_placeholder": "トタン屋根に降る雨、遠くの雷",
+    "prompt_required": "先に音を説明してください。",
+    "duration": "長さ: {{seconds}} 秒",
+    "generate": "生成",
+    "generating": "生成中…",
+    "install_title": "効果音はインストールされていません",
+    "install_hint": "{{size}} GB のダウンロード（{{license}}）。「インストール」を押したときだけ開始します。NVIDIA GPU が必要です。",
+    "unsupported_title": "このコンピューターでは利用できません",
+    "result": "結果",
+    "failed": "効果音の生成に失敗しました。"
   }
 }

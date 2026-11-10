@@ -4732,5 +4732,19 @@
     "check_failed": "De controle van {{host}} kon niet worden voltooid. Details staan in het installatielogboek.",
     "check_unavailable": "Er is nog geen pakketdownload beschikbaar om te controleren.",
     "connection_error": "De verbinding voor de pakketdownload is mislukt. Hervat om opnieuw te proberen; voltooide downloads blijven bewaard."
+  },
+  "sfx": {
+    "title": "Geluidseffecten",
+    "prompt_label": "Beschrijf het geluid",
+    "prompt_placeholder": "Regen op een blikken dak, verre donder",
+    "prompt_required": "Beschrijf eerst het geluid.",
+    "duration": "Duur: {{seconds}} s",
+    "generate": "Genereren",
+    "generating": "Genereren…",
+    "install_title": "Geluidseffecten zijn niet geïnstalleerd",
+    "install_hint": "Download van {{size}} GB ({{license}}), alleen als je op Installeren klikt. Vereist een NVIDIA-GPU.",
+    "unsupported_title": "Niet beschikbaar op deze computer",
+    "result": "Resultaat",
+    "failed": "Geluidseffect mislukt."
   }
 }

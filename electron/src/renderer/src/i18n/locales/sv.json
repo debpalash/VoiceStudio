@@ -4732,5 +4732,19 @@
     "check_failed": "Kontrollen av {{host}} kunde inte slutföras. Detaljer finns i installationsloggen.",
     "check_unavailable": "Det finns ännu ingen paketnedladdning att kontrollera.",
     "connection_error": "Anslutningen för paketnedladdningen misslyckades. Återuppta för att försöka igen; slutförda nedladdningar sparas."
+  },
+  "sfx": {
+    "title": "Ljudeffekter",
+    "prompt_label": "Beskriv ljudet",
+    "prompt_placeholder": "Regn på ett plåttak, avlägset åskmuller",
+    "prompt_required": "Beskriv ljudet först.",
+    "duration": "Längd: {{seconds}} s",
+    "generate": "Generera",
+    "generating": "Genererar…",
+    "install_title": "Ljudeffekter är inte installerade",
+    "install_hint": "Nedladdning på {{size}} GB ({{license}}), bara när du klickar på Installera. Kräver ett NVIDIA-grafikkort.",
+    "unsupported_title": "Inte tillgängligt på den här datorn",
+    "result": "Resultat",
+    "failed": "Ljudeffekten misslyckades."
   }
 }

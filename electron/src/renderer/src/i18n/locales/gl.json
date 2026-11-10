@@ -4732,5 +4732,19 @@
     "check_failed": "Non se puido completar a comprobación de {{host}}. Os detalles están no rexistro de instalación.",
     "check_unavailable": "Aínda non hai ningunha descarga de paquete dispoñible para comprobar.",
     "connection_error": "Fallou a conexión de descarga do paquete. Retoma para reintentar; consérvanse as descargas completadas."
+  },
+  "sfx": {
+    "title": "Efectos de son",
+    "prompt_label": "Describe o son",
+    "prompt_placeholder": "Chuvia nun tellado de chapa, trebón lonxano",
+    "prompt_required": "Describe primeiro o son.",
+    "duration": "Duración: {{seconds}} s",
+    "generate": "Xerar",
+    "generating": "Xerando…",
+    "install_title": "Os efectos de son non están instalados",
+    "install_hint": "Descarga de {{size}} GB ({{license}}), só ao premer Instalar. Precisa unha GPU NVIDIA.",
+    "unsupported_title": "Non dispoñible neste equipo",
+    "result": "Resultado",
+    "failed": "Fallou o efecto de son."
   }
 }

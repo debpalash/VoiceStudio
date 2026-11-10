@@ -4760,5 +4760,19 @@
     "check_failed": "Nie udało się ukończyć testu {{host}}. Szczegóły są w dzienniku konfiguracji.",
     "check_unavailable": "Nie ma jeszcze pobierania pakietu, które można sprawdzić.",
     "connection_error": "Połączenie pobierania pakietu nie powiodło się. Wznów, aby spróbować ponownie; ukończone pobrania zostają zachowane."
+  },
+  "sfx": {
+    "title": "Efekty dźwiękowe",
+    "prompt_label": "Opisz dźwięk",
+    "prompt_placeholder": "Deszcz na blaszanym dachu, odległy grzmot",
+    "prompt_required": "Najpierw opisz dźwięk.",
+    "duration": "Czas trwania: {{seconds}} s",
+    "generate": "Generuj",
+    "generating": "Generowanie…",
+    "install_title": "Efekty dźwiękowe nie są zainstalowane",
+    "install_hint": "Pobieranie {{size}} GB ({{license}}), tylko po kliknięciu Zainstaluj. Wymaga karty NVIDIA.",
+    "unsupported_title": "Niedostępne na tym komputerze",
+    "result": "Wynik",
+    "failed": "Nie udało się wygenerować efektu."
   }
 }

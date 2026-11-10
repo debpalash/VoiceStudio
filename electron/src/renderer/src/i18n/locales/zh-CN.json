@@ -4732,5 +4732,19 @@
     "check_failed": "无法完成对 {{host}} 的检查。详情请查看安装日志。",
     "check_unavailable": "目前还没有可供检查的软件包下载。",
     "connection_error": "软件包下载连接失败。请继续安装以重试；已完成的下载会保留。"
+  },
+  "sfx": {
+    "title": "音效",
+    "prompt_label": "描述声音",
+    "prompt_placeholder": "雨点打在铁皮屋顶上，远处有雷声",
+    "prompt_required": "请先描述声音。",
+    "duration": "时长：{{seconds}} 秒",
+    "generate": "生成",
+    "generating": "正在生成…",
+    "install_title": "尚未安装音效",
+    "install_hint": "下载 {{size}} GB（{{license}}），仅在你点击安装时开始。需要 NVIDIA 显卡。",
+    "unsupported_title": "此电脑不支持",
+    "result": "结果",
+    "failed": "音效生成失败。"
   }
 }

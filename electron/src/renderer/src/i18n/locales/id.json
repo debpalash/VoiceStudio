@@ -4732,5 +4732,19 @@
     "check_failed": "Pemeriksaan {{host}} tidak dapat diselesaikan. Detail ada di log penyiapan.",
     "check_unavailable": "Belum ada unduhan paket yang dapat diperiksa.",
     "connection_error": "Koneksi unduhan paket gagal. Lanjutkan untuk mencoba lagi; unduhan yang selesai tetap disimpan."
+  },
+  "sfx": {
+    "title": "Efek suara",
+    "prompt_label": "Deskripsikan suaranya",
+    "prompt_placeholder": "Hujan di atap seng, guntur di kejauhan",
+    "prompt_required": "Deskripsikan suaranya dulu.",
+    "duration": "Durasi: {{seconds}} dtk",
+    "generate": "Buat",
+    "generating": "Membuat…",
+    "install_title": "Efek suara belum terpasang",
+    "install_hint": "Unduhan {{size}} GB ({{license}}), hanya saat Anda klik Pasang. Memerlukan GPU NVIDIA.",
+    "unsupported_title": "Tidak tersedia di komputer ini",
+    "result": "Hasil",
+    "failed": "Efek suara gagal."
   }
 }

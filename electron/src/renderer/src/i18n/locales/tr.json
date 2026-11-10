@@ -4732,5 +4732,19 @@
     "check_failed": "{{host}} kontrolü tamamlanamadı. Ayrıntılar kurulum günlüğünde.",
     "check_unavailable": "Henüz kontrol edilecek bir paket indirmesi yok.",
     "connection_error": "Paket indirme bağlantısı başarısız oldu. Yeniden denemek için sürdürün; tamamlanan indirmeler korunur."
+  },
+  "sfx": {
+    "title": "Ses efektleri",
+    "prompt_label": "Sesi tarif edin",
+    "prompt_placeholder": "Teneke çatıya yağan yağmur, uzaktan gök gürültüsü",
+    "prompt_required": "Önce sesi tarif edin.",
+    "duration": "Süre: {{seconds}} sn",
+    "generate": "Oluştur",
+    "generating": "Oluşturuluyor…",
+    "install_title": "Ses efektleri yüklü değil",
+    "install_hint": "{{size}} GB indirme ({{license}}), yalnızca Yükle’ye tıkladığınızda. NVIDIA GPU gerekir.",
+    "unsupported_title": "Bu bilgisayarda kullanılamıyor",
+    "result": "Sonuç",
+    "failed": "Ses efekti oluşturulamadı."
   }
 }

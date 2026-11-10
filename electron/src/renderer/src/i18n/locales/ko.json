@@ -4732,5 +4732,19 @@
     "check_failed": "{{host}} 확인을 완료하지 못했습니다. 자세한 내용은 설정 로그에 있습니다.",
     "check_unavailable": "아직 확인할 패키지 다운로드가 없습니다.",
     "connection_error": "패키지 다운로드 연결에 실패했습니다. 재개하여 다시 시도하세요. 완료된 다운로드는 유지됩니다."
+  },
+  "sfx": {
+    "title": "효과음",
+    "prompt_label": "소리를 설명하세요",
+    "prompt_placeholder": "양철 지붕에 떨어지는 빗소리, 멀리서 울리는 천둥",
+    "prompt_required": "먼저 소리를 설명하세요.",
+    "duration": "길이: {{seconds}}초",
+    "generate": "생성",
+    "generating": "생성 중…",
+    "install_title": "효과음이 설치되어 있지 않습니다",
+    "install_hint": "{{size}} GB 다운로드({{license}}), 설치를 누를 때만 시작됩니다. NVIDIA GPU가 필요합니다.",
+    "unsupported_title": "이 컴퓨터에서는 사용할 수 없습니다",
+    "result": "결과",
+    "failed": "효과음 생성에 실패했습니다."
   }
 }

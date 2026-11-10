@@ -4734,5 +4734,19 @@
     "check_failed": "Impossibile completare la verifica di {{host}}. I dettagli sono nel registro di configurazione.",
     "check_unavailable": "Non è ancora disponibile un download di pacchetto da verificare.",
     "connection_error": "La connessione di download del pacchetto non è riuscita. Riprendi per riprovare; i download completati vengono conservati."
+  },
+  "sfx": {
+    "title": "Effetti sonori",
+    "prompt_label": "Descrivi il suono",
+    "prompt_placeholder": "Pioggia su un tetto di lamiera, tuono lontano",
+    "prompt_required": "Descrivi prima il suono.",
+    "duration": "Durata: {{seconds}} s",
+    "generate": "Genera",
+    "generating": "Generazione…",
+    "install_title": "Gli effetti sonori non sono installati",
+    "install_hint": "Download di {{size}} GB ({{license}}), solo quando fai clic su Installa. Richiede una GPU NVIDIA.",
+    "unsupported_title": "Non disponibile su questo computer",
+    "result": "Risultato",
+    "failed": "Effetto sonoro non riuscito."
   }
 }

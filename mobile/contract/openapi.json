@@ -3972,6 +3972,39 @@
     "title": "SetupStatusResponse",
     "type": "object"
    },
+   "SfxRequest": {
+    "properties": {
+     "duration": {
+      "default": 10.0,
+      "description": "Seconds of audio, 1 to 30.",
+      "title": "Duration",
+      "type": "number"
+     },
+     "prompt": {
+      "description": "What the sound is, in English or Chinese.",
+      "title": "Prompt",
+      "type": "string"
+     },
+     "seed": {
+      "anyOf": [
+       {
+        "maximum": 2147483647.0,
+        "minimum": 0.0,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Seed"
+     }
+    },
+    "required": [
+     "prompt"
+    ],
+    "title": "SfxRequest",
+    "type": "object"
+   },
    "SpeechAuthCapabilities": {
     "properties": {
      "browser_session_endpoint": {
@@ -8670,6 +8703,59 @@
     "tags": [
      "settings"
     ]
+   }
+  },
+  "/api/sfx/generate": {
+   "post": {
+    "description": "Generate one sound effect. Returns ``{id, audio_url, duration_s, gen_time_s, seed, engine}``.",
+    "operationId": "sfx_generate_api_sfx_generate_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SfxRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Sfx Generate"
+   }
+  },
+  "/api/sfx/status": {
+   "get": {
+    "operationId": "sfx_status_api_sfx_status_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Sfx Status"
    }
   },
   "/archetypes": {

@@ -4732,5 +4732,19 @@
     "check_failed": "無法完成對 {{host}} 的檢查。詳情請查看安裝記錄。",
     "check_unavailable": "目前還沒有可供檢查的套件下載。",
     "connection_error": "套件下載連線失敗。請繼續安裝以重試；已完成的下載會保留。"
+  },
+  "sfx": {
+    "title": "音效",
+    "prompt_label": "描述聲音",
+    "prompt_placeholder": "雨滴打在鐵皮屋頂上，遠處有雷聲",
+    "prompt_required": "請先描述聲音。",
+    "duration": "時長：{{seconds}} 秒",
+    "generate": "產生",
+    "generating": "正在產生…",
+    "install_title": "尚未安裝音效",
+    "install_hint": "下載 {{size}} GB（{{license}}），僅在你按下安裝時開始。需要 NVIDIA 顯示卡。",
+    "unsupported_title": "此電腦不支援",
+    "result": "結果",
+    "failed": "音效產生失敗。"
   }
 }

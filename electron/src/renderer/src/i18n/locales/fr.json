@@ -4734,5 +4734,19 @@
     "check_failed": "Impossible de terminer le test de {{host}}. Les détails figurent dans le journal d’installation.",
     "check_unavailable": "Aucun téléchargement de paquet n’est encore disponible pour le test.",
     "connection_error": "La connexion de téléchargement du paquet a échoué. Reprenez pour réessayer ; les téléchargements terminés sont conservés."
+  },
+  "sfx": {
+    "title": "Effets sonores",
+    "prompt_label": "Décrivez le son",
+    "prompt_placeholder": "Pluie sur un toit en tôle, tonnerre lointain",
+    "prompt_required": "Décrivez d’abord le son.",
+    "duration": "Durée : {{seconds}} s",
+    "generate": "Générer",
+    "generating": "Génération…",
+    "install_title": "Les effets sonores ne sont pas installés",
+    "install_hint": "Téléchargement de {{size}} Go ({{license}}), uniquement si vous cliquez sur Installer. Nécessite un GPU NVIDIA.",
+    "unsupported_title": "Indisponible sur cet ordinateur",
+    "result": "Résultat",
+    "failed": "Échec de l’effet sonore."
   }
 }

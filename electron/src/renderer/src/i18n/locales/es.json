@@ -4734,5 +4734,19 @@
     "check_failed": "No se pudo completar la comprobación de {{host}}. Los detalles están en el registro de instalación.",
     "check_unavailable": "Todavía no hay ninguna descarga de paquete que comprobar.",
     "connection_error": "Falló la conexión de descarga del paquete. Reanuda para reintentar; se conservan las descargas completadas."
+  },
+  "sfx": {
+    "title": "Efectos de sonido",
+    "prompt_label": "Describe el sonido",
+    "prompt_placeholder": "Lluvia sobre un tejado de chapa, trueno lejano",
+    "prompt_required": "Describe primero el sonido.",
+    "duration": "Duración: {{seconds}} s",
+    "generate": "Generar",
+    "generating": "Generando…",
+    "install_title": "Los efectos de sonido no están instalados",
+    "install_hint": "Descarga de {{size}} GB ({{license}}), solo al pulsar Instalar. Requiere una GPU NVIDIA.",
+    "unsupported_title": "No disponible en este equipo",
+    "result": "Resultado",
+    "failed": "Falló el efecto de sonido."
   }
 }

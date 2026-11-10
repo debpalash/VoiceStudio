@@ -4732,5 +4732,19 @@
     "check_failed": "Die Prüfung für {{host}} konnte nicht abgeschlossen werden. Details stehen im Einrichtungsprotokoll.",
     "check_unavailable": "Es ist noch kein Paketdownload zum Prüfen verfügbar.",
     "connection_error": "Die Verbindung zum Paketdownload ist fehlgeschlagen. Zum erneuten Versuch fortsetzen; abgeschlossene Downloads bleiben erhalten."
+  },
+  "sfx": {
+    "title": "Soundeffekte",
+    "prompt_label": "Den Klang beschreiben",
+    "prompt_placeholder": "Regen auf einem Blechdach, fernes Donnern",
+    "prompt_required": "Beschreibe zuerst den Klang.",
+    "duration": "Dauer: {{seconds}} s",
+    "generate": "Erzeugen",
+    "generating": "Wird erzeugt…",
+    "install_title": "Soundeffekte sind nicht installiert",
+    "install_hint": "{{size}} GB Download ({{license}}), nur nach Klick auf Installieren. Benötigt eine NVIDIA-GPU.",
+    "unsupported_title": "Auf diesem Computer nicht verfügbar",
+    "result": "Ergebnis",
+    "failed": "Soundeffekt fehlgeschlagen."
   }
 }

@@ -4734,5 +4734,19 @@
     "check_failed": "Não foi possível concluir a verificação de {{host}}. Os detalhes estão no registro da instalação.",
     "check_unavailable": "Ainda não há um download de pacote disponível para verificar.",
     "connection_error": "A conexão de download do pacote falhou. Retome para tentar novamente; os downloads concluídos são preservados."
+  },
+  "sfx": {
+    "title": "Efeitos sonoros",
+    "prompt_label": "Descreva o som",
+    "prompt_placeholder": "Chuva num telhado de zinco, trovão distante",
+    "prompt_required": "Descreva primeiro o som.",
+    "duration": "Duração: {{seconds}} s",
+    "generate": "Gerar",
+    "generating": "Gerando…",
+    "install_title": "Os efeitos sonoros não estão instalados",
+    "install_hint": "Download de {{size}} GB ({{license}}), só ao clicar em Instalar. Requer uma GPU NVIDIA.",
+    "unsupported_title": "Indisponível neste computador",
+    "result": "Resultado",
+    "failed": "Falha no efeito sonoro."
   }
 }

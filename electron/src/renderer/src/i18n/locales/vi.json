@@ -4732,5 +4732,19 @@
     "check_failed": "Không thể hoàn tất kiểm tra {{host}}. Chi tiết có trong nhật ký thiết lập.",
     "check_unavailable": "Chưa có lượt tải gói nào để kiểm tra.",
     "connection_error": "Kết nối tải gói thất bại. Tiếp tục để thử lại; các bản tải xuống hoàn tất được giữ nguyên."
+  },
+  "sfx": {
+    "title": "Hiệu ứng âm thanh",
+    "prompt_label": "Mô tả âm thanh",
+    "prompt_placeholder": "Mưa trên mái tôn, sấm xa",
+    "prompt_required": "Hãy mô tả âm thanh trước.",
+    "duration": "Thời lượng: {{seconds}} giây",
+    "generate": "Tạo",
+    "generating": "Đang tạo…",
+    "install_title": "Chưa cài đặt hiệu ứng âm thanh",
+    "install_hint": "Tải xuống {{size}} GB ({{license}}), chỉ khi bạn bấm Cài đặt. Cần GPU NVIDIA.",
+    "unsupported_title": "Không khả dụng trên máy tính này",
+    "result": "Kết quả",
+    "failed": "Tạo hiệu ứng âm thanh thất bại."
   }
 }
