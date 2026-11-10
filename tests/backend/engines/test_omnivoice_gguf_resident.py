@@ -89,7 +89,7 @@ class _Rig:
     def flag(self, name: str, on: bool = True) -> None:
         path = self.state / name
         if on:
-            path.write_text("1")
+            path.write_text("1", encoding="utf-8")
         else:
             path.unlink(missing_ok=True)
 
@@ -97,7 +97,7 @@ class _Rig:
         log = self.state / "events.jsonl"
         if not log.exists():
             return []
-        rows = [json.loads(line) for line in log.read_text().splitlines() if line]
+        rows = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines() if line]
         return [r for r in rows if r["kind"] == kind]
 
     @property
