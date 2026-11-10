@@ -59,7 +59,7 @@ def _apply_speed(audio: "torch.Tensor", sample_rate: int, rate: float) -> "torch
     import numpy as np
     import torch
 
-    from services.ffmpeg_utils import _atempo_chain, find_ffmpeg
+    from services.ffmpeg_utils import _atempo_chain, find_ffmpeg, local_inputs_only
     from services.tts_backend import TTSInputError
 
     if not math.isfinite(rate) or rate <= 0:
@@ -69,9 +69,12 @@ def _apply_speed(audio: "torch.Tensor", sample_rate: int, rate: float) -> "torch
         raise RuntimeError("Ming speed control needs ffmpeg, which could not be found.")
     pcm = audio.detach().cpu().to(torch.float32).numpy().reshape(-1).astype(np.float32, copy=False)
     proc = subprocess.run(
-        [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-f", "f32le", "-ar", str(sample_rate),
-         "-ac", "1", "-i", "pipe:0", "-af", _atempo_chain(rate), "-f", "f32le", "-ar", str(sample_rate),
-         "-ac", "1", "pipe:1"],
+        local_inputs_only(
+            [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-f", "f32le", "-ar", str(sample_rate),
+             "-ac", "1", "-i", "pipe:0", "-af", _atempo_chain(rate), "-f", "f32le", "-ar", str(sample_rate),
+             "-ac", "1", "pipe:1"],
+            tool="ffmpeg",
+        ),
         input=pcm.tobytes(), capture_output=True, timeout=120,
     )
     if proc.returncode != 0 or not proc.stdout:
@@ -218,12 +221,22 @@ class MingTTSBackend(SubprocessBackend):
         guidance = kw.get("guidance_scale")
         if guidance is not None:
             forwarded["guidance_scale"] = float(guidance)
+        # Checked before synthesis: a bad ``speed`` must not cost a full take.
+        rate = kw.get("speed")
+        if rate is not None:
+            from services.tts_backend import TTSInputError
+
+            try:
+                rate = float(rate)
+            except (TypeError, ValueError):
+                raise TTSInputError(f"speed must be a number, got {rate!r}.") from None
+            if not math.isfinite(rate) or rate <= 0:
+                raise TTSInputError(f"speed must be a positive number, got {rate!r}.")
         audio = super().generate(text, **forwarded)
         # Ming has no speed control of its own: honour the public ``speed`` by
         # a pitch-preserving stretch of the finished take, never by ignoring it.
-        rate = kw.get("speed")
-        if rate is not None and float(rate) != 1.0:
-            audio = _apply_speed(audio, self.sample_rate, float(rate))
+        if rate is not None and rate != 1.0:
+            audio = _apply_speed(audio, self.sample_rate, rate)
         return audio
 
 

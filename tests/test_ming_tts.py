@@ -407,6 +407,24 @@ def test_cached_custom_repo_without_a_commit_sha_is_not_available(monkeypatch):
     assert ming_weights_installed() is True
 
 
+def test_a_bad_speed_is_refused_before_synthesis(monkeypatch):
+    calls = _capture_generate(monkeypatch)
+    for bad in ("fast", -1, 0, float("nan")):
+        with pytest.raises(ValueError, match="speed"):
+            _backend_cls()().generate("hello", ref_audio="ref.wav", speed=bad)
+    assert not calls
+
+
+def test_the_default_repo_id_set_explicitly_uses_the_pinned_revision(monkeypatch):
+    import huggingface_hub
+    from engines.ming_tts.bootstrap import ming_weights_installed
+
+    monkeypatch.setenv("OMNIVOICE_MING_TTS_MODEL", "inclusionAI/Ming-3.0-tts-0.5b")
+    monkeypatch.delenv("OMNIVOICE_MING_TTS_REVISION", raising=False)
+    monkeypatch.setattr(huggingface_hub, "try_to_load_from_cache", lambda *a, **k: "/cache/model.safetensors")
+    assert ming_weights_installed() is True
+
+
 def test_a_failed_speed_stretch_is_an_error_not_normal_speed_audio(monkeypatch):
     import subprocess
     import services.ffmpeg_utils as fu

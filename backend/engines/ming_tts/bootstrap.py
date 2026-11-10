@@ -85,10 +85,12 @@ def ming_weights_installed() -> bool:
         from huggingface_hub import try_to_load_from_cache
         from services.hf_revisions import revision_for
 
-        repo = model or "inclusionAI/Ming-3.0-tts-0.5b"
-        rev = revision_for(repo) if not model else os.environ.get(
+        default_repo = "inclusionAI/Ming-3.0-tts-0.5b"
+        repo = model or default_repo
+        # Same rule as the sidecar: the default id always uses the pinned revision.
+        rev = revision_for(repo) if repo == default_repo else os.environ.get(
             "OMNIVOICE_MING_TTS_REVISION", "").strip()
-        if model and not re.fullmatch(r"[0-9a-f]{40}", rev):
+        if repo != default_repo and not re.fullmatch(r"[0-9a-f]{40}", rev):
             return False  # the sidecar refuses a custom repo without a commit SHA
         return isinstance(try_to_load_from_cache(repo, "model.safetensors", revision=rev or None), str)
     except Exception:
