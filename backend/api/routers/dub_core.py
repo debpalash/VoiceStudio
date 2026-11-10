@@ -618,12 +618,20 @@ def dub_abort(job_id: str):
     # Flag first: a kill that lands before it reads as an encoder crash to the
     # hardware-encode fallback, which would restart the work after the sweep.
     job = _dub_jobs.get(job_id)
+    had_flag = job is not None and "aborted" in job
+    prior_flag = job.get("aborted") if job is not None else None
     if job is not None:
         job["aborted"] = True
-    _kill_job_procs(job_id)
     try:
+        _kill_job_procs(job_id)
         had_task = task_manager.cancel_task(job_id)
     except Exception as exc:
+        # A failed abort leaves the job retryable, not marked aborted.
+        if job is not None:
+            if had_flag:
+                job["aborted"] = prior_flag
+            else:
+                job.pop("aborted", None)
         logger.warning("Dub task cancellation failed")
         raise HTTPException(
             status_code=503,
