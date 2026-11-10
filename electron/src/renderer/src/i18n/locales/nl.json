@@ -820,6 +820,7 @@
     "prep_chip_scene": "scène",
     "prep_chip_cached": "in de cache opgeslagen",
     "prep_demucs_note": "Demucs kunnen enkele minuten nodig hebben bij lange video's. Lang geluid = langer wachten.",
+    "bg_separation_failed": "De achtergrondgeluiden konden niet worden gescheiden. De nasynchronisatie bevat alleen spraak, tenzij je het opnieuw probeert.",
     "transcribing": "Audio transcriberen…",
     "elapsed": "verstreken",
     "remaining": "er resteert",
@@ -4740,5 +4741,29 @@
     "check_failed": "De controle van {{host}} kon niet worden voltooid. Details staan in het installatielogboek.",
     "check_unavailable": "Er is nog geen pakketdownload beschikbaar om te controleren.",
     "connection_error": "De verbinding voor de pakketdownload is mislukt. Hervat om opnieuw te proberen; voltooide downloads blijven bewaard."
+  },
+  "sfx": {
+    "title": "Geluidseffecten",
+    "prompt_label": "Beschrijf het geluid",
+    "prompt_placeholder": "Regen op een blikken dak, verre donder",
+    "prompt_required": "Beschrijf eerst het geluid.",
+    "duration": "Duur: {{seconds}} s",
+    "generate": "Genereren",
+    "generating": "Genereren…",
+    "install_title": "Geluidseffecten zijn niet geïnstalleerd",
+    "install_hint": "Download van {{size}} GB ({{license}}), alleen als je op Installeren klikt. Vereist een NVIDIA-GPU.",
+    "unsupported_title": "Niet beschikbaar op deze computer",
+    "result": "Resultaat",
+    "failed": "Geluidseffect mislukt.",
+    "reason_host_unsupported": "Geluidseffecten hebben een NVIDIA-GPU nodig. Je andere engines worden niet beïnvloed.",
+    "reason_weights_missing": "De modelbestanden voor geluidseffecten ontbreken of zijn onvolledig. Gebruik Herstellen om ze te downloaden.",
+    "reason_not_installed": "Geluidseffecten zijn nog niet geïnstalleerd.",
+    "reason_sidecar_missing": "Het onderdeel voor geluidseffecten ontbreekt. Installeer VoiceStudio opnieuw.",
+    "reason_unknown": "Geluidseffecten zijn nu niet beschikbaar.",
+    "error_prompt_too_long": "De beschrijving is te lang (maximaal {{max_chars}} tekens).",
+    "error_bad_duration": "De duur moet tussen {{min}} en {{max}} seconden liggen.",
+    "error_busy": "De GPU is bezig met een andere taak. Probeer het zo meteen opnieuw.",
+    "error_timeout": "Het maken van dit geluidseffect duurde te lang. Probeer een kortere duur.",
+    "error_out_of_memory": "De GPU had te weinig geheugen. Sluit andere zware GPU-apps of probeer een kortere duur."
   }
 }

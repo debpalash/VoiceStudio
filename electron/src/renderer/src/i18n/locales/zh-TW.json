@@ -820,6 +820,7 @@
     "prep_chip_scene": "場景",
     "prep_chip_cached": "快取的",
     "prep_demucs_note": "演示長視頻可能需要幾分鐘的時間。長音頻=更長的等待。",
+    "bg_separation_failed": "無法分離背景音。除非重試，否則配音將僅包含語音。",
     "transcribing": "正在轉錄音訊...",
     "elapsed": "過去了",
     "remaining": "剩餘 s",
@@ -4740,5 +4741,29 @@
     "check_failed": "無法完成對 {{host}} 的檢查。詳情請查看安裝記錄。",
     "check_unavailable": "目前還沒有可供檢查的套件下載。",
     "connection_error": "套件下載連線失敗。請繼續安裝以重試；已完成的下載會保留。"
+  },
+  "sfx": {
+    "title": "音效",
+    "prompt_label": "描述聲音",
+    "prompt_placeholder": "雨滴打在鐵皮屋頂上，遠處有雷聲",
+    "prompt_required": "請先描述聲音。",
+    "duration": "時長：{{seconds}} 秒",
+    "generate": "產生",
+    "generating": "正在產生…",
+    "install_title": "尚未安裝音效",
+    "install_hint": "下載 {{size}} GB（{{license}}），僅在你按下安裝時開始。需要 NVIDIA 顯示卡。",
+    "unsupported_title": "此電腦不支援",
+    "result": "結果",
+    "failed": "音效產生失敗。",
+    "reason_host_unsupported": "音效需要 NVIDIA GPU。你的其他引擎不受影響。",
+    "reason_weights_missing": "音效模型檔案遺失或不完整。請使用「修復」下載。",
+    "reason_not_installed": "音效尚未安裝。",
+    "reason_sidecar_missing": "音效元件遺失。請重新安裝 VoiceStudio。",
+    "reason_unknown": "音效目前無法使用。",
+    "error_prompt_too_long": "描述太長（最多 {{max_chars}} 個字元）。",
+    "error_bad_duration": "時長必須介於 {{min}} 到 {{max}} 秒之間。",
+    "error_busy": "GPU 正忙於其他工作。請稍後再試。",
+    "error_timeout": "產生此音效耗時過久。請嘗試較短的時長。",
+    "error_out_of_memory": "GPU 記憶體不足。請關閉其他佔用 GPU 的應用程式，或嘗試較短的時長。"
   }
 }

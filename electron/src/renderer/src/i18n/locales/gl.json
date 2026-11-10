@@ -1069,6 +1069,7 @@
     "prep_chip_scene": "escena",
     "prep_chip_cached": "almacenado en caché",
     "prep_demucs_note": "Os demucs poden tardar varios minutos en vídeos longos; audio máis longo significa unha espera máis longa.",
+    "bg_separation_failed": "Non se puido separar o audio de fondo. A dobraxe só terá voz, salvo que o reintentes.",
     "transcribing": "Transcribindo o audio…",
     "elapsed": "transcorrido",
     "remaining": "s restantes",
@@ -4740,5 +4741,29 @@
     "check_failed": "Non se puido completar a comprobación de {{host}}. Os detalles están no rexistro de instalación.",
     "check_unavailable": "Aínda non hai ningunha descarga de paquete dispoñible para comprobar.",
     "connection_error": "Fallou a conexión de descarga do paquete. Retoma para reintentar; consérvanse as descargas completadas."
+  },
+  "sfx": {
+    "title": "Efectos de son",
+    "prompt_label": "Describe o son",
+    "prompt_placeholder": "Chuvia nun tellado de chapa, trebón lonxano",
+    "prompt_required": "Describe primeiro o son.",
+    "duration": "Duración: {{seconds}} s",
+    "generate": "Xerar",
+    "generating": "Xerando…",
+    "install_title": "Os efectos de son non están instalados",
+    "install_hint": "Descarga de {{size}} GB ({{license}}), só ao premer Instalar. Precisa unha GPU NVIDIA.",
+    "unsupported_title": "Non dispoñible neste equipo",
+    "result": "Resultado",
+    "failed": "Fallou o efecto de son.",
+    "reason_host_unsupported": "Os efectos de son necesitan unha GPU NVIDIA. Os teus outros motores non se ven afectados.",
+    "reason_weights_missing": "Faltan ficheiros do modelo de efectos de son ou están incompletos. Usa Reparar para descargalos.",
+    "reason_not_installed": "Os efectos de son aínda non están instalados.",
+    "reason_sidecar_missing": "Falta o compoñente de efectos de son. Reinstala VoiceStudio.",
+    "reason_unknown": "Os efectos de son non están dispoñibles agora mesmo.",
+    "error_prompt_too_long": "A descrición é demasiado longa (máximo {{max_chars}} caracteres).",
+    "error_bad_duration": "A duración debe estar entre {{min}} e {{max}} segundos.",
+    "error_busy": "A GPU está ocupada con outra tarefa. Téntao de novo nun momento.",
+    "error_timeout": "Xerar este efecto de son tardou demasiado. Proba cunha duración menor.",
+    "error_out_of_memory": "A GPU quedou sen memoria. Pecha outras apps que usen moito a GPU ou proba cunha duración menor."
   }
 }

@@ -56,6 +56,7 @@ GET /api/settings/perf/torch-compile-disabled
 GET /api/settings/performance-profile
 GET /api/settings/storage
 GET /api/settings/storage/models-dir
+GET /api/sfx/status
 GET /archetypes
 GET /archetypes/categories
 GET /archetypes/previews/status
@@ -216,6 +217,7 @@ POST /api/settings/llm-providers/active
 POST /api/settings/llm-providers/{provider_id}/connect
 POST /api/settings/llm-providers/{provider_id}/test
 POST /api/settings/storage/temp/clear
+POST /api/sfx/generate
 POST /archetypes/previews/check
 POST /archetypes/{archetype_id}/use
 POST /audiobook

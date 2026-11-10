@@ -29,6 +29,7 @@ SIDECARS = [
     "engines.confucius4.main",
     "engines.dots_tts.main",
     "engines.indextts.main",
+    "engines.moss_sfx.main",
     "engines.moss_tts_v15.main",
     "engines.omnivoice_subprocess.main",
     "engines.pockettts.main",

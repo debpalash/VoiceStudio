@@ -32,14 +32,14 @@ VoiceStudio/
 │
 ├── backend/                     ⟵ FastAPI server
 │   ├── main.py                  sole process entry; its annotated startup sequence must retain its order
-│   ├── api/routers/             44 routers, auto-included; HTTP/WS adaptation stays thin here
+│   ├── api/routers/             45 routers, auto-included; HTTP/WS adaptation stays thin here
 │   │   └── setup/               setup-wizard endpoints and model acquisition
 │   ├── core/                    shared infrastructure: configuration, persistence, job/event plumbing,
 │   │                            auth and CSRF, safe paths, analytics consent, version and diagnostics
 │   ├── services/                129 modules of business logic spanning speech, dubbing, DSP, GPU dispatch,
 │   │                            engine selection and loaded-model ownership
 │   ├── engines/                 per-engine adapters: audiocpp, confucius4, cosyvoice_gguf,
-│   │                            cosyvoice_subprocess, dots_tts, indextts, moss_tts_nano_subprocess,
+│   │                            cosyvoice_subprocess, dots_tts, indextts, moss_sfx, moss_tts_nano_subprocess,
 │   │                            moss_tts_v15, omnivoice_gguf, omnivoice_subprocess, pockettts,
 │   │                            supertonic3, voxcpm2_subprocess, whisper_cpp, _asr_sidecar, _echo
 │   ├── schemas/                 Pydantic types at the request/response boundary

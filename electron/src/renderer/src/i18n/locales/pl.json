@@ -830,6 +830,7 @@
     "prep_chip_scene": "scena",
     "prep_chip_cached": "buforowane",
     "prep_demucs_note": "W przypadku długich filmów Demucs może zająć kilka minut. Długi dźwięk = dłuższe oczekiwanie.",
+    "bg_separation_failed": "Nie udało się oddzielić dźwięku tła. Dubbing będzie zawierał tylko mowę, chyba że spróbujesz ponownie.",
     "transcribing": "Transkrypcja dźwięku…",
     "elapsed": "upłynął",
     "remaining": "pozostało",
@@ -4768,5 +4769,29 @@
     "check_failed": "Nie udało się ukończyć testu {{host}}. Szczegóły są w dzienniku konfiguracji.",
     "check_unavailable": "Nie ma jeszcze pobierania pakietu, które można sprawdzić.",
     "connection_error": "Połączenie pobierania pakietu nie powiodło się. Wznów, aby spróbować ponownie; ukończone pobrania zostają zachowane."
+  },
+  "sfx": {
+    "title": "Efekty dźwiękowe",
+    "prompt_label": "Opisz dźwięk",
+    "prompt_placeholder": "Deszcz na blaszanym dachu, odległy grzmot",
+    "prompt_required": "Najpierw opisz dźwięk.",
+    "duration": "Czas trwania: {{seconds}} s",
+    "generate": "Generuj",
+    "generating": "Generowanie…",
+    "install_title": "Efekty dźwiękowe nie są zainstalowane",
+    "install_hint": "Pobieranie {{size}} GB ({{license}}), tylko po kliknięciu Zainstaluj. Wymaga karty NVIDIA.",
+    "unsupported_title": "Niedostępne na tym komputerze",
+    "result": "Wynik",
+    "failed": "Nie udało się wygenerować efektu.",
+    "reason_host_unsupported": "Efekty dźwiękowe wymagają karty graficznej NVIDIA. Twoje pozostałe silniki nie są dotknięte.",
+    "reason_weights_missing": "Brakuje plików modelu efektów dźwiękowych lub są niekompletne. Użyj Napraw, aby je pobrać.",
+    "reason_not_installed": "Efekty dźwiękowe nie są jeszcze zainstalowane.",
+    "reason_sidecar_missing": "Brakuje składnika efektów dźwiękowych. Zainstaluj VoiceStudio ponownie.",
+    "reason_unknown": "Efekty dźwiękowe są teraz niedostępne.",
+    "error_prompt_too_long": "Opis jest za długi (maksymalnie {{max_chars}} znaków).",
+    "error_bad_duration": "Czas trwania musi mieścić się między {{min}} a {{max}} s.",
+    "error_busy": "GPU jest zajęte innym zadaniem. Spróbuj ponownie za chwilę.",
+    "error_timeout": "Generowanie tego efektu trwało zbyt długo. Spróbuj krótszego czasu trwania.",
+    "error_out_of_memory": "GPU zabrakło pamięci. Zamknij inne aplikacje obciążające GPU lub spróbuj krótszego czasu trwania."
   }
 }
