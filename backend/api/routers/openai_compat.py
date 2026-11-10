@@ -745,8 +745,9 @@ async def _native_pcm_stream(backend, text, kw, *, sse):
 
 
 class _PrimedSpeechResponse(StreamingResponse):
-    def __init__(self, first, stream, **kwargs):
+    def __init__(self, first, stream, *, send_timeout, **kwargs):
         self._stream = stream
+        self._send_timeout = send_timeout
 
         async def body():
             yield first
@@ -756,10 +757,16 @@ class _PrimedSpeechResponse(StreamingResponse):
         super().__init__(body(), **kwargs)
 
     async def __call__(self, scope, receive, send):
-        from anyio import CancelScope
+        from anyio import CancelScope, fail_after
+
+        async def send_bounded(message):
+            # A client that stops reading must eventually release the native
+            # worker even if the transport has not reported a disconnect.
+            with fail_after(self._send_timeout):
+                await send(message)
 
         try:
-            await super().__call__(scope, receive, send)
+            await super().__call__(scope, receive, send_bounded)
         finally:
             with CancelScope(shield=True):
                 await self._stream.aclose()
@@ -1042,7 +1049,10 @@ async def create_speech(req: SpeechRequest):
         if sse:
             _headers.pop("Content-Disposition")
             _headers["Cache-Control"] = "no-cache"
-        return _PrimedSpeechResponse(first, stream, media_type=mime_type, headers=_headers)
+        return _PrimedSpeechResponse(
+            first, stream, media_type=mime_type, headers=_headers,
+            send_timeout=generate_timeout_s(text, engine=backend),
+        )
     if len(sentences) > 1:
         async def render_pcm(segment: str) -> bytes:
             audio, _, _ = await render(segment)

@@ -316,6 +316,79 @@ def test_native_pcm_reports_late_sse_error_and_closes_on_the_worker(engine, monk
     assert not openai_compat._native_pcm_lock.locked()
 
 
+def test_native_pcm_timeout_keeps_worker_reserved_until_cleanup(client, engine, monkeypatch):
+    import threading
+
+    from api.routers import openai_compat
+    from services import model_manager
+
+    worker = openai_compat.ThreadPoolExecutor(max_workers=1)
+    slot = threading.Lock()
+    unblock = threading.Event()
+    closed = threading.Event()
+    monkeypatch.setattr(openai_compat, "_native_pcm_worker", worker)
+    monkeypatch.setattr(openai_compat, "_native_pcm_lock", slot)
+    monkeypatch.setattr(model_manager, "generate_timeout_s", lambda *a, **kw: 0.05)
+
+    def chunks(self, text, **kwargs):
+        try:
+            assert unblock.wait(10)
+            yield torch.zeros(1, 4800)
+        finally:
+            closed.set()
+
+    monkeypatch.setattr(engine, "can_stream", lambda self, **kw: True, raising=False)
+    monkeypatch.setattr(engine, "stream_audio", chunks, raising=False)
+    request = dict(model="tts-1", voice="alloy", input="Hello.", response_format="pcm",
+                   stream_format="audio")
+    try:
+        with pytest.raises(openai.InternalServerError) as timeout:
+            client.audio.speech.create(**request)
+        assert timeout.value.status_code == 503
+        assert slot.locked() and not closed.is_set()
+        with pytest.raises(openai.RateLimitError):
+            client.audio.speech.create(**request)
+    finally:
+        unblock.set()
+        worker.shutdown()
+    assert closed.is_set()
+    assert not slot.locked()
+
+
+def test_primed_speech_closes_when_transport_stops_accepting_audio():
+    import asyncio
+
+    from starlette.requests import ClientDisconnect
+
+    from api.routers.openai_compat import _PrimedSpeechResponse
+
+    async def exercise():
+        closed = False
+
+        async def chunks():
+            nonlocal closed
+            try:
+                yield b"pcm"
+            finally:
+                closed = True
+
+        async def send(message):
+            if message["type"] == "http.response.body":
+                await asyncio.Future()
+
+        async def receive():
+            await asyncio.Future()
+
+        stream = chunks()
+        response = _PrimedSpeechResponse(await anext(stream), stream, send_timeout=0.05)
+        with pytest.raises(ClientDisconnect) as error:
+            await response({"type": "http", "asgi": {"spec_version": "2.4"}}, receive, send)
+        assert isinstance(error.value.__context__, TimeoutError)
+        assert closed
+
+    asyncio.run(exercise())
+
+
 @pytest.mark.parametrize("fmt,duration", [("wav", None), ("pcm", 2)])
 def test_speech_stream_keeps_container_and_duration_whole(client, engine, fmt, duration):
     text = "This is the first sentence. Here is the second sentence."
