@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess  # nosec B404 -- fixed probe arguments
+import time
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -187,7 +188,10 @@ def parse_backends(output: str) -> list[NativeBackend]:
 PROBE_TIMEOUT_S = 120  # first run can compile Vulkan shaders / scan DLLs
 # Verdict per binary (path, mtime, size): the device list, or the scrubbed
 # failure text. Failures are cached too, so a hung probe costs one timeout.
-_PROBE_CACHE: dict[tuple, list[NativeBackend] | str] = {}
+#: A failed verdict expires so a transient failure (a driver still loading, a
+#: busy disk) is retried without restarting the backend; a good one never does.
+PROBE_FAILURE_TTL_S = 300
+_PROBE_CACHE: dict[tuple, list[NativeBackend] | tuple[str, float]] = {}
 
 
 def _tail(text: str, lines: int = 4) -> str:
@@ -214,16 +218,19 @@ def probe_backends(cli: Path | None = None, refresh: bool = False) -> list[Nativ
         key = None
     if key is not None and refresh:
         _PROBE_CACHE.pop(key, None)
-    if key in _PROBE_CACHE:
-        cached = _PROBE_CACHE[key]
-        if isinstance(cached, str):
-            raise RuntimeError(cached)
-        return list(cached)
+    # Read once and drop with pop(): two threads may see the same expired entry.
+    cached = _PROBE_CACHE.get(key) if key is not None else None
+    if cached is not None:
+        if not isinstance(cached, tuple):
+            return list(cached)
+        if time.monotonic() < cached[1]:
+            raise RuntimeError(cached[0])
+        _PROBE_CACHE.pop(key, None)
     try:
         devices = _probe_once(cli)
     except RuntimeError as exc:
         if key is not None:
-            _PROBE_CACHE[key] = str(exc)
+            _PROBE_CACHE[key] = (str(exc), time.monotonic() + PROBE_FAILURE_TTL_S)
         raise
     if key is not None:
         _PROBE_CACHE[key] = list(devices)

@@ -1009,7 +1009,7 @@ async def _run_chapter(chapter, *, default_voice, language, opts, voice_map,
 
     ``on_progress`` is called from the GPU thread after every chunk (#3417)."""
     from services import gpu_gateway
-    from services.model_manager import generate_timeout_s
+    from services.model_manager import await_free_engine, generate_timeout_s
     from services.tts_backend import get_backend_class
     # Resolve and pin every take before rendering starts.  The former routing
     # setup did this even for local jobs; keeping it explicit prevents a
@@ -1030,15 +1030,23 @@ async def _run_chapter(chapter, *, default_voice, language, opts, voice_map,
     except ValueError:
         engine_class = None
     spoken_text = "\n".join(span.text for span in chapter.spans)
-    return await gpu_gateway.run(
-        local=gpu_gateway.LocalCall(
-            fn=lambda: _render_chapter_cached(
-                chapter, synth, sr, engine_id, resolve, cache_dir, lexicon,
-                language, opts, voice_map, cache_lease, on_progress=on_progress,
-            ),
-            what="Audiobook chapter",
-            timeout=generate_timeout_s(spoken_text, engine=engine_class),
-        )
+    budget = generate_timeout_s(spoken_text, engine=engine_class)
+    # A busy engine (a native stream holds it) must not fail the chapter and let
+    # the book assemble without it: wait for it inside the chapter's budget, off
+    # the GPU worker. Each retry resumes from the segments already persisted, so
+    # past the budget the busy error fails this chapter with its real reason.
+    return await await_free_engine(
+        lambda: gpu_gateway.run(
+            local=gpu_gateway.LocalCall(
+                fn=lambda: _render_chapter_cached(
+                    chapter, synth, sr, engine_id, resolve, cache_dir, lexicon,
+                    language, opts, voice_map, cache_lease, on_progress=on_progress,
+                ),
+                what="Audiobook chapter",
+                timeout=budget,
+            )
+        ),
+        budget_s=budget, what="Audiobook engine",
     )
 
 class AudiobookPreviewRequest(ExpressiveMixin):
@@ -1342,6 +1350,23 @@ async def _render_longform_sse(
                                              include_diagnostic=False)})
                 tracker.finish_chapter(i)
                 yield _progress_event(i)
+                if isinstance(e, TimeoutError) and hasattr(e, "retry_after"):
+                    # The engine stayed busy past the chapter's wait budget (a
+                    # GpuPoolBusyError). Skipping the chapter would mux a book
+                    # with a hole in it: fail the job instead. The manifest and
+                    # the chapters already cached stay, so a retry resumes.
+                    ev = build_failure_event(e, stage="audiobook_render")
+                    ev["reason"] = (f"the speech engine stayed busy; chapter {i + 1} "
+                                    f"was not rendered, so no book was assembled — "
+                                    f"{ev['reason']}")
+                    ev["error"] = ev["reason"]
+                    if job_store is not None:
+                        try:
+                            job_store.mark_failed(job_id, ev["reason"])
+                        except Exception:
+                            pass  # best-effort job history
+                    yield _emit(ev)
+                    return
                 continue
             finally:
                 if not task.done():
