@@ -1,7 +1,9 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import {
+  DOWNLOAD_ABORT_MS,
   DOWNLOAD_STALL_MS,
+  downloadStallExceeded,
   SetupProgressTracker,
   cleanProcessLine,
   parseByteSize,
@@ -217,5 +219,33 @@ describe('SetupProgressTracker', () => {
     // A failed fast download is withdrawn: uv announces its own download next.
     tracker.observeTransfer('torch', 0, 0, 90_000);
     expect(tracker.snapshot(90_000 + DOWNLOAD_STALL_MS).stalled).toBeUndefined();
+  });
+});
+
+describe('download stall abort (#3950)', () => {
+  it('stops a download only after it is silent past the abort limit', () => {
+    expect(downloadStallExceeded({})).toBe(false);
+    expect(downloadStallExceeded({ stalled: true, stalledSeconds: 60 })).toBe(false);
+    expect(downloadStallExceeded({ stalled: true, stalledSeconds: DOWNLOAD_ABORT_MS / 1000 })).toBe(
+      true,
+    );
+  });
+
+  it('gives a restarted uv a fresh stall window', () => {
+    const tracker = new SetupProgressTracker();
+    tracker.observeTransfer('torch', 40_000_000, 2_700_000_000, 1_000);
+    expect(tracker.snapshot(200_000).stalled).toBe(true);
+    tracker.restartStallClock();
+    expect(tracker.snapshot(201_000).stalled).toBeUndefined();
+    // A new child doing other work for minutes is not a stalled download.
+    expect(tracker.snapshot(900_000).stalled).toBeUndefined();
+  });
+
+  it('re-arms when a retry re-announces a package left unfinished', () => {
+    const tracker = new SetupProgressTracker();
+    tracker.ingest('Downloading torch (2.5GiB)', 1_000);
+    tracker.restartStallClock();
+    tracker.ingest('Downloading torch (2.5GiB)', 300_000);
+    expect(tracker.snapshot(300_000 + DOWNLOAD_STALL_MS).stalled).toBe(true);
   });
 });
