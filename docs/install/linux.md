@@ -42,7 +42,9 @@ sudo snap connect voicestudio:audio-record
 
 The snap runs through XWayland by default because native Wayland crashed it on
 some GNOME releases. To try native Wayland, launch it with
-`VOICESTUDIO_SNAP_OZONE_PLATFORM=wayland voicestudio`.
+`VOICESTUDIO_SNAP_OZONE_PLATFORM=wayland voicestudio`; on a revision built by
+Snapcraft Builds the variable is not read, so use
+`voicestudio --ozone-platform=wayland` instead.
 
 <a id="install-appimage"></a>
 

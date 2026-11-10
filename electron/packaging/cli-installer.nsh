@@ -25,8 +25,16 @@
     ; (#3911). Ask, default No (also for a silent /S uninstall). Voices and
     ; projects live in %APPDATA%\OmniVoice and are never touched here.
     MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "Also delete VoiceStudio's downloaded runtime and models to free disk space?$\r$\n$\r$\nThis removes $APPDATA\VoiceStudio\runtime and $LOCALAPPDATA\OmniVoice\hf_cache. Your voices and projects are kept.$\r$\n$\r$\nChoose No to keep them (for example, to reinstall without downloading again)." /SD IDNO IDNO voicestudio_keep_downloads
+      ClearErrors
       RMDir /r "$APPDATA\VoiceStudio\runtime"
+      ${If} ${Errors}
+        MessageBox MB_OK|MB_ICONEXCLAMATION "Some files in $APPDATA\VoiceStudio\runtime could not be removed. Delete that folder manually to free the space." /SD IDOK
+      ${EndIf}
+      ClearErrors
       RMDir /r "$LOCALAPPDATA\OmniVoice\hf_cache"
+      ${If} ${Errors}
+        MessageBox MB_OK|MB_ICONEXCLAMATION "Some files in $LOCALAPPDATA\OmniVoice\hf_cache could not be removed. Delete that folder manually to free the space." /SD IDOK
+      ${EndIf}
     voicestudio_keep_downloads:
   ${EndIf}
 !macroend

@@ -32,7 +32,7 @@ def test_check_flags_only_newer_than_the_base(tmp_path, monkeypatch):
     elf = tmp_path / "helper"
     elf.write_bytes(b"\x7fELF" + b"\0" * 8)
     (tmp_path / "notes.txt").write_text("not an elf")
-    monkeypatch.setattr(guard.subprocess, "run", lambda *a, **k: type("R", (), {"stdout": OBJDUMP})())
+    monkeypatch.setattr(guard.subprocess, "run", lambda *a, **k: type("R", (), {"stdout": OBJDUMP, "returncode": 0})())
     assert guard.check([tmp_path], "2.35") == [f"{elf}: needs GLIBC_2.39 (max 2.35)"]
     assert guard.check([tmp_path], "2.39") == []
 
@@ -49,3 +49,10 @@ def test_linux_packaging_builds_on_jammy_and_runs_the_guard():
     assert "runs-on: ubuntu-22.04" in snap.split("package:")[1].split("upload:")[0]
     for text in (release, snap):
         assert "scripts/check_glibc_floor.py" in text
+
+
+def test_check_fails_when_objdump_cannot_inspect_an_elf(tmp_path, monkeypatch):
+    elf = tmp_path / "helper"
+    elf.write_bytes(b"\x7fELF" + b"\0" * 8)
+    monkeypatch.setattr(guard.subprocess, "run", lambda *a, **k: type("R", (), {"stdout": "", "returncode": 1})())
+    assert guard.check([tmp_path], "2.35") == [f"{elf}: objdump could not inspect it (exit 1)"]

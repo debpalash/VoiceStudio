@@ -48,6 +48,9 @@ def check(paths: list[Path], limit: str) -> list[str]:
     problems = []
     for elf in iter_elfs(paths):
         result = subprocess.run(["objdump", "-T", str(elf)], capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            problems.append(f"{elf}: objdump could not inspect it (exit {result.returncode})")
+            continue
         need = required_glibc(result.stdout)
         if need and need > ceiling:
             problems.append(f"{elf}: needs GLIBC_{'.'.join(map(str, need))} (max {limit})")
