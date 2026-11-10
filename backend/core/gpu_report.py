@@ -20,10 +20,13 @@ is the thin impure wrapper.
 from __future__ import annotations
 
 import os
+import re
 import sys
 from typing import Any
 
-from core.device_caps import ACCELERATOR_PRIORITY, KERNEL_RISK_MARKER, HostCaps, cuda_forced
+from core.device_caps import (
+    ACCELERATOR_PRIORITY, KERNEL_RISK_MARKER, HostCaps, cuda_forced, is_legacy_nvidia_arch,
+)
 from core.gpu_inventory import HostGPU, detect_host_gpus, discrete_candidates, pick_for_build
 
 #: Device families PyTorch can accelerate on. An engine whose targets include
@@ -47,6 +50,7 @@ UNUSABLE_GPU_STATES = frozenset({
     "nvidia_rocm_build",
     "intel_unsupported",
     "kernels_missing",
+    "kernels_missing_legacy",
 })
 
 #: What the user can honestly do about each host state, most useful first. Each
@@ -65,7 +69,22 @@ _OPTIONS: dict[str, tuple[str, ...]] = {
     # The wheel is right, the card's architecture is not in it: a driver
     # update cannot add the missing kernels, so it is not offered (#3067).
     "kernels_missing": ("install_matching_torch",),
+    # Pre-Volta (Maxwell/Pascal): no CUDA build of this PyTorch covers the card,
+    # so only the engines with their own Vulkan runtime can use it.
+    "kernels_missing_legacy": ("vulkan_engines_any",),
 }
+
+_KERNEL_RISK_ARCH = re.compile(r"\((sm_\d+[a-z]?)\)")
+
+
+def _legacy_nvidia_card(caps: HostCaps) -> bool:
+    """True when the kernel-risk note names a pre-Volta ``sm_`` architecture."""
+    for note in caps.notes:
+        if KERNEL_RISK_MARKER in note:
+            m = _KERNEL_RISK_ARCH.search(note)
+            if m and is_legacy_nvidia_arch(m.group(1)):
+                return True
+    return False
 
 
 def torch_build() -> dict[str, Any]:
@@ -119,7 +138,7 @@ def classify_host(
         and not _cuda_forced()
         and caps.family in ("cuda", "rocm", "cpu")
     ):
-        return "kernels_missing", {
+        return ("kernels_missing_legacy" if _legacy_nvidia_card(caps) else "kernels_missing"), {
             # The probed device is the one the kernel check tested. The
             # inventory only knows the cards the OS lists, and on a multi-GPU
             # host its first card of this vendor is not necessarily device 0.
@@ -239,6 +258,17 @@ def build_gpu_report(
         or _OPTIONS.get(host_code)
         or ()
     )
+    if host_code == "kernels_missing_legacy":
+        # Named from what each engine declares, never a hardcoded list.
+        vulkan = sorted({
+            str(r.get("display_name") or r.get("id"))
+            for r in (*tts_rows, *asr_rows)
+            if "vulkan" in (r.get("gpu_compat") or ())
+        })
+        if vulkan:
+            host_params = {**host_params, "vulkan_engines": ", ".join(vulkan)}
+        else:
+            options = ()
     engines = [
         *(_engine_entry(r, "tts", host_code) for r in tts_rows),
         *(_engine_entry(r, "asr", host_code) for r in asr_rows),
