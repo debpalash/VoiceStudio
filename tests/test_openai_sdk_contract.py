@@ -326,6 +326,8 @@ def test_native_pcm_timeout_keeps_worker_reserved_until_cleanup(client, engine, 
     slot = threading.Lock()
     unblock = threading.Event()
     closed = threading.Event()
+    warmups = []
+    monkeypatch.setattr(engine, "ensure_ready", lambda self: warmups.append(self))
     monkeypatch.setattr(openai_compat, "_native_pcm_worker", worker)
     monkeypatch.setattr(openai_compat, "_native_pcm_lock", slot)
     monkeypatch.setattr(model_manager, "generate_timeout_s", lambda *a, **kw: 0.05)
@@ -348,6 +350,7 @@ def test_native_pcm_timeout_keeps_worker_reserved_until_cleanup(client, engine, 
         assert slot.locked() and not closed.is_set()
         with pytest.raises(openai.RateLimitError):
             client.audio.speech.create(**request)
+        assert len(warmups) == 1
     finally:
         unblock.set()
         worker.shutdown()

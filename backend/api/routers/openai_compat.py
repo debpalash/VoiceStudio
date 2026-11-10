@@ -681,6 +681,13 @@ _native_pcm_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="nativ
 _native_pcm_lock = Lock()
 
 
+def _native_pcm_busy() -> HTTPException:
+    return HTTPException(
+        status_code=429, detail="Native speech streaming is busy.",
+        headers={"Retry-After": "1", "X-OmniVoice-Retryable": "true"},
+    )
+
+
 async def _native_pcm_stream(backend, text, kw, *, sse):
     from services.model_manager import generate_timeout_s
     from services.tts_backend import engine_in_use
@@ -696,10 +703,7 @@ async def _native_pcm_stream(backend, text, kw, *, sse):
     # Reject contention before committing response headers. Never enqueue an
     # unbounded number of streams behind a backpressured or stalled reader.
     if not _native_pcm_lock.acquire(blocking=False):
-        raise HTTPException(
-            status_code=429, detail="Native speech streaming is busy.",
-            headers={"Retry-After": "1", "X-OmniVoice-Retryable": "true"},
-        )
+        raise _native_pcm_busy()
     lease = engine_in_use(backend)
     lease.__enter__()
     iterator = None
@@ -904,6 +908,17 @@ async def create_speech(req: SpeechRequest):
     from services.text_normalization import normalize_for_tts
     text = normalize_for_tts(req.input, req.language)
 
+    can_stream = getattr(backend, "can_stream", None)
+    native = (
+        req.stream_format and req.response_format == "pcm" and req.duration is None
+        and can_stream is not None and can_stream(**kw)
+    )
+
+    # Refuse an already busy stream before touching the shared GPU pool.
+    # The generator still atomically claims the slot before starting.
+    if native and _native_pcm_lock.locked():
+        raise _native_pcm_busy()
+
     # VRAM eviction runs in get_model()'s warm-return path now, covering every
     # native TTS generate (this route, WS TTS, dub, batch, audiobook).
 
@@ -988,12 +1003,6 @@ async def create_speech(req: SpeechRequest):
             headers={"Retry-After": str(getattr(e, "retry_after", 30)),
                      "X-OmniVoice-Retryable": "true"},
         ) from e
-
-    can_stream = getattr(backend, "can_stream", None)
-    native = (
-        req.stream_format and req.response_format == "pcm" and req.duration is None
-        and can_stream is not None and can_stream(**kw)
-    )
 
     # PCM segments can be joined without a container header or an encoder
     # reset. Preserve whole-utterance timing for an explicit duration.

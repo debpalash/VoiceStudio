@@ -28,6 +28,7 @@ class QwenCUDABackend(TTSBackend):
     def __init__(self):
         self._model = None
         self._prompts = OrderedDict()
+        self._load_lock = Lock()
         self._lock = Lock()
 
     @property
@@ -46,7 +47,7 @@ class QwenCUDABackend(TTSBackend):
         return True, "ready"
 
     def _ensure_loaded(self):
-        with self._lock:
+        with self._load_lock:
             if self._model is None:
                 from faster_qwen3_tts import FasterQwen3TTS
 

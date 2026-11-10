@@ -62,3 +62,15 @@ def test_qwen_cuda_reports_missing_or_unreadable_reference(tmp_path):
     engine._model = SimpleNamespace()
     with pytest.raises(TTSInputError, match="could not be decoded"):
         next(engine.stream_audio("Hello.", ref_audio=reference, ref_text="Reference"))
+
+
+def test_qwen_cuda_ready_does_not_wait_for_generation_lock():
+    engine = QwenCUDABackend()
+    engine._model = SimpleNamespace()
+
+    class HeldByStream:
+        def __enter__(self):
+            pytest.fail("Warm readiness must not enter the generation lock")
+
+    engine._lock = HeldByStream()
+    engine.ensure_ready()
