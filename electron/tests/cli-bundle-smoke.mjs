@@ -17,6 +17,7 @@ import { createServer } from 'node:http';
 import { promisify } from 'node:util';
 import { Arch } from 'builder-util';
 import { packageCli } from '../cli-bundle.mjs';
+import { assertBundleSymlinks } from '../packaging/bundle-symlinks.mjs';
 
 const root = mkdtempSync(join(tmpdir(), 'vs-cli-native-'));
 const actualElectron = process.argv.includes('--electron');
@@ -58,7 +59,10 @@ app.whenReady().then(async () => {
 `,
     );
   } else if (process.platform !== 'win32') {
-    writeFileSync(desktop, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    // Stands in for Electron and records the switches it was started with.
+    writeFileSync(desktop, `#!/bin/sh\nprintf '%s\\n' "$@" > '${join(root, 'switches')}'\n`, {
+      mode: 0o755,
+    });
   }
   await packageCli({
     appOutDir: root,
@@ -74,6 +78,9 @@ app.whenReady().then(async () => {
       signIf: async () => {},
     },
   });
+  // packageCli removed its build folder: the shipped copy must not link into it
+  // (v0.5.8-beta.4's macOS _internal/Python did, and signing failed).
+  assertBundleSymlinks(root);
   const command = join(
     resources,
     'cli',
@@ -122,6 +129,23 @@ app.whenReady().then(async () => {
       assert.deepEqual(JSON.parse(readFileSync(join(root, 'launch.json'))), {
         setting: 'value with spaces',
       });
+    else {
+      // AppImage starts this public entry; Playwright's electron.launch (the packaged
+      // smoke test) adds these switches, which v0.5.8-beta.4 rejected as a command.
+      const switches = [
+        '--no-sandbox',
+        '--inspect=0',
+        '--remote-debugging-port=0',
+        `--user-data-dir=${join(root, 'profile')}`,
+      ];
+      const entry = spawnSync(join(root, 'voicestudio'), switches, {
+        encoding: 'utf8',
+        env: { ...process.env, VOICESTUDIO_CONFIG: join(root, 'config.json') },
+        timeout: 15000,
+      });
+      assert.equal(entry.status, 0, entry.stderr);
+      assert.deepEqual(readFileSync(join(root, 'switches'), 'utf8').trim().split('\n'), switches);
+    }
   }
   const requests = [];
   const server = createServer((request, response) => {

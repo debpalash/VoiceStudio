@@ -79,6 +79,26 @@ class DesktopTests(unittest.TestCase):
             with self.assertRaises(CLIError):
                 desktop.split_arguments(missing)
 
+    def test_app_switches_without_a_command_open_the_app(self):
+        # The AppImage/.deb entry is this command. Playwright starts it with these
+        # (v0.5.8-beta.4's packaged smoke failed when they were a usage error).
+        playwright = ['--no-sandbox', '--inspect=0', '--remote-debugging-port=0', '--user-data-dir=/p']
+        for argv, forwarded in ((playwright, playwright),
+                                (['--enable-features=UseOzonePlatform', '--disable-gpu-sandbox'],
+                                 ['--enable-features=UseOzonePlatform', '--disable-gpu-sandbox'])):
+            with self.subTest(argv=argv), \
+                    patch('voicestudio_cli.__main__.launch_desktop', return_value=0) as launch:
+                self.assertEqual(main(argv), 0)
+                launch.assert_called_once_with(forwarded)
+        # CLI options, a bare --, and any command keep their CLI meaning.
+        with patch('voicestudio_cli.__main__.launch_desktop') as launch, \
+                patch('voicestudio_cli.__main__.app_version', return_value='9.8.7'), \
+                redirect_stdout(StringIO()):
+            self.assertEqual(main(['--json']), 0)
+            self.assertEqual(main(['--inspect=0', 'version']), 2)
+            self.assertEqual(main(['--', '--inspect=0']), 2)
+            launch.assert_not_called()
+
     def test_explicit_missing_app_does_not_fall_back_to_real_app(self):
         with patch.object(desktop, 'desktop_candidates', side_effect=AssertionError('must not discover')):
             with self.assertRaises(CLIError) as error:

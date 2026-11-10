@@ -743,6 +743,19 @@ jobs:
         working-directory: electron
         run: bunx --no-install vp test --run src/main
 
+      # The standalone CLI every installer ships, built by the release's afterPack step
+      # into a stand-in app. v0.5.8-beta.4 failed only at release time: macOS kept a link
+      # into the deleted build folder, and the Linux entry (the CLI, which AppImage starts)
+      # rejected the switches the packaged smoke test launches Electron with.
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        if: steps.pass.outputs.hit != 'true'
+        with:
+          version: '0.12.13'
+          enable-cache: false
+      - name: Standalone CLI bundle
+        if: steps.pass.outputs.hit != 'true'
+        run: node electron/tests/cli-bundle-smoke.mjs
+
       - name: Build Electron app
         if: steps.pass.outputs.hit != 'true'
         run: bun run --cwd electron build
