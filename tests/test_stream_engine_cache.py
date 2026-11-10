@@ -335,7 +335,12 @@ def test_native_stream_releases_lock_and_lease_before_completion(engines, monkey
 def test_native_stream_early_close_returns_promptly_and_still_cleans_up(engines, monkeypatch):
     from api.routers import openai_compat
 
-    engine, worker, lock, exited = _native_fake(engines, monkeypatch, chunks=5)
+    import threading
+
+    release = threading.Event()
+    engine, worker, lock, exited = _native_fake(
+        engines, monkeypatch, chunks=5, wait_for_cleanup=lambda: release.wait(5),
+    )
 
     async def run():
         stream = openai_compat._native_pcm_stream(engine, "Hi.", {}, sse=False)
@@ -344,10 +349,15 @@ def test_native_stream_early_close_returns_promptly_and_still_cleans_up(engines,
 
     try:
         asyncio.run(run())
+        # aclose() returned while the cleanup is still held on the worker.
+        assert not exited
+        assert lock.locked()
+        release.set()
         worker.shutdown(wait=True)  # drains the queued cleanup
         assert exited == [True]
         assert not lock.locked()
     finally:
+        release.set()
         worker.shutdown()
 
 
