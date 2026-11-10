@@ -52,6 +52,33 @@ def _host_has_cuda() -> bool:
         return False
 
 
+def _apply_speed(audio: "torch.Tensor", sample_rate: int, rate: float) -> "torch.Tensor":
+    """Stretch a (1, n) take by ``rate`` (>1 faster) with ffmpeg ``atempo``."""
+    import subprocess
+
+    import numpy as np
+    import torch
+
+    from services.ffmpeg_utils import _atempo_chain, find_ffmpeg
+    from services.tts_backend import TTSInputError
+
+    if not math.isfinite(rate) or rate <= 0:
+        raise TTSInputError(f"speed must be a positive number, got {rate!r}.")
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        raise RuntimeError("Ming speed control needs ffmpeg, which could not be found.")
+    pcm = audio.detach().cpu().to(torch.float32).numpy().reshape(-1).astype(np.float32, copy=False)
+    proc = subprocess.run(
+        [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-f", "f32le", "-ar", str(sample_rate),
+         "-ac", "1", "-i", "pipe:0", "-af", _atempo_chain(rate), "-f", "f32le", "-ar", str(sample_rate),
+         "-ac", "1", "pipe:1"],
+        input=pcm.tobytes(), capture_output=True, timeout=120,
+    )
+    if proc.returncode != 0 or not proc.stdout:
+        raise RuntimeError("Ming speed adjustment failed: " + proc.stderr.decode(errors="replace")[:200])
+    return torch.from_numpy(np.frombuffer(proc.stdout, dtype=np.float32).copy()).reshape(1, -1)
+
+
 class MingTTSBackend(SubprocessBackend):
     """Ming-3.0-tts-0.5b — 7 langs, zero-shot clone, NVIDIA CUDA, MIT.
 
@@ -169,6 +196,8 @@ class MingTTSBackend(SubprocessBackend):
             uses the acoustic prompt only together with it. Optional.
           * ``language``  — one of zh/en/ja/ko/fr/de/es; anything else raises.
           * ``guidance_scale`` — CFG (upstream default 2.0).
+          * ``speed``     — playback-rate multiplier; applied afterwards as an
+            ffmpeg ``atempo`` stretch (pitch preserved), as upstream has none.
 
         Returns a tensor of shape (1, n_samples) at :attr:`sample_rate`.
         """
@@ -189,7 +218,13 @@ class MingTTSBackend(SubprocessBackend):
         guidance = kw.get("guidance_scale")
         if guidance is not None:
             forwarded["guidance_scale"] = float(guidance)
-        return super().generate(text, **forwarded)
+        audio = super().generate(text, **forwarded)
+        # Ming has no speed control of its own: honour the public ``speed`` by
+        # a pitch-preserving stretch of the finished take, never by ignoring it.
+        rate = kw.get("speed")
+        if rate is not None and float(rate) != 1.0:
+            audio = _apply_speed(audio, self.sample_rate, float(rate))
+        return audio
 
 
 __all__ = ["MingTTSBackend"]

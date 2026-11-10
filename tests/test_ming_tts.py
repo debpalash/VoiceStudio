@@ -368,3 +368,54 @@ def test_a_load_failure_is_an_error_frame_not_a_crash(tmp_path):
     assert ops[0] == "ready" and "error" in ops and ops[-1] == "pong"
     error = next(f for f in frames if f["op"] == "error")
     assert error["message"]  # names the cause (no CUDA, or the missing clone)
+
+
+def test_speed_is_applied_to_the_take_not_dropped(monkeypatch):
+    import subprocess
+    import numpy as np
+    import torch
+    import services.ffmpeg_utils as fu
+
+    _capture_generate(monkeypatch)
+    monkeypatch.setattr(fu, "find_ffmpeg", lambda: "ffmpeg")
+    seen = {}
+
+    def run(cmd, input, **kw):
+        seen["af"] = cmd[cmd.index("-af") + 1]
+        out = np.frombuffer(input, dtype=np.float32)[: len(input) // 4 * 2 // 3]
+        return subprocess.CompletedProcess(cmd, 0, out.tobytes(), b"")
+
+    monkeypatch.setattr(subprocess, "run", run)
+    audio = _backend_cls()().generate("hello", ref_audio="ref.wav", speed=1.5)
+    assert seen["af"] == "atempo=1.500000"
+    assert audio.shape == (1, 5)  # the 8-sample take, shortened
+
+    seen.clear()
+    assert _backend_cls()().generate("hello", ref_audio="ref.wav", speed=1.0).shape == (1, 8)
+    assert not seen  # unchanged speed never spawns ffmpeg
+
+
+def test_cached_custom_repo_without_a_commit_sha_is_not_available(monkeypatch):
+    import huggingface_hub
+    from engines.ming_tts.bootstrap import ming_weights_installed
+
+    monkeypatch.setenv("OMNIVOICE_MING_TTS_MODEL", "someone/ming-fork")
+    monkeypatch.delenv("OMNIVOICE_MING_TTS_REVISION", raising=False)
+    monkeypatch.setattr(huggingface_hub, "try_to_load_from_cache", lambda *a, **k: "/cache/model.safetensors")
+    assert ming_weights_installed() is False
+    monkeypatch.setenv("OMNIVOICE_MING_TTS_REVISION", "a" * 40)
+    assert ming_weights_installed() is True
+
+
+def test_a_failed_speed_stretch_is_an_error_not_normal_speed_audio(monkeypatch):
+    import subprocess
+    import services.ffmpeg_utils as fu
+
+    _capture_generate(monkeypatch)
+    monkeypatch.setattr(fu, "find_ffmpeg", lambda: "ffmpeg")
+    monkeypatch.setattr(
+        subprocess, "run", lambda cmd, **kw: subprocess.CompletedProcess(cmd, 1, b"", b"boom"))
+    with pytest.raises(RuntimeError, match="speed adjustment failed"):
+        _backend_cls()().generate("hello", ref_audio="ref.wav", speed=2.0)
+    with pytest.raises(ValueError, match="positive"):
+        _backend_cls()().generate("hello", ref_audio="ref.wav", speed=-1)

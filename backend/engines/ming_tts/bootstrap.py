@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -87,6 +88,8 @@ def ming_weights_installed() -> bool:
         repo = model or "inclusionAI/Ming-3.0-tts-0.5b"
         rev = revision_for(repo) if not model else os.environ.get(
             "OMNIVOICE_MING_TTS_REVISION", "").strip()
+        if model and not re.fullmatch(r"[0-9a-f]{40}", rev):
+            return False  # the sidecar refuses a custom repo without a commit SHA
         return isinstance(try_to_load_from_cache(repo, "model.safetensors", revision=rev or None), str)
     except Exception:
         return False
