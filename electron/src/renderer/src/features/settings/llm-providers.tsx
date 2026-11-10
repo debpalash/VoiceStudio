@@ -6,6 +6,7 @@ import { ApiError, apiJson } from '@/lib/api/client';
 import { queryKeys } from '@/lib/query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 // @ts-expect-error Shared JSX component has no declaration file.
 import SearchableSelect from '@shared/components/SearchableSelect';
 import { ExternalLink } from '@/components/external-link';
@@ -32,6 +33,8 @@ export interface Provider {
   activation_blocked?: boolean;
   transport?: 'openai' | 'sdk' | 'cli';
   supports_model_listing?: boolean;
+  allow_plain_http?: boolean;
+  supports_plain_http?: boolean;
 }
 interface Result {
   ok: boolean;
@@ -189,6 +192,7 @@ function ProviderForm({ provider, active }: { provider: Provider; active: boolea
     account_id: provider.account_id || '',
     api_key: '',
   });
+  const [plainHttp, setPlainHttp] = useState(Boolean(provider.allow_plain_http));
   const [busy, setBusy] = useState(false);
   const operation = useRef<AbortController | null>(null);
   const [result, setResult] = useState<Result | null>(null);
@@ -223,6 +227,7 @@ function ProviderForm({ provider, active }: { provider: Provider; active: boolea
         ...(provider.needs_account && !provider.account_from_env
           ? { account_id: fields.account_id.trim() }
           : {}),
+        ...(provider.supports_plain_http ? { allow_plain_http: plainHttp } : {}),
         ...(fields.api_key && !provider.key_from_env ? { api_key: fields.api_key } : {}),
         make_active: false,
         activate_if_unset: false,
@@ -340,6 +345,24 @@ function ProviderForm({ provider, active }: { provider: Provider; active: boolea
       )}
       {provider.transport !== 'cli' &&
         field('base_url', 'llmp_base_url', provider.base_url_from_env)}
+      {provider.supports_plain_http && (
+        <SettingsRow
+          id="llm-allow_plain_http"
+          title={t('settings.llmp_plain_http')}
+          description={t('settings.llmp_plain_http_desc')}
+        >
+          <Switch
+            aria-label={t('settings.llmp_plain_http')}
+            checked={plainHttp}
+            disabled={busy}
+            onCheckedChange={(value) => {
+              setPlainHttp(value);
+              setResult(null);
+              setSaved(false);
+            }}
+          />
+        </SettingsRow>
+      )}
       {field('model', 'llmp_model', provider.model_from_env)}
       {modelListing && (
         <p role="status" className="px-4 py-3 text-xs text-muted-foreground">

@@ -37,6 +37,7 @@ logger = logging.getLogger("omnivoice.llm_providers")
 _ACTIVE_PROVIDER_KEY = "llm.active_provider"
 _BASE_URL_KEY = "llm.base_url."   # + provider id
 _MODEL_KEY = "llm.model."         # + provider id
+_PLAIN_HTTP_KEY = "llm.plain_http_lan."  # + provider id; "1" = key may cross a trusted LAN in clear
 SECRET_PREFIX = "llm_key."        # + provider id  → settings_store secret name
 
 
@@ -505,6 +506,35 @@ def _key_in_store(pid: str) -> bool:
     return (SECRET_PREFIX + pid) in settings_store.list_secret_names()
 
 
+def plain_http_lan_allowed(p: Provider) -> bool:
+    """Per-provider, explicit opt-in (#3811) to send a key over plain HTTP.
+
+    Only OpenAI-compatible providers can use it; the SDK transport keeps its
+    HTTPS-only rule. Off unless the user switched it on for this provider.
+    """
+    from services import settings_store
+    return p.transport == "openai" and settings_store.get_text(_PLAIN_HTTP_KEY + p.id) == "1"
+
+
+def is_private_ip_literal(host: str) -> bool:
+    """True only for a private, loopback or link-local IP *literal*.
+
+    DNS names are never accepted: a name can resolve to a public address (or be
+    re-pointed after the check), so the opt-in requires the user to type the
+    LAN address itself. IPv4-mapped IPv6 is judged by its IPv4 address.
+    """
+    from ipaddress import IPv6Address, ip_address
+    try:
+        ip = ip_address(host.strip("[]"))
+    except ValueError:
+        return False
+    if isinstance(ip, IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+    if ip.is_unspecified or ip.is_multicast:
+        return False
+    return ip.is_loopback or ip.is_link_local or ip.is_private
+
+
 def credential_transport_error(p: Provider) -> Optional[str]:
     """Never send provider credentials over remote plaintext transport."""
     from ipaddress import ip_address
@@ -528,6 +558,8 @@ def credential_transport_error(p: Provider) -> Optional[str]:
             except ValueError:
                 pass
         if url.scheme == "http" and loopback:
+            return None
+        if url.scheme == "http" and plain_http_lan_allowed(p) and is_private_ip_literal(host):
             return None
     except ValueError:
         pass
@@ -650,7 +682,8 @@ def save_key(pid: str, api_key: str) -> None:
 
 def save_overrides(pid: str, *, base_url: Optional[str] = None,
                    model: Optional[str] = None,
-                   account_id: Optional[str] = None) -> None:
+                   account_id: Optional[str] = None,
+                   allow_plain_http: Optional[bool] = None) -> None:
     from services import settings_store
     if pid not in _BY_ID:
         raise ValueError(f"unknown provider {pid!r}")
@@ -672,6 +705,8 @@ def save_overrides(pid: str, *, base_url: Optional[str] = None,
         forget_discovered_models(pid)
     if account_id is not None:
         settings_store.set_text(f"llm.account.{pid}", account_id.strip())
+    if allow_plain_http is not None and p.transport == "openai":
+        settings_store.set_text(_PLAIN_HTTP_KEY + pid, "1" if allow_plain_http else "")
 
 
 def _active_env_pin() -> Optional[str]:
@@ -712,6 +747,8 @@ def describe(p: Provider) -> dict:
             or os.environ.get("OMNIVOICE_LLM_BACKEND") not in (None, "", "openai-compat")
         ),
         "configured": is_configured(p),
+        "allow_plain_http": plain_http_lan_allowed(p),
+        "supports_plain_http": p.transport == "openai",
     }
     if p.needs_account:
         d["account_id"] = resolve_account_id(p)

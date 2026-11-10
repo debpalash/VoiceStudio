@@ -40,6 +40,7 @@ import functools
 import inspect
 import logging
 import os
+import shutil
 import tempfile
 import time
 
@@ -65,21 +66,27 @@ _MATCH_TOLERANCE = 0.02
 #: them to disk in bounded chunks so a network-share client cannot make the
 #: backend materialize an arbitrarily large multipart upload in memory.
 _MAX_SOURCE_AUDIO_BYTES = 64 * 1024 * 1024
+#: A video swap (#3750) streams the same way, with room for a real video.
+_MAX_SOURCE_VIDEO_BYTES = 4 * 1024 * 1024 * 1024
 _UPLOAD_CHUNK_BYTES = 1024 * 1024
 
 
-async def _copy_source_upload(audio: UploadFile, destination) -> int:
+async def _copy_source_upload(audio: UploadFile, destination, *, video: bool = False) -> int:
     """Stream ``audio`` into ``destination`` with the Convert upload cap."""
+    limit = _MAX_SOURCE_VIDEO_BYTES if video else _MAX_SOURCE_AUDIO_BYTES
     total = 0
     while True:
         chunk = await audio.read(_UPLOAD_CHUNK_BYTES)
         if not chunk:
             return total
         total += len(chunk)
-        if total > _MAX_SOURCE_AUDIO_BYTES:
+        if total > limit:
             raise HTTPException(
                 status_code=413,
-                detail="Source audio is too large (maximum 64 MB).",
+                detail=(
+                    "Source video is too large (maximum 4 GB)."
+                    if video else "Source audio is too large (maximum 64 MB)."
+                ),
             )
         destination.write(chunk)
 
@@ -240,12 +247,15 @@ async def _transcribe_source(
             release()
 
 
-async def _convert_keeping_delivery(row, profile_id: str, source_path: str) -> dict:
+async def _convert_keeping_delivery(
+    row, profile_id: str, source_path: str, *, video: bool = False,
+) -> dict:
     """"Keep my delivery" (#3421): speech-to-speech, no transcribe/re-speak.
 
     Runs on the active engine when it converts speech itself, else on an
     installed engine that does (CosyVoice 3). The take keeps the source
-    timing, so ``match_duration`` does not apply.
+    timing, so ``match_duration`` does not apply. With ``video`` (#3750) the
+    source is a video: its voice is swapped and the picture kept.
     """
     from api.routers.generation import (
         _finalize_generation,
@@ -306,7 +316,20 @@ async def _convert_keeping_delivery(row, profile_id: str, source_path: str) -> d
         import random
         used_seed = random.randint(0, 2**31 - 1)
     start_time = time.time()
+    workdir = tempfile.mkdtemp(prefix="vs-swap-") if video else None
     try:
+        if video:
+            from services.video_voice_swap import swap_video_voice
+            from services.watermark import mark_synthetic_async
+
+            async def _mark(tensor, sr):
+                return await mark_synthetic_async(tensor, sr, context="convert.finalize")
+
+            swap = await swap_video_voice(
+                backend, source_path, cond["ref_audio_path"], workdir,
+                seed=used_seed, run_job=_run, mark=_mark,
+            )
+            return await asyncio.to_thread(_publish_video_swap, swap, backend.id, start_time)
         audio_tensor = await convert_recording(
             backend, source_path, cond["ref_audio_path"],
             seed=used_seed, run_job=_run,
@@ -323,6 +346,9 @@ async def _convert_keeping_delivery(row, profile_id: str, source_path: str) -> d
         ) from e
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e)) from e
+    finally:
+        if workdir:
+            shutil.rmtree(workdir, ignore_errors=True)
     sample_rate = backend.sample_rate
 
     from services.watermark import mark_synthetic_async
@@ -346,6 +372,72 @@ async def _convert_keeping_delivery(row, profile_id: str, source_path: str) -> d
     }
 
 
+_SWAP_NOTE_MESSAGES = {
+    "no_separation": (
+        "No background separation was available, so the whole soundtrack was "
+        "converted, background included."
+    ),
+    "no_background": (
+        "The background could not be mixed back in, so the result has the "
+        "converted voice only."
+    ),
+    "audio_only": (
+        "The video could not be rebuilt with the new voice, so here is the "
+        "converted audio instead. Your original file is untouched."
+    ),
+}
+
+
+#: Newest video-swap takes kept in OUTPUTS_DIR; they have no History row, so
+#: nothing else would ever delete them.
+_KEEP_VIDEO_SWAPS = 10
+
+
+def _prune_video_swaps(outputs_dir: str, keep: int = _KEEP_VIDEO_SWAPS) -> None:
+    import glob
+
+    takes: dict = {}
+    for path in glob.glob(os.path.join(outputs_dir, "voiceswap-*")):
+        try:
+            takes.setdefault(os.path.splitext(path)[0], []).append((os.path.getmtime(path), path))
+        except OSError:
+            pass
+    for _, files in sorted(takes.items(), key=lambda kv: max(m for m, _p in kv[1]), reverse=True)[keep:]:
+        for _m, path in files:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+
+
+def _publish_video_swap(swap, engine_id: str, start_time: float) -> dict:
+    """Move a finished swap from its scratch folder into OUTPUTS_DIR."""
+    import soundfile as sf
+    import uuid
+    from core.config import OUTPUTS_DIR
+
+    take = uuid.uuid4().hex[:12]
+    audio_name = f"voiceswap-{take}.wav"
+    shutil.copy2(swap.audio_path, os.path.join(OUTPUTS_DIR, audio_name))
+    result = {
+        "id": take,
+        "audio_url": f"/audio/{audio_name}",
+        "text": "",
+        "duration_s": round(float(sf.info(swap.audio_path).duration), 2),
+        "gen_time_s": round(time.time() - start_time, 2),
+        "engine": engine_id,
+        "video_url": None,
+        "notes": list(swap.notes),
+        "message": " ".join(_SWAP_NOTE_MESSAGES[n] for n in swap.notes if n in _SWAP_NOTE_MESSAGES),
+    }
+    if swap.video_path:
+        video_name = f"voiceswap-{take}{os.path.splitext(swap.video_path)[1]}"
+        shutil.copy2(swap.video_path, os.path.join(OUTPUTS_DIR, video_name))
+        result["video_url"] = f"/audio/{video_name}"
+    _prune_video_swaps(OUTPUTS_DIR)
+    return result
+
+
 @router.post("/convert")
 @consumer_generation
 async def convert_speech(
@@ -362,6 +454,10 @@ async def convert_speech(
     toward the source clip's length, clamped to 0.5–2.0×), optional
     ``keep_delivery`` (default off — convert the recording itself so the
     speaker's timing, rhythm and intonation are kept, #3421; no transcript).
+    An MP4/MOV/M4V/MKV upload (#3750) always runs that path on the video's
+    soundtrack and returns ``video_url`` (picture stream-copied, background
+    kept when Demucs is installed) plus ``notes``/``message`` for any fallback
+    taken; other video containers get a 415.
 
     Returns JSON ``{audio_url, text, duration_s, id}`` — the take is saved to
     OUTPUTS_DIR and served from the ``/audio`` mount like every other take.
@@ -387,18 +483,25 @@ async def convert_speech(
     # ffprobe) needs a file path; the bounded streaming copy rejects oversized
     # network-share requests without materializing them in process memory or
     # starting heavyweight model work.
+    from services.video_voice_swap import unsupported_video_message, video_kind
+    kind = video_kind(audio.filename)
+    if kind == "unsupported":
+        raise HTTPException(status_code=415, detail=unsupported_video_message(audio.filename))
+    is_video = kind == "video"
     ext = upload_suffix(audio.filename, ".wav") or ".wav"
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
     source_lease = None
     try:
         try:
-            await _copy_source_upload(audio, tmp)
+            await _copy_source_upload(audio, tmp, video=is_video)
         finally:
             tmp.close()
         source_lease = _TempReferenceLease(tmp.name)
 
-        if keep_delivery:
-            return await _convert_keeping_delivery(row, profile_id, tmp.name)
+        # A video is always a Keep my delivery swap: re-speaking its transcript
+        # could not stay in sync with the picture (#3750).
+        if keep_delivery or is_video:
+            return await _convert_keeping_delivery(row, profile_id, tmp.name, video=is_video)
 
         # ── Engine gate before ASR/TTS work: the shared resolver refuses a
         # clone-less engine with the actionable switch-engine message (→ 400),

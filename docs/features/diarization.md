@@ -15,8 +15,9 @@ the same stack the original WhisperX paper used.
   turn's speaker. A speaker who only speaks in short turns still gets a
   clone, cut from their turns with the edges next to other speakers trimmed
   off; only a speaker with less than about 3 s of clean speech falls back to
-  the default voice. A line that overlaps another speaker's line gets no
-  line-specific reference, so its voice is never a blend of the two.
+  the default voice, never another speaker's clone, and transcription names
+  those speakers in a warning. A line that overlaps another speaker's line
+  gets no line-specific reference, so its voice is never a blend of the two.
 - Subtitle styling: speaker labels (`SPEAKER_00:`, `SPEAKER_01:`, …) on the
   exported SRT/VTT files.
 - Audio editing: per-speaker tracks in the timeline view.

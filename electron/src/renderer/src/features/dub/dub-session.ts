@@ -10,6 +10,7 @@ import { MAX_COOKIE_EXPORT_BYTES, _cookieTransportAllowed } from '@shared/utils/
 import { projectSession, type DubProject } from '../projects/project-format';
 import { DUB_DRAFT_KEY, restoreDubDraft } from './dub-draft';
 import { dubInputIssue, type DubInputIssue } from './dub-input-issue';
+import { toast } from 'sonner';
 import { Store } from '@tanstack/store';
 import { useStore } from '@tanstack/react-store';
 import { apiJson, ApiError } from '@/lib/api/client';
@@ -51,6 +52,7 @@ import {
 import { commitMoveResize } from '@shared/utils/timeline';
 import type { PasteTranslationRow } from '@shared/utils/pasteTranslations';
 import { getDubTranslationError } from './transcript-issues';
+import { translationTargetLabel } from '@/lib/translation-targets';
 import type {
   DubAgentTranslationRequest,
   DubAgentTranslationResult,
@@ -740,6 +742,28 @@ export function skipFailedDubTranslations(target: string) {
   if (changed) commitSegmentEdit(next);
 }
 
+/** Dub the transcript as it is: drop translations, keep the original words, and speak them in the source language when it is a known voice language (#3747). */
+export function keepDubSourceText(sourceLanguage?: string) {
+  const sourceCode = dubSourceLanguage(sourceLanguage, dubSession.state.sourceLang)?.toLowerCase();
+  const sourceLabel = translationTargetLabel(sourceCode);
+  const next = dubSession.state.segments.map((segment) => {
+    const text = segment.text_original || segment.text;
+    return {
+      ...segment,
+      text,
+      translations: undefined,
+      translate_error: undefined,
+      translate_errors: undefined,
+      translate_degraded: undefined,
+      agent_generated_lang: undefined,
+      translation_skipped: true,
+    };
+  });
+  if (!next.length) return;
+  commitSegmentEdit(next);
+  if (sourceLabel && sourceCode) setDubTarget(sourceLabel, sourceCode);
+}
+
 export function restoreDubSegments() {
   let changed = false;
   const next = dubSession.state.segments.map((segment) => {
@@ -1015,6 +1039,17 @@ async function transcribeJob(jobId: string, signal: AbortSignal) {
     finishActivity();
   }
 }
+/** Show what transcription fell back to: diarization, and speakers without a source voice (#3419). */
+export function announceTranscriptWarning(event: TaskEvent) {
+  const speakers = Array.isArray(event.fallback_speakers)
+    ? event.fallback_speakers.filter((speaker): speaker is string => typeof speaker === 'string')
+    : [];
+  if (speakers.length) {
+    toast.warning(tr('dub.voice_fallback_default', { speakers: speakers.join(', ') }));
+    return;
+  }
+  if (typeof event.detail === 'string' && event.detail) toast.warning(event.detail);
+}
 async function readTranscript(jobId: string, signal: AbortSignal) {
   patch({ phase: 'transcribing', taskId: null });
   let receivedTranscript = false;
@@ -1023,6 +1058,7 @@ async function readTranscript(jobId: string, signal: AbortSignal) {
       encodeURIComponent(jobId) +
       (dubSession.state.numSpeakers ? '?num_speakers=' + dubSession.state.numSpeakers : ''),
     (event) => {
+      if (event.type === 'warning') announceTranscriptWarning(event);
       if (event.type === 'final') {
         receivedTranscript = true;
         const raw = Array.isArray(event.segments) ? (event.segments as DubSegment[]) : [];
