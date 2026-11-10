@@ -61,6 +61,8 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import urllib.error
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -881,6 +883,8 @@ def _make_backend_class():
             # Resident tts-server (#3654), created on the first request that
             # can use it.
             self._resident = None
+            self._resident_init = threading.Lock()
+            self._resident_used = time.monotonic()
 
         # ── TTSBackend protocol ───────────────────────────────────────
 
@@ -1175,9 +1179,30 @@ def _make_backend_class():
 
         # ── generation ────────────────────────────────────────────────
 
-        def execution_evidence_loaded(self) -> bool:
+        # The model lives in the server process, so the memory controls
+        # (loaded-model list, Unload all, idle sweep) look at it through this.
+        _MODEL_ATTRS = ("_resident_live",)
+
+        @property
+        def _resident_live(self):
             server = self._resident
-            return server is not None and server.alive()
+            return server if server is not None and server.alive() else None
+
+        def execution_evidence_loaded(self) -> bool:
+            return self._resident_live is not None
+
+        def release_if_idle(self, idle_s: float) -> bool:
+            """Stop the resident server once unused for ``idle_s``; never mid-request."""
+            server = self._resident_live
+            if server is None or time.monotonic() - self._resident_used < idle_s:
+                return False
+            if not server.lock.acquire(blocking=False):
+                return False
+            try:
+                server.stop()
+            finally:
+                server.lock.release()
+            return True
 
         def unload(self) -> None:
             """Stop the resident server so its VRAM is returned. Idempotent."""
@@ -1243,10 +1268,13 @@ def _make_backend_class():
                     if not _is_cli_readable_wav(prompt):
                         converted_prompt = _convert_reference_to_wav(prompt)
                         ref_audio = str(converted_prompt)
-                wav = self._resident_wav(
-                    text, kw, base=base, tokenizer=tokenizer, ref_audio=ref_audio,
-                    transcript=str(ref_text) if ref_audio and ref_text else None,
-                )
+                try:
+                    wav = self._resident_wav(
+                        text, kw, base=base, tokenizer=tokenizer, ref_audio=ref_audio,
+                        transcript=str(ref_text) if ref_audio and ref_text else None,
+                    )
+                finally:
+                    self._resident_used = time.monotonic()
                 if wav is not None:
                     samples, _rate = sf.read(io.BytesIO(wav), dtype="float32")
                 else:
@@ -1309,9 +1337,10 @@ def _make_backend_class():
                 logger.info("OmniVoice GGUF: per-request runtime for this request (%s)", reason)
                 return None
             prompt = Path(_validated_reference(ref_audio)).read_bytes() if ref_audio else None
-            if self._resident is None:
-                self._resident = resident.ResidentServer()
-            server = self._resident
+            with self._resident_init:
+                if self._resident is None:
+                    self._resident = resident.ResidentServer()
+                server = self._resident
             timeout_s = _generate_timeout_s()
             with server.lock:
                 for attempt in (1, 2):

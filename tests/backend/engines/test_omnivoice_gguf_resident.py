@@ -15,6 +15,7 @@ import math
 import struct
 import subprocess
 import sys
+import threading
 import wave
 from pathlib import Path
 
@@ -359,3 +360,40 @@ def test_idle_release_stops_the_server(rig, monkeypatch):
     monkeypatch.setattr(tts_backend, "_ENGINE_IN_USE", {})
     assert tts_backend.release_idle_engines(60, now=1000.0) == [cls.id]
     assert proc.poll() is not None
+
+
+def test_the_idle_worker_sweep_stops_the_active_instances_server(rig, monkeypatch):
+    from services import model_manager, tts_backend
+
+    rig.instance.generate("hello")
+    proc = rig.server.process
+    monkeypatch.setattr(tts_backend, "_active_instance", rig.instance)
+    monkeypatch.setattr(tts_backend, "_ENGINE_INSTANCES", {})
+    model_manager._release_idle_side_models(3600)
+    assert proc.poll() is None  # used a moment ago: not idle yet
+    rig.instance._resident_used -= 7200
+    with rig.server.lock:  # a request in flight (another thread) is never interrupted
+        sweep = threading.Thread(target=model_manager._release_idle_side_models, args=(3600,))
+        sweep.start()
+        sweep.join()
+        assert proc.poll() is None
+    model_manager._release_idle_side_models(3600)
+    assert proc.poll() is not None and not rig.instance.execution_evidence_loaded()
+
+
+def test_the_memory_controls_see_and_unload_the_server(rig, monkeypatch):
+    import asyncio
+
+    from services import model_lifecycle, tts_backend
+
+    rig.instance.generate("hello")
+    proc = rig.server.process
+    monkeypatch.setattr(tts_backend, "_active_instance", rig.instance)
+    monkeypatch.setattr(tts_backend, "_active_instance_id", "omnivoice-gguf")
+    ids = [m["id"] for m in model_lifecycle.list_loaded()["models"]]
+    assert "active-engine:omnivoice-gguf" in ids
+    asyncio.run(model_lifecycle.unload_all())
+    assert proc.poll() is not None
+    assert "active-engine:omnivoice-gguf" not in [
+        m["id"] for m in model_lifecycle.list_loaded()["models"]
+    ]
