@@ -615,6 +615,23 @@ export async function apiFetch(path: string, opts: ApiFetchOptions = {}): Promis
           window.dispatchEvent(new CustomEvent('ov:auth-required', { detail: { mode } }));
         }
       }
+      // The share PIN limiter answers 429 "Too many wrong PINs" (with
+      // Retry-After) before it compares the PIN. Send the person back to the
+      // PIN form with the wait, rather than a bare HTTP error on every request.
+      if (
+        backendTarget &&
+        res.status === 429 &&
+        typeof detail === 'string' &&
+        detail.toLowerCase().includes('wrong pin') &&
+        typeof window !== 'undefined'
+      ) {
+        const wait = Number(res.headers?.get?.('Retry-After'));
+        window.dispatchEvent(
+          new CustomEvent('ov:auth-required', {
+            detail: { mode: 'pin', retryAfter: Number.isFinite(wait) && wait > 0 ? wait : 0 },
+          }),
+        );
+      }
       // Structured details (e.g. the typed asr_model_missing 409) carry a
       // human-readable `message` — use it for the Error message instead of
       // letting the object stringify to "[object Object]".

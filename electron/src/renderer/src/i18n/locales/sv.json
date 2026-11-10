@@ -2931,6 +2931,7 @@
     "route_not_found": "Den körande VoiceStudio-backenden har ingen {{route}}-ändpunkt. Starta om VoiceStudio så att appen och backend matchar; om det kvarstår, uppdatera båda till samma version."
   },
   "network": {
+    "pin_locked": "För många felaktiga PIN-koder. Försök igen om {{minutes}} min.",
     "copied": "Kopierade",
     "network": "Nätverk",
     "switching": "Byter...",

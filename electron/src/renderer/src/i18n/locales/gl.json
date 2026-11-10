@@ -2931,6 +2931,7 @@
     "autoHint": "Escolle o mellor nivel para este ordenador."
   },
   "network": {
+    "pin_locked": "Demasiados PIN incorrectos. Téntao de novo en {{minutes}} min.",
     "copied": "Copiouse",
     "network": "Rede",
     "switching": "Cambiando…",

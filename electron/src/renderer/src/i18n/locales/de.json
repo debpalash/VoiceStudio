@@ -2931,6 +2931,7 @@
     "route_not_found": "Das laufende VoiceStudio-Backend kennt den Endpunkt {{route}} nicht. Starte VoiceStudio neu, damit App und Backend zusammenpassen; bleibt das Problem, aktualisiere beide auf dieselbe Version."
   },
   "network": {
+    "pin_locked": "Zu viele falsche PINs. Versuche es in {{minutes}} Min. erneut.",
     "copied": "Kopiert",
     "network": "Netzwerk",
     "switching": "Wechseln…",

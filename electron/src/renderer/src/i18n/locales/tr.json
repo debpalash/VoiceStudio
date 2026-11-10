@@ -2931,6 +2931,7 @@
     "route_not_found": "Çalışan VoiceStudio arka ucunda {{route}} uç noktası yok. Uygulama ile arka ucun eşleşmesi için VoiceStudio'yu yeniden başlatın; sorun sürerse ikisini de aynı sürüme güncelleyin."
   },
   "network": {
+    "pin_locked": "Çok fazla hatalı PIN. {{minutes}} dk sonra yeniden deneyin.",
     "copied": "Kopyalandı",
     "network": "Ağ",
     "switching": "Değiştiriliyor…",

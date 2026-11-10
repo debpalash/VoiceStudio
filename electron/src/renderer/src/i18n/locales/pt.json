@@ -2933,6 +2933,7 @@
     "route_not_found": "O backend do VoiceStudio em execução não tem o endpoint {{route}}. Reinicie o VoiceStudio para que o app e o backend coincidam; se persistir, atualize ambos para a mesma versão."
   },
   "network": {
+    "pin_locked": "Demasiados PINs incorretos. Tente novamente em {{minutes}} min.",
     "copied": "Copiado",
     "network": "Rede",
     "switching": "Trocando…",

@@ -2931,6 +2931,7 @@
     "route_not_found": "실행 중인 VoiceStudio 백엔드에 {{route}} 엔드포인트가 없습니다. 앱과 백엔드가 일치하도록 VoiceStudio를 다시 시작하세요. 계속되면 둘 다 같은 버전으로 업데이트하세요."
   },
   "network": {
+    "pin_locked": "잘못된 PIN을 너무 많이 입력했습니다. {{minutes}}분 후에 다시 시도하세요.",
     "copied": "복사됨",
     "network": "네트워크",
     "switching": "전환 중…",

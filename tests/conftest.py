@@ -245,6 +245,15 @@ def _isolate_persisted_settings_per_module():
 
 
 @pytest.fixture(autouse=True)
+def _reset_share_pin_guard():
+    """Wrong-PIN counts are process state; one test's guesses must not lock out the next."""
+    yield
+    guard = sys.modules.get("services.pin_guard")
+    if guard is not None:
+        guard.pin_guard.reset()
+
+
+@pytest.fixture(autouse=True)
 def _isolate_persisted_settings():
     snapshot = _settings_files_snapshot()
     yield

@@ -2931,6 +2931,7 @@
     "route_not_found": "Backend VoiceStudio đang chạy không có điểm cuối {{route}}. Hãy khởi động lại VoiceStudio để ứng dụng và backend khớp nhau; nếu vẫn lỗi, hãy cập nhật cả hai lên cùng một phiên bản."
   },
   "network": {
+    "pin_locked": "Nhập sai mã PIN quá nhiều lần. Hãy thử lại sau {{minutes}} phút.",
     "copied": "Đã sao chép",
     "network": "Mạng",
     "switching": "Đang chuyển đổi…",

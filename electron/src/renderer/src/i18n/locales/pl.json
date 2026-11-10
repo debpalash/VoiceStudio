@@ -2957,6 +2957,7 @@
     "route_not_found": "Uruchomiony backend VoiceStudio nie ma punktu końcowego {{route}}. Uruchom VoiceStudio ponownie, aby aplikacja i backend do siebie pasowały; jeśli problem się utrzymuje, zaktualizuj oba do tej samej wersji."
   },
   "network": {
+    "pin_locked": "Zbyt wiele błędnych kodów PIN. Spróbuj ponownie za {{minutes}} min.",
     "copied": "Skopiowano",
     "network": "Sieć",
     "switching": "Przełączanie…",

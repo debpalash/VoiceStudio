@@ -2931,6 +2931,7 @@
     "autoHint": "Picks the best level for this computer."
   },
   "network": {
+    "pin_locked": "Too many wrong PINs. Try again in {{minutes}} min.",
     "copied": "Copied",
     "network": "Network",
     "switching": "Switching…",

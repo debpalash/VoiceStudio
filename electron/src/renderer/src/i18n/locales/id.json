@@ -2931,6 +2931,7 @@
     "route_not_found": "Backend VoiceStudio yang berjalan tidak memiliki endpoint {{route}}. Mulai ulang VoiceStudio agar aplikasi dan backend cocok; jika masih terjadi, perbarui keduanya ke versi yang sama."
   },
   "network": {
+    "pin_locked": "Terlalu banyak PIN yang salah. Coba lagi dalam {{minutes}} menit.",
     "copied": "Disalin",
     "network": "Jaringan",
     "switching": "Beralih…",

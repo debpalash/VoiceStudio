@@ -16,16 +16,19 @@ export function WebAuthGate({ children }: { children: ReactNode }) {
   const [value, setValue] = useState('');
   const [pending, setPending] = useState(false);
   const [errorStatus, setErrorStatus] = useState<number | null | undefined>();
+  const [lockedFor, setLockedFor] = useState<number | undefined>();
   const submitting = useRef(false);
 
   useEffect(() => {
     if (!__WEB_DEPLOYMENT__) return;
     const required = (event: Event) => {
-      const detail = (event as CustomEvent<{ mode?: string }>).detail;
+      const detail = (event as CustomEvent<{ mode?: string; retryAfter?: number }>).detail;
       setMode(detail?.mode === 'apikey' ? 'apikey' : 'pin');
       setChecked(true);
       setValue('');
       setErrorStatus(undefined);
+      // A PIN lockout (429) carries how long to wait; show it on the form.
+      setLockedFor(detail?.retryAfter);
     };
     window.addEventListener('ov:auth-required', required);
     void apiFetch('/engines')
@@ -54,6 +57,7 @@ export function WebAuthGate({ children }: { children: ReactNode }) {
     submitting.current = true;
     setPending(true);
     setErrorStatus(undefined);
+    setLockedFor(undefined);
     try {
       if (mode === 'apikey') {
         setValue('');
@@ -104,7 +108,12 @@ export function WebAuthGate({ children }: { children: ReactNode }) {
                 autoFocus
               />
             </label>
-            {errorStatus !== undefined && (
+            {lockedFor !== undefined && (
+              <p className="text-xs text-destructive" role="alert">
+                {t('network.pin_locked', { minutes: Math.max(1, Math.ceil(lockedFor / 60)) })}
+              </p>
+            )}
+            {lockedFor === undefined && errorStatus !== undefined && (
               <p className="text-xs text-destructive" role="alert">
                 {errorStatus
                   ? t('settings.remote_backend_error_http', { status: errorStatus })

@@ -2931,6 +2931,7 @@
     "route_not_found": "De draaiende VoiceStudio-backend heeft geen {{route}}-endpoint. Start VoiceStudio opnieuw zodat app en backend overeenkomen; blijft het probleem, werk dan beide bij naar dezelfde versie."
   },
   "network": {
+    "pin_locked": "Te veel verkeerde pincodes. Probeer het over {{minutes}} min. opnieuw.",
     "copied": "Gekopieerd",
     "network": "Netwerk",
     "switching": "Overstappen...",

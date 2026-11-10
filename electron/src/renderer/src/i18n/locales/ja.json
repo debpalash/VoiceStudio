@@ -2931,6 +2931,7 @@
     "route_not_found": "実行中の VoiceStudio バックエンドに {{route}} エンドポイントがありません。アプリとバックエンドを一致させるため VoiceStudio を再起動してください。解決しない場合は両方を同じバージョンに更新してください。"
   },
   "network": {
+    "pin_locked": "PIN の誤りが多すぎます。{{minutes}} 分後にもう一度お試しください。",
     "copied": "コピーされました",
     "network": "ネットワーク",
     "switching": "切り替え中…",

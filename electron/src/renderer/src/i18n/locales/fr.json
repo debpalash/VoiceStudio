@@ -2933,6 +2933,7 @@
     "route_not_found": "Le backend VoiceStudio en cours d'exécution n'a pas le point d'accès {{route}}. Redémarrez VoiceStudio pour que l'application et le backend correspondent ; si le problème persiste, mettez les deux à jour vers la même version."
   },
   "network": {
+    "pin_locked": "Trop de codes PIN incorrects. Réessayez dans {{minutes}} min.",
     "copied": "Copié",
     "network": "Réseau",
     "switching": "Commutation…",

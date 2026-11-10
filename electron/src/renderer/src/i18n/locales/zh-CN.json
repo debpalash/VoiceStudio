@@ -2927,6 +2927,7 @@
     "route_not_found": "正在运行的 VoiceStudio 后端没有 {{route}} 接口。请重启 VoiceStudio 使应用与后端一致；若仍然如此，请将两者更新到同一版本。"
   },
   "network": {
+    "pin_locked": "错误的 PIN 次数过多。请在 {{minutes}} 分钟后重试。",
     "copied": "已复制",
     "network": "网络",
     "switching": "切换…",

@@ -172,6 +172,27 @@ describe("apiFetch", () => {
     expect(lastBackendContact()).toBeNull();
   });
 
+  it("sends a web PIN lockout back to the PIN form with the wait", async () => {
+    vi.stubGlobal("__WEB_DEPLOYMENT__", true);
+    vi.stubGlobal(
+      "fetch",
+      async () =>
+        new Response('{"detail":"Too many wrong PINs. Try again later."}', {
+          status: 429,
+          headers: { "Retry-After": "120" },
+        }),
+    );
+    const events: CustomEvent[] = [];
+    const listen = (e: Event) => events.push(e as CustomEvent);
+    window.addEventListener("ov:auth-required", listen);
+    try {
+      await expect(apiFetch("/engines")).rejects.toMatchObject({ status: 429 });
+    } finally {
+      window.removeEventListener("ov:auth-required", listen);
+    }
+    expect(events.map((e) => e.detail)).toEqual([{ mode: "pin", retryAfter: 120 }]);
+  });
+
   it("re-throws aborts untouched", async () => {
     vi.stubGlobal("fetch", async () => {
       throw new DOMException("Aborted", "AbortError");
