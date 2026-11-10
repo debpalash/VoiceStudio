@@ -62,7 +62,7 @@ migration of older plaintext translation-key preferences. The legacy compatible
 endpoint key uses the same encrypted storage. These paid requests
 require HTTPS, have bounded connection/read timeouts, and do not follow credential-bearing redirects.
 Connect also checks that the project/account stayed unchanged during verification.
-Credentialed LLM endpoints require HTTPS outside loopback; local HTTP servers remain supported.
+Credentialed LLM endpoints require HTTPS outside loopback; local HTTP servers remain supported. For an OpenAI-compatible server on your own network (such as `http://192.168.1.20:8000/v1`), turn on **Allow plain HTTP on my LAN** for that provider: the API key is then sent unencrypted, and only to a private, loopback or link-local IP address typed as a literal. Public hosts and DNS names are always refused, and SDK providers keep the HTTPS requirement.
 
 Provider protocol references: [LiteLLM](https://docs.litellm.ai/docs/providers),
 [Codex](https://developers.openai.com/codex/noninteractive/),

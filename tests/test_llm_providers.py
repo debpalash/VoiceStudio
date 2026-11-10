@@ -616,3 +616,46 @@ def test_credentialed_loopback_or_https_remains_supported(lp, url):
     lp.save_key("custom", "fixture-secret")
     lp.save_overrides("custom", base_url=url, model="chat")
     assert lp.configuration_error(lp.get_provider("custom")) is None
+
+
+# ── #3811: opt-in plain HTTP to a trusted LAN (IP literal only) ───────────
+
+def _lan_provider(lp, url, *, opt_in=True, provider="custom"):
+    lp.save_key(provider, "fixture-secret")
+    lp.save_overrides(provider, base_url=url, model="chat", allow_plain_http=opt_in)
+    return lp.get_provider(provider)
+
+
+@pytest.mark.parametrize("url", [
+    "http://192.168.1.20:47832/v1", "http://10.0.0.5/v1", "http://172.16.4.2:8000/v1",
+    "http://169.254.10.1/v1", "http://[fd00::5]:8000/v1", "http://[fe80::1]/v1",
+])
+def test_plain_http_private_ip_allowed_only_with_opt_in(lp, url):
+    p = _lan_provider(lp, url, opt_in=False)
+    assert "HTTPS" in lp.credential_transport_error(p)
+    p = _lan_provider(lp, url, opt_in=True)
+    assert lp.credential_transport_error(p) is None
+    assert lp.describe(p)["allow_plain_http"] is True
+
+
+@pytest.mark.parametrize("url", [
+    "http://8.8.8.8/v1", "http://example.com/v1", "http://my-nas.local/v1",
+    "http://[::ffff:8.8.8.8]/v1", "http://0.0.0.0/v1", "http://100.64.0.1/v1",
+    "http://192.168.1.20.example.com/v1",
+])
+def test_plain_http_opt_in_never_allows_public_or_dns_hosts(lp, url):
+    p = _lan_provider(lp, url, opt_in=True)
+    assert "HTTPS" in lp.credential_transport_error(p)
+
+
+def test_plain_http_opt_in_is_per_provider_and_off_by_default(lp):
+    _lan_provider(lp, "http://192.168.1.20/v1", opt_in=True)
+    other = _lan_provider(lp, "http://192.168.1.20/v1", opt_in=False, provider="groq")
+    assert "HTTPS" in lp.credential_transport_error(other)
+    assert lp.describe(lp.get_provider("openai"))["allow_plain_http"] is False
+
+
+def test_plain_http_opt_in_ignored_for_sdk_providers(lp):
+    lp.save_key("anthropic", "fixture-secret")
+    lp.save_overrides("anthropic", base_url="http://192.168.1.20/v1", model="m", allow_plain_http=True)
+    assert "HTTPS" in lp.credential_transport_error(lp.get_provider("anthropic"))
