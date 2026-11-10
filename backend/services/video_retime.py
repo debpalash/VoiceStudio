@@ -330,13 +330,21 @@ async def render_retimed_video(
                 slice_path,
             ]
             try:
-                rc, _, stderr = await run_ffmpeg(
-                    cmd, timeout=timeout_per_batch, job_id=job_id,
-                )
-                # Same rule as video_encoder.run_with_encoder_fallback: a signal
-                # death (crashing GPU driver) falls back unless the user aborted.
-                cancelled = rc < 0 and (abort_check is None or abort_check())
-                if rc != 0 and not cancelled and bi == 0 and enc_args != VIDEO_ENC_ARGS:
+                hw_first = bi == 0 and enc_args != VIDEO_ENC_ARGS
+                try:
+                    rc, _, stderr = await run_ffmpeg(
+                        cmd, timeout=timeout_per_batch, job_id=job_id,
+                    )
+                    failed = rc != 0
+                except asyncio.TimeoutError:
+                    if not hw_first:
+                        raise
+                    rc, stderr, failed = 1, b"timed out", True
+                # Same rule as video_encoder.run_with_encoder_fallback: a failed
+                # or hung hardware slice falls back unless the user aborted.
+                if failed and hw_first and not (
+                    await video_encoder.user_cancelled(rc, abort_check)
+                ):
                     logger.warning(
                         "Hardware encoder %s failed on the first retime slice; "
                         "using libx264: %s", enc_args[1],
@@ -355,7 +363,7 @@ async def render_retimed_video(
             if rc != 0:
                 # Negative rc = killed by signal (user cancel via
                 # kill_job_procs) — report as aborted, not a render failure.
-                if rc < 0:
+                if rc < 0 or (abort_check is not None and abort_check()):
                     raise RetimeError("retime cancelled", stage="aborted")
                 tail = (stderr or b"").decode(errors="replace")[-300:]
                 raise RetimeError(

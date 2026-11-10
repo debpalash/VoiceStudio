@@ -102,6 +102,61 @@ def test_signal_death_retries_unless_user_aborted():
     assert rc == -9 and len(seen) == 1
 
 
+def test_windows_style_exit_code_one_after_abort_is_not_retried():
+    hw = ve.encoder_args("h264_amf")
+    run, seen = _runner([(1, b"", b"killed")])
+    rc = asyncio.run(ve.run_with_encoder_fallback(["f", *hw], hw, run, aborted=lambda: True))[0]
+    assert rc == 1 and len(seen) == 1
+
+
+def test_abort_flag_set_just_after_exit_is_seen():
+    hw = ve.encoder_args("h264_amf")
+    flag = []
+    run, seen = _runner([(1, b"", b"killed")])
+
+    async def go():
+        asyncio.get_running_loop().call_soon(flag.append, 1)  # abort lands after exit
+        return await ve.run_with_encoder_fallback(
+            ["f", *hw], hw, run, aborted=lambda: bool(flag))
+
+    assert asyncio.run(go())[0] == 1 and len(seen) == 1
+
+
+def test_hardware_timeout_falls_back_unless_aborted():
+    hw = ve.encoder_args("h264_amf")
+    calls = []
+
+    async def run(cmd):
+        calls.append(cmd)
+        if len(calls) == 1:
+            raise asyncio.TimeoutError
+        return 0, b"", b""
+
+    assert asyncio.run(ve.run_with_encoder_fallback(["f", *hw], hw, run))[0] == 0
+    assert len(calls) == 2 and "libx264" in calls[1]
+    calls.clear()
+    with pytest.raises(asyncio.TimeoutError):
+        asyncio.run(ve.run_with_encoder_fallback(["f", *hw], hw, run, aborted=lambda: True))
+    assert len(calls) == 1
+    calls.clear()
+    sw = ve.software_args()
+    with pytest.raises(asyncio.TimeoutError):
+        asyncio.run(ve.run_with_encoder_fallback(["f", *sw], sw, run))
+    assert len(calls) == 1
+
+
+def test_abort_endpoint_sets_flag_before_killing(monkeypatch):
+    from api.routers import dub_core
+
+    job = {}
+    order = []
+    monkeypatch.setitem(dub_core._dub_jobs, "j-order", job)
+    monkeypatch.setattr(dub_core, "_kill_job_procs", lambda jid: order.append(bool(job.get("aborted"))))
+    monkeypatch.setattr(dub_core.task_manager, "cancel_task", lambda jid: False)
+    dub_core.dub_abort("j-order")
+    assert order == [True]
+
+
 @pytest.mark.parametrize("w,h,limit,expected", [
     (3840, 2160, "1080p", (1920, 1080)),
     (1920, 1080, "1080p", (1920, 1080)),      # already inside: untouched
@@ -188,6 +243,39 @@ def test_retime_resolves_encoder_off_the_event_loop(monkeypatch, tmp_path):
             out_path=str(tmp_path / "o.mp4"),
         ))
     assert seen == [False]
+
+
+@pytest.mark.parametrize("rc1, aborted, falls_back", [
+    (1, True, False), (1, False, True),
+    ("timeout", False, True), ("timeout", True, False),
+])
+def test_retime_first_slice_exit_one_or_timeout_falls_back_unless_aborted(
+        monkeypatch, tmp_path, rc1, aborted, falls_back):
+    import core.config
+    from services import video_retime as vr
+
+    monkeypatch.setattr(core.config, "DUB_DIR", str(tmp_path))
+    monkeypatch.setattr(vr, "_slice_encoder_args", lambda ff: ("-c:v", "h264_nvenc"))
+    encoders = []
+
+    async def fake_run(cmd, timeout=None, job_id=None):
+        encoders.append(cmd[cmd.index("-c:v") + 1])
+        if len(encoders) == 1:
+            if rc1 == "timeout":
+                raise asyncio.TimeoutError
+            return rc1, b"", b""
+        return 0, b"", b""
+
+    monkeypatch.setattr(vr, "run_ffmpeg", fake_run)
+    with pytest.raises(vr.RetimeError) as ei:
+        asyncio.run(vr.render_retimed_video(
+            job_id=None, ffmpeg="ffmpeg", video_path="x.mp4",
+            chunks=[(0.0, 1.0, 1.0)], out_path=str(tmp_path / "o.mp4"),
+            abort_check=lambda: aborted and len(encoders) >= 1,
+        ))
+    assert (len(encoders) > 1) is falls_back
+    if not falls_back:
+        assert ei.value.stage in ("aborted", "encode")
 
 
 @pytest.mark.parametrize("aborted, falls_back", [(False, True), (True, False)])

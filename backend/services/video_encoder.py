@@ -138,23 +138,42 @@ def replace_args(cmd: list[str], old: tuple[str, ...], new: tuple[str, ...]) -> 
     return list(cmd)
 
 
+async def user_cancelled(rc: int, aborted: Callable[[], bool] | None) -> bool:
+    """True when a non-zero exit is the user's cancel, not an encoder failure.
+
+    The abort flag is authoritative (Windows ``kill()`` exits with code 1, not
+    a signal); one loop yield lets a concurrent abort request finish setting
+    it. Without a flag, a signal death is treated as a cancel.
+    """
+    if aborted is None:
+        return rc < 0
+    await asyncio.sleep(0)
+    return bool(aborted())
+
+
 async def run_with_encoder_fallback(
     cmd: list[str],
     enc_args: tuple[str, ...],
     runner: Callable[[list[str]], Awaitable[tuple[int, bytes, bytes]]],
     aborted: Callable[[], bool] | None = None,
 ) -> tuple[int, bytes, bytes]:
-    """Run ``cmd`` (which contains ``enc_args``); if a hardware encode fails,
-    retry once with libx264 and log the reason.
+    """Run ``cmd`` (which contains ``enc_args``); if a hardware encode fails
+    or times out, retry once with libx264 and log the reason.
 
-    A negative return code is returned as-is (not retried) when the user
-    aborted; with ``aborted`` given, a signal death without an abort (a
-    crashing GPU driver) is retried. Without it, every negative code is
-    treated as an abort.
+    A user abort (``aborted`` flag, any exit code) is returned as-is, never
+    retried. Without ``aborted``, every negative code counts as an abort.
     """
-    rc, out, err = await runner(cmd)
-    cancelled = rc < 0 and (aborted is None or aborted())
-    if rc == 0 or cancelled or len(enc_args) < 2 or enc_args[1] not in _HW_ARGS:
+    hardware = len(enc_args) >= 2 and enc_args[1] in _HW_ARGS
+    try:
+        rc, out, err = await runner(cmd)
+    except asyncio.TimeoutError:
+        if not hardware or await user_cancelled(1, aborted):
+            raise
+        logger.warning(
+            "Hardware encoder %s timed out; retrying with %s", enc_args[1], SOFTWARE,
+        )
+        return await runner(replace_args(cmd, enc_args, software_args()))
+    if rc == 0 or not hardware or await user_cancelled(rc, aborted):
         return rc, out, err
     tail = (err or b"").decode(errors="replace")[-300:]
     logger.warning(
