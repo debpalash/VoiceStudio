@@ -208,6 +208,31 @@ def test_failed_probe_verdict_expires_but_stays_cached_until_then(fake_cli, monk
     assert bootstrap.probe_backends()[0].name == "CPU"
 
 
+def test_expired_probe_verdict_survives_a_concurrent_expiry(fake_cli, monkeypatch):
+    """Two threads can read the same expired failure; the second removal must not raise."""
+    monkeypatch.setenv("FAKE_EXIT", "7")
+    with pytest.raises(RuntimeError, match="exit code 7"):
+        bootstrap.probe_backends()
+    (key,) = bootstrap._PROBE_CACHE
+    message, _ = bootstrap._PROBE_CACHE[key]
+
+    class RacedCache(dict):
+        def get(self, k, default=None):
+            value = super().get(k, default)
+            super().pop(k, None)  # the other thread expired it first
+            return value
+
+        def __getitem__(self, k):
+            value = super().__getitem__(k)
+            super().pop(k, None)
+            return value
+
+    monkeypatch.setattr(bootstrap, "_PROBE_CACHE", RacedCache({key: (message, 0.0)}))
+    monkeypatch.setenv("FAKE_EXIT", "0")
+    monkeypatch.setenv("FAKE_OUT", "CPU - i5\n")
+    assert bootstrap.probe_backends()[0].name == "CPU"
+
+
 def test_exit_reason_ignores_log_lines_from_an_earlier_launch(tmp_path, monkeypatch):
     from engines.cosyvoice_gguf.process import NativeServer
 

@@ -218,13 +218,14 @@ def probe_backends(cli: Path | None = None, refresh: bool = False) -> list[Nativ
         key = None
     if key is not None and refresh:
         _PROBE_CACHE.pop(key, None)
-    if key in _PROBE_CACHE:
-        cached = _PROBE_CACHE[key]
+    # Read once and drop with pop(): two threads may see the same expired entry.
+    cached = _PROBE_CACHE.get(key) if key is not None else None
+    if cached is not None:
         if not isinstance(cached, tuple):
             return list(cached)
         if time.monotonic() < cached[1]:
             raise RuntimeError(cached[0])
-        del _PROBE_CACHE[key]
+        _PROBE_CACHE.pop(key, None)
     try:
         devices = _probe_once(cli)
     except RuntimeError as exc:
