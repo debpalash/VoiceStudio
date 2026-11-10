@@ -1203,3 +1203,15 @@ it('says which speakers fell back to the default voice after transcription (#341
   ]);
   warning.mockRestore();
 });
+
+it('warns when a cached job has no background stem (#3751)', async () => {
+  const warning = vi.spyOn(toast, 'warning').mockImplementation(() => 'toast');
+  vi.mocked(apiJson).mockResolvedValueOnce({ job_id: 'job3751', task_id: 'prep3751' });
+  vi.mocked(consumeTaskStream).mockImplementationOnce(async (_path, emit) => {
+    emit({ type: 'cached', has_bg: false, scene_count: 0 });
+    emit({ type: 'ready', duration: 4 });
+  });
+  await uploadDub(new File(['audio'], 'voice.wav', { type: 'audio/wav' }));
+  expect(warning.mock.calls.map((call) => call[0])).toEqual(['dub.bg_separation_failed']);
+  warning.mockRestore();
+});

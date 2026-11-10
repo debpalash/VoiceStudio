@@ -226,3 +226,48 @@ def test_retries_pass_the_whole_ladder_deadline(monkeypatch):
     with pytest.raises(Exception):
         _drain()
     assert seen[0] is None and all(d is not None for d in seen[1:]) and len(seen) == 3
+
+
+def test_timeout_after_a_failed_attempt_keeps_the_earlier_failure(monkeypatch):
+    calls = _runner(monkeypatch, [(1, b"CUDA out of memory"), HTTPException(status_code=504, detail="subprocess timed out after 900s")])
+    with pytest.raises(HTTPException) as err:
+        _drain()
+    assert len(calls) == 2
+    assert err.value.status_code == 504
+    assert "out of memory" in err.value.detail and "timed out after 900s" in err.value.detail
+
+
+def test_slot_wait_is_bounded_by_the_retry_deadline(monkeypatch):
+    async def go():
+        sem = asyncio.Semaphore(1)
+        await sem.acquire()  # every slot busy
+        monkeypatch.setattr(dp, "_get_semaphore", lambda: sem)
+
+        async def spawn(*a, **k):
+            raise AssertionError("must not spawn without a slot")
+
+        monkeypatch.setattr(dp, "_spawn_with_retry", spawn)
+        deadline = dp.time.monotonic() + 0.05
+        return [e async for e in dp.run_proc_streaming_stderr("j", ["x"], deadline=deadline)]
+
+    events = asyncio.run(asyncio.wait_for(go(), timeout=5))
+    assert events[0][0] == "done" and events[0][1] == -1
+
+
+def test_job_aborted_while_queued_never_spawns_the_retry(monkeypatch):
+    async def go():
+        sem = asyncio.Semaphore(1)
+        monkeypatch.setattr(dp, "_get_semaphore", lambda: sem)
+
+        async def spawn(*a, **k):
+            raise AssertionError("aborted job must not spawn")
+
+        monkeypatch.setattr(dp, "_spawn_with_retry", spawn)
+        dp._dub_jobs["j"]["aborted"] = True
+        events = [e async for e in dp.run_proc_streaming_stderr(
+            "j", ["x"], deadline=dp.time.monotonic() + 600)]
+        assert not sem.locked()  # the slot was released
+        return events
+
+    events = asyncio.run(go())
+    assert events[0][0] == "done" and events[0][1] == -1
