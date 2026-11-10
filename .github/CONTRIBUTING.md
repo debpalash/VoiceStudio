@@ -13,15 +13,20 @@ Thanks for your interest in improving VoiceStudio! This guide covers everything 
 
 ---
 
-> **Before your first pull request:** unless exempt under the
+> **Before your first pull request: sign the CLA first.** Unless exempt under the
 > [CLA checker’s policy](#contribution-licensing), sign the
-> [Contributor License Agreement](CLA-1.0.md) once. GitHub cannot stop you opening a pull request first, so it is checked at
-> merge instead: an unsigned pull request cannot merge unless a maintainer applies
-> the `cla-override` label after manual review. You can sign now on the
-> [signing issue (#2586)](https://github.com/debpalash/VoiceStudio/issues/2586) and
-> your signature covers your future contributions. Every other non-exempt human commit
-> author and co-author must also sign before the check passes. Details are in
-> [Contribution licensing](#contribution-licensing).
+> [Contributor License Agreement](CLA-1.0.md) once. It takes a minute: post the
+> line in [Contribution licensing](#contribution-licensing) on the
+> [signing issue (#2586)](https://github.com/debpalash/VoiceStudio/issues/2586), and
+> your signature covers your future contributions. A pull request opened before
+> you sign is converted to a draft, its heavy CI is skipped and the review bots
+> wait; when you sign, it is marked ready and CI re-runs automatically. An unsigned
+> pull request cannot merge unless a maintainer applies the `cla-override` label
+> after manual review. Every other non-exempt human commit author and co-author
+> must also sign before the check passes.
+>
+> **Using an AI coding agent?** Give it the
+> [agent pull-request guide](AGENT_PR_GUIDE.md) first.
 
 ---
 
@@ -478,7 +483,8 @@ and Docker image rebuilds on pull requests and pushes to `main`. The required
 still works. Mixed changes, workflow/build configuration, dependencies and bundled
 app icons still run their normal checks; unknown or truncated change lists run
 all checks. Manual runs and scheduled audits remain full runs. CLA, commit identity
-and secret scanning still run. Run changed tests locally before submitting a
+and secret scanning still run. The same skip applies while a pull request's
+opener has not signed the CLA (see [Contribution licensing](#contribution-licensing)). Run changed tests locally before submitting a
 test-only PR. Docker Hub overview edits still publish through the small
 `dockerhub-description.yml` workflow without rebuilding images.
 
@@ -670,6 +676,17 @@ the underlying issue without using the contribution. The pull request stays open
 and signatures remain welcome after the deadline. The timer begins when the
 reminder first detects an unsigned contributor; a deadline already shown on a
 pull request (14 days, before this changed) keeps its date.
+
+While the person who opened a pull request has not signed, the CLA check holds
+it: it converts the pull request to a draft (CodeRabbit and Greptile skip
+drafts) and says so in its comment, with the signing step and a prompt for your
+AI coding agent. CI skips its heavy jobs, and the required
+`Tests (backend + frontend)` check reports "CLA not signed yet". The CLA, CLA
+gate, commit identity and secret scan checks still run. Once you sign, on the
+pull request or the signing issue, the check marks the pull request ready for
+review (unless you made it a draft yourself) and re-runs the CI it skipped. If
+a run was still in progress or waiting for approval, push or ask a maintainer
+to re-run it. Maintainers, bots, and signed openers are never held.
 
 The **CLA** check comments on your pull request when someone still needs to
 sign. To sign, post this as a new comment, on its own line:
