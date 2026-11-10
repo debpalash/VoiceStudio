@@ -58,6 +58,7 @@ metadata and the backend fallback mirror it.
 
 ### Added
 
+- Qwen Base can deliver audio during generation on the speech WebSocket (#3992) — thanks @kellerkind84!
 - OpenAI-compatible PCM speech can stream during synthesis, with native Qwen3-TTS Base support on Apple Silicon and provisioned NVIDIA systems (#3976) — thanks @kellerkind84!
 - The account menu in the window corner shows your profile photo, email, plan and cloud storage, with a Manage plan link (#3955)
 - The VoiceStudio account card has a larger avatar that opens your profile page to change the photo, an inline display-name editor, a plan badge with icon, an iconized storage meter, and icon buttons for refresh and sign out (#3948)
@@ -167,6 +168,8 @@ metadata and the backend fallback mirror it.
 
 ### Fixed
 
+- Update MLX to 0.32.4 to address a shutdown crash after Apple Silicon speech generation (#3991) — thanks @kellerkind84!
+- Chromium and Electron switches given to the Linux AppImage or .deb reach the app again, and the bundled `voicestudio` command no longer stops macOS and Linux installers from being built (#3996)
 - The dubbing error notice links directly to the transcript segment with missing or unreadable speech (#3988) — thanks @isnaenihidayat!
 - Large dubbing stem and segment ZIP downloads no longer hold the entire archive in backend memory (#3986) — thanks @isnaenihidayat!
 - Audiobook chapters and dub segments wait for a speech engine that is briefly busy streaming instead of failing; if it stays busy, the audiobook stops with a clear error and keeps its progress for a retry (#3987)
@@ -474,6 +477,7 @@ metadata and the backend fallback mirror it.
 
 ### Added
 
+- Qwen Base can deliver audio during generation on the speech WebSocket (#3992) — thanks @kellerkind84!
 - OpenAI-compatible PCM speech can stream during synthesis, with native Qwen3-TTS Base support on Apple Silicon and provisioned NVIDIA systems (#3976) — thanks @kellerkind84!
 - The account menu in the window corner shows your profile photo, email, plan and cloud storage, with a Manage plan link (#3955)
 - The VoiceStudio account card has a larger avatar that opens your profile page to change the photo, an inline display-name editor, a plan badge with icon, an iconized storage meter, and icon buttons for refresh and sign out (#3948)
@@ -583,6 +587,8 @@ metadata and the backend fallback mirror it.
 
 ### Fixed
 
+- Update MLX to 0.32.4 to address a shutdown crash after Apple Silicon speech generation (#3991) — thanks @kellerkind84!
+- Chromium and Electron switches given to the Linux AppImage or .deb reach the app again, and the bundled `voicestudio` command no longer stops macOS and Linux installers from being built (#3996)
 - The dubbing error notice links directly to the transcript segment with missing or unreadable speech (#3988) — thanks @isnaenihidayat!
 - Large dubbing stem and segment ZIP downloads no longer hold the entire archive in backend memory (#3986) — thanks @isnaenihidayat!
 - Audiobook chapters and dub segments wait for a speech engine that is briefly busy streaming instead of failing; if it stays busy, the audiobook stops with a clear error and keeps its progress for a retry (#3987)
