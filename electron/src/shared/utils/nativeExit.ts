@@ -11,13 +11,22 @@ const POSIX_SIGNALS = new Map<string, number>([
   ['SIGSEGV', 11],
 ]);
 
-// NTSTATUS values that mean the process itself misbehaved natively.
+// NTSTATUS values that mean the process itself misbehaved natively. Loader
+// failures such as STATUS_DLL_NOT_FOUND are not faults: the process never ran.
+// A fault missing here was reported as a bare number and an unclassified
+// failure (#3835 heap corruption, #3872 in-page error).
 const NT_FAULTS = new Map<number, string>([
   [0xc0000005, 'STATUS_ACCESS_VIOLATION'],
+  [0xc0000006, 'STATUS_IN_PAGE_ERROR'],
+  [0xc0000017, 'STATUS_NO_MEMORY'],
   [0xc000001d, 'STATUS_ILLEGAL_INSTRUCTION'],
+  [0xc0000094, 'STATUS_INTEGER_DIVIDE_BY_ZERO'],
   [0xc0000096, 'STATUS_PRIVILEGED_INSTRUCTION'],
-  [0xc0000409, 'STATUS_STACK_BUFFER_OVERRUN'],
   [0xc00000fd, 'STATUS_STACK_OVERFLOW'],
+  [0xc0000374, 'STATUS_HEAP_CORRUPTION'],
+  [0xc0000409, 'STATUS_STACK_BUFFER_OVERRUN'],
+  [0xc0000420, 'STATUS_ASSERTION_FAILURE'],
+  [0xc0000602, 'STATUS_FAIL_FAST_EXCEPTION'],
 ]);
 
 // Only signals that point at bad code or CPU features count; SIGABRT and

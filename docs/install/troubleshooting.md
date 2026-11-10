@@ -121,15 +121,21 @@ The managed Python environment is damaged and automatic repair did not fix it. U
 
 ### `NATIVE_ACCESS_VIOLATION`
 
-The engine crashed below Python (`0xC0000005` or `SIGSEGV`). Update your GPU driver and try CPU mode. Send the in-app report if it persists.
+The engine crashed below Python (`0xC0000005` or `SIGSEGV`). Update your GPU driver and try CPU mode. Send the in-app report if it persists. On Windows the report names the library that crashed (see [Native backend crashes in Electron](#native-backend-crashes-in-electron)); when it is the graphics driver, the screen says so.
+
+If the crash happened inside the model weight loader (`transformers/core_model_loading.py` in the crashed thread), later starts of the same version load weights one at a time (`HF_DEACTIVATE_ASYNC_LOAD=1`), which only makes loading slower. Set `HF_DEACTIVATE_ASYNC_LOAD=0` to opt out.
 
 ### `NATIVE_ILLEGAL_INSTRUCTION`
 
-The engine hit an instruction this computer could not run (`0xC000001D` or `SIGILL`). The processor may lack a feature its libraries need. Send the in-app report with your processor model.
+The engine hit an instruction this computer could not run (`0xC000001D` or `SIGILL`). The processor may lack a feature its libraries need, or a driver stopped on purpose. Send the in-app report with your processor model. On Windows it names the library that stopped.
+
+### `NATIVE_IN_PAGE_ERROR`
+
+Windows could not read part of a file the engine had open (`0xC0000006 STATUS_IN_PAGE_ERROR`), usually a model file that is memory-mapped from disk. This is a disk read error, not a bug in the engine. Keep VoiceStudio and its models on an internal drive (not a USB, network or sleeping external drive), check that drive for errors (`chkdsk`), and let Windows manage the paging file size. Then retry.
 
 ### `NATIVE_CRASH`
 
-The engine crashed below Python with another native fault. Send the in-app report: it carries the exit code.
+The engine crashed below Python with another native fault, such as `0xC0000374 STATUS_HEAP_CORRUPTION` or `0xC0000409 STATUS_STACK_BUFFER_OVERRUN`. Send the in-app report: it carries the exit code and, on Windows, the library that crashed.
 
 ### `STARTUP_TIMEOUT_SILENT`
 
@@ -1632,10 +1638,22 @@ not download or load model weights.
 Crash details and bug reports keep the raw exit code and name recognized Windows
 faults (for example, `3221225477 (0xC0000005 STATUS_ACCESS_VIOLATION)`). The signed
 Windows representation `-1073741819` identifies the same fault. SIGSEGV and SIGILL
-are also identified as native faults. These failures happen below Python, so a
+are also identified as native faults, as are `0xC0000006 STATUS_IN_PAGE_ERROR`,
+`0xC0000374 STATUS_HEAP_CORRUPTION` and the other fault statuses Windows uses for
+an unhandled native exception. These failures happen below Python, so a
 Python traceback may not exist; include the captured crash details and system/GPU
 information when reporting them. The name identifies the failure category, not
 its cause: it does not by itself prove a driver, model, or memory problem.
+
+Python's fault dump names the Python line that was running, not the library that
+crashed. On Windows, VoiceStudio therefore reads the Windows Error Reporting
+event for the crashed backend (Event Viewer → Windows Logs → Application,
+"Application Error", event 1000) and adds the faulting module, its version and
+the offset to the report's install-failure facts. This happens only after a
+crash, reads only the local event log, and leaves the machine only if you submit
+the report. When the module is a graphics driver or GPU library (for example
+`nvcuda64.dll`, `cublasLt64_12.dll`, `igc64.dll`, `amdhip64_6.dll`), the failure
+screen says so: update the driver, or choose CPU in Settings → Performance & Device.
 
 On macOS, stopping a timed-out engine or installer operation can race with its
 supervisor exiting. VoiceStudio briefly rechecks that exact owned supervisor before

@@ -203,6 +203,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
     ? failureGuidance(failureCode, {
         message: status.message,
         smartAppControl: status.failure?.smartAppControl,
+        faultingModule: status.failure?.faultingModule,
         exitCode: status.exitCode,
         logLines: status.logTail,
       })

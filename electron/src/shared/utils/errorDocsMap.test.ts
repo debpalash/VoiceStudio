@@ -69,6 +69,7 @@ describe('errorDocsMap', () => {
         'BROKEN_VENV',
         'NATIVE_ACCESS_VIOLATION',
         'NATIVE_ILLEGAL_INSTRUCTION',
+        'NATIVE_IN_PAGE_ERROR',
         'NATIVE_CRASH',
         'STARTUP_TIMEOUT_SILENT',
         'STARTUP_TIMEOUT_OUTPUT',

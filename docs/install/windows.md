@@ -264,4 +264,11 @@ See [docs/setup/huggingface-token.md](../setup/huggingface-token.md).
 
 Hit a wall? See [docs/install/troubleshooting.md](troubleshooting.md).
 
+If the engine stops with a Windows exit code, the failure screen names it:
+
+- **`spawn UNKNOWN`, `EPERM` or `EACCES`**: Windows or security software refused to start `python.exe`. The screen names the program and says when Smart App Control is on. See [`EXEC_REFUSED`](troubleshooting.md#exec_refused) and [`WINDOWS_APP_CONTROL_BLOCKED`](troubleshooting.md#windows_app_control_blocked).
+- **`0xC0000005`, `0xC000001D`, `0xC0000374` and other native faults**: a library crashed below Python. The in-app report names the library from the Windows event log. A graphics driver crash points at a driver update or CPU mode. See [`NATIVE_ACCESS_VIOLATION`](troubleshooting.md#native_access_violation).
+- **`0xC0000006`**: Windows could not read a model file from disk. Keep models on an internal drive and check it for errors. See [`NATIVE_IN_PAGE_ERROR`](troubleshooting.md#native_in_page_error).
+- **`4294967295` (`-1`)**: something outside the app ended the engine, usually security software.
+
 Migration configuration is kept ASCII so Alembic can read it under Windows locale code pages as well as UTF-8. This applies to source installs and direct Alembic commands.

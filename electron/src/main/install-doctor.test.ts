@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  collectFaultFacts,
   collectTrustFacts,
   mountIsNoexec,
+  parseWindowsFault,
   parseWindowsTrust,
   programBasename,
   runProbe,
   WINDOWS_BLOCK_MATCH,
+  WINDOWS_FAULT_SCRIPT,
   WINDOWS_TRUST_SCRIPT,
 } from './install-doctor';
 
@@ -124,5 +127,74 @@ if(Test-VsBlock $env:VS_E $env:VS_R $env:VS_P){'yes'}else{'no'}`;
       timeoutMs: 30_000,
     });
     expect(output.trim()).toBe(expected);
+  }, 40_000);
+});
+
+describe('collectFaultFacts', () => {
+  it('reads Windows Error Reporting for the crashed pid, passed by environment', async () => {
+    const run = vi.fn(
+      async () => '{"module":"torch_cpu.dll","version":"2.8.0.0","offset":"0x000000000001E3F4"}',
+    );
+    const facts = await collectFaultFacts({ platform: 'win32', pid: 4242, run, retryDelayMs: 0 });
+    const [command, args, options] = run.mock.calls[0] as unknown as [
+      string,
+      string[],
+      { env: NodeJS.ProcessEnv },
+    ];
+    expect(command).toBe('powershell.exe');
+    expect(args.join(' ')).not.toContain('4242');
+    expect(options.env.VS_PROBE_PID).toBe('4242');
+    expect(WINDOWS_FAULT_SCRIPT).toContain('Id=1000');
+    expect(facts).toEqual({
+      faultingModule: 'torch_cpu.dll',
+      faultingModuleVersion: '2.8.0.0',
+      faultOffset: '0x000000000001e3f4',
+    });
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads once more when the event was not written yet, and never fails', async () => {
+    const outputs = ['', '{"module":"ntdll.dll","version":"10.0.26100.1","offset":"0x10"}'];
+    const run = vi.fn(async () => outputs.shift() ?? '');
+    await expect(
+      collectFaultFacts({ platform: 'win32', pid: 7, run, retryDelayMs: 0 }),
+    ).resolves.toMatchObject({ faultingModule: 'ntdll.dll' });
+    const refused = vi.fn(async () => {
+      throw new Error('spawn UNKNOWN');
+    });
+    await expect(
+      collectFaultFacts({ platform: 'win32', pid: 7, run: refused, retryDelayMs: 0 }),
+    ).resolves.toEqual({});
+    expect(refused).toHaveBeenCalledTimes(2);
+  });
+
+  it('runs only on Windows with a pid', async () => {
+    const run = vi.fn(async () => '{}');
+    for (const input of [
+      { platform: 'linux' as const, pid: 7 },
+      { platform: 'darwin' as const, pid: 7 },
+      { platform: 'win32' as const, pid: undefined },
+    ])
+      await expect(collectFaultFacts({ ...input, run, retryDelayMs: 0 })).resolves.toEqual({});
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('keeps identifiers only', () => {
+    expect(
+      parseWindowsFault('{"module":"C:\\\\Users\\\\me\\\\x.dll","version":"1 2","offset":"bad"}'),
+    ).toEqual({ faultingModule: 'x.dll' });
+    expect(parseWindowsFault('{"module":"two words.dll"}')).toEqual({});
+    expect(parseWindowsFault('not json')).toEqual({});
+  });
+});
+
+describe.runIf(process.platform === 'win32')('Windows fault event script', () => {
+  it('runs cleanly and prints nothing for a pid with no fault event', async () => {
+    const output = await runProbe(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_FAULT_SCRIPT],
+      { env: { ...process.env, VS_PROBE_PID: '999999999' }, timeoutMs: 30_000 },
+    );
+    expect(output.trim()).toBe('');
   }, 40_000);
 });

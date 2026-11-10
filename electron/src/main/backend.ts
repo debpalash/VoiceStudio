@@ -29,7 +29,15 @@ import {
 } from './runtime-project';
 import { detectSetupHardware, type SetupHardware } from './setup-hardware';
 import { collectHostSnapshot, freeGb, type HostSnapshot } from './host-snapshot';
-import { collectTrustFacts, programBasename, runProbe, type TrustFacts } from './install-doctor';
+import {
+  collectFaultFacts,
+  collectTrustFacts,
+  programBasename,
+  runProbe,
+  type FaultFacts,
+  type TrustFacts,
+} from './install-doctor';
+import { isNativeFaultExit } from '../shared/utils/nativeExit';
 import {
   classifyInstallFailure,
   launchRefused,
@@ -40,7 +48,7 @@ import { runtimeSetupSupported } from './distribution';
 import { bundledPython, bundledRuntimeEnv } from './bundled-runtime';
 import { asciiSafePthFiles } from './pth-ascii';
 import { devProbeStamped, writeDevProbeStamp } from './dev-probe-stamp';
-import { CrashJournal } from './crash-journal';
+import { applyWeightLoadFallback, CrashJournal } from './crash-journal';
 import { nativeFaultSummary } from '../shared/utils/crashReport';
 import {
   backendLogEvidence,
@@ -1113,6 +1121,8 @@ export class BackendSupervisor extends EventEmitter<{
   private exitSignal: string | null | undefined;
   private startedAt = Date.now();
   private child: ChildProcess | null = null;
+  /** The last spawned backend's pid: Windows names a crash's faulting module by it. */
+  private childPid: number | undefined;
   private readonly log: string[] = [];
   /** Only the spawned process's own output, for quoting back in failure messages. */
   private readonly childLog: string[] = [];
@@ -2146,7 +2156,7 @@ export class BackendSupervisor extends EventEmitter<{
       /Windows refused to load/.test(causeText) ||
       windowsLoadBlock(this.childErrorLog) !== null;
     const custom = Boolean(parseBackendCmdOverride(process.env.OMNIVOICE_BACKEND_CMD));
-    const build = (trust: TrustFacts = {}): InstallFailure => ({
+    const build = (trust: TrustFacts & FaultFacts = {}): InstallFailure => ({
       code: classifyInstallFailure({
         stage: this.stage,
         message: this.message,
@@ -2184,6 +2194,16 @@ export class BackendSupervisor extends EventEmitter<{
       ...trust,
     });
     this.failure = build();
+    if (!refused && this.stage === 'crashed' && this.managed) {
+      // A native fault's Python dump names a frame, not the library that crashed.
+      if (!isNativeFaultExit({ exitCode: this.exitCode, signal: this.exitSignal })) return;
+      void collectFaultFacts({ pid: this.childPid }).then((fault) => {
+        if (diagnosis !== this.failureDiagnosis || !fault.faultingModule) return;
+        this.failure = build(fault);
+        this.emitStatus();
+      });
+      return;
+    }
     if (!refused) return;
     void collectTrustFacts({
       program,
@@ -2331,6 +2351,11 @@ export class BackendSupervisor extends EventEmitter<{
     console.log(`[backend] spawning in ${plan.cwd}: ${plan.argv.join(' ')}`);
     let child: ChildProcess;
     const processOptions = managedBackendSpawnOptions(this.port, this.runtimeRegion);
+    const fallback = applyWeightLoadFallback(processOptions.env, this.crashes.all());
+    if (fallback) {
+      console.log(`[backend] ${fallback}`);
+      this.pushLog('out', fallback);
+    }
     // Per launch: a failed spawn must not leave an older launch's log in place.
     this.launchLog = null;
     try {
@@ -2352,6 +2377,7 @@ export class BackendSupervisor extends EventEmitter<{
       return;
     }
     this.child = child;
+    this.childPid = child.pid;
     this.launchLog = { env: processOptions.env, cwd: plan.cwd, startedAt: Date.now() };
     if (processOptions.drainFd !== null) {
       // Python passes this child-side descriptor to every nested operation.
