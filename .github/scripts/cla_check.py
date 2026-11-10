@@ -22,6 +22,12 @@ request by hand, for example one that folds in commits from agent identities.
 The `cla-signed` label follows the result so people can filter on it: present
 only while signatures clear a pull request, when the check's comment also links
 the agreement and each signature. Neither affects the gate.
+
+While the person who opened a pull request has not signed, the check also holds
+it (see `gate_decision`): it converts the pull request to a draft, which the
+review bots skip, and says so in its comment. CI skips its heavy jobs for the
+same reason (.github/scripts/ci_scope.py). Once they sign, the check marks the
+pull request ready for review if it drafted it and re-runs the CI it skipped.
 """
 from __future__ import annotations
 
@@ -78,6 +84,25 @@ PR_REF = re.compile(r"#(\d+)")
 NOREPLY = re.compile(r"^(?:(\d+)\+)?([A-Za-z0-9-]+)@users\.noreply\.github\.com$", re.I)
 RECORDED_LOGIN = re.compile(r"@([A-Za-z0-9-]+)")
 CO_AUTHOR = re.compile(r"^co-authored-by:\s*(.*?)\s*<([^>]*)>\s*$", re.I | re.M)
+# The CLA hold on an unsigned opener's pull request, recorded in the check's comment:
+# drafted (this check made, or is making, it a draft), waiting (it was already a
+# draft, so it stays one), restarting (the opener signed; restarting skipped CI
+# failed and is retried), lifted (done). Everything from the marker on is the
+# hold's section. Each run re-derives the next step from the signatures, the
+# pull request's draft flag and this marker, and records an intent before acting
+# on it, so a failed write is retried by the next run.
+GATE_PREFIX = "<!-- voicestudio-cla-gate:"
+GATE_STATE = re.compile(r"<!-- voicestudio-cla-gate:(drafted|waiting|restarting|lifted) -->")
+HELD = {"drafted", "waiting"}
+OWES_RESTART = HELD | {"restarting"}
+AGENT_GUIDE_PATH = ".github/AGENT_PR_GUIDE.md"
+# Pull-request workflows whose heavy jobs ci_scope.py skips for an unsigned opener.
+GATED_WORKFLOWS = {"ci.yml", "mobile.yml", "security.yml", "install-smoke.yml",
+                   "cosyvoice-dependencies.yml", "nix.yml"}
+DRAFT_MUTATION = ("mutation($id: ID!) { convertPullRequestToDraft(input: {pullRequestId: $id}) "
+                  "{ pullRequest { isDraft } } }")
+READY_MUTATION = ("mutation($id: ID!) { markPullRequestReadyForReview(input: {pullRequestId: $id}) "
+                  "{ pullRequest { isDraft } } }")
 
 
 # ── Pure logic (unit-tested) ────────────────────────────────────────────
@@ -210,6 +235,58 @@ def evaluate(opener: Person, opener_is_bot: bool, actors: list[dict], signed_ids
         if identity not in result.unknown:
             result.unknown.append(identity)
     return result
+
+
+def gate_decision(held: bool, is_draft: bool, previous: str | None,
+                  newly_signed: bool = False) -> tuple[str | None, list[str]]:
+    """The hold's target state and the steps to reach it, in order.
+
+    `held` is True while the opener has not signed. A pull request its author
+    made a draft stays a draft after signing; one this check drafted is marked
+    ready. Skipped CI is restarted until a restart succeeds, and also when the
+    opener signed in this very run (CI may have skipped before a hold was
+    recorded). Pull requests that were never held are never touched.
+    """
+    if held:
+        if is_draft:
+            return ("drafted" if previous == "drafted" else "waiting"), []
+        return "drafted", ["draft"]  # also when the opener clicked "Ready for review"
+    steps = ["ready"] if previous == "drafted" and is_draft else []
+    if previous in OWES_RESTART or newly_signed:
+        steps.append("restart")
+    return ("lifted" if previous else None), steps
+
+
+def gate_state(comment: dict | None) -> str | None:
+    match = GATE_STATE.search((comment or {}).get("body") or "")
+    return match.group(1) if match else None
+
+
+def agent_prompt(guide_url: str) -> str:
+    return (f"Before changing anything, read {guide_url} and follow every step in it. "
+            "Finish every step before you ask for review.")
+
+
+def with_gate(body: str, state: str | None, guide_url: str) -> str:
+    """Replace the hold's section of the check's comment; no state leaves the body unchanged."""
+    body = body.split(GATE_PREFIX, 1)[0].rstrip()
+    if state is None:
+        return body
+    lines = [body, "", f"{GATE_PREFIX}{state} -->"]
+    if state == "lifted":
+        return "\n".join(lines + ["The opener has signed: CI and automated reviews are no longer on hold."])
+    if state == "restarting":
+        retry = ("The opener has signed, but CI could not be restarted automatically yet. "
+                 "Comment `recheck` to try again.")
+        return "\n".join(lines + [retry])
+    held = ("**CI and automated reviews wait for your signature.** Signing takes a minute; once you sign, "
+            "CI starts automatically.")
+    if state == "drafted":
+        held = held[:-1] + " and this pull request is marked ready for review. Until then it stays a draft."
+    else:
+        held += " You made this pull request a draft, so it stays one until you mark it ready."
+    return "\n".join(lines + [held, "", "<details><summary>Using an AI coding agent? Give it this</summary>",
+                               "", "```text", agent_prompt(guide_url), "```", "", "</details>"])
 
 
 def co_authors(message: str) -> list[dict]:
@@ -433,14 +510,31 @@ def save_signatures(gh: GitHub, new: list[dict], number: int) -> None:  # number
     raise RuntimeError("Could not save signatures after retries")
 
 
-def upsert_comment(gh: GitHub, number: int, body: str, create: bool) -> None:
+def find_comment(gh: GitHub, number: int) -> dict | None:
     for comment in gh.paginate(f"/repos/{gh.repo}/issues/{number}/comments"):
         if COMMENT_MARKER in (comment.get("body") or "") and (comment.get("user") or {}).get("type") == "Bot":
-            if comment["body"] != body:
-                gh.request("PATCH", f"/repos/{gh.repo}/issues/comments/{comment['id']}", {"body": body})
-            return
-    if create:
-        gh.request("POST", f"/repos/{gh.repo}/issues/{number}/comments", {"body": body})
+            return comment
+    return None
+
+
+_LOOKUP = object()
+
+
+def upsert_comment(gh: GitHub, number: int, body: str, create: bool, existing=_LOOKUP) -> bool:
+    """Write the check's comment. Returns False only when GitHub rejected the write."""
+    comment = find_comment(gh, number) if existing is _LOOKUP else existing
+    if comment:
+        if comment["body"] == body:
+            return True
+        status, _, _ = gh.request("PATCH", f"/repos/{gh.repo}/issues/comments/{comment['id']}", {"body": body})
+    elif create:
+        status, _, _ = gh.request("POST", f"/repos/{gh.repo}/issues/{number}/comments", {"body": body})
+    else:
+        return True
+    if status >= 300:
+        print(f"CLA: could not write the comment ({status})")
+        return False
+    return True
 
 
 def scan_comments(gh: GitHub, number: int, repo_id, where: dict,
@@ -476,11 +570,13 @@ def scan_comments(gh: GitHub, number: int, repo_id, where: dict,
     return new, recorded
 
 
-def sign_on_issue(gh: GitHub, event: dict) -> int:
+def sign_on_issue(gh: GitHub, event: dict, signer_ids: set[int] | None = None) -> int:
     """Record every valid signature on a maintainer-labelled signing issue.
 
     Rescans all comments, so signatures posted while another run was queued are
-    not lost. Returns the number of new signatures.
+    not lost. Returns the number of new signatures and adds the account IDs of
+    everyone who signed on this issue, now or before, to `signer_ids`: a re-run
+    after a failed recheck must still release their pull requests.
     """
     issue = event.get("issue") or {}
     if SIGNING_LABEL not in {label.get("name") for label in issue.get("labels") or []}:
@@ -489,7 +585,28 @@ def sign_on_issue(gh: GitHub, event: dict) -> int:
                                   {"issue": issue["number"]})
     for comment_id in recorded:
         gh.request("POST", f"/repos/{gh.repo}/issues/comments/{comment_id}/reactions", {"content": "+1"})
+    if signer_ids is not None:
+        signer_ids.update(int(s["id"]) for s in new)
+        signer_ids.update(int(s["id"]) for s in load_store(gh)[0]["signatures"] if s.get("issue") == issue["number"])
     return len(new)
+
+
+def recheck_open_prs_of(gh: GitHub, signer_ids: set[int], server_url: str) -> list[int]:
+    """Check the open pull requests of people who signed on an issue that the check has
+    not cleared yet, so signing on the signing issue lifts their hold too. Returns the
+    numbers checked."""
+    if not signer_ids:
+        return []
+    checked = []
+    for pr in gh.paginate(f"/repos/{gh.repo}/pulls?state=open"):
+        labels = {label.get("name") for label in pr.get("labels") or []}
+        if int((pr.get("user") or {}).get("id") or 0) in signer_ids and not labels & {SIGNED_LABEL, OVERRIDE_LABEL}:
+            try:
+                run(gh, "pull_request_target", {"pull_request": {"number": pr["number"], "head": pr["head"]}}, server_url)
+                checked.append(pr["number"])
+            except (RuntimeError, OSError) as err:
+                print(f"CLA: could not recheck #{pr['number']}: {err}; comment recheck there")
+    return checked
 
 
 def set_status(gh: GitHub, sha: str, state: str, description: str, doc_url: str | None = None,
@@ -562,6 +679,77 @@ def sync_signed_label(gh: GitHub, pr: dict, earned: bool) -> None:
         print(f"CLA: could not update {SIGNED_LABEL} ({status})")
 
 
+def apply_gate(gh: GitHub, pr: dict, held: bool, previous: str | None, write_comment,
+               newly_signed: bool = False) -> str | None:
+    """Move the hold as `gate_decision` says and write the comment. Returns the state recorded.
+
+    `write_comment(state)` writes the comment for a state and returns whether
+    GitHub accepted it. Every write that can fail is ordered so the next run
+    retries it: a hold records `drafted` before converting the pull request (a
+    lost marker would make the draft look like the author's own), and a release
+    marks it ready and restarts CI before recording the result. The `CLA`
+    status stays the merge gate, so a failed step only warns.
+    """
+    state, steps = gate_decision(held, bool(pr.get("draft")), previous, newly_signed)
+    if held:
+        if write_comment(state) and steps:
+            _mutate(gh, pr, DRAFT_MUTATION, "convert to draft")  # on failure `drafted` makes the next run retry
+        return state
+    if "ready" in steps and not _mutate(gh, pr, READY_MUTATION, "mark ready"):
+        write_comment(previous)
+        return previous  # still `drafted`: the next run marks it ready, then restarts CI
+    if "restart" in steps and not rerun_skipped_ci(gh, pr["head"]["sha"])[1]:
+        state = "restarting"
+    write_comment(state)
+    return state
+
+
+def _mutate(gh: GitHub, pr: dict, mutation: str, what: str) -> bool:
+    try:
+        gh.graphql(mutation, {"id": pr["node_id"]})
+    except (RuntimeError, OSError, KeyError) as err:
+        print(f"CLA: could not {what}: {err}")
+        return False
+    return True
+
+
+def rerun_skipped_ci(gh: GitHub, sha: str) -> tuple[list[int], bool]:
+    """Re-run the newest finished pull-request run of each gated workflow at `sha`.
+
+    Only successful runs: a run waiting for approval (action_required) runs in
+    full once approved, and a failed one needs a push, so neither is re-run here.
+    A re-run keeps its original event, so a fork's run still gets only a
+    read-only token. Returns the run IDs re-run, and False when a restart is
+    still owed (listing or re-run rejected, or a skipped run not finished yet).
+    """
+    status, payload, _ = gh.request("GET", f"/repos/{gh.repo}/actions/runs?head_sha={sha}&event=pull_request&per_page=100")
+    if status != 200 or not isinstance(payload, dict):
+        print(f"CLA: could not list CI runs to restart ({status})")
+        return [], False
+    newest: dict[str, dict] = {}
+    for item in payload.get("workflow_runs") or []:
+        name = (item.get("path") or "").split("@", 1)[0].rsplit("/", 1)[-1]
+        if name in GATED_WORKFLOWS and item.get("head_sha") == sha and item["id"] > newest.get(name, {}).get("id", 0):
+            newest[name] = item
+    restarted, done = [], True
+    for item in newest.values():
+        if int(item.get("run_attempt") or 1) > 1:
+            continue  # already re-run (by an earlier check or a maintainer)
+        if item.get("status") != "completed":
+            print(f"CLA: CI run {item['id']} has not finished; restart it later")
+            done = False
+            continue
+        if item.get("conclusion") != "success":
+            continue
+        status, _, _ = gh.request("POST", f"/repos/{gh.repo}/actions/runs/{item['id']}/rerun")
+        if status == 201:
+            restarted.append(item["id"])
+        else:
+            print(f"CLA: could not restart CI run {item['id']} ({status})")
+            done = False
+    return restarted, done
+
+
 def open_prs_at_head(gh: GitHub, sha: str) -> list[dict]:
     """A commit status is shared by every PR at a SHA; require a unique owner."""
     pulls = gh.paginate(f"/repos/{gh.repo}/pulls?state=open", limit=MAX_OPEN_PRS)
@@ -624,15 +812,24 @@ def run(gh: GitHub, event_name: str, event: dict, server_url: str = "https://git
     opener = Person(pr["user"]["login"], int(pr["user"]["id"]))
     opener_is_bot = pr["user"].get("type") == "Bot" and opener.id in BOT_IDS
     doc_url = f"{server_url}/{gh.repo}/blob/{pr['base']['repo']['default_branch']}/{DOCUMENT_PATH}"
+    guide_url = f"{server_url}/{gh.repo}/blob/{pr['base']['repo']['default_branch']}/{AGENT_GUIDE_PATH}"
+    # Only a person is held; bots keep today's behaviour whatever the result.
+    holdable = pr["user"].get("type") == "User"
+    existing = find_comment(gh, number)
+    previous = gate_state(existing)
     blockers = head_blockers(gh, pr)
     if blockers:
         evaluation = Evaluation(blockers=blockers)
-        upsert_comment(gh, number, render_comment(evaluation, doc_url), create=True)
+        upsert_comment(gh, number, with_gate(render_comment(evaluation, doc_url), previous, guide_url),
+                       create=True, existing=existing)
         set_status(gh, pr["head"]["sha"], "failure", "Close duplicate pull requests sharing this head", doc_url)
         sync_signed_label(gh, pr, False)
         return evaluation
     if OVERRIDE_LABEL in {label.get("name") for label in pr.get("labels") or []}:
         confirm_current_pr(gh, pr)
+        apply_gate(gh, pr, False, previous, lambda state: upsert_comment(
+            gh, number, with_gate(existing["body"], state, guide_url), create=False, existing=existing)
+            if existing else True)
         set_status(gh, pr["head"]["sha"], "success", "CLA reviewed by a maintainer", doc_url)
         sync_signed_label(gh, pr, False)  # a maintainer's review is not a signature
         return Evaluation()
@@ -662,19 +859,27 @@ def run(gh: GitHub, event_name: str, event: dict, server_url: str = "https://git
     # Record signatures from any comment by someone who still has to sign.
     new, _ = scan_comments(gh, number, pr["base"]["repo"]["id"], {"pull_request": number},
                            signers={p.id for p in evaluation.unsigned})
-    if new:
-        evaluation = evaluate(opener, opener_is_bot, actors, signed_ids | {s["id"] for s in new})
+    new_ids = {int(s["id"]) for s in new}
 
+    confirm_current_pr(gh, pr)
+    blockers = head_blockers(gh, pr)
+    if evaluation.unsigned:
+        # Another run (the signing issue's recheck queues separately) may have recorded
+        # signatures meanwhile: re-read just before writing, so a stale run never
+        # writes a failure or a hold over a signed result.
+        store = {"signatures": [*load_store(gh)[0]["signatures"], *store["signatures"]]}
+        signed_ids |= {int(s["id"]) for s in store["signatures"]}
+    evaluation = evaluate(opener, opener_is_bot, actors, signed_ids | new_ids)
     for ref in overflow:
         evaluation.unknown.append(f"#{ref} has more than {MAX_COMMITS} commits; a maintainer can review them "
                                   f"and apply `{OVERRIDE_LABEL}`")
-    confirm_current_pr(gh, pr)
-    evaluation.blockers.extend(head_blockers(gh, pr))
+    evaluation.blockers.extend(blockers)
     description = ("All contributors have signed the CLA" if evaluation.passed
                    else f"{len(evaluation.unsigned) + len(evaluation.unknown)} contributor(s) still need to sign")
     if evaluation.blockers:
         description = "Close duplicate pull requests sharing this head"
     cleared = evaluation.passed and bool(evaluation.signed)
+    held = holdable and any(p.id == opener.id for p in evaluation.unsigned)
     if cleared:
         records = {int(s["id"]): s for s in [*store["signatures"], *new]}
         signatures = {p.login: signature_permalink(gh, server_url, records.get(p.id)) for p in evaluation.signed}
@@ -682,10 +887,27 @@ def run(gh: GitHub, event_name: str, event: dict, server_url: str = "https://git
     else:
         body = render_comment(evaluation, doc_url)
     # Exempt-only pull requests pass with no signature to report.
-    upsert_comment(gh, number, body, create=cleared or not evaluation.passed)
+    apply_gate(gh, pr, held, previous, lambda state: upsert_comment(
+        gh, number, with_gate(body, state, guide_url), create=cleared or not evaluation.passed, existing=existing),
+        newly_signed=holdable and opener.id in new_ids)
     set_status(gh, pr["head"]["sha"], "success" if evaluation.passed else "failure", description, doc_url)
     sync_signed_label(gh, pr, cleared)
     return evaluation
+
+
+def needs_hold_check(gh: GitHub, event: dict) -> bool:
+    """On "Ready for review", only an unsigned human opener needs the full check (which
+    drafts the pull request again). Exempt and bot openers cost no API call, a signed
+    one costs the one signature read; neither rewrites the head's `CLA` status."""
+    user = (event.get("pull_request") or {}).get("user") or {}
+    if user.get("type") != "User" or not isinstance(user.get("id"), int) or exempt(Person(user.get("login", ""), user["id"])):
+        return False
+    try:
+        signed = {int(s["id"]) for s in load_store(gh)[0]["signatures"]}
+    except (RuntimeError, OSError, KeyError, TypeError, ValueError) as err:
+        print(f"CLA: could not read signatures: {err}")
+        return True  # let the full check decide (and fail visibly) rather than skip the hold
+    return user["id"] not in signed
 
 
 def main() -> int:
@@ -696,8 +918,15 @@ def main() -> int:
                 os.environ.get("GITHUB_API_URL", "https://api.github.com"))
     if event_name == "issue_comment":
         if not (event.get("issue") or {}).get("pull_request"):
-            print("CLA: recorded", sign_on_issue(gh, event), "signature(s) from the issue")
+            signers: set[int] = set()
+            print("CLA: recorded", sign_on_issue(gh, event, signers), "signature(s) from the issue")
+            checked = recheck_open_prs_of(gh, signers, os.environ.get("GITHUB_SERVER_URL", "https://github.com"))
+            if checked:
+                print("CLA: rechecked", ", ".join(f"#{n}" for n in checked))
             return 0
+    if event.get("action") == "ready_for_review" and not needs_hold_check(gh, event):
+        print("CLA: ready for review; nothing to hold")
+        return 0
     evaluation = run(gh, event_name, event, os.environ.get("GITHUB_SERVER_URL", "https://github.com"))
     print("CLA:", "passed" if evaluation.passed else f"waiting on {evaluation.unsigned} {evaluation.unknown}")
     return 0

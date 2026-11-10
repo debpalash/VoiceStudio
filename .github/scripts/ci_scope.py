@@ -1,11 +1,23 @@
-"""Skip runtime CI for documentation/test-only changes, conservatively."""
+"""Skip runtime CI for documentation/test-only changes, conservatively.
+
+Also holds runtime CI on a pull request whose opener has not signed the CLA
+(`cla_held`): the required check reports the skip explicitly, and the CLA check
+(.github/scripts/cla_check.py) re-runs the skipped run once they sign. This saves
+runners; it is not a security boundary, and the CLA status still gates merging.
+`--cla` prints only that decision, for workflows with their own path rules.
+"""
 from __future__ import annotations
 
+import base64
 import json
 import os
 from pathlib import PurePosixPath, Path
 import re
 import subprocess
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from cla_check import BOT_IDS, MAINTAINER_IDS, OVERRIDE_LABEL, SIGNATURE_BRANCH, SIGNATURE_PATH, SIGNED_LABEL
 
 
 def non_runtime(path: str) -> bool:
@@ -66,16 +78,73 @@ def detect(event_name: str, event: dict, repo: str) -> bool:
     return runtime_needed(payload, limit)
 
 
+def _exempt(user: dict) -> bool:
+    """Bots and exempt accounts are never held, exactly as before the hold existed."""
+    user_id = user.get("id")
+    return user.get("type") != "User" or not isinstance(user_id, int) or user_id in MAINTAINER_IDS | BOT_IDS
+
+
+def cla_held(pr: dict, signed_ids: set[int] | None) -> bool:
+    """True while a person who must sign opened `pr` and has not signed.
+
+    A maintainer's `cla-override`, or the check's `cla-signed` label, releases it;
+    unknown signatures (None) never hold anything.
+    """
+    user = pr.get("user") or {}
+    if signed_ids is None or _exempt(user):
+        return False
+    if {SIGNED_LABEL, OVERRIDE_LABEL} & {label.get("name") for label in pr.get("labels") or []}:
+        return False
+    return int(user["id"]) not in signed_ids
+
+
+def _gh_json(endpoint: str):
+    result = subprocess.run(["gh", "api", endpoint], check=True, capture_output=True, text=True)
+    return json.loads(result.stdout)
+
+
+def cla_hold(event_name: str, event: dict, repo: str) -> bool:
+    if event_name != "pull_request" or _exempt((event.get("pull_request") or {}).get("user") or {}):
+        return False  # no API call for the owner, bots, pushes or the merge queue
+    # Read labels live: the CLA check's re-run replays this event with its old labels.
+    pr = _gh_json(f"repos/{repo}/pulls/{int(event['number'])}")
+    store = _gh_json(f"repos/{repo}/contents/{SIGNATURE_PATH}?ref={SIGNATURE_BRANCH}")
+    signatures = json.loads(base64.b64decode(store["content"]))["signatures"]
+    return cla_held(pr, {int(s["id"]) for s in signatures})
+
+
+def held_or_clear(event_name: str, event: dict | None, repo: str) -> bool:
+    """Any doubt (API failure, missing store) means "clear": CI runs."""
+    if event is None:
+        return False
+    try:
+        held = cla_hold(event_name, event, repo)
+    except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+        print("CLA state unavailable; running runtime CI.")
+        return False
+    if held:
+        print("The opener has not signed the CLA yet: heavy CI is skipped. "
+              "Signing re-runs it automatically (see the CLA check's comment).")
+    return held
+
+
 def main() -> None:
-    needed = True
+    needed, event = True, None
+    name, repo = os.environ.get("GITHUB_EVENT_NAME", ""), os.environ.get("GITHUB_REPOSITORY", "")
     try:
         event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
-        needed = detect(os.environ["GITHUB_EVENT_NAME"], event, os.environ["GITHUB_REPOSITORY"])
+        if "--cla" not in sys.argv:
+            needed = detect(name, event, repo)
     except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
         print("Change detection unavailable; running runtime CI.")
-    value = str(needed).lower()
+    held = needed and held_or_clear(name, event, repo)
+    cla = "held" if held else "clear"
     with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-        output.write(f"runtime={value}\n")
+        if "--cla" in sys.argv:
+            output.write(f"cla={cla}\n")
+            return
+        value = str(needed and not held).lower()
+        output.write(f"runtime={value}\ncla={cla}\n")
     print(f"Runtime CI needed: {value}")
 
 
