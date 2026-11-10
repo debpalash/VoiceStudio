@@ -135,6 +135,8 @@ def test_engine_help_names_the_app_not_the_upstream_model() -> None:
         "backend/engines/dots_tts/__init__.py",
         "backend/engines/dots_tts/bootstrap.py",
         "backend/engines/indextts/__init__.py",
+        "backend/engines/ming_tts/__init__.py",
+        "backend/engines/ming_tts/bootstrap.py",
         "backend/engines/indextts/bootstrap.py",
         "backend/engines/moss_tts_v15/__init__.py",
         "backend/engines/moss_tts_v15/bootstrap.py",

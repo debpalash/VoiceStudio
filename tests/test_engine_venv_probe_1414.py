@@ -173,7 +173,7 @@ def test_proven_failures_alone_still_raise(indextts_bootstrap, monkeypatch):
 
 # ── the whole class, not one engine ────────────────────────────────────────
 
-ENGINES = ("indextts", "confucius4", "dots_tts", "moss_tts_v15")
+ENGINES = ("indextts", "confucius4", "dots_tts", "moss_tts_v15", "ming_tts")
 
 
 @pytest.mark.parametrize("engine", ENGINES)
