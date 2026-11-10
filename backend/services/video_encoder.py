@@ -142,14 +142,19 @@ async def run_with_encoder_fallback(
     cmd: list[str],
     enc_args: tuple[str, ...],
     runner: Callable[[list[str]], Awaitable[tuple[int, bytes, bytes]]],
+    aborted: Callable[[], bool] | None = None,
 ) -> tuple[int, bytes, bytes]:
     """Run ``cmd`` (which contains ``enc_args``); if a hardware encode fails,
     retry once with libx264 and log the reason.
 
-    A negative return code (the user aborted) is returned as-is, not retried.
+    A negative return code is returned as-is (not retried) when the user
+    aborted; with ``aborted`` given, a signal death without an abort (a
+    crashing GPU driver) is retried. Without it, every negative code is
+    treated as an abort.
     """
     rc, out, err = await runner(cmd)
-    if rc == 0 or rc < 0 or len(enc_args) < 2 or enc_args[1] not in _HW_ARGS:
+    cancelled = rc < 0 and (aborted is None or aborted())
+    if rc == 0 or cancelled or len(enc_args) < 2 or enc_args[1] not in _HW_ARGS:
         return rc, out, err
     tail = (err or b"").decode(errors="replace")[-300:]
     logger.warning(

@@ -1111,6 +1111,7 @@ async def dub_download(
         rc, _, stderr = await video_encoder.run_with_encoder_fallback(
             cmd, enc_args,
             lambda c: run_ffmpeg(c, timeout=1800.0, job_id=job_id),
+            aborted=lambda: bool(job.get("aborted")),
         )
         if rc != 0:
             raise Exception(stderr.decode(errors="replace") if stderr else "ffmpeg mux non-zero")

@@ -92,6 +92,16 @@ def test_no_retry_for_software_failure_or_abort():
     assert len(seen) == 1  # aborted, not retried
 
 
+def test_signal_death_retries_unless_user_aborted():
+    hw = ve.encoder_args("h264_amf")
+    run, seen = _runner([(-11, b"", b"driver crash"), (0, b"", b"")])
+    rc = asyncio.run(ve.run_with_encoder_fallback(["f", *hw], hw, run, aborted=lambda: False))[0]
+    assert rc == 0 and len(seen) == 2  # not cancelled: fell back to libx264
+    run, seen = _runner([(-9, b"", b"")])
+    rc = asyncio.run(ve.run_with_encoder_fallback(["f", *hw], hw, run, aborted=lambda: True))[0]
+    assert rc == -9 and len(seen) == 1
+
+
 @pytest.mark.parametrize("w,h,limit,expected", [
     (3840, 2160, "1080p", (1920, 1080)),
     (1920, 1080, "1080p", (1920, 1080)),      # already inside: untouched
@@ -158,3 +168,23 @@ def test_settings_roundtrip(monkeypatch):
     assert r["encoder"] == "hardware" and r["max_resolution"] == "720p"
     with pytest.raises(ValidationError):
         sr._VideoExportBody(encoder="gpu")
+
+
+def test_retime_resolves_encoder_off_the_event_loop(monkeypatch, tmp_path):
+    import threading
+
+    from services import video_retime as vr
+
+    seen = []
+
+    def fake(ffmpeg):
+        seen.append(threading.current_thread() is threading.main_thread())
+        return vr.VIDEO_ENC_ARGS
+
+    monkeypatch.setattr(vr, "_slice_encoder_args", fake)
+    with pytest.raises(vr.RetimeError):
+        asyncio.run(vr.render_retimed_video(
+            job_id=None, ffmpeg="ffmpeg", video_path="x.mp4", chunks=[],
+            out_path=str(tmp_path / "o.mp4"),
+        ))
+    assert seen == [False]

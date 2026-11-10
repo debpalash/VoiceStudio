@@ -274,7 +274,8 @@ async def render_retimed_video(
     # One encoder for every slice (the concat join is ``-c copy``). Hardware
     # is opt-in (#3732); if it fails on the first slice we drop to libx264
     # for the whole render, and a later-slice failure is a normal failure.
-    enc_args = _slice_encoder_args(ffmpeg)
+    # The first lookup runs an ffmpeg subprocess: keep it off the event loop.
+    enc_args = await asyncio.to_thread(_slice_encoder_args, ffmpeg)
     # ``out_path`` is server-built (under DUB_DIR) by every caller, but
     # realpath-normalise + containment-check inline at the sink anyway so
     # slices_dir / slice_path / list_path all derive from the validated
