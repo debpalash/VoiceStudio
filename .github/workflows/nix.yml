@@ -56,13 +56,28 @@ jobs:
         with:
           persist-credentials: false
 
+      # Same hold as the other pull-request workflows: wait while the opener has
+      # not signed the CLA. The CLA check re-runs this run once they sign.
+      - name: Hold while the CLA is unsigned
+        id: cla
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/ci_scope.py --cla
+
       - name: Skip merge-queue entries without flake changes
         id: scope
         env:
           EVENT: ${{ github.event_name }}
+          CLA_HOLD: ${{ steps.cla.outputs.cla }}
           BASE_SHA: ${{ github.event.merge_group.base_sha }}
           HEAD_SHA: ${{ github.event.merge_group.head_sha }}
         run: |
+          if [ "$CLA_HOLD" = held ]; then
+            echo "CLA not signed yet: skipping. Signing re-runs this check."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [ "$EVENT" != merge_group ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             exit 0
