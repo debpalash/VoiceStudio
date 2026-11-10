@@ -9,13 +9,53 @@ synthesis, which field reports flagged. `apply_effects_chain()` lets callers
 build custom pipelines from a list of named effects.
 
 Filters, compression, gate and reverb use Spotify's `pedalboard` library; when
-it isn't installed those stages are skipped (audio returned unmodified). The
-leveler and the peak limiter are pure numpy (#3412), so they always run.
+it isn't installed, or cannot load on this CPU, those stages are skipped (audio
+returned unmodified). The leveler and the peak limiter are pure numpy (#3412), so
+they always run.
 """
 import logging
+import subprocess
+import sys
+import threading
 import torch
 
 logger = logging.getLogger("omnivoice.dsp")
+
+_PEDALBOARD_PROBE_TIMEOUT_S = 60
+_pedalboard_verdict: bool | None = None
+_pedalboard_lock = threading.Lock()
+
+
+def _pedalboard_loadable() -> bool:
+    """Whether ``import pedalboard`` is safe in this process (#3848).
+
+    Its prebuilt wheels can die with an illegal instruction on CPUs without
+    AVX2, which kills the whole backend rather than raising ImportError. So the
+    import is tried once in a short-lived child process and the verdict is
+    cached. Only a child that exited non-zero counts against pedalboard; a
+    timeout or a child that could not start says nothing about it, so the
+    in-process import (and its ImportError handling) goes ahead as before.
+    """
+    global _pedalboard_verdict
+    with _pedalboard_lock:
+        if _pedalboard_verdict is None:
+            try:
+                result = subprocess.run(
+                    [sys.executable, "-c", "import pedalboard"],
+                    capture_output=True,
+                    timeout=_PEDALBOARD_PROBE_TIMEOUT_S,
+                    check=False,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+                _pedalboard_verdict = result.returncode == 0
+                if not _pedalboard_verdict:
+                    logger.warning(
+                        "pedalboard cannot load here (exit code %s) — effects chain skipped",
+                        result.returncode,
+                    )
+            except (OSError, subprocess.SubprocessError):
+                _pedalboard_verdict = True
+        return _pedalboard_verdict
 
 # ── Effect presets ──────────────────────────────────────────────────────
 
@@ -435,6 +475,8 @@ def apply_effects_chain(audio_tensor, sample_rate: int, chain: list[dict]) -> to
                 logger.warning("%s failed: %s — skipped", t, e)
         return apply_effects_chain(audio_tensor, sample_rate, pending)
 
+    if not _pedalboard_loadable():
+        return audio_tensor
     try:
         from pedalboard import (
             Pedalboard,
