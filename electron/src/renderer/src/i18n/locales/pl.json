@@ -342,6 +342,7 @@
     "scope_language": "Język",
     "scope_voice": "Ten głos",
     "voice_pick": "Wybierz głos",
+    "voices_error": "Nie udało się wczytać Twoich głosów.",
     "voice_note": "Własne wpisy głosu mają pierwszeństwo przed słownikiem języka, gdy ten głos mówi."
   },
   "preferences": {

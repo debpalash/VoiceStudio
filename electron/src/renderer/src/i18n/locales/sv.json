@@ -332,6 +332,7 @@
     "scope_language": "Språk",
     "scope_voice": "Den här rösten",
     "voice_pick": "Välj en röst",
+    "voices_error": "Det gick inte att läsa in dina röster.",
     "voice_note": "En rösts egna poster går före språkordlistan när den rösten talar."
   },
   "preferences": {

@@ -334,6 +334,7 @@
     "scope_language": "Idioma",
     "scope_voice": "Esta voz",
     "voice_pick": "Elige una voz",
+    "voices_error": "No se pudieron cargar tus voces.",
     "voice_note": "Las entradas propias de una voz tienen prioridad sobre el diccionario del idioma cuando esa voz habla."
   },
   "preferences": {

@@ -332,6 +332,7 @@
     "scope_language": "Dil",
     "scope_voice": "Bu ses",
     "voice_pick": "Ses seç",
+    "voices_error": "Sesleriniz yüklenemedi.",
     "voice_note": "Bir sesin kendi girdileri, o ses konuştuğunda dil sözlüğünün önüne geçer."
   },
   "preferences": {

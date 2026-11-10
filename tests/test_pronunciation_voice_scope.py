@@ -172,3 +172,13 @@ def test_reconcile_adds_column_where_alembic_cannot_run(tmp_path):
     """)
     core_db._reconcile_additive_columns(conn)
     assert conn.execute("SELECT profile_id FROM pronunciation_entries").fetchone() == ("",)
+
+
+def test_voice_overlay_keeps_distinct_unicode_spellings():
+    rows = [_row("STRASSE", "shtrah-seh"), _row("Straße", "shtrah-seh-ess", profile_id="A")]
+    assert set(entries_for_language(rows, None, "A")) == {"STRASSE", "Straße"}
+
+
+def test_voice_case_variant_still_replaces_language_entry():
+    rows = [_row("GIF", "jif"), _row("gif", "gif-v", profile_id="A")]
+    assert entries_for_language(rows, None, "A") == {"gif": "gif-v"}

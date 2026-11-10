@@ -41,6 +41,12 @@ interface ImportPayload {
   entries: Omit<PronunciationEntry, 'id' | 'scope'>[];
 }
 
+// An import belongs to the dictionary it was started for (#3873 review).
+interface PendingImport extends ImportPayload {
+  profileId: string;
+  count: number;
+}
+
 const TYPES: PronunciationType[] = ['respelling', 'ipa', 'cmu'];
 
 export function PronunciationSettings() {
@@ -66,14 +72,19 @@ export function PronunciationSettings() {
   const voices = useQuery({ queryKey: ['profiles'], queryFn: listProfiles });
   const voiceScopeNeedsVoice = scopeKind === 'voice' && !voiceId;
   const [previewRevision, setPreviewRevision] = useState(0);
-  const [pendingImport, setPendingImport] = useState<ImportPayload | null>(null);
+  const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
+  const profileIdRef = useRef('');
   const entries = useQuery({
     queryKey: ['pronunciation', profileId],
     queryFn: ({ signal }) =>
       apiJson<PronunciationEntry[]>('/pronunciation' + profileQuery, { signal }),
     enabled: !voiceScopeNeedsVoice,
   });
+  profileIdRef.current = profileId;
   const rows = voiceScopeNeedsVoice ? [] : (entries.data ?? []);
+
+  // Switching dictionary drops a pending replace prompt rather than retargeting it.
+  useEffect(() => setPendingImport(null), [profileId]);
 
   useEffect(() => {
     if (!testText.trim()) {
@@ -128,6 +139,7 @@ export function PronunciationSettings() {
   };
   const add = () =>
     act(async () => {
+      if (voiceScopeNeedsVoice) return;
       await apiJson('/pronunciation', {
         method: 'POST',
         body: JSON.stringify({
@@ -158,14 +170,15 @@ export function PronunciationSettings() {
       await apiFetch('/pronunciation/' + encodeURIComponent(entry.id), { method: 'DELETE' });
       await refresh();
     });
-  const importEntries = (payload: ImportPayload, replace: boolean) =>
+  const importEntries = (payload: ImportPayload, target: string, replace: boolean) =>
     act(async () => {
+      if (scopeKind === 'voice' && !target) return;
       const result = await apiJson<{ imported: number }>('/pronunciation/import', {
         method: 'POST',
         body: JSON.stringify({
           entries: payload.entries,
           replace,
-          ...(profileId ? { profile_id: profileId } : {}),
+          ...(target ? { profile_id: target } : {}),
         }),
       });
       setPendingImport(null);
@@ -173,6 +186,9 @@ export function PronunciationSettings() {
       await refresh();
     });
   const loadImport = async (file: File) => {
+    if (voiceScopeNeedsVoice) return;
+    const target = profileId;
+    const existing = rows.length;
     setError('');
     setNotice('');
     try {
@@ -183,15 +199,17 @@ export function PronunciationSettings() {
           ? (parsed as { entries?: unknown }).entries
           : null;
       if (!Array.isArray(imported)) throw new Error('Invalid pronunciation export');
+      if (profileIdRef.current !== target) return;
       const payload = { entries: imported } as ImportPayload;
-      if (rows.length) setPendingImport(payload);
-      else void importEntries(payload, false);
+      if (existing) setPendingImport({ ...payload, profileId: target, count: existing });
+      else void importEntries(payload, target, false);
     } catch {
       setError(t('pronunciation.import_error'));
     }
   };
   const exportEntries = () =>
     act(async () => {
+      if (voiceScopeNeedsVoice) return;
       const data = await apiJson<ImportPayload>('/pronunciation/export' + profileQuery);
       await saveLocalFile(
         new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
@@ -274,6 +292,18 @@ export function PronunciationSettings() {
                   {t('common.retry')}
                 </Button>
               ) : undefined
+            }
+          />
+        </div>
+      )}
+      {scopeKind === 'voice' && voices.isError && (
+        <div className="p-4">
+          <PipelineFailure
+            fallback={t('pronunciation.voices_error')}
+            action={
+              <Button size="sm" variant="ghost" onClick={() => void voices.refetch()}>
+                {t('common.retry')}
+              </Button>
             }
           />
         </div>
@@ -365,7 +395,7 @@ export function PronunciationSettings() {
           onChange={(event) => setLanguage(event.target.value)}
           onKeyDown={(event) => {
             if (isImeComposing(event)) return;
-            if (event.key === 'Enter' && term.trim()) {
+            if (event.key === 'Enter' && term.trim() && !voiceScopeNeedsVoice) {
               event.preventDefault();
               void add();
             }
@@ -466,15 +496,15 @@ export function PronunciationSettings() {
       {pendingImport && (
         <div className="flex flex-wrap items-center gap-2 px-4 py-3 text-sm">
           <p className="min-w-0 flex-1">
-            {t('pronunciation.import_replace_prompt', { count: rows.length })}
+            {t('pronunciation.import_replace_prompt', { count: pendingImport.count })}
           </p>
-          <Button disabled={busy} onClick={() => void importEntries(pendingImport, true)}>
+          <Button disabled={busy} onClick={() => void importEntries(pendingImport, pendingImport.profileId, true)}>
             {t('common.yes')}
           </Button>
           <Button
             variant="outline"
             disabled={busy}
-            onClick={() => void importEntries(pendingImport, false)}
+            onClick={() => void importEntries(pendingImport, pendingImport.profileId, false)}
           >
             {t('common.no')}
           </Button>

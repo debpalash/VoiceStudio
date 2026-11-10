@@ -341,8 +341,10 @@ def _overlay(base: dict[str, str], layer: dict[str, str]) -> None:
     already exists moves to the end rather than keeping its older slot.
     """
     for term, value in layer.items():
-        folded = term.casefold()
-        for old in [k for k in base if k.casefold() == folded]:
+        # Same equivalence the matcher uses (re.IGNORECASE), not casefold:
+        # ``Straße`` and ``STRASSE`` are distinct words and must both survive.
+        same = re.compile(re.escape(term), re.IGNORECASE)
+        for old in [k for k in base if same.fullmatch(k)]:
             del base[old]
         base[term] = value
 

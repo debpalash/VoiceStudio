@@ -332,6 +332,7 @@
     "scope_language": "Taal",
     "scope_voice": "Deze stem",
     "voice_pick": "Kies een stem",
+    "voices_error": "Je stemmen konden niet worden geladen.",
     "voice_note": "De eigen items van een stem gaan voor op het taalwoordenboek wanneer die stem spreekt."
   },
   "preferences": {

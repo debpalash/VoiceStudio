@@ -1107,11 +1107,16 @@ async def dub_download(
         cmd += ["-shortest"]
     cmd += [output_path, "-y"]
 
+    if retime_decision is None:
+        # Smart Fit cleared it at export start; a plain export must too, or an
+        # old /dub/abort reads as a cancel and blocks the encoder fallback.
+        job.pop("aborted", None)
     try:
         rc, _, stderr = await video_encoder.run_with_encoder_fallback(
             cmd, enc_args,
             lambda c: run_ffmpeg(c, timeout=1800.0, job_id=job_id),
             aborted=lambda: bool(job.get("aborted")),
+            ffmpeg=ffmpeg,
         )
         if rc != 0:
             raise Exception(stderr.decode(errors="replace") if stderr else "ffmpeg mux non-zero")

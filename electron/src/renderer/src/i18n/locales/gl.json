@@ -323,6 +323,7 @@
     "scope_language": "Idioma",
     "scope_voice": "Esta voz",
     "voice_pick": "Escolle unha voz",
+    "voices_error": "Non se puideron cargar as túas voces.",
     "voice_note": "As entradas propias dunha voz teñen prioridade sobre o dicionario do idioma cando esa voz fala."
   },
   "app": {

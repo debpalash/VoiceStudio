@@ -332,6 +332,7 @@
     "scope_language": "언어",
     "scope_voice": "이 음성",
     "voice_pick": "음성 선택",
+    "voices_error": "음성을 불러오지 못했습니다.",
     "voice_note": "해당 음성이 말할 때는 음성 전용 항목이 언어 사전보다 우선합니다."
   },
   "preferences": {

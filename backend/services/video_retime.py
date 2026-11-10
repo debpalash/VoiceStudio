@@ -350,6 +350,7 @@ async def render_retimed_video(
                         "using libx264: %s", enc_args[1],
                         (stderr or b"").decode(errors="replace")[-300:],
                     )
+                    video_encoder.mark_failed(ffmpeg, enc_args[1])
                     cmd = video_encoder.replace_args(cmd, enc_args, VIDEO_ENC_ARGS)
                     enc_args = VIDEO_ENC_ARGS
                     rc, _, stderr = await run_ffmpeg(

@@ -332,6 +332,7 @@
     "scope_language": "Sprache",
     "scope_voice": "Diese Stimme",
     "voice_pick": "Stimme wählen",
+    "voices_error": "Deine Stimmen konnten nicht geladen werden.",
     "voice_note": "Die eigenen Einträge einer Stimme haben Vorrang vor dem Sprachwörterbuch, wenn diese Stimme spricht."
   },
   "preferences": {

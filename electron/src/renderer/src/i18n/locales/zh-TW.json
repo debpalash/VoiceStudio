@@ -332,6 +332,7 @@
     "scope_language": "語言",
     "scope_voice": "此聲音",
     "voice_pick": "選擇聲音",
+    "voices_error": "無法載入你的聲音。",
     "voice_note": "該聲音說話時,其專屬條目優先於語言詞典。"
   },
   "preferences": {

@@ -7,7 +7,8 @@ One place decides how an export's video is encoded:
   picked from what the bundled ffmpeg lists in ``-encoders`` (queried once,
   cached). A listed encoder can still fail on a machine without the matching
   GPU or driver, so callers run through :func:`run_with_encoder_fallback`,
-  which retries the same command with libx264 and logs why.
+  which retries the same command with the next listed hardware encoder, then
+  libx264, and logs why.
 * **Maximum resolution** — only ever downscales, keeps the aspect ratio and
   rounds both sides down to even numbers (H.264 4:2:0).
 """
@@ -111,12 +112,26 @@ def available_hw_encoders(ffmpeg: str) -> tuple[str, ...]:
     return found
 
 
+#: Hardware encoders that failed on this ffmpeg this session; skipped later.
+_failed: dict[str, set[str]] = {}
+
+
+def mark_failed(ffmpeg: str, name: str) -> None:
+    _failed.setdefault(ffmpeg, set()).add(name)
+
+
+def _usable_hw(ffmpeg: str) -> list[str]:
+    bad = _failed.get(ffmpeg, ())
+    return [n for n in available_hw_encoders(ffmpeg) if n not in bad]
+
+
 def select_encoder(ffmpeg: str, mode: str | None = None) -> str:
-    """libx264 unless hardware is opted in and ffmpeg lists a hardware encoder."""
+    """libx264 unless hardware is opted in and ffmpeg lists a hardware encoder
+    that has not already failed on this machine."""
     mode = mode or encoder_mode()
     if mode != "hardware":
         return SOFTWARE
-    hw = available_hw_encoders(ffmpeg)
+    hw = _usable_hw(ffmpeg)
     return hw[0] if hw else SOFTWARE
 
 
@@ -156,31 +171,40 @@ async def run_with_encoder_fallback(
     enc_args: tuple[str, ...],
     runner: Callable[[list[str]], Awaitable[tuple[int, bytes, bytes]]],
     aborted: Callable[[], bool] | None = None,
+    ffmpeg: str | None = None,
 ) -> tuple[int, bytes, bytes]:
     """Run ``cmd`` (which contains ``enc_args``); if a hardware encode fails
-    or times out, retry once with libx264 and log the reason.
+    or times out, retry with the next listed hardware encoder (each at most
+    once; failures are remembered per ``ffmpeg``), then libx264, logging why.
 
     A user abort (``aborted`` flag, any exit code) is returned as-is, never
     retried. Without ``aborted``, every negative code counts as an abort.
     """
-    hardware = len(enc_args) >= 2 and enc_args[1] in _HW_ARGS
-    try:
-        rc, out, err = await runner(cmd)
-    except asyncio.TimeoutError:
-        if not hardware or await user_cancelled(1, aborted):
-            raise
+    tried: set[str] = set()
+    while True:
+        hardware = len(enc_args) >= 2 and enc_args[1] in _HW_ARGS
+        try:
+            rc, out, err = await runner(cmd)
+            reason = f"failed (rc={rc}): " + (err or b"").decode(errors="replace")[-300:]
+        except asyncio.TimeoutError:
+            if not hardware or await user_cancelled(1, aborted):
+                raise
+            rc, out, err, reason = 1, b"", b"", "timed out"
+        else:
+            if rc == 0 or not hardware or await user_cancelled(rc, aborted):
+                return rc, out, err
+        name = enc_args[1]
+        tried.add(name)
+        nxt = ""
+        if ffmpeg:
+            mark_failed(ffmpeg, name)
+            nxt = next((n for n in _usable_hw(ffmpeg) if n not in tried), "")
+        new = encoder_args(nxt) if nxt else software_args()
         logger.warning(
-            "Hardware encoder %s timed out; retrying with %s", enc_args[1], SOFTWARE,
+            "Hardware encoder %s %s; retrying with %s", name, reason, nxt or SOFTWARE,
         )
-        return await runner(replace_args(cmd, enc_args, software_args()))
-    if rc == 0 or not hardware or await user_cancelled(rc, aborted):
-        return rc, out, err
-    tail = (err or b"").decode(errors="replace")[-300:]
-    logger.warning(
-        "Hardware encoder %s failed (rc=%s); retrying with %s: %s",
-        enc_args[1], rc, SOFTWARE, tail,
-    )
-    return await runner(replace_args(cmd, enc_args, software_args()))
+        cmd = replace_args(cmd, enc_args, new)
+        enc_args = new
 
 
 # ── Maximum resolution ─────────────────────────────────────────────────────

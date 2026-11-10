@@ -332,6 +332,7 @@
     "scope_language": "Bahasa",
     "scope_voice": "Suara ini",
     "voice_pick": "Pilih suara",
+    "voices_error": "Suara Anda tidak dapat dimuat.",
     "voice_note": "Entri milik sebuah suara mengalahkan kamus bahasa setiap kali suara itu berbicara."
   },
   "preferences": {

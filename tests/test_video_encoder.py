@@ -304,3 +304,62 @@ def test_retime_first_slice_signal_death_falls_back_unless_aborted(
         assert encoders[1] == "libx264"  # retried in software, failed later on missing output
     else:
         assert ei.value.stage == "aborted"
+
+
+def _multi_vendor(monkeypatch, ffmpeg="/m/ffmpeg"):
+    monkeypatch.setattr(ve.sys, "platform", "linux")
+    monkeypatch.setattr(ve, "_detected", {ffmpeg: ("h264_nvenc", "h264_qsv", "h264_amf")})
+    monkeypatch.setattr(ve, "_failed", {})
+    return ffmpeg
+
+
+def _fallback(ff, enc, run, **kw):
+    return asyncio.run(ve.run_with_encoder_fallback(["f", *enc, "o.mp4"], enc, run, ffmpeg=ff, **kw))
+
+
+def test_failed_nvenc_tries_qsv_and_remembers(monkeypatch):
+    ff = _multi_vendor(monkeypatch)
+    enc = ve.encoder_args(ve.select_encoder(ff, "hardware"))
+    run, seen = _runner([(1, b"", b"no nvenc"), (0, b"", b"")])
+    assert _fallback(ff, enc, run)[0] == 0
+    assert "h264_qsv" in seen[1] and len(seen) == 2
+    assert ve.select_encoder(ff, "hardware") == "h264_qsv"
+
+
+def test_all_hardware_failing_ends_on_libx264_each_tried_once(monkeypatch):
+    ff = _multi_vendor(monkeypatch)
+    enc = ve.encoder_args("h264_nvenc")
+    run, seen = _runner([(1, b"", b""), (1, b"", b""), (1, b"", b""), (0, b"", b"")])
+    assert _fallback(ff, enc, run)[0] == 0
+    names = ("h264_nvenc", "h264_qsv", "h264_amf", "libx264")
+    assert [[n in c for n in names].index(True) for c in seen] == [0, 1, 2, 3]
+    assert ve.select_encoder(ff, "hardware") == ve.SOFTWARE
+
+
+def test_abort_during_any_attempt_stops_everything(monkeypatch):
+    ff = _multi_vendor(monkeypatch)
+    enc = ve.encoder_args("h264_nvenc")
+    state = {"abort": False}
+    seen = []
+
+    async def run(cmd):
+        seen.append(cmd)
+        state["abort"] = "h264_qsv" in cmd
+        return 1, b"", b""
+
+    rc = _fallback(ff, enc, run, aborted=lambda: state["abort"])[0]
+    assert rc == 1 and len(seen) == 2
+
+
+def test_timeout_moves_on_to_next_encoder(monkeypatch):
+    ff = _multi_vendor(monkeypatch)
+    enc = ve.encoder_args("h264_nvenc")
+    calls = []
+
+    async def run(cmd):
+        calls.append(cmd)
+        if len(calls) == 1:
+            raise asyncio.TimeoutError
+        return 0, b"", b""
+
+    assert _fallback(ff, enc, run)[0] == 0 and "h264_qsv" in calls[1]

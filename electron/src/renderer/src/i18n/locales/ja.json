@@ -332,6 +332,7 @@
     "scope_language": "言語",
     "scope_voice": "この音声",
     "voice_pick": "音声を選択",
+    "voices_error": "音声を読み込めませんでした。",
     "voice_note": "その音声が話すときは、音声ごとの項目が言語辞書より優先されます。"
   },
   "preferences": {

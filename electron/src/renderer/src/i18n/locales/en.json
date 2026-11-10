@@ -323,6 +323,7 @@
     "scope_language": "Language",
     "scope_voice": "This voice",
     "voice_pick": "Choose a voice",
+    "voices_error": "Could not load your voices.",
     "voice_note": "A voice's own entries win over the language dictionary whenever that voice speaks."
   },
   "app": {

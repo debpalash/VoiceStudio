@@ -332,6 +332,7 @@
     "scope_language": "Ngôn ngữ",
     "scope_voice": "Giọng này",
     "voice_pick": "Chọn giọng",
+    "voices_error": "Không thể tải giọng của bạn.",
     "voice_note": "Mục riêng của một giọng được ưu tiên hơn từ điển ngôn ngữ mỗi khi giọng đó nói."
   },
   "preferences": {

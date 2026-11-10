@@ -45,14 +45,18 @@ the manual install below (Windows with an NVIDIA GPU) or pick another engine.
 git clone https://github.com/inclusionAI/Ming-3.0-tts.git
 cd Ming-3.0-tts
 uv venv --python 3.10
+# Windows only: install the CUDA torch 2.6.0 first (see the note below).
+uv pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu124
 uv pip install -r requirements.txt
 ```
 
 > Upstream ships **no `pyproject.toml`/`setup.py`**, so there is nothing to
 > `pip install -e`. The VoiceStudio sidecar puts the clone on `sys.path`.
 > `requirements.txt` pins `torch==2.6.0`; on Windows PyPI serves only a CPU
-> build of it, so install a CUDA build of torch 2.6.0 from PyTorch's `cu124` or
-> `cu126` index first.
+> build of it, so install the CUDA build from PyTorch's `cu124` (or `cu126`)
+> index **before** the requirements step. The pin is already satisfied by that
+> wheel, so `uv pip install -r requirements.txt` keeps it instead of replacing
+> it. Skip the torch line on Linux.
 
 Then point VoiceStudio at the clone and restart:
 
