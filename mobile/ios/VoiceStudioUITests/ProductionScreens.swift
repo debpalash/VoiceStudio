@@ -5,27 +5,28 @@ final class ProductionScreens: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-smoke", "-AppleLanguages", "(en)"]
         app.launch()
-        app.declineConsent(timeout: 15)
+        app.declineConsent()
         for (route,title) in [("transcriptions","Transcriptions"),("handoff","Project handoff and backup"),("design","Voice design"),("stories","Stories"),("audiobook","Audiobook"),("batch","Batch dubbing"),("gallery","Gallery"),("workflows","Workflows"),("calls","Calls"),("local-api","Phone speech API"),("tools","Tools")] {
             let card = app.buttons["home."+route]
+            card.waitReady()
             for _ in 0..<8 { if card.isHittable { break }; app.swipeUp() }
             XCTAssertTrue(card.isHittable,route); card.tap()
-            XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 10),route)
+            XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: uiReadyTimeout),route)
             XCTAssertFalse(app.navigationBars["Connect to VoiceStudio"].exists,route)
             XCTAssertFalse(app.descendants(matching: .any)["error.notice"].exists,route)
             if route == "design" { XCTAssertTrue(app.descendants(matching: .any)["design.script"].firstMatch.exists) }
             let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = "Production-"+route; attachment.lifetime = .keepAlways; add(attachment)
             if route == "local-api" {
-                app.switches["Allow transcription"].tap()
-                app.switches["Allow translation"].tap()
+                app.switches["Allow transcription"].tapReady()
+                app.switches["Allow translation"].tapReady()
                 XCTAssertFalse(app.buttons["Start server"].isEnabled)
                 XCTAssertFalse(app.descendants(matching: .any)["error.notice"].exists)
             }
             if route == "tools" {
                 let editor = app.buttons["Audio editor"]
                 for _ in 0..<6 { if editor.isHittable { break }; app.swipeDown() }
-                XCTAssertTrue(editor.isHittable); editor.tap()
-                XCTAssertTrue(app.navigationBars["Audio editor"].waitForExistence(timeout: 10))
+                XCTAssertTrue(editor.isHittable); editor.tapReady()
+                XCTAssertTrue(app.navigationBars["Audio editor"].waitForExistence(timeout: uiReadyTimeout))
                 XCTAssertFalse(app.descendants(matching: .any)["error.notice"].exists)
                 let editorScreenshot = XCTAttachment(screenshot: app.screenshot())
                 editorScreenshot.name = "Production-audio-editor"; editorScreenshot.lifetime = .keepAlways; add(editorScreenshot)

@@ -5,7 +5,7 @@ final class SupportPages: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--ui-smoke", "-AppleLanguages", "(en)",
                                "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
-        app.launch(); app.declineConsent(); app.tabButton("Settings").tap()
+        app.launch(); app.declineConsent(); app.tabButton("Settings").tapReady()
         for route in ["donate", "pro", "other-apps"] {
             let entry = app.buttons["settings." + route]
             app.reveal(entry); XCTAssertTrue(entry.isHittable); entry.tap()
