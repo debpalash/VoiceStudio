@@ -1008,7 +1008,10 @@ async def dub_download(
             else video_path
         )
         size = await video_encoder.probe_video_size(size_src)
-        if size and video_encoder.needs_downscale(size[0], size[1], max_res):
+        if not size:
+            logger.warning(
+                "Could not probe video size; applying the %s resolution cap by filter", max_res)
+        if not size or video_encoder.needs_downscale(size[0], size[1], max_res):
             scale_src = video_map if video_map.startswith("[") else f"[{video_map}]"
             filter_parts.append(f"{scale_src}{video_encoder.scale_filter(max_res)}[vcap]")
             video_map = "[vcap]"

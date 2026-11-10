@@ -192,12 +192,17 @@ async def run_with_encoder_fallback(
             rc, out, err, reason = 1, b"", b"", "timed out"
         else:
             if rc == 0 or not hardware or await user_cancelled(rc, aborted):
+                if rc == 0 and ffmpeg:
+                    # A later attempt succeeding is what shows the earlier
+                    # encoders were at fault; an input/disk error that fails
+                    # every attempt must not disable hardware for the session.
+                    for failed_name in tried:
+                        mark_failed(ffmpeg, failed_name)
                 return rc, out, err
         name = enc_args[1]
         tried.add(name)
         nxt = ""
         if ffmpeg:
-            mark_failed(ffmpeg, name)
             nxt = next((n for n in _usable_hw(ffmpeg) if n not in tried), "")
         new = encoder_args(nxt) if nxt else software_args()
         logger.warning(

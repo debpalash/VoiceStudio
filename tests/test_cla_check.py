@@ -960,6 +960,16 @@ def test_owed_ci_restart_is_kept_until_it_succeeds(monkeypatch, runs, reject):
     assert cla.gate_state({"body": gh.patched[-1]}) == "lifted"
 
 
+def test_ci_restart_error_still_writes_status_and_keeps_the_restart_owed(monkeypatch):
+    def boom(gh, sha):
+        raise OSError("network down")
+
+    monkeypatch.setattr(cla, "rerun_skipped_ci", boom)
+    gh = _signed_and_restarting(monkeypatch, [_run(60, "ci.yml")])
+    assert gh.statuses[-1]["state"] == "success"
+    assert cla.gate_state({"body": gh.patched[-1]}) == "restarting"
+
+
 def test_failed_ready_keeps_the_hold_record_and_is_retried(monkeypatch):
     gh = FakeGitHub([_held_comment("drafted"), _comment()], [actor("alice", 1001)],
                     store=cla.empty_store(), pr={"draft": True})

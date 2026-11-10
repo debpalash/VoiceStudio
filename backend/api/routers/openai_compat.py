@@ -690,7 +690,7 @@ def _native_pcm_busy() -> HTTPException:
 
 async def _native_pcm_stream(backend, text, kw, *, sse):
     from services.model_manager import generate_timeout_s
-    from services.tts_backend import engine_in_use
+    from services.tts_backend import EngineBusyError, engine_in_use
     from services.watermark import mark_synthetic
 
     def encode_next():
@@ -725,8 +725,12 @@ async def _native_pcm_stream(backend, text, kw, *, sse):
     try:
         # Entering the lease can fail; the lock is already held, so the
         # ``finally`` below must see it and release it.
-        lease = engine_in_use(backend)
-        lease.__enter__()
+        lease = engine_in_use(backend, native=True)
+        try:
+            lease.__enter__()
+        except EngineBusyError:
+            # Another job holds this engine; never interleave with it.
+            raise _native_pcm_busy() from None
         entered = True
         iterator = backend.stream_audio(text, **kw)
         while (chunk := await run_on_gpu_pool_guarded(
@@ -1019,16 +1023,20 @@ async def create_speech(req: SpeechRequest):
         sentences = split_normalized_sentences(text, req.language)
 
     from services.model_manager import generate_timeout_s
-    from services.tts_backend import engine_in_use
+    from services.tts_backend import EngineBusyError, engine_in_use
 
     async def render(segment: str) -> tuple[bytes, str, str]:
         def generate():
-            with engine_in_use(backend):
+            with engine_in_use(backend, yield_to_native=True):
                 return _run_tts(backend, segment, kw)
 
-        wav, sr = await run_on_gpu_pool_guarded(
-            generate, what="OpenAI TTS generate",
-            timeout=generate_timeout_s(segment, engine=backend))
+        try:
+            wav, sr = await run_on_gpu_pool_guarded(
+                generate, what="OpenAI TTS generate",
+                timeout=generate_timeout_s(segment, engine=backend))
+        except EngineBusyError:
+            # A native stream owns this engine until it closes.
+            raise _native_pcm_busy() from None
         return await _encode_audio(wav, sr, req.response_format, ffmpeg)
 
     # Finish the first segment before sending headers so validation and

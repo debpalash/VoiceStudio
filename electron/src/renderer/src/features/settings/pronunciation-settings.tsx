@@ -80,7 +80,9 @@ export function PronunciationSettings() {
       apiJson<PronunciationEntry[]>('/pronunciation' + profileQuery, { signal }),
     enabled: !voiceScopeNeedsVoice,
   });
-  profileIdRef.current = profileId;
+  useEffect(() => {
+    profileIdRef.current = profileId;
+  }, [profileId]);
   const rows = voiceScopeNeedsVoice ? [] : (entries.data ?? []);
 
   // Switching dictionary drops a pending replace prompt rather than retargeting it.

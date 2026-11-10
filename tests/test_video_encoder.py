@@ -81,6 +81,18 @@ def test_hardware_failure_retries_with_libx264(caplog):
     assert "No NVENC capable devices" in caplog.text
 
 
+def test_encoder_is_marked_failed_only_when_a_fallback_succeeds(monkeypatch):
+    monkeypatch.setattr(ve, "_failed", {})
+    monkeypatch.setattr(ve, "available_hw_encoders", lambda ff: ["h264_nvenc"])
+    enc = ve.encoder_args("h264_nvenc")
+    run, _ = _runner([(1, b"", b"bad input"), (1, b"", b"bad input")])
+    assert asyncio.run(ve.run_with_encoder_fallback(["f", *enc], enc, run, ffmpeg="ff"))[0] == 1
+    assert ve.select_encoder("ff", "hardware") == "h264_nvenc"  # input error: not blamed
+    run, _ = _runner([(1, b"", b"no device"), (0, b"", b"")])
+    assert asyncio.run(ve.run_with_encoder_fallback(["f", *enc], enc, run, ffmpeg="ff"))[0] == 0
+    assert ve.select_encoder("ff", "hardware") == "libx264"
+
+
 def test_no_retry_for_software_failure_or_abort():
     sw = ve.software_args()
     run, seen = _runner([(1, b"", b"boom")])

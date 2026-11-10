@@ -350,12 +350,14 @@ async def render_retimed_video(
                         "using libx264: %s", enc_args[1],
                         (stderr or b"").decode(errors="replace")[-300:],
                     )
-                    video_encoder.mark_failed(ffmpeg, enc_args[1])
+                    hw_name = enc_args[1]
                     cmd = video_encoder.replace_args(cmd, enc_args, VIDEO_ENC_ARGS)
                     enc_args = VIDEO_ENC_ARGS
                     rc, _, stderr = await run_ffmpeg(
                         cmd, timeout=timeout_per_batch, job_id=job_id,
                     )
+                    if rc == 0:  # only libx264 succeeding proves the encoder was at fault
+                        video_encoder.mark_failed(ffmpeg, hw_name)
             except asyncio.TimeoutError:
                 raise RetimeError(
                     f"retime batch {bi + 1}/{len(batches)} timed out",
