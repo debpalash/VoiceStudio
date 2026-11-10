@@ -51,6 +51,10 @@ The CLI includes its own Python runtime and works before backend setup. Commands
 that need the backend start VoiceStudio in the background when it is not running.
 See [Terminal command](script.md#terminal-command).
 
+The uninstaller asks whether to also delete the downloaded runtime and models
+(default No; your voices and projects are always kept). See
+[Uninstalling](uninstall.md#windows-uninstaller-keep-or-delete-the-downloads).
+
 During an update, the installer closes processes running inside the selected
 installation folder. Processes in similarly named sibling folders and the
 installer itself are excluded. If an older installer leaves a running copy
