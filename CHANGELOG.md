@@ -169,7 +169,7 @@ metadata and the backend fallback mirror it.
 
 - The dubbing error notice links directly to the transcript segment with missing or unreadable speech (#3988) — thanks @isnaenihidayat!
 - Large dubbing stem and segment ZIP downloads no longer hold the entire archive in backend memory (#3986) — thanks @isnaenihidayat!
-- Audiobook chapters and dub segments wait for a speech engine that is briefly busy streaming instead of failing, and a book is never assembled with a missing chapter (#3987)
+- Audiobook chapters and dub segments wait for a speech engine that is briefly busy streaming instead of failing; if it stays busy, the audiobook stops with a clear error and keeps its progress for a retry (#3987)
 - Apple Silicon speech requests now retry cleanly when a native Qwen stream is using the MLX model (#3981) — thanks @kellerkind84!
 - CosyVoice 3 GGUF now explains why it is unavailable (runtime, model files or device probe) and falls back to the runtime's CPU path when the Vulkan probe fails (#3980)
 - Older NVIDIA cards (GTX 900/1000 series) now get an accurate explanation and a pointer to the Vulkan engines instead of advice to install a cu128 PyTorch build (#3978)
@@ -585,7 +585,7 @@ metadata and the backend fallback mirror it.
 
 - The dubbing error notice links directly to the transcript segment with missing or unreadable speech (#3988) — thanks @isnaenihidayat!
 - Large dubbing stem and segment ZIP downloads no longer hold the entire archive in backend memory (#3986) — thanks @isnaenihidayat!
-- Audiobook chapters and dub segments wait for a speech engine that is briefly busy streaming instead of failing, and a book is never assembled with a missing chapter (#3987)
+- Audiobook chapters and dub segments wait for a speech engine that is briefly busy streaming instead of failing; if it stays busy, the audiobook stops with a clear error and keeps its progress for a retry (#3987)
 - Apple Silicon speech requests now retry cleanly when a native Qwen stream is using the MLX model (#3981) — thanks @kellerkind84!
 - CosyVoice 3 GGUF now explains why it is unavailable (runtime, model files or device probe) and falls back to the runtime's CPU path when the Vulkan probe fails (#3980)
 - Older NVIDIA cards (GTX 900/1000 series) now get an accurate explanation and a pointer to the Vulkan engines instead of advice to install a cu128 PyTorch build (#3978)
