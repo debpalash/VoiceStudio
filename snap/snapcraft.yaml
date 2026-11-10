@@ -33,7 +33,9 @@ plugs:
 
 apps:
   voicestudio:
-    command: opt/VoiceStudio/voicestudio-electron --no-sandbox
+    # XWayland by default: native Wayland segfaults (#3878). A later
+    # --ozone-platform=wayland on the command line wins.
+    command: opt/VoiceStudio/voicestudio-electron --no-sandbox --ozone-platform=x11
     desktop: usr/share/applications/voicestudio.desktop
     extensions: [gnome]
     environment:
