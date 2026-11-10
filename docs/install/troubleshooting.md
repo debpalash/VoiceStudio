@@ -1791,3 +1791,11 @@ Windows or another program refused access to the port, often a reserved range
 (Hyper-V, WSL, Docker). Check with
 `netsh interface ipv4 show excludedportrange protocol=tcp`, then set
 `OMNIVOICE_PORT` to a different free port.
+
+## Settings → Updates says "This build cannot update itself"
+
+Self-update needs the `app-update.yml` file that release installers ship in the app's resources folder. A custom, repackaged or locally built app without it used to fail with `ENOENT … app-update.yml` when you pressed Download; it now says so and offers no download. Install a release build from the [Releases page](https://github.com/debpalash/VoiceStudio/releases/latest) (or a beta from the same page) to get updates.
+
+## Backend exits with an illegal instruction on an older CPU
+
+The effects library `pedalboard` can crash on CPUs without AVX2. VoiceStudio now loads it once in a separate process first; if that fails, effects stages that depend on it (filters, compressor, reverb, gate, EQ) are skipped and the audio is left unmodified, while the leveler and limiter keep working.

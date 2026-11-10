@@ -28,6 +28,16 @@ class InstallerScriptTests(unittest.TestCase):
         uninstall = INSTALLER.read_text(encoding='utf-8').split('!macro customUnInstall', 1)[1]
         self.assertLess(uninstall.index('${IfNot} ${isUpdated}'), uninstall.index('-Action Uninstall'))
 
+    def test_uninstall_offers_to_delete_downloads_but_defaults_to_keeping_them(self):
+        uninstall = INSTALLER.read_text(encoding='utf-8').split('!macro customUnInstall', 1)[1]
+        prompt = next(l for l in uninstall.splitlines() if l.strip().startswith('MessageBox'))
+        self.assertIn('MB_DEFBUTTON2', prompt)  # No is the default button
+        self.assertIn('/SD IDNO', prompt)  # a silent uninstall keeps them
+        removals = [l.strip() for l in uninstall.splitlines() if 'RMDir' in l]
+        self.assertEqual(removals, [r'RMDir /r "$APPDATA\VoiceStudio\runtime"', r'RMDir /r "$LOCALAPPDATA\OmniVoice\hf_cache"'])
+        # Never during an update, and never voices/projects (%APPDATA%\OmniVoice).
+        self.assertLess(uninstall.index('${IfNot} ${isUpdated}'), uninstall.index('RMDir'))
+
 
 @unittest.skipUnless(sys.platform == 'win32', 'runs the real script against the Windows registry')
 class RegistryTests(unittest.TestCase):
