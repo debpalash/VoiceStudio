@@ -280,3 +280,42 @@ def test_copy_of_a_source_deleted_mid_generation_goes_on_release(tmp_path, cache
         rw.prune_reference_copies()
         assert os.path.exists(copy)  # held while the render runs
     assert not os.path.exists(copy)  # releasing retries the deferred delete
+
+
+def test_bookkeeping_is_exclusive_between_the_source_record_and_the_copy(tmp_path, cache, rw, monkeypatch):
+    import threading
+
+    path = tmp_path / "ref.flac"
+    sf.write(path, _tone(), RATE, format="FLAC")
+    real = rw._write_source
+    seen = []
+
+    def probe(*args):
+        real(*args)
+        # Between the record and the rename: another thread's prune must wait.
+        result = []
+        worker = threading.Thread(target=lambda: result.append(rw._bookkeeping.acquire(blocking=False)))
+        worker.start()
+        worker.join()
+        if result[0]:
+            rw._bookkeeping.release()
+        seen.append(result[0])
+
+    monkeypatch.setattr(rw, "_write_source", probe)
+    converted = rw.sidecar_reference_wav(str(path))
+    assert seen == [False]
+    assert os.path.isfile(converted)
+    source_id, _ = rw._copy_name(str(path))
+    assert (cache / f"{source_id}.source").exists()
+
+
+def test_cache_hit_restores_a_missing_source_record(tmp_path, cache, rw):
+    path = tmp_path / "ref.flac"
+    sf.write(path, _tone(), RATE, format="FLAC")
+    converted = rw.sidecar_reference_wav(str(path))
+    source_id, _ = rw._copy_name(str(path))
+    (cache / f"{source_id}.source").unlink()
+    assert rw.sidecar_reference_wav(str(path)) == converted
+    assert (cache / f"{source_id}.source").exists()
+    rw.prune_reference_copies()
+    assert os.path.exists(converted)

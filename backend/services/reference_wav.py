@@ -38,6 +38,11 @@ MAX_CACHED_REFERENCES = 32
 _lock = threading.Lock()
 _uses = itertools.count(1)
 _last_used: dict[str, int] = {}
+# Serialises a copy's bookkeeping (its ``.source`` record, the rename into
+# place and pruning) so a concurrent prune never sees a record without its
+# copy. Reentrant: the final prune runs inside the section. Decoding stays
+# outside it.
+_bookkeeping = threading.RLock()
 
 
 def _cache_dir() -> str:
@@ -90,6 +95,14 @@ def _copy_name(path: str) -> tuple[str, str]:
     return source_id, f"{source_id}-{_digest(f'{info.st_size}:{info.st_mtime_ns}')}.wav"
 
 
+def _write_source(directory: str, source_id: str, path: str) -> None:
+    reference = _relative_source_reference(path, directory)
+    if reference is not None:
+        with open(os.path.join(directory, source_id + ".source"), "w", encoding="utf-8",
+                  errors="surrogateescape") as handle:
+            handle.write(reference)
+
+
 def _relative_source_reference(path: str, directory: str) -> str | None:
     """Keep private absolute paths out of persisted cache metadata."""
     try:
@@ -121,6 +134,11 @@ def _mtime(path: str) -> int:
 
 
 def _prune(directory: str, keep: Optional[str] = None) -> None:
+    with _bookkeeping:
+        _prune_locked(directory, keep)
+
+
+def _prune_locked(directory: str, keep: Optional[str]) -> None:
     """Remove copies whose source is gone or superseded, then bound the cache.
 
     ``keep`` (a copy name just produced) always survives and counts toward
@@ -214,28 +232,28 @@ def sidecar_reference_wav(path: str, lease: Optional[voice_leases.VoiceFileLease
         voice_leases.hold(lease, target)  # before the existence check: no eviction gap
         with _lock:
             _last_used[name] = next(_uses)
-        if os.path.isfile(target):
-            return target
+        with _bookkeeping:
+            if os.path.isfile(target):
+                if not os.path.isfile(os.path.join(directory, source_id + ".source")):
+                    _write_source(directory, source_id, path)  # a pruned record is restored
+                return target
         wave, sample_rate = load_audio(path)
         mono = wave.float().mean(dim=0).clamp(-1.0, 1.0).numpy()
         os.makedirs(directory, exist_ok=True)
-        reference = _relative_source_reference(path, directory)
-        if reference is not None:
-            with open(os.path.join(directory, source_id + ".source"), "w", encoding="utf-8",
-                      errors="surrogateescape") as handle:
-                handle.write(reference)
         fd, temporary = tempfile.mkstemp(suffix=".tmp", dir=directory)
         try:
             with os.fdopen(fd, "wb") as handle:
                 sf.write(handle, mono, sample_rate, format="WAV", subtype="PCM_16")
-            os.replace(temporary, target)
+            with _bookkeeping:
+                _write_source(directory, source_id, path)
+                os.replace(temporary, target)
+                _prune(directory, keep=name)
         except BaseException:
             try:
                 os.unlink(temporary)
             except OSError:
                 pass
             raise
-        _prune(directory, keep=name)
         return target
     except Exception as exc:  # noqa: BLE001 — the engine may still read the original
         from core.scrub import scrub_text
