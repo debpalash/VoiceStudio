@@ -8,6 +8,8 @@ import types
 import zipfile
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture
@@ -21,6 +23,9 @@ def export_module(monkeypatch):
     spec = importlib.util.spec_from_file_location("stems_export_under_test", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    app = FastAPI()
+    app.include_router(module.router)
+    module.test_app = app
     return module
 
 
@@ -47,6 +52,8 @@ def test_stems_default_and_existing_language_keep_working(export_module, monkeyp
     monkeypatch.setattr(module, "_job_dir_or_400", lambda _: str(tmp_path))
     monkeypatch.setattr(module, "_get_job", lambda _: {"dubbed_tracks": {"de": {"path": str(source)}}})
     monkeypatch.setattr(module, "_dub_artifact", lambda value, *a, **kw: value)
-    response = asyncio.run(module.dub_export_stems("job", lang=lang))
-    with zipfile.ZipFile(io.BytesIO(response.body)) as archive:
+    with TestClient(module.test_app) as client:
+        response = client.get("/dub/export-stems/job", params={"lang": lang} if lang else None)
+    assert response.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
         assert archive.read("vocals_dubbed_de.wav") == b"German voice"
