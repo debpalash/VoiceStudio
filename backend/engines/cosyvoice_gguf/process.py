@@ -28,6 +28,7 @@ class NativeServer:
         self.prompt_key = None
         self.selection = None
         self.log_handle = None
+        self._log_start = 0
 
     def _base(self):
         return f"http://127.0.0.1:{self.port}"
@@ -72,6 +73,8 @@ class NativeServer:
         log_dir = Path(bootstrap.managed_dir()).parent
         log_dir.mkdir(parents=True, exist_ok=True)
         self.log_handle = (log_dir / "server.log").open("ab")
+        # The log is appended to across launches: remember where this one starts.
+        self._log_start = self.log_handle.tell()
         logger.info(
             "CosyVoice GGUF selected %s (%s)%s",
             self.selection.name,
@@ -143,7 +146,7 @@ class NativeServer:
                 self.log_handle.flush()
             with (Path(bootstrap.managed_dir()).parent / "server.log").open("rb") as log:
                 log.seek(0, os.SEEK_END)
-                log.seek(max(0, log.tell() - 4000))
+                log.seek(max(self._log_start, log.tell() - 4000))
                 data = log.read()
             tail = bootstrap._tail(data.decode("utf-8", "replace"))
         except OSError:

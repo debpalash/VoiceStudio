@@ -19,7 +19,7 @@ from core.config import DUB_DIR, VOICES_DIR, dub_seg_path
 from core.path_security import contained_join
 from core.tasks import task_manager
 from schemas.requests import DubRequest
-from services.model_manager import _gpu_pool, run_on_gpu_pool_guarded
+from services.model_manager import _gpu_pool, await_free_engine, run_on_gpu_pool_guarded
 from services.srt_parser import vouch_cue_source
 from services.tts_backend import (
     TTSBackend, active_backend_id, ensure_active_engine_licence, resolve_generation_backend,
@@ -1306,7 +1306,12 @@ async def dub_generate(job_id: str, req: DubRequest):
                             [prepared["text"] for _, prepared in batch], backend
                         ),
                     )
-                except TimeoutError:
+                except TimeoutError as busy:
+                    if hasattr(busy, "retry_after"):
+                        # A stream holds the engine: render these segments one
+                        # by one below, where the busy wait applies.
+                        logger.info("Native dub batch deferred: engine busy")
+                        return
                     raise
                 except Exception as error:
                     _prepare_oom_retry(error)
@@ -1384,13 +1389,21 @@ async def dub_generate(job_id: str, req: DubRequest):
                 if i in _batched_audio:
                     audio_tensor = _batched_audio.pop(i)
                 else:
-                    audio_tensor = await run_on_gpu_pool_guarded(
-                        lambda: _gen(
-                            seg.text, seg_lang, seg_instruct, _dur_for_tts,
-                            _num_step, req.guidance_scale, seg_speed, seg_profile, seg_effect_preset,
+                    # A busy engine (a native stream holds it) waits inside the
+                    # segment's budget instead of ending the dub; past it the
+                    # busy error fails the job, never a silent gap.
+                    _seg_budget = generate_timeout_s(seg.text, engine=backend)
+                    audio_tensor = await await_free_engine(
+                        lambda: run_on_gpu_pool_guarded(
+                            lambda: _gen(
+                                seg.text, seg_lang, seg_instruct, _dur_for_tts,
+                                _num_step, req.guidance_scale, seg_speed, seg_profile, seg_effect_preset,
+                            ),
+                            what="Dub generate",
+                            timeout=_seg_budget,
                         ),
-                        what="Dub generate",
-                        timeout=generate_timeout_s(seg.text, engine=backend),
+                        budget_s=_seg_budget, what="Dub engine",
+                        is_cancelled=lambda: task_manager.is_cancelled(task_id),
                     )
                 _t_tts += time.perf_counter() - _t_tts_0
 
@@ -1489,6 +1502,11 @@ async def dub_generate(job_id: str, req: DubRequest):
                     pass
                 _release_audio_tensors()
             except Exception as e:
+                if (isinstance(e, TimeoutError) and hasattr(e, "retry_after")
+                        and task_manager.is_cancelled(task_id)):
+                    # Cancelled while waiting for a busy engine: a stop, not a failure.
+                    yield f"data: {json.dumps({'type': 'cancelled', 'segments_processed': i})}\n\n"
+                    return
                 # A task-stream error bypasses the global exception handler.
                 # Never publish engine exception text here: allocator errors
                 # carry process tables and arbitrary failures can carry paths,

@@ -192,3 +192,33 @@ def test_bad_model_override_says_correct_it_not_reinstall():
         reason = _public_unavailable_reason(text)
         assert "Correct or remove" in reason and "Reinstall" not in reason
     assert "Reinstall" in _public_unavailable_reason("CosyVoice GGUF model files: m.gguf is missing from /c")
+
+
+def test_failed_probe_verdict_expires_but_stays_cached_until_then(fake_cli, monkeypatch):
+    monkeypatch.setenv("FAKE_EXIT", "7")
+    with pytest.raises(RuntimeError, match="exit code 7"):
+        bootstrap.probe_backends()
+    monkeypatch.setenv("FAKE_EXIT", "0")
+    monkeypatch.setenv("FAKE_OUT", "CPU - i5\n")
+    with pytest.raises(RuntimeError, match="exit code 7"):  # still inside the TTL
+        bootstrap.probe_backends()
+    (key,) = bootstrap._PROBE_CACHE
+    message, _ = bootstrap._PROBE_CACHE[key]
+    bootstrap._PROBE_CACHE[key] = (message, 0.0)  # TTL elapsed
+    assert bootstrap.probe_backends()[0].name == "CPU"
+
+
+def test_exit_reason_ignores_log_lines_from_an_earlier_launch(tmp_path, monkeypatch):
+    from engines.cosyvoice_gguf.process import NativeServer
+
+    monkeypatch.setattr(bootstrap, "managed_dir", lambda: tmp_path / "managed")
+    log = tmp_path / "server.log"
+    log.write_bytes(b"previous launch: vkCreateInstance failed\n")
+    server = NativeServer()
+    server.log_handle = log.open("ab")
+    server._log_start = server.log_handle.tell()
+    assert "vkCreateInstance" not in server._exit_reason()
+    server.log_handle.write(b"this launch: missing DLL\n")
+    reason = server._exit_reason()
+    assert "missing DLL" in reason and "vkCreateInstance" not in reason
+    server.log_handle.close()
