@@ -97,7 +97,7 @@ class QwenCUDABackend(TTSBackend):
                     torch.manual_seed(seed)
                 chunks = self._model.generate_voice_clone_streaming(
                     text=text, language=self.languages.get(code, "Auto"),
-                    voice_clone_prompt=self._prompts[key], max_new_tokens=512,
+                    voice_clone_prompt=self._prompts[key],
                     chunk_size=8, non_streaming_mode=True,
                 )
                 with closing(chunks):

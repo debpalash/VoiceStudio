@@ -44,6 +44,7 @@ def test_qwen_cuda_caches_reference_and_owns_streamed_audio(tmp_path):
     torch.testing.assert_close(chunks[0], torch.tensor([[0.1, 0.2]]))
     assert prompts == ["Reference"]
     assert [call["text"] for call in calls] == ["First.", "Second."]
+    assert all("max_new_tokens" not in call for call in calls)
     assert all(call["voice_clone_prompt"] == "Reference" and call["language"] == "English"
                for call in calls)
 
