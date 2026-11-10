@@ -389,6 +389,9 @@ class ProductionTests(unittest.TestCase):
         # OuteTTS's speaker-building Whisper (#2700).
         self.assertEqual(expected.pop("mlx-community/whisper-large-v3-turbo-asr-fp16"),
                          "624c19c9af5603fa73b83bce14d4aeea96156d18")
+        # Ming-3.0-tts weights (#3793).
+        self.assertEqual(expected.pop("inclusionAI/Ming-3.0-tts-0.5b"),
+                         "7247f4c94a5b2e987404ed28a5cfec41b1a4ca61")
         # Sound effects (#3577): the installer pins the same revision.
         self.assertEqual(expected.pop("OpenMOSS-Team/MOSS-SoundEffect-v2.0"),
                          "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d")

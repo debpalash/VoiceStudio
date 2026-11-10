@@ -63,6 +63,8 @@ tts_engines:
   - id: confucius4-tts
     readme: "**Confucius4-TTS**"
     doc: docs/engines/confucius4-tts.md
+  - id: ming-tts
+    doc: docs/engines/ming-tts.md
   - id: pockettts
   - id: audiocpp
     doc: docs/engines/audio-cpp.md
