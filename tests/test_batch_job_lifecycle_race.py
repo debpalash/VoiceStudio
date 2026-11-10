@@ -165,3 +165,25 @@ async def test_busy_engine_wait_stops_when_the_job_is_cancelled(batch, monkeypat
     with pytest.raises(GpuPoolBusyError):
         await batch._await_free_engine(job, busy, budget_s=30)
     assert calls == [1]
+
+
+async def test_busy_engine_does_not_retry_after_cancellation_during_backoff(batch, monkeypatch):
+    from services.model_manager import GpuPoolBusyError
+
+    job = {"status": "running"}
+    calls = []
+
+    async def render():
+        calls.append(1)
+        if len(calls) == 1:
+            raise GpuPoolBusyError("busy", retry_after=1)
+        pytest.fail("cancelled job attempted another render")
+
+    async def cancel_during_backoff(delay):
+        assert delay > 0
+        job["status"] = "cancelled"
+
+    monkeypatch.setattr(batch.asyncio, "sleep", cancel_during_backoff)
+    with pytest.raises(GpuPoolBusyError):
+        await batch._await_free_engine(job, render, budget_s=30)
+    assert calls == [1]

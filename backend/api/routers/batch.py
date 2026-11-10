@@ -182,6 +182,8 @@ async def _await_free_engine(job, call, *, budget_s):
             attempt += 1
             logger.info("Batch engine busy (%s); retrying in %.1fs", busy, delay)
             await asyncio.sleep(delay)
+            if job["status"] == "cancelled" or time.monotonic() >= deadline:
+                raise
 
 
 def _set_progress(job, stage, percent=0, **extra):
