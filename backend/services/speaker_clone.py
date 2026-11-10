@@ -595,12 +595,15 @@ def speakers_without_source(
 
     Their lines render in the default voice. Another speaker's clone is never
     borrowed for them, so the caller names them to the user instead (#3419).
+    A line that already carries a chosen voice (``profile_id``) does not count.
     """
     missing: list[str] = []
     for segment in segments or []:
         if not isinstance(segment, dict):
             continue
         speaker_id = segment.get("speaker_id") or "Speaker 1"
+        if segment.get("profile_id"):
+            continue
         if speaker_id not in (sources or {}) and speaker_id not in missing:
             missing.append(speaker_id)
     return missing

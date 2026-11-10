@@ -367,6 +367,42 @@ def test_voice_fallback_warning_names_speakers_without_a_source():
     assert voice_fallback_warning(segments, {**sources, "Speaker 2": {}, "Speaker 3": {}}) is None
 
 
+def test_a_line_with_a_chosen_voice_is_not_named_as_default():
+    # After speaker re-analysis `rebind` keeps a voice the user chose; that
+    # speaker must not be reported as using the default voice.
+    segments = [{"speaker_id": "Speaker 1", "profile_id": "auto:speaker_1"},
+                {"speaker_id": "Speaker 2", "profile_id": "my-voice"},
+                {"speaker_id": "Speaker 3", "profile_id": ""}]
+    assert speakers_without_source(segments, {"Speaker 1": {}}) == ["Speaker 3"]
+
+
+def test_retry_after_completed_transcript_replays_the_voice_warning(monkeypatch):
+    import json
+    from api.routers import dub_core as dc
+
+    dc._dub_jobs["job-3419-retry"] = {
+        "transcription_complete": True,
+        "segments": [{"speaker_id": "Speaker 1", "profile_id": "auto:speaker_1"},
+                     {"speaker_id": "Speaker 2"}],
+        "cast_sources": {"Speaker 1": {}},
+    }
+
+    async def _collect():
+        resp = await dc.dub_transcribe_stream("job-3419-retry")
+        return "".join([c.decode() if isinstance(c, (bytes, bytearray)) else str(c)
+                        async for c in resp.body_iterator])
+
+    try:
+        body = asyncio.run(_collect())
+    finally:
+        dc._dub_jobs.pop("job-3419-retry", None)
+    assert "event: final" in body
+    warnings = [json.loads(b.split("data:", 1)[1]) for b in body.split("\n\n")
+                if b.startswith("event: warning")]
+    assert [w["fallback_speakers"] for w in warnings] == [["Speaker 2"]]
+    assert body.index("event: final") < body.index("event: warning") < body.index("event: done")
+
+
 @pytest.mark.usefixtures("asr_model_installed")
 def test_stream_transcribe_says_which_speakers_fell_back(tmp_path, monkeypatch):
     # Speaker 2 has too little clean speech for any reference. Their lines

@@ -1633,6 +1633,12 @@ async def dub_transcribe_stream(
                 "speaker_clones": job.get("cast_sources", {}),
                 "cast_sources": job.get("cast_sources", {}),
             })
+            # A dropped connection may have lost the live warning; recompute it
+            # from the saved job so Retry still names the default-voice speakers.
+            from services.speaker_clone import voice_fallback_warning
+            replay_warning = voice_fallback_warning(job["segments"], job.get("cast_sources"))
+            if replay_warning:
+                yield _sse_event("warning", replay_warning)
             yield _sse_event("done", {})
             return
 
