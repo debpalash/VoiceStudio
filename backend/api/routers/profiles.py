@@ -1400,6 +1400,7 @@ def delete_profile(profile_id: str):
             "UPDATE generation_history SET profile_id=NULL WHERE profile_id=?",
             (profile_id,),
         )
+        conn.execute("DELETE FROM pronunciation_entries WHERE profile_id=?", (profile_id,))
         conn.execute("DELETE FROM voice_profiles WHERE id=?", (profile_id,))
     failed_assets = []
     for path in dict.fromkeys(paths):

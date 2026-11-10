@@ -328,7 +328,12 @@
     "import_done_one": "{{count}} item geïmporteerd.",
     "import_done_other": "{{count}} items geïmporteerd.",
     "entries_count_one": "{{count}} item",
-    "entries_count_other": "{{count}} items"
+    "entries_count_other": "{{count}} items",
+    "scope_language": "Taal",
+    "scope_voice": "Deze stem",
+    "voice_pick": "Kies een stem",
+    "voices_error": "Je stemmen konden niet worden geladen.",
+    "voice_note": "De eigen items van een stem gaan voor op het taalwoordenboek wanneer die stem spreekt."
   },
   "preferences": {
     "title": "Instellingen",
@@ -4741,6 +4746,17 @@
     "check_failed": "De controle van {{host}} kon niet worden voltooid. Details staan in het installatielogboek.",
     "check_unavailable": "Er is nog geen pakketdownload beschikbaar om te controleren.",
     "connection_error": "De verbinding voor de pakketdownload is mislukt. Hervat om opnieuw te proberen; voltooide downloads blijven bewaard."
+  },
+  "videoExport": {
+    "title": "Video-export",
+    "encoder": "Video-encoder",
+    "encoder_note": "Software (CPU) werkt overal hetzelfde. Hardware gebruikt de encoder van je videokaart als ffmpeg er een biedt en valt terug op software bij een fout.",
+    "encoder_detected": "Hardware-encoder gevonden: {{names}}. Bij een fout valt de export terug op software.",
+    "encoder_software": "Software (CPU)",
+    "encoder_hardware": "Hardware indien beschikbaar",
+    "max_resolution": "Maximale resolutie",
+    "max_resolution_note": "Grotere video's worden bij het exporteren verkleind. Kleinere video's worden nooit vergroot.",
+    "res_original": "Origineel"
   },
   "sfx": {
     "title": "Geluidseffecten",

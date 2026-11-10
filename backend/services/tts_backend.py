@@ -5026,22 +5026,43 @@ ENGINE_IDLE_UNLOAD_SECONDS = _idle_seconds_from_env(
 )
 
 
+class EngineBusyError(RuntimeError):
+    """A native stream and other generation may not share one engine at once."""
+
+
+_ENGINE_NATIVE_STREAM: set[type] = set()
+
+
 @contextmanager
-def engine_in_use(instance, *, now: Optional[float] = None):
+def engine_in_use(instance, *, now: Optional[float] = None,
+                  native: bool = False, yield_to_native: bool = False):
     """Hold an engine against the idle sweep for the duration of one job.
 
     Leaving on the exit stamp rather than the entry one makes "idle" mean
     "idle since the work finished", which is the only reading under which the
     ten-minute window measures what it claims to.
+
+    ``native=True`` claims the engine for a paused-between-chunks stream and
+    fails fast with ``EngineBusyError`` if any other job holds it;
+    ``yield_to_native=True`` makes a buffered job fail fast while a native
+    stream holds it, so the two never share model/sampler state.
     """
     cls = type(instance)
     with _ENGINE_CACHE_LOCK:
+        if native and (_ENGINE_IN_USE.get(cls) or cls in _ENGINE_NATIVE_STREAM):
+            raise EngineBusyError(f"{cls.__name__} is busy")
+        if yield_to_native and cls in _ENGINE_NATIVE_STREAM:
+            raise EngineBusyError(f"{cls.__name__} is streaming")
+        if native:
+            _ENGINE_NATIVE_STREAM.add(cls)
         _ENGINE_IN_USE[cls] = _ENGINE_IN_USE.get(cls, 0) + 1
     try:
         yield instance
     finally:
         retired = []
         with _ENGINE_CACHE_LOCK:
+            if native:
+                _ENGINE_NATIVE_STREAM.discard(cls)
             remaining = _ENGINE_IN_USE.get(cls, 1) - 1
             if remaining > 0:
                 _ENGINE_IN_USE[cls] = remaining

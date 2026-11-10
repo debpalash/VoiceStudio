@@ -25,6 +25,7 @@ from services.ffmpeg_utils import (
     local_inputs_only,
     run_ffmpeg,
 )
+from services import video_encoder
 from services.karaoke_ass import build_ass, scale_words
 from services.prosody_mirror import AnalysisBudgetExceeded, SegmentSpan, mirror_file
 from services.video_retime import (
@@ -997,6 +998,25 @@ async def dub_download(
             filter_parts.append(graph)
             video_map = vlabel
 
+    # Maximum output resolution (#3732): only ever downscales, so a source
+    # already inside the limit keeps the stream-copy path.
+    max_res = video_encoder.max_resolution()
+    if max_res != "original":
+        size_src = (
+            retime_decision.file_path
+            if retime_decision is not None and retime_decision.mode == "file"
+            else video_path
+        )
+        size = await video_encoder.probe_video_size(size_src)
+        if not size:
+            logger.warning(
+                "Could not probe video size; applying the %s resolution cap by filter", max_res)
+        if not size or video_encoder.needs_downscale(size[0], size[1], max_res):
+            scale_src = video_map if video_map.startswith("[") else f"[{video_map}]"
+            filter_parts.append(f"{scale_src}{video_encoder.scale_filter(max_res)}[vcap]")
+            video_map = "[vcap]"
+            video_reencode = True
+
     cmd += ["-map", video_map]
     if include_original:
         cmd += ["-map", "0:a:0"]
@@ -1040,8 +1060,13 @@ async def dub_download(
     # re-encode; stream-copy is viable when nothing touches the video
     # filter chain — including the batched Smart Fit path, whose retimed
     # intermediate is already encoded with these exact settings.
+    enc_args: tuple[str, ...] = ()
     if sub_path or stretch_entry or video_reencode:
-        cmd += ["-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p"]
+        # Hardware encoding is opt-in (#3732); libx264 stays the default.
+        enc_args = video_encoder.encoder_args(
+            await asyncio.to_thread(video_encoder.select_encoder, ffmpeg)
+        )
+        cmd += list(enc_args)
     else:
         cmd += ["-c:v", "copy"]
     cmd += ["-c:a", "aac", "-b:a", "192k"]
@@ -1085,8 +1110,17 @@ async def dub_download(
         cmd += ["-shortest"]
     cmd += [output_path, "-y"]
 
+    if retime_decision is None:
+        # Smart Fit cleared it at export start; a plain export must too, or an
+        # old /dub/abort reads as a cancel and blocks the encoder fallback.
+        job.pop("aborted", None)
     try:
-        rc, _, stderr = await run_ffmpeg(cmd, timeout=1800.0, job_id=job_id)
+        rc, _, stderr = await video_encoder.run_with_encoder_fallback(
+            cmd, enc_args,
+            lambda c: run_ffmpeg(c, timeout=1800.0, job_id=job_id),
+            aborted=lambda: bool(job.get("aborted")),
+            ffmpeg=ffmpeg,
+        )
         if rc != 0:
             raise Exception(stderr.decode(errors="replace") if stderr else "ffmpeg mux non-zero")
     except asyncio.TimeoutError:

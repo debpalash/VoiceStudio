@@ -2339,7 +2339,9 @@ async def generate_speech(
             _pron_rows = load_entries_from_db()
         except Exception:  # noqa: BLE001 — table missing / DB locked → no-op
             _pron_rows = []
-        text = apply_pronunciation(text, _pron_rows, language)
+        text = apply_pronunciation(
+            text, _pron_rows, language, profile_id=resolved_profile_id,
+        )
     else:
         # Even with the dictionary off, inline [[…]] overrides are an explicit,
         # in-text authoring choice → always honored (and never left as literal

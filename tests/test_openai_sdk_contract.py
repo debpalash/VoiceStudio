@@ -385,7 +385,7 @@ def test_native_pcm_lease_failure_releases_the_lock(engine, monkeypatch):
         def __exit__(self, *exc):
             pytest.fail("A lease that never entered must not exit")
 
-    monkeypatch.setattr(_tts_mod(), "engine_in_use", lambda backend: BrokenLease())
+    monkeypatch.setattr(_tts_mod(), "engine_in_use", lambda backend, **kw: BrokenLease())
     try:
         with pytest.raises(RuntimeError, match="lease unavailable"):
             asyncio.run(openai_compat._native_pcm_stream(engine(), "Hello.", {}, sse=False).__anext__())
@@ -454,6 +454,35 @@ def test_native_pcm_busy_answers_429_with_retry_after(client, engine, monkeypatc
         client.audio.speech.create(model="tts-1", voice="alloy", input="Hello.",
                                    response_format="pcm", stream_format="audio")
     assert busy.value.response.headers["retry-after"] == "1"
+
+
+def test_buffered_request_waits_out_an_active_native_stream(client, engine, monkeypatch):
+    ts = _tts_mod()
+    stream_lease = ts.engine_in_use(engine(), native=True)
+    stream_lease.__enter__()
+    try:
+        with pytest.raises(openai.RateLimitError) as busy:
+            client.audio.speech.create(model="tts-1", voice="alloy", input="Hello.",
+                                       response_format="wav")
+        assert busy.value.response.headers["retry-after"] == "1"
+        assert not engine.calls
+    finally:
+        stream_lease.__exit__(None, None, None)
+    client.audio.speech.create(model="tts-1", voice="alloy", input="Hello.", response_format="wav")
+    assert engine.calls
+
+
+def test_native_stream_refuses_to_start_beside_running_generation(engine):
+    ts = _tts_mod()
+    backend = engine()
+    with ts.engine_in_use(backend):
+        with pytest.raises(ts.EngineBusyError):
+            ts.engine_in_use(backend, native=True).__enter__()
+    with ts.engine_in_use(backend, native=True):
+        with pytest.raises(ts.EngineBusyError):
+            ts.engine_in_use(backend, yield_to_native=True).__enter__()
+    with ts.engine_in_use(backend, yield_to_native=True):
+        pass
 
 
 def test_primed_speech_closes_when_transport_stops_accepting_audio():

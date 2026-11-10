@@ -328,7 +328,12 @@
     "import_done_one": "{{count}} entri diimpor.",
     "import_done_other": "{{count}} entri diimpor.",
     "entries_count_one": "{{count}} entri",
-    "entries_count_other": "{{count}} entri"
+    "entries_count_other": "{{count}} entri",
+    "scope_language": "Bahasa",
+    "scope_voice": "Suara ini",
+    "voice_pick": "Pilih suara",
+    "voices_error": "Suara Anda tidak dapat dimuat.",
+    "voice_note": "Entri milik sebuah suara mengalahkan kamus bahasa setiap kali suara itu berbicara."
   },
   "preferences": {
     "title": "Pengaturan",
@@ -4741,6 +4746,17 @@
     "check_failed": "Pemeriksaan {{host}} tidak dapat diselesaikan. Detail ada di log penyiapan.",
     "check_unavailable": "Belum ada unduhan paket yang dapat diperiksa.",
     "connection_error": "Koneksi unduhan paket gagal. Lanjutkan untuk mencoba lagi; unduhan yang selesai tetap disimpan."
+  },
+  "videoExport": {
+    "title": "Ekspor video",
+    "encoder": "Encoder video",
+    "encoder_note": "Perangkat lunak (CPU) bekerja sama di mana saja. Perangkat keras memakai encoder kartu grafis saat ffmpeg menyediakannya, dan kembali ke perangkat lunak jika gagal.",
+    "encoder_detected": "Encoder perangkat keras ditemukan: {{names}}. Jika gagal, ekspor kembali ke perangkat lunak.",
+    "encoder_software": "Perangkat lunak (CPU)",
+    "encoder_hardware": "Perangkat keras jika tersedia",
+    "max_resolution": "Resolusi maksimum",
+    "max_resolution_note": "Video yang lebih besar diperkecil saat diekspor. Video yang lebih kecil tidak pernah diperbesar.",
+    "res_original": "Asli"
   },
   "sfx": {
     "title": "Efek suara",
