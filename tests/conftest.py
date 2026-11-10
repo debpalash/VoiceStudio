@@ -154,6 +154,26 @@ def pytest_configure(config):
         "markers",
         "model_licence_gate: run with real model-licence acceptance (default: accepted)",
     )
+    _pin_beartype_claw_state()
+
+
+def _pin_beartype_claw_state():
+    """Load beartype's import-hook state before any test can snapshot sys.modules.
+
+    ``pocket_tts`` (an ``is_available()`` probe imports it in-process) calls
+    ``beartype_this_package()``, which installs a process-wide import hook whose
+    ``get_code`` does a lazy ``from beartype.claw._clawstate import claw_state``.
+    A test that imports it inside ``patch.dict("sys.modules", ...)`` has every
+    ``beartype*`` module removed again on exit while the hook stays installed, so
+    the next import re-executes ``_clawstate`` under the hook and recurses into
+    itself ("cannot import name 'claw_state' from partially initialized
+    module"), failing every later new import on that xdist worker. Having it in
+    sys.modules up front puts it in every such snapshot, so it is restored.
+    """
+    try:
+        import beartype.claw._clawstate  # noqa: F401
+    except ImportError:
+        pass  # beartype is only present with the pockettts extra
 
 
 _LICENCE_STUB = {"active": False, "stubbed": []}
