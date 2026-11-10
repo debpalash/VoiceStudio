@@ -240,4 +240,12 @@ describe('download stall abort (#3950)', () => {
     // A new child doing other work for minutes is not a stalled download.
     expect(tracker.snapshot(900_000).stalled).toBeUndefined();
   });
+
+  it('re-arms when a retry re-announces a package left unfinished', () => {
+    const tracker = new SetupProgressTracker();
+    tracker.ingest('Downloading torch (2.5GiB)', 1_000);
+    tracker.restartStallClock();
+    tracker.ingest('Downloading torch (2.5GiB)', 300_000);
+    expect(tracker.snapshot(300_000 + DOWNLOAD_STALL_MS).stalled).toBe(true);
+  });
 });

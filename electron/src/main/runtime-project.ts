@@ -1151,7 +1151,7 @@ function errorSummary(error: unknown): string {
 }
 
 const TRANSIENT_DOWNLOAD_RE =
-  /HTTP status server error|(?:status|HTTP)[^\n]{0,40}\b50[0234]\b|\b50[0234] (?:Gateway|Service|Bad)|Gateway Time-?out|Service Unavailable|Bad Gateway|Request failed after \d+ retries|timed out|ECONNRESET|connection (?:reset|closed)|error sending request|dns error|Temporary failure/i;
+  /HTTP status server error|(?:status|HTTP)[^\n]{0,40}\b50[0234]\b|\b50[0234] (?:Gateway|Service|Bad)|Gateway Time-?out|Service Unavailable|Bad Gateway|Request failed after \d+ retries|(?:download|request|connect\w*|operation|read) timed out|ETIMEDOUT|ECONNRESET|connection (?:reset|closed)|error sending request|dns error|Temporary failure/i;
 
 /** Delays before the extra whole-sync attempts when a download hit a temporary server/network fault. */
 export const TRANSIENT_SYNC_DELAYS_MS: readonly number[] = [5_000, 20_000];

@@ -89,6 +89,8 @@ export class SetupProgressTracker {
   /** Last time any download made progress: an announcement, a completion, or in-flight bytes. */
   private advancedAt: number | undefined;
   private inFlightBytes = 0;
+  /** Packages the current uv child has announced; a plan kept from a failed child re-arms on its first announcement. */
+  private announcedByChild = new Set<string>();
 
   reset(): void {
     this.planned.clear();
@@ -99,6 +101,7 @@ export class SetupProgressTracker {
     this.progress = { completedDownloads: 0 };
     this.advancedAt = undefined;
     this.inFlightBytes = 0;
+    this.announcedByChild.clear();
   }
 
   /** Package (any spelling) to the host its locked wheel downloads from. */
@@ -138,7 +141,8 @@ export class SetupProgressTracker {
     const starting = line.match(new RegExp(`^Downloading\\s+(.+?)\\s+\\(${SIZE}\\)`, 'i'));
     if (starting) {
       const name = normalizePackageName(starting[1]);
-      if (!this.planned.has(name) || this.completed.has(name)) this.advancedAt = now;
+      if (!this.announcedByChild.has(name) || this.completed.has(name)) this.advancedAt = now;
+      this.announcedByChild.add(name);
       if (!this.labels.has(name)) this.labels.set(name, starting[1].trim());
       this.planned.set(name, parseByteSize(starting[2], starting[3]));
       this.completed.delete(name);
@@ -247,6 +251,7 @@ export class SetupProgressTracker {
    */
   restartStallClock(): void {
     this.advancedAt = undefined;
+    this.announcedByChild.clear();
   }
 
   snapshot(now = Date.now()): SetupProgress {

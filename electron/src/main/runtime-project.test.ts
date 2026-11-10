@@ -1795,12 +1795,17 @@ describe('retryTransientDownload (#3882)', () => {
   it('keeps the original error code when giving up', async () => {
     const sync = vi
       .fn()
-      .mockRejectedValue(Object.assign(new Error('lock timed out'), { code: 'EACCES' }));
+      .mockRejectedValue(Object.assign(new Error('Request failed: operation timed out'), { code: 'EACCES' }));
     const { retryTransientDownload } = await import('./runtime-project');
     const failure = await retryTransientDownload(sync, signal(), undefined, [1], noWait).catch(
       (error: Error) => error,
     );
     expect(failure).toMatchObject({ code: 'EACCES' });
+  });
+
+  it('does not retry a lock timeout', async () => {
+    const { isTransientDownloadFailure } = await import('./runtime-project');
+    expect(isTransientDownloadFailure(new Error('lock timed out'))).toBe(false);
   });
 
   it('does not repeat a non-network failure', async () => {
