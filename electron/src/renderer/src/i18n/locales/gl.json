@@ -319,7 +319,11 @@
     "import_done_one": "Importouse a entrada {{count}}.",
     "import_done_other": "Importáronse {{count}} entradas.",
     "entries_count_one": "{{count}} entrada",
-    "entries_count_other": "{{count}} entradas"
+    "entries_count_other": "{{count}} entradas",
+    "scope_language": "Idioma",
+    "scope_voice": "Esta voz",
+    "voice_pick": "Escolle unha voz",
+    "voice_note": "As entradas propias dunha voz teñen prioridade sobre o dicionario do idioma cando esa voz fala."
   },
   "app": {
     "name": "VoiceStudio",
@@ -4741,6 +4745,17 @@
     "check_failed": "Non se puido completar a comprobación de {{host}}. Os detalles están no rexistro de instalación.",
     "check_unavailable": "Aínda non hai ningunha descarga de paquete dispoñible para comprobar.",
     "connection_error": "Fallou a conexión de descarga do paquete. Retoma para reintentar; consérvanse as descargas completadas."
+  },
+  "videoExport": {
+    "title": "Exportación de vídeo",
+    "encoder": "Codificador de vídeo",
+    "encoder_note": "O software (CPU) funciona igual en todas partes. O hardware usa o codificador da túa tarxeta gráfica cando ffmpeg o ofrece e volve a software se falla.",
+    "encoder_detected": "Codificador por hardware atopado: {{names}}. Se falla, a exportación volve a software.",
+    "encoder_software": "Software (CPU)",
+    "encoder_hardware": "Hardware se está dispoñible",
+    "max_resolution": "Resolución máxima",
+    "max_resolution_note": "Os vídeos máis grandes redúcense ao exportar. Os máis pequenos nunca se amplían.",
+    "res_original": "Orixinal"
   },
   "sfx": {
     "title": "Efectos de son",

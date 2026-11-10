@@ -3459,6 +3459,11 @@
       "title": "Language",
       "type": "string"
      },
+     "profile_id": {
+      "default": "",
+      "title": "Profile Id",
+      "type": "string"
+     },
      "replacement": {
       "default": "",
       "title": "Replacement",
@@ -3550,6 +3555,11 @@
       "title": "Entries",
       "type": "array"
      },
+     "profile_id": {
+      "default": "",
+      "title": "Profile Id",
+      "type": "string"
+     },
      "replace": {
       "default": false,
       "title": "Replace",
@@ -3574,6 +3584,17 @@
        }
       ],
       "title": "Language"
+     },
+     "profile_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Profile Id"
      },
      "text": {
       "title": "Text",
@@ -6045,6 +6066,47 @@
      "event"
     ],
     "title": "_UiEventBody",
+    "type": "object"
+   },
+   "_VideoExportBody": {
+    "properties": {
+     "encoder": {
+      "anyOf": [
+       {
+        "enum": [
+         "software",
+         "hardware"
+        ],
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "software: libx264 (default); hardware: NVENC/QSV/AMF/VideoToolbox when available",
+      "title": "Encoder"
+     },
+     "max_resolution": {
+      "anyOf": [
+       {
+        "enum": [
+         "original",
+         "2160p",
+         "1440p",
+         "1080p",
+         "720p"
+        ],
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Cap for dub exports; only ever downscales. original = no cap",
+      "title": "Max Resolution"
+     }
+    },
+    "title": "_VideoExportBody",
     "type": "object"
    },
    "api__routers__sonitranslate__DubRequest": {
@@ -8772,6 +8834,64 @@
      }
     },
     "summary": "Clear Temp Files",
+    "tags": [
+     "settings"
+    ]
+   }
+  },
+  "/api/settings/video-export": {
+   "get": {
+    "description": "How dub video exports are encoded and capped.",
+    "operationId": "get_video_export_api_settings_video_export_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Get Video Export",
+    "tags": [
+     "settings"
+    ]
+   },
+   "put": {
+    "description": "Persist either field. Applies from the next export, no restart.",
+    "operationId": "set_video_export_api_settings_video_export_put",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/_VideoExportBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Set Video Export",
     "tags": [
      "settings"
     ]
@@ -18224,7 +18344,26 @@
   },
   "/pronunciation": {
    "get": {
+    "description": "The language dictionary, or one voice's own entries with ``profile_id``.",
     "operationId": "list_entries_pronunciation_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "profile_id",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Profile Id"
+      }
+     }
+    ],
     "responses": {
      "200": {
       "content": {
@@ -18233,6 +18372,16 @@
        }
       },
       "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
      }
     },
     "summary": "List Entries"
@@ -18274,8 +18423,26 @@
   },
   "/pronunciation/export": {
    "get": {
-    "description": "Every entry as a JSON-serializable list (round-trips ``/import``).",
+    "description": "The language dictionary (or one voice's, with ``profile_id``) as a\nJSON-serializable list (round-trips ``/import`` with the same scope).",
     "operationId": "export_entries_pronunciation_export_get",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "profile_id",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Profile Id"
+      }
+     }
+    ],
     "responses": {
      "200": {
       "content": {
@@ -18284,6 +18451,16 @@
        }
       },
       "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
      }
     },
     "summary": "Export Entries"

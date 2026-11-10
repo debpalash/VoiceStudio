@@ -328,7 +328,11 @@
     "import_done_one": "{{count}} post importerad.",
     "import_done_other": "{{count}} poster importerade.",
     "entries_count_one": "{{count}} post",
-    "entries_count_other": "{{count}} poster"
+    "entries_count_other": "{{count}} poster",
+    "scope_language": "Språk",
+    "scope_voice": "Den här rösten",
+    "voice_pick": "Välj en röst",
+    "voice_note": "En rösts egna poster går före språkordlistan när den rösten talar."
   },
   "preferences": {
     "title": "Inställningar",
@@ -4741,6 +4745,17 @@
     "check_failed": "Kontrollen av {{host}} kunde inte slutföras. Detaljer finns i installationsloggen.",
     "check_unavailable": "Det finns ännu ingen paketnedladdning att kontrollera.",
     "connection_error": "Anslutningen för paketnedladdningen misslyckades. Återuppta för att försöka igen; slutförda nedladdningar sparas."
+  },
+  "videoExport": {
+    "title": "Videoexport",
+    "encoder": "Videokodare",
+    "encoder_note": "Programvara (CPU) fungerar likadant överallt. Hårdvara använder grafikkortets kodare när ffmpeg erbjuder en och går tillbaka till programvara om det misslyckas.",
+    "encoder_detected": "Hårdvarukodare hittades: {{names}}. Om den misslyckas går exporten tillbaka till programvara.",
+    "encoder_software": "Programvara (CPU)",
+    "encoder_hardware": "Hårdvara när det finns",
+    "max_resolution": "Maximal upplösning",
+    "max_resolution_note": "Större videor skalas ner vid export. Mindre videor förstoras aldrig.",
+    "res_original": "Original"
   },
   "sfx": {
     "title": "Ljudeffekter",

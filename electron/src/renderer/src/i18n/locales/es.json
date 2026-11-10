@@ -330,7 +330,11 @@
     "import_done_one": "Se importó {{count}} entrada.",
     "import_done_other": "Se importaron {{count}} entradas.",
     "entries_count_one": "{{count}} entrada",
-    "entries_count_other": "{{count}} entradas"
+    "entries_count_other": "{{count}} entradas",
+    "scope_language": "Idioma",
+    "scope_voice": "Esta voz",
+    "voice_pick": "Elige una voz",
+    "voice_note": "Las entradas propias de una voz tienen prioridad sobre el diccionario del idioma cuando esa voz habla."
   },
   "preferences": {
     "title": "Configuración",
@@ -4743,6 +4747,17 @@
     "check_failed": "No se pudo completar la comprobación de {{host}}. Los detalles están en el registro de instalación.",
     "check_unavailable": "Todavía no hay ninguna descarga de paquete que comprobar.",
     "connection_error": "Falló la conexión de descarga del paquete. Reanuda para reintentar; se conservan las descargas completadas."
+  },
+  "videoExport": {
+    "title": "Exportación de vídeo",
+    "encoder": "Codificador de vídeo",
+    "encoder_note": "El software (CPU) funciona igual en todas partes. El hardware usa el codificador de tu tarjeta gráfica cuando ffmpeg lo ofrece y vuelve a software si falla.",
+    "encoder_detected": "Codificador por hardware encontrado: {{names}}. Si falla, la exportación vuelve a software.",
+    "encoder_software": "Software (CPU)",
+    "encoder_hardware": "Hardware si está disponible",
+    "max_resolution": "Resolución máxima",
+    "max_resolution_note": "Los vídeos más grandes se reducen al exportar. Los más pequeños nunca se amplían.",
+    "res_original": "Original"
   },
   "sfx": {
     "title": "Efectos de sonido",

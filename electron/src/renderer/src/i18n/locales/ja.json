@@ -328,7 +328,11 @@
     "import_done_one": "{{count}} 件をインポートしました。",
     "import_done_other": "{{count}} 件をインポートしました。",
     "entries_count_one": "{{count}} 件",
-    "entries_count_other": "{{count}} 件"
+    "entries_count_other": "{{count}} 件",
+    "scope_language": "言語",
+    "scope_voice": "この音声",
+    "voice_pick": "音声を選択",
+    "voice_note": "その音声が話すときは、音声ごとの項目が言語辞書より優先されます。"
   },
   "preferences": {
     "title": "設定",
@@ -4741,6 +4745,17 @@
     "check_failed": "{{host}} の確認を完了できませんでした。詳細はセットアップログに記録されています。",
     "check_unavailable": "確認できるパッケージのダウンロードはまだありません。",
     "connection_error": "パッケージのダウンロード接続に失敗しました。再開して再試行してください。完了済みのダウンロードは保持されます。"
+  },
+  "videoExport": {
+    "title": "動画のエクスポート",
+    "encoder": "動画エンコーダー",
+    "encoder_note": "ソフトウェア(CPU)はどの環境でも同じように動作します。ハードウェアは ffmpeg が対応している場合にグラフィックスカードのエンコーダーを使い、失敗するとソフトウェアに戻ります。",
+    "encoder_detected": "ハードウェアエンコーダーが見つかりました: {{names}}。失敗した場合、エクスポートはソフトウェアに戻ります。",
+    "encoder_software": "ソフトウェア(CPU)",
+    "encoder_hardware": "利用可能ならハードウェア",
+    "max_resolution": "最大解像度",
+    "max_resolution_note": "大きい動画はエクスポート時に縮小されます。小さい動画が拡大されることはありません。",
+    "res_original": "元のまま"
   },
   "sfx": {
     "title": "効果音",

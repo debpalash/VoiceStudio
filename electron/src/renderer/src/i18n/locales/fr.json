@@ -330,7 +330,11 @@
     "import_done_one": "{{count}} entrée importée.",
     "import_done_other": "{{count}} entrées importées.",
     "entries_count_one": "{{count}} entrée",
-    "entries_count_other": "{{count}} entrées"
+    "entries_count_other": "{{count}} entrées",
+    "scope_language": "Langue",
+    "scope_voice": "Cette voix",
+    "voice_pick": "Choisir une voix",
+    "voice_note": "Les entrées propres à une voix l'emportent sur le dictionnaire de la langue quand cette voix parle."
   },
   "preferences": {
     "title": "Paramètres",
@@ -4743,6 +4747,17 @@
     "check_failed": "Impossible de terminer le test de {{host}}. Les détails figurent dans le journal d’installation.",
     "check_unavailable": "Aucun téléchargement de paquet n’est encore disponible pour le test.",
     "connection_error": "La connexion de téléchargement du paquet a échoué. Reprenez pour réessayer ; les téléchargements terminés sont conservés."
+  },
+  "videoExport": {
+    "title": "Export vidéo",
+    "encoder": "Encodeur vidéo",
+    "encoder_note": "Le logiciel (CPU) fonctionne partout de la même façon. Le matériel utilise l'encodeur de votre carte graphique quand ffmpeg en propose un, et revient au logiciel en cas d'échec.",
+    "encoder_detected": "Encodeur matériel trouvé : {{names}}. En cas d'échec, l'export revient au logiciel.",
+    "encoder_software": "Logiciel (CPU)",
+    "encoder_hardware": "Matériel si disponible",
+    "max_resolution": "Résolution maximale",
+    "max_resolution_note": "Les vidéos plus grandes sont réduites à l'export. Les plus petites ne sont jamais agrandies.",
+    "res_original": "Originale"
   },
   "sfx": {
     "title": "Effets sonores",
