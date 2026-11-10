@@ -15,12 +15,18 @@ data class ProductionSegment(val chapter: Int, val role: String, val text: Strin
 data class ProductionPlan(val segments: List<ProductionSegment>, val chapters: List<String>) {
     val roles get() = segments.map {it.role}.filter {it.isNotEmpty()}.distinct()
     companion object {
+        // Desktop [emotion:TEXT] directions (#3422): phone models take no emotion, so the tag is
+        // dropped (never read aloud). Stripped from the whole script before it is split into lines,
+        // because a desktop tag may span lines; the line breaks inside a tag are kept so a voice tag
+        // after it still starts its line. A tag never spans a "# " heading, which the desktop
+        // parser splits first. Case-insensitive like the desktop parser.
+        private val EMOTION=Regex("\\[emotion:[^\\]\\[]*\\]",RegexOption.IGNORE_CASE)
         fun parse(script: String,pronunciations: Map<String,String> = emptyMap(),speed: Float=1f): ProductionPlan {
             require(speed.isFinite()&&speed in 0.5f..2f&&pronunciations.size<=100)
             val replacements=NarrationText.rules(pronunciations)
             require(script.length <= 1_000_000)
             val segments=mutableListOf<ProductionSegment>();val chapters=mutableListOf("");var role=""
-            script.lineSequence().forEach {raw ->
+            EMOTION.replace(script) {tag -> if(tag.value.lines().drop(1).any {it.trim().startsWith("# ")}) tag.value else tag.value.filter {it=='\n'||it=='\r'}.ifEmpty {" "}}.lineSequence().forEach {raw ->
                 var line=raw.trim()
                 if(line.startsWith("# ")) {
                     val title=line.drop(2).trim()
@@ -77,7 +83,10 @@ class ProductionStore(private val root: File) {
     internal fun handoffRenderDirectory(project: ProductionProject,configuration: String)=renderDirectory(project,configuration)
     private fun key(project: ProductionProject,configuration: String): String {
         val cast=buildJsonObject {project.cast.toSortedMap().forEach {(k,v)->put(k,v)}}
-        val value=buildJsonArray {add("narration-v2");add(project.script);add(project.defaultVoice);add(cast);add(project.speed);add(buildJsonObject {project.pronunciations.toSortedMap().forEach {(k,v)->put(k,v)}});add(configuration)}
+        // Scripts with a desktop [emotion:] tag parse differently since #3422 (the tag is no longer
+        // spoken), so only they get a new key; every other script keeps its renders.
+        val version=if(project.script.contains("[emotion:",ignoreCase=true)) "narration-v3" else "narration-v2"
+        val value=buildJsonArray {add(version);add(project.script);add(project.defaultVoice);add(cast);add(project.speed);add(buildJsonObject {project.pronunciations.toSortedMap().forEach {(k,v)->put(k,v)}});add(configuration)}
         return MessageDigest.getInstance("SHA-256").digest(value.toString().toByteArray(Charsets.UTF_8)).joinToString("") {"%02x".format(it)}
     }
     private fun renderDirectory(project: ProductionProject,configuration: String)=File(directory(project.id),key(project,configuration))

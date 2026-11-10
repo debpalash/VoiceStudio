@@ -15,6 +15,7 @@ _DISTRIBUTIONS = {
     "ctranslate2": "ctranslate2",
     "_rocm_sdk_core": "rocm-sdk-core",
     "_rocm_sdk_libraries_custom": "rocm-sdk-libraries-custom",
+    "_rocm_sdk_libraries": "rocm-sdk-libraries",
 }
 
 
@@ -38,13 +39,17 @@ def package_root(package):
 def dll_directories():
     """Discover package locations without importing (and locking) Torch/CT2."""
     try:
-        if "rocm" not in metadata.version("torch").lower():
+        torch_version = metadata.version("torch").lower()
+        if "rocm" not in torch_version:
             return []
     except metadata.PackageNotFoundError:
         return []
+    # Old and new SDK packages may coexist after switching recipes. Never put
+    # the other recipe's DLLs on the search path.
+    libraries = "_rocm_sdk_libraries" if "+rocm10." in torch_version else "_rocm_sdk_libraries_custom"
     directories = []
     for package, suffix in (("torch", "lib"), ("ctranslate2", ""),
-                            ("_rocm_sdk_core", "bin"), ("_rocm_sdk_libraries_custom", "bin")):
+                            ("_rocm_sdk_core", "bin"), (libraries, "bin")):
         root = package_root(package)
         if root is not None:
             directory = root / suffix

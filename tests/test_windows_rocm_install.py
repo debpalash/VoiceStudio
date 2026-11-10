@@ -12,6 +12,7 @@ import pytest
 def installer(monkeypatch):
     module = importlib.import_module("core.windows_rocm.install")
     monkeypatch.setattr(module, "validate_target", lambda: None)
+    monkeypatch.setattr(module, "validate_repair_selection", lambda recipe: None)
     return module
 
 
@@ -45,7 +46,7 @@ def test_repair_installs_official_stack_then_verified_ct2_and_rechecks(installer
     def run(command):
         events.append(command)
         if "-r" in command:  # read while the temporary directory still exists
-            requirements.extend(Path(command[command.index("-r") + 1]).read_text().splitlines())
+            requirements.extend(Path(command[command.index("-r") + 1]).read_text(encoding="utf-8").splitlines())
 
     monkeypatch.setattr(installer, "run_install", run)
     assert installer.provision("uv-custom")["ready"]

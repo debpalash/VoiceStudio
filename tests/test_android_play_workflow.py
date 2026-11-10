@@ -28,7 +28,7 @@ def test_play_does_not_require_optional_recording_or_qr_hardware(feature):
 
 
 def load(path):
-    return yaml.load(path.read_text(), Loader=yaml.BaseLoader)
+    return yaml.load(path.read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
 
 
 def test_workflow_is_manual_main_only_and_read_only():
@@ -58,8 +58,10 @@ def test_play_installs_the_native_build_toolchain():
     """The store workflow must provide the same pinned toolchain as releases."""
     steps = load(WORKFLOW)["jobs"]["play-internal"]["steps"]
     setup = next(step for step in steps if step.get("name") == "NDK and CMake")
-    assert '"ndk;27.1.12297006"' in setup["run"]
-    assert '"cmake;3.22.1"' in setup["run"]
+    assert "mobile/android/install-sdk-packages.sh" in setup["run"]
+    installer = (WORKFLOW.parents[2] / "mobile/android/install-sdk-packages.sh").read_text(encoding="utf-8")
+    assert '"ndk;27.1.12297006"' in installer
+    assert '"cmake;3.22.1"' in installer
     assert steps.index(setup) < next(i for i, step in enumerate(steps) if step.get("name") == "Build signed bundle")
 
 
@@ -176,7 +178,7 @@ def test_build_number_bounds(minutes, accepted):
 
 
 def test_gradle_signs_release_only_with_the_upload_key_and_parses_beta_versions():
-    source = GRADLE.read_text()
+    source = GRADLE.read_text(encoding="utf-8")
     assert 'Regex("""(\\d+)\\.(\\d+)\\.(\\d+)(?:-beta\\.\\d+)?""")' in source
     assert 'appVersion.split(".")' not in source
     assert "if (uploadKeystore != null)" in source
@@ -194,7 +196,7 @@ def test_store_app_id_matches_on_both_platforms_and_the_upload():
     ios = load(ROOT / "mobile" / "ios" / "VoiceStudio" / "project.yml")
     bundle_id = ios["targets"]["VoiceStudio"]["settings"]["base"]["PRODUCT_BUNDLE_IDENTIFIER"]
     assert bundle_id == "sh.voicestudio.mobile"
-    assert f'applicationId = "{bundle_id}"' in GRADLE.read_text()
+    assert f'applicationId = "{bundle_id}"' in GRADLE.read_text(encoding="utf-8")
     steps = load(WORKFLOW)["jobs"]["play-internal"]["steps"]
     upload = next(step for step in steps if step.get("name") == "Upload to Play internal testing")
     assert upload["with"]["packageName"] == bundle_id

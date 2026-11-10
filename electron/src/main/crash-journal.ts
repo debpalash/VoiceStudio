@@ -1,5 +1,7 @@
-import { readFileSync, writeFileSync, renameSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { renameSyncWithRetry } from './rename-retry';
 import type { NativeCrashRecord } from '../preload/index.d';
+import { type CrashContext, parseCrashContext } from '../shared/utils/crashContext';
 import { nativeCrashExcerpt } from '../shared/utils/crashReport';
 import { scrubText } from '../shared/utils/scrub';
 
@@ -13,10 +15,17 @@ export class CrashJournal {
   private nativeLines: string[] = [];
   private captureOpen = false;
   private streaming = false;
+  /** Outlives resetCapture: the fault dump that follows must not erase it. */
+  private context?: { value: CrashContext; receivedAt: number };
   resetCapture(streaming = true): void {
     this.nativeLines = [];
     this.captureOpen = false;
     this.streaming = streaming;
+  }
+  /** A new backend process: what the previous one was doing says nothing about it. */
+  startProcess(): void {
+    this.context = undefined;
+    this.resetCapture();
   }
   /**
    * Buffer the whole all-thread dump before the supervisor ring evicts its
@@ -26,6 +35,11 @@ export class CrashJournal {
    * was loading and every other thread.
    */
   captureLine(line: string): void {
+    const context = parseCrashContext(line);
+    if (context) {
+      this.context = { value: context, receivedAt: Date.now() };
+      return;
+    }
     line = scrubText(line);
     this.streaming = true;
     const trimmed = line.trim();
@@ -90,12 +104,19 @@ export class CrashJournal {
     signal: string | null,
     uptimeMs: number,
     logTail: string[],
+    /** The supervisor waits for a replacement backend before recording. */
+    exitedAt: number = Date.now(),
   ): NativeCrashRecord | undefined {
     logTail = logTail.map(scrubText);
     const native = nativeCrashExcerpt(
       this.streaming ? this.nativeLines.join('\n') : logTail.join('\n'),
     );
     this.resetCapture(false);
+    const context = this.context && {
+      ...this.context.value,
+      seconds_before_exit: Math.max(0, Math.round((exitedAt - this.context.receivedAt) / 1000)),
+    };
+    this.context = undefined;
     // EX_CONFIG is a port collision; Windows debugger termination is not a backend fault.
     if (exitCode === 78 || exitCode === 0x40010004) return undefined;
     this.records.unshift({
@@ -110,6 +131,7 @@ export class CrashJournal {
             .slice(0, 40)
             .map((line) => line.slice(0, 4096))
         : logTail.slice(-40).map((line) => line.slice(-4096)),
+      ...(context ? { context } : {}),
       acknowledged: false,
     });
     this.records = this.records.slice(0, 3);
@@ -122,7 +144,7 @@ export class CrashJournal {
         encoding: 'utf8',
         mode: 0o600,
       });
-      renameSync(this.path + '.tmp', this.path);
+      renameSyncWithRetry(this.path + '.tmp', this.path);
     } catch {
       /* retain in memory when storage is unavailable */
     }

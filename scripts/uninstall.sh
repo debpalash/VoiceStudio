@@ -121,6 +121,14 @@ app_targets=()
 
 # ── Optional: the prebuilt app installed by `curl … | sh` (default mode) ────
 if [ "$REMOVE_APP" -eq 1 ]; then
+  command_path="$HOME/.local/bin/voicestudio"
+  if [ -L "$command_path" ]; then
+    command_target="$(readlink "$command_path")"
+    case "$command_target" in
+      "$HOME/.local/bin/VoiceStudio"|"/Applications/VoiceStudio.app/Contents/Resources/cli/voicestudio"|"$HOME/Applications/VoiceStudio.app/Contents/Resources/cli/voicestudio")
+        app_targets+=("$command_path") ;;
+    esac
+  fi
   case "$OS" in
     Darwin)
       for app_dir in "/Applications/VoiceStudio.app" "$HOME/Applications/VoiceStudio.app"; do
@@ -174,29 +182,72 @@ fi
 # If — and only if — the user opted in to anonymous analytics, send a single
 # best-effort `app_uninstalled` event before the data (and the consent record
 # it lives in) goes away. The backend writes analytics_info.json next to
-# prefs.json ONLY while analytics is enabled (explicit consent + a build that
-# ships a token) and deletes it on opt-out, so the file's presence is itself
-# consent-gated; the prefs.json check is belt and braces. Content-free: the
-# event carries the app version, the OS name, and the random per-install id —
-# nothing else. Never blocks or fails the uninstall (2s timeout, silent
-# failure). Not opted in ⇒ nothing is sent and nothing is printed.
+# prefs.json ONLY while analytics is enabled and deletes it on opt-out, so the
+# file's presence is itself consent-gated; the prefs.json check is belt and
+# braces. Content-free: the app version, the OS name and the random per-install
+# profile. Never blocks the uninstall (2s timeout, silent failure). Not opted
+# in ⇒ nothing is sent and nothing is printed.
 send_uninstall_ping() {
-  local info="$DATA_DIR/analytics_info.json" prefs="$DATA_DIR/prefs.json"
+  local info="$DATA_DIR/analytics_info.json"
+  local prefs="$DATA_DIR/prefs.json"
   [ -f "$info" ] && [ -f "$prefs" ] || return 0
   grep -q '"analytics_enabled"[[:space:]]*:[[:space:]]*true' "$prefs" 2>/dev/null || return 0
   command -v curl >/dev/null 2>&1 || return 0
-  local token host distinct_id app_version platform
-  token=$(sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$info" | head -n1)
-  host=$(sed -n 's/.*"host"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$info" | head -n1)
-  distinct_id=$(sed -n 's/.*"distinct_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$info" | head -n1)
-  app_version=$(sed -n 's/.*"app_version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$info" | head -n1)
-  platform=$(sed -n 's/.*"platform"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$info" | head -n1)
-  [ -n "$token" ] && [ -n "$host" ] && [ -n "$distinct_id" ] || return 0
+  # Prefer a system Python; otherwise the app's own runtime interpreter, so an
+  # opted-in user without python3 on PATH is not silently skipped.
+  local py
+  py=$(command -v python3 2>/dev/null || true)
+  if [ -z "$py" ]; then
+    local candidate="${ELECTRON_RUNTIME:-$electron_user_data/runtime}/project/.venv/bin/python"
+    [ -x "$candidate" ] && py=$candidate
+  fi
+  [ -n "$py" ] || return 0
+  local prepared host agent origin body
+  prepared=$("$py" - "$info" 2>/dev/null <<'PYTHON'
+import json, os, re, sys, time, uuid
+from urllib.parse import urlsplit
+try:
+    if os.environ.get("OMNIVOICE_ANALYTICS_DISABLED", "").strip().lower() in {"1", "true", "yes", "on"}:
+        raise ValueError()
+    if "SUPERMETRY_SITE_ID" in os.environ and not os.environ["SUPERMETRY_SITE_ID"].strip():
+        raise ValueError()
+    with open(sys.argv[1], encoding="utf-8") as f:
+        info = json.load(f)
+    host, url = info["host"].rstrip("/"), info["appUrl"].rstrip("/")
+    for value in (host, url):
+        parsed = urlsplit(value)
+        if (parsed.scheme not in {"http", "https"} or not parsed.hostname
+                or parsed.username or parsed.password or parsed.query or parsed.fragment
+                or any(ord(c) < 33 for c in value)):
+            raise ValueError()
+    if (urlsplit(host).path or not info.get("site") or info.get("policy") != "opt-in"
+            or not re.fullmatch(r"install_[a-f0-9]{32}", info.get("profile_id", ""))):
+        raise ValueError()
+    agent = info["user_agent"]
+    if not agent.startswith("Mozilla/5.0 (") or any(ord(c) < 32 for c in agent):
+        raise ValueError()
+    props = {k: info[k] for k in ("app_version", "platform") if isinstance(info.get(k), str) and len(info[k]) <= 64}
+    event = {"v": 1, "id": uuid.uuid4().hex, "ts": int(time.time() * 1000),
+             "site": info["site"], "name": "app_uninstalled", "url": url + "/uninstall",
+             "profile_id": info["profile_id"], "props": props}
+    parsed = urlsplit(url)
+    print(host)
+    print(agent)
+    print(parsed.scheme + "://" + parsed.netloc)
+    print(json.dumps(event, separators=(",", ":"), allow_nan=False))
+except Exception:
+    sys.exit(1)
+PYTHON
+  ) || return 0
+  host=$(printf '%s\n' "$prepared" | sed -n '1p')
+  agent=$(printf '%s\n' "$prepared" | sed -n '2p')
+  origin=$(printf '%s\n' "$prepared" | sed -n '3p')
+  body=$(printf '%s\n' "$prepared" | sed -n '4p')
+  [ -n "$host" ] && [ -n "$body" ] || return 0
   echo "Sending anonymous uninstall ping (you opted in to analytics)."
-  curl -m 2 -s -o /dev/null -X POST "$host/capture/" \
-    -H 'Content-Type: application/json' \
-    -d "{\"api_key\":\"$token\",\"event\":\"app_uninstalled\",\"distinct_id\":\"$distinct_id\",\"properties\":{\"app_version\":\"$app_version\",\"platform\":\"$platform\"}}" \
-    || true
+  curl -m 2 -s -o /dev/null -X POST "$host/api/public/v1/events" \
+    -H 'Content-Type: application/json' -H "Origin: $origin" -A "$agent" \
+    -d "$body" || true
 }
 send_uninstall_ping
 

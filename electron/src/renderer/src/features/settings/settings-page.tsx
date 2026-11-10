@@ -5,6 +5,7 @@ import { PrivacySettings } from './privacy-settings';
 import { AccountSettings } from './account-settings';
 import { useAccount } from '@/features/account/use-account';
 import { PerformanceSettings } from './performance-settings';
+import { VideoExportSettings } from './video-export-settings';
 import { CredentialSettings } from './credential-settings';
 import { NetworkSettings } from './network-settings';
 import { SharingSettings } from './sharing-settings';
@@ -44,9 +45,19 @@ import { cn } from '@/lib/utils';
 import { SettingsContent, SettingsPageTitleContext } from './settings-layout';
 import { SettingsNav, type SettingsLocation } from './settings-nav';
 import { AppearanceResetButton, AppearanceSettings, GeneralSettings } from './settings-preferences';
+import { ExistingPythonSettings } from './existing-python-settings';
 import { rememberSettingsRoute } from '@/lib/settings-route';
 
-// Pause fill (#3611) sits with the pronunciation dictionary: both shape how
+function PerformanceAndPythonSettings() {
+  return (
+    <>
+      <ExistingPythonSettings />
+      <PerformanceSettings />
+      <VideoExportSettings />
+    </>
+  );
+}
+
 // the generated speech sounds.
 function SpeechOutputSettings() {
   return (
@@ -130,13 +141,15 @@ const extraSettings = [
     to: '/settings/performance',
     label: 'settings.perf_title',
     Icon: CpuIcon,
-    Component: PerformanceSettings,
+    Component: PerformanceAndPythonSettings,
     fields: [
       'settings.perf_title',
       'settings.compute_device_title',
       'setup.system_preflight',
       'settings.perf_torch_compile',
       'settings.generate_budget_title',
+      'videoExport.title',
+      'videoExport.max_resolution',
     ],
   },
   {

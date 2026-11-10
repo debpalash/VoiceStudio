@@ -1,10 +1,19 @@
+import type { CrashContext } from '../shared/utils/crashContext';
 import type { HostSnapshotLike } from '../shared/utils/hostSnapshot';
+import type { InstallFailure } from '../shared/utils/installFailure';
 /**
  * The contextBridge surface exposed to the renderer as `window.voicestudio`.
  *
  * Keep this file the single contract between main (src/main), preload
  * (src/preload/index.ts) and the renderer. Both tsconfigs include it.
  */
+
+export interface TerminalCommandStatus {
+  supported: boolean;
+  linked: boolean;
+  onPath: boolean;
+  command: string;
+}
 
 export type BackendStage =
   | 'setup_required'
@@ -25,11 +34,21 @@ export interface NativeCrashRecord {
   signal: string | null;
   uptimeMs: number;
   logTail: string[];
+  /** The backend's last reported activity and free memory. */
+  context?: CrashContext;
   /** Viewing or dismissing a crash marks it seen while retaining evidence for reports. */
   acknowledged: boolean;
 }
 export interface BackendStatus {
   lastCrash?: NativeCrashRecord;
+  /** The CUDA download failed or stuck, and the smaller CPU build could get past it. */
+  cpuSetupAvailable?: boolean;
+  /** Set on the setup screen when Windows Smart App Control may block the engine. */
+  smartAppControlWarning?: boolean;
+  /** OMNIVOICE_ANALYTICS_DISABLED is set: nothing may be sent, whatever was chosen. */
+  analyticsDisabled?: boolean;
+  /** Code and facts for the current install or startup failure. */
+  failure?: InstallFailure;
   stage: BackendStage;
   setupIssue?:
     | 'space'
@@ -38,9 +57,16 @@ export interface BackendStatus {
     | 'wrong_architecture'
     | 'missing_system_library'
     | 'outdated_system_library'
-    | 'files_locked';
+    | 'files_locked'
+    | 'install_stuck';
   /** Free disk (GiB) the failed install needed; the CPU-only install needs less than the CUDA one. */
   setupRequiredGib?: number;
+  /** Detected hardware and the PyTorch build the runtime install will pick (setup screen). */
+  setupHardware?: {
+    gpu?: string;
+    build: 'metal' | 'cuda' | 'rocm' | 'cpu';
+    reason?: 'no_nvidia' | 'windows_arm' | 'explicit';
+  };
   /** A prior explicit install stopped after creating its resumable project/cache. */
   runtimeInterrupted?: boolean;
   /** Automatic repair of a lost Python environment already ran this launch and failed. */
@@ -105,6 +131,23 @@ export interface RuntimeLocation {
   custom: boolean;
 }
 
+export interface PythonRuntimeCandidate {
+  pythonPath: string;
+  source: string;
+  version?: string;
+}
+export interface PythonRuntimeDiscoveryWarning {
+  path: string;
+  reason: 'permission_denied' | 'scan_limit' | 'read_error';
+}
+export interface PythonDiscoveryResult {
+  candidates: PythonRuntimeCandidate[];
+  warnings: PythonRuntimeDiscoveryWarning[];
+  partial: boolean;
+  scannedRoots: string[];
+}
+export interface PythonRepairPlan { interpreter: string; packages: string[]; }
+
 export interface BackendConnection {
   remote: boolean;
   url: string;
@@ -121,13 +164,15 @@ export type UpdateStatus =
   | 'downloaded'
   | 'error';
 export type UpdateChannel = 'stable' | 'beta';
+/** Which step failed; `not-applied` means an installed update did not take effect. */
+export type UpdateErrorKind = 'check' | 'download' | 'verify' | 'install' | 'not-applied';
 export interface UpdateState {
   status: UpdateStatus;
   currentVersion: string;
   /** Absent when this build cannot switch channels (Store builds, dev runs). */
   channel?: UpdateChannel;
   /** Set only while status is 'unsupported': why this build cannot update itself. */
-  unsupportedReason?: 'development' | 'store' | 'package-manager';
+  unsupportedReason?: 'development' | 'store' | 'package-manager' | 'no-update-config';
   availableVersion?: string;
   notes?: string | null;
   progress: number;
@@ -137,6 +182,13 @@ export interface UpdateState {
   etaSeconds?: number;
   lastCheckedAt?: number;
   error?: string;
+  errorKind?: UpdateErrorKind;
+  /** Downloads a found update without asking (packaged builds that update themselves). */
+  autoDownload?: boolean;
+  /** Quitting installs a downloaded update on this install type (not on .deb). */
+  installOnQuit?: boolean;
+  /** The version the user chose "Later" for; it still installs on quit. */
+  dismissedVersion?: string;
 }
 export interface UpdateReleaseInfo {
   version: string;
@@ -309,7 +361,14 @@ export interface UninstallTarget {
   shared: boolean;
 }
 
+export interface AccountSignInOptions {
+  /** `signup` opens the dashboard on account creation; `login` (default) on sign-in. */
+  intent: 'login' | 'signup';
+}
+
 export interface AccountPublicState {
+  /** The signed-in account's ID; token presence alone does not count as signed in. */
+  accountId?: string | null;
   available: boolean;
   accountEnabled: boolean;
   syncEnabled: boolean;
@@ -338,6 +397,8 @@ export interface AccountPublicState {
   plan: {
     planCode: string;
     planName: string;
+    /** Where the plan comes from (for example `default`, a purchase or a grant). */
+    planOrigin: string;
     /** When the plan ends (a yearly plan or a grant); null for no end. */
     planEndsAt: string | null;
     storageUsedBytes: number;
@@ -346,15 +407,27 @@ export interface AccountPublicState {
     settingsSync: boolean | null;
     proDesktop: boolean | null;
   } | null;
-  /** Dashboard pages for managing the profile and the plan; null when signed out. */
-  links: { profile: string; plan: string } | null;
+  /** Dashboard pages for the profile, the plan and account deletion; null when signed out. */
+  links: { profile: string; plan: string; deletion: string } | null;
+}
+
+export interface SetupConnectionCheck {
+  status: 'ok' | 'failed' | 'unavailable';
+  host?: string;
+  bytes?: number;
+  elapsedMs?: number;
+  bytesPerSecond?: number;
+  error?: string;
+  checkedAt: number;
 }
 
 export interface VoiceStudioBridge {
   /** VoiceStudio Cloud account; never carries a token. */
   account: {
     get(): Promise<AccountPublicState>;
-    signIn(): Promise<void>;
+    /** Reload profile, plan and photo, then notify every open window. */
+    refresh(): Promise<AccountPublicState>;
+    signIn(options?: AccountSignInOptions): Promise<void>;
     cancelSignIn(): Promise<void>;
     signOut(): Promise<void>;
     setSwitches(patch: {
@@ -387,6 +460,8 @@ export interface VoiceStudioBridge {
     download(): Promise<UpdateState>;
     dismiss(): Promise<UpdateState>;
     setChannel(channel: UpdateChannel): Promise<UpdateState>;
+    setAutoDownload(enabled: boolean): Promise<UpdateState>;
+    later(): Promise<UpdateState>;
     install(): Promise<void>;
     listReleases(): Promise<UpdateReleaseInfo[]>;
     onState(cb: (state: UpdateState) => void): () => void;
@@ -405,6 +480,12 @@ export interface VoiceStudioBridge {
     scan(token: string): Promise<WatchEntry[]>;
     enqueue(request: WatchUpload): Promise<void>;
     stop(token: string): Promise<void>;
+  };
+  /** The `voicestudio` terminal command (macOS and Linux direct downloads). */
+  terminal: {
+    status(): Promise<TerminalCommandStatus>;
+    /** Explicit user action: add ~/.local/bin to the user's shell profiles. */
+    addToPath(): Promise<TerminalCommandStatus>;
   };
   app: {
     /** From the root package.json via __APP_VERSION__ / extraMetadata. */
@@ -426,11 +507,76 @@ export interface VoiceStudioBridge {
     restart(): Promise<void>;
     setupRuntime(): Promise<void>;
     cleanSetupRuntime(): Promise<void>;
+    setupRuntimeOnCpu(): Promise<void>;
     setRuntimeRegion(region: RuntimeRegion): Promise<RuntimeRegion>;
     chooseRuntimeLocation(title: string): Promise<RuntimeLocation | null>;
     useDefaultRuntimeLocation(): Promise<RuntimeLocation>;
+    getPythonRuntime(): Promise<{
+      selection: { pythonPath: string } | null;
+      overrideActive: boolean;
+    }>;
+    choosePythonRuntime(title?: string): Promise<{
+      ok: boolean;
+      canceled?: boolean;
+      pythonPath?: string;
+      version?: string;
+      missingModules?: string[];
+      detail?: string;
+      token?: string;
+      repairPlan?: PythonRepairPlan;
+    }>;
+    confirmPythonRuntime(token: string): Promise<{
+      ok: boolean;
+      pythonPath: string;
+      version?: string;
+      missingModules?: string[];
+      detail?: string;
+      repairPlan?: PythonRepairPlan;
+    }>;
+    planPythonRepair(selectionToken: string): Promise<{
+      ok: boolean;
+      pythonPath: string;
+      version?: string;
+      missingModules?: string[];
+      detail?: string;
+      repairToken?: string;
+      repairPlan?: PythonRepairPlan;
+    }>;
+    installPythonRepair(request: {
+      token: string;
+      pythonPath: string;
+      packages: string[];
+      /** Translated native confirmation labels; the plan itself comes from main. */
+      dialog?: { title: string; message: string; install: string; cancel: string };
+    }): Promise<{
+      ok: boolean;
+      pythonPath: string;
+      version?: string;
+      missingModules?: string[];
+      detail?: string;
+      installed: boolean;
+      canceled?: boolean;
+      token?: string;
+      repairToken?: string;
+      repairPlan?: PythonRepairPlan;
+      outputTail?: string;
+    }>;
+    onPythonRepairProgress(callback: (event: { text: string; stream: 'stdout' | 'stderr' }) => void): () => void;
+    useManagedPython(): Promise<{ ok: boolean }>;
+    discoverPythonRuntimes(): Promise<PythonDiscoveryResult>;
+    useDiscoveredPythonRuntime(pythonPath: string): Promise<{
+      ok: boolean;
+      pythonPath: string;
+      version?: string;
+      missingModules?: string[];
+      detail?: string;
+      token?: string;
+      repairPlan?: PythonRepairPlan;
+    }>;
     getConnection(): Promise<BackendConnection>;
     getHostSnapshot(): Promise<HostSnapshotLike>;
+    getSetupDiagnostics(): Promise<string>;
+    checkSetupConnection(): Promise<SetupConnectionCheck>;
     testRemote(input: { url: string; apiKey: string }): Promise<RemoteBackendProbe>;
     useRemote(input: { url: string; apiKey: string }): Promise<RemoteBackendProbe>;
     useLocal(): Promise<BackendConnection>;
@@ -476,6 +622,7 @@ export interface VoiceStudioBridge {
     authorizeMediaTool(kind: 'ffmpeg' | 'ffprobe'): Promise<AuthorizedPathSelection | null>;
     /** Authorize a chosen model cache directory, or the platform default when reset is true. */
     authorizeModelsDirectory(reset?: boolean): Promise<AuthorizedPathSelection | null>;
+    chooseEngineModelDirectory(engineId: 'omnivoice' | 'mlx-audio'): Promise<AuthorizedPathSelection | null>;
     extractScript(input: { name: string; data: Uint8Array }): Promise<string>;
     /** Native "Save as…" for a generated take: main fetches the URL and writes the file. */
     saveAudio(req: SaveAudioRequest): Promise<SaveAudioResult>;

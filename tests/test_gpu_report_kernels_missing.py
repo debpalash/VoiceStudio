@@ -134,7 +134,7 @@ def test_a_card_the_wheel_cannot_drive_is_not_reported_as_cuda_unavailable(
     note = _mismatch_note(device_caps)
     caps = _excluded_caps(device_caps, note)
     code, params = gpu_report.classify_host(caps, (m5000m,), CUDA_BUILD)
-    assert code == "kernels_missing"
+    assert code == "kernels_missing_legacy"  # sm_52 is pre-Volta (#3978)
     assert params["gpu"] == "NVIDIA Quadro M5000M"
     assert params["torch"] == "2.8.0+cu128"
 
@@ -152,8 +152,8 @@ def test_the_verdict_does_not_depend_on_what_the_probe_advertised(
     note = _mismatch_note(device_caps)
     excluded = _excluded_caps(device_caps, note)
     advertised = _advertised_caps(device_caps, note)
-    assert gpu_report.classify_host(excluded, (m5000m,), CUDA_BUILD)[0] == "kernels_missing"
-    assert gpu_report.classify_host(advertised, (m5000m,), CUDA_BUILD)[0] == "kernels_missing"
+    assert gpu_report.classify_host(excluded, (m5000m,), CUDA_BUILD)[0] == "kernels_missing_legacy"
+    assert gpu_report.classify_host(advertised, (m5000m,), CUDA_BUILD)[0] == "kernels_missing_legacy"
 
 
 def test_a_forced_cuda_host_is_a_caveat_not_an_unusable_host(
@@ -354,7 +354,7 @@ def test_the_message_names_the_probed_card_not_another_one(device_caps, gpu_repo
         probe_ok=True,
     )
     code, params = gpu_report.classify_host(caps, (other,), CUDA_BUILD)
-    assert code == "kernels_missing"
+    assert code == "kernels_missing_legacy"  # sm_52 is pre-Volta (#3978)
     assert params["gpu"] == probed
 
 

@@ -18,6 +18,22 @@ export const DEFAULT_FIXTURES = {
   '/dictation/models': { engine_available: false, models: [] },
   '/batch/jobs': [],
   '/history': [],
+  // Tools > Sound effects: not installed, host unsupported (no NVIDIA GPU in the smoke run).
+  '/api/sfx/status': {
+    engine_id: 'moss-soundeffect',
+    installed: false,
+    available: false,
+    supported: false,
+    reason: 'Sound effects need an NVIDIA GPU.',
+    reason_code: 'host_unsupported',
+    install_allowed: false,
+    download_bytes: 11230170282,
+    license: 'Apache-2.0',
+    min_seconds: 1,
+    max_seconds: 30,
+    default_seconds: 10,
+    max_prompt_chars: 500,
+  },
   // The Calls view at #/calls (Workflows moved to #/workflows): no Twilio set up, no calls yet.
   '/calls': { calls: [] },
   // backend/services/telephony/calls.py readiness() returns a bare list.
@@ -73,7 +89,14 @@ export const DEFAULT_FIXTURES = {
     override_ignored: false,
     restart_required: false,
   },
+  '/api/settings/video-export': {
+    encoder: 'software',
+    max_resolution: 'original',
+    hardware_encoders: [],
+    resolutions: ['original', '2160p', '1440p', '1080p', '720p'],
+  },
   '/api/settings/perf/torch-compile-disabled': { platform: process.platform, enabled: false },
+  '/api/settings/perf/gguf-resident': { enabled: false, env_pinned: false, available: false },
   '/model/status': { status: 'not_loaded', message: '' },
   '/model/loaded': { models: [] },
   '/engines/translation': { active: null, engines: [] },

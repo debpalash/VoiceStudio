@@ -51,6 +51,7 @@ Public surface:
 from __future__ import annotations
 
 import hashlib
+import http.client
 import json
 import logging
 import math
@@ -60,6 +61,9 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
+import time
+import urllib.error
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -88,6 +92,13 @@ _HF_REPO_ID = "Serveurperso/OmniVoice-GGUF"
 #: reaches the logger.
 _HF_TOKEN_RE = re.compile(r"hf_[A-Za-z0-9]{30,}")
 _HF_TOKEN_MASK = "hf_***REDACTED***"
+
+#: Decoded budget for one reference clip. The profile upload path caps a
+#: reference at 128 MB on disk (``api.routers.profiles``), but a lossy
+#: container decodes to far more than that, and converting a reference
+#: decodes it in the backend process. A clip that does not fit is refused
+#: with an actionable message instead of exhausting the backend.
+_MAX_REFERENCE_DECODED_BYTES = 128 * 1024 * 1024
 
 
 def _mask_token(s: str) -> str:
@@ -375,6 +386,293 @@ def _sha256_of_file(p: Path, *, chunk: int = 1 << 20) -> str:
     return h.hexdigest()
 
 
+def _is_cli_readable_wav(path: Path) -> bool:
+    """True when the runtime can read ``path`` as it stands.
+
+    The bundled runtime reads WAV containers only (``omnivoice.cpp``
+    ``src/wav.h``: ``read_wav_buf``), and it decodes PCM16, PCM24 and
+    float32 — classic or WAVE_FORMAT_EXTENSIBLE. A RIFF/WAVE container
+    is therefore not enough: a PCM8, PCM32 or mu-law clip is a RIFF/WAVE
+    file the runtime rejects with "[WAV] Unsupported", so it has to be
+    converted like any other reference the CLI cannot read.
+
+    The header is parsed the way ``read_wav_buf`` parses it: the sample
+    format comes from the ``fmt `` chunk, an extensible header collapses
+    to its sub-format, and the ``data`` chunk is only read once a ``fmt ``
+    chunk has been seen.
+    """
+    try:
+        with path.open("rb") as handle:
+            header = handle.read(12)
+            if len(header) != 12 or header[:4] != b"RIFF" or header[8:12] != b"WAVE":
+                return False
+            audio_format = 0
+            bits = 0
+            channels = 0
+            chunk = handle.read(8)
+            while len(chunk) == 8:
+                chunk_id = chunk[:4]
+                size = int.from_bytes(chunk[4:8], "little")
+                if chunk_id == b"fmt ":
+                    body = handle.read(min(size, 40))
+                    if len(body) >= 16:
+                        audio_format = int.from_bytes(body[0:2], "little")
+                        channels = int.from_bytes(body[2:4], "little")
+                        bits = int.from_bytes(body[14:16], "little")
+                        if audio_format == 0xFFFE and len(body) >= 40:
+                            # WAVE_FORMAT_EXTENSIBLE collapses to its
+                            # effective sample format (1 -> PCM, 3 -> float).
+                            sub_format = int.from_bytes(body[24:26], "little")
+                            if sub_format in (1, 3):
+                                audio_format = sub_format
+                    handle.seek(size - len(body), 1)
+                elif chunk_id == b"data" and channels > 0:
+                    return (audio_format == 1 and bits in (16, 24)) or (
+                        audio_format == 3 and bits == 32
+                    )
+                else:
+                    handle.seek(size, 1)
+                if size & 1 and len(handle.read(1)) != 1:
+                    # A chunk with an odd size is padded to an even one.
+                    return False
+                chunk = handle.read(8)
+    except OSError:
+        return False
+    # The header ended without a data chunk the runtime can decode.
+    return False
+
+
+# Readable audio whose duration no probe field reports (live-recorded WebM).
+_UNSIZED = 0
+
+
+def _ffprobe_decoded_bytes(prompt: Path) -> Optional[int]:
+    """Decoded size of a reference clip, measured with ffprobe, or None.
+
+    ffprobe reads the container's metadata and decodes nothing, so a
+    container ``libsndfile`` cannot size can still be measured before it
+    is decoded. The *audio stream's* duration is preferred over the
+    container's: a video whose audio track is short is a short reference.
+    MediaRecorder WebM carries no stream duration, so the container's is
+    the fallback. A readable stream with no duration at all returns
+    ``_UNSIZED`` (0): the caller converts it and caps the *output* instead.
+    """
+    try:
+        from services.ffmpeg_utils import find_ffprobe, local_inputs_only
+
+        ffprobe = find_ffprobe()
+        if not ffprobe:
+            return None
+        proc = subprocess.run(
+            local_inputs_only(
+                [ffprobe, "-v", "error", "-select_streams", "a:0",
+                 "-show_entries", "stream=duration,channels,sample_rate:format=duration",
+                 "-of", "json", str(prompt)],
+                tool="ffprobe",
+            ),
+            capture_output=True, timeout=60, check=False,
+            # Every spawn in this module carries the loader env
+            # (tests/test_gguf_source_build_runtime_1348.py).
+            env=_spawn_env(),
+        )
+        if proc.returncode != 0:
+            return None
+        payload = json.loads(proc.stdout.decode("utf-8", errors="replace"))
+        stream = (payload.get("streams") or [{}])[0]
+        fmt = payload.get("format") or {}
+        duration = float(stream.get("duration") or 0.0)
+        if duration <= 0:
+            duration = float(fmt.get("duration") or 0.0)
+        channels = int(stream.get("channels") or 0)
+        sample_rate = int(stream.get("sample_rate") or 0)
+    except Exception:  # noqa: BLE001 — an unsized clip is a refusal
+        return None
+    if channels <= 0 or sample_rate <= 0:
+        return None
+    if duration <= 0:
+        return _UNSIZED
+    return int(duration * sample_rate * channels * 4)  # float32 samples
+
+
+def _reference_decoded_bytes(prompt: Path) -> int:
+    """Decoded size of a reference clip in bytes.
+
+    Read from the container metadata — the audio is never decoded, so an
+    oversized clip is refused before anything is allocated. ``libsndfile``
+    sizes every container it can read; the ones it cannot (M4A, AAC,
+    WebM) are measured with ffprobe.
+
+    Raises :class:`ValueError` when the clip cannot be sized at all: a
+    clip of unknown size is exactly what this budget exists to keep out.
+    """
+    try:
+        import soundfile as sf
+
+        info = sf.info(str(prompt))
+        return int(info.frames) * int(info.channels) * 4  # float32 samples
+    except Exception:  # noqa: BLE001 — libsndfile cannot read every container
+        pass
+    decoded = _ffprobe_decoded_bytes(prompt)
+    if decoded is None:
+        raise ValueError(
+            "The voice profile's reference clip could not be read as audio. "
+            "Re-upload the clip as a WAV, MP3, FLAC or OGG file."
+        )
+    return decoded
+
+
+def _remove_quietly(path: Path) -> None:
+    """Delete ``path`` without ever raising.
+
+    A leftover temporary file is not worth failing the call over, so a
+    removal failure is logged and the caller keeps its own error.
+    """
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        logger.debug("Could not remove the temporary file %s", path, exc_info=True)
+
+
+_TOO_LONG = (
+    "The voice profile's reference clip is too long to convert. "
+    "Trim it to a shorter clip and upload it again."
+)
+
+
+def _decode_unsized_capped(prompt: Path) -> Path:
+    """Decode a durationless clip to a temp WAV, stopping at the size cap.
+
+    ffmpeg's ``-fs`` ends the output at the cap, so a huge stream is never
+    decoded in full. Output that reaches the cap is refused rather than
+    returned truncated. The caller deletes the returned file.
+    """
+    from services.ffmpeg_utils import find_ffmpeg, local_inputs_only
+
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        raise ValueError(
+            "The voice profile's reference clip could not be read as audio. "
+            "Install ffmpeg or re-upload the clip as a WAV, MP3, FLAC or OGG file."
+        )
+    limit = _MAX_REFERENCE_DECODED_BYTES
+    fd, name = tempfile.mkstemp(prefix="omnivoice-gguf-dec-", suffix=".wav")
+    os.close(fd)
+    out = Path(name)
+    try:
+        proc = subprocess.run(
+            local_inputs_only(
+                [ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+                 "-i", str(prompt), "-map", "0:a:0", "-f", "wav",
+                 "-c:a", "pcm_f32le", "-fs", str(limit), str(out)],
+                tool="ffmpeg",
+            ),
+            capture_output=True, timeout=120, check=False, env=_spawn_env(),
+        )
+        if proc.returncode != 0:
+            raise ValueError(
+                "The voice profile's reference clip could not be read as audio. "
+                "Re-upload the clip as a WAV, MP3, FLAC or OGG file."
+            )
+        # ffmpeg exits successfully at -fs; never accept truncated audio.
+        if out.stat().st_size >= limit:
+            raise ValueError(_TOO_LONG)
+    except BaseException:
+        _remove_quietly(out)
+        raise
+    return out
+
+
+def _convert_reference_to_wav(prompt: Path) -> Path:
+    """Decode ``prompt`` into a temporary WAV the GGUF CLI can read.
+
+    A voice profile keeps the reference clip in whatever container the user
+    uploaded (the profile editor accepts MP3, FLAC, Ogg, ...), but the CLI's
+    WAV reader only understands RIFF/WAVE — an MP3 reference killed the
+    spawn with "[WAV] Not a valid WAV buffer" (#3655). Decode through the
+    app's own loader (torchaudio → soundfile → ffmpeg) and write a WAV next
+    to the other per-call temp files. The CLI resamples and downmixes the
+    prompt itself, so the clip keeps its own rate and channel layout.
+    """
+    from services.audio_io import atomic_save_wav, load_audio
+
+    decoded = _reference_decoded_bytes(prompt)
+    if decoded > _MAX_REFERENCE_DECODED_BYTES:
+        # The upload path caps a reference at 128 MB on disk, but a lossy
+        # container decodes to far more than that — and the conversion
+        # decodes it in the backend process, while the CLI would do it in
+        # its own. Refuse instead of exhausting the backend.
+        raise ValueError(
+            "The voice profile's reference clip is too long to convert. "
+            "Trim it to a shorter clip and upload it again."
+        )
+    source = prompt
+    capped: Optional[Path] = None
+    if decoded == _UNSIZED:
+        # No size is knowable up front: bound the decode itself, so a big
+        # durationless clip cannot exhaust memory before it is checked.
+        capped = source = _decode_unsized_capped(prompt)
+    try:
+        wav, rate = load_audio(source)
+    except ValueError:
+        # The loader's own size-limit errors ("use a shorter clip") are
+        # actionable as they are — do not turn them into a re-upload hint.
+        raise
+    except Exception as exc:  # noqa: BLE001 — any decode failure is "unreadable"
+        raise ValueError(
+            "The voice profile's reference clip could not be read as audio. "
+            "Re-upload the clip as a WAV, MP3, FLAC or OGG file."
+        ) from exc
+    finally:
+        if capped is not None:
+            _remove_quietly(capped)
+    if decoded == _UNSIZED:
+        # No size was knowable up front, so the cap applies to what came out.
+        size = getattr(wav, "nbytes", None)
+        if size is None:
+            size = int(wav.numel()) * int(wav.element_size())
+        if int(size) > _MAX_REFERENCE_DECODED_BYTES:
+            raise ValueError(
+                "The voice profile's reference clip is too long to convert. "
+                "Trim it to a shorter clip and upload it again."
+            )
+    fd, name = tempfile.mkstemp(prefix="omnivoice-gguf-ref-", suffix=".wav")
+    os.close(fd)
+    target = Path(name)
+    try:
+        atomic_save_wav(str(target), wav, rate)
+    except BaseException:
+        # BaseException so an interrupted write does not leave the temp file
+        # behind either. A write failure keeps its own cause — the user
+        # cannot fix it by re-uploading the clip.
+        _remove_quietly(target)
+        raise
+    return target
+
+
+def _validated_reference(ref_audio: str) -> Path:
+    """Resolve a reference clip and check it against the engine's read policy.
+
+    The prompt clip must live under a directory this app owns (voices,
+    dubbing workspace or the temp dir) so a request cannot point the
+    binary at arbitrary files on disk.
+    """
+    from core.config import DUB_DIR, VOICES_DIR
+
+    prompt = Path(ref_audio).resolve()
+    roots = [
+        Path(VOICES_DIR).resolve(),
+        Path(DUB_DIR).resolve(),
+        Path(tempfile.gettempdir()).resolve(),
+    ]
+    if not any(prompt == root or prompt.is_relative_to(root) for root in roots):
+        raise FileNotFoundError(
+            f"Reference audio is outside the directories this engine may read: {prompt}"
+        )
+    if not prompt.is_file():
+        raise FileNotFoundError(f"Reference audio file does not exist: {prompt}")
+    return prompt
+
+
 def _automatic_entry(quant_map: dict) -> dict:
     """The quant entry the automatic compute policy selects.
 
@@ -533,7 +831,9 @@ def _make_backend_class():
         Each ``generate()`` spawns the bundled ``bin/omnivoice-tts-<platform>``
         binary fresh; the binary loads the SHA-pinned quants from
         ``$HF_HUB_CACHE`` and writes a 24 kHz mono WAV to a temp path
-        which we then load back into a ``torch.Tensor``.
+        which we then load back into a ``torch.Tensor``. When a verified
+        ``bin/tts-server-<platform>`` is bundled, a resident server keeps
+        the pair loaded between requests instead (``resident.py``, #3654).
 
         ``compute_class`` → quant selection is driven by the native
         capacity policy in ``compute.automatic_compute_class()`` and the shipped
@@ -547,6 +847,11 @@ def _make_backend_class():
         gpu_compat = ("cuda", "vulkan", "mps", "cpu")
 
         supports_voice_design = False
+        # The bundled omnivoice-tts CLI has no num_step/guidance_scale
+        # flags (verified against the C++ usage text) — explicit values are
+        # rejected at the API boundary with a 400 (#3654).
+        supports_num_step = False
+        supports_guidance_scale = False
         # The seed reaches the binary as --seed; the parent's torch RNG never
         # does, so /generate must forward it (#3413).
         supports_generation_seed = True
@@ -576,6 +881,11 @@ def _make_backend_class():
             self._quant_override = quant_override
             self._quant_map: Optional[dict] = None
             self._last_runtime_log = ""
+            # Resident tts-server (#3654), created on the first request that
+            # can use it.
+            self._resident = None
+            self._resident_init = threading.Lock()
+            self._resident_used = time.monotonic()
 
         # ── TTSBackend protocol ───────────────────────────────────────
 
@@ -870,8 +1180,43 @@ def _make_backend_class():
 
         # ── generation ────────────────────────────────────────────────
 
+        # The model lives in the server process, so the memory controls
+        # (loaded-model list, Unload all, idle sweep) look at it through this.
+        _MODEL_ATTRS = ("_resident_live",)
+
+        @property
+        def _resident_live(self):
+            server = self._resident
+            return server if server is not None and server.alive() else None
+
+        def execution_evidence_loaded(self) -> bool:
+            return self._resident_live is not None
+
+        def release_if_idle(self, idle_s: float) -> bool:
+            """Stop the resident server once unused for ``idle_s``; never mid-request."""
+            server = self._resident_live
+            if server is None or time.monotonic() - self._resident_used < idle_s:
+                return False
+            if not server.lock.acquire(blocking=False):
+                return False
+            try:
+                server.stop()
+            finally:
+                server.lock.release()
+            return True
+
+        def unload(self) -> None:
+            """Stop the resident server so its VRAM is returned. Idempotent."""
+            server = self._resident
+            if server is not None:
+                with server.lock:
+                    server.stop()
+                    # A start that failed may succeed after a release.
+                    server.failed_start = None
+            super().unload()
+
         def generate(self, text: str, **kw):
-            """Synthesise ``text`` by running the GGUF CLI once.
+            """Synthesise ``text`` on the resident server, else by running the CLI once.
 
             Keyword arguments understood (anything else is ignored):
 
@@ -889,8 +1234,12 @@ def _make_backend_class():
               controls forwarded unchanged.
 
             Returns a float32 tensor shaped ``(1, n_samples)`` at the model's
-            native rate.
+            native rate. The resident ``tts-server`` (see ``resident.py``)
+            serves the request when it is bundled, enabled and supports the
+            controls asked for; otherwise the CLI is spawned as before.
             """
+            import io
+
             import soundfile as sf
             import torch
 
@@ -903,6 +1252,7 @@ def _make_backend_class():
             out_path = Path(out_name)
             transcript_path: Optional[Path] = None
             self._last_runtime_log = ""
+            converted_prompt: Optional[Path] = None
             try:
                 if ref_audio and ref_text:
                     # A file keeps arbitrary transcript text out of argv.
@@ -910,39 +1260,141 @@ def _make_backend_class():
                     transcript_path = Path(t_name)
                     with os.fdopen(t_fd, "w", encoding="utf-8") as handle:
                         handle.write(str(ref_text))
-                argv = self._build_argv(
-                    base=base,
-                    tokenizer=tokenizer,
-                    out_path=out_path,
-                    ref_audio=ref_audio,
-                    ref_text=str(transcript_path) if transcript_path else None,
-                    language=kw.get("language"),
-                    instruct=kw.get("instruct"),
-                    duration=kw.get("duration"),
-                    seed=kw.get("seed"),
-                    denoise=kw.get("denoise", True),
-                    preprocess_prompt=kw.get("preprocess_prompt", True),
-                    chunk_duration=kw.get("chunk_duration"),
-                    chunk_threshold=kw.get("chunk_threshold"),
-                )
-                self._last_runtime_log = self._run_subprocess(
-                    argv,
-                    stdin_text=text,
-                    timeout_s=kw.get("_timeout_s"),
-                )
-                samples, _rate = sf.read(str(out_path), dtype="float32")
+                # The CLI reads WAV containers of a few sample formats only,
+                # so a profile reference stored as MP3/M4A/... — or as a WAV
+                # the runtime cannot decode — has to be converted before it
+                # is handed over (#3655). The original path is validated
+                # first — the conversion reads the file.
+                if ref_audio:
+                    prompt = _validated_reference(ref_audio)
+                    if not _is_cli_readable_wav(prompt):
+                        converted_prompt = _convert_reference_to_wav(prompt)
+                        ref_audio = str(converted_prompt)
+                try:
+                    wav = self._resident_wav(
+                        text, kw, base=base, tokenizer=tokenizer, ref_audio=ref_audio,
+                        transcript=str(ref_text) if ref_audio and ref_text else None,
+                    )
+                finally:
+                    self._resident_used = time.monotonic()
+                if wav is not None:
+                    samples, _rate = sf.read(io.BytesIO(wav), dtype="float32")
+                else:
+                    argv = self._build_argv(
+                        base=base,
+                        tokenizer=tokenizer,
+                        out_path=out_path,
+                        ref_audio=ref_audio,
+                        ref_text=str(transcript_path) if transcript_path else None,
+                        language=kw.get("language"),
+                        instruct=kw.get("instruct"),
+                        duration=kw.get("duration"),
+                        seed=kw.get("seed"),
+                        denoise=kw.get("denoise", True),
+                        preprocess_prompt=kw.get("preprocess_prompt", True),
+                        chunk_duration=kw.get("chunk_duration"),
+                        chunk_threshold=kw.get("chunk_threshold"),
+                    )
+                    self._last_runtime_log = self._run_subprocess(
+                        argv, stdin_text=text, timeout_s=kw.get("_timeout_s"),
+                    )
+                    samples, _rate = sf.read(str(out_path), dtype="float32")
             finally:
-                for leftover in (out_path, transcript_path):
+                for leftover in (out_path, transcript_path, converted_prompt):
                     if leftover is None:
                         continue
-                    try:
-                        leftover.unlink(missing_ok=True)
-                    except OSError:
-                        pass
+                    _remove_quietly(leftover)
 
             if samples.ndim > 1:
                 samples = samples.mean(axis=1)
             return torch.from_numpy(samples.astype("float32", copy=False)).unsqueeze(0)
+
+        def _resident_wav(
+            self,
+            text: str,
+            kw: dict,
+            *,
+            base: Path,
+            tokenizer: Path,
+            ref_audio: Optional[str],
+            transcript: Optional[str],
+        ) -> Optional[bytes]:
+            """WAV bytes from the resident server, or ``None`` for the spawn path.
+
+            A crash gets one restart; a second failure, a server that cannot
+            start, or a request the server refuses falls back to the spawn
+            path and logs why. A timeout stops the server and raises: the
+            request's budget is spent, so the spawn path is not retried.
+            """
+            from . import resident
+
+            if not resident.resident_enabled():
+                if self._resident is not None:
+                    with self._resident.lock:
+                        self._resident.stop()
+                return None
+            ok, _why = resident.server_status()
+            if not ok:
+                return None
+            reason = resident.spawn_only_reason(kw, has_transcript=bool(transcript))
+            if reason:
+                logger.info("OmniVoice GGUF: per-request runtime for this request (%s)", reason)
+                return None
+            prompt = Path(_validated_reference(ref_audio)).read_bytes() if ref_audio else None
+            with self._resident_init:
+                if self._resident is None:
+                    self._resident = resident.ResidentServer()
+                server = self._resident
+            timeout_s = _generate_timeout_s()
+            with server.lock:
+                for attempt in (1, 2):
+                    try:
+                        server.ensure(base, tokenizer)
+                        voice = server.voice_for(prompt, transcript) if prompt is not None else None
+                        payload = resident.speech_payload(
+                            text,
+                            voice=voice,
+                            language=_iso_to_omnivoice_lang(kw.get("language")),
+                            instruct=kw.get("instruct"),
+                            seed=kw.get("seed"),
+                        )
+                        return server.speak(payload, timeout=timeout_s)
+                    except resident.ResidentUnavailable as exc:
+                        logger.warning(
+                            "OmniVoice GGUF resident mode unavailable; using the per-request runtime: %s",
+                            _mask_token(str(exc)),
+                        )
+                        return None
+                    except urllib.error.HTTPError as exc:
+                        # It answered, so it is healthy: keep it for the next request.
+                        logger.warning(
+                            "OmniVoice GGUF resident server refused the request (HTTP %s); "
+                            "using the per-request runtime", exc.code,
+                        )
+                        return None
+                    # IncompleteRead (a body cut off mid-WAV) is an HTTPException,
+                    # not an OSError: it takes the same restart-then-spawn path.
+                    except (OSError, ValueError, http.client.HTTPException) as exc:
+                        server.stop()
+                        if isinstance(exc, TimeoutError) or isinstance(
+                            getattr(exc, "reason", None), TimeoutError
+                        ):
+                            raise RuntimeError(
+                                f"GGUF resident server timed out after {timeout_s:.0f}s and was "
+                                f"stopped (raise OMNIVOICE_GGUF_GENERATE_TIMEOUT_S if this host "
+                                f"is genuinely that slow)"
+                            ) from None
+                        if attempt == 1:
+                            logger.warning(
+                                "OmniVoice GGUF resident server failed (%s); restarting it once",
+                                _mask_token(str(exc)),
+                            )
+                            continue
+                        logger.warning(
+                            "OmniVoice GGUF resident server failed again after a restart (%s); "
+                            "using the per-request runtime", _mask_token(str(exc)),
+                        )
+            return None
 
         def _build_argv(
             self,
@@ -992,20 +1444,9 @@ def _make_backend_class():
                 argv.append("--no-preprocess-prompt")
 
             if ref_audio:
-                from core.config import DUB_DIR, VOICES_DIR
-
-                prompt = Path(ref_audio).resolve()
-                roots = [
-                    Path(VOICES_DIR).resolve(),
-                    Path(DUB_DIR).resolve(),
-                    Path(tempfile.gettempdir()).resolve(),
-                ]
-                if not any(prompt == root or prompt.is_relative_to(root) for root in roots):
-                    raise FileNotFoundError(
-                        f"Reference audio is outside the directories this engine may read: {prompt}"
-                    )
-                if not prompt.is_file():
-                    raise FileNotFoundError(f"Reference audio file does not exist: {prompt}")
+                # Two-stage validation (defense in depth) — see
+                # :func:`_validated_reference`.
+                prompt = _validated_reference(ref_audio)
                 argv += ["--ref-wav", str(prompt)]
                 if ref_text:
                     argv += ["--ref-text", str(ref_text)]
@@ -1093,7 +1534,22 @@ def _iso_to_omnivoice_lang(code: Optional[str]) -> Optional[str]:
     c = code.strip().lower()
     if c in ("auto", "multi", ""):
         return None
-    return _ISO_TO_OV.get(c, c.capitalize())
+    # App picker labels/tags ("Arabic", "ar", "Chinese (Simplified)") are not
+    # in the pinned resolver's table; send the canonical ID it does accept
+    # instead of an unknown label that silently drops to language-agnostic.
+    from omnivoice.utils.lang_map import APP_LANGUAGE_IDS, APP_LANGUAGE_NAMES
+
+    alias = APP_LANGUAGE_NAMES.get(c) or APP_LANGUAGE_IDS.get(c)
+    if alias:
+        return alias
+    if c in _ISO_TO_OV:
+        return _ISO_TO_OV[c]
+    # Already a valid OmniVoice id ("ht", "ug"): pass through, never title-case.
+    from omnivoice.utils.lang_map import LANG_IDS
+
+    if c in LANG_IDS:
+        return c
+    return c.capitalize()
 
 
 _ISO_TO_OV = {

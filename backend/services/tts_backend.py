@@ -208,6 +208,25 @@ class TTSInputError(ValueError):
     surface as opaque 500s like "need at least one array to concatenate")."""
 
 
+def declared_language_code(code: Optional[str], declared) -> Optional[str]:
+    """The declared code an engine speaks a normalized request ``code`` as.
+
+    An exact match wins, so an engine that lists a variety keeps it; a
+    variety of a declared macrolanguage ("arz" on an engine declaring "ar")
+    is spoken as the macrolanguage (#3816). ``None`` means unsupported. The
+    synthesis check and the picker inventory both use this, so the languages
+    an engine advertises are exactly the ones it accepts.
+    """
+    if code is None:
+        return None
+    if code in declared:
+        return code
+    from core.language_variants import macrolanguage_of
+
+    macro = macrolanguage_of(code)
+    return macro if macro is not None and macro in declared else None
+
+
 def _lease_render(method):
     """Keep engines resident for every render caller, including dub and batch.
 
@@ -361,12 +380,20 @@ class TTSBackend(ABC):
         value = language.strip().lower()
         if not value or value == "auto":
             return None
-        from omnivoice.utils.lang_map import LANG_NAME_TO_ID
+        from omnivoice.utils.lang_map import APP_LANGUAGE_IDS, APP_LANGUAGE_NAMES, LANG_NAME_TO_ID
 
         from core.language_variants import VARIANT_CODES
 
-        # Reuse the same complete, bundled mapping as the language picker.
-        aliases = {"mandarin": "zh", "arabic": "ar", "tagalog": "tl", **VARIANT_CODES}
+        # Reuse the same complete, bundled mapping as the language picker,
+        # plus the app's own picker names and tags that the vocabulary spells
+        # differently ("Chinese (Simplified)" / "cmn-Hans" -> "zh", #3685).
+        # Only their ISO 639-1 ids apply here: OmniVoice's three-letter
+        # varieties ("arb", "npi") are not what other engines declare.
+        aliases = {
+            **{name: code for name, code in {**APP_LANGUAGE_NAMES, **APP_LANGUAGE_IDS}.items()
+               if len(code) == 2},
+            "mandarin": "zh", "arabic": "ar", "tagalog": "tl", **VARIANT_CODES,
+        }
         if value in aliases:
             return aliases[value]
         if value in LANG_NAME_TO_ID:
@@ -402,7 +429,10 @@ class TTSBackend(ABC):
         advertise a 3-letter set must override ``_check_language`` (or
         accept the 3-letter token as-is and validate themselves); the
         base class only enforces exact 2-letter matches against the
-        declared set, which covers the common case.
+        declared set, which covers the common case. The one fold is a
+        named variety of a declared macrolanguage ("Standard Arabic" /
+        ``arb`` on an engine declaring ``ar``, #3816), which returns the
+        declared code so the engine never sees a variety it does not list.
         """
         supported = self.supported_languages
         # open-ended: the engine handles its own checks.
@@ -413,8 +443,9 @@ class TTSBackend(ABC):
             return  # no preference → caller leaves it to the engine
         # Region tags resolve to their base language; three-letter codes
         # remain exact rather than guessing from their first two letters.
-        if code in supported:
-            return code
+        declared = declared_language_code(code, supported)
+        if declared is not None:
+            return declared
         # Build the user-facing list. ``multi`` is not in here because
         # ``supported`` already short-circuited above; entries are rendered
         # in declared order so the message matches ``list_backends()``.
@@ -502,6 +533,22 @@ class TTSBackend(ABC):
     def cloning_model_labels(cls) -> tuple[str, ...]:
         """Expose the declared keys using their default picker text."""
         return tuple(cls.cloning_model_keys)
+
+    #: Whether this engine honors the diffusion quality knobs
+    #: (``num_step``, ``guidance_scale``). Engines whose runtime has no such
+    #: options set these False, and /v1/audio/speech rejects explicit values
+    #: with a 400 instead of silently returning default-quality audio
+    #: (#3654). Default True — False is set only where reading the generate
+    #: chain proves the knob is dropped.
+    supports_num_step: bool = True
+    supports_guidance_scale: bool = True
+
+    #: Inclusive (min, max) bound for ``num_step`` when
+    #: :attr:`supports_num_step` holds. ``None`` = unbounded. Engines that
+    #: silently clamp (supertonic3 → [5, 12], VoxCPM2 → [1, 64]) declare it
+    #: so /v1/audio/speech rejects out-of-range explicit values instead of
+    #: returning audio built from a different step count (#3654).
+    num_step_range: tuple[int, int] | None = None
 
     #: GPU/accelerator targets the engine can run on. Surfaced via the
     #: Engine Compatibility Matrix (Plan 02-04 / ENGINE-06) so users can
@@ -1681,6 +1728,30 @@ def _get_clone_prompt(
                 )
 
 
+def backend_accepts_seed(backend) -> bool:
+    """Whether this adapter accepts a per-request ``seed`` kwarg."""
+    return bool(
+        getattr(backend, "supports_native_omnivoice_controls", False)
+        or getattr(backend, "supports_generation_seed", False)
+    )
+
+
+def seed_engine_call(seed, backend=None) -> dict:
+    """Seed one engine call of a take; returns the kwargs to forward.
+
+    A take's seed identifies its voice (a Voice Design speaker, #3254 /
+    #3413), so every call that renders part of one take — each chunk of a
+    long text, each ``[pause]`` span, each Batch segment — restarts from that
+    same seed. Advancing it per call rotated through speakers mid-take
+    (#3730). The in-process RNG is re-seeded, and an out-of-process engine
+    that accepts a seed gets it with every call, not just the first.
+    """
+    if seed is None:
+        return {}
+    torch.manual_seed(seed)
+    return {"seed": seed} if backend is not None and backend_accepts_seed(backend) else {}
+
+
 def generate_with_cached_ref(model, *, ref_audio, ref_text, **gen_kw):
     """``model.generate()`` with the reference clip encoded once, not once per call.
 
@@ -1782,6 +1853,8 @@ class OmniVoiceBackend(TTSBackend):
     instruct_vocabulary = "tags"
     inline_tags = OMNIVOICE_INLINE_TAGS
     supports_voice_design = True
+    # The model draws from a per-request generator, so a seed reproduces a take.
+    supports_generation_seed = True
     gpu_compat = ("cuda", "rocm", "mps", "cpu")
     # Derived from the pool's own per-job budget (_GPU_VRAM_PER_JOB_GB = 5.0 in
     # model_manager, itself measured from the ~1.6 GB forward + autoregressive
@@ -1890,6 +1963,8 @@ class OmniVoiceBackend(TTSBackend):
         # used to be dropped on the floor here — the API accepted it and gen_kw
         # never carried it, so it silently did nothing.
         gen_kw["preprocess_prompt"] = bool(kw.get("preprocess_prompt", True))
+        if kw.get("seed") is not None:
+            gen_kw["seed"] = kw["seed"]
         # Single-use reference hint (dub per-segment clips) — see
         # generate_with_cached_ref, which pops it before the model sees it.
         gen_kw["cache_ref"] = bool(kw.get("cache_ref", True))
@@ -2195,7 +2270,10 @@ class VoxCPM2Backend(TTSBackend):
     max_ref_seconds = _VOXCPM_REF_MAX_S
     ref_strategy = "head"
     applies_own_mastering = True  # Native studio-grade 48 kHz needs no apply_mastering().
-    gpu_compat = ("cuda", "mps", "cpu")
+    # generation_kwargs() clamps inference_timesteps to [1, 64] — an explicit
+    # value outside that range would silently render as the edge (#3654).
+    num_step_range: tuple[int, int] = (1, 64)
+    gpu_compat = ("cuda", "rocm", "mps", "cpu")
 
     def __init__(self):
         self._model = None
@@ -2338,7 +2416,10 @@ class MossTTSNanoBackend(TTSBackend):
     id = "moss-tts-nano"
     display_name = "MOSS-TTS-Nano (20 langs, CPU realtime, 48 kHz)"
     supports_voice_design = False  # strictly reference-cloning
-    gpu_compat = ("cuda", "cpu")
+    # generate() forwards text + prompt_audio_path only (#3654).
+    supports_num_step = False
+    supports_guidance_scale = False
+    gpu_compat = ("cuda", "rocm", "cpu")
 
     def __init__(self):
         self._model = None
@@ -2464,6 +2545,10 @@ class KittenTTSBackend(TTSBackend):
     # instruct is ignored too, so a Voice Design take would always be the same
     # preset voice whatever the details or seed (#3413).
     supports_voice_design = False
+    # The ONNX graph takes voice/speed only — quality knobs have nowhere to
+    # go, so explicit values 400 at /v1/audio/speech (#3654).
+    supports_num_step = False
+    supports_guidance_scale = False
 
     PRESET_VOICES = [
         "expr-voice-2-m", "expr-voice-2-f",
@@ -2798,6 +2883,40 @@ def _dia_tagged(text: str) -> str:
     return stripped if re.match(r"\[S[12]\]", stripped) else f"[S1] {stripped}"
 
 
+_HF_REPO_ID = re.compile(r"[A-Za-z0-9][\w.-]*/[\w.-]+\Z")
+
+
+def _mlx_audio_installed_snapshot(repo_id: str) -> str:
+    """Local snapshot of an installed mlx-audio model, never downloaded here.
+
+    Handed a repo id, mlx-audio's ``load_model`` calls an online
+    ``snapshot_download`` (a repo lookup, then one request per file on hub's
+    own thread pool) from inside the GPU-pool worker — the call that parked the
+    worker on a lock for the whole load budget, with every later request queued
+    behind it (#2700 for OuteTTS's Whisper, #3776 for Kokoro). The Model
+    Catalogue installs the weights, so the load resolves them from the cache
+    and a missing model fails at once with the step that fixes it.
+    """
+    from huggingface_hub import snapshot_download
+    from services.hf_cache_repair import hf_cache_home
+    from services.hf_revisions import installed_revision
+
+    cache_dir = hf_cache_home()
+    try:
+        revision = installed_revision(repo_id, cache_dir)
+    except ValueError:
+        revision = None  # A user-chosen repo: whatever the cache's refs/main holds.
+    try:
+        return snapshot_download(
+            repo_id, revision=revision, cache_dir=cache_dir, local_files_only=True,
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            f"The mlx-audio model \"{repo_id}\" is not installed (or its download "
+            "is incomplete). Install it from the Model Catalogue, then generate again."
+        ) from exc
+
+
 _OUTETTS_CODEC_SAMPLE_RATE = 24000  # mlx-audio's DAC speech codec
 
 
@@ -2916,7 +3035,7 @@ class MLXAudioBackend(TTSBackend):
     gpu_compat = ("mps", "cpu")
     # generate() seeds mlx's RNG from the request's seed.
     supports_generation_seed = True
-    cloning_model_keys = ("csm",)
+    cloning_model_keys = ("csm", "qwen3-tts-base")
 
     @classmethod
     def cloning_model_labels(cls) -> tuple[str, ...]:
@@ -2931,6 +3050,7 @@ class MLXAudioBackend(TTSBackend):
         "kokoro":      "mlx-community/Kokoro-82M-bf16",
         "csm":         "mlx-community/csm-1b-8bit",
         "qwen3-tts":   "mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-4bit",
+        "qwen3-tts-base": "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit",
         "dia":         "mlx-community/Dia-1.6B",
         "chatterbox":  "mlx-community/Chatterbox-TTS-4bit",
         "melotts":     "mlx-community/MeloTTS-English-v3-MLX",
@@ -2959,6 +3079,7 @@ class MLXAudioBackend(TTSBackend):
         "kokoro": ("en", "es", "fr", "hi", "it", "pt", "ja", "zh"),
         "csm": ("en",),
         "qwen3-tts": ("zh", "en", "ja", "ko", "de", "fr", "ru", "pt", "es", "it"),
+        "qwen3-tts-base": ("zh", "en", "ja", "ko", "de", "fr", "ru", "pt", "es", "it"),
         "dia": ("en",),
         "chatterbox": ("en",),
         "melotts": ("en",),
@@ -2973,7 +3094,48 @@ class MLXAudioBackend(TTSBackend):
         ),
     }
 
+    # Kokoro preset voices (#3802). These are the 54 voice packs shipped by
+    # hexgrad/Kokoro-82M (``voices/*.pt``), the default curated model above;
+    # each id is "<lang><gender>_<name>" where the first letter is Kokoro's
+    # own lang_code (a=American English, b=British, e=Spanish, f=French,
+    # h=Hindi, i=Italian, j=Japanese, p=Portuguese, z=Chinese).
+    # Declaring them is what makes /engines list them and /generate keep a
+    # chosen preset_voice instead of dropping it ("engine has no presets:
+    # ignore"). Without them Kokoro always fell back to af_heart, so
+    # Portuguese text was spoken with an American-English voice. Other
+    # curated models have no preset voices; a pick is only meaningful
+    # while Kokoro is the active model, and the other pipelines ignore a
+    # `voice` kwarg they do not use.
+    PRESET_VOICES = [
+        "af_alloy", "af_aoede", "af_bella", "af_heart", "af_jessica",
+        "af_kore", "af_nicole", "af_nova", "af_river", "af_sarah", "af_sky",
+        "am_adam", "am_echo", "am_eric", "am_fenrir", "am_liam", "am_michael",
+        "am_onyx", "am_puck", "am_santa",
+        "bf_alice", "bf_emma", "bf_isabella", "bf_lily",
+        "bm_daniel", "bm_fable", "bm_george", "bm_lewis",
+        "ef_dora", "em_alex", "em_santa",
+        "ff_siwis",
+        "hf_alpha", "hf_beta", "hm_omega", "hm_psi",
+        "if_sara", "im_nicola",
+        "jf_alpha", "jf_gongitsune", "jf_nezumi", "jf_tebukuro", "jm_kumo",
+        "pf_dora", "pm_alex", "pm_santa",
+        "zf_xiaobei", "zf_xiaoni", "zf_xiaoxiao", "zf_xiaoyi",
+        "zm_yunjian", "zm_yunxi", "zm_yunxia", "zm_yunyang",
+    ]
+    DEFAULT_VOICE = "af_heart"
+
+    # One Kokoro voice per language, used when the caller picks no preset
+    # (#3802): Portuguese text defaults to pf_dora instead of af_heart.
+    # Keyed by the single-letter lang_code resolve_kokoro_lang_code()
+    # returns, so a voice id always starts with its language's letter.
+    KOKORO_DEFAULT_VOICE_BY_LANG_CODE = {
+        "a": "af_heart", "b": "bf_alice", "e": "ef_dora", "f": "ff_siwis",
+        "h": "hf_alpha", "i": "if_sara", "j": "jf_alpha", "p": "pf_dora",
+        "z": "zf_xiaobei",
+    }
+
     def __init__(self):
+        self._generation_lock = threading.Lock()
         self._model = None
         self._sr = 24000  # most mlx-audio engines emit 24 kHz mono
         # Env var > persisted UI choice (#981 — Model Catalogue curated-
@@ -2985,6 +3147,7 @@ class MLXAudioBackend(TTSBackend):
     @classmethod
     def configured_identity(cls) -> str:
         from core import prefs
+        from services.local_model_paths import get as local_model_path
         key = prefs.resolve(
             "mlx_audio_model_id",
             env="OMNIVOICE_MLX_AUDIO_MODEL",
@@ -2992,6 +3155,16 @@ class MLXAudioBackend(TTSBackend):
         )
         # Accept either a curated key ("kokoro") or a full HF repo id
         # ("mlx-community/Kokoro-82M-bf16") — flexibility for power users.
+        # An explicit environment override remains authoritative. Otherwise a
+        # validated local folder wins over the curated HF repo selection.
+        if not os.environ.get("OMNIVOICE_MLX_AUDIO_MODEL"):
+            local = local_model_path("tts", "mlx-audio")
+            if local:
+                # Return the saved identity unvalidated: /engines builds the
+                # backend to read capabilities, and a folder that vanished must
+                # not turn that listing into an error that hides the controls
+                # to clear it. _ensure_loaded validates before loading.
+                return local
         return cls.CURATED_MODELS.get(key, key)
 
     def built_identity(self) -> Optional[str]:
@@ -3027,9 +3200,21 @@ class MLXAudioBackend(TTSBackend):
         return self._model_id
 
     def _curated_key(self) -> Optional[str]:
-        return next(
+        key = next(
             (key for key, repo in self.CURATED_MODELS.items() if repo == self._model_id), None
         )
+        if key or not self._model_id or not os.path.isabs(self._model_id):
+            return key
+        import json
+        from pathlib import Path
+
+        try:
+            config = json.loads((Path(self._model_id) / "config.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if isinstance(config, dict) and config.get("model_type") == "qwen3_tts" and config.get("tts_model_type") == "base":
+            return "qwen3-tts-base"
+        return None
 
     def _check_language(self, language: object) -> Optional[str]:
         # Kokoro's installed tables are authoritative and accept labels such
@@ -3048,17 +3233,17 @@ class MLXAudioBackend(TTSBackend):
 
     @property
     def supports_cloning(self) -> bool:
-        """Model-dependent — this adapter multiplexes 7+ curated models and
-        only some take a reference-audio speaker prompt. Other models may
-        ignore reference audio even when their signatures accept it. Of the
-        curated set, only CSM (`mlx-community/csm-1b-8bit`) is confirmed to
-        accept a reference prompt — default False for every other model,
-        curated or user-supplied, until positively confirmed."""
+        """Only curated or positively identified reference-capable models clone."""
         return self._curated_key() in self.cloning_model_keys
 
     def _ensure_loaded(self):
         if self._model is not None:
             return
+        from services.local_model_paths import get as local_model_path, validate
+        if (not os.environ.get("OMNIVOICE_MLX_AUDIO_MODEL", "").strip()
+                and self._model_id
+                and self._model_id == local_model_path("tts", "mlx-audio")):
+            validate("tts", "mlx-audio", self._model_id)
         if self._curated_key() == "melotts":
             _ensure_melotts_text_frontend()
         elif self._curated_key() == "kokoro":
@@ -3068,8 +3253,28 @@ class MLXAudioBackend(TTSBackend):
             ensure_espeak_data_path()
         from mlx_audio.tts.utils import load_model
         _harden_mlx_audio_eos_ids()
+        target = self._model_id
+        load_kwargs = {}
+        is_repo = bool(
+            isinstance(target, str) and _HF_REPO_ID.match(target)
+            and not os.path.exists(target)
+        )
+        if is_repo:
+            # #3776: load from the installed snapshot, not the repo id.
+            # model_name_parts keeps mlx-audio's model-type detection on the
+            # repo name, exactly as when it was handed the id.
+            from pathlib import Path
+            from mlx_audio.utils import get_model_name_parts
+            load_kwargs["model_name_parts"] = get_model_name_parts(target)
+            target = Path(_mlx_audio_installed_snapshot(target))
         logger.info("Loading mlx-audio model %s", self._model_id)
-        self._model = load_model(self._model_id)
+        model = load_model(target, **load_kwargs)
+        if is_repo and self._curated_key() == "kokoro" and getattr(model, "repo_id", "") is None:
+            # Kokoro otherwise looks its voices up in prince-canuma/Kokoro-82M,
+            # a repo the catalogue never installs, and downloads them inside
+            # this worker; the installed model ships the same voices/ folder.
+            model.repo_id = self._model_id
+        self._model = model
 
     def _is_voice_design(self) -> bool:
         """Whether the loaded model builds a voice from a text description.
@@ -3084,8 +3289,34 @@ class MLXAudioBackend(TTSBackend):
             return kind == "voice_design"
         return "voicedesign" in (self._model_id or "").lower()
 
-    def generate(self, text: str, **kw) -> torch.Tensor:
+    def can_stream(self, **kw):
+        return self._curated_key() == "qwen3-tts-base" and kw.get("speed", 1.0) == 1.0
+
+    def stream_audio(self, text, **kw):
         import numpy as np
+        from contextlib import closing
+
+        with closing(self._generate_results(text, streaming=True, **kw)) as results:
+            for result in results:
+                if result.sample_rate != self.sample_rate:
+                    raise RuntimeError(f"Unexpected Qwen sample rate {result.sample_rate}")
+                audio = np.asarray(result.audio, dtype=np.float32).copy()
+                if audio.size:
+                    yield torch.from_numpy(audio).reshape(1, -1)
+
+    def _generate_results(self, text: str, *, streaming=False, **kw):
+        # setdefault: instances built without __init__ (tests, subclasses) still get a lock.
+        lock = self.__dict__.setdefault("_generation_lock", threading.Lock())
+        if not lock.acquire(blocking=False):
+            from services.model_manager import GpuPoolBusyError
+
+            raise GpuPoolBusyError("MLX-Audio is already generating speech.", retry_after=1)
+        try:
+            yield from self._generate_results_unlocked(text, streaming=streaming, **kw)
+        finally:
+            lock.release()
+
+    def _generate_results_unlocked(self, text: str, *, streaming=False, **kw):
         self._ensure_loaded()
 
         voice     = kw.get("voice")
@@ -3123,7 +3354,12 @@ class MLXAudioBackend(TTSBackend):
         # mlx-audio refuses to run without one — so the engine was unusable no
         # matter what the user typed, and the reported failure was a bare
         # 400 quoting a library message (#1405).
-        if instruct:
+        if self._curated_key() == "qwen3-tts-base":
+            if not ref_audio:
+                raise TTSInputError("Qwen3-TTS Base needs a saved voice with reference audio.")
+            if getattr(getattr(self._model, "config", None), "tts_model_type", None) != "base":
+                raise ValueError("Select a Qwen3-TTS Base checkpoint for voice cloning.")
+        elif instruct:
             kwargs["instruct"] = instruct
         elif self._is_voice_design():
             raise ValueError(
@@ -3149,6 +3385,13 @@ class MLXAudioBackend(TTSBackend):
                 # (#977). Resolve against the authoritative installed table
                 # instead of guessing via `language[:2]`.
                 kwargs["lang_code"] = resolve_kokoro_lang_code(language)
+                if not voice:
+                    # No preset picked: speak with a voice of the requested
+                    # language instead of Kokoro's American-English default
+                    # (#3802). An explicit preset_voice always wins.
+                    kwargs["voice"] = self.KOKORO_DEFAULT_VOICE_BY_LANG_CODE.get(
+                        kwargs["lang_code"], self.DEFAULT_VOICE
+                    )
             else:
                 # `lang_code`-as-2-letter-truncation is Kokoro's own
                 # convention, not mlx-audio's in general — other curated
@@ -3159,9 +3402,11 @@ class MLXAudioBackend(TTSBackend):
                 # 2-letter code). Kokoro's strict validation doesn't apply to
                 # them. Curated models are checked against their documented
                 # set instead of silently speaking a language they don't know.
-                self._check_language(language)
-                code = self._normalize_language_code(language)
-                if self._curated_key() == "qwen3-tts":
+                # The checked code is what the curated model declares
+                # ("Standard Arabic" -> "ar", #3816); open sets keep the
+                # request's own code.
+                code = self._check_language(language) or self._normalize_language_code(language)
+                if self._curated_key() in {"qwen3-tts", "qwen3-tts-base"}:
                     # mlx-audio Qwen's codec_language_id uses full names.
                     qwen_languages = {
                         "zh": "chinese", "en": "english", "ja": "japanese",
@@ -3174,6 +3419,17 @@ class MLXAudioBackend(TTSBackend):
                         kwargs["lang_code"] = mapped_language
                 elif code is not None:
                     kwargs["lang_code"] = code
+
+        if (
+            "lang_code" not in kwargs
+            and voice
+            and self._model_id == self.CURATED_MODELS.get("kokoro")
+            and voice[:1] in self.KOKORO_DEFAULT_VOICE_BY_LANG_CODE
+        ):
+            # Language Auto with a preset like "pf_dora": Kokoro's first letter
+            # is the voice's language, so derive lang_code from it instead of
+            # phonemizing Portuguese text as American English.
+            kwargs["lang_code"] = voice[0]
 
         # mlx samples from its own RNG, which torch.manual_seed never touches,
         # so a new seed would otherwise give the same take (#3413).
@@ -3200,6 +3456,13 @@ class MLXAudioBackend(TTSBackend):
                         inspect.Parameter.KEYWORD_ONLY,
                     )
                 }
+
+        if streaming:
+            kwargs.update(stream=True, streaming_interval=0.48)
+        yield from generate(**kwargs)
+
+    def generate(self, text: str, **kw) -> torch.Tensor:
+        import numpy as np
 
         def collect(results):
             groups = []
@@ -3230,7 +3493,10 @@ class MLXAudioBackend(TTSBackend):
             flush()
             return groups
 
-        pieces = collect(generate(**kwargs))
+        from contextlib import closing
+
+        with closing(self._generate_results(text, **kw)) as results:
+            pieces = collect(results)
 
         if not pieces:
             raise RuntimeError(f"mlx-audio ({self._model_id}) produced no audio")
@@ -3268,10 +3534,14 @@ class CosyVoiceBackend(TTSBackend):
     display_name = "CosyVoice 3 (9 langs, zero-shot, instruct, Apache-2.0)"
     # instruct + reference → inference_instruct2 (emotion, dialect, pace).
     instruct_directs_delivery = True
+    # generate() calls explicit inference_* entry points with no quality
+    # knobs in their signatures (#3654).
+    supports_num_step = False
+    supports_guidance_scale = False
     inline_tags = COSYVOICE_INLINE_TAGS
     # CosyVoice's official inference path expects CUDA; CPU works but slow.
     # MPS support not verified upstream — flagged for Phase 6 confirmation.
-    gpu_compat = ("cuda", "cpu")
+    gpu_compat = ("cuda", "rocm", "cpu")
 
     # CosyVoice language tags used for cross-lingual synthesis.
     LANG_TAGS = {
@@ -3464,6 +3734,9 @@ class GPTSoVITSBackend(TTSBackend):
     id = "gpt-sovits"
     display_name = "GPT-SoVITS (5 langs, zero-shot, RTF 0.014, MIT)"
     supports_voice_design = False  # api_v2 needs a reference clip for every request
+    # The api_v2 body carries text/lang/ref/speed only — no quality knobs (#3654).
+    supports_num_step = False
+    supports_guidance_scale = False
     # Server-side; whichever device GPT-SoVITS itself uses (CUDA preferred).
     gpu_compat = ("cuda", "cpu")
 
@@ -3669,6 +3942,9 @@ class SherpaOnnxBackend(TTSBackend):
     gpu_compat = ("cuda", "cpu")
     supports_cloning = False  # VITS speaker-id only; no ref_audio support
     supports_voice_design = False  # speaker ids only; instruct is never read (#3413)
+    # generate() calls VITS generate(text, sid, speed) — no knobs (#3654).
+    supports_num_step = False
+    supports_guidance_scale = False
 
     def __init__(self):
         self._tts = None
@@ -3783,6 +4059,7 @@ class SherpaOnnxBackend(TTSBackend):
 # the descriptor below.
 
 _LAZY_REGISTRY: dict[str, tuple[str, str]] = {
+    "qwen3-tts": ("services.qwen_cuda", "QwenCUDABackend"),
     "indextts2": ("engines.indextts", "IndexTTS2Backend"),
     # Phase 4 Plan 04-01 (GGUF-03): hardware-adaptive GGUF runtime wrapper.
     # Lazy so the import of services.tts_backend doesn't pull
@@ -3819,6 +4096,10 @@ _LAZY_REGISTRY: dict[str, tuple[str, str]] = {
     # 2026-07-02 (CPU, Apple Silicon; 22.05 kHz output). Gated behind
     # OMNIVOICE_CONFUCIUS4_TTS_DIR so it's inert until enabled.
     "confucius4-tts": ("engines.confucius4", "Confucius4Backend"),
+    # Issue #3793: Ming-3.0-tts-0.5b (inclusionAI) — opt-in, NVIDIA-CUDA-only,
+    # own Python 3.10 venv (upstream pins transformers==4.46.3 / torch==2.6.0,
+    # which conflict with the parent's >=5.3). Gated behind its venv + a CUDA host.
+    "ming-tts": ("engines.ming_tts", "MingTTSBackend"),
     # audio.cpp (0xShug0/audio.cpp) — pure-C++ ggml runtime, no Python venv.
     # v1 serves Breeze-TTS-2 (en+zh, clone+design) through a parent-managed
     # audiocpp_server over loopback HTTP. Gated behind a server binary
@@ -3924,6 +4205,7 @@ _INSTALL_HINTS: dict[str, str] = {
     "cosyvoice":     "git clone --recursive FunAudioLLM/CosyVoice + pip install -r requirements.txt + SoX",
     "kittentts":     "pip install kittentts  (ONNX, CPU-only, ~80 MB)",
     "mlx-audio":     "pip install mlx-audio  (Apple Silicon only)",
+    "qwen3-tts":     "Operator-provisioned CUDA engine. See docs/engines/mlx-audio.md for setup.",
     "voxcpm2":       'pip install "voxcpm>=2.0.3"  (floor: 2.0.3 fixed Apple-Silicon audio quality; CPU/MPS supported, CUDA recommended for speed)',
     "moss-tts-nano": "git clone OpenMOSS/MOSS-TTS-Nano && pip install -e .  (not on PyPI)",
     "indextts2":     "git clone --branch indextts-2.5 https://github.com/index-tts/index-tts.git && cd index-tts && uv venv .venv && uv pip install --python .venv/bin/python -e .  (Windows: .venv\\Scripts\\python.exe; NOT uv sync --all-extras)",
@@ -3935,8 +4217,9 @@ _INSTALL_HINTS: dict[str, str] = {
     "moss-tts-v15":  "git clone OpenMOSS/MOSS-TTS + set OMNIVOICE_MOSS_TTS_V15_DIR  (own venv, transformers==5.0; 8B, ~16 GB weights; CUDA/ROCm/XPU/NPU/CPU, no MPS; Apache-2.0)",
     "dots-tts":      "git clone rednote-hilab/dots.tts + set OMNIVOICE_DOTS_TTS_DIR  (own venv, transformers==4.57; 2B, ~9 GB weights; CUDA/CPU, Linux/macOS only — on Windows use the audio.cpp dots.tts engine; Apache-2.0)",
     "confucius4-tts":"git clone netease-youdao/Confucius4-TTS + set OMNIVOICE_CONFUCIUS4_TTS_DIR  (own Python 3.10 venv; 14-lang cross-lingual zero-shot clone; ~5 GB weights auto-download; CUDA/ROCm/XPU/NPU/CPU, no MPS; Apache-2.0)",
-    "audiocpp":     "download the matching audio.cpp v0.7.4 prebuilt + set OMNIVOICE_AUDIOCPP_BIN, then explicitly install Breeze-TTS-2 in Model Catalogue → Models  (native CPU/Vulkan/CUDA/Metal GGUF server, no Python; en+zh clone+design; ~4.73 GiB; weights research/non-commercial only)",
-    "audiocpp-dots": "download the matching audio.cpp v0.7.4 prebuilt (Model Catalogue installs it) + explicitly install dots.tts SOAR in Model Catalogue → Models  (native CPU/Vulkan/CUDA/Metal GGUF on Windows, macOS and Linux; multilingual voice cloning; ~3 GB; Apache-2.0)",
+    "ming-tts":      "git clone inclusionAI/Ming-3.0-tts + set OMNIVOICE_MING_TTS_DIR  (own Python 3.10 venv, transformers==4.46.3; 0.5B, ~3 GB weights auto-download; 7 langs zero-shot clone; NVIDIA CUDA only; MIT)",
+    "audiocpp":     "download the matching audio.cpp v0.9.4 prebuilt + set OMNIVOICE_AUDIOCPP_BIN, then explicitly install Breeze-TTS-2 in Model Catalogue → Models  (native CPU/Vulkan/CUDA/Metal GGUF server, no Python; en+zh clone+design; ~4.73 GiB; weights research/non-commercial only)",
+    "audiocpp-dots": "download the matching audio.cpp v0.9.4 prebuilt (Model Catalogue installs it) + explicitly install dots.tts SOAR in Model Catalogue → Models  (native CPU/Vulkan/CUDA/Metal GGUF on Windows, macOS and Linux; multilingual voice cloning; ~3 GB; Apache-2.0)",
     "cosyvoice-gguf": "Build Lourdle/cosyvoice.cpp at the documented pinned revision with Vulkan enabled; set OMNIVOICE_COSYVOICE_GGUF_DIR and install its GGUF/ONNX model assets from Model Catalogue (native Vulkan/CPU; no automatic runtime download).",
 }
 
@@ -3953,6 +4236,7 @@ _SETUP_SNIPPETS: dict[str, str] = {
     "moss-tts-v15":   "export OMNIVOICE_MOSS_TTS_V15_DIR=/path/to/MOSS-TTS",
     "dots-tts":       "export OMNIVOICE_DOTS_TTS_DIR=/path/to/dots.tts",
     "confucius4-tts": "export OMNIVOICE_CONFUCIUS4_TTS_DIR=/path/to/Confucius4-TTS",
+    "ming-tts":       "export OMNIVOICE_MING_TTS_DIR=/path/to/Ming-3.0-tts",
     # #919: sherpa-onnx gates on a downloaded model dir (model.onnx + tokens.txt).
     "sherpa-onnx":    "export OMNIVOICE_SHERPA_MODEL=/path/to/sherpa-onnx-model",
 }
@@ -3979,6 +4263,7 @@ _ENGINE_DOCS: dict[str, str] = {
     "moss-tts-v15":         "docs/engines/moss-tts-v15.md",
     "dots-tts":             "docs/engines/dots-tts.md",
     "confucius4-tts":       "docs/engines/confucius4-tts.md",
+    "ming-tts":             "docs/engines/ming-tts.md",
     "indextts2":            "docs/engines/indextts.md",
     "gpt-sovits":           "docs/engines/gpt-sovits.md",
     "sherpa-onnx":          "docs/engines/sherpa-onnx.md",
@@ -3987,6 +4272,7 @@ _ENGINE_DOCS: dict[str, str] = {
     "audiocpp":             "docs/engines/audio-cpp.md",
     "audiocpp-dots":        "docs/engines/audio-cpp.md",
     "cosyvoice-gguf":       "docs/engines/cosyvoice-gguf.md",
+    "qwen3-tts":            "docs/engines/mlx-audio.md",
 }
 
 
@@ -4013,6 +4299,7 @@ _MLX_AUDIO_MODEL_LABELS: dict[str, str] = {
     "kokoro":     "Kokoro (default, fast)",
     "csm":        "CSM (voice cloning)",
     "qwen3-tts":  "Qwen3-TTS (voice design)",
+    "qwen3-tts-base": "Qwen3-TTS Base (voice cloning)",
     "dia":        "Dia",
     "chatterbox": "Chatterbox",
     "melotts":    "MeloTTS (lightweight)",
@@ -4332,14 +4619,15 @@ def language_options(backend_id: str) -> Optional[list[str]]:
     Adapter constructors configure references only. Never load weights or call
     get_active_tts_backend here: discovery must not switch or unload an engine.
     """
-    from omnivoice.utils.lang_map import LANG_NAME_TO_ID
+    from omnivoice.utils.lang_map import APP_LANGUAGE_NAMES, LANG_NAME_TO_ID
     from core.language_variants import with_variant_names
 
     backend = None
     try:
-        # The native OmniVoice adapters use this exact vocabulary at inference.
+        # The native OmniVoice adapters use this exact vocabulary at inference,
+        # plus the app picker names it resolves ("Arabic" for dub, #3651).
         if backend_id in {"omnivoice", "omnivoice-subprocess", "omnivoice-gguf"}:
-            return with_variant_names(sorted(LANG_NAME_TO_ID))
+            return with_variant_names(sorted(set(LANG_NAME_TO_ID) | set(APP_LANGUAGE_NAMES)))
         backend = get_backend_class(backend_id)()
         if backend_id == "mlx-audio" and backend.model_identity() == backend.CURATED_MODELS.get("kokoro"):
             return with_variant_names(_installed_kokoro_language_options())
@@ -4347,10 +4635,12 @@ def language_options(backend_id: str) -> Optional[list[str]]:
         if not declared or "multi" in declared:
             return None
         codes = {backend._normalize_language_code(code) for code in declared}
-        candidates = set(LANG_NAME_TO_ID) | {"mandarin", "arabic", "tagalog"}
+        candidates = set(LANG_NAME_TO_ID) | set(APP_LANGUAGE_NAMES) | {"mandarin", "arabic", "tagalog"}
         candidates.update(name.lower() for name in backend.language_display_names.values())
-        return with_variant_names(sorted(name for name in candidates
-                                         if backend._normalize_language_code(name) in codes))
+        return with_variant_names(sorted(
+            name for name in candidates
+            if declared_language_code(backend._normalize_language_code(name), codes) is not None
+        ))
     except Exception:  # Optional metadata must not take down discovery.
         logger.debug("Could not resolve language options for %s", backend_id, exc_info=True)
         return None
@@ -4752,22 +5042,43 @@ ENGINE_IDLE_UNLOAD_SECONDS = _idle_seconds_from_env(
 )
 
 
+class EngineBusyError(RuntimeError):
+    """A native stream and other generation may not share one engine at once."""
+
+
+_ENGINE_NATIVE_STREAM: set[type] = set()
+
+
 @contextmanager
-def engine_in_use(instance, *, now: Optional[float] = None):
+def engine_in_use(instance, *, now: Optional[float] = None,
+                  native: bool = False, yield_to_native: bool = False):
     """Hold an engine against the idle sweep for the duration of one job.
 
     Leaving on the exit stamp rather than the entry one makes "idle" mean
     "idle since the work finished", which is the only reading under which the
     ten-minute window measures what it claims to.
+
+    ``native=True`` claims the engine for a paused-between-chunks stream and
+    fails fast with ``EngineBusyError`` if any other job holds it;
+    ``yield_to_native=True`` makes a buffered job fail fast while a native
+    stream holds it, so the two never share model/sampler state.
     """
     cls = type(instance)
     with _ENGINE_CACHE_LOCK:
+        if native and (_ENGINE_IN_USE.get(cls) or cls in _ENGINE_NATIVE_STREAM):
+            raise EngineBusyError(f"{cls.__name__} is busy")
+        if yield_to_native and cls in _ENGINE_NATIVE_STREAM:
+            raise EngineBusyError(f"{cls.__name__} is streaming")
+        if native:
+            _ENGINE_NATIVE_STREAM.add(cls)
         _ENGINE_IN_USE[cls] = _ENGINE_IN_USE.get(cls, 0) + 1
     try:
         yield instance
     finally:
         retired = []
         with _ENGINE_CACHE_LOCK:
+            if native:
+                _ENGINE_NATIVE_STREAM.discard(cls)
             remaining = _ENGINE_IN_USE.get(cls, 1) - 1
             if remaining > 0:
                 _ENGINE_IN_USE[cls] = remaining
@@ -4873,6 +5184,28 @@ def release_idle_engines(
         released.append(engine_id)
     if released:
         logger.info("Released %d idle engine(s): %s", len(released), ", ".join(released))
+    return released
+
+
+def release_idle_resident_servers(idle_seconds: float) -> list[str]:
+    """Stop idle out-of-process model servers an engine keeps between requests.
+
+    Reaches the active instance as well as the engine cache, because
+    generation holds its engine in ``_active_instance``, which the cache sweep
+    above never sees. Never raises: it runs inside the idle worker.
+    """
+    with _ENGINE_CACHE_LOCK:
+        held = [i for i in (_active_instance, *_ENGINE_INSTANCES.values()) if i is not None]
+    released: list[str] = []
+    for inst in dict.fromkeys(held):
+        hook = getattr(inst, "release_if_idle", None)
+        if hook is None:
+            continue
+        try:
+            if hook(idle_seconds):
+                released.append(getattr(type(inst), "id", type(inst).__name__))
+        except Exception:  # noqa: BLE001
+            logger.warning("idle resident-server release failed", exc_info=True)
     return released
 
 

@@ -10,10 +10,11 @@ _backend_dir = os.path.dirname(os.path.abspath(__file__))
 if _backend_dir not in sys.path:
     sys.path.insert(0, _backend_dir)
 
-from core.crash_diagnostics import enable_fault_handler  # noqa: E402
+from core.crash_diagnostics import enable_fault_handler, install_exit_forensics  # noqa: E402
 from core.app_config import PRODUCT_NAME  # noqa: E402
 # Arm native-crash tracebacks before model or GPU libraries can be imported.
 enable_fault_handler()
+install_exit_forensics()
 # PyInstaller re-executes this entry module when the frozen backend binary is
 # launched. Nested operation supervisors therefore dispatch here, before math,
 # logging, FastAPI, torch, or any application initialization. Source launches
@@ -686,6 +687,20 @@ def _phase_a_build_inner() -> None:
 
     _startup_progress.begin_step("ml_imports")
     try:
+        # HSA reads this once, when HIP initialises; the imports below and many
+        # modules after them probe the GPU (#3804).
+        import torch as _torch_for_rocm
+        from core.device_caps import apply_rocm_override_before_init
+
+        apply_rocm_override_before_init(_torch_for_rocm)
+        # After the override, which its process inherits. Only starts that process;
+        # the verdict is read when a model loads.
+        from core.gpu_self_test import start as start_gpu_self_test
+
+        start_gpu_self_test(_torch_for_rocm)
+    except Exception:  # noqa: BLE001 - the torchaudio import below reports a broken torch
+        pass
+    try:
         # The opt-in Windows ROCm runtime must pin its DLL search path before
         # torchaudio loads; a no-op on every other runtime.
         from core.windows_rocm.pipelines import prepare_audio_imports
@@ -800,13 +815,14 @@ def _phase_a_build_inner() -> None:
         media_tools as media_tools_router,  # Audio tools: ffmpeg/ffprobe/yt-dlp
         auth as auth_router,
         voice_convert,  # Studio Convert: speech-to-speech via ASR → TTS
+        sfx,  # Tools > Sound effects (#3577): opt-in MOSS-SoundEffect sidecar
     )
     from api.routers import mcp_bindings as _mcp_bindings_router  # noqa: E402
     from api.routers import telephony_twilio as _telephony_twilio_router  # noqa: E402
     from api.routers import calls as _calls_router  # noqa: E402
     from api.routers import cloud_sync as _cloud_sync_router  # noqa: E402
     _router_modules.extend([
-        system, profiles, profile_images, exports, generation, voice_convert, dub_core, dub_generate,
+        system, profiles, profile_images, exports, generation, voice_convert, sfx, dub_core, dub_generate,
         dub_export, dub_translate, projects, glossary, engines, tools,
         stories, setup, gallery, archetypes, describe_voice, community,
         batch, watermark, events, capture, capture_ws, speech_platform, dictation,
@@ -1242,7 +1258,7 @@ async def _phase_b(app: FastAPI) -> None:
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def _application_lifespan(app: FastAPI):
     from api.dependencies import validate_server_admin_key
 
     validate_server_admin_key()
@@ -1463,6 +1479,18 @@ async def lifespan(app: FastAPI):
 
 
 from core.version import APP_VERSION  # single source of truth (pyproject metadata)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    from core.runtime_owner import DataDirectoryLease
+    from core.config import DATA_DIR
+    # One backend per data directory: two would race on the database, job
+    # recovery and model files. Held through teardown, where workers can still
+    # write. The short wait covers a restart whose predecessor is still exiting.
+    with DataDirectoryLease(DATA_DIR, timeout=15):
+        async with _application_lifespan(app):
+            yield
+
 
 app = FastAPI(
     title=f"{PRODUCT_NAME} API",
@@ -1975,6 +2003,9 @@ _allowed = allowed_origin_values()
 # Registered FIRST → innermost: the startup gate holds every request except
 # the two probe paths until the deferred startup completes (and is a no-op
 # forever after).
+from core.activity import ActivityMiddleware
+# Innermost: only requests that passed every gate count as use of the backend.
+app.add_middleware(ActivityMiddleware)
 from core.render_trace import RenderTraceMiddleware
 app.add_middleware(RenderTraceMiddleware)
 app.add_middleware(StartupGateMiddleware)
@@ -2041,51 +2072,96 @@ _mimetypes.add_type("audio/flac", ".flac")
 # not-ready, exactly like the connection-refused it replaces), the full body
 # once ready. No torch import pre-ready — it would block 10-20s on the very
 # import whose progress this endpoint exists to report.
-_health_device: str | None = None
+# (device, engine) from one resolve, published as one value so /health never
+# pairs an engine with another engine's device.
+_health_label: tuple[str, str | None] | None = None
+_health_device_at = 0.0  # time.monotonic() of the last resolve
 _health_device_lock = threading.Lock()
 _health_device_thread: threading.Thread | None = None
+# The active engine can change at runtime (Settings picker), so the cached
+# label is refreshed in the background once it is this old.
+_HEALTH_DEVICE_TTL_S = 60.0
 
 
-def _probe_health_device() -> str:
-    """Name the compute device. Blocking: imports torch and may initialise the
-    CUDA driver, which can take seconds and stall behind a busy GPU."""
+def _torch_device_label() -> str:
+    """This process's PyTorch device. ROCm presents through ``torch.cuda``, so
+    ``torch.version.hip`` tells it apart from CUDA."""
     import torch
 
     if torch.cuda.is_available():
-        return f"cuda ({torch.cuda.get_device_name(0)})"
+        family = "rocm" if getattr(torch.version, "hip", None) else "cuda"
+        return f"{family} ({torch.cuda.get_device_name(0)})"
+    xpu = getattr(torch, "xpu", None)
+    if xpu is not None and xpu.is_available():
+        return f"xpu ({xpu.get_device_name(0)})"
     if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
         return "mps"
     return "cpu"
 
 
+def _probe_health_device(engine_id: str | None) -> str:
+    """Resolve engine/device evidence in the background health worker."""
+    from core.health_device import probe_device
+
+    return probe_device(engine_id, _torch_device_label, logger)
+
+
+def _probe_health_engine() -> str | None:
+    """The id of the active TTS backend."""
+    from services.tts_backend import active_backend_id
+
+    return active_backend_id()
+
+
 def _resolve_health_device() -> None:
-    global _health_device
+    """Read the active engine once, resolve its device, then publish the pair.
+
+    Both values come from the same engine id and replace the cached label in
+    one assignment, so an engine switch mid-resolve cannot leave /health
+    reporting the new engine with the old engine's device.
+    """
+    global _health_label, _health_device_at
     try:
-        _health_device = _probe_health_device()
+        engine = _probe_health_engine()
     except Exception:  # noqa: BLE001 - a liveness label must never fail a probe
-        _health_device = "unknown"
+        engine = None
+    try:
+        device = _probe_health_device(engine)
+    except Exception:  # noqa: BLE001 - a liveness label must never fail a probe
+        device = "unknown"
+    with _health_device_lock:
+        _health_label = (device, engine)
+        _health_device_at = time.monotonic()
 
 
-def _cached_health_device() -> str:
-    """The device label without ever blocking the caller.
+def _cached_health_label() -> tuple[str, str | None]:
+    """The (device, engine) label without ever blocking the caller.
 
     The first call starts one background resolver and answers "unknown"; every
-    later call returns the cached label. /health is the shell's liveness probe,
-    polled every 2 s for the life of the app with a 1.5 s deadline, so it must
-    cost O(1): re-asking torch/the CUDA driver on each probe, from a worker
-    thread competing with a generation for the GIL and the driver, is how a
-    healthy, busy backend got reported as "not responding" (#2490, #2491).
+    later call returns the cached label, and a label older than
+    ``_HEALTH_DEVICE_TTL_S`` is refreshed by one background resolver while the
+    old one is still served. /health is the shell's liveness probe, polled
+    every 2 s for the life of the app with a 1.5 s deadline, so it must cost
+    O(1): re-asking torch/the CUDA driver on each probe, from a worker thread
+    competing with a generation for the GIL and the driver, is how a healthy,
+    busy backend got reported as "not responding" (#2490, #2491).
     """
     global _health_device_thread
-    if _health_device is not None:
-        return _health_device
+    label = _health_label
+    stale = label is not None and time.monotonic() - _health_device_at >= _HEALTH_DEVICE_TTL_S
+    if label is not None and not stale:
+        return label
     with _health_device_lock:
-        if _health_device is None and _health_device_thread is None:
+        label = _health_label
+        stale = label is not None and time.monotonic() - _health_device_at >= _HEALTH_DEVICE_TTL_S
+        idle = _health_device_thread is None or not _health_device_thread.is_alive()
+        first = label is None and _health_device_thread is None
+        if first or (stale and idle):
             _health_device_thread = threading.Thread(
                 target=_resolve_health_device, name="health-device", daemon=True
             )
             _health_device_thread.start()
-    return _health_device or "unknown"
+    return label or ("unknown", None)
 
 
 # `async def`, deliberately: a sync route runs in the shared 40-thread worker
@@ -2094,6 +2170,7 @@ def _cached_health_device() -> str:
 # depend on the event loop alone, because that is what it is reporting on.
 @app.get("/health")
 async def health():
+    """Liveness: 503 with the startup step until ready, then the cached label."""
     if not _startup_progress.is_ready():
         _step, _label = _startup_progress.current_step()
         return JSONResponse(
@@ -2106,7 +2183,21 @@ async def health():
             },
             headers={"Retry-After": "2"},
         )
-    return {"status": "ok", "device": _cached_health_device(), "version": APP_VERSION}
+    device, engine = _cached_health_label()
+    return {
+        "status": "ok",
+        "device": device,
+        "engine": engine,
+        "version": APP_VERSION,
+    }
+
+
+# The desktop app polls this to stop a backend it started for terminal
+# commands once nothing has used it for a while (see core/activity.py).
+@app.get("/system/activity", include_in_schema=False)
+async def system_activity():
+    from core import activity
+    return activity.snapshot()
 
 
 # ── Startup progress ────────────────────────────────────────────────────
@@ -2171,10 +2262,12 @@ if __name__ == "__main__":
         # the ML stack — both now live in Phase A, which a server run defers
         # but a one-shot CLI must run up front.
         _phase_a_build()
-        from core.diagnose import run_diagnostics, format_text
+        from core.diagnose import run_diagnostics, format_console_text
 
         _report = run_diagnostics(deep=args.deep)
-        print(format_text(_report), flush=True)
+        # Console code pages (Windows cp1252) cannot print every character;
+        # escape here, not in format_text, so bundle files keep real UTF-8.
+        print(format_console_text(_report), flush=True)
         sys.exit(0 if _report["summary"]["ok"] else 1)
 
     # Single-sourced from OMNIVOICE_PORT so the bare `python main.py` path and

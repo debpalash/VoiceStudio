@@ -288,6 +288,18 @@ Admin routes — `/system/*` (including `set-env`, **RCE-class**),
 `/api/settings/*`, engine selection/install/uninstall, media tools, MCP
 bindings and pronunciation settings — sit on a
 stricter gate (`require_admin`, `backend/api/dependencies.py`) than consumption.
+Editing, deleting and importing stored content (voice/profile, project,
+glossary, persona, watermark settings, marketplace, batch-job delete) also uses
+this admin gate. Their read-only metadata and saved audio remain available to
+authenticated consumers, including PIN-paired phones, and so do the routes that
+only run a generation (translate, dub, batch submit/cancel/retry, voice convert,
+capture, describe voice, audiobook render, clone creation), marked with
+`@consumer_generation`. The OpenAI-compatible
+`/v1` API retains its consumption gate. A pending designed-voice preview can
+synthesize and save audio even though it is a GET, so it requires an admin
+credential too. Same-origin media requests can use an admin-session cookie
+without the JavaScript CSRF header; cross-site GETs remain rejected.
+
 On the desktop build they are **true-loopback-only**: no PIN, key, or trusted
 network reaches them from another machine.
 
@@ -458,3 +470,11 @@ call the API directly need their origin in `OMNIVOICE_ALLOWED_ORIGINS`.
 - [docs/agentic-voice.md](agentic-voice.md) — pointing OpenAI-compatible agent
   frameworks at VoiceStudio.
 - [docs/mcp.md](mcp.md) — the MCP server for AI agents.
+
+
+## Gallery permissions
+
+Gallery browsing and preview requests use the consumption gate. Importing,
+uploading, editing, deleting or copying a gallery voice into a profile requires
+administrator authorization. A share PIN alone does not authorize those
+mutations; server deployments must configure an API key for remote management.

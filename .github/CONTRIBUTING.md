@@ -13,15 +13,21 @@ Thanks for your interest in improving VoiceStudio! This guide covers everything 
 
 ---
 
-> **Before your first pull request:** unless exempt under the
+> **Before your first pull request: sign the CLA first.** Unless exempt under the
 > [CLA checker’s policy](#contribution-licensing), sign the
-> [Contributor License Agreement](CLA-1.0.md) once. GitHub cannot stop you opening a pull request first, so it is checked at
-> merge instead: an unsigned pull request cannot merge unless a maintainer applies
-> the `cla-override` label after manual review. You can sign now on the
-> [signing issue (#2586)](https://github.com/debpalash/VoiceStudio/issues/2586) and
-> your signature covers your future contributions. Every other non-exempt human commit
-> author and co-author must also sign before the check passes. Details are in
-> [Contribution licensing](#contribution-licensing).
+> [Contributor License Agreement](CLA-1.0.md) once. It takes a minute: post the
+> line in [Contribution licensing](#contribution-licensing) on the
+> [signing issue (#2586)](https://github.com/debpalash/VoiceStudio/issues/2586), and
+> your signature covers your future contributions. A pull request opened before
+> you sign is converted to a draft, its heavy CI is skipped and the review bots
+> wait; when you sign, CI re-runs automatically and the pull request is marked
+> ready (one you made a draft yourself stays a draft until you mark it). An unsigned
+> pull request cannot merge unless a maintainer applies the `cla-override` label
+> after manual review. Every other non-exempt human commit author and co-author
+> must also sign before the check passes.
+>
+> **Using an AI coding agent?** Give it the
+> [agent pull-request guide](AGENT_PR_GUIDE.md) first.
 
 ---
 
@@ -37,6 +43,7 @@ Read it before opening a proposal; the licence check in particular ends most of 
 
 - [Git](https://git-scm.com/)
 - `curl` (used by the Bun / uv / rustup install one-liners on macOS and Linux)
+- [Node.js 22](https://nodejs.org/), 22.12.0 or newer (Electron development and validation scripts). CI runs Node 22 and `.nvmrc` pins it for nvm, fnm and Volta; newer majors change some error messages and fail tests that pass on CI.
 - [Bun](https://bun.sh/) (frontend package manager)
 - [uv](https://docs.astral.sh/uv/) (Python environment manager)
 - [ffmpeg](https://ffmpeg.org/) (audio/video processing)
@@ -108,7 +115,15 @@ On macOS, development launches coordinate bundle preparation and retain each
 active dev server’s branded Electron bundle across main-process restarts.
 Unused bundles are removed on later launches; cleanup failures do not prevent
 a valid cached bundle from starting. Native OS locks release automatically when
-all holders exit, including after a crash.
+all holders exit, including after a crash. The launcher calls `/bin/cp`,
+`/usr/bin/plutil` and `/usr/bin/codesign` by full path, so GNU coreutils ahead
+of `/bin` on `PATH` does not break it, and the app asks the Keychain only when a
+saved account sign-in exists or account features are on.
+
+Editing a main-process file restarts Electron. Each dev instance records its
+process ID in its user-data folder, and the replacement waits up to 20 seconds
+for the previous one to exit before taking the single-instance lock, so the
+restart does not end the dev session. Packaged builds never wait.
 
 Product builds read the app name, application ID, and the backend/web/Electron
 development ports from `config/app.json`. Change that manifest instead of
@@ -121,6 +136,41 @@ the last 20 lines of `omnivoice.log` before the dev stack shuts down — so the
 cause doesn't scroll away with the terminal. The same death is also reported
 as a crash notice in the UI the next time the backend starts (see
 [docs/install/troubleshooting.md §14c](../docs/install/troubleshooting.md)).
+
+### Clean local development and app data
+
+Close VoiceStudio and its backend/dev servers before cleaning. From the checkout:
+
+```bash
+bun clean --dry-run       # list exact paths without deleting
+bun clean                # permanently delete the listed state
+bun run clean:all        # equivalent command
+make clean:all DRY_RUN=1 # Make preview; omit DRY_RUN=1 to delete
+```
+
+Plain `make` still starts the release flow; cleanup must be selected explicitly.
+For Make, any non-empty `DRY_RUN` value enables preview mode unless it is
+exactly one of `0`, `false` or `no`; `true`, `yes`, unfamiliar values and
+several words (such as `false 0`) all preview.
+
+The script needs Git and Node, but no installed project dependencies. It removes
+project `node_modules`, Python virtual environments (including custom names
+identified by `pyvenv.cfg`), tool caches, Electron/native/mobile build outputs,
+test reports, logs and checkout-local runtime data. It also removes the default
+VoiceStudio Electron profile, OmniVoice backend data and persisted settings.
+**This deletes saved voices, projects, generated audio, account sessions and
+managed engines in those locations.**
+These default profiles are shared with installed VoiceStudio and other source checkouts.
+
+Tracked files, root `.env` files, Git metadata, agent configuration, research
+clones and nested Git repositories are preserved. Symlink targets are never
+followed. Shared Hugging Face caches (including Windows' `%LOCALAPPDATA%/OmniVoice/hf_cache`),
+global package-manager caches, other apps' profiles, installed applications,
+phone/simulator data and OS keychain entries are excluded. Custom external
+data/runtime/model locations are also excluded; inspect and remove those
+separately if needed. The preview lists exactly what will be removed.
+Failed deletions return a nonzero exit code. Run `bun run dev` to reinstall
+project dependencies afterwards.
 
 ### Retired desktop (Tauri)
 
@@ -174,6 +224,9 @@ Open an [issue](https://github.com/debpalash/VoiceStudio/issues/new) with:
 2. **Keep PRs focused** — one feature or fix per PR
 3. **Run tests** before pushing:
    ```bash
+   # Packaging tests use Electron dependencies, including electron-builder.
+   bun install --frozen-lockfile
+
    # Backend tests (the same two runs as CI; -n auto runs tests/ in parallel,
    # optional locally, it is about 4x faster on 4 cores)
    uv run pytest tests/ -q -n auto
@@ -313,6 +366,9 @@ disposing JSDOM. Keep deferred focus restoration in that same realm; advance
 only the current fake-timer tick rather than flushing unrelated future timers.
 
 ```bash
+# Packaging tests in tests/ load the installed Electron tooling.
+bun install --frozen-lockfile
+
 # Run the backend suites CI runs (kept separate: backend/tests is isolated)
 uv run pytest tests/ -q
 uv run pytest backend/tests/ -q
@@ -428,7 +484,8 @@ and Docker image rebuilds on pull requests and pushes to `main`. The required
 still works. Mixed changes, workflow/build configuration, dependencies and bundled
 app icons still run their normal checks; unknown or truncated change lists run
 all checks. Manual runs and scheduled audits remain full runs. CLA, commit identity
-and secret scanning still run. Run changed tests locally before submitting a
+and secret scanning still run. The same skip applies while a pull request's
+opener has not signed the CLA (see [Contribution licensing](#contribution-licensing)). Run changed tests locally before submitting a
 test-only PR. Docker Hub overview edits still publish through the small
 `dockerhub-description.yml` workflow without rebuilding images.
 
@@ -444,12 +501,25 @@ test-only PR. Docker Hub overview edits still publish through the small
   package, and `Tests (Electron)` plus `Electron renderer smokes`, the Electron halves of `Tests (backend + frontend)`) are skipped on a
   pull request whose every changed file is an *edit or addition* under `backend/`
   (except `backend/assets/`), `omnivoice/`, `docs/` or `mobile/`, a Python file under `tests/` or `scripts/`,
-  a root `*.md`, `Makefile`, `uv.lock`, or a workflow other than `ci.yml` and
-  `electron-*.yml`. Any other path (including `pyproject.toml`, `package.json`,
+  a root `*.md`, `Makefile`, or a workflow other than `ci.yml` and
+  `electron-*.yml`. Any other path (including `pyproject.toml`, `uv.lock`, `package.json`,
   `bun.lock` and shared test fixtures), any file that is not a plain edit or addition (**deleted, renamed**, copied or type-changed), 3,000 or
   more files, and every push to `main` run the full matrix; so does a failed
-  detection. Skipped jobs show as skipped in the PR. The rule is the `changes`
-  job in `.github/workflows/ci.yml`.
+  detection. Skipped jobs show as skipped in the PR. A merge-queue run applies
+  the same rule to the queue commit against its base (300 files or more run
+  everything). The rule is the `changes` job in `.github/workflows/ci.yml`.
+- **Pass cache:** the heavy jobs in `ci.yml` (Python tests, the Electron jobs,
+  UI crawler, Desktop UI, smokes) and in `mobile.yml` (iOS, Android and their
+  inference tests) skip their steps, and still pass, when their exact inputs
+  already passed. Each job hashes the git entries (mode, content and path) of
+  the files it reads, plus its workflow file and `.github/actions/ci-pass`; a
+  green run saves an empty cache marker under that key as its last step. Only
+  pull-request and merge-queue runs skip; pushes to `main`, manual runs,
+  releases and the CLA, identity and security checks always run in full, and
+  `main`'s runs save the markers pull requests reuse. Each job lists its
+  inputs next to its `ci-pass` step; when a job starts reading a new file
+  outside them, add it there. To force a full run, use **Run workflow** on the
+  branch. `tests/test_ci_pass_cache.py` checks the gating.
   The `Security` workflow works the same way: CodeQL, bandit and the dependency
   audits are skipped for a PR that only edits files under `docs/` or `mobile/` or
   Markdown, while the secret scan always runs (rule: its own `changes` job).
@@ -492,11 +562,16 @@ test-only PR. Docker Hub overview edits still publish through the small
     Auto region's speed check, which reads the start of one locked wheel from
     files.pythonhosted.org and mirrors.aliyun.com (one ranged request each,
     timed out, no retries) and keeps PyPI on any doubt
-    (`electron/src/main/pypi-mirror.ts`); and Hugging Face model downloads
+    (`electron/src/main/pypi-mirror.ts`); a user-clicked setup connection check
+    requesting 256 KiB from the affected package's pinned URL through the setup
+    proxy, bounded to 15 seconds, with no upload; and Hugging Face model downloads
     (gated on install state or an explicit user action).
   - **Windows ROCm setup the user explicitly selects** (owner-approved
-    2026-10-26): the matched AMD SDK and PyTorch wheels from `repo.radeon.com`,
-    and the pinned HIP CTranslate2 archive from OpenNMT/CTranslate2 GitHub
+    2026-10-26; extended 2026-11-09): the matched AMD SDK and PyTorch wheels
+    from `repo.radeon.com` and `stable.repo.amd.com/rocm/whl-next/`, the pinned
+    HIP CTranslate2 archive from OpenNMT/CTranslate2 GitHub Releases, and the
+    HIP CTranslate2 wheels this repository builds with
+    `.github/workflows/ct2-rocm-windows.yml` and publishes on its own GitHub
     Releases. Every artifact is SHA-256 pinned in
     `scripts/windows-rocm-recipe.json` and verified before use. This opt-in
     installer keeps every other package at its installed (locked) version and
@@ -504,32 +579,68 @@ test-only PR. Docker Hub overview edits still publish through the small
     and the optional local-model smoke test never acquire models or use the network.
     The VC++ Redistributable is a manual prerequisite; opted-in Windows ROCm
     source setup checks it locally and stops when it is missing.
+  - **Dependency repair for an existing Python the user selected**
+    (owner-approved 2026-11-09): after the user reviews the plan and confirms,
+    `pip install` of the listed missing packages from PyPI into that
+    interpreter (`electron/src/main/ipc.ts`).
+  - **Optional engine installs the user starts** (owner-approved 2026-11-07):
+    clicking Install or Repair on an optional engine fetches its upstream
+    source from GitHub (a shallow clone of the branch tip, then the reviewed
+    commit, or that commit's source archive when the clone or checkout fails),
+    plus any helper sources the engine needs as GitHub archives at pinned
+    commits (CosyVoice: Matcha-TTS, PyWorld and World); a uv-managed Python from
+    `astral-sh/python-build-standalone` GitHub Releases (or the regional mirror)
+    when the engine needs a version that is not installed; its Python packages
+    from PyPI or the user's chosen mirror; the host's PyTorch build from
+    `download.pytorch.org` (`cu128` or `cpu`; on Linux AMD hosts, engines with
+    ROCm support use the ROCm index that publishes their Torch version, which a
+    user-set `OMNIVOICE_TORCH_INDEX` replaces), where uv may also resolve other
+    packages that index carries; and, for engines that fetch them during
+    install, their Hugging Face weights at a reviewed revision
+    (`backend/services/sidecar_install.py`). Engines that skip that step
+    download weights on first use, under the Hugging Face model downloads above. Torch is pinned
+    to an exact version; other packages follow the engine's own requirements
+    (exact, ranged or unpinned). Nothing is hash-pinned. Checking whether an
+    engine is installed downloads nothing.
   - **Galleries the user opens or enables:** the community gallery manifest
     from jsDelivr plus its GitHub-hosted previews
     (`backend/api/routers/community.py`); the voice-preview gallery's signed
     downloads from `omnivoice-gallery` GitHub Releases, only after it is turned
     on in Settings (`backend/services/gallery.py`).
-  - **Packaged-app update checks** against GitHub Releases; downloads wait for
-    the user (`electron/src/main/updater.ts`).
+  - **Packaged-app update checks** against GitHub Releases, and the background
+    download of a found update from the same release (on by default; Settings
+    → Updates → Download updates automatically turns it off, so downloads wait
+    for the user) (`electron/src/main/updater.ts`).
   - **yt-dlp updates** from PyPI, only when the user clicks update
     (`backend/services/media_tools.py`).
   - **VoiceStudio Cloud account features, only after the user turns them on**
     (first-run setup or Settings → Account; off by default, skipping = off):
-    browser sign-in against `voicestudio.sh/identity` and the account API at
-    `appapi.voicestudio.sh` from Electron main (`electron/src/main/account/`),
+    browser sign-in that starts on `app.voicestudio.sh/auth/app` (the dashboard
+    handles login and approval), the one-time code exchange at
+    `app.voicestudio.sh/auth/app/token`, token refresh and revocation at
+    `id.voicestudio.sh`, and the account API at `appapi.voicestudio.sh`, all
+    from Electron main (`electron/src/main/account/`, endpoints and client ID in
+    `config/account.json`),
     and, only after the user also turns cloud sync on, settings sync with
     `appapi.voicestudio.sh/v1/sync` from the backend
     (`backend/services/cloud_sync/`), which can call only with a token main
-    hands out. Turning either off stops every request at once; switching
-    account features off sends one best-effort token revocation. Hidden in
-    packaged builds until VoiceStudio Cloud launches.
+    hands out. Turning either off stops every request at once; signing out or
+    switching account features off sends one best-effort token revocation and
+    always forgets the session on this device, even offline (sign-out waits at
+    most 5 seconds for the network).
+    While signed in with account features on, the app also sends a periodic
+    check-in (`POST appapi.voicestudio.sh/v1/account/app-check`: app name,
+    app version and operating system only) so the server knows which app and
+    version you use; it grants nothing, and it stops at once on sign-out or
+    when account features are switched off.
   - Bug reports as prefilled GitHub Issue URLs opened in the user's browser.
   - **Phone content reports, only when the user taps Send** in a generated
     result's Report sheet: `appapi.voicestudio.sh/v1/content-reports` with the
     reason, optional note and typed text, app version and model; no audio,
     account or device identifier (`mobile/contract/SPEC.md` → Reporting
     generated content; required by Google Play's AI-generated content policy).
-  - PostHog analytics only after a yes at the first-run consent prompt
+  - Supermetry analytics only after a yes at the first-run consent prompt, asked before
+    runtime setup on a fresh install so setup stage and failure code can be counted
     (`backend/core/analytics.py`, allowlisted content-free metadata).
   - The GitHub star count (no credentials or referrer, refreshed every 20
     minutes while shown).
@@ -559,12 +670,25 @@ AGPL-3.0 or another OSI-approved licence (CLA section 4). AI agents can't be co-
 [Contributing with AI agents](#contributing-with-ai-agents)); the person
 submitting the work signs for it.
 
-For an unsigned pull request, the daily CLA reminder starts a 14-day waiting
-period, displays its UTC deadline, and sends one reminder after seven days. At
-the deadline maintainers may independently address the underlying issue without
-using the contribution. The pull request stays open and signatures remain
-welcome after the deadline. The timer begins when the reminder first detects an
-unsigned contributor, including for existing pull requests.
+For an unsigned pull request, the daily CLA reminder starts a 3-day waiting
+period, displays its UTC deadline, and sends one reminder halfway through.
+Signing takes a minute. After the deadline maintainers may independently address
+the underlying issue without using the contribution. The pull request stays open
+and signatures remain welcome after the deadline. The timer begins when the
+reminder first detects an unsigned contributor; a deadline already shown on a
+pull request (14 days, before this changed) keeps its date.
+
+While the person who opened a pull request has not signed, the CLA check holds
+it: it converts the pull request to a draft (CodeRabbit and Greptile skip
+drafts) and says so in its comment, with the signing step and a prompt for your
+AI coding agent. CI skips its heavy jobs, and the required
+`Tests (backend + frontend)` check reports "CLA not signed yet". The CLA, CLA
+gate, commit identity and secret scan checks still run. Once you sign, on the
+pull request or the signing issue, the check marks the pull request ready for
+review (unless you made it a draft yourself) and re-runs the CI it skipped.
+Marking it ready before you sign puts it back to draft. If CI cannot be
+restarted yet (a run still in progress), the comment says so; comment
+`recheck` later to retry. Maintainers, bots, and signed openers are never held.
 
 The **CLA** check comments on your pull request when someone still needs to
 sign. To sign, post this as a new comment, on its own line:

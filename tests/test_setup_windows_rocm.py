@@ -56,8 +56,9 @@ def test_windows_prerequisites_mode_never_imports_or_installs_torch(monkeypatch)
 
 @pytest.mark.skipif(sys.platform != "win32" or sys.version_info[:2] == (3, 12), reason="needs non-cp312 Windows interpreter")
 def test_electron_reuse_probe_rejects_wrong_abi_with_python_optimization():
+    """Keep ABI validation effective when optimized Python disables assertions."""
     root = Path(__file__).parents[1]
-    module = (root / "electron/src/main/runtime-windows-rocm.ts").as_uri()
+    module = (root / "electron/src/main/runtime-windows-rocm-abi.ts").as_uri()
     script = f"const m = await import({json.dumps(module)}); console.log(m.WINDOWS_ROCM_ABI_PROBE);"
     code = subprocess.check_output(["node", "--input-type=module", "-e", script], text=True).strip()
     result = subprocess.run([sys.executable, "-O", "-c", code], cwd=root,

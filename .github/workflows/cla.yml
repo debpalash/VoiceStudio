@@ -6,7 +6,17 @@
 # "CLA" commit status that branch protection requires alongside the native
 # "CLA gate" job, which blocks merging if a status API write fails. Past contributors can
 # also sign on any issue a maintainer labels `cla`; a maintainer can apply
-# `cla-override` to a pull request after reviewing it by hand.
+# `cla-override` to a pull request after reviewing it by hand. The check also
+# keeps the informational `cla-signed` label in step with its result.
+#
+# While a pull request's opener has not signed, the check holds it: it converts
+# the pull request to a draft (CodeRabbit and Greptile skip drafts) and says so
+# in its comment, and CI skips its heavy jobs (.github/scripts/ci_scope.py).
+# When they sign, the check marks it ready for review if it drafted it and
+# re-runs the skipped CI runs: GITHUB_TOKEN writes start no new workflow runs,
+# so a re-run (`actions: write`) is how CI restarts. The draft and ready
+# GraphQL mutations use this job's `pull-requests: write`. The hold only calls
+# the GitHub API from the base branch's checker; it runs no pull-request code.
 #
 # Security: pull_request_target and issue_comment run with a write token, even
 # for fork PRs. This workflow therefore checks out only the base branch (the
@@ -18,8 +28,10 @@ name: CLA
 on:
   pull_request_target:
     # unlabeled: removing `cla-override` rechecks; edited: so does changing
-    # `Supersedes #N` in the description.
-    types: [opened, synchronize, reopened, closed, labeled, unlabeled, edited]
+    # `Supersedes #N` in the description. ready_for_review: an unsigned opener
+    # who marks the pull request ready is held again; for anyone else the
+    # checker returns at once without touching the CLA status.
+    types: [opened, synchronize, reopened, closed, labeled, unlabeled, edited, ready_for_review]
   issue_comment:
     types: [created]
 
@@ -36,15 +48,20 @@ jobs:
     runs-on: ubuntu-24.04
     # Job level, so comments the `if` skips never take the queue slot. Each run
     # rescans all comments, so a queued run GitHub cancels loses nothing.
+    # ready_for_review queues apart: it often does nothing, so it must never
+    # replace a queued run that sets a new head's status. A run that does
+    # hold re-reads the signatures before writing (see cla_check.run).
     concurrency:
-      group: cla-${{ github.event.pull_request.number || github.event.issue.number }}
+      group: cla-${{ github.event.pull_request.number || github.event.issue.number }}${{ github.event.action == 'ready_for_review' && '-ready' || '' }}
     permissions:
       contents: write
       issues: write
       pull-requests: write
       statuses: write
+      # Re-run the CI that skipped while the opener had not signed.
+      actions: write
     steps:
-      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           sparse-checkout: .github/scripts

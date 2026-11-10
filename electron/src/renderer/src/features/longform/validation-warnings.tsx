@@ -39,6 +39,8 @@ export function ValidationWarnings({
       });
     if (warning.type === 'unknown_tag')
       return t('audiobook.warn_unknown_tag', { tag: warning.tag });
+    if (warning.type === 'emotion_ignored')
+      return t('expression.unsupported', { engine: warning.name });
     return '';
   };
   const dismiss = (

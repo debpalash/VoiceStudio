@@ -83,6 +83,156 @@ def _sniff_audio_ext(raw: bytes) -> str:
     return ".wav"
 
 
+# ── Backend errors ───────────────────────────────────────────────────────
+# A failed backend call usually explains itself in the response body (a
+# licence to accept, a model to download, a duplicate name). httpx's own
+# raise_for_status() message keeps only the status line and URL — and the
+# in-process transport's URL has no port — so agents were told "403 Forbidden
+# for url http://127.0.0.1/transcribe" instead of what to do about it.
+
+
+# Error text goes to an LLM agent, which may be a hosted model: strip secrets
+# and home paths the backend echoed, and cap a proxy's HTML error page.
+_ERROR_DETAIL_MAX_CHARS = 1000
+
+
+def _scrubbed(value):
+    """``value`` with every string in it, keys included, passed through ``scrub_text``.
+
+    Structured values must be scrubbed *before* JSON encoding: ``json.dumps``
+    doubles each backslash, and a Windows home path written as
+    ``C:\\\\Users\\\\alice`` no longer matches the scrubber's patterns."""
+    from core.scrub import scrub_text
+
+    if isinstance(value, str):
+        return scrub_text(value)
+    if isinstance(value, list):
+        return [_scrubbed(item) for item in value]
+    if isinstance(value, dict):
+        return {_scrubbed(key): _scrubbed(item) for key, item in value.items()}
+    return value
+
+
+def _public_error_text(text: object) -> str:
+    """``text`` with credentials and home paths redacted, length-capped.
+
+    A JSON body (a plain-text fallback that is really JSON) is scrubbed value
+    by value and re-encoded, for the same backslash reason as ``_scrubbed``."""
+    from core.scrub import scrub_text
+
+    text = str(text)
+    try:
+        parsed = json.loads(text)
+    except ValueError:
+        parsed = None
+    if isinstance(parsed, (dict, list)):
+        text = json.dumps(_scrubbed(parsed))
+    cleaned = scrub_text(text).strip()
+    if len(cleaned) > _ERROR_DETAIL_MAX_CHARS:
+        cleaned = cleaned[:_ERROR_DETAIL_MAX_CHARS].rstrip() + "…"
+    return cleaned
+
+
+def _backend_error_detail(response) -> "str | None":
+    """The backend's own explanation of a failed response, or None.
+
+    FastAPI errors carry ``detail`` as a string, a structured object (typed
+    errors such as ``model_licence_required`` put the readable text in
+    ``message``) or a list of validation errors (each with a ``msg``). Only a
+    non-empty string counts as readable text; any other shape is rendered as
+    JSON rather than a Python repr. The value came from ``response.json()``,
+    so ``json.dumps`` always accepts it."""
+    try:
+        body = response.json()
+    except ValueError:
+        return None
+    detail = body.get("detail") if isinstance(body, dict) else None
+    if not detail:
+        return None
+    if isinstance(detail, str):
+        text = detail
+    elif isinstance(detail, list):
+        text = "; ".join(_readable(item, "msg") for item in detail)
+    else:
+        text = _readable(detail, "message")
+    return _public_error_text(text) or None
+
+
+def _readable(value, text_key: str) -> str:
+    """``value[text_key]`` when it is a non-empty string, else ``value`` as JSON."""
+    text = value.get(text_key) if isinstance(value, dict) else value
+    if isinstance(text, str) and text:
+        return text
+    return json.dumps(_scrubbed(value))
+
+
+def _raise_for_backend_status(response) -> None:
+    """``response.raise_for_status()``, keeping the backend's explanation.
+
+    Raises the same ``httpx.HTTPStatusError`` (with ``.response`` intact) so
+    callers that already catch it keep working; only the message changes.
+    Anything but a 2xx is still refused: the clients do not follow redirects,
+    so a 3xx (a proxy bouncing to HTTPS or a login page) is a failed request,
+    not an empty success."""
+    if response.is_success:
+        return
+    detail = _backend_error_detail(response) if response.is_error else None
+    if not detail:
+        response.raise_for_status()
+    import httpx
+
+    raise httpx.HTTPStatusError(
+        f"VoiceStudio returned HTTP {response.status_code} for "
+        f"{response.request.method} {response.request.url.path}: {detail}",
+        request=response.request,
+        response=response,
+    )
+
+
+# A JSON error detail is a few hundred bytes; anything past this is a proxy
+# or HTML error page, not worth holding in the agent process.
+_MAX_ERROR_BODY_BYTES = 64 * 1024
+
+
+async def _buffered_error_response(response):
+    """A buffered copy of a failed *streamed* response, safe to read ``detail`` from.
+
+    Reads at most ``_MAX_ERROR_BODY_BYTES`` of the body. A larger body is
+    dropped (the copy is empty), so ``_raise_for_backend_status`` falls back to
+    the plain status message instead of buffering an unbounded error page.
+    Only the content type is carried over: the chunks are already decoded, so
+    the original Content-Encoding/Length would no longer describe them."""
+    import httpx
+
+    body = bytearray()
+    async for chunk in response.aiter_bytes():
+        body += chunk
+        if len(body) > _MAX_ERROR_BODY_BYTES:
+            body.clear()
+            break
+    headers = {}
+    if content_type := response.headers.get("content-type"):
+        headers["content-type"] = content_type
+    return httpx.Response(
+        response.status_code,
+        headers=headers,
+        content=bytes(body),
+        request=response.request,
+    )
+
+
+async def _raise_for_streamed_status(response) -> None:
+    """``_raise_for_backend_status`` for a *streamed* response.
+
+    Only a 4xx/5xx body can hold a ``detail``, so only those are buffered
+    (bounded). Anything else that is not a 2xx, such as a redirect, is raised
+    on the original response without touching its body, so a slow body
+    cannot stall the call and the ``Location`` header stays available."""
+    if response.is_error:
+        _raise_for_backend_status(await _buffered_error_response(response))
+    _raise_for_backend_status(response)
+
+
 # ── Output mode + the base path boundary ─────────────────────────────────
 # An LLM agent that receives a WAV as base64 pays for every byte in context:
 # a 1.4 s clip already brushes per-result token caps, and a paragraph of
@@ -503,7 +653,7 @@ def create_mcp_server(app=None):
     async def _api_get(path: str):
         async with _client(30) as c:
             r = await c.get(path)
-            r.raise_for_status()
+            _raise_for_backend_status(r)
             return r.json()
 
     async def _api_post_form(
@@ -512,14 +662,14 @@ def create_mcp_server(app=None):
         wait = _post_timeout_s() if timeout is None else timeout
         async with _client(wait) as c:
             r = await c.post(path, data=data, files=files or {})
-            r.raise_for_status()
+            _raise_for_backend_status(r)
             return r
 
     async def _submit_json(path: str, body: dict):
         timeout = _post_timeout_s()
         async with _client(timeout) as client:
             response = await client.post(path, json=body)
-            response.raise_for_status()
+            _raise_for_backend_status(response)
             decoded = response.json()
         return decoded
 
@@ -621,7 +771,7 @@ def create_mcp_server(app=None):
             # buffering another full audio copy in the agent process.
             async with _client(300) as c:
                 async with c.stream("GET", f"/audio/{audio_id}.{format}") as encoded:
-                    encoded.raise_for_status()
+                    await _raise_for_streamed_status(encoded)
 
         return json.dumps(await _speech_result(
             audio_id, gen_time, duration, r.content, _api_base(), format
@@ -780,12 +930,10 @@ def create_mcp_server(app=None):
             # Cloning commonly fails validation (duplicate name, audio too
             # short, quality gate) — surface the backend's own detail as the
             # structured error the agent expects, not a framework traceback.
-            try:
-                detail = exc.response.json().get("detail")
-            except ValueError:
-                detail = None
-            return json.dumps({"error": str(detail or exc.response.text
-                                             or f"HTTP {exc.response.status_code}")})
+            detail = _backend_error_detail(exc.response)
+            return json.dumps({"error": detail
+                                        or _public_error_text(exc.response.text)
+                                        or f"HTTP {exc.response.status_code}"})
         except (httpx.HTTPError, ValueError) as exc:
             # Transport failures + non-JSON success bodies (proxy error page).
             return json.dumps({"error": f"backend request failed: {exc}"})
@@ -860,16 +1008,12 @@ def create_mcp_server(app=None):
                 timeout=_post_timeout_s("generate"),
             )
         except httpx.HTTPStatusError as status_error:
-            try:
-                backend_detail = status_error.response.json().get("detail")
-            except ValueError:
-                backend_detail = None
             explanation = (
-                backend_detail
-                or status_error.response.text
+                _backend_error_detail(status_error.response)
+                or _public_error_text(status_error.response.text)
                 or f"HTTP {status_error.response.status_code}"
             )
-            return json.dumps({"error": str(explanation)})
+            return json.dumps({"error": explanation})
         except httpx.HTTPError as request_error:
             return _request_failure(request_error)
 
@@ -973,7 +1117,9 @@ def main():
 
     if args.sse:
         logger.info("Starting MCP server on SSE transport, port %d", args.port)
-        mcp.run(transport="sse", port=args.port)
+        # FastMCP.run() takes no port: the SSE server listens on settings.port.
+        mcp.settings.port = args.port
+        mcp.run(transport="sse")
     else:
         logger.info("Starting MCP server on stdio transport")
         mcp.run(transport="stdio")

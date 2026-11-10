@@ -10,7 +10,11 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-vi.mock('./cloud-sync-panel', () => ({ CloudSyncPanel: () => <div>sync-panel</div> }));
+vi.mock('./cloud-sync-panel', () => ({
+  CloudSyncPanel: ({ planUrl }: { planUrl?: string | null }) => (
+    <div data-plan-url={planUrl ?? ''}>sync-panel</div>
+  ),
+}));
 
 import { AccountSettings } from './account-settings';
 
@@ -24,18 +28,25 @@ const base = {
   signingIn: false,
   notice: null as string | null,
   profile: null as unknown,
+  links: null as { profile: string; plan: string; deletion: string } | null,
 };
 function setup(state: Partial<typeof base>) {
   let push: (s: unknown) => void = () => {};
   const account = {
     get: vi.fn(async () => ({ ...base, ...state })),
+    refresh: vi.fn(async () => ({ ...base, ...state })),
     onState: vi.fn((cb: (s: unknown) => void) => ((push = cb), () => {})),
     setSwitches: vi.fn(async (p: object) => ({ ...base, ...state, ...p })),
     signIn: vi.fn(async () => {}),
     cancelSignIn: vi.fn(async () => {}),
     signOut: vi.fn(async () => {}),
+    updateProfile: vi.fn(async (p: { display_name: string }) => ({
+      ...base,
+      ...state,
+      profile: { ...(state.profile as object), displayName: p.display_name },
+    })),
   };
-  mock.bridge = { account };
+  mock.bridge = { account, files: { openExternal: vi.fn(async () => {}) } };
   render(<AccountSettings />);
   return { account, push: (s: Partial<typeof base>) => act(() => push({ ...base, ...s })) };
 }
@@ -86,7 +97,7 @@ it('signed in: shows the name and Sign out, and never any token-like text', asyn
     signedIn: true,
     profile: { email: 'ana@example.com', displayName: 'Ana', avatarUrl: null, organizations: [] },
   });
-  fireEvent.click(await screen.findByText('account.sign_out'));
+  fireEvent.click(await screen.findByRole('button', { name: 'account.sign_out' }));
   expect(account.signOut).toHaveBeenCalled();
   expect(document.body.textContent).not.toMatch(/Bearer|eyJ/);
 });
@@ -196,7 +207,172 @@ it('says when the account details could not be loaded, with the reason and a ret
   const alert = await screen.findByRole('alert');
   expect(alert).toHaveTextContent('account.details_failed');
   expect(alert).toHaveTextContent('403');
-  const calls = account.get.mock.calls.length;
   fireEvent.click(screen.getByText('account.retry'));
-  await waitFor(() => expect(account.get.mock.calls.length).toBe(calls + 1));
+  await waitFor(() => expect(account.refresh).toHaveBeenCalledTimes(1));
+});
+
+it('Refresh reloads the signed-in account and shows the new details', async () => {
+  const signedIn = {
+    signedIn: true,
+    profile: {
+      email: 'ana@example.com',
+      displayName: 'Ana Lima',
+      avatarUrl: null,
+      organizations: [],
+    },
+    plan: null,
+  };
+  const { account } = setup(signedIn as never);
+  let finish!: (s: unknown) => void;
+  account.refresh.mockImplementationOnce(
+    () => new Promise((resolve) => (finish = resolve)) as never,
+  );
+  const button = await screen.findByRole('button', { name: 'account.refresh' });
+  fireEvent.click(button);
+  fireEvent.click(button);
+  expect(account.refresh).toHaveBeenCalledTimes(1);
+  expect(button).toBeDisabled();
+  await act(async () =>
+    finish({
+      ...base,
+      ...signedIn,
+      profile: { ...signedIn.profile, displayName: 'Ana Souza' },
+    }),
+  );
+  expect(await screen.findByText('Ana Souza')).toBeInTheDocument();
+  expect(button).not.toBeDisabled();
+});
+
+it('shows no Refresh button when signed out', async () => {
+  setup({});
+  await screen.findByText('account.sign_in');
+  expect(screen.queryByRole('button', { name: 'account.refresh' })).toBeNull();
+});
+
+it('with a profile, the account card is the one place for the identity and Sign out', async () => {
+  setup({
+    signedIn: true,
+    profile: { email: 'ana@example.com', displayName: null, avatarUrl: null, organizations: [] },
+  });
+  expect(await screen.findByText('ana@example.com')).toBeInTheDocument();
+  expect(screen.getAllByText('ana@example.com')).toHaveLength(1);
+  expect(screen.getAllByRole('button', { name: 'account.sign_out' })).toHaveLength(1);
+  expect(screen.queryByText(/account\.signed_in_as/)).toBeNull();
+});
+
+it('signed in before the profile loads, Sign out stays reachable in the session row', async () => {
+  const { account } = setup({ signedIn: true, profile: null });
+  expect(await screen.findByText(/account\.signed_in_as/)).toBeInTheDocument();
+  fireEvent.click(screen.getByText('account.sign_out'));
+  expect(account.signOut).toHaveBeenCalled();
+});
+
+it('notices render as padded callouts outside the settings panel', async () => {
+  setup({ notice: 'session_expired', remembered: false });
+  const notice = await screen.findByRole('status');
+  expect(notice.closest('section')).toBeNull();
+  expect(notice.className).toMatch(/px-4/);
+  expect(screen.getByText('account.not_remembered').closest('section')).toBeNull();
+});
+
+it('collapses the sync list while Cloud sync is off and passes the plan link when on', async () => {
+  const { push } = setup({ signedIn: true, syncEnabled: false });
+  expect(await screen.findByRole('switch', { name: 'account.sync' })).not.toBeChecked();
+  expect(screen.queryByText('sync-panel')).toBeNull();
+  push({
+    signedIn: true,
+    syncEnabled: true,
+    links: { profile: 'p', plan: 'https://plan.example', deletion: 'd' },
+  });
+  expect(await screen.findByText('sync-panel')).toHaveAttribute(
+    'data-plan-url',
+    'https://plan.example',
+  );
+});
+
+const ana = {
+  email: 'ana@example.com',
+  displayName: 'Ana Lima',
+  avatarUrl: null as string | null,
+  organizations: [],
+};
+const links = {
+  profile: 'https://cloud.example/profile',
+  plan: 'https://cloud.example/plan',
+  deletion: 'd',
+};
+const planOf = (pro: boolean) => ({
+  planCode: pro ? 'pro' : 'free',
+  planName: pro ? 'Pro' : 'Free',
+  storageUsedBytes: 0,
+  storageLimitBytes: 1024 ** 3,
+  settingsSync: true,
+  proDesktop: pro,
+});
+
+it.each([
+  [false, 'free'],
+  [true, 'pro'],
+])('shows the plan as a badge (Pro: %s)', async (pro, kind) => {
+  setup({ signedIn: true, profile: ana, plan: planOf(pro), links } as never);
+  const badge = await screen.findByTestId('account-plan-badge');
+  expect(badge).toHaveAttribute('data-plan', kind);
+  expect(badge).toHaveTextContent(pro ? 'Pro' : 'Free');
+  expect(badge.querySelector('svg')).not.toBeNull();
+});
+
+it('shows the photo when there is one, and initials otherwise', async () => {
+  setup({ signedIn: true, profile: { ...ana, avatarUrl: 'data:image/png;base64,AAAA' } } as never);
+  const photo = (await screen.findByTestId('account-avatar')).querySelector('img');
+  expect(photo).toHaveAttribute('src', 'data:image/png;base64,AAAA');
+  cleanup();
+  setup({ signedIn: true, profile: ana } as never);
+  expect(await screen.findByTestId('account-avatar')).toHaveTextContent('AL');
+});
+
+it('the avatar opens the profile page to change the photo, so it syncs', async () => {
+  setup({ signedIn: true, profile: ana, links } as never);
+  fireEvent.click(await screen.findByRole('button', { name: 'account.change_photo' }));
+  const files = (mock.bridge as { files: { openExternal: ReturnType<typeof vi.fn> } }).files;
+  expect(files.openExternal).toHaveBeenCalledWith('https://cloud.example/profile');
+});
+
+it('without a profile link the avatar is not a button', async () => {
+  setup({ signedIn: true, profile: ana } as never);
+  expect(await screen.findByTestId('account-avatar')).not.toHaveRole('button');
+  expect(screen.queryByRole('button', { name: 'account.change_photo' })).toBeNull();
+});
+
+it('edits the display name inline and saves it to the account', async () => {
+  const { account } = setup({ signedIn: true, profile: ana, links } as never);
+  fireEvent.click(await screen.findByRole('button', { name: 'account.edit_name' }));
+  const input = screen.getByRole('textbox', { name: 'account.name_label' });
+  expect(input).toHaveValue('Ana Lima');
+  fireEvent.change(input, { target: { value: '  Ana   Souza ' } });
+  fireEvent.submit(input.closest('form')!);
+  await waitFor(() =>
+    expect(account.updateProfile).toHaveBeenCalledWith({ display_name: 'Ana Souza' }),
+  );
+  expect(await screen.findByText('Ana Souza')).toBeInTheDocument();
+  expect(screen.queryByRole('textbox', { name: 'account.name_label' })).toBeNull();
+});
+
+it('Escape cancels editing, an empty name cannot be saved, and a failure says so', async () => {
+  const { account } = setup({ signedIn: true, profile: ana, links } as never);
+  fireEvent.click(await screen.findByRole('button', { name: 'account.edit_name' }));
+  fireEvent.keyDown(screen.getByRole('textbox', { name: 'account.name_label' }), {
+    key: 'Escape',
+  });
+  expect(screen.queryByRole('textbox', { name: 'account.name_label' })).toBeNull();
+
+  fireEvent.click(screen.getByRole('button', { name: 'account.edit_name' }));
+  const input = screen.getByRole('textbox', { name: 'account.name_label' });
+  fireEvent.change(input, { target: { value: '   ' } });
+  expect(screen.getByRole('button', { name: 'common.save' })).toBeDisabled();
+
+  account.updateProfile.mockRejectedValueOnce(new Error('422'));
+  fireEvent.change(input, { target: { value: 'Ana' } });
+  fireEvent.click(screen.getByRole('button', { name: 'common.save' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('account.rename_failed');
+  expect(screen.getByRole('textbox', { name: 'account.name_label' })).toHaveValue('Ana');
 });

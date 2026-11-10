@@ -7,26 +7,42 @@ import { AccountDetails } from './account-details';
 import { CloudSyncPanel } from './cloud-sync-panel';
 import { SettingsRow, SettingsSection } from './settings-layout';
 
+const CALLOUT =
+  'rounded-xl border border-border/50 bg-card/20 px-4 py-3 text-[13px] leading-[1.45] text-muted-foreground';
+
 export function AccountSettings() {
   const { t } = useTranslation();
-  const { supported, state, setSwitches, signIn, cancelSignIn, signOut, refresh } = useAccount();
+  const { supported, state, setSwitches, signIn, cancelSignIn, signOut, refresh, updateProfile } =
+    useAccount();
   if (!supported || !state?.available) return null;
   const who = state.profile?.displayName ?? state.profile?.email ?? '';
+  const enabled = state.accountEnabled;
+  // The identity card carries the session (name, Sign out). Until a profile
+  // loads, or when it fails, the plain session row keeps Sign out reachable.
+  const card = enabled && state.signedIn && Boolean(state.profile);
   return (
-    <SettingsSection icon={UserRoundIcon} title={t('account.title')}>
-      <SettingsRow
-        id="account-features"
-        title={t('account.features')}
-        description={t('account.features_desc')}
-      >
-        <Switch
-          aria-label={t('account.features')}
-          checked={state.accountEnabled}
-          onCheckedChange={(on) => void setSwitches({ accountEnabled: on })}
+    <div className="space-y-4">
+      {enabled && (
+        <AccountDetails
+          state={state}
+          onRetry={refresh}
+          onSignOut={card ? () => void signOut() : undefined}
+          onRename={card ? (name) => updateProfile({ display_name: name }) : undefined}
         />
-      </SettingsRow>
-      {state.accountEnabled && (
-        <>
+      )}
+      <SettingsSection icon={UserRoundIcon} title={t('account.title')}>
+        <SettingsRow
+          id="account-features"
+          title={t('account.features')}
+          description={t('account.features_desc')}
+        >
+          <Switch
+            aria-label={t('account.features')}
+            checked={state.accountEnabled}
+            onCheckedChange={(on) => void setSwitches({ accountEnabled: on })}
+          />
+        </SettingsRow>
+        {enabled && !card && (
           <SettingsRow
             id="account-session"
             title={state.signedIn ? t('account.signed_in_as', { name: who }) : t('account.title')}
@@ -43,12 +59,11 @@ export function AccountSettings() {
                 </Button>
               </span>
             ) : (
-              <Button variant="outline" onClick={() => void signIn()}>
-                {t('account.sign_in')}
-              </Button>
+              <Button onClick={() => void signIn()}>{t('account.sign_in')}</Button>
             )}
           </SettingsRow>
-          <AccountDetails state={state} onRetry={() => void refresh()} />
+        )}
+        {enabled && (
           <SettingsRow
             id="account-sync"
             title={t('account.sync')}
@@ -62,17 +77,17 @@ export function AccountSettings() {
               onCheckedChange={(on) => void setSwitches({ syncEnabled: on })}
             />
           </SettingsRow>
-          {state.notice && (
-            <p role="status" className="text-sm text-muted-foreground">
-              {t(`account.${state.notice}`)}
-            </p>
-          )}
-          {!state.remembered && (
-            <p className="text-sm text-muted-foreground">{t('account.not_remembered')}</p>
-          )}
-          {state.signedIn && state.syncEnabled && <CloudSyncPanel />}
-        </>
+        )}
+        {enabled && state.signedIn && state.syncEnabled && (
+          <CloudSyncPanel planUrl={state.links?.plan} />
+        )}
+      </SettingsSection>
+      {enabled && state.notice && (
+        <p role="status" className={CALLOUT}>
+          {t(`account.${state.notice}`)}
+        </p>
       )}
-    </SettingsSection>
+      {enabled && !state.remembered && <p className={CALLOUT}>{t('account.not_remembered')}</p>}
+    </div>
   );
 }

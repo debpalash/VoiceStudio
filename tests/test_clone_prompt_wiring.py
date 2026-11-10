@@ -254,3 +254,63 @@ def test_cache_ref_false_is_popped_and_skips_the_insert(ref_wav):
         duration=None, speed=1.0,
     )
     assert len(_tb()._prompt_cache) == 1
+
+
+def test_in_process_omnivoice_forwards_seed_and_isolates_random_draws(monkeypatch):
+    from types import SimpleNamespace
+
+    from omnivoice.models.omnivoice import GenerationTask, OmniVoice
+
+    class TinyModel:
+        # Only the network and tokenizers are substituted. Generation and both
+        # sampling stages are the actual model methods.
+        generate = OmniVoice.generate
+        _generate_iterative = OmniVoice._generate_iterative
+        _predict_tokens_with_scoring = OmniVoice._predict_tokens_with_scoring
+        device = torch.device("cpu")
+        config = SimpleNamespace(num_audio_codebook=1, audio_mask_id=31)
+        audio_tokenizer = SimpleNamespace(config=SimpleNamespace(frame_rate=50))
+        text_tokenizer = object()
+
+        def eval(self):
+            return self
+
+        def _preprocess_all(self, *, text, **kwargs):
+            return GenerationTask(1, [text], [64], [None], [None], [None], [None], [None])
+
+        def _prepare_inference_inputs(self, *args):
+            return {
+                "input_ids": torch.full((1, 1, 64), 31),
+                "audio_mask": torch.ones((1, 64), dtype=torch.bool),
+            }
+
+        def __call__(self, *, input_ids, **kwargs):
+            # Keep tied candidates for class sampling. Later steps depend on
+            # which positions the earlier step already unmasked.
+            logits = torch.zeros((*input_ids.shape, 32))
+            logits[..., :4] = input_ids.ne(31).sum(dim=-1, keepdim=True).unsqueeze(-1)
+            return SimpleNamespace(logits=logits)
+
+        def _decode_and_post_process(self, tokens, *args):
+            return tokens
+
+    from omnivoice.models.omnivoice import OmniVoiceGenerationConfig
+
+    original_config = OmniVoiceGenerationConfig.from_dict
+
+    def sampling_config(kwargs):
+        config = original_config(kwargs)
+        config.class_temperature = 1.0
+        return config
+
+    monkeypatch.setattr(OmniVoiceGenerationConfig, "from_dict", staticmethod(sampling_config))
+    backend = _tb().OmniVoiceBackend(model=TinyModel())
+    monkeypatch.setattr(backend, "_ensure_loaded", lambda: None)
+
+    state = torch.random.get_rng_state()
+    first = backend.generate("Lana.", seed=42, num_step=2)
+    second = backend.generate("Lana.", seed=42, num_step=2)
+    different = backend.generate("Lana.", seed=7, num_step=2)
+    assert torch.equal(state, torch.random.get_rng_state())
+    assert torch.equal(first, second)
+    assert not torch.equal(first, different)

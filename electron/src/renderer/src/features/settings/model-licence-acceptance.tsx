@@ -51,6 +51,8 @@ export interface AcceptableModel {
   required: boolean;
   accepted: boolean;
   category?: string;
+  /** False while the terms failed or have not loaded: acceptance stays disabled. */
+  termsLoaded?: boolean;
 }
 
 export function toAcceptable(
@@ -68,9 +70,20 @@ export function toAcceptable(
 }
 
 async function refreshLicenceQueries(client: ReturnType<typeof useQueryClient>, repoIds: string[]) {
-  await Promise.all([
+  await Promise.allSettled([
     client.invalidateQueries({ queryKey: ['model-catalogue'] }),
-    ...repoIds.map((repoId) => client.invalidateQueries({ queryKey: modelLicenceDetailsKey(repoId) })),
+    // Escape/outside-click may unmount the dialog before acceptance completes.
+    // Fetch explicitly so even inactive or disabled detail queries are refreshed.
+    ...repoIds.map(async (repoId) => {
+      const queryKey = modelLicenceDetailsKey(repoId);
+      // Do not reuse a request that began before the acceptance was saved.
+      await client.cancelQueries({ queryKey });
+      return client.fetchQuery<ModelLicenceDetails>({
+        queryKey,
+        queryFn: () => apiJson<ModelLicenceDetails>(`/models/licenses/details/${encodeURI(repoId)}`),
+        staleTime: 0,
+      });
+    }),
   ]);
 }
 
@@ -109,7 +122,7 @@ export function LicenceAcceptanceFooter({
     setError(null);
   }, [key]);
 
-  const allChecked = pending.length > 0 && pending.every((m) => checked[m.repo_id]);
+  const allChecked = pending.length > 0 && pending.every((m) => checked[m.repo_id] && m.termsLoaded !== false);
 
   const accept = async () => {
     if (!allChecked || busy) return;
@@ -175,7 +188,7 @@ export function LicenceAcceptanceFooter({
                       id={id}
                       type="checkbox"
                       checked={checkedModel}
-                      disabled={busy}
+                      disabled={busy || model.termsLoaded === false}
                       onChange={(event) => {
                         const value = event.currentTarget.checked;
                         setChecked((prev) => ({ ...prev, [model.repo_id]: value }));
@@ -274,13 +287,17 @@ export function ModelLicenceGate() {
   // fallback until they load (or if they fail).
   const acceptable: AcceptableModel[] = (models ?? []).map((model, index) => {
     const acceptance = queries[index]?.data?.acceptance;
-    return toAcceptable(model.repo_id, {
-      repo_id: model.repo_id,
-      fingerprint: acceptance?.fingerprint ?? model.fingerprint,
-      required: acceptance?.required ?? true,
-      accepted: acceptance?.accepted ?? false,
-      category: acceptance?.category ?? model.category,
-    });
+    return {
+      ...toAcceptable(model.repo_id, {
+        repo_id: model.repo_id,
+        fingerprint: acceptance?.fingerprint ?? model.fingerprint,
+        required: acceptance?.required ?? true,
+        accepted: acceptance?.accepted ?? false,
+        category: acceptance?.category ?? model.category,
+      }),
+      // Accept only terms the user could actually read.
+      termsLoaded: queries[index]?.isSuccess === true,
+    };
   });
 
   return (

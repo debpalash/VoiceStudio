@@ -138,6 +138,7 @@ import {
   isDubUrl,
   cleanupDubSegments,
   mirrorDubSourceDelivery,
+  keepDubSourceText,
   restoreDubSegments,
   skipFailedDubTranslations,
   planDubIncremental,
@@ -145,7 +146,7 @@ import {
 
 const DEFAULT_TRANSLATION_AGENT_KEY = 'voicestudio.defaultTranslationAgent';
 const LIVE_PREVIEW_KEY = 'voicestudio.dubLivePreview';
-// Targets include translate-and-speak-only languages (Uyghur, #2810).
+// Targets include translate-and-speak-only languages (Kabyle, Uyghur).
 const targetOptions = TRANSLATION_TARGET_LABELS;
 const sentenceEnd = /[.!?\u3002\uff01\uff1f]/;
 
@@ -879,6 +880,14 @@ export function DubPage() {
       : session.error === DUB_STOP_FAILED || session.error === 'Cancellation could not be confirmed'
         ? t('dub_workflow.stop_failed')
         : session.error;
+  const failedSpeechSegmentId =
+    session.event?.type === 'error' && session.event.error_code === 'dub_speech_missing'
+      ? session.event.segment_id
+      : undefined;
+  const failedSpeechRow =
+    typeof failedSpeechSegmentId === 'string'
+      ? session.segments.findIndex((segment) => segment.id === failedSpeechSegmentId)
+      : -1;
   const recoverWithInstalledAsr = async () => {
     if (!installedAsrModel || recoveringAsr) return;
     setRecoveringAsr(true);
@@ -1492,6 +1501,14 @@ export function DubPage() {
                           {t('dub.mirror_delivery')}
                         </Menu.Item>
                         <Menu.Item
+                          disabled={!session.segments.length}
+                          onClick={() => keepDubSourceText(session.sourceLanguage)}
+                          className="flex cursor-default items-center gap-2 rounded-md px-3 py-2 text-sm outline-none data-disabled:opacity-40 data-highlighted:bg-accent"
+                        >
+                          <LanguagesIcon className="size-4" />
+                          {t('dub.keep_source_text')}
+                        </Menu.Item>
+                        <Menu.Item
                           disabled={!canRestoreOriginal}
                           onClick={restoreDubSegments}
                           className="flex cursor-default items-center gap-2 rounded-md px-3 py-2 text-sm outline-none data-disabled:opacity-40 data-highlighted:bg-accent"
@@ -1639,6 +1656,20 @@ export function DubPage() {
                   failure={session.failure}
                   fallback={errorMessage}
                   onDismiss={dismissDubError}
+                  action={
+                    typeof failedSpeechSegmentId === 'string' && failedSpeechRow >= 0 ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => selectTranscriptSegment(failedSpeechSegmentId)}
+                      >
+                        {t('batch.seg', {
+                          current: failedSpeechRow + 1,
+                          total: session.segments.length,
+                        })}
+                      </Button>
+                    ) : undefined
+                  }
                 />
               )}
               {!session.segments.length && (!session.recovery || busy) && (

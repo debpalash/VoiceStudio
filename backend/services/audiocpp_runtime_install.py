@@ -21,6 +21,10 @@ _CHUNK = 256 * 1024
 _lock = threading.Lock()
 _job = {"state": "idle", "progress": 0.0, "error": None}
 
+from core import activity as _activity  # noqa: E402
+
+_activity.register_probe("runtime-install", lambda: _job.get("state") == "running")
+
 
 def _snapshot() -> dict:
     with _lock:
@@ -43,6 +47,10 @@ def _runtime_paths() -> tuple[Path | None, Path | None]:
     return server, cli
 
 
+class RuntimeSelfCheckError(RuntimeError):
+    """The downloaded runtime cannot start on this host."""
+
+
 def status() -> dict:
     server, cli = _runtime_paths()
     managed = bootstrap.managed_runtime_dir()
@@ -50,11 +58,15 @@ def status() -> dict:
         server
         and server.resolve() == (managed / bootstrap.binary_name()).resolve()
     )
+    # An earlier pin keeps existing engines working, but it is reported as
+    # not installed so Settings offers the update.
+    legacy = bootstrap.legacy_runtime_version(server) if server and cli else None
     return {
         "supported": bootstrap.default_asset() is not None,
-        "installed": server is not None and cli is not None,
+        "installed": server is not None and cli is not None and legacy is None,
         "managed": is_managed,
         "version": bootstrap.VERSION if server and cli and is_managed else None,
+        "legacy_version": legacy,
         "platform": bootstrap.platform_slug(),
         "job": _snapshot(),
     }
@@ -153,14 +165,27 @@ def _install() -> None:
         shutil.copytree(source_dir, prepared)
         for executable in (prepared / bootstrap.binary_name(), prepared / cli_name):
             executable.chmod(0o700)
-        probe = subprocess.run(  # nosec B603 -- checksummed fixed release binary
-            [str(prepared / bootstrap.binary_name()), "--list-devices"],
-            capture_output=True,
-            timeout=20,
-            check=False,
-        )
-        if probe.returncode != 0:
-            raise RuntimeError("The downloaded audio.cpp runtime failed its device check")
+        try:
+            probe = subprocess.run(  # nosec B603 -- checksummed fixed release binary
+                [str(prepared / bootstrap.binary_name()), "--list-devices"],
+                capture_output=True,
+                timeout=20,
+                check=False,
+            )
+            failure = None if probe.returncode == 0 else f"exit code {probe.returncode}"
+        except subprocess.TimeoutExpired:
+            failure = "timed out"
+        except OSError as exc:
+            failure = f"could not start: {type(exc).__name__}"
+        if failure:
+            # Raised before anything is published: a runtime already in use
+            # (including an earlier pin) stays in place and keeps working.
+            raise RuntimeSelfCheckError(
+                f"The audio.cpp {bootstrap.VERSION} runtime failed its self-check "
+                f"on this computer (device check {failure}). Nothing was "
+                "replaced; any audio.cpp runtime already installed stays in "
+                "use. See docs/engines/audio-cpp.md."
+            )
         # Windows antivirus scans the binary the device probe just ran and
         # holds it for a moment, so publishing the folder at once failed with
         # WinError 5 (#2685). Wait that lock out instead of failing the install.
@@ -187,6 +212,9 @@ def start_install(*, wait: bool = False) -> dict:
         try:
             _install()
             _update(state="done", progress=1.0, error=None)
+        except RuntimeSelfCheckError as exc:
+            logger.error("audio.cpp runtime self-check failed: %s", exc)
+            _update(state="error", error=str(exc))
         except Exception:
             logger.exception("audio.cpp runtime installation failed")
             _update(

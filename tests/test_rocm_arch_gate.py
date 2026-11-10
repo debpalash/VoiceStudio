@@ -364,8 +364,9 @@ def test_nvidia_never_gets_an_hsa_override():
 
 # ── #3418: RDNA4 (RX 9060 / 9070, gfx1200 / gfx1201) ────────────────────
 
-# torch 2.8.0's ROCm wheels (the pinned rocm6.4 index) are built with
-# PYTORCH_ROCM_ARCH including gfx1200;gfx1201 (.ci/docker/manywheel/build.sh).
+# torch 2.10.0's ROCm wheels (the pinned rocm7.1 index) are built with
+# PYTORCH_ROCM_ARCH including gfx1200;gfx1201 (.ci/docker/manywheel/build.sh),
+# a superset of 2.8.0's rocm6.4 list, so no GPU lost kernels in the move.
 ROCM64_ARCHS = ["gfx900", "gfx906", "gfx908", "gfx90a", "gfx942", "gfx1030",
                 "gfx1100", "gfx1101", "gfx1102", "gfx1200", "gfx1201"]
 PRE_RDNA4_ARCHS = ["gfx900", "gfx906", "gfx90a", "gfx1030", "gfx1100"]
@@ -407,7 +408,7 @@ def test_rdna4_on_an_old_build_is_a_mismatch_with_no_remap_advice(monkeypatch):
     assert compatible is False
     assert "11.0.0" not in warning
     assert "No HSA_OVERRIDE_GFX_VERSION remap can help" in warning
-    assert "gfx1201" in warning and "rocm6.4" in warning
+    assert "gfx1201" in warning and "rocm7.1" in warning
 
 
 def test_remap_advice_names_a_same_generation_target_the_build_ships(monkeypatch):
@@ -441,3 +442,177 @@ def test_gfx_generation_and_siblings():
     assert device_caps.gfx_generation("sm_89") == ""
     assert device_caps.same_generation_targets("gfx1201", PRE_RDNA4_ARCHS) == ()
     assert device_caps.same_generation_targets("gfx1200", ROCM64_ARCHS) == ("gfx1201",)
+
+
+# ── #3804: the override must land before HIP initialises ─────────────────
+# HSA reads HSA_OVERRIDE_GFX_VERSION once, at HIP init. Reproduced on gfx1034:
+# set after torch.cuda.is_available(), the card keeps gfx1034 and every kernel
+# fails with "invalid device function".
+
+
+def _kfd_nodes(root, *versions):
+    """A KFD topology: 0 is a CPU node, as the kernel reports it."""
+    for index, version in enumerate(versions):
+        node = root / str(index)
+        node.mkdir()
+        (node / "properties").write_text(f"cpu_cores_count 8\ngfx_target_version {version}\n")
+    return str(root)
+
+
+def _uninitialised_rocm_torch(arch_flags="gfx1030 gfx1100", hip="6.4"):
+    """A ROCm torch that records the override HIP would see when it initialises."""
+    import os
+
+    seen = []
+
+    def is_available():
+        seen.append(os.environ.get("HSA_OVERRIDE_GFX_VERSION"))
+        return False
+
+    torch = _torch(hip=hip)
+    torch.cuda.is_available = is_available
+    torch.cuda.get_arch_list = lambda: [] if not is_available() else arch_flags.split()
+    torch._C = types.SimpleNamespace(_cuda_getArchFlags=lambda: arch_flags)
+    return torch, seen
+
+
+@pytest.mark.parametrize(
+    "version, gfx",
+    [(100304, "gfx1034"), (110501, "gfx1151"), (90012, "gfx90c"), (90010, "gfx90a"), (0, None)],
+)
+def test_kfd_target_version_names_the_architecture(version, gfx):
+    assert device_caps._gfx_from_target_version(version) == gfx
+
+
+def test_probe_sets_the_override_before_hip_initialises(monkeypatch, tmp_path):
+    """The reported card: gfx1034 on a wheel that ships gfx1030."""
+    monkeypatch.setattr(device_caps, "_KFD_NODES", _kfd_nodes(tmp_path, 0, 100304))
+    torch, seen = _uninitialised_rocm_torch()
+    monkeypatch.setitem(__import__("sys").modules, "torch", torch)
+
+    device_caps._probe()
+
+    assert seen, "the probe never asked torch for the GPU"
+    assert seen[0] == "10.3.0"
+
+
+def test_reading_the_override_inputs_does_not_initialise_hip(monkeypatch, tmp_path):
+    monkeypatch.setattr(device_caps, "_KFD_NODES", _kfd_nodes(tmp_path, 0, 100304))
+    torch, seen = _uninitialised_rocm_torch()
+
+    assert device_caps.apply_rocm_override_before_init(torch) == "10.3.0"
+    assert seen == []
+
+
+@pytest.mark.parametrize(
+    "versions, arch_flags, why",
+    [
+        ((0, 110000), "gfx1030 gfx1100", "the wheel has this card"),
+        ((0, 120001), "gfx1030 gfx1100", "no target in this ISA generation"),
+        ((0, 100304), "", "unknown build: never remap on a guess"),
+        ((0, 100304, 110001), "gfx1030 gfx1100", "one override cannot describe two cards"),
+        ((0,), "gfx1030 gfx1100", "no AMD GPU"),
+    ],
+)
+def test_no_override_when_it_would_not_help(monkeypatch, tmp_path, versions, arch_flags, why):
+    import os
+
+    monkeypatch.setattr(device_caps, "_KFD_NODES", _kfd_nodes(tmp_path, *versions))
+    torch, _ = _uninitialised_rocm_torch(arch_flags=arch_flags)
+
+    assert device_caps.apply_rocm_override_before_init(torch) is None, why
+    assert "HSA_OVERRIDE_GFX_VERSION" not in os.environ
+
+
+def test_a_user_override_wins_over_the_early_remap(monkeypatch, tmp_path):
+    import os
+
+    monkeypatch.setattr(device_caps, "_KFD_NODES", _kfd_nodes(tmp_path, 0, 100304))
+    monkeypatch.setenv("HSA_OVERRIDE_GFX_VERSION", "10.3.1")
+    torch, _ = _uninitialised_rocm_torch()
+
+    assert device_caps.apply_rocm_override_before_init(torch) is None
+    assert os.environ["HSA_OVERRIDE_GFX_VERSION"] == "10.3.1"
+
+
+@pytest.mark.parametrize("platform", ["win32", "darwin"])
+def test_the_early_remap_is_linux_only(monkeypatch, tmp_path, platform):
+    monkeypatch.setattr(device_caps, "_KFD_NODES", _kfd_nodes(tmp_path, 0, 100304))
+    monkeypatch.setattr("sys.platform", platform)
+    torch, _ = _uninitialised_rocm_torch()
+
+    assert device_caps.apply_rocm_override_before_init(torch) is None
+
+
+def test_a_cuda_build_never_takes_the_early_remap(monkeypatch, tmp_path):
+    monkeypatch.setattr(device_caps, "_KFD_NODES", _kfd_nodes(tmp_path, 0, 100304))
+    torch = _torch(hip=None)
+    torch._C = types.SimpleNamespace(_cuda_getArchFlags=lambda: "sm_90")
+
+    assert device_caps.apply_rocm_override_before_init(torch) is None
+
+
+def test_startup_applies_the_override_before_torchaudio_loads():
+    """`main.py` imports torchaudio in `ml_imports`; many modules probe the GPU after."""
+    import ast
+    from pathlib import Path
+
+    source = (Path(__file__).parent.parent / "backend" / "main.py").read_text(encoding="utf-8")
+    startup = next(
+        node
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.FunctionDef) and node.name == "_phase_a_build_inner"
+    )
+    nodes = list(ast.walk(startup))
+    calls = [
+        node.lineno
+        for node in nodes
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "apply_rocm_override_before_init"
+    ]
+    imports = [
+        node.lineno
+        for node in nodes
+        if isinstance(node, ast.Import) and any(a.name == "torchaudio" for a in node.names)
+    ]
+    # prepare_audio_imports can import torchaudio itself on newer versions.
+    prepares = [
+        node.lineno
+        for node in nodes
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "prepare_audio_imports"
+    ]
+    assert calls and imports and prepares
+    assert min(calls) < min(imports)
+    assert min(calls) < min(prepares)
+
+
+def test_a_launch_choice_beats_the_saved_rocm_choice(monkeypatch, tmp_path):
+    """Electron saves ROCm in the env file; otherwise `=cpu` is lost in the backend."""
+    from core.user_env import load_into_environ
+
+    env_file = tmp_path / "env"
+    env_file.write_text("OMNIVOICE_TORCH_VARIANT=rocm\nHF_HOME=/models\n", encoding="utf-8")
+    monkeypatch.setenv("OMNIVOICE_TORCH_VARIANT", "cpu")
+    monkeypatch.setenv("HF_HOME", "/launcher-default")
+
+    assert load_into_environ(str(env_file))
+
+    assert __import__("os").environ["OMNIVOICE_TORCH_VARIANT"] == "cpu"
+    # Everything else keeps the file's documented precedence over the launcher.
+    assert __import__("os").environ["HF_HOME"] == "/models"
+
+
+def test_a_saved_rocm_choice_applies_when_the_launch_sets_none(monkeypatch, tmp_path):
+    from core.user_env import load_into_environ
+
+    env_file = tmp_path / "env"
+    env_file.write_text("OMNIVOICE_TORCH_VARIANT=rocm\n", encoding="utf-8")
+    monkeypatch.setenv("OMNIVOICE_TORCH_VARIANT", "rocm")
+    monkeypatch.delenv("OMNIVOICE_TORCH_VARIANT")
+
+    assert load_into_environ(str(env_file))
+
+    assert __import__("os").environ["OMNIVOICE_TORCH_VARIANT"] == "rocm"

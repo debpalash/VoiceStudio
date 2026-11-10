@@ -32,14 +32,15 @@ jobs:
   package:
     # Beta tags (vX.Y.Z-beta.N) are not Snap releases: the Snap Store track is stable-only.
     if: ${{ !inputs.promote_revision && !(github.ref_type == 'tag' && contains(github.ref_name, '-beta.')) }}
-    runs-on: ubuntu-24.04
+    # Jammy (glibc 2.35) matches the core22 base; 24.04 builds need GLIBC_2.38/2.39 (#3879).
+    runs-on: ubuntu-22.04
     timeout-minutes: 75
     env:
       VOICESTUDIO_DISTRIBUTION: snap-store
       VOICESTUDIO_RUST_TARGET: x86_64-unknown-linux-gnu
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Match the tag to the app version
         if: github.ref_type == 'tag'
         run: |
@@ -53,7 +54,7 @@ jobs:
             echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $version"
             exit 1
           fi
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '22'
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -103,6 +104,7 @@ jobs:
           bun x electron-builder --config electron-builder.config.mjs --linux snap --x64 --publish never
           node tests/packaging-contract.mjs --artifact
           node ../scripts/verify_snap_artifact.mjs
+          python3 ../scripts/check_glibc_floor.py release/linux-unpacked/resources/native
           node ../scripts/create_store_artifact_manifest.mjs --distribution=snap-store --platform=linux --arch=x64
           node ../scripts/create_snap_store_assets.mjs
           node --input-type=module <<'NODE'

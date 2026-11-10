@@ -19,6 +19,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { to: '/settings/sharing', label: 'sharing.title' },
   { to: '/settings/sharing', label: 'settings.remote_backend_title' },
   { to: '/settings/performance', label: 'settings.compute_device_title' },
+  { to: '/settings/performance', label: 'videoExport.title' },
+  { to: '/settings/performance', label: 'videoExport.max_resolution' },
   { to: '/settings/usage', label: 'settings.usage' },
   { to: '/settings/privacy', label: 'settings.privacy' },
   { to: '/settings/privacy', label: 'privacy.analytics_title' },

@@ -48,7 +48,7 @@ def test_missing_reports_fail(tmp_path):
 
 
 def load_workflow():
-    return yaml.load((ROOT / ".github/workflows/electron-release.yml").read_text(), Loader=yaml.BaseLoader)
+    return yaml.load((ROOT / ".github/workflows/electron-release.yml").read_text(encoding="utf-8"), Loader=yaml.BaseLoader)
 
 
 def test_every_package_leg_reports_and_mac_check_ignores_allow_unsigned():
@@ -66,6 +66,8 @@ def test_every_package_leg_reports_and_mac_check_ignores_allow_unsigned():
 
 
 def test_mac_package_discovers_the_imported_developer_id(tmp_path):
+    import shutil
+    shutil.copy(ROOT / "scripts/prepare-apple-notarization.sh", tmp_path)
     # electron-builder's findIdentity returns null without a lookup when discovery is
     # off and no identity is named, so a supplied certificate was silently ignored.
     import os
@@ -73,9 +75,9 @@ def test_mac_package_discovers_the_imported_developer_id(tmp_path):
     package = next(s for s in load_workflow()["jobs"]["package"]["steps"] if s.get("name") == "Package without publishing")
     script = package["run"].split("set -o pipefail")[0].replace("${{ matrix.platform }}", "darwin")
     for link, expected in [("base64-p12", "true"), ("", "false")]:
-        env = dict(os.environ, CSC_LINK=link, CSC_KEY_PASSWORD="x", CSC_IDENTITY_AUTO_DISCOVERY="false", PUBLISH="false")
+        env = dict(os.environ, CSC_LINK=link, CSC_KEY_PASSWORD="x", CSC_IDENTITY_AUTO_DISCOVERY="false", PUBLISH="false", RUNNER_TEMP=str(tmp_path))
         out = subprocess.run(["bash", "-e", "-c", script + 'echo "$CSC_IDENTITY_AUTO_DISCOVERY"'],
-                             env=env, capture_output=True, text=True, check=True).stdout.strip()
+                             cwd=ROOT / "electron", env=env, capture_output=True, text=True, check=True).stdout.strip()
         assert out == expected, link
 
 
@@ -108,7 +110,7 @@ def test_release_notes_helper_comes_from_the_workflow_commit(tmp_path):
     env = dict(os.environ, PATH=f"{fake}{os.pathsep}{os.environ['PATH']}", GITHUB_SHA="workflow-sha",
                GITHUB_REPOSITORY="debpalash/VoiceStudio", RUNNER_TEMP=str(tmp_path))
     subprocess.run(["bash", "-e", "-c", describe["run"]], cwd=work, env=env, check=True)
-    text = (work / "release-assets/RELEASE_NOTES.md").read_text()
+    text = (work / "release-assets/RELEASE_NOTES.md").read_text(encoding="utf-8")
     # The table leads the notes; the changelog follows unchanged.
     assert "| Linux x64 |" in text
     assert text.index("### Installer signing") < text.index("**Highlights**")
@@ -116,10 +118,22 @@ def test_release_notes_helper_comes_from_the_workflow_commit(tmp_path):
 
 @pytest.mark.parametrize("failures,message,calls,ok", [
     (1, "Failed to staple your application with code: 68", 2, True),
-    (2, "Failed to staple your application with code: 68", 2, False),
+    # v0.5.8-beta.1: the staple lookup failed twice in a row, then succeeded.
+    (2, "Failed to staple your application with code: 68", 3, True),
+    (3, "Failed to staple your application with code: 68", 3, False),
+    # The notarization upload itself can be cut off (v0.5.8-beta.1 draft).
+    (1, "Error: abortedUpload(resumeRequest: SotoS3.S3.ResumeMultipartUploadRequest", 2, True),
+    (1, 'Error Domain=NSURLErrorDomain Code=-1005 "The network connection was lost."', 2, True),
+    (1, "Error Domain=NSURLErrorDomain Code=-1001 timed out", 2, True),
+    # A server-trust failure is not a dropped connection.
+    (1, "Error Domain=NSURLErrorDomain Code=-1202 untrusted server certificate", 1, False),
+    # A rejected notarization or a signing failure is not transient.
+    (1, "Failed to notarize via notarytool. status: Invalid", 1, False),
     (1, "codesign failed", 1, False),
 ])
-def test_package_builds_again_only_when_stapling_fails(tmp_path, failures, message, calls, ok):
+def test_package_builds_again_only_when_apple_drops_the_connection(tmp_path, failures, message, calls, ok):
+    import shutil
+    shutil.copy(ROOT / "scripts/prepare-apple-notarization.sh", tmp_path)
     # A dropped connection to Apple's ticket server failed beta.2 after notarization.
     import os
     import subprocess
@@ -135,7 +149,7 @@ def test_package_builds_again_only_when_stapling_fails(tmp_path, failures, messa
     )
     (fake / "bun").chmod(0o755)
     env = dict(os.environ, PATH=f"{fake}{os.pathsep}{os.environ['PATH']}", RUNNER_TEMP=str(tmp_path),
-               CSC_LINK="", PUBLISH="false")
-    result = subprocess.run(["bash", "-e", "-c", script], env=env, capture_output=True, text=True)
+               CSC_LINK="", PUBLISH="false", APPLE_RETRY_DELAY_SECONDS="0")
+    result = subprocess.run(["bash", "-e", "-c", script], cwd=ROOT / "electron", env=env, capture_output=True, text=True)
     assert (result.returncode == 0) is ok, result.stdout + result.stderr
-    assert len(count.read_text().splitlines()) == calls
+    assert len(count.read_text(encoding="utf-8").splitlines()) == calls

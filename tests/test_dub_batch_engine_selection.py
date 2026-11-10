@@ -415,3 +415,53 @@ def test_batch_respects_applies_own_mastering(
 
     assert len(fake.calls) == 1
     assert mastering_calls == []
+
+
+def test_batch_engine_contention_fails_instead_of_exporting_silence(
+    batch_job_env, fake_registry, no_omnivoice_model_manager, monkeypatch,
+):
+    from services.model_manager import GpuPoolBusyError
+
+    b, make_job = batch_job_env
+    fake = fake_registry("fake-batch-busy")
+    monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", fake.id)
+    monkeypatch.setattr("services.model_manager.generate_timeout_s", lambda *a, **k: 0.05)
+    monkeypatch.setattr(b, "_BUSY_BACKOFF_S", (0.01,))
+
+    def busy(self, text, **kwargs):
+        raise GpuPoolBusyError("MLX-Audio is already generating speech.", retry_after=1)
+
+    monkeypatch.setattr(fake, "generate", busy)
+    job = make_job("busy-job")
+    with pytest.raises(RuntimeError, match="silent gap.*already generating speech"):
+        asyncio.run(b._run_batch_pipeline("busy-job", job))
+
+    assert not job.get("outputs")
+    assert not job.get("warnings")
+
+
+def test_batch_segment_waits_for_busy_engine_then_succeeds(
+    batch_job_env, fake_registry, no_omnivoice_model_manager, monkeypatch,
+):
+    from services.model_manager import GpuPoolBusyError
+
+    b, make_job = batch_job_env
+    fake = fake_registry("fake-batch-busy-then-free")
+    monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", fake.id)
+    monkeypatch.setattr(b, "_BUSY_BACKOFF_S", (0.01,))
+    real_generate = fake.generate
+    attempts = []
+
+    def flaky(self, text, **kwargs):
+        attempts.append(text)
+        if len(attempts) < 3:
+            raise GpuPoolBusyError("MLX-Audio is already generating speech.", retry_after=1)
+        return real_generate(self, text, **kwargs)
+
+    monkeypatch.setattr(fake, "generate", flaky)
+    job = make_job("busy-then-free")
+    asyncio.run(b._run_batch_pipeline("busy-then-free", job))
+
+    assert len(attempts) == 3
+    assert not job.get("warnings")
+    assert job.get("outputs")

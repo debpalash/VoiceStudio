@@ -146,6 +146,7 @@ def test_ctranslate2_engines_report_unavailable(engine, ab, cudnn8_missing, ctra
     assert "cudnn_ops_infer" in reason
 
 
+@pytest.mark.usefixtures("neutral_asr_host")
 def test_auto_detect_falls_back_to_pytorch_whisper(
     monkeypatch, ab, cudnn8_missing, ctranslate2_importable
 ):

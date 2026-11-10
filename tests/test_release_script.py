@@ -64,10 +64,10 @@ def test_bump_files_moves_all_three_and_only_the_version(release, tmp_path):
     (tmp_path / "backend/core/version.py").write_text('_FALLBACK_VERSION = "0.5.7"\n')
     release.bump_files(tmp_path, "0.5.8-beta.1")
 
-    assert json.loads((tmp_path / "package.json").read_text())["version"] == "0.5.8-beta.1"
-    assert 'version = "0.5.8-beta.1"' in (tmp_path / "pyproject.toml").read_text()
-    assert 'version = "9"' in (tmp_path / "pyproject.toml").read_text()
-    assert '_FALLBACK_VERSION = "0.5.8-beta.1"' in (tmp_path / "backend/core/version.py").read_text()
+    assert json.loads((tmp_path / "package.json").read_text(encoding="utf-8"))["version"] == "0.5.8-beta.1"
+    assert 'version = "0.5.8-beta.1"' in (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'version = "9"' in (tmp_path / "pyproject.toml").read_text(encoding="utf-8")
+    assert '_FALLBACK_VERSION = "0.5.8-beta.1"' in (tmp_path / "backend/core/version.py").read_text(encoding="utf-8")
 
 
 def test_bump_files_fails_loudly_when_a_mirror_is_missing(release, tmp_path):
@@ -93,6 +93,25 @@ def test_beta_copies_unreleased_so_it_stays_for_the_final_release(release):
     text = release.prepare_changelog(CHANGELOG, "0.5.8-beta.1", TODAY)
     assert text.count("- A (#1)") == 2
     assert text.index("## [Unreleased]") < text.index("## [0.5.8-beta.1] — 2026-10-23")
+
+
+def test_beta_section_links_to_the_beta_release_and_unreleased_keeps_stable_links(release):
+    """v0.5.8-beta.1 shipped notes linking to the not-yet-built v0.5.8 files."""
+    url = "https://github.com/debpalash/VoiceStudio/releases"
+    table = (
+        f"| macOS | [VoiceStudio-0.5.8-mac-arm64.dmg]({url}/download/v0.5.8/VoiceStudio-0.5.8-mac-arm64.dmg) |\n"
+        f"Notes: [v0.5.8]({url}/tag/v0.5.8) · keep v0.5.80 and 10.5.8 alone\n"
+    )
+    changelog = CHANGELOG.replace("- A (#1)\n", f"- A (#1)\n\n{table}")
+    text = release.prepare_changelog(changelog, "0.5.8-beta.2", TODAY)
+    unreleased, beta = text.split("## [0.5.8-beta.2]")
+    beta = beta.split("## [0.5.7]")[0]
+    assert f"{url}/download/v0.5.8/VoiceStudio-0.5.8-mac-arm64.dmg" in unreleased
+    assert f"{url}/download/v0.5.8-beta.2/VoiceStudio-0.5.8-beta.2-mac-arm64.dmg" in beta
+    assert "[VoiceStudio-0.5.8-beta.2-mac-arm64.dmg]" in beta
+    assert f"{url}/tag/v0.5.8-beta.2)" in beta
+    assert "/v0.5.8/" not in beta
+    assert "v0.5.80 and 10.5.8" in beta
 
 
 def test_existing_section_is_left_alone_and_empty_unreleased_is_refused(release):

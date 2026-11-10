@@ -37,7 +37,10 @@ class MossTTSNanoSubprocessBackend(SubprocessBackend):
     id = "moss-tts-nano"
     display_name = "MOSS-TTS-Nano (20 langs, CPU realtime, 48 kHz)"
     supports_voice_design = False  # strictly reference-cloning
-    gpu_compat = ("cuda", "cpu")
+    # The sidecar reads text/ref_audio/language only — no quality knobs (#3654).
+    supports_num_step = False
+    supports_guidance_scale = False
+    gpu_compat = ("cuda", "rocm", "cpu")
     _DEFAULT_SAMPLE_RATE = 48_000
 
     @classmethod
@@ -62,6 +65,11 @@ class MossTTSNanoSubprocessBackend(SubprocessBackend):
     @classmethod
     def sidecar_script(cls) -> Path:
         return Path(__file__).resolve().parent / "main.py"
+
+    @classmethod
+    def sidecar_python_hint(cls) -> "Path | None":
+        """Expose only the bootstrap-selected interpreter for routing metadata."""
+        return own_venv_python()
 
     @property
     def recv_timeout_s(self) -> float:

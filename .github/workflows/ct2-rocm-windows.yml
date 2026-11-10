@@ -1,0 +1,161 @@
+# Build the expanded-target HIP CTranslate2 wheel used by RDNA 2 on the opt-in
+# Windows ROCm 10 recipe, from pinned upstream OpenNMT/CTranslate2 source, and
+# publish it as a prerelease asset of this repository.
+#
+# Source: upstream master commit 78b1e17 (version 4.8.4) plus upstream #2142
+# (cf45790, adds gfx1031/gfx1032 to the ROCm wheels). The combined tree must equal
+# 7d3ab96, the exact source of the build validated on an RX 6700 XT (#3712).
+# The build follows upstream's own `build-python-wheels-rocm` Windows job.
+#
+# After a run: copy the printed pins into `rocm10.ctranslate2` in
+# scripts/windows-rocm-recipe.json (the ct2-rocm-4.8.4-78b1e17 build is pinned).
+# A rebuild needs a new RELEASE_TAG and URL allowlist entry; see docs/RELEASING.md.
+
+name: CTranslate2 ROCm (Windows)
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ct2-rocm-windows
+  cancel-in-progress: false
+
+env:
+  CT2_BASE: 78b1e1770fd3c28dbd125bbe586d90ae45e611b8
+  CT2_TARGETS: cf4579017d089f49446edc59639f58d88ea79880
+  CT2_TREE: 7d3ab96d381215943951607689fce10b32e192d8
+  CT2_VERSION: 4.8.4
+  RELEASE_TAG: ct2-rocm-4.8.4-78b1e17
+  ARCHIVE: rocm-python-wheels-Windows.zip
+
+jobs:
+  build:
+    name: Build HIP wheel (gfx1030/1031/1032)
+    # Upstream's validated ROCm Windows build runs on windows-2022; a moving
+    # windows-latest image could change the MSVC/CMake toolchain under it.
+    runs-on: windows-2022
+    timeout-minutes: 300
+    permissions:
+      contents: read
+    steps:
+      - name: Fetch pinned upstream source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git init -q .
+          git remote add origin https://github.com/OpenNMT/CTranslate2.git
+          git fetch -q --no-tags --filter=blob:none origin "$CT2_BASE" "$CT2_TARGETS"
+          git checkout -q --detach "$CT2_BASE"
+          git -c user.name=ci -c user.email=ci@invalid cherry-pick -n "$CT2_TARGETS"
+          test "$(git write-tree)" = "$CT2_TREE" || { echo "::error::source tree differs from $CT2_TREE"; exit 1; }
+          test "$(python -c 'exec(open("python/ctranslate2/version.py").read()); print(__version__)')" = "$CT2_VERSION"
+          git submodule update -q --init --recursive
+
+      - name: Build wheel
+        uses: pypa/cibuildwheel@e090b81e30c4d855ea63bf4b6e59204c09a101ae # v4.2.1
+        with:
+          package-dir: python
+          output-dir: python/wheelhouse
+        env:
+          CIBW_BUILD: cp312-win_amd64
+          CIBW_ENVIRONMENT_WINDOWS: CTRANSLATE2_ROOT='${{ github.workspace }}\install'
+          CIBW_BEFORE_ALL_WINDOWS: bash python/tools/prepare_build_environment_windows_rocm.sh
+          CIBW_BEFORE_BUILD: pip install -r python/install_requirements.txt
+          # The preparation script already bundles the Windows DLLs.
+          CIBW_REPAIR_WHEEL_COMMAND_WINDOWS: ""
+
+      - name: Read the recipe's ROCm 10 runtime pins
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: voicestudio
+          sparse-checkout: scripts/windows-rocm-recipe.json
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Setup Python 3.12
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      # No GPU on the runner: this proves the wheel imports against the exact,
+      # hash-pinned ROCm 10 runtime the app installs, not that kernels run.
+      - name: Smoke import
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv smoke
+          python - <<'PY' > runtime.txt
+          import json
+          variant = json.load(open("voicestudio/scripts/windows-rocm-recipe.json", encoding="utf-8"))["rocm10"]
+          base, runtime = variant["torch"]["find_links"], variant["runtime"]
+          for name in runtime["wheel_files"]:
+              if name.startswith(("rocm-sdk-core/", "rocm-sdk-libraries/")):
+                  print(f"{base}{name} --hash=sha256:{runtime['wheel_sha256'][name]}")
+          PY
+          smoke/Scripts/python -m pip install -q --no-deps --require-hashes -r runtime.txt
+          smoke/Scripts/python -m pip install -q "python/wheelhouse/ctranslate2-${CT2_VERSION}-cp312-cp312-win_amd64.whl"
+          smoke/Scripts/python -c "import ctranslate2; assert ctranslate2.__version__ == '$CT2_VERSION'; print('ctranslate2', ctranslate2.__version__, 'cpu', sorted(ctranslate2.get_supported_compute_types('cpu')))"
+
+      - name: Package and print the recipe pins
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee pins.json
+          import hashlib, io, json, os, zipfile
+          version = os.environ["CT2_VERSION"]
+          member = f"ctranslate2-{version}-cp312-cp312-win_amd64.whl"
+          wheel = open(f"python/wheelhouse/{member}", "rb").read()
+          with zipfile.ZipFile(io.BytesIO(wheel)) as inner:
+              binary = inner.read("ctranslate2/ctranslate2.dll")
+          archive = os.environ["ARCHIVE"]
+          with zipfile.ZipFile(archive, "w", zipfile.ZIP_STORED) as outer:
+              outer.writestr(zipfile.ZipInfo(member, (1980, 1, 1, 0, 0, 0)), wheel)
+          data = open(archive, "rb").read()
+          sha = lambda blob: hashlib.sha256(blob).hexdigest()
+          repo = os.environ["GITHUB_REPOSITORY"]
+          print(json.dumps({
+              "version": version,
+              "archive_url": f"https://github.com/{repo}/releases/download/{os.environ['RELEASE_TAG']}/{archive}",
+              "archive_size": len(data), "archive_sha256": sha(data),
+              "wheel_member": member, "wheel_sha256": sha(wheel), "binary_sha256": sha(binary),
+          }, indent=2))
+          PY
+          { echo '### Recipe pins'; echo '```json'; cat pins.json; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ct2-rocm-windows
+          path: |
+            ${{ env.ARCHIVE }}
+            pins.json
+          if-no-files-found: error
+
+  release:
+    name: Publish prerelease asset
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ct2-rocm-windows
+
+      # `gh release create` silently reuses an existing tag and ignores
+      # --target, so refuse an existing tag explicitly: a published asset is
+      # never replaced, because the recipe pins its bytes.
+      - name: Create prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if git ls-remote --exit-code --tags "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "::error::tag $RELEASE_TAG already exists; set a new RELEASE_TAG"; exit 1
+          fi
+          gh release create "$RELEASE_TAG" "$ARCHIVE" pins.json \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --prerelease --latest=false \
+            --title "CTranslate2 $CT2_VERSION HIP (Windows ROCm 10, RDNA 2)" \
+            --notes "Built by .github/workflows/ct2-rocm-windows.yml from OpenNMT/CTranslate2 $CT2_BASE + $CT2_TARGETS (tree $CT2_TREE). Dependency asset for the opt-in Windows ROCm setup; not a VoiceStudio release."

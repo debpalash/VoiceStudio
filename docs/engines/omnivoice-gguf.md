@@ -13,7 +13,7 @@ with nothing to configure, and the quant is sized to the GPU it will use.
   PyTorch on Windows cannot use but this engine reaches through Vulkan.
 - CPU-only machines that still want OmniVoice's voice and language coverage.
 - You want generation isolated in a separate process (a crash or leak never
-  takes the app down — each generation spawns the binary fresh).
+  takes the app down — the runtime always runs outside the app).
 
 ## Quantization selection
 
@@ -198,7 +198,7 @@ well ahead of CPU-only.
 
 ## Vulkan acceleration
 
-The Windows x64 and Linux x64 installers ship the runtime with GGML's Vulkan
+The Windows x64 and Linux x64 installer builds require the runtime with GGML's Vulkan
 module (`ggml-vulkan`), built in CI with the Vulkan SDK. Any GPU with a working
 Vulkan driver is used: AMD Radeon and Ryzen AI, Intel Arc and Core Ultra, and
 NVIDIA.
@@ -218,6 +218,12 @@ will open without PyTorch:
    reports an 8 GB card as 4 GB or less. This list only sizes the quant: it
    does not prove the driver can open the GPU, so without `vulkaninfo` the
    engine keeps the CPU time budget and the GPU offer is not shown.
+
+A hidden Windows full report can stall while checking display surfaces. VoiceStudio
+retries with the surface-free `vulkaninfo --summary` after a bounded timeout.
+A successful native summary proves driver access; only an exact, unique vendor/name
+match in the OS inventory supplies missing VRAM. Unknown BF16 support stays unknown,
+so the automatic choice stays at Q8_0 or below. A failed command is never GPU proof.
 
 GGML numbers every discrete and integrated GPU in Vulkan order and opens the
 first discrete one, else the first integrated one. With an Intel UHD iGPU at
@@ -313,11 +319,57 @@ Before reporting ready, the engine:
   out-of-memory — [#437](https://github.com/debpalash/VoiceStudio/issues/437)).
   The chmod runs only after the SHA check confirms it's the right file.
 
+## Resident server
+
+Each generation normally spawns `omnivoice-tts`, which reloads the model
+every time (a few seconds per request, whatever the text length). When the
+build also bundles omnivoice.cpp's `tts-server` as
+`bin/tts-server-<platform>` (next to `omnivoice-tts-<platform>`, same
+integrity rules), you can opt in to keeping one server per loaded quant
+running instead, so later requests skip the reload
+([#3654](https://github.com/debpalash/VoiceStudio/issues/3654)). It is off
+by default.
+
+- Started on the first request; listens on `127.0.0.1` on a random port.
+- A cloned voice is sent to it once per reference clip and transcript.
+- Stopped, and its memory freed, when the engine is idle-released or
+  unloaded, when the quant changes, and when the setting is turned off.
+- A crash gets one restart. A server that cannot start, crashes again, or
+  refuses a request hands that request to the per-request binary; the log
+  says why.
+- Requests that set duration, chunk duration or threshold, no-denoise,
+  no-preprocess-prompt, or a reference clip without a transcript always use
+  the per-request binary, because the server does not take those controls.
+- The server needs omnivoice.cpp `040c8b344d8c` or newer (voice registry).
+  An older server is detected at start-up and not used.
+- Upstream `tts-server` has no API key and answers any origin
+  (`Access-Control-Allow-Origin: *`): while it runs, other programs on this
+  computer, and web pages that find the port, can reach it, including your
+  registered cloned voices. This is why it is opt-in.
+
+Turn it on in **Settings → Performance → Keep the GGUF engine loaded
+between requests** (shown only when the server is bundled), or with
+`OMNIVOICE_GGUF_RESIDENT=1`; `0` keeps it off and overrides Settings.
+Without a bundled server, nothing changes.
+
+### Before making this the default
+
+- Upstream `tts-server` support for `--api-key` (or an equivalent
+  per-launch secret), sent by the engine on every request, so other
+  programs cannot use the server.
+- A reference-audio trim parity check: confirm a voice registered with
+  the server gets the same silence trim and transcript handling as the
+  CLI's `--ref-wav` / `--ref-text` path, and compare the output.
+
 ## Behaviour notes
 
 - Output is 24 kHz mono — same model, same rate as in-process OmniVoice.
 - Cloning from a reference clip (with optional transcript) and style
   instructions are supported; no voice design.
+- The runtime reads WAV containers only, and inside a WAV it decodes
+  PCM16, PCM24 and float32, so a reference clip saved in another format
+  (MP3, FLAC, Ogg, ...) — or in a WAV sample format it cannot decode — is
+  converted to a temporary WAV before the binary is spawned.
 - Same multilingual surface as OmniVoice ([languages.md](../languages.md)).
 - Because generation runs in another process, the app's own GPU counters
   don't see its allocations — diagnostics label it accordingly.
@@ -326,6 +378,7 @@ Before reporting ready, the engine:
 | --- | --- | --- |
 | `OMNIVOICE_GGUF_GENERATE_TIMEOUT_S` | (generous built-in) | Per-generation timeout for the spawned binary |
 | `OMNIVOICE_GGUF_QUANT` | `auto` | Pin a quant (`Q4_K_M`, `Q8_0`, `BF16`, `F32`); overrides Settings |
+| `OMNIVOICE_GGUF_RESIDENT` | `0` | `1` keeps a bundled `tts-server` loaded between requests (opt-in, see Resident server); overrides Settings |
 
 ## Troubleshooting
 

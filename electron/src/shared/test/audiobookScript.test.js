@@ -132,4 +132,14 @@ describe('validateScript', () => {
     const warns = validateScript('# C\nHa [laughter] ha.', {});
     expect(warns.filter((w) => w.type === 'unknown_tag')).toEqual([]);
   });
+  it('knows [emotion:] and says once when the engine will skip it (#3422)', () => {
+    const script = '# C\n[emotion:quietly terrified] Hello? [EMOTION:] Bye. [emotion:sad] Gone.';
+    // Parsed and stripped, never read aloud: never an unknown tag.
+    expect(validateScript(script, {})).toEqual([]);
+    expect(validateScript(script, { emotionIgnoredBy: 'OmniVoice' })).toEqual([
+      { type: 'emotion_ignored', name: 'OmniVoice' },
+    ]);
+    // No tag, no warning, whatever the engine.
+    expect(validateScript('# C\nPlain.', { emotionIgnoredBy: 'OmniVoice' })).toEqual([]);
+  });
 });

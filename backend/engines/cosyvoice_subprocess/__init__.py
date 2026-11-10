@@ -39,7 +39,11 @@ class CosyVoiceSubprocessBackend(SubprocessBackend):
 
     id = "cosyvoice"
     display_name = "CosyVoice 3 (9 langs, zero-shot, instruct, Apache-2.0)"
-    gpu_compat = ("cuda", "cpu")
+    # The sidecar speaks the same protocol as the in-process backend, whose
+    # generate() reads language/ref/instruct only — no quality knobs (#3654).
+    supports_num_step = False
+    supports_guidance_scale = False
+    gpu_compat = ("cuda", "rocm", "cpu")
     # instruct + reference → inference_instruct2 (emotion, dialect, pace).
     instruct_directs_delivery = True
     inline_tags = COSYVOICE_INLINE_TAGS
@@ -77,6 +81,11 @@ class CosyVoiceSubprocessBackend(SubprocessBackend):
     @classmethod
     def sidecar_script(cls) -> Path:
         return Path(__file__).resolve().parent / "main.py"
+
+    @classmethod
+    def sidecar_python_hint(cls) -> "Path | None":
+        """Expose only the bootstrap-selected interpreter for routing metadata."""
+        return own_venv_python()
 
     @property
     def recv_timeout_s(self) -> float:

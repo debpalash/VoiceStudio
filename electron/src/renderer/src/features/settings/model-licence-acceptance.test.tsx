@@ -143,7 +143,8 @@ describe('model licence acceptance', () => {
     await render(<LicenceAcceptanceFooter models={models} onAccepted={onAccepted} onClose={() => {}} />);
     for (const box of boxes()) await act(async () => box.click());
     await act(async () => button(en.modelLicense.acceptAll.replace('{{count}}', '2'))!.click());
-    expect(mock.api.mock.calls.map(([path, init]) => [path, JSON.parse(init.body)])).toEqual(
+    expect(mock.api.mock.calls.filter(([path]) => path === '/models/licenses/accept')
+      .map(([path, init]) => [path, JSON.parse(init.body)])).toEqual(
       models.map((m) => ['/models/licenses/accept', { repo_id: m.repo_id, fingerprint: m.fingerprint, accepted: true }]),
     );
     expect(onAccepted).toHaveBeenCalledOnce();
@@ -209,6 +210,18 @@ describe('model licence acceptance', () => {
     expect(text()).toContain(en.modelLicense.sectionAllows);
     expect(document.querySelector('a[href="https://example.invalid/test/tokenizer"]')).not.toBeNull();
     expect(boxes()).toHaveLength(2);
+  });
+
+  it('keeps acceptance disabled while a licence detail failed to load', async () => {
+    mock.api.mockImplementation(async () => {
+      throw new Error('offline');
+    });
+    await render(<ModelLicenceGate />);
+    await act(async () => {
+      window.dispatchEvent(new CustomEvent(MODEL_LICENCE_REQUIRED_EVENT, { detail: [gated] }));
+    });
+    await vi.waitFor(() => expect(boxes()).toHaveLength(1));
+    expect((boxes()[0] as HTMLInputElement).disabled || boxes()[0].getAttribute('aria-disabled') === 'true' || boxes()[0].hasAttribute('data-disabled')).toBe(true);
   });
 
   it('says the licences are accepted once they are, without assuming an action ran', async () => {

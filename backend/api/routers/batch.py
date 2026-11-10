@@ -18,8 +18,9 @@ import asyncio
 import logging
 from typing import Optional, List
 
-from fastapi import APIRouter, File, UploadFile, HTTPException, Form
+from fastapi import APIRouter, Depends, File, UploadFile, HTTPException, Form
 from fastapi.responses import JSONResponse
+from api.dependencies import consumer_generation, require_consumer_reads_admin_writes
 from pydantic import BaseModel
 
 from core.config import DATA_DIR
@@ -35,9 +36,10 @@ from services.dub_batching import (
 )
 from services.tts_backend import (
     active_backend_id, ensure_active_engine_licence, resolve_generation_backend,
+    seed_engine_call,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_consumer_reads_admin_writes)])
 logger = logging.getLogger("omnivoice.batch")
 
 # Compatibility values emitted by the established Tauri Batch picker. They
@@ -66,6 +68,11 @@ _job_reservations: set[str] = set()
 # both is atomic under this lock.
 _reservation_lock = threading.Lock()
 _jobs: dict = {}                   # job_id → status dict
+
+from core import activity as _activity  # noqa: E402
+
+_activity.register_probe("batch", lambda: any(
+    job.get("status") not in {"done", "failed", "cancelled"} for job in list(_jobs.values())))
 
 
 class BatchJobStatus(BaseModel):
@@ -130,6 +137,8 @@ async def _worker():
             job["finished_at"] = time.time()
             raise
         except Exception as e:
+            if job["status"] == "cancelled":
+                continue
             job["status"] = "failed"
             # plan-04 (#131): guaranteed non-empty, structured reason.
             failed = failure.build_failure(e, stage="batch", include_diagnostic=False)
@@ -148,6 +157,19 @@ async def _worker():
             if job["status"] == "cancelled":
                 job["retry_ready"] = True
             _queue.task_done()
+
+
+_BUSY_BACKOFF_S = (0.5, 1.0, 2.0, 4.0)
+
+
+async def _await_free_engine(job, call, *, budget_s):
+    """Batch binding of the shared busy-wait: stops when the job is cancelled."""
+    from services.model_manager import await_free_engine
+
+    return await await_free_engine(
+        call, budget_s=budget_s, backoff=_BUSY_BACKOFF_S, what="Batch engine",
+        is_cancelled=lambda: job["status"] == "cancelled",
+    )
 
 
 def _set_progress(job, stage, percent=0, **extra):
@@ -320,7 +342,7 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
     _set_progress(job, "transcribe", 0)
 
     from services.asr_backend import load_active_asr_backend
-    from services.model_manager import _gpu_pool, run_on_gpu_pool_guarded
+    from services.model_manager import GpuPoolBusyError, _gpu_pool, run_on_gpu_pool_guarded
     from services.segmentation import (
         segment_transcript, assign_speakers_heuristic,
     )
@@ -570,6 +592,10 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
                         timeout=_batch_timeout_s(batch_texts, backend),
                     )
                     batched_audio.update(zip(batch_indices, rendered))
+                except GpuPoolBusyError:
+                    # A stream holds the engine: render these segments one by
+                    # one below, where the busy wait + retry applies.
+                    logger.info("Native TTS batch deferred: engine busy")
                 except TimeoutError:
                     # Do not immediately queue the same expensive work again:
                     # the timed-out pool task may still be holding the device.
@@ -613,8 +639,8 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
                 try:
                     if backend is None:
                         raise RuntimeError("the local TTS fallback was not prepared")
-                    if voice["seed"] is not None:
-                        torch.manual_seed(voice["seed"] + i)
+                    # The voice's seed, as on the native batch path: one
+                    # designed speaker across every segment (#3730).
                     audio_out = backend.generate(
                         text=text, language=lang,
                         ref_audio=voice["ref_audio"], ref_text=voice["ref_text"],
@@ -622,10 +648,15 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
                         duration=dur, num_step=_batch_num_step,
                         guidance_scale=2.0, speed=1.0,
                         denoise=True, postprocess_output=_batch_postprocess,
+                        **seed_engine_call(voice["seed"], backend),
                     )
                     if not getattr(backend, "applies_own_mastering", False):
                         audio_out = apply_mastering(audio_out, sample_rate=sr)
                     return normalize_audio(audio_out, target_dBFS=-2.0)
+                except TimeoutError:
+                    # Let the pipeline fail the job rather than export silence
+                    # when a stream is temporarily using the engine.
+                    raise
                 except Exception as e:
                     logger.warning("TTS failed for seg %d (lang=%s): %s", i, lang, e)
                     # #1190: the silence still stands in for the segment (one
@@ -650,10 +681,13 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
                 if i in batched_audio:
                     audio_tensor = batched_audio.pop(i)
                 else:
-                    audio_tensor = await run_on_gpu_pool_guarded(
-                        _gen,
-                        what="Batch generate",
-                        timeout=generate_timeout_s(seg_text, engine=backend),
+                    seg_budget = generate_timeout_s(seg_text, engine=backend)
+                    audio_tensor = await _await_free_engine(
+                        job,
+                        lambda: run_on_gpu_pool_guarded(
+                            _gen, what="Batch generate", timeout=seg_budget,
+                        ),
+                        budget_s=seg_budget,
                     )
                 # Fit to slot
                 target_samples_seg = int(seg_duration * sr)
@@ -775,6 +809,7 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
 # ── Endpoints ───────────────────────────────────────────────────────────
 
 @router.post("/batch/enqueue")
+@consumer_generation
 async def enqueue_batch_job(
     video: UploadFile = File(...),
     langs: str = Form("es"),            # comma-separated lang codes
@@ -911,6 +946,7 @@ def get_batch_job(job_id: str):
 
 
 @router.post("/batch/jobs/{job_id}/cancel")
+@consumer_generation
 def cancel_batch_job(job_id: str):
     """Cancel a queued or running batch job."""
     job = _jobs.get(job_id)
@@ -926,6 +962,7 @@ def cancel_batch_job(job_id: str):
 
 
 @router.post("/batch/jobs/{job_id}/retry")
+@consumer_generation
 async def retry_batch_job(job_id: str):
     """Retry a terminal job using its original app-owned upload and settings."""
     job = _jobs.get(job_id)

@@ -18,10 +18,13 @@ interface SetupProgressCardProps {
 }
 
 function formatBytes(bytes: number): string {
-  if (bytes >= 1024 ** 3)
-    return `${(bytes / 1024 ** 3).toFixed(bytes < 10 * 1024 ** 3 ? 1 : 0)} GB`;
-  if (bytes >= 1024 ** 2) return `${Math.round(bytes / 1024 ** 2)} MB`;
-  return `${Math.max(0, Math.round(bytes / 1024))} KB`;
+  // Pick the unit from the rounded value ("1024 MB" -> "1.0 GB").
+  const kb = Math.max(0, Math.round(bytes / 1024));
+  if (kb < 1024) return `${kb} KB`;
+  const mb = Math.round(bytes / 1024 ** 2);
+  if (mb < 1024) return `${mb} MB`;
+  const gb = (bytes / 1024 ** 3).toFixed(1);
+  return Number(gb) < 10 ? `${gb} GB` : `${Math.round(bytes / 1024 ** 3)} GB`;
 }
 
 function formatEta(seconds: number): string {

@@ -8,7 +8,7 @@
       "license": "CC-BY-NC (version unspecified); Higgs Audio 2; Meta Llama 3",
       "commercial_use": false,
       "review_status": "noncommercial",
-      "credit": "OmniVoice — Han Zhu and coauthors; tokenizer by Boson AI / Meta",
+      "credit": "OmniVoice \u2014 Han Zhu and coauthors; tokenizer by Boson AI / Meta",
       "source_url": "https://huggingface.co/k2-fsa/OmniVoice",
       "evidence_url": "https://huggingface.co/k2-fsa/OmniVoice/blob/c5fdb5ccb189668d56333f77ba2629f4cd7535f4/README.md",
       "revision": "c5fdb5ccb189668d56333f77ba2629f4cd7535f4",
@@ -1180,7 +1180,7 @@
       "license": "CC-BY-NC-4.0",
       "commercial_use": false,
       "review_status": "noncommercial",
-      "credit": "NLLB-200 — Meta AI",
+      "credit": "NLLB-200 \u2014 Meta AI",
       "source_url": "https://huggingface.co/facebook/nllb-200-distilled-600M",
       "evidence_url": "https://huggingface.co/facebook/nllb-200-distilled-600M/blob/f8d333a098d19b4fd9a8b18f94170487ad3f821d/README.md",
       "revision": "f8d333a098d19b4fd9a8b18f94170487ad3f821d",
@@ -1779,6 +1779,53 @@
       }
     },
     {
+      "id": "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit",
+      "license": "apache-2.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit",
+      "source_url": "https://huggingface.co/mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit",
+      "evidence_url": "https://huggingface.co/mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit/blob/50f45ef0047cde7e84c2ef04326acb8ada2436a7/README.md",
+      "revision": "50f45ef0047cde7e84c2ef04326acb8ada2436a7",
+      "engines": [
+        "mlx-audio"
+      ],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. Component terms and attribution text require review.",
+      "runtime_revision": "50f45ef0047cde7e84c2ef04326acb8ada2436a7",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": [
+          "MLX converted Qwen3-TTS Base weights",
+          "Qwen3-TTS-Tokenizer-12Hz",
+          "text tokenizer",
+          "base Qwen terms/provenance"
+        ]
+      }
+    },
+    {
       "id": "mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-4bit",
       "license": "apache-2.0",
       "commercial_use": false,
@@ -2092,7 +2139,7 @@
       "license": "CC-BY-NC-4.0; Higgs Audio 2; Meta Llama 3",
       "commercial_use": false,
       "review_status": "noncommercial",
-      "credit": "OmniVoice — Han Zhu and coauthors; GGUF conversion by Serveurperso; tokenizer by Boson AI / Meta",
+      "credit": "OmniVoice \u2014 Han Zhu and coauthors; GGUF conversion by Serveurperso; tokenizer by Boson AI / Meta",
       "source_url": "https://huggingface.co/Serveurperso/OmniVoice-GGUF",
       "evidence_url": "https://huggingface.co/Serveurperso/OmniVoice-GGUF/blob/017094167b5c9ed565a5076ac9b3b93c5ecf5c73/README.md",
       "revision": "017094167b5c9ed565a5076ac9b3b93c5ecf5c73",
@@ -2643,6 +2690,91 @@
       }
     },
     {
+      "id": "inclusionAI/Ming-3.0-tts-0.5b",
+      "license": "mit",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "inclusionAI/Ming-3.0-tts-0.5b (Ant Group)",
+      "source_url": "https://huggingface.co/inclusionAI/Ming-3.0-tts-0.5b",
+      "evidence_url": "https://huggingface.co/inclusionAI/Ming-3.0-tts-0.5b/blob/7247f4c94a5b2e987404ed28a5cfec41b1a4ca61/README.md",
+      "revision": "7247f4c94a5b2e987404ed28a5cfec41b1a4ca61",
+      "engines": [
+        "ming-tts"
+      ],
+      "configured_at": "backend/engines/ming_tts/main.py:46",
+      "notes": "MIT is the model card's licence metadata for the weights (the code repository's LICENSE is also MIT); it is not verified permission for this distribution. The checkpoint bundles a Qwen2.5-based backbone and the campplus.onnx speaker encoder, whose component terms and attribution text require review.",
+      "runtime_revision": "7247f4c94a5b2e987404ed28a5cfec41b1a4ca61",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms of the bundled Qwen2.5 backbone and campplus.onnx speaker encoder at the installed revision",
+          "Attribution/NOTICE/redistribution duties",
+          "Reference voice and input rights, consent, training-provenance scope"
+        ],
+        "identified_components": []
+      }
+    },
+    {
+      "id": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "license": "apache-2.0",
+      "commercial_use": false,
+      "review_status": "unreviewed",
+      "credit": "OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "source_url": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0",
+      "evidence_url": "https://huggingface.co/OpenMOSS-Team/MOSS-SoundEffect-v2.0/blob/e35df4d82fbe87fcd5d14e5d100e349c0c3c076d/README.md",
+      "revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "engines": [],
+      "configured_at": "backend/config/models.yaml",
+      "notes": "Licence identifier is upstream model-card metadata, not verified permission for this distribution. The repository bundles a Qwen3-1.7B text encoder and a DAC VAE; component terms and attribution text require review. Code: github.com/OpenMOSS/MOSS-TTS (Apache-2.0).",
+      "runtime_revision": "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d",
+      "runtime_pin_scope": "central",
+      "runtime_pin_source": "backend/services/hf_revisions.py",
+      "component_closure": "incomplete",
+      "commercial_inference": "unknown",
+      "commercial_outputs": "unknown",
+      "documents": [],
+      "artifacts": [],
+      "required_components": [],
+      "upstream_access": "unknown",
+      "audit_observations": {
+        "commercial_inference": {
+          "status": "unreviewed",
+          "scope": "Selected weight/component only; not complete workflow clearance."
+        },
+        "output_terms": {
+          "status": "not_assessed",
+          "ownership_or_all_rights_cleared": false
+        },
+        "sources": [],
+        "open_questions": [
+          "Governing terms at installed revision and relevant required components",
+          "Attribution/NOTICE/redistribution duties"
+        ],
+        "identified_components": [
+          "DiT flow-matching weights",
+          "Qwen3-1.7B text encoder (base_model on the model card)",
+          "DAC VAE"
+        ]
+      }
+    },
+    {
       "id": "netease-youdao/Confucius4-TTS",
       "license": "apache-2.0",
       "commercial_use": false,
@@ -2941,7 +3073,7 @@
       "license": "mit",
       "commercial_use": false,
       "review_status": "unreviewed",
-      "credit": "OpenAI — Whisper large-v3-turbo",
+      "credit": "OpenAI \u2014 Whisper large-v3-turbo",
       "source_url": "https://huggingface.co/openai/whisper-large-v3-turbo",
       "evidence_url": "https://huggingface.co/openai/whisper-large-v3-turbo/blob/41f01f3fe87f28c78e2fbf8b568835947dd65ed9/README.md",
       "revision": "41f01f3fe87f28c78e2fbf8b568835947dd65ed9",

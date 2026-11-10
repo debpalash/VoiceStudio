@@ -137,10 +137,14 @@ export async function pruneInterruptedUvDownloads(cacheDir: string): Promise<num
   return removed;
 }
 
+// The unit is picked from the rounded value, so just under 1 MB reads
+// "1.0 MB" rather than "1024 KB".
 export function formatTransferBytes(bytes: number): string {
-  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
-  return `${Math.max(0, Math.round(bytes / 1024))} KB`;
+  const kb = Math.max(0, Math.round(bytes / 1024));
+  if (kb < 1024) return `${kb} KB`;
+  const mb = (bytes / 1024 ** 2).toFixed(1);
+  if (Number(mb) < 1024) return `${mb} MB`;
+  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
 }
 
 export interface DownloadSnapshot {

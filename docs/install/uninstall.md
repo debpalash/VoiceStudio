@@ -27,6 +27,18 @@ you don't have the repo, so the script below isn't available to you.
 > same job at any scale you like — and leaves you with a working app instead of
 > no app. See [Resetting](#resetting-instead-of-uninstalling) below.
 
+## Windows uninstaller: keep or delete the downloads
+
+The Windows uninstaller (Settings → Apps) asks **"Also delete VoiceStudio's
+downloaded runtime and models?"**. The default is **No**, so a quick uninstall
+and reinstall does not re-download several GB, and a silent (`/S`) uninstall
+also keeps them. Choose **Yes** to delete `%APPDATA%\VoiceStudio\runtime` (the
+managed Python environment) and `%LOCALAPPDATA%\OmniVoice\hf_cache` (model
+weights) and free that space. Your voices and projects in `%APPDATA%\OmniVoice`
+are never deleted by the uninstaller; **Settings → Storage → Remove all data**
+(before uninstalling) or `scripts\uninstall.ps1 -Yes` removes those too.
+Runtime or model folders you moved to a custom location are left in place.
+
 ## Resetting instead of uninstalling
 
 **Settings → Storage → Reset & remove** puts part — or all — of VoiceStudio back to
@@ -122,7 +134,7 @@ Four kinds of data, in up to four locations:
 ~/Library/Application Support/VoiceStudio/    ← app folder + the managed Python env (runtime/project/.venv)
 ~/Library/Logs/VoiceStudio/                   ← desktop-shell logs
 ~/Library/Caches/voicestudio-electron-updater/ ← downloaded updates
-~/.config/omnivoice/                          ← saved env file (cache location, HF token)
+~/.config/omnivoice/                          ← saved env file (cache location, HF token, ROCm choice)
 ~/.cache/huggingface/                         ← model weights (shared HF cache — see caveat)
 ```
 
@@ -132,7 +144,7 @@ Four kinds of data, in up to four locations:
 ~/.omnivoice/                                 ← app data (voices, projects, omnivoice.db, outputs, omnivoice.log)
 ~/.config/VoiceStudio/                        ← app folder, desktop logs, AND the managed Python env (runtime/project/.venv)
 ~/.cache/voicestudio-electron-updater/        ← downloaded updates
-~/.config/omnivoice/                          ← saved env file (cache location, HF token)
+~/.config/omnivoice/                          ← saved env file (cache location, HF token, ROCm choice)
 ~/.cache/huggingface/                         ← model weights (shared HF cache — see caveat)
 ```
 
@@ -144,7 +156,7 @@ Four kinds of data, in up to four locations:
 %APPDATA%\OmniVoice\                           ← app data (voices, projects, omnivoice.db, outputs, omnivoice.log)
 %APPDATA%\VoiceStudio\                         ← app folder, desktop logs, AND the managed Python env (runtime\project\.venv)
 %LOCALAPPDATA%\voicestudio-electron-updater\   ← downloaded updates
-%USERPROFILE%\.config\omnivoice\               ← saved env file (cache location, HF token)
+%USERPROFILE%\.config\omnivoice\               ← saved env file (cache location, HF token, ROCm choice)
 %LOCALAPPDATA%\OmniVoice\hf_cache\             ← model weights (VoiceStudio uses a short path here to dodge MAX_PATH)
 ```
 

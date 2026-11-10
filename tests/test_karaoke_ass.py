@@ -340,7 +340,7 @@ class TestKaraokeBurnEndpoint:
         )
         assert res.status_code == 200, res.text[:500]
         graph = _filter_graph(calls[-1])
-        assert "[0:v]ass='" in graph and ".ass'[vsub]" in graph
+        assert "[0:v]pad=ceil(iw/2)*2:ceil(ih/2)*2,ass='" in graph and ".ass'[vsub]" in graph
         assert "subtitles=" not in graph
         # Windows job dirs are C:\...; doubled backslashes in the quoted
         # filter value are a path ffmpeg cannot open.
@@ -362,7 +362,7 @@ class TestKaraokeBurnEndpoint:
         )
         assert res.status_code == 200, res.text[:500]
         graph = _filter_graph(calls[-1])
-        assert "[0:v]subtitles='" in graph and ".srt'[vsub]" in graph
+        assert "[0:v]pad=ceil(iw/2)*2:ceil(ih/2)*2,subtitles='" in graph and ".srt'[vsub]" in graph
         assert "ass='" not in graph
         assert list((job_dir / "exports").glob("burn_subs_*.ass")) == []
 

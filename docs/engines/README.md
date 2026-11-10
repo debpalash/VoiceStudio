@@ -45,9 +45,17 @@ approval), [Windows](../install/windows.md), [Linux](../install/linux.md),
 | OmniVoice (subprocess) | [omnivoice-subprocess](omnivoice-subprocess.md) | CUDA · MPS · CPU | ✅ | opt-in off MPS; automatic through default OmniVoice on MPS |
 | PocketTTS (Kyutai) | [pockettts](pockettts.md) | CPU (not Intel Mac) | ✅ | `uv sync --extra pockettts` + license |
 | Confucius4-TTS | [confucius4-tts](confucius4-tts.md) | CUDA · CPU | ✅ | clone + env var |
+| Ming-3.0-tts (0.5B) | [ming-tts](ming-tts.md) | NVIDIA CUDA only | ✅ | one-click install (Linux) or clone + env var |
 | audio.cpp (Breeze-TTS-2) | [audio-cpp](audio-cpp.md) | CPU + Vulkan/Metal/CUDA/HIP/ROCm where compiled | ✅ + voice design | prebuilt binary + env var (weights research/non-commercial) |
 | audio.cpp (dots.tts SOAR) | [audio-cpp](audio-cpp.md#dotstts) | CPU + Vulkan/Metal/CUDA/HIP/ROCm where compiled, incl. Windows | ✅ | runtime + weights from Model Catalogue (Apache-2.0) |
 | CosyVoice 3 GGUF | [cosyvoice-gguf](cosyvoice-gguf.md) | CPU + Vulkan (native runtime build) | ✅ reference cloning + instruct | user-built native runtime + model catalogue |
+| Qwen3-TTS Base (CUDA adapter) | [mlx-audio](mlx-audio.md) | NVIDIA CUDA only | ✅ (reference + transcript) | local checkpoint + `VOICESTUDIO_QWEN_CUDA_MODEL` + `faster-qwen3-tts` |
+
+## Sound effects (not speech)
+
+| Engine | Guide | Runs on | Enabled by |
+|---|---|---|---|
+| MOSS-SoundEffect v2.0 | [moss-soundeffect](moss-soundeffect.md) | CUDA (NVIDIA) only | Install button on Tools → Sound effects (desktop and web only; Apache-2.0) |
 
 ### Reference clip length
 

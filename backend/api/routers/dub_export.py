@@ -1,15 +1,20 @@
 import asyncio
-import io
 import json
 import logging
 import ntpath
 import os
 import re
+import shutil
+import stat
+import tempfile
 import time
 import uuid
 import weakref
+import zipfile
+from functools import partial
 from pathlib import Path, PureWindowsPath
-from typing import Annotated, Optional
+from tempfile import TemporaryFile
+from typing import Annotated, BinaryIO, Optional
 
 from core.config import DUB_DIR
 from core.http_headers import content_disposition
@@ -18,6 +23,8 @@ from core.path_security import UnsafePath, portable_filename, resolve_within
 from core.tasks import task_manager
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response, Depends
 from fastapi.responses import FileResponse, StreamingResponse
+from starlette.concurrency import iterate_in_threadpool, run_in_threadpool
+from starlette.types import Receive, Scope, Send
 from services.ffmpeg_utils import (
     bed_mix_filter,
     explain_ffmpeg_failure,
@@ -25,10 +32,12 @@ from services.ffmpeg_utils import (
     local_inputs_only,
     run_ffmpeg,
 )
+from services import video_encoder
 from services.karaoke_ass import build_ass, scale_words
 from services.prosody_mirror import AnalysisBudgetExceeded, SegmentSpan, mirror_file
 from services.video_retime import (
     DRIFT_TOLERANCE_S,
+    H264_SIZE_FILTER,
     RetimeError,
     build_chunk_filter_graph,
     expand_retime_chunks,
@@ -558,9 +567,17 @@ def _build_video_stretch_filter_graph(
 
 def _video_stretch_plan_for(job: dict, lang_code: str) -> dict | None:
     """Return the persisted stretch plan + total durations for `lang_code`,
-    or None if this job didn't use stretch_video mode (or no plan exists).
+    or None if this track wasn't generated in stretch_video mode (or no plan
+    exists).
+
+    The track records its own strategy; ``job["timing_strategy"]`` is only
+    the most recent generate's, so a later language rendered another way
+    must not drop this track's retime. Tracks from before the per-track
+    record fall back to the job-level value.
     """
-    if (job.get("timing_strategy") or "").lower() != "stretch_video":
+    track = (job.get("dubbed_tracks") or {}).get(lang_code) or {}
+    strategy = track.get("timing_strategy") or job.get("timing_strategy")
+    if (strategy or "").lower() != "stretch_video":
         return None
     plans = job.get("video_stretch_plans") or {}
     entry = plans.get(lang_code)
@@ -976,7 +993,7 @@ async def dub_download(
         else:
             sub_src = "[0:v]"
         _sub_filter = "ass" if sub_is_ass else "subtitles"
-        filter_parts.append(f"{sub_src}{_sub_filter}='{esc}'[vsub]")
+        filter_parts.append(f"{sub_src}{H264_SIZE_FILTER},{_sub_filter}='{esc}'[vsub]")
         video_map = "[vsub]"
     if stretch_entry:
         orig_dur = float(stretch_entry.get("orig_duration") or job.get("duration") or 0.0)
@@ -987,6 +1004,25 @@ async def dub_download(
         if graph:
             filter_parts.append(graph)
             video_map = vlabel
+
+    # Maximum output resolution (#3732): only ever downscales, so a source
+    # already inside the limit keeps the stream-copy path.
+    max_res = video_encoder.max_resolution()
+    if max_res != "original":
+        size_src = (
+            retime_decision.file_path
+            if retime_decision is not None and retime_decision.mode == "file"
+            else video_path
+        )
+        size = await video_encoder.probe_video_size(size_src)
+        if not size:
+            logger.warning(
+                "Could not probe video size; applying the %s resolution cap by filter", max_res)
+        if not size or video_encoder.needs_downscale(size[0], size[1], max_res):
+            scale_src = video_map if video_map.startswith("[") else f"[{video_map}]"
+            filter_parts.append(f"{scale_src}{video_encoder.scale_filter(max_res)}[vcap]")
+            video_map = "[vcap]"
+            video_reencode = True
 
     cmd += ["-map", video_map]
     if include_original:
@@ -1031,8 +1067,13 @@ async def dub_download(
     # re-encode; stream-copy is viable when nothing touches the video
     # filter chain — including the batched Smart Fit path, whose retimed
     # intermediate is already encoded with these exact settings.
+    enc_args: tuple[str, ...] = ()
     if sub_path or stretch_entry or video_reencode:
-        cmd += ["-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p"]
+        # Hardware encoding is opt-in (#3732); libx264 stays the default.
+        enc_args = video_encoder.encoder_args(
+            await asyncio.to_thread(video_encoder.select_encoder, ffmpeg)
+        )
+        cmd += list(enc_args)
     else:
         cmd += ["-c:v", "copy"]
     cmd += ["-c:a", "aac", "-b:a", "192k"]
@@ -1076,8 +1117,17 @@ async def dub_download(
         cmd += ["-shortest"]
     cmd += [output_path, "-y"]
 
+    if retime_decision is None:
+        # Smart Fit cleared it at export start; a plain export must too, or an
+        # old /dub/abort reads as a cancel and blocks the encoder fallback.
+        job.pop("aborted", None)
     try:
-        rc, _, stderr = await run_ffmpeg(cmd, timeout=1800.0, job_id=job_id)
+        rc, _, stderr = await video_encoder.run_with_encoder_fallback(
+            cmd, enc_args,
+            lambda c: run_ffmpeg(c, timeout=1800.0, job_id=job_id),
+            aborted=lambda: bool(job.get("aborted")),
+            ffmpeg=ffmpeg,
+        )
         if rc != 0:
             raise Exception(stderr.decode(errors="replace") if stderr else "ffmpeg mux non-zero")
     except asyncio.TimeoutError:
@@ -1446,7 +1496,7 @@ def _compute_timeline_sync(src_path: str) -> tuple[list[float], list[float]]:
     onsets = detect_speech_onsets(audio, sr)
     mono = np.asarray(audio, dtype=np.float32)
     if mono.ndim > 1:
-        mono = mono.mean(axis=1)
+        mono = np.max(np.abs(mono), axis=1)
     mono = mono.reshape(-1)
     if mono.size == 0:
         return onsets, []
@@ -1499,6 +1549,7 @@ async def dub_get_onsets(job_id: str):
                 isinstance(cached, dict)
                 and isinstance(cached.get("onsets"), list)
                 and isinstance(cached.get("peaks"), list)
+                and cached.get("channel_analysis") == "max_abs_v1"
             ):
                 return cached
     except (OSError, ValueError):
@@ -1512,7 +1563,7 @@ async def dub_get_onsets(job_id: str):
             detail=f"Onset analysis failed: {str(e)[:200]}",
         )
 
-    payload = {"onsets": onsets, "peaks": peaks, "source": source}
+    payload = {"onsets": onsets, "peaks": peaks, "source": source, "channel_analysis": "max_abs_v1"}
     try:
         os.makedirs(os.path.dirname(cache_path), exist_ok=True)
         tmp_path = cache_path + ".tmp"
@@ -1685,6 +1736,19 @@ async def dub_qc_pass(job_id: str, lang: str = Query(None), drift_threshold: flo
     # holds whichever language was generated last, so QC of an earlier track
     # compared its speech with another language and flagged every line (#2574).
     scored_segments = _segments_for_lang(job, track_lang)
+    # Smart Fit and Stretch Video place each line at its fitted position, so
+    # the recognized speech is timed on that track. Score each line in the
+    # window it plays in (the cue timing the subtitle exports use); source
+    # times paired lines with their neighbours' speech once the video slowed.
+    fitted = _fitted_segments_for(job, track_lang)
+    if fitted:
+        scored_segments = _apply_fitted_times(scored_segments, fitted)
+    else:
+        cues = _fitted_cue_times(job, track_lang)
+        if cues:
+            scored_segments = [
+                dict(seg, start=s, end=e) for seg, (s, e) in zip(scored_segments, cues)
+            ]
 
     # TTS-only install: no ASR model on disk → typed 409 with a download CTA,
     # BEFORE any backend load could silently auto-download whisper weights.
@@ -1907,6 +1971,8 @@ async def dub_download_audio(
         raise HTTPException(status_code=404, detail="Job not found")
 
     tracks = job.get("dubbed_tracks", {})
+    if lang and lang not in tracks:
+        raise HTTPException(status_code=404, detail="Requested dubbed track not found")
     if lang and lang in tracks:
         wav_path = _dub_artifact(tracks[lang].get("path"), job_id, missing_detail="Audio file not found")
     elif tracks:
@@ -2147,9 +2213,140 @@ async def dub_export_ass(
     )
 
 
+_ZIP_SNAPSHOT_PREFIX = ".zip-snapshot-"
+
+
+def _zip_source_version(path: str) -> tuple[int, int, int] | None:
+    """Identify one on-disk version of a regular file; None for anything else."""
+    try:
+        info = os.lstat(path)
+    except OSError:
+        return None
+    if not stat.S_ISREG(info.st_mode):
+        return None  # symlink or non-file
+    return info.st_ino, info.st_size, info.st_mtime_ns
+
+
+def _snapshot_zip_entries(
+    job_id: str,
+    entries: list[tuple[str, str]],
+    *,
+    required: frozenset[str] = frozenset(),
+    missing_detail: str = "File not found",
+    empty_detail: str = "No segments available",
+) -> tuple[str, list[tuple[str, str]]]:
+    """Pin one version of each export source in a private dir. Blocking: run in a worker thread.
+
+    Generation publishes with ``os.replace`` under the jobs lock, so hard links
+    made under that lock never mix old and new files, and a later replace leaves
+    the linked inode intact. Where links are unavailable the files are copied
+    without the lock and the copy is retried if a publication landed meanwhile.
+    """
+    from services.dub_pipeline import _dub_jobs_lock
+
+    job_dir = _job_dir_or_400(job_id)
+    try:
+        with os.scandir(job_dir) as scan:
+            for entry in scan:
+                if (
+                    entry.name.startswith(_ZIP_SNAPSHOT_PREFIX)
+                    and entry.is_dir(follow_symlinks=False)
+                    and time.time() - entry.stat(follow_symlinks=False).st_mtime > 86400
+                ):
+                    shutil.rmtree(entry.path, ignore_errors=True)
+    except OSError as exc:
+        # A crash mid-download leaves its snapshot behind; the sweep is best effort.
+        logger.debug("Dub ZIP snapshot sweep skipped: %s", type(exc).__name__)
+    snap_dir = tempfile.mkdtemp(prefix=_ZIP_SNAPSHOT_PREFIX, dir=job_dir)
+    try:
+        for _attempt in range(3):
+            kept: list[tuple[str, str]] = []
+            copies: list[tuple[str, str, tuple[int, int, int]]] = []
+            with _dub_jobs_lock:
+                for index, (source, arc_name) in enumerate(entries, 1):
+                    target = os.path.join(snap_dir, f"{index:04d}")
+                    try:
+                        os.unlink(target)  # left by an attempt a publication interrupted
+                    except OSError:
+                        pass  # nothing to clear on the first attempt
+                    version = _zip_source_version(source)
+                    if version is None:
+                        continue
+                    try:
+                        # No follow_symlinks argument: Windows does not accept it,
+                        # and the source was just checked to be a regular file.
+                        os.link(source, target)
+                    except FileNotFoundError:
+                        continue
+                    except OSError as exc:
+                        logger.info("Dub ZIP snapshot copying: hard link unavailable (%s)", type(exc).__name__)
+                        copies.append((source, target, version))
+                    kept.append((target, arc_name))
+            if not copies:
+                break
+            # Full-file copies stay outside the jobs lock so other dubs keep moving.
+            stable = True
+            for source, target, _version in copies:
+                try:
+                    shutil.copyfile(source, target)
+                except OSError:
+                    stable = False
+                    break
+            if stable:
+                with _dub_jobs_lock:
+                    stable = all(_zip_source_version(source) == version for source, _t, version in copies)
+            if stable:
+                break
+        else:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "dub_export_busy", "message": "This dub is being regenerated. Try the download again."},
+            )
+        present = {name for _, name in kept}
+        if not required <= present:
+            raise HTTPException(status_code=404, detail=missing_detail)
+        if not kept:
+            raise HTTPException(status_code=400, detail=empty_detail)
+    except BaseException:
+        shutil.rmtree(snap_dir, ignore_errors=True)
+        raise
+    return snap_dir, kept
+
+
+class _DubZipResponse(StreamingResponse):
+    """Compress off the event loop and release the temporary archive on disconnect."""
+
+    def __init__(self, entries: list[tuple[str, str]], filename: str, snapshot_dir: str | None = None):
+        self._entries = entries
+        self._snapshot_dir = snapshot_dir
+        super().__init__((), media_type="application/zip", headers={
+            "Content-Disposition": content_disposition(filename),
+        })
+
+    def _write_archive(self, archive: BinaryIO) -> int:
+        """Finish the archive before sending headers so build errors stay HTTP errors."""
+        with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
+            for path, name in self._entries:
+                zf.write(path, name)
+        size = archive.tell()
+        archive.seek(0)
+        return size
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Own the archive across both compression and streaming."""
+        try:
+            with TemporaryFile() as archive:
+                size = await run_in_threadpool(self._write_archive, archive)
+                self.headers["Content-Length"] = str(size)
+                self.body_iterator = iterate_in_threadpool(iter(partial(archive.read, 64 * 1024), b""))
+                await super().__call__(scope, receive, send)
+        finally:
+            if self._snapshot_dir:
+                shutil.rmtree(self._snapshot_dir, ignore_errors=True)
+
+
 @router.get("/dub/export-segments/{job_id}", dependencies=[Depends(reject_cross_site_get)])
 async def dub_export_segments_zip(job_id: str, lang: str = Query(None)):
-    import zipfile
     _job_dir_or_400(job_id)
     lang = _safe_lang_or_400(lang)
     job = _get_job(job_id)
@@ -2160,30 +2357,25 @@ async def dub_export_segments_zip(job_id: str, lang: str = Query(None)):
     if not segments:
         raise HTTPException(status_code=400, detail="No segments available")
 
-    zip_buffer = io.BytesIO()
+    entries = []
     order = job.get("seg_order") or []
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for i, seg in enumerate(segments):
-            seg_id = order[i] if i < len(order) else i
-            # Discovery returns only a non-symlink entry from the validated job root.
-            seg_path = _existing_segment_artifact(
-                job_id, _seg_wav_candidates(job, lang, (seg_id, i))
-            )
-            if seg_path:
-                speaker = seg.get("speaker_id", "Speaker1").replace(" ", "")
-                start_str = f"{seg['start']:.2f}"
-                end_str = f"{seg['end']:.2f}"
-                arc_name = f"{i+1:03d}_{start_str}-{end_str}_{speaker}.wav"
-                zf.write(seg_path, arc_name)
+    for i, seg in enumerate(segments):
+        seg_id = order[i] if i < len(order) else i
+        # Discovery returns only a non-symlink entry from the validated job root.
+        seg_path = _existing_segment_artifact(
+            job_id, _seg_wav_candidates(job, lang, (seg_id, i))
+        )
+        if seg_path:
+            speaker = seg.get("speaker_id", "Speaker1").replace(" ", "")
+            start_str = f"{seg['start']:.2f}"
+            end_str = f"{seg['end']:.2f}"
+            arc_name = f"{i+1:03d}_{start_str}-{end_str}_{speaker}.wav"
+            entries.append((seg_path, arc_name))
 
-    zip_buffer.seek(0)
     base_name = os.path.splitext(job.get('filename', 'video'))[0]
     safe_name = ''.join(c for c in base_name if c.isalnum() or c in '-_ ').strip() or 'segments'
-    return Response(
-        content=zip_buffer.read(),
-        media_type="application/zip",
-        headers={"Content-Disposition": content_disposition(f"segments_{safe_name}.zip")},
-    )
+    snap_dir, entries = await run_in_threadpool(_snapshot_zip_entries, job_id, entries)
+    return _DubZipResponse(entries, f"segments_{safe_name}.zip", snap_dir)
 
 @router.get("/dub/download-mp3/{job_id}", dependencies=[Depends(reject_cross_site_get)])
 @router.get("/dub/download-mp3/{job_id}/{filename}", dependencies=[Depends(reject_cross_site_get)])
@@ -2202,6 +2394,8 @@ async def dub_download_mp3(
         raise HTTPException(status_code=404, detail="Job not found")
 
     tracks = job.get("dubbed_tracks", {})
+    if lang and lang not in tracks:
+        raise HTTPException(status_code=404, detail="Requested dubbed track not found")
     if lang and lang in tracks:
         wav_path = _dub_artifact(tracks[lang].get("path"), job_id, missing_detail="Audio file not found")
     elif tracks:
@@ -2278,7 +2472,6 @@ async def dub_download_mp3(
 
 @router.get("/dub/export-stems/{job_id}", dependencies=[Depends(reject_cross_site_get)])
 async def dub_export_stems(job_id: str, lang: str = Query(None)):
-    import zipfile
     _job_dir_or_400(job_id)
     lang = _safe_lang_or_400(lang)
     job = _get_job(job_id)
@@ -2286,6 +2479,8 @@ async def dub_export_stems(job_id: str, lang: str = Query(None)):
         raise HTTPException(status_code=404, detail="Job not found")
 
     tracks = job.get("dubbed_tracks", {})
+    if lang and lang not in tracks:
+        raise HTTPException(status_code=404, detail="Requested dubbed track not found")
     if not tracks:
         raise HTTPException(status_code=400, detail="No dubbed tracks generated yet")
 
@@ -2301,18 +2496,27 @@ async def dub_export_stems(job_id: str, lang: str = Query(None)):
         raise HTTPException(status_code=400, detail="No dubbed audio track")
 
     bg_path = _optional_dub_artifact(job.get("no_vocals_path"), job_id)
+    # Job-level timing follows the last generated language. Resolve this
+    # export against the selected track without changing the stored job.
+    # Older tracks without their own strategy retain the legacy fallback.
+    selected_job = {
+        **job,
+        "timing_strategy": ((tracks.get(lang_label) or {}).get("timing_strategy")
+                            or job.get("timing_strategy")),
+    }
+    if bg_path and _video_retime_plan_for(selected_job, lang_label):
+        # Use the same selected-track view for admission and preparation.
+        bg_path = await _preserved_background(selected_job, job_id, lang_label)
 
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.write(vocals_path, f"vocals_dubbed_{lang_label}.wav")
-        if bg_path:
-            zf.write(bg_path, "background_original.wav")
+    entries = [(vocals_path, f"vocals_dubbed_{lang_label}.wav")]
+    if bg_path:
+        entries.append((bg_path, "background_original.wav"))
 
-    zip_buffer.seek(0)
     base_name = os.path.splitext(job.get('filename', 'video'))[0]
     safe_name = ''.join(c for c in base_name if c.isalnum() or c in '-_ ').strip() or 'stems'
-    return Response(
-        content=zip_buffer.read(),
-        media_type="application/zip",
-        headers={"Content-Disposition": content_disposition(f"stems_{safe_name}.zip")},
+    snap_dir, entries = await run_in_threadpool(
+        _snapshot_zip_entries, job_id, entries,
+        required=frozenset({f"vocals_dubbed_{lang_label}.wav"}),
+        missing_detail="Dubbed audio file not found",
     )
+    return _DubZipResponse(entries, f"stems_{safe_name}.zip", snap_dir)

@@ -110,6 +110,14 @@ def _compile(lexicon: dict[str, str]) -> tuple[Optional[re.Pattern], dict[str, s
     return pattern, lookup
 
 
+def _lexicon_matcher(lexicon: Optional[dict]):
+    """``text -> text`` applying ``lexicon`` in one pass, or ``None`` when empty."""
+    pattern, lookup = _compile(normalize_lexicon(lexicon))
+    if pattern is None:
+        return None
+    return lambda text: pattern.sub(lambda m: lookup[m.lastgroup], text)
+
+
 def apply_lexicon(text: str, lexicon: Optional[dict]) -> str:
     """Replace whole-word occurrences of each lexicon key with its respelling.
 
@@ -123,15 +131,8 @@ def apply_lexicon(text: str, lexicon: Optional[dict]) -> str:
     """
     if not text:
         return text or ""
-    clean = normalize_lexicon(lexicon)
-    pattern, lookup = _compile(clean)
-    if pattern is None:
-        return text
-
-    def _repl(m: re.Match) -> str:
-        return lookup[m.lastgroup]
-
-    return pattern.sub(_repl, text)
+    matcher = _lexicon_matcher(lexicon)
+    return matcher(text) if matcher is not None else text
 
 
 def _precedence_keys(lexicon: dict[str, str]) -> list[list[str]]:
@@ -324,7 +325,33 @@ def _scope_matcher(language: Optional[str]):
     return matches
 
 
-def entries_for_language(entries, language: Optional[str]) -> dict[str, str]:
+def _row_profile(e) -> str:
+    """The voice (profile) a row is scoped to; ``""`` = every voice."""
+    try:
+        return (e["profile_id"] or "").strip()
+    except (KeyError, IndexError, TypeError):
+        return ""
+
+
+def _overlay(base: dict[str, str], layer: dict[str, str]) -> None:
+    """Merge ``layer`` over ``base`` so it wins even against a case variant.
+
+    The matcher breaks equal-length case-variant ties by entry order (#2728),
+    so a voice's ``gif`` must land after a language ``GIF`` — and a key that
+    already exists moves to the end rather than keeping its older slot.
+    """
+    for term, value in layer.items():
+        # Same equivalence the matcher uses (re.IGNORECASE), not casefold:
+        # ``Straße`` and ``STRASSE`` are distinct words and must both survive.
+        same = re.compile(re.escape(term), re.IGNORECASE)
+        for old in [k for k in base if same.fullmatch(k)]:
+            del base[old]
+        base[term] = value
+
+
+def entries_for_language(
+    entries, language: Optional[str], profile_id: Optional[str] = None,
+) -> dict[str, str]:
     """Collapse DB rows into a ``{term: replacement}`` map for ``apply_lexicon``.
 
     Filters to ``enabled`` rows whose scope is global (``*``) OR whose language
@@ -335,14 +362,18 @@ def entries_for_language(entries, language: Optional[str]) -> dict[str, str]:
     overrides a global row with the same (case-folded) term, so a per-language
     pronunciation can refine the global default.
 
+    Rows with a ``profile_id`` belong to one voice (#3873) and apply only when
+    ``profile_id`` is that voice, so voices never see each other's entries and
+    a request without a voice sees none of them. Precedence, most specific
+    last (it wins): global → language → voice → voice + language.
+
     ``entries`` is any iterable of mappings/rows with ``term``, ``replacement``,
     ``type``, ``language``, ``enabled`` keys (a ``sqlite3.Row`` works directly).
     """
     scope_matches = _scope_matcher(language)
-    # Two passes so language rows win over global rows on the same term: collect
-    # global first, then overlay matching-language rows.
-    glob: dict[str, str] = {}
-    lang: dict[str, str] = {}
+    voice = (profile_id or "").strip()
+    # Layers, least to most specific: global, language, voice, voice+language.
+    layers: list[dict[str, str]] = [{}, {}, {}, {}]
     for e in entries:
         try:
             if not int(e["enabled"]):
@@ -359,18 +390,25 @@ def entries_for_language(entries, language: Optional[str]) -> dict[str, str]:
         # NOT feed a raw IPA string into the grapheme stream.
         if etype != "respelling":
             continue
+        row_voice = _row_profile(e)
+        if row_voice and row_voice != voice:
+            continue
         scope = (e["language"] or _ALL_LANG).strip() or _ALL_LANG
         if scope == _ALL_LANG:
-            glob[term] = str(replacement)
-        else:
-            if scope_matches is not None and scope_matches(scope):
-                lang[term] = str(replacement)
-    merged = dict(glob)
-    merged.update(lang)  # language rows override global on the same term
+            layers[2 if row_voice else 0][term] = str(replacement)
+        elif scope_matches is not None and scope_matches(scope):
+            layers[3 if row_voice else 1][term] = str(replacement)
+    merged = dict(layers[0])
+    merged.update(layers[1])  # language rows override global on the same term
+    if layers[2] or layers[3]:
+        _overlay(merged, layers[2])
+        _overlay(merged, layers[3])
     return merged
 
 
-def inert_entries_for_language(entries, language: str | None) -> list[dict]:
+def inert_entries_for_language(
+    entries, language: str | None, profile_id: Optional[str] = None,
+) -> list[dict]:
     """Enabled entries that MATCH the language but cannot be applied yet.
 
     Settings offers three notations — Respelling, IPA, CMU — and only
@@ -403,6 +441,9 @@ def inert_entries_for_language(entries, language: str | None) -> list[dict]:
         etype = (e["type"] or "respelling").strip().lower()
         if etype == "respelling":
             continue
+        row_voice = _row_profile(e)
+        if row_voice and row_voice != (profile_id or "").strip():
+            continue
         scope = (e["language"] or _ALL_LANG).strip() or _ALL_LANG
         if scope != _ALL_LANG and (scope_matches is None or not scope_matches(scope)):
             continue
@@ -430,6 +471,16 @@ def inert_entries_for_language(entries, language: str | None) -> list[dict]:
 _INLINE_RE = re.compile(r"\[\[([^\]]{0,256})\]\]")
 
 
+def _inline_replacement(m: re.Match) -> str:
+    inner = m.group(1)
+    return inner.split("|", 1)[1] if "|" in inner else inner
+
+
+def has_inline_override(text: Optional[str]) -> bool:
+    """True when ``text`` carries a ``[[…]]`` override (cache keys use this)."""
+    return bool(text) and "[[" in text and _INLINE_RE.search(text) is not None
+
+
 def apply_inline_overrides(text: str) -> str:
     """Resolve ``[[…]]`` one-off pronunciation overrides to plain spoken text.
 
@@ -441,14 +492,32 @@ def apply_inline_overrides(text: str) -> str:
     """
     if not text or "[[" not in text:
         return text or ""
+    return _INLINE_RE.sub(_inline_replacement, text)
 
-    def _repl(m: re.Match) -> str:
-        inner = m.group(1)
-        if "|" in inner:
-            inner = inner.split("|", 1)[1]
-        return inner
 
-    return _INLINE_RE.sub(_repl, text)
+def apply_lexicon_and_overrides(text: str, lexicon: Optional[dict]) -> str:
+    """Apply ``lexicon`` around inline ``[[…]]`` overrides, then resolve them.
+
+    The dictionary only rewrites text outside the brackets, so an explicit
+    ``[[route|route]]`` or ``[[route]]`` is spoken exactly as written even
+    when a saved entry respells ``route`` (#3561). Text without an override
+    is the plain ``apply_lexicon`` result. Every synthesis path — /generate
+    and each longform chapter span — goes through this one function.
+    """
+    if not text:
+        return text or ""
+    matcher = _lexicon_matcher(lexicon)
+    if matcher is None:
+        return apply_inline_overrides(text)
+    if "[[" not in text:
+        return matcher(text)
+    out, last = [], 0
+    for m in _INLINE_RE.finditer(text):
+        out.append(matcher(text[last:m.start()]))
+        out.append(_inline_replacement(m))
+        last = m.end()
+    out.append(matcher(text[last:]))
+    return "".join(out)
 
 
 def apply_pronunciation(
@@ -457,28 +526,31 @@ def apply_pronunciation(
     language: Optional[str] = None,
     *,
     lexicon: Optional[dict] = None,
+    profile_id: Optional[str] = None,
 ) -> str:
     """Apply the pronunciation dictionary + inline overrides to ``text``.
 
     Order (load-bearing):
-      1. DB dictionary rows (``entries``) filtered to ``language`` + an optional
+      1. DB dictionary rows (``entries``) filtered to ``language`` (and, when
+         ``profile_id`` names a voice, that voice's rows, which win over the
+         language/global ones, #3873) + an optional
          per-project ``lexicon`` JSON overlay (project wins on term conflict,
          matching the audiobook layering). Both go through one ``apply_lexicon``
          pass (longest-term-first, word-boundary aware, idempotent).
       2. Inline ``[[…]]`` one-off overrides resolved last, so an inline override
-         always wins over any dictionary entry for that occurrence.
+         always wins over any dictionary entry for that occurrence — the
+         dictionary never rewrites inside the brackets (#3561).
 
     A falsy ``text`` / empty dictionary / no inline markers is a pass-through, so
     legacy plain text is byte-identical.
     """
     if not text:
         return text or ""
-    merged = entries_for_language(entries or [], language)
+    merged = entries_for_language(entries or [], language, profile_id)
     if lexicon:
         # Project-local JSON overlays the DB defaults; project wins on conflict.
         merged.update(normalize_lexicon(lexicon))
-    out = apply_lexicon(text, merged) if merged else text
-    return apply_inline_overrides(out)
+    return apply_lexicon_and_overrides(text, merged)
 
 
 # ── DB load/save ──────────────────────────────────────────────────────────────
@@ -501,19 +573,21 @@ def load_entries_from_db() -> list[dict]:
 
     with db_conn() as conn:
         rows = conn.execute(
-            "SELECT id, term, replacement, type, language, enabled, created_at "
+            "SELECT id, term, replacement, type, language, enabled, created_at, profile_id "
             f"FROM pronunciation_entries {ENTRY_ORDER_SQL}"  # nosec B608 - constant
         ).fetchall()
     return [dict(r) for r in rows]
 
 
-def load_dict_for_request(language: Optional[str] = None) -> dict[str, str]:
+def load_dict_for_request(
+    language: Optional[str] = None, profile_id: Optional[str] = None,
+) -> dict[str, str]:
     """Convenience: DB rows → ``{term: replacement}`` for a request language.
 
     Returns ``{}`` (a no-op for ``apply_pronunciation``) if the table is absent
     or the DB can't be opened — pronunciation is never allowed to break synth.
     """
     try:
-        return entries_for_language(load_entries_from_db(), language)
+        return entries_for_language(load_entries_from_db(), language, profile_id)
     except Exception:  # noqa: BLE001 — table missing / DB locked → no-op
         return {}

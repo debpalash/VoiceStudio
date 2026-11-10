@@ -1,3 +1,4 @@
+import { parseSignInOptions } from './sign-in-options';
 import { BrowserWindow, ipcMain } from 'electron';
 import { assertTrustedMainFrame } from '../ipc';
 import { sendToLiveWindow } from '../window-safety';
@@ -8,6 +9,7 @@ import type { CloudSwitchStore, CloudSwitches } from './cloud-switches';
 
 export const ACCOUNT_CHANNELS = {
   get: 'account:get',
+  refresh: 'account:refresh',
   signIn: 'account:sign-in',
   cancelSignIn: 'account:cancel-sign-in',
   signOut: 'account:sign-out',
@@ -19,6 +21,7 @@ export const ACCOUNT_CHANNELS = {
 export type { AccountPublicState };
 
 type PlanState = Omit<AccountPlan, 'settingsSync' | 'proDesktop'> & {
+  planOrigin: string;
   planEndsAt: string | null;
   settingsSync: boolean | null;
   proDesktop: boolean | null;
@@ -35,9 +38,10 @@ export class AccountController {
       switches: CloudSwitchStore;
       session: AccountSession;
       api: AccountApi;
-      remembered: boolean;
+      /** Whether a sign-in survives a restart; asks the OS keyring, so only read when shown. */
+      remembered: () => boolean;
       /** The dashboard pages for managing the profile and the plan (opened in the browser). */
-      links: { profile: string; plan: string };
+      links: { profile: string; plan: string; deletion: string };
     },
   ) {}
 
@@ -47,8 +51,9 @@ export class AccountController {
     return this.profile?.personalOrganizationId ?? null;
   }
 
-  async publicState(refreshProfile = false): Promise<AccountPublicState> {
+  async publicState(refreshProfile = false, localOnly = false): Promise<AccountPublicState> {
     const { available, switches, session, remembered } = this.parts;
+    const generation = session.identityGeneration?.();
     const sw: CloudSwitches = available
       ? switches.get()
       : { accountEnabled: false, syncEnabled: false, prompted: true };
@@ -60,7 +65,7 @@ export class AccountController {
       this.profile = null;
       this.plan = null;
       this.profileError = null;
-    } else if (refreshProfile || !this.profile) {
+    } else if (!localOnly && (refreshProfile || !this.profile)) {
       try {
         this.profile = await this.parts.api.get();
         this.profileError = null;
@@ -79,7 +84,7 @@ export class AccountController {
           settingsSync: full?.settingsSync ?? null,
           proDesktop: full?.proDesktop ?? null,
         };
-      else if (full) this.plan = { ...full, planEndsAt: null };
+      else if (full) this.plan = { ...full, planOrigin: 'default', planEndsAt: null };
     }
     // The renderer never sees the signed photo link: main downloads it and hands over a data URL.
     const profile = this.profile
@@ -88,15 +93,30 @@ export class AccountController {
           avatarUrl: await this.parts.api.avatar(this.profile).catch(() => null),
         }
       : null;
+    if (
+      generation !== session.identityGeneration?.() ||
+      (s.signedIn && !session.state().signedIn)
+    ) {
+      this.profile = null;
+      this.plan = null;
+      return this.publicState(false);
+    }
+    const identity = s.signedIn ? session.accountId?.() : null;
+    const accountId =
+      typeof identity === 'string' && /^[A-Za-z0-9]{16}$/.test(identity) ? identity : null;
+    const signedIn = Boolean(s.signedIn && accountId);
     return {
       available,
       ...sw,
-      remembered,
+      // Shown only with account features on; never touch the keyring otherwise (#3813).
+      remembered: available && sw.accountEnabled ? remembered() : false,
       ...s,
-      profile,
-      plan: s.signedIn ? this.plan : null,
+      signedIn,
+      accountId,
+      profile: signedIn ? profile : null,
+      plan: signedIn ? this.plan : null,
       profileError: s.signedIn ? this.profileError : null,
-      links: s.signedIn ? this.parts.links : null,
+      links: signedIn ? this.parts.links : null,
     };
   }
 
@@ -105,6 +125,8 @@ export class AccountController {
     for (const key of ['accountEnabled', 'syncEnabled'] as const)
       if (p?.[key] !== undefined && typeof p[key] !== 'boolean')
         throw new Error('Invalid switches');
+    // Switching off is never held up by the network: the switch closes every cloud gate at
+    // once, and the session ends itself and sends one best-effort revocation (turnedOff).
     if (this.parts.available)
       this.parts.switches.set({
         ...(p.accountEnabled !== undefined ? { accountEnabled: p.accountEnabled } : {}),
@@ -131,14 +153,28 @@ export function registerAccountIpc(
   function trusted(event: Electron.IpcMainInvokeEvent): void {
     assertTrustedMainFrame(event, getMainWindow());
   }
-  const broadcast = async () => {
-    const s = await ctl.publicState();
+  const broadcast = async (refreshProfile = false) => {
+    const s = await ctl.publicState(refreshProfile);
     for (const win of BrowserWindow.getAllWindows())
       sendToLiveWindow(win, ACCOUNT_CHANNELS.state, s);
+    return s;
   };
   const unsubscribe = session.onChange(() => void broadcast());
-  ipcMain.handle(ACCOUNT_CHANNELS.get, (e) => (trusted(e), ctl.publicState(true)));
-  ipcMain.handle(ACCOUNT_CHANNELS.signIn, (e) => (trusted(e), session.signIn().catch(() => {})));
+  ipcMain.handle(ACCOUNT_CHANNELS.get, async (e) => {
+    trusted(e);
+    const local = await ctl.publicState(false, true);
+    void broadcast(true);
+    return local;
+  });
+  ipcMain.handle(ACCOUNT_CHANNELS.refresh, async (e) => {
+    trusted(e);
+    return broadcast(true);
+  });
+  ipcMain.handle(ACCOUNT_CHANNELS.signIn, (e, raw: unknown) => {
+    trusted(e);
+    const options = parseSignInOptions(raw);
+    return session.signIn(options).catch(() => {});
+  });
   ipcMain.handle(ACCOUNT_CHANNELS.cancelSignIn, (e) => (trusted(e), session.cancelSignIn()));
   ipcMain.handle(ACCOUNT_CHANNELS.signOut, async (e) => (trusted(e), await session.signOut()));
   ipcMain.handle(ACCOUNT_CHANNELS.setSwitches, async (e, raw) => {

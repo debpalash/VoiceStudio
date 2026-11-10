@@ -15,6 +15,7 @@ export interface AccountProfile {
   summary: {
     planCode: string;
     planName: string;
+    planOrigin: string;
     planEndsAt: string | null;
     storageUsedBytes: number;
     storageLimitBytes: number;
@@ -29,12 +30,13 @@ export interface AccountProfile {
 }
 
 interface RawAccount {
+  user_id?: string | null;
   email?: string | null;
   display_name?: string | null;
   avatar_url?: string | null;
   avatar_artifact_id?: string | null;
   personal_organization_id?: string | null;
-  plan?: { code?: string; name?: string; ends_at?: string | null } | null;
+  plan?: { code?: string; name?: string; origin?: string; ends_at?: string | null } | null;
   storage?: { limit_bytes?: number; used_bytes?: number } | null;
   organizations?: Array<{
     id: string;
@@ -69,6 +71,7 @@ function toProfile(a: RawAccount): AccountProfile {
       ? {
           planCode: String(a.plan.code ?? ''),
           planName: String(a.plan.name || a.plan.code || ''),
+          planOrigin: String(a.plan.origin ?? 'default'),
           planEndsAt: a.plan.ends_at ?? null,
           storageUsedBytes: Number(a.storage?.used_bytes ?? 0),
           storageLimitBytes: Number(a.storage?.limit_bytes ?? 0),
@@ -101,6 +104,15 @@ const AVATAR_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gi
 const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
 
 export class AccountApi {
+  // Optional endpoint availability is not an entitlement grant. Avoid repeating
+  // an absent deployment route for every mounted account subscriber.
+  private entitlementLookup: {
+    organizationId: string;
+    generation: number;
+    unavailableUntil: number;
+    pending: Promise<AccountPlan | null> | null;
+  } | null = null;
+
   constructor(
     private readonly env: CloudEnvironment,
     private readonly session: AccountSession,
@@ -109,20 +121,58 @@ export class AccountApi {
   ) {}
 
   async get(): Promise<AccountProfile | null> {
+    const generation = this.session.identityGeneration();
     const raw = await this.call(this.env.accountApi, { method: 'GET' });
-    return raw ? toProfile(raw as RawAccount) : null;
+    if (!raw || generation !== this.session.identityGeneration()) return null;
+    const userId = (raw as RawAccount).user_id;
+    const bound = this.session.bindIdentity(userId, generation);
+    if (typeof userId === 'string' && /^[A-Za-z0-9]{16}$/.test(userId) && !bound) {
+      this.session.endSession('signed_out_expired');
+      return null;
+    }
+    return toProfile(raw as RawAccount);
   }
 
   /** Plan, storage and what the plan includes; null when signed out or unavailable. */
   async entitlements(organizationId: string): Promise<AccountPlan | null> {
     if (!ORGANIZATION_ID.test(organizationId)) return null;
+    const generation = this.session.identityGeneration();
+    if (
+      this.entitlementLookup?.generation !== generation ||
+      this.entitlementLookup.organizationId !== organizationId
+    ) {
+      this.entitlementLookup = { organizationId, generation, unavailableUntil: 0, pending: null };
+    }
+    const lookup = this.entitlementLookup;
+    if (lookup.unavailableUntil > Date.now()) return null;
+    if (lookup.pending) return lookup.pending;
+    const pending = this.readEntitlements(organizationId, generation).catch((error: unknown) => {
+      const status = (error as { status?: number } | null)?.status;
+      if (status === 404 || status === 501) {
+        lookup.unavailableUntil = Date.now() + 60_000;
+        return null;
+      }
+      throw error;
+    });
+    lookup.pending = pending;
+    try {
+      return await pending;
+    } finally {
+      if (lookup.pending === pending) lookup.pending = null;
+    }
+  }
+
+  private async readEntitlements(
+    organizationId: string,
+    generation: number,
+  ): Promise<AccountPlan | null> {
     const raw = (await this.call(
       `${this.env.accountApi}/organizations/${organizationId}/entitlements`,
       {
         method: 'GET',
       },
     )) as RawEntitlements | null;
-    if (!raw) return null;
+    if (!raw || generation !== this.session.identityGeneration()) return null;
     const flag = (key: string) =>
       (raw.values ?? []).some((v) => v.key === key && Number(v.value) > 0);
     return {
@@ -194,6 +244,25 @@ export class AccountApi {
       },
     });
     return raw ? toProfile(raw as RawAccount) : null;
+  }
+
+  /**
+   * Tells the server which app and version this signed-in person uses. Grants
+   * nothing. Returns the seconds until the next check, or null when signed out.
+   */
+  async appCheck(body: {
+    app: 'oss';
+    app_version: string;
+    platform: 'macos' | 'windows' | 'linux';
+  }): Promise<number | null> {
+    const raw = (await this.call(`${this.env.accountApi}/app-check`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      headers: { 'content-type': 'application/json' },
+    })) as { next_check_seconds?: unknown } | null;
+    if (!raw) return null;
+    const n = Number(raw.next_check_seconds);
+    return Number.isFinite(n) ? n : null;
   }
 
   private async call(

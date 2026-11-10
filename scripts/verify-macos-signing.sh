@@ -169,10 +169,10 @@ fi
 echo "[5/6] xcrun notarytool history  (audit log, opt-in)"
 if command -v xcrun >/dev/null 2>&1 && [ -n "${NOTARYTOOL_KEYCHAIN_PROFILE:-}" ]; then
   xcrun notarytool history --keychain-profile "$NOTARYTOOL_KEYCHAIN_PROFILE" 2>&1 | head -20 | sed 's/^/      /' || true
-elif command -v xcrun >/dev/null 2>&1 && [ -n "${APPLE_ID:-}" ] && [ -n "${APPLE_PASSWORD:-}" ] && [ -n "${APPLE_TEAM_ID:-}" ]; then
-  xcrun notarytool history --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" 2>&1 | head -20 | sed 's/^/      /' || true
+elif command -v xcrun >/dev/null 2>&1 && [ -n "${APPLE_API_KEY:-}" ] && [ -n "${APPLE_API_KEY_ID:-}" ] && [ -n "${APPLE_API_ISSUER:-}" ]; then
+  xcrun notarytool history --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" 2>&1 | head -20 | sed 's/^/      /' || true
 else
-  echo "      no notarization credentials in env (NOTARYTOOL_KEYCHAIN_PROFILE or APPLE_ID/APPLE_PASSWORD/APPLE_TEAM_ID) — skipping audit log"
+  echo "      no notarization credentials in env (NOTARYTOOL_KEYCHAIN_PROFILE or APPLE_API_KEY/APPLE_API_KEY_ID/APPLE_API_ISSUER) — skipping audit log"
 fi
 
 # ── 6. Quarantine attribute (informational) ───────────────────────────────

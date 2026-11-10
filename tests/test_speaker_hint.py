@@ -173,7 +173,8 @@ def test_hint_routes_turns_job_through_pyannote(tmp_path, monkeypatch):
 
 def test_no_hint_keeps_turns_fast_path(tmp_path, monkeypatch):
     """Without a hint, the inline-turns shortcut stays the fast path: pyannote
-    is never invoked and no warning fires."""
+    is never invoked and no diarization warning fires. (The synthetic audio
+    is too short to clone, so the speaker-fallback warning may still fire.)"""
     pipe = _RecordingPipe()
     _wire_stream(
         tmp_path, monkeypatch, job_id="t_nohint_turns",
@@ -184,7 +185,7 @@ def test_no_hint_keeps_turns_fast_path(tmp_path, monkeypatch):
 
     assert pipe.calls == [], "turns fast path must skip pyannote when no hint is set"
     assert "event: final" in body, body
-    assert "event: warning" not in body, body
+    assert '"diarization"' not in body, body
 
 
 def test_hint_with_turns_but_no_pyannote_warns_hint_ignored(tmp_path, monkeypatch):
@@ -307,5 +308,5 @@ def test_cli_exposes_speakers_flag(capsys):
     assert "--speakers" in capsys.readouterr().out
 
     # Wiring-level: the flag is forwarded as the num_speakers query param.
-    src = cli_path.read_text()
+    src = cli_path.read_text(encoding="utf-8")
     assert "num_speakers={args.speakers}" in src

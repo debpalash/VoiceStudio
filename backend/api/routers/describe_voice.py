@@ -7,12 +7,13 @@ environment, including test/CI without model weights.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+from api.dependencies import consumer_generation, require_consumer_reads_admin_writes
 from pydantic import BaseModel, Field
 
 from core.describe_voice import parse_description
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_consumer_reads_admin_writes)])
 
 
 class DescribeRequest(BaseModel):
@@ -20,6 +21,7 @@ class DescribeRequest(BaseModel):
 
 
 @router.post("/design/describe")
+@consumer_generation
 def describe_voice(req: DescribeRequest) -> dict:
     """Parse a free-text description into design attrs + a validator-safe instruct.
 

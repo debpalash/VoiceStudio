@@ -609,7 +609,7 @@ def install_sidecar_engine(engine_id: str):
 def sidecar_install_status(engine_id: str, request: Request = None):
     """Step-by-step status of the sidecar install job (poll while running).
 
-    Shape: ``{engine_id, installed, managed, install_dir, job}`` where job is
+    Shape: ``{engine_id, installed, repair_available, managed, install_dir, job}`` where job is
     null before the first run, else ``{state, steps[], log[], error,
     remediation, weights_progress, started_at, finished_at}``.
     """

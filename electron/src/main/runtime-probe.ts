@@ -1,5 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
+import { runtimeLaunchRefusal } from './runtime-launch-refusal';
 
 export const WINDOWS_ROCM_IMPORT_TIMEOUT_MS = 180_000;
 export interface RuntimeProbeOptions {
@@ -9,6 +10,7 @@ export interface RuntimeProbeOptions {
   onClose?: (child: ChildProcess) => void;
   /** Resolve with stderr appended to stdout (uv writes its plan and debug log there). */
   captureStderr?: boolean;
+  onOutput?: (text: string, stream: 'stdout' | 'stderr') => void;
 }
 
 /** Terminate the probe tree; its close event remains the cleanup/settlement gate. */
@@ -40,13 +42,24 @@ export function runRuntimeProbe(
 ): Promise<string> {
   options.signal?.throwIfAborted();
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      cwd,
-      env,
-      windowsHide: true,
-      detached: process.platform !== 'win32',
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    let child: ChildProcess;
+    try {
+      child = spawn(command, args, {
+        cwd,
+        env,
+        windowsHide: true,
+        detached: process.platform !== 'win32',
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+    } catch (error) {
+      // Windows throws a refused launch here instead of emitting `error`.
+      // Keep the OS code: setup maps EACCES/EPERM to its access hint.
+      const refusal = runtimeLaunchRefusal(command, error);
+      reject(
+        refusal ? Object.assign(refusal, { code: (error as NodeJS.ErrnoException).code }) : error,
+      );
+      return;
+    }
     let failure: Error | undefined;
     let stdout = '';
     const stop = (error: Error) => {
@@ -72,13 +85,17 @@ export function runRuntimeProbe(
     options.signal?.addEventListener('abort', abort, { once: true });
     child.stdin?.on('error', () => {});
     child.stdout?.on('data', (chunk: Buffer | string) => {
-      stdout = (stdout + chunk.toString()).slice(-65_536);
+      const text = chunk.toString();
+      stdout = (stdout + text).slice(-65_536);
+      options.onOutput?.(text, 'stdout');
     });
     let stderr = '';
     if (options.captureStderr)
       child.stderr?.on('data', (chunk: Buffer | string) => {
+        const text = chunk.toString();
         // A verbose uv dry run lists hundreds of packages; keep enough for all of them.
-        stderr = (stderr + chunk.toString()).slice(-4_194_304);
+        stderr = (stderr + text).slice(-4_194_304);
+        options.onOutput?.(text, 'stderr');
       });
     child.once('error', (error) => {
       failure ??= error;
@@ -93,6 +110,7 @@ export function runRuntimeProbe(
         reject(
           Object.assign(failure ?? new Error(`Runtime setup exited with code ${code}`), {
             stdout,
+            stderr,
             code: failure && 'code' in failure ? failure.code : code,
           }),
         );

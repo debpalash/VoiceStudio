@@ -1,0 +1,138 @@
+name: Nix flake
+
+# The community flake (flake.nix, docs/install/nix.md) is not part of the
+# required gate, but it must still evaluate and build: fixed-output hashes,
+# nixpkgs attribute names and the packaged resource contract drift silently
+# otherwise. Path filters keep it off docs/test/mobile-only PRs; merge_group
+# ignores `paths`, so the first step applies the same scope itself.
+
+on:
+  pull_request:
+    paths:
+      # The package is built from the whole checkout (electron/src, backend,
+      # omnivoice, scripts, config, lockfiles), and its checks exist to catch
+      # source changes such as a new main-process import missing from the
+      # prune roots. So run on everything except what cannot reach the build.
+      - '**'
+      - '!**/*.md'
+      - '!docs/**'
+      - '!mobile/**'
+      - '!tests/**'
+      - '!backend/tests/**'
+      - '!changelog.d/**'
+      - '!.github/**'
+      - 'docs/install/nix.md'
+      - '.github/workflows/nix.yml'
+  push:
+    branches: [main]
+    paths:
+      # Same scope as pull_request.
+      - '**'
+      - '!**/*.md'
+      - '!docs/**'
+      - '!mobile/**'
+      - '!tests/**'
+      - '!backend/tests/**'
+      - '!changelog.d/**'
+      - '!.github/**'
+      - 'docs/install/nix.md'
+      - '.github/workflows/nix.yml'
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nix-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  flake:
+    name: Evaluate and build the flake
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Same hold as the other pull-request workflows: wait while the opener has
+      # not signed the CLA. The CLA check re-runs this run once they sign.
+      - name: Hold while the CLA is unsigned
+        id: cla
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/ci_scope.py --cla
+
+      - name: Skip merge-queue entries without flake changes
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          CLA_HOLD: ${{ steps.cla.outputs.cla }}
+          BASE_SHA: ${{ github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+        run: |
+          if [ "$CLA_HOLD" = held ]; then
+            echo "CLA not signed yet: skipping. Signing re-runs this check."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$EVENT" != merge_group ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          # Same scope as the pull_request filter above.
+          changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" | {
+            grep -Ev '\.md$|^(docs|mobile|tests|backend/tests|changelog\.d|\.github)/' || true
+          })
+          changed="$changed$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- \
+            docs/install/nix.md .github/workflows/nix.yml)"
+          if [ -n "$changed" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No flake inputs changed; skipping."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Free runner disk space
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/.ghcup /opt/hostedtoolcache /usr/share/swift \
+            /usr/local/share/boost /usr/local/lib/node_modules
+          sudo apt-get clean
+          df -h /
+
+      - uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+        if: steps.scope.outputs.run == 'true'
+        with:
+          extra_nix_config: |
+            experimental-features = nix-command flakes
+
+      - name: Evaluate every system
+        if: steps.scope.outputs.run == 'true'
+        run: nix flake check --all-systems --no-build
+
+      - name: Build the Linux app
+        if: steps.scope.outputs.run == 'true'
+        run: nix build .#default -L
+
+      - name: Run the flake checks
+        if: steps.scope.outputs.run == 'true'
+        run: nix flake check -L
+
+      - name: Enter the development shell
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          nix develop --command sh -c \
+            'test -x "$ELECTRON_OVERRIDE_DIST_PATH/electron" && bun --version && uv --version'
+
+      - name: Enter the FHS environment
+        if: steps.scope.outputs.run == 'true'
+        run: |
+          # Ubuntu 24.04 blocks the unprivileged user namespaces bubblewrap uses.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          nix run .#fhs -- -c 'test -e /lib64/ld-linux-x86-64.so.2 && uv --version'
+          timeout 600 nix develop .#fhs --command true < /dev/null

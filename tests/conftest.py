@@ -154,6 +154,26 @@ def pytest_configure(config):
         "markers",
         "model_licence_gate: run with real model-licence acceptance (default: accepted)",
     )
+    _pin_beartype_claw_state()
+
+
+def _pin_beartype_claw_state():
+    """Load beartype's import-hook state before any test can snapshot sys.modules.
+
+    ``pocket_tts`` (an ``is_available()`` probe imports it in-process) calls
+    ``beartype_this_package()``, which installs a process-wide import hook whose
+    ``get_code`` does a lazy ``from beartype.claw._clawstate import claw_state``.
+    A test that imports it inside ``patch.dict("sys.modules", ...)`` has every
+    ``beartype*`` module removed again on exit while the hook stays installed, so
+    the next import re-executes ``_clawstate`` under the hook and recurses into
+    itself ("cannot import name 'claw_state' from partially initialized
+    module"), failing every later new import on that xdist worker. Having it in
+    sys.modules up front puts it in every such snapshot, so it is restored.
+    """
+    try:
+        import beartype.claw._clawstate  # noqa: F401
+    except ImportError:
+        pass  # beartype is only present with the pockettts extra
 
 
 _LICENCE_STUB = {"active": False, "stubbed": []}
@@ -379,6 +399,125 @@ def asr_model_installed(monkeypatch, request):
                 targets[id(val)] = val
     for mod in targets.values():
         monkeypatch.setattr(mod, "asr_model_missing_error", lambda **_kw: None)
+
+
+def _asr_backend_targets(request):
+    """The canonical ``services.asr_backend`` plus any stale module-typed alias
+    the test module holds (see ``asr_model_installed``)."""
+    import importlib
+    import types
+
+    canonical = importlib.import_module("services.asr_backend")
+    targets = {id(canonical): canonical}
+    for val in vars(getattr(request, "module", None) or types.SimpleNamespace()).values():
+        if isinstance(val, types.ModuleType) and getattr(val, "__name__", "") == "services.asr_backend":
+            targets[id(val)] = val
+    return list(targets.values())
+
+
+@pytest.fixture
+def neutral_asr_host(monkeypatch, request):
+    """A CPU-only host for ASR selection tests, whatever machine runs them.
+
+    ``_auto_detect`` reads MPS, CUDA, ROCm-Torch and the Windows HIP install
+    before any test stub of ``_probe_available`` matters, so a selection test
+    that pins only some of them passes on a plain runner and fails on an Apple
+    Silicon or Windows ROCm host (#3549). Every predicate starts False here;
+    a test opts back in to the hardware it is about. The Windows HIP checks
+    are imported lazily by the code under test from ``sys.modules``, so they
+    are patched on the module that is canonical NOW, not on an alias an
+    earlier ``sys.modules`` purge left behind. The warm transcription instance
+    is released on both sides so a cached engine never outlives its stubs
+    (with an explicit clock: a test may have stubbed ``time.monotonic``).
+    """
+    import importlib
+
+    hip = importlib.import_module("core.windows_rocm.ct2")
+    monkeypatch.setattr(hip, "windows_hip_installed", lambda: False)
+    monkeypatch.setattr(hip, "hip_ct2_available", lambda: False)
+    targets = _asr_backend_targets(request)
+    for mod in targets:
+        for name in ("_mps_available", "_cuda_reported_available", "_rocm_torch"):
+            monkeypatch.setattr(mod, name, lambda: False)
+        mod.release_transcription_backend(0.0, now=float("inf"))
+    yield
+    for mod in targets:
+        mod.release_transcription_backend(0.0, now=float("inf"))
+
+
+@pytest.fixture
+def cpu_host(monkeypatch):
+    """Pin host capabilities to a plain CPU machine.
+
+    On Apple Silicon the configured ``omnivoice`` engine resolves to the
+    crash-isolated MPS sidecar, which loads the real checkpoint in a child
+    process and never sees a test's in-process ``get_model`` stub — so tests
+    that stub the native OmniVoice path passed on Linux CI and failed on every
+    Mac (#3695). Patches ``core.device_caps.detect_host_caps`` on the canonical
+    module and every loaded backend module that bound it at import time.
+    """
+    import importlib
+
+    device_caps = importlib.import_module("core.device_caps")
+    real = device_caps.detect_host_caps
+    caps = device_caps.HostCaps(family="cpu", available_families=("cpu",))
+    fake = lambda: caps  # noqa: E731 — a stand-in with the probe's signature
+    monkeypatch.setattr(device_caps, "detect_host_caps", fake)
+    for name, mod in list(sys.modules.items()):
+        if (name.split(".")[0] in {"api", "core", "engines", "main", "services"}
+                and getattr(mod, "detect_host_caps", None) is real):
+            monkeypatch.setattr(mod, "detect_host_caps", fake)
+    return caps
+
+
+def threads_to_join(before, pool_before, pool_now, current):
+    """Threads a test must join: everything it started, plus GPU-pool workers
+    that were live before it but whose pool it reset (no longer live)."""
+    retired = set(pool_before) - set(pool_now)
+    exempt = (set(before) - retired) | set(pool_now)
+    return [t for t in current if t not in exempt]
+
+
+@pytest.fixture
+def join_test_threads(monkeypatch):
+    """Join every thread the test started before its state is torn down.
+
+    Tests that wedge a model load and then abandon it (``release.set()`` plus
+    ``pool.shutdown(wait=False)``) leave the woken worker still finishing
+    ``_load_model_exclusive``: it then publishes the module-global ``model``,
+    clears ``_load_abandoned`` and releases whatever load lock is current —
+    which on a slow runner is already the NEXT test's freshly patched state,
+    so that test's cold load returns a model nobody loaded (flaky on Linux CI
+    only). Requesting ``monkeypatch`` sets it up first, so it is undone last:
+    the workers finish against this test's patches, which are then restored
+    over whatever they wrote.
+
+    Workers of the app's live GPU pool are exempt: that pool is built
+    lazily and is meant to outlive the call. A pool that was reset after a
+    timeout is no longer live, so its wedged worker is still joined.
+    """
+    import threading
+
+    def _live_gpu_pool_workers() -> set:
+        mm = sys.modules.get("services.model_manager")
+        wrapper = getattr(mm, "_gpu_pool_singleton", None)
+        return set(getattr(getattr(wrapper, "_pool", None), "_threads", ()))
+
+    before = set(threading.enumerate())
+    pool_before = _live_gpu_pool_workers()
+    yield
+    pool_now = _live_gpu_pool_workers()
+    # A GPU worker that existed before the test but whose pool the test reset
+    # (e.g. after a load timeout) is no longer live: join it like any other.
+    started = threads_to_join(before, pool_before, pool_now, threading.enumerate())
+    deadline = time.monotonic() + 35.0  # test stubs park on bounded 30 s waits
+    for thread in started:
+        thread.join(timeout=max(0.0, deadline - time.monotonic()))
+    alive = [t.name for t in started if t.is_alive()]
+    assert not alive, (
+        "threads started by this test are still running and would act on the "
+        f"next test's state: {alive}"
+    )
 
 
 _MODEL_MANAGER_TEST_REPO = "test/checkpoint"

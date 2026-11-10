@@ -72,11 +72,12 @@ exception, console error or warning, failed load or HTTP error response. The 202
 route with no failures.
 
 `bun run smoke:account-live` from `electron/` (after `bun run build`; under `xvfb-run` on Linux)
-checks VoiceStudio Cloud sign-in against the dev realm. It confirms that account features start off,
+checks VoiceStudio Cloud sign-in against production. It confirms that account features start off,
 that the top-right corner shows Sign in with the notifications bell to its right, and that sign-in
-hands the browser a PKCE authorize URL with a `127.0.0.1` redirect, which Keycloak accepts with its
-login form. It also confirms that switching account features off stops sign-in and closes the
-loopback listener at once. Finishing sign-in needs a dev test account, so that part stays manual.
+opens the dashboard's app sign-in (`app.voicestudio.sh/auth/app`) with PKCE and a `127.0.0.1`
+redirect, which hands over to the sign-in form at `id.voicestudio.sh/login`. It also confirms that
+switching account features off stops sign-in and closes the loopback listener at once. Finishing
+sign-in needs a real account, so that part stays manual.
 
 ## Settings navigation
 

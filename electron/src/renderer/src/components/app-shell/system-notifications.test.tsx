@@ -6,6 +6,8 @@ import { apiJson } from '@/lib/api/client';
 
 const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
+  download: vi.fn(async () => ({})),
+  install: vi.fn(async () => {}),
   listener: undefined as ((state: UpdateState) => void) | undefined,
   state: {
     status: 'available',
@@ -26,6 +28,8 @@ vi.mock('@/components/bridge', () => ({
   getBridge: () => ({
     updates: {
       getState: vi.fn(async () => mocks.state),
+      download: mocks.download,
+      install: mocks.install,
       onState: (listener: (state: UpdateState) => void) => {
         mocks.listener = listener;
         return () => {
@@ -60,7 +64,7 @@ vi.mock('react-i18next', () => ({
 import { SystemNotifications } from './system-notifications';
 import { publishLongformActivity } from '@/lib/longform-activity';
 
-describe('SystemNotifications desktop updates', () => {
+describe('SystemNotifications', () => {
   beforeEach(() => {
     downloads.items = [];
     downloads.active = 0;
@@ -79,18 +83,16 @@ describe('SystemNotifications desktop updates', () => {
     publishLongformActivity(null, null);
   });
 
-  test('keeps an available update actionable while the Python backend is offline', async () => {
+  test('leaves desktop updates to the title-bar update pill', async () => {
+    mocks.state = { ...mocks.state, status: 'downloaded' } as UpdateState;
     render(
       <QueryClientProvider client={new QueryClient()}>
         <SystemNotifications enabled={false} />
       </QueryClientProvider>,
     );
-
-    const trigger = await screen.findByRole('button', { name: /update\.available 0\.5\.3/ });
-    expect(trigger).toBeEnabled();
-    fireEvent.click(trigger);
-    fireEvent.click(await screen.findByText('common.open'));
-    await waitFor(() => expect(mocks.navigate).toHaveBeenCalledWith({ to: '/settings/updates' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'modelSettings.unavailable' }));
+    expect(await screen.findByText('modelSettings.unavailable')).toBeVisible();
+    expect(screen.queryByText(/update\.ready/)).not.toBeInTheDocument();
   });
 
   test('shows unavailable instead of endless loading when the backend is offline', async () => {

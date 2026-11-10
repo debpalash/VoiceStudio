@@ -197,7 +197,7 @@ class WorkflowTests(unittest.TestCase):
     def test_receipt_identity_corruption_rejected(self):
         p = self.prepare(); self.commit(p)
         path = self.service.store / "receipts" / f"{p['plan_digest']}.json"
-        original = json.loads(path.read_text())
+        original = json.loads(path.read_text(encoding="utf-8"))
         for field in ("repo_id", "registry_digest"):
             bad = copy.deepcopy(original); bad["receipt"][field] = "different"
             path.write_text(json.dumps(bad))
@@ -250,7 +250,7 @@ class WorkflowTests(unittest.TestCase):
         path = self.service.store / "receipts" / f"{p['plan_digest']}.json"
         path.write_text('{"schema_version": 99}')
         self.assert_code("receipt_invalid", self.commit, p)
-        self.assertEqual(path.read_text(), '{"schema_version": 99}')
+        self.assertEqual(path.read_text(encoding="utf-8"), '{"schema_version": 99}')
 
     def test_receipt_paths_reject_untrusted_names(self):
         for value in ("../outside", "/tmp/file", "a" * 63, "a" * 65,
@@ -358,7 +358,7 @@ class ProductionTests(unittest.TestCase):
 
     def test_production_rows_never_use_synthetic_positive_fixtures(self):
         registry = ml.load_registry()
-        self.assertEqual(len(registry["models"]), 70)
+        self.assertEqual(len(registry["models"]), 73)
         self.assertEqual(len(registry["dynamic_assets"]), 7)
         for row in registry["models"]:
             self.assertEqual(row["component_closure"], "incomplete")
@@ -381,7 +381,7 @@ class ProductionTests(unittest.TestCase):
         expected = {r["id"]: r["runtime_revision"] for r in data["models"]
                     if r["runtime_pin_scope"] == "central"}
         self.assertEqual(CURATED_REVISIONS, expected)
-        self.assertEqual(len(expected), 46)
+        self.assertEqual(len(expected), 49)
         self.assertEqual(expected.pop("OpenMOSS-Team/MOSS-Audio-Tokenizer"),
                          "3cd226ba2947efa357ef453bcad111b6eafba782")
         self.assertEqual(expected.pop("Lourdle/Fun-CosyVoice3-0.5B-2512-GGUF"),
@@ -389,6 +389,14 @@ class ProductionTests(unittest.TestCase):
         # OuteTTS's speaker-building Whisper (#2700).
         self.assertEqual(expected.pop("mlx-community/whisper-large-v3-turbo-asr-fp16"),
                          "624c19c9af5603fa73b83bce14d4aeea96156d18")
+        # Ming-3.0-tts weights (#3793).
+        self.assertEqual(expected.pop("inclusionAI/Ming-3.0-tts-0.5b"),
+                         "7247f4c94a5b2e987404ed28a5cfec41b1a4ca61")
+        # Sound effects (#3577): the installer pins the same revision.
+        self.assertEqual(expected.pop("OpenMOSS-Team/MOSS-SoundEffect-v2.0"),
+                         "e35df4d82fbe87fcd5d14e5d100e349c0c3c076d")
+        self.assertEqual(expected.pop("mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit"),
+                         "50f45ef0047cde7e84c2ef04326acb8ada2436a7")
         # Preserve ALL 42 pre-existing pins from base 06c6e077 unchanged.
         self.assertEqual(ml.digest(expected), "1f4811c855d9f70882aa325ad5cd44f2036cd9fc2e676bac9c1ff23008695816")
         self.assertEqual(expected["openbmb/VoxCPM2"], "bffb3df5a29440629464e5e839f4d214c8714c3d")
@@ -432,12 +440,12 @@ class ProductionTests(unittest.TestCase):
         self.assertEqual(migrated["dynamic_assets"], old["dynamic_assets"])
 
     def test_explicit_legacy_scope_and_separate_cache(self):
-        source = (ROOT / "backend/api/routers/model_licenses.py").read_text()
+        source = (ROOT / "backend/api/routers/model_licenses.py").read_text(encoding="utf-8")
         self.assertIn('store / "artifacts"', source)
         self.assertIn('cache_dir=cache_dir', source)
         self.assertNotIn('snapshot_download(', source)
         self.assertNotIn('install_model(', source)
-        router = (ROOT / "backend/api/routers/setup/__init__.py").read_text()
+        router = (ROOT / "backend/api/routers/setup/__init__.py").read_text(encoding="utf-8")
         self.assertLess(router.index('include_router(_model_licenses_router)'),
                         router.index('include_router(_download_router)'))
 

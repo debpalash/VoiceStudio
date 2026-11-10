@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess  # nosec B404 -- fixed probe arguments
+import time
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -51,16 +52,27 @@ def _binary(kind: str) -> Path:
         if override.is_file():
             return override.resolve()
         raise RuntimeError(
-            f"{env} points to a missing CosyVoice GGUF binary: {override}"
+            f"CosyVoice GGUF native runtime: {env} points to a missing {kind} binary: {override}"
         )
     candidates = []
-    root = Path(os.environ.get(DIR_ENV, managed_dir()))
-    candidates.extend((root / "bin" / name, root / name))
+    configured = os.environ.get(DIR_ENV, "").strip()
+    root = Path(configured) if configured else managed_dir()
+    # CMake's Visual Studio generator writes to a per-config subfolder
+    # (build/bin/Release), so a user who points at the build tree still works.
+    for sub in ("bin", "", "Release", "bin/Release"):
+        candidates.append(root / sub / name if sub else root / name)
     for candidate in candidates:
         if candidate.is_file():
             return candidate.resolve()
+    if configured and not root.is_dir():
+        where = f"{DIR_ENV} points to a folder that does not exist: {root}"
+    elif configured:
+        where = f"{name} is not in {DIR_ENV} ({root}) or its bin/Release subfolders"
+    else:
+        where = f"{DIR_ENV} is not set and {name} is not in {root}"
     raise RuntimeError(
-        f"CosyVoice GGUF {kind} binary not found; build pinned source {SOURCE_REVISION} and set {DIR_ENV}."
+        f"CosyVoice GGUF native runtime: {kind} binary not found; {where}. "
+        f"Build pinned source {SOURCE_REVISION} and point {DIR_ENV} at the folder containing it."
     )
 
 
@@ -72,28 +84,63 @@ def resolve_cli() -> Path:
     return _binary("cli")
 
 
+def _hf_cache_root() -> Path:
+    try:
+        from services.hf_cache_repair import hf_cache_home
+
+        return Path(hf_cache_home())
+    except Exception:  # noqa: BLE001 - diagnostics only
+        return Path("?")
+
+
+def _installed_snapshot() -> Path:
+    """The local snapshot of the pinned repo, never touching the network.
+
+    The pinned revision is tried first. Installs made by older builds recorded
+    the revision they actually fetched (``voicestudio-revision`` / ``refs/main``),
+    so that recorded snapshot is the second candidate. Every miss says which
+    cache root and revision were searched and why the lookup failed.
+    """
+    attempts = []
+    try:
+        from huggingface_hub import snapshot_download
+
+        return Path(
+            snapshot_download(
+                HF_MODEL_REPO, revision=HF_MODEL_REVISION, local_files_only=True
+            )
+        )
+    except Exception as exc:  # Hugging Face offline/cache errors vary by version
+        attempts.append(f"pinned {HF_MODEL_REVISION[:12]}: {type(exc).__name__}")
+    cache = _hf_cache_root()
+    try:
+        from services.hf_revisions import installed_revision
+
+        recorded = installed_revision(HF_MODEL_REPO, str(cache))
+        candidate = cache / ("models--" + HF_MODEL_REPO.replace("/", "--")) / "snapshots" / recorded
+        if candidate.is_dir():
+            return candidate
+        attempts.append(f"recorded {recorded[:12]}: no such snapshot folder")
+    except Exception as exc:  # noqa: BLE001 - never mask the original miss
+        attempts.append(f"recorded revision: {type(exc).__name__}")
+    raise RuntimeError(
+        f"CosyVoice GGUF model files were not found in the local Hugging Face cache {cache} "
+        f"({'; '.join(attempts)}). Install {HF_MODEL_REPO} from Model Catalogue "
+        f"(no network download is attempted here)."
+    )
+
+
 def resolve_model() -> Path:
     direct = os.environ.get(MODEL_ENV, "").strip()
     if direct:
         # An explicit choice never silently falls back to the pinned cache.
         if Path(direct).is_file():
             return Path(direct).resolve()
-        raise RuntimeError(f"{MODEL_ENV} points to a missing CosyVoice GGUF model file: {direct}")
-    try:
-        from huggingface_hub import snapshot_download
-
-        root = Path(
-            snapshot_download(
-                HF_MODEL_REPO, revision=HF_MODEL_REVISION, local_files_only=True
-            )
-        )
-    except Exception as exc:
-        raise RuntimeError(
-            f"Install {HF_MODEL_REPO} from Model Catalogue or set {MODEL_ENV}; no network download is attempted."
-        ) from exc
+        raise RuntimeError(f"CosyVoice GGUF model files: {MODEL_ENV} points to a missing model file: {direct}")
+    root = _installed_snapshot()
     model = root / MODEL_FILE
     if not model.is_file():
-        raise RuntimeError(f"CosyVoice GGUF model file missing: {model}")
+        raise RuntimeError(f"CosyVoice GGUF model files: {MODEL_FILE} is missing from {root}")
     return model
 
 
@@ -105,25 +152,16 @@ def frontend_dir() -> Path:
         missing = [item for item in FRONTEND_FILES if not (root / item).is_file()]
         if missing:
             raise RuntimeError(
-                f"{FRONTEND_ENV} is missing CosyVoice GGUF frontend files: {', '.join(missing)}"
+                f"CosyVoice GGUF model files: {FRONTEND_ENV} is missing frontend files: {', '.join(missing)}"
             )
         return root
-    try:
-        from huggingface_hub import snapshot_download
-
-        cache = Path(
-            snapshot_download(
-                HF_MODEL_REPO, revision=HF_MODEL_REVISION, local_files_only=True
-            )
-        )
-        if all((cache / item).is_file() for item in FRONTEND_FILES):
-            return cache
-    except Exception as exc:  # Hugging Face offline/cache errors vary by version
-        raise RuntimeError(
-            f"Unable to inspect the local CosyVoice frontend cache: {exc}"
-        ) from exc
+    cache = _installed_snapshot()
+    missing = [item for item in FRONTEND_FILES if not (cache / item).is_file()]
+    if not missing:
+        return cache
     raise RuntimeError(
-        f"CosyVoice GGUF frontend ONNX files missing; install the model assets or set {FRONTEND_ENV}."
+        f"CosyVoice GGUF model files: frontend ONNX files missing from {cache}: "
+        f"{', '.join(missing)}. Reinstall the model from Model Catalogue or set {FRONTEND_ENV}."
     )
 
 
@@ -147,26 +185,95 @@ def parse_backends(output: str) -> list[NativeBackend]:
     return rows
 
 
-def probe_backends(cli: Path | None = None) -> list[NativeBackend]:
+PROBE_TIMEOUT_S = 120  # first run can compile Vulkan shaders / scan DLLs
+# Verdict per binary (path, mtime, size): the device list, or the scrubbed
+# failure text. Failures are cached too, so a hung probe costs one timeout.
+#: A failed verdict expires so a transient failure (a driver still loading, a
+#: busy disk) is retried without restarting the backend; a good one never does.
+PROBE_FAILURE_TTL_S = 300
+_PROBE_CACHE: dict[tuple, list[NativeBackend] | tuple[str, float]] = {}
+
+
+def _tail(text: str, lines: int = 4) -> str:
+    from core.scrub import scrub_text
+
+    rows = [row.strip() for row in (text or "").splitlines() if row.strip()]
+    return scrub_text(" | ".join(rows[-lines:]))[:500]
+
+
+def probe_backends(cli: Path | None = None, refresh: bool = False) -> list[NativeBackend]:
+    """Ask the runtime which devices it exposes.
+
+    A non-zero exit still counts when the device list printed (Vulkan drivers
+    often crash on teardown). Every real failure names the runtime, the exit
+    code or timeout and the scrubbed last lines of its output. Successful
+    and failed verdicts are cached per binary file (a changed binary or
+    ``refresh=True`` probes again), so the slow first run happens once.
+    """
+    cli = Path(cli or resolve_cli())
+    try:
+        stat = cli.stat()
+        key = (str(cli), stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        key = None
+    if key is not None and refresh:
+        _PROBE_CACHE.pop(key, None)
+    # Read once and drop with pop(): two threads may see the same expired entry.
+    cached = _PROBE_CACHE.get(key) if key is not None else None
+    if cached is not None:
+        if not isinstance(cached, tuple):
+            return list(cached)
+        if time.monotonic() < cached[1]:
+            raise RuntimeError(cached[0])
+        _PROBE_CACHE.pop(key, None)
+    try:
+        devices = _probe_once(cli)
+    except RuntimeError as exc:
+        if key is not None:
+            _PROBE_CACHE[key] = (str(exc), time.monotonic() + PROBE_FAILURE_TTL_S)
+        raise
+    if key is not None:
+        _PROBE_CACHE[key] = list(devices)
+    return devices
+
+
+def _probe_once(cli: Path) -> list[NativeBackend]:
+    from core.scrub import scrub_text
+
     try:
         result = subprocess.run(
-            [str(cli or resolve_cli()), "--list-backends"],
+            [str(cli), "--list-backends"],
             capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=30,
-            check=True,
+            timeout=PROBE_TIMEOUT_S,
+            check=False,
         )
     except subprocess.TimeoutExpired:
-        raise RuntimeError("CosyVoice GGUF backend probe timed out after 30 s") from None
-    except subprocess.CalledProcessError as exc:
         raise RuntimeError(
-            f"CosyVoice GGUF backend probe failed (exit code {exc.returncode})"
+            f"CosyVoice GGUF native runtime: backend probe of {cli.name} timed out after {PROBE_TIMEOUT_S} s"
         ) from None
-    devices = parse_backends(result.stdout + "\n" + result.stderr)
+    except OSError as exc:
+        raise RuntimeError(
+            scrub_text(
+                f"CosyVoice GGUF native runtime: {cli} could not be started ({type(exc).__name__}: {exc}); "
+                "a missing DLL or a wrong-architecture build is the usual cause"
+            )
+        ) from None
+    output = (result.stdout or "") + "\n" + (result.stderr or "")
+    devices = parse_backends(output)
     if not devices:
-        raise RuntimeError("Native CosyVoice runtime returned no usable backends")
+        detail = _tail(output)
+        if result.returncode:
+            raise RuntimeError(
+                f"CosyVoice GGUF native runtime: backend probe of {cli.name} failed "
+                f"(exit code {result.returncode}){': ' + detail if detail else ''}"
+            )
+        raise RuntimeError(
+            f"CosyVoice GGUF native runtime: {cli.name} --list-backends printed no recognisable "
+            f"device list{': ' + detail if detail else ''}"
+        )
     return devices
 
 
@@ -187,7 +294,7 @@ def choose_backend(rows: list[NativeBackend], requested: str = "auto") -> Native
         if row.name.casefold() == requested.casefold():
             return row
     raise RuntimeError(
-        f"Requested CosyVoice backend {requested!r} is unavailable; detected: {', '.join(row.name for row in rows)}"
+        f"CosyVoice GGUF native runtime: requested backend {requested!r} is unavailable; detected: {', '.join(row.name for row in rows)}"
     )
 
 
@@ -196,7 +303,21 @@ def _missing(requested: str):
 
 
 def selected_backend() -> tuple[NativeBackend, str | None]:
-    rows = probe_backends()
-    requested = os.environ.get(BACKEND_ENV, "auto")
+    requested = os.environ.get(BACKEND_ENV, "auto").strip() or "auto"
+    if requested.upper() == "CPU":
+        # Forcing CPU needs no device probe, so a broken Vulkan stack cannot block it.
+        return NativeBackend("CPU", "CPU", "cpu"), None
+    try:
+        rows = probe_backends()
+    except RuntimeError as exc:
+        if requested.lower() != "auto":
+            raise  # an explicit device choice never silently falls back
+        from core.scrub import scrub_text
+
+        reason = scrub_text(
+            f"{exc}. Falling back to the runtime's CPU path; "
+            f"set {BACKEND_ENV}=CPU to skip the device probe."
+        )
+        return NativeBackend("CPU", "CPU", "cpu", fallback_reason=reason), reason
     selected = choose_backend(rows, requested)
     return selected, selected.fallback_reason

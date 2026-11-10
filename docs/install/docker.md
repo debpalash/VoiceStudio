@@ -6,7 +6,7 @@ it in a normal browser. It is built from the same maintained renderer as the
 Electron desktop app; controls that require native desktop access are hidden.
 
 Inference runs inside the container. Nothing is sent off the machine without
-your explicit yes: product analytics are opt-in (PostHog, content-free usage
+your explicit yes: product analytics are opt-in (Supermetry, content-free usage
 metadata only) behind the same first-run consent prompt as the desktop app,
 and declining or skipping it keeps them off. Set
 `-e OMNIVOICE_ANALYTICS_DISABLED=1` to switch analytics off entirely. Model
@@ -15,6 +15,11 @@ weights download from Hugging Face when you install a model.
 **Official images:** [`ghcr.io/debpalash/voicestudio`](https://github.com/debpalash/VoiceStudio/pkgs/container/voicestudio)
 and [`palashdeb/omnivoice-studio` on Docker Hub](https://hub.docker.com/r/palashdeb/omnivoice-studio) — same images, same tags.
 The former `ghcr.io/debpalash/omnivoice-studio` path remains a compatible alias.
+
+**Upgrading an existing container?** Follow the
+[backup and path-preserving migration procedure](docker-data-recovery.md)
+**before** recreating or removing it. The commands below are for a fresh
+installation; older commands may have kept application data inside the container.
 
 ## Architecture
 
@@ -85,6 +90,7 @@ docker pull ghcr.io/debpalash/voicestudio:stable
 docker run -d --name omnivoice \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   ghcr.io/debpalash/voicestudio:stable
 ```
@@ -104,6 +110,7 @@ Open [http://localhost:3900](http://localhost:3900). The first run downloads
 docker run -d --name omnivoice --gpus all \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   ghcr.io/debpalash/voicestudio:stable
 ```
@@ -123,14 +130,14 @@ native `linux/arm64` image:
 docker run -d --name omnivoice --gpus all \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   ghcr.io/debpalash/voicestudio:stable-cuda-arm64
 ```
 
 It needs the NVIDIA Container Toolkit and a driver that supports CUDA 12.9.
-The image is built from Ubuntu 24.04 with PyTorch 2.8.0 for CUDA 12.9 (PyTorch
-publishes no CUDA 12.8 build of 2.8.0 for aarch64), on GitHub's native arm64
-runners. Differences from the x86-64 CUDA image:
+The image is built from Ubuntu 24.04 with PyTorch 2.10.0 for CUDA 12.9 on
+GitHub's native arm64 runners. Differences from the x86-64 CUDA image:
 
 - CTranslate2-based ASR engines (faster-whisper, WhisperX) report unavailable:
   NVIDIA ships no aarch64 build of the cuDNN 8 libraries they need. Use
@@ -151,6 +158,10 @@ All image variants verify installed dependency versions against
 `deploy/uv-overrides.txt` after installation. The check strips surrounding
 whitespace and line endings before parsing requirements, including with
 `packaging` 26.3; an installed version below the required floor still fails the build.
+They also apply the security floors from `pyproject.toml`
+(`deploy/security-constraints.txt`): `deploy/security_floors.py` upgrades any
+package the base image ships below its floor, and a package still below it
+fails the build.
 
 ## Pull and run (AMD GPU / ROCm)
 
@@ -164,6 +175,7 @@ docker run -d --name omnivoice \
   --device /dev/kfd --device /dev/dri \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   ghcr.io/debpalash/voicestudio:stable-rocm
 ```
@@ -188,6 +200,7 @@ docker run -d --name omnivoice \
   --ipc=host --shm-size 8G \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   ghcr.io/debpalash/voicestudio:stable-rocm
 ```
@@ -238,6 +251,7 @@ AddDevice=/dev/dri
 PublishPort=127.0.0.1:3900:3900
 Volume=omnivoice-data:/app/omnivoice_data
 Environment=OMNIVOICE_API_KEY=replace-with-a-long-random-key
+Environment=OMNIVOICE_DATA_DIR=/app/omnivoice_data
 ```
 
 Release pins exist too: `:stable-rocm`, `:0.5.6-rocm`, `:0.5-rocm` mirror
@@ -426,6 +440,7 @@ so. If the host is yours alone, you can let it skip the PIN:
 docker run -d -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
   -e OMNIVOICE_TRUST_HOST_LOOPBACK=1 \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v voicestudio_data:/app/omnivoice_data \
   ghcr.io/debpalash/voicestudio:stable
 ```
@@ -473,7 +488,7 @@ as root, so files it adds there are root-owned on the host.
   follows `main`, not releases. For a released version, pull `:stable` or the
   exact `:X.Y.Z` tag and recreate the container. The running version is shown
   in **Settings → About → Version** (read live from the backend).
-- **Checking which version is running:** `docker exec <container> python3 -c "import importlib.metadata; print(importlib.metadata.version('omnivoice'))"`, or hit the `/health` endpoint — it returns `{"status": "ok", "device": ..., "version": "0.3.x"}`. Use the container name listed by `docker compose ps` (or `omnivoice` for the `docker run` examples).
+- **Checking which version is running:** `docker exec <container> python3 -c "import importlib.metadata; print(importlib.metadata.version('omnivoice'))"`, or hit the `/health` endpoint — it returns `{"status": "ok", "device": ..., "engine": ..., "version": "0.3.x"}`, where `device` is what the active TTS engine generates on (`vulkan (...)`, `cuda (...)`, `rocm (...)`, `xpu (...)`, `mps` or `cpu`). GPU names are included only when the runtime identifies them or the host has a single accelerator family; otherwise the label is the bare family. An unverified native device is `unknown`; a conservative CPU timeout budget does not establish CPU execution. Explicit native CPU selection still reports `cpu`. Use the container name listed by `docker compose ps` (or `omnivoice` for the `docker run` examples).
 - **Watching startup:** the port answers within about a second of container
   start, but heavy initialization (PyTorch, API routes, database migration)
   continues in the background. During that window `/health` returns **503**

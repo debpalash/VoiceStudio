@@ -4,7 +4,9 @@ OSError, not ImportError). The ASR availability probes must REPORT this rather
 than raise, and engine auto-detect must fall back to a non-CTranslate2 engine
 (pytorch-whisper) instead of crashing the dub/transcribe preflight.
 """
-import builtins
+import sys
+
+import pytest
 
 from services import asr_backend as ab
 
@@ -22,6 +24,7 @@ def test_probe_available_never_raises():
     assert ab._probe_available(Boom) is False
 
 
+@pytest.mark.usefixtures("neutral_asr_host")
 def test_auto_detect_falls_back_to_pytorch_when_ctranslate2_so_fails(monkeypatch):
     def boom():
         raise _EXECSTACK
@@ -33,17 +36,21 @@ def test_auto_detect_falls_back_to_pytorch_when_ctranslate2_so_fails(monkeypatch
     assert ab._auto_detect() == "pytorch-whisper"
 
 
-def test_is_available_reports_not_raises_on_so_load_failure(monkeypatch):
+def test_is_available_reports_not_raises_on_so_load_failure(monkeypatch, tmp_path):
     """whisperx + faster-whisper probes return (False, reason) — not raise — when
-    the import dies loading the native .so (a non-ImportError)."""
-    real_import = builtins.__import__
+    the import dies loading the native .so (a non-ImportError). The probes import
+    in a child process (#3924), so the broken packages are real files."""
+    from core import import_probe
 
-    def fake_import(name, *args, **kwargs):
-        if name in ("whisperx", "faster_whisper"):
-            raise _EXECSTACK
-        return real_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", fake_import)
+    for name in ("whisperx", "faster_whisper"):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "__init__.py").write_text(f"raise {_EXECSTACK!r}\n")
+        monkeypatch.delitem(sys.modules, name, raising=False)
+    monkeypatch.syspath_prepend(str(tmp_path))
+    monkeypatch.setattr(import_probe, "_cache", {})
+    monkeypatch.setattr("core.windows_rocm.pipelines.pipeline_error", lambda *a, **k: None)
+    monkeypatch.setattr("core.windows_rocm.ct2.availability_status", lambda *a, **k: None)
+    monkeypatch.setattr(ab, "_ctranslate2_execstack_ok", lambda: (True, "ok"))
     okx, msgx = ab.WhisperXBackend.is_available()
     okf, msgf = ab.FasterWhisperBackend.is_available()
     assert okx is False and "failed to load" in msgx and "executable stack" in msgx

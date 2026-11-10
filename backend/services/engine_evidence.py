@@ -55,6 +55,8 @@ def snapshot(
     isolated = bool(
         getattr(engine_cls, "_is_subprocess_isolated", False)
         or getattr(engine_cls, "runs_out_of_process", False)
+        or getattr(instance, "runs_out_of_process", False)
+        or getattr(engine_cls, "runtime_runs_out_of_process", lambda: False)()
     )
     loaded = False
     probe_failed = False

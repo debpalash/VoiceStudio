@@ -45,6 +45,22 @@ def test_committed_delete_cleans_all_assets(profile):
         assert conn.execute("SELECT count(*) FROM voice_profiles").fetchone()[0] == 0
 
 
+def test_delete_removes_converted_sidecar_copies(profile, monkeypatch):
+    # The PCM copy sent to engine sidecars is the same voice (#3688).
+    import os
+    from api.routers import profiles
+    from services import reference_wav
+    root, _names = profile
+    cache = root / "reference_wav"
+    monkeypatch.setattr(reference_wav, "_cache_dir", lambda: str(cache))
+    cache.mkdir()
+    source_id, name = reference_wav._copy_name(str(root / "ref.wav"))
+    (cache / name).write_bytes(b"converted")
+    (cache / f"{source_id}.source").write_text(os.path.relpath(os.path.realpath(root / "ref.wav"), os.path.realpath(cache)), encoding="utf-8")
+    profiles.delete_profile("voice")
+    assert list(cache.iterdir()) == []
+
+
 def test_cleanup_error_after_commit_does_not_stop_other_assets(profile, monkeypatch, caplog):
     from core import db
     from api.routers import profiles
@@ -59,7 +75,7 @@ def test_cleanup_error_after_commit_does_not_stop_other_assets(profile, monkeypa
     from fastapi.testclient import TestClient
     app = FastAPI()
     app.include_router(profiles.router)
-    response = TestClient(app).delete("/profiles/voice")
+    response = TestClient(app, client=("127.0.0.1", 50000)).delete("/profiles/voice")
     assert response.status_code == 500
     detail = response.json()["detail"]
     assert "profile record was deleted" in detail
@@ -108,7 +124,7 @@ def test_busy_nested_portrait_reports_confined_relative_location(profile, monkey
     monkeypatch.setattr(profiles.os, "remove", remove)
     app = FastAPI()
     app.include_router(profiles.router)
-    response = TestClient(app).delete("/profiles/voice")
+    response = TestClient(app, client=("127.0.0.1", 50000)).delete("/profiles/voice")
     assert response.status_code == 500
     detail = response.json()["detail"]
     assert "profile record was deleted" in detail and "cleanup is incomplete" in detail
@@ -144,7 +160,7 @@ def test_cleanup_log_redacts_home_prefix_and_keeps_asset_suffix(profile, monkeyp
     monkeypatch.setattr(profiles.os, "remove", remove)
     app = FastAPI()
     app.include_router(profiles.router)
-    assert TestClient(app).delete("/profiles/voice").status_code == 500
+    assert TestClient(app, client=("127.0.0.1", 50000)).delete("/profiles/voice").status_code == 500
     logged = caplog.text.replace("\\", "/")
     assert "Users/cleanup-test" not in logged
     assert "voices/ref.wav" in logged

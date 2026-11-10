@@ -15,7 +15,9 @@ Here we just keep the metadata honest across restarts:
 The tables (`jobs`, `job_events`) live in `core/db.py:_BASE_SCHEMA`.
 
 Retention: we cap `job_events` per job (default 500 rows) by trimming the
-oldest on every insert above the cap. Keeps the DB bounded.
+oldest on every insert above the cap. Keeps the DB bounded. Progress that must
+outlive the cap (a longform job's finished chapters, #3562) is kept in the
+job's `meta_json` instead, written in the same transaction as its event.
 """
 from __future__ import annotations
 
@@ -97,8 +99,13 @@ def _update_status(job_id: str, status: str, *, finished: bool = False, error: O
 # ── Events ─────────────────────────────────────────────────────────────────
 
 
-def append_event(job_id: str, payload: str) -> int:
-    """Persist an SSE payload and return its per-job sequence number."""
+def append_event(job_id: str, payload: str, *, completed_chapter: Optional[int] = None) -> int:
+    """Persist an SSE payload and return its per-job sequence number.
+
+    ``completed_chapter`` (a longform ``chapter`` event) also records that
+    chapter index in the job's metadata, in the same transaction, so resume
+    progress survives the event cap (#3562).
+    """
     with db_conn() as conn:
         row = conn.execute(
             "INSERT INTO job_events (job_id, seq, created_at, payload) "
@@ -107,6 +114,9 @@ def append_event(job_id: str, payload: str) -> int:
             (job_id, time.time(), payload, job_id),
         ).fetchone()
         seq = int(row["seq"])
+        if completed_chapter is not None:
+            # Before the trim below, so seeding still sees the retained tail.
+            _record_completed_chapter(conn, job_id, completed_chapter)
         conn.execute(
             "DELETE FROM job_events WHERE job_id = ? AND seq NOT IN "
             "(SELECT seq FROM job_events WHERE job_id = ? "
@@ -114,6 +124,77 @@ def append_event(job_id: str, payload: str) -> int:
             (job_id, job_id, _EVENT_CAP_PER_JOB),
         )
     return seq
+
+
+# ── Longform chapter progress (#3562) ─────────────────────────────────────
+
+_COMPLETED_CHAPTERS = "completed_chapters"
+
+
+def _chapter_index(value) -> Optional[int]:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+
+def _load_meta(raw) -> dict:
+    try:
+        meta = json.loads(raw or "{}")
+    except (TypeError, ValueError):
+        return {}
+    return meta if isinstance(meta, dict) else {}
+
+
+def _recorded_chapters(meta: dict) -> Optional[set[int]]:
+    """The durable completed-chapter set, or ``None`` when never recorded."""
+    done = meta.get(_COMPLETED_CHAPTERS)
+    if not isinstance(done, list):
+        return None
+    return {i for i in map(_chapter_index, done) if i is not None}
+
+
+def _chapters_in_events(conn, job_id: str) -> set[int]:
+    """Distinct indices of the retained ``chapter`` events (errors excluded)."""
+    done: set[int] = set()
+    rows = conn.execute("SELECT payload FROM job_events WHERE job_id = ?", (job_id,))
+    for row in rows:
+        try:
+            event = json.loads(row["payload"])
+        except (TypeError, ValueError):
+            continue
+        if isinstance(event, dict) and event.get("type") == "chapter":
+            index = _chapter_index(event.get("index"))
+            if index is not None:
+                done.add(index)
+    return done
+
+
+def _record_completed_chapter(conn, job_id: str, index: int) -> None:
+    if _chapter_index(index) is None:
+        return
+    row = conn.execute("SELECT meta_json FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    if row is None:
+        return  # no job row: the event tail is all there is
+    meta = _load_meta(row["meta_json"])
+    done = _recorded_chapters(meta)
+    if done is None:
+        # First record for this job — including a job an older build started:
+        # seed from the events still retained.
+        done = _chapters_in_events(conn, job_id)
+    done.add(index)
+    meta[_COMPLETED_CHAPTERS] = sorted(done)
+    conn.execute("UPDATE jobs SET meta_json = ? WHERE id = ?", (json.dumps(meta), job_id))
+
+
+def completed_chapters(job_id: str) -> set[int]:
+    """Indices of a longform job's finished chapters.
+
+    Read from the job's durable record; a job that never recorded one (an
+    older build) falls back to its retained event tail, which cannot recover
+    history the cap already pruned.
+    """
+    with db_conn() as conn:
+        row = conn.execute("SELECT meta_json FROM jobs WHERE id = ?", (job_id,)).fetchone()
+        done = _recorded_chapters(_load_meta(row["meta_json"])) if row is not None else None
+        return done if done is not None else _chapters_in_events(conn, job_id)
 
 
 def events_since(job_id: str, after_seq: int = 0, limit: int = 1000) -> list[dict]:
@@ -186,3 +267,16 @@ def sweep_orphans_on_startup() -> int:
     if n:
         logger.info("Job sweep: marked %d orphaned job(s) as failed after restart.", n)
     return n
+
+
+def has_active() -> bool:
+    """Whether any persisted job is still queued or running in this process."""
+    with db_conn() as conn:
+        return conn.execute(
+            "SELECT 1 FROM jobs WHERE status IN ('pending', 'running') LIMIT 1"
+        ).fetchone() is not None
+
+
+from core import activity as _activity  # noqa: E402
+
+_activity.register_probe("jobs", has_active)

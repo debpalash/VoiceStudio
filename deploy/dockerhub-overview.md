@@ -15,12 +15,18 @@ cloning, and cinematic video dubbing — fully local, with no cloud API keys or 
 ![VoiceStudio — the open-source ElevenLabs alternative](https://raw.githubusercontent.com/debpalash/VoiceStudio/main/.github/assets/social-preview.png)
 
 VoiceStudio processes media on your own hardware and automatically chooses CUDA,
-ROCm, or CPU. Data leaves the machine only after you explicitly agree. PostHog
+ROCm, or CPU. Data leaves the machine only after you explicitly agree. Supermetry
 analytics collect content-free metadata only when you accept the first-run
 consent question; declining or skipping keeps analytics disabled, and
 `-e OMNIVOICE_ANALYTICS_DISABLED=1` turns them off completely. This headless
 server image runs FastAPI with the pre-built React interface over HTTP, making
 it suitable for an AMD64 homelab or GPU server that you control from a browser.
+
+**Upgrading an existing container?** Use the
+[backup and path-preserving migration procedure](https://github.com/debpalash/VoiceStudio/blob/main/docs/install/docker-data-recovery.md)
+before recreating or removing it. Older commands could keep the database,
+voices and projects inside the container, outside the mounted model-cache
+volume. The quick starts below are for fresh installations.
 
 Images are built per architecture. The main image and its `:rocm` variant
 exist for `linux/amd64` only. For NVIDIA hardware built on ARM, such as a DGX
@@ -60,6 +66,7 @@ export OMNIVOICE_API_KEY="$(python3 -c 'import secrets; print(secrets.token_urls
 docker run -d --name omnivoice \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   palashdeb/omnivoice-studio:stable
 ```
@@ -78,6 +85,7 @@ export OMNIVOICE_API_KEY="$(python3 -c 'import secrets; print(secrets.token_urls
 docker run -d --name omnivoice --gpus all \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   palashdeb/omnivoice-studio:stable
 ```
@@ -99,6 +107,7 @@ docker run -d --name omnivoice \
   --device /dev/kfd --device /dev/dri \
   -p 127.0.0.1:3900:3900 \
   -e OMNIVOICE_API_KEY="$OMNIVOICE_API_KEY" \
+  -e OMNIVOICE_DATA_DIR=/app/omnivoice_data \
   -v omnivoice-data:/app/omnivoice_data \
   palashdeb/omnivoice-studio:stable-rocm
 ```

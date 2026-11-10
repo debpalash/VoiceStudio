@@ -21,6 +21,8 @@ const BRACKET_RE = /\[[^\][]*\]/g;
 // Recognized (non-voice) bracket tokens, so validation can flag the rest.
 const PAUSE_TOKEN_RE = /^\[\s*pause(?:\s+\d+(?:\.\d+)?(?:\s*(?:ms|s))?)?\s*\]$/i;
 const SSML_TOKEN_RE = /^\[\/?(?:slow|fast|emphasis|spell)\]$/i;
+// [emotion:TEXT] (#3422) — parsed and stripped, never read aloud. Mirrors the parser.
+const EMOTION_TOKEN_RE = /^\[emotion:[^\][]*\]$/i;
 const REACTION_TOKENS = new Set(TAGS.map((s) => s.toLowerCase()));
 
 /** ~ words a listener hears per minute at an audiobook narration pace. */
@@ -148,14 +150,21 @@ export function formatRuntimeClock(sec) {
  *                       nor an exact profile id → will use the default voice.
  *   - `empty_chapter`  `{ title }` — a `# heading` with no spoken body.
  *   - `unknown_tag`    `{ tag }` — a bracket token outside the known grammar
- *                       (voice/pause/SSML-lite/reactions) → read aloud literally.
+ *                       (voice/emotion/pause/SSML-lite/reactions) → read aloud literally.
+ *   - `emotion_ignored` `{ name }` — the script uses `[emotion:]` but the active
+ *                       engine (`name`) takes no emotion; reported once.
  *
  * @param {string} text
  * @param {object} opts
  * @param {Set<string>|string[]} [opts.mappedNames] cast names with a voice mapped
  * @param {Set<string>|string[]} [opts.profileIds]  known profile ids (exact match)
+ * @param {string|null} [opts.emotionIgnoredBy]  name of the active engine when it
+ *   takes no emotion (`expression_caps.emotion === 'none'`); null/absent = supported
  */
-export function validateScript(text, { mappedNames = [], profileIds = [] } = {}) {
+export function validateScript(
+  text,
+  { mappedNames = [], profileIds = [], emotionIgnoredBy = null } = {},
+) {
   const warnings = [];
   const norm = (text || '').replace(/\r\n?/g, '\n');
   const mapped = mappedNames instanceof Set ? mappedNames : new Set(mappedNames);
@@ -177,13 +186,17 @@ export function validateScript(text, { mappedNames = [], profileIds = [] } = {})
 
   // 3. Unrecognized bracket tokens — anything outside the known grammar.
   const seenTags = new Set();
+  let usesEmotion = false;
   const bre = new RegExp(BRACKET_RE.source, BRACKET_RE.flags);
   let bm;
   while ((bm = bre.exec(norm)) !== null) {
     const tok = bm[0];
     if (bre.lastIndex === bm.index) bre.lastIndex++;
     const lower = tok.toLowerCase();
+    const emotion = EMOTION_TOKEN_RE.test(tok);
+    usesEmotion ||= emotion;
     const known =
+      emotion ||
       VOICE_RE.test(tok) ||
       PAUSE_TOKEN_RE.test(tok) ||
       SSML_TOKEN_RE.test(tok) ||
@@ -194,6 +207,9 @@ export function validateScript(text, { mappedNames = [], profileIds = [] } = {})
       warnings.push({ type: 'unknown_tag', tag: tok });
     }
   }
+  // 4. Emotion the active engine will skip (the tags are still never spoken).
+  if (usesEmotion && emotionIgnoredBy)
+    warnings.push({ type: 'emotion_ignored', name: emotionIgnoredBy });
 
   return warnings;
 }

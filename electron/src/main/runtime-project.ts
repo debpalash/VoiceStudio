@@ -7,6 +7,8 @@ export { nvidiaDriverPresent, cudaOnlyPackages } from '../../scripts/torch-varia
 import { inspectRuntimeInterpreter } from './runtime-interpreter';
 import { RuntimeLaunchRefusedError, runtimeLaunchRefusal } from './runtime-launch-refusal';
 import { WINDOWS_ROCM_IMPORT_TIMEOUT_MS } from './runtime-probe';
+import { RUNTIME_IMPORT_PROBE, lastImportAttempted } from './runtime-import-probe';
+export { RUNTIME_IMPORT_PROBE, lastImportAttempted } from './runtime-import-probe';
 import {
   windowsRocmSelected,
   windowsRocmStamp,
@@ -49,7 +51,7 @@ import {
 import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { cp, mkdir, readFile, readdir, rm, stat, statfs, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { dirname, isAbsolute, join, win32 } from 'node:path';
 
 // The web UI is not staged: the backend serves it straight from the app's
 // resources via OMNIVOICE_FRONTEND_DIST, so it always matches this version.
@@ -66,11 +68,11 @@ const SOURCES = [
 ];
 export const UV_VERSION = '0.12.13';
 export const CUDNN8_COMPAT_PIN = 'nvidia-cudnn-cu12==8.9.7.29';
-export const ROCM_TORCH_INDEX = 'https://download.pytorch.org/whl/rocm6.4';
+export const ROCM_TORCH_INDEX = 'https://download.pytorch.org/whl/rocm7.1';
 export const ROCM_TORCH_PINS = [
-  'torch==2.8.0',
-  'torchaudio==2.8.0',
-  'torchvision==0.23.0',
+  'torch==2.10.0',
+  'torchaudio==2.10.0',
+  'torchvision==0.25.0',
 ] as const;
 /**
  * `uv pip install` arguments that swap the main venv's torch stack for the
@@ -81,7 +83,7 @@ export const ROCM_TORCH_PINS = [
  * PyTorch's index, which carries no Pillow 13, so the project's
  * `pillow>=13.0.0` override made the swap unsatisfiable and a ROCm install
  * never finished (#3158, #3418). The local tag comes from the index name
- * (`…/rocm6.4` → `+rocm6.4`), mirroring `sidecar_install._rocm_pin_args`; a
+ * (`…/rocm7.1` → `+rocm7.1`), mirroring `sidecar_install._rocm_pin_args`; a
  * mirror without such a name keeps the bare pins, and the tagged build still
  * wins by PEP 440 ordering. Kept equal to `scripts/setup.py`.
  */
@@ -126,9 +128,9 @@ export function rocmTorchOptIn(platform: NodeJS.Platform = process.platform): bo
  */
 export const CPU_TORCH_INDEX = 'https://download.pytorch.org/whl/cpu';
 export const CPU_TORCH_PINS = [
-  'torch==2.8.0+cpu',
-  'torchaudio==2.8.0+cpu',
-  'torchvision==0.23.0+cpu',
+  'torch==2.10.0+cpu',
+  'torchaudio==2.10.0+cpu',
+  'torchvision==0.25.0+cpu',
 ] as const;
 export const CPU_TORCH_ARGS = [
   '--extra-index-url',
@@ -180,33 +182,6 @@ export const OUTDATED_SYSTEM_LIBRARY_CODE = 'OUTDATED_SYSTEM_LIBRARY';
 export const MIN_MSVCP140_VERSION = [14, 40] as const;
 /** Windows exit status for an access violation, unsigned and signed. */
 const ACCESS_VIOLATION_EXIT_CODES = new Set<unknown>([3221225477, -1073741819]);
-const RUNTIME_IMPORT_MODULES = [
-  'fastapi',
-  'uvicorn',
-  'omnivoice',
-  'faster_whisper',
-  'sentencepiece',
-  'torch',
-  'torchaudio',
-  'torchvision',
-] as const;
-const IMPORT_MARKER = 'VOICESTUDIO_IMPORT=';
-/**
- * Imports every runtime module, announcing each one first. A native import that
- * dies with an access violation (exit code 3221225477) leaves no traceback, so
- * the last announcement is the only evidence of which module crashed (#3293).
- */
-export const RUNTIME_IMPORT_PROBE = RUNTIME_IMPORT_MODULES.map(
-  (name) => `print('${IMPORT_MARKER}${name}', flush=True)\nimport ${name}`,
-).join('\n');
-/** The module an import probe was loading when its output stopped, if it said. */
-export function lastImportAttempted(output: unknown): string | null {
-  const marked = String(output ?? '')
-    .split(/\r?\n/)
-    .filter((line) => line.startsWith(IMPORT_MARKER))
-    .at(-1);
-  return marked ? marked.slice(IMPORT_MARKER.length).trim() || null : null;
-}
 function importFailure(error: unknown): Error {
   const failure = error as { code?: unknown; message?: unknown; stdout?: unknown } | null;
   const module = lastImportAttempted(failure?.stdout);
@@ -218,13 +193,27 @@ function importFailure(error: unknown): Error {
 }
 const RUNTIME_SCHEMA = 'electron-runtime-v2-cudnn8';
 const CUDNN8_PROBE_PREFIX = 'VOICESTUDIO_CUDNN8_PROBE=';
-const REQUIRED_ENV_BYTES = 9 * 1024 ** 3;
-// No CUDA wheels: torch itself is ~0.2 GB; the rest is ordinary dependencies plus
-// the uv cache copy that cannot hardlink across volumes. macOS wheels never carry
-// CUDA either (an Apple Silicon runtime measured 1.9 GB plus a 1.8 GB uv cache).
-const REQUIRED_CPU_ENV_BYTES = 5 * 1024 ** 3;
+/** Shared by the install preflight and the first-run status shown before setup. */
+export function runtimeRequiredGib(
+  platform: NodeJS.Platform = process.platform,
+  variant?: TorchVariant,
+): number {
+  if (variant === undefined) {
+    try {
+      variant = resolveTorchVariant(process.env, platform).variant;
+    } catch {
+      // Status estimates must remain readable for unsupported overrides. Installation
+      // still validates the actual selection before calling this helper.
+      variant = 'default';
+    }
+  }
+  // macOS has no CUDA wheels; CPU installs also keep a smaller uv cache copy.
+  return platform === 'darwin' || variant === 'cpu' ? 5 : 9;
+}
 export type RuntimePhase = 'checking' | 'downloading_uv' | 'installing_deps' | 'verifying';
 export type RuntimeRegion = 'auto' | 'global' | 'china' | 'russia' | 'restricted';
+const CANARY_TIMEOUT_MS = 60_000;
+
 export type RuntimeRunner = (
   command: string,
   args: string[],
@@ -261,9 +250,9 @@ async function effectiveRegion(region: RuntimeRegion, signal: AbortSignal): Prom
   return 'restricted';
 }
 
-function runtimeDownloadEnv(effective: RuntimeRegion): NodeJS.ProcessEnv {
+export function runtimeDownloadEnv(effective: RuntimeRegion): NodeJS.ProcessEnv {
   return {
-    UV_HTTP_TIMEOUT: process.env.UV_HTTP_TIMEOUT || '120',
+    UV_HTTP_TIMEOUT: process.env.UV_HTTP_TIMEOUT || '900',
     UV_HTTP_CONNECT_TIMEOUT: process.env.UV_HTTP_CONNECT_TIMEOUT || '30',
     UV_HTTP_RETRIES: process.env.UV_HTTP_RETRIES || '5',
     ...(effective === 'china' && !process.env.UV_INDEX_URL
@@ -290,7 +279,7 @@ export interface TorchChoice {
 }
 
 /** Linux/Windows x64 (and Windows on ARM, via emulation) are where the lock selects CUDA wheels. */
-function cpuTorchApplies(platform: NodeJS.Platform, arch: string): boolean {
+export function cpuTorchApplies(platform: NodeJS.Platform, arch: string): boolean {
   return (
     (platform === 'linux' && arch === 'x64') ||
     (platform === 'win32' && (arch === 'x64' || arch === 'arm64'))
@@ -337,10 +326,11 @@ export async function runtimeDownloadHosts(
 ): Promise<Map<string, string>> {
   const lock = await readFile(join(bundle, 'uv.lock'), 'utf8');
   const rocm = resolveTorchVariant(process.env, platform, arch).variant === 'rocm';
-  // Windows ROCm installs from AMD's repository (the recipe), not PyTorch's index.
+  // Windows selects one of two AMD sources after inspecting the GPU; both
+  // are possible here because the setup progress map is built before that probe.
   const rocmHost =
     platform === 'win32'
-      ? 'repo.radeon.com'
+      ? 'repo.radeon.com / stable.repo.amd.com'
       : new URL(process.env.OMNIVOICE_TORCH_INDEX || ROCM_TORCH_INDEX).host;
   const hosts = setupDownloadHosts(lock, {
     pytorchIndex: cpuTorchApplies(platform, arch),
@@ -612,9 +602,7 @@ export async function runtimeDependenciesReady(
       if (!ready) {
         const module = lastImportAttempted(stdout);
         const detail = probeFailureDetail(error, stderr);
-        onFailure?.(
-          module && !stderr.trim() ? `${detail} (importing ${module})` : detail,
-        );
+        onFailure?.(module && !stderr.trim() ? `${detail} (importing ${module})` : detail);
       }
       resolve(ready);
     };
@@ -1162,7 +1150,126 @@ function errorSummary(error: unknown): string {
   return message.split(/\r?\n/)[0]!.slice(0, 200);
 }
 
+const TRANSIENT_DOWNLOAD_RE =
+  /HTTP status server error|(?:status|HTTP)[^\n]{0,40}\b50[0234]\b|\b50[0234] (?:Gateway|Service|Bad)|Gateway Time-?out|Service Unavailable|Bad Gateway|Request failed after \d+ retries|(?:download|request|connect\w*|operation|read) timed out|ETIMEDOUT|ECONNRESET|connection (?:reset|closed)|error sending request|dns error|Temporary failure/i;
+
+/** Delays before the extra whole-sync attempts when a download hit a temporary server/network fault. */
+export const TRANSIENT_SYNC_DELAYS_MS: readonly number[] = [5_000, 20_000];
+
+/** True when uv's output shows a temporary server or network fault rather than a bad lock or disk. */
+export function isTransientDownloadFailure(error: unknown): boolean {
+  const text = `${(error as { stderr?: unknown } | null)?.stderr ?? ''}\n${
+    error instanceof Error ? error.message : String(error)
+  }`;
+  return TRANSIENT_DOWNLOAD_RE.test(text);
+}
+
+/**
+ * Run a sync, repeating it when a download failed on a temporary server or
+ * network fault (5xx, timeout, reset). uv keeps finished wheels in its cache, so
+ * each repeat only fetches what is missing: one 504 must not end a multi-GB install.
+ */
+export async function retryTransientDownload(
+  sync: () => Promise<unknown>,
+  signal: AbortSignal,
+  log: (line: string) => void = () => {},
+  delays: readonly number[] = TRANSIENT_SYNC_DELAYS_MS,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await sync();
+      return;
+    } catch (error) {
+      if (signal.aborted || !isTransientDownloadFailure(error)) throw error;
+      if (attempt >= delays.length) {
+        throw Object.assign(
+          new Error(
+            `A download server returned a temporary error (${errorSummary(error)}). ` +
+              'This is a server or network problem, not your computer: press Retry, finished downloads are kept.',
+          ),
+          {
+            cause: error,
+            ...((error as { code?: unknown } | null)?.code !== undefined
+              ? { code: (error as { code?: unknown }).code }
+              : {}),
+          },
+        );
+      }
+      log(
+        `Download failed on a temporary server error; retrying in ${Math.round(delays[attempt]! / 1000)}s ` +
+          `(attempt ${attempt + 2} of ${delays.length + 1}). Finished downloads are kept.`,
+      );
+      await sleep(delays[attempt]!);
+      signal.throwIfAborted();
+    }
+  }
+}
+
 /** Called only by the user's install action; normal startup never downloads. */
+/**
+ * Runs the pinned interpreter once before gigabytes of wheels arrive, so a machine
+ * that refuses it finds out now. Only a refusal stops setup and it removes nothing;
+ * any other problem here is left for the sync to report. It cannot prove wheel
+ * binaries will load: the verifying phase still covers those.
+ */
+async function interpreterCanary(
+  uv: string,
+  project: string,
+  env: NodeJS.ProcessEnv,
+  run: RuntimeRunner,
+  signal: AbortSignal,
+  downloads: MirrorReporter,
+): Promise<void> {
+  const refused = (program: string, error: unknown) => {
+    const refusal = runtimeLaunchRefusal(program, error);
+    if (!refusal) return null;
+    // The runner's wrapped message already names the program; keep it from repeating.
+    const code = String((error as { code?: unknown }).code);
+    return new RuntimeLaunchRefusedError(
+      program,
+      Object.assign(new Error(`spawn ${code}`), { code, syscall: 'spawn' }),
+    );
+  };
+  const request = managedPythonRequest();
+  let python = '';
+  try {
+    // Stays inside the runtime: no user-wide python on PATH, no Windows registry entry.
+    await run(uv, ['python', 'install', '--no-bin', '--no-registry', request], project, env);
+    signal.throwIfAborted();
+    const found = await run(uv, ['python', 'find', '--managed-python', request], project, env, {
+      timeoutMs: CANARY_TIMEOUT_MS,
+      quiet: true,
+    });
+    // The quiet runner mixes stderr in, so a warning may sit beside the path.
+    python =
+      typeof found === 'string'
+        ? (found
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .find((line) => isAbsolute(line) || win32.isAbsolute(line)) ?? '')
+        : '';
+  } catch (error) {
+    signal.throwIfAborted();
+    const refusal = refused(uv, error);
+    if (refusal) throw refusal;
+    downloads.log?.('Skipping the interpreter check: uv could not prepare Python here.');
+    return;
+  }
+  if (!python) return;
+  try {
+    await run(python, ['-c', 'import _ctypes'], project, env, {
+      timeoutMs: CANARY_TIMEOUT_MS,
+      quiet: true,
+    });
+  } catch (error) {
+    signal.throwIfAborted();
+    const refusal = refused(python, error);
+    if (refusal) throw refusal;
+    downloads.log?.('The interpreter check did not pass; continuing with setup.');
+  }
+}
+
 export async function installRuntime(
   bundle: string,
   project: string,
@@ -1184,10 +1291,7 @@ export async function installRuntime(
   await pruneInterruptedUvDownloads(runtimeUvCache(project));
   const torch = resolveTorchVariant();
   const windowsRocm = windowsRocmSelected(torch.variant);
-  const requiredBytes =
-    torch.variant === 'cpu' || process.platform === 'darwin'
-      ? REQUIRED_CPU_ENV_BYTES
-      : REQUIRED_ENV_BYTES;
+  const requiredBytes = runtimeRequiredGib(process.platform, torch.variant) * 1024 ** 3;
   const disk = await statfs(project);
   if (disk.bavail * disk.bsize < requiredBytes) {
     throw Object.assign(
@@ -1242,6 +1346,9 @@ export async function installRuntime(
     TMP: scratch,
     TMPDIR: scratch,
   };
+  downloads.log?.(
+    `Download settings: UV_HTTP_TIMEOUT=${env.UV_HTTP_TIMEOUT}, UV_HTTP_CONNECT_TIMEOUT=${env.UV_HTTP_CONNECT_TIMEOUT}, UV_HTTP_RETRIES=${env.UV_HTTP_RETRIES}; proxy configured: ${Object.keys(env).some((key) => /^(https?|all)_proxy$/i.test(key))}`,
+  );
   if (!uv) {
     phase('downloading_uv');
     await mkdir(tools, { recursive: true });
@@ -1303,6 +1410,7 @@ export async function installRuntime(
   const pythonArgs = existingPython
     ? ['--python', runtimePython(project)]
     : ['--managed-python', '--python', managedPythonRequest()];
+  if (!existingPython) await interpreterCanary(uv, project, env, run, signal, downloads);
   const cpuTorch = torch.variant === 'cpu';
   // A failed native import may leave distribution metadata intact, so uv's
   // ordinary sync would otherwise consider the broken wheel already satisfied.
@@ -1360,52 +1468,77 @@ export async function installRuntime(
     requiredBytes,
     downloads,
   );
-  await syncLockedWithMirror(
-    project,
-    mirror,
-    () => run(uv!, syncArgs, project, env),
+  // A mirror failure falls back to the origin first; only when that also hits a
+  // temporary server or network fault does the whole sync repeat.
+  await retryTransientDownload(
+    async () => {
+      // A stalled uv leaves unfinished wheels it cannot resume; drop them before each attempt.
+      await pruneInterruptedUvDownloads(runtimeUvCache(project));
+      await syncLockedWithMirror(
+        project,
+        mirror,
+        () => run(uv!, syncArgs, project, env),
+        signal,
+        downloads,
+        localUrls,
+      );
+    },
     signal,
-    downloads,
-    localUrls,
+    downloads.log,
   );
   signal.throwIfAborted();
   // The sync succeeded, so uv has every wheel now: prefetched copies and any
   // resume parts left by a failed segmented fetch only take space.
   await clearPrefetchedWheels(runtimeWheelPrefetchDir(project));
+  const retryDownload = (step: () => Promise<unknown>) =>
+    retryTransientDownload(
+      async () => {
+        await pruneInterruptedUvDownloads(runtimeUvCache(project));
+        await step();
+      },
+      signal,
+      downloads.log,
+    );
   if (cpuTorch) {
-    await run(
-      uv,
-      [
-        'pip',
-        'install',
-        '--python',
-        runtimePython(project),
-        ...repairPackages
-          .filter((name) => torchPackages.includes(name))
-          .flatMap((name) => ['--reinstall-package', name]),
-        ...CPU_TORCH_PINS,
-        ...CPU_TORCH_ARGS,
-      ],
-      project,
-      env,
+    await retryDownload(() =>
+      run(
+        uv,
+        [
+          'pip',
+          'install',
+          '--python',
+          runtimePython(project),
+          ...repairPackages
+            .filter((name) => torchPackages.includes(name))
+            .flatMap((name) => ['--reinstall-package', name]),
+          ...CPU_TORCH_PINS,
+          ...CPU_TORCH_ARGS,
+        ],
+        project,
+        env,
+      ),
     );
     signal.throwIfAborted();
   }
   if (windowsRocm) {
-    await run(runtimePython(project), ['-m', WINDOWS_ROCM_MODULE, '--uv', uv], project, env);
+    await retryDownload(() =>
+      run(runtimePython(project), ['-m', WINDOWS_ROCM_MODULE, '--uv', uv], project, env),
+    );
     signal.throwIfAborted();
   } else if (torch.variant === 'rocm') {
-    await run(
-      uv,
-      [
-        'pip',
-        'install',
-        '--python',
-        runtimePython(project),
-        ...rocmTorchInstallArgs(process.env.OMNIVOICE_TORCH_INDEX || ROCM_TORCH_INDEX),
-      ],
-      project,
-      env,
+    await retryDownload(() =>
+      run(
+        uv,
+        [
+          'pip',
+          'install',
+          '--python',
+          runtimePython(project),
+          ...rocmTorchInstallArgs(process.env.OMNIVOICE_TORCH_INDEX || ROCM_TORCH_INDEX),
+        ],
+        project,
+        env,
+      ),
     );
     signal.throwIfAborted();
   }

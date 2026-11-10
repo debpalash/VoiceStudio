@@ -11,6 +11,7 @@ import re
 
 from pathlib import Path
 
+import pytest
 import yaml
 
 _ROOT = Path(__file__).resolve().parents[1]
@@ -98,7 +99,7 @@ def test_image_builds_keep_their_layer_cache_in_ghcr_not_the_actions_cache():
     rebuilt for 17 minutes. The cache lives in a registry package instead; a failed export
     must never fail the image publish, and only the CUDA job writes it."""
     workflow = _load(_DOCKER)
-    assert workflow["env"]["BUILDCACHE_IMAGE"] == "ghcr.io/debpalash/voicestudio-buildcache"
+    assert workflow["env"]["REGISTRY"] == "ghcr.io"
     builds = [
         step["with"]
         for job in _JOBS
@@ -154,7 +155,7 @@ def test_arm64_base_stage_installs_the_pinned_cu129_torch_trio():
     assert "--extra-index-url" not in stage
     pins = dict(
         line.split("==", 1)
-        for line in (_ROOT / "deploy" / "torch-constraints.txt").read_text().splitlines()
+        for line in (_ROOT / "deploy" / "torch-constraints.txt").read_text(encoding="utf-8").splitlines()
         if line and not line.startswith("#")
     )
     assert f"torch=={pins['torch']}+cu129" in stage
@@ -178,3 +179,42 @@ def test_dockerhub_documentation_publishes_without_building_images():
     assert publish["with"]["readme-filepath"] == "./deploy/dockerhub-overview.md"
     assert workflow["env"]["DOCKERHUB_IMAGE"] == _load(_DOCKER)["env"]["DOCKERHUB_IMAGE"]
     assert not any(step.get("name") == "Update Docker Hub description" for step in _load(_DOCKER)["jobs"]["build-and-push"]["steps"])
+
+
+
+@pytest.mark.parametrize(
+    "constraints,expected",
+    [
+        ("torch==2.10.0\ntorchaudio==2.10.0\n", "pytorch_release_2.10.0"),
+        ("torch==2.8.0\ntorchaudio==2.8.0\n", "pytorch_release_2.8.0"),
+        # Releases older than the constraints file keep the base they shipped on.
+        (None, "pytorch_release_2.8.0"),
+    ],
+)
+def test_rocm_base_follows_the_checked_out_torch_pin(tmp_path, constraints, expected):
+    import subprocess
+
+    steps = _load(_DOCKER)["jobs"]["build-and-push-rocm"]["steps"]
+    step = next(s for s in steps if s.get("id") == "rocm_base")
+    build = next(s for s in steps if s.get("name") == "Build and push (ROCm)")
+    assert "BASE_IMAGE=${{ steps.rocm_base.outputs.image }}" in build["with"]["build-args"]
+    if constraints is not None:
+        (tmp_path / "deploy").mkdir()
+        (tmp_path / "deploy" / "torch-constraints.txt").write_text(constraints)
+    output = tmp_path / "out"
+    subprocess.run(["bash", "-e", "-c", step["run"]], cwd=tmp_path, check=True,
+                   env={"GITHUB_OUTPUT": str(output), "PATH": "/usr/bin:/bin"})
+    # The exact GITHUB_OUTPUT line: a bare tag would leave the build-arg empty.
+    assert output.read_text(encoding="utf-8") == f"image=rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_{expected}\n"
+
+
+def test_rocm_base_rejects_a_constraints_file_without_an_exact_torch_pin(tmp_path):
+    import subprocess
+
+    steps = _load(_DOCKER)["jobs"]["build-and-push-rocm"]["steps"]
+    step = next(s for s in steps if s.get("id") == "rocm_base")
+    (tmp_path / "deploy").mkdir()
+    (tmp_path / "deploy" / "torch-constraints.txt").write_text("torch>=2.8\n")
+    result = subprocess.run(["bash", "-e", "-c", step["run"]], cwd=tmp_path,
+                            env={"GITHUB_OUTPUT": str(tmp_path / "out"), "PATH": "/usr/bin:/bin"})
+    assert result.returncode != 0

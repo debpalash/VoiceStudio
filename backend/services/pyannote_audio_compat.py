@@ -1,4 +1,10 @@
-"""Compatibility surface for pyannote.audio on recent torchaudio releases."""
+"""Compatibility surface for pyannote.audio on recent torchaudio releases.
+
+torchaudio 2.9 removed ``info`` and ``list_audio_backends`` and routes ``load``
+through TorchCodec only. Once installed, this module restores the removed
+entry points and makes ``torchaudio.load`` fall back to soundfile whenever
+TorchCodec is unavailable, for every caller in the process.
+"""
 
 from functools import wraps
 from numbers import Integral
@@ -137,6 +143,26 @@ def _soundfile_load(
     return waveform, sample_rate
 
 
+def _torchcodec_unavailable(exc: BaseException) -> bool:
+    """True when ``exc`` says TorchCodec (or its FFmpeg libraries) is missing."""
+    text = str(exc).lower()
+    if isinstance(exc, ImportError):
+        return "torchcodec" in text or "torchcodec" in str(getattr(exc, "name", "")).lower()
+    return "could not load libtorchcodec" in text
+
+
+def _rewind(source) -> None:
+    """Return a file-like source to its start after a failed decode attempt."""
+    seek = getattr(source, "seek", None)
+    if callable(seek):
+        try:
+            seek(0)
+        except (OSError, ValueError):
+            # A non-seekable stream: the next reader gets what is left, which
+            # is the best any decoder can do with it.
+            return
+
+
 def _backends():
     """Report the only decoding backend this adapter provides."""
     return ["soundfile"]
@@ -169,7 +195,27 @@ def ensure_pyannote_audio_compat() -> bool:
                     requested_backend = args[7]
                 if requested_backend == "soundfile":
                     return _soundfile_load(*args, **kwargs)
-                return original_load(*args, **kwargs)
+                try:
+                    return original_load(*args, **kwargs)
+                except (ImportError, RuntimeError) as exc:
+                    # torchaudio >= 2.9 decodes only through TorchCodec, which
+                    # VoiceStudio does not install (it needs FFmpeg shared
+                    # libraries). Every caller in the process — pyannote,
+                    # transformers, our own code — then gets the soundfile
+                    # decoder instead of an ImportError. Any other failure is
+                    # a real decode error and propagates.
+                    if not _torchcodec_unavailable(exc) or requested_backend is not None:
+                        raise
+                    source = args[0] if args else kwargs.get("uri")
+                    _rewind(source)
+                    try:
+                        return _soundfile_load(*args, **kwargs)
+                    except (RuntimeError, OSError, ValueError):
+                        # libsndfile cannot decode every container (M4A, AAC).
+                        # Re-raise the TorchCodec error so callers that handle
+                        # it (services.audio_io falls back to FFmpeg) still do.
+                        _rewind(source)
+                        raise exc from None
 
             setattr(compatible_load, _WRAPPER_MARKER, True)
             torchaudio.load = compatible_load

@@ -1,8 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { apiJson, describeError } from '@/lib/api/client';
+import { useResolvedLicenceError } from '@/hooks/use-resolved-licence-error';
 import {
   engineSelectionFeedback,
   type EngineSelectionResult,
@@ -26,21 +27,23 @@ export function useSelection(family: string, invalidate: readonly string[]) {
   const client = useQueryClient();
   const notify = useSelectionToast();
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState<string | null>(null);
+  const [failure, setFailure] = useState<{ message: string; error: unknown } | null>(null);
+  const clearFailure = useCallback(() => setFailure(null), []);
+  useResolvedLicenceError(failure?.error, clearFailure);
   const run = async (request: () => Promise<EngineSelectionResult>) => {
     setBusy(true);
-    setFailed(null);
+    setFailure(null);
     try {
       const result = await request();
       await Promise.all(invalidate.map((key) => client.invalidateQueries({ queryKey: [key] })));
       notify(result, family);
     } catch (error) {
-      setFailed(describeError(error));
+      setFailure({ message: describeError(error), error });
     } finally {
       setBusy(false);
     }
   };
-  return { busy, failed, clearFailure: () => setFailed(null), run };
+  return { busy, failed: failure?.message ?? null, clearFailure, run };
 }
 
 const ENGINE_KEYS = [

@@ -42,6 +42,7 @@ from dataclasses import dataclass
 # Module access (not ``from core.config import DUB_DIR``) so the containment
 # guards below read the live value — tests reload core.config with a
 # sandboxed data dir.
+from services import video_encoder
 from services.ffmpeg_utils import probe_duration, probe_frame_rates, run_ffmpeg
 
 logger = logging.getLogger("omnivoice.api")
@@ -64,8 +65,23 @@ DRIFT_TOLERANCE_S = 0.05
 
 #: Codec params for retimed video — MUST match the mux re-encode settings in
 #: api.routers.dub_export so slices and single-pass output are identical.
+# H.264 4:2:0 needs even dimensions. Keep every source pixel; pad at most
+# one column/row instead of cropping odd-sized screen recordings.
+H264_SIZE_FILTER = "pad=ceil(iw/2)*2:ceil(ih/2)*2"
+
 VIDEO_ENC_ARGS = ("-c:v", "libx264", "-preset", "medium", "-crf", "20",
                   "-pix_fmt", "yuv420p")
+
+
+def _slice_encoder_args(ffmpeg: str) -> tuple[str, ...]:
+    """Slice encoder args: libx264 unless the user opted into hardware."""
+    try:
+        name = video_encoder.select_encoder(ffmpeg)
+    except Exception:  # noqa: BLE001 — never let a pref read break an export
+        return VIDEO_ENC_ARGS
+    if name == video_encoder.SOFTWARE:
+        return VIDEO_ENC_ARGS
+    return video_encoder.encoder_args(name)
 
 
 class RetimeError(Exception):
@@ -143,9 +159,8 @@ def build_chunk_filter_graph(
 ) -> tuple[str, str]:
     """Build the split/trim/setpts/concat filter graph for ``chunks``.
 
-    With all keyword options at their defaults the output is byte-identical
-    to the legacy ``_build_video_stretch_filter_graph`` emission (same
-    labels, same formatting) — the legacy builder now delegates here.
+    The legacy ``_build_video_stretch_filter_graph`` delegates here, so both
+    paths apply the same timing and H.264-compatible frame padding.
 
     ``fps_norm`` prepends an ``fps=`` normalisation stage (VFR guard).
     ``out_fps`` resamples the concat output back to a constant frame rate.
@@ -179,7 +194,7 @@ def build_chunk_filter_graph(
             f"setpts=PTS-STARTPTS,setpts={ratio:.6f}*PTS{out_label}"
         )
     terminal = "".join(labels) + f"concat=n={len(chunks)}:v=1:a=0"
-    post: list[str] = []
+    post: list[str] = [H264_SIZE_FILTER]
     if out_fps:
         post.append(f"fps={out_fps}")
     if tail_pad_s > 0:
@@ -256,6 +271,11 @@ async def render_retimed_video(
 
     Raises :class:`RetimeError` on any failure (stage encode/concat/aborted).
     """
+    # One encoder for every slice (the concat join is ``-c copy``). Hardware
+    # is opt-in (#3732); if it fails on the first slice we drop to libx264
+    # for the whole render, and a later-slice failure is a normal failure.
+    # The first lookup runs an ffmpeg subprocess: keep it off the event loop.
+    enc_args = await asyncio.to_thread(_slice_encoder_args, ffmpeg)
     # ``out_path`` is server-built (under DUB_DIR) by every caller, but
     # realpath-normalise + containment-check inline at the sink anyway so
     # slices_dir / slice_path / list_path all derive from the validated
@@ -305,14 +325,39 @@ async def render_retimed_video(
                 "-t", f"{win_dur + 0.5:.4f}",
                 "-i", video_path,
                 "-filter_complex", graph, "-map", label, "-an",
-                *VIDEO_ENC_ARGS,
+                *enc_args,
                 "-force_key_frames", "0",
                 slice_path,
             ]
             try:
-                rc, _, stderr = await run_ffmpeg(
-                    cmd, timeout=timeout_per_batch, job_id=job_id,
-                )
+                hw_first = bi == 0 and enc_args != VIDEO_ENC_ARGS
+                try:
+                    rc, _, stderr = await run_ffmpeg(
+                        cmd, timeout=timeout_per_batch, job_id=job_id,
+                    )
+                    failed = rc != 0
+                except asyncio.TimeoutError:
+                    if not hw_first:
+                        raise
+                    rc, stderr, failed = 1, b"timed out", True
+                # Same rule as video_encoder.run_with_encoder_fallback: a failed
+                # or hung hardware slice falls back unless the user aborted.
+                if failed and hw_first and not (
+                    await video_encoder.user_cancelled(rc, abort_check)
+                ):
+                    logger.warning(
+                        "Hardware encoder %s failed on the first retime slice; "
+                        "using libx264: %s", enc_args[1],
+                        (stderr or b"").decode(errors="replace")[-300:],
+                    )
+                    hw_name = enc_args[1]
+                    cmd = video_encoder.replace_args(cmd, enc_args, VIDEO_ENC_ARGS)
+                    enc_args = VIDEO_ENC_ARGS
+                    rc, _, stderr = await run_ffmpeg(
+                        cmd, timeout=timeout_per_batch, job_id=job_id,
+                    )
+                    if rc == 0:  # only libx264 succeeding proves the encoder was at fault
+                        video_encoder.mark_failed(ffmpeg, hw_name)
             except asyncio.TimeoutError:
                 raise RetimeError(
                     f"retime batch {bi + 1}/{len(batches)} timed out",
@@ -321,7 +366,7 @@ async def render_retimed_video(
             if rc != 0:
                 # Negative rc = killed by signal (user cancel via
                 # kill_job_procs) — report as aborted, not a render failure.
-                if rc < 0:
+                if rc < 0 or (abort_check is not None and abort_check()):
                     raise RetimeError("retime cancelled", stage="aborted")
                 tail = (stderr or b"").decode(errors="replace")[-300:]
                 raise RetimeError(

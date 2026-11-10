@@ -17,7 +17,10 @@ const mocks = vi.hoisted(() => ({
 vi.mock('electron', () => ({ app: { isPackaged: true, getPath: () => '/private/voicestudio' } }));
 vi.mock('node:child_process', () => ({ spawn: mocks.spawn, spawnSync: vi.fn() }));
 vi.mock('node:fs/promises', () => ({ rm: vi.fn() }));
-vi.mock('./runtime-project', () => ({
+vi.mock('./runtime-project', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./runtime-project')>()),
+  resolveTorchVariant: () => ({ variant: 'cpu', explicit: false }),
+  cpuTorchApplies: () => false,
   runtimeDependenciesReady: mocks.dependencies,
   runtimeReady: mocks.ready,
   runtimeCompatible: mocks.compatible,
@@ -244,5 +247,23 @@ it('names a Windows load block instead of rebuilding a runtime that cannot help 
   expect(supervisor.status.stage).toBe('crashed');
   expect(supervisor.status.message).toContain("Windows refused to load one of the engine's files");
   expect(supervisor.status.message).toContain('application control policy');
+  await supervisor.shutdown();
+});
+
+it('quotes a bounded stderr tail, not only the last line, on an unexpected exit (#3887)', async () => {
+  const supervisor = new BackendSupervisor();
+  const { child, internal } = launch(supervisor);
+  for (let i = 0; i < 60; i++) internal.pushLog('err', `trace line ${i} ${'x'.repeat(500)}`, true);
+
+  child.emit('exit', 1, null);
+  await vi.advanceTimersByTimeAsync(11_000);
+
+  const message = supervisor.status.message ?? '';
+  expect(supervisor.status.stage).toBe('crashed');
+  expect(message).toContain('exit code 1');
+  expect(message).toContain('trace line 59');
+  expect(message).toContain('trace line 55');
+  expect(message).not.toContain('trace line 30 ');
+  expect(message.length).toBeLessThan(4000);
   await supervisor.shutdown();
 });

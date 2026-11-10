@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -69,6 +70,17 @@ def _asset_map(release: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return mapped
 
 
+def _foreign_feed(name: str, channel: str) -> bool:
+    """True for an updater feed that belongs to a channel other than `channel`."""
+    if name.startswith("electron-") and name.endswith(".yml"):
+        return not name.startswith(f"electron-{channel}-")
+    # electron-builder's default feeds: this project publishes only channel feeds.
+    if re.fullmatch(r"(latest|beta|alpha)(-[a-z0-9]+)*\.yml", name):
+        return True
+    # The archived Tauri sunset feeds ride on Stable only.
+    return channel != "stable" and name in {"latest.json", "latest-user.json"}
+
+
 def verify_release(
     release: dict[str, Any], manifest_dir: Path, *, channel: str, version: str
 ) -> list[str]:
@@ -84,6 +96,15 @@ def verify_release(
         raise ReleaseContractError(f"{channel} release tag does not match {expected_tag}")
 
     assets = _asset_map(release)
+    # A feed of the other channel on this release would move its users: a
+    # stable feed on a beta pulls stable users onto the beta's payloads (and
+    # Tauri's latest*.json is served only through `latest/download`, which a
+    # prerelease never answers), a beta feed on stable is unreachable noise.
+    forbidden = [name for name in assets if _foreign_feed(name, channel)]
+    if forbidden:
+        raise ReleaseContractError(
+            f"{channel} release carries another channel's update feed: {', '.join(sorted(forbidden))}"
+        )
     verified: list[str] = []
     for target, (manifest_target, os_token, arch, extension) in {
         **TARGETS,
@@ -136,13 +157,39 @@ def verify_release(
             raise ReleaseContractError(f"published size does not match {artifact}")
         if not str(artifact_asset.get("digest") or "").startswith("sha256:"):
             raise ReleaseContractError(f"published payload has no GitHub digest: {artifact}")
-        if target.startswith("win32-") and f"{artifact}.blockmap" not in assets:
+        # Patch updates: electron-updater fetches `<payload>.blockmap` for the
+        # NSIS installer and the macOS zip, and reads the AppImage's embedded
+        # blockmap through `blockMapSize`. Without them every update is a full
+        # download, silently.
+        if extension == ".AppImage":
+            # Only the AppImage's own entry counts (the deb entry has none).
+            entry = re.search(
+                rf"^\s+- url:\s*['\"]?{re.escape(artifact)}['\"]?\s*$(.*?)(?=^\s+- url:|^\S|\Z)",
+                manifest,
+                re.MULTILINE | re.DOTALL,
+            )
+            if not entry or not re.search(r"^\s{4}blockMapSize:\s*[1-9]\d*$", entry.group(1), re.MULTILINE):
+                raise ReleaseContractError(
+                    f"{manifest_name} has no blockMapSize, so AppImage patch updates are off"
+                )
+        elif f"{artifact}.blockmap" not in assets:
             raise ReleaseContractError(f"release is missing differential blockmap: {artifact}.blockmap")
         verified.append(f"{manifest_name} -> {artifact}")
     return verified
 
 
+def foreign_feeds_main(channel: str, names: list[str]) -> int:
+    """Exit non-zero when asset names (one per line on stdin) include another channel's feed."""
+    forbidden = sorted(name for name in names if name and _foreign_feed(name, channel))
+    if forbidden:
+        print(f"{channel} release carries another channel's update feed: {', '.join(forbidden)}")
+        return 1
+    return 0
+
+
 def main() -> int:
+    if len(sys.argv) == 3 and sys.argv[1] == "--foreign-feeds":
+        return foreign_feeds_main(sys.argv[2], sys.stdin.read().split("\n"))
     parser = argparse.ArgumentParser()
     parser.add_argument("--release-json", type=Path, required=True)
     parser.add_argument("--manifest-dir", type=Path, required=True)

@@ -34,6 +34,7 @@ One backend hosts many models. The curated set:
 | --- | --- | --- |
 | `kokoro` (default) | `mlx-community/Kokoro-82M-bf16` | small multilingual |
 | `csm` | `mlx-community/csm-1b-8bit` | voice cloning |
+| `qwen3-tts-base` | `mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit` | voice cloning |
 | `qwen3-tts` | `mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-4bit` | voice design |
 | `dia` | `mlx-community/Dia-1.6B` | dialogue |
 | `chatterbox` | `mlx-community/Chatterbox-TTS-4bit` | expressive |
@@ -98,7 +99,7 @@ app's model download flow rather than installing into an unrelated system Python
   the model's callable signature does not accept them; supported voice,
   reference and language inputs, plus voice-design instructions (`instruct`),
   remain in the same request.
-- Of the curated choices, only `csm` is confirmed to consume a reference clip; the other models disregard reference audio. MLX-Audio therefore advertises cloning only when CSM is selected, and dub and batch jobs use that capability flag. Starting a dub, batch, or voice-conversion job with another model is refused with an error that names the active model and directs you to **CSM (voice cloning)** in Model Catalogue; switching engines remains an alternative. See [#2201](https://github.com/debpalash/VoiceStudio/issues/2201).
+- Select **Qwen3-TTS Base (voice cloning)** or **CSM (voice cloning)** in Model Catalogue. Qwen3-TTS Base uses the selected voice's reference audio and transcript. API clients can request `model: "mlx-audio"` and the saved voice ID after selecting Qwen3-TTS Base. An existing local Qwen3-TTS Base folder is also supported. The MLX adapter runs on Apple Silicon.
 - Voice design (text description → voice) is available through the
   Qwen3-TTS VoiceDesign model.
 - Which languages work depends on the model you load. Kokoro handles about
@@ -146,3 +147,13 @@ Kokoro language errors list every language in the installed model’s table.
 “British English” and `en-gb` both select its British English voice pipeline.
 Display names from newer installed Kokoro tables are accepted too, so a language
 advertised by the error message can be selected without updating a hardcoded map.
+
+For Qwen3-TTS Base, requests to `/v1/audio/speech` with
+`response_format: "pcm"` and `stream_format: "audio"` can emit audio while
+the model is generating. Use a saved reference with a transcript and the
+default speed and duration. The stream is mono, signed 16-bit PCM at 24 kHz.
+
+The optional, manually provisioned CUDA adapter uses model ID `qwen3-tts`. It is available when
+`faster-qwen3-tts` is installed in the backend environment, CUDA is available,
+and `VOICESTUDIO_QWEN_CUDA_MODEL` points at a local Qwen3-TTS 0.6B Base
+checkpoint. Both engines use the same VoiceStudio voice library and speech API.

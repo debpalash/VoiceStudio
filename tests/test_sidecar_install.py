@@ -492,7 +492,7 @@ def test_safe_extract_members_blocks_tar_slip(tmp_path):
     dest.mkdir(parents=True)
     with tarfile.open(fileobj=buf, mode="r:gz") as tf:
         si._safe_extract_members(tf, str(dest))
-    assert (dest / "pkg" / "ok.txt").read_text() == "ok"
+    assert (dest / "pkg" / "ok.txt").read_text(encoding="utf-8") == "ok"
     assert not (tmp_path / "sandbox" / "evil.txt").exists()
     assert not (dest / "pkg" / "link").exists()
 
@@ -830,6 +830,7 @@ def test_get_status_synthesizes_state_without_job(monkeypatch):
     assert st == {
         "engine_id": "fake-side",
         "installed": False,
+        "repair_available": False,
         "managed": False,
         "install_dir": None,
         "job": None,
@@ -977,7 +978,7 @@ def test_managed_indextts2_source_is_preserved_during_25_install(monkeypatch):
     si._step_fetch_source(spec, job)
     clone = next(argv for argv in argvs if argv[1] == "clone")
     assert clone[clone.index("--branch") + 1] == "indextts-2.5"
-    assert (legacy / "old-v2-only.txt").read_text() == "old"
+    assert (legacy / "old-v2-only.txt").read_text(encoding="utf-8") == "old"
     assert si._source_present(spec, checkout)
 
 
@@ -1128,6 +1129,8 @@ def test_uninstalling_one_engine_leaves_every_other_engine_intact(monkeypatch):
         ("dots-tts", ["--python", "3.11"],
          ["-e", "{c}", "-c", "{uri}/constraints/recommended.txt"],
          "OMNIVOICE_DOTS_TTS_DIR"),
+        ("ming-tts", ["--python", "3.10"], ["-r", "{c}/requirements.txt"],
+         "OMNIVOICE_MING_TTS_DIR"),
         # moss-tts-nano installs soundfile alongside the editable install so
         # torchaudio 2.7's I/O backend is present inside this engine's own
         # venv — upstream's pyproject pins torchaudio but no backend
@@ -1220,7 +1223,7 @@ def test_verify_probe_runs_in_the_engines_venv_and_compiles(monkeypatch, engine_
     code = ran[0][2]
     compile(code, "<probe>", "exec")  # a Windows path must not break the literal
     assert "{checkout" not in code
-    if engine_id == "confucius4-tts":
+    if engine_id in ("confucius4-tts", "ming-tts"):
         assert repr(str(checkout)) in code
 
 
@@ -1230,7 +1233,7 @@ def test_verify_probe_runs_in_the_engines_venv_and_compiles(monkeypatch, engine_
 @pytest.mark.parametrize(
     ("family", "platform", "machine", "expected"),
     [
-        ("cuda", "linux", "x86_64", {"moss-tts-v15", "dots-tts", "pockettts", "voxcpm2", "moss-tts-nano", "cosyvoice"}),
+        ("cuda", "linux", "x86_64", {"moss-tts-v15", "ming-tts", "dots-tts", "pockettts", "voxcpm2", "moss-tts-nano", "cosyvoice"}),
         ("cuda", "win32", "AMD64", {"moss-tts-v15", "pockettts", "voxcpm2", "moss-tts-nano", "cosyvoice"}),
         ("cpu", "win32", "AMD64", {"pockettts", "voxcpm2", "moss-tts-nano", "cosyvoice"}),
         ("mps", "darwin", "arm64", {"dots-tts", "pockettts", "voxcpm2", "moss-tts-nano", "cosyvoice"}),
@@ -1368,6 +1371,7 @@ _UPSTREAM_ROOT_FILES = {
     "moss-tts-v15": ("pyproject.toml", "README.md", "LICENSE", "MANIFEST.in"),
     "confucius4-tts": ("requirements.txt", "setup.py", "README.md", "LICENSE", "server.py"),
     "dots-tts": ("pyproject.toml", "README.md", "LICENSE", "constraints/recommended.txt"),
+    "ming-tts": ("requirements.txt", "ming_tts.py", "tts_tasks.py", "README.md", "LICENSE"),
     "moss-tts-nano": ("pyproject.toml", "moss_tts_nano_runtime.py", "requirements.txt",
                       "README.md", "LICENSE"),
     "cosyvoice": ("requirements.txt", "README.md", "LICENSE", "cosyvoice/cli/cosyvoice.py",
@@ -1445,7 +1449,10 @@ def test_a_failed_dependency_install_is_repaired_not_reported_installed(monkeypa
         ("cuda", "win32", "+cu128", "https://download.pytorch.org/whl/cu128"),
         ("cuda", "linux", "+cu128", "https://download.pytorch.org/whl/cu128"),
         ("cpu", "win32", "+cpu", "https://download.pytorch.org/whl/cpu"),
-        ("rocm", "linux", "+cpu", "https://download.pytorch.org/whl/cpu"),
+        # A ROCm host takes the same version's ROCm build (AMD GPU parity).
+        ("rocm", "linux", "+rocm7.2", "https://download.pytorch.org/whl/rocm7.2"),
+        # PyTorch publishes no Windows ROCm wheels; Windows keeps +cpu.
+        ("rocm", "win32", "+cpu", "https://download.pytorch.org/whl/cpu"),
         ("mps", "darwin", "", None),
     ],
 )
@@ -1538,8 +1545,8 @@ def test_rocm_host_installs_rocm_torch_for_indextts2(monkeypatch):
     pip, rocm_index = _capture_rocm_install(monkeypatch, family="rocm")
     # Upstream's cu128 tool.uv.sources must be ignored for torch to resolve.
     assert "--no-sources" in pip
-    assert "torch==2.8.0+rocm6.4" in pip
-    assert "torchaudio==2.8.0+rocm6.4" in pip
+    assert "torch==2.10.0+rocm7.1" in pip
+    assert "torchaudio==2.10.0+rocm7.1" in pip
     i = pip.index("--extra-index-url")
     assert pip[i + 1] == rocm_index
     assert PYTORCH_CU128_INDEX_URL not in pip
@@ -1550,7 +1557,7 @@ def test_rocm_variant_env_opts_in_before_the_family_probe_reports_rocm(monkeypat
     while the main venv swap has not landed yet (family still cpu)."""
     pip, _ = _capture_rocm_install(monkeypatch, family="cpu", variant=" ROCm ")
     assert "--no-sources" in pip
-    assert "torch==2.8.0+rocm6.4" in pip
+    assert "torch==2.10.0+rocm7.1" in pip
 
 
 def test_rocm_torch_never_leaks_to_other_hosts(monkeypatch):
@@ -1565,26 +1572,84 @@ def test_rocm_torch_never_leaks_to_other_hosts(monkeypatch):
         assert not any(a.startswith("torch==2.8.0+") for a in pip)
 
 
-def test_rocm_args_never_reach_engines_that_did_not_opt_in(monkeypatch):
-    """voxcpm2 pins its own torch pair and follows the host (+cpu on ROCm,
-    per test_torch_pins_follow_the_host); opting indextts2 in must not
-    change any other spec's install."""
-    from core.torch_indexes import PYTORCH_ROCM_INDEX_URL
-
+def test_rocm_args_never_reach_engines_without_a_known_torch(monkeypatch):
+    """Only an engine whose torch version is known (spec pins, a declared
+    upstream pin, or IndexTTS's shared stack) is given a ROCm torch: guessing
+    a version for any other engine could break its resolution."""
     monkeypatch.delenv("OMNIVOICE_TORCH_VARIANT", raising=False)
     monkeypatch.setattr(si.sys, "platform", "linux")
     argvs = _capture_install_argvs(monkeypatch, family="rocm")
     for engine_id in _ALL_SPEC_IDS:
-        if engine_id == "indextts2":
-            continue
         spec = si.get_spec(engine_id)
-        if spec.uses_rocm_index:
+        if spec.uses_rocm_index or si._spec_torch_versions(spec) is not None:
             continue
         argvs.clear()
         si._step_install_deps(spec, si._new_job(engine_id))
         pip = next(a for a in argvs if a[1:3] == ["pip", "install"])
         assert "--no-sources" not in pip, engine_id
-        assert PYTORCH_ROCM_INDEX_URL not in pip, engine_id
+        assert not any("download.pytorch.org/whl/rocm" in a for a in pip), engine_id
+
+
+@pytest.mark.parametrize(
+    ("engine_id", "torch_pin", "audio_pin", "index"),
+    [
+        ("voxcpm2", "torch==2.11.0+rocm7.2", "torchaudio==2.11.0+rocm7.2",
+         "https://download.pytorch.org/whl/rocm7.2"),
+        ("moss-tts-nano", "torch==2.7.0+rocm6.3", "torchaudio==2.7.0+rocm6.3",
+         "https://download.pytorch.org/whl/rocm6.3"),
+        ("cosyvoice", "torch==2.7.0+rocm6.3", "torchaudio==2.7.0+rocm6.3",
+         "https://download.pytorch.org/whl/rocm6.3"),
+        ("confucius4-tts", "torch==2.7.0+rocm6.3", "torchaudio==2.7.0+rocm6.3",
+         "https://download.pytorch.org/whl/rocm6.3"),
+        ("indextts2", "torch==2.10.0+rocm7.1", "torchaudio==2.10.0+rocm7.1",
+         "https://download.pytorch.org/whl/rocm7.1"),
+    ],
+)
+def test_rocm_host_gives_each_engine_its_own_torch_version(
+    monkeypatch, engine_id, torch_pin, audio_pin, index
+):
+    """Fail-before/pass-after (AMD parity): only IndexTTS got a ROCm torch;
+    every other PyTorch sidecar installed the CPU or CUDA wheel and ran on the
+    CPU on an AMD GPU host. Each now takes its own pinned version from the
+    ROCm index that publishes it, so upstream's tested version is kept."""
+    monkeypatch.delenv("OMNIVOICE_TORCH_VARIANT", raising=False)
+    monkeypatch.delenv("OMNIVOICE_TORCH_INDEX", raising=False)
+    monkeypatch.setattr(si.sys, "platform", "linux")
+    monkeypatch.setattr(si, "_host_machine", lambda: "x86_64")
+    argvs = _capture_install_argvs(monkeypatch, family="rocm")
+    si._step_install_deps(si.get_spec(engine_id), si._new_job(engine_id))
+    pip = next(a for a in argvs if a[1:3] == ["pip", "install"])
+    assert "--no-sources" in pip
+    assert torch_pin in pip and audio_pin in pip
+    assert pip.count("--extra-index-url") == 1
+    assert pip[pip.index("--extra-index-url") + 1] == index
+    assert not any(a.endswith(("+cpu", "+cu128")) for a in pip)
+
+
+def test_dots_tts_takes_rocm_torch_from_its_constraints(monkeypatch):
+    """dots.tts pins torch in upstream's constraints file, not in the spec."""
+    monkeypatch.delenv("OMNIVOICE_TORCH_VARIANT", raising=False)
+    monkeypatch.delenv("OMNIVOICE_TORCH_INDEX", raising=False)
+    monkeypatch.setattr(si.sys, "platform", "linux")
+    argvs = _capture_install_argvs(monkeypatch, family="rocm")
+    spec = si.get_spec("dots-tts")
+    constraints = si.managed_checkout(spec) / "constraints" / "recommended.txt"
+    constraints.write_text("six==1.17.0\ntorch==2.8.0  # tested\ntorchaudio==2.8.0\n")
+    si._step_install_deps(spec, si._new_job("dots-tts"))
+    pip = next(a for a in argvs if a[1:3] == ["pip", "install"])
+    assert "torch==2.8.0+rocm6.4" in pip and "torchaudio==2.8.0+rocm6.4" in pip
+
+
+def test_unknown_torch_minor_keeps_the_existing_install(monkeypatch):
+    """A torch minor with no known ROCm index is never guessed."""
+    import dataclasses
+
+    monkeypatch.setattr(si.sys, "platform", "linux")
+    monkeypatch.setattr(si, "_host_family", lambda: "rocm")
+    spec = dataclasses.replace(
+        si.get_spec("voxcpm2"), torch_pins=("torch==2.6.0", "torchaudio==2.6.0"),
+    )
+    assert si._spec_rocm_torch_args(spec) is None
 
 
 def test_rocm_index_env_is_the_index_uv_resolves_against(monkeypatch):
@@ -1592,11 +1657,11 @@ def test_rocm_index_env_is_the_index_uv_resolves_against(monkeypatch):
     but the index appended to uv stayed the hard-coded public one — a
     mirror's pins looked up on someone else's server, bypassing the mirror
     a restricted network depends on."""
-    mirror = "https://mirror.example.com/pytorch/rocm6.4"
+    mirror = "https://mirror.example.com/pytorch/rocm7.1"
     monkeypatch.setenv("OMNIVOICE_TORCH_INDEX", mirror)
     pip, public = _capture_rocm_install(monkeypatch, family="rocm")
     assert "--no-sources" in pip
-    assert "torch==2.8.0+rocm6.4" in pip  # tag still from the mirror's tail
+    assert "torch==2.10.0+rocm7.1" in pip  # tag still from the mirror's tail
     assert mirror in pip
     assert public not in pip
 
@@ -1882,7 +1947,7 @@ def test_moss_existing_install_offers_dependency_repair(monkeypatch):
     assert 'soundfile' in commands[0]
     assert si._healthy(spec)
     assert weights.read_bytes() == b'existing weights'
-    assert py.read_text() == 'existing interpreter'
+    assert py.read_text(encoding="utf-8") == 'existing interpreter'
 
 
 @pytest.mark.parametrize('version', ['3.14', '3.11', '3.10'])
@@ -1908,13 +1973,13 @@ def test_indextts_repairs_only_incompatible_python(monkeypatch, version):
     if version == '3.14':
         assert calls and calls[0][-2:] == ['--python', '3.11']
         assert not marker.exists()
-        assert py.read_text() != 'old interpreter'
+        assert py.read_text(encoding="utf-8") != 'old interpreter'
     else:
         assert calls == []
         assert marker.exists()
-        assert py.read_text() == 'old interpreter'
+        assert py.read_text(encoding="utf-8") == 'old interpreter'
     assert weights.read_bytes() == b'existing weights'
-    assert source.read_text() == 'existing source'
+    assert source.read_text(encoding="utf-8") == 'existing source'
 
 
 def test_all_sidecar_recipes_pin_python():
@@ -1938,7 +2003,7 @@ def test_incompatible_linked_venv_is_not_deleted(monkeypatch, tmp_path):
         returncode=0, stdout='3.14\n', stderr=''))
     with pytest.raises(si._StepError, match='linked outside'):
         si._step_create_venv(spec, si._new_job(spec.engine_id))
-    assert py.read_text() == 'user interpreter'
+    assert py.read_text(encoding="utf-8") == 'user interpreter'
     assert (checkout / '.venv').is_symlink()
 
 
@@ -1959,7 +2024,7 @@ def test_unproven_venv_is_not_destroyed(monkeypatch, failure):
     with pytest.raises(si._StepError, match='Could not check') as error:
         si._step_create_venv(spec, si._new_job(spec.engine_id))
     assert str(py) not in str(error.value)
-    assert py.read_text() == 'user interpreter'
+    assert py.read_text(encoding="utf-8") == 'user interpreter'
 
 
 @pytest.mark.parametrize("version", ["3.10", "3.12"])
@@ -2024,7 +2089,7 @@ def test_moss_decoder_recipe_upgrade_preserves_venv_and_cached_weights(monkeypat
     assert commands[0][1:3] == ['pip', 'install']
     assert commands[0][3:5] == ['--python', str(py)]
     assert 'torchcodec===0.8.1' in commands[0]
-    assert py.read_text() == '#!existing-python\n'
+    assert py.read_text(encoding="utf-8") == '#!existing-python\n'
     assert weights.read_bytes() == b'existing weights'
     assert si._healthy(spec)
     assert si._install_marker_valid(spec, checkout)

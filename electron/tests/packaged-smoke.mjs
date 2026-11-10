@@ -31,10 +31,10 @@ const defaultExecutableCandidates =
           ]
       : targetArch === 'arm64'
         ? [
-            'electron/release/linux-arm64-unpacked/voicestudio-electron',
-            'electron/release/linux-unpacked/voicestudio-electron',
+            'electron/release/linux-arm64-unpacked/voicestudio-desktop',
+            'electron/release/linux-unpacked/voicestudio-desktop',
           ]
-        : ['electron/release/linux-unpacked/voicestudio-electron'];
+        : ['electron/release/linux-unpacked/voicestudio-desktop'];
 const defaultExecutable =
   defaultExecutableCandidates.find((candidate) => existsSync(resolve(repoRoot, candidate))) ??
   defaultExecutableCandidates[0];
@@ -53,7 +53,7 @@ if (quitDuringStartup && !existing)
   throw new Error('--quit-during-startup requires VOICESTUDIO_TEST_PROFILE with a managed runtime');
 const activate = (locator) =>
   extractAndRun || wayland ? locator.dispatchEvent('click') : locator.click();
-let env = { ...process.env };
+let env = { ...process.env, OMNIVOICE_ENV_FILE: resolve(profile, 'user-env') };
 let verifyManagedShutdown = false;
 if (setup || install || existing) {
   const server = createServer();

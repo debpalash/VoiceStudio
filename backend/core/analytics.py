@@ -4,15 +4,15 @@ VoiceStudio is local-first, so analytics here is held to a higher bar than the
 usual SDK drop-in. Three rules, each enforced in code below and pinned by tests:
 
 1. **Off unless the user says yes.** Two independent gates must BOTH be true:
-   a configured destination token (the in-repo publishable default, overridden
-   by ``POSTHOG_PROJECT_TOKEN`` when set — see ``_PUBLIC_PROJECT_TOKEN``) *and*
+   a configured Supermetry site (``config/analytics.json``, overridden by
+   ``SUPERMETRY_SITE_ID`` when set) *and*
    the user's explicit ``analytics_enabled`` preference, which defaults to
    **False**. A default install transmits nothing, so the product's promise
    holds out of the box. ``OMNIVOICE_ANALYTICS_DISABLED=1`` is a hard kill
    switch that outranks both.
 
 2. **No exception autocapture, ever.** The obvious SDK default
-   (``enable_exception_autocapture=True``) ships raw tracebacks — which carry
+   (autocapturing exceptions) ships raw tracebacks — which carry
    absolute paths (``/Users/<name>/…``), and in this codebase can carry Hugging
    Face tokens and model paths straight out of exception messages. That would
    bypass ``core.failure.sanitize()``, the redaction this project already runs on
@@ -31,37 +31,61 @@ tell "same install" from "different install".
 from __future__ import annotations
 
 import atexit
+import json
 import logging
+import math
 import os
+import re
+import threading
 import uuid
+from pathlib import Path
 from typing import Any, Optional
+
+from core.analytics_transport import SupermetryTransport, user_agent, valid_url
 
 logger = logging.getLogger("omnivoice.analytics")
 
 _client = None
-_client_key: Optional[str] = None  # the (token, host) the live client was built for
+_client_key: Optional[str] = None  # the destination the live client was built for
 
 _KILL_SWITCH = "OMNIVOICE_ANALYTICS_DISABLED"
 _OFF_VALUES = {"1", "true", "yes", "on"}
 
-#: In-repo default analytics destination (owner-sanctioned reversal, #1193):
-#: source builds get the SAME consent-gated analytics as installers. This is a
-#: PostHog *publishable* client key — write-only event ingestion, no data
-#: access; PostHog's own FAQ says these are designed to ship in client code —
-#: NOT a secret. It only names a destination: not one event leaves the machine
-#: without the user's explicit opt-in (see `enabled()`).
-#: A `POSTHOG_PROJECT_TOKEN` env var (release builds bake one in via the
-#: desktop shell; developers can point at their own project) always wins.
-#: Committed-token guard: tests/test_no_committed_analytics_token.py allows a
-#: `phc_` literal in exactly this file and electron/src/shared/utils/analytics.ts.
-_PUBLIC_PROJECT_TOKEN = "phc_kJK9nFqtwFmB4CYWS4bMDTY7z9P4KCRyiRT7CzJTXm9f"  # gitleaks:allow — publishable write-only key (#1193)
-_DEFAULT_HOST = "https://us.i.posthog.com"
+_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "analytics.json"
+_client_lock = threading.RLock()
+
+
+def _destination() -> dict:
+    """The public Supermetry destination (``config/analytics.json``). It only
+    names a site: nothing is sent without the user's explicit opt-in.
+    ``SUPERMETRY_SITE_ID`` overrides it (a developer's own site, or empty to
+    switch delivery off)."""
+    try:
+        data = json.loads(_CONFIG_PATH.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return {}
+        site = os.environ.get("SUPERMETRY_SITE_ID")
+        result = {
+            "site": (data.get("site", "") if site is None else site).strip(),
+            "host": os.environ.get("SUPERMETRY_HOST", data.get("host", "https://app.supermetry.com")).strip().rstrip("/"),
+            "appUrl": str(data.get("appUrl", "")).strip().rstrip("/"),
+        }
+        if (not valid_url(result["host"], origin=True) or not valid_url(result["appUrl"])
+                or not re.fullmatch(r"[a-z0-9]{6,32}", result["site"])):
+            return {}
+        return result
+    except Exception:
+        return {}
+
 
 #: The ONLY property keys that may leave this machine. Anything else is dropped.
 #: Deliberately conservative: no free text, no paths, no names, no ids of user
 #: content. Add here only after asking "could this ever hold something the user
 #: typed, recorded, or named?" — if yes, it doesn't belong.
 _ALLOWED_PROPS: frozenset[str] = frozenset({
+    "feature",
+    "action",
+    "outcome",
     "engine_id",        # which TTS/ASR engine (our identifier, not the user's)
     "language",         # e.g. "en" / "auto"
     "mode",             # clone | design
@@ -91,6 +115,9 @@ _ALLOWED_PROPS: frozenset[str] = frozenset({
 #: A string property longer than this is refused outright — a belt-and-braces
 #: guard so a stray free-text value can't ride in on an allowlisted key.
 _MAX_STR_LEN = 64
+
+#: The shape of an engine key (``omnivoice``, ``cosyvoice-3``). Anything else is dropped.
+_ENGINE_ID_RE = re.compile(r"[a-z0-9][a-z0-9_.\-]{0,39}")
 
 
 def _kill_switched() -> bool:
@@ -146,23 +173,10 @@ def user_prompted() -> bool:
         return False
 
 
-def _resolved_token() -> str:
-    """The destination token: env (baked builds / developer override) wins,
-    the committed publishable default (#1193) is the fallback. Empty only when
-    both are blank — a destination-less build can never run analytics."""
-    return (os.environ.get("POSTHOG_PROJECT_TOKEN", "") or "").strip() or _PUBLIC_PROJECT_TOKEN
-
-
-def _resolved_host() -> str:
-    return (os.environ.get("POSTHOG_HOST") or _DEFAULT_HOST).strip()
-
-
 def token_configured() -> bool:
-    """Whether this build has an analytics destination at all. Since #1193 the
-    in-repo default means source builds have one too — so they get the same
-    first-run consent ask as installers. False only when both the env var and
-    the committed default are blank; consent stays the real gate regardless."""
-    return bool(_resolved_token())
+    """Whether this build has an analytics destination at all (name kept for
+    existing callers). Consent stays the real gate regardless."""
+    return bool(_destination())
 
 
 def enabled() -> bool:
@@ -171,49 +185,40 @@ def enabled() -> bool:
 
 
 def _get_client():
-    """Lazily build the client, but only while `enabled()`. Rebuilt if the token
-    or host changes; torn down the moment consent is withdrawn."""
+    """Lazily build the transport, but only while `enabled()`. Rebuilt if the
+    destination changes; torn down the moment consent is withdrawn."""
     global _client, _client_key
 
-    if not enabled():
-        if _client is not None:
-            shutdown()
-        return None
-
-    token = _resolved_token()
-    host = _resolved_host()
-    key = f"{token}@{host}"
-    if _client is not None and _client_key == key:
+    with _client_lock:
+        if not enabled():
+            if _client is not None:
+                shutdown()
+            return None
+        destination = _destination()
+        key = json.dumps(destination, sort_keys=True)
+        if _client is not None and _client_key == key:
+            return _client
+        try:
+            _client = SupermetryTransport(destination, enabled)
+            _client_key = key
+            atexit.register(shutdown)
+            logger.info("Analytics enabled by user opt-in (host=%s).", destination["host"])
+        except Exception as e:  # noqa: BLE001 — analytics must never break the app
+            logger.warning("Analytics client unavailable: %s", e)
+            _client, _client_key = None, None
         return _client
-
-    try:
-        from posthog import Posthog
-
-        _client = Posthog(
-            token,
-            host=host,
-            # RULE 2. Tracebacks carry home paths and can carry HF tokens; they
-            # would bypass core.failure.sanitize() entirely. Never turn this on.
-            enable_exception_autocapture=False,
-        )
-        _client_key = key
-        atexit.register(shutdown)
-        logger.info("Analytics enabled by user opt-in (host=%s).", host)
-    except Exception as e:  # noqa: BLE001 — analytics must never break the app
-        logger.warning("Analytics client unavailable: %s", e)
-        _client, _client_key = None, None
-    return _client
 
 
 def shutdown() -> None:
     """Flush and drop the client. Safe to call repeatedly."""
     global _client, _client_key
-    if _client is not None:
-        try:
-            _client.shutdown()
-        except Exception:  # noqa: BLE001
-            logger.debug("analytics shutdown error (non-fatal)", exc_info=True)
-    _client, _client_key = None, None
+    with _client_lock:
+        if _client is not None:
+            try:
+                _client.shutdown()
+            except Exception:  # noqa: BLE001
+                logger.debug("analytics shutdown error (non-fatal)", exc_info=True)
+        _client, _client_key = None, None
 
 
 def installation_id() -> str:
@@ -231,6 +236,11 @@ def installation_id() -> str:
     return str(iid)
 
 
+def profile_id() -> str:
+    """The opaque Supermetry profile: ``install_`` + the random installation id."""
+    return "install_" + installation_id().replace("-", "")
+
+
 def sanitize_properties(properties: Optional[dict]) -> dict:
     """RULE 3. Drop every key not on the allowlist, and refuse long strings.
 
@@ -242,24 +252,61 @@ def sanitize_properties(properties: Optional[dict]) -> dict:
             continue
         if isinstance(v, str) and len(v) > _MAX_STR_LEN:
             continue
-        if isinstance(v, (str, int, float, bool)) or v is None:
+        if k == "engine_id" and not (isinstance(v, str) and _ENGINE_ID_RE.fullmatch(v)):
+            continue  # our engine keys only: never a path, a file name or typed text
+        if isinstance(v, float) and not math.isfinite(v):
+            continue
+        if isinstance(v, (str, int, float, bool)):
             out[k] = v
     return out
 
 
-def capture(event: str, properties: Optional[dict] = None) -> None:
+def _identify() -> None:
+    """Tell Supermetry once per app version which kind of install this is."""
+    from core import prefs
+
+    if prefs.get("analytics_identified") == _app_version():
+        return
+    client = _client
+    if client is not None and client.capture(
+        "identify", {}, profile_id=profile_id(),
+        traits={"platform": _platform()[:256], "app_version": _app_version()[:256], "profile_kind": "installation"},
+    ):
+        prefs.set_("analytics_identified", _app_version())
+
+
+def capture(event: str, properties: Optional[dict] = None, path: str = "/backend") -> bool:
     """Record one product event. A no-op unless the user opted in. Never raises."""
     try:
         client = _get_client()
         if client is None:
-            return
-        client.capture(
-            event,
-            distinct_id=installation_id(),
-            properties=sanitize_properties(properties),
-        )
+            return False
+        _identify()
+        return client.capture(event, sanitize_properties(properties), profile_id=profile_id(), path=path)
     except Exception as e:  # noqa: BLE001 — analytics may never break a feature
         logger.debug("analytics capture failed (%s): %s", event, e)
+        return False
+
+
+#: Screens the UI may report. Fixed routes only: dynamic ids never appear here.
+_SAFE_SCREEN = re.compile(
+    r"view:(?:home|clone|personas|stories|dub|batch|gallery|transcriptions|design|audiobook|projects|tools|calls|integrations|pro|other"
+    r"|settings/(?:appearance|general|models|logs|media|pronunciation|network|sharing|credentials|performance|usage|privacy|permissions|storage|support|updates|openapi|diagnostics|other))"
+)
+_EVENT_NAME = re.compile(r"[A-Za-z][A-Za-z0-9_:-]{0,63}")
+
+
+def capture_from_ui(event: str, properties: Optional[dict] = None, screen: Optional[str] = None) -> bool:
+    """Events the interface reports. Same opt-in gate and allowlist as the
+    backend's own; a screen view becomes a ``pageview`` on a fixed path."""
+    if event == "pageview":
+        if not isinstance(screen, str) or not _SAFE_SCREEN.fullmatch(screen):
+            return False
+        path = "/" + screen[len("view:"):]
+        return capture("pageview", {**sanitize_properties(properties), "source": "electron"}, path=path)
+    if not isinstance(event, str) or not _EVENT_NAME.fullmatch(event) or event in {"identify", "pageview"}:
+        return False
+    return capture(event, properties)
 
 
 # ── Lifecycle events (owner-sanctioned 2026-07-16) ──────────────────────────
@@ -357,7 +404,8 @@ def _maybe_send_installed() -> bool:
         return False
     if prefs.get(_INSTALL_MARKER):
         return False
-    capture("app_installed", _common_props())
+    if not capture("app_installed", _common_props()):
+        return False
     prefs.set_(_INSTALL_MARKER, True)
     return True
 
@@ -445,8 +493,7 @@ def sync_uninstall_ping_info() -> None:
     Present  ⇔ analytics is enabled (token AND consent AND not kill-switched).
     The uninstall scripts read it (plus the consent pref itself, belt and
     braces) to send one best-effort `app_uninstalled` ping before deleting the
-    data. The token is PostHog's publishable write-only client key — the same
-    one baked into every release binary — so this file grants nothing new.
+    data. The site id is public (config/analytics.json), so this file grants nothing new.
     Never raises."""
     import json
 
@@ -461,9 +508,10 @@ def sync_uninstall_ping_info() -> None:
                 pass
             return
         payload = {
-            "token": _resolved_token(),
-            "host": _resolved_host(),
-            "distinct_id": installation_id(),
+            **_destination(),
+            "user_agent": user_agent(),
+            "profile_id": profile_id(),
+            "policy": "opt-in",
             "app_version": _app_version(),
             "platform": _platform(),
         }

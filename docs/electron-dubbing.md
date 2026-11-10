@@ -189,8 +189,19 @@ Export options expand inside the existing sidebar. Users can select included vid
 tracks and the default track, background mixing, burned subtitles, dual layout and
 karaoke (disabled with dual layout). Audio supports WAV or MP3 with bitrate choice;
 SRT/VTT/ASS sidecars and per-language stem/segment ZIPs use the existing backend.
+The backend compresses ZIP exports into a temporary file and sends the download
+in chunks, so a long project does not require holding its entire archive in memory.
+Each ZIP is built from a snapshot of the files taken when the download starts, so
+a regeneration finishing mid-download cannot mix old and new audio.
 Each download is explicit and targets the selected language. Export errors retain
 all choices for retry. Native save filters match the encoded file format.
+Settings -> Performance -> Video export sets how video exports are encoded. The
+encoder is software (libx264) by default on every OS; "Hardware when available" is an
+opt-in that uses NVENC, Quick Sync, AMF or VideoToolbox when the bundled ffmpeg lists one,
+and retries the export with libx264 (logging why) if the hardware encode fails. "Maximum
+resolution" (Original, 2160p, 1440p, 1080p, 720p) only ever scales a video down, keeps its
+aspect ratio and even dimensions, and re-encodes instead of stream-copying when it applies.
+Live previews always use software encoding.
 Browser fixtures verify MP3/SRT downloads, query options and failed-export retry;
 unit tests cover video/package parameters. Real rendered exports, batch presets
 and native save dialogs remain unverified or incomplete.
@@ -311,7 +322,9 @@ NLLB resolves explicit FLORES language/script codes, unambiguous ISO-639-3 codes
 ### Speech integrity and timing
 
 A failed, empty or unreadable speech segment stops generation before a new track
-replaces the previous output. Partial regeneration repairs missing or corrupt
+replaces the previous output. When the failure identifies a segment, the notice
+shows its row number; select it to jump to that row in the transcript.
+Partial regeneration repairs missing or corrupt
 segment caches, including missing clips outside the requested changed-line list;
 it does not substitute silence and report completion. Auto speaker references
 exclude oversized clips when selecting a shared fallback, so short lines reuse a

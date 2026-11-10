@@ -20,9 +20,9 @@ export type EngineFamily = 'tts' | 'asr' | 'llm';
 // (it gates with `??` / `?.length` and suppresses the routing badge).
 type GPUTarget = 'cuda' | 'mps' | 'rocm' | 'vulkan' | 'xpu' | 'cpu';
 // Where an engine actually runs on THIS host. `network` is LLM-only (remote).
-type EffectiveDevice = GPUTarget | 'network';
+type EffectiveDevice = GPUTarget | 'network' | 'unknown';
 // `n/a` is LLM-only; resolve_routing only ever returns the first four.
-type RoutingStatus = 'accelerated' | 'cpu_fallback' | 'cpu_only' | 'unavailable' | 'n/a';
+type RoutingStatus = 'accelerated' | 'cpu_fallback' | 'cpu_only' | 'unavailable' | 'n/a' | 'unknown';
 
 export interface EngineBackend {
   id: string;

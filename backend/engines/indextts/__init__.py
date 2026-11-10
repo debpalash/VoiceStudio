@@ -141,6 +141,10 @@ class IndexTTS2Backend(SubprocessBackend):
     id = "indextts2"
     display_name = "IndexTTS 2.5 (multilingual emotion-controlled cloning)"
     supports_voice_design = False  # requires ref audio for timbre
+    # The sidecar reads text/ref_audio/language only — no quality knobs (#3654).
+    supports_num_step = False
+    supports_guidance_scale = False
+    supports_generation_seed = True  # inference runs in a separate process
     supports_emotion = True  # graded emo_vector / emo_text / emo_alpha (#1208)
     _DEFAULT_SAMPLE_RATE = 24000
     # Explicit so IndexTTS2 stops advertising the inherited CPU-only default:
@@ -297,7 +301,8 @@ class IndexTTS2Backend(SubprocessBackend):
     # ``description`` means.
 
     def generate(self, text: str, **kw) -> "torch.Tensor":
-        self._check_language(kw.get("language"))
+        """Synthesize cloned speech with resolved emotion, duration and seed controls."""
+        checked_language = self._check_language(kw.get("language"))
         ref_audio = kw.get("ref_audio")
         if not ref_audio:
             raise RuntimeError(
@@ -318,8 +323,13 @@ class IndexTTS2Backend(SubprocessBackend):
         if description and not emo_text and not emo_vector and not emo_audio:
             emo_text = description
 
-        language = _normalize_indextts25_language(kw.get("language"), text)
+        # The checked code is the one IndexTTS declares ("Standard Arabic"
+        # -> "ar", #3816); a picker name it has no alias for would otherwise
+        # fall back to script detection.
+        language = _normalize_indextts25_language(checked_language or kw.get("language"), text)
         forwarded: dict = {"ref_audio": ref_audio, "lang": language}
+        if kw.get("seed") is not None:
+            forwarded["seed"] = int(kw["seed"])
 
         # Duration control — codec frame rate ≈ 21 Hz.
         duration = kw.get("duration")

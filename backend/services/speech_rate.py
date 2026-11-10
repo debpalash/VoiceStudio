@@ -77,9 +77,16 @@ MEASURED_TOL_LOW = 0.9
 MEASURED_TOL_HIGH = 1.04
 
 
+# Language tags whose base subtag is not the rate table's key. The dub page
+# sends Chinese as "cmn-Hans" / "cmn-Hant"; Cantonese is written with the same
+# logographic script.
+_RATE_ALIASES = {"cmn": "zh", "yue": "zh", "zho": "zh"}
+
+
 def expected_duration(text: str, lang: str = "en") -> float:
     """Rough CPS-based duration estimate. Returns seconds."""
-    cps = _RATE_CPS.get(lang.split("-")[0].lower(), 13.0)
+    base = (lang or "en").replace("_", "-").split("-")[0].lower()
+    cps = _RATE_CPS.get(_RATE_ALIASES.get(base, base), 13.0)
     return len(text) / max(1.0, cps)
 
 

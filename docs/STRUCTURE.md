@@ -17,7 +17,7 @@ VoiceStudio/
 ├── package.json                 ⟵ monorepo manifest (Bun workspaces) and THE app
 │                                   version (pyproject.toml + backend/core/version.py mirror it)
 ├── bun.lock                     ⟵ JS lockfile — repo-root, covers the electron/ workspace
-├── flake.nix, flake.lock        ⟵ community Nix dev shells + NixOS FHS env (docs/install/nix.md)
+├── flake.nix, flake.lock        ⟵ community Nix dev shells + a Nix-built Linux app (docs/install/nix.md)
 │
 ├── .coderabbit.yaml / greptile.json   ⟵ bot-review setup; CLAUDE.md supplies both rule sets
 ├── skills-lock.json             ⟵ records the origin and digest of each .agents/skills/ copy
@@ -32,15 +32,15 @@ VoiceStudio/
 │
 ├── backend/                     ⟵ FastAPI server
 │   ├── main.py                  sole process entry; its annotated startup sequence must retain its order
-│   ├── api/routers/             44 routers, auto-included; HTTP/WS adaptation stays thin here
+│   ├── api/routers/             45 routers, auto-included; HTTP/WS adaptation stays thin here
 │   │   └── setup/               setup-wizard endpoints and model acquisition
 │   ├── core/                    shared infrastructure: configuration, persistence, job/event plumbing,
 │   │                            auth and CSRF, safe paths, analytics consent, version and diagnostics
-│   ├── services/                116 modules of business logic spanning speech, dubbing, DSP, GPU dispatch,
+│   ├── services/                131 modules of business logic spanning speech, dubbing, DSP, GPU dispatch,
 │   │                            engine selection and loaded-model ownership
 │   ├── engines/                 per-engine adapters: audiocpp, confucius4, cosyvoice_gguf,
-│   │                            cosyvoice_subprocess, dots_tts, indextts, moss_tts_nano_subprocess,
-│   │                            moss_tts_v15, omnivoice_gguf, omnivoice_subprocess, pockettts,
+│   │                            cosyvoice_subprocess, dots_tts, indextts, ming_tts, moss_sfx,
+│   │                            moss_tts_nano_subprocess, moss_tts_v15, omnivoice_gguf, omnivoice_subprocess, pockettts,
 │   │                            supertonic3, voxcpm2_subprocess, whisper_cpp, _asr_sidecar, _echo
 │   ├── schemas/                 Pydantic types at the request/response boundary
 │   ├── config/models.yaml       catalogue of selectable models
@@ -88,6 +88,7 @@ VoiceStudio/
 │   ├── install.sh / install.ps1 installers delivered from voicestudio.sh/install
 │   ├── dev-backend.mjs          supervisor behind `bun run dev:api`
 │   ├── setup.py                 platform finishing step for `bun run setup:api`, including ROCm opt-in
+│   ├── prune-runtime-node-modules.mjs   Nix build: keeps only the main process's runtime deps
 │   ├── electron-smoke-test.mjs  packaged-launch probe invoked by `bun run smoke-test`
 │   ├── prepare_electron_release.py, check_electron_release_assets.py   artifact verification
 │   ├── check-docs-drift.py      checks docs-drift.yml against authoritative docs/features.yaml
@@ -101,13 +102,16 @@ VoiceStudio/
 │   ├── Dockerfile               CUDA baseline; BASE_IMAGE and GPU_FLAVOR let CI build ROCm too
 │   ├── docker-compose.yml       local one-command stack
 │   ├── torch-constraints.txt    image-specific torch-family lock
+│   ├── security-constraints.txt security floors for the Docker and Colab installs
+│   ├── security_floors.py       raises and checks installed packages against those floors
 │   ├── dockerhub-overview.md    release-synchronised Docker Hub description
 │   └── install-worker/          Cloudflare worker serving voicestudio.sh/install; embeds both installers
 │                                from scripts/ (see docs/install/script.md)
 │
 ├── docs/                        ⟵ engineering references, product imagery and brand material
+│   ├── README.md                current documentation index and maintenance policy
 │   ├── STRUCTURE.md             this map
-│   ├── ROADMAP.md               planned direction
+│   ├── ROADMAP.md               links to the live roadmap and issue trackers
 │   ├── RELEASING.md             complete multi-channel shipping checklist
 │   ├── features.yaml            source inventory consumed by docs-drift.yml
 │   ├── adr/                     durable architectural decisions

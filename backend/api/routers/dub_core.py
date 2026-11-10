@@ -28,6 +28,7 @@ from schemas.requests import CleanupSegmentsRequest, DubIngestUrlRequest, ParseS
 from services.srt_parser import CUE_SOURCE_FIELDS, CUE_SOURCE_ID, vouch_cue_source
 from services.dub_language import (
     DUB_SOURCE_LANG_CODES as _DUB_SOURCE_LANG_CODES,
+    asr_source_language,
     detected_source_language as _detected_source_lang,
 )
 from services.model_manager import get_model, _gpu_pool, _cpu_pool, get_diarization_pipeline, offload_tts_for_asr, restore_tts_after_asr, should_preload_tts_asr, release_device_cache
@@ -36,6 +37,7 @@ from services.asr_backend import (
     ASRTimeoutError,
     reset_pool_after_wedge,
     run_transcribe_guarded,
+    transcribe_request_kwargs,
 )
 from services.audio_io import _safe_soundfile_write
 from services.diarization_runtime import ensure_selected_accepted as _ensure_diarisation_accepted
@@ -522,7 +524,11 @@ def dub_use_downloaded_captions(job_id: str):
     source_lang = job.get("source_lang_override") or _detected_source_lang(caption_lang)
     with dub_pipeline._dub_jobs_lock:
         replace_source_segments(job, segments)
-        job.pop("source_lang_detection_missing", None)
+        # An unrecognised caption tag must ask for the language, not fall back to English.
+        if source_lang is None:
+            job["source_lang_detection_missing"] = True
+        else:
+            job.pop("source_lang_detection_missing", None)
         job["source_lang"] = source_lang
         job["full_transcript"] = " ".join(segment["text"] for segment in segments)
         # Caption files contain timing and text, but no trustworthy speaker or
@@ -609,18 +615,28 @@ def dub_abort(job_id: str):
     """Cancel in-flight upload/transcribe subprocesses for a job."""
     with _active_procs_lock:
         had_procs = bool(_active_procs.get(job_id))
-    _kill_job_procs(job_id)
+    # Flag first: a kill that lands before it reads as an encoder crash to the
+    # hardware-encode fallback, which would restart the work after the sweep.
+    job = _dub_jobs.get(job_id)
+    had_flag = job is not None and "aborted" in job
+    prior_flag = job.get("aborted") if job is not None else None
+    if job is not None:
+        job["aborted"] = True
     try:
+        _kill_job_procs(job_id)
         had_task = task_manager.cancel_task(job_id)
     except Exception as exc:
+        # A failed abort leaves the job retryable, not marked aborted.
+        if job is not None:
+            if had_flag:
+                job["aborted"] = prior_flag
+            else:
+                job.pop("aborted", None)
         logger.warning("Dub task cancellation failed")
         raise HTTPException(
             status_code=503,
             detail="The dub could not be fully aborted. Retry the abort operation.",
         ) from exc
-    job = _dub_jobs.get(job_id)
-    if job is not None:
-        job["aborted"] = True
     # Cancellation is idempotent: a missing active task means it already
     # stopped between the renderer aborting its stream and this request.
     return {
@@ -1311,7 +1327,9 @@ def _recover_from_phrase_embeddings(
 async def _reanalyze_speakers(job_id: str, job: dict, num_speakers: Optional[int], cancelled):
     """Refresh acoustic labels on existing cues; never rerun ASR or rewrite text."""
     import copy
-    from services.speaker_clone import auto_profile_id, build_cast_sources, extract_speaker_clones
+    from services.speaker_clone import (
+        auto_profile_id, build_cast_sources, extract_speaker_clones, voice_fallback_warning,
+    )
     from services.diarization_native import NativeSortformer
     from api.routers.dub_generate import resolve_consistent_ref
 
@@ -1448,6 +1466,9 @@ async def _reanalyze_speakers(job_id: str, job: dict, num_speakers: Optional[int
                 if ambiguous:
                     warnings.append({"source":"speaker_clone","detail":
                         "Some cues lack a single verified speaker; their audio was excluded from new source-voice references."})
+                fallback = voice_fallback_warning(segments,sources)
+                if fallback:
+                    warnings.append(fallback)
                 return copy.deepcopy(job)
         finally:
             # This finally runs on the worker, after all native work finishes,
@@ -1568,6 +1589,7 @@ async def dub_transcribe_stream(
                 logger.warning("restore_tts_after_asr failed: %s", e)
 
     async def _gen_body():
+        """Yield preflight, chunk progress and final diarized results as SSE events."""
         # ── Preflight — run INSIDE the stream, never before it (#1196) ──
         # This whole block used to run in the endpoint body, before the
         # StreamingResponse existed — i.e. OUTSIDE the stream's terminal-event
@@ -1621,6 +1643,12 @@ async def dub_transcribe_stream(
                 "speaker_clones": job.get("cast_sources", {}),
                 "cast_sources": job.get("cast_sources", {}),
             })
+            # A dropped connection may have lost the live warning; recompute it
+            # from the saved job so Retry still names the default-voice speakers.
+            from services.speaker_clone import voice_fallback_warning
+            replay_warning = voice_fallback_warning(job["segments"], job.get("cast_sources"))
+            if replay_warning:
+                yield _sse_event("warning", replay_warning)
             yield _sse_event("done", {})
             return
 
@@ -1849,6 +1877,7 @@ async def dub_transcribe_stream(
                 continue
 
             def _transcribe_chunk(arr=chunk_arr, offset=t0, local_sr=sr):
+                """Transcribe with a supported language hint and shift times to the full audio."""
                 # Route through the active backend (WhisperX by default).
                 # Backends all take a file path, so write the chunk first.
                 try:
@@ -1856,7 +1885,12 @@ async def dub_transcribe_stream(
                     tmp.close()
                     try:
                         _safe_soundfile_write(tmp.name, arr, local_sr)
-                        r = _asr_backend.transcribe(tmp.name, word_timestamps=True)
+                        language = asr_source_language(
+                            job.get("source_lang_override"),
+                            getattr(_asr_backend, "id", None),
+                        )
+                        kwargs = transcribe_request_kwargs(_asr_backend, {"language": language or None})
+                        r = _asr_backend.transcribe(tmp.name, word_timestamps=True, **kwargs)
                     finally:
                         try: os.remove(tmp.name)
                         except OSError: pass
@@ -2548,6 +2582,13 @@ async def dub_transcribe_stream(
                     _job_dir, dub_pipeline.REFERENCE_RUNS_DIRNAME,
                     os.path.basename(str(previous_ref_run)),
                 ), job)
+            # Name every speaker left without a source voice, including when
+            # extraction failed outright (#3419). After the commit above, so
+            # a disconnect here cannot discard the references the job holds.
+            from services.speaker_clone import voice_fallback_warning
+            fallback_warning = voice_fallback_warning(final_segs, commit["cast_sources"])
+            if fallback_warning:
+                yield _sse_event("warning", fallback_warning)
 
         # Restore TTS model to GPU now that ASR is done. unload() blocks
         # (gc.collect + CUDA cache drop) — run it on the GPU pool so the

@@ -23,6 +23,8 @@ const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { sta
 function setup(responses: Response[]) {
   const fetchImpl = vi.fn<FetchImpl>(async () => responses.shift()!);
   const session = {
+    identityGeneration: vi.fn(() => 7),
+    bindIdentity: vi.fn(() => true),
     getAccessToken: vi.fn(async () => ({ access_token: 'tok', expires_at: 9e15 })),
     invalidateAccessToken: vi.fn(),
     endSession: vi.fn(),
@@ -36,7 +38,7 @@ function setup(responses: Response[]) {
 }
 
 it('maps the account to the renderer-safe profile', async () => {
-  const { api, fetchImpl } = setup([json(account)]);
+  const { api, fetchImpl, session } = setup([json(account)]);
   expect(await api.get()).toEqual({
     email: 'ana@example.com',
     displayName: 'Ana',
@@ -52,6 +54,21 @@ it('maps the account to the renderer-safe profile', async () => {
   expect((fetchImpl.mock.calls[0][1] as RequestInit).headers).toMatchObject({
     authorization: 'Bearer tok',
   });
+  expect(session.bindIdentity).toHaveBeenCalledWith(account.user_id, 7);
+});
+
+it('does not return a profile whose session changed during the authenticated request', async () => {
+  const { api, session } = setup([json(account)]);
+  session.identityGeneration.mockReturnValueOnce(7).mockReturnValue(8);
+  expect(await api.get()).toBeNull();
+  expect(session.bindIdentity).not.toHaveBeenCalled();
+});
+
+it('ends a session when an authenticated account response conflicts with its bound identity', async () => {
+  const { api, session } = setup([json(account)]);
+  session.bindIdentity.mockReturnValueOnce(false);
+  expect(await api.get()).toBeNull();
+  expect(session.endSession).toHaveBeenCalledWith('signed_out_expired');
 });
 
 it('refreshes once on 401, then signs out on a second 401', async () => {
@@ -185,13 +202,14 @@ it('reads the plan and storage summary that /v1/account now carries', async () =
   const { api } = setup([
     json({
       ...account,
-      plan: { code: 'pro', name: 'Pro', origin: 'subscription', ends_at: '2027-10-16T00:00:00Z' },
+      plan: { code: 'pro', name: 'Pro', origin: 'purchase', ends_at: '2027-10-16T00:00:00Z' },
       storage: { limit_bytes: 1073741824, used_bytes: 734003, reserved_bytes: 0 },
     }),
   ]);
   expect((await api.get())?.summary).toEqual({
     planCode: 'pro',
     planName: 'Pro',
+    planOrigin: 'purchase',
     planEndsAt: '2027-10-16T00:00:00Z',
     storageUsedBytes: 734003,
     storageLimitBytes: 1073741824,
@@ -212,4 +230,70 @@ it('logs a failed account call by status and path only', async () => {
   expect(warn).toHaveBeenCalledWith('[account] GET /v1/account -> 403');
   expect(JSON.stringify(warn.mock.calls)).not.toMatch(/Bearer|tok/);
   warn.mockRestore();
+});
+
+it.each([404, 501])(
+  'backs off unavailable optional entitlements (%s), then retries without inventing rights',
+  async (status) => {
+    let now = 1_000;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    try {
+      const { api, fetchImpl } = setup([json({}, status), json({ values: [] })]);
+      const organization = 'Or5tG7hJ9kL1zX3c';
+      expect(await api.entitlements(organization)).toBeNull();
+      expect(await api.entitlements(organization)).toBeNull();
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+      now += 60_001;
+      expect(await api.entitlements(organization)).toMatchObject({
+        settingsSync: false,
+        proDesktop: false,
+      });
+      expect(fetchImpl).toHaveBeenCalledTimes(2);
+    } finally {
+      clock.mockRestore();
+    }
+  },
+);
+
+it('coalesces concurrent optional entitlement requests', async () => {
+  const { api, fetchImpl } = setup([json({ values: [] })]);
+  const results = await Promise.all([
+    api.entitlements('Or5tG7hJ9kL1zX3c'),
+    api.entitlements('Or5tG7hJ9kL1zX3c'),
+  ]);
+  expect(results[0]).toEqual(results[1]);
+  expect(fetchImpl).toHaveBeenCalledTimes(1);
+});
+
+it('does not carry an unavailable entitlement lookup across organizations or accounts', async () => {
+  const { api, fetchImpl, session } = setup([json({}, 404), json({}, 404), json({ values: [] })]);
+  expect(await api.entitlements('Or5tG7hJ9kL1zX3c')).toBeNull();
+  expect(await api.entitlements('Or9tG7hJ9kL1zX3c')).toBeNull();
+  session.identityGeneration.mockReturnValue(8);
+  expect(await api.entitlements('Or9tG7hJ9kL1zX3c')).not.toBeNull();
+  expect(fetchImpl).toHaveBeenCalledTimes(3);
+});
+
+it.each([403, 500])('does not cache real entitlement failures (%s)', async (status) => {
+  const { api, fetchImpl } = setup([json({}, status), json({ values: [] })]);
+  await expect(api.entitlements('Or5tG7hJ9kL1zX3c')).rejects.toMatchObject({ status });
+  expect(await api.entitlements('Or5tG7hJ9kL1zX3c')).not.toBeNull();
+  expect(fetchImpl).toHaveBeenCalledTimes(2);
+});
+
+it('posts the app check-in with the bearer token and returns the interval', async () => {
+  const { api, fetchImpl } = setup([json({ next_check_seconds: 900 })]);
+  expect(await api.appCheck({ app: 'oss', app_version: '1.2.3', platform: 'linux' })).toBe(900);
+  expect(fetchImpl.mock.calls[0][0]).toBe('https://appapi.voicestudio.sh/v1/account/app-check');
+  const init = fetchImpl.mock.calls[0][1] as RequestInit;
+  expect(init.method).toBe('POST');
+  expect(init.headers).toMatchObject({
+    authorization: 'Bearer tok',
+    'content-type': 'application/json',
+  });
+  expect(JSON.parse(init.body as string)).toEqual({
+    app: 'oss',
+    app_version: '1.2.3',
+    platform: 'linux',
+  });
 });

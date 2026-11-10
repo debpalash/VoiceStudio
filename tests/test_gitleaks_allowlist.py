@@ -6,13 +6,7 @@ import tomllib
 
 
 ROOT = Path(__file__).resolve().parents[1]
-_POSTHOG_TOKEN = re.search(
-    r"phc_[A-Za-z0-9]{20,}",
-    (ROOT / "backend/core/analytics.py").read_text(encoding="utf-8"),
-)
-assert _POSTHOG_TOKEN is not None
 EXPECTED_EXACT_REGEXES = {
-    f"^{_POSTHOG_TOKEN.group(0)}$",
     "^528e871c2a26c4f0f7773b9754e2e1acae20899d$",
     "^hf_abcdefghijklmnopqrstuvwxyz01234567890abcd$",
     "^hf_abcdefghijklmnopqrstuvwxyz0123456789ABCDEF$",

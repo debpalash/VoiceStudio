@@ -28,14 +28,16 @@ sys.path.insert(0, os.path.normpath(_BACKEND_DIR))
 
 @pytest.fixture
 def main(monkeypatch, tmp_path):
+    """Isolate the health cache and app data for each test."""
     monkeypatch.setenv("OMNIVOICE_DATA_DIR", str(tmp_path))
     module = importlib.import_module("main")
-    monkeypatch.setattr(module, "_health_device", None, raising=False)
+    monkeypatch.setattr(module, "_health_label", None, raising=False)
     monkeypatch.setattr(module, "_health_device_thread", None, raising=False)
     return module
 
 
 def test_health_runs_on_the_event_loop_not_the_worker_pool(main):
+    """Health runs on the event loop not the worker pool."""
     assert inspect.iscoroutinefunction(main.health), (
         "a sync /health queues behind every blocked sync route in the 40-thread "
         "pool, so liveness would depend on unrelated handlers"
@@ -43,10 +45,12 @@ def test_health_runs_on_the_event_loop_not_the_worker_pool(main):
 
 
 def test_a_blocked_device_probe_never_delays_the_liveness_answer(main, monkeypatch):
+    """A blocked device probe never delays the liveness answer."""
     release = threading.Event()
     entered = threading.Event()
 
-    def _blocked_probe() -> str:
+    def _blocked_probe(engine_id) -> str:
+        """Keep the device lookup blocked until the test releases it."""
         entered.set()
         release.wait(30)
         return "cuda (Test GPU)"
@@ -76,7 +80,9 @@ def test_a_blocked_device_probe_never_delays_the_liveness_answer(main, monkeypat
 
 
 def test_a_failing_device_lookup_does_not_fail_the_probe(main, monkeypatch):
-    def _boom() -> str:
+    """A failing device lookup does not fail the probe."""
+    def _boom(engine_id) -> str:
+        """Simulate a device lookup failure."""
         raise RuntimeError("driver exploded")
 
     monkeypatch.setattr(main, "_probe_health_device", _boom)

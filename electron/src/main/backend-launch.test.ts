@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 const state = vi.hoisted(() => ({
   installed: true,
   packaged: false,
@@ -8,6 +9,15 @@ const state = vi.hoisted(() => ({
   checkout: true,
   bundledOnly: false,
   bundledManifestMissing: false,
+  selected: null as string | null,
+}));
+const validateSelected = vi.hoisted(() =>
+  vi.fn(async (pythonPath: string, _cwd: string) => ({ ok: true, pythonPath })),
+);
+vi.mock('./runtime-python-selection', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./runtime-python-selection')>()),
+  selectedPythonPath: () => state.selected,
+  validatePythonRuntime: validateSelected,
 }));
 vi.mock('./distribution', () => ({
   runtimeSetupSupported: () => !state.bundledOnly,
@@ -50,6 +60,8 @@ vi.mock('./runtime-project', async (importOriginal) => ({
     return state.ready;
   }),
 }));
+const healPth = vi.hoisted(() => vi.fn(async (_venv: string): Promise<string[]> => []));
+vi.mock('./pth-ascii', () => ({ asciiSafePthFiles: healPth }));
 vi.mock('./legacy-storage', () => ({
   legacyStorageEnv: () => ({
     OMNIVOICE_DATA_DIR: '/legacy/data',
@@ -77,6 +89,10 @@ afterEach(() => {
   state.checkout = true;
   state.bundledOnly = false;
   state.bundledManifestMissing = false;
+  state.selected = null;
+  validateSelected.mockClear();
+  healPth.mockReset();
+  healPth.mockResolvedValue([]);
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
 });
@@ -133,6 +149,20 @@ it('keeps host diagnostics available when a store package has no local interpret
   expect(facts.ramGb).toBeGreaterThan(0);
   expect(facts.runtime.pythonPresent).toBeNull();
 });
+it('runs a selected interpreter against bundled resources, never the absent managed project', async () => {
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
+  state.packaged = true;
+  state.selected = '/existing/bin/python';
+  const original = process.resourcesPath;
+  Object.defineProperty(process, 'resourcesPath', { configurable: true, value: '/packaged/resources' });
+  try {
+    const plan = await resolveSpawnPlan(3912, '/missing/managed/project');
+    expect(plan).toMatchObject({ cwd: '/packaged/resources' });
+    expect(validateSelected).toHaveBeenCalledWith('/existing/bin/python', '/packaged/resources');
+  } finally {
+    Object.defineProperty(process, 'resourcesPath', { configurable: true, value: original });
+  }
+});
 it.each(['darwin', 'win32', 'linux'] as const)(
   'leaves China downloads eligible for automatic failover on %s',
   (platform) => {
@@ -159,6 +189,19 @@ it('launches the prepared source interpreter without syncing or downloading depe
   );
   expect(plan.argv.slice(1, 3)).toEqual(['-m', 'uvicorn']);
   expect(plan.argv.slice(-2)).toEqual(['--port', '3912']);
+});
+it('heals a source checkout .venv before probing it, and tolerates a failed heal (#1783)', async () => {
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
+  const { runtimeDependenciesReady } = await import('./runtime-project');
+  const probe = vi.mocked(runtimeDependenciesReady);
+  probe.mockClear();
+  await resolveSpawnPlan(3912);
+  expect(healPth).toHaveBeenCalledWith(join(resolve('/repo'), '.venv'));
+  if (probe.mock.calls.length) {
+    expect(healPth.mock.invocationCallOrder[0]).toBeLessThan(probe.mock.invocationCallOrder[0]);
+  }
+  healPth.mockRejectedValueOnce(new Error('read-only'));
+  expect(await resolveSpawnPlan(3912)).toHaveProperty('argv');
 });
 it('requires explicit source setup when no environment exists, even with uv installed', async () => {
   vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
@@ -478,4 +521,39 @@ it('names Smart App Control when it refused a runtime DLL, and other blockers ot
   expect(loadBlockMessage('exit code 1', '', 'antivirus')).toBe(
     "Backend exited (exit code 1): Windows refused to load one of the engine's files. Your antivirus blocked it.",
   );
+});
+
+it('reports a failed launch as the managed runtime, with a failure record', async () => {
+  const { BackendSupervisor } = await import('./backend');
+  const supervisor = new BackendSupervisor();
+  const internals = supervisor as unknown as {
+    generation: number;
+    spawnChild(plan: { argv: string[]; cwd: string }, generation: number): void;
+  };
+  const program = join(tmpdir(), 'voicestudio-no-such-dir', 'python');
+
+  internals.spawnChild({ argv: [program], cwd: tmpdir() }, internals.generation);
+
+  await vi.waitFor(() => expect(supervisor.status.stage).toBe('failed'));
+  expect(supervisor.status.managed).toBe(true);
+  expect(supervisor.status.failure).toMatchObject({
+    stage: 'failed',
+    program: 'python',
+    errorCode: 'ENOENT',
+  });
+});
+
+it('codes a refusal at once and forgets the failure when the next attempt starts', async () => {
+  const { BackendSupervisor } = await import('./backend');
+  const supervisor = new BackendSupervisor();
+  const internals = supervisor as unknown as {
+    setStage(stage: string, patch: { message?: string; managed?: boolean }): void;
+  };
+
+  internals.setStage('failed', { message: 'Could not start C:\\rt\\python.exe: spawn UNKNOWN' });
+  expect(supervisor.status.failure?.program).toBe('python.exe');
+  expect(supervisor.status.failure?.code).toMatch(/EXEC_REFUSED|WINDOWS_APP_CONTROL_BLOCKED/);
+
+  internals.setStage('attaching', { message: undefined });
+  expect(supervisor.status.failure).toBeUndefined();
 });

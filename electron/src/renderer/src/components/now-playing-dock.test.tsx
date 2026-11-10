@@ -30,7 +30,7 @@ afterEach(() => {
   closeDock();
 });
 
-it('plays a row clip in the bottom player and closes it', () => {
+it('plays a row clip in the bottom player and closes it', async () => {
   render(
     <>
       <PlayInDockButton src="/audio/a.wav" source="take-1" title="Welcome aboard" kind="clone" />
@@ -41,7 +41,7 @@ it('plays a row clip in the bottom player and closes it', () => {
   fireEvent.click(screen.getByRole('button', { name: 'player.play' }));
   const dock = screen.getByRole('region', { name: 'player.now_playing' });
   expect(dock).toHaveTextContent('Welcome aboard');
-  expect(screen.getByTestId('waveform')).toHaveAttribute('data-source', 'dock:take-1');
+  expect(await screen.findByTestId('waveform')).toHaveAttribute('data-source', 'dock:take-1');
   fireEvent.click(screen.getByRole('button', { name: 'common.close' }));
   expect(nowPlayingStore.state).toBeNull();
   expect(screen.queryByRole('region', { name: 'player.now_playing' })).toBeNull();
@@ -61,7 +61,7 @@ it.each([
   if (kind !== 'clone') expect(dock).not.toHaveTextContent('nav.clone');
 });
 
-it('hands the stored take length to the player before metadata loads', () => {
+it('hands the stored take length to the player before metadata loads', async () => {
   render(<NowPlayingDock />);
   act(() =>
     playInDock({
@@ -72,7 +72,7 @@ it('hands the stored take length to the player before metadata loads', () => {
       duration: 14.64,
     }),
   );
-  expect(screen.getByTestId('waveform')).toHaveAttribute('data-duration', '14.64');
+  expect(await screen.findByTestId('waveform')).toHaveAttribute('data-duration', '14.64');
 });
 
 it('truncates a long title on a word boundary and keeps the full text in the tooltip', () => {

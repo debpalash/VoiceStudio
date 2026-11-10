@@ -198,6 +198,7 @@ def test_generate_cpu_only_host_emits_no_routing_header(client, monkeypatch, no_
     assert "x-omnivoice-routing" not in {k.lower() for k in res.headers}
 
 
+@pytest.mark.usefixtures("cpu_host")
 def test_generate_default_path_still_runs_omnivoice(client, monkeypatch, tmp_path):
     """No selection + no override → the OmniVoice model path, unchanged."""
     # Neutralize any persisted Settings pick so the default resolution applies.
@@ -243,3 +244,31 @@ def test_generate_respects_applies_own_mastering(client, monkeypatch, no_omnivoi
     res = client.post("/generate", data={"text": "plain", "engine": "fake-plain"})
     assert res.status_code == 200, res.text
     assert mastering.call_count == 1
+
+
+@pytest.mark.parametrize("stream", [False, True])
+def test_generate_preserves_retryable_engine_contention(client, monkeypatch, no_omnivoice_model, stream):
+    import json
+
+    from api.routers import generation
+
+    fake = _make_fake_engine()
+    monkeypatch.setitem(_tts_mod()._REGISTRY, "fake-engine", fake)
+
+    def busy(self, text, **kwargs):
+        raise generation.GpuPoolBusyError("MLX-Audio is already generating speech.", retry_after=1)
+
+    monkeypatch.setattr(fake, "generate", busy)
+    response = client.post("/generate", data={
+        "text": "Try again later.", "engine": "fake-engine", "stream": str(stream).lower(),
+    })
+    if stream:
+        assert response.status_code == 200
+        event = json.loads(response.text.splitlines()[-1])
+        assert event["type"] == "error"
+        assert event["retryable"] is True
+        assert event["retry_after"] == 1
+    else:
+        assert response.status_code == 503
+        assert response.headers["retry-after"] == "1"
+        assert response.headers["x-omnivoice-retryable"] == "true"

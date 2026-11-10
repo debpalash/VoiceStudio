@@ -33,6 +33,10 @@ only through another ASR model whose weights are already installed; when that
 fallback confirms the audio contains words, the silent model is demoted. This
 recovery never starts a download.
 
+Final transcript cleanup respects Arabic question marks, Urdu full stops, and
+Indic single/double danda as complete sentences, including before closing
+quotes. It does not append an extra Latin period to these marks.
+
 ## Destination and clipboard safety
 
 The desktop captures the target at shortcut-down and carries its session ID

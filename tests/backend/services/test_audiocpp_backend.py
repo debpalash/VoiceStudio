@@ -807,7 +807,7 @@ def test_server_spawn_uses_contained_owner(tmp_path, monkeypatch, app_modules):
     backend._ensure_loaded()
 
     spawn.assert_called_once()
-    config = json.loads(backend._server_json.read_text())
+    config = json.loads(backend._server_json.read_text(encoding="utf-8"))
     assert config["backend"] == "cpu"
     assert config["models"][0]["id"].startswith("breeze-tts-2-")
     assert config["models"][0]["id"] != "breeze-tts-2"
@@ -1065,6 +1065,6 @@ def test_no_hf_token_in_module_source(app_modules):
     import pathlib
 
     for name in ("__init__.py", "bootstrap.py"):
-        src = pathlib.Path(app_modules.bootstrap.__file__).parent.joinpath(name).read_text()
+        src = pathlib.Path(app_modules.bootstrap.__file__).parent.joinpath(name).read_text(encoding="utf-8")
         assert "HF_TOKEN" not in src
         assert "Authorization" not in src

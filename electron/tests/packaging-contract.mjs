@@ -211,6 +211,7 @@ for (const resource of [
   'backend',
   'omnivoice',
   'config/app.json',
+  'config/analytics.json',
 ]) {
   const entry = config.extraResources.find((item) => item.to === resource);
   assert(entry && existsSync(resolve(root, entry.from)), 'Required resource: ' + resource);
@@ -339,6 +340,14 @@ for (const platform of ['win', 'mac', 'linux']) {
   }
 }
 if (artifactRequested) {
+  const cliCommand = resolve(artifactResources, 'cli',
+    'voicestudio' + (process.platform === 'win32' ? '.exe' : ''));
+  assert(existsSync(cliCommand), 'Packaged unified command with its own interpreter');
+  const cliVersion = spawnSync(cliCommand, ['version', '--json'], { encoding: 'utf8' });
+  assert.equal(cliVersion.status, 0, cliVersion.stderr);
+  assert.equal(JSON.parse(cliVersion.stdout).version, config.extraMetadata.version);
+  const cliHelp = spawnSync(cliCommand, ['--help'], { encoding: 'utf8' });
+  assert.equal(cliHelp.status, 0, cliHelp.stderr);
   if (process.platform === 'linux') {
     await verifyLinuxLibraries(resolve(artifactResources, 'native/voicestudio-desktop-bridge'));
   }

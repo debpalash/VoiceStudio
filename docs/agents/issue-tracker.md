@@ -15,6 +15,10 @@ CLI for all operations.
 
 Infer the repo from `git remote -v` — `gh` does this automatically when run inside a clone.
 
+## Install problems
+
+Track each unique install problem in [`docs/install/issue-tracker.md`](../install/issue-tracker.md). Add each new report to its row and give it the `install` label and its `install:<category>` label.
+
 ## Pull requests as a triage surface
 
 **PRs as a request surface: no.** _(Set to `yes` if this repo treats external PRs as feature requests; `/triage` reads this flag.)_

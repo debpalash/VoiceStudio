@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, it } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { RefreshTokenStore, type SafeStorageLike } from './token-store';
 
 const fakeSafe = (over: Partial<SafeStorageLike> = {}): SafeStorageLike => ({
@@ -62,4 +62,80 @@ it('clear removes the file and the memory copy', () => {
   store.clear();
   expect(existsSync(p)).toBe(false);
   expect(store.load()).toBeNull();
+});
+
+it('keeps the authenticated account identity encrypted with the session across refresh and restart', () => {
+  const p = path();
+  const store = new RefreshTokenStore(p, fakeSafe(), 'darwin');
+  expect(store.bindAccount('Us3nM8qWe2RtY6uI')).toBe(false);
+  store.save('refresh-one');
+  expect(store.bindAccount('Us3nM8qWe2RtY6uI')).toBe(true);
+  store.save('refresh-two');
+  expect(readFileSync(p, 'utf8')).not.toContain('Us3nM8qWe2RtY6uI');
+  const restarted = new RefreshTokenStore(p, fakeSafe(), 'darwin');
+  expect(restarted.accountId()).toBe('Us3nM8qWe2RtY6uI');
+  expect(restarted.load()).toBe('refresh-two');
+  restarted.save('new-login', { newSession: true });
+  expect(restarted.accountId()).toBeNull();
+  restarted.bindAccount('Us3nM8qWe2RtY6uI');
+  restarted.clear();
+  expect(restarted.accountId()).toBeNull();
+});
+
+it('migrates legacy encrypted tokens without inventing an account identity', () => {
+  const p = path();
+  writeFileSync(
+    p,
+    JSON.stringify({ v: 1, token: fakeSafe().encryptString('old-refresh').toString('base64') }),
+  );
+  const store = new RefreshTokenStore(p, fakeSafe(), 'darwin');
+  expect(store.accountId()).toBeNull();
+  expect(store.load()).toBe('old-refresh');
+  expect(store.bindAccount('email@example.com')).toBe(false);
+  expect(store.bindAccount('Us3nM8qWe2RtY6uI')).toBe(true);
+  expect(new RefreshTokenStore(p, fakeSafe(), 'darwin').accountId()).toBe('Us3nM8qWe2RtY6uI');
+});
+
+it('does not resurrect a signed-out session by rereading stale disk state', () => {
+  const p = path();
+  const store = new RefreshTokenStore(p, fakeSafe(), 'darwin');
+  store.save('refresh');
+  store.bindAccount('Us3nM8qWe2RtY6uI');
+  const stale = readFileSync(p, 'utf8');
+  store.clear();
+  writeFileSync(p, stale);
+  expect(store.load()).toBeNull();
+  expect(store.accountId()).toBeNull();
+});
+
+it('never asks the keyring until a token is read from disk or saved (#3813)', () => {
+  const p = path();
+  const isEncryptionAvailable = vi.fn(() => true);
+  const store = new RefreshTokenStore(p, fakeSafe({ isEncryptionAvailable }), 'darwin');
+  expect(store.load()).toBeNull();
+  expect(store.accountId()).toBeNull();
+  store.clear();
+  expect(isEncryptionAvailable).not.toHaveBeenCalled();
+  store.save('refresh');
+  expect(isEncryptionAvailable).toHaveBeenCalledTimes(1);
+  const restarted = new RefreshTokenStore(p, fakeSafe({ isEncryptionAvailable }), 'darwin');
+  expect(restarted.load()).toBe('refresh');
+  expect(isEncryptionAvailable).toHaveBeenCalledTimes(2);
+});
+
+it('a keyring that throws keeps the session in memory only', () => {
+  const p = path();
+  const store = new RefreshTokenStore(
+    p,
+    fakeSafe({
+      isEncryptionAvailable: () => {
+        throw new Error('keychain locked');
+      },
+    }),
+    'darwin',
+  );
+  store.save('t');
+  expect(store.persistent).toBe(false);
+  expect(existsSync(p)).toBe(false);
+  expect(store.load()).toBe('t');
 });

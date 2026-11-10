@@ -58,7 +58,7 @@ jobs:
       run:
         working-directory: mobile/android
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.release_ref || github.ref }}
           persist-credentials: false
@@ -74,18 +74,31 @@ jobs:
           test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/${RELEASE_REF}^{commit}")"
           test "${RELEASE_REF#v}" = "$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
 
-      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+      - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
           distribution: temurin
           java-version: "21"
 
-      - uses: gradle/actions/setup-gradle@42ebad84b0585498c0413b0967cf4e80ec0e1d19 # v4.4.1
+      - uses: gradle/actions/setup-gradle@ac638b010cf58a27ee6c972d7336334ccaf61c96 # v4.4.1
 
       - name: SDK location
         run: printf 'sdk.dir=%s\n' "$ANDROID_HOME" > local.properties
 
+      # release_ref may check out a tag older than the installer, so it comes from the
+      # workflow's own commit, like the iOS signing tools below.
+      - name: Checkout Android SDK installer
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .ci-android-tools
+          sparse-checkout: |
+            mobile/android/install-sdk-packages.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       - name: NDK and CMake
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;27.1.12297006" "cmake;3.22.1" > /dev/null
+        run: bash "$GITHUB_WORKSPACE/.ci-android-tools/mobile/android/install-sdk-packages.sh"
 
       - name: Cache native runtimes
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -136,7 +149,7 @@ jobs:
     timeout-minutes: 80
     environment: mobile-release
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.release_ref || github.ref }}
           persist-credentials: false
@@ -211,7 +224,7 @@ jobs:
       # Pin signing tools to the workflow's own reviewed commit, outside that tree.
       - name: Checkout signing tools
         if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}

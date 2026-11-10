@@ -22,7 +22,8 @@ from utils.fsops import safe_replace
 import time
 import uuid
 
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from api.dependencies import consumer_generation, require_consumer_reads_admin_writes
 from fastapi.responses import StreamingResponse
 
 from core import event_bus
@@ -33,7 +34,7 @@ from core.logging_utils import log_safe
 from core.http_headers import content_disposition
 from services import persona_bundle as pb
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_consumer_reads_admin_writes)])
 logger = logging.getLogger("omnivoice.personas")
 
 
@@ -49,6 +50,7 @@ def _safe_name(name: str, profile_id: str) -> str:
 
 
 @router.post("/personas/export/{profile_id}")
+@consumer_generation
 async def export_persona(
     profile_id: str,
     license_spdx: str = Query(pb.DEFAULT_LICENSE),
@@ -339,6 +341,7 @@ def _retarget(filename: str | None, new_id: str) -> str | None:
 
 
 @router.post("/personas/inspect")
+@consumer_generation
 async def inspect_persona(file: UploadFile = File(...)):
     """Read a bundle's manifest + consent summary WITHOUT writing any file or row."""
     name = (file.filename or "").lower()

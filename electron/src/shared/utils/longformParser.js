@@ -7,7 +7,7 @@
  * tests/test_longform_parser.py and electron/src/shared/test/longformParser.test.js).
  * Do not "improve" one side without the other — the corpus will fail.
  *
- * Grammar precedence (outer→inner):  # chapter → [voice:] → [pause] → SSML-lite.
+ * Grammar precedence (outer→inner):  # chapter → [voice:] → [emotion:] → [pause] → SSML-lite.
  */
 import { parseSsmlLite, spellOut } from './ssmlLite';
 
@@ -19,6 +19,11 @@ export const PAUSE_MAX_MS = 10000;
 const HEADING_RE = /^[ \t]*#[ \t]+(\S.*)$/gm;
 // [voice:NAME] — content excludes BOTH brackets (mirrors _VOICE_RE).
 const VOICE_RE = /\[voice:([^\][]*)\]/g;
+// [emotion:TEXT] — free-text delivery direction until the next [emotion:] or
+// voice run (#3422); empty resets. Mirrors _EMOTION_RE.
+const EMOTION_RE = /\[emotion:([^\][]*)\]/gi;
+/** Longest emotion direction kept, in code points (mirrors EMOTION_MAX_CHARS). */
+export const EMOTION_MAX_CHARS = 200;
 // Pause dialect mirroring omnivoice.utils.text._PAUSE_RE. JS has no atomic
 // group; the unit's own `(?:\s*(ms|s))?` is zero-width when no unit follows, so
 // the trailing `\s*` is the ONLY consumer of trailing whitespace — no two `\s*`
@@ -89,6 +94,33 @@ function parseVoiceRuns(body, defaultVoice) {
   return runs;
 }
 
+/** Mirror of _emotion_value: whitespace runs collapsed, capped, null if empty. */
+function emotionValue(raw) {
+  const collapsed = raw.replace(/[ \t\r\n]+/g, ' ').trim();
+  // Array.from counts code points like Python, so a cut never splits a surrogate pair.
+  const value = Array.from(collapsed).slice(0, EMOTION_MAX_CHARS).join('').trim();
+  return value || null;
+}
+
+/** Mirror of _split_emotions → [pieces, emotionAfter]. */
+function splitEmotions(segments, emotion) {
+  const out = [];
+  for (const seg of segments) {
+    const text = seg.text;
+    let last = 0;
+    const re = new RegExp(EMOTION_RE.source, EMOTION_RE.flags);
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      out.push({ ...seg, text: text.slice(last, m.index), emotion });
+      emotion = emotionValue(m[1] || '');
+      last = re.lastIndex;
+      if (re.lastIndex === m.index) re.lastIndex++;
+    }
+    out.push({ ...seg, text: text.slice(last), emotion });
+  }
+  return [out, emotion];
+}
+
 // A blank line: two newlines with only spaces/tabs between (single class, linear time).
 const BLANK_LINE_RE = /\n[ \t]*\n/;
 
@@ -107,7 +139,12 @@ function keptSegments(segments, defaultSpeed) {
     const seg = segments[i];
     const spoken = (seg.spell ? spellOut(seg.text) : seg.text).trim();
     if (spoken) {
-      kept.push({ index: i, text: spoken, speed: seg.speed != null ? seg.speed : defaultSpeed });
+      kept.push({
+        index: i,
+        text: spoken,
+        speed: seg.speed != null ? seg.speed : defaultSpeed,
+        emotion: seg.emotion ?? null,
+      });
     }
   }
   return kept.map((item, k) => {
@@ -128,17 +165,23 @@ function keptSegments(segments, defaultSpeed) {
 export function parseChapterBody(body, { defaultVoice = null, defaultSpeed = null } = {}) {
   const spans = [];
   for (const [voice, runText] of parseVoiceRuns(body, defaultVoice)) {
+    // Every voice run starts neutral (mirrors the Python reset).
+    let emotion = null;
     for (const [spanText, pauseMs] of parsePauseMarkers(runText)) {
       const t = (spanText || '').trim();
       if (!t && pauseMs === 0) continue;
-      const rendered = keptSegments(t ? parseSsmlLite(t) : [], defaultSpeed);
+      let segments = t ? parseSsmlLite(t) : [];
+      if (new RegExp(EMOTION_RE.source, 'i').test(t))
+        [segments, emotion] = splitEmotions(segments, emotion);
+      else if (emotion) segments = segments.map((seg) => ({ ...seg, emotion }));
+      const rendered = keptSegments(segments, defaultSpeed);
       if (!rendered.length) {
         if (pauseMs > 0) {
           spans.push({ voice_id: voice, text: '', pause_ms_after: pauseMs, speed: null });
         }
         continue;
       }
-      rendered.forEach(({ text, speed, join }, j) => {
+      rendered.forEach(({ text, speed, join, emotion: spanEmotion }, j) => {
         const last = j === rendered.length - 1;
         spans.push({
           voice_id: voice,
@@ -146,6 +189,7 @@ export function parseChapterBody(body, { defaultVoice = null, defaultSpeed = nul
           pause_ms_after: last ? pauseMs : 0,
           speed,
           ...(join ? { join } : {}),
+          ...(spanEmotion ? { emotion: spanEmotion } : {}),
         });
       });
     }

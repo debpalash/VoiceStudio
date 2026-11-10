@@ -6,6 +6,7 @@ import { join } from 'node:path';
  * smoke is either run by CI or consciously parked here.
  */
 export const OTHER_SMOKES = {
+  'cli-bundle-smoke.mjs': 'packages the terminal command with uv into fixture apps; run with node',
   'renderer-smoke.vite.config.mjs': 'Vite config for the smoke server, not a test',
   'runtime-install-smoke.mjs': 'drives the runtime installer directly with node',
   'native-output-smoke.ts': 'native helper check run with the Rust helper built',

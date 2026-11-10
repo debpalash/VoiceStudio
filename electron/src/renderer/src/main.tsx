@@ -1,3 +1,4 @@
+import './lib/random-uuid';
 import { CaptureWidget } from './features/transcriptions/capture-widget';
 import { SiteBrowserHost } from './features/browser/site-browser-host';
 import { installConsoleCapture } from '@shared/utils/consoleBuffer';

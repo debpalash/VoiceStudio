@@ -62,6 +62,14 @@ def test_cjk_gets_fullwidth_stop():
     assert polish_text("ありがとう") == "ありがとう。"
 
 
+def test_cjk_gets_fullwidth_stop_behind_closing_bracket():
+    # The closer is not CJK itself; the sentence before it is.
+    assert polish_text("他说「你好」") == "他说「你好」。"
+    assert polish_text("面白い（笑）") == "面白い（笑）。"
+    # Latin behind a closer still gets the Latin stop.
+    assert polish_text('he said "stop"') == 'He said "stop".'
+
+
 def test_cjk_dangling_comma_swapped():
     assert polish_text("你好，") == "你好。"
 

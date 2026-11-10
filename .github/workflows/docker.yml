@@ -41,8 +41,9 @@
 #   :sha-xxxx-cuda-arm64 — specific commit SHA
 # The un-suffixed and `-rocm` tags stay linux/amd64 only.
 #
-# Images land at: ghcr.io/debpalash/voicestudio, the legacy GHCR alias
-# ghcr.io/debpalash/omnivoice-studio, and docker.io/palashdeb/omnivoice-studio
+# GHCR images and layer caches use the lowercase repository owner namespace.
+# Upstream: ghcr.io/debpalash/voicestudio and its omnivoice-studio alias.
+# Docker Hub remains docker.io/palashdeb/omnivoice-studio
 # (Docker Hub push gated on the DOCKERHUB_USERNAME/DOCKERHUB_TOKEN secrets;
 # if unset the build still pushes to GHCR.)
 #
@@ -114,18 +115,13 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  # Keep registry coordinates explicit. VoiceStudio is the canonical GHCR
-  # path; the old path remains a compatibility alias during the migration.
-  IMAGE_NAME: debpalash/voicestudio
-  # Compatibility alias: keep existing deployments on the same tag stream.
-  LEGACY_IMAGE_NAME: debpalash/omnivoice-studio
   DOCKERHUB_IMAGE: palashdeb/omnivoice-studio
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   # BuildKit layer cache. It lives in GHCR, not the Actions cache: the GHA cache is
   # capped at 10 GB per repository and these layers (one is 4 GB, 5+ GB in total)
   # evicted the iOS native-runtime, Gradle and bun caches, so mobile CI kept paying
   # a 17 minute rebuild. A separate package keeps the cache out of the image's tags.
-  BUILDCACHE_IMAGE: ghcr.io/debpalash/voicestudio-buildcache
+  # Resolve all GHCR coordinates per job before metadata/cache consumers.
 
 jobs:
   build-and-push:
@@ -133,7 +129,7 @@ jobs:
     if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.backfill_release && inputs.release_ref || github.sha }}
 
@@ -153,10 +149,15 @@ jobs:
             test "$PACKAGE_VERSION" = "$TAG_VERSION"
           fi
 
-      - name: Resolve image source commit
+      - &image-source
+        name: Resolve image source commit
         id: source
         shell: bash
         run: |
+          OWNER="$(printf '%s' "$GITHUB_REPOSITORY_OWNER" | LC_ALL=C tr 'A-Z' 'a-z')"
+          echo "IMAGE_NAME=${OWNER}/voicestudio" >> "$GITHUB_ENV"
+          echo "LEGACY_IMAGE_NAME=${OWNER}/omnivoice-studio" >> "$GITHUB_ENV"
+          echo "BUILDCACHE_IMAGE=ghcr.io/${OWNER}/voicestudio-buildcache" >> "$GITHUB_ENV"
           echo "short_sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
           echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
@@ -178,10 +179,10 @@ jobs:
       # - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -195,7 +196,7 @@ jobs:
 
       - name: Log in to Docker Hub
         if: steps.dockerhub.outputs.enabled == 'true'
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -294,7 +295,7 @@ jobs:
     if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.backfill_release && inputs.release_ref || github.sha }}
 
@@ -314,12 +315,7 @@ jobs:
             test "$PACKAGE_VERSION" = "$TAG_VERSION"
           fi
 
-      - name: Resolve image source commit
-        id: source
-        shell: bash
-        run: |
-          echo "short_sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
-          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - *image-source
 
       # The ROCm base (~25 GB unpacked) plus build layers need every GB.
       # Same reclaim list as the CUDA job above — keep them identical
@@ -334,10 +330,10 @@ jobs:
           df -h /
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -351,7 +347,7 @@ jobs:
 
       - name: Log in to Docker Hub
         if: steps.dockerhub.outputs.enabled == 'true'
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -382,13 +378,34 @@ jobs:
       # cache-from only: reading the CUDA job's exported cache reuses the
       # identical frontend-builder stage. Deliberately NO cache-to — the ROCm
       # runtime layers would overwrite the CUDA job's cache image.
+      # The ROCm base ships its own HIP torch, which must equal the checked-out
+      # pin: a backfill of an older release builds that release's constraints,
+      # so the base follows deploy/torch-constraints.txt, not this workflow.
+      - name: Select the ROCm base for the checked-out torch pin
+        id: rocm_base
+        shell: bash
+        run: |
+          if [ -f deploy/torch-constraints.txt ]; then
+            torch="$(sed -n 's/^torch==\([0-9][0-9.]*\)$/\1/p' deploy/torch-constraints.txt | head -n1)"
+            if [ -z "$torch" ]; then
+              echo "::error::deploy/torch-constraints.txt has no exact torch==X.Y.Z pin"
+              exit 1
+            fi
+          else
+            # Releases older than the constraints file always built on the
+            # torch 2.8.0 ROCm base this workflow used before it followed the pin.
+            torch=2.8.0
+            echo "::notice::No deploy/torch-constraints.txt in this checkout; using the torch ${torch} ROCm base"
+          fi
+          echo "image=rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_${torch}" >> "$GITHUB_OUTPUT"
+
       - name: Build and push (ROCm)
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: .
           file: deploy/Dockerfile
           build-args: |
-            BASE_IMAGE=rocm/pytorch:rocm7.2.4_ubuntu24.04_py3.12_pytorch_release_2.8.0
+            BASE_IMAGE=${{ steps.rocm_base.outputs.image }}
             GPU_FLAVOR=rocm
             BUILD_COMMIT=${{ steps.source.outputs.commit }}
           push: true
@@ -433,7 +450,7 @@ jobs:
   # ── arm64 NVIDIA CUDA image variant (#2831) ─────────────────────────────
   # DGX Spark / GB10, GH200 and GB200 (linux/arm64 SBSA). pytorch/pytorch has no
   # arm64 image, so BASE_IMAGE names the Dockerfile's cuda-arm64-base stage
-  # (Ubuntu 24.04 + torch 2.8.0+cu129, whose aarch64 wheel bundles CUDA). Built
+  # (Ubuntu 24.04 + torch 2.10.0+cu129, whose aarch64 wheel bundles CUDA). Built
   # natively on GitHub's arm64 runner, never under QEMU. A SEPARATE job with
   # its own `-cuda-arm64` tags, so the amd64 CUDA tags stay single-arch and an
   # arm64 failure can never block or alter them.
@@ -442,7 +459,7 @@ jobs:
     if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.backfill_release && inputs.release_ref || github.sha }}
 
@@ -462,12 +479,7 @@ jobs:
             test "$PACKAGE_VERSION" = "$TAG_VERSION"
           fi
 
-      - name: Resolve image source commit
-        id: source
-        shell: bash
-        run: |
-          echo "short_sha=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
-          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - *image-source
 
       # The aarch64 torch wheel alone is 3.4 GB. Same reclaim list as the
       # other jobs (paths absent on the arm64 image are simply skipped).
@@ -481,10 +493,10 @@ jobs:
           df -h /
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to GHCR
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -497,7 +509,7 @@ jobs:
 
       - name: Log in to Docker Hub
         if: steps.dockerhub.outputs.enabled == 'true'
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}

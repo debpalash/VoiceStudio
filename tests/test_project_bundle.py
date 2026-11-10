@@ -1,4 +1,5 @@
 from __future__ import annotations
+from contextlib import contextmanager
 import copy
 import hashlib
 import io
@@ -77,7 +78,7 @@ def test_symlinks_duplicates_compressed_bombs_and_corrupt_headers_are_refused(tm
 
 
 def test_fingerprints_extra_assets_and_future_versions_fail_without_publication(tmp_path):
-    base=json.loads((FIXTURES/'desktop-book.json').read_text())
+    base=json.loads((FIXTURES/'desktop-book.json').read_text(encoding="utf-8"))
     for index,change in enumerate([lambda m:m.update(version=2),lambda m:m.update(format='other'),lambda m:m.update(voices=[{'id':'x','metadata':{},'reference':'missing.wav'}]),lambda m:m['document'].update(desktop={'draft':{'lines':'bad'}})]):
         manifest=copy.deepcopy(base);change(manifest)
         with pytest.raises(ArchiveError):b.validate_manifest(manifest)
@@ -126,7 +127,7 @@ def test_repeated_phone_paragraphs_keep_voice_but_get_unique_desktop_line_ids():
     lambda document: document['desktop']['draft'].update(lines=[{'id':[], 'text':'Bad'}]),
 ])
 def test_malformed_editable_manuscript_collections_are_rejected(change):
-    manifest = json.loads((FIXTURES/'desktop-book.json').read_text())
+    manifest = json.loads((FIXTURES/'desktop-book.json').read_text(encoding="utf-8"))
     change(manifest['document'])
     with pytest.raises(ArchiveError): b.validate_manifest(manifest)
 
@@ -142,7 +143,42 @@ def test_export_rejects_invalid_desktop_draft_before_resolving_bindings(draft):
 
 @pytest.mark.parametrize('collection', ['cast','lines'])
 def test_duplicate_desktop_identities_are_rejected_before_unchanged_snapshot_import(collection):
-    manifest = json.loads((FIXTURES/'desktop-book.json').read_text())
+    manifest = json.loads((FIXTURES/'desktop-book.json').read_text(encoding="utf-8"))
     manifest['document']['desktop']['draft'][collection] = [{'id':'same'},{'id':'same'}]
     with pytest.raises(ArchiveError): b.validate_manifest(manifest)
     with pytest.raises(ArchiveError): b.manuscript_document(manifest['document']['desktop'])
+
+
+# The Windows ANSI code pages of the CJK locales, matching the simulation in
+# test_repo_data_locale_decoding.py. An unspecified text encoding resolves
+# through io.text_encoding on every host, so pinning it reproduces the write
+# such a Windows performs while a reader that names its encoding passes through.
+_CJK_CODE_PAGES = ['cp932', 'cp936', 'cp949', 'cp950']
+
+
+@contextmanager
+def _locale_code_page(code_page):
+    original = io.text_encoding
+    io.text_encoding = lambda encoding=None, stacklevel=2: encoding or code_page
+    try:
+        yield
+    finally:
+        io.text_encoding = original
+
+
+# A title no Windows ANSI code page can encode: Arabic letters plus an emoji.
+_UNENCODABLE_TITLE = 'ملف صوتي 🎙'
+
+
+@pytest.mark.parametrize('code_page', _CJK_CODE_PAGES)
+def test_extracted_manifest_stays_utf8_when_the_locale_cannot_encode_the_title(tmp_path, code_page):
+    manifest, files = b.read_bundle(FIXTURES/'desktop-book.vsproject',tmp_path/'one')
+    manifest['title'] = _UNENCODABLE_TITLE
+    b.write_bundle(manifest,files,tmp_path/'share.vsproject')
+    # UnicodeEncodeError is a ValueError, so the extract step used to surface
+    # as a bogus "invalid project archive" (400) and discard the import.
+    with _locale_code_page(code_page):
+        imported,_ = b.read_bundle(tmp_path/'share.vsproject',tmp_path/'imported')
+    assert imported['title'] == _UNENCODABLE_TITLE
+    extracted = json.loads((tmp_path/'imported'/'manifest.json').read_text(encoding='utf-8'))
+    assert extracted['title'] == _UNENCODABLE_TITLE

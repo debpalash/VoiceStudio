@@ -8,7 +8,9 @@ const h = vi.hoisted(() => ({
   dir: '',
   safeThrows: false,
   keyring: false,
+  keyringAsks: 0,
   setBackendOnlyEnv: vi.fn(),
+  bridgeFails: false,
   handlers: new Map<string, (...args: unknown[]) => unknown>(),
 }));
 vi.mock('electron', () => ({
@@ -16,10 +18,12 @@ vi.mock('electron', () => ({
     get isPackaged() {
       return h.packaged;
     },
+    getVersion: () => '1.2.3',
     getPath: () => h.dir,
   },
   safeStorage: {
     isEncryptionAvailable: () => {
+      h.keyringAsks += 1;
       if (h.safeThrows) throw new Error('keychain locked');
       return h.keyring;
     },
@@ -37,6 +41,14 @@ vi.mock('electron', () => ({
 }));
 vi.mock('../backend', () => ({ setBackendOnlyEnv: h.setBackendOnlyEnv }));
 vi.mock('../ipc', () => ({ assertTrustedMainFrame: vi.fn() }));
+vi.mock('./account-token-bridge', async (importOriginal) => {
+  const real = await importOriginal<typeof import('./account-token-bridge')>();
+  return {
+    ...real,
+    startAccountTokenBridge: (...args: Parameters<typeof real.startAccountTokenBridge>) =>
+      h.bridgeFails ? Promise.reject(new Error('port in use')) : real.startAccountTokenBridge(...args),
+  };
+});
 
 import { startAccount } from './index';
 
@@ -49,7 +61,10 @@ afterEach(() => {
   h.packaged = false;
   h.safeThrows = false;
   h.keyring = false;
+  h.keyringAsks = 0;
+  h.bridgeFails = false;
   h.setBackendOnlyEnv.mockClear();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -67,11 +82,20 @@ it('hands the bridge to the backend spawn only, never to process.env', async () 
   });
 });
 
-it('starts no bridge when the build does not offer accounts', async () => {
-  h.packaged = true;
+it('starts without asking the keyring when no account is saved (#3813)', async () => {
+  h.keyring = true;
+  h.dir = mkdtempSync(join(tmpdir(), 'vs-account-'));
+  (await startAccount(opts))();
+  expect(h.keyringAsks).toBe(0);
+});
+
+it('starts no bridge when the environment has no client to sign in with', async () => {
+  vi.stubEnv('VOICESTUDIO_CLOUD_ENV', 'local');
+  vi.stubEnv('VOICESTUDIO_CLOUD_CLIENT_ID', '');
   h.dir = mkdtempSync(join(tmpdir(), 'vs-account-'));
   (await startAccount(opts))();
   expect(h.setBackendOnlyEnv).not.toHaveBeenCalled();
+  vi.unstubAllEnvs();
 });
 
 it('a startup failure degrades to no account features instead of blocking app start', async () => {
@@ -87,7 +111,12 @@ function signedInDir(): string {
   const dir = mkdtempSync(join(tmpdir(), 'vs-account-'));
   writeFileSync(
     join(dir, 'account.json'),
-    JSON.stringify({ v: 1, token: Buffer.from('rt').toString('base64') }),
+    JSON.stringify({
+      v: 2,
+      token: Buffer.from(
+        JSON.stringify({ refreshToken: 'rt', accountId: 'Account000000001' }),
+      ).toString('base64'),
+    }),
   );
   // Account features already on (a token with them off is cleared at start-up).
   writeFileSync(
@@ -97,7 +126,22 @@ function signedInDir(): string {
   h.keyring = true;
   vi.stubGlobal(
     'fetch',
-    vi.fn(async () => Promise.reject(new Error('offline'))),
+    vi.fn(async (input: string | URL) => {
+      const url = String(input);
+      if (url.endsWith('/.well-known/openid-configuration')) {
+        const issuer = url.replace('/.well-known/openid-configuration', '');
+        return new Response(
+          JSON.stringify({
+            issuer,
+            authorization_endpoint: issuer + '/authorize',
+            token_endpoint: issuer + '/token',
+            revocation_endpoint: issuer + '/revoke',
+          }),
+        );
+      }
+      if (url.endsWith('/revoke')) return new Response(null, { status: 200 });
+      throw new Error('offline');
+    }),
   );
   return dir;
 }
@@ -121,7 +165,7 @@ it('tells the local backend to stop when sync goes off and to start when it come
 });
 
 it('never calls a remote backend about sync', async () => {
-  h.dir = mkdtempSync(join(tmpdir(), 'vs-account-'));
+  h.dir = signedInDir();
   const notifyBackend = vi.fn(async () => {});
   const close = await startAccount({ ...opts, isRemoteBackend: () => true, notifyBackend });
   await h.handlers.get('account:set-switches')!({}, { accountEnabled: true, syncEnabled: true });
@@ -164,4 +208,17 @@ it('a cached photo does not outlive account features being off', async () => {
   );
   (await startAccount(opts))();
   expect(existsSync(photo)).toBe(false);
+});
+
+it('a failed account start leaves no app check-in running', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+  const { AccountApi } = await import('./account-api');
+  const appCheck = vi.spyOn(AccountApi.prototype, 'appCheck').mockResolvedValue(300);
+  h.dir = signedInDir();
+  h.bridgeFails = true;
+  const close = await startAccount(opts);
+  close();
+  await vi.advanceTimersByTimeAsync(10 * 60 * 1000);
+  expect(appCheck).not.toHaveBeenCalled();
+  appCheck.mockRestore();
 });

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import {
@@ -6,7 +6,6 @@ import {
   AlertTriangleIcon,
   BellIcon,
   ChevronRightIcon,
-  DownloadIcon,
   InfoIcon,
   XIcon,
 } from 'lucide-react';
@@ -16,7 +15,6 @@ import { Button } from '@/components/ui/button';
 import { apiFetch, apiJson } from '@/lib/api/client';
 import { cn } from '@/lib/utils';
 import { useTranslation } from 'react-i18next';
-import type { UpdateState } from '../../../../preload/index.d';
 import { DownloadActivityList, useDownloadActivity } from './download-activity';
 import { LongformActivityCard, longformActivityStatus } from '@/components/longform-activity-card';
 import { useLongformActivity } from '@/lib/longform-activity';
@@ -52,7 +50,6 @@ function loadDismissed(): string[] {
 }
 
 function notificationRoute(note: SystemNotification) {
-  if (note.id.startsWith('desktop-update-')) return '/settings/updates' as const;
   if (note.id === 'hf-token-missing') return '/settings/credentials' as const;
   if (note.id === 'ffmpeg-missing') return '/settings/media' as const;
   if (note.id === 'disk-low') return '/settings/storage' as const;
@@ -95,7 +92,6 @@ export function SystemNotifications({
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [dismissed, setDismissed] = useState(loadDismissed);
-  const [update, setUpdate] = useState<UpdateState | null>(null);
   const downloads = useDownloadActivity();
   // A Stories/Audiobook render keeps running when its page is left.
   const render = useLongformActivity();
@@ -106,43 +102,12 @@ export function SystemNotifications({
     enabled,
     refetchInterval: enabled ? 30_000 : false,
   });
-  useEffect(() => {
-    const updates = getBridge()?.updates;
-    if (!updates) return;
-    let active = true;
-    void updates
-      .getState()
-      .then((state) => active && setUpdate(state))
-      .catch(() => {});
-    const unsubscribe = updates.onState(setUpdate);
-    return () => {
-      active = false;
-      unsubscribe();
-    };
-  }, []);
-  const updateNotification = useMemo<SystemNotification | null>(() => {
-    if (
-      !update?.availableVersion ||
-      (update.status !== 'available' && update.status !== 'downloaded')
-    )
-      return null;
-    return {
-      id: `desktop-update-${update.availableVersion}`,
-      level: 'info',
-      title: t(update.status === 'downloaded' ? 'update.ready' : 'update.available', {
-        version: update.availableVersion,
-      }),
-      message: t('update.safety'),
-      action: { type: 'navigate', target: '/settings/updates', label: t('common.open') },
-      persistent: true,
-    };
-  }, [t, update]);
   const visible = useMemo(() => {
     const backend = (query.data?.notifications ?? []).filter(
       (note) => note.level === 'error' || !dismissed.includes(note.id),
     );
-    return updateNotification ? [updateNotification, ...backend] : backend;
-  }, [dismissed, query.data?.notifications, updateNotification]);
+    return backend;
+  }, [dismissed, query.data?.notifications]);
 
   const dismiss = (id: string) => {
     const next = [...dismissed.filter((item) => item !== id), id].slice(-50);
@@ -271,11 +236,7 @@ export function SystemNotifications({
                 levelStyle(note.level),
               )}
             >
-              {note.id.startsWith('desktop-update-') ? (
-                <DownloadIcon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-              ) : (
-                <LevelIcon level={note.level} />
-              )}
+              <LevelIcon level={note.level} />
               <button
                 type="button"
                 disabled={!actionable}

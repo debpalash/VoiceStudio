@@ -49,13 +49,13 @@ def test_staging_preserves_relative_links_licenses_and_records_hashes(tmp_path, 
     target = tmp_path / "bundle/python-runtime"
     manifest = stage.stage_runtime(base, packages, target, lock, "3.11.15", "arm64")
     assert (target / "bin/python3").readlink() == Path("python3.11")
-    assert (target / "lib/python3.11/site-packages/sample.py").read_text() == "VALUE = 42\n"
+    assert (target / "lib/python3.11/site-packages/sample.py").read_text(encoding="utf-8") == "VALUE = 42\n"
     assert manifest["packages"][0]["license"] == "MIT"
     assert manifest["packages"][0]["notices"]
     assert manifest["redistributionApproved"] is False
     assert len(manifest["lockSha256"]) == 64
     assert manifest["files"]["lib/python3.11/site-packages/sample.py"]["sha256"]
-    assert json.loads((target / "manifest.json").read_text())["python"] == "bin/python3.11"
+    assert json.loads((target / "manifest.json").read_text(encoding="utf-8"))["python"] == "bin/python3.11"
 
 
 @pytest.mark.parametrize("escape", ["absolute-link", "relative-link", "pth"])
@@ -94,7 +94,7 @@ def test_phonemizer_staging_isolates_native_instances_and_records_vendor_patch(t
     images = list((runtime / "native/espeak").rglob("*.dylib"))
     assert len(images) == 128
     assert all(path.read_bytes() == library.read_bytes() for path in images)
-    compile(api.read_text(), str(api), "exec")
+    compile(api.read_text(encoding="utf-8"), str(api), "exec")
 
 
 def test_phonemizer_adapter_rejects_unreviewed_sdk_changes_before_staging_code(tmp_path):

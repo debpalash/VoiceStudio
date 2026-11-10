@@ -38,6 +38,15 @@ _NATIVE_LICENCE_PATH = re.compile(
 )
 
 
+def _email_addresses(text: str):
+    for match in _EMAIL.finditer(text):
+        # The user@host authority in an SSH URL is a login, not an email.
+        # Keep checking addresses in prose and URI paths normally.
+        if text[max(0, match.start() - 6):match.start()].lower() == "ssh://":
+            continue
+        yield match.group()
+
+
 def _tracked_text_files():
     names = subprocess.run(
         ["git", "-C", str(_REPO), "ls-files", "-z"], capture_output=True, text=True, check=True
@@ -59,10 +68,18 @@ def test_only_project_contact_addresses_are_published():
     for name, text in _tracked_text_files():
         if _NATIVE_LICENCE_PATH.fullmatch(name):
             continue
-        for address in _EMAIL.findall(text):
+        for address in _email_addresses(text):
             domain = address.rsplit("@", 1)[1]
             if (address.lower() in _CONTACTS or _RESERVED_DOMAIN.search(domain) or domain.lower() == _NOREPLY_DOMAIN
                     or _TEST_PATH.search(name)):
                 continue
             stray.append(f"{name}: {address}")
     assert not stray, "Use hi@, partner@, security@ or sponsor@voicestudio.sh:\n" + "\n".join(stray)
+
+
+def test_ssh_usernames_are_not_contact_addresses():
+    assert list(_email_addresses('`ssh://aur@aur.archlinux.org/voicestudio-git.git`')) == []
+    assert list(_email_addresses('ssh://git@github.com/owner/repo.git')) == []
+    assert list(_email_addresses('Contact aur@aur.archlinux.org')) == ['aur@aur.archlinux.org']
+    assert list(_email_addresses('ssh://git@example.org/repo.git; owner@example.net')) == ['owner@example.net']
+    assert list(_email_addresses('https://example.org/contact/owner@example.net')) == ['owner@example.net']

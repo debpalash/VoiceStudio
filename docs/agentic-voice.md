@@ -1,6 +1,6 @@
 # Agentic voice: VoiceStudio as a TTS/STT provider
 
-VoiceStudio exposes a **local speech platform**—OpenAI-compatible batch audio,
+VoiceStudio exposes a **local speech platform**—OpenAI-compatible audio generation and streaming,
 a versioned transcription WebSocket, and MCP—so any agent framework that
 speaks to OpenAI's audio endpoints can use your local VoiceStudio for speech —
 in your own cloned voice, with nothing leaving your machine. You bring the
@@ -20,6 +20,35 @@ its TTS/STT at VoiceStudio.
 > guardrails. See the roadmap in `docs/competitive-analysis.md` (§R1).
 > Answering **inbound** calls with a spoken greeting is available as an opt-in
 > integration: see [Twilio](integrations/twilio.md).
+
+## Stream speech as it is synthesized
+
+Send `response_format: "pcm"` and `stream_format: "audio"` to
+`POST /v1/audio/speech`. The body is mono, 24 kHz signed 16-bit little-endian
+PCM. Use `stream_format: "sse"` for base64 `speech.audio.delta` events and a
+final `speech.audio.done` event. A generation failure after audio has started
+terminates a raw stream or emits an SSE `error` event.
+
+The API uses the same saved voice IDs, engine selection and generation options
+as regular speech requests. For example, an OpenAI Python client configured
+with your VoiceStudio base URL can play chunks as they arrive.
+
+```python
+with client.audio.speech.with_streaming_response.create(
+    model="omnivoice",
+    voice="your-voice-profile-id",
+    input="The first sentence can play immediately. The next one follows as it is ready.",
+    response_format="pcm",
+    stream_format="audio",
+) as response:
+    for chunk in response.iter_bytes():
+        play_pcm(chunk)  # Queue the bytes in your 24 kHz mono PCM player.
+```
+
+VoiceStudio normally synthesizes PCM one sentence at a time, so the first
+audio can arrive before synthesis of the later sentences. Supported Qwen3-TTS
+Base engines can also emit audio while generating a single sentence. Container formats and PCM
+requests with an explicit `duration` are rendered as a whole before delivery.
 
 ## The endpoints
 

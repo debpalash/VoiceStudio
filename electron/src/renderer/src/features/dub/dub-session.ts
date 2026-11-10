@@ -10,6 +10,7 @@ import { MAX_COOKIE_EXPORT_BYTES, _cookieTransportAllowed } from '@shared/utils/
 import { projectSession, type DubProject } from '../projects/project-format';
 import { DUB_DRAFT_KEY, restoreDubDraft } from './dub-draft';
 import { dubInputIssue, type DubInputIssue } from './dub-input-issue';
+import { toast } from 'sonner';
 import { Store } from '@tanstack/store';
 import { useStore } from '@tanstack/react-store';
 import { apiJson, ApiError } from '@/lib/api/client';
@@ -51,6 +52,7 @@ import {
 import { commitMoveResize } from '@shared/utils/timeline';
 import type { PasteTranslationRow } from '@shared/utils/pasteTranslations';
 import { getDubTranslationError } from './transcript-issues';
+import { translationTargetLabel } from '@/lib/translation-targets';
 import type {
   DubAgentTranslationRequest,
   DubAgentTranslationResult,
@@ -740,6 +742,28 @@ export function skipFailedDubTranslations(target: string) {
   if (changed) commitSegmentEdit(next);
 }
 
+/** Dub the transcript as it is: drop translations, keep the original words, and speak them in the source language when it is a known voice language (#3747). */
+export function keepDubSourceText(sourceLanguage?: string) {
+  const sourceCode = dubSourceLanguage(sourceLanguage, dubSession.state.sourceLang)?.toLowerCase();
+  const sourceLabel = translationTargetLabel(sourceCode);
+  const next = dubSession.state.segments.map((segment) => {
+    const text = segment.text_original || segment.text;
+    return {
+      ...segment,
+      text,
+      translations: undefined,
+      translate_error: undefined,
+      translate_errors: undefined,
+      translate_degraded: undefined,
+      agent_generated_lang: undefined,
+      translation_skipped: true,
+    };
+  });
+  if (!next.length) return;
+  commitSegmentEdit(next);
+  if (sourceLabel && sourceCode) setDubTarget(sourceLabel, sourceCode);
+}
+
 export function restoreDubSegments() {
   let changed = false;
   const next = dubSession.state.segments.map((segment) => {
@@ -1015,6 +1039,17 @@ async function transcribeJob(jobId: string, signal: AbortSignal) {
     finishActivity();
   }
 }
+/** Show what transcription fell back to: diarization, and speakers without a source voice (#3419). */
+export function announceTranscriptWarning(event: TaskEvent) {
+  const speakers = Array.isArray(event.fallback_speakers)
+    ? event.fallback_speakers.filter((speaker): speaker is string => typeof speaker === 'string')
+    : [];
+  if (speakers.length) {
+    toast.warning(tr('dub.voice_fallback_default', { speakers: speakers.join(', ') }));
+    return;
+  }
+  if (typeof event.detail === 'string' && event.detail) toast.warning(event.detail);
+}
 async function readTranscript(jobId: string, signal: AbortSignal) {
   patch({ phase: 'transcribing', taskId: null });
   let receivedTranscript = false;
@@ -1023,6 +1058,7 @@ async function readTranscript(jobId: string, signal: AbortSignal) {
       encodeURIComponent(jobId) +
       (dubSession.state.numSpeakers ? '?num_speakers=' + dubSession.state.numSpeakers : ''),
     (event) => {
+      if (event.type === 'warning') announceTranscriptWarning(event);
       if (event.type === 'final') {
         receivedTranscript = true;
         const raw = Array.isArray(event.segments) ? (event.segments as DubSegment[]) : [];
@@ -1083,6 +1119,9 @@ async function finishPreparation(jobId: string, taskId: string, signal: AbortSig
         patch({ duration: Number(event.duration) });
       if (Array.isArray(event.youtube_subs) && event.youtube_subs.length > 0)
         hasDownloadedCaptions = true;
+      // Tell the user now, not at export, that the dub will be speech only.
+      if ((event.type === 'demucs_done' || event.type === 'cached') && event.has_bg === false)
+        toast.warning(tr('dub.bg_separation_failed'));
       return taskEvent(event, 'ready');
     },
     signal,
@@ -1522,7 +1561,11 @@ export async function translateDub(
     finishActivity();
   }
 }
-async function watchGeneration(taskId: string, signal: AbortSignal) {
+async function watchGeneration(
+  taskId: string,
+  signal: AbortSignal,
+  segmentIds = dubSession.state.segments.map((segment) => segment.id),
+) {
   let result: { syncScores: number[] } = { syncScores: [] };
   await consumeTaskStream(
     '/tasks/stream/' + encodeURIComponent(taskId),
@@ -1572,6 +1615,18 @@ async function watchGeneration(taskId: string, signal: AbortSignal) {
             : {}),
         });
       }
+      // Mix failures may carry only the submitted row index.
+      // Resolve it once so later transcript edits cannot point the notice elsewhere.
+      if (
+        event.type === 'error' &&
+        event.error_code === 'dub_speech_missing' &&
+        event.segment_id == null &&
+        typeof event.segment === 'number' &&
+        Number.isInteger(event.segment)
+      ) {
+        const id = segmentIds[event.segment];
+        if (id !== undefined) return taskEvent({ ...event, segment_id: id }, 'done');
+      }
       return taskEvent(event, 'done');
     },
     signal,
@@ -1619,6 +1674,7 @@ export async function generateDub(
               }
             : undefined,
         });
+        const segmentIds = current.segments.map((segment) => segment.id);
         const job = await apiJson<{ task_id: string }>(
           '/dub/generate/' + encodeURIComponent(current.jobId!),
           {
@@ -1634,7 +1690,7 @@ export async function generateDub(
                 // Keeps the imported caption markup for unchanged exports (#2295).
                 cue_source_id: cueSourceId(segment),
               })),
-              segment_ids: current.segments.map((segment) => segment.id),
+              segment_ids: segmentIds,
               regen_only: regenOnly?.length ? regenOnly : null,
               language,
               language_code: languageCode,
@@ -1656,7 +1712,7 @@ export async function generateDub(
           taskId: job.task_id,
           pendingTiming: current.timingStrategy || 'strict_slot',
         });
-        const measured = await watchGeneration(job.task_id, signal);
+        const measured = await watchGeneration(job.task_id, signal, segmentIds);
         if (!agentEnabled || agentPass >= maxAgentPasses) break;
 
         const afterRender = dubSession.state;

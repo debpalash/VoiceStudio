@@ -83,6 +83,18 @@ const sm52 = {
   ],
 };
 
+const sm61 = {
+  ...sm52,
+  gpus: [{ vendor: 'nvidia', name: 'NVIDIA GeForce GTX 1080 Ti', vram_gb: 11 }],
+  state: 'kernels_missing_legacy',
+  params: {
+    gpu: 'NVIDIA GeForce GTX 1080 Ti',
+    torch: '2.10.0+cu128',
+    vulkan_engines: 'CosyVoice GGUF, audio.cpp',
+  },
+  options: ['vulkan_engines_any'],
+};
+
 function renderIt() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -124,6 +136,18 @@ it('names a card the installed PyTorch wheel has no kernels for, and never sends
   expect(screen.queryByText(/settings\.gpu_report/)).not.toBeInTheDocument();
 });
 
+it('tells a Pascal owner the build dropped their GPU generation and names the Vulkan engines', async () => {
+  mock.api.mockResolvedValue(sm61);
+  renderIt();
+  expect(await screen.findByText(/older NVIDIA GPU/)).toHaveTextContent(
+    'NVIDIA GeForce GTX 1080 Ti is an older NVIDIA GPU (GTX 900 / 1000 series or older). This PyTorch build (2.8.0+cu128) no longer supports that generation',
+  );
+  expect(screen.getByText(/CosyVoice GGUF, audio\.cpp/)).toBeInTheDocument();
+  expect(screen.queryByText(/AMD Radeon/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Install a PyTorch build/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/settings\.gpu_report/)).not.toBeInTheDocument();
+});
+
 it('renders nothing for an empty payload', async () => {
   mock.api.mockResolvedValueOnce({});
   renderIt();
@@ -137,4 +161,15 @@ it('shows a quiet note when the report cannot be read', async () => {
   expect(
     await screen.findByText('Could not read GPU details from the backend.'),
   ).toBeInTheDocument();
+});
+
+it('shows an unknown engine without claiming its GPU use', async () => {
+  mock.api.mockResolvedValue({ ...amdWindows, engines: [{
+    id: 'sidecar', name: 'Sidecar', kind: 'tts', available: true,
+    code: 'unknown', params: {}, reason: null,
+  }] });
+  renderIt();
+  expect(await screen.findByText('Sidecar')).toBeTruthy();
+  expect(screen.getByText('unknown')).toBeTruthy();
+  expect(screen.queryByText(/0 of 1 engines use the GPU/i)).toBeNull();
 });

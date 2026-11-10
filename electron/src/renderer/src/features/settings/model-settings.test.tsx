@@ -145,3 +145,60 @@ it('explains remote native installation restrictions before a POST', async () =>
   fireEvent.click(button);
   expect(mock.api.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
 });
+
+it('shows the licence chip on a diarisation option whose model needs acceptance (#3642)', async () => {
+  mock.api.mockImplementation((path: string) => {
+    if (path === '/engines/diarisation')
+      return Promise.resolve({
+        active: 'audiocpp-sortformer',
+        options: [
+          {
+            id: 'audiocpp-sortformer',
+            label: 'Sortformer v1 (audio.cpp)',
+            model: 'audio-cpp/audio.cpp-gguf',
+            model_installed: true,
+            runtime_installed: true,
+            installed: true,
+          },
+        ],
+      });
+    if (path === '/models')
+      return Promise.resolve({
+        models: [
+          {
+            repo_id: 'audio-cpp/audio.cpp-gguf',
+            label: 'audio.cpp native bundle',
+            role: 'TTS',
+            engines: ['audiocpp'],
+            families: ['tts', 'diarisation'],
+            installed: true,
+            license_info: { license: 'other', license_category: 'noncommercial' },
+            license_acceptance: {
+              repo_id: 'audio-cpp/audio.cpp-gguf',
+              required: true,
+              accepted: false,
+              state: 'not_accepted',
+            },
+          },
+        ],
+      });
+    return Promise.resolve({
+      installed: true,
+      supported: true,
+      job: { state: 'idle', progress: 0 },
+    });
+  });
+  render(
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+    >
+      <DiarisationSettings />
+    </QueryClientProvider>,
+  );
+
+  const row =
+    (await screen.findByText('Sortformer v1 (audio.cpp)')).closest('[data-slot]') ?? document.body;
+  expect(
+    await within(row as HTMLElement).findByRole('button', { name: /^modelLicense\.label:/ }),
+  ).toBeTruthy();
+});

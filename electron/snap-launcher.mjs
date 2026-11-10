@@ -2,7 +2,11 @@
 // Chromium's inner sandbox. Apply this only to the packaged Snap command.sh.
 // https://snapcraft.io/docs/reference/interfaces/browser-support-interface/
 // electron-builder appends the flag itself, shell-quoted, when allow-sandbox is false.
-const invocation = /^exec "\$SNAP\/desktop-init\.sh" "\$SNAP\/desktop-common\.sh" "\$SNAP\/desktop-gnome-specific\.sh" "\$SNAP\/voicestudio"( (?:--no-sandbox|'--no-sandbox'))? "\$@"[\t ]*$/gm;
+const invocation = /^exec "\$SNAP\/desktop-init\.sh" "\$SNAP\/desktop-common\.sh" "\$SNAP\/desktop-gnome-specific\.sh" "\$SNAP\/voicestudio"( (?:--no-sandbox|'--no-sandbox'))?( --ozone-platform="\$\{VOICESTUDIO_SNAP_OZONE_PLATFORM:-x11\}")? "\$@"[\t ]*$/gm;
+
+// Native Wayland segfaults in the Snap (GNOME 50, #3878), so the Snap defaults
+// to XWayland. VOICESTUDIO_SNAP_OZONE_PLATFORM=wayland (or auto) opts back in.
+const OZONE_ARG = ' --ozone-platform="${VOICESTUDIO_SNAP_OZONE_PLATFORM:-x11}"';
 
 function executableLine(command) {
   const matches = [...command.matchAll(invocation)];
@@ -14,16 +18,15 @@ function executableLine(command) {
 
 export function verifySnapLauncher(command) {
   const match = executableLine(command);
-  if (!match[1] || command.includes('snapctl is-connected browser-support')) {
+  if (!match[1] || !match[2] || command.includes('snapctl is-connected browser-support')) {
     throw new Error('Snap launcher must use strict confinement without a Chromium sandbox permission gate');
   }
 }
 
 export function configureSnapLauncher(command) {
   const match = executableLine(command);
-  const configured = match[1]
-    ? command
-    : command.slice(0, match.index) + match[0].replace(' "$@"', ' --no-sandbox "$@"') + command.slice(match.index + match[0].length);
+  const line = match[0].replace(' "$@"', `${match[1] ? '' : ' --no-sandbox'}${match[2] ? '' : OZONE_ARG} "$@"`);
+  const configured = command.slice(0, match.index) + line + command.slice(match.index + match[0].length);
   verifySnapLauncher(configured);
   return configured;
 }

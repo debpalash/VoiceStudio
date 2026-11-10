@@ -354,6 +354,26 @@ models:
       - "hift.pt"
       - "CosyVoice-BlankEN/model.safetensors"
 
+  - repo_id: "inclusionAI/Ming-3.0-tts-0.5b"
+    label: "Ming-3.0-tts 0.5B (zh/en/ja/ko/fr/de/es, zero-shot clone, NVIDIA CUDA)"
+    role: TTS
+    engines: [ming-tts]
+    size_gb: 2.8
+    platforms: [cuda]
+    # The files the ming-tts engine loads; the PDF and figures in the repo are not needed.
+    required_files:
+      - "model.safetensors"
+      - "campplus.onnx"
+      - "config.json"
+      - "tokenizer.json"
+    allow_patterns:
+      - "*.safetensors"
+      - "*.onnx"
+      - "*.json"
+      - "*.txt"
+      - "*.jinja"
+    note: "Optional opt-in engine (own venv, NVIDIA CUDA only). MIT per the model card; review the bundled component terms."
+
   - repo_id: "Lourdle/Fun-CosyVoice3-0.5B-2512-GGUF"
     label: "CosyVoice 3 0.5B Q4_K_M (native GGUF/Vulkan)"
     role: TTS
@@ -394,6 +414,23 @@ models:
     size_gb: 1.1
     note: "Apple Silicon only — via mlx-audio backend."
     platforms: [darwin-arm64]
+
+  - repo_id: "mlx-community/Qwen3-TTS-12Hz-0.6B-Base-8bit"
+    label: "Qwen3-TTS 0.6B Base 8bit (voice cloning, mlx-audio)"
+    role: TTS
+    engines: [mlx-audio]
+    size_gb: 2.0
+    note: "Apple Silicon only. Clones a saved voice from its reference audio and transcript."
+    platforms: [darwin-arm64]
+    required_files:
+      - "config.json"
+      - "model.safetensors"
+      - "tokenizer_config.json"
+      - "vocab.json"
+      - "merges.txt"
+      - "speech_tokenizer/config.json"
+      - "speech_tokenizer/model.safetensors"
+      - "speech_tokenizer/preprocessor_config.json"
 
   - repo_id: "mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-4bit"
     label: "Qwen3-TTS 1.7B 4bit (voice design, mlx-audio)"
@@ -450,3 +487,15 @@ models:
     size_gb: 0.2
     note: "Apple Silicon only — via mlx-audio backend."
     platforms: [darwin-arm64]
+
+  # ── Sound effects (not speech) ────────────────────────────────────────
+
+  # Role SFX is non-speech: no TTS/ASR picker lists it, and /models hides it.
+  # The weights are installed only by Tools > Sound effects (sidecar installer,
+  # same pinned revision), never by a default download.
+  - repo_id: "OpenMOSS-Team/MOSS-SoundEffect-v2.0"
+    label: "MOSS-SoundEffect v2.0 (text to sound effects, 48 kHz)"
+    role: SFX
+    engines: []
+    size_gb: 10.5
+    note: "Installed from Tools > Sound effects. NVIDIA GPU only. Apache-2.0."

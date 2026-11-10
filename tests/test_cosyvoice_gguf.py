@@ -261,23 +261,18 @@ def test_invalid_explicit_overrides_error_instead_of_using_the_cache(tmp_path, m
         bootstrap.frontend_dir()
 
 
-@pytest.mark.parametrize(
-    "error",
-    [
-        __import__("subprocess").TimeoutExpired(["cli"], 30),
-        __import__("subprocess").CalledProcessError(3, ["cli"]),
-    ],
-)
-def test_failed_backend_probe_reports_unavailable(tmp_path, monkeypatch, error):
+def test_failed_backend_probe_falls_back_to_cpu_with_its_reason(tmp_path, monkeypatch):
     import engines.cosyvoice_gguf as engine_module
 
     def run(*_args, **_kwargs):
-        raise error
+        raise __import__("subprocess").TimeoutExpired(["cli"], 30)
 
+    monkeypatch.delenv(bootstrap.BACKEND_ENV, raising=False)
+    bootstrap._PROBE_CACHE.clear()
     monkeypatch.setattr(bootstrap, "resolve_cli", lambda: tmp_path / "cli")
     monkeypatch.setattr(bootstrap.subprocess, "run", run)
     profile = engine_module.CosyVoiceGGUFBackend.runtime_compute_profile(None)
-    assert profile["routing_status"] == "unavailable"
+    assert profile["routing_status"] == "cpu_fallback"
     assert "probe" in profile["routing_reason"]
 
 

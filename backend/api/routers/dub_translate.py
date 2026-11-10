@@ -5,7 +5,8 @@ import time
 import asyncio
 import logging
 from typing import Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from api.dependencies import consumer_generation, require_consumer_reads_admin_writes
 from fastapi.responses import JSONResponse
 
 from schemas.requests import AgentFitRequest, TranslateRequest
@@ -21,7 +22,7 @@ from services.translator import (
 )
 from api.routers.dub_core import _get_job, _save_job
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_consumer_reads_admin_writes)])
 logger = logging.getLogger("omnivoice.api")
 
 _NLLB_REPO_ID = "facebook/nllb-200-distilled-600M"
@@ -79,7 +80,9 @@ FLORES_CODES = {
     "tg": "tgk_Cyrl", "tk": "tuk_Latn", "tl": "tgl_Latn", "fil": "tgl_Latn",
     "tt": "tat_Cyrl", "uz": "uzn_Latn", "xh": "xho_Latn", "yi": "ydd_Hebr",
     "yo": "yor_Latn", "zu": "zul_Latn",
-    # Translation target only: Whisper cannot transcribe Uyghur (#2810).
+    # Translation target only: Whisper cannot transcribe Kabyle or Uyghur, but
+    # NLLB-200 and OmniVoice handle both.
+    "kab": "kab_Latn",
     "ug": "uig_Arab",
 }
 
@@ -113,7 +116,7 @@ LANG_NAMES = {
     "zh-CN": "Chinese (Simplified)", "cmn-Hans": "Chinese (Simplified)",
     "ar": "Arabic", "hi": "Hindi", "tr": "Turkish", "pl": "Polish",
     "nl": "Dutch", "sv": "Swedish", "th": "Thai", "vi": "Vietnamese",
-    "id": "Indonesian", "uk": "Ukrainian", "ug": "Uyghur",
+    "id": "Indonesian", "uk": "Ukrainian", "ug": "Uyghur", "kab": "Kabyle",
 }
 
 # Regional dialect hints (#280 item 2). Maps a BCP-47 dialect code to the
@@ -456,6 +459,7 @@ def _should_unload_nllb() -> bool:
 
 
 @router.post("/dub/translate")
+@consumer_generation
 async def dub_translate(req: TranslateRequest):
     try:
         provider = (req.provider if req.provider else os.environ.get("TRANSLATE_PROVIDER", "google")).lower()
@@ -863,6 +867,15 @@ async def dub_translate(req: TranslateRequest):
 
         # Offline Argos Translate
         if provider == "argos" or provider == "libretranslate":
+            # Windows ROCm 10: CTranslate2 must not load beside Torch (no import).
+            from core.windows_rocm.isolation_policy import argos_error
+
+            blocked = argos_error()
+            if blocked:
+                return JSONResponse(
+                    status_code=400,
+                    content={"error": blocked, "detail": {"code": "argos_runtime_unavailable", "message": blocked}},
+                )
             try:
                 import argostranslate  # noqa: F401
             except ImportError:
@@ -1403,6 +1416,7 @@ def translation_style_brief(req) -> str:
 
 
 @router.post("/dub/agent-fit")
+@consumer_generation
 async def dub_agent_fit(req: AgentFitRequest):
     """Rewrite rendered lines from real duration evidence.
 

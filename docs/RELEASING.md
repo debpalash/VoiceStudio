@@ -44,8 +44,11 @@ Electron publication uses these GitHub Actions secrets:
   `ELECTRON_MAC_APP_STORE_PROVISIONING_PROFILE` for private MAS packaging.
   These are separate from Developer ID credentials and do not authorize upload
   or publication.
-- `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` (not the Apple ID login password)
-  and `APPLE_TEAM_ID` for macOS notarization and stapling.
+- `APPLE_API_KEY` (raw `.p8` PEM text), `APPLE_API_KEY_ID` and
+  `APPLE_API_ISSUER` for macOS notarization and stapling. Use an App Store
+  Connect team key with Developer access. The packaging step writes the key
+  into a private temporary file and removes it on success or failure. Apple
+  ID passwords are not used by this workflow.
 - `ELECTRON_WINDOWS_CSC_LINK` and `ELECTRON_WINDOWS_CSC_KEY_PASSWORD` for
   Windows Authenticode signing. The macOS certificate cannot sign Windows apps.
 - `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID` and
@@ -59,10 +62,9 @@ Electron publication uses these GitHub Actions secrets:
   Play internal testing is not a release channel either.
 - The repository `GITHUB_TOKEN` for draft creation and asset uploads.
 - `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` for the Docker Hub mirror.
-- `POSTHOG_PROJECT_TOKEN` (secret) and `POSTHOG_HOST` (repository variable),
-  baked into packaged builds as the analytics token and host. They override the
-  in-repo publishable token; analytics still sends nothing without a yes at the
-  first-run consent prompt.
+- No analytics secret is needed: the destination is the public Supermetry site
+  id in `config/analytics.json`. Analytics still sends nothing without a yes at
+  the first-run consent prompt.
 
 The archived `TAURI_SIGNING_PRIVATE_KEY*` secrets are retained only so the final
 Tauri release can be audited. The Tauri release workflow has been removed; every
@@ -112,6 +114,7 @@ version only after validation.
    and it skips the block when the changelog section already has a
    `### Contributors` heading, so write one by hand when you want roles or
    reporters credited.
+   In `docs/install/issue-tracker.md`, change `Fixed on main` rows to `Fixed in release` and update the release named at the top.
 5. Run `uv run pytest tests/test_app_version.py tests/test_changelog_style.py -q`.
 6. Audit contributor agreements: `git fetch origin cla-signatures`, then
    `GH_TOKEN=... python scripts/cla_audit.py`. Follow up with each unsigned
@@ -185,6 +188,15 @@ After publication, verify each maintained channel:
 | Docker Hub overview | `dockerhub-description.yml`                       | Read the `Update Docker Hub description` step log; the step may continue after a 403                                                                         |
 | Rolling containers  | `docker.yml` on `main` pushes only | `:latest`, `:main`, `:rocm` and `:cuda-arm64` timestamps move; a release never moves them                                                                    |
 
+For the Homebrew installation method, update
+[`Casks/voicestudio.rb` in the official tap](https://github.com/debpalash/homebrew-tap/blob/main/Casks/voicestudio.rb)
+after publishing a stable release: set its version and both architecture-specific
+DMG SHA-256 values from that release’s `SHA256SUMS.txt`. Validate with
+`brew style --cask debpalash/tap/voicestudio`,
+`brew audit --cask --online debpalash/tap/voicestudio` and
+`brew fetch --cask --all-platforms debpalash/tap/voicestudio` before merging the tap
+update. Keep prereleases out of this stable cask.
+
 A missing channel is a release bug. There are no RC tags; the one prerelease is
 the opt-in **Beta** channel (below). Previews between betas are builds from
 `main` (the `electron-build.yml` artifacts or Docker `:latest`), never a side
@@ -206,7 +218,7 @@ type the tag name.
 - **Two runs, because `main` only changes through pull requests.** The first
   run bumps the three version files in lockstep, runs `uv lock`, writes the
   `CHANGELOG.md` section from `[Unreleased]` (a stable release renames it; a
-  beta copies it), runs the version guards, commits on `release/vX.Y.Z[-beta.N]`
+  beta copies it, pointing its download links at the beta's own release files), runs the version guards, commits on `release/vX.Y.Z[-beta.N]`
   and opens its pull request. Once that merges, run the helper again with the
   same version: `main` already has it, so it changes nothing and only tags.
 - **Draft:** the tag push builds a draft release; nothing is public.
@@ -266,7 +278,10 @@ strings), add a
 the version (`prepare_electron_release.py --print-channel`), stamps it into every
 platform feed, publishes with `--prerelease --latest=false`, and dispatches
 Docker with `promote_stable=false`. Any other prerelease shape (`-rc`, `-alpha`)
-is rejected.
+is rejected. The release is refused if it carries another channel's update
+feed (a stable `electron-stable-*` or `latest*` feed on a beta, a beta feed on
+stable), and after publishing the workflow checks that `releases/latest` still
+points at the newest stable.
 
 Promoting to Stable is a normal `vX.Y.Z` release from `main`. Beta users roll
 onto it automatically because the updater compares semver (`X.Y.Z-beta.N` sorts
@@ -303,6 +318,19 @@ for `VoiceStudio-Electron-*-linux-x64.AppImage.zsync`, so AppImageUpdate cannot
 move them to a renamed release; they update through the in-app updater. Verify both update paths
 against the final downloaded artifact, not the pre-publish build.
 
+Windows ROCm RDNA 2 GPU speech uses the in-repo HIP CTranslate2 pinned in
+`rocm10.ctranslate2` of `scripts/windows-rocm-recipe.json` (release
+`ct2-rocm-4.8.4-78b1e17`). It is a dependency asset, not part of a release:
+releases reuse it unchanged. To rebuild (new upstream source or targets), edit the workflow's source pins
+(`CT2_BASE`, `CT2_TARGETS`, `CT2_TREE`, `CT2_VERSION`) and the recipe's target
+list, and set a new `RELEASE_TAG` in `.github/workflows/ct2-rocm-windows.yml`
+(the publish job fails if the tag already exists, since the recipe pins its
+bytes and `gh release create` would otherwise reuse the old tag). Add the new
+archive URL to `_SOURCES` in `backend/core/windows_rocm/ct2_recipe.py`, run the
+**CTranslate2 ROCm (Windows)** workflow, verify the downloaded archive's size and
+SHA-256 independently, then copy the run's printed pins (`pins.json`) into the
+recipe and update the exact-pin test in `tests/test_windows_rocm_rocm10.py`.
+
 Electron update manifests use platform and architecture channels. Confirm every
 manifest names an uploaded installer, reports the tagged version, and matches the
 artifact bytes. Exercise at least one installed update hop before publication.
@@ -331,6 +359,8 @@ With "Require branches to be up to date" on, every merge to `main` puts every ot
 
 The workflows are ready: `ci.yml` runs on `merge_group`, and `merge-queue-checks.yml` reports the PR-level required checks ("CLA gate", "Commit identities", "CLA", "Commit identity policy") on the queue's commit, because they cannot run there. `tests/test_merge_queue.py` keeps those names equal to the ruleset's required list; change both together.
 
+On the queue commit, `ci.yml` compares the commit with its base to decide the documentation-only and Electron scopes, as it does for a pull request. The pass cache (see `.github/CONTRIBUTING.md` → Quality gates) lets a queued job skip when its inputs match a green run on `main`, so jobs whose inputs the queued pull requests did not touch do not run again. Pushes to `main` always run in full.
+
 To turn it on (Settings → Rules → Rulesets → `main`):
 
 1. Add **Require merge queue**: method *Merge commit*, build concurrency 1–3, minimum group size 1, wait time 0–5 minutes, status check timeout 60 minutes.
@@ -338,3 +368,14 @@ To turn it on (Settings → Rules → Rulesets → `main`):
 3. Merge PRs with **Merge when ready** (the queue button) instead of **Merge**. `gh pr merge N --merge` joins the queue once it is on.
 
 Try it on one PR first. If a queued PR stalls, a required check name in the ruleset no longer matches a job or status the queue commit reports: compare the ruleset with `tests/test_merge_queue.py`.
+
+### Fork container publishing
+
+The Docker workflow publishes canonical `voicestudio`, compatibility
+`omnivoice-studio`, and `voicestudio-buildcache` packages under the lowercase
+repository owner on GHCR. Forks publish only into their own GHCR namespace;
+upstream remains under `ghcr.io/debpalash`. CUDA, ROCm and CUDA arm64 share this
+namespace rule, including registry layer caches and manual release backfills.
+Docker Hub publishing still requires its existing explicit credentials and
+retains its configured image coordinate. Publishing a preview from a fork does
+not publish an upstream application release.

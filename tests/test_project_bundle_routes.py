@@ -25,7 +25,7 @@ def handoff(tmp_path, monkeypatch):
         monkeypatch.setattr(routes, name, directory)
     app = FastAPI()
     app.include_router(routes.router)
-    return TestClient(app), routes, db
+    return TestClient(app, client=("127.0.0.1", 50000)), routes, db
 
 
 def archive(tmp_path, *, voice=True):
@@ -170,7 +170,7 @@ def test_phone_archive_survives_desktop_edit_and_reexport_with_foreign_assets(ha
     manifest, files = bundles.read_bundle(exported,tmp_path/'returned')
     assert manifest['document']['script'] == 'Edited on desktop'
     assert manifest['document']['native'] == native
-    assert files['native/production/checkpoint.json'].read_text() == '{"completed":true}'
+    assert files['native/production/checkpoint.json'].read_text(encoding="utf-8") == '{"completed":true}'
     assert 'handoff' not in manifest['document']['desktop']['draft']
 
 

@@ -1,26 +1,44 @@
 /**
  * Splits the crawler's routes across CI shards by cost, not by position.
  *
- * Crawl time is dominated by a few routes: measured locally in fixture mode, /pro took 28s,
- * /settings/account and /settings/appearance about 20s each and /settings/performance 15s, while
- * most routes take under 6s. Dealing every n-th route in sorted order left one shard at 11
- * minutes and another at 5. Heaviest routes go first, each to the currently lightest shard
- * (ties to the lowest number), so every shard computes the same split without coordinating.
+ * Crawl time is dominated by a few routes. Heaviest routes go first, each to the currently
+ * lightest shard (ties to the lowest number), so every shard computes the same split without
+ * coordinating.
+ *
+ * One weight is about 3 s of crawling (all four fault modes run concurrently). Measured
+ * 2026-11-08 from a CI run's three shards (PR #3874, ubuntu-24.04). The crawler prints the
+ * per-route seconds at the end of every run ("Route seconds: ..."), so
+ * re-measure from a CI log or a local run when a shard drifts. Weights under 2 are left out.
  *
  * A route missing from ROUTE_WEIGHTS counts as 1, so a new route is still crawled by exactly one
  * shard; add it here when a crawl shows it is slow.
  */
 export const ROUTE_WEIGHTS = {
-  '/pro': 14,
-  '/settings/account': 10,
-  '/settings/appearance': 10,
-  '/settings/performance': 7,
+  '/dub': 63,
+  '/audiobook': 48,
+  '/design': 40,
+  '/batch': 33,
+  '/stories': 31,
+  '/workflows': 31,
+  '/settings/performance': 25,
+  '/projects': 22,
+  '/integrations': 21,
+  '/tools': 20,
+  '/gallery': 19,
+  '/pro': 17,
+  '/calls': 16,
+  '/personas': 16,
+  '/clone': 15,
+  '/transcriptions': 14,
+  '/settings/appearance': 9,
   '/settings/storage': 5,
-  '/settings/credentials': 3,
+  '/settings/logs': 4,
+  '/settings/account': 3,
   '/settings/sharing': 3,
-  '/settings/pronunciation': 3,
+  '/settings/support': 3,
+  '/settings/credentials': 2,
   '/settings/media': 2,
-  '/settings/support': 2,
+  '/settings/pronunciation': 2,
 };
 
 /** The routes shard `shard` (1-based) of `shards` crawls, in a stable order. */

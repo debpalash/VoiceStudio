@@ -124,6 +124,11 @@ omnivoice.zip
 # cuDNN 8 compat libs (auto-installed by scripts/setup_cudnn.py)
 cudnn8_compat/
 test-results/
+# Local benchmark output (scripts/bench/bench.py)
+bench-results/
+
+# Nix build symlinks
+/result
 
 # Research repos (local only)
 research/

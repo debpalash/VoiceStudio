@@ -39,6 +39,14 @@ import time
 
 import pytest
 
+# Every test here wedges a loader thread and later releases it. A released
+# worker still finishes `_load_model_exclusive` — publishing `model`, clearing
+# `_load_abandoned`, releasing the current load lock — so it must be joined
+# before this test's patches are undone, or it lands in the next test's state.
+pytestmark = pytest.mark.usefixtures("join_test_threads")
+
+_TEST_POOL_PREFIX = "test-pool"
+
 
 @pytest.fixture
 def mm():
@@ -168,8 +176,9 @@ def _drive_both_cold_routes(mm):
         # Release the parked first load before anything is asserted, or the
         # worker thread would outlive the test and hold module state.
         probe.release.set()
-        preload.join(timeout=30)
-        generate.join(timeout=30)
+        for route in (preload, generate):
+            if route.ident is not None:  # an early failure may precede start()
+                route.join(timeout=30)
         mm._model_load_thread_lock = original_lock
         mm._load_model_sync = original_loader
 
@@ -284,8 +293,6 @@ def test_a_retry_after_a_timed_out_load_must_not_block_forever(mm, monkeypatch):
     the join timeout below; without it a regression would hang the suite rather
     than fail it.
     """
-    from concurrent.futures import ThreadPoolExecutor
-
     wedged = threading.Event()
     release = threading.Event()
 
@@ -294,18 +301,10 @@ def test_a_retry_after_a_timed_out_load_must_not_block_forever(mm, monkeypatch):
         release.wait(30.0)  # the native load that cannot be interrupted
         return object()
 
-    monkeypatch.setattr(mm, "model", None, raising=False)
-    monkeypatch.setattr(mm, "_model_lock", asyncio.Lock(), raising=False)
-    monkeypatch.setattr(mm, "_model_load_thread_lock", threading.RLock(), raising=False)
-    monkeypatch.setattr(mm, "_load_model_sync", _never_finishes, raising=False)
-    monkeypatch.setattr(mm, "_make_room_before_tts_load", lambda: None, raising=False)
-    monkeypatch.setattr(mm, "_model_load_timeout", lambda: 0.3, raising=False)
-
     # Two workers, as a CUDA pool has (#567). One wedged worker must not stop
     # the retry from reaching the lock — otherwise this test would prove the
     # queueing, not the locking.
-    pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="test-pool")
-    monkeypatch.setattr(mm, "_get_gpu_pool", lambda: pool, raising=False)
+    pool = _wedge_setup(mm, monkeypatch, _never_finishes)
 
     outcome: dict[str, object] = {}
 
@@ -345,11 +344,9 @@ def test_a_retry_after_a_timed_out_load_must_not_block_forever(mm, monkeypatch):
             f"not to retry again: {retry_error}"
         )
     finally:
-        # Let the wedged worker finish so the interpreter can exit; a
-        # non-daemon pool worker would otherwise hang the whole suite.
-        release.set()
-        monkeypatch.setattr(mm, "model", None, raising=False)
-        pool.shutdown(wait=False)
+        # Let the wedged worker finish and wait for it: it publishes `model`
+        # on the way out, which must not land in the next test.
+        _release_and_drain(release, pool)
 
 
 def _run_capture(mm):
@@ -359,9 +356,32 @@ def _run_capture(mm):
         return exc
 
 
+def _release_and_drain(release, pool):
+    """Release the wedged loader and wait for every pool worker to exit.
+
+    ``shutdown(wait=False)`` returned while a woken worker was still inside
+    ``_load_model_exclusive``; on a slow runner it then published ``model``
+    after the next test had reset it, and that test's cold load returned a
+    model nobody loaded. Queued jobs are cancelled so none starts later and
+    picks up the next test's stub. Bounded: every stub here parks on a
+    30-second wait at most.
+    """
+    release.set()
+    pool.shutdown(wait=True, cancel_futures=True)
+
+
 def _wedge_setup(mm, monkeypatch, loader):
     from concurrent.futures import ThreadPoolExecutor
 
+    leftover = [
+        t.name
+        for t in threading.enumerate()
+        if t.name.startswith(_TEST_POOL_PREFIX) and t.is_alive()
+    ]
+    assert not leftover, (
+        f"loader workers from an earlier test are still running: {leftover} — "
+        "they would publish into this test's patched model state"
+    )
     monkeypatch.setattr(mm, "model", None, raising=False)
     monkeypatch.setattr(mm, "_model_lock", asyncio.Lock(), raising=False)
     monkeypatch.setattr(mm, "_model_load_thread_lock", threading.RLock(), raising=False)
@@ -369,7 +389,7 @@ def _wedge_setup(mm, monkeypatch, loader):
     monkeypatch.setattr(mm, "_make_room_before_tts_load", lambda: None, raising=False)
     monkeypatch.setattr(mm, "_model_load_timeout", lambda: 0.3, raising=False)
     mm._load_abandoned.clear()
-    pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="test-pool")
+    pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix=_TEST_POOL_PREFIX)
     monkeypatch.setattr(mm, "_get_gpu_pool", lambda: pool, raising=False)
     return pool
 
@@ -382,11 +402,13 @@ def test_an_abandoned_load_that_later_fails_does_not_strand_the_backend(mm, monk
     although nothing was stuck any more.
     """
     wedged, release = threading.Event(), threading.Event()
-    calls = []
 
     def _loader():
-        calls.append(1)
-        if len(calls) == 1:
+        # Wedge every load until the test releases it, rather than only the
+        # first call: a worker still running from an earlier test can reach
+        # this module-level stub first, and a call count then let the test's
+        # own load succeed immediately (flaky on slow CI runners).
+        if not release.is_set():
             wedged.set()
             release.wait(30)
             raise RuntimeError("late native load failure")
@@ -410,9 +432,7 @@ def test_an_abandoned_load_that_later_fails_does_not_strand_the_backend(mm, monk
         retry = _run_capture(mm)
         assert not isinstance(retry, BaseException), retry
     finally:
-        release.set()
-        monkeypatch.setattr(mm, "model", None, raising=False)
-        pool.shutdown(wait=False)
+        _release_and_drain(release, pool)
 
 
 def test_a_caller_queued_behind_another_load_does_not_brand_it_abandoned(mm, monkeypatch):
@@ -453,9 +473,7 @@ def test_a_caller_queued_behind_another_load_does_not_brand_it_abandoned(mm, mon
         a.join(timeout=15)
         assert a_result.get("r") is published
     finally:
-        release.set()
-        monkeypatch.setattr(mm, "model", None, raising=False)
-        pool.shutdown(wait=False)
+        _release_and_drain(release, pool)
 
 
 def test_a_queued_caller_hears_about_an_abandonment_that_happens_while_it_waits(

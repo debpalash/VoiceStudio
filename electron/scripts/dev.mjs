@@ -15,17 +15,28 @@ import {
 } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import {
-  DEFAULT_ELECTRON_DEV_PORT,
-  DEFAULT_ELECTRON_PROXY_PORT,
-} from '../../config/app-config.mjs';
-import { clearDevPorts } from '../../scripts/clear-dev-ports.mjs';
+import { assertSupportedNode } from './node-version.mjs';
 import {
   activeMacDevBundles,
   holdMacDevBundle,
   macDevLeaseDirectory,
   withMacDevCacheLock,
 } from './mac-dev-cache.mjs';
+
+// Check before importing configuration with syntax that older Node cannot parse.
+const isEntryPoint = process.argv[1] &&
+  import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
+if (isEntryPoint) {
+  try {
+    assertSupportedNode();
+  } catch (error) {
+    console.error(error.message);
+    process.exit(1);
+  }
+}
+const { DEFAULT_ELECTRON_DEV_PORT, DEFAULT_ELECTRON_PROXY_PORT } =
+  await import('../../config/app-config.mjs');
+const { clearDevPorts } = await import('../../scripts/clear-dev-ports.mjs');
 
 const APP_NAME = 'VoiceStudio';
 const here = dirname(fileURLToPath(import.meta.url));
@@ -75,8 +86,16 @@ function run(command, args) {
   }
 }
 
+// macOS system tools by absolute path: with Homebrew coreutils ahead of /bin on
+// PATH, GNU `cp` rejects the APFS clone flag `-c` and the launcher exits (#3813).
+export const MAC_TOOLS = Object.freeze({
+  cp: '/bin/cp',
+  plutil: '/usr/bin/plutil',
+  codesign: '/usr/bin/codesign',
+});
+
 function replacePlistValue(infoPlist, key, value, runCommand = run) {
-  runCommand('plutil', ['-replace', key, '-string', value, infoPlist]);
+  runCommand(MAC_TOOLS.plutil, ['-replace', key, '-string', value, infoPlist]);
 }
 
 export function prepareMacDevElectron({
@@ -122,7 +141,7 @@ export function prepareMacDevElectron({
   try {
     // APFS clone-copy keeps this fast and avoids duplicating Electron's full
     // framework bundle. The copied bundle is then re-signed after branding.
-    runCommand('cp', ['-cR', plan.sourceBundle, stagingBundle]);
+    runCommand(MAC_TOOLS.cp, ['-cR', plan.sourceBundle, stagingBundle]);
     const infoPlist = join(stagingBundle, 'Contents', 'Info.plist');
     replacePlistValue(infoPlist, 'CFBundleDisplayName', APP_NAME, runCommand);
     replacePlistValue(infoPlist, 'CFBundleName', APP_NAME, runCommand);
@@ -131,7 +150,7 @@ export function prepareMacDevElectron({
     replacePlistValue(infoPlist, 'CFBundleShortVersionString', appVersion, runCommand);
     replacePlistValue(infoPlist, 'CFBundleVersion', appVersion, runCommand);
     copyFileSync(iconPath, join(stagingBundle, 'Contents', 'Resources', `${APP_NAME}.icns`));
-    runCommand('codesign', ['--force', '--deep', '--sign', '-', stagingBundle]);
+    runCommand(MAC_TOOLS.codesign, ['--force', '--deep', '--sign', '-', stagingBundle]);
     writeFileSync(join(stagingRoot, 'brand-manifest.json'), expectedManifest);
 
     // Reaching here means the cache failed validation (e.g. its executable was
@@ -435,7 +454,7 @@ export function launchElectronVite(
   });
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
+if (isEntryPoint) {
   try {
     await replacePreviousDevInstance();
   } catch (error) {

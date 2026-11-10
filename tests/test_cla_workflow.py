@@ -176,3 +176,87 @@ def test_cla_api_errors_block_merging_independently_of_the_commit_status():
     assert {"context": job.get("name", "cla"), "integration_id": 15368} in checks
     assert not job.get("continue-on-error", False)
     assert all(not step.get("continue-on-error", False) for step in job["steps"])
+
+
+def test_cla_gate_job_holds_least_privilege_for_drafting_and_restarting_ci():
+    job = _load(_CLA_WORKFLOW)["jobs"]["cla"]
+    # pull-requests: draft/ready mutations; actions: re-run skipped CI; the rest predate the hold.
+    assert job["permissions"] == {"contents": "write", "issues": "write", "pull-requests": "write",
+                                  "statuses": "write", "actions": "write"}
+    assert _load(_CLA_WORKFLOW)["permissions"] == {"contents": "read"}
+    checkout, check = job["steps"]
+    assert checkout["with"] == {"persist-credentials": False, "sparse-checkout": ".github/scripts"}
+    assert check["run"] == "python3 .github/scripts/cla_check.py"
+    assert set(check["env"]) == {"GITHUB_TOKEN"}
+
+
+def test_ready_for_review_reapplies_the_hold_without_replacing_queued_checks():
+    workflow = _load(_CLA_WORKFLOW)
+    assert "ready_for_review" in workflow["on"]["pull_request_target"]["types"]
+    group = workflow["jobs"]["cla"]["concurrency"]["group"]
+    # A no-op ready_for_review run must not cancel a queued run that sets a new head's status.
+    assert group == ("cla-${{ github.event.pull_request.number || github.event.issue.number }}"
+                     "${{ github.event.action == 'ready_for_review' && '-ready' || '' }}")
+    assert "cancel-in-progress" not in workflow["jobs"]["cla"]["concurrency"]
+
+
+def test_every_held_workflow_is_restarted_after_signing():
+    """A workflow that skips for an unsigned opener must be one the CLA check re-runs."""
+    held = set()
+    for path in sorted(_WORKFLOWS.glob("*.yml")):
+        workflow = _load(path)
+        if "pull_request" not in _triggers(workflow):
+            continue
+        for job in (workflow.get("jobs") or {}).values():
+            if any("ci_scope.py" in str(step.get("run", "")) for step in job.get("steps", [])):
+                held.add(path.name)
+    assert held == cla.GATED_WORKFLOWS
+    for name in ("cla.yml", "commit-identity.yml"):  # always run, on drafts and unsigned PRs too
+        for job in _load(_WORKFLOWS / name)["jobs"].values():
+            assert "ci_scope" not in str(job.get("steps")) and "draft" not in str(job.get("if", ""))
+    secrets = _load(_WORKFLOWS / "security.yml")["jobs"]["secrets"]
+    assert "needs" not in secrets and "if" not in secrets  # the secret scan always runs
+
+
+def test_nix_build_steps_wait_for_a_signed_cla():
+    steps = _load(_WORKFLOWS / "nix.yml")["jobs"]["flake"]["steps"]
+    hold = next(step for step in steps if step.get("id") == "cla")
+    assert hold["run"] == "python3 .github/scripts/ci_scope.py --cla"
+    assert hold["if"] == "github.event_name == 'pull_request'"
+    scope = next(step for step in steps if step.get("id") == "scope")
+    assert scope["env"]["CLA_HOLD"] == "${{ steps.cla.outputs.cla }}"
+    assert scope["run"].lstrip().startswith('if [ "$CLA_HOLD" = held ]; then')
+    later = steps[steps.index(scope) + 1:]
+    assert later and all(step.get("if") == "steps.scope.outputs.run == 'true'" for step in later)
+
+
+def test_review_bots_skip_drafts():
+    """The hold drafts unsigned pull requests; both review bots must skip drafts."""
+    coderabbit = yaml.safe_load((_REPO / ".coderabbit.yaml").read_text(encoding="utf-8"))
+    assert coderabbit["reviews"]["auto_review"]["drafts"] is False
+    greptile = json.loads((_REPO / "greptile.json").read_text(encoding="utf-8"))
+    assert greptile["triggerOnDrafts"] is False
+
+
+def test_agent_guide_is_short_and_surfaced_with_the_same_prompt_everywhere():
+    guide = _REPO / cla.AGENT_GUIDE_PATH
+    text = guide.read_text(encoding="utf-8")
+    assert len(text.splitlines()) <= 60
+    assert cla.SIGN_PHRASE in text and "issues/2586" in text
+    prompt = cla.agent_prompt(f"https://github.com/debpalash/VoiceStudio/blob/main/{cla.AGENT_GUIDE_PATH}")
+    assert prompt in (_REPO / ".github" / "pull_request_template.md").read_text(encoding="utf-8")
+    contributing = (_REPO / ".github" / "CONTRIBUTING.md").read_text(encoding="utf-8")
+    top = contributing.split("## Adding a TTS or ASR engine")[0]
+    assert "sign the CLA first" in top and "(AGENT_PR_GUIDE.md)" in top
+    body = cla.with_gate("x", "drafted", "https://g")
+    assert cla.agent_prompt("https://g") in body and "Signing takes a minute" in body
+
+
+def test_backfill_is_manual_main_only_and_never_checks_out_pr_code():
+    workflow = _load(_WORKFLOWS / "cla-backfill.yml")
+    assert _triggers(workflow) == {"workflow_dispatch"}
+    job = workflow["jobs"]["backfill"]
+    assert job["if"] == "github.ref == 'refs/heads/main'"
+    checkout = next(step for step in job["steps"] if "checkout" in step.get("uses", ""))
+    assert checkout["with"]["persist-credentials"] is False
+    assert "ref" not in checkout["with"]

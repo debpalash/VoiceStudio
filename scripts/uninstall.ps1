@@ -185,34 +185,46 @@ if (-not $Yes) {
 }
 
 # ── Opt-in uninstall ping (before anything is deleted) ──────────────────────
-# If — and only if — the user opted in to anonymous analytics, send a single
-# best-effort `app_uninstalled` event before the data (and the consent record
-# it lives in) goes away. The backend writes analytics_info.json next to
-# prefs.json ONLY while analytics is enabled (explicit consent + a build that
-# ships a token) and deletes it on opt-out, so the file's presence is itself
-# consent-gated; the prefs.json check is belt and braces. Content-free: the
-# event carries the app version, the OS name, and the random per-install id —
-# nothing else. Never blocks or fails the uninstall (2s timeout, silent
-# failure). Not opted in => nothing is sent and nothing is printed.
+# Sent only when the user opted in: the backend writes analytics_info.json
+# while analytics is enabled and deletes it on opt-out, and prefs.json must
+# agree. Content-free; redirects and malformed state are refused. Never blocks
+# the uninstall. Not opted in => nothing is sent and nothing is printed.
 try {
   $infoPath  = Join-Path $dataDir 'analytics_info.json'
+  $disabled = "$env:OMNIVOICE_ANALYTICS_DISABLED".Trim().ToLowerInvariant() -in @('1', 'true', 'yes', 'on')
+  $emptySite = (Test-Path Env:SUPERMETRY_SITE_ID) -and -not "$env:SUPERMETRY_SITE_ID".Trim()
   $prefsPath = Join-Path $dataDir 'prefs.json'
-  if ((Test-Path -LiteralPath $infoPath) -and (Test-Path -LiteralPath $prefsPath)) {
-    $prefs = Get-Content -LiteralPath $prefsPath -Raw | ConvertFrom-Json
-    if ($prefs.analytics_enabled -eq $true) {
+  if (-not $disabled -and -not $emptySite -and (Test-Path -LiteralPath $infoPath) -and (Test-Path -LiteralPath $prefsPath) -and ((Get-Content -LiteralPath $prefsPath -Raw | ConvertFrom-Json).analytics_enabled -eq $true)) {
       $info = Get-Content -LiteralPath $infoPath -Raw | ConvertFrom-Json
-      if ($info.token -and $info.host -and $info.distinct_id) {
-        Write-Host 'Sending anonymous uninstall ping (you opted in to analytics).'
-        $body = @{
-          api_key     = $info.token
-          event       = 'app_uninstalled'
-          distinct_id = $info.distinct_id
-          properties  = @{ app_version = "$($info.app_version)"; platform = "$($info.platform)" }
-        } | ConvertTo-Json
-        Invoke-RestMethod -Method Post -Uri "$($info.host)/capture/" `
-          -ContentType 'application/json' -Body $body -TimeoutSec 2 | Out-Null
+      $hostUri = [Uri]$info.host
+      $appUri = [Uri]$info.appUrl
+      $validUris = $true
+      foreach ($uri in @($hostUri, $appUri)) {
+        if (-not $uri.IsAbsoluteUri -or $uri.Scheme -notin @('http', 'https') -or
+            -not $uri.Host -or $uri.UserInfo -or $uri.Query -or $uri.Fragment) { $validUris = $false }
       }
-    }
+      if ($validUris -and $hostUri.AbsolutePath -eq '/' -and $info.site -and
+          $info.policy -eq 'opt-in' -and $info.profile_id -match '^install_[a-f0-9]{32}$' -and
+          $info.user_agent.StartsWith('Mozilla/5.0 (') -and $info.user_agent -notmatch '[\r\n]') {
+        Write-Host 'Sending anonymous uninstall ping (you opted in to analytics).'
+        $props = @{}
+        foreach ($key in @('app_version', 'platform')) {
+          if ($info.$key -is [string] -and $info.$key.Length -le 64) { $props[$key] = $info.$key }
+        }
+        $body = @{
+          v = 1
+          id = [Guid]::NewGuid().ToString('N')
+          ts = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+          site = $info.site
+          profile_id = $info.profile_id
+          name = 'app_uninstalled'
+          url = "$($info.appUrl.TrimEnd('/'))/uninstall"
+          props = $props
+        } | ConvertTo-Json -Compress
+        Invoke-RestMethod -Method Post -Uri "$($info.host.TrimEnd('/'))/api/public/v1/events" `
+          -ContentType 'application/json' -Body $body -TimeoutSec 2 -MaximumRedirection 0 `
+          -UserAgent $info.user_agent -Headers @{ Origin = $appUri.GetLeftPart([UriPartial]::Authority) } | Out-Null
+      }
   }
 } catch {
   # Best-effort by design: a dead network must never block the uninstall.
