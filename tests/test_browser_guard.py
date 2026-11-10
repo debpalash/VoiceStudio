@@ -239,6 +239,7 @@ def test_side_effectful_get_routes_carry_the_cross_site_dependency():
         "/api/settings/hf-token/state",
         "/api/settings/storage",
         "/api/settings/perf/offload-after-generation",
+        "/api/settings/perf/gguf-resident",
         "/system/tailscale/status",
     }
     guarded = set()

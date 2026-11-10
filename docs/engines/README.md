@@ -50,6 +50,12 @@ approval), [Windows](../install/windows.md), [Linux](../install/linux.md),
 | audio.cpp (dots.tts SOAR) | [audio-cpp](audio-cpp.md#dotstts) | CPU + Vulkan/Metal/CUDA/HIP/ROCm where compiled, incl. Windows | ✅ | runtime + weights from Model Catalogue (Apache-2.0) |
 | CosyVoice 3 GGUF | [cosyvoice-gguf](cosyvoice-gguf.md) | CPU + Vulkan (native runtime build) | ✅ reference cloning + instruct | user-built native runtime + model catalogue |
 
+## Sound effects (not speech)
+
+| Engine | Guide | Runs on | Enabled by |
+|---|---|---|---|
+| MOSS-SoundEffect v2.0 | [moss-soundeffect](moss-soundeffect.md) | CUDA (NVIDIA) only | Install button on Tools → Sound effects (desktop and web only; Apache-2.0) |
+
 ### Reference clip length
 
 Voice Clone accepts clips up to 75 seconds and recommends 5–15 seconds of clean
