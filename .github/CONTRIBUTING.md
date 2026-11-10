@@ -20,7 +20,8 @@ Thanks for your interest in improving VoiceStudio! This guide covers everything 
 > [signing issue (#2586)](https://github.com/debpalash/VoiceStudio/issues/2586), and
 > your signature covers your future contributions. A pull request opened before
 > you sign is converted to a draft, its heavy CI is skipped and the review bots
-> wait; when you sign, it is marked ready and CI re-runs automatically. An unsigned
+> wait; when you sign, CI re-runs automatically and the pull request is marked
+> ready (one you made a draft yourself stays a draft until you mark it). An unsigned
 > pull request cannot merge unless a maintainer applies the `cla-override` label
 > after manual review. Every other non-exempt human commit author and co-author
 > must also sign before the check passes.
@@ -684,9 +685,10 @@ AI coding agent. CI skips its heavy jobs, and the required
 `Tests (backend + frontend)` check reports "CLA not signed yet". The CLA, CLA
 gate, commit identity and secret scan checks still run. Once you sign, on the
 pull request or the signing issue, the check marks the pull request ready for
-review (unless you made it a draft yourself) and re-runs the CI it skipped. If
-a run was still in progress or waiting for approval, push or ask a maintainer
-to re-run it. Maintainers, bots, and signed openers are never held.
+review (unless you made it a draft yourself) and re-runs the CI it skipped.
+Marking it ready before you sign puts it back to draft. If CI cannot be
+restarted yet (a run still in progress), the comment says so; comment
+`recheck` later to retry. Maintainers, bots, and signed openers are never held.
 
 The **CLA** check comments on your pull request when someone still needs to
 sign. To sign, post this as a new comment, on its own line:

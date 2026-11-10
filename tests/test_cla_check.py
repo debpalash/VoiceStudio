@@ -859,22 +859,24 @@ def _run(id, path, conclusion="success", sha="abc", status="completed"):
     return {"id": id, "path": f".github/workflows/{path}", "head_sha": sha, "status": status, "conclusion": conclusion}
 
 
-@pytest.mark.parametrize("held,is_draft,previous,expected", [
-    (True, False, None, ("drafted", "draft")),
-    (True, True, None, ("waiting", None)),  # the author's own draft
-    (True, True, "drafted", ("drafted", None)),
-    (True, False, "drafted", ("drafted", "draft")),  # marked ready while unsigned
-    (True, False, "waiting", ("drafted", "draft")),
-    (True, False, "lifted", ("drafted", "draft")),
-    (False, True, "drafted", ("lifted", "ready")),
-    (False, False, "drafted", ("lifted", None)),
-    (False, True, "waiting", ("lifted", None)),  # stays the author's draft
-    (False, False, None, (None, None)),  # signed contributors: untouched
-    (False, True, None, (None, None)),
-    (False, False, "lifted", ("lifted", None)),
+@pytest.mark.parametrize("held,is_draft,previous,newly,expected", [
+    (True, False, None, False, ("drafted", ["draft"])),
+    (True, True, None, False, ("waiting", [])),  # the author's own draft
+    (True, True, "drafted", False, ("drafted", [])),
+    (True, False, "drafted", False, ("drafted", ["draft"])),  # marked ready while unsigned, or a lost draft
+    (True, False, "waiting", False, ("drafted", ["draft"])),
+    (True, False, "lifted", False, ("drafted", ["draft"])),
+    (False, True, "drafted", False, ("lifted", ["ready", "restart"])),
+    (False, False, "drafted", False, ("lifted", ["restart"])),  # already ready: only CI is owed
+    (False, True, "waiting", False, ("lifted", ["restart"])),  # stays the author's draft
+    (False, True, "restarting", False, ("lifted", ["restart"])),  # a failed restart is retried
+    (False, False, None, False, (None, [])),  # signed contributors: untouched
+    (False, True, None, False, (None, [])),
+    (False, False, None, True, (None, ["restart"])),  # signed in this very run
+    (False, False, "lifted", False, ("lifted", [])),
 ])
-def test_gate_decision(held, is_draft, previous, expected):
-    assert cla.gate_decision(held, is_draft, previous) == expected
+def test_gate_decision(held, is_draft, previous, newly, expected):
+    assert cla.gate_decision(held, is_draft, previous, newly) == expected
 
 
 def test_unsigned_opener_is_drafted_with_one_comment_carrying_the_steps():
@@ -884,7 +886,7 @@ def test_unsigned_opener_is_drafted_with_one_comment_carrying_the_steps():
     assert len(gh.posted) == 1 and not gh.patched
     body = gh.posted[0]
     assert cla.gate_state({"body": body}) == "drafted"
-    assert cla.SIGN_PHRASE in body and GUIDE in body and "Using an AI coding agent?" in body
+    assert cla.SIGN_PHRASE in body and GUIDE in body and cla.agent_prompt(GUIDE) in body
     assert not gh.reruns
 
 
@@ -901,6 +903,7 @@ def test_author_draft_stays_a_draft_after_signing():
     gh = FakeGitHub([], [actor("alice", 1001)], store=cla.empty_store(), pr={"draft": True})
     cla.run(gh, "pull_request_target", PR_EVENT)
     assert not gh.mutations and cla.gate_state({"body": gh.posted[0]}) == "waiting"
+    assert "stays one until you mark it ready" in gh.posted[0]
     gh.comments = [_bot_comment(gh.posted[0]), _comment()]  # alice signs on the pull request
     gh.runs = [_run(11, "ci.yml")]
     cla.run(gh, "issue_comment", {"issue": {"number": 7}})
@@ -912,14 +915,70 @@ def test_signing_later_marks_ready_and_restarts_only_the_skipped_ci():
     gh = FakeGitHub([_held_comment("drafted"), _comment()], [actor("alice", 1001)],
                     store=cla.empty_store(), pr={"draft": True})
     gh.runs = [_run(20, "ci.yml"), _run(21, "ci.yml"), _run(22, "mobile.yml", "action_required"),
-               _run(23, "security.yml", "failure"), _run(24, "nix.yml", status="in_progress"),
+               _run(23, "security.yml", "failure"), {**_run(24, "nix.yml"), "run_attempt": 2},
                _run(25, "commit-identity.yml"), _run(26, "install-smoke.yml", sha="old")]
     assert cla.run(gh, "issue_comment", {"issue": {"number": 7}}).passed
     assert gh.mutations == [("ready", "PR_7")] and gh.statuses[-1]["state"] == "success"
-    assert gh.reruns == [21]  # the newest successful run of a gated workflow at this head
+    assert gh.reruns == [21]  # the newest successful first attempt of a gated workflow at this head
     body = gh.patched[-1]
     assert cla.gate_state({"body": body}) == "lifted" and "Using an AI coding agent?" not in body
     assert body.count(cla.GATE_PREFIX) == 1
+
+
+def _signed_and_restarting(monkeypatch, runs):
+    gh = FakeGitHub([_held_comment("drafted"), _comment()], [actor("alice", 1001)],
+                    store=cla.empty_store(), pr={"draft": True})
+    gh.runs = runs
+    original = gh.request
+
+    def request(method, path, body=None):
+        if path.endswith("/rerun") and gh.reject_rerun:
+            return 403, {"message": "Resource not accessible by integration"}, {}
+        return original(method, path, body)
+
+    gh.reject_rerun = True
+    monkeypatch.setattr(gh, "request", request)
+    cla.run(gh, "issue_comment", {"issue": {"number": 7}})
+    return gh
+
+
+@pytest.mark.parametrize("runs,reject", [
+    ([_run(60, "ci.yml")], True),  # GitHub rejected the re-run
+    ([_run(60, "ci.yml", status="in_progress")], False),  # the skipped run had not finished
+])
+def test_owed_ci_restart_is_kept_until_it_succeeds(monkeypatch, runs, reject):
+    gh = _signed_and_restarting(monkeypatch, runs)
+    gh.reject_rerun = reject
+    assert gh.statuses[-1]["state"] == "success" and gh.mutations == [("ready", "PR_7")]
+    assert cla.gate_state({"body": gh.patched[-1]}) == "restarting" and "`recheck`" in gh.patched[-1]
+    # The next run (a `recheck`) retries: the comment still owes the restart.
+    gh.comments, gh.pr["draft"], gh.patched = [_bot_comment(gh.patched[-1])], False, []
+    gh.reject_rerun = False
+    gh.runs = [_run(60, "ci.yml")]
+    cla.run(gh, "issue_comment", {"issue": {"number": 7}})
+    assert gh.reruns == [60] and gh.mutations == [("ready", "PR_7")]
+    assert cla.gate_state({"body": gh.patched[-1]}) == "lifted"
+
+
+def test_failed_ready_keeps_the_hold_record_and_is_retried(monkeypatch):
+    gh = FakeGitHub([_held_comment("drafted"), _comment()], [actor("alice", 1001)],
+                    store=cla.empty_store(), pr={"draft": True})
+    gh.runs = [_run(70, "ci.yml")]
+    original = gh.graphql
+
+    def graphql(query, variables):
+        if "markPullRequestReadyForReview" in query:
+            raise RuntimeError("Resource not accessible by integration")
+        return original(query, variables)
+
+    monkeypatch.setattr(gh, "graphql", graphql)
+    cla.run(gh, "issue_comment", {"issue": {"number": 7}})
+    assert gh.statuses[-1]["state"] == "success" and not gh.reruns
+    assert all(cla.gate_state({"body": b}) == "drafted" for b in gh.patched)
+    monkeypatch.setattr(gh, "graphql", original)
+    gh.comments = [_bot_comment(gh.patched[-1]) if gh.patched else _held_comment("drafted")]
+    cla.run(gh, "pull_request_target", PR_EVENT)
+    assert gh.mutations == [("ready", "PR_7")] and gh.reruns == [70]
 
 
 def test_signing_in_the_first_run_restarts_ci_that_may_have_skipped():
@@ -967,7 +1026,7 @@ def test_override_lifts_the_hold():
     assert cla.gate_state({"body": gh.patched[-1]}) == "lifted"
 
 
-def test_draft_failure_never_changes_the_gate(monkeypatch, capsys):
+def test_draft_failure_keeps_the_record_and_is_retried(monkeypatch, capsys):
     gh = FakeGitHub([], [actor("alice", 1001)], store=cla.empty_store())
     original = gh.graphql
 
@@ -979,7 +1038,40 @@ def test_draft_failure_never_changes_the_gate(monkeypatch, capsys):
     monkeypatch.setattr(gh, "graphql", graphql)
     cla.run(gh, "pull_request_target", PR_EVENT)
     assert gh.statuses[-1]["state"] == "failure" and "could not convert to draft" in capsys.readouterr().out
-    assert cla.gate_state({"body": gh.posted[0]}) == "waiting"  # drafting is retried next run
+    assert cla.gate_state({"body": gh.posted[0]}) == "drafted"
+    monkeypatch.setattr(gh, "graphql", original)
+    gh.comments = [_bot_comment(gh.posted[0])]
+    cla.run(gh, "pull_request_target", PR_EVENT)  # still not a draft: drafting is retried
+    assert gh.mutations == [("draft", "PR_7")]
+
+
+def test_hold_is_recorded_before_drafting(monkeypatch):
+    """A draft whose record failed to save would later look like the author's own."""
+    gh = FakeGitHub([], [actor("alice", 1001)], store=cla.empty_store())
+    original = gh.request
+    monkeypatch.setattr(gh, "request", lambda method, path, body=None: (
+        (502, None, {}) if method == "POST" and path.endswith("/comments") else original(method, path, body)))
+    cla.run(gh, "pull_request_target", PR_EVENT)
+    assert not gh.mutations and gh.statuses[-1]["state"] == "failure"
+
+
+def test_stale_run_never_writes_a_failure_or_hold_over_a_new_signature(monkeypatch):
+    """Another run records the signature while this one is evaluating (a separate queue)."""
+    gh = FakeGitHub([], [actor("alice", 1001)], store=cla.empty_store())
+    gh.runs = [_run(80, "ci.yml")]
+    original, calls = gh.paginate, []
+
+    def paginate(path, limit=None):
+        if path.endswith("/pulls?state=open"):
+            calls.append(path)
+            if len(calls) == 2:  # the final head check: the signing issue's run has saved alice
+                gh.files[cla.SIGNATURE_PATH] = {"signatures": [{"id": 1001, "login": "alice"}]}
+        return original(path, limit)
+
+    monkeypatch.setattr(gh, "paginate", paginate)
+    assert cla.run(gh, "pull_request_target", PR_EVENT).passed
+    assert gh.statuses[-1]["state"] == "success" and not gh.mutations
+    assert all(cla.GATE_PREFIX not in body for body in gh.posted + gh.patched)
 
 
 def test_signing_on_the_signing_issue_rechecks_the_signers_open_pull_requests(monkeypatch):
@@ -988,5 +1080,40 @@ def test_signing_on_the_signing_issue_rechecks_the_signers_open_pull_requests(mo
     assert cla.sign_on_issue(gh, _issue_event(["cla"]), signers) == 1 and signers == {1001}
     checked = []
     monkeypatch.setattr(cla, "run", lambda gh, name, event, url: checked.append(event["pull_request"]["number"]))
-    gh.open_prs = [gh.get("/pulls/7"), {**gh.get("/pulls/7"), "number": 8, "user": {"id": 2002, "type": "User"}}]
+    gh.open_prs = [gh.get("/pulls/7"), {**gh.get("/pulls/7"), "number": 8, "user": {"id": 2002, "type": "User"}},
+                   {**gh.get("/pulls/7"), "number": 9, "labels": [{"name": "cla-signed"}]}]
     assert cla.recheck_open_prs_of(gh, signers, "https://github.com") == [7] and checked == [7]
+
+
+def test_rerunning_the_signing_issue_still_releases_earlier_signers():
+    """A recheck that failed after the signature was saved is finished by a re-run."""
+    stored = {"signatures": [{"id": 1001, "login": "alice", "issue": 42}, {"id": 3003, "login": "c", "pull_request": 5}]}
+    gh = _with_reactions(FakeGitHub([_comment()], [], store=stored))
+    signers = set()
+    assert cla.sign_on_issue(gh, _issue_event(["cla"]), signers) == 0 and signers == {1001}
+
+
+@pytest.mark.parametrize("user,signed,needed,requests", [
+    ({"login": "debpalash", "id": 4178343, "type": "User"}, set(), False, 0),
+    ({"login": "dependabot[bot]", "id": 49699333, "type": "Bot"}, set(), False, 0),
+    ({"login": "alice", "id": 1001, "type": "User"}, {1001}, False, 1),
+    ({"login": "alice", "id": 1001, "type": "User"}, set(), True, 1),
+])
+def test_ready_for_review_only_rechecks_unsigned_openers(monkeypatch, user, signed, needed, requests):
+    gh = FakeGitHub([], [], store={"signatures": [{"id": i} for i in signed]})
+    seen, original = [], gh.request
+    monkeypatch.setattr(gh, "request", lambda *args, **kwargs: (seen.append(args), original(*args, **kwargs))[1])
+    assert cla.needs_hold_check(gh, {"action": "ready_for_review", "pull_request": {"user": user}}) is needed
+    assert len(seen) == requests and not gh.statuses
+
+
+def test_ready_for_review_by_a_signed_opener_leaves_the_status_alone(tmp_path, monkeypatch):
+    event = tmp_path / "event.json"
+    event.write_text(json.dumps({"action": "ready_for_review", "pull_request": {
+        "number": 7, "head": {"sha": "abc"}, "user": {"login": "debpalash", "id": 4178343, "type": "User"}}}))
+    for key, value in {"GITHUB_EVENT_NAME": "pull_request_target", "GITHUB_EVENT_PATH": str(event),
+                       "GITHUB_TOKEN": "t", "GITHUB_REPOSITORY": "debpalash/VoiceStudio"}.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.setattr(cla, "run", lambda *args: pytest.fail("a full check ran"))
+    monkeypatch.setattr(cla.GitHub, "request", lambda *args: pytest.fail("an API call was made"))
+    assert cla.main() == 0

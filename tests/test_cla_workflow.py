@@ -190,6 +190,16 @@ def test_cla_gate_job_holds_least_privilege_for_drafting_and_restarting_ci():
     assert set(check["env"]) == {"GITHUB_TOKEN"}
 
 
+def test_ready_for_review_reapplies_the_hold_without_replacing_queued_checks():
+    workflow = _load(_CLA_WORKFLOW)
+    assert "ready_for_review" in workflow["on"]["pull_request_target"]["types"]
+    group = workflow["jobs"]["cla"]["concurrency"]["group"]
+    # A no-op ready_for_review run must not cancel a queued run that sets a new head's status.
+    assert group == ("cla-${{ github.event.pull_request.number || github.event.issue.number }}"
+                     "${{ github.event.action == 'ready_for_review' && '-ready' || '' }}")
+    assert "cancel-in-progress" not in workflow["jobs"]["cla"]["concurrency"]
+
+
 def test_every_held_workflow_is_restarted_after_signing():
     """A workflow that skips for an unsigned opener must be one the CLA check re-runs."""
     held = set()
