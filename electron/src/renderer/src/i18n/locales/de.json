@@ -846,6 +846,7 @@
     "casting_drag_hint": "Ziehe einen Stimmen-Chip auf einen Sprecher oder drücke Enter auf einem Sprecher, um aus einer Liste zu wählen.",
     "casting_assign_to": "{{speaker}} eine Stimme zuweisen",
     "casting_assigned": "{{voice}} als {{speaker}} besetzt",
+    "voice_fallback_default": "Nicht genug klare Sprache, um {{speakers}} zu klonen. Sie nutzen die Standardstimme; wähle unter Besetzung eine aus.",
     "edit_settings": "Übersetzungseinstellungen bearbeiten",
     "style_label_prefix": "Stil:",
     "collapse_settings": "Übersetzungseinstellungen ausblenden",

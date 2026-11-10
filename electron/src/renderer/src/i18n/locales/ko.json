@@ -835,6 +835,7 @@
     "casting_drag_hint": "음성 칩을 화자 위로 끌어다 놓거나, 화자에서 Enter 키를 눌러 목록에서 선택하세요.",
     "casting_assign_to": "{{speaker}}에게 음성 지정",
     "casting_assigned": "{{voice}}을(를) {{speaker}}에 지정했습니다",
+    "voice_fallback_default": "{{speakers}}을(를) 복제할 깨끗한 음성이 부족합니다. 기본 음성을 사용합니다. 캐스트에서 음성을 선택하세요.",
     "edit_settings": "번역 설정 수정",
     "style_label_prefix": "스타일:",
     "collapse_settings": "번역 설정 접기",

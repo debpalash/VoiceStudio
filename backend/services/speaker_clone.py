@@ -585,3 +585,43 @@ def build_cast_sources(
                 "kind": "segment",
             }
     return sources
+
+
+def speakers_without_source(
+    segments: list[dict],
+    sources: dict[str, dict] | None,
+) -> list[str]:
+    """Speakers with lines but no ``From video`` voice, in order of appearance.
+
+    Their lines render in the default voice. Another speaker's clone is never
+    borrowed for them, so the caller names them to the user instead (#3419).
+    A line that already carries a chosen voice (``profile_id``) does not count.
+    """
+    missing: list[str] = []
+    for segment in segments or []:
+        if not isinstance(segment, dict):
+            continue
+        speaker_id = segment.get("speaker_id") or "Speaker 1"
+        if segment.get("profile_id"):
+            continue
+        if speaker_id not in (sources or {}) and speaker_id not in missing:
+            missing.append(speaker_id)
+    return missing
+
+
+def voice_fallback_warning(
+    segments: list[dict],
+    sources: dict[str, dict] | None,
+) -> dict | None:
+    """The ``warning`` event that names the speakers using the default voice."""
+    missing = speakers_without_source(segments, sources)
+    if not missing:
+        return None
+    return {
+        "source": "speaker_clone",
+        "fallback_speakers": missing,
+        "detail": (
+            f"Not enough clean speech to clone {', '.join(missing)}; their "
+            "lines use the default voice. Choose a voice for them under Cast."
+        ),
+    }

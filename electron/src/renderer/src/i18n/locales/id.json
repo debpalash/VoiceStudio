@@ -846,6 +846,7 @@
     "casting_drag_hint": "Seret chip suara ke pembicara, atau tekan Enter pada pembicara untuk memilih dari daftar.",
     "casting_assign_to": "Tetapkan suara untuk {{speaker}}",
     "casting_assigned": "{{voice}} ditetapkan sebagai {{speaker}}",
+    "voice_fallback_default": "Ucapan bersih tidak cukup untuk mengkloning {{speakers}}. Mereka memakai suara bawaan; pilih suara di Pemeran.",
     "edit_settings": "Edit pengaturan terjemahan",
     "style_label_prefix": "gaya:",
     "collapse_settings": "Ciutkan pengaturan terjemahan",
