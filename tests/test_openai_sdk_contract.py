@@ -785,3 +785,53 @@ def test_isolated_sidecar_validates_request_options(monkeypatch):
     for bad in ({"task": "summarise"}, {"temperature": 3}, {"beam_size": 5}, {"language": ""}):
         with pytest.raises(ValueError):
             sidecar._transcribe("/a.wav", False, {}, bad)
+
+
+def test_timed_out_mlx_step_releases_shared_gpu_worker_before_native_cleanup(monkeypatch):
+    import asyncio
+    import threading
+
+    from api.routers import openai_compat
+    from services import model_manager
+    from services.tts_backend import MLXAudioBackend
+
+    worker = openai_compat.ThreadPoolExecutor(max_workers=1)
+    shared = openai_compat.ThreadPoolExecutor(max_workers=1)
+    slot = threading.Lock()
+    entered = threading.Event()
+    unblock = threading.Event()
+    closed = threading.Event()
+    monkeypatch.setattr(openai_compat, "_native_pcm_worker", worker)
+    monkeypatch.setattr(openai_compat, "_native_pcm_lock", slot)
+    monkeypatch.setattr(model_manager, "_get_gpu_pool", lambda: shared)
+    monkeypatch.setattr(model_manager, "generate_timeout_s", lambda *a, **kw: 0.5)
+    backend = MLXAudioBackend()
+
+    def chunks(*args, **kwargs):
+        try:
+            entered.set()
+            assert unblock.wait(10)
+            yield torch.zeros(1, 4800)
+        finally:
+            closed.set()
+
+    monkeypatch.setattr(backend, "stream_audio", chunks)
+
+    async def exercise():
+        stream = openai_compat._native_pcm_stream(backend, "Hello.", {}, sse=False)
+        first = asyncio.create_task(anext(stream))
+        assert await asyncio.to_thread(entered.wait, 2)
+        peer = asyncio.wrap_future(shared.submit(lambda: "peer ran"))
+        with pytest.raises(TimeoutError):
+            await first
+        assert await asyncio.wait_for(peer, 2) == "peer ran"
+        assert slot.locked() and not closed.is_set()
+
+    try:
+        asyncio.run(exercise())
+    finally:
+        unblock.set()
+        shared.shutdown()
+        worker.shutdown()
+
+    assert closed.is_set() and not slot.locked()

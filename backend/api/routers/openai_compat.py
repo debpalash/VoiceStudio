@@ -39,7 +39,7 @@ import math
 import os
 import re
 import tempfile
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from threading import Lock
 from typing import Annotated, Any, Literal, Optional, Union
 
@@ -691,6 +691,7 @@ def _native_pcm_busy() -> HTTPException:
 async def _native_pcm_stream(backend, text, kw, *, sse):
     from services.model_manager import generate_timeout_s
     from contextvars import copy_context
+    from services.inference_cancellation import current_cancellation
     from services.tts_backend import EngineBusyError, MLXAudioBackend, engine_in_use
     from services.watermark import mark_synthetic
 
@@ -707,7 +708,15 @@ async def _native_pcm_stream(backend, text, kw, *, sse):
 
     def encode_mlx_next():
         # Reserve a shared GPU slot only while the thread-affine step runs.
-        return _native_pcm_worker.submit(copy_context().run, encode_next).result()
+        step = _native_pcm_worker.submit(copy_context().run, encode_next)
+        cancellation = current_cancellation()
+        while not wait((step,), timeout=0.05).done:
+            if cancellation is not None and cancellation.cancelled.is_set():
+                # The dedicated worker still owns the iterator. Its queued
+                # cleanup releases the lease when the native step returns.
+                step.cancel()
+                return None
+        return step.result()
 
     mlx = isinstance(backend, MLXAudioBackend)
 

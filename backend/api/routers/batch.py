@@ -137,6 +137,8 @@ async def _worker():
             job["finished_at"] = time.time()
             raise
         except Exception as e:
+            if job["status"] == "cancelled":
+                continue
             job["status"] = "failed"
             # plan-04 (#131): guaranteed non-empty, structured reason.
             failed = failure.build_failure(e, stage="batch", include_diagnostic=False)

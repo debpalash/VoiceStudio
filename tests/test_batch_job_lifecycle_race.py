@@ -120,3 +120,31 @@ async def test_delete_still_removes_terminal_jobs(batch, tmp_path, status):
     video, out = _job(batch, tmp_path, status=status)
     assert batch.delete_batch_job("j1") == {"deleted": True}
     assert not video.exists() and not out.exists() and "j1" not in batch._jobs
+
+
+async def test_cancelled_batch_is_retryable_when_running_pipeline_times_out(batch, monkeypatch):
+    started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def pipeline(job_id, job):
+        started.set()
+        await release.wait()
+        raise TimeoutError("GPU generation timed out")
+
+    monkeypatch.setattr(batch, "_run_batch_pipeline", pipeline)
+    job = batch._jobs["j1"] = {"status": "queued", "filename": "input.mp4"}
+    batch._queue.put_nowait("j1")
+    worker = asyncio.create_task(batch._worker())
+    try:
+        await asyncio.wait_for(started.wait(), 2)
+        assert batch.cancel_batch_job("j1") == {"cancelled": True}
+        assert job["retry_ready"] is False
+        release.set()
+        await asyncio.wait_for(batch._queue.join(), 2)
+        assert job["status"] == "cancelled"
+        assert job["retry_ready"] is True
+        assert not job.get("error")
+    finally:
+        worker.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await worker
