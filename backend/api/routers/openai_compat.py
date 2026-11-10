@@ -39,7 +39,7 @@ import math
 import os
 import re
 import tempfile
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from threading import Lock
 from typing import Annotated, Any, Literal, Optional, Union
 
@@ -690,15 +690,35 @@ def _native_pcm_busy() -> HTTPException:
 
 async def _native_pcm_stream(backend, text, kw, *, sse):
     from services.model_manager import generate_timeout_s
-    from services.tts_backend import EngineBusyError, engine_in_use
+    from contextvars import copy_context
+    from services.inference_cancellation import current_cancellation
+    from services.tts_backend import EngineBusyError, MLXAudioBackend, engine_in_use
     from services.watermark import mark_synthetic
 
+    closed = False
+
     def encode_next():
+        if closed:
+            return None
         wav = next(iterator, None)
         if wav is None:
             return None
         rate = backend.sample_rate
         return _pcm24k(mark_synthetic(wav, rate, context="openai_compat.speech"), rate)
+
+    def encode_mlx_next():
+        # Reserve a shared GPU slot only while the thread-affine step runs.
+        step = _native_pcm_worker.submit(copy_context().run, encode_next)
+        cancellation = current_cancellation()
+        while not wait((step,), timeout=0.05).done:
+            if cancellation is not None and cancellation.cancelled.is_set():
+                # The dedicated worker still owns the iterator. Its queued
+                # cleanup releases the lease when the native step returns.
+                step.cancel()
+                return None
+        return step.result()
+
+    mlx = isinstance(backend, MLXAudioBackend)
 
     # Reject contention before committing response headers. Never enqueue an
     # unbounded number of streams behind a backpressured or stalled reader.
@@ -709,6 +729,8 @@ async def _native_pcm_stream(backend, text, kw, *, sse):
     entered = False
 
     def close_on_worker():
+        nonlocal closed
+        closed = True
         try:
             if iterator is not None:
                 iterator.close()
@@ -734,7 +756,9 @@ async def _native_pcm_stream(backend, text, kw, *, sse):
         entered = True
         iterator = backend.stream_audio(text, **kw)
         while (chunk := await run_on_gpu_pool_guarded(
-            encode_next, what="Native OpenAI TTS generate", executor=_native_pcm_worker,
+            encode_mlx_next if mlx else encode_next,
+            what="Native OpenAI TTS generate",
+            executor=None if mlx else _native_pcm_worker,
             timeout=generate_timeout_s(text, engine=backend),
         )) is not None:
             emitted = True

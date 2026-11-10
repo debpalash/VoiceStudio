@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import secrets
 import socket
 import subprocess  # nosec B404 -- executable and args are resolved locally
@@ -113,9 +114,7 @@ class NativeServer:
         last_error = "server did not respond"
         while time.monotonic() < deadline:
             if self.process is None or self.process.poll() is not None:
-                raise RuntimeError(
-                    "CosyVoice GGUF server exited during startup; see its server.log"
-                )
+                raise RuntimeError(self._exit_reason())
             try:
                 self._request("/healthz", timeout=2)
                 data = self._request("/v1/models", timeout=2).get("data", [])
@@ -132,7 +131,29 @@ class NativeServer:
             ) as exc:  # server may still be loading
                 last_error = str(exc)
             time.sleep(0.5)
-        raise TimeoutError(f"CosyVoice GGUF server did not become ready: {last_error}")
+        raise TimeoutError(
+            f"CosyVoice GGUF native runtime: server did not become ready within 60 s: {last_error}"
+        )
+
+    def _exit_reason(self) -> str:
+        code = self.process.returncode if self.process is not None else None
+        tail = ""
+        try:
+            if self.log_handle:
+                self.log_handle.flush()
+            with (Path(bootstrap.managed_dir()).parent / "server.log").open("rb") as log:
+                log.seek(0, os.SEEK_END)
+                log.seek(max(0, log.tell() - 4000))
+                data = log.read()
+            tail = bootstrap._tail(data.decode("utf-8", "replace"))
+        except OSError:
+            pass
+        backend = self.selection.name if self.selection else "?"
+        return (
+            f"CosyVoice GGUF native runtime: server exited during startup "
+            f"(exit code {code}, backend {backend})"
+            + (f": {tail}" if tail else "; see its server.log")
+        )
 
     def speak(self, payload: dict, timeout: float = 600) -> bytes:
         if self.process is None or self.process.poll() is not None:

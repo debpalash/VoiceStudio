@@ -30,6 +30,7 @@ class CosyVoiceGGUFBackend(TTSBackend):
     supports_guidance_scale = False
     supports_generation_seed = True
     runs_out_of_process = True
+    _last_unavailable: str | None = None
     _is_subprocess_isolated = True
 
     def __init__(self):
@@ -47,7 +48,15 @@ class CosyVoiceGGUFBackend(TTSBackend):
             bootstrap.frontend_dir()
             return True, "ready"
         except (OSError, RuntimeError) as exc:
-            return False, str(exc)
+            reason = str(exc)
+            if reason != cls._last_unavailable:
+                cls._last_unavailable = reason
+                from core.scrub import scrub_text
+
+                # The API shows only an owned category; the specific reason
+                # (what was tried, why) goes to the local log, once per change.
+                logger.warning("CosyVoice GGUF unavailable: %s", scrub_text(reason))
+            return False, reason
 
     @classmethod
     def runtime_compute_profile(cls, caps) -> dict:

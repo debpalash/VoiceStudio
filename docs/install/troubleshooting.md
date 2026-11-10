@@ -480,6 +480,14 @@ and a notice shows the error.
 
 Sidecar engines, which run in their own environments, don't use this result.
 
+## Older NVIDIA cards (GTX 900/1000 series)
+
+**Symptom:** a Maxwell or Pascal card (GTX 900 and 1000 series, compute capability below 7.0, such as a GTX 1060 or 1080 Ti) is found, but the app runs on the CPU. The GPU report in **Settings** says the PyTorch build no longer supports that GPU generation.
+
+**Cause:** the PyTorch build VoiceStudio ships (the cu128 build) includes kernels only for compute capability 7.0 and newer. Reinstalling another CUDA build or updating the driver does not add them.
+
+**What works:** PyTorch engines run on the CPU. Engines with their own Vulkan runtime (audio.cpp, CosyVoice GGUF, OmniVoice GGUF) can use the GPU; **Settings → GPU acceleration** lists them. Install one under **Settings → Models**. See [audio.cpp](../engines/audio-cpp.md).
+
 ## 5a. Backend exits on the first `/generate` on an older NVIDIA GPU
 
 **Symptom:** the backend starts, `/health` identifies the GPU, and model preload succeeds, but the first generation ends with `RemoteDisconnected` or “remote end closed.” Later requests get `ConnectionRefused`, often without a Python traceback. Tesla T4 machines, including common Colab hosts, are a typical example.

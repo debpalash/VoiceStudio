@@ -129,3 +129,31 @@ def test_preflight_gpu_row_does_not_say_cuda_ready_without_kernels(monkeypatch):
     assert gpu["status"] == "warn"
     assert "CUDA ready" not in gpu["detail"]
     assert "driver update will not help" in gpu["fix"].lower()
+
+
+def test_preflight_routing_row_agrees_with_legacy_gpu_row(monkeypatch):
+    # The routing row must not tell a pre-Volta card to install another build.
+    from api.routers.setup import wizard
+    import services.media_tools as media_tools
+    from core.device_caps import KERNEL_RISK_MARKER
+
+    monkeypatch.setattr(wizard, "_network_check", lambda: {
+        "id": "network", "label": "Network", "status": "pass",
+        "detail": "stubbed", "fix": None, "mirror_reachable": True,
+    })
+    monkeypatch.setattr(media_tools, "summary", lambda auto_acquire=True: None)
+    monkeypatch.setattr(wizard, "_detect_gpu", lambda: {
+        "vendor": "nvidia", "backend": "cuda", "available": True,
+        "driver": "580.1", "device_name": "GTX 1080", "notes": [],
+        "kernels_missing": "sm_61",
+    })
+    monkeypatch.setattr("services.tts_backend.gpu_routing_verdict", lambda: {
+        "engine": "omnivoice", "routing_status": "cpu_fallback", "effective_device": "cpu",
+        "routing_reason": f"GTX 1080 (sm_61) not in this torch build's archs (sm_75) - {KERNEL_RISK_MARKER}",
+    })
+    resp = wizard.preflight()
+    checks = resp["checks"] if isinstance(resp, dict) else resp.checks
+    rows = {(c if isinstance(c, dict) else c.model_dump())["id"]: (c if isinstance(c, dict) else c.model_dump()) for c in checks}
+    for row_id in ("gpu", "gpu_routing"):
+        assert "neither will another CUDA build" in rows[row_id]["fix"]
+        assert "Install a PyTorch build" not in rows[row_id]["fix"]

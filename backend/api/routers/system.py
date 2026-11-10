@@ -1023,11 +1023,16 @@ def system_notifications():
     # the panel. Checked once per process: it lazy-imports torch.
     gpu_warn = _gpu_arch_warning_cached()
     if gpu_warn:
+        from core.device_caps import LEGACY_NVIDIA_MARKER
+
+        # A pre-Volta card is already routed to the CPU (nothing to be noisy),
+        # and no other build can cover it, so it is a warning with its own text.
+        legacy = LEGACY_NVIDIA_MARKER in gpu_warn
         notes.append({
             "id": "gpu-arch-unsupported",
-            "level": "error",
+            "level": "warn" if legacy else "error",
             "title": "GPU not supported by this PyTorch build",
-            "message": gpu_warn + " Until then, output will be noise/garbage.",
+            "message": gpu_warn if legacy else gpu_warn + " Until then, output will be noise/garbage.",
         })
 
     # 2. Missing ffmpeg

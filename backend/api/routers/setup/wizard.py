@@ -642,6 +642,7 @@ def preflight():
 
     # ── GPU
     gpu = _detect_gpu()
+    legacy_gpu = False
     if gpu["vendor"] == "apple" and gpu["available"]:
         gpu_status, gpu_fix = "pass", None
         gpu_detail = f"{gpu['device_name']} — Metal (MPS) ready"
@@ -655,6 +656,19 @@ def preflight():
             "A driver update will not help. Install a PyTorch build that covers "
             "this GPU's architecture, or continue on CPU (slower)."
         )
+        from core.device_caps import is_legacy_nvidia_arch
+
+        if is_legacy_nvidia_arch(gpu["kernels_missing"]):
+            legacy_gpu = True
+            gpu_detail = (
+                f"{gpu['device_name']} ({gpu['kernels_missing']}) — an older NVIDIA GPU "
+                "this PyTorch build no longer supports; PyTorch engines run on CPU"
+            )
+            gpu_fix = (
+                "A driver update will not help, and neither will another CUDA build. Use a Vulkan engine "
+                "(audio.cpp, CosyVoice GGUF, OmniVoice GGUF) to run on this GPU, or "
+                "continue on CPU (slower)."
+            )
     elif gpu["vendor"] == "nvidia" and gpu["available"]:
         gpu_status, gpu_fix = "pass", None
         gpu_detail = f"{gpu['device_name']} (driver {gpu['driver']}) — CUDA ready"
@@ -772,6 +786,9 @@ def preflight():
         elif _rs == "cpu_fallback" and KERNEL_RISK_MARKER in (_why or ""):
             # The wheel lacks this GPU's architecture (#3067): the driver is fine.
             r_status, r_detail, r_fix = "warn", f"{_eng} runs on CPU here: {_why}", (
+                "A driver update will not help, and neither will another CUDA build. Use a Vulkan "
+                "engine (audio.cpp, CosyVoice GGUF, OmniVoice GGUF), or continue on CPU (slower)."
+                if legacy_gpu else
                 "The installed PyTorch build has no kernels for this GPU's "
                 "architecture, so a driver update will not help. Install a "
                 "PyTorch build that covers it, or continue on CPU (slower).")
