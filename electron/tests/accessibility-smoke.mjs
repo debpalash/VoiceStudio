@@ -76,8 +76,15 @@ async function settled(route) {
   let quietSince = Date.now();
   let lastChange = -1;
   for (;;) {
-    const change = await page.evaluate(() => window.__lastDomChange);
-    if (pending.size || change !== lastChange) {
+    // A dev-server reload (late dependency optimisation) destroys the context mid-poll:
+    // treat it as "still changing" and poll again on the new document.
+    const change = await page
+      .evaluate(() => window.__lastDomChange)
+      .catch((error) => {
+        if (!/Execution context was destroyed|navigation/i.test(String(error))) throw error;
+        return NaN;
+      });
+    if (pending.size || Number.isNaN(change) || change !== lastChange) {
       lastChange = change;
       quietSince = Date.now();
     } else if (Date.now() - quietSince >= quietMs) {
