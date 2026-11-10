@@ -361,6 +361,10 @@ def find_cached_job(content_hash: str, exclude_job_id: str) -> Optional[dict]:
         # without it, reusing the cache would silently keep serving the
         # narrow-band mono bed forever for that video. Re-separating once is
         # the better deal.
+        # A job whose background separation failed holds the mixed fallback
+        # audio as its "vocals"; reusing it would make a retry skip separation.
+        if job.get("background_separation") == "failed":
+            continue
         if not os.path.isfile(os.path.join(cached_dir, "audio_hq.wav")):
             logger.info(
                 "cache candidate %s has pre-HQ (mono/16k-derived) stems — "
@@ -746,6 +750,7 @@ async def run_proc_streaming_stderr(
     cmd: list[str],
     *,
     timeout: float = 1800.0,
+    deadline: Optional[float] = None,
 ) -> AsyncIterator[tuple]:
     """Spawn `cmd` and stream its stderr line-by-line as it runs.
 
@@ -757,8 +762,15 @@ async def run_proc_streaming_stderr(
         the subprocess exits; this is always the final value.
 
     Honors the same semaphore + register_proc/kill plumbing as run_proc.
+    `deadline` (a time.monotonic() value) caps the run AFTER the semaphore wait,
+    so time queued for a slot cannot push a retry past a whole-ladder budget.
     """
     async with _get_semaphore():
+        if deadline is not None:
+            timeout = min(timeout, deadline - time.monotonic())
+            if timeout < 1.0:
+                yield ("done", -1, b"deadline reached while waiting for a free slot")
+                return
         p = await _spawn_with_retry(
             cmd,
             stdout=asyncio.subprocess.PIPE,
@@ -1551,12 +1563,14 @@ async def _separate_background(job_id: str, audio_in: str, job_dir: str, *, path
             shutil.rmtree(os.path.join(job_dir, "htdemucs"), ignore_errors=True)
         else:
             timeout = _DEMUCS_STEP_TIMEOUT_S
+        # Retries also carry the absolute deadline: slot-queue time counts.
+        kw = {"deadline": started + _DEMUCS_TOTAL_BUDGET_S} if index else {}
         cmd = [sys.executable, "-m", "demucs.separate", "--two-stems", "vocals",
                "-n", "htdemucs", "-d", dev, *extra, audio_in, "-o", job_dir]
         rc, stderr_full, last_pct = -1, b"", -1
         # demucs writes a tqdm progress bar to stderr as "  42%|████ …" — surface
         # each new integer percent so the UI shows a bar, not a static spinner.
-        async for evt in run_proc_streaming_stderr(job_id, cmd, timeout=timeout):
+        async for evt in run_proc_streaming_stderr(job_id, cmd, timeout=timeout, **kw):
             if evt[0] == "stderr":
                 m = re.search(r"(\d{1,3})%", evt[1])
                 if m:

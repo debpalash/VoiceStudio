@@ -23,7 +23,7 @@ def _runner(monkeypatch, outcomes, device="cuda"):
     """Fake Demucs: `outcomes` is consumed one per spawn (rc, stderr | exception)."""
     calls = []
 
-    async def fake(job_id, cmd, *, timeout=1800.0):
+    async def fake(job_id, cmd, *, timeout=1800.0, deadline=None):
         calls.append({"cmd": cmd, "timeout": timeout})
         outcome = outcomes[len(calls) - 1]
         if isinstance(outcome, Exception):
@@ -121,7 +121,7 @@ def test_retries_share_a_bounded_budget(monkeypatch):
     monkeypatch.setattr(dp.time, "monotonic", lambda: clock["t"])
     timeouts = []
 
-    async def fake(job_id, cmd, *, timeout=1800.0):
+    async def fake(job_id, cmd, *, timeout=1800.0, deadline=None):
         timeouts.append(timeout)
         clock["t"] += 1500.0  # each attempt burns 1500 s before failing
         yield ("done", 1, b"boom")
@@ -140,7 +140,7 @@ def test_exhausted_budget_skips_the_retry(monkeypatch):
     monkeypatch.setattr(dp.time, "monotonic", lambda: clock["t"])
     timeouts = []
 
-    async def fake(job_id, cmd, *, timeout=1800.0):
+    async def fake(job_id, cmd, *, timeout=1800.0, deadline=None):
         timeouts.append(timeout)
         clock["t"] += dp._DEMUCS_TOTAL_BUDGET_S - 10.0
         yield ("done", 1, b"boom")
@@ -160,3 +160,69 @@ def test_ingest_falls_back_with_a_clear_notice_and_status():
     assert "_BACKGROUND_LOST_NOTICE" in src
     assert '"background_separation": "ok" if has_bg else "failed"' in src
     assert "speech only" in dp._BACKGROUND_LOST_NOTICE
+
+
+def test_failed_separation_job_is_not_a_cache_hit(tmp_path, monkeypatch):
+    """A retry must re-run separation, not reuse the mixed-audio fallback job."""
+    import json as _json
+    from core.db import db_conn, init_db
+
+    init_db()
+
+    d = tmp_path / "job_failed"
+    d.mkdir()
+    (d / "vocals.wav").write_bytes(b"RIFF")
+    (d / "audio_hq.wav").write_bytes(b"RIFF")
+
+    def seed(extra):
+        with db_conn() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO dub_history (id, job_data, content_hash, created_at)"
+                " VALUES (?, ?, ?, datetime('now'))",
+                ("job_failed", _json.dumps({"vocals_path": str(d / "vocals.wav"), **extra}), "hash_f"),
+            )
+            conn.commit()
+
+    monkeypatch.setattr(dp, "safe_job_dir", lambda jid: str(tmp_path / jid))
+    seed({"background_separation": "failed"})
+    assert dp.find_cached_job("hash_f", "other") is None
+    seed({"background_separation": "ok"})
+    assert dp.find_cached_job("hash_f", "other")["job_id"] == "job_failed"
+
+
+def test_retry_deadline_counts_slot_queue_time(monkeypatch):
+    """The retry's absolute deadline is enforced after the semaphore wait."""
+    clock = {"t": 0.0}
+    monkeypatch.setattr(dp.time, "monotonic", lambda: clock["t"])
+
+    async def go():
+        sem = asyncio.Semaphore(1)
+        monkeypatch.setattr(dp, "_get_semaphore", lambda: sem)
+        spawned = []
+
+        async def spawn(*a, **k):
+            spawned.append(1)
+            raise AssertionError("must not spawn past the deadline")
+
+        monkeypatch.setattr(dp, "_spawn_with_retry", spawn)
+        clock["t"] = 100.0  # time passed while queued
+        return spawned, [e async for e in dp.run_proc_streaming_stderr(
+            "j", ["x"], timeout=1800.0, deadline=100.5)]
+
+    spawned, events = asyncio.run(go())
+    assert not spawned
+    assert events[0][0] == "done" and events[0][1] == -1
+
+
+def test_retries_pass_the_whole_ladder_deadline(monkeypatch):
+    seen = []
+
+    async def fake(job_id, cmd, *, timeout=1800.0, deadline=None):
+        seen.append(deadline)
+        yield ("done", 1, b"boom")
+
+    monkeypatch.setattr(dp, "run_proc_streaming_stderr", fake)
+    monkeypatch.setattr(dp, "get_best_device", lambda: "cuda")
+    with pytest.raises(Exception):
+        _drain()
+    assert seen[0] is None and all(d is not None for d in seen[1:]) and len(seen) == 3
