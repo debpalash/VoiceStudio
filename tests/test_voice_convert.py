@@ -1039,3 +1039,28 @@ def test_video_swap_missing_demucs_skips_separation(monkeypatch):
     monkeypatch.setattr(vs, "separation_available", lambda: False)
     assert asyncio.run(vs.separate_vocals("x.wav", "/nonexistent")) is None
     assert vs.video_kind("a.MP4") == "video" and vs.video_kind("a.webm") is None
+
+
+@pytest.mark.parametrize("failure", [asyncio.TimeoutError(), FileNotFoundError("ffmpeg"), None])
+def test_video_swap_mix_and_mux_failures_fall_back_instead_of_raising(monkeypatch, tmp_path, failure):
+    import services.ffmpeg_utils as fu
+    import services.video_voice_swap as vs
+
+    async def boom(cmd, timeout=1800.0):
+        if failure is not None:
+            raise failure
+        return 1, b"no output"
+
+    monkeypatch.setattr(fu, "find_ffmpeg", lambda: "ffmpeg")
+    monkeypatch.setattr(vs, "_ffmpeg", boom)
+    assert asyncio.run(vs.mix_background("v.wav", "b.wav", str(tmp_path / "m.wav"))) is False
+    assert asyncio.run(vs.mux_video("v.mp4", "a.wav", str(tmp_path / "o.mp4"))) is False
+
+
+def test_video_swap_without_ffmpeg_falls_back_instead_of_raising(monkeypatch, tmp_path):
+    import services.ffmpeg_utils as fu
+    import services.video_voice_swap as vs
+
+    monkeypatch.setattr(fu, "find_ffmpeg", lambda: None)
+    assert asyncio.run(vs.mix_background("v.wav", "b.wav", str(tmp_path / "m.wav"))) is False
+    assert asyncio.run(vs.mux_video("v.mp4", "a.wav", str(tmp_path / "o.mp4"))) is False

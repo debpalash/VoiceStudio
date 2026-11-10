@@ -138,12 +138,20 @@ async def mix_background(voice_wav: str, background_wav: str, out_wav: str) -> b
     """Lay the converted voice over the background at their original levels."""
     from services.ffmpeg_utils import bed_mix_filter, find_ffmpeg
 
-    rc, _err = await _ffmpeg([
-        find_ffmpeg(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-        "-i", background_wav, "-i", voice_wav,
-        "-filter_complex", bed_mix_filter("0:a", "1:a", out="aout", bed_gain=1.0),
-        "-map", "[aout]", "-acodec", "pcm_s16le", out_wav,
-    ])
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        return False
+    try:
+        rc, _err = await _ffmpeg([
+            ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+            "-i", background_wav, "-i", voice_wav,
+            "-filter_complex", bed_mix_filter("0:a", "1:a", out="aout", bed_gain=1.0),
+            "-map", "[aout]", "-acodec", "pcm_s16le", out_wav,
+        ])
+    except (asyncio.TimeoutError, OSError, RuntimeError) as exc:
+        # The converted voice is already paid for: fall back, never raise.
+        logger.warning("Voice-swap background mix failed (%s); using the voice alone", type(exc).__name__)
+        return False
     return rc == 0 and os.path.isfile(out_wav)
 
 
@@ -155,8 +163,11 @@ async def mux_video(video: str, audio: str, out_path: str, *, compat: bool = Fal
     """
     from services.ffmpeg_utils import find_ffmpeg
 
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        return False
     cmd = [
-        find_ffmpeg(), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+        ffmpeg, "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
         "-i", video, "-i", audio,
         "-map", "0:v:0", "-map", "1:a:0", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
     ]
@@ -167,7 +178,8 @@ async def mux_video(video: str, audio: str, out_path: str, *, compat: bool = Fal
     cmd.append(out_path)
     try:
         rc, err = await _ffmpeg(cmd)
-    except asyncio.TimeoutError:
+    except (asyncio.TimeoutError, OSError, RuntimeError) as exc:
+        logger.warning("Voice-swap remux could not run (%s)", type(exc).__name__)
         return False
     if rc != 0 or not os.path.isfile(out_path) or os.path.getsize(out_path) == 0:
         logger.warning("Voice-swap remux failed (rc=%s): %s", rc, err.decode(errors="replace")[:200])
