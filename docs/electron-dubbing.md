@@ -191,6 +191,13 @@ karaoke (disabled with dual layout). Audio supports WAV or MP3 with bitrate choi
 SRT/VTT/ASS sidecars and per-language stem/segment ZIPs use the existing backend.
 Each download is explicit and targets the selected language. Export errors retain
 all choices for retry. Native save filters match the encoded file format.
+Settings -> Performance -> Video export sets how video exports are encoded. The
+encoder is software (libx264) by default on every OS; "Hardware when available" is an
+opt-in that uses NVENC, Quick Sync, AMF or VideoToolbox when the bundled ffmpeg lists one,
+and retries the export with libx264 (logging why) if the hardware encode fails. "Maximum
+resolution" (Original, 2160p, 1440p, 1080p, 720p) only ever scales a video down, keeps its
+aspect ratio and even dimensions, and re-encodes instead of stream-copying when it applies.
+Live previews always use software encoding.
 Browser fixtures verify MP3/SRT downloads, query options and failed-export retry;
 unit tests cover video/package parameters. Real rendered exports, batch presets
 and native save dialogs remain unverified or incomplete.

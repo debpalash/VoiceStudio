@@ -11,8 +11,10 @@ source in [CONTRIBUTING.md](CONTRIBUTING.md) or [CLAUDE.md](../CLAUDE.md).
    I have read the VoiceStudio CLA 1.0 and I hereby sign it.
    ```
    ([Contribution licensing](CONTRIBUTING.md#contribution-licensing))
-2. **Start from the latest `main`.** `git fetch origin`, branch from
-   `origin/main`, and merge `origin/main` again right before you push.
+2. **Start from the latest `main`.** Fetch `main` from
+   the upstream repository (`https://github.com/debpalash/VoiceStudio.git`; in a
+   fork `origin` may be stale), branch from it, and merge it again right before
+   you push.
 3. **One focused change.** One fix or feature per pull request; no giant or
    mixed pull requests. ([Pull Requests](CONTRIBUTING.md#pull-requests))
 4. **Fix the root cause.** Fix the whole class of the bug, not one symptom, and
@@ -20,6 +22,7 @@ source in [CONTRIBUTING.md](CONTRIBUTING.md) or [CLAUDE.md](../CLAUDE.md).
    ([Fix quality](../CLAUDE.md#conventions))
 5. **Run the guard tests locally** before you push:
    ```bash
+   bun install --frozen-lockfile
    uv run pytest tests/ -q -n auto
    uv run pytest backend/tests/ -q
    bun run check:electron

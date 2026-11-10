@@ -615,18 +615,28 @@ def dub_abort(job_id: str):
     """Cancel in-flight upload/transcribe subprocesses for a job."""
     with _active_procs_lock:
         had_procs = bool(_active_procs.get(job_id))
-    _kill_job_procs(job_id)
+    # Flag first: a kill that lands before it reads as an encoder crash to the
+    # hardware-encode fallback, which would restart the work after the sweep.
+    job = _dub_jobs.get(job_id)
+    had_flag = job is not None and "aborted" in job
+    prior_flag = job.get("aborted") if job is not None else None
+    if job is not None:
+        job["aborted"] = True
     try:
+        _kill_job_procs(job_id)
         had_task = task_manager.cancel_task(job_id)
     except Exception as exc:
+        # A failed abort leaves the job retryable, not marked aborted.
+        if job is not None:
+            if had_flag:
+                job["aborted"] = prior_flag
+            else:
+                job.pop("aborted", None)
         logger.warning("Dub task cancellation failed")
         raise HTTPException(
             status_code=503,
             detail="The dub could not be fully aborted. Retry the abort operation.",
         ) from exc
-    job = _dub_jobs.get(job_id)
-    if job is not None:
-        job["aborted"] = True
     # Cancellation is idempotent: a missing active task means it already
     # stopped between the renderer aborting its stream and this request.
     return {

@@ -43,8 +43,6 @@ tts_engines:
     readme: KittenTTS
   - id: mlx-audio
     readme: MLX-Audio
-  - id: qwen3-tts
-    doc: docs/engines/mlx-audio.md
   - id: voxcpm2
     readme: VoxCPM2
   - id: moss-tts-nano
@@ -65,6 +63,8 @@ tts_engines:
   - id: confucius4-tts
     readme: "**Confucius4-TTS**"
     doc: docs/engines/confucius4-tts.md
+  - id: qwen3-tts
+    doc: docs/engines/mlx-audio.md
   - id: ming-tts
     doc: docs/engines/ming-tts.md
   - id: pockettts

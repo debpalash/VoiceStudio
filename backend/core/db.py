@@ -180,7 +180,12 @@ _BASE_SCHEMA = """
         type TEXT NOT NULL DEFAULT 'respelling',
         language TEXT NOT NULL DEFAULT '*',
         enabled INTEGER NOT NULL DEFAULT 1,
-        created_at REAL
+        created_at REAL,
+        -- #3873: '' = applies to every voice; else the voice_profiles.id the
+        -- entry belongs to. Existing DBs get it via alembic 0018 / the
+        -- additive reconcile. No index here: init_db runs this script before
+        -- any column is added, so an index on it would break old DBs.
+        profile_id TEXT NOT NULL DEFAULT ''
     );
     CREATE INDEX IF NOT EXISTS idx_pron_lang ON pronunciation_entries(language);
 

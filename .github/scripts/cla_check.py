@@ -698,8 +698,14 @@ def apply_gate(gh: GitHub, pr: dict, held: bool, previous: str | None, write_com
     if "ready" in steps and not _mutate(gh, pr, READY_MUTATION, "mark ready"):
         write_comment(previous)
         return previous  # still `drafted`: the next run marks it ready, then restarts CI
-    if "restart" in steps and not rerun_skipped_ci(gh, pr["head"]["sha"])[1]:
-        state = "restarting"
+    if "restart" in steps:
+        try:
+            restarted_all = rerun_skipped_ci(gh, pr["head"]["sha"])[1]
+        except (OSError, RuntimeError, KeyError, TypeError, ValueError) as err:
+            print(f"CLA: could not restart CI: {err}")
+            restarted_all = False  # stays owed; the next run retries
+        if not restarted_all:
+            state = "restarting"
     write_comment(state)
     return state
 

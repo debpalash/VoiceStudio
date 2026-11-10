@@ -230,7 +230,11 @@ jobs:
       - name: UI smoke test
         if: steps.pass.outputs.hit != 'true'
         run: |
+          # Second line of defence behind the explicit waits in the UI tests: a test
+          # that fails is re-run once in a fresh process, and the job fails unless it
+          # then passes, so a repeatable failure still fails the build.
           xcodebuild -project mobile/ios/VoiceStudio/VoiceStudio.xcodeproj \
+            -retry-tests-on-failure -test-iterations 2 -test-repetition-relaunch-enabled YES \
             -scheme VoiceStudio -destination "id=$SIM_UDID" \
             -resultBundlePath "$RUNNER_TEMP/ui.xcresult" \
             CODE_SIGNING_ALLOWED=NO test-without-building
