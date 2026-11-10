@@ -2,6 +2,7 @@
 import asyncio
 import importlib.util
 import io
+import random
 from pathlib import Path
 import sys
 import types
@@ -9,6 +10,8 @@ import zipfile
 from unittest.mock import AsyncMock
 
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture
@@ -22,6 +25,9 @@ def export_module(monkeypatch):
     spec = importlib.util.spec_from_file_location("stems_export_under_test", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    app = FastAPI()
+    app.include_router(module.router)
+    module.test_app = app
     return module
 
 
@@ -42,8 +48,10 @@ def test_stems_zip_uses_the_same_retimed_background_as_playback(export_module, m
     monkeypatch.setattr(module, "_optional_dub_artifact", lambda value, *a: value)
     prepare = AsyncMock(return_value=str(fitted_bed))
     monkeypatch.setattr(module, "_preserved_background", prepare)
-    response = asyncio.run(module.dub_export_stems("job", lang="de"))
-    with zipfile.ZipFile(io.BytesIO(response.body)) as archive:
+    with TestClient(module.test_app) as client:
+        response = client.get("/dub/export-stems/job", params={"lang": "de"})
+    assert response.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
         assert archive.read("background_original.wav") == b"fitted"
         assert archive.read("vocals_dubbed_de.wav") == b"voice"
     prepare.assert_awaited_once_with(job, "job", "de")
@@ -59,8 +67,10 @@ def test_stems_without_separated_background_still_export_vocals(export_module, m
     monkeypatch.setattr(module, "_dub_artifact", lambda value, *a, **kw: value)
     prepare = AsyncMock()
     monkeypatch.setattr(module, "_preserved_background", prepare)
-    response = asyncio.run(module.dub_export_stems("job", lang="de"))
-    with zipfile.ZipFile(io.BytesIO(response.body)) as archive:
+    with TestClient(module.test_app) as client:
+        response = client.get("/dub/export-stems/job", params={"lang": "de"})
+    assert response.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
         assert archive.namelist() == ["vocals_dubbed_de.wav"]
     prepare.assert_not_awaited()
 
@@ -99,8 +109,10 @@ def test_stems_use_selected_tracks_strategy_after_another_language_is_generated(
     # the expensive audio renderer is replaced at its output boundary.
     renderer = AsyncMock(return_value=str(fitted))
     monkeypatch.setattr(dub_background, "surgical_background", renderer)
-    response = asyncio.run(module.dub_export_stems("job", lang="de"))
-    with zipfile.ZipFile(io.BytesIO(response.body)) as archive:
+    with TestClient(module.test_app) as client:
+        response = client.get("/dub/export-stems/job", params={"lang": "de"})
+    assert response.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
         assert archive.read("background_original.wav") == (b"fitted" if should_retime else b"bed")
     if should_retime:
         assert renderer.await_args.args[4] == plan
@@ -108,3 +120,90 @@ def test_stems_use_selected_tracks_strategy_after_another_language_is_generated(
     else:
         renderer.assert_not_awaited()
     assert job["timing_strategy"] == later_strategy
+
+
+@pytest.mark.parametrize("kind", ["segments", "stems"])
+def test_dub_zip_sends_bounded_chunks(export_module, monkeypatch, tmp_path, kind):
+    """Send a complete ZIP without holding the entire archive in one response chunk."""
+    module = export_module
+    audio = tmp_path / "voice.wav"
+    payload = random.Random(3924).randbytes(512 * 1024)
+    audio.write_bytes(payload)
+    job = {
+        "filename": "interview.mp4",
+        "segments": [{"start": 0, "end": 1, "speaker_id": "Speaker 1"}],
+        "dubbed_tracks": {"de": {"path": str(audio)}},
+    }
+    monkeypatch.setattr(module, "_job_dir_or_400", lambda _: str(tmp_path))
+    monkeypatch.setattr(module, "_get_job", lambda _: job)
+    monkeypatch.setattr(module, "_existing_segment_artifact", lambda *_: str(audio))
+    monkeypatch.setattr(module, "_dub_artifact", lambda value, *a, **kw: value)
+    monkeypatch.setattr(module, "_optional_dub_artifact", lambda *a: None)
+
+    async def download():
+        route = module.dub_export_stems if kind == "stems" else module.dub_export_segments_zip
+        response = await route("job", lang="de")
+        messages = []
+
+        async def send(message):
+            messages.append(message)
+
+        async def receive():
+            pytest.fail("ASGI 2.4 response does not need to poll for disconnects")
+
+        await response({"type": "http", "asgi": {"spec_version": "2.4"}}, receive, send)
+        return messages
+
+    start, *messages = asyncio.run(download())
+    headers = dict(start["headers"])
+    chunks = [message["body"] for message in messages if message.get("body")]
+    assert start["status"] == 200
+    assert headers[b"content-type"] == b"application/zip"
+    assert f"{kind}_interview.zip".encode() in headers[b"content-disposition"]
+    assert len(chunks) > 1
+    assert max(map(len, chunks)) <= 64 * 1024
+    assert int(headers[b"content-length"]) == sum(map(len, chunks))
+    with zipfile.ZipFile(io.BytesIO(b"".join(chunks))) as archive:
+        member = "vocals_dubbed_de.wav" if kind == "stems" else "001_0.00-1.00_Speaker1.wav"
+        assert archive.namelist() == [member]
+        assert archive.read(member) == payload
+
+
+@pytest.mark.parametrize("failure", ["compression", "disconnect"])
+def test_dub_zip_closes_temporary_archive_on_failure(export_module, monkeypatch, tmp_path, failure):
+    """Neither a failed build nor an interrupted download leaves an archive open."""
+    from starlette.requests import ClientDisconnect
+
+    module = export_module
+    audio = tmp_path / "voice.wav"
+    if failure == "disconnect":
+        audio.write_bytes(b"voice")
+    original = module.TemporaryFile
+    opened = []
+
+    def track_archive():
+        archive = original()
+        opened.append(archive)
+        return archive
+
+    monkeypatch.setattr(module, "TemporaryFile", track_archive)
+
+    async def download():
+        response = module._DubZipResponse([(str(audio), "voice.wav")], "dub.zip")
+
+        async def send(message):
+            if failure == "compression":
+                pytest.fail("HTTP headers were sent before compression finished")
+            if message["type"] == "http.response.body":
+                raise OSError("client disconnected")
+
+        async def receive():
+            pytest.fail("ASGI 2.4 response does not need to poll for disconnects")
+
+        await response({"type": "http", "asgi": {"spec_version": "2.4"}}, receive, send)
+
+    expected = FileNotFoundError if failure == "compression" else ClientDisconnect
+    with pytest.raises(expected):
+        asyncio.run(download())
+    assert len(opened) == 1
+    assert opened[0].closed

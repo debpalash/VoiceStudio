@@ -1,5 +1,4 @@
 import asyncio
-import io
 import json
 import logging
 import ntpath
@@ -8,8 +7,11 @@ import re
 import time
 import uuid
 import weakref
+import zipfile
+from functools import partial
 from pathlib import Path, PureWindowsPath
-from typing import Annotated, Optional
+from tempfile import TemporaryFile
+from typing import Annotated, BinaryIO, Optional
 
 from core.config import DUB_DIR
 from core.http_headers import content_disposition
@@ -18,6 +20,8 @@ from core.path_security import UnsafePath, portable_filename, resolve_within
 from core.tasks import task_manager
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response, Depends
 from fastapi.responses import FileResponse, StreamingResponse
+from starlette.concurrency import iterate_in_threadpool, run_in_threadpool
+from starlette.types import Receive, Scope, Send
 from services.ffmpeg_utils import (
     bed_mix_filter,
     explain_ffmpeg_failure,
@@ -2206,9 +2210,35 @@ async def dub_export_ass(
     )
 
 
+class _DubZipResponse(StreamingResponse):
+    """Compress off the event loop and release the temporary archive on disconnect."""
+
+    def __init__(self, entries: list[tuple[str, str]], filename: str):
+        self._entries = entries
+        super().__init__((), media_type="application/zip", headers={
+            "Content-Disposition": content_disposition(filename),
+        })
+
+    def _write_archive(self, archive: BinaryIO) -> int:
+        """Finish the archive before sending headers so build errors stay HTTP errors."""
+        with zipfile.ZipFile(archive, "w", zipfile.ZIP_DEFLATED) as zf:
+            for path, name in self._entries:
+                zf.write(path, name)
+        size = archive.tell()
+        archive.seek(0)
+        return size
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Own the archive across both compression and streaming."""
+        with TemporaryFile() as archive:
+            size = await run_in_threadpool(self._write_archive, archive)
+            self.headers["Content-Length"] = str(size)
+            self.body_iterator = iterate_in_threadpool(iter(partial(archive.read, 64 * 1024), b""))
+            await super().__call__(scope, receive, send)
+
+
 @router.get("/dub/export-segments/{job_id}", dependencies=[Depends(reject_cross_site_get)])
 async def dub_export_segments_zip(job_id: str, lang: str = Query(None)):
-    import zipfile
     _job_dir_or_400(job_id)
     lang = _safe_lang_or_400(lang)
     job = _get_job(job_id)
@@ -2219,30 +2249,24 @@ async def dub_export_segments_zip(job_id: str, lang: str = Query(None)):
     if not segments:
         raise HTTPException(status_code=400, detail="No segments available")
 
-    zip_buffer = io.BytesIO()
+    entries = []
     order = job.get("seg_order") or []
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for i, seg in enumerate(segments):
-            seg_id = order[i] if i < len(order) else i
-            # Discovery returns only a non-symlink entry from the validated job root.
-            seg_path = _existing_segment_artifact(
-                job_id, _seg_wav_candidates(job, lang, (seg_id, i))
-            )
-            if seg_path:
-                speaker = seg.get("speaker_id", "Speaker1").replace(" ", "")
-                start_str = f"{seg['start']:.2f}"
-                end_str = f"{seg['end']:.2f}"
-                arc_name = f"{i+1:03d}_{start_str}-{end_str}_{speaker}.wav"
-                zf.write(seg_path, arc_name)
+    for i, seg in enumerate(segments):
+        seg_id = order[i] if i < len(order) else i
+        # Discovery returns only a non-symlink entry from the validated job root.
+        seg_path = _existing_segment_artifact(
+            job_id, _seg_wav_candidates(job, lang, (seg_id, i))
+        )
+        if seg_path:
+            speaker = seg.get("speaker_id", "Speaker1").replace(" ", "")
+            start_str = f"{seg['start']:.2f}"
+            end_str = f"{seg['end']:.2f}"
+            arc_name = f"{i+1:03d}_{start_str}-{end_str}_{speaker}.wav"
+            entries.append((seg_path, arc_name))
 
-    zip_buffer.seek(0)
     base_name = os.path.splitext(job.get('filename', 'video'))[0]
     safe_name = ''.join(c for c in base_name if c.isalnum() or c in '-_ ').strip() or 'segments'
-    return Response(
-        content=zip_buffer.read(),
-        media_type="application/zip",
-        headers={"Content-Disposition": content_disposition(f"segments_{safe_name}.zip")},
-    )
+    return _DubZipResponse(entries, f"segments_{safe_name}.zip")
 
 @router.get("/dub/download-mp3/{job_id}", dependencies=[Depends(reject_cross_site_get)])
 @router.get("/dub/download-mp3/{job_id}/{filename}", dependencies=[Depends(reject_cross_site_get)])
@@ -2339,7 +2363,6 @@ async def dub_download_mp3(
 
 @router.get("/dub/export-stems/{job_id}", dependencies=[Depends(reject_cross_site_get)])
 async def dub_export_stems(job_id: str, lang: str = Query(None)):
-    import zipfile
     _job_dir_or_400(job_id)
     lang = _safe_lang_or_400(lang)
     job = _get_job(job_id)
@@ -2376,17 +2399,10 @@ async def dub_export_stems(job_id: str, lang: str = Query(None)):
         # Use the same selected-track view for admission and preparation.
         bg_path = await _preserved_background(selected_job, job_id, lang_label)
 
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.write(vocals_path, f"vocals_dubbed_{lang_label}.wav")
-        if bg_path:
-            zf.write(bg_path, "background_original.wav")
+    entries = [(vocals_path, f"vocals_dubbed_{lang_label}.wav")]
+    if bg_path:
+        entries.append((bg_path, "background_original.wav"))
 
-    zip_buffer.seek(0)
     base_name = os.path.splitext(job.get('filename', 'video'))[0]
     safe_name = ''.join(c for c in base_name if c.isalnum() or c in '-_ ').strip() or 'stems'
-    return Response(
-        content=zip_buffer.read(),
-        media_type="application/zip",
-        headers={"Content-Disposition": content_disposition(f"stems_{safe_name}.zip")},
-    )
+    return _DubZipResponse(entries, f"stems_{safe_name}.zip")
