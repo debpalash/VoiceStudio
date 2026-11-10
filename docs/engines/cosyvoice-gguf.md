@@ -33,7 +33,23 @@ cmake --build build --config Release --parallel
 Use the build output containing `cosyvoice-server.exe` and `cosyvoice-cli.exe`.
 Set `OMNIVOICE_COSYVOICE_GGUF_DIR` to that output folder, or set the individual
 `OMNIVOICE_COSYVOICE_GGUF_SERVER` and `OMNIVOICE_COSYVOICE_GGUF_CLI` variables.
-The engine will report which native devices the runtime actually exposes.
+The engine will report which native devices the runtime actually exposes. The
+folder may be the CMake output itself (`build\bin\Release`); the engine also
+looks in its `bin` and `Release` subfolders.
+
+### When the engine shows as unavailable
+
+The engine list names the kind of problem: the native runtime is not set up or
+will not start, or its model files are missing. The exact cause (which
+folder or file was tried, the runtime's exit code or timeout, and the last
+lines of its output with private paths removed) is written once to the backend
+log as `CosyVoice GGUF unavailable: ...`; paste that line in a bug report.
+
+If the runtime's device probe (`cosyvoice-cli --list-backends`, up to 120 s on
+the first run) fails or crashes without listing a device, `auto` uses the
+runtime's CPU path and says so in the routing reason. Set
+`OMNIVOICE_COSYVOICE_GGUF_BACKEND=CPU` to skip the probe entirely. An explicit
+`Vulkan0` never falls back silently.
 
 ## Install and select the model
 
