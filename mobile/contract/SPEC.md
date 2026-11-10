@@ -546,6 +546,9 @@ Workflows on both platforms. These are native screens; no embedded desktop UI.
   cloned voice. Publication follows successful marked cloned-preview synthesis;
   original reference WAV/PCM stays separate. Failed/canceled synthesis publishes
   no voice. Legacy voices without generated previews retain their old playback.
+  A phone clone is screen-owned: Android keeps the screen on while it runs, and
+  leaving the foreground (or a rotation) stops it with an explicit interrupted
+  notice that keeps the chosen sample and name for Retry (iOS resumes through its sustained job).
 - **Calls** run on the paired computer. Only an authenticated operator session
   or API key plus the computer's off-by-default `allow_remote_control` setting
   enables the desktop-mode exception. PIN/trusted-network callers never gain
