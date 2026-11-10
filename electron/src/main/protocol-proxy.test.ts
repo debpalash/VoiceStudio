@@ -40,7 +40,7 @@ it('replaces caller origin with main-owned desktop identity on packaged API requ
   expect(options.headers.get('authorization')).toBe('Bearer scoped-session');
 });
 
-it('streams a local dub upload before the request body finishes (#3853)', async () => {
+it.each(['/dub/upload', '/convert'])('streams a local %s upload before the request body finishes (#3853)', async (route) => {
   let releaseTail!: () => void;
   const receivedHead = new Promise<void>((resolve) => {
     releaseTail = resolve;
@@ -89,7 +89,7 @@ it('streams a local dub upload before the request body finishes (#3853)', async 
       },
     });
     const response = await handler(
-      new Request(`${APP_ORIGIN}/api/dub/upload?test=1`, {
+      new Request(`${APP_ORIGIN}/api${route}?test=1`, {
         method: 'POST',
         headers: { 'content-type': contentType, Authorization: 'Bearer renderer-secret' },
         body,
@@ -103,7 +103,7 @@ it('streams a local dub upload before the request body finishes (#3853)', async 
       authorization: 'Bearer scoped-session',
       origin: APP_ORIGIN,
       contentType,
-      path: '/dub/upload?test=1',
+      path: `${route}?test=1`,
     });
   } finally {
     server.closeAllConnections();

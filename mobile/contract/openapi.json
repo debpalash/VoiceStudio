@@ -10801,7 +10801,7 @@
   },
   "/convert": {
    "post": {
-    "description": "Convert a spoken clip into an existing voice profile's voice.\n\nMultipart form: ``audio`` (the source clip), ``profile_id`` (an existing\nvoice profile), optional ``match_duration`` (default on \u2014 atempo the take\ntoward the source clip's length, clamped to 0.5\u20132.0\u00d7), optional\n``keep_delivery`` (default off \u2014 convert the recording itself so the\nspeaker's timing, rhythm and intonation are kept, #3421; no transcript).\n\nReturns JSON ``{audio_url, text, duration_s, id}`` \u2014 the take is saved to\nOUTPUTS_DIR and served from the ``/audio`` mount like every other take.",
+    "description": "Convert a spoken clip into an existing voice profile's voice.\n\nMultipart form: ``audio`` (the source clip), ``profile_id`` (an existing\nvoice profile), optional ``match_duration`` (default on \u2014 atempo the take\ntoward the source clip's length, clamped to 0.5\u20132.0\u00d7), optional\n``keep_delivery`` (default off \u2014 convert the recording itself so the\nspeaker's timing, rhythm and intonation are kept, #3421; no transcript).\nAn MP4/MOV/M4V/MKV upload (#3750) always runs that path on the video's\nsoundtrack and returns ``video_url`` (picture stream-copied, background\nkept when Demucs is installed) plus ``notes``/``message`` for any fallback\ntaken; other video containers get a 415.\n\nReturns JSON ``{audio_url, text, duration_s, id}`` \u2014 the take is saved to\nOUTPUTS_DIR and served from the ``/audio`` mount like every other take.",
     "operationId": "convert_speech_convert_post",
     "requestBody": {
      "content": {

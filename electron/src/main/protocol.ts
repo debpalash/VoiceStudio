@@ -110,6 +110,9 @@ export function installAppProtocol(
   });
 }
 
+// Large file uploads: dubbing videos and voice-changer video clips.
+const STREAMED_UPLOAD_PATHS = new Set(['/dub/upload', '/convert']);
+
 async function proxyToBackend(
   request: Request,
   backendBase: string,
@@ -135,7 +138,7 @@ async function proxyToBackend(
       duplex: 'half' as const,
       signal: request.signal,
     };
-    if (request.method === 'POST' && rest === '/dub/upload' && options.body) {
+    if (request.method === 'POST' && STREAMED_UPLOAD_PATHS.has(rest) && options.body) {
       const destination = new URL(target);
       if (destination.protocol === 'http:' && LOOPBACK_HOSTS.has(destination.hostname)) {
         // Electron net.fetch buffers the whole request before sending it.
