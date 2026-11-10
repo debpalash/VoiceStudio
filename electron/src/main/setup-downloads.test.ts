@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   DOWNLOAD_SUMMARY_MS,
   SetupDownloadReporter,
+  formatTransferBytes,
   inFlightDownloadBytes,
   lockArtifactHosts,
   pruneInterruptedUvDownloads,
@@ -137,5 +138,14 @@ describe('SetupDownloadReporter', () => {
     ];
     expect(lines.length).toBeGreaterThan(1);
     for (const line of lines) expect(line).not.toMatch(/^Download(?:ing|ed)\s/);
+  });
+});
+
+describe('formatTransferBytes', () => {
+  it('moves to the next unit when rounding reaches 1024', () => {
+    expect(formatTransferBytes(512 * 1024)).toBe('512 KB');
+    expect(formatTransferBytes(1024 ** 2 - 100)).toBe('1.0 MB'); // was "1024 KB"
+    expect(formatTransferBytes(1024 ** 3 - 20 * 1024)).toBe('1.0 GB'); // was "1024.0 MB"
+    expect(formatTransferBytes(2.5 * 1024 ** 3)).toBe('2.5 GB');
   });
 });
