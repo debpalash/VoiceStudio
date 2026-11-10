@@ -171,6 +171,78 @@ def _configure_tokenizer_cache(model):
     return model
 
 
+def _accept_list_ignore_patterns():
+    """Let transformers 5 load remote code that lists its ignore patterns.
+
+    transformers 5 unions ``_keys_to_ignore_on_load_unexpected`` with a set of
+    its own patterns, so the list MOSS-TTS-Nano's model declares (accepted by
+    transformers 4) fails every load with a ``TypeError`` (#3851). The
+    patterns are only ever matched, so a set is equivalent.
+    """
+    try:
+        from transformers.modeling_utils import PreTrainedModel  # noqa: PLC0415
+    except Exception:  # noqa: BLE001 — upstream's own import reports it
+        return
+    original = getattr(PreTrainedModel, "_adjust_missing_and_unexpected_keys", None)
+    if original is None or getattr(original, "_voicestudio_accepts_lists", False):
+        return
+
+    def adjust_missing_and_unexpected_keys(self, *args, **kwargs):
+        for name in ("_keys_to_ignore_on_load_unexpected", "_keys_to_ignore_on_load_missing"):
+            patterns = getattr(self, name, None)
+            if isinstance(patterns, (list, tuple)):
+                setattr(self, name, set(patterns))
+        return original(self, *args, **kwargs)
+
+    adjust_missing_and_unexpected_keys._voicestudio_accepts_lists = True
+    adjust_missing_and_unexpected_keys.__wrapped__ = original
+    PreTrainedModel._adjust_missing_and_unexpected_keys = adjust_missing_and_unexpected_keys
+
+
+def _restore_non_persistent_buffers(model):
+    """Give the loaded model the buffer values its own constructor computes.
+
+    transformers 5 builds the model on the meta device and re-allocates every
+    non-persistent buffer with ``torch.empty_like``; it re-initializes only its
+    own rotary classes. MOSS-TTS-Nano's RoPE ``inv_freq`` (global and local
+    transformer) was left as uninitialized memory, so synthesis produced
+    NaN/Inf logits and failed (#3851). The checkpoint never stores these
+    buffers, so a model constructed on CPU from the same config has the exact
+    values; transformers 4 never takes this path.
+    """
+    if getattr(model, "_voicestudio_buffers_restored", False) or not callable(
+        getattr(model, "named_modules", None)
+    ):
+        return model
+    import copy  # noqa: PLC0415
+
+    import torch  # noqa: PLC0415
+    import transformers  # noqa: PLC0415
+
+    def non_persistent(module):
+        return {
+            f"{prefix}.{name}" if prefix else name: buffer
+            for prefix, sub in module.named_modules()
+            for name, buffer in sub.named_buffers(recurse=False)
+            if buffer is not None and name in getattr(sub, "_non_persistent_buffers_set", ())
+        }
+
+    major = int(str(getattr(transformers, "__version__", "0")).split(".")[0] or 0)
+    loaded = non_persistent(model) if major >= 5 else {}
+    if loaded:
+        reference = non_persistent(type(model)(copy.deepcopy(model.config)))
+        with torch.no_grad():
+            for name, buffer in loaded.items():
+                expected = reference.get(name)
+                if expected is None or expected.shape != buffer.shape:
+                    raise RuntimeError(
+                        f"MOSS-TTS-Nano buffer {name} cannot be restored after loading"
+                    )
+                buffer.copy_(expected.to(device=buffer.device, dtype=buffer.dtype))
+    model._voicestudio_buffers_restored = True
+    return model
+
+
 def _load_service(stdout):
     global _SERVICE
     if _SERVICE is not None:
@@ -198,10 +270,12 @@ def _load_service(stdout):
         # the tokenizer miss files already downloaded into the shared Hub cache.
         # Keep both cache roots chosen by Hugging Face, including user overrides.
         load_model = service._load_model_locked
+        _accept_list_ignore_patterns()
 
         def load_model_with_shared_cache():
-            """Preserve cache roots for every model instance, including reloads."""
-            return _configure_tokenizer_cache(load_model())
+            """Preserve cache roots and restore buffers for every model instance,
+            including reloads."""
+            return _configure_tokenizer_cache(_restore_non_persistent_buffers(load_model()))
 
         # Inference errors and dtype recovery can discard and reload the model.
         service._load_model_locked = load_model_with_shared_cache
