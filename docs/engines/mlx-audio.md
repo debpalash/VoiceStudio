@@ -157,3 +157,9 @@ The optional, manually provisioned CUDA adapter uses model ID `qwen3-tts`. It is
 `faster-qwen3-tts` is installed in the backend environment, CUDA is available,
 and `VOICESTUDIO_QWEN_CUDA_MODEL` points at a local Qwen3-TTS 0.6B Base
 checkpoint. Both engines use the same VoiceStudio voice library and speech API.
+
+
+VoiceStudio's `/ws/tts` endpoint can also deliver native Qwen Base chunks during
+generation. The WebSocket keeps its existing mono PCM16 frames and start and
+done messages. Engines without native streaming, and requests with pacing
+controls that require buffered generation, still render one sentence at a time.

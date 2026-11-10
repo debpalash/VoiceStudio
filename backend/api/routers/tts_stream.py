@@ -19,7 +19,7 @@ The chunked delivery targets <100ms time-to-first-audio (TTFA) on warm models.
 from __future__ import annotations
 
 import asyncio
-from contextlib import ExitStack
+from contextlib import ExitStack, aclosing
 import logging
 import math
 import os
@@ -308,6 +308,31 @@ async def synthesize_stream(
             yield wav, sr
 
 
+async def _ws_pcm_chunks(backend, kw, text, language, *, native):
+    if native:
+        from api.routers.openai_compat import PCM_SAMPLE_RATE, _native_pcm_stream
+        from services.text_normalization import normalize_for_tts
+
+        normalized = normalize_for_tts(text, language)
+        async with aclosing(_native_pcm_stream(backend, normalized, kw, sse=False, timed=True)) as stream:
+            async for pcm, synth_seconds in stream:
+                yield pcm, PCM_SAMPLE_RATE, synth_seconds
+        return
+
+    from functools import partial
+
+    from services.audio_io import pcm16_mono
+    from services.model_manager import generate_timeout_s, run_on_gpu_pool_guarded
+
+    for sentence in split_stream_sentences(text, language):
+        wav, rate, synth_seconds = await run_on_gpu_pool_guarded(
+            partial(render_stream_sentence, backend, kw, sentence),
+            what="TTS generate",
+            timeout=generate_timeout_s(sentence, engine=backend),
+        )
+        yield pcm16_mono(wav).numpy().tobytes(), rate, synth_seconds
+
+
 @router.websocket("/ws/tts")
 async def ws_tts(websocket: WebSocket):
     """Stream TTS audio chunks over WebSocket.
@@ -362,9 +387,7 @@ async def ws_tts(websocket: WebSocket):
                 from services.tts_backend import engine_in_use
 
                 backend = await _resolve_stream_backend(engine_id)
-                # The idle sweeper can run between sentence jobs and socket sends;
-                # keep the engine in use until this request is fully done.
-                lease.enter_context(engine_in_use(backend))
+                lease.enter_context(engine_in_use(backend, yield_to_native=True))
 
                 # ── Routing gate (#21 — no silent CPU fallback). WebSockets have
                 # no response headers, so this uses frames: an error frame +
@@ -400,20 +423,20 @@ async def ws_tts(websocket: WebSocket):
                 except ValueError as exc:
                     await websocket.send_json({"type": "error", "detail": str(exc)})
                     continue
+                can_stream = getattr(backend, "can_stream", None)
+                native = (
+                    can_stream is not None
+                    and kw.get("duration_factor") is None
+                    and can_stream(**kw)
+                )
                 await evict_other_tts_engines(backend.id)
+                if native:
+                    from services.model_manager import generate_timeout_s
 
-                # Normalized exactly once on the whole text, then chunked
-                # (see split_stream_sentences). The request's `language` is all
-                # this route knows (None → universal safety filters only).
-                sentences = split_stream_sentences(text, data.get("language"))
+                    # The shared native iterator acquires an exclusive lease.
+                    send_timeout = generate_timeout_s(text, engine=backend)
+                    lease.close()
 
-                # Run generation in the GPU pool
-                import functools
-                from services.model_manager import run_on_gpu_pool_guarded
-
-                _generate = functools.partial(render_stream_sentence, backend, kw)
-
-                import torch
                 total_samples = 0
                 sr = backend.sample_rate
                 started = False
@@ -425,54 +448,36 @@ async def ws_tts(websocket: WebSocket):
                 # engine having changed at all.
                 synth_time = 0.0
 
-                for sentence in sentences:
-                    # Bounded + pool-reset on hang so a wedged generate can't
-                    # starve the GPU pool and brick the backend (#730 class). On
-                    # timeout GpuJobTimeoutError propagates to the handler below,
-                    # which sends an actionable error frame.
-                    # Length-scaled budget per sentence (#1190) — the flat 300s
-                    # default is gone from every dispatch.
-                    from services.model_manager import generate_timeout_s
-                    wav_tensor, sr, sentence_synth_s = await run_on_gpu_pool_guarded(
-                        functools.partial(_generate, sentence),
-                        what="TTS generate",
-                        timeout=generate_timeout_s(sentence, engine=backend),
-                    )
-                    synth_time += sentence_synth_s
+                async with aclosing(_ws_pcm_chunks(
+                    backend, kw, text, data.get("language"), native=native,
+                )) as chunks:
+                    async for pcm_bytes, sr, chunk_synth_s in chunks:
+                        synth_time += chunk_synth_s
+                        if not started:
+                            # The rate is known only after lazy generation.
+                            start_frame = {
+                                "type": "start",
+                                "sample_rate": sr,
+                                "channels": 1,
+                                "format": "pcm16",
+                                "engine": backend.id,
+                            }
+                            if native:
+                                await asyncio.wait_for(websocket.send_json(start_frame), timeout=send_timeout)
+                            else:
+                                await websocket.send_json(start_frame)
+                            started = True
 
-                    if not started:
-                        # Send metadata after the first generation so
-                        # sample_rate is real (lazy-loading engines report
-                        # their true rate only once weights are up).
-                        await websocket.send_json({
-                            "type": "start",
-                            "sample_rate": sr,
-                            "channels": 1,
-                            "format": "pcm16",
-                            "engine": backend.id,
-                        })
-                        started = True
-
-                    # Convert to 16-bit PCM and stream
-                    from services.audio_io import pcm16_mono
-                    pcm = pcm16_mono(wav_tensor)
-                    pcm_bytes = pcm.numpy().tobytes()
-
-                    n_samples = len(pcm)
-                    sent_samples = 0
-                    while sent_samples < n_samples:
-                        end = min(sent_samples + CHUNK_SAMPLES, n_samples)
-                        chunk = pcm_bytes[sent_samples * 2: end * 2]
-                        await websocket.send_bytes(chunk)
-                        if first_audio_at is None:
-                            # TTFA ends when the first audio bytes have been
-                            # handed to the socket.  The previous log used the
-                            # whole-render duration and called it TTFA.
-                            first_audio_at = _perf_counter()
-                        sent_samples = end
-                        # Yield to event loop between chunks for responsiveness
-                        await asyncio.sleep(0)
-                    total_samples += n_samples
+                        for offset in range(0, len(pcm_bytes), CHUNK_SAMPLES * 2):
+                            chunk = pcm_bytes[offset:offset + CHUNK_SAMPLES * 2]
+                            if native:
+                                await asyncio.wait_for(websocket.send_bytes(chunk), timeout=send_timeout)
+                            else:
+                                await websocket.send_bytes(chunk)
+                            if first_audio_at is None:
+                                first_audio_at = _perf_counter()
+                            await asyncio.sleep(0)
+                        total_samples += len(pcm_bytes) // 2
 
                 finished_at = _perf_counter()
                 wall_time_raw = max(0.0, finished_at - t0)
@@ -509,6 +514,8 @@ async def ws_tts(websocket: WebSocket):
                     f"{rtf:.3f}" if rtf is not None else "n/a",
                 )
 
+            except WebSocketDisconnect:
+                break
             except Exception as e:
                 from core.failure import licence_required_detail
 
