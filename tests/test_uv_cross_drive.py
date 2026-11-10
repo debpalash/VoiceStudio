@@ -287,6 +287,7 @@ def test_uv_env_keeps_the_mirror_setting(tmp_path, monkeypatch):
         "engines.moss_tts_v15.bootstrap",
         "engines.confucius4.bootstrap",
         "engines.dots_tts.bootstrap",
+        "engines.ming_tts.bootstrap",
     ],
 )
 def test_every_engine_bootstrap_ignores_the_apps_uv_config(module):
@@ -371,4 +372,4 @@ def test_every_bootstrap_uv_call_gets_the_isolated_env(path):
 
 def test_the_bootstrap_scan_covers_every_engine_that_bootstraps_with_uv():
     names = {p.parent.name for p in _BOOTSTRAPS}
-    assert {"indextts", "moss_tts_v15", "confucius4", "dots_tts"} <= names
+    assert {"indextts", "moss_tts_v15", "confucius4", "dots_tts", "ming_tts"} <= names

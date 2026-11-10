@@ -39,8 +39,8 @@ VoiceStudio/
 │   ├── services/                127 modules of business logic spanning speech, dubbing, DSP, GPU dispatch,
 │   │                            engine selection and loaded-model ownership
 │   ├── engines/                 per-engine adapters: audiocpp, confucius4, cosyvoice_gguf,
-│   │                            cosyvoice_subprocess, dots_tts, indextts, moss_tts_nano_subprocess,
-│   │                            moss_tts_v15, omnivoice_gguf, omnivoice_subprocess, pockettts,
+│   │                            cosyvoice_subprocess, dots_tts, indextts, ming_tts,
+│   │                            moss_tts_nano_subprocess, moss_tts_v15, omnivoice_gguf, omnivoice_subprocess, pockettts,
 │   │                            supertonic3, voxcpm2_subprocess, whisper_cpp, _asr_sidecar, _echo
 │   ├── schemas/                 Pydantic types at the request/response boundary
 │   ├── config/models.yaml       catalogue of selectable models

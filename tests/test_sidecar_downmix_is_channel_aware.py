@@ -40,6 +40,7 @@ _SIDECARS = [
     ("dots_tts/main.py", "_tensor_to_pcm_b64"),
     ("supertonic3/sidecar.py", "_wav_float_to_pcm_b64"),
     ("confucius4/main.py", "_tensor_to_pcm_b64"),
+    ("ming_tts/main.py", "_tensor_to_pcm_b64"),
     ("omnivoice_subprocess/main.py", "_tensor_to_pcm_b64"),
 ]
 

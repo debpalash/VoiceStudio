@@ -1129,6 +1129,8 @@ def test_uninstalling_one_engine_leaves_every_other_engine_intact(monkeypatch):
         ("dots-tts", ["--python", "3.11"],
          ["-e", "{c}", "-c", "{uri}/constraints/recommended.txt"],
          "OMNIVOICE_DOTS_TTS_DIR"),
+        ("ming-tts", ["--python", "3.10"], ["-r", "{c}/requirements.txt"],
+         "OMNIVOICE_MING_TTS_DIR"),
         # moss-tts-nano installs soundfile alongside the editable install so
         # torchaudio 2.7's I/O backend is present inside this engine's own
         # venv — upstream's pyproject pins torchaudio but no backend
@@ -1221,7 +1223,7 @@ def test_verify_probe_runs_in_the_engines_venv_and_compiles(monkeypatch, engine_
     code = ran[0][2]
     compile(code, "<probe>", "exec")  # a Windows path must not break the literal
     assert "{checkout" not in code
-    if engine_id == "confucius4-tts":
+    if engine_id in ("confucius4-tts", "ming-tts"):
         assert repr(str(checkout)) in code
 
 
@@ -1231,7 +1233,7 @@ def test_verify_probe_runs_in_the_engines_venv_and_compiles(monkeypatch, engine_
 @pytest.mark.parametrize(
     ("family", "platform", "machine", "expected"),
     [
-        ("cuda", "linux", "x86_64", {"moss-tts-v15", "dots-tts", "pockettts", "voxcpm2", "moss-tts-nano", "cosyvoice"}),
+        ("cuda", "linux", "x86_64", {"moss-tts-v15", "ming-tts", "dots-tts", "pockettts", "voxcpm2", "moss-tts-nano", "cosyvoice"}),
         ("cuda", "win32", "AMD64", {"moss-tts-v15", "pockettts", "voxcpm2", "moss-tts-nano", "cosyvoice"}),
         ("cpu", "win32", "AMD64", {"pockettts", "voxcpm2", "moss-tts-nano", "cosyvoice"}),
         ("mps", "darwin", "arm64", {"dots-tts", "pockettts", "voxcpm2", "moss-tts-nano", "cosyvoice"}),
@@ -1369,6 +1371,7 @@ _UPSTREAM_ROOT_FILES = {
     "moss-tts-v15": ("pyproject.toml", "README.md", "LICENSE", "MANIFEST.in"),
     "confucius4-tts": ("requirements.txt", "setup.py", "README.md", "LICENSE", "server.py"),
     "dots-tts": ("pyproject.toml", "README.md", "LICENSE", "constraints/recommended.txt"),
+    "ming-tts": ("requirements.txt", "ming_tts.py", "tts_tasks.py", "README.md", "LICENSE"),
     "moss-tts-nano": ("pyproject.toml", "moss_tts_nano_runtime.py", "requirements.txt",
                       "README.md", "LICENSE"),
     "cosyvoice": ("requirements.txt", "README.md", "LICENSE", "cosyvoice/cli/cosyvoice.py",
