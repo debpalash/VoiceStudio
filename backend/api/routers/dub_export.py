@@ -2216,6 +2216,17 @@ async def dub_export_ass(
 _ZIP_SNAPSHOT_PREFIX = ".zip-snapshot-"
 
 
+def _zip_source_version(path: str) -> tuple[int, int, int] | None:
+    """Identify one on-disk version of a regular file; None for anything else."""
+    try:
+        info = os.lstat(path)
+    except OSError:
+        return None
+    if not stat.S_ISREG(info.st_mode):
+        return None  # symlink or non-file
+    return info.st_ino, info.st_size, info.st_mtime_ns
+
+
 def _snapshot_zip_entries(
     job_id: str,
     entries: list[tuple[str, str]],
@@ -2224,15 +2235,16 @@ def _snapshot_zip_entries(
     missing_detail: str = "File not found",
     empty_detail: str = "No segments available",
 ) -> tuple[str, list[tuple[str, str]]]:
-    """Pin one version of each export source in a private dir, under the jobs lock.
+    """Pin one version of each export source in a private dir. Blocking: run in a worker thread.
 
-    Generation publishes with ``os.replace`` under the same lock, so links made
-    here never mix old and new files; a later replace leaves our inode intact.
+    Generation publishes with ``os.replace`` under the jobs lock, so hard links
+    made under that lock never mix old and new files, and a later replace leaves
+    the linked inode intact. Where links are unavailable the files are copied
+    without the lock and the copy is retried if a publication landed meanwhile.
     """
     from services.dub_pipeline import _dub_jobs_lock
 
     job_dir = _job_dir_or_400(job_id)
-    # A crash mid-download leaves its snapshot behind; drop day-old ones here.
     try:
         with os.scandir(job_dir) as scan:
             for entry in scan:
@@ -2242,29 +2254,54 @@ def _snapshot_zip_entries(
                     and time.time() - entry.stat(follow_symlinks=False).st_mtime > 86400
                 ):
                     shutil.rmtree(entry.path, ignore_errors=True)
-    except OSError:
-        pass
+    except OSError as exc:
+        # A crash mid-download leaves its snapshot behind; the sweep is best effort.
+        logger.debug("Dub ZIP snapshot sweep skipped: %s", exc)
     snap_dir = tempfile.mkdtemp(prefix=_ZIP_SNAPSHOT_PREFIX, dir=job_dir)
-    kept: list[tuple[str, str]] = []
     try:
-        with _dub_jobs_lock:
-            for index, (source, arc_name) in enumerate(entries, 1):
-                target = os.path.join(snap_dir, f"{index:04d}")
-                try:
-                    if not stat.S_ISREG(os.lstat(source).st_mode):
-                        raise FileNotFoundError(source)  # symlink or non-file
+        for _attempt in range(3):
+            kept: list[tuple[str, str]] = []
+            copies: list[tuple[str, str, tuple[int, int, int]]] = []
+            with _dub_jobs_lock:
+                for index, (source, arc_name) in enumerate(entries, 1):
+                    target = os.path.join(snap_dir, f"{index:04d}")
+                    try:
+                        os.unlink(target)  # left by an attempt a publication interrupted
+                    except OSError:
+                        pass  # nothing to clear on the first attempt
+                    version = _zip_source_version(source)
+                    if version is None:
+                        continue
                     try:
                         # No follow_symlinks argument: Windows does not accept it,
                         # and the source was just checked to be a regular file.
                         os.link(source, target)
+                    except FileNotFoundError:
+                        continue
                     except OSError as exc:
-                        if isinstance(exc, FileNotFoundError):
-                            raise
                         logger.info("Dub ZIP snapshot copying: hard link unavailable (%s)", type(exc).__name__)
-                        shutil.copy2(source, target, follow_symlinks=False)
-                except FileNotFoundError:
-                    continue
-                kept.append((target, arc_name))
+                        copies.append((source, target, version))
+                    kept.append((target, arc_name))
+            if not copies:
+                break
+            # Full-file copies stay outside the jobs lock so other dubs keep moving.
+            stable = True
+            for source, target, _version in copies:
+                try:
+                    shutil.copyfile(source, target)
+                except OSError:
+                    stable = False
+                    break
+            if stable:
+                with _dub_jobs_lock:
+                    stable = all(_zip_source_version(source) == version for source, _t, version in copies)
+            if stable:
+                break
+        else:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "dub_export_busy", "message": "This dub is being regenerated. Try the download again."},
+            )
         present = {name for _, name in kept}
         if not required <= present:
             raise HTTPException(status_code=404, detail=missing_detail)
@@ -2337,7 +2374,7 @@ async def dub_export_segments_zip(job_id: str, lang: str = Query(None)):
 
     base_name = os.path.splitext(job.get('filename', 'video'))[0]
     safe_name = ''.join(c for c in base_name if c.isalnum() or c in '-_ ').strip() or 'segments'
-    snap_dir, entries = _snapshot_zip_entries(job_id, entries)
+    snap_dir, entries = await run_in_threadpool(_snapshot_zip_entries, job_id, entries)
     return _DubZipResponse(entries, f"segments_{safe_name}.zip", snap_dir)
 
 @router.get("/dub/download-mp3/{job_id}", dependencies=[Depends(reject_cross_site_get)])
@@ -2477,8 +2514,8 @@ async def dub_export_stems(job_id: str, lang: str = Query(None)):
 
     base_name = os.path.splitext(job.get('filename', 'video'))[0]
     safe_name = ''.join(c for c in base_name if c.isalnum() or c in '-_ ').strip() or 'stems'
-    snap_dir, entries = _snapshot_zip_entries(
-        job_id, entries,
+    snap_dir, entries = await run_in_threadpool(
+        _snapshot_zip_entries, job_id, entries,
         required=frozenset({f"vocals_dubbed_{lang_label}.wav"}),
         missing_detail="Dubbed audio file not found",
     )

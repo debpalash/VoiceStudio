@@ -282,7 +282,7 @@ def test_segments_zip_copies_when_hard_links_are_unavailable(export_module, monk
     assert not list(tmp_path.glob(".zip-snapshot-*"))
 
 
-def test_zip_snapshot_skips_vanished_segments_and_symlinks(export_module, monkeypatch, tmp_path):
+def test_zip_snapshot_skips_vanished_segments_and_symlinks(export_module, monkeypatch, tmp_path, symlink_or_skip):
     import shutil
     module = export_module
     _segments_job(module, monkeypatch, tmp_path, count=3)
@@ -290,7 +290,7 @@ def test_zip_snapshot_skips_vanished_segments_and_symlinks(export_module, monkey
     (tmp_path / "seg_de_1.wav").unlink()
     outside = tmp_path / "outside.bin"
     outside.write_bytes(b"secret")
-    (tmp_path / "seg_de_1.wav").symlink_to(outside)
+    symlink_or_skip(tmp_path / "seg_de_1.wav", outside)
     snap, kept = module._snapshot_zip_entries(
         "job", [(str(tmp_path / f"seg_de_{i}.wav"), f"{i}.wav") for i in range(3)])
     try:
@@ -357,3 +357,39 @@ def test_zip_snapshot_drops_day_old_leftovers(export_module, monkeypatch, tmp_pa
     assert fresh.exists()
     assert [name for _, name in kept] == ["voice.wav"]
     assert Path(snap_dir).parent == tmp_path
+
+
+@pytest.mark.parametrize("publications,expected", [(1, 200), (5, 409)])
+def test_copied_zip_snapshot_retries_after_a_publication(export_module, monkeypatch, tmp_path, publications, expected):
+    """Without hard links, a publication during the copy restarts it; endless ones end in a clear 409."""
+    module = export_module
+    _segments_job(module, monkeypatch, tmp_path, count=2)
+
+    def no_link(*a, **kw):
+        raise OSError("cross-device")
+
+    monkeypatch.setattr(os, "link", no_link)
+    real_copy = module.shutil.copyfile
+    state = {"left": publications, "round": 0}
+
+    def copy_then_publish(source, target, *a, **kw):
+        result = real_copy(source, target, *a, **kw)
+        if state["left"] and source.endswith("seg_de_0.wav"):
+            state["left"] -= 1
+            state["round"] += 1
+            for i in range(2):
+                staged = tmp_path / f"new{i}.tmp"
+                staged.write_bytes(b"new%d-%d" % (i, state["round"]))
+                os.replace(staged, tmp_path / f"seg_de_{i}.wav")
+        return result
+
+    monkeypatch.setattr(module.shutil, "copyfile", copy_then_publish)
+    with TestClient(module.test_app) as client:
+        response = client.get("/dub/export-segments/job", params={"lang": "de"})
+    assert response.status_code == expected
+    if expected == 200:
+        with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
+            assert [archive.read(n) for n in archive.namelist()] == [b"new0-1", b"new1-1"]
+    else:
+        assert response.json()["detail"]["code"] == "dub_export_busy"
+    assert not list(tmp_path.glob(".zip-snapshot-*"))
