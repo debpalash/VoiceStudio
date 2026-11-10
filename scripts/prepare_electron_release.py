@@ -66,6 +66,22 @@ def contributors_section(repo, tag, gh=_gh):
     """
     latest = gh("api", f"repos/{repo}/releases/latest", "--jq", ".tag_name + \" \" + .published_at").split()
     base, since = latest[0], latest[1][:10]
+    ordered = _ranked_contributors(repo, base, since, tag, gh)
+    if not ordered:
+        return ""
+    mentions = ", ".join(f"@{login}" for login in ordered)
+    previous = _previous_beta(repo, tag, gh)
+    if not previous:
+        return f"### Contributors\n\nThanks to everyone who contributed to this release: {mentions}\n"
+    # A beta's notes span everything since the last stable, so its full list repeats
+    # from beta to beta; name who is new since the previous beta first.
+    new = _ranked_contributors(repo, previous[0], previous[1], tag, gh)
+    new_line = ", ".join(f"@{login}" for login in new) if new else "no new contributors"
+    return (f"### Contributors\n\nNew since {previous[0]}: {new_line}\n\n"
+            f"Everyone who contributed since {base}: {mentions}\n")
+
+
+def _ranked_contributors(repo, base, since, tag, gh):
     commit_authors = gh("api", f"repos/{repo}/compare/{base}...{tag}", "--paginate",
                         "--jq", ".commits[].author.login // empty").split()
     pr_authors = gh("pr", "list", "--repo", repo, "--state", "merged", "--search", f"merged:>={since}",
@@ -77,10 +93,22 @@ def contributors_section(repo, tag, gh=_gh):
         if login.lower() not in seen:
             ordered.append(login)
             seen.add(login.lower())
-    if not ordered:
-        return ""
-    mentions = ", ".join(f"@{login}" for login in ordered)
-    return f"### Contributors\n\nThanks to everyone who contributed to this release: {mentions}\n"
+    return ordered
+
+
+def _previous_beta(repo, tag, gh):
+    """`(tag, publish date)` of the newest published earlier beta of this version, or None."""
+    match = re.fullmatch(r"(v\d+\.\d+\.\d+)-beta\.(\d+)", tag)
+    if not match:
+        return None
+    best = None
+    for line in gh("api", f"repos/{repo}/releases", "--paginate", "--jq",
+                   '.[] | select(.draft | not) | .tag_name + " " + .published_at').splitlines():
+        parts = line.split()
+        other = re.fullmatch(rf"{re.escape(match[1])}-beta\.(\d+)", parts[0]) if len(parts) == 2 else None
+        if other and int(other[1]) < int(match[2]) and (best is None or int(other[1]) > best[0]):
+            best = (int(other[1]), parts[0], parts[1][:10])
+    return best and (best[1], best[2])
 
 
 def prepare(assets, tag, sunset_tag=None, repo=None, gh=_gh):

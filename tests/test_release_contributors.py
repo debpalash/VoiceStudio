@@ -30,8 +30,10 @@ def release(monkeypatch):
 class FakeGh:
     """Answers the two `gh api` calls the helper makes and records them."""
 
-    def __init__(self, base="v0.5.6", authors=(), pr_authors=()):
+    def __init__(self, base="v0.5.6", authors=(), pr_authors=(), releases=(), since_beta=None):
         self.base, self.authors, self.pr_authors, self.calls = base, list(authors), list(pr_authors), []
+        # `releases`: "tag date" lines; `since_beta`: (base, authors) answered for that range.
+        self.releases, self.since_beta = list(releases), since_beta
 
     def __call__(self, *args):
         self.calls.append(args)
@@ -40,6 +42,10 @@ class FakeGh:
         path = args[1]
         if path.endswith("/releases/latest"):
             return self.base + " 2026-09-23T08:53:32Z\n"
+        if path.endswith("/releases"):
+            return "\n".join(self.releases) + "\n"
+        if self.since_beta and f"/compare/{self.since_beta[0]}..." in path:
+            return "\n".join(self.since_beta[1]) + "\n"
         if "/compare/" in path:
             return "\n".join(self.authors) + "\n"
         raise AssertionError(f"unexpected gh call: {args}")
@@ -76,6 +82,27 @@ def test_the_range_starts_at_the_latest_stable_release_for_betas_and_stables(rel
         assert "--paginate" in gh.calls[1]
         pr_call = gh.calls[2]
         assert pr_call[0] == "pr" and "merged:>=2026-09-23" in pr_call
+
+
+def test_a_later_beta_names_who_is_new_since_the_previous_beta_first(release):
+    """v0.5.8-beta.4 repeated beta.3's full list, so new contributors were invisible."""
+    releases = ["v0.5.8-beta.3 2026-11-09T11:41:42Z", "v0.5.8-beta.2 2026-11-05T00:00:00Z",
+                "v0.5.8-beta.5 2026-12-01T00:00:00Z", "v0.5.7 2026-10-26T00:00:00Z",
+                "v0.5.7-beta.9 2026-10-20T00:00:00Z"]
+    gh = FakeGh(base="v0.5.7", authors=["debpalash", "debpalash", "velixio", "kellerkind84"],
+                releases=releases, since_beta=("v0.5.8-beta.3", ["kellerkind84", "debpalash", "kellerkind84"]))
+    block = release.contributors_section("o/r", "v0.5.8-beta.4", gh)
+    assert "New since v0.5.8-beta.3: @kellerkind84, @debpalash\n" in block
+    assert block.endswith("Everyone who contributed since v0.5.7: @debpalash, @kellerkind84, @velixio\n")
+    new_pr_call = [c for c in gh.calls if c[0] == "pr"][-1]
+    assert "merged:>=2026-11-09" in new_pr_call
+
+
+def test_a_first_beta_and_a_stable_keep_the_single_list(release):
+    for tag in ("v0.5.8-beta.1", "v0.5.8"):
+        gh = FakeGh(base="v0.5.7", authors=["velixio"], releases=["v0.5.8-beta.1 2026-11-01T00:00:00Z"])
+        block = release.contributors_section("o/r", tag, gh)
+        assert block == "### Contributors\n\nThanks to everyone who contributed to this release: @velixio\n"
 
 
 def _prepare(release, monkeypatch, tmp_path, changelog, **kwargs):

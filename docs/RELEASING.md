@@ -110,7 +110,8 @@ version only after validation.
    release workflow adds a `### Contributors` block to the GitHub Release notes
    by itself: everyone who committed since the latest stable release, plus the
    authors of PRs merged in that span (ranked by commits; bots, AI agents and
-   unlinked placeholders are never listed). It does **not** find bug reporters,
+   unlinked placeholders are never listed). A second or later beta first lists
+   who is new since the previous beta, then that full list. It does **not** find bug reporters,
    and it skips the block when the changelog section already has a
    `### Contributors` heading, so write one by hand when you want roles or
    reporters credited.
