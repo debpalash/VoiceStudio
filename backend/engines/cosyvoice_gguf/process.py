@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import secrets
 import socket
 import subprocess  # nosec B404 -- executable and args are resolved locally
@@ -140,7 +141,10 @@ class NativeServer:
         try:
             if self.log_handle:
                 self.log_handle.flush()
-            data = (Path(bootstrap.managed_dir()).parent / "server.log").read_bytes()[-4000:]
+            with (Path(bootstrap.managed_dir()).parent / "server.log").open("rb") as log:
+                log.seek(0, os.SEEK_END)
+                log.seek(max(0, log.tell() - 4000))
+                data = log.read()
             tail = bootstrap._tail(data.decode("utf-8", "replace"))
         except OSError:
             pass

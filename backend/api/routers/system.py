@@ -1030,7 +1030,7 @@ def system_notifications():
         legacy = LEGACY_NVIDIA_MARKER in gpu_warn
         notes.append({
             "id": "gpu-arch-unsupported",
-            "level": "warning" if legacy else "error",
+            "level": "warn" if legacy else "error",
             "title": "GPU not supported by this PyTorch build",
             "message": gpu_warn if legacy else gpu_warn + " Until then, output will be noise/garbage.",
         })

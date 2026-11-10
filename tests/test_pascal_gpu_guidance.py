@@ -142,3 +142,14 @@ def test_every_locale_has_the_legacy_strings(locale):
     assert set(_PLACEHOLDER.findall(option)) == {"vulkan_engines"}
     # Neutral: the NVIDIA option must not be the AMD Radeon text.
     assert option != settings["gpu_report_option_vulkan_engines"]
+
+
+def test_backend_notification_levels_are_accepted_by_the_renderer():
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(root, "electron", "src", "renderer", "src", "components",
+                           "app-shell", "system-notifications.tsx"), encoding="utf-8") as fh:
+        union = re.search(r"level: ((?:'\w+'\s*\|?\s*)+);", fh.read()).group(1)
+    accepted = set(re.findall(r"'(\w+)'", union))
+    with open(os.path.join(root, "backend", "api", "routers", "system.py"), encoding="utf-8") as fh:
+        emitted = set(re.findall(r'"level": "(\w+)"', fh.read()))
+    assert emitted <= accepted, f"backend emits unknown notification levels: {emitted - accepted}"

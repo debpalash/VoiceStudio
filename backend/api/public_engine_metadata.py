@@ -77,6 +77,12 @@ _UNAVAILABLE_NEEDS_CONFIG = (
     "This engine needs to be configured before it can run. Open "
     "Settings → Models to finish setting it up."
 )
+# An explicit model/frontend path override that points at nothing: reinstalling
+# cannot fix it, correcting the override can.
+_UNAVAILABLE_BAD_OVERRIDE = (
+    "A model path set for this engine points to a missing file. Correct or "
+    "remove it in Settings → Models, or its environment variable."
+)
 _UNAVAILABLE_FILE_MISSING = (
     "A file this engine needs is missing or unreadable. Reinstall it from "
     "Settings → Models."
@@ -117,6 +123,7 @@ _UNAVAILABLE_SIGNATURES = (
     )),
     (_UNAVAILABLE_NO_MPS, ("torch mps unavailable",)),
     (_UNAVAILABLE_NATIVE_RUNTIME, ("native runtime",)),
+    (_UNAVAILABLE_BAD_OVERRIDE, ("points to a missing model file", "is missing frontend files")),
     (_UNAVAILABLE_FILE_MISSING, (
         "model files were not found", "model files:", "file is missing", "file is empty", "file is unreadable",
         "script missing", "binary", "not found at",

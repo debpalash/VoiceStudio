@@ -66,7 +66,9 @@ def test_timeout_names_the_limit_and_a_slow_first_probe_is_cached(fake_cli, monk
     with pytest.raises(RuntimeError, match=r"timed out after 0\.3 s"):
         bootstrap.probe_backends()
     monkeypatch.setattr(bootstrap, "PROBE_TIMEOUT_S", 20)
-    assert bootstrap.probe_backends()[0].name == "CPU"  # slow first probe succeeds
+    with pytest.raises(RuntimeError, match="timed out"):  # the failed verdict is cached too
+        bootstrap.probe_backends()
+    assert bootstrap.probe_backends(refresh=True)[0].name == "CPU"  # explicit re-check succeeds
     monkeypatch.setenv("FAKE_SLEEP", "30")
     assert bootstrap.probe_backends()[0].name == "CPU"  # cached: no second slow run
 
@@ -155,3 +157,38 @@ def test_no_failure_reason_collapses_to_the_generic_public_line(tmp_path, monkey
     for reason in reasons:
         public = public_backends([{"id": "cosyvoice-gguf", "reason": reason}])[0]["reason"]
         assert public != _UNAVAILABLE, reason
+
+
+def test_failed_probe_is_cached_until_the_binary_changes_or_refresh(fake_cli, monkeypatch):
+    monkeypatch.setenv("FAKE_EXIT", "7")
+    with pytest.raises(RuntimeError, match="exit code 7"):
+        bootstrap.probe_backends()
+    monkeypatch.setenv("FAKE_EXIT", "0")
+    monkeypatch.setenv("FAKE_OUT", "CPU - i5\n")
+    with pytest.raises(RuntimeError, match="exit code 7"):  # cached failure, no re-probe
+        bootstrap.probe_backends()
+    assert bootstrap.probe_backends(refresh=True)[0].name == "CPU"
+
+
+def test_server_log_tail_reads_only_the_end(tmp_path, monkeypatch):
+    from engines.cosyvoice_gguf import process
+
+    managed = tmp_path / "managed"
+    managed.mkdir()
+    (tmp_path / "server.log").write_bytes(b"line\n" * 1_000_000 + b"vkCreateInstance failed\n")
+    monkeypatch.setattr(bootstrap, "managed_dir", lambda: managed)
+    monkeypatch.setattr(process.Path, "read_bytes", lambda self: pytest.fail("reads the whole log"))
+    reason = process.NativeServer()._exit_reason()
+    assert "vkCreateInstance failed" in reason
+
+
+def test_bad_model_override_says_correct_it_not_reinstall():
+    from api.public_engine_metadata import _public_unavailable_reason
+
+    for text in (
+        "CosyVoice GGUF model files: OMNIVOICE_COSYVOICE_GGUF_MODEL points to a missing model file: /x",
+        "CosyVoice GGUF model files: OMNIVOICE_COSYVOICE_GGUF_FRONTEND is missing frontend files: a.onnx",
+    ):
+        reason = _public_unavailable_reason(text)
+        assert "Correct or remove" in reason and "Reinstall" not in reason
+    assert "Reinstall" in _public_unavailable_reason("CosyVoice GGUF model files: m.gguf is missing from /c")

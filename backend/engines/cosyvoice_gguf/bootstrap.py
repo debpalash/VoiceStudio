@@ -185,7 +185,9 @@ def parse_backends(output: str) -> list[NativeBackend]:
 
 
 PROBE_TIMEOUT_S = 120  # first run can compile Vulkan shaders / scan DLLs
-_PROBE_CACHE: dict[tuple, list[NativeBackend]] = {}
+# Verdict per binary (path, mtime, size): the device list, or the scrubbed
+# failure text. Failures are cached too, so a hung probe costs one timeout.
+_PROBE_CACHE: dict[tuple, list[NativeBackend] | str] = {}
 
 
 def _tail(text: str, lines: int = 4) -> str:
@@ -195,13 +197,14 @@ def _tail(text: str, lines: int = 4) -> str:
     return scrub_text(" | ".join(rows[-lines:]))[:500]
 
 
-def probe_backends(cli: Path | None = None) -> list[NativeBackend]:
+def probe_backends(cli: Path | None = None, refresh: bool = False) -> list[NativeBackend]:
     """Ask the runtime which devices it exposes.
 
     A non-zero exit still counts when the device list printed (Vulkan drivers
     often crash on teardown). Every real failure names the runtime, the exit
     code or timeout and the scrubbed last lines of its output. Successful
-    results are cached per binary file, so the slow first run happens once.
+    and failed verdicts are cached per binary file (a changed binary or
+    ``refresh=True`` probes again), so the slow first run happens once.
     """
     cli = Path(cli or resolve_cli())
     try:
@@ -209,8 +212,27 @@ def probe_backends(cli: Path | None = None) -> list[NativeBackend]:
         key = (str(cli), stat.st_mtime_ns, stat.st_size)
     except OSError:
         key = None
+    if key is not None and refresh:
+        _PROBE_CACHE.pop(key, None)
     if key in _PROBE_CACHE:
-        return list(_PROBE_CACHE[key])
+        cached = _PROBE_CACHE[key]
+        if isinstance(cached, str):
+            raise RuntimeError(cached)
+        return list(cached)
+    try:
+        devices = _probe_once(cli)
+    except RuntimeError as exc:
+        if key is not None:
+            _PROBE_CACHE[key] = str(exc)
+        raise
+    if key is not None:
+        _PROBE_CACHE[key] = list(devices)
+    return devices
+
+
+def _probe_once(cli: Path) -> list[NativeBackend]:
+    from core.scrub import scrub_text
+
     try:
         result = subprocess.run(
             [str(cli), "--list-backends"],
@@ -227,8 +249,10 @@ def probe_backends(cli: Path | None = None) -> list[NativeBackend]:
         ) from None
     except OSError as exc:
         raise RuntimeError(
-            f"CosyVoice GGUF native runtime: {cli} could not be started ({type(exc).__name__}: {exc}); "
-            "a missing DLL or a wrong-architecture build is the usual cause"
+            scrub_text(
+                f"CosyVoice GGUF native runtime: {cli} could not be started ({type(exc).__name__}: {exc}); "
+                "a missing DLL or a wrong-architecture build is the usual cause"
+            )
         ) from None
     output = (result.stdout or "") + "\n" + (result.stderr or "")
     devices = parse_backends(output)
@@ -243,8 +267,6 @@ def probe_backends(cli: Path | None = None) -> list[NativeBackend]:
             f"CosyVoice GGUF native runtime: {cli.name} --list-backends printed no recognisable "
             f"device list{': ' + detail if detail else ''}"
         )
-    if key is not None:
-        _PROBE_CACHE[key] = list(devices)
     return devices
 
 
@@ -283,7 +305,9 @@ def selected_backend() -> tuple[NativeBackend, str | None]:
     except RuntimeError as exc:
         if requested.lower() != "auto":
             raise  # an explicit device choice never silently falls back
-        reason = (
+        from core.scrub import scrub_text
+
+        reason = scrub_text(
             f"{exc}. Falling back to the runtime's CPU path; "
             f"set {BACKEND_ENV}=CPU to skip the device probe."
         )
