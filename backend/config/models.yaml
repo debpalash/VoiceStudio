@@ -354,6 +354,26 @@ models:
       - "hift.pt"
       - "CosyVoice-BlankEN/model.safetensors"
 
+  - repo_id: "inclusionAI/Ming-3.0-tts-0.5b"
+    label: "Ming-3.0-tts 0.5B (zh/en/ja/ko/fr/de/es, zero-shot clone, NVIDIA CUDA)"
+    role: TTS
+    engines: [ming-tts]
+    size_gb: 2.8
+    platforms: [cuda]
+    # The files the ming-tts engine loads; the PDF and figures in the repo are not needed.
+    required_files:
+      - "model.safetensors"
+      - "campplus.onnx"
+      - "config.json"
+      - "tokenizer.json"
+    allow_patterns:
+      - "*.safetensors"
+      - "*.onnx"
+      - "*.json"
+      - "*.txt"
+      - "*.jinja"
+    note: "Optional opt-in engine (own venv, NVIDIA CUDA only). MIT per the model card; review the bundled component terms."
+
   - repo_id: "Lourdle/Fun-CosyVoice3-0.5B-2512-GGUF"
     label: "CosyVoice 3 0.5B Q4_K_M (native GGUF/Vulkan)"
     role: TTS
