@@ -9,6 +9,15 @@
 # `cla-override` to a pull request after reviewing it by hand. The check also
 # keeps the informational `cla-signed` label in step with its result.
 #
+# While a pull request's opener has not signed, the check holds it: it converts
+# the pull request to a draft (CodeRabbit and Greptile skip drafts) and says so
+# in its comment, and CI skips its heavy jobs (.github/scripts/ci_scope.py).
+# When they sign, the check marks it ready for review if it drafted it and
+# re-runs the skipped CI runs: GITHUB_TOKEN writes start no new workflow runs,
+# so a re-run (`actions: write`) is how CI restarts. The draft and ready
+# GraphQL mutations use this job's `pull-requests: write`. The hold only calls
+# the GitHub API from the base branch's checker; it runs no pull-request code.
+#
 # Security: pull_request_target and issue_comment run with a write token, even
 # for fork PRs. This workflow therefore checks out only the base branch (the
 # default for both events) and runs the base branch's checker; pull-request code
@@ -44,6 +53,8 @@ jobs:
       issues: write
       pull-requests: write
       statuses: write
+      # Re-run the CI that skipped while the opener had not signed.
+      actions: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
