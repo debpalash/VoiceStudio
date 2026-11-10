@@ -866,3 +866,133 @@ def test_keep_delivery_refuses_an_overlong_source(client, monkeypatch, profile):
     assert r.status_code == 422
     assert "longer than" in r.json()["detail"]
     assert vc_cls.vc_calls == []
+
+
+# ── Video voice swap (#3750) ────────────────────────────────────────────────
+
+
+def _swap_stubs(monkeypatch, *, separation=True, mux_ok=(True, True)):
+    """Stub every ffmpeg/Demucs step of the swap; record what each one saw."""
+    import soundfile as sf
+    import services.video_voice_swap as vs
+    import services.voice_conversion as vc
+
+    seen = {"decoded": [], "mux": [], "mixed": 0}
+    tone = np.zeros(24000, dtype=np.float32)
+
+    async def extract(video, out_wav):
+        sf.write(out_wav, tone, 24000)
+
+    async def separate(track, workdir):
+        if not separation:
+            return None
+        vocals, bed = os.path.join(workdir, "v.wav"), os.path.join(workdir, "b.wav")
+        sf.write(vocals, tone, 24000)
+        sf.write(bed, tone, 24000)
+        return vocals, bed
+
+    async def mix(voice, bed, out):
+        seen["mixed"] += 1
+        sf.write(out, tone, 24000)
+        return True
+
+    attempts = iter(mux_ok)
+
+    async def mux(video, audio, out_path, *, compat=False):
+        assert out_path != video  # the upload is only ever read
+        seen["mux"].append((os.path.basename(out_path), compat))
+        if not next(attempts):
+            return False
+        with open(out_path, "wb") as f:
+            f.write(b"fake-video")
+        return True
+
+    async def decode(path, sr, *, max_s=None):
+        seen["decoded"].append(os.path.basename(path))
+        return (0.3 * np.sin(2 * np.pi * 180 * np.arange(sr * 2) / sr)).astype(np.float32)
+
+    monkeypatch.setattr(vs, "extract_track", extract)
+    monkeypatch.setattr(vs, "separate_vocals", separate)
+    monkeypatch.setattr(vs, "mix_background", mix)
+    monkeypatch.setattr(vs, "mux_video", mux)
+    monkeypatch.setattr(vc, "decode_mono", decode)
+    import services.ffmpeg_utils as fu
+    monkeypatch.setattr(fu, "validate_media_source", lambda p: None)
+    monkeypatch.setattr(fu, "require_audio_stream", lambda p: None)
+    return seen
+
+
+def _swap_engine(monkeypatch):
+    cls = _vc_engine(f"vcv-{uuid.uuid4().hex[:6]}")
+    monkeypatch.setitem(_tts_mod()._REGISTRY, cls.id, cls)
+    monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", cls.id)
+    _no_asr(monkeypatch)
+    return cls
+
+
+def _post_video(client, pid, name="clip.mp4"):
+    return client.post(
+        "/convert",
+        data={"profile_id": pid},  # no keep_delivery flag: a video always swaps
+        files={"audio": (name, b"not-really-video", "video/mp4")},
+    )
+
+
+def test_video_swap_converts_vocals_and_returns_a_video(client, monkeypatch, profile):
+    cls = _swap_engine(monkeypatch)
+    seen = _swap_stubs(monkeypatch)
+    r = _post_video(client, profile)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["video_url"].endswith(".mp4") and body["notes"] == [] and body["message"] == ""
+    assert body["audio_url"].endswith(".wav") and body["engine"] == cls.id
+    assert seen["decoded"][0] == "v.wav"  # the vocals stem, not the full track
+    assert seen["mixed"] == 1 and seen["mux"] == [("swapped.mp4", False)]
+    assert client.get(body["video_url"]).content == b"fake-video"
+
+
+def test_video_swap_without_separation_converts_the_whole_track(client, monkeypatch, profile):
+    _swap_engine(monkeypatch)
+    seen = _swap_stubs(monkeypatch, separation=False)
+    r = _post_video(client, profile)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["notes"] == ["no_separation"] and "whole soundtrack" in body["message"]
+    assert body["video_url"]  # never a failure
+    assert seen["decoded"][0] == "track.wav" and seen["mixed"] == 0
+
+
+def test_video_swap_retries_with_a_compatible_mp4_remux(client, monkeypatch, profile):
+    _swap_engine(monkeypatch)
+    seen = _swap_stubs(monkeypatch, mux_ok=(False, True))
+    r = _post_video(client, profile, name="clip.mkv")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert seen["mux"] == [("swapped.mkv", False), ("swapped-compat.mp4", True)]
+    assert body["video_url"].endswith(".mp4") and body["notes"] == []
+
+
+def test_video_swap_returns_converted_audio_when_every_remux_fails(client, monkeypatch, profile):
+    _swap_engine(monkeypatch)
+    _swap_stubs(monkeypatch, mux_ok=(False, False))
+    r = _post_video(client, profile)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["video_url"] is None and body["notes"] == ["audio_only"]
+    assert "converted audio" in body["message"]
+    assert client.get(body["audio_url"]).status_code == 200
+
+
+def test_video_swap_names_supported_containers_for_an_unsupported_one(client, monkeypatch, profile):
+    _swap_engine(monkeypatch)
+    r = _post_video(client, profile, name="clip.avi")
+    assert r.status_code == 415
+    assert "MP4, MOV, M4V and MKV" in r.json()["detail"]
+
+
+def test_video_swap_missing_demucs_skips_separation(monkeypatch):
+    import services.video_voice_swap as vs
+
+    monkeypatch.setattr(vs, "separation_available", lambda: False)
+    assert asyncio.run(vs.separate_vocals("x.wav", "/nonexistent")) is None
+    assert vs.video_kind("a.MP4") == "video" and vs.video_kind("a.webm") is None

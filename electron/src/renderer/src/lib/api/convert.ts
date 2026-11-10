@@ -10,6 +10,10 @@ export interface ConvertResult {
   gen_time_s: number;
   /** Engine that converted the recording (Keep my delivery only). */
   engine?: string;
+  /** Video with the new voice (video sources only; null when it fell back to audio). */
+  video_url?: string | null;
+  /** Fallbacks taken on a video swap: `no_separation`, `audio_only`. */
+  notes?: string[];
 }
 export async function convertSpeech(
   audio: File,
