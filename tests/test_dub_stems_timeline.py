@@ -393,3 +393,25 @@ def test_copied_zip_snapshot_retries_after_a_publication(export_module, monkeypa
     else:
         assert response.json()["detail"]["code"] == "dub_export_busy"
     assert not list(tmp_path.glob(".zip-snapshot-*"))
+
+
+@pytest.mark.parametrize("replace_works", [True, False])
+def test_reused_artifacts_are_published_by_replacement(monkeypatch, tmp_path, replace_works):
+    """A stem reused from the cache must not rewrite a file an export has linked."""
+    from services import dub_pipeline
+
+    source = tmp_path / "cached.wav"
+    source.write_bytes(b"cached stem")
+    dest = tmp_path / "no_vocals.wav"
+    dest.write_bytes(b"exported stem")
+    snapshot = tmp_path / "snapshot"
+    os.link(dest, snapshot)
+    if not replace_works:  # Windows while a reader holds the file: fall back in place
+        def refuse(*_):
+            raise PermissionError("in use")
+        monkeypatch.setattr(dub_pipeline.os, "replace", refuse)
+    dub_pipeline._copy_into_job(str(source), str(dest))
+    assert dest.read_bytes() == b"cached stem"
+    if replace_works:
+        assert snapshot.read_bytes() == b"exported stem"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["cached.wav", "no_vocals.wav", "snapshot"]

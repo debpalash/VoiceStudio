@@ -134,6 +134,26 @@ _dub_jobs: dict[str, dict] = {}
 # helpers call it while already holding it.
 _dub_jobs_lock = threading.RLock()
 
+
+def _copy_into_job(source: str, dest: str) -> None:
+    """Copy a reused artifact into a job by replacement, never by writing in place.
+
+    A ZIP export may hold a hard link to the current file; replacing the name
+    leaves that link whole. If the name cannot be replaced (Windows, while a
+    reader has it open), fall back to the in-place copy.
+    """
+    staged = f"{dest}.{uuid.uuid4().hex}.tmp"
+    try:
+        shutil.copy2(source, staged)
+        os.replace(staged, dest)
+    except OSError as exc:
+        logger.info("Reused dub artifact copied in place (%s)", type(exc).__name__)
+        try:
+            os.unlink(staged)
+        except OSError:
+            pass  # never created, or already moved
+        shutil.copy2(source, dest)
+
 #: Ingests currently running. Used only so "clear history" can also sweep a job
 #: that has no row yet — it would appear in no id list otherwise.
 _inflight_jobs: set[str] = set()
@@ -1811,15 +1831,15 @@ async def ingest_pipeline(
             thumb_path = os.path.join(job_dir, "thumb.jpg")
 
             if cached["vocals_path"] and os.path.isfile(cached["vocals_path"]):
-                shutil.copy2(cached["vocals_path"], vocals_path)
+                _copy_into_job(cached["vocals_path"], vocals_path)
             else:
                 vocals_path = audio_path
             if cached["no_vocals_path"] and os.path.isfile(cached["no_vocals_path"]):
-                shutil.copy2(cached["no_vocals_path"], no_vocals_path)
+                _copy_into_job(cached["no_vocals_path"], no_vocals_path)
             else:
                 no_vocals_path = None
             if cached["thumb_path"] and os.path.isfile(cached["thumb_path"]):
-                shutil.copy2(cached["thumb_path"], thumb_path)
+                _copy_into_job(cached["thumb_path"], thumb_path)
             else:
                 thumb_path = None
 

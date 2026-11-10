@@ -2256,7 +2256,7 @@ def _snapshot_zip_entries(
                     shutil.rmtree(entry.path, ignore_errors=True)
     except OSError as exc:
         # A crash mid-download leaves its snapshot behind; the sweep is best effort.
-        logger.debug("Dub ZIP snapshot sweep skipped: %s", exc)
+        logger.debug("Dub ZIP snapshot sweep skipped: %s", type(exc).__name__)
     snap_dir = tempfile.mkdtemp(prefix=_ZIP_SNAPSHOT_PREFIX, dir=job_dir)
     try:
         for _attempt in range(3):
