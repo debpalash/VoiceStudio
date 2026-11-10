@@ -5100,6 +5100,28 @@ def release_idle_engines(
     return released
 
 
+def release_idle_resident_servers(idle_seconds: float) -> list[str]:
+    """Stop idle out-of-process model servers an engine keeps between requests.
+
+    Reaches the active instance as well as the engine cache, because
+    generation holds its engine in ``_active_instance``, which the cache sweep
+    above never sees. Never raises: it runs inside the idle worker.
+    """
+    with _ENGINE_CACHE_LOCK:
+        held = [i for i in (_active_instance, *_ENGINE_INSTANCES.values()) if i is not None]
+    released: list[str] = []
+    for inst in dict.fromkeys(held):
+        hook = getattr(inst, "release_if_idle", None)
+        if hook is None:
+            continue
+        try:
+            if hook(idle_seconds):
+                released.append(getattr(type(inst), "id", type(inst).__name__))
+        except Exception:  # noqa: BLE001
+            logger.warning("idle resident-server release failed", exc_info=True)
+    return released
+
+
 # ── Shared generation-time engine resolution (issue #312 class) ───────────
 #
 # dub_generate.py and batch.py used to call services.model_manager.get_model()
