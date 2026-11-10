@@ -26,6 +26,19 @@ export interface SetupProgress {
  * while a multi-gigabyte wheel prints nothing for minutes.
  */
 export const DOWNLOAD_STALL_MS = 45_000;
+/**
+ * A download with no new bytes this long is stopped and retried: uv's own
+ * timeout (900 s) would leave setup frozen for a quarter of an hour (#3950).
+ */
+export const DOWNLOAD_ABORT_MS = 120_000;
+
+/** True once a pending download has been silent long enough that uv should be restarted. */
+export function downloadStallExceeded(
+  snapshot: { stalled?: boolean; stalledSeconds?: number },
+  limitMs = DOWNLOAD_ABORT_MS,
+): boolean {
+  return Boolean(snapshot.stalled) && (snapshot.stalledSeconds ?? 0) * 1000 >= limitMs;
+}
 
 const ANSI_ESCAPE = /\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))/g;
 const SIZE = '(\\d+(?:\\.\\d+)?)\\s*(B|KB|KiB|MB|MiB|GB|GiB)';
@@ -76,6 +89,8 @@ export class SetupProgressTracker {
   /** Last time any download made progress: an announcement, a completion, or in-flight bytes. */
   private advancedAt: number | undefined;
   private inFlightBytes = 0;
+  /** Packages the current uv child has announced; a plan kept from a failed child re-arms on its first announcement. */
+  private announcedByChild = new Set<string>();
 
   reset(): void {
     this.planned.clear();
@@ -86,6 +101,7 @@ export class SetupProgressTracker {
     this.progress = { completedDownloads: 0 };
     this.advancedAt = undefined;
     this.inFlightBytes = 0;
+    this.announcedByChild.clear();
   }
 
   /** Package (any spelling) to the host its locked wheel downloads from. */
@@ -125,7 +141,8 @@ export class SetupProgressTracker {
     const starting = line.match(new RegExp(`^Downloading\\s+(.+?)\\s+\\(${SIZE}\\)`, 'i'));
     if (starting) {
       const name = normalizePackageName(starting[1]);
-      if (!this.planned.has(name) || this.completed.has(name)) this.advancedAt = now;
+      if (!this.announcedByChild.has(name) || this.completed.has(name)) this.advancedAt = now;
+      this.announcedByChild.add(name);
       if (!this.labels.has(name)) this.labels.set(name, starting[1].trim());
       this.planned.set(name, parseByteSize(starting[2], starting[3]));
       this.completed.delete(name);
@@ -226,6 +243,15 @@ export class SetupProgressTracker {
     else delete this.progress.activePackage;
     if (this.planned.size > 0) this.progress.downloadsComplete = pending.length === 0;
     else delete this.progress.downloadsComplete;
+  }
+
+  /**
+   * A new uv child starts unarmed: a plan left by the previous child must not count
+   * as stalled while the new one does other work. Its own download activity re-arms it.
+   */
+  restartStallClock(): void {
+    this.advancedAt = undefined;
+    this.announcedByChild.clear();
   }
 
   snapshot(now = Date.now()): SetupProgress {

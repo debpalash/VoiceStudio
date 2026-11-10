@@ -28,6 +28,8 @@ from services.speaker_clone import (
     build_cast_sources,
     extract_segment_refs,
     extract_speaker_clones,
+    speakers_without_source,
+    voice_fallback_warning,
 )
 
 SR = 16000
@@ -219,13 +221,8 @@ def test_sync_transcribe_keeps_a_whispered_speaker_sharing_a_voiced_line(
     check(out["segments"])
 
 
-@pytest.mark.usefixtures("asr_model_installed")
-@pytest.mark.parametrize("make_vocals, check", SHARED_LINE_CASES)
-def test_stream_transcribe_keeps_a_whispered_speaker_sharing_a_voiced_line(
-    tmp_path, monkeypatch, make_vocals, check,
-):
-    # Same shape on the SSE path: the per-chunk pass aligned the shared
-    # segment before the final diarization re-split.
+def _stream_events(tmp_path, monkeypatch, vocals_audio, job_id="job-3419-sse"):
+    """Run the SSE transcribe on WORDS + DIAR and return its events in order."""
     import json
     from unittest.mock import MagicMock
 
@@ -234,9 +231,9 @@ def test_stream_transcribe_keeps_a_whispered_speaker_sharing_a_voiced_line(
     audio = tmp_path / "audio.wav"
     vocals = tmp_path / "vocals.wav"
     sf.write(str(audio), np.zeros(3 * SR, dtype=np.float32), SR)
-    sf.write(str(vocals), make_vocals(), SR)
-    dc._dub_jobs["job-3419-sse"] = {"audio_path": str(audio), "vocals_path": str(vocals),
-                                    "scene_cuts": []}
+    sf.write(str(vocals), vocals_audio, SR)
+    dc._dub_jobs[job_id] = {"audio_path": str(audio), "vocals_path": str(vocals),
+                            "scene_cuts": []}
 
     class _ASR:
         id = "fake"
@@ -268,17 +265,37 @@ def test_stream_transcribe_keeps_a_whispered_speaker_sharing_a_voiced_line(
     monkeypatch.setattr("services.token_resolver.resolve", lambda *a, **k: None)
 
     async def _collect():
-        resp = await dc.dub_transcribe_stream("job-3419-sse")
+        resp = await dc.dub_transcribe_stream(job_id)
         return "".join([c.decode() if isinstance(c, (bytes, bytearray)) else str(c)
                         async for c in resp.body_iterator])
 
     try:
         body = asyncio.run(_collect())
     finally:
-        dc._dub_jobs.pop("job-3419-sse", None)
+        dc._dub_jobs.pop(job_id, None)
     assert "event: final" in body, body[-1500:]
-    final = body.split("event: final", 1)[1]
-    segments = json.loads(final.split("data:", 1)[1].split("\n\n", 1)[0])["segments"]
+    events = []
+    for block in body.split("\n\n"):
+        name = data = None
+        for line in block.split("\n"):
+            if line.startswith("event:"):
+                name = line[len("event:"):].strip()
+            elif line.startswith("data:"):
+                data = json.loads(line[len("data:"):])
+        if name:
+            events.append((name, data))
+    return events
+
+
+@pytest.mark.usefixtures("asr_model_installed")
+@pytest.mark.parametrize("make_vocals, check", SHARED_LINE_CASES)
+def test_stream_transcribe_keeps_a_whispered_speaker_sharing_a_voiced_line(
+    tmp_path, monkeypatch, make_vocals, check,
+):
+    # Same shape on the SSE path: the per-chunk pass aligned the shared
+    # segment before the final diarization re-split.
+    events = _stream_events(tmp_path, monkeypatch, make_vocals())
+    segments = next(data for name, data in events if name == "final")["segments"]
     assert _speakers(segments) == [
         ("Hello, how are you?", "Speaker 1"),
         ("Good, and you?", "Speaker 2"),
@@ -336,6 +353,87 @@ def test_speaker_with_too_little_clean_audio_still_falls_back(tmp_path):
     clones = extract_speaker_clones(vocals, segments, str(tmp_path / "refs"),
                                     labels_source="pyannote")
     assert set(clones) == {"Speaker 1"}
+
+
+def test_voice_fallback_warning_names_speakers_without_a_source():
+    segments = [{"speaker_id": "Speaker 1"}, {"speaker_id": "Speaker 2"},
+                {"speaker_id": "Speaker 3"}, {"speaker_id": "Speaker 2"}, {}]
+    sources = {"Speaker 1": {"kind": "speaker"}}
+    assert speakers_without_source(segments, sources) == ["Speaker 2", "Speaker 3"]
+    warning = voice_fallback_warning(segments, sources)
+    assert warning["source"] == "speaker_clone"
+    assert warning["fallback_speakers"] == ["Speaker 2", "Speaker 3"]
+    assert "Speaker 2, Speaker 3" in warning["detail"]
+    assert voice_fallback_warning(segments, {**sources, "Speaker 2": {}, "Speaker 3": {}}) is None
+
+
+def test_a_line_with_a_chosen_voice_is_not_named_as_default():
+    # After speaker re-analysis `rebind` keeps a voice the user chose; that
+    # speaker must not be reported as using the default voice.
+    segments = [{"speaker_id": "Speaker 1", "profile_id": "auto:speaker_1"},
+                {"speaker_id": "Speaker 2", "profile_id": "my-voice"},
+                {"speaker_id": "Speaker 3", "profile_id": ""}]
+    assert speakers_without_source(segments, {"Speaker 1": {}}) == ["Speaker 3"]
+
+
+def test_retry_after_completed_transcript_replays_the_voice_warning(monkeypatch):
+    import json
+    from api.routers import dub_core as dc
+
+    dc._dub_jobs["job-3419-retry"] = {
+        "transcription_complete": True,
+        "segments": [{"speaker_id": "Speaker 1", "profile_id": "auto:speaker_1"},
+                     {"speaker_id": "Speaker 2"}],
+        "cast_sources": {"Speaker 1": {}},
+    }
+
+    async def _collect():
+        resp = await dc.dub_transcribe_stream("job-3419-retry")
+        return "".join([c.decode() if isinstance(c, (bytes, bytearray)) else str(c)
+                        async for c in resp.body_iterator])
+
+    try:
+        body = asyncio.run(_collect())
+    finally:
+        dc._dub_jobs.pop("job-3419-retry", None)
+    assert "event: final" in body
+    warnings = [json.loads(b.split("data:", 1)[1]) for b in body.split("\n\n")
+                if b.startswith("event: warning")]
+    assert [w["fallback_speakers"] for w in warnings] == [["Speaker 2"]]
+    assert body.index("event: final") < body.index("event: warning") < body.index("event: done")
+
+
+@pytest.mark.usefixtures("asr_model_installed")
+def test_stream_transcribe_says_which_speakers_fell_back(tmp_path, monkeypatch):
+    # Speaker 2 has too little clean speech for any reference. Their lines
+    # must keep the default voice, never Speaker 1's clone, and the result
+    # must name them instead of falling back silently.
+    from services import speaker_clone
+
+    ref = tmp_path / "voice_speaker_1.wav"
+    sf.write(str(ref), np.full(SR, A_LEVEL, dtype=np.float32), SR)
+
+    def _only_speaker_1(_vocals, segments, _out, **_kw):
+        assert {s["speaker_id"] for s in segments} == {"Speaker 1", "Speaker 2"}
+        return {"Speaker 1": {"ref_audio": str(ref), "ref_text": "x",
+                              "duration": 6.0, "source_count": 2}}
+
+    monkeypatch.setattr(speaker_clone, "extract_speaker_clones", _only_speaker_1)
+    monkeypatch.setattr(speaker_clone, "extract_segment_refs", lambda *a, **k: {})
+    monkeypatch.setattr(speaker_clone, "refine_ref_texts", lambda clones, _asr: clones)
+
+    events = _stream_events(tmp_path, monkeypatch, np.zeros(3 * SR, dtype=np.float32),
+                            job_id="job-3419-fallback")
+
+    final = next(data for name, data in events if name == "final")
+    voices = {s["speaker_id"]: s.get("profile_id") for s in final["segments"]}
+    assert voices == {"Speaker 1": "auto:speaker_1", "Speaker 2": None}
+    assert set(final["cast_sources"]) == {"Speaker 1"}
+    fallbacks = [data for name, data in events
+                 if name == "warning" and data.get("fallback_speakers")]
+    assert [w["fallback_speakers"] for w in fallbacks] == [["Speaker 2"]]
+    order = [data for _, data in events]
+    assert order.index(fallbacks[0]) < order.index(final)
 
 
 def test_line_with_another_speaker_inside_is_not_used(tmp_path):

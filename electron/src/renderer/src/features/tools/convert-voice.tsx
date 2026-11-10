@@ -22,6 +22,10 @@ import { convertSpeech, type ConvertResult } from '@/lib/api/convert';
 import { queryKeys } from '@/lib/query';
 import { beginAppActivity } from '@/lib/app-activity';
 
+// Containers the backend can swap the voice in (#3750). WebM stays audio.
+const VIDEO_PATTERN = /\.(mp4|mov|m4v|mkv)$/i;
+const isVideoFile = (file: File | null) => !!file && VIDEO_PATTERN.test(file.name);
+
 export function ConvertVoice() {
   const { t } = useTranslation();
   const profiles = useProfiles();
@@ -34,7 +38,11 @@ export function ConvertVoice() {
       b.available && b.supports_voice_conversion === true && b.routing_status !== 'unavailable',
   );
   const client = useQueryClient();
-  const { file, voice, search, match, keepDelivery, language, result } = useConversion();
+  const { file, voice, search, match, keepDelivery: keepDeliveryChoice, language, result } =
+    useConversion();
+  // A video always swaps the voice in place: re-speaking could not stay in sync.
+  const video = isVideoFile(file);
+  const keepDelivery = keepDeliveryChoice || video;
   const ready = keepDelivery ? canKeepDelivery : canClone;
   const setFile = (value: File | null) => setConversion('file', value);
   const setVoice = (value: string) => setConversion('voice', value);
@@ -60,7 +68,11 @@ export function ConvertVoice() {
   const ingest = (next: File) => {
     if (
       !next.size ||
-      !(next.type.startsWith('audio/') || /\.(mp3|wav|m4a|flac|ogg|aac|webm)$/i.test(next.name))
+      !(
+        next.type.startsWith('audio/') ||
+        isVideoFile(next) ||
+        /\.(mp3|wav|m4a|flac|ogg|aac|webm)$/i.test(next.name)
+      )
     ) {
       setError(t('clone.unsupported_audio'));
       return;
@@ -140,7 +152,7 @@ export function ConvertVoice() {
         <input
           ref={input}
           type="file"
-          accept="audio/*,.mp3,.wav,.m4a,.flac,.ogg,.aac,.webm"
+          accept="audio/*,.mp3,.wav,.m4a,.flac,.ogg,.aac,.webm,.mp4,.mov,.m4v,.mkv"
           className="sr-only"
           aria-label={t('convert.source_kicker')}
           onChange={(e) => {
@@ -163,7 +175,17 @@ export function ConvertVoice() {
         >
           {file?.name ?? t('convert.drop_audio')}
         </Button>
-        {sourceUrl && <WaveformPlayer src={sourceUrl} source="convert-source" height={36} />}
+        {sourceUrl &&
+          (video ? (
+            <video
+              src={sourceUrl}
+              controls
+              className="max-h-60 w-full rounded-md bg-black"
+              aria-label={t('convert.video_result')}
+            />
+          ) : (
+            <WaveformPlayer src={sourceUrl} source="convert-source" height={36} />
+          ))}
         <div className="flex items-center gap-2">
           <Button
             variant="ghost"
@@ -231,7 +253,7 @@ export function ConvertVoice() {
         <label className="flex items-center gap-3 text-sm">
           <Switch
             checked={keepDelivery}
-            disabled={busy}
+            disabled={busy || video}
             onCheckedChange={(value) => {
               invalidate();
               setKeepDelivery(value);
@@ -239,7 +261,9 @@ export function ConvertVoice() {
           />
           {t('convert.keep_delivery')}
         </label>
-        <p className="text-xs text-muted-foreground">{t('convert.keep_delivery_hint')}</p>
+        <p className="text-xs text-muted-foreground">
+          {video ? t('convert.video_hint') : t('convert.keep_delivery_hint')}
+        </p>
       </div>
       {!keepDelivery && (
         <div className="space-y-2 text-sm">
@@ -345,11 +369,35 @@ export function ConvertVoice() {
           <div className="flex items-center justify-between gap-3">
             <h3 className="text-sm font-medium">{t('convert.result_kicker')}</h3>
             <SaveAudioButton
-              url={apiPath(result.audio_url)}
-              suggestedName={`voicestudio-${result.id}.wav`}
+              url={apiPath(result.video_url ?? result.audio_url)}
+              suggestedName={`voicestudio-${result.id}${result.video_url ? (/\.\w+$/.exec(result.video_url)?.[0] ?? '.mp4') : '.wav'}`}
             />
           </div>
-          <WaveformPlayer src={apiPath(result.audio_url)} source="convert-result" height={40} />
+          {result.video_url ? (
+            <video
+              src={apiPath(result.video_url)}
+              controls
+              className="max-h-80 w-full rounded-md bg-black"
+              aria-label={t('convert.video_result')}
+            />
+          ) : (
+            <WaveformPlayer src={apiPath(result.audio_url)} source="convert-result" height={40} />
+          )}
+          {result.notes?.includes('no_separation') && (
+            <p role="status" className="text-xs text-muted-foreground">
+              {t('convert.video_no_separation')}
+            </p>
+          )}
+          {result.notes?.includes('no_background') && (
+            <p role="status" className="text-xs text-muted-foreground">
+              {result.message}
+            </p>
+          )}
+          {result.notes?.includes('audio_only') && (
+            <p role="status" className="text-xs text-muted-foreground">
+              {t('convert.video_audio_only')}
+            </p>
+          )}
           {result.text && (
             <p className="text-sm">
               <span className="text-muted-foreground">{t('convert.transcript')}: </span>
