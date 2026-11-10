@@ -1040,3 +1040,31 @@ def test_mlx_qwen_base_streams_reference_audio_in_chunks():
     assert calls[0]["stream"] is True
     assert calls[0]["ref_text"] == "Reference."
     assert calls[0]["lang_code"] == "english"
+
+
+def test_mlx_qwen_retries_buffered_generation_until_native_stream_closes():
+    from services.model_manager import GpuPoolBusyError
+    from services.tts_backend import MLXAudioBackend
+
+    backend = MLXAudioBackend()
+    backend._model_id = backend.CURATED_MODELS["qwen3-tts-base"]
+    calls = []
+
+    def generate(**kwargs):
+        calls.append(kwargs)
+        yield types.SimpleNamespace(audio=[0.1, 0.2], sample_rate=24000)
+
+    backend._model = types.SimpleNamespace(
+        config=types.SimpleNamespace(tts_model_type="base"), generate=generate,
+    )
+    kwargs = dict(ref_audio="voice.wav", ref_text="Reference.", language="en")
+    stream = backend.stream_audio("First.", **kwargs)
+    try:
+        next(stream)
+        with pytest.raises(GpuPoolBusyError) as busy:
+            backend.generate("Buffered.", **kwargs)
+        assert busy.value.retry_after == 1
+        assert len(calls) == 1
+    finally:
+        stream.close()
+    assert tuple(backend.generate("After disconnect.", **kwargs).shape) == (1, 2)

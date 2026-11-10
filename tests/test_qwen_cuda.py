@@ -6,11 +6,10 @@ import pytest
 import soundfile as sf
 import torch
 
-from services.qwen_cuda import QwenCUDABackend
-from services.tts_backend import TTSInputError
-
 
 def test_qwen_cuda_caches_reference_and_owns_streamed_audio(tmp_path):
+    from services.qwen_cuda import QwenCUDABackend
+
     reference = tmp_path / "reference.wav"
     sf.write(reference, np.zeros((480, 2), dtype=np.float32), 24000)
     prompts = []
@@ -50,6 +49,9 @@ def test_qwen_cuda_caches_reference_and_owns_streamed_audio(tmp_path):
 
 
 def test_qwen_cuda_reports_missing_or_unreadable_reference(tmp_path):
+    from services.qwen_cuda import QwenCUDABackend
+    from services.tts_backend import TTSInputError
+
     engine = QwenCUDABackend()
     with pytest.raises(TTSInputError, match="reference and transcript"):
         next(engine.stream_audio("Hello."))
@@ -65,6 +67,8 @@ def test_qwen_cuda_reports_missing_or_unreadable_reference(tmp_path):
 
 
 def test_qwen_cuda_ready_does_not_wait_for_generation_lock():
+    from services.qwen_cuda import QwenCUDABackend
+
     engine = QwenCUDABackend()
     engine._model = SimpleNamespace()
 
@@ -77,6 +81,8 @@ def test_qwen_cuda_ready_does_not_wait_for_generation_lock():
 
 
 def test_qwen_cuda_buffered_generation_retries_while_native_stream_holds_engine(tmp_path):
+    from services.qwen_cuda import QwenCUDABackend
+
     from services.model_manager import GpuPoolBusyError
 
     reference = tmp_path / "reference.wav"
@@ -103,6 +109,8 @@ def test_qwen_cuda_buffered_generation_retries_while_native_stream_holds_engine(
 
 
 def _loaded_engine():
+    from services.qwen_cuda import QwenCUDABackend
+
     def generate_stream(**kw):
         for value in (1.0, 2.0, 3.0):
             yield np.full(2, value, dtype=np.float32), 24000, {}

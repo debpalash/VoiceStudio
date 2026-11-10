@@ -992,6 +992,9 @@ def _is_media_process_launch_failure(exc: BaseException) -> bool:
 def _oom_friendly_reraise(e):
     """Best-effort cache flush + the user-facing OOM hint shared by both
     inference paths."""
+    if isinstance(e, GpuPoolBusyError):
+        raise e
+
     import gc
     from services.model_manager import release_device_cache
 
