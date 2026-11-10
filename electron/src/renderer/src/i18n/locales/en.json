@@ -1095,6 +1095,7 @@
     "casting_drag_hint": "Drag a voice chip onto a speaker, or press Enter on a speaker to pick from a list.",
     "casting_assign_to": "Assign a voice to {{speaker}}",
     "casting_assigned": "Cast {{voice}} as {{speaker}}",
+    "voice_fallback_default": "Not enough clean speech to clone {{speakers}}. They use the default voice; pick one under Cast.",
     "edit_settings": "Edit translation settings",
     "mirror_delivery": "Match original delivery",
     "style_label_prefix": "style: ",

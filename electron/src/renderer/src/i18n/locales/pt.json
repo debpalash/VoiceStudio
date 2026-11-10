@@ -848,6 +848,7 @@
     "casting_drag_hint": "Arraste um chip de voz para um falante, ou pressione Enter num falante para escolher de uma lista.",
     "casting_assign_to": "Atribuir uma voz a {{speaker}}",
     "casting_assigned": "{{voice}} atribuída a {{speaker}}",
+    "voice_fallback_default": "Não há fala limpa suficiente para clonar {{speakers}}. Usam a voz padrão; escolha uma em Elenco.",
     "edit_settings": "Editar configurações de tradução",
     "style_label_prefix": "estilo:",
     "collapse_settings": "Recolher configurações de tradução",

@@ -866,6 +866,7 @@
     "casting_drag_hint": "اسحب شريحة صوت إلى متحدث، أو اضغط Enter على متحدث للاختيار من قائمة.",
     "casting_assign_to": "تعيين صوت إلى {{speaker}}",
     "casting_assigned": "تم إسناد {{voice}} إلى {{speaker}}",
+    "voice_fallback_default": "لا يوجد كلام واضح كافٍ لاستنساخ {{speakers}}. سيُستخدم الصوت الافتراضي؛ اختر صوتًا من فريق الأصوات.",
     "edit_settings": "تحرير إعدادات الترجمة",
     "style_label_prefix": "أسلوب:",
     "collapse_settings": "طي إعدادات الترجمة",

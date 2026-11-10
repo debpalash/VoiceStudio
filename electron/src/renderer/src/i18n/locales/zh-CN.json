@@ -832,6 +832,7 @@
     "casting_drag_hint": "将声音标签拖到说话人上，或在说话人上按 Enter 从列表中选择。",
     "casting_assign_to": "为 {{speaker}} 指派声音",
     "casting_assigned": "已将 {{voice}} 指派给 {{speaker}}",
+    "voice_fallback_default": "{{speakers}} 的清晰语音不足，无法克隆，将使用默认音色；可在配音阵容中选择音色。",
     "style_label_prefix": "风格：",
     "quality_label": "质量",
     "quality_title": "“电影级”会使用 LLM 分三步翻译、复核并改写。使用前请先配置 LLM。",

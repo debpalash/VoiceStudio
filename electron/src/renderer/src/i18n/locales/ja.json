@@ -846,6 +846,7 @@
     "casting_drag_hint": "ボイスチップを話者にドラッグするか、話者で Enter を押して一覧から選択します。",
     "casting_assign_to": "{{speaker}} にボイスを割り当てる",
     "casting_assigned": "{{voice}} を {{speaker}} に割り当てました",
+    "voice_fallback_default": "{{speakers}} をクローンするのに十分なクリアな音声がありません。既定の音声を使います。キャストで音声を選んでください。",
     "edit_settings": "翻訳設定を編集する",
     "style_label_prefix": "スタイル:",
     "collapse_settings": "翻訳設定を折りたたむ",

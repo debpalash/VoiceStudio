@@ -846,6 +846,7 @@
     "casting_drag_hint": "將聲音標籤拖曳到說話者上，或在說話者上按 Enter 從清單中選擇。",
     "casting_assign_to": "為 {{speaker}} 指派聲音",
     "casting_assigned": "已將 {{voice}} 指派給 {{speaker}}",
+    "voice_fallback_default": "{{speakers}} 的清晰語音不足，無法複製，將使用預設音色；可在配音角色中選擇音色。",
     "edit_settings": "編輯翻譯設定",
     "style_label_prefix": "風格：",
     "collapse_settings": "折疊翻譯設置",

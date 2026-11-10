@@ -846,6 +846,7 @@
     "casting_drag_hint": "ลากชิปเสียงไปวางบนผู้พูด หรือกด Enter ที่ผู้พูดเพื่อเลือกจากรายการ",
     "casting_assign_to": "กำหนดเสียงให้ {{speaker}}",
     "casting_assigned": "กำหนด {{voice}} ให้ {{speaker}} แล้ว",
+    "voice_fallback_default": "เสียงพูดที่ชัดเจนไม่พอสำหรับโคลน {{speakers}} จึงใช้เสียงเริ่มต้น เลือกเสียงได้ที่นักแสดง",
     "edit_settings": "แก้ไขการตั้งค่าการแปล",
     "style_label_prefix": "สไตล์:",
     "collapse_settings": "ยุบการตั้งค่าการแปล",

@@ -846,6 +846,7 @@
     "casting_drag_hint": "Sleep een stemchip naar een spreker, of druk op Enter bij een spreker om uit een lijst te kiezen.",
     "casting_assign_to": "Een stem toewijzen aan {{speaker}}",
     "casting_assigned": "{{voice}} toegewezen aan {{speaker}}",
+    "voice_fallback_default": "Te weinig heldere spraak om {{speakers}} te klonen. Ze gebruiken de standaardstem; kies er een onder Cast.",
     "edit_settings": "Vertaalinstellingen bewerken",
     "style_label_prefix": "stijl:",
     "collapse_settings": "Vertaalinstellingen samenvouwen",

@@ -848,6 +848,7 @@
     "casting_drag_hint": "Trascina una chip vocale su uno speaker, oppure premi Invio su uno speaker per scegliere da un elenco.",
     "casting_assign_to": "Assegna una voce a {{speaker}}",
     "casting_assigned": "{{voice}} assegnata a {{speaker}}",
+    "voice_fallback_default": "Parlato pulito insufficiente per clonare {{speakers}}. Usano la voce predefinita; scegline una in Cast.",
     "edit_settings": "Modifica le impostazioni di traduzione",
     "style_label_prefix": "stile:",
     "collapse_settings": "Comprimi le impostazioni di traduzione",

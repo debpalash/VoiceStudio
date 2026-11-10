@@ -856,6 +856,7 @@
     "casting_drag_hint": "Przeciągnij żeton głosu na mówcę lub naciśnij Enter na mówcy, aby wybrać z listy.",
     "casting_assign_to": "Przypisz głos do {{speaker}}",
     "casting_assigned": "Przypisano {{voice}} do {{speaker}}",
+    "voice_fallback_default": "Za mało czystej mowy, by sklonować {{speakers}}. Używany jest domyślny głos; wybierz go w Obsadzie.",
     "edit_settings": "Edytuj ustawienia tłumaczenia",
     "style_label_prefix": "styl:",
     "collapse_settings": "Zwiń ustawienia tłumaczenia",

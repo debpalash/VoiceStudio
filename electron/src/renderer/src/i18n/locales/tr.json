@@ -846,6 +846,7 @@
     "casting_drag_hint": "Bir ses çipini konuşmacının üzerine sürükleyin veya listeden seçmek için konuşmacıda Enter'a basın.",
     "casting_assign_to": "{{speaker}} için ses ata",
     "casting_assigned": "{{voice}}, {{speaker}} olarak atandı",
+    "voice_fallback_default": "{{speakers}} için klonlanacak yeterli temiz konuşma yok. Varsayılan ses kullanılıyor; Oyuncular bölümünden bir ses seçin.",
     "edit_settings": "Çeviri ayarlarını düzenleyin",
     "style_label_prefix": "stil:",
     "collapse_settings": "Çeviri ayarlarını daralt",
