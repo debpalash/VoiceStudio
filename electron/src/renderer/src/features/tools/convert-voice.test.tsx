@@ -319,3 +319,53 @@ it('keep my delivery explains why no voice is offered when none has a recording'
     mock.profiles = null;
   }
 });
+function uploadVideo(name = 'clip.mp4') {
+  fireEvent.change(screen.getByLabelText('convert.source_kicker', { selector: 'input' }), {
+    target: { files: [new File(['video'], name, { type: 'video/mp4' })] },
+  });
+}
+it('a video always swaps the voice in place and plays the returned video', async () => {
+  mock.cloning = false;
+  mock.backends = [{ available: true, supports_voice_conversion: true }];
+  mock.convert.mockResolvedValue({
+    id: 'v',
+    audio_url: '/audio/v.wav',
+    video_url: '/audio/v.mp4',
+    text: '',
+    notes: ['no_separation'],
+  });
+  mount();
+  uploadVideo();
+  expect(screen.getByText('convert.video_hint')).toBeInTheDocument();
+  expect(screen.getByRole('switch', { name: 'convert.keep_delivery' })).toHaveAttribute(
+    'data-disabled',
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Alpha' }));
+  fireEvent.click(screen.getByRole('button', { name: 'convert.convert' }));
+  await screen.findByText('convert.video_no_separation');
+  expect(mock.convert).toHaveBeenCalledWith(
+    expect.any(File),
+    'a',
+    true,
+    expect.any(AbortSignal),
+    'Auto',
+    true,
+  );
+  expect(document.querySelector('video[src="/api/audio/v.mp4"]')).not.toBeNull();
+});
+it('a video that could not be remuxed shows the converted audio with a note', async () => {
+  mock.backends = [{ available: true, supports_voice_conversion: true }];
+  mock.convert.mockResolvedValue({
+    id: 'a',
+    audio_url: '/audio/a.wav',
+    video_url: null,
+    text: '',
+    notes: ['audio_only'],
+  });
+  mount();
+  uploadVideo('clip.mkv');
+  fireEvent.click(screen.getByRole('button', { name: 'Alpha' }));
+  fireEvent.click(screen.getByRole('button', { name: 'convert.convert' }));
+  expect(await screen.findByTestId('convert-result')).toHaveTextContent('/api/audio/a.wav');
+  expect(screen.getByText('convert.video_audio_only')).toBeInTheDocument();
+});

@@ -1039,6 +1039,17 @@ async function transcribeJob(jobId: string, signal: AbortSignal) {
     finishActivity();
   }
 }
+/** Show what transcription fell back to: diarization, and speakers without a source voice (#3419). */
+export function announceTranscriptWarning(event: TaskEvent) {
+  const speakers = Array.isArray(event.fallback_speakers)
+    ? event.fallback_speakers.filter((speaker): speaker is string => typeof speaker === 'string')
+    : [];
+  if (speakers.length) {
+    toast.warning(tr('dub.voice_fallback_default', { speakers: speakers.join(', ') }));
+    return;
+  }
+  if (typeof event.detail === 'string' && event.detail) toast.warning(event.detail);
+}
 async function readTranscript(jobId: string, signal: AbortSignal) {
   patch({ phase: 'transcribing', taskId: null });
   let receivedTranscript = false;
@@ -1047,6 +1058,7 @@ async function readTranscript(jobId: string, signal: AbortSignal) {
       encodeURIComponent(jobId) +
       (dubSession.state.numSpeakers ? '?num_speakers=' + dubSession.state.numSpeakers : ''),
     (event) => {
+      if (event.type === 'warning') announceTranscriptWarning(event);
       if (event.type === 'final') {
         receivedTranscript = true;
         const raw = Array.isArray(event.segments) ? (event.segments as DubSegment[]) : [];
