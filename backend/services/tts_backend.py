@@ -2879,6 +2879,40 @@ def _dia_tagged(text: str) -> str:
     return stripped if re.match(r"\[S[12]\]", stripped) else f"[S1] {stripped}"
 
 
+_HF_REPO_ID = re.compile(r"[A-Za-z0-9][\w.-]*/[\w.-]+\Z")
+
+
+def _mlx_audio_installed_snapshot(repo_id: str) -> str:
+    """Local snapshot of an installed mlx-audio model, never downloaded here.
+
+    Handed a repo id, mlx-audio's ``load_model`` calls an online
+    ``snapshot_download`` (a repo lookup, then one request per file on hub's
+    own thread pool) from inside the GPU-pool worker — the call that parked the
+    worker on a lock for the whole load budget, with every later request queued
+    behind it (#2700 for OuteTTS's Whisper, #3776 for Kokoro). The Model
+    Catalogue installs the weights, so the load resolves them from the cache
+    and a missing model fails at once with the step that fixes it.
+    """
+    from huggingface_hub import snapshot_download
+    from services.hf_cache_repair import hf_cache_home
+    from services.hf_revisions import installed_revision
+
+    cache_dir = hf_cache_home()
+    try:
+        revision = installed_revision(repo_id, cache_dir)
+    except ValueError:
+        revision = None  # A user-chosen repo: whatever the cache's refs/main holds.
+    try:
+        return snapshot_download(
+            repo_id, revision=revision, cache_dir=cache_dir, local_files_only=True,
+        )
+    except Exception as exc:
+        raise RuntimeError(
+            f"The mlx-audio model \"{repo_id}\" is not installed (or its download "
+            "is incomplete). Install it from the Model Catalogue, then generate again."
+        ) from exc
+
+
 _OUTETTS_CODEC_SAMPLE_RATE = 24000  # mlx-audio's DAC speech codec
 
 
@@ -3205,8 +3239,28 @@ class MLXAudioBackend(TTSBackend):
             ensure_espeak_data_path()
         from mlx_audio.tts.utils import load_model
         _harden_mlx_audio_eos_ids()
+        target = self._model_id
+        load_kwargs = {}
+        is_repo = bool(
+            isinstance(target, str) and _HF_REPO_ID.match(target)
+            and not os.path.exists(target)
+        )
+        if is_repo:
+            # #3776: load from the installed snapshot, not the repo id.
+            # model_name_parts keeps mlx-audio's model-type detection on the
+            # repo name, exactly as when it was handed the id.
+            from pathlib import Path
+            from mlx_audio.utils import get_model_name_parts
+            load_kwargs["model_name_parts"] = get_model_name_parts(target)
+            target = Path(_mlx_audio_installed_snapshot(target))
         logger.info("Loading mlx-audio model %s", self._model_id)
-        self._model = load_model(self._model_id)
+        model = load_model(target, **load_kwargs)
+        if is_repo and self._curated_key() == "kokoro" and getattr(model, "repo_id", "") is None:
+            # Kokoro otherwise looks its voices up in prince-canuma/Kokoro-82M,
+            # a repo the catalogue never installs, and downloads them inside
+            # this worker; the installed model ships the same voices/ folder.
+            model.repo_id = self._model_id
+        self._model = model
 
     def _is_voice_design(self) -> bool:
         """Whether the loaded model builds a voice from a text description.
