@@ -217,9 +217,13 @@ def split_stream_sentences(text: str, language: str | None) -> list[str]:
     single-sentence request behaves exactly like a single-shot render.
     """
     from services.text_normalization import normalize_for_tts
+    return split_normalized_sentences(normalize_for_tts(text, language), language)
+
+
+def split_normalized_sentences(text: str, language: str | None) -> list[str]:
+    """Split text that already passed through the shared normalization pass."""
     from services.sentence_chunker import SentenceChunker
 
-    text = normalize_for_tts(text, language)
     chunker = SentenceChunker(language=(language or "en"))
     sentences = chunker.push(text)
     sentences.extend(chunker.flush())

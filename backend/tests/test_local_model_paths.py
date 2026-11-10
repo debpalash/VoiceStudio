@@ -35,6 +35,18 @@ def test_complete_local_checkpoint(engine, tmp_path):
     assert paths.validate("tts", engine, str(model)) == str(model.resolve())
 
 
+def test_complete_local_qwen_base_checkpoint(tmp_path):
+    model = checkpoint(tmp_path / "model", "mlx-audio")
+    edit(model, tts_model_type="base")
+    (model / "tokenizer.json").unlink()
+    for name in ("tokenizer_config.json", "vocab.json", "merges.txt"):
+        (model / name).write_text("fixture")
+    assert paths.validate("tts", "mlx-audio", str(model)) == str(model.resolve())
+    (model / "merges.txt").unlink()
+    with pytest.raises(paths.LocalModelError, match="missing text tokenizer"):
+        paths.validate("tts", "mlx-audio", str(model))
+
+
 @pytest.mark.parametrize("changes", [
     {"model_type": "not_omnivoice"}, {"model_type": "other", "_name_or_path": "voicestudio"},
 ])
@@ -47,7 +59,7 @@ def test_brand_substrings_are_not_architecture_validation(tmp_path, changes):
 
 @pytest.mark.parametrize("changes", [
     {"quantization": None, "_name_or_path": "mlx-community/Qwen3-VoiceDesign"},
-    {"tts_model_type": "base", "_name_or_path": "mlx-community/Qwen3-VoiceDesign"},
+    {"tts_model_type": "custom_voice", "_name_or_path": "mlx-community/Qwen3-VoiceDesign"},
     {"model_type": "not_a_supported_model", "_name_or_path": "mlx"},
 ])
 def test_mlx_provenance_string_cannot_disguise_native_or_wrong_model(tmp_path, changes):
@@ -121,7 +133,7 @@ def test_discovery_reports_actionable_incompatibility(tmp_path):
     parent = tmp_path / "parent"
     parent.mkdir()
     candidate = checkpoint(parent / "native", "mlx-audio")
-    edit(candidate, tts_model_type="base")
+    edit(candidate, tts_model_type="custom_voice")
     result = paths.discover("tts", "mlx-audio", str(parent))["candidates"][0]
     assert result["validation"]["code"] == "incompatible_architecture"
     assert "VoiceDesign" in result["validation"]["message"]

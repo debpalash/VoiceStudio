@@ -438,7 +438,7 @@
   },
   "modelSettings": {
     "localModelEnvironmentOverride": "环境变量覆盖已启用，当前未使用已保存的文件夹：",
-    "localModelHint": "仅支持完整的 OmniVoice 或量化 MLX Qwen3-TTS VoiceDesign 检查点。本地文件缺失或不兼容时将报错，不会自动下载。",
+    "localModelHint": "仅支持完整的 OmniVoice 或量化 MLX Qwen3-TTS Base 或 VoiceDesign 检查点。本地文件缺失或不兼容时将报错，不会自动下载。",
     "localModelReset": "使用默认模型",
     "localModelChoose": "选择文件夹",
     "localModelDefault": "引擎默认模型",

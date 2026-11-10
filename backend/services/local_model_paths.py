@@ -138,21 +138,27 @@ def validate(family: str, engine_id: str, raw_path: str, *, _budget: dict | None
                 raise LocalModelError("This folder is not an OmniVoice checkpoint (expected model_type=omnivoice and llm_config)")
             asset = "audio_tokenizer"
         else:
-            # The GUI accepts the verified quantized Qwen VoiceDesign layout.
+            # The GUI accepts the verified quantized Qwen Base and VoiceDesign layouts.
             # A repository name containing 'mlx' does not prove conversion.
             quant = metadata.get("quantization")
             if (metadata.get("model_type") != "qwen3_tts"
-                    or metadata.get("tts_model_type") != "voice_design"
+                    or metadata.get("tts_model_type") not in ("base", "voice_design")
                     or not isinstance(quant, dict)
                     or quant.get("bits") not in (2, 3, 4, 5, 6, 8)
                     or not isinstance(quant.get("group_size"), int)
                     or quant["group_size"] <= 0):
-                raise LocalModelError("Choose a quantized MLX Qwen3-TTS VoiceDesign checkpoint, not native Qwen or Base weights")
+                raise LocalModelError("Choose a quantized MLX Qwen3-TTS Base or VoiceDesign checkpoint")
             asset = "speech_tokenizer"
         if not _has_weights(path, budget=_budget):
             raise LocalModelError("The selected local model folder has missing or unsupported weight files")
-        if not _safe_asset(path / "tokenizer.json").is_file():
-            raise LocalModelError("The local checkpoint is missing tokenizer.json")
+        has_tokenizer = _safe_asset(path / "tokenizer.json").is_file()
+        if not has_tokenizer and engine_id == "mlx-audio":
+            # Qwen can ship the slow tokenizer's vocabulary and BPE merges.
+            has_tokenizer = all(_safe_asset(path / name).is_file() for name in (
+                "tokenizer_config.json", "vocab.json", "merges.txt",
+            ))
+        if not has_tokenizer:
+            raise LocalModelError("The local checkpoint is missing text tokenizer files")
         _metadata(path / asset, budget=_budget)
         if not _has_weights(path / asset, budget=_budget):
             raise LocalModelError(f"The local checkpoint is missing {asset} weights")

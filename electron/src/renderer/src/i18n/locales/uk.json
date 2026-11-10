@@ -433,7 +433,7 @@
   },
   "modelSettings": {
     "localModelEnvironmentOverride": "Змінна середовища має пріоритет; збережена тека не використовується:",
-    "localModelHint": "Лише повні контрольні точки OmniVoice або квантовані MLX Qwen3-TTS VoiceDesign. Відсутні або несумісні локальні файли спричиняють помилку, а не автоматичне завантаження.",
+    "localModelHint": "Лише повні контрольні точки OmniVoice або квантовані MLX Qwen3-TTS Base або VoiceDesign. Відсутні або несумісні локальні файли спричиняють помилку, а не автоматичне завантаження.",
     "localModelReset": "Використовувати типову",
     "localModelChoose": "Вибрати теку",
     "localModelDefault": "Типова модель рушія",

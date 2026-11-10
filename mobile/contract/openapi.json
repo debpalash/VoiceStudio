@@ -4350,7 +4350,7 @@
         "type": "null"
        }
       ],
-      "description": "'audio' streams raw audio bytes (the default); 'sse' streams `speech.audio.delta` / `speech.audio.done` server-sent events.",
+      "description": "'audio' streams raw audio bytes (the default); 'sse' streams `speech.audio.delta` / `speech.audio.done` server-sent events. PCM without an explicit duration is synthesized sentence by sentence.",
       "title": "Stream Format"
      },
      "voice": {

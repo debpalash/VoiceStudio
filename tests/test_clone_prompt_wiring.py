@@ -254,3 +254,23 @@ def test_cache_ref_false_is_popped_and_skips_the_insert(ref_wav):
         duration=None, speed=1.0,
     )
     assert len(_tb()._prompt_cache) == 1
+
+
+def test_in_process_omnivoice_forwards_seed_and_isolates_random_draws(monkeypatch):
+    from omnivoice.models.omnivoice import _gumbel_sample
+
+    backend = _tb().OmniVoiceBackend(model=_StubModel())
+    monkeypatch.setattr(backend, "_ensure_loaded", lambda: None)
+
+    def generate(_model, *, seed, **kwargs):
+        generator = torch.Generator().manual_seed(seed)
+        return [_gumbel_sample(torch.zeros(128), 1.0, generator)]
+
+    monkeypatch.setattr(_tb(), "generate_with_cached_ref", generate)
+    state = torch.random.get_rng_state()
+    first = backend.generate("Lana.", seed=42)
+    second = backend.generate("Lana.", seed=42)
+    different = backend.generate("Lana.", seed=7)
+    assert torch.equal(state, torch.random.get_rng_state())
+    assert torch.equal(first, second)
+    assert not torch.equal(first, different)

@@ -143,3 +143,24 @@ def test_curated_revisions_warning_omits_absolute_path(tmp_path, caplog):
         assert hf_revisions._curated_revisions(path) == {}
     assert str(tmp_path) not in caplog.text
     assert "model_licenses.json" in caplog.text
+
+
+def test_mlx_qwen3_base_download_and_load_use_the_curated_pin(tmp_path, monkeypatch):
+    # #3976: the repo the mlx-audio backend loads is the one the catalogue
+    # downloads, both at the curated pin, and loading never touches the network.
+    import sys
+    import types
+
+    from services import hf_cache_repair, tts_backend
+
+    repo = tts_backend.MLXAudioBackend.CURATED_MODELS["qwen3-tts-base"]
+    pin = "50f45ef0047cde7e84c2ef04326acb8ada2436a7"
+    assert hf_revisions.revision_for(repo) == pin
+    calls = []
+    monkeypatch.setattr(hf_cache_repair, "hf_cache_home", lambda: str(tmp_path))
+    monkeypatch.setitem(sys.modules, "huggingface_hub", types.SimpleNamespace(
+        snapshot_download=lambda *a, **kw: calls.append((a, kw)) or "/snapshot"))
+    assert tts_backend._mlx_audio_installed_snapshot(repo) == "/snapshot"
+    (args, kwargs), = calls
+    assert args == (repo,) and kwargs["revision"] == pin
+    assert kwargs["local_files_only"] is True
