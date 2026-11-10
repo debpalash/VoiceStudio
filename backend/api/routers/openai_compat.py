@@ -704,9 +704,9 @@ async def _native_pcm_stream(backend, text, kw, *, sse):
     # unbounded number of streams behind a backpressured or stalled reader.
     if not _native_pcm_lock.acquire(blocking=False):
         raise _native_pcm_busy()
-    lease = engine_in_use(backend)
-    lease.__enter__()
     iterator = None
+    lease = None
+    entered = False
 
     def close_on_worker():
         try:
@@ -716,12 +716,18 @@ async def _native_pcm_stream(backend, text, kw, *, sse):
             logger.exception("Native speech stream cleanup failed")
         finally:
             try:
-                lease.__exit__(None, None, None)
+                if entered:
+                    lease.__exit__(None, None, None)
             finally:
                 _native_pcm_lock.release()
 
     emitted = False
     try:
+        # Entering the lease can fail; the lock is already held, so the
+        # ``finally`` below must see it and release it.
+        lease = engine_in_use(backend)
+        lease.__enter__()
+        entered = True
         iterator = backend.stream_audio(text, **kw)
         while (chunk := await run_on_gpu_pool_guarded(
             encode_next, what="Native OpenAI TTS generate", executor=_native_pcm_worker,
@@ -1045,23 +1051,30 @@ async def create_speech(req: SpeechRequest):
         logger.exception("OpenAI TTS failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
-    _headers = {
-        "Content-Disposition": content_disposition(f"speech.{ext}", disposition="inline"),
-    }
-    if _routing_notice:
-        from services.engine_routing import header_safe_reason
-        _headers["X-OmniVoice-Routing"] = _routing_notice[0]
-        _hr = header_safe_reason(_routing_notice[1])
-        if _hr:
-            _headers["X-OmniVoice-Routing-Reason"] = _hr
-    if native:
-        if sse:
-            _headers.pop("Content-Disposition")
-            _headers["Cache-Control"] = "no-cache"
-        return _PrimedSpeechResponse(
-            first, stream, media_type=mime_type, headers=_headers,
-            send_timeout=generate_timeout_s(text, engine=backend),
-        )
+    # The primed stream owns the engine lock until the response takes it over;
+    # any failure while building the response must close it here.
+    try:
+        _headers = {
+            "Content-Disposition": content_disposition(f"speech.{ext}", disposition="inline"),
+        }
+        if _routing_notice:
+            from services.engine_routing import header_safe_reason
+            _headers["X-OmniVoice-Routing"] = _routing_notice[0]
+            _hr = header_safe_reason(_routing_notice[1])
+            if _hr:
+                _headers["X-OmniVoice-Routing-Reason"] = _hr
+        if native:
+            if sse:
+                _headers.pop("Content-Disposition")
+                _headers["Cache-Control"] = "no-cache"
+            return _PrimedSpeechResponse(
+                first, stream, media_type=mime_type, headers=_headers,
+                send_timeout=generate_timeout_s(text, engine=backend),
+            )
+    except BaseException:
+        if native:
+            await stream.aclose()
+        raise
     if len(sentences) > 1:
         async def render_pcm(segment: str) -> bytes:
             audio, _, _ = await render(segment)

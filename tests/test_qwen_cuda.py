@@ -100,3 +100,47 @@ def test_qwen_cuda_buffered_generation_retries_while_native_stream_holds_engine(
     finally:
         stream.close()
     torch.testing.assert_close(engine.generate("After disconnect.", **kwargs), torch.ones(1, 2))
+
+
+def _loaded_engine():
+    def generate_stream(**kw):
+        for value in (1.0, 2.0, 3.0):
+            yield np.full(2, value, dtype=np.float32), 24000, {}
+
+    engine = QwenCUDABackend()
+    engine._model = SimpleNamespace(
+        model=SimpleNamespace(create_voice_clone_prompt=lambda **kwargs: None),
+        generate_voice_clone_streaming=generate_stream,
+    )
+    return engine
+
+
+def test_qwen_cuda_second_native_stream_is_busy_without_blocking(tmp_path):
+    from services.model_manager import GpuPoolBusyError
+
+    reference = tmp_path / "reference.wav"
+    sf.write(reference, np.zeros(480, dtype=np.float32), 24000)
+    engine = _loaded_engine()
+    kwargs = dict(ref_audio=reference, ref_text="Reference")
+    active = engine.stream_audio("First.", **kwargs)
+    try:
+        next(active)
+        # A blocking acquire would hang here; the busy error must be immediate.
+        with pytest.raises(GpuPoolBusyError) as busy:
+            next(engine.stream_audio("Second.", **kwargs))
+        assert busy.value.retry_after == 1
+    finally:
+        active.close()
+
+
+def test_qwen_cuda_releases_the_lock_when_the_client_cancels_mid_stream(tmp_path):
+    reference = tmp_path / "reference.wav"
+    sf.write(reference, np.zeros(480, dtype=np.float32), 24000)
+    engine = _loaded_engine()
+    kwargs = dict(ref_audio=reference, ref_text="Reference")
+    stream = engine.stream_audio("Cancelled.", **kwargs)
+    next(stream)
+    assert engine._lock.locked()
+    stream.close()  # What a disconnect does to the abandoned generator.
+    assert not engine._lock.locked()
+    assert len(list(engine.stream_audio("Next.", **kwargs))) == 3

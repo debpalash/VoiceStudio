@@ -1853,6 +1853,8 @@ class OmniVoiceBackend(TTSBackend):
     instruct_vocabulary = "tags"
     inline_tags = OMNIVOICE_INLINE_TAGS
     supports_voice_design = True
+    # The model draws from a per-request generator, so a seed reproduces a take.
+    supports_generation_seed = True
     gpu_compat = ("cuda", "rocm", "mps", "cpu")
     # Derived from the pool's own per-job budget (_GPU_VRAM_PER_JOB_GB = 5.0 in
     # model_manager, itself measured from the ~1.6 GB forward + autoregressive
@@ -4254,6 +4256,7 @@ _ENGINE_DOCS: dict[str, str] = {
     "audiocpp":             "docs/engines/audio-cpp.md",
     "audiocpp-dots":        "docs/engines/audio-cpp.md",
     "cosyvoice-gguf":       "docs/engines/cosyvoice-gguf.md",
+    "qwen3-tts":            "docs/engines/mlx-audio.md",
 }
 
 

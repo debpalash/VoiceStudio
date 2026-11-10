@@ -358,6 +358,104 @@ def test_native_pcm_timeout_keeps_worker_reserved_until_cleanup(client, engine, 
     assert not slot.locked()
 
 
+def _wait_until(predicate, timeout=5):
+    import time
+
+    deadline = time.monotonic() + timeout
+    while not predicate() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert predicate()
+
+
+def test_native_pcm_lease_failure_releases_the_lock(engine, monkeypatch):
+    import asyncio
+    import threading
+
+    from api.routers import openai_compat
+
+    worker = openai_compat.ThreadPoolExecutor(max_workers=1)
+    slot = threading.Lock()
+    monkeypatch.setattr(openai_compat, "_native_pcm_worker", worker)
+    monkeypatch.setattr(openai_compat, "_native_pcm_lock", slot)
+
+    class BrokenLease:
+        def __enter__(self):
+            raise RuntimeError("lease unavailable")
+
+        def __exit__(self, *exc):
+            pytest.fail("A lease that never entered must not exit")
+
+    monkeypatch.setattr(_tts_mod(), "engine_in_use", lambda backend: BrokenLease())
+    try:
+        with pytest.raises(RuntimeError, match="lease unavailable"):
+            asyncio.run(openai_compat._native_pcm_stream(engine(), "Hello.", {}, sse=False).__anext__())
+        _wait_until(lambda: not slot.locked())
+    finally:
+        worker.shutdown()
+
+
+def test_native_pcm_failure_after_first_chunk_closes_stream_and_next_request_works(engine, monkeypatch):
+    import threading
+
+    from api.routers import openai_compat
+    from services import model_manager
+
+    worker = openai_compat.ThreadPoolExecutor(max_workers=1)
+    slot = threading.Lock()
+    closed = threading.Event()
+    timeouts = []
+    monkeypatch.setattr(openai_compat, "_native_pcm_worker", worker)
+    monkeypatch.setattr(openai_compat, "_native_pcm_lock", slot)
+
+    def timeout(*a, **kw):
+        # Called once per chunk wait, then again while the response is built.
+        timeouts.append(1)
+        if len(timeouts) == 2:
+            raise RuntimeError("response could not be built")
+        return 5
+
+    def chunks(self, text, **kwargs):
+        try:
+            yield torch.zeros(1, 4800)
+            yield torch.zeros(1, 4800)
+        finally:
+            closed.set()
+
+    monkeypatch.setattr(model_manager, "generate_timeout_s", timeout)
+    monkeypatch.setattr(engine, "can_stream", lambda self, **kw: True, raising=False)
+    monkeypatch.setattr(engine, "stream_audio", chunks, raising=False)
+    from main import app
+
+    request = {"model": "tts-1", "voice": "alloy", "input": "Hello.",
+               "response_format": "pcm", "stream_format": "audio"}
+    http = TestClient(app, client=("127.0.0.1", 50000), raise_server_exceptions=False)
+    try:
+        assert http.post("/v1/audio/speech", json=request).status_code == 500
+        _wait_until(closed.is_set)
+        _wait_until(lambda: not slot.locked())
+        closed.clear()
+        monkeypatch.setattr(model_manager, "generate_timeout_s", lambda *a, **kw: 5)
+        ok = http.post("/v1/audio/speech", json=request)
+        assert ok.status_code == 200 and len(ok.content) == 9600
+    finally:
+        worker.shutdown()
+
+
+def test_native_pcm_busy_answers_429_with_retry_after(client, engine, monkeypatch):
+    import threading
+
+    from api.routers import openai_compat
+
+    slot = threading.Lock()
+    monkeypatch.setattr(openai_compat, "_native_pcm_lock", slot)
+    monkeypatch.setattr(engine, "can_stream", lambda self, **kw: True, raising=False)
+    assert slot.acquire(blocking=False)
+    with pytest.raises(openai.RateLimitError) as busy:
+        client.audio.speech.create(model="tts-1", voice="alloy", input="Hello.",
+                                   response_format="pcm", stream_format="audio")
+    assert busy.value.response.headers["retry-after"] == "1"
+
+
 def test_primed_speech_closes_when_transport_stops_accepting_audio():
     import asyncio
 

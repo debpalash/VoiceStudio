@@ -49,6 +49,7 @@ approval), [Windows](../install/windows.md), [Linux](../install/linux.md),
 | audio.cpp (Breeze-TTS-2) | [audio-cpp](audio-cpp.md) | CPU + Vulkan/Metal/CUDA/HIP/ROCm where compiled | ✅ + voice design | prebuilt binary + env var (weights research/non-commercial) |
 | audio.cpp (dots.tts SOAR) | [audio-cpp](audio-cpp.md#dotstts) | CPU + Vulkan/Metal/CUDA/HIP/ROCm where compiled, incl. Windows | ✅ | runtime + weights from Model Catalogue (Apache-2.0) |
 | CosyVoice 3 GGUF | [cosyvoice-gguf](cosyvoice-gguf.md) | CPU + Vulkan (native runtime build) | ✅ reference cloning + instruct | user-built native runtime + model catalogue |
+| Qwen3-TTS Base (CUDA adapter) | [mlx-audio](mlx-audio.md) | NVIDIA CUDA only | ✅ (reference + transcript) | local checkpoint + `VOICESTUDIO_QWEN_CUDA_MODEL` + `faster-qwen3-tts` |
 
 ## Sound effects (not speech)
 
