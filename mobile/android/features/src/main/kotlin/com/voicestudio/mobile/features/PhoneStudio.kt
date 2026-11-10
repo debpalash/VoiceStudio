@@ -19,7 +19,7 @@ fun phoneModelChoice(model: PhoneModel, ramBytes: Long, supporting: String? = nu
 )
 
 data class PhoneState(val models: List<PhoneModel> = emptyList(), val installed: Set<String> = emptySet(), val used: Long = 0,
-    val storage: Map<String,Long> = emptyMap(), val receipts: Map<String,List<LicenceReceipt>> = emptyMap(), val loading: Boolean = true, val progress: Float? = null, val audio: File? = null, val voices: List<PhoneVoice> = emptyList(), val recent: List<PhoneGeneration> = emptyList(), val dubs: List<PhoneDubRecord> = emptyList()) {
+    val storage: Map<String,Long> = emptyMap(), val receipts: Map<String,List<LicenceReceipt>> = emptyMap(), val loading: Boolean = true, val progress: Float? = null, val interrupted: Boolean = false, val audio: File? = null, val voices: List<PhoneVoice> = emptyList(), val recent: List<PhoneGeneration> = emptyList(), val dubs: List<PhoneDubRecord> = emptyList()) {
     fun canRun(model: PhoneModel): Boolean = model.id in installed&&accepted(model)
     fun preferredModel(candidates: List<PhoneModel>, ramBytes: Long, preference: String? = null): PhoneModel? =
         candidates.firstOrNull {it.id==preference} ?: candidates.firstOrNull {canRun(it)&&it.fits(ramBytes)}
@@ -42,6 +42,12 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
     private val mutable=MutableStateFlow(PhoneState())
     val state=mutable.asStateFlow()
     private var inference: Job?=null
+    /** Only an interrupted clone gets the clone editor's Retry notice; other on-device work is just stopped. */
+    private var inferenceIsClone=false
+    /** Set once a clone's voice is saved: its cleanup still shows progress but can no longer be interrupted. */
+    private var cloneSaved=false
+    /** A cancelled job finishing late must not clear the progress of the job that replaced it. */
+    private fun clearProgress(owner: Job?) {if(inference===owner||inference?.isActive!=true) mutable.update {it.copy(progress=null)}}
     init {scope.launch {
         try {
             val models=withContext(Dispatchers.IO) {application.assets.open("models.json").bufferedReader().use {ModelCatalog.decode(it.readText()).models}}
@@ -85,9 +91,10 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
         scope.launch {try {transcripts.saveDictation(java.util.UUID.randomUUID().toString(),text.lineSequence().first().take(120),text,modelID)} catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}}
     }
     fun speak(model: PhoneModel, text: String, speaker: Int, voice: PhoneVoice? = null, language: String? = null) {
-        if(inference?.isActive==true) return
+        if(inference?.isActive==true) {failure(ClientFailure("mobile.android.operation_busy"));return}
+        inferenceIsClone=false
         inference=scope.launch {
-            mutable.update {it.copy(progress=0f)}
+            mutable.update {it.copy(progress=0f,interrupted=false)}
             try {
                 val report: (Float)->Unit={value -> mutable.update {it.copy(progress=value)}}
                 val audio=if(voice==null) engine.synthesize(model,text,speaker,language=language,progress=report)
@@ -103,7 +110,8 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
                 val recent=withContext(Dispatchers.IO) {history()}
                 mutable.update {it.copy(audio=file,recent=recent)}
             } catch(e:CancellationException) {throw e} catch(e:Exception) {retryFailure(e) {speak(model,text,speaker,voice,language)}}
-            finally {mutable.update {it.copy(progress=null)}}
+            catch(e:Throwable) {retryFailure(ClientFailure(if(e is LinkageError) "mobile.local.runtime_failed" else "mobile.local.inference_failed")) {speak(model,text,speaker,voice,language)}}
+            finally {clearProgress(coroutineContext[Job])}
         }
     }
     private fun history(): List<PhoneGeneration> = File(application.noBackupFilesDir,"speech").listFiles().orEmpty().filter {it.extension=="json"}.mapNotNull {
@@ -116,12 +124,27 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
         mutable.update {it.copy(recent=history(),audio=it.audio?.takeUnless {file -> file==generationFile(item)})}
     }}
     fun clone(name: String, file: File, model: PhoneModel, cloneModel: PhoneModel, consent: Boolean, created: ()->Unit = {}) {
-        if(inference?.isActive==true) return
+        if(inference?.isActive==true) {failure(ClientFailure("mobile.android.operation_busy"));return}
+        inferenceIsClone=true;cloneSaved=false
         inference=scope.launch {
-            mutable.update {it.copy(progress=0f)}
-            try {voices.create(name,file,consent,model,cloneModel,engine,decoder,progress={p -> mutable.update {it.copy(progress=p)}});refresh();withContext(Dispatchers.IO) {file.delete()};created()}
+            val job=coroutineContext[Job]
+            mutable.update {it.copy(progress=0f,interrupted=false)}
+            try {
+                voices.create(name,file,consent,model,cloneModel,engine,decoder,progress={p -> mutable.update {it.copy(progress=p)}})
+                // The voice is saved: a cancel or an interruption from here on must not turn it into a failed or interrupted
+                // clone (Retry would make a duplicate). Progress stays up so the editor remains busy until cleanup ends.
+                cloneSaved=true
+                withContext(NonCancellable) {
+                    try {refresh()} catch(e:Exception) {failure(e)}
+                    withContext(Dispatchers.IO) {file.delete()}
+                    mutable.update {it.copy(progress=null)}
+                    // Saving and cleanup finish even after the screen is gone, but a screen that already cancelled must not navigate.
+                    if(job?.isActive==true) created()
+                }
+            }
             catch(e:CancellationException) {throw e} catch(e:Exception) {retryFailure(e) {clone(name,file,model,cloneModel,consent,created)}}
-            finally {mutable.update {it.copy(progress=null)}}
+            catch(e:Throwable) {retryFailure(ClientFailure(if(e is LinkageError) "mobile.local.runtime_failed" else "mobile.local.inference_failed")) {clone(name,file,model,cloneModel,consent,created)}}
+            finally {clearProgress(coroutineContext[Job])}
         }
     }
     fun renameVoice(voice: PhoneVoice, name: String) {scope.launch {try {voices.rename(voice,name);refresh()} catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}}}
@@ -131,7 +154,17 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
         catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}
     }}
     fun saveProductionDraft(project: ProductionProject) {scope.launch {try {production.save(project)} catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}}}
-    fun cancelInference() {inference?.cancel()}
+    /** A user cancel: stops on-device work and clears any interrupted notice. */
+    fun cancelInference() {inference?.cancel();mutable.update {it.copy(interrupted=false)}}
+    /** Leaving the foreground or tearing the screen down stops on-device work; unlike a user cancel it never clears the
+     *  interrupted notice, so the task can be retried after the screen returns or is recreated. */
+    fun interruptInference() {
+        if(mutable.value.progress==null||(inferenceIsClone&&cloneSaved)) return
+        val job=inference?.takeIf {it.isActive} ?: return
+        if(inferenceIsClone) mutable.update {it.copy(interrupted=true)}
+        job.cancel()
+    }
+    fun dismissInterrupted() {mutable.update {it.copy(interrupted=false)}}
 }
 
 /** The model that made the take is kept so it can be reported; older takes have none. */

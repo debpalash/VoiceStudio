@@ -51,6 +51,7 @@ import {
 import { commitMoveResize } from '@shared/utils/timeline';
 import type { PasteTranslationRow } from '@shared/utils/pasteTranslations';
 import { getDubTranslationError } from './transcript-issues';
+import { translationTargetLabel } from '@/lib/translation-targets';
 import type {
   DubAgentTranslationRequest,
   DubAgentTranslationResult,
@@ -738,6 +739,28 @@ export function skipFailedDubTranslations(target: string) {
     };
   });
   if (changed) commitSegmentEdit(next);
+}
+
+/** Dub the transcript as it is: drop translations, keep the original words, and speak them in the source language when it is a known voice language (#3747). */
+export function keepDubSourceText(sourceLanguage?: string) {
+  const sourceCode = dubSourceLanguage(sourceLanguage, dubSession.state.sourceLang)?.toLowerCase();
+  const sourceLabel = translationTargetLabel(sourceCode);
+  const next = dubSession.state.segments.map((segment) => {
+    const text = segment.text_original || segment.text;
+    return {
+      ...segment,
+      text,
+      translations: undefined,
+      translate_error: undefined,
+      translate_errors: undefined,
+      translate_degraded: undefined,
+      agent_generated_lang: undefined,
+      translation_skipped: true,
+    };
+  });
+  if (!next.length) return;
+  commitSegmentEdit(next);
+  if (sourceLabel && sourceCode) setDubTarget(sourceLabel, sourceCode);
 }
 
 export function restoreDubSegments() {
