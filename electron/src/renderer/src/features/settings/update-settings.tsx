@@ -108,7 +108,9 @@ const unsupportedMessageKey = (reason: UpdateState['unsupportedReason']) =>
       ? 'settings.updater_package_manager'
       : reason === 'store'
         ? 'settings.updater_store'
-        : 'settings.updater_desktop';
+        : reason === 'no-update-config'
+          ? 'settings.updater_no_config'
+          : 'settings.updater_desktop';
 
 function formatEta(seconds: number): string {
   const { minutes, seconds: remainder } = splitRoundedMinutes(seconds);

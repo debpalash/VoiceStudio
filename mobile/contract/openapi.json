@@ -5507,6 +5507,18 @@
       "title": "Activate If Unset",
       "type": "boolean"
      },
+     "allow_plain_http": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Allow an API key over plain HTTP to a private-IP LAN host",
+      "title": "Allow Plain Http"
+     },
      "api_key": {
       "anyOf": [
        {
