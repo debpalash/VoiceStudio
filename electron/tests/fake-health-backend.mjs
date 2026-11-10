@@ -74,6 +74,7 @@ export const DEFAULT_FIXTURES = {
     restart_required: false,
   },
   '/api/settings/perf/torch-compile-disabled': { platform: process.platform, enabled: false },
+  '/api/settings/perf/gguf-resident': { enabled: false, env_pinned: false, available: false },
   '/model/status': { status: 'not_loaded', message: '' },
   '/model/loaded': { models: [] },
   '/engines/translation': { active: null, engines: [] },
