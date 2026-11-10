@@ -358,15 +358,6 @@ def test_native_pcm_timeout_keeps_worker_reserved_until_cleanup(client, engine, 
     assert not slot.locked()
 
 
-def _wait_until(predicate, timeout=5):
-    import time
-
-    deadline = time.monotonic() + timeout
-    while not predicate() and time.monotonic() < deadline:
-        time.sleep(0.01)
-    assert predicate()
-
-
 def test_native_pcm_lease_failure_releases_the_lock(engine, monkeypatch):
     import asyncio
     import threading
@@ -389,7 +380,8 @@ def test_native_pcm_lease_failure_releases_the_lock(engine, monkeypatch):
     try:
         with pytest.raises(RuntimeError, match="lease unavailable"):
             asyncio.run(openai_compat._native_pcm_stream(engine(), "Hello.", {}, sse=False).__anext__())
-        _wait_until(lambda: not slot.locked())
+        worker.submit(lambda: None).result(timeout=5)
+        assert not slot.locked()
     finally:
         worker.shutdown()
 
@@ -431,8 +423,9 @@ def test_native_pcm_failure_after_first_chunk_closes_stream_and_next_request_wor
     http = TestClient(app, client=("127.0.0.1", 50000), raise_server_exceptions=False)
     try:
         assert http.post("/v1/audio/speech", json=request).status_code == 500
-        _wait_until(closed.is_set)
-        _wait_until(lambda: not slot.locked())
+        worker.submit(lambda: None).result(timeout=5)
+        assert closed.is_set()
+        assert not slot.locked()
         closed.clear()
         monkeypatch.setattr(model_manager, "generate_timeout_s", lambda *a, **kw: 5)
         ok = http.post("/v1/audio/speech", json=request)

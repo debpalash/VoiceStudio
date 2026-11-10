@@ -3135,6 +3135,7 @@ class MLXAudioBackend(TTSBackend):
     }
 
     def __init__(self):
+        self._generation_lock = threading.Lock()
         self._model = None
         self._sr = 24000  # most mlx-audio engines emit 24 kHz mono
         # Env var > persisted UI choice (#981 — Model Catalogue curated-
@@ -3304,6 +3305,16 @@ class MLXAudioBackend(TTSBackend):
                     yield torch.from_numpy(audio).reshape(1, -1)
 
     def _generate_results(self, text: str, *, streaming=False, **kw):
+        if not self._generation_lock.acquire(blocking=False):
+            from services.model_manager import GpuPoolBusyError
+
+            raise GpuPoolBusyError("MLX-Audio is already generating speech.", retry_after=1)
+        try:
+            yield from self._generate_results_unlocked(text, streaming=streaming, **kw)
+        finally:
+            self._generation_lock.release()
+
+    def _generate_results_unlocked(self, text: str, *, streaming=False, **kw):
         self._ensure_loaded()
 
         voice     = kw.get("voice")
@@ -3480,7 +3491,10 @@ class MLXAudioBackend(TTSBackend):
             flush()
             return groups
 
-        pieces = collect(self._generate_results(text, **kw))
+        from contextlib import closing
+
+        with closing(self._generate_results(text, **kw)) as results:
+            pieces = collect(results)
 
         if not pieces:
             raise RuntimeError(f"mlx-audio ({self._model_id}) produced no audio")
