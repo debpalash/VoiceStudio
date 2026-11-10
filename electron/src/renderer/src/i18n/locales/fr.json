@@ -430,7 +430,7 @@
   },
   "modelSettings": {
     "localModelEnvironmentOverride": "Une variable d’environnement est prioritaire ; le dossier enregistré n’est pas utilisé :",
-    "localModelHint": "Uniquement les checkpoints complets OmniVoice ou MLX Qwen3-TTS VoiceDesign quantifiés. Les fichiers locaux manquants ou incompatibles provoquent une erreur, jamais un téléchargement automatique.",
+    "localModelHint": "Uniquement les checkpoints complets OmniVoice ou MLX Qwen3-TTS Base ou VoiceDesign quantifiés. Les fichiers locaux manquants ou incompatibles provoquent une erreur, jamais un téléchargement automatique.",
     "localModelReset": "Utiliser le modèle par défaut",
     "localModelChoose": "Choisir un dossier",
     "localModelDefault": "Modèle par défaut du moteur",

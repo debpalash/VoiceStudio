@@ -428,7 +428,7 @@
   },
   "modelSettings": {
     "localModelEnvironmentOverride": "Ortam değişkeni önceliklidir; kaydedilen klasör kullanılmıyor:",
-    "localModelHint": "Yalnızca eksiksiz OmniVoice veya nicemlenmiş MLX Qwen3-TTS VoiceDesign kontrol noktaları desteklenir. Eksik veya uyumsuz yerel dosyalar otomatik indirme yerine hataya yol açar.",
+    "localModelHint": "Yalnızca eksiksiz OmniVoice veya nicemlenmiş MLX Qwen3-TTS Base veya VoiceDesign kontrol noktaları desteklenir. Eksik veya uyumsuz yerel dosyalar otomatik indirme yerine hataya yol açar.",
     "localModelReset": "Varsayılanı kullan",
     "localModelChoose": "Klasör seç",
     "localModelDefault": "Motorun varsayılan modeli",

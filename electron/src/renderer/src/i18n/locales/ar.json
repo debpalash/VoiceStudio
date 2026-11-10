@@ -448,7 +448,7 @@
   },
   "modelSettings": {
     "localModelEnvironmentOverride": "متغير البيئة له الأولوية؛ المجلد المحفوظ غير مستخدم:",
-    "localModelHint": "تُدعم فقط نقاط التحقق الكاملة لـ OmniVoice أو MLX Qwen3-TTS VoiceDesign المكمّمة. تؤدي الملفات المحلية المفقودة أو غير المتوافقة إلى خطأ، وليس إلى تنزيل تلقائي.",
+    "localModelHint": "تُدعم فقط نقاط التحقق الكاملة لـ OmniVoice أو MLX Qwen3-TTS Base أو VoiceDesign المكمّمة. تؤدي الملفات المحلية المفقودة أو غير المتوافقة إلى خطأ، وليس إلى تنزيل تلقائي.",
     "localModelReset": "استخدام الافتراضي",
     "localModelChoose": "اختيار مجلد",
     "localModelDefault": "نموذج المحرك الافتراضي",

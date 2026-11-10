@@ -428,7 +428,7 @@
   },
   "modelSettings": {
     "localModelEnvironmentOverride": "환경 변수 재정의가 활성화되어 저장된 폴더를 사용하지 않습니다:",
-    "localModelHint": "완전한 OmniVoice 또는 양자화된 MLX Qwen3-TTS VoiceDesign 체크포인트만 지원합니다. 로컬 파일이 없거나 호환되지 않으면 자동 다운로드 대신 오류가 표시됩니다.",
+    "localModelHint": "완전한 OmniVoice 또는 양자화된 MLX Qwen3-TTS Base 또는 VoiceDesign 체크포인트만 지원합니다. 로컬 파일이 없거나 호환되지 않으면 자동 다운로드 대신 오류가 표시됩니다.",
     "localModelReset": "기본 모델 사용",
     "localModelChoose": "폴더 선택",
     "localModelDefault": "엔진 기본 모델",

@@ -428,7 +428,7 @@
   },
   "modelSettings": {
     "localModelEnvironmentOverride": "Biến môi trường đang được ưu tiên; thư mục đã lưu không được sử dụng:",
-    "localModelHint": "Chỉ hỗ trợ checkpoint OmniVoice đầy đủ hoặc MLX Qwen3-TTS VoiceDesign đã lượng tử hóa. Tệp cục bộ bị thiếu hoặc không tương thích sẽ gây lỗi, không tự động tải xuống.",
+    "localModelHint": "Chỉ hỗ trợ checkpoint OmniVoice đầy đủ hoặc MLX Qwen3-TTS Base hoặc VoiceDesign đã lượng tử hóa. Tệp cục bộ bị thiếu hoặc không tương thích sẽ gây lỗi, không tự động tải xuống.",
     "localModelReset": "Dùng mặc định",
     "localModelChoose": "Chọn thư mục",
     "localModelDefault": "Mô hình mặc định của bộ máy",

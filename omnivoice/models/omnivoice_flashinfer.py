@@ -426,7 +426,7 @@ def _generate_iterative_packed(
         )
         scores_all = scores_all - (layer_ids * gen_config.layer_penalty_factor)
         if gen_config.position_temperature > 0.0:
-            scores_all = _gumbel_sample(scores_all, gen_config.position_temperature)
+            scores_all = _gumbel_sample(scores_all, gen_config.position_temperature, gen_config._generator)
         # -inf for already-unmasked positions AND bucket-slot junk (-1)
         scores_all.masked_fill_(
             (tokens_flat != self.config.audio_mask_id).unsqueeze(0), -float("inf")

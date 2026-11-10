@@ -430,7 +430,7 @@
   },
   "modelSettings": {
     "localModelEnvironmentOverride": "Uma variável de ambiente tem prioridade; a pasta salva não está em uso:",
-    "localModelHint": "Apenas checkpoints completos do OmniVoice ou MLX Qwen3-TTS VoiceDesign quantizados. Arquivos locais ausentes ou incompatíveis geram um erro, nunca um download automático.",
+    "localModelHint": "Apenas checkpoints completos do OmniVoice ou MLX Qwen3-TTS Base ou VoiceDesign quantizados. Arquivos locais ausentes ou incompatíveis geram um erro, nunca um download automático.",
     "localModelReset": "Usar o padrão",
     "localModelChoose": "Escolher pasta",
     "localModelDefault": "Modelo padrão do motor",

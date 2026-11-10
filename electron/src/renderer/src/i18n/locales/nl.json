@@ -428,7 +428,7 @@
   },
   "modelSettings": {
     "localModelEnvironmentOverride": "Een omgevingsvariabele heeft voorrang; de opgeslagen map wordt niet gebruikt:",
-    "localModelHint": "Alleen volledige OmniVoice- of gekwantiseerde MLX Qwen3-TTS VoiceDesign-checkpoints. Ontbrekende of incompatibele lokale bestanden geven een fout, nooit een automatische download.",
+    "localModelHint": "Alleen volledige OmniVoice- of gekwantiseerde MLX Qwen3-TTS Base of VoiceDesign-checkpoints. Ontbrekende of incompatibele lokale bestanden geven een fout, nooit een automatische download.",
     "localModelReset": "Standaard gebruiken",
     "localModelChoose": "Map kiezen",
     "localModelDefault": "Standaardmodel van de engine",

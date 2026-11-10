@@ -428,7 +428,7 @@
   },
   "modelSettings": {
     "localModelEnvironmentOverride": "環境変数による上書きが有効です。保存したフォルダーは使用されていません：",
-    "localModelHint": "完全な OmniVoice または量子化済み MLX Qwen3-TTS VoiceDesign チェックポイントのみ対応。ローカルファイルが不足または非互換の場合はエラーになり、自動ダウンロードは行いません。",
+    "localModelHint": "完全な OmniVoice または量子化済み MLX Qwen3-TTS Base または VoiceDesign チェックポイントのみ対応。ローカルファイルが不足または非互換の場合はエラーになり、自動ダウンロードは行いません。",
     "localModelReset": "既定に戻す",
     "localModelChoose": "フォルダーを選択",
     "localModelDefault": "エンジンの既定モデル",

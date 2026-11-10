@@ -428,7 +428,7 @@
   },
   "modelSettings": {
     "localModelEnvironmentOverride": "En miljövariabel har företräde; den sparade mappen används inte:",
-    "localModelHint": "Endast fullständiga OmniVoice- eller kvantiserade MLX Qwen3-TTS VoiceDesign-checkpoints. Saknade eller inkompatibla lokala filer ger ett fel, aldrig en automatisk nedladdning.",
+    "localModelHint": "Endast fullständiga OmniVoice- eller kvantiserade MLX Qwen3-TTS Base eller VoiceDesign-checkpoints. Saknade eller inkompatibla lokala filer ger ett fel, aldrig en automatisk nedladdning.",
     "localModelReset": "Använd standard",
     "localModelChoose": "Välj mapp",
     "localModelDefault": "Motorns standardmodell",

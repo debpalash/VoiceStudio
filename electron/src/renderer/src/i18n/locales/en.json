@@ -865,7 +865,7 @@
   },
   "modelSettings": {
     "localModelEnvironmentOverride": "Environment override is active; the saved folder is not in use:",
-    "localModelHint": "Complete OmniVoice or quantized MLX Qwen3-TTS VoiceDesign checkpoints only. Missing or incompatible local assets cause an error, never an automatic download.",
+    "localModelHint": "Complete OmniVoice or quantized MLX Qwen3-TTS Base or VoiceDesign checkpoints only. Missing or incompatible local assets cause an error, never an automatic download.",
     "localModelReset": "Use default",
     "localModelChoose": "Choose folder",
     "localModelDefault": "Default engine model",

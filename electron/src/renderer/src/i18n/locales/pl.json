@@ -438,7 +438,7 @@
   },
   "modelSettings": {
     "localModelEnvironmentOverride": "Zmienna środowiskowa ma pierwszeństwo; zapisany folder nie jest używany:",
-    "localModelHint": "Tylko kompletne checkpointy OmniVoice lub skwantyzowane MLX Qwen3-TTS VoiceDesign. Brakujące lub niezgodne pliki lokalne powodują błąd, nigdy automatyczne pobieranie.",
+    "localModelHint": "Tylko kompletne checkpointy OmniVoice lub skwantyzowane MLX Qwen3-TTS Base lub VoiceDesign. Brakujące lub niezgodne pliki lokalne powodują błąd, nigdy automatyczne pobieranie.",
     "localModelReset": "Użyj domyślnego",
     "localModelChoose": "Wybierz folder",
     "localModelDefault": "Domyślny model silnika",

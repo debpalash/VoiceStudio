@@ -428,7 +428,7 @@
   },
   "modelSettings": {
     "localModelEnvironmentOverride": "Variabel lingkungan diutamakan; folder tersimpan tidak digunakan:",
-    "localModelHint": "Hanya checkpoint OmniVoice lengkap atau MLX Qwen3-TTS VoiceDesign terkuantisasi. Berkas lokal yang hilang atau tidak kompatibel menyebabkan galat, bukan unduhan otomatis.",
+    "localModelHint": "Hanya checkpoint OmniVoice lengkap atau MLX Qwen3-TTS Base atau VoiceDesign terkuantisasi. Berkas lokal yang hilang atau tidak kompatibel menyebabkan galat, bukan unduhan otomatis.",
     "localModelReset": "Gunakan bawaan",
     "localModelChoose": "Pilih folder",
     "localModelDefault": "Model bawaan mesin",

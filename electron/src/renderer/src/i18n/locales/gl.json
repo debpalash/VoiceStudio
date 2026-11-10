@@ -865,7 +865,7 @@
   },
   "modelSettings": {
     "localModelEnvironmentOverride": "Unha variable de contorno ten prioridade; non se usa o cartafol gardado:",
-    "localModelHint": "Só puntos de control completos de OmniVoice ou MLX Qwen3-TTS VoiceDesign cuantizados. Os ficheiros locais ausentes ou incompatibles provocan un erro, nunca unha descarga automática.",
+    "localModelHint": "Só puntos de control completos de OmniVoice ou MLX Qwen3-TTS Base ou VoiceDesign cuantizados. Os ficheiros locais ausentes ou incompatibles provocan un erro, nunca unha descarga automática.",
     "localModelReset": "Usar o predeterminado",
     "localModelChoose": "Escoller cartafol",
     "localModelDefault": "Modelo predeterminado do motor",
