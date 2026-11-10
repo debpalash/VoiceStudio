@@ -846,6 +846,7 @@
     "casting_drag_hint": "Dra en röstbricka till en talare, eller tryck på Enter på en talare för att välja från en lista.",
     "casting_assign_to": "Tilldela en röst till {{speaker}}",
     "casting_assigned": "{{voice}} tilldelad {{speaker}}",
+    "voice_fallback_default": "För lite tydligt tal för att klona {{speakers}}. De använder standardrösten; välj en under Rollista.",
     "edit_settings": "Redigera översättningsinställningar",
     "style_label_prefix": "stil:",
     "collapse_settings": "Komprimera översättningsinställningar",

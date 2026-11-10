@@ -1095,6 +1095,7 @@
     "casting_drag_hint": "Arrastra un chip de voz a un altofalante ou preme Intro nun altofalante para escoller unha lista.",
     "casting_assign_to": "Asignar unha voz a {{speaker}}",
     "casting_assigned": "Emitir {{voice}} como {{speaker}}",
+    "voice_fallback_default": "Non hai fala limpa abonda para clonar a {{speakers}}. Usan a voz predeterminada; escolle unha en Cast.",
     "edit_settings": "Edita a configuración da tradución",
     "style_label_prefix": "estilo:",
     "collapse_settings": "Contraer a configuración da tradución",

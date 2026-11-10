@@ -1317,7 +1317,9 @@ def _recover_from_phrase_embeddings(
 async def _reanalyze_speakers(job_id: str, job: dict, num_speakers: Optional[int], cancelled):
     """Refresh acoustic labels on existing cues; never rerun ASR or rewrite text."""
     import copy
-    from services.speaker_clone import auto_profile_id, build_cast_sources, extract_speaker_clones
+    from services.speaker_clone import (
+        auto_profile_id, build_cast_sources, extract_speaker_clones, voice_fallback_warning,
+    )
     from services.diarization_native import NativeSortformer
     from api.routers.dub_generate import resolve_consistent_ref
 
@@ -1454,6 +1456,9 @@ async def _reanalyze_speakers(job_id: str, job: dict, num_speakers: Optional[int
                 if ambiguous:
                     warnings.append({"source":"speaker_clone","detail":
                         "Some cues lack a single verified speaker; their audio was excluded from new source-voice references."})
+                fallback = voice_fallback_warning(segments,sources)
+                if fallback:
+                    warnings.append(fallback)
                 return copy.deepcopy(job)
         finally:
             # This finally runs on the worker, after all native work finishes,
@@ -2561,6 +2566,13 @@ async def dub_transcribe_stream(
                     _job_dir, dub_pipeline.REFERENCE_RUNS_DIRNAME,
                     os.path.basename(str(previous_ref_run)),
                 ), job)
+            # Name every speaker left without a source voice, including when
+            # extraction failed outright (#3419). After the commit above, so
+            # a disconnect here cannot discard the references the job holds.
+            from services.speaker_clone import voice_fallback_warning
+            fallback_warning = voice_fallback_warning(final_segs, commit["cast_sources"])
+            if fallback_warning:
+                yield _sse_event("warning", fallback_warning)
 
         # Restore TTS model to GPU now that ASR is done. unload() blocks
         # (gc.collect + CUDA cache drop) — run it on the GPU pool so the

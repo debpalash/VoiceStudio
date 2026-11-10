@@ -846,6 +846,7 @@
     "casting_drag_hint": "किसी वक्ता पर आवाज़ चिप खींचें, या सूची से चुनने के लिए वक्ता पर Enter दबाएँ।",
     "casting_assign_to": "{{speaker}} को आवाज़ सौंपें",
     "casting_assigned": "{{voice}} को {{speaker}} के रूप में कास्ट किया गया",
+    "voice_fallback_default": "{{speakers}} की आवाज़ क्लोन करने के लिए पर्याप्त साफ़ बोली नहीं है। डिफ़ॉल्ट आवाज़ इस्तेमाल होगी; कास्ट में कोई आवाज़ चुनें।",
     "edit_settings": "अनुवाद सेटिंग संपादित करें",
     "style_label_prefix": "शैली:",
     "collapse_settings": "अनुवाद सेटिंग संक्षिप्त करें",

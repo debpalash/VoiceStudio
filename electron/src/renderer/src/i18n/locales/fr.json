@@ -848,6 +848,7 @@
     "casting_drag_hint": "Glissez une pastille de voix sur un locuteur, ou appuyez sur Entrée sur un locuteur pour choisir dans une liste.",
     "casting_assign_to": "Attribuer une voix à {{speaker}}",
     "casting_assigned": "{{voice}} attribuée à {{speaker}}",
+    "voice_fallback_default": "Pas assez de parole nette pour cloner {{speakers}}. La voix par défaut est utilisée ; choisissez-en une dans Distribution.",
     "edit_settings": "Modifier les paramètres de traduction",
     "style_label_prefix": "style:",
     "collapse_settings": "Réduire les paramètres de traduction",

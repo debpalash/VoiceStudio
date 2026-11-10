@@ -848,6 +848,7 @@
     "casting_drag_hint": "Arrastra una ficha de voz a un hablante, o pulsa Enter sobre un hablante para elegir de una lista.",
     "casting_assign_to": "Asignar una voz a {{speaker}}",
     "casting_assigned": "{{voice}} asignada a {{speaker}}",
+    "voice_fallback_default": "No hay suficiente voz limpia para clonar a {{speakers}}. Usan la voz predeterminada; elige una en Reparto.",
     "edit_settings": "Editar configuración de traducción",
     "style_label_prefix": "estilo:",
     "collapse_settings": "Contraer configuración de traducción",

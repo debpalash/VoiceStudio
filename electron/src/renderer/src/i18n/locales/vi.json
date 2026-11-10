@@ -846,6 +846,7 @@
     "casting_drag_hint": "Kéo thẻ giọng nói thả vào người nói, hoặc nhấn Enter trên người nói để chọn từ danh sách.",
     "casting_assign_to": "Gán giọng nói cho {{speaker}}",
     "casting_assigned": "Đã gán {{voice}} cho {{speaker}}",
+    "voice_fallback_default": "Không đủ giọng nói rõ để nhân bản {{speakers}}. Sẽ dùng giọng mặc định; hãy chọn giọng trong mục Dàn giọng.",
     "edit_settings": "Chỉnh sửa cài đặt dịch",
     "style_label_prefix": "phong cách:",
     "collapse_settings": "Thu gọn cài đặt dịch",
