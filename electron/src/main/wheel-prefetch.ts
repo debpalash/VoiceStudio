@@ -516,9 +516,9 @@ export interface PrefetchOptions {
 }
 
 function sizeText(bytes: number): string {
-  return bytes >= 1024 ** 3
-    ? `${(bytes / 1024 ** 3).toFixed(1)} GB`
-    : `${Math.round(bytes / 1024 ** 2)} MB`;
+  // Pick the unit from the rounded value ("1024 MB" -> "1.0 GB").
+  const mb = Math.round(bytes / 1024 ** 2);
+  return mb >= 1024 ? `${(bytes / 1024 ** 3).toFixed(1)} GB` : `${mb} MB`;
 }
 
 function reason(error: unknown): string {
