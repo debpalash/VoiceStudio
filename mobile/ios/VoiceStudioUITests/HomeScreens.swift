@@ -4,7 +4,7 @@ final class HomeScreens: XCTestCase {
     @MainActor func testHomeStartsOfflineAndOpensEveryWorkspace() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-smoke", "-AppleLanguages", "(en)"]
         app.launch(); app.declineConsent()
-        XCTAssertTrue(app.navigationBars["Home"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Home"].waitForExistence(timeout: uiReadyTimeout))
         let title = app.descendants(matching: .any)["navigation.title"].firstMatch
         XCTAssertTrue(title.exists)
         XCTAssertEqual(title.label, "Home")
@@ -15,16 +15,16 @@ final class HomeScreens: XCTestCase {
             let card = app.buttons["home."+route]
             app.reveal(card)
             XCTAssertTrue(card.isHittable, route); card.tap()
-            XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: 5), route)
+            XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: uiReadyTimeout), route)
             if route == "voices" {
-                app.buttons["Cancel"].tap()
+                app.buttons["Cancel"].tapReady()
                 XCTAssertTrue(app.navigationBars[title].waitForNonExistence(timeout: 5))
                 continue
             }
             // A Back tap during the push transition can be dropped; retry until Home shows,
             // and never tap again once it does (Home's first bar button is Projects).
             for _ in 0..<3 where !app.navigationBars["Home"].exists {
-                if app.buttons["BackButton"].exists { app.buttons["BackButton"].tap() }
+                if app.buttons["BackButton"].exists { app.buttons["BackButton"].tapReady() }
                 else if app.navigationBars[title].exists { app.navigationBars[title].buttons.element(boundBy: 0).tap() }
                 _ = app.navigationBars["Home"].waitForExistence(timeout: 3)
             }
@@ -33,12 +33,12 @@ final class HomeScreens: XCTestCase {
         for _ in 0..<5 { if app.staticTexts["Your generations will appear here."].isHittable { break }; app.swipeUp() }
         XCTAssertTrue(app.staticTexts["Your generations will appear here."].exists)
         XCTAssertTrue(app.staticTexts["No projects yet"].exists)
-        app.tabButton("Settings").tap()
-        app.buttons["Mode"].tap(); app.buttons["choice.option.light"].tap()
-        app.tabButton("Home").tap()
+        app.tabButton("Settings").tapReady()
+        app.buttons["Mode"].tapReady(); app.buttons["choice.option.light"].tapReady()
+        app.tabButton("Home").tapReady()
         app.reveal(app.buttons["home.speak"], swipingDown: true)
         let light = XCTAttachment(screenshot: app.screenshot()); light.name = "Home-light"; light.lifetime = .keepAlways; add(light)
-        app.buttons["home.speak"].tap(); XCTAssertTrue(app.textViews["speak.text"].waitForExistence(timeout: 5))
+        app.buttons["home.speak"].tapReady(); XCTAssertTrue(app.textViews["speak.text"].waitForExistence(timeout: uiReadyTimeout))
     }
 }
 
@@ -49,7 +49,7 @@ final class MaintainerCardScreens: XCTestCase {
         if largeText { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
         app.launch()
         app.declineConsent()
-        XCTAssertTrue(app.navigationBars["Home"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.navigationBars["Home"].waitForExistence(timeout: uiReadyTimeout))
         return app
     }
 
@@ -100,7 +100,7 @@ final class MaintainerCardScreens: XCTestCase {
             ("velixio", "Shimul Debnath", "Core Team", "shimul.me", "@shimuldn")
         ] {
             app.buttons["home.contributor." + login].tap()
-            XCTAssertTrue(app.staticTexts[name].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.staticTexts[name].waitForExistence(timeout: uiReadyTimeout))
             XCTAssertTrue(app.staticTexts[role].exists)
             for (kind, handle) in [("website", website), ("github", "@" + login), ("x", social)] {
                 let link = app.descendants(matching: .any)["home.maintainer." + login + "." + kind].firstMatch
@@ -112,8 +112,8 @@ final class MaintainerCardScreens: XCTestCase {
             }
             let image = XCTAttachment(screenshot: app.screenshot())
             image.name = "Maintainer-" + login; image.lifetime = .keepAlways; add(image)
-            app.buttons["home.maintainer.close"].tap()
-            XCTAssertTrue(app.buttons["home.contributor." + login].waitForExistence(timeout: 5))
+            app.buttons["home.maintainer.close"].tapReady()
+            XCTAssertTrue(app.buttons["home.contributor." + login].waitForExistence(timeout: uiReadyTimeout))
         }
         let contributors = app.scrollViews["home.contributors.others"]
         let lastContributor = app.descendants(matching: .any)["home.contributor.nvtoan0201-swe"].firstMatch
@@ -131,7 +131,7 @@ final class MaintainerCardScreens: XCTestCase {
         for _ in 0..<5 { if maintainer.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(maintainer.isHittable)
         maintainer.tap()
-        XCTAssertTrue(app.staticTexts["Shimul Debnath"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Shimul Debnath"].waitForExistence(timeout: uiReadyTimeout))
         for kind in ["website", "github", "x"] {
             let link = app.descendants(matching: .any)["home.maintainer.velixio." + kind].firstMatch
             for _ in 0..<8 { if link.isHittable { break }; app.swipeUp() }
@@ -143,7 +143,7 @@ final class MaintainerCardScreens: XCTestCase {
         XCTAssertTrue(app.buttons["home.maintainer.close"].isHittable)
         let image = XCTAttachment(screenshot: app.screenshot())
         image.name = "Maintainer-accessibility-text"; image.lifetime = .keepAlways; add(image)
-        app.buttons["home.maintainer.close"].tap()
-        XCTAssertTrue(maintainer.waitForExistence(timeout: 5))
+        app.buttons["home.maintainer.close"].tapReady()
+        XCTAssertTrue(maintainer.waitForExistence(timeout: uiReadyTimeout))
     }
 }
