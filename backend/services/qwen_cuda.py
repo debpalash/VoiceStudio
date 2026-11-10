@@ -74,12 +74,18 @@ class QwenCUDABackend(TTSBackend):
         if not ref_audio or not ref_text:
             raise TTSInputError("Qwen3-TTS Base requires a voice reference and transcript.")
         code = self._check_language(language)
-        audio = Path(ref_audio).read_bytes()
+        try:
+            audio = Path(ref_audio).read_bytes()
+        except OSError as exc:
+            raise TTSInputError("The reference audio file is missing or unreadable.") from exc
         key = (sha256(audio).digest(), ref_text)
         self._ensure_loaded()
         with self._lock:
             if key not in self._prompts:
-                samples, rate = sf.read(BytesIO(audio), dtype="float32", always_2d=True)
+                try:
+                    samples, rate = sf.read(BytesIO(audio), dtype="float32", always_2d=True)
+                except (ValueError, sf.LibsndfileError) as exc:
+                    raise TTSInputError("The reference audio file could not be decoded.") from exc
                 self._prompts[key] = self._model.model.create_voice_clone_prompt(
                     ref_audio=(samples.mean(axis=1), rate), ref_text=ref_text,
                 )
@@ -99,9 +105,12 @@ class QwenCUDABackend(TTSBackend):
                         if rate != self.sample_rate:
                             raise RuntimeError(f"Unexpected Qwen sample rate {rate}")
                         if len(audio):
-                            yield torch.from_numpy(np.asarray(audio, dtype=np.float32)).reshape(1, -1)
+                            yield torch.from_numpy(np.array(audio, dtype=np.float32, copy=True)).reshape(1, -1)
 
     def generate(self, text, **kw):
         if not self.can_stream(**kw):
             raise TTSInputError("Qwen3-TTS Base requires default speed and duration.")
-        return torch.cat(list(self.stream_audio(text, **kw)), dim=-1)
+        chunks = list(self.stream_audio(text, **kw))
+        if not chunks:
+            raise RuntimeError("Qwen3-TTS Base produced no audio.")
+        return torch.cat(chunks, dim=-1)
