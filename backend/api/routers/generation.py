@@ -989,6 +989,21 @@ def _is_media_process_launch_failure(exc: BaseException) -> bool:
     }
 
 
+def _legacy_nvidia_note() -> str:
+    """The pre-Volta NVIDIA advice when device 0 is such a card, else ``""``."""
+    try:
+        import torch
+
+        from core.device_caps import arch_unsupported, is_legacy_nvidia_arch, legacy_nvidia_advice
+
+        mismatch = arch_unsupported(torch)
+        if mismatch is not None and is_legacy_nvidia_arch(mismatch[0]):
+            return legacy_nvidia_advice(torch.cuda.get_device_name(0), mismatch[0])
+    except Exception:  # noqa: BLE001 - classification only; fall back to the generic text
+        pass
+    return ""
+
+
 def _oom_friendly_reraise(e):
     """Best-effort cache flush + the user-facing OOM hint shared by both
     inference paths."""
@@ -1113,6 +1128,12 @@ def _oom_friendly_reraise(e):
     # raw error too in case CUDA was forced (OMNIVOICE_FORCE_CUDA) or a sub-path
     # still ran on the GPU — point at the real fix, not the Flush button.
     if "no kernel image is available" in _low:
+        _legacy = _legacy_nvidia_note()
+        if _legacy:
+            raise RuntimeError(
+                f"{_legacy} Switch the compute device to CPU in Settings. "
+                f"The Flush button won't help. Underlying error: {e}"
+            ) from e
         raise RuntimeError(
             f"Your GPU isn't supported by the installed PyTorch build (CUDA can't "
             f"launch kernels for its compute capability). Switch the compute device "

@@ -1635,6 +1635,10 @@ def check_device_compatibility():
             f"PyTorch build. Supported architectures: {', '.join(arch_list)}. "
             + _rocm_arch_remedy(device_arch, arch_list)
         )
+    from core.device_caps import is_legacy_nvidia_arch, legacy_nvidia_advice
+
+    if is_legacy_nvidia_arch(device_arch):
+        return False, legacy_nvidia_advice(device_name, device_arch)
     return False, (
         f"{device_name} ({device_arch}) is not supported by this PyTorch build. "
         f"Supported architectures: {', '.join(arch_list)}. "

@@ -655,6 +655,18 @@ def preflight():
             "A driver update will not help. Install a PyTorch build that covers "
             "this GPU's architecture, or continue on CPU (slower)."
         )
+        from core.device_caps import is_legacy_nvidia_arch
+
+        if is_legacy_nvidia_arch(gpu["kernels_missing"]):
+            gpu_detail = (
+                f"{gpu['device_name']} ({gpu['kernels_missing']}) — an older NVIDIA GPU "
+                "this PyTorch build no longer supports; PyTorch engines run on CPU"
+            )
+            gpu_fix = (
+                "A driver update will not help, and neither will another CUDA build. Use a Vulkan engine "
+                "(audio.cpp, CosyVoice GGUF, OmniVoice GGUF) to run on this GPU, or "
+                "continue on CPU (slower)."
+            )
     elif gpu["vendor"] == "nvidia" and gpu["available"]:
         gpu_status, gpu_fix = "pass", None
         gpu_detail = f"{gpu['device_name']} (driver {gpu['driver']}) — CUDA ready"
