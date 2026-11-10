@@ -3972,6 +3972,39 @@
     "title": "SetupStatusResponse",
     "type": "object"
    },
+   "SfxRequest": {
+    "properties": {
+     "duration": {
+      "default": 10.0,
+      "description": "Seconds of audio, 1 to 30.",
+      "title": "Duration",
+      "type": "number"
+     },
+     "prompt": {
+      "description": "What the sound is, in English or Chinese.",
+      "title": "Prompt",
+      "type": "string"
+     },
+     "seed": {
+      "anyOf": [
+       {
+        "maximum": 2147483647.0,
+        "minimum": 0.0,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Seed"
+     }
+    },
+    "required": [
+     "prompt"
+    ],
+    "title": "SfxRequest",
+    "type": "object"
+   },
    "SpeechAuthCapabilities": {
     "properties": {
      "browser_session_endpoint": {
@@ -5506,6 +5539,18 @@
       "default": true,
       "title": "Activate If Unset",
       "type": "boolean"
+     },
+     "allow_plain_http": {
+      "anyOf": [
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Allow an API key over plain HTTP to a private-IP LAN host",
+      "title": "Allow Plain Http"
      },
      "api_key": {
       "anyOf": [
@@ -8660,6 +8705,59 @@
     ]
    }
   },
+  "/api/sfx/generate": {
+   "post": {
+    "description": "Generate one sound effect. Returns ``{id, audio_url, duration_s, gen_time_s, seed, engine}``.",
+    "operationId": "sfx_generate_api_sfx_generate_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SfxRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Sfx Generate"
+   }
+  },
+  "/api/sfx/status": {
+   "get": {
+    "operationId": "sfx_status_api_sfx_status_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Sfx Status"
+   }
+  },
   "/archetypes": {
    "get": {
     "description": "Filtered, paginated view over the archetype catalog.\n\n``q`` is a free-text substring match over the archetype name/instruct so a\nvoice picker can search the *entire* several-hundred-voice catalog by typing\n(the facet filters alone can't reach a specific voice by name). Content-free\nand local \u2014 it just narrows the in-memory catalog.",
@@ -10717,7 +10815,7 @@
   },
   "/convert": {
    "post": {
-    "description": "Convert a spoken clip into an existing voice profile's voice.\n\nMultipart form: ``audio`` (the source clip), ``profile_id`` (an existing\nvoice profile), optional ``match_duration`` (default on \u2014 atempo the take\ntoward the source clip's length, clamped to 0.5\u20132.0\u00d7), optional\n``keep_delivery`` (default off \u2014 convert the recording itself so the\nspeaker's timing, rhythm and intonation are kept, #3421; no transcript).\n\nReturns JSON ``{audio_url, text, duration_s, id}`` \u2014 the take is saved to\nOUTPUTS_DIR and served from the ``/audio`` mount like every other take.",
+    "description": "Convert a spoken clip into an existing voice profile's voice.\n\nMultipart form: ``audio`` (the source clip), ``profile_id`` (an existing\nvoice profile), optional ``match_duration`` (default on \u2014 atempo the take\ntoward the source clip's length, clamped to 0.5\u20132.0\u00d7), optional\n``keep_delivery`` (default off \u2014 convert the recording itself so the\nspeaker's timing, rhythm and intonation are kept, #3421; no transcript).\nAn MP4/MOV/M4V/MKV upload (#3750) always runs that path on the video's\nsoundtrack and returns ``video_url`` (picture stream-copied, background\nkept when Demucs is installed) plus ``notes``/``message`` for any fallback\ntaken; other video containers get a 415.\n\nReturns JSON ``{audio_url, text, duration_s, id}`` \u2014 the take is saved to\nOUTPUTS_DIR and served from the ``/audio`` mount like every other take.",
     "operationId": "convert_speech_convert_post",
     "requestBody": {
      "content": {

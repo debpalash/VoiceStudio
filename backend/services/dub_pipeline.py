@@ -361,6 +361,10 @@ def find_cached_job(content_hash: str, exclude_job_id: str) -> Optional[dict]:
         # without it, reusing the cache would silently keep serving the
         # narrow-band mono bed forever for that video. Re-separating once is
         # the better deal.
+        # A job whose background separation failed holds the mixed fallback
+        # audio as its "vocals"; reusing it would make a retry skip separation.
+        if job.get("background_separation") == "failed":
+            continue
         if not os.path.isfile(os.path.join(cached_dir, "audio_hq.wav")):
             logger.info(
                 "cache candidate %s has pre-HQ (mono/16k-derived) stems — "
@@ -746,6 +750,7 @@ async def run_proc_streaming_stderr(
     cmd: list[str],
     *,
     timeout: float = 1800.0,
+    deadline: Optional[float] = None,
 ) -> AsyncIterator[tuple]:
     """Spawn `cmd` and stream its stderr line-by-line as it runs.
 
@@ -757,8 +762,15 @@ async def run_proc_streaming_stderr(
         the subprocess exits; this is always the final value.
 
     Honors the same semaphore + register_proc/kill plumbing as run_proc.
+    `deadline` (a time.monotonic() value) caps the run AFTER the semaphore wait,
+    so time queued for a slot cannot push a retry past a whole-ladder budget.
     """
     async with _get_semaphore():
+        if deadline is not None:
+            timeout = min(timeout, deadline - time.monotonic())
+            if timeout < 1.0:
+                yield ("done", -1, b"deadline reached while waiting for a free slot")
+                return
         p = await _spawn_with_retry(
             cmd,
             stdout=asyncio.subprocess.PIPE,
@@ -1496,6 +1508,86 @@ async def _stop_download(dl_task, stop: threading.Event, job_id: str, job_dir: s
         logger.warning("Cancelled download for job %s left partial files", log_safe(job_id))
 
 
+# Demucs retry ladder (#3751). A long source can exhaust GPU/RAM mid-separation
+# (exit code 1/-9); every rung below is a cheaper configuration of the SAME
+# demucs CLI, using only flags the pinned demucs accepts (`--segment` int,
+# `--overlap` float — see `python -m demucs.separate -h`).
+_DEMUCS_STEP_TIMEOUT_S = 1800.0
+#: Whole-ladder wall budget: twice the old single-attempt cap, not three times.
+#: The first attempt keeps its full cap; each retry gets min(cap, what is left).
+_DEMUCS_TOTAL_BUDGET_S = 2 * _DEMUCS_STEP_TIMEOUT_S
+_DEMUCS_MIN_RETRY_S = 120.0
+#: Smaller chunks bound per-chunk GPU memory; less overlap means fewer of them.
+_DEMUCS_LEAN_FLAGS = ["--segment", "4", "--overlap", "0.1"]
+_BACKGROUND_LOST_NOTICE = (
+    "The original background could not be separated, so this dub will contain "
+    "speech only unless you retry."
+)
+
+
+def _demucs_aborted(job_id: str) -> bool:
+    """True once the user aborted or deleted the job (its procs were killed)."""
+    job = _dub_jobs.get(job_id)
+    return job is None or bool(job.get("aborted"))
+
+
+async def _separate_background(job_id: str, audio_in: str, job_dir: str, *, paths=()) -> AsyncIterator[tuple]:
+    """Run Demucs, retrying a failed exit on cheaper configurations.
+
+    Ladder: standard on the best device → memory-lean flags on the same device
+    → CPU (only when the device was not already CPU). Yields ('progress', pct),
+    ('retry', {...}) before each retry, and returns normally on success;
+    raises with every attempt's scrubbed stderr tail when all fail. A user
+    abort or a timeout is never retried (a timeout means the machine is too
+    slow, which a retry cannot fix, and the user already waited the cap).
+    """
+    device = get_best_device()
+    ladder = [("standard", device, [])]
+    ladder.append(("lean", device, _DEMUCS_LEAN_FLAGS))
+    if device != "cpu":
+        ladder.append(("cpu", "cpu", _DEMUCS_LEAN_FLAGS))
+    started = time.monotonic()
+    failures: list[str] = []
+    for index, (label, dev, extra) in enumerate(ladder):
+        if index:
+            remaining = _DEMUCS_TOTAL_BUDGET_S - (time.monotonic() - started)
+            await asyncio.sleep(0)  # let a pending abort land before retrying
+            if _demucs_aborted(job_id) or remaining < _DEMUCS_MIN_RETRY_S:
+                break
+            timeout = min(_DEMUCS_STEP_TIMEOUT_S, remaining)
+            logger.warning(
+                "Demucs retry for %s: %s attempt on %s after: %s",
+                log_safe(job_id), label, dev, log_safe(failures[-1], limit=2300),
+            )
+            yield ("retry", {"attempt": label, "device": dev, "reason": failures[-1]})
+            shutil.rmtree(os.path.join(job_dir, "htdemucs"), ignore_errors=True)
+        else:
+            timeout = _DEMUCS_STEP_TIMEOUT_S
+        # Retries also carry the absolute deadline: slot-queue time counts.
+        kw = {"deadline": started + _DEMUCS_TOTAL_BUDGET_S} if index else {}
+        cmd = [sys.executable, "-m", "demucs.separate", "--two-stems", "vocals",
+               "-n", "htdemucs", "-d", dev, *extra, audio_in, "-o", job_dir]
+        rc, stderr_full, last_pct = -1, b"", -1
+        # demucs writes a tqdm progress bar to stderr as "  42%|████ …" — surface
+        # each new integer percent so the UI shows a bar, not a static spinner.
+        async for evt in run_proc_streaming_stderr(job_id, cmd, timeout=timeout, **kw):
+            if evt[0] == "stderr":
+                m = re.search(r"(\d{1,3})%", evt[1])
+                if m:
+                    pct = max(0, min(100, int(m.group(1))))
+                    if pct != last_pct:
+                        last_pct = pct
+                        yield ("progress", pct)
+            elif evt[0] == "done":
+                rc, stderr_full = evt[1], evt[2]
+        if rc == 0:
+            return
+        failures.append(f"[{label} on {dev}] " + _media_process_error("Demucs", rc, stderr_full, paths=paths))
+        if _demucs_aborted(job_id):
+            break
+    raise Exception(" | ".join(failures))
+
+
 async def ingest_pipeline(
     job_id: str,
     job_dir: str,
@@ -1766,28 +1858,13 @@ async def ingest_pipeline(
 
             yield prep_event("demucs_start")
             try:
-                demucs_cmd = [sys.executable, "-m", "demucs.separate",
-                              "--two-stems", "vocals", "-n", "htdemucs", "-d", get_best_device(),
-                              audio_hq_path or audio_path, "-o", job_dir]
-                rc = -1
-                stderr_full = b""
-                last_pct = -1
-                # demucs writes a tqdm progress bar to stderr as
-                # "  42%|████      | …" — surface each new integer percent
-                # to the UI so the user sees the bar instead of a static
-                # spinner during the multi-minute separation step.
-                async for evt in run_proc_streaming_stderr(job_id, demucs_cmd, timeout=1800.0):
-                    if evt[0] == "stderr":
-                        m = re.search(r"(\d{1,3})%", evt[1])
-                        if m:
-                            pct = max(0, min(100, int(m.group(1))))
-                            if pct != last_pct:
-                                last_pct = pct
-                                yield prep_event("demucs_progress", percent=pct)
-                    elif evt[0] == "done":
-                        rc, stderr_full = evt[1], evt[2]
-                if rc != 0:
-                    raise Exception(_media_process_error("Demucs", rc, stderr_full, paths=(audio_hq_path, audio_path, job_dir)))
+                async for evt in _separate_background(
+                    job_id, audio_hq_path or audio_path, job_dir, paths=(audio_hq_path, audio_path, job_dir),
+                ):
+                    if evt[0] == "progress":
+                        yield prep_event("demucs_progress", percent=evt[1])
+                    elif evt[0] == "retry":
+                        yield prep_event("demucs_retry", **evt[1])
                 # Stems land under the INPUT's basename ("audio_hq" when the
                 # full-quality extraction succeeded, "audio" on its fallback).
                 demucs_out = os.path.join(
@@ -1804,6 +1881,7 @@ async def ingest_pipeline(
                 from core.scrub import scrub_text
                 detail = f"{type(e).__name__}: {scrub_text(str(e))}"
                 logger.warning("Demucs failed for %s, falling back to mixed audio: %s", log_safe(job_id), log_safe(detail, limit=12100))
+                e = Exception(f"{_BACKGROUND_LOST_NOTICE} {e}")
                 # plan-04: surface the degradation (job continues with mixed audio).
                 warning = failure.build_failure(e, stage="demucs", include_diagnostic=False)
                 yield prep_event("warning", **{
@@ -1812,8 +1890,8 @@ async def ingest_pipeline(
                 })
                 vocals_path = audio_path
                 no_vocals_path = None
-            yield prep_event("demucs_done",
-                             has_bg=bool(no_vocals_path and os.path.exists(no_vocals_path)))
+            has_bg = bool(no_vocals_path and os.path.exists(no_vocals_path))
+            yield prep_event("demucs_done", has_bg=has_bg)
 
             # Audio-only jobs (#119) have no video to scan or thumbnail. Skip
             # both ffmpeg passes but still emit scene_done (count=0) so the
@@ -1869,6 +1947,7 @@ async def ingest_pipeline(
                 {
                     "vocals_path": vocals_path,
                     "no_vocals_path": no_vocals_path,
+                    "background_separation": "ok" if has_bg else "failed",
                     "thumb_path": thumb_path if (thumb_path and os.path.exists(thumb_path)) else None,
                     "scene_cuts": scene_cuts,
                 },

@@ -1,6 +1,7 @@
 import { translationActivity } from './translation-activity';
 import { ingestDubUrl, isDubUrl } from './dub-session';
 import { expect, it, vi } from 'vitest';
+import { toast } from 'sonner';
 import { apiJson } from '@/lib/api/client';
 import { consumeTaskStream, IncompleteTaskStreamError } from '@/lib/api/event-stream';
 import {
@@ -31,6 +32,7 @@ import {
   translateDubBatchWithAgent,
   translateDubWithAgent,
   setDubTarget,
+  keepDubSourceText,
   splitDubSegment,
   undoDubEdit,
   nextDubSpeakerId,
@@ -1131,4 +1133,73 @@ it('removing an interrupted run cancels its backend task before clearing the sou
   vi.mocked(apiJson).mockReset();
   await expect(removeDubSource()).resolves.toBe(true);
   expect(apiJson).not.toHaveBeenCalled();
+});
+
+it('keeps the original transcript and source language when translation is skipped (#3747)', () => {
+  dubSession.setState((current) => ({
+    ...current,
+    jobId: 'job',
+    phase: 'editing',
+    recovery: null,
+    target: 'Spanish',
+    sourceLanguage: 'en',
+    segments: [
+      {
+        id: 'a',
+        start: 0,
+        end: 1,
+        text: 'Hola',
+        text_original: 'Hello',
+        translations: { es: 'Hola' },
+        translate_error: 'boom',
+      },
+    ],
+  }));
+  keepDubSourceText('en');
+  const [segment] = dubSession.state.segments;
+  expect(segment.text).toBe('Hello');
+  expect(segment.translations).toBeUndefined();
+  expect(segment.translate_error).toBeUndefined();
+  expect(segment.translation_skipped).toBe(true);
+  expect(dubSession.state.target).toBe('English');
+});
+
+it('says which speakers fell back to the default voice after transcription (#3419)', async () => {
+  const warning = vi.spyOn(toast, 'warning').mockImplementation(() => 'toast');
+  vi.mocked(apiJson).mockResolvedValueOnce({ job_id: 'job3419', task_id: 'prep3419' });
+  vi.mocked(consumeTaskStream)
+    .mockImplementationOnce(async (_path, emit) => {
+      emit({ type: 'ready', duration: 4 });
+    })
+    .mockImplementationOnce(async (_path, emit) => {
+      emit({ type: 'warning', source: 'diarization', detail: 'Using silence gaps for now.' });
+      emit({
+        type: 'warning',
+        source: 'speaker_clone',
+        detail: 'Not enough clean speech to clone Speaker 2.',
+        fallback_speakers: ['Speaker 2'],
+      });
+      emit({
+        type: 'final',
+        source_lang: 'en',
+        segments: [
+          { id: 1, start: 0, end: 2, text: 'Hello', speaker_id: 'Speaker 1' },
+          { id: 2, start: 2, end: 3, text: 'Hi', speaker_id: 'Speaker 2' },
+        ],
+        cast_sources: { 'Speaker 1': {} },
+      });
+      emit({ type: 'done' });
+    });
+  await uploadDub(new File(['audio'], 'voice.wav', { type: 'audio/wav' }));
+  expect(dubSession.state.phase).toBe('editing');
+  expect(warning.mock.calls.map((call) => call[0])).toEqual([
+    'Using silence gaps for now.',
+    'dub.voice_fallback_default',
+  ]);
+  // The speaker without a source keeps the default voice, never Speaker 1's.
+  expect(dubSession.state.segments.map((segment) => segment.profile_id)).toEqual([
+    'auto:speaker_1',
+    undefined,
+  ]);
+  warning.mockRestore();
 });

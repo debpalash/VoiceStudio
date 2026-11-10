@@ -450,3 +450,15 @@ models:
     size_gb: 0.2
     note: "Apple Silicon only — via mlx-audio backend."
     platforms: [darwin-arm64]
+
+  # ── Sound effects (not speech) ────────────────────────────────────────
+
+  # Role SFX is non-speech: no TTS/ASR picker lists it, and /models hides it.
+  # The weights are installed only by Tools > Sound effects (sidecar installer,
+  # same pinned revision), never by a default download.
+  - repo_id: "OpenMOSS-Team/MOSS-SoundEffect-v2.0"
+    label: "MOSS-SoundEffect v2.0 (text to sound effects, 48 kHz)"
+    role: SFX
+    engines: []
+    size_gb: 10.5
+    note: "Installed from Tools > Sound effects. NVIDIA GPU only. Apache-2.0."
