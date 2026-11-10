@@ -330,7 +330,11 @@
     "import_done_one": "{{count}} entrada importada.",
     "import_done_other": "{{count}} entradas importadas.",
     "entries_count_one": "{{count}} entrada",
-    "entries_count_other": "{{count}} entradas"
+    "entries_count_other": "{{count}} entradas",
+    "scope_language": "Idioma",
+    "scope_voice": "Esta voz",
+    "voice_pick": "Escolha uma voz",
+    "voice_note": "As entradas próprias de uma voz têm prioridade sobre o dicionário do idioma quando essa voz fala."
   },
   "preferences": {
     "title": "Configurações",

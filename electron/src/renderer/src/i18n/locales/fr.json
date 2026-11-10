@@ -330,7 +330,11 @@
     "import_done_one": "{{count}} entrée importée.",
     "import_done_other": "{{count}} entrées importées.",
     "entries_count_one": "{{count}} entrée",
-    "entries_count_other": "{{count}} entrées"
+    "entries_count_other": "{{count}} entrées",
+    "scope_language": "Langue",
+    "scope_voice": "Cette voix",
+    "voice_pick": "Choisir une voix",
+    "voice_note": "Les entrées propres à une voix l'emportent sur le dictionnaire de la langue quand cette voix parle."
   },
   "preferences": {
     "title": "Paramètres",

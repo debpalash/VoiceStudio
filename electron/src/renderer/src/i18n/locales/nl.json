@@ -328,7 +328,11 @@
     "import_done_one": "{{count}} item geïmporteerd.",
     "import_done_other": "{{count}} items geïmporteerd.",
     "entries_count_one": "{{count}} item",
-    "entries_count_other": "{{count}} items"
+    "entries_count_other": "{{count}} items",
+    "scope_language": "Taal",
+    "scope_voice": "Deze stem",
+    "voice_pick": "Kies een stem",
+    "voice_note": "De eigen items van een stem gaan voor op het taalwoordenboek wanneer die stem spreekt."
   },
   "preferences": {
     "title": "Instellingen",

@@ -328,7 +328,11 @@
     "import_done_one": "Đã nhập {{count}} mục.",
     "import_done_other": "Đã nhập {{count}} mục.",
     "entries_count_one": "{{count}} mục",
-    "entries_count_other": "{{count}} mục"
+    "entries_count_other": "{{count}} mục",
+    "scope_language": "Ngôn ngữ",
+    "scope_voice": "Giọng này",
+    "voice_pick": "Chọn giọng",
+    "voice_note": "Mục riêng của một giọng được ưu tiên hơn từ điển ngôn ngữ mỗi khi giọng đó nói."
   },
   "preferences": {
     "title": "Cài đặt",

@@ -328,7 +328,11 @@
     "import_done_one": "{{count}} post importerad.",
     "import_done_other": "{{count}} poster importerade.",
     "entries_count_one": "{{count}} post",
-    "entries_count_other": "{{count}} poster"
+    "entries_count_other": "{{count}} poster",
+    "scope_language": "Språk",
+    "scope_voice": "Den här rösten",
+    "voice_pick": "Välj en röst",
+    "voice_note": "En rösts egna poster går före språkordlistan när den rösten talar."
   },
   "preferences": {
     "title": "Inställningar",

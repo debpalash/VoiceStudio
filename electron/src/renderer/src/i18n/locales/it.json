@@ -330,7 +330,11 @@
     "import_done_one": "{{count}} voce importata.",
     "import_done_other": "{{count}} voci importate.",
     "entries_count_one": "{{count}} voce",
-    "entries_count_other": "{{count}} voci"
+    "entries_count_other": "{{count}} voci",
+    "scope_language": "Lingua",
+    "scope_voice": "Questa voce",
+    "voice_pick": "Scegli una voce",
+    "voice_note": "Le voci proprie di una voce hanno la precedenza sul dizionario della lingua quando quella voce parla."
   },
   "preferences": {
     "title": "Impostazioni",

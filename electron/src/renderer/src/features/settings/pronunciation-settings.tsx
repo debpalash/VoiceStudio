@@ -17,6 +17,7 @@ import { PipelineFailure } from '@/components/pipeline-failure';
 import { apiFetch, apiJson, describeError } from '@/lib/api/client';
 import { isImeComposing } from '@/lib/ime';
 import { saveLocalFile } from '@/lib/local-export';
+import { listProfiles } from '@/lib/api/profiles';
 import { SettingsRow, SettingsSection } from './settings-layout';
 
 type PronunciationType = 'respelling' | 'ipa' | 'cmu';
@@ -57,13 +58,22 @@ export function PronunciationSettings() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
+  // #3873: the dictionary being edited is the language one, or one voice's own.
+  const [scopeKind, setScopeKind] = useState<'language' | 'voice'>('language');
+  const [voiceId, setVoiceId] = useState('');
+  const profileId = scopeKind === 'voice' ? voiceId : '';
+  const profileQuery = profileId ? '?profile_id=' + encodeURIComponent(profileId) : '';
+  const voices = useQuery({ queryKey: ['profiles'], queryFn: listProfiles });
+  const voiceScopeNeedsVoice = scopeKind === 'voice' && !voiceId;
   const [previewRevision, setPreviewRevision] = useState(0);
   const [pendingImport, setPendingImport] = useState<ImportPayload | null>(null);
   const entries = useQuery({
-    queryKey: ['pronunciation'],
-    queryFn: ({ signal }) => apiJson<PronunciationEntry[]>('/pronunciation', { signal }),
+    queryKey: ['pronunciation', profileId],
+    queryFn: ({ signal }) =>
+      apiJson<PronunciationEntry[]>('/pronunciation' + profileQuery, { signal }),
+    enabled: !voiceScopeNeedsVoice,
   });
-  const rows = entries.data ?? [];
+  const rows = voiceScopeNeedsVoice ? [] : (entries.data ?? []);
 
   useEffect(() => {
     if (!testText.trim()) {
@@ -78,6 +88,7 @@ export function PronunciationSettings() {
         body: JSON.stringify({
           text: testText,
           ...(testLanguage === '*' ? {} : { language: testLanguage }),
+          ...(profileId ? { profile_id: profileId } : {}),
         }),
         signal: controller.signal,
       })
@@ -96,7 +107,7 @@ export function PronunciationSettings() {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [previewRevision, testLanguage, testText]);
+  }, [previewRevision, profileId, testLanguage, testText]);
 
   const refresh = async () => {
     await client.invalidateQueries({ queryKey: ['pronunciation'] });
@@ -125,6 +136,7 @@ export function PronunciationSettings() {
           type,
           language: language.trim() || '*',
           enabled: true,
+          ...(profileId ? { profile_id: profileId } : {}),
         }),
       });
       setTerm('');
@@ -150,7 +162,11 @@ export function PronunciationSettings() {
     act(async () => {
       const result = await apiJson<{ imported: number }>('/pronunciation/import', {
         method: 'POST',
-        body: JSON.stringify({ entries: payload.entries, replace }),
+        body: JSON.stringify({
+          entries: payload.entries,
+          replace,
+          ...(profileId ? { profile_id: profileId } : {}),
+        }),
       });
       setPendingImport(null);
       setNotice(t('pronunciation.import_done', { count: result.imported }));
@@ -176,10 +192,10 @@ export function PronunciationSettings() {
   };
   const exportEntries = () =>
     act(async () => {
-      const data = await apiJson<ImportPayload>('/pronunciation/export');
+      const data = await apiJson<ImportPayload>('/pronunciation/export' + profileQuery);
       await saveLocalFile(
         new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }),
-        'pronunciation-dictionary.json',
+        profileId ? 'pronunciation-voice-dictionary.json' : 'pronunciation-dictionary.json',
       );
     });
 
@@ -206,6 +222,47 @@ export function PronunciationSettings() {
           {t('pronunciation.entries_count', { count: rows.length })}
         </Badge>
       </SettingsRow>
+      <SettingsRow
+        id="pronunciation-scope"
+        title={t('pronunciation.scope')}
+        description={t('pronunciation.voice_note')}
+      >
+        <div
+          role="group"
+          aria-label={t('pronunciation.scope')}
+          className="inline-flex rounded-lg border border-border/60 bg-muted/30 p-0.5"
+        >
+          {(['language', 'voice'] as const).map((kind) => (
+            <Button
+              key={kind}
+              size="sm"
+              variant={scopeKind === kind ? 'secondary' : 'ghost'}
+              aria-pressed={scopeKind === kind}
+              onClick={() => setScopeKind(kind)}
+            >
+              {t('pronunciation.scope_' + kind)}
+            </Button>
+          ))}
+        </div>
+        {scopeKind === 'voice' && (
+          <Select
+            items={(voices.data ?? []).map((voice) => ({ value: voice.id, label: voice.name }))}
+            value={voiceId}
+            onValueChange={(value) => setVoiceId(value ?? '')}
+          >
+            <SelectTrigger aria-label={t('pronunciation.voice_pick')} className="min-w-44">
+              <SelectValue placeholder={t('pronunciation.voice_pick')} />
+            </SelectTrigger>
+            <SelectContent align="end">
+              {(voices.data ?? []).map((voice) => (
+                <SelectItem key={voice.id} value={voice.id}>
+                  {voice.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+      </SettingsRow>
       {(error || entries.isError) && (
         <div className="p-4">
           <PipelineFailure
@@ -221,12 +278,12 @@ export function PronunciationSettings() {
           />
         </div>
       )}
-      {entries.isPending && (
+      {!voiceScopeNeedsVoice && entries.isPending && (
         <p role="status" className="px-4 py-3 text-sm text-muted-foreground">
           {t('common.loading')}
         </p>
       )}
-      {!entries.isPending && rows.length === 0 && (
+      {!voiceScopeNeedsVoice && !entries.isPending && rows.length === 0 && (
         <p className="px-4 py-3 text-sm text-muted-foreground">{t('pronunciation.empty')}</p>
       )}
       {rows.map((entry) => (
@@ -314,7 +371,7 @@ export function PronunciationSettings() {
             }
           }}
         />
-        <Button disabled={busy || !term.trim()} onClick={() => void add()}>
+        <Button disabled={busy || !term.trim() || voiceScopeNeedsVoice} onClick={() => void add()}>
           <PlusIcon />
           {t('pronunciation.add')}
         </Button>
@@ -377,11 +434,19 @@ export function PronunciationSettings() {
         title={t('pronunciation.backup_title')}
         description={t('pronunciation.backup_hint')}
       >
-        <Button variant="outline" disabled={busy} onClick={() => void exportEntries()}>
+        <Button
+          variant="outline"
+          disabled={busy || voiceScopeNeedsVoice}
+          onClick={() => void exportEntries()}
+        >
           <DownloadIcon />
           {t('pronunciation.export')}
         </Button>
-        <Button variant="outline" disabled={busy} onClick={() => fileInput.current?.click()}>
+        <Button
+          variant="outline"
+          disabled={busy || voiceScopeNeedsVoice}
+          onClick={() => fileInput.current?.click()}
+        >
           <UploadIcon />
           {t('pronunciation.import')}
         </Button>

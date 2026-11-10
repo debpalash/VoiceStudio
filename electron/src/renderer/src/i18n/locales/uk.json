@@ -338,7 +338,11 @@
     "entries_count_one": "{{count}} запис",
     "entries_count_few": "{{count}} записи",
     "entries_count_many": "{{count}} записів",
-    "entries_count_other": "{{count}} запису"
+    "entries_count_other": "{{count}} запису",
+    "scope_language": "Мова",
+    "scope_voice": "Цей голос",
+    "voice_pick": "Виберіть голос",
+    "voice_note": "Власні записи голосу мають пріоритет над словником мови, коли говорить цей голос."
   },
   "preferences": {
     "title": "Налаштування",

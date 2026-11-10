@@ -328,7 +328,11 @@
     "import_done_one": "{{count}} 件をインポートしました。",
     "import_done_other": "{{count}} 件をインポートしました。",
     "entries_count_one": "{{count}} 件",
-    "entries_count_other": "{{count}} 件"
+    "entries_count_other": "{{count}} 件",
+    "scope_language": "言語",
+    "scope_voice": "この音声",
+    "voice_pick": "音声を選択",
+    "voice_note": "その音声が話すときは、音声ごとの項目が言語辞書より優先されます。"
   },
   "preferences": {
     "title": "設定",

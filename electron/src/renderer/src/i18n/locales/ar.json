@@ -348,7 +348,11 @@
     "entries_count_two": "{{count}} إدخال",
     "entries_count_few": "{{count}} إدخالات",
     "entries_count_many": "{{count}} إدخالًا",
-    "entries_count_other": "{{count}} إدخال"
+    "entries_count_other": "{{count}} إدخال",
+    "scope_language": "اللغة",
+    "scope_voice": "هذا الصوت",
+    "voice_pick": "اختر صوتاً",
+    "voice_note": "تتغلب إدخالات الصوت الخاصة على قاموس اللغة كلما تحدث هذا الصوت."
   },
   "preferences": {
     "title": "الإعدادات",

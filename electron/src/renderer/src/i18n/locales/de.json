@@ -328,7 +328,11 @@
     "import_done_one": "{{count}} Eintrag importiert.",
     "import_done_other": "{{count}} Einträge importiert.",
     "entries_count_one": "{{count}} Eintrag",
-    "entries_count_other": "{{count}} Einträge"
+    "entries_count_other": "{{count}} Einträge",
+    "scope_language": "Sprache",
+    "scope_voice": "Diese Stimme",
+    "voice_pick": "Stimme wählen",
+    "voice_note": "Die eigenen Einträge einer Stimme haben Vorrang vor dem Sprachwörterbuch, wenn diese Stimme spricht."
   },
   "preferences": {
     "title": "Einstellungen",

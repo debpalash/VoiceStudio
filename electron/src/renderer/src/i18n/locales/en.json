@@ -319,7 +319,11 @@
     "import_done_one": "Imported {{count}} entry.",
     "import_done_other": "Imported {{count}} entries.",
     "entries_count_one": "{{count}} entry",
-    "entries_count_other": "{{count}} entries"
+    "entries_count_other": "{{count}} entries",
+    "scope_language": "Language",
+    "scope_voice": "This voice",
+    "voice_pick": "Choose a voice",
+    "voice_note": "A voice's own entries win over the language dictionary whenever that voice speaks."
   },
   "app": {
     "name": "VoiceStudio",

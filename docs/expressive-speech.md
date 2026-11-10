@@ -87,6 +87,8 @@ lists the reaction tags its tokenizer renders.
   inside its brackets, in Generate and in audiobook chapters alike. Not
   expression, but often what a "it says this weirdly" problem actually needs.
 
+**Per-voice dictionaries.** In **Settings → Pronunciation dictionary**, the scope switch (**Language** | **This voice**) picks which dictionary you edit, export or import. A voice's own entries apply in Generate only when that voice speaks, and win over the language dictionary: global, then language, then the voice, then the voice for one language, with the most specific entry winning. Voices never see each other's entries, existing dictionaries stay as they were, and deleting a voice deletes its dictionary. Over the API, `profile_id` on `GET /pronunciation`, `/pronunciation/export`, `/pronunciation/import` and `/pronunciation/test` selects a voice (without it they act on the language dictionary only, and `replace: true` clears only that scope). Audiobook chapters still use the project lexicon only.
+
 Pronunciation dictionary matching uses Unicode case-insensitive literal matches. Each matched term uses its own respelling; distinct terms such as Straße and STRASSE can have different respellings. Longer terms win overlaps, and later equal-length case variants retain precedence. Because that precedence follows entry order, reordering such variants re-renders cached longform chapters; reordering unrelated entries does not.
 
 ### Default engine (VoiceStudio)

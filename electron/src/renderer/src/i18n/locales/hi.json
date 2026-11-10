@@ -328,7 +328,11 @@
     "import_done_one": "{{count}} प्रविष्टि आयात की गई।",
     "import_done_other": "{{count}} प्रविष्टियाँ आयात की गईं।",
     "entries_count_one": "{{count}} प्रविष्टि",
-    "entries_count_other": "{{count}} प्रविष्टियाँ"
+    "entries_count_other": "{{count}} प्रविष्टियाँ",
+    "scope_language": "भाषा",
+    "scope_voice": "यह आवाज़",
+    "voice_pick": "आवाज़ चुनें",
+    "voice_note": "जब कोई आवाज़ बोलती है, तो उसकी अपनी प्रविष्टियाँ भाषा शब्दकोश पर प्राथमिकता पाती हैं।"
   },
   "preferences": {
     "title": "सेटिंग्स",

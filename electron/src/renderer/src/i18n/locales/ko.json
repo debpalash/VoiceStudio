@@ -328,7 +328,11 @@
     "remove": "{{term}} 제거",
     "test_label": "문장 테스트",
     "test_result": "다음과 같이 발음됩니다:",
-    "title": "발음 사전"
+    "title": "발음 사전",
+    "scope_language": "언어",
+    "scope_voice": "이 음성",
+    "voice_pick": "음성 선택",
+    "voice_note": "해당 음성이 말할 때는 음성 전용 항목이 언어 사전보다 우선합니다."
   },
   "preferences": {
     "title": "설정",

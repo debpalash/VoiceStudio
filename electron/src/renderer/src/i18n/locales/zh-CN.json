@@ -328,7 +328,11 @@
     "lang_label": "语言代码（例如 en、de），留空则全局生效",
     "test_global_hint": "当前仅试听全局条目 — 选择语言后可包含该语言专属条目。",
     "type_cmu": "CMU",
-    "type_ipa": "IPA"
+    "type_ipa": "IPA",
+    "scope_language": "语言",
+    "scope_voice": "此声音",
+    "voice_pick": "选择声音",
+    "voice_note": "该声音说话时,其专属条目优先于语言词典。"
   },
   "preferences": {
     "title": "设置",

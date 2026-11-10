@@ -328,7 +328,11 @@
     "import_done_one": "{{count}} giriş içe aktarıldı.",
     "import_done_other": "{{count}} giriş içe aktarıldı.",
     "entries_count_one": "{{count}} giriş",
-    "entries_count_other": "{{count}} giriş"
+    "entries_count_other": "{{count}} giriş",
+    "scope_language": "Dil",
+    "scope_voice": "Bu ses",
+    "voice_pick": "Ses seç",
+    "voice_note": "Bir sesin kendi girdileri, o ses konuştuğunda dil sözlüğünün önüne geçer."
   },
   "preferences": {
     "title": "Ayarlar",

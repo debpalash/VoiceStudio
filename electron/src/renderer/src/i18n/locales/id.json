@@ -328,7 +328,11 @@
     "import_done_one": "{{count}} entri diimpor.",
     "import_done_other": "{{count}} entri diimpor.",
     "entries_count_one": "{{count}} entri",
-    "entries_count_other": "{{count}} entri"
+    "entries_count_other": "{{count}} entri",
+    "scope_language": "Bahasa",
+    "scope_voice": "Suara ini",
+    "voice_pick": "Pilih suara",
+    "voice_note": "Entri milik sebuah suara mengalahkan kamus bahasa setiap kali suara itu berbicara."
   },
   "preferences": {
     "title": "Pengaturan",

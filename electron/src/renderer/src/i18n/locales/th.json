@@ -328,7 +328,11 @@
     "import_done_one": "นำเข้า {{count}} รายการแล้ว",
     "import_done_other": "นำเข้า {{count}} รายการแล้ว",
     "entries_count_one": "{{count}} รายการ",
-    "entries_count_other": "{{count}} รายการ"
+    "entries_count_other": "{{count}} รายการ",
+    "scope_language": "ภาษา",
+    "scope_voice": "เสียงนี้",
+    "voice_pick": "เลือกเสียง",
+    "voice_note": "รายการเฉพาะของเสียงจะมีผลเหนือพจนานุกรมภาษาเมื่อเสียงนั้นพูด"
   },
   "preferences": {
     "title": "การตั้งค่า",

@@ -328,7 +328,11 @@
     "import_done_one": "已匯入 {{count}} 個條目。",
     "import_done_other": "已匯入 {{count}} 個條目。",
     "entries_count_one": "{{count}} 個條目",
-    "entries_count_other": "{{count}} 個條目"
+    "entries_count_other": "{{count}} 個條目",
+    "scope_language": "語言",
+    "scope_voice": "此聲音",
+    "voice_pick": "選擇聲音",
+    "voice_note": "該聲音說話時,其專屬條目優先於語言詞典。"
   },
   "preferences": {
     "title": "設定",
