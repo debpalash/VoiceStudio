@@ -322,7 +322,9 @@ NLLB resolves explicit FLORES language/script codes, unambiguous ISO-639-3 codes
 ### Speech integrity and timing
 
 A failed, empty or unreadable speech segment stops generation before a new track
-replaces the previous output. Partial regeneration repairs missing or corrupt
+replaces the previous output. When the failure identifies a segment, the notice
+shows its row number; select it to jump to that row in the transcript.
+Partial regeneration repairs missing or corrupt
 segment caches, including missing clips outside the requested changed-line list;
 it does not substitute silence and report completion. Auto speaker references
 exclude oversized clips when selecting a shared fallback, so short lines reuse a

@@ -163,27 +163,13 @@ _BUSY_BACKOFF_S = (0.5, 1.0, 2.0, 4.0)
 
 
 async def _await_free_engine(job, call, *, budget_s):
-    """Run ``call()``; while the engine is busy (a stream holds it), wait and
-    retry with backoff inside ``budget_s``, stopping on cancel. A busy engine
-    never becomes silence: past the budget the busy error propagates and the
-    job fails (the caller turns it into a failure, not a gap)."""
-    from services.model_manager import GpuPoolBusyError
+    """Batch binding of the shared busy-wait: stops when the job is cancelled."""
+    from services.model_manager import await_free_engine
 
-    deadline = time.monotonic() + budget_s
-    attempt = 0
-    while True:
-        try:
-            return await call()
-        except GpuPoolBusyError as busy:
-            remaining = deadline - time.monotonic()
-            if job["status"] == "cancelled" or remaining <= 0:
-                raise
-            delay = min(_BUSY_BACKOFF_S[min(attempt, len(_BUSY_BACKOFF_S) - 1)], remaining)
-            attempt += 1
-            logger.info("Batch engine busy (%s); retrying in %.1fs", busy, delay)
-            await asyncio.sleep(delay)
-            if job["status"] == "cancelled" or time.monotonic() >= deadline:
-                raise
+    return await await_free_engine(
+        call, budget_s=budget_s, backoff=_BUSY_BACKOFF_S, what="Batch engine",
+        is_cancelled=lambda: job["status"] == "cancelled",
+    )
 
 
 def _set_progress(job, stage, percent=0, **extra):

@@ -512,6 +512,38 @@ it('waits for preparation before transcription and preserves speaker bindings fo
     JSON.parse(vi.mocked(apiJson).mock.calls[1][1]!.body as string).segments[0].profile_id,
   ).toBe('auto:speaker00');
 });
+it.each([
+  { event: { segment: 0 }, expectedId: 'first' },
+  { event: { segment: 1 }, expectedId: 'second' },
+  { event: { segment: 1, segment_id: 'first' }, expectedId: 'first' },
+  { event: { segment: 2 }, expectedId: undefined },
+  { event: { segment: -1 }, expectedId: undefined },
+])('locates missing speech in the submitted transcript ($event)', async ({ event, expectedId }) => {
+  dubSession.setState((current) => ({
+    ...current,
+    jobId: 'missing-speech',
+    phase: 'editing',
+    segments: [
+      { id: 'first', start: 0, end: 1, text: 'First', text_original: 'First' },
+      { id: 'second', start: 1, end: 2, text: 'Second', text_original: 'Second' },
+    ],
+  }));
+  vi.mocked(apiJson).mockResolvedValueOnce({ task_id: 'failed' });
+  vi.mocked(consumeTaskStream).mockImplementationOnce(async (_path, emit) => {
+    emit({
+      type: 'error',
+      error_code: 'dub_speech_missing',
+      error: 'Could not read speech',
+      ...event,
+    });
+  });
+
+  await expect(generateDub('Spanish', 'es')).resolves.toBe(false);
+  expect(dubSession.state.event?.segment_id).toBe(expectedId);
+  expect(dubSession.state.recovery).toBeNull();
+  expect(dubSession.state.phase).toBe('editing');
+});
+
 it('a dropped preparation stream never advances to transcription or done', async () => {
   vi.mocked(consumeTaskStream).mockClear().mockRejectedValueOnce(new IncompleteTaskStreamError());
   vi.mocked(apiJson).mockResolvedValueOnce({ job_id: 'job2', task_id: 'prep2' });

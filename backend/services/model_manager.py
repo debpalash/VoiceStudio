@@ -562,6 +562,36 @@ class GpuPoolBusyError(TimeoutError):
         self.retry_after = max(1, int(round(retry_after)))
 
 
+BUSY_BACKOFF_S = (0.5, 1.0, 2.0, 4.0)
+
+
+async def await_free_engine(call, *, budget_s, is_cancelled=None, backoff=BUSY_BACKOFF_S,
+                            what="engine"):
+    """Await ``call()``; while the engine is busy (:class:`GpuPoolBusyError`: a
+    native stream holds it, or the pool queue is saturated), wait and retry with
+    backoff inside ``budget_s``, stopping as soon as ``is_cancelled()``.
+
+    The wait runs on the event loop, never inside a GPU worker. A busy engine
+    must never become a silent or missing piece of an assembled output: past the
+    budget (or once cancelled) the busy error propagates so the job fails
+    clearly. ``call`` must be safe to repeat (busy means no work was lost)."""
+    deadline = time.monotonic() + budget_s
+    attempt = 0
+    while True:
+        try:
+            return await call()
+        except GpuPoolBusyError as busy:
+            remaining = deadline - time.monotonic()
+            if (is_cancelled is not None and is_cancelled()) or remaining <= 0:
+                raise
+            delay = min(backoff[min(attempt, len(backoff) - 1)], remaining)
+            attempt += 1
+            logger.info("%s busy (%s); retrying in %.1fs", what, busy, delay)
+            await asyncio.sleep(delay)
+            if (is_cancelled is not None and is_cancelled()) or time.monotonic() >= deadline:
+                raise
+
+
 def _explicit_budget_flags() -> "tuple[bool, bool]":
     """(universal_explicit, cpu_explicit): is the accelerated / CPU budget set
     by the user (env, or changed at runtime)? The single definition shared by
