@@ -679,6 +679,7 @@ async def _stream_speech_pcm(first: bytes, sentences: list[str], render, *, sse:
 
 _native_pcm_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix="native-tts")
 _native_pcm_lock = Lock()
+_NATIVE_PCM_CLEANUP_TIMEOUT_S = 5.0
 
 
 def _native_pcm_busy() -> HTTPException:
@@ -688,9 +689,10 @@ def _native_pcm_busy() -> HTTPException:
     )
 
 
-async def _native_pcm_stream(backend, text, kw, *, sse):
+async def _native_pcm_stream(backend, text, kw, *, sse, timed=False):
     from services.model_manager import generate_timeout_s
     from contextvars import copy_context
+    from time import perf_counter
     from services.inference_cancellation import current_cancellation
     from services.tts_backend import EngineBusyError, MLXAudioBackend, engine_in_use
     from services.watermark import mark_synthetic
@@ -700,11 +702,14 @@ async def _native_pcm_stream(backend, text, kw, *, sse):
     def encode_next():
         if closed:
             return None
+        started = perf_counter()
         wav = next(iterator, None)
         if wav is None:
             return None
         rate = backend.sample_rate
-        return _pcm24k(mark_synthetic(wav, rate, context="openai_compat.speech"), rate)
+        context = "tts_stream.native" if timed else "openai_compat.speech"
+        pcm = _pcm24k(mark_synthetic(wav, rate, context=context), rate)
+        return (pcm, perf_counter() - started) if timed else pcm
 
     def encode_mlx_next():
         # Reserve a shared GPU slot only while the thread-affine step runs.
@@ -744,6 +749,7 @@ async def _native_pcm_stream(backend, text, kw, *, sse):
                 _native_pcm_lock.release()
 
     emitted = False
+    cleanup = None
     try:
         # Entering the lease can fail; the lock is already held, so the
         # ``finally`` below must see it and release it.
@@ -757,7 +763,7 @@ async def _native_pcm_stream(backend, text, kw, *, sse):
         iterator = backend.stream_audio(text, **kw)
         while (chunk := await run_on_gpu_pool_guarded(
             encode_mlx_next if mlx else encode_next,
-            what="Native OpenAI TTS generate",
+            what="Native TTS generate" if timed else "Native OpenAI TTS generate",
             executor=None if mlx else _native_pcm_worker,
             timeout=generate_timeout_s(text, engine=backend),
         )) is not None:
@@ -777,7 +783,19 @@ async def _native_pcm_stream(backend, text, kw, *, sse):
     finally:
         # The iterator must close on the same thread, after any abandoned
         # generation step finishes. Do not make the client await that step.
-        _native_pcm_worker.submit(close_on_worker)
+        cleanup = _native_pcm_worker.submit(close_on_worker)
+    # Reached only on normal exhaustion (errors, cancellation and early close
+    # leave through the ``finally`` above without waiting). Release the lock and
+    # lease before the caller reports completion so a back-to-back request
+    # is not rejected as busy. Shield it: a timeout must not cancel the cleanup.
+    try:
+        await asyncio.wait_for(
+            asyncio.shield(asyncio.wrap_future(cleanup)), timeout=_NATIVE_PCM_CLEANUP_TIMEOUT_S,
+        )
+    except asyncio.TimeoutError as exc:
+        if timed:
+            raise RuntimeError("Native speech cleanup is still pending. Retry once the engine is free.") from exc
+        logger.warning("Native speech stream cleanup is still pending; continuing")
     if sse:
         yield _speech_done()
 
