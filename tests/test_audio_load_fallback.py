@@ -145,3 +145,81 @@ def test_compressed_stream_staging_is_bounded_and_cleaned(tmp_path, monkeypatch,
     with pytest.raises(ValueError, match="input size limit"):
         audio_io.load_audio(io.BytesIO(b"x" * 32768))
     assert list(tmp_path.iterdir()) == []
+
+
+# ── #3689 / #3690: ordinary unsupported-format errors reach the fallback ─────
+
+
+def _encode(tmp_path, extension):
+    import subprocess
+    from services.ffmpeg_utils import find_ffmpeg
+    ffmpeg = find_ffmpeg()
+    assert ffmpeg, "the maintained runtime bundles ffmpeg"
+    source = tmp_path / "source.wav"
+    signal = np.sin(np.arange(12000) * 0.05).astype(np.float32) * 0.2
+    sf.write(source, np.column_stack((signal, -signal)), 24000)
+    encoded = tmp_path / ("encoded." + extension)
+    subprocess.run([ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(source), str(encoded)], check=True, capture_output=True)
+    return encoded
+
+
+@pytest.mark.parametrize("extension", ["m4a", "aac"])
+@pytest.mark.parametrize("buffer", [False, True])
+def test_unsupported_format_error_reaches_ffmpeg(tmp_path, monkeypatch, extension, buffer):
+    """torchaudio 2.8 raises a plain RuntimeError for M4A/AAC it cannot open."""
+    from services.audio_io import load_audio
+    encoded = _encode(tmp_path, extension)
+
+    def unsupported(source):
+        if hasattr(source, "read"):
+            source.read(8)
+        raise RuntimeError("Failed to open the input: Format not recognised")
+
+    monkeypatch.setattr(torchaudio, "load", unsupported)
+    wave, rate = load_audio(io.BytesIO(encoded.read_bytes()) if buffer else encoded)
+    assert rate == 24000
+    assert wave.shape[0] == 2
+    assert wave.shape[1] >= rate * 0.4
+    assert wave.abs().max() > 0.1
+
+
+def test_out_of_memory_is_not_retried_by_other_decoders(monkeypatch):
+    from services.audio_io import load_audio
+
+    def exhausted(_source):
+        raise torch.OutOfMemoryError("CUDA out of memory. Tried to allocate 2.00 GiB")
+
+    monkeypatch.setattr(torchaudio, "load", exhausted)
+    monkeypatch.setattr(sf, "read", lambda *a, **k: pytest.fail("out-of-memory reached a second decoder"))
+    with pytest.raises(torch.OutOfMemoryError):
+        load_audio("clip.m4a")
+
+
+def test_corrupt_input_reports_the_primary_error_with_ffmpeg_detail_chained(tmp_path, monkeypatch):
+    from services.audio_io import load_audio
+    corrupt = tmp_path / "corrupt.m4a"
+    corrupt.write_bytes(b"\x00\x00\x00\x18ftypM4A " + b"\xff" * 512)
+    monkeypatch.setattr(torchaudio, "load", lambda _: (_ for _ in ()).throw(RuntimeError("corrupt audio")))
+    with pytest.raises(RuntimeError, match="corrupt audio") as caught:
+        load_audio(corrupt)
+    assert "ffmpeg could not decode the audio" in str(caught.value.__cause__)
+
+
+def test_missing_ffmpeg_is_actionable_when_torchaudio_is_unavailable(monkeypatch):
+    from services import audio_io, ffmpeg_utils
+    monkeypatch.setattr(torchaudio, "load", lambda _: (_ for _ in ()).throw(ImportError("TorchCodec missing")))
+    monkeypatch.setattr(sf, "read", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("Format not recognised")))
+    monkeypatch.setattr(ffmpeg_utils, "find_ffmpeg", lambda: None)
+    with pytest.raises(audio_io.AudioDecoderUnavailable, match="Settings → Audio tools"):
+        audio_io.load_audio("clip.m4a")
+
+
+def test_missing_ffmpeg_keeps_the_primary_decode_error(monkeypatch):
+    """Without ffmpeg a corrupt file and an M4A look alike; do not claim ffmpeg would fix it."""
+    from services import audio_io, ffmpeg_utils
+    monkeypatch.setattr(torchaudio, "load", lambda _: (_ for _ in ()).throw(RuntimeError("corrupt audio")))
+    monkeypatch.setattr(sf, "read", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("Format not recognised")))
+    monkeypatch.setattr(ffmpeg_utils, "find_ffmpeg", lambda: None)
+    with pytest.raises(RuntimeError, match="corrupt audio") as caught:
+        audio_io.load_audio("clip.m4a")
+    assert isinstance(caught.value.__cause__, audio_io.AudioDecoderUnavailable)
