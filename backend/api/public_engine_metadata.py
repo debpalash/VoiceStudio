@@ -66,9 +66,22 @@ _UNAVAILABLE_NO_MPS = (
     "can't use it. Updating macOS or reinstalling VoiceStudio usually "
     "restores it."
 )
+# A native executable the user builds themselves: not found, won't start, or
+# its device probe failed. Before the generic missing-file line, whose
+# "Reinstall it from Settings" advice cannot fix a runtime the app never ships.
+_UNAVAILABLE_NATIVE_RUNTIME = (
+    "This engine's native runtime isn't set up or won't start. Its guide "
+    "lists how to build it and check it from a terminal."
+)
 _UNAVAILABLE_NEEDS_CONFIG = (
     "This engine needs to be configured before it can run. Open "
     "Settings → Models to finish setting it up."
+)
+# An explicit model/frontend path override that points at nothing: reinstalling
+# cannot fix it, correcting the override can.
+_UNAVAILABLE_BAD_OVERRIDE = (
+    "A model path set for this engine points to a missing file. Correct or "
+    "remove it in Settings → Models, or its environment variable."
 )
 _UNAVAILABLE_FILE_MISSING = (
     "A file this engine needs is missing or unreadable. Reinstall it from "
@@ -109,8 +122,10 @@ _UNAVAILABLE_SIGNATURES = (
         "no windows install", "not supported on windows",
     )),
     (_UNAVAILABLE_NO_MPS, ("torch mps unavailable",)),
+    (_UNAVAILABLE_NATIVE_RUNTIME, ("native runtime",)),
+    (_UNAVAILABLE_BAD_OVERRIDE, ("points to a missing model file", "is missing frontend files")),
     (_UNAVAILABLE_FILE_MISSING, (
-        "file is missing", "file is empty", "file is unreadable",
+        "model files were not found", "model files:", "file is missing", "file is empty", "file is unreadable",
         "script missing", "binary", "not found at",
     )),
     (_UNAVAILABLE_NEEDS_CONFIG, (

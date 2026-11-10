@@ -44,9 +44,11 @@ const STATES = new Set([
   'nvidia_rocm_build',
   'intel_unsupported',
   'kernels_missing',
+  'kernels_missing_legacy',
 ]);
 const OPTIONS = new Set([
   'vulkan_engines',
+  'vulkan_engines_any',
   'rocm_windows_manual',
   'rocm_variant_linux',
   'rocm_device_access',
@@ -147,7 +149,7 @@ export function GpuAcceleration() {
             {report.options
               .filter((option) => OPTIONS.has(option))
               .map((option) => (
-                <li key={option}>{t('settings.gpu_report_option_' + option)}</li>
+                <li key={option}>{t('settings.gpu_report_option_' + option, report.params)}</li>
               ))}
           </ul>
         </div>

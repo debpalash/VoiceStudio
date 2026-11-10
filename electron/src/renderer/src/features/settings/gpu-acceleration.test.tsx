@@ -83,6 +83,18 @@ const sm52 = {
   ],
 };
 
+const sm61 = {
+  ...sm52,
+  gpus: [{ vendor: 'nvidia', name: 'NVIDIA GeForce GTX 1080 Ti', vram_gb: 11 }],
+  state: 'kernels_missing_legacy',
+  params: {
+    gpu: 'NVIDIA GeForce GTX 1080 Ti',
+    torch: '2.10.0+cu128',
+    vulkan_engines: 'CosyVoice GGUF, audio.cpp',
+  },
+  options: ['vulkan_engines_any'],
+};
+
 function renderIt() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -121,6 +133,18 @@ it('names a card the installed PyTorch wheel has no kernels for, and never sends
   // The driver works on this host; only the wheel's kernel list is short.
   expect(screen.queryByText(/Update the NVIDIA driver/)).not.toBeInTheDocument();
   expect(screen.getByText('CPU: PyTorch cannot use your GPU')).toBeInTheDocument();
+  expect(screen.queryByText(/settings\.gpu_report/)).not.toBeInTheDocument();
+});
+
+it('tells a Pascal owner the build dropped their GPU generation and names the Vulkan engines', async () => {
+  mock.api.mockResolvedValue(sm61);
+  renderIt();
+  expect(await screen.findByText(/older NVIDIA GPU/)).toHaveTextContent(
+    'NVIDIA GeForce GTX 1080 Ti is an older NVIDIA GPU (GTX 900 / 1000 series or older). This PyTorch build (2.8.0+cu128) no longer supports that generation',
+  );
+  expect(screen.getByText(/CosyVoice GGUF, audio\.cpp/)).toBeInTheDocument();
+  expect(screen.queryByText(/AMD Radeon/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Install a PyTorch build/)).not.toBeInTheDocument();
   expect(screen.queryByText(/settings\.gpu_report/)).not.toBeInTheDocument();
 });
 
