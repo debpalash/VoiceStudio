@@ -1324,6 +1324,7 @@
     "fields": [
       "enabled",
       "language",
+      "profile_id",
       "replacement",
       "term",
       "type"
@@ -1346,7 +1347,9 @@
     "body_required": false,
     "encoding": "",
     "fields": [],
-    "query": [],
+    "query": [
+      "profile_id"
+    ],
     "required": [],
     "required_query": []
   },
@@ -1355,6 +1358,7 @@
     "encoding": "application/json",
     "fields": [
       "entries",
+      "profile_id",
       "replace"
     ],
     "query": [],
@@ -1367,7 +1371,9 @@
     "body_required": false,
     "encoding": "",
     "fields": [],
-    "query": [],
+    "query": [
+      "profile_id"
+    ],
     "required": [],
     "required_query": []
   },
@@ -1376,6 +1382,7 @@
     "encoding": "application/json",
     "fields": [
       "language",
+      "profile_id",
       "text"
     ],
     "query": [],

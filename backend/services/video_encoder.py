@@ -101,7 +101,7 @@ def available_hw_encoders(ffmpeg: str) -> tuple[str, ...]:
     try:
         proc = subprocess.run(
             [ffmpeg, "-hide_banner", "-encoders"],
-            capture_output=True, text=True, timeout=20,
+            capture_output=True, text=True, errors="replace", timeout=20,
         )
         if proc.returncode == 0:
             found = tuple(parse_encoder_list(proc.stdout))
