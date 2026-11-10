@@ -1367,6 +1367,8 @@
     "offload_after_generation": "生成後に音声モデルをシステムRAMへ移す",
     "offload_after_generation_note": "生成が終わったら、ローカルLLMなど他のアプリのためにGPUメモリを解放します。次の生成時にモデルを戻すため、数秒かかります。内蔵のOmniVoiceエンジンに適用されます。",
     "offload_after_generation_cpu": "この環境ではCPUで生成するため、モデルは既にシステムRAM上にあり、この設定は効果がありません。",
+    "gguf_resident": "リクエスト間で GGUF エンジンを読み込んだままにする",
+    "gguf_resident_note": "OmniVoice GGUF の生成ごとに数秒かかる再読み込みを省きます。エンジンがアイドルになるか解放されると、メモリは解放されます。",
     "generate_timeout_shadowed_note": "VoiceStudio の外部にある環境変数（シェル、.env ファイル、またはコンテナ）が現在この値を設定しています — その変数が削除されるまで、ここで保存した値は無視されます。",
     "device_family_cpu": "CPU",
     "device_family_gpu": "GPU",

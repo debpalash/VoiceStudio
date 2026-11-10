@@ -1630,6 +1630,8 @@
     "offload_after_generation": "Move the voice model to system RAM after generation",
     "offload_after_generation_note": "Frees GPU memory for other apps, such as a local LLM, once generation finishes. The next generation moves the model back, which adds a few seconds. Applies to the built-in OmniVoice engine.",
     "offload_after_generation_cpu": "Generation runs on the CPU here, so the model already lives in system RAM and this has no effect.",
+    "gguf_resident": "Keep the GGUF engine loaded between requests",
+    "gguf_resident_note": "Skips the few-second reload before each OmniVoice GGUF generation. Its memory is released when the engine goes idle or is unloaded.",
     "generate_timeout_shadowed_note": "An environment variable outside VoiceStudio (shell, .env file, or container) is currently setting this — your saved value here is ignored until that variable is removed.",
     "device_family_cpu": "CPU",
     "device_family_gpu": "GPU",

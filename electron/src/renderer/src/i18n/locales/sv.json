@@ -1367,6 +1367,8 @@
     "offload_after_generation": "Flytta röstmodellen till system-RAM efter generering",
     "offload_after_generation_note": "Frigör GPU-minne för andra appar, till exempel en lokal LLM, när genereringen är klar. Nästa generering flyttar tillbaka modellen, vilket tar några sekunder. Gäller den inbyggda OmniVoice-motorn.",
     "offload_after_generation_cpu": "Genereringen körs här på processorn, så modellen ligger redan i system-RAM och inställningen har ingen effekt.",
+    "gguf_resident": "Håll GGUF-motorn laddad mellan förfrågningar",
+    "gguf_resident_note": "Hoppar över omladdningen på några sekunder före varje OmniVoice GGUF-generering. Minnet frigörs när motorn är inaktiv eller laddas ur.",
     "generate_timeout_shadowed_note": "En miljövariabel utanför VoiceStudio (skal, .env-fil eller container) anger just nu detta värde — värdet som sparats här ignoreras tills den variabeln tas bort.",
     "device_family_cpu": "CPU",
     "device_family_gpu": "GPU",

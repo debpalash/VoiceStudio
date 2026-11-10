@@ -60,6 +60,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import urllib.error
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -827,7 +828,9 @@ def _make_backend_class():
         Each ``generate()`` spawns the bundled ``bin/omnivoice-tts-<platform>``
         binary fresh; the binary loads the SHA-pinned quants from
         ``$HF_HUB_CACHE`` and writes a 24 kHz mono WAV to a temp path
-        which we then load back into a ``torch.Tensor``.
+        which we then load back into a ``torch.Tensor``. When a verified
+        ``bin/tts-server-<platform>`` is bundled, a resident server keeps
+        the pair loaded between requests instead (``resident.py``, #3654).
 
         ``compute_class`` → quant selection is driven by the native
         capacity policy in ``compute.automatic_compute_class()`` and the shipped
@@ -874,6 +877,9 @@ def _make_backend_class():
             """
             self._quant_override = quant_override
             self._quant_map: Optional[dict] = None
+            # Resident tts-server (#3654), created on the first request that
+            # can use it.
+            self._resident = None
 
         # ── TTSBackend protocol ───────────────────────────────────────
 
@@ -1168,8 +1174,22 @@ def _make_backend_class():
 
         # ── generation ────────────────────────────────────────────────
 
+        def execution_evidence_loaded(self) -> bool:
+            server = self._resident
+            return server is not None and server.alive()
+
+        def unload(self) -> None:
+            """Stop the resident server so its VRAM is returned. Idempotent."""
+            server = self._resident
+            if server is not None:
+                with server.lock:
+                    server.stop()
+                    # A start that failed may succeed after a release.
+                    server.failed_start = None
+            super().unload()
+
         def generate(self, text: str, **kw):
-            """Synthesise ``text`` by running the GGUF CLI once.
+            """Synthesise ``text`` on the resident server, else by running the CLI once.
 
             Keyword arguments understood (anything else is ignored):
 
@@ -1187,8 +1207,12 @@ def _make_backend_class():
               controls forwarded unchanged.
 
             Returns a float32 tensor shaped ``(1, n_samples)`` at the model's
-            native rate.
+            native rate. The resident ``tts-server`` (see ``resident.py``)
+            serves the request when it is bundled, enabled and supports the
+            controls asked for; otherwise the CLI is spawned as before.
             """
+            import io
+
             import soundfile as sf
             import torch
 
@@ -1218,23 +1242,30 @@ def _make_backend_class():
                     if not _is_cli_readable_wav(prompt):
                         converted_prompt = _convert_reference_to_wav(prompt)
                         ref_audio = str(converted_prompt)
-                argv = self._build_argv(
-                    base=base,
-                    tokenizer=tokenizer,
-                    out_path=out_path,
-                    ref_audio=ref_audio,
-                    ref_text=str(transcript_path) if transcript_path else None,
-                    language=kw.get("language"),
-                    instruct=kw.get("instruct"),
-                    duration=kw.get("duration"),
-                    seed=kw.get("seed"),
-                    denoise=kw.get("denoise", True),
-                    preprocess_prompt=kw.get("preprocess_prompt", True),
-                    chunk_duration=kw.get("chunk_duration"),
-                    chunk_threshold=kw.get("chunk_threshold"),
+                wav = self._resident_wav(
+                    text, kw, base=base, tokenizer=tokenizer, ref_audio=ref_audio,
+                    transcript=str(ref_text) if ref_audio and ref_text else None,
                 )
-                self._run_subprocess(argv, stdin_text=text)
-                samples, _rate = sf.read(str(out_path), dtype="float32")
+                if wav is not None:
+                    samples, _rate = sf.read(io.BytesIO(wav), dtype="float32")
+                else:
+                    argv = self._build_argv(
+                        base=base,
+                        tokenizer=tokenizer,
+                        out_path=out_path,
+                        ref_audio=ref_audio,
+                        ref_text=str(transcript_path) if transcript_path else None,
+                        language=kw.get("language"),
+                        instruct=kw.get("instruct"),
+                        duration=kw.get("duration"),
+                        seed=kw.get("seed"),
+                        denoise=kw.get("denoise", True),
+                        preprocess_prompt=kw.get("preprocess_prompt", True),
+                        chunk_duration=kw.get("chunk_duration"),
+                        chunk_threshold=kw.get("chunk_threshold"),
+                    )
+                    self._run_subprocess(argv, stdin_text=text)
+                    samples, _rate = sf.read(str(out_path), dtype="float32")
             finally:
                 for leftover in (out_path, transcript_path, converted_prompt):
                     if leftover is None:
@@ -1244,6 +1275,90 @@ def _make_backend_class():
             if samples.ndim > 1:
                 samples = samples.mean(axis=1)
             return torch.from_numpy(samples.astype("float32", copy=False)).unsqueeze(0)
+
+        def _resident_wav(
+            self,
+            text: str,
+            kw: dict,
+            *,
+            base: Path,
+            tokenizer: Path,
+            ref_audio: Optional[str],
+            transcript: Optional[str],
+        ) -> Optional[bytes]:
+            """WAV bytes from the resident server, or ``None`` for the spawn path.
+
+            A crash gets one restart; a second failure, a server that cannot
+            start, or a request the server refuses falls back to the spawn
+            path and logs why. A timeout stops the server and raises: the
+            request's budget is spent, so the spawn path is not retried.
+            """
+            from . import resident
+
+            if not resident.resident_enabled():
+                if self._resident is not None:
+                    with self._resident.lock:
+                        self._resident.stop()
+                return None
+            ok, _why = resident.server_status()
+            if not ok:
+                return None
+            reason = resident.spawn_only_reason(kw, has_transcript=bool(transcript))
+            if reason:
+                logger.info("OmniVoice GGUF: per-request runtime for this request (%s)", reason)
+                return None
+            prompt = Path(_validated_reference(ref_audio)).read_bytes() if ref_audio else None
+            if self._resident is None:
+                self._resident = resident.ResidentServer()
+            server = self._resident
+            timeout_s = _generate_timeout_s()
+            with server.lock:
+                for attempt in (1, 2):
+                    try:
+                        server.ensure(base, tokenizer)
+                        voice = server.voice_for(prompt, transcript) if prompt is not None else None
+                        payload = resident.speech_payload(
+                            text,
+                            voice=voice,
+                            language=_iso_to_omnivoice_lang(kw.get("language")),
+                            instruct=kw.get("instruct"),
+                            seed=kw.get("seed"),
+                        )
+                        return server.speak(payload, timeout=timeout_s)
+                    except resident.ResidentUnavailable as exc:
+                        logger.warning(
+                            "OmniVoice GGUF resident mode unavailable; using the per-request runtime: %s",
+                            _mask_token(str(exc)),
+                        )
+                        return None
+                    except urllib.error.HTTPError as exc:
+                        # It answered, so it is healthy: keep it for the next request.
+                        logger.warning(
+                            "OmniVoice GGUF resident server refused the request (HTTP %s); "
+                            "using the per-request runtime", exc.code,
+                        )
+                        return None
+                    except (OSError, ValueError) as exc:
+                        server.stop()
+                        if isinstance(exc, TimeoutError) or isinstance(
+                            getattr(exc, "reason", None), TimeoutError
+                        ):
+                            raise RuntimeError(
+                                f"GGUF resident server timed out after {timeout_s:.0f}s and was "
+                                f"stopped (raise OMNIVOICE_GGUF_GENERATE_TIMEOUT_S if this host "
+                                f"is genuinely that slow)"
+                            ) from None
+                        if attempt == 1:
+                            logger.warning(
+                                "OmniVoice GGUF resident server failed (%s); restarting it once",
+                                _mask_token(str(exc)),
+                            )
+                            continue
+                        logger.warning(
+                            "OmniVoice GGUF resident server failed again after a restart (%s); "
+                            "using the per-request runtime", _mask_token(str(exc)),
+                        )
+            return None
 
         def _build_argv(
             self,

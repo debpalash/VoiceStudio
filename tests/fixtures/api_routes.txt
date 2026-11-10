@@ -50,6 +50,7 @@ GET /api/settings/llm-providers
 GET /api/settings/llm-providers/{provider_id}/models
 GET /api/settings/llm-skills
 GET /api/settings/pause-fill
+GET /api/settings/perf/gguf-resident
 GET /api/settings/perf/offload-after-generation
 GET /api/settings/perf/torch-compile-disabled
 GET /api/settings/performance-profile
@@ -355,6 +356,7 @@ PUT /api/settings/llm-endpoint
 PUT /api/settings/llm-providers/{provider_id}
 PUT /api/settings/llm-skills/{skill_id}
 PUT /api/settings/pause-fill
+PUT /api/settings/perf/gguf-resident
 PUT /api/settings/perf/offload-after-generation
 PUT /api/settings/perf/torch-compile-disabled
 PUT /api/settings/performance-profile

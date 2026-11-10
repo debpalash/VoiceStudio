@@ -5380,6 +5380,20 @@
     "title": "_CudaDeviceBody",
     "type": "object"
    },
+   "_GgufResidentBody": {
+    "properties": {
+     "enabled": {
+      "description": "True to keep the GGUF runtime loaded between requests",
+      "title": "Enabled",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "enabled"
+    ],
+    "title": "_GgufResidentBody",
+    "type": "object"
+   },
    "_HFMirrorBody": {
     "properties": {
      "mode": {
@@ -8361,6 +8375,64 @@
      }
     },
     "summary": "Set Pause Fill",
+    "tags": [
+     "settings"
+    ]
+   }
+  },
+  "/api/settings/perf/gguf-resident": {
+   "get": {
+    "description": "Whether the OmniVoice GGUF runtime stays loaded between requests.",
+    "operationId": "get_gguf_resident_api_settings_perf_gguf_resident_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Get Gguf Resident",
+    "tags": [
+     "settings"
+    ]
+   },
+   "put": {
+    "description": "Persist the toggle. Turning it off stops a running server at once.",
+    "operationId": "set_gguf_resident_api_settings_perf_gguf_resident_put",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/_GgufResidentBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Set Gguf Resident",
     "tags": [
      "settings"
     ]
