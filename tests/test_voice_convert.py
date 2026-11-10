@@ -948,7 +948,13 @@ def test_video_swap_converts_vocals_and_returns_a_video(client, monkeypatch, pro
     assert body["audio_url"].endswith(".wav") and body["engine"] == cls.id
     assert seen["decoded"][0] == "v.wav"  # the vocals stem, not the full track
     assert seen["mixed"] == 1 and seen["mux"] == [("swapped.mp4", False)]
-    assert client.get(body["video_url"]).content == b"fake-video"
+    # Read from OUTPUTS_DIR, not through the /audio mount: the mount binds the
+    # directory main imported with, which an earlier module's config reload
+    # can leave different from core.config.OUTPUTS_DIR under xdist.
+    from core.config import OUTPUTS_DIR
+
+    with open(os.path.join(OUTPUTS_DIR, os.path.basename(body["video_url"])), "rb") as f:
+        assert f.read() == b"fake-video"
 
 
 def test_video_swap_without_separation_converts_the_whole_track(client, monkeypatch, profile):
@@ -980,7 +986,9 @@ def test_video_swap_returns_converted_audio_when_every_remux_fails(client, monke
     body = r.json()
     assert body["video_url"] is None and body["notes"] == ["audio_only"]
     assert "converted audio" in body["message"]
-    assert client.get(body["audio_url"]).status_code == 200
+    from core.config import OUTPUTS_DIR
+
+    assert os.path.isfile(os.path.join(OUTPUTS_DIR, os.path.basename(body["audio_url"])))
 
 
 def test_video_swap_names_supported_containers_for_an_unsupported_one(client, monkeypatch, profile):
