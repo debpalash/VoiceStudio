@@ -763,10 +763,24 @@ async def run_proc_streaming_stderr(
 
     Honors the same semaphore + register_proc/kill plumbing as run_proc.
     `deadline` (a time.monotonic() value) caps the run AFTER the semaphore wait,
-    so time queued for a slot cannot push a retry past a whole-ladder budget.
+    so time queued for a slot cannot push a retry past a whole-ladder budget;
+    the slot wait itself is bounded by it too, and a job aborted while queued
+    never starts its retry.
     """
-    async with _get_semaphore():
+    sem = _get_semaphore()
+    if deadline is not None:
+        try:
+            await asyncio.wait_for(sem.acquire(), timeout=max(deadline - time.monotonic(), 0.0))
+        except asyncio.TimeoutError:
+            yield ("done", -1, b"deadline reached while waiting for a free slot")
+            return
+    else:
+        await sem.acquire()
+    try:
         if deadline is not None:
+            if _demucs_aborted(job_id):
+                yield ("done", -1, b"job aborted while waiting for a free slot")
+                return
             timeout = min(timeout, deadline - time.monotonic())
             if timeout < 1.0:
                 yield ("done", -1, b"deadline reached while waiting for a free slot")
@@ -866,6 +880,8 @@ async def run_proc_streaming_stderr(
                 p.stdout.close()
             except Exception:
                 pass
+    finally:
+        sem.release()
     yield ("done", rc, b"".join(stderr_parts))
 
 
@@ -1570,16 +1586,25 @@ async def _separate_background(job_id: str, audio_in: str, job_dir: str, *, path
         rc, stderr_full, last_pct = -1, b"", -1
         # demucs writes a tqdm progress bar to stderr as "  42%|████ …" — surface
         # each new integer percent so the UI shows a bar, not a static spinner.
-        async for evt in run_proc_streaming_stderr(job_id, cmd, timeout=timeout, **kw):
-            if evt[0] == "stderr":
-                m = re.search(r"(\d{1,3})%", evt[1])
-                if m:
-                    pct = max(0, min(100, int(m.group(1))))
-                    if pct != last_pct:
-                        last_pct = pct
-                        yield ("progress", pct)
-            elif evt[0] == "done":
-                rc, stderr_full = evt[1], evt[2]
+        try:
+            async for evt in run_proc_streaming_stderr(job_id, cmd, timeout=timeout, **kw):
+                if evt[0] == "stderr":
+                    m = re.search(r"(\d{1,3})%", evt[1])
+                    if m:
+                        pct = max(0, min(100, int(m.group(1))))
+                        if pct != last_pct:
+                            last_pct = pct
+                            yield ("progress", pct)
+                elif evt[0] == "done":
+                    rc, stderr_full = evt[1], evt[2]
+        except HTTPException as exc:
+            if not failures:
+                raise
+            # A timeout still reports what the earlier attempts died of.
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail=" | ".join([*failures, f"[{label} on {dev}] {exc.detail}"]),
+            ) from exc
         if rc == 0:
             return
         failures.append(f"[{label} on {dev}] " + _media_process_error("Demucs", rc, stderr_full, paths=paths))
