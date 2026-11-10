@@ -75,6 +75,23 @@ def is_ming_tts_installed() -> bool:
     return any(cand.is_file() for cand in _probe_paths())
 
 
+def ming_weights_installed() -> bool:
+    """True when the pinned weights are already local (no network, no download)."""
+    model = os.environ.get("OMNIVOICE_MING_TTS_MODEL", "").strip()
+    if model and os.path.isdir(model):
+        return True
+    try:
+        from huggingface_hub import try_to_load_from_cache
+        from services.hf_revisions import revision_for
+
+        repo = model or "inclusionAI/Ming-3.0-tts-0.5b"
+        rev = revision_for(repo) if not model else os.environ.get(
+            "OMNIVOICE_MING_TTS_REVISION", "").strip()
+        return isinstance(try_to_load_from_cache(repo, "model.safetensors", revision=rev or None), str)
+    except Exception:
+        return False
+
+
 def resolve_ming_tts_venv() -> Path:
     """Resolve the sidecar's Python interpreter (probe order in the docstring).
     Memoised. Raises :exc:`RuntimeError` if none can be located and bootstrap

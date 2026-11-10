@@ -51,9 +51,7 @@ def test_registry_contains_ming_tts():
 def test_it_is_never_the_default_engine():
     from services import tts_backend
 
-    default = getattr(tts_backend, "DEFAULT_BACKEND", None) or getattr(
-        tts_backend, "_DEFAULT_ENGINE", None)
-    assert default != "ming-tts"
+    assert tts_backend.active_backend_id() != "ming-tts"
 
 
 def test_hardware_claim_is_cuda_only():
@@ -85,8 +83,17 @@ def test_cuda_host_without_the_venv_says_how_to_install(monkeypatch):
 def test_cuda_host_with_the_venv_is_available(monkeypatch):
     monkeypatch.setattr("engines.ming_tts._host_has_cuda", lambda: True)
     monkeypatch.setattr("engines.ming_tts.bootstrap.is_ming_tts_installed", lambda: True)
+    monkeypatch.setattr("engines.ming_tts.bootstrap.ming_weights_installed", lambda: True)
     ok, _ = _backend_cls().is_available()
     assert ok is True
+
+
+def test_missing_weights_are_unavailable_with_a_catalogue_hint(monkeypatch):
+    monkeypatch.setattr("engines.ming_tts._host_has_cuda", lambda: True)
+    monkeypatch.setattr("engines.ming_tts.bootstrap.is_ming_tts_installed", lambda: True)
+    monkeypatch.setattr("engines.ming_tts.bootstrap.ming_weights_installed", lambda: False)
+    ok, msg = _backend_cls().is_available()
+    assert ok is False and "Model Catalogue" in msg
 
 
 def test_a_failing_host_probe_counts_as_no_cuda(monkeypatch):
@@ -203,10 +210,35 @@ def test_default_weights_load_at_the_pinned_revision(sc, monkeypatch):
     monkeypatch.delenv("OMNIVOICE_MING_TTS_MODEL", raising=False)
     monkeypatch.setattr(
         huggingface_hub, "snapshot_download",
-        lambda repo, revision=None, **kw: calls.append((repo, revision)) or "/snap",
+        lambda repo, revision=None, **kw: calls.append((repo, revision, kw)) or "/snap",
     )
     assert sc._model_source() == "/snap"
-    assert calls == [(sc._DEFAULT_MODEL, sc._DEFAULT_REVISION)]
+    assert calls == [(sc._DEFAULT_MODEL, sc._DEFAULT_REVISION, {"local_files_only": True})]
+
+
+def test_missing_weights_fail_fast_without_downloading(sc, monkeypatch):
+    import huggingface_hub
+
+    def _offline(repo, revision=None, local_files_only=False, **kw):
+        assert local_files_only, "generation must never download"
+        raise OSError("not cached")
+
+    monkeypatch.delenv("OMNIVOICE_MING_TTS_MODEL", raising=False)
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", _offline)
+    with pytest.raises(RuntimeError, match="Model Catalogue"):
+        sc._model_source()
+
+
+def test_a_mismatched_model_sample_rate_is_refused(sc, monkeypatch):
+    class _M:
+        sample_rate = 24000
+
+        def synthesize(self, **kw):
+            return None
+
+    monkeypatch.setattr(sc, "_load_model", lambda out: _M())
+    with pytest.raises(RuntimeError, match="sample_rate"):
+        sc._handle_synthesize({"text": "hi", "ref_audio": "/r.wav"}, None)
 
 
 def test_custom_repo_needs_a_commit_sha_and_a_local_dir_needs_none(sc, monkeypatch, tmp_path):

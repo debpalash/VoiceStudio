@@ -71,7 +71,16 @@ def _model_source() -> str:
         )
     from huggingface_hub import snapshot_download
 
-    return snapshot_download(model, revision=revision)
+    # Generation never downloads: weights arrive only from the Model Catalogue
+    # row the user starts, which fills this same cache at this revision.
+    try:
+        return snapshot_download(model, revision=revision, local_files_only=True)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Ming-3.0-tts weights ({model}) are not installed. Download them "
+            "from Model Catalogue (Ming-3.0-tts weights row), then try again. "
+            "Nothing is downloaded during generation."
+        ) from exc
 
 #: ISO code -> the ``language_id`` name upstream's README passes. Upstream
 #: lists exactly these seven (tts_tasks._TARGET_LANGUAGE_NAMES).
@@ -269,6 +278,11 @@ def _handle_synthesize(msg: dict, stdout) -> None:
 
     audio = model.synthesize(**kwargs)
     sample_rate = int(getattr(model, "sample_rate", MING_SAMPLE_RATE))
+    if sample_rate != MING_SAMPLE_RATE:
+        raise RuntimeError(
+            f"Ming model sample_rate {sample_rate} differs from the declared "
+            f"{MING_SAMPLE_RATE}; refusing to emit mislabelled audio."
+        )
 
     pcm_b64, sr, n_samples = _tensor_to_pcm_b64(audio, sample_rate)
     _send(stdout, {

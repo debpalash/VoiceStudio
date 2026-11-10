@@ -35,8 +35,8 @@ It runs in its **own subprocess venv** because upstream pins
 into its own folder under VoiceStudio's data directory and builds a Python 3.10
 environment from upstream's `requirements.txt`. Nothing it installs touches
 VoiceStudio or any other engine; **Uninstall** removes only that folder. The
-~3 GB of weights download on first synthesis, or earlier from the Model
-Catalogue's weights row. On Windows and macOS the button is not offered; see
+~3 GB of weights download only from the Model
+Catalogue's weights row; generation never downloads them. On Windows and macOS the button is not offered; see
 the manual install below (Windows with an NVIDIA GPU) or pick another engine.
 
 ## Manual install
@@ -66,7 +66,7 @@ instead of `inclusionAI/Ming-3.0-tts-0.5b`. The default repo always loads its
 reviewed commit; any other Hub repo id also needs
 `OMNIVOICE_MING_TTS_REVISION=<40-character commit SHA>`.
 `OMNIVOICE_MING_TTS_RECV_TIMEOUT_S` raises the per-request wait (default 900 s)
-for a slow first download.
+for a slow first model load.
 
 ## Text normalization
 

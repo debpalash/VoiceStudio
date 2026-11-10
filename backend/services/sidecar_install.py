@@ -605,7 +605,7 @@ SPECS: dict[str, SidecarSpec] = {
     ),
     # Ming-3.0-tts-0.5b (#3793). Upstream is not pip-installable (flat modules,
     # requirements.txt only); the sidecar puts the checkout on sys.path. The
-    # ~3 GB weights download on first synthesis (or from Model Catalogue).
+    # ~3 GB weights come only from the Model Catalogue row the user starts.
     "ming-tts": SidecarSpec(
         engine_id="ming-tts",
         display_name="Ming-3.0-tts",
@@ -627,7 +627,7 @@ SPECS: dict[str, SidecarSpec] = {
         install_args=("-r", "{checkout}/requirements.txt"),
         host_supported=_ming_host,
         docs_path="docs/engines/ming-tts.md",
-        # ~7 GB venv (torch 2.6 + CUDA libs), ~3 GB of weights on first synthesis.
+        # ~7 GB venv (torch 2.6 + CUDA libs), ~3 GB of weights from the Model Catalogue.
         required_bytes=12 * _GIB,
         dependency_bytes=8 * _GIB,
         temporary_free_bytes=8 * _GIB,

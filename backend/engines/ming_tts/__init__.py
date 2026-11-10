@@ -56,7 +56,8 @@ class MingTTSBackend(SubprocessBackend):
     """Ming-3.0-tts-0.5b — 7 langs, zero-shot clone, NVIDIA CUDA, MIT.
 
     Runs in a long-lived sidecar over length-prefixed JSON-over-stdio in a
-    dedicated venv. First synthesize cold-loads the ~3 GB checkpoint (bf16);
+    dedicated venv. First synthesize cold-loads the ~3 GB checkpoint (bf16, from the local
+    cache only);
     subsequent calls reuse the process.
 
     Installation (the Model Catalogue one-click install does this on Linux)::
@@ -95,6 +96,7 @@ class MingTTSBackend(SubprocessBackend):
         from engines.ming_tts.bootstrap import (
             MING_TTS_SIDECAR_SCRIPT,
             is_ming_tts_installed,
+            ming_weights_installed,
         )
         if not is_ming_tts_installed():
             return False, (
@@ -107,6 +109,12 @@ class MingTTSBackend(SubprocessBackend):
             return False, (
                 "Ming-3.0-tts sidecar script missing at "
                 f"{MING_TTS_SIDECAR_SCRIPT} — reinstall VoiceStudio."
+            )
+        if not ming_weights_installed():
+            return False, (
+                "Ming-3.0-tts weights not installed. Download them from Model "
+                "Catalogue (Ming-3.0-tts weights row); generation never "
+                "downloads. See docs/engines/ming-tts.md."
             )
         return True, "ok (NVIDIA CUDA)"
 
@@ -131,7 +139,7 @@ class MingTTSBackend(SubprocessBackend):
     @property
     def recv_timeout_s(self) -> float:
         """Receive timeout in seconds for the Ming-3.0-tts sidecar process."""
-        # The first call downloads and loads ~3 GB; OMNIVOICE_MING_TTS_RECV_TIMEOUT_S tunes it.
+        # The first call cold-loads ~3 GB (never downloads); OMNIVOICE_MING_TTS_RECV_TIMEOUT_S tunes it.
         try:
             v = float(os.environ.get("OMNIVOICE_MING_TTS_RECV_TIMEOUT_S", "900"))
         except (ValueError, TypeError):
