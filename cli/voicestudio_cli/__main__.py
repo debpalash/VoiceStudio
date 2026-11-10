@@ -18,7 +18,7 @@ from .errors import CLIError, scrub
 from .registry import COMMANDS
 from .transport import Client, download
 from . import updates
-from .desktop import launch_desktop, launcher_targets, remember_launcher_arguments, split_arguments
+from .desktop import app_switches, launch_desktop, launcher_targets, remember_launcher_arguments, split_arguments
 from .render import render
 from .terminal import is_terminal
 
@@ -979,8 +979,10 @@ def main(argv=None):
         # The app does not open files itself; a launcher's %U only opens it.
         if not argv or launcher_targets(argv):
             return launch_desktop(desktop_arguments)
-        remember_launcher_arguments(desktop_arguments)
         root, nodes = build_parser()
+        if app_switches(argv, root._option_string_actions):
+            return launch_desktop([*desktop_arguments, *argv])
+        remember_launcher_arguments(desktop_arguments)
         args = root.parse_args(argv)
         if not hasattr(args, 'handler'):
             args.current_parser.print_help()
