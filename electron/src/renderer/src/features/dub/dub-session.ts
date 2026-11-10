@@ -1561,7 +1561,11 @@ export async function translateDub(
     finishActivity();
   }
 }
-async function watchGeneration(taskId: string, signal: AbortSignal) {
+async function watchGeneration(
+  taskId: string,
+  signal: AbortSignal,
+  segmentIds = dubSession.state.segments.map((segment) => segment.id),
+) {
   let result: { syncScores: number[] } = { syncScores: [] };
   await consumeTaskStream(
     '/tasks/stream/' + encodeURIComponent(taskId),
@@ -1611,6 +1615,18 @@ async function watchGeneration(taskId: string, signal: AbortSignal) {
             : {}),
         });
       }
+      // Mix failures may carry only the submitted row index.
+      // Resolve it once so later transcript edits cannot point the notice elsewhere.
+      if (
+        event.type === 'error' &&
+        event.error_code === 'dub_speech_missing' &&
+        event.segment_id == null &&
+        typeof event.segment === 'number' &&
+        Number.isInteger(event.segment)
+      ) {
+        const id = segmentIds[event.segment];
+        if (id !== undefined) return taskEvent({ ...event, segment_id: id }, 'done');
+      }
       return taskEvent(event, 'done');
     },
     signal,
@@ -1658,6 +1674,7 @@ export async function generateDub(
               }
             : undefined,
         });
+        const segmentIds = current.segments.map((segment) => segment.id);
         const job = await apiJson<{ task_id: string }>(
           '/dub/generate/' + encodeURIComponent(current.jobId!),
           {
@@ -1673,7 +1690,7 @@ export async function generateDub(
                 // Keeps the imported caption markup for unchanged exports (#2295).
                 cue_source_id: cueSourceId(segment),
               })),
-              segment_ids: current.segments.map((segment) => segment.id),
+              segment_ids: segmentIds,
               regen_only: regenOnly?.length ? regenOnly : null,
               language,
               language_code: languageCode,
@@ -1695,7 +1712,7 @@ export async function generateDub(
           taskId: job.task_id,
           pendingTiming: current.timingStrategy || 'strict_slot',
         });
-        const measured = await watchGeneration(job.task_id, signal);
+        const measured = await watchGeneration(job.task_id, signal, segmentIds);
         if (!agentEnabled || agentPass >= maxAgentPasses) break;
 
         const afterRender = dubSession.state;
