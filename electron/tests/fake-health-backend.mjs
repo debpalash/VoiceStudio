@@ -25,6 +25,7 @@ export const DEFAULT_FIXTURES = {
     available: false,
     supported: false,
     reason: 'Sound effects need an NVIDIA GPU.',
+    reason_code: 'host_unsupported',
     install_allowed: false,
     download_bytes: 11230170282,
     license: 'Apache-2.0',

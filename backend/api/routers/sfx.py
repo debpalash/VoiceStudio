@@ -59,7 +59,8 @@ def _status() -> dict:
     from engines.moss_sfx import SFX_WEIGHTS_BYTES, MossSfxBackend, host_support
 
     host_ok, host_reason = host_support()
-    available, reason = MossSfxBackend.is_available()
+    reason_code, reason = MossSfxBackend.availability()
+    available = reason_code == "ok"
     installed = False
     if host_ok:
         try:
@@ -75,6 +76,9 @@ def _status() -> dict:
         "supported": bool(host_ok),
         # Why Generate is disabled, or null when it can run.
         "reason": None if available else reason,
+        # Stable code for the same fact (host_unsupported, not_installed, weights_missing,
+        # sidecar_missing); the app translates it and never shows ``reason``.
+        "reason_code": None if available else reason_code,
         "install_allowed": bool(host_ok),
         "download_bytes": SFX_WEIGHTS_BYTES,
         "license": LICENSE,
@@ -88,15 +92,20 @@ def sfx_status():
     return _status()
 
 
+def _fail(status: int, code: str, message: str) -> HTTPException:
+    """Error with a stable ``code`` (the app translates it) and English ``message`` (logs, API clients)."""
+    return HTTPException(status_code=status, detail={"code": code, "error": code, "message": message})
+
+
 def _clean_prompt(prompt: str) -> str:
     text = " ".join(str(prompt or "").split())
     limits = _limits()
     if not text:
-        raise HTTPException(status_code=422, detail="Describe the sound you want first.")
+        raise _fail(422, "sfx_prompt_required", "Describe the sound you want first.")
     if len(text) > limits["max_prompt_chars"]:
-        raise HTTPException(
-            status_code=422,
-            detail=f"The description is too long (maximum {limits['max_prompt_chars']} characters).",
+        raise _fail(
+            422, "sfx_prompt_too_long",
+            f"The description is too long (maximum {limits['max_prompt_chars']} characters).",
         )
     return text
 
@@ -108,12 +117,10 @@ def _checked_duration(duration: float) -> float:
     except (TypeError, ValueError):
         seconds = float("nan")
     if not seconds == seconds or seconds < limits["min_seconds"] or seconds > limits["max_seconds"]:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"Duration must be between {limits['min_seconds']:g} and "
-                f"{limits['max_seconds']:g} seconds."
-            ),
+        raise _fail(
+            422, "sfx_bad_duration",
+            f"Duration must be between {limits['min_seconds']:g} and "
+            f"{limits['max_seconds']:g} seconds.",
         )
     return round(seconds, 1)
 
@@ -131,14 +138,11 @@ async def sfx_generate(req: SfxRequest):
 
     status = await asyncio.to_thread(_status)
     if not status["supported"]:
-        raise HTTPException(status_code=409, detail={"error": "sfx_unsupported_host", "message": status["reason"]})
+        raise _fail(409, "sfx_unsupported_host", status["reason"])
     if not status["available"]:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "error": "sfx_not_installed",
-                "message": "Sound effects are not installed. Install them from Tools > Sound effects.",
-            },
+        raise _fail(
+            409, "sfx_not_installed",
+            "Sound effects are not installed. Install them from Tools > Sound effects.",
         )
 
     seed = req.seed if req.seed is not None else random.randint(0, 2**31 - 1)
@@ -153,12 +157,14 @@ async def sfx_generate(req: SfxRequest):
         )
     except GpuPoolBusyError as e:
         raise HTTPException(
-            status_code=503, detail=str(e),
+            status_code=503,
+            detail={"code": "sfx_busy", "error": "sfx_busy", "message": str(e)},
             headers={"Retry-After": str(e.retry_after), "X-OmniVoice-Retryable": "true"},
         ) from e
     except GpuJobTimeoutError as e:
         raise HTTPException(
-            status_code=503, detail=str(e),
+            status_code=503,
+            detail={"code": "sfx_timeout", "error": "sfx_timeout", "message": str(e)},
             headers={"Retry-After": "30", "X-OmniVoice-Retryable": "true"},
         ) from e
     except HTTPException:
@@ -167,13 +173,15 @@ async def sfx_generate(req: SfxRequest):
         logger.warning("sound-effect generation failed: %s", e)
         detail = str(e)
         if "out of memory" in detail.lower():
+            code = "sfx_out_of_memory"
             message = (
                 "The GPU ran out of memory generating this sound effect. Close other "
                 "GPU-heavy apps or try a shorter duration."
             )
         else:
+            code = "sfx_failed"
             message = "Sound-effect generation failed. Your other engines are unaffected; try again."
-        raise HTTPException(status_code=500, detail={"error": "sfx_failed", "message": message}) from e
+        raise HTTPException(status_code=500, detail={"code": code, "error": code, "message": message}) from e
 
     from services.watermark import mark_synthetic_async
 

@@ -12,6 +12,8 @@ import { apiPath, describeError } from '@/lib/api/client';
 import {
   fetchSfxStatus,
   generateSfx,
+  sfxErrorKey,
+  sfxReasonKey,
   SFX_ENGINE_ID,
   type SfxResult,
   type SfxStatus,
@@ -39,8 +41,13 @@ export function SoundEffects() {
   const request = useRef<AbortController | null>(null);
   useEffect(() => () => request.current?.abort(), []);
   const duration = seconds ?? info?.default_seconds ?? 10;
+  const limits = {
+    min: info?.min_seconds ?? 1,
+    max: info?.max_seconds ?? 30,
+    max_chars: info?.max_prompt_chars ?? 500,
+  };
   const blocked = firstReason([
-    [Boolean(info && !info.available), info?.reason ?? ''],
+    [Boolean(info && !info.available), t(sfxReasonKey(info?.reason_code))],
     [!prompt.trim(), t('sfx.prompt_required')],
   ]);
   const run = async () => {
@@ -57,7 +64,7 @@ export function SoundEffects() {
         void client.invalidateQueries({ queryKey: queryKeys.history });
       }
     } catch (e) {
-      if (!controller.signal.aborted) setError(describeError(e) || t('sfx.failed'));
+      if (!controller.signal.aborted) setError(t(sfxErrorKey(e), limits));
     } finally {
       if (request.current === controller) {
         request.current = null;
@@ -81,7 +88,7 @@ export function SoundEffects() {
       {info && !info.supported && (
         <div role="status" className="space-y-1 text-sm">
           <p className="font-medium">{t('sfx.unsupported_title')}</p>
-          <p className="text-muted-foreground">{info.reason}</p>
+          <p className="text-muted-foreground">{t(sfxReasonKey(info.reason_code))}</p>
         </div>
       )}
       {info && info.supported && !info.installed && (

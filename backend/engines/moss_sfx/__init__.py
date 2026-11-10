@@ -64,10 +64,12 @@ class MossSfxBackend(SubprocessBackend):
     _DEFAULT_SAMPLE_RATE = 48000
 
     @classmethod
-    def is_available(cls) -> tuple[bool, str]:
+    def availability(cls) -> tuple[str, str]:
+        """(code, reason). ``code`` is stable and machine-readable ("ok" when usable);
+        ``reason`` is English for logs and API clients, never shown as-is by the app."""
         ok, reason = host_support()
         if not ok:
-            return False, reason
+            return "host_unsupported", reason
         from engines.moss_sfx.bootstrap import (
             SFX_SIDECAR_SCRIPT,
             is_sfx_installed,
@@ -77,14 +79,19 @@ class MossSfxBackend(SubprocessBackend):
 
         if not is_sfx_installed():
             if venv_python() is not None and not sfx_weights_present():
-                return False, (
+                return "weights_missing", (
                     "The sound-effects weights are missing or incomplete. Use "
                     "Repair to download them; generation never downloads."
                 )
-            return False, "Sound effects are not installed yet."
+            return "not_installed", "Sound effects are not installed yet."
         if not SFX_SIDECAR_SCRIPT.exists():
-            return False, "The sound-effects sidecar script is missing; reinstall VoiceStudio."
-        return True, "ok"
+            return "sidecar_missing", "The sound-effects sidecar script is missing; reinstall VoiceStudio."
+        return "ok", "ok"
+
+    @classmethod
+    def is_available(cls) -> tuple[bool, str]:
+        code, reason = cls.availability()
+        return code == "ok", reason
 
     @classmethod
     def venv_python(cls) -> Path:

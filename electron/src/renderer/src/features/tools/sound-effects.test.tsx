@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, expect, it, vi } from 'vitest';
+import { ApiError } from '@/lib/api/client';
 import type { SfxStatus } from '@/lib/api/sfx';
 
 const base: SfxStatus = {
@@ -9,6 +10,7 @@ const base: SfxStatus = {
   available: true,
   supported: true,
   reason: null,
+  reason_code: null,
   install_allowed: true,
   download_bytes: 11230170282,
   license: 'Apache-2.0',
@@ -61,7 +63,13 @@ function show(status: SfxStatus) {
 }
 
 it('offers an install call-to-action with size and licence when not installed', async () => {
-  show({ ...base, installed: false, available: false, reason: 'Sound effects are not installed yet.' });
+  show({
+    ...base,
+    installed: false,
+    available: false,
+    reason: 'Sound effects are not installed yet.',
+    reason_code: 'not_installed',
+  });
   expect(await screen.findByText('sfx.install_title')).toBeTruthy();
   expect(screen.getByText(/"size":"10.5"/)).toBeTruthy();
   expect(screen.getByText(/Apache-2.0/)).toBeTruthy();
@@ -72,9 +80,17 @@ it('offers an install call-to-action with size and licence when not installed', 
 
 it('disables Generate and says why on an unsupported host', async () => {
   const reason = 'Sound effects need an NVIDIA GPU.';
-  show({ ...base, installed: false, available: false, supported: false, reason });
+  show({
+    ...base,
+    installed: false,
+    available: false,
+    supported: false,
+    reason,
+    reason_code: 'host_unsupported',
+  });
   expect(await screen.findByText('sfx.unsupported_title')).toBeTruthy();
-  expect(screen.getAllByText(reason).length).toBeGreaterThan(0);
+  expect(screen.getAllByText('sfx.reason_host_unsupported').length).toBeGreaterThan(0);
+  expect(screen.queryByText(reason)).toBeNull();
   expect(screen.queryByRole('button', { name: 'install moss-soundeffect' })).toBeNull();
   fireEvent.change(screen.getByPlaceholderText('sfx.prompt_placeholder'), {
     target: { value: 'rain' },
@@ -103,15 +119,58 @@ it('generates with the chosen duration and shows the player', async () => {
   expect(mock.generate).toHaveBeenCalledWith('rain on a tin roof', 5, expect.any(AbortSignal));
 });
 
-it('shows a clear error when generation fails and keeps the page usable', async () => {
-  mock.generate.mockRejectedValue(new Error('The GPU ran out of memory'));
+it.each([
+  ['not_installed', 'sfx.reason_not_installed'],
+  ['weights_missing', 'sfx.reason_weights_missing'],
+  ['sidecar_missing', 'sfx.reason_sidecar_missing'],
+  ['something_new', 'sfx.reason_unknown'],
+])('translates the status reason code %s and never shows the server text', async (code, key) => {
+  const reason = 'English server text that must not be shown';
+  show({ ...base, installed: false, available: false, reason, reason_code: code });
+  expect((await screen.findAllByText(key)).length).toBeGreaterThan(0);
+  expect(screen.queryByText(reason)).toBeNull();
+});
+
+async function failWith(error: unknown) {
+  mock.generate.mockRejectedValue(error);
   show(base);
   fireEvent.change(await screen.findByPlaceholderText('sfx.prompt_placeholder'), {
     target: { value: 'thunder' },
   });
   fireEvent.click(screen.getByRole('button', { name: /sfx.generate/ }));
-  expect(await screen.findByText(/ran out of memory/)).toBeTruthy();
+}
+
+const apiError = (status: number, code: string) =>
+  new ApiError(status, 'English server detail', {
+    detail: { code, error: code, message: 'English server detail' },
+  });
+
+it.each([
+  ['sfx_prompt_required', 'sfx.prompt_required'],
+  ['sfx_prompt_too_long', 'sfx.error_prompt_too_long'],
+  ['sfx_bad_duration', 'sfx.error_bad_duration'],
+  ['sfx_unsupported_host', 'sfx.reason_host_unsupported'],
+  ['sfx_not_installed', 'sfx.reason_not_installed'],
+  ['sfx_busy', 'sfx.error_busy'],
+  ['sfx_timeout', 'sfx.error_timeout'],
+  ['sfx_out_of_memory', 'sfx.error_out_of_memory'],
+  ['sfx_failed', 'sfx.failed'],
+])('renders the translated message for generate error %s', async (code, key) => {
+  await failWith(apiError(500, code));
+  expect(await screen.findByText(new RegExp(`^${key}`))).toBeTruthy();
+  expect(screen.queryByText(/English server detail/)).toBeNull();
   expect((screen.getByPlaceholderText('sfx.prompt_placeholder') as HTMLTextAreaElement).disabled).toBe(
     false,
   );
+});
+
+it('falls back to the generic translated message for an unknown code or a plain error', async () => {
+  await failWith(apiError(500, 'sfx_from_the_future'));
+  expect(await screen.findByText(/^sfx.failed/)).toBeTruthy();
+  expect(screen.queryByText(/English server detail/)).toBeNull();
+  cleanup();
+  mock.generate.mockReset();
+  await failWith(new Error('The GPU ran out of memory'));
+  expect(await screen.findByText(/^sfx.failed/)).toBeTruthy();
+  expect(screen.queryByText(/ran out of memory/)).toBeNull();
 });

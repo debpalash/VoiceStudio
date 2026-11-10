@@ -4773,6 +4773,16 @@
     "install_hint": "Pobieranie {{size}} GB ({{license}}), tylko po kliknięciu Zainstaluj. Wymaga karty NVIDIA.",
     "unsupported_title": "Niedostępne na tym komputerze",
     "result": "Wynik",
-    "failed": "Nie udało się wygenerować efektu."
+    "failed": "Nie udało się wygenerować efektu.",
+    "reason_host_unsupported": "Efekty dźwiękowe wymagają karty graficznej NVIDIA. Twoje pozostałe silniki nie są dotknięte.",
+    "reason_weights_missing": "Brakuje plików modelu efektów dźwiękowych lub są niekompletne. Użyj Napraw, aby je pobrać.",
+    "reason_not_installed": "Efekty dźwiękowe nie są jeszcze zainstalowane.",
+    "reason_sidecar_missing": "Brakuje składnika efektów dźwiękowych. Zainstaluj VoiceStudio ponownie.",
+    "reason_unknown": "Efekty dźwiękowe są teraz niedostępne.",
+    "error_prompt_too_long": "Opis jest za długi (maksymalnie {{max_chars}} znaków).",
+    "error_bad_duration": "Czas trwania musi mieścić się między {{min}} a {{max}} s.",
+    "error_busy": "GPU jest zajęte innym zadaniem. Spróbuj ponownie za chwilę.",
+    "error_timeout": "Generowanie tego efektu trwało zbyt długo. Spróbuj krótszego czasu trwania.",
+    "error_out_of_memory": "GPU zabrakło pamięci. Zamknij inne aplikacje obciążające GPU lub spróbuj krótszego czasu trwania."
   }
 }

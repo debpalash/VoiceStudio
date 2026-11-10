@@ -4745,6 +4745,16 @@
     "install_hint": "Descarga de {{size}} GB ({{license}}), só ao premer Instalar. Precisa unha GPU NVIDIA.",
     "unsupported_title": "Non dispoñible neste equipo",
     "result": "Resultado",
-    "failed": "Fallou o efecto de son."
+    "failed": "Fallou o efecto de son.",
+    "reason_host_unsupported": "Os efectos de son necesitan unha GPU NVIDIA. Os teus outros motores non se ven afectados.",
+    "reason_weights_missing": "Faltan ficheiros do modelo de efectos de son ou están incompletos. Usa Reparar para descargalos.",
+    "reason_not_installed": "Os efectos de son aínda non están instalados.",
+    "reason_sidecar_missing": "Falta o compoñente de efectos de son. Reinstala VoiceStudio.",
+    "reason_unknown": "Os efectos de son non están dispoñibles agora mesmo.",
+    "error_prompt_too_long": "A descrición é demasiado longa (máximo {{max_chars}} caracteres).",
+    "error_bad_duration": "A duración debe estar entre {{min}} e {{max}} segundos.",
+    "error_busy": "A GPU está ocupada con outra tarefa. Téntao de novo nun momento.",
+    "error_timeout": "Xerar este efecto de son tardou demasiado. Proba cunha duración menor.",
+    "error_out_of_memory": "A GPU quedou sen memoria. Pecha outras apps que usen moito a GPU ou proba cunha duración menor."
   }
 }

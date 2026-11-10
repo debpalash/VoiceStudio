@@ -76,6 +76,7 @@ def test_status_not_installed_offers_size_and_licence(client, monkeypatch):
     body = client.get("/api/sfx/status").json()
     assert body["supported"] is True and body["installed"] is False and body["available"] is False
     assert "not installed" in body["reason"].lower()
+    assert body["reason_code"] == "not_installed"
     assert body["license"] == "Apache-2.0"
     assert body["download_bytes"] > 10 * 1024**3
     assert (body["min_seconds"], body["max_seconds"]) == (1.0, 30.0)
@@ -90,6 +91,7 @@ def test_missing_weights_report_not_installed_with_a_repair_reason(client, monke
     body = client.get("/api/sfx/status").json()
     assert body["installed"] is False and body["available"] is False
     assert "repair" in body["reason"].lower() and "never downloads" in body["reason"]
+    assert body["reason_code"] == "weights_missing"
     monkeypatch.setattr(boot, "sfx_weights_present", lambda: True)
     assert client.get("/api/sfx/status").json()["installed"] is True
 
@@ -119,6 +121,7 @@ def test_status_unsupported_host_names_the_reason(client, monkeypatch, family):
     body = client.get("/api/sfx/status").json()
     assert body["supported"] is False and body["available"] is False
     assert "NVIDIA" in body["reason"]
+    assert body["reason_code"] == "host_unsupported"
     assert body["install_allowed"] is False
 
 
@@ -126,7 +129,17 @@ def test_status_ready(client, monkeypatch):
     _host(monkeypatch, "cuda")
     _installed(monkeypatch, True)
     body = client.get("/api/sfx/status").json()
-    assert body["available"] is True and body["reason"] is None
+    assert body["available"] is True and body["reason"] is None and body["reason_code"] is None
+
+
+def test_status_reports_a_missing_sidecar_script(client, monkeypatch, tmp_path):
+    import engines.moss_sfx.bootstrap as boot
+
+    _host(monkeypatch, "cuda")
+    _installed(monkeypatch, True)
+    monkeypatch.setattr(boot, "SFX_SIDECAR_SCRIPT", tmp_path / "missing.py")
+    body = client.get("/api/sfx/status").json()
+    assert body["available"] is False and body["reason_code"] == "sidecar_missing"
 
 
 def test_unsupported_host_refuses_install_with_a_reason(monkeypatch):
@@ -144,14 +157,14 @@ def test_generate_refuses_when_not_installed(client, monkeypatch):
     _installed(monkeypatch, False)
     res = client.post("/api/sfx/generate", json={"prompt": "rain", "duration": 5})
     assert res.status_code == 409
-    assert res.json()["detail"]["error"] == "sfx_not_installed"
+    assert res.json()["detail"]["code"] == "sfx_not_installed"
 
 
 def test_generate_refuses_on_unsupported_host(client, monkeypatch):
     _host(monkeypatch, "cpu")
     res = client.post("/api/sfx/generate", json={"prompt": "rain", "duration": 5})
     assert res.status_code == 409
-    assert res.json()["detail"]["error"] == "sfx_unsupported_host"
+    assert res.json()["detail"]["code"] == "sfx_unsupported_host"
 
 
 # ── limits ─────────────────────────────────────────────────────────────────
@@ -161,18 +174,21 @@ def test_generate_refuses_on_unsupported_host(client, monkeypatch):
 def test_duration_outside_limits_is_rejected_naming_the_limit(client, duration):
     res = client.post("/api/sfx/generate", json={"prompt": "rain", "duration": duration})
     assert res.status_code == 422
-    assert "between 1 and 30 seconds" in res.json()["detail"]
+    detail = res.json()["detail"]
+    assert detail["code"] == "sfx_bad_duration" and "between 1 and 30 seconds" in detail["message"]
 
 
 @pytest.mark.parametrize("prompt", ["", "   \n "])
 def test_blank_prompt_is_rejected(client, prompt):
     res = client.post("/api/sfx/generate", json={"prompt": prompt, "duration": 5})
     assert res.status_code == 422
+    assert res.json()["detail"]["code"] == "sfx_prompt_required"
 
 
 def test_overlong_prompt_is_rejected(client):
     res = client.post("/api/sfx/generate", json={"prompt": "x" * 501, "duration": 5})
-    assert res.status_code == 422 and "500" in res.json()["detail"]
+    detail = res.json()["detail"]
+    assert res.status_code == 422 and detail["code"] == "sfx_prompt_too_long" and "500" in detail["message"]
 
 
 # ── generation ─────────────────────────────────────────────────────────────
@@ -185,7 +201,7 @@ def _ready(monkeypatch, fake):
     _installed(monkeypatch, True)
     monkeypatch.setattr(sfx, "get_backend", lambda: fake)
     monkeypatch.setattr(
-        sfx.MossSfxBackend, "is_available", classmethod(lambda cls: (True, "ok"))
+        sfx.MossSfxBackend, "availability", classmethod(lambda cls: ("ok", "ok"))
     )
 
 
@@ -235,7 +251,7 @@ def test_oom_is_a_clear_error_and_the_app_stays_up(client, monkeypatch):
     res = client.post("/api/sfx/generate", json={"prompt": "thunder", "duration": 10})
     assert res.status_code == 500
     detail = res.json()["detail"]
-    assert detail["error"] == "sfx_failed" and "ran out of memory" in detail["message"]
+    assert detail["code"] == "sfx_out_of_memory" and "ran out of memory" in detail["message"]
     assert client.get("/api/sfx/status").status_code == 200
 
 
@@ -243,7 +259,27 @@ def test_sidecar_crash_is_a_clear_error(client, monkeypatch):
     _ready(monkeypatch, _FakeSfx(RuntimeError("sidecar died")))
     res = client.post("/api/sfx/generate", json={"prompt": "thunder", "duration": 10})
     assert res.status_code == 500
-    assert "other engines are unaffected" in res.json()["detail"]["message"]
+    detail = res.json()["detail"]
+    assert detail["code"] == "sfx_failed" and "other engines are unaffected" in detail["message"]
+
+
+@pytest.mark.parametrize(
+    ("exc_name", "code"), [("GpuPoolBusyError", "sfx_busy"), ("GpuJobTimeoutError", "sfx_timeout")]
+)
+def test_busy_and_timeout_carry_a_code_and_stay_retryable(client, monkeypatch, exc_name, code):
+    import services.model_manager as mm
+
+    _ready(monkeypatch, _FakeSfx())
+    exc = getattr(mm, exc_name)
+    err = exc("busy") if exc_name == "GpuJobTimeoutError" else exc("busy", retry_after=3)
+
+    async def _raise(*a, **k):
+        raise err
+
+    monkeypatch.setattr(mm, "run_on_gpu_pool_guarded", _raise)
+    res = client.post("/api/sfx/generate", json={"prompt": "thunder", "duration": 10})
+    assert res.status_code == 503 and res.headers["X-OmniVoice-Retryable"] == "true"
+    assert res.json()["detail"]["code"] == code
 
 
 # ── isolation from speech ──────────────────────────────────────────────────

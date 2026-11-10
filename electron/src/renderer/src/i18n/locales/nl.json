@@ -4745,6 +4745,16 @@
     "install_hint": "Download van {{size}} GB ({{license}}), alleen als je op Installeren klikt. Vereist een NVIDIA-GPU.",
     "unsupported_title": "Niet beschikbaar op deze computer",
     "result": "Resultaat",
-    "failed": "Geluidseffect mislukt."
+    "failed": "Geluidseffect mislukt.",
+    "reason_host_unsupported": "Geluidseffecten hebben een NVIDIA-GPU nodig. Je andere engines worden niet beïnvloed.",
+    "reason_weights_missing": "De modelbestanden voor geluidseffecten ontbreken of zijn onvolledig. Gebruik Herstellen om ze te downloaden.",
+    "reason_not_installed": "Geluidseffecten zijn nog niet geïnstalleerd.",
+    "reason_sidecar_missing": "Het onderdeel voor geluidseffecten ontbreekt. Installeer VoiceStudio opnieuw.",
+    "reason_unknown": "Geluidseffecten zijn nu niet beschikbaar.",
+    "error_prompt_too_long": "De beschrijving is te lang (maximaal {{max_chars}} tekens).",
+    "error_bad_duration": "De duur moet tussen {{min}} en {{max}} seconden liggen.",
+    "error_busy": "De GPU is bezig met een andere taak. Probeer het zo meteen opnieuw.",
+    "error_timeout": "Het maken van dit geluidseffect duurde te lang. Probeer een kortere duur.",
+    "error_out_of_memory": "De GPU had te weinig geheugen. Sluit andere zware GPU-apps of probeer een kortere duur."
   }
 }
