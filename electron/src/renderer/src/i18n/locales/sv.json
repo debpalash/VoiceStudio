@@ -4737,5 +4737,29 @@
     "check_failed": "Kontrollen av {{host}} kunde inte slutföras. Detaljer finns i installationsloggen.",
     "check_unavailable": "Det finns ännu ingen paketnedladdning att kontrollera.",
     "connection_error": "Anslutningen för paketnedladdningen misslyckades. Återuppta för att försöka igen; slutförda nedladdningar sparas."
+  },
+  "sfx": {
+    "title": "Ljudeffekter",
+    "prompt_label": "Beskriv ljudet",
+    "prompt_placeholder": "Regn på ett plåttak, avlägset åskmuller",
+    "prompt_required": "Beskriv ljudet först.",
+    "duration": "Längd: {{seconds}} s",
+    "generate": "Generera",
+    "generating": "Genererar…",
+    "install_title": "Ljudeffekter är inte installerade",
+    "install_hint": "Nedladdning på {{size}} GB ({{license}}), bara när du klickar på Installera. Kräver ett NVIDIA-grafikkort.",
+    "unsupported_title": "Inte tillgängligt på den här datorn",
+    "result": "Resultat",
+    "failed": "Ljudeffekten misslyckades.",
+    "reason_host_unsupported": "Ljudeffekter kräver ett NVIDIA-grafikkort. Dina andra motorer påverkas inte.",
+    "reason_weights_missing": "Modellfilerna för ljudeffekter saknas eller är ofullständiga. Använd Reparera för att ladda ner dem.",
+    "reason_not_installed": "Ljudeffekter är inte installerade ännu.",
+    "reason_sidecar_missing": "Komponenten för ljudeffekter saknas. Installera om VoiceStudio.",
+    "reason_unknown": "Ljudeffekter är inte tillgängliga just nu.",
+    "error_prompt_too_long": "Beskrivningen är för lång (högst {{max_chars}} tecken).",
+    "error_bad_duration": "Längden måste vara mellan {{min}} och {{max}} sekunder.",
+    "error_busy": "GPU:n är upptagen med ett annat jobb. Försök igen om en stund.",
+    "error_timeout": "Det tog för lång tid att skapa ljudeffekten. Prova en kortare längd.",
+    "error_out_of_memory": "GPU:n fick slut på minne. Stäng andra GPU-tunga appar eller prova en kortare längd."
   }
 }

@@ -4737,5 +4737,29 @@
     "check_failed": "{{host}} の確認を完了できませんでした。詳細はセットアップログに記録されています。",
     "check_unavailable": "確認できるパッケージのダウンロードはまだありません。",
     "connection_error": "パッケージのダウンロード接続に失敗しました。再開して再試行してください。完了済みのダウンロードは保持されます。"
+  },
+  "sfx": {
+    "title": "効果音",
+    "prompt_label": "音を説明してください",
+    "prompt_placeholder": "トタン屋根に降る雨、遠くの雷",
+    "prompt_required": "先に音を説明してください。",
+    "duration": "長さ: {{seconds}} 秒",
+    "generate": "生成",
+    "generating": "生成中…",
+    "install_title": "効果音はインストールされていません",
+    "install_hint": "{{size}} GB のダウンロード（{{license}}）。「インストール」を押したときだけ開始します。NVIDIA GPU が必要です。",
+    "unsupported_title": "このコンピューターでは利用できません",
+    "result": "結果",
+    "failed": "効果音の生成に失敗しました。",
+    "reason_host_unsupported": "効果音にはNVIDIA GPUが必要です。他のエンジンには影響しません。",
+    "reason_weights_missing": "効果音のモデルファイルが見つからないか不完全です。「修復」でダウンロードしてください。",
+    "reason_not_installed": "効果音はまだインストールされていません。",
+    "reason_sidecar_missing": "効果音のコンポーネントが見つかりません。VoiceStudioを再インストールしてください。",
+    "reason_unknown": "効果音は現在利用できません。",
+    "error_prompt_too_long": "説明が長すぎます（最大{{max_chars}}文字）。",
+    "error_bad_duration": "長さは{{min}}秒から{{max}}秒の間で指定してください。",
+    "error_busy": "GPUが別の処理で使用中です。しばらくしてからもう一度お試しください。",
+    "error_timeout": "この効果音の生成に時間がかかりすぎました。より短い長さをお試しください。",
+    "error_out_of_memory": "GPUのメモリが不足しました。GPUを多く使う他のアプリを閉じるか、より短い長さをお試しください。"
   }
 }

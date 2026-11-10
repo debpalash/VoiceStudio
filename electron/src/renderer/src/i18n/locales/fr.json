@@ -4739,5 +4739,29 @@
     "check_failed": "Impossible de terminer le test de {{host}}. Les détails figurent dans le journal d’installation.",
     "check_unavailable": "Aucun téléchargement de paquet n’est encore disponible pour le test.",
     "connection_error": "La connexion de téléchargement du paquet a échoué. Reprenez pour réessayer ; les téléchargements terminés sont conservés."
+  },
+  "sfx": {
+    "title": "Effets sonores",
+    "prompt_label": "Décrivez le son",
+    "prompt_placeholder": "Pluie sur un toit en tôle, tonnerre lointain",
+    "prompt_required": "Décrivez d’abord le son.",
+    "duration": "Durée : {{seconds}} s",
+    "generate": "Générer",
+    "generating": "Génération…",
+    "install_title": "Les effets sonores ne sont pas installés",
+    "install_hint": "Téléchargement de {{size}} Go ({{license}}), uniquement si vous cliquez sur Installer. Nécessite un GPU NVIDIA.",
+    "unsupported_title": "Indisponible sur cet ordinateur",
+    "result": "Résultat",
+    "failed": "Échec de l’effet sonore.",
+    "reason_host_unsupported": "Les effets sonores nécessitent un GPU NVIDIA. Vos autres moteurs ne sont pas affectés.",
+    "reason_weights_missing": "Les fichiers du modèle d’effets sonores sont manquants ou incomplets. Utilisez Réparer pour les télécharger.",
+    "reason_not_installed": "Les effets sonores ne sont pas encore installés.",
+    "reason_sidecar_missing": "Le composant d’effets sonores est manquant. Réinstallez VoiceStudio.",
+    "reason_unknown": "Les effets sonores sont indisponibles pour le moment.",
+    "error_prompt_too_long": "La description est trop longue ({{max_chars}} caractères maximum).",
+    "error_bad_duration": "La durée doit être comprise entre {{min}} et {{max}} secondes.",
+    "error_busy": "Le GPU est occupé par une autre tâche. Réessayez dans un instant.",
+    "error_timeout": "La génération de cet effet sonore a pris trop de temps. Essayez une durée plus courte.",
+    "error_out_of_memory": "Le GPU n’a plus de mémoire. Fermez les autres applications gourmandes en GPU ou essayez une durée plus courte."
   }
 }

@@ -4737,5 +4737,29 @@
     "check_failed": "Pemeriksaan {{host}} tidak dapat diselesaikan. Detail ada di log penyiapan.",
     "check_unavailable": "Belum ada unduhan paket yang dapat diperiksa.",
     "connection_error": "Koneksi unduhan paket gagal. Lanjutkan untuk mencoba lagi; unduhan yang selesai tetap disimpan."
+  },
+  "sfx": {
+    "title": "Efek suara",
+    "prompt_label": "Deskripsikan suaranya",
+    "prompt_placeholder": "Hujan di atap seng, guntur di kejauhan",
+    "prompt_required": "Deskripsikan suaranya dulu.",
+    "duration": "Durasi: {{seconds}} dtk",
+    "generate": "Buat",
+    "generating": "Membuat…",
+    "install_title": "Efek suara belum terpasang",
+    "install_hint": "Unduhan {{size}} GB ({{license}}), hanya saat Anda klik Pasang. Memerlukan GPU NVIDIA.",
+    "unsupported_title": "Tidak tersedia di komputer ini",
+    "result": "Hasil",
+    "failed": "Efek suara gagal.",
+    "reason_host_unsupported": "Efek suara memerlukan GPU NVIDIA. Mesin lain Anda tidak terpengaruh.",
+    "reason_weights_missing": "File model efek suara hilang atau tidak lengkap. Gunakan Perbaiki untuk mengunduhnya.",
+    "reason_not_installed": "Efek suara belum terpasang.",
+    "reason_sidecar_missing": "Komponen efek suara hilang. Pasang ulang VoiceStudio.",
+    "reason_unknown": "Efek suara sedang tidak tersedia.",
+    "error_prompt_too_long": "Deskripsi terlalu panjang (maksimal {{max_chars}} karakter).",
+    "error_bad_duration": "Durasi harus antara {{min}} dan {{max}} detik.",
+    "error_busy": "GPU sedang sibuk dengan tugas lain. Coba lagi sebentar lagi.",
+    "error_timeout": "Pembuatan efek suara ini terlalu lama. Coba durasi yang lebih pendek.",
+    "error_out_of_memory": "Memori GPU habis. Tutup aplikasi lain yang berat di GPU atau coba durasi yang lebih pendek."
   }
 }

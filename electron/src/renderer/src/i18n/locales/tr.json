@@ -4737,5 +4737,29 @@
     "check_failed": "{{host}} kontrolü tamamlanamadı. Ayrıntılar kurulum günlüğünde.",
     "check_unavailable": "Henüz kontrol edilecek bir paket indirmesi yok.",
     "connection_error": "Paket indirme bağlantısı başarısız oldu. Yeniden denemek için sürdürün; tamamlanan indirmeler korunur."
+  },
+  "sfx": {
+    "title": "Ses efektleri",
+    "prompt_label": "Sesi tarif edin",
+    "prompt_placeholder": "Teneke çatıya yağan yağmur, uzaktan gök gürültüsü",
+    "prompt_required": "Önce sesi tarif edin.",
+    "duration": "Süre: {{seconds}} sn",
+    "generate": "Oluştur",
+    "generating": "Oluşturuluyor…",
+    "install_title": "Ses efektleri yüklü değil",
+    "install_hint": "{{size}} GB indirme ({{license}}), yalnızca Yükle’ye tıkladığınızda. NVIDIA GPU gerekir.",
+    "unsupported_title": "Bu bilgisayarda kullanılamıyor",
+    "result": "Sonuç",
+    "failed": "Ses efekti oluşturulamadı.",
+    "reason_host_unsupported": "Ses efektleri bir NVIDIA GPU gerektirir. Diğer motorlarınız etkilenmez.",
+    "reason_weights_missing": "Ses efekti model dosyaları eksik veya tamamlanmamış. İndirmek için Onar'ı kullanın.",
+    "reason_not_installed": "Ses efektleri henüz yüklenmedi.",
+    "reason_sidecar_missing": "Ses efektleri bileşeni eksik. VoiceStudio'yu yeniden yükleyin.",
+    "reason_unknown": "Ses efektleri şu anda kullanılamıyor.",
+    "error_prompt_too_long": "Açıklama çok uzun (en fazla {{max_chars}} karakter).",
+    "error_bad_duration": "Süre {{min}} ile {{max}} saniye arasında olmalıdır.",
+    "error_busy": "GPU başka bir işle meşgul. Biraz sonra tekrar deneyin.",
+    "error_timeout": "Bu ses efektini oluşturmak çok uzun sürdü. Daha kısa bir süre deneyin.",
+    "error_out_of_memory": "GPU belleği doldu. GPU'yu çok kullanan diğer uygulamaları kapatın veya daha kısa bir süre deneyin."
   }
 }
