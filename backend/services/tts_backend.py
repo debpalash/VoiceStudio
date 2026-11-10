@@ -3305,14 +3305,16 @@ class MLXAudioBackend(TTSBackend):
                     yield torch.from_numpy(audio).reshape(1, -1)
 
     def _generate_results(self, text: str, *, streaming=False, **kw):
-        if not self._generation_lock.acquire(blocking=False):
+        # setdefault: instances built without __init__ (tests, subclasses) still get a lock.
+        lock = self.__dict__.setdefault("_generation_lock", threading.Lock())
+        if not lock.acquire(blocking=False):
             from services.model_manager import GpuPoolBusyError
 
             raise GpuPoolBusyError("MLX-Audio is already generating speech.", retry_after=1)
         try:
             yield from self._generate_results_unlocked(text, streaming=streaming, **kw)
         finally:
-            self._generation_lock.release()
+            lock.release()
 
     def _generate_results_unlocked(self, text: str, *, streaming=False, **kw):
         self._ensure_loaded()

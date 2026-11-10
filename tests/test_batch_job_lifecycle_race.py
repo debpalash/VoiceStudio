@@ -148,3 +148,20 @@ async def test_cancelled_batch_is_retryable_when_running_pipeline_times_out(batc
         worker.cancel()
         with pytest.raises(asyncio.CancelledError):
             await worker
+
+
+async def test_busy_engine_wait_stops_when_the_job_is_cancelled(batch, monkeypatch):
+    from services.model_manager import GpuPoolBusyError
+
+    monkeypatch.setattr(batch, "_BUSY_BACKOFF_S", (0.01,))
+    job = {"status": "running"}
+    calls = []
+
+    async def busy():
+        calls.append(1)
+        job["status"] = "cancelled"
+        raise GpuPoolBusyError("busy", retry_after=1)
+
+    with pytest.raises(GpuPoolBusyError):
+        await batch._await_free_engine(job, busy, budget_s=30)
+    assert calls == [1]

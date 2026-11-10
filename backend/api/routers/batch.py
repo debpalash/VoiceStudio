@@ -159,6 +159,31 @@ async def _worker():
             _queue.task_done()
 
 
+_BUSY_BACKOFF_S = (0.5, 1.0, 2.0, 4.0)
+
+
+async def _await_free_engine(job, call, *, budget_s):
+    """Run ``call()``; while the engine is busy (a stream holds it), wait and
+    retry with backoff inside ``budget_s``, stopping on cancel. A busy engine
+    never becomes silence: past the budget the busy error propagates and the
+    job fails (the caller turns it into a failure, not a gap)."""
+    from services.model_manager import GpuPoolBusyError
+
+    deadline = time.monotonic() + budget_s
+    attempt = 0
+    while True:
+        try:
+            return await call()
+        except GpuPoolBusyError as busy:
+            remaining = deadline - time.monotonic()
+            if job["status"] == "cancelled" or remaining <= 0:
+                raise
+            delay = min(_BUSY_BACKOFF_S[min(attempt, len(_BUSY_BACKOFF_S) - 1)], remaining)
+            attempt += 1
+            logger.info("Batch engine busy (%s); retrying in %.1fs", busy, delay)
+            await asyncio.sleep(delay)
+
+
 def _set_progress(job, stage, percent=0, **extra):
     """Update a job's progress dict."""
     job["progress"] = {"stage": stage, "percent": percent, **extra}
@@ -329,7 +354,7 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
     _set_progress(job, "transcribe", 0)
 
     from services.asr_backend import load_active_asr_backend
-    from services.model_manager import _gpu_pool, run_on_gpu_pool_guarded
+    from services.model_manager import GpuPoolBusyError, _gpu_pool, run_on_gpu_pool_guarded
     from services.segmentation import (
         segment_transcript, assign_speakers_heuristic,
     )
@@ -579,6 +604,10 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
                         timeout=_batch_timeout_s(batch_texts, backend),
                     )
                     batched_audio.update(zip(batch_indices, rendered))
+                except GpuPoolBusyError:
+                    # A stream holds the engine: render these segments one by
+                    # one below, where the busy wait + retry applies.
+                    logger.info("Native TTS batch deferred: engine busy")
                 except TimeoutError:
                     # Do not immediately queue the same expensive work again:
                     # the timed-out pool task may still be holding the device.
@@ -664,10 +693,13 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
                 if i in batched_audio:
                     audio_tensor = batched_audio.pop(i)
                 else:
-                    audio_tensor = await run_on_gpu_pool_guarded(
-                        _gen,
-                        what="Batch generate",
-                        timeout=generate_timeout_s(seg_text, engine=backend),
+                    seg_budget = generate_timeout_s(seg_text, engine=backend)
+                    audio_tensor = await _await_free_engine(
+                        job,
+                        lambda: run_on_gpu_pool_guarded(
+                            _gen, what="Batch generate", timeout=seg_budget,
+                        ),
+                        budget_s=seg_budget,
                     )
                 # Fit to slot
                 target_samples_seg = int(seg_duration * sr)
