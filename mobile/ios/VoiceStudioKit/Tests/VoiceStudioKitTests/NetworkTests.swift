@@ -5,22 +5,12 @@ import Testing
 
 /// A real loopback HTTP server exercises URLSession headers, redirects and binary bodies.
 private final class LoopbackHost {
-    let process = Process()
+    let child: TestProcess
     let port: Int
     init(uploadStatus: Int = 202) throws {
-        let pipe = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["python3", "-u", "-c", Self.script, String(uploadStatus)]
-        process.standardOutput = pipe
-        try process.run()
-        var line = Data()
-        while let byte = try pipe.fileHandleForReading.read(upToCount: 1), !byte.isEmpty {
-            if byte == Data([10]) { break }; line.append(byte)
-        }
-        guard let port = Int(String(decoding: line, as: UTF8.self)) else { process.terminate(); throw ClientError("mobile.errors.invalid_response") }
-        self.port = port
+        child = try TestProcess(["python3", "-u", "-c", Self.script, String(uploadStatus)])
+        port = try child.port()
     }
-    deinit { if process.isRunning { process.terminate(); process.waitUntilExit() } }
     private static let script = #"""
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json, re, sys

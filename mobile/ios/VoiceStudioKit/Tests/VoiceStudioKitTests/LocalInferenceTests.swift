@@ -344,12 +344,13 @@ func realAuxiliaryCloneAndTranslation() async throws {
 
 #if os(macOS)
 private final class LoopbackRangeHost {
-    let process = Process()
+    let child: TestProcess
     let port: Int
     init() throws {
-        let output = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["python3", "-u", "-c", #"""
+        child = try TestProcess(["python3", "-u", "-c", Self.script])
+        port = try child.port()
+    }
+    private static let script = #"""
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import socket; socket.getfqdn = lambda name='': name  # skip HTTPServer's reverse DNS lookup on bind (35 s per server on CI)
 class Handler(BaseHTTPRequestHandler):
@@ -367,15 +368,7 @@ class Handler(BaseHTTPRequestHandler):
 server = HTTPServer(('127.0.0.1', 0), Handler)
 print(server.server_port, flush=True)
 server.serve_forever()
-"""#]
-        process.standardOutput = output
-        try process.run()
-        var line = Data()
-        while let byte = try output.fileHandleForReading.read(upToCount: 1), !byte.isEmpty { if byte == Data([10]) { break }; line.append(byte) }
-        guard let port = Int(String(decoding: line, as: UTF8.self)) else { process.terminate(); throw ClientError("mobile.local.download_failed") }
-        self.port = port
-    }
-    deinit { if process.isRunning { process.terminate(); process.waitUntilExit() } }
+"""#
 }
 private struct LoopbackRangeTransport: HTTPTransport {
     let port: Int
@@ -497,7 +490,8 @@ private final class NativeWorkGate: @unchecked Sendable {
     private let lock = NSLock()
     private var calls = 0
     var count: Int { lock.withLock { calls } }
-    func run() { lock.withLock { calls += 1 }; finish.wait() }
+    // Bounded so a test that fails before releasing cannot strand the worker and its lease.
+    func run() { lock.withLock { calls += 1 }; _ = finish.wait(timeout: .now()+120) }
 }
 // These tests deliberately hold the process-wide native permit. Run them in
 // sequence so one test cannot consume another test's worker-start deadline.
