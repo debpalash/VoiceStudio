@@ -1,7 +1,13 @@
-"""Guards for the iOS CI test harness: loopback hosts start fast, UI tests cannot eat the job."""
+"""Guards for the iOS CI test harness: loopback hosts start fast, hangs fail fast and by name."""
+import importlib.util
+import io
 import re
+import shutil
+import sys
+import time
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -33,3 +39,62 @@ def test_ui_smoke_bounds_each_test_instead_of_rerunning_the_suite():
     assert "-test-timeouts-enabled YES" in step["run"]
     assert "-default-test-execution-time-allowance" in step["run"]
     assert 0 < step["timeout-minutes"] < 90
+
+
+def _ios_step(name):
+    workflow = yaml.safe_load((ROOT / ".github/workflows/mobile.yml").read_text(encoding="utf-8"))
+    return next(step for step in workflow["jobs"]["ios"]["steps"] if step.get("name") == name)
+
+
+def test_kit_tests_stream_per_test_output_and_fail_a_silent_hang_by_name():
+    # Through a plain pipe the output stayed block-buffered: a hung run printed nothing
+    # for 15 minutes and never named the test.
+    step = _ios_step("VoiceStudioKit tests")
+    run = step["run"]
+    assert run.startswith("python3 ../scripts/test_watchdog.py --stall ")
+    assert "swift test --no-parallel --skip-build" in run
+    stall = int(re.search(r"--stall (\d+)", run).group(1))
+    assert 0 < stall < step["timeout-minutes"] * 60
+    # Building in its own step keeps compile and link time out of the stall window.
+    build = _ios_step("Build VoiceStudioKit tests")
+    assert build["run"] == "swift build --build-tests"
+    assert build["working-directory"] == step["working-directory"]
+
+
+def test_kit_tests_never_wait_for_a_child_process_without_a_deadline():
+    # Process.waitUntilExit() lost its run-loop wakeup on a Swift concurrency thread and
+    # blocked forever after the loopback host had exited.
+    helper = ROOT / "mobile/ios/VoiceStudioKit/Tests/VoiceStudioKitTests/TestProcess.swift"
+    assert "terminationHandler" in helper.read_text(encoding="utf-8")
+    for path in (ROOT / "mobile/ios/VoiceStudioKit/Tests").rglob("*.swift"):
+        if path == helper:
+            continue
+        text = path.read_text(encoding="utf-8")
+        assert "waitUntilExit" not in text, path.relative_to(ROOT)
+        assert not re.search(r"\.read\(upToCount:", text), path.relative_to(ROOT)
+
+
+def _watchdog():
+    pytest.importorskip("pty")  # POSIX only, like the macOS runner it serves
+    spec = importlib.util.spec_from_file_location("test_watchdog", ROOT / "mobile/ios/scripts/test_watchdog.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_watchdog_streams_output_and_keeps_the_exit_status():
+    out = io.BytesIO()
+    script = "import sys; print('Test fast() started.'); sys.exit(3)"
+    assert _watchdog().run([sys.executable, "-c", script], stall=30, out=out) == 3
+    assert b"Test fast() started." in out.getvalue()
+
+
+def test_watchdog_kills_a_silent_run_and_names_the_last_started_test():
+    out = io.BytesIO()
+    script = "import time; print('\\x1b[90mTest stuck() started.\\x1b[0m', flush=True); time.sleep(60)"
+    started = time.monotonic()
+    assert _watchdog().run([sys.executable, "-c", script], stall=1, out=out) == 124
+    assert time.monotonic() - started < 30
+    assert b"hung after: Test stuck() started" in out.getvalue()
+    if shutil.which("sample"):
+        assert b"===== stacks of pid" in out.getvalue()
