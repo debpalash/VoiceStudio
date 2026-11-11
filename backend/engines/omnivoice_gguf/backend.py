@@ -1401,8 +1401,9 @@ def _make_backend_class():
 
             Uses the model the user already has loaded instead of loading a
             second copy, and never starts, restarts or stops the server. A
-            server still holding another quant fails the test rather than
-            testing the wrong weights.
+            server still holding another quant or launched under another
+            compute setting fails the test rather than testing (and naming
+            the device of) the wrong runtime.
             """
             from . import resident
 
@@ -1411,6 +1412,11 @@ def _make_backend_class():
                 raise RuntimeError(
                     f"The resident server still has {loaded} loaded, but {Path(base).name} is "
                     "selected. Run one normal generation to switch it, then test again."
+                )
+            if server.compute != _spawn_env().get("GGML_BACKEND", ""):
+                raise RuntimeError(
+                    "The resident server still runs on the previous compute setting. Run one "
+                    "normal generation to apply the new one, then test again."
                 )
             payload = resident.speech_payload(
                 text, voice=None, language=_iso_to_omnivoice_lang(kw.get("language")),

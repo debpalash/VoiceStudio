@@ -188,6 +188,8 @@ class ResidentServer:
         self.process = None
         self.port: Optional[int] = None
         self.pair: Optional[tuple[str, str]] = None
+        #: The ``GGML_BACKEND`` the process was launched with ("" = automatic).
+        self.compute: Optional[str] = None
         self.voices: dict[str, str] = {}
         self.log_handle = None
         #: Where this process's output starts in the shared, appended log.
@@ -208,7 +210,13 @@ class ResidentServer:
         from . import backend
 
         pair = (str(base), str(tokenizer))
-        if self.alive() and self.pair == pair:
+        try:
+            env = backend._spawn_env()
+        except Exception as exc:  # an invalid compute override
+            raise ResidentUnavailable(f"tts-server did not start: {exc}") from exc
+        compute = env.get("GGML_BACKEND", "")
+        # A compute change (CPU to GPU, another device) needs a new process too.
+        if self.alive() and self.pair == pair and self.compute == compute:
             return
         self.stop()
         binary = server_binary_path()
@@ -233,11 +241,12 @@ class ResidentServer:
                 stdout=self.log_handle,
                 stderr=subprocess.STDOUT,
                 stdin=subprocess.DEVNULL,
-                env=backend._spawn_env(),
+                env=env,
                 # Same rule as the CLI: ggml's backend scan stays inside bin/.
                 cwd=str(binary.parent),
             )
             self.pair = pair
+            self.compute = compute
             self._wait_ready(Path(base).name)
         except Exception as exc:
             self.stop()
@@ -275,6 +284,7 @@ class ResidentServer:
         """Stop the process and forget its voices. Idempotent."""
         proc, self.process = self.process, None
         self.pair = None
+        self.compute = None
         self.port = None
         self.voices.clear()
         if proc is not None:

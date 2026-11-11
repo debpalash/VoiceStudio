@@ -439,7 +439,19 @@ def test_selftest_runs_the_cli_without_downloading_or_the_server(rig, monkeypatc
 
 def test_selftest_deadline_covers_preparation(rig, monkeypatch):
     """Time spent before the spawn comes out of the same budget; a spent
-    budget starts no process at all."""
+    budget starts no process at all. A controlled clock, no real waiting."""
+    import time as real_time
+
+    now = [1000.0]
+
+    class _Clock:
+        def __getattr__(self, name):
+            return getattr(real_time, name)
+
+        def monotonic(self):
+            return now[0]
+
+    monkeypatch.setattr(rig.mod, "time", _Clock())
     spawned = []
 
     def fake_run(argv, **kw):
@@ -448,14 +460,18 @@ def test_selftest_deadline_covers_preparation(rig, monkeypatch):
             _write_wav(Path(argv[argv.index("-o") + 1]))
         return subprocess.CompletedProcess(argv, 0, "", "")
 
+    def slow_resolve(**_kw):
+        now[0] += 0.3  # preparation takes 0.3 s of the budget
+        return rig.base, rig.codec, {"base": rig.base.name, "tokenizer": rig.codec.name}
+
     monkeypatch.setattr(subprocess, "run", fake_run)
-    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", _diagnostic_paths(rig, delay=0.3))
+    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", slow_resolve)
     with pytest.raises(RuntimeError, match="ran out of time"):
         rig.instance.selftest_generate("hello", timeout_s=0.2)
     assert spawned == []
 
     rig.instance.selftest_generate("hello", timeout_s=1.0)
-    assert len(spawned) == 1 and spawned[0] <= 0.75
+    assert spawned == [pytest.approx(0.7)]
 
 
 def test_selftest_kills_a_cli_that_outruns_the_deadline(rig, monkeypatch):
@@ -627,3 +643,25 @@ def test_selftest_on_the_resident_server_counts_as_use(rig, monkeypatch):
     with pytest.raises(RuntimeError, match="refused the self-test"):
         rig.instance.selftest_generate("hello", timeout_s=30)
     assert rig.instance.release_if_idle(3600) is False and proc.poll() is None
+
+
+def test_selftest_reports_a_resident_server_on_an_old_compute_setting(rig, monkeypatch):
+    """A compute change the running server has not picked up fails the test
+    without touching the server; the next generation applies it."""
+    monkeypatch.delenv("OMNIVOICE_GGUF_BACKEND", raising=False)
+    monkeypatch.delenv("OMNIVOICE_GGUF_DEVICE", raising=False)
+    rig.instance.generate("hello")
+    proc = rig.server.process
+    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", _diagnostic_paths(rig))
+    monkeypatch.setenv("OMNIVOICE_GGUF_BACKEND", "cpu")
+
+    with pytest.raises(RuntimeError, match="previous compute setting"):
+        rig.instance.selftest_generate("hello", timeout_s=30)
+    assert rig.server.process is proc and proc.poll() is None
+    assert rig.cli_argvs == [] and len(rig.events("start")) == 1
+
+    rig.instance.generate("hello")  # restarts the server under the new setting
+    assert proc.poll() is not None and len(rig.events("start")) == 2
+    assert rig.server.compute == "CPU"
+    audio, _log = rig.instance.selftest_generate("hello", timeout_s=30)
+    assert audio.shape[1] > 0
