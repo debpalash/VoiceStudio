@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -153,3 +154,39 @@ def test_package_builds_again_only_when_apple_drops_the_connection(tmp_path, fai
     result = subprocess.run(["bash", "-e", "-c", script], cwd=ROOT / "electron", env=env, capture_output=True, text=True)
     assert (result.returncode == 0) is ok, result.stdout + result.stderr
     assert len(count.read_text(encoding="utf-8").splitlines()) == calls
+
+
+def test_signpath_signing_is_gated_pinned_and_precedes_feed_and_checksums():
+    build = load_workflow()["jobs"]["package"]
+    gate = build["env"]["SIGNPATH_ENABLED"]
+    for needed in ("secrets.SIGNPATH_API_TOKEN", "vars.SIGNPATH_ORGANIZATION_ID",
+                   "vars.SIGNPATH_PROJECT_SLUG", "vars.SIGNPATH_SIGNING_POLICY_SLUG"):
+        assert needed in gate
+    assert "ELECTRON_WINDOWS_CSC_LINK" in gate  # an own certificate wins
+
+    steps = build["steps"]
+    names = [s.get("name") for s in steps]
+    sign_steps = [s for s in steps if s.get("name", "").startswith(("Upload the unsigned Windows", "Sign the Windows installer with SignPath", "Replace the installer with the signed"))]
+    assert len(sign_steps) == 3
+    for step in sign_steps:
+        assert step["if"] == "env.SIGNPATH_ENABLED == 'true'"
+        if "uses" in step:
+            assert re.search(r"@[0-9a-f]{40}$", step["uses"].split(" ")[0]), step["uses"]
+    submit = next(s for s in sign_steps if s["uses"].startswith("signpath/github-action-submit-signing-request@"))
+    assert submit["with"]["wait-for-completion"] == "true"
+    assert "api-token" in submit["with"] and "SIGNPATH_API_TOKEN" in submit["with"]["api-token"]
+
+    # After packaging (which writes the feed), before verification, upload and
+    # (in the release job) SHA256SUMS.
+    package = names.index("Package without publishing")
+    first, last = names.index(sign_steps[0]["name"]), names.index(sign_steps[-1]["name"])
+    assert package < first < last < names.index("Verify Windows installer signature before publication")
+    assert last < names.index("Save installers and updater metadata for review")
+    replace = sign_steps[-1]["run"]
+    assert "apply-signed-windows.mjs" in replace
+    assert replace.index("apply-signed-windows.mjs") < replace.index("update-package-contract.mjs")
+
+    # Signing is configured -> unsigned output must fail the report step.
+    report = next(s for s in steps if s.get("name") == "Report and enforce Windows signing")
+    assert "SIGNPATH_ENABLED" in report["env"]["HAS_CREDENTIALS"]
+
