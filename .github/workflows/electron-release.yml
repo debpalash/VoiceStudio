@@ -90,8 +90,18 @@ jobs:
 
   package:
     needs: [validate, omnivoice-tts]
+    # actions: read is what SignPath's action documents for its github-token (it
+    # reads the job and downloads the uploaded unsigned artifact); nothing else
+    # beyond the top-level contents: read.
+    permissions:
+      contents: read
+      actions: read
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 75  # three macOS build attempts when Apple drops a connection
+    # 75: three macOS build attempts when Apple drops a connection. A Windows leg
+    # with SignPath configured also waits for a manual approval (up to 70 minutes
+    # in the signing step). Job-level timeouts cannot read secrets or job env, so
+    # this keys on the organization variable, one of the settings that enable it.
+    timeout-minutes: ${{ matrix.platform == 'win32' && vars.SIGNPATH_ORGANIZATION_ID != '' && 150 || 75 }}
     continue-on-error: ${{ matrix.experimental == true }}
     strategy:
       fail-fast: false
@@ -145,6 +155,11 @@ jobs:
       VOICESTUDIO_OMNIVOICE_TTS_PLATFORM: ${{ matrix.gguf_platform }}
       VOICESTUDIO_UPDATE_CHANNEL: electron-${{ needs.validate.outputs.channel }}-${{ matrix.platform }}-${{ matrix.arch }}
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      # SignPath (docs/code-signing-policy.md): active only when the API token
+      # secret and all three repository variables exist, and no own Windows
+      # certificate is configured. Otherwise nothing below runs and Windows
+      # signing behaves exactly as before.
+      SIGNPATH_ENABLED: ${{ matrix.platform == 'win32' && secrets.SIGNPATH_API_TOKEN != '' && vars.SIGNPATH_ORGANIZATION_ID != '' && vars.SIGNPATH_PROJECT_SLUG != '' && vars.SIGNPATH_SIGNING_POLICY_SLUG != '' && secrets.ELECTRON_WINDOWS_CSC_LINK == '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -258,6 +273,51 @@ jobs:
           node tests/packaging-contract.mjs --artifact
           node tests/update-package-contract.mjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
           node ../scripts/create_store_artifact_manifest.mjs --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
+      # SignPath signing. Order matters: electron-builder already wrote the
+      # updater feed (sha512, size) and the .blockmap from the UNSIGNED installer.
+      # Signing changes the bytes, so after the signed installer is put back,
+      # apply-signed-windows.mjs regenerates the blockmap and rewrites the feed
+      # hashes. All of this happens in the build leg, before the installers and
+      # feeds are uploaded; the release job then verifies the feed sha512 against
+      # the bytes and only afterwards writes SHA256SUMS.txt.
+      - name: Upload the unsigned Windows installer for SignPath
+        id: upload-unsigned-installer
+        if: env.SIGNPATH_ENABLED == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: signpath-unsigned-${{ matrix.platform }}-${{ matrix.arch }}
+          retention-days: 7
+          if-no-files-found: error
+          path: electron/release/VoiceStudio-*.exe
+      - name: Sign the Windows installer with SignPath
+        if: env.SIGNPATH_ENABLED == 'true'
+        timeout-minutes: 70
+        uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          github-artifact-id: ${{ steps.upload-unsigned-installer.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 4000
+          output-artifact-directory: electron/release-signed
+      - name: Replace the installer with the signed one and refresh the update feed
+        if: env.SIGNPATH_ENABLED == 'true'
+        working-directory: electron
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The checkout is the release tag, which predates this helper when an
+          # older tag is rebuilt from main (the documented test dispatch); load it
+          # from the workflow's own commit, like the other release helpers. It
+          # resolves electron-builder from the working directory (electron/).
+          gh api -H 'Accept: application/vnd.github.raw+json' \
+            "repos/$GITHUB_REPOSITORY/contents/electron/scripts/apply-signed-windows.mjs?ref=$GITHUB_SHA" \
+            > "$RUNNER_TEMP/apply-signed-windows.mjs"
+          node "$RUNNER_TEMP/apply-signed-windows.mjs" release-signed release
+          node tests/update-package-contract.mjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
+          node ../scripts/create_store_artifact_manifest.mjs --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
       - name: Verify macOS signing and notarization before publication
         if: inputs.publish == true && inputs.allow_unsigned != true && matrix.platform == 'darwin'
         run: |
@@ -309,7 +369,7 @@ jobs:
         if: matrix.platform == 'win32'
         shell: pwsh
         env:
-          HAS_CREDENTIALS: ${{ secrets.ELECTRON_WINDOWS_CSC_LINK != '' }}
+          HAS_CREDENTIALS: ${{ secrets.ELECTRON_WINDOWS_CSC_LINK != '' || env.SIGNPATH_ENABLED == 'true' }}
         run: |
           $installers = @(Get-ChildItem electron/release/VoiceStudio-*.exe)
           if ($installers.Count -eq 0) { throw "No installer to verify" }
