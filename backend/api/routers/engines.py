@@ -18,6 +18,7 @@ a backend without Settings silently undoing it.
 import asyncio
 import logging
 import os
+import re
 import threading
 from time import perf_counter
 
@@ -789,26 +790,32 @@ def engine_health(engine_id: str):
     }
 
 
-# ── Real-synthesis self-test (in-process TTS + OmniVoice GGUF) ─────────────
+# ── Real-synthesis self-test (in-process TTS engines) ──────────────────────
 #
 # ``/health`` above is a liveness/import probe — for an in-process backend it
 # only calls ``is_available()`` and the UI labels the result "deps OK". This
-# route goes one step further: for an AVAILABLE, IN-PROCESS TTS engine or
-# OmniVoice GGUF it runs a *tiny real synthesis* from a fixed short phrase and
-# reports duration, sample rate and sample count, proving the engine actually
-# emits audio rather than merely importing. The Compat Matrix's "Self-test"
-# button calls it.
+# route goes one step further: for an AVAILABLE, IN-PROCESS TTS engine it runs
+# a *tiny real synthesis* from a fixed short phrase and reports duration +
+# sample-rate + sample count, proving the engine actually emits audio rather
+# than merely importing. The Compat Matrix's "Self-test" button and the
+# OmniVoice GGUF row in Settings › Models call it.
 #
 # Guardrails (kept identical across macOS/Windows/Linux per the default-feature
 # rule — the phrase, timeout and gating don't branch on OS):
-#   * TTS family + available; persistent subprocess engines keep their
-#     spawn-and-ping ``health_check``. OmniVoice GGUF is a one-shot native
-#     process, so the bounded real synthesis also captures its Vulkan log.
+#   * TTS family + available + in-process only. Subprocess engines keep their
+#     spawn-and-ping ``health_check`` (a real synth there is a sidecar
+#     cold-start — out of scope for a click-to-test affordance).
+#   * An engine with ``selftest_generate`` (OmniVoice GGUF, which drives a
+#     native CLI) runs that instead: one bounded per-request run that returns
+#     its own runtime log, so the response can name the Vulkan device used.
 #   * Bounded wall-clock timeout (``OMNIVOICE_SELFTEST_TIMEOUT_S``, default 90s):
 #     a runaway synth returns ``ok=False`` / ``timed_out=True`` instead of
-#     hanging the Settings panel. The orphaned worker is best-effort daemon.
+#     hanging the Settings panel. ``selftest_generate`` applies the same
+#     deadline to its whole run and kills its child; an in-process orphan is
+#     a best-effort daemon thread.
 #   * A process-wide lock serialises self-tests so a click-storm can't stack
-#     concurrent model loads.
+#     concurrent model loads. The worker owns the lock until it exits, so a
+#     timed-out test can never overlap the next one.
 #   * Only ever on user click (POST) — never on Settings load. Admin-gated.
 
 # Deliberately short + ASCII so the synth stays CPU-cheap and the phrase never
@@ -839,33 +846,77 @@ def _sample_count(audio) -> int:
 def _run_synth_bounded(backend, timeout_s: float) -> dict | None:
     """Run one tiny synthesis in a daemon thread, bounded by ``timeout_s``.
 
-    Returns ``{"audio": .., "duration_ms": ..}`` on success, ``{"error": exc}``
-    on a synth exception, or ``None`` when the timeout elapsed (worker left
-    running best-effort — Python threads can't be force-killed)."""
+    The caller must hold ``_SELFTEST_LOCK``; ownership passes to the worker,
+    which releases it when it exits, so a timed-out run still blocks the next
+    self-test until it has really stopped.
+
+    Returns ``{"audio": .., "duration_ms": ..}`` on success (plus
+    ``runtime_log`` from a ``selftest_generate`` engine), ``{"error": exc}``
+    on a synth exception, or ``None`` when the timeout elapsed."""
     box: dict = {}
 
     def _worker():
         t0 = perf_counter()
         try:
-            kwargs = {"language": "en", "num_step": 8}
-            if getattr(backend, "id", None) == "omnivoice-gguf":
-                # This engine owns a native child process. Bound the process
-                # itself too, so a diagnostic click cannot outlive its route.
-                kwargs["_timeout_s"] = timeout_s
-            audio = backend.generate(_SELFTEST_PHRASE, **kwargs)
+            if callable(getattr(type(backend), "selftest_generate", None)):
+                audio, runtime_log = backend.selftest_generate(
+                    _SELFTEST_PHRASE, timeout_s=timeout_s, language="en",
+                )
+                box["runtime_log"] = runtime_log or ""
+            else:
+                audio = backend.generate(_SELFTEST_PHRASE, language="en", num_step=8)
             box["audio"] = audio
-            box["runtime_log"] = getattr(backend, "_last_runtime_log", "")
         except Exception as exc:  # noqa: BLE001 — surfaced to the caller as ok=False
             box["error"] = exc
         finally:
             box["duration_ms"] = (perf_counter() - t0) * 1000.0
+            _SELFTEST_LOCK.release()
 
     th = threading.Thread(target=_worker, name="engine-selftest", daemon=True)
-    th.start()
+    try:
+        th.start()
+    except BaseException:
+        _SELFTEST_LOCK.release()
+        raise
     th.join(timeout_s)
     if th.is_alive():
         return None
     return box
+
+
+# The directory part of an absolute path (POSIX, ``~``, drive letter or UNC),
+# up to its line's last separator so directories with spaces go too.
+_SELFTEST_DIR_RE = re.compile(r"(?:\b[A-Za-z]:|~|(?<![\w/\\]))[\\/][^\r\n'\"|<>]*[\\/]")
+
+
+def _selftest_runtime(raw_log: str) -> tuple[str | None, str | None]:
+    """``(runtime_device, runtime_log)`` from a GGUF run, scrubbed of paths.
+
+    Secrets and home paths go through ``scrub_text``; every remaining
+    absolute path is cut to its file name (``ggml-vulkan.dll`` stays useful;
+    the install and model directories are dropped).
+    """
+    from core.scrub import scrub_text
+
+    lines = [
+        line.strip()
+        for line in raw_log.splitlines()
+        if any(word in line.lower() for word in ("vulkan", "device", "backend"))
+    ]
+    text = scrub_text("\n".join(lines[-12:]))
+    text = _SELFTEST_DIR_RE.sub("", text)
+    runtime_log = text[:2400] or None
+    if not any("ggml_vulkan" in line.lower() for line in lines):
+        return None, runtime_log
+    try:
+        from engines.omnivoice_gguf.compute import selected_vulkan_adapter
+
+        adapter = selected_vulkan_adapter()
+    except Exception:  # noqa: BLE001 - diagnostic metadata is optional
+        return None, runtime_log
+    if adapter is None:
+        return None, runtime_log
+    return scrub_text(f"Vulkan {adapter.index}: {adapter.name}"), runtime_log
 
 
 class SelfTestResponse(BaseModel):
@@ -887,10 +938,10 @@ class SelfTestResponse(BaseModel):
     dependencies=[Depends(require_admin)],
 )
 def engine_selftest(engine_id: str):
-    """Run a bounded, real synthesis on an available TTS engine.
+    """Run a bounded, real synthesis on an available in-process TTS engine.
 
-    404 for an unknown TTS id; 400 when an unsupported subprocess engine is
-    selected or this engine is not currently available. Never
+    404 for an unknown TTS id; 400 when the engine is subprocess-isolated or
+    not currently available (a real synth on either is meaningless). Never
     raises through to a 500 on a synth failure — the exception is captured into
     ``ok=False`` / ``message`` so the panel renders a per-row failure."""
     if engine_id not in tts_backend._REGISTRY:
@@ -899,10 +950,7 @@ def engine_selftest(engine_id: str):
             detail=f"unknown TTS engine id: {engine_id!r}",
         )
     cls = tts_backend._REGISTRY[engine_id]
-    # OmniVoice GGUF manages its own one-shot native process and can therefore
-    # be safely real-synthesized here; other persistent sidecars stay on the
-    # cheaper health-check path.
-    if getattr(cls, "_is_subprocess_isolated", False) and engine_id != "omnivoice-gguf":
+    if getattr(cls, "_is_subprocess_isolated", False):
         raise HTTPException(
             status_code=400,
             detail=(
@@ -925,10 +973,21 @@ def engine_selftest(engine_id: str):
         )
 
     timeout_s = _selftest_timeout_s()
-    # Serialise so a click-storm can't stack concurrent model loads.
-    with _SELFTEST_LOCK:
+    # Serialise so a click-storm can't stack concurrent model loads. The
+    # worker releases the lock, so a timed-out run keeps it until it stops.
+    if not _SELFTEST_LOCK.acquire(timeout=timeout_s):
+        return SelfTestResponse(
+            id=engine_id,
+            ok=False,
+            message="a previous self-test is still running; try again when it finishes",
+            duration_ms=0.0,
+        )
+    try:
         backend = _get_engine_instance(cls)
-        res = _run_synth_bounded(backend, timeout_s)
+    except BaseException:
+        _SELFTEST_LOCK.release()
+        raise
+    res = _run_synth_bounded(backend, timeout_s)
 
     if res is None:
         return SelfTestResponse(
@@ -955,27 +1014,9 @@ def engine_selftest(engine_id: str):
     except Exception:
         sr = None
     secs = round(n / sr, 3) if (sr and n) else None
-    runtime_log = None
-    runtime_device = None
-    if engine_id == "omnivoice-gguf":
-        from core.scrub import scrub_text
-
-        raw_runtime_log = str(res.get("runtime_log") or "")
-        lines = [
-            line.strip()
-            for line in raw_runtime_log.splitlines()
-            if "vulkan" in line.lower() or "device" in line.lower() or "backend" in line.lower()
-        ]
-        runtime_log = scrub_text("\n".join(lines[-12:]))[:2400] or None
-        if any("ggml_vulkan" in line.lower() for line in lines):
-            try:
-                from engines.omnivoice_gguf.compute import selected_vulkan_adapter
-
-                adapter = selected_vulkan_adapter()
-                if adapter is not None:
-                    runtime_device = scrub_text(f"Vulkan {adapter.index}: {adapter.name}")
-            except Exception:  # noqa: BLE001 - diagnostic metadata is optional
-                runtime_device = None
+    runtime_device, runtime_log = (
+        _selftest_runtime(str(res["runtime_log"])) if "runtime_log" in res else (None, None)
+    )
     return SelfTestResponse(
         id=engine_id,
         ok=n > 0,

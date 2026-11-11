@@ -397,3 +397,101 @@ def test_the_memory_controls_see_and_unload_the_server(rig, monkeypatch):
     assert "active-engine:omnivoice-gguf" not in [
         m["id"] for m in model_lifecycle.list_loaded()["models"]
     ]
+
+
+# ── self-test (#3993) ─────────────────────────────────────────────────────
+
+
+def _diagnostic_paths(rig, *, delay=0.0, calls=None):
+    """A ``_resolve_quant_paths`` stand-in that records its kwargs."""
+    import time
+
+    def resolve(**kw):
+        if calls is not None:
+            calls.append(kw)
+        time.sleep(delay)
+        return rig.base, rig.codec, {"base": rig.base.name, "tokenizer": rig.codec.name}
+
+    return resolve
+
+
+def test_selftest_runs_the_cli_without_downloading_or_the_server(rig, monkeypatch):
+    """The self-test is one bounded spawn: no weight download, no resident
+    server, and the CLI gets at most the self-test's budget."""
+    calls, timeouts = [], []
+    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", _diagnostic_paths(rig, calls=calls))
+
+    def fake_run(argv, **kw):
+        if argv[0] != str(rig.cli):
+            return subprocess.CompletedProcess(argv, 1, "", "")
+        timeouts.append(kw["timeout"])
+        _write_wav(Path(argv[argv.index("-o") + 1]))
+        return subprocess.CompletedProcess(argv, 0, "", "ggml_vulkan: 0 = Radeon\n")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    audio, log = rig.instance.selftest_generate("hello", timeout_s=30, language="en")
+    assert audio.shape == (1, 72_000)
+    assert log == "ggml_vulkan: 0 = Radeon"
+    assert calls == [{"download": False}]
+    assert len(timeouts) == 1 and 0 < timeouts[0] <= 30
+    assert rig.server_argvs == [] and rig.events("start") == []
+
+
+def test_selftest_deadline_covers_preparation(rig, monkeypatch):
+    """Time spent before the spawn comes out of the same budget; a spent
+    budget starts no process at all."""
+    spawned = []
+
+    def fake_run(argv, **kw):
+        if argv[0] == str(rig.cli):
+            spawned.append(kw["timeout"])
+            _write_wav(Path(argv[argv.index("-o") + 1]))
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", _diagnostic_paths(rig, delay=0.3))
+    with pytest.raises(RuntimeError, match="ran out of time"):
+        rig.instance.selftest_generate("hello", timeout_s=0.2)
+    assert spawned == []
+
+    rig.instance.selftest_generate("hello", timeout_s=1.0)
+    assert len(spawned) == 1 and spawned[0] <= 0.75
+
+
+def test_selftest_kills_a_cli_that_outruns_the_deadline(rig, monkeypatch):
+    def fake_run(argv, **kw):
+        if argv[0] == str(rig.cli):
+            raise subprocess.TimeoutExpired(argv, kw["timeout"])
+        return subprocess.CompletedProcess(argv, 1, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", _diagnostic_paths(rig))
+    with pytest.raises(RuntimeError, match="timed out after"):
+        rig.instance.selftest_generate("hello", timeout_s=5)
+
+
+def test_each_selftest_gets_its_own_runtime_log(rig, monkeypatch):
+    """Concurrent runs on one engine never read each other's log."""
+    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", _diagnostic_paths(rig))
+    both_running = threading.Barrier(2, timeout=5)
+
+    def fake_run(argv, **kw):
+        if argv[0] != str(rig.cli):
+            return subprocess.CompletedProcess(argv, 1, "", "")
+        both_running.wait()
+        _write_wav(Path(argv[argv.index("-o") + 1]))
+        return subprocess.CompletedProcess(argv, 0, "", f"ggml_vulkan: run {kw['input']}")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    logs: dict = {}
+
+    def run(text):
+        logs[text] = rig.instance.selftest_generate(text, timeout_s=10)[1]
+
+    workers = [threading.Thread(target=run, args=(name,)) for name in ("first", "second")]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join(10)
+    assert logs == {"first": "ggml_vulkan: run first", "second": "ggml_vulkan: run second"}
+    assert not hasattr(rig.instance, "_last_runtime_log")

@@ -880,7 +880,6 @@ def _make_backend_class():
             """
             self._quant_override = quant_override
             self._quant_map: Optional[dict] = None
-            self._last_runtime_log = ""
             # Resident tts-server (#3654), created on the first request that
             # can use it.
             self._resident = None
@@ -1238,12 +1237,35 @@ def _make_backend_class():
             serves the request when it is bundled, enabled and supports the
             controls asked for; otherwise the CLI is spawned as before.
             """
+            return self._synthesize(text, kw)[0]
+
+        def selftest_generate(self, text: str, *, timeout_s: float, **kw):
+            """Bounded diagnostic synthesis for the engine self-test (#3993).
+
+            One deadline covers the whole call: weights are never downloaded
+            here (a missing pair is reported with its install command), the
+            resident server is skipped, and the per-request CLI gets only the
+            time left, so the child process is killed when the budget runs
+            out. Returns ``(audio, runtime_log)`` where the log is this
+            invocation's own stdout/stderr, never another request's.
+            """
+            return self._synthesize(text, kw, deadline=time.monotonic() + float(timeout_s))
+
+        def _synthesize(self, text: str, kw: dict, *, deadline: Optional[float] = None):
+            """Shared body of :meth:`generate` and :meth:`selftest_generate`.
+
+            Returns ``(audio, runtime_log)``; the log is empty when the
+            resident server answered.
+            """
             import io
 
             import soundfile as sf
             import torch
 
-            base, tokenizer, _ = self._resolve_quant_paths()
+            diagnostic = deadline is not None
+            # A timed diagnostic never starts a multi-GB download it could not finish.
+            paths = self._resolve_quant_paths(download=False) if diagnostic else self._resolve_quant_paths()
+            base, tokenizer, _ = paths
             ref_audio = kw.get("ref_audio")
             ref_text = kw.get("ref_text")
 
@@ -1251,8 +1273,8 @@ def _make_backend_class():
             os.close(fd)
             out_path = Path(out_name)
             transcript_path: Optional[Path] = None
-            self._last_runtime_log = ""
             converted_prompt: Optional[Path] = None
+            runtime_log = ""
             try:
                 if ref_audio and ref_text:
                     # A file keeps arbitrary transcript text out of argv.
@@ -1270,13 +1292,15 @@ def _make_backend_class():
                     if not _is_cli_readable_wav(prompt):
                         converted_prompt = _convert_reference_to_wav(prompt)
                         ref_audio = str(converted_prompt)
-                try:
-                    wav = self._resident_wav(
-                        text, kw, base=base, tokenizer=tokenizer, ref_audio=ref_audio,
-                        transcript=str(ref_text) if ref_audio and ref_text else None,
-                    )
-                finally:
-                    self._resident_used = time.monotonic()
+                wav = None
+                if not diagnostic:
+                    try:
+                        wav = self._resident_wav(
+                            text, kw, base=base, tokenizer=tokenizer, ref_audio=ref_audio,
+                            transcript=str(ref_text) if ref_audio and ref_text else None,
+                        )
+                    finally:
+                        self._resident_used = time.monotonic()
                 if wav is not None:
                     samples, _rate = sf.read(io.BytesIO(wav), dtype="float32")
                 else:
@@ -1295,9 +1319,8 @@ def _make_backend_class():
                         chunk_duration=kw.get("chunk_duration"),
                         chunk_threshold=kw.get("chunk_threshold"),
                     )
-                    self._last_runtime_log = self._run_subprocess(
-                        argv, stdin_text=text, timeout_s=kw.get("_timeout_s"),
-                    )
+                    bound = {} if deadline is None else {"timeout_s": _time_left(deadline)}
+                    runtime_log = self._run_subprocess(argv, stdin_text=text, **bound) or ""
                     samples, _rate = sf.read(str(out_path), dtype="float32")
             finally:
                 for leftover in (out_path, transcript_path, converted_prompt):
@@ -1307,7 +1330,8 @@ def _make_backend_class():
 
             if samples.ndim > 1:
                 samples = samples.mean(axis=1)
-            return torch.from_numpy(samples.astype("float32", copy=False)).unsqueeze(0)
+            audio = torch.from_numpy(samples.astype("float32", copy=False)).unsqueeze(0)
+            return audio, runtime_log
 
         def _resident_wav(
             self,
@@ -1462,7 +1486,8 @@ def _make_backend_class():
             """Spawn the binary, feed ``stdin_text``, enforce timeout.
 
             Never uses ``shell=True``. Stderr is captured and HF-token-redacted
-            before being logged at warning level.
+            before being logged at warning level. ``timeout_s`` overrides the
+            generate timeout. Returns this run's stdout and stderr.
             """
             # #1172 class: validate the binary immediately before exec (the
             # engine may have been selected explicitly, bypassing
@@ -1474,7 +1499,8 @@ def _make_backend_class():
                 validate_executable,
             )
             validate_executable(Path(argv[0]), hint=_binary_repair_hint())
-            timeout_s = timeout_s or _generate_timeout_s()
+            if timeout_s is None:
+                timeout_s = _generate_timeout_s()
             try:
                 proc = subprocess.run(
                     argv,
@@ -1512,7 +1538,9 @@ def _make_backend_class():
             # On success the binary may still write progress/info to
             # stderr — log at info, redacted.
             runtime_log = "\n".join(
-                part.strip() for part in (proc.stdout, proc.stderr) if part.strip()
+                part.strip()
+                for part in (getattr(proc, "stdout", None), proc.stderr)
+                if part and part.strip()
             )
             if proc.stderr:
                 logger.info("[omnivoice-gguf] %s", _mask_token(proc.stderr.strip()))
@@ -1520,6 +1548,19 @@ def _make_backend_class():
 
     _OmniVoiceGGUFBackend_cls = OmniVoiceGGUFBackend
     return _OmniVoiceGGUFBackend_cls
+
+
+def _time_left(deadline: Optional[float]) -> Optional[float]:
+    """Seconds left before ``deadline``; ``None`` keeps the default timeout.
+
+    Raises when the budget is already spent, so no process is started.
+    """
+    if deadline is None:
+        return None
+    left = deadline - time.monotonic()
+    if left <= 0:
+        raise RuntimeError("GGUF self-test ran out of time before synthesis started")
+    return left
 
 
 def _iso_to_omnivoice_lang(code: Optional[str]) -> Optional[str]:

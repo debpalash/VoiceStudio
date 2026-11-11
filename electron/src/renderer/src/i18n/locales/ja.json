@@ -3252,7 +3252,12 @@
     "setupStatusFileMissing": "このエンジンに必要なファイルがないか、読み取れません。設定 → モデルから再インストールしてください。",
     "setupStatusPlatform": "このエンジンはこのコンピューターのプラットフォームでは動作しません。対応プラットフォームはガイドに記載されています。",
     "setupStatusNoMps": "このエンジンには Apple の GPU（MPS）が必要ですが、この環境の PyTorch では使用できません。通常は macOS の更新または VoiceStudio の再インストールで改善します。",
-    "asrSetupRepairBundled": "バックエンドに含まれる Python パッケージが不足しているか破損しています。バックエンド環境を修復するか、ソース版セットアップの固定された依存関係で環境を作り直してから、再起動してください。"
+    "asrSetupRepairBundled": "バックエンドに含まれる Python パッケージが不足しているか破損しています。バックエンド環境を修復するか、ソース版セットアップの固定された依存関係で環境を作り直してから、再起動してください。",
+    "selfTest": "セルフテスト",
+    "selfTesting": "合成中…",
+    "selfTestOk": "{{seconds}} 秒 @ {{khz}} kHz（{{took}}）",
+    "selfTestFailed": "セルフテストに失敗しました",
+    "selfTestTimedOut": "セルフテストがタイムアウトしました"
   },
   "performanceProfile": {
     "requiresEngine": "速度と品質を調整するには、{{engine}} をインストールして選択してください。",

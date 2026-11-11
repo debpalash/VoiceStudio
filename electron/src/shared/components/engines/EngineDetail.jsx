@@ -259,7 +259,7 @@ export default function EngineDetail({
               selfTest.ok ? 'text-success' : 'text-destructive',
             )}
             data-testid={`selftest-result-${b.id}`}
-            title={selfTest.message}
+            title={[selfTest.message, selfTest.runtime_log].filter(Boolean).join('\n')}
           >
             {selfTest.ok
               ? t('engines.selfTestOk', {
@@ -270,6 +270,7 @@ export default function EngineDetail({
               : selfTest.timed_out
                 ? t('engines.selfTestTimedOut')
                 : t('engines.selfTestFailed')}
+            {selfTest.ok && selfTest.runtime_device ? ` · ${selfTest.runtime_device}` : null}
           </span>
         )}
         {resident?.unloadable && (

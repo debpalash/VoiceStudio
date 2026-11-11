@@ -3252,7 +3252,12 @@
     "setupStatusFileMissing": "Bu motorun gerektirdiği bir dosya eksik veya okunamıyor. Ayarlar → Modeller üzerinden yeniden kurun.",
     "setupStatusPlatform": "Bu motor bu bilgisayarın platformunda çalışmaz. Desteklenen platformlar motorun kılavuzunda listelenir.",
     "setupStatusNoMps": "Bu motor Apple GPU’sunu (MPS) gerektirir, ancak bu kurulumdaki PyTorch onu kullanamaz. macOS’i güncellemek veya VoiceStudio’yu yeniden kurmak genellikle sorunu çözer.",
-    "asrSetupRepairBundled": "Arka uçla gelen Python paketleri eksik veya hasarlı. Arka uç ortamını onarın ya da kaynak kurulumunun sabitlenmiş bağımlılıklarıyla yeniden oluşturun, ardından yeniden başlatın."
+    "asrSetupRepairBundled": "Arka uçla gelen Python paketleri eksik veya hasarlı. Arka uç ortamını onarın ya da kaynak kurulumunun sabitlenmiş bağımlılıklarıyla yeniden oluşturun, ardından yeniden başlatın.",
+    "selfTest": "Öz sınama",
+    "selfTesting": "Sentezleniyor…",
+    "selfTestOk": "{{seconds}} sn @ {{khz}} kHz, {{took}} içinde",
+    "selfTestFailed": "Öz sınama başarısız",
+    "selfTestTimedOut": "Öz sınama zaman aşımına uğradı"
   },
   "performanceProfile": {
     "requiresEngine": "Hız ve kaliteyi ayarlamak için {{engine}} yükleyip seçin.",

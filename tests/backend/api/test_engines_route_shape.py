@@ -1052,6 +1052,144 @@ def test_selftest_timeout_returns_timed_out(fresh_app, monkeypatch):
         tts_mod._REGISTRY.update(saved)
 
 
+def _register_bounded_selftest(tts_mod, engine_id, selftest):
+    """An engine that offers ``selftest_generate``, like OmniVoice GGUF."""
+
+    class _Bounded(tts_mod.TTSBackend):
+        id = engine_id
+        display_name = f"Fake {engine_id}"
+
+        @property
+        def sample_rate(self):
+            return 24000
+
+        @property
+        def supported_languages(self):
+            return ["en"]
+
+        @classmethod
+        def is_available(cls):
+            return True, "ready"
+
+        def generate(self, text, **kw):
+            raise AssertionError("the self-test must use selftest_generate")
+
+        def selftest_generate(self, text, *, timeout_s, **kw):
+            return selftest(timeout_s)
+
+    saved = dict(tts_mod._REGISTRY)
+    tts_mod._REGISTRY[engine_id] = _Bounded
+
+    def restore():
+        tts_mod._REGISTRY.clear()
+        tts_mod._REGISTRY.update(saved)
+
+    return restore
+
+
+def test_gguf_selftest_reports_vulkan_device_and_a_path_free_log(fresh_app, monkeypatch):
+    """#3993: GGUF runs its own bounded synthesis and names the Vulkan GPU;
+    the runtime log keeps device lines but no folder paths."""
+    import os
+    from types import SimpleNamespace
+
+    from api.routers import engines as engines_router
+    from engines.omnivoice_gguf import compute
+    from services import tts_backend as tts_mod
+
+    monkeypatch.setattr(engines_router, "_selftest_timeout_s", lambda: 42.0)
+    monkeypatch.setattr(compute, "selected_vulkan_adapter",
+                        lambda: SimpleNamespace(index=1, name="AMD Radeon RX 5500M"))
+    home = os.path.expanduser("~")
+    log = "\n".join([
+        r"load_backend: loaded Vulkan backend from C:\Program Files\VoiceStudio\bin\ggml-vulkan.dll",
+        "ggml_vulkan: Found 2 Vulkan devices:",
+        "ggml_vulkan: 1 = AMD Radeon RX 5500M | uma: 0",
+        "model on device Vulkan1: /opt/private dir/hub/omnivoice-base-Q8_0.gguf",
+        f"backend cache {home}/models/omnivoice-tokenizer-Q8_0.gguf",
+        "decoding chunk 3 of 8 from /srv/secret/input.txt",
+    ])
+    seen = []
+
+    def selftest(timeout_s):
+        seen.append(timeout_s)
+        return [0.0] * 2400, log
+
+    restore = _register_bounded_selftest(tts_mod, "fake-gguf", selftest)
+    try:
+        r = _client(fresh_app).post("/engines/fake-gguf/selftest")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["ok"] is True and body["num_samples"] == 2400
+        assert seen == [42.0]  # the route's deadline reaches the engine
+        assert body["runtime_device"] == "Vulkan 1: AMD Radeon RX 5500M"
+        out = body["runtime_log"]
+        assert "ggml-vulkan.dll" in out and "omnivoice-base-Q8_0.gguf" in out
+        assert "AMD Radeon RX 5500M" in out
+        for leaked in ("Program Files", "/opt/", "private dir", home, "/srv/", "input.txt"):
+            assert leaked not in out
+    finally:
+        restore()
+
+
+def test_gguf_selftest_has_no_device_without_vulkan_lines(fresh_app, monkeypatch):
+    from api.routers import engines as engines_router  # noqa: F401 - mounts the router
+    from engines.omnivoice_gguf import compute
+    from services import tts_backend as tts_mod
+
+    monkeypatch.setattr(compute, "selected_vulkan_adapter",
+                        lambda: (_ for _ in ()).throw(AssertionError("not consulted")))
+    restore = _register_bounded_selftest(
+        tts_mod, "fake-gguf-cpu", lambda _t: ([0.0] * 10, "using CPU backend"))
+    try:
+        body = _client(fresh_app).post("/engines/fake-gguf-cpu/selftest").json()
+        assert body["ok"] is True
+        assert body["runtime_device"] is None
+        assert body["runtime_log"] == "using CPU backend"
+    finally:
+        restore()
+
+
+def test_timed_out_selftest_keeps_the_lock_until_its_worker_stops(fresh_app, monkeypatch):
+    """A self-test that outruns the route must not overlap the next one."""
+    import threading as _threading
+    import time as _time
+
+    from api.routers import engines as engines_router
+    from services import tts_backend as tts_mod
+
+    monkeypatch.setattr(engines_router, "_selftest_timeout_s", lambda: 0.05)
+    gate = _threading.Event()
+    running = []
+
+    def selftest(_timeout_s):
+        running.append(1)
+        try:
+            gate.wait(5.0)
+            return [0.0] * 10, ""
+        finally:
+            running.pop()
+
+    restore = _register_bounded_selftest(tts_mod, "fake-gguf-slow", selftest)
+    client = _client(fresh_app)
+    try:
+        first = client.post("/engines/fake-gguf-slow/selftest").json()
+        assert first["timed_out"] is True
+        second = client.post("/engines/fake-gguf-slow/selftest").json()
+        assert second["ok"] is False and "still running" in second["message"]
+        assert len(running) == 1  # the second request never started a run
+        gate.set()
+        deadline = _time.monotonic() + 5
+        while engines_router._SELFTEST_LOCK.locked() and _time.monotonic() < deadline:
+            _time.sleep(0.01)
+        assert not engines_router._SELFTEST_LOCK.locked()
+        third = client.post("/engines/fake-gguf-slow/selftest").json()
+        assert third["ok"] is True
+    finally:
+        gate.set()
+        restore()
+
+
 # ── setup_snippet — copy-paste-ready env-var line for opt-in engines ────────
 
 

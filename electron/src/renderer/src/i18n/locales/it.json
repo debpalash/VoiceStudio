@@ -3254,7 +3254,12 @@
     "setupStatusFileMissing": "Un file necessario al motore è mancante o illeggibile. Reinstallalo in Impostazioni → Modelli.",
     "setupStatusPlatform": "Questo motore non funziona sulla piattaforma di questo computer. La guida elenca le piattaforme supportate.",
     "setupStatusNoMps": "Questo motore richiede la GPU Apple (MPS), che PyTorch non può usare in questa installazione. Aggiornare macOS o reinstallare VoiceStudio in genere risolve il problema.",
-    "asrSetupRepairBundled": "I pacchetti Python inclusi nel backend sono mancanti o danneggiati. Ripara l’ambiente del backend oppure ricrealo con le dipendenze fissate dell’installazione da sorgente, quindi riavvia."
+    "asrSetupRepairBundled": "I pacchetti Python inclusi nel backend sono mancanti o danneggiati. Ripara l’ambiente del backend oppure ricrealo con le dipendenze fissate dell’installazione da sorgente, quindi riavvia.",
+    "selfTest": "Autotest",
+    "selfTesting": "Sintesi in corso…",
+    "selfTestOk": "{{seconds}} s @ {{khz}} kHz in {{took}}",
+    "selfTestFailed": "Autotest non riuscito",
+    "selfTestTimedOut": "Autotest scaduto"
   },
   "performanceProfile": {
     "requiresEngine": "Installa e seleziona {{engine}} per regolare velocità e qualità.",

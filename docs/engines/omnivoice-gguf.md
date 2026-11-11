@@ -154,10 +154,12 @@ use the default in-process OmniVoice engine there, which is the same model.
 Select the engine via **Model Catalogue** (TTS tab → **Use**) or
 `OMNIVOICE_TTS_BACKEND=omnivoice-gguf`.
 
-The voice-cloning composer also has a TTS engine picker for engines currently
-available on this machine. With OmniVoice GGUF selected, **Test engine** runs a
-short real synthesis and reports the Vulkan adapter when the native runtime
-logs one; its diagnostic log is available from the result tooltip.
+**Self-test.** Settings › Models › OmniVoice GGUF → **Self-test** runs one
+short real synthesis with installed weights (it never downloads them) and,
+when the runtime used Vulkan, names the GPU, for example `Vulkan 1: AMD Radeon
+RX 5500M`. Hover the result for the runtime's device log, with folder paths
+removed. One time limit (`OMNIVOICE_SELFTEST_TIMEOUT_S`, default 90 s) covers
+the whole test and stops the runtime when it runs out.
 
 **GPU offer.** When Compute device is Auto, PyTorch has no GPU, and the bundled
 runtime with its Vulkan module finds a GPU, VoiceStudio asks once: *Use your
@@ -206,12 +208,12 @@ NVIDIA.
 To size the quant and report the device, VoiceStudio finds the adapter GGML
 will open without PyTorch:
 
-1. `vulkaninfo --summary` (installed with the GPU driver on Windows,
-   `vulkan-tools` on Linux) verifies the working driver and gives the GPUs in
-   Vulkan order. The OS GPU list supplies memory for quant sizing: the 64-bit
-   `HardwareInformation.qwMemorySize` registry value on Windows, or DRM sysfs
-   on Linux. A summary probe stays within the startup timeout on switchable
-   graphics drivers that can take too long to print the full Vulkan report.
+1. `vulkaninfo` (installed with the GPU driver on Windows, `vulkan-tools` on
+   Linux) verifies the working driver and gives the GPUs in Vulkan order. The
+   full report runs first and gives each GPU's type and device-local memory
+   heap as a 64-bit byte count. If it fails or takes longer than 10 seconds,
+   `vulkaninfo --summary` runs instead (3 seconds); it has no memory heaps, so
+   the OS GPU list fills in each GPU's memory for quant sizing (see below).
 2. Without it, the OS GPU list is used when the Vulkan loader is installed:
    the 64-bit `HardwareInformation.qwMemorySize` registry value on Windows, or
    DRM sysfs on Linux. WMI's `AdapterRAM` is never used; it is 32-bit and

@@ -3252,7 +3252,12 @@
     "setupStatusFileMissing": "此引擎所需的檔案遺失或無法讀取。請前往設定 → 模型重新安裝。",
     "setupStatusPlatform": "此引擎無法在這台電腦的平台上執行。支援的平台列在其指南中。",
     "setupStatusNoMps": "此引擎需要 Apple GPU（MPS），但目前安裝環境中的 PyTorch 無法使用它。更新 macOS 或重新安裝 VoiceStudio 通常可以解決。",
-    "asrSetupRepairBundled": "後端隨附的 Python 套件遺失或已損壞。請修復後端環境，或使用原始碼安裝中鎖定的相依套件重新建立環境，然後重新啟動。"
+    "asrSetupRepairBundled": "後端隨附的 Python 套件遺失或已損壞。請修復後端環境，或使用原始碼安裝中鎖定的相依套件重新建立環境，然後重新啟動。",
+    "selfTest": "自我檢測",
+    "selfTesting": "正在合成…",
+    "selfTestOk": "{{seconds}} 秒 @ {{khz}} kHz，耗時 {{took}}",
+    "selfTestFailed": "自我檢測失敗",
+    "selfTestTimedOut": "自我檢測逾時"
   },
   "performanceProfile": {
     "requiresEngine": "安裝並選取 {{engine}} 以調整速度與品質。",

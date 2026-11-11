@@ -3252,7 +3252,12 @@
     "setupStatusFileMissing": "Een vereist bestand ontbreekt of is onleesbaar. Installeer de engine opnieuw via Instellingen → Modellen.",
     "setupStatusPlatform": "Deze engine werkt niet op het platform van deze computer. De handleiding vermeldt de ondersteunde platforms.",
     "setupStatusNoMps": "Deze engine heeft de GPU van Apple (MPS) nodig, maar PyTorch kan die in deze installatie niet gebruiken. Een macOS-update of herinstallatie van VoiceStudio verhelpt dit meestal.",
-    "asrSetupRepairBundled": "De meegeleverde Python-pakketten van de backend ontbreken of zijn beschadigd. Herstel de backendomgeving of maak deze opnieuw met de vastgelegde afhankelijkheden van de broninstallatie en start daarna opnieuw."
+    "asrSetupRepairBundled": "De meegeleverde Python-pakketten van de backend ontbreken of zijn beschadigd. Herstel de backendomgeving of maak deze opnieuw met de vastgelegde afhankelijkheden van de broninstallatie en start daarna opnieuw.",
+    "selfTest": "Zelftest",
+    "selfTesting": "Synthetiseren…",
+    "selfTestOk": "{{seconds}} s @ {{khz}} kHz in {{took}}",
+    "selfTestFailed": "Zelftest mislukt",
+    "selfTestTimedOut": "Zelftest verlopen"
   },
   "performanceProfile": {
     "requiresEngine": "Installeer en selecteer {{engine}} om snelheid en kwaliteit af te stellen.",

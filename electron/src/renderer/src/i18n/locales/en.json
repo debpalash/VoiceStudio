@@ -461,7 +461,12 @@
     "setupStatusFileMissing": "A file this engine needs is missing or unreadable. Reinstall it from Settings → Models.",
     "setupStatusPlatform": "This engine doesn't run on this computer's platform. Its guide lists the platforms it supports.",
     "setupStatusNoMps": "This engine needs Apple's GPU (MPS), and this installation's PyTorch can't use it. Updating macOS or reinstalling VoiceStudio usually restores it.",
-    "asrSetupRepairBundled": "The backend's bundled Python packages are missing or damaged. Repair the backend environment, or recreate it from the pinned source setup, then restart."
+    "asrSetupRepairBundled": "The backend's bundled Python packages are missing or damaged. Repair the backend environment, or recreate it from the pinned source setup, then restart.",
+    "selfTest": "Self-test",
+    "selfTesting": "Synthesizing…",
+    "selfTestOk": "{{seconds}}s @ {{khz}} kHz in {{took}}",
+    "selfTestFailed": "Self-test failed",
+    "selfTestTimedOut": "Self-test timed out"
   },
   "clone": {
     "title": "Voice cloning",
