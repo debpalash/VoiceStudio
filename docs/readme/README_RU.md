@@ -506,7 +506,7 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 | Движки и качество | [Обзор движков](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [Бенчмарки](../../docs/benchmarks.md) |
 | Связка с другими инструментами | [CLI](../../docs/install/script.md#terminal-command) · [API речевой платформы](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [Образцы кода](../../examples/README.md) |
 | Мобильные приложения | [Android и iOS](../../docs/mobile.md) |
-| Для разработчиков | [Правила для контрибьюторов](../../.github/CONTRIBUTING.md) ([подпишите CLA](../../.github/CONTRIBUTING.md#contribution-licensing) перед первым PR) · [История версий](../../CHANGELOG.md) |
+| Для разработчиков | [Правила для контрибьюторов](../../.github/CONTRIBUTING.md) ([подпишите CLA](../../.github/CONTRIBUTING.md#contribution-licensing) перед первым PR) · [История версий](../../CHANGELOG.md) · [Политика подписи кода](../code-signing-policy.md) |
 
 Скиллы для ИИ-агентов ставятся командой `npx skills add debpalash/VoiceStudio`: **voicestudio** — для аудиозадач, **voicestudio-maintainer** — для поддержки самого репозитория.
 

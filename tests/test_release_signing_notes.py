@@ -2,6 +2,7 @@
 
 import importlib.util
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -60,7 +61,7 @@ def test_every_package_leg_reports_and_mac_check_ignores_allow_unsigned():
     assert mac["env"]["HAS_CREDENTIALS"] == "${{ secrets.ELECTRON_MACOS_CSC_LINK != '' }}"
     windows = steps["Report and enforce Windows signing"]
     assert windows["if"] == "matrix.platform == 'win32'"
-    assert windows["env"]["HAS_CREDENTIALS"] == "${{ secrets.ELECTRON_WINDOWS_CSC_LINK != '' }}"
+    assert windows["env"]["HAS_CREDENTIALS"] == "${{ secrets.ELECTRON_WINDOWS_CSC_LINK != '' || env.SIGNPATH_ENABLED == 'true' }}"
     assert steps["Report Linux signing"]["if"] == "matrix.platform == 'linux'"
     assert steps["Save the signing report"]["with"]["name"] == "electron-signing-${{ matrix.platform }}-${{ matrix.arch }}"
 
@@ -153,3 +154,54 @@ def test_package_builds_again_only_when_apple_drops_the_connection(tmp_path, fai
     result = subprocess.run(["bash", "-e", "-c", script], cwd=ROOT / "electron", env=env, capture_output=True, text=True)
     assert (result.returncode == 0) is ok, result.stdout + result.stderr
     assert len(count.read_text(encoding="utf-8").splitlines()) == calls
+
+
+def test_signpath_signing_is_gated_pinned_and_precedes_feed_and_checksums():
+    build = load_workflow()["jobs"]["package"]
+    gate = build["env"]["SIGNPATH_ENABLED"]
+    for needed in ("secrets.SIGNPATH_API_TOKEN", "vars.SIGNPATH_ORGANIZATION_ID",
+                   "vars.SIGNPATH_PROJECT_SLUG", "vars.SIGNPATH_SIGNING_POLICY_SLUG"):
+        assert needed in gate
+    assert "ELECTRON_WINDOWS_CSC_LINK" in gate  # an own certificate wins
+
+    # Approval waits: the leg's timeout grows only for Windows with SignPath
+    # configured (job timeouts cannot read secrets), the step fails clearly first.
+    timeout = build["timeout-minutes"]
+    assert "matrix.platform == 'win32'" in timeout and "vars.SIGNPATH_ORGANIZATION_ID" in timeout
+    assert "150" in timeout and "75" in timeout and "secrets." not in timeout
+    submit_step = next(s for s in build["steps"] if s.get("name") == "Sign the Windows installer with SignPath")
+    assert submit_step["timeout-minutes"] == "70"
+    assert int(submit_step["with"]["wait-for-completion-timeout-in-seconds"]) <= 70 * 60
+
+    # SignPath's github-token needs actions: read; keep everything else read-only.
+    assert build["permissions"] == {"contents": "read", "actions": "read"}
+
+    steps = build["steps"]
+    names = [s.get("name") for s in steps]
+    sign_steps = [s for s in steps if s.get("name", "").startswith(("Upload the unsigned Windows", "Sign the Windows installer with SignPath", "Replace the installer with the signed"))]
+    assert len(sign_steps) == 3
+    for step in sign_steps:
+        assert step["if"] == "env.SIGNPATH_ENABLED == 'true'"
+        if "uses" in step:
+            assert re.search(r"@[0-9a-f]{40}$", step["uses"].split(" ")[0]), step["uses"]
+    submit = next(s for s in sign_steps if s["uses"].startswith("signpath/github-action-submit-signing-request@"))
+    assert submit["with"]["wait-for-completion"] == "true"
+    assert "api-token" in submit["with"] and "SIGNPATH_API_TOKEN" in submit["with"]["api-token"]
+
+    # After packaging (which writes the feed), before verification, upload and
+    # (in the release job) SHA256SUMS.
+    package = names.index("Package without publishing")
+    first, last = names.index(sign_steps[0]["name"]), names.index(sign_steps[-1]["name"])
+    assert package < first < last < names.index("Verify Windows installer signature before publication")
+    assert last < names.index("Save installers and updater metadata for review")
+    replace = sign_steps[-1]["run"]
+    assert "apply-signed-windows.mjs" in replace
+    # Loaded from the workflow commit (older tags lack the helper), never from the checkout.
+    assert "ref=$GITHUB_SHA" in replace and '"$RUNNER_TEMP/apply-signed-windows.mjs"' in replace
+    assert "node scripts/apply-signed-windows.mjs" not in replace
+    assert replace.index("apply-signed-windows.mjs\" release-signed") < replace.index("update-package-contract.mjs")
+
+    # Signing is configured -> unsigned output must fail the report step.
+    report = next(s for s in steps if s.get("name") == "Report and enforce Windows signing")
+    assert "SIGNPATH_ENABLED" in report["env"]["HAS_CREDENTIALS"]
+

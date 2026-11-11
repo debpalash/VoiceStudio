@@ -128,6 +128,7 @@ const bridge: VoiceStudioBridge = {
     useDiscoveredPythonRuntime: (pythonPath) =>
       ipcRenderer.invoke('backend:useDiscoveredPythonRuntime', pythonPath),
     restart: () => ipcRenderer.invoke('backend:restart') as Promise<void>,
+    restartOnCpu: () => ipcRenderer.invoke('backend:restartOnCpu') as Promise<void>,
     getConnection: () => ipcRenderer.invoke('backend:getConnection'),
     getHostSnapshot: () => ipcRenderer.invoke('backend:hostSnapshot'),
     getSetupDiagnostics: () => ipcRenderer.invoke('backend:setupDiagnostics'),

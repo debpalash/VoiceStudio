@@ -44,7 +44,18 @@ def _email_addresses(text: str):
         # Keep checking addresses in prose and URI paths normally.
         if text[max(0, match.start() - 6):match.start()].lower() == "ssh://":
             continue
+        # A HiDPI asset name (`background@2x.png`) has a scale, not a mail host.
+        if _SCALE_SUFFIX.match(match.group().split("@", 1)[1]):
+            continue
         yield match.group()
+
+
+_SCALE_SUFFIX = re.compile(r"\d+(?:\.\d+)?x\.(?:png|jpe?g|tiff?|gif|webp|svg|icns)$", re.I)
+
+
+def test_hidpi_asset_names_are_not_email_addresses():
+    assert list(_email_addresses("dmg-background@2x.png icon@3x.jpg")) == []
+    assert list(_email_addresses("write to someone@company.com")) == ["someone@company.com"]
 
 
 def _tracked_text_files():

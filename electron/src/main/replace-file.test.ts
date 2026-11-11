@@ -167,3 +167,38 @@ describe('replaceFile', () => {
     expect((await lstat(link)).isSymbolicLink()).toBe(true);
   });
 });
+
+describe.skipIf(process.platform === 'win32')('private mode', () => {
+  it('creates the hidden sibling with the requested mode before any byte is written', async () => {
+    const target = join(directory, 'prefs.json');
+    await writeFile(target, '{"old":1}');
+    await chmod(target, 0o644);
+    const seen: { mode: number | undefined; atWrite: number | undefined }[] = [];
+    const watching: ReplaceFileSystem = {
+      rename,
+      open: (async (...args: Parameters<typeof open>) => {
+        const handle = await open(...args);
+        const entry = { mode: args[2] as number | undefined, atWrite: undefined as number | undefined };
+        seen.push(entry);
+        const write = handle.writeFile.bind(handle);
+        handle.writeFile = (async (data: string | Uint8Array) => {
+          entry.atWrite = (await handle.stat()).mode & 0o777;
+          return write(data);
+        }) as typeof handle.writeFile;
+        return handle;
+      }) as typeof open,
+    };
+    await replaceFile(target, '{"token":"x"}', watching, { mode: 0o600 });
+    expect(seen).toEqual([{ mode: 0o600, atWrite: 0o600 }]);
+    // The requested mode wins over the replaced file's wider one.
+    expect((await stat(target)).mode & 0o777).toBe(0o600);
+  });
+
+  it('keeps an existing file mode when none is requested', async () => {
+    const target = join(directory, 'export.txt');
+    await writeFile(target, 'old');
+    await chmod(target, 0o640);
+    await replaceFile(target, 'new');
+    expect((await stat(target)).mode & 0o777).toBe(0o640);
+  });
+});

@@ -263,6 +263,24 @@ export default {
     target: isMacAppStore ? ['mas'] : ['dmg', 'zip'],
     category: 'public.app-category.productivity',
   },
+  // The DMG install window (both architectures; the MAS target has no DMG).
+  // The background is build/dmg/background.svg rendered by
+  // `bun run dmg:background`. electron-builder sizes the window from the 1x
+  // image (a background makes it ignore dmg.window); `window` repeats that
+  // size and the icons sit on the drawn slots (tests/dmg-window.test.mjs).
+  // The title drops the arch suffix electron-builder adds by default; the
+  // file name still comes from artifactName.
+  dmg: {
+    title: '${productName} ${version}',
+    background: 'build/dmg-background.png',
+    window: { width: 660, height: 440 },
+    iconSize: 112,
+    iconTextSize: 12,
+    contents: [
+      { x: 170, y: 160, type: 'file' },
+      { x: 490, y: 160, type: 'link', path: '/Applications' },
+    ],
+  },
   mas: {
     entitlements: 'build/entitlements.mas.plist',
     entitlementsInherit: 'build/entitlements.mas.inherit.plist',

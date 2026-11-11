@@ -13,7 +13,14 @@ from __future__ import annotations
 import types
 from unittest.mock import patch
 
+import pytest
+
 from core import device_caps
+
+# Imported at collection, before any test patches sys.platform (psutil, which
+# these import, resolves its platform module at import time).
+import main as _backend_main  # noqa: E402
+from api.routers import system as _system_router  # noqa: E402
 
 
 def _torch_mock(*, cuda_available=False, mps_available=False):
@@ -126,7 +133,8 @@ def test_unknown_values_normalize_to_auto(monkeypatch):
 def test_torch_unimportable_still_reports_the_request(monkeypatch):
     # Even a degraded CPU-only probe carries the requested family so the
     # Settings panel renders the user's pick instead of resetting to auto.
-    monkeypatch.setenv("OMNIVOICE_DEVICE", "cpu")
+    # (A CPU pick never imports torch at all: see the no-GPU-probe test below.)
+    monkeypatch.setenv("OMNIVOICE_DEVICE", "cuda")
     real_import = __import__
 
     def _no_torch(name, *a, **kw):
@@ -142,6 +150,106 @@ def test_torch_unimportable_still_reports_the_request(monkeypatch):
             with patch("builtins.__import__", side_effect=_no_torch):
                 caps = device_caps.refresh()
         assert caps.probe_ok is False
-        assert caps.requested_family == "cpu"
+        assert caps.requested_family == "cuda"
     finally:
         _cleanup()
+
+
+# Every GPU runtime call a probe made. Probes swallow exceptions, so raising
+# alone would not prove anything: the calls are recorded and must stay empty.
+_GPU_CALLS: list[str] = []
+
+
+def _exploding_torch():
+    """A torch whose every accelerator probe is recorded and fails."""
+
+    def boom(*_a, **_kw):
+        _GPU_CALLS.append("torch")
+        raise AssertionError("a GPU runtime was probed on a host pinned to CPU")
+
+    accel = types.SimpleNamespace(
+        is_available=boom, device_count=boom, get_device_name=boom,
+        mem_get_info=boom, get_device_capability=boom, get_device_properties=boom,
+    )
+    return types.SimpleNamespace(
+        cuda=accel, xpu=accel, npu=accel, version=types.SimpleNamespace(cuda="12.8"),
+        backends=types.SimpleNamespace(mps=types.SimpleNamespace(is_available=boom)),
+    )
+
+
+def _exploding_directml():
+    def boom(*_a, **_kw):
+        _GPU_CALLS.append("directml")
+        raise AssertionError("DirectML was opened on a host pinned to CPU")
+
+    return types.SimpleNamespace(device_count=boom, device=boom)
+
+
+@pytest.mark.parametrize("pin_by", ["prefs", "env"])
+def test_cpu_choice_never_probes_a_gpu_runtime(monkeypatch, pin_by):
+    """Restart on CPU after a graphics driver crash (#4002): no startup path may
+    initialise CUDA, MPS, XPU or DirectML, or it could hit the same driver."""
+    import importlib
+
+    from services import model_manager
+
+    main, system = _backend_main, _system_router
+
+    if pin_by == "env":
+        monkeypatch.setenv("OMNIVOICE_DEVICE", "cpu")
+    else:
+        monkeypatch.delenv("OMNIVOICE_DEVICE", raising=False)
+        monkeypatch.setattr(
+            "core.prefs.resolve",
+            lambda key, **kw: "cpu" if key == "compute_device" else kw.get("default"),
+        )
+    live_caps = importlib.import_module("core.device_caps")
+    _GPU_CALLS.clear()
+    torch = _exploding_torch()
+    modules = {"torch": torch, "torch_directml": _exploding_directml()}
+    try:
+        with patch.dict("sys.modules", modules):
+            caps = live_caps.refresh()
+            assert caps.family == "cpu"
+            assert caps.requested_family == "cpu"
+            assert caps.available_families == ("cpu",)
+            assert any("pinned" in n for n in caps.notes)
+
+            monkeypatch.setattr(model_manager, "_lazy_torch", lambda: torch)
+            assert model_manager.get_best_device() == "cpu"
+
+            assert system._probe_accelerators(torch, True) == (False, False, False, False)
+            assert main._torch_device_label() == "cpu"
+            # Background paths: /system/notifications, the capture warm-up's
+            # GPU pool sizing, and allocator cache release.
+            assert model_manager.check_device_compatibility() == (True, None)
+            monkeypatch.delenv("OMNIVOICE_GPU_WORKERS", raising=False)
+            assert model_manager._pick_gpu_workers() == 1
+            model_manager.release_device_cache()
+        assert _GPU_CALLS == []
+    finally:
+        _cleanup()
+        live_caps.detect_host_caps.cache_clear()
+
+
+def test_cpu_choice_reports_as_the_users_choice_not_a_gpu_failure():
+    """A host pinned to CPU is no longer probed, so its families are unknown.
+    The GPU report must say the user chose CPU (Settings offers Auto to go
+    back), not that CUDA failed and the driver needs an update (#4006)."""
+    from core import gpu_report
+    from core.gpu_inventory import HostGPU
+
+    pinned = device_caps.HostCaps(
+        family="cpu",
+        available_families=("cpu",),
+        notes=(device_caps.CPU_PINNED_NOTE,),
+        requested_family="cpu",
+        gpu_probe_skipped=True,
+    )
+    nvidia = (HostGPU(vendor="nvidia", name="NVIDIA GeForce RTX 4070"),)
+    cuda_build = {"kind": "cuda", "version": "2.10.0+cu128"}
+    assert gpu_report.classify_host(pinned, nvidia, cuda_build) == ("pinned_cpu", {})
+    assert gpu_report.classify_host(pinned, (), cuda_build) == ("pinned_cpu", {})
+    # A probed host with no CPU choice is never reported as pinned.
+    probed = device_caps.HostCaps(family="cpu", available_families=("cpu",))
+    assert gpu_report.classify_host(probed, nvidia, cuda_build)[0] != "pinned_cpu"

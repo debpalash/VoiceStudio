@@ -90,6 +90,7 @@ export const CHANNELS = {
   backendGetStatus: 'backend:getStatus',
   backendAcknowledgeCrash: 'backend:acknowledgeCrash',
   backendRestart: 'backend:restart',
+  backendRestartOnCpu: 'backend:restartOnCpu',
   backendSetupRuntime: 'backend:setupRuntime',
   backendCleanSetupRuntime: 'backend:cleanSetupRuntime',
   backendSetupRuntimeOnCpu: 'backend:setupRuntimeOnCpu',
@@ -761,6 +762,11 @@ export function registerIpc(
     return { ok: true };
   });
   ipcMain.handle(CHANNELS.backendRestart, () => supervisor.restart());
+  ipcMain.handle(CHANNELS.backendRestartOnCpu, async (event: IpcMainInvokeEvent) => {
+    // It changes a stored setting: only the app's own window may ask.
+    assertTrustedMainFrame(event, getMainWindow());
+    await supervisor.restartOnCpu();
+  });
   ipcMain.handle(CHANNELS.filesExtractScript, (_event, input: unknown) => extractWordScript(input));
 
   ipcMain.handle(CHANNELS.filesAuthorizeMediaTool, async (event, raw: unknown) => {

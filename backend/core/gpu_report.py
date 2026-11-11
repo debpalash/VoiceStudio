@@ -112,9 +112,13 @@ def classify_host(
     """``(state_code, params)`` — why this host is, or is not, GPU-accelerated."""
     if not caps.probe_ok:
         return "probe_failed", {}
-    if caps.requested_family == "cpu" and len(caps.available_families) > 1:
+    if caps.requested_family == "cpu" and (
+        len(caps.available_families) > 1 or getattr(caps, "gpu_probe_skipped", False)
+    ):
         # The user pinned the compute device to the CPU, so the GPU is not
         # used at all - whatever the wheel can or cannot do with the card.
+        # A pinned host is no longer probed (#4006), so its accelerators are
+        # unknown rather than absent: still the user's choice, not a failure.
         return "pinned_cpu", {}
 
     kind = build.get("kind")
