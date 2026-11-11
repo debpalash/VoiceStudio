@@ -311,7 +311,7 @@ def test_missing_phone_binaries_are_listed_only_in_a_rehearsal(tmp_path, rehears
     assert (result.returncode == 0) is ok, result.stdout + result.stderr
     assert (tmp_path / "release-assets/VoiceStudio-1.2.3-android.apk").is_file()
     if ok:
-        assert (tmp_path / "rehearsal-missing-phone.txt").read_text() == "phone binary VoiceStudio-1.2.3-ios-unsigned.ipa\n"
+        assert (tmp_path / "rehearsal-missing-phone.txt").read_text(encoding="utf-8") == "phone binary VoiceStudio-1.2.3-ios-unsigned.ipa\n"
 
 
 PHONE_ARTIFACTS = {"VoiceStudio-android-release": ("VoiceStudio.apk", "VoiceStudio.aab"),
