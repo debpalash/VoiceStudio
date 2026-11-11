@@ -76,6 +76,13 @@ if (setup || install || existing) {
     OMNIVOICE_PRELOAD_WATERMARK: '0',
   };
 }
+// If the process exits early, Playwright rejects its other launch waits too. Unhandled,
+// they end this script before electron.launch's own error, whose call log carries the
+// process's stderr and exit code (v0.5.8-beta.4 printed only 'Process failed to launch!').
+const strayLaunchWait = (reason) => {
+  if (reason?.message !== 'Process failed to launch!') throw reason;
+};
+process.on('unhandledRejection', strayLaunchWait);
 const app = await electron.launch({
   executablePath,
   args: [
@@ -88,6 +95,7 @@ const app = await electron.launch({
   env,
   timeout: 30000,
 });
+process.off('unhandledRejection', strayLaunchWait);
 try {
   const native = await app.evaluate(async () => {
     const { spawn } = process.getBuiltinModule('child_process');

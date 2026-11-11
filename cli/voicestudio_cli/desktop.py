@@ -78,6 +78,17 @@ def launcher_targets(argv):
                               for item in argv)
 
 
+def app_switches(argv, cli_options):
+    """Only ``--switches`` the CLI does not define, and no command: they are for the app.
+
+    The AppImage and .deb start this command, so Chromium, Electron and Node switches
+    given to them (``--enable-features=...``, a test driver's ``--inspect=0``) arrive
+    here and must reach the app, not fail as an unknown command.
+    """
+    return bool(argv) and all(
+        item.startswith('--') and item.split('=', 1)[0] not in {'--', *cli_options} for item in argv)
+
+
 def launcher_config() -> Path:
     # Separate from HTTP credentials: corrupt connection settings must not block launch.
     return config_path().with_name('desktop.json')

@@ -177,22 +177,23 @@ def test_spell_out_keeps_devanagari_vowel_sign_with_its_base():
 
 
 def test_spell_out_long_combining_run_is_linear_time():
-    # A run of combining marks must stay O(n): quadrupling the input may not
-    # cost much more than ~4x (repeated ``units[-1] += ch`` costs ~16x).
+    # A run of combining marks must stay O(n): an 8x longer input costs ~8x,
+    # while repeated ``units[-1] += ch`` costs ~64x. The 24x limit leaves wide
+    # margin both ways, so shared-runner noise cannot fail a linear build.
     import time
 
     def best(n):
         payload = "a" + "े" * n
         runs = []
-        for _ in range(3):
+        for _ in range(5):
             t0 = time.perf_counter()
             out = spell_out(payload)
             runs.append(time.perf_counter() - t0)
         assert out == payload  # one base, all marks attached: a single unit
         return min(runs)
 
-    small, large = best(100_000), best(400_000)
-    assert large < max(small, 0.005) * 9, (small, large)
+    small, large = best(50_000), best(400_000)
+    assert large < max(small, 0.005) * 24, (small, large)
 
 
 def test_spell_out_does_not_fuse_separate_tokens():

@@ -564,3 +564,7 @@ Thank you to everyone who sends code, reports, translations and ideas. [All cont
 </p>
 
 <p align="center"><a href="https://discord.gg/bzQavDfVV9"><img src="docs/assets/discord-community.svg" alt="Come say hello! Join us on Discord" height="64" /></a></p>
+
+**Disclaimer**
+
+VoiceStudio users are strictly prohibited from using it for unauthorized voice cloning, voice impersonation, fraud, scams, or any other illegal or unethical activities. All users shall ensure full compliance with applicable local laws, regulations, and ethical standards. The developers assume no liability for any misuse of VoiceStudio and advocate for responsible AI development and use, encouraging the community to uphold safety and ethical principles in AI research and applications.

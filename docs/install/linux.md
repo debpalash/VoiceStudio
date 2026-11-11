@@ -286,7 +286,9 @@ process errors, start the app once with Chromium's GPU acceleration disabled:
 
 On Wayland sessions you can also try forcing X11 (XWayland) with
 `--ozone-platform=x11`. If either flag helps, report your distribution, desktop
-and GPU driver in a GitHub issue.
+and GPU driver in a GitHub issue. Other Chromium or Electron switches given to
+the AppImage, or to `voicestudio` without a command, also go to the app, except
+the command's own options such as `--version` and `--help`, which it runs itself.
 
 ## .deb ffprobe conflict
 

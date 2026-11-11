@@ -386,6 +386,10 @@ bun run check:electron
 bun run --cwd electron build
 bun run --cwd electron test:desktop-ui
 
+# The bundled `voicestudio` command, built as installers build it (needs uv).
+# The Desktop UI job runs this on all three systems.
+node electron/tests/cli-bundle-smoke.mjs
+
 # Offline renderer smokes (what CI runs): start the smoke server, then the runner.
 # New *-smoke.mjs files are classified automatically (chromium = runs here,
 # *-real-smoke = needs a live backend, _electron = drives the real app);

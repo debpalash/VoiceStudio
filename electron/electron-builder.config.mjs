@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { packageNativeHelper } from './native-helper-build.mjs';
 import { packageCli } from './cli-bundle.mjs';
 import { debMaintainerScripts } from './packaging/deb-scripts.mjs';
+import { assertBundleSymlinks } from './packaging/bundle-symlinks.mjs';
 import { finalizeOmnivoiceTts, omnivoiceTtsResources, signMac } from './omnivoice-tts-bundle.mjs';
 import { repairSnapArtifacts } from './snap-template-payload.mjs';
 import { signMasRuntime } from './mas-runtime-bundle.mjs';
@@ -221,6 +222,8 @@ export default {
     await packageCli(context);
     await packageNativeHelper(context);
     finalizeOmnivoiceTts(context);
+    // Before signing: a broken or escaping link fails here with its name.
+    assertBundleSymlinks(context.appOutDir);
   },
   ...(DISTRIBUTION_TARGET === 'snap-store'
     ? { afterAllArtifactBuild: ({ artifactPaths }) => repairSnapArtifacts(artifactPaths) }
