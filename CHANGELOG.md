@@ -8,7 +8,15 @@ metadata and the backend fallback mirror it.
 
 ## [Unreleased]
 
-**AMD and Intel GPUs now speed up OmniVoice, and setup gets far more forgiving.** OmniVoice GGUF runs on AMD, Intel and NVIDIA GPUs through Vulkan on Windows and Linux, dots.tts arrives on Windows with no Python setup, and a failing PyTorch download or a broken GPU no longer leaves you without a working app.
+## [0.5.8] — 2026-11-12
+
+**OmniVoice now uses your AMD, Intel or NVIDIA GPU, and VoiceStudio gets much harder to break.** OmniVoice GGUF runs on any Vulkan GPU on Windows and Linux, sizes its model to your card and can stay loaded between requests (opt-in, Settings → Performance), and Intel Arc GPUs run OmniVoice too. When something goes wrong, the app now keeps going: setup offers a much smaller CPU build when the PyTorch download keeps failing, retries stalled downloads, and VoiceStudio moves to the CPU with a notice when the GPU fails. On Windows, models load one file at a time to avoid a crash on first launch, and an engine crash names the library behind it and offers Restart on CPU.
+
+This release also brings dots.tts voice cloning to Windows with no Python setup, Convert that keeps your delivery and takes video, dubbing that exports subtitles first and moves lines between speakers, a `voicestudio` terminal command, background updates, a new macOS installer window, and hundreds of fixes to dubbing, setup, audiobooks and the phone apps.
+
+![The new macOS installer window: drag VoiceStudio to Applications (preview built from the installer's own background and icons)](https://raw.githubusercontent.com/debpalash/VoiceStudio/main/docs/assets/releases/0.5.8-beta.5-macos-installer.png)
+
+*The new macOS installer window (#4001).*
 
 **Download**
 
@@ -22,16 +30,19 @@ metadata and the backend fallback mirror it.
 | Android | [APK](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-android.apk) · [AAB](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-android.aab) |
 | iPhone | [Unsigned IPA](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-ios-unsigned.ipa) (sideload with your own Apple ID) |
 
-**Upgrading:** Install over your existing app; voices, projects and settings are kept.
+**Updating from 0.5.7:** Take the in-app update offered by 0.5.7, or install over your existing app; voices, projects and settings are kept. On first launch the local runtime updates its packages in place, including the PyTorch 2.10 security update (#3884)
+
+**Updating from a 0.5.8 beta:** Nothing to do: the Beta channel rolls forward onto 0.5.8 automatically. To stop getting betas, switch to Stable in Settings → Updates → Update channel.
+
+**Running from source:** The Gradio demo and model training are no longer installed by default; add the `ui` or `train` extra if you use them (#4027)
 
 **Highlights**
 
-- OmniVoice GGUF uses AMD, Intel and NVIDIA GPUs through Vulkan on Windows and Linux
-- dots.tts voice cloning now runs on Windows through audio.cpp, with no Python setup
-- Convert can keep your delivery, changing only the voice
-- Dubbing exports subtitles before dubbing and moves lines between speakers
-- Setup falls back to the CPU build when PyTorch downloads fail, and the app falls back to the CPU when the GPU fails
-
+- OmniVoice GGUF uses AMD, Intel and NVIDIA GPUs through Vulkan on Windows and Linux, and Intel Arc GPUs run OmniVoice
+- Setup falls back to a smaller CPU build when PyTorch downloads fail, and the app falls back to the CPU when the GPU fails
+- Windows loads models one file at a time, and an engine crash names its cause and offers Restart on CPU
+- dots.tts voice cloning runs on Windows through audio.cpp, with no Python setup
+- Convert can keep your delivery and takes video; Dubbing exports subtitles first and moves lines between speakers
 
 ### Changed
 
@@ -44,14 +55,14 @@ metadata and the backend fallback mirror it.
 - OmniVoice GGUF can keep its runtime loaded between requests to skip the reload before each generation, as an opt-in under Settings → Performance (#3965, #3654)
 - The audio.cpp runtime updates to v0.9.4; installed Breeze-TTS-2, dots.tts and Sortformer models keep working without a re-download, and the previous runtime keeps running them until you install the update (#3129)
 - Updates now download in the background and install when you quit, with a compact title-bar pill for progress, Restart and Retry, clearer error messages and a restart prompt when work is running (#3928)
-- The top bar is more compact: the account button is just your profile photo, or a person icon when signed out, and the GitHub star count is shortened (#3922).
-- Product analytics moved from PostHog to Supermetry, still only after a yes at the first-run prompt, and now also records which engine ran each generation and transcription. (#3902)
-- Restyled Settings → VoiceStudio account to match the home page: one account card with your plan and storage, the email shown once, and a storage bar visible at 0%. (#3885)
+- The top bar is more compact: the account button is just your profile photo, or a person icon when signed out, and the GitHub star count is shortened (#3922)
+- Product analytics moved from PostHog to Supermetry, still only after a yes at the first-run prompt, and now also records which engine ran each generation and transcription (#3902)
+- Restyled Settings → VoiceStudio account to match the home page: one account card with your plan and storage, the email shown once, and a storage bar visible at 0% (#3885)
 - Account sign-in is available in every build, still off until you turn it on, and now starts on the VoiceStudio dashboard with a separate Sign up option (#3850)
 - The Pro page in the app now shows the correct $199 Lifetime price (#3831)
-- Mac releases use an Apple API key for notarization instead of an account password. (#3775) — thanks @velixio!
+- Mac releases use an Apple API key for notarization instead of an account password (#3775) — thanks @velixio!
 - Source development now prepares the local API environment before launching Electron (#3637)
-- Remove obsolete screenshot and source-archive helpers that targeted the retired UI layout. (#3623)
+- Remove obsolete screenshot and source-archive helpers that targeted the retired UI layout (#3623)
 - Removed unused development tools (pytest-cov, Turborepo and a duplicate TypeScript) from the repository and fixed the remaining broken documentation links (#3571, #2603, #2903) — thanks @themrbeasley and @marciok!
 - Workflows open at /workflows framed to their steps, Calls opens at /calls, and an unknown address shows Page not found (#3547)
 - Projects lists projects under All projects with voices, transcripts, takes and exports grouped under Library; saving a dub now lives in Dubbing (#3547)
@@ -77,14 +88,14 @@ metadata and the backend fallback mirror it.
 - Tools > Sound effects generates sound effects from a text description with the opt-in MOSS-SoundEffect v2.0 engine (NVIDIA GPU, Apache-2.0, desktop and web only; installs only when you click Install) (#3577)
 - The Nix flake can now build and run the Linux app with `nix run .`, keeps the NixOS FHS shell, and adds an Apple Silicon dev shell (#2699) — thanks @eaves-dropper!
 - Clone and Design now render at each engine's best quality by default, and offer faster settings with a time estimate only when a take is measured to be slow on your computer (#3929)
-- Add GUI selection and bounded discovery of existing Python environments with explicit confirmation and consent-gated dependency repair. (#3701) — thanks @EriconYu!
-- While signed in with account features on, the app sends a periodic check-in with its name, version and operating system; it stops on sign-out or when account features are off. (#3892)
-- The first-run setup screen shows the detected GPU and whether the install uses Metal, CUDA, ROCm or the CPU build. (#3891)
-- The first-run setup screen shows the app version and channel, offers a pending update before the runtime download, and keeps install help visible. (#3890)
+- Add GUI selection and bounded discovery of existing Python environments with explicit confirmation and consent-gated dependency repair (#3701) — thanks @EriconYu!
+- While signed in with account features on, the app sends a periodic check-in with its name, version and operating system; it stops on sign-out or when account features are off (#3892)
+- The first-run setup screen shows the detected GPU and whether the install uses Metal, CUDA, ROCm or the CPU build (#3891)
+- The first-run setup screen shows the app version and channel, offers a pending update before the runtime download, and keeps install help visible (#3890)
 - An available desktop update can be downloaded and installed from a notice on any screen, including first-run setup, and update errors read plainly instead of showing raw server responses (#3881)
 - Development cleanup removes project dependencies, environments, build outputs and default app data, with a dry-run preview (#3877)
 - Dub, batch dub and Tools → Translate offer Kabyle (Taqbaylit) as a translation target (#3740) — thanks @Aksel103!
-- Add per-engine local model folders with authorized discovery, compatibility checks and non-destructive default reset. (#3702) — thanks @EriconYu!
+- Add per-engine local model folders with authorized discovery, compatibility checks and non-destructive default reset (#3702) — thanks @EriconYu!
 - Clone takes can be saved as MP3 as well as WAV from the save button's format menu (#3694) — thanks @lucassmonn!
 - Audiobook and Stories scripts take a per-line `[emotion:...]` direction (one line scared, the next excited) on IndexTTS2, CosyVoice 3 and VoxCPM2; other engines and the phone apps skip the tag instead of reading it aloud (#3664) — thanks @sidmax7!
 - Settings → Account has a Refresh button that reloads your profile and plan (#3850)
@@ -93,11 +104,11 @@ metadata and the backend fallback mirror it.
 - Crash reports now show what was running and how much memory was free, so out-of-memory crashes are easy to spot (#3844)
 - Install and startup failures now name a cause, show the fix first and fill in their own bug report; setup warns about Smart App Control and tests Python before the large download (#3810)
 - Add an Arch Linux development source package with package-managed updates (#3771)
-- Add Android release updates through Obtainium and a publisher-operated F-Droid repository. (#3765)
-- Prepare a bundled, signed runtime and persistent folder grants for private Mac App Store validation. (#3755)
-- Allow explicit external TestFlight beta uploads while keeping internal testing as the default. (#3749)
-- Let Android and iOS users try models below the recommended RAM, with clear warnings and the existing licence and download checks. (#3738)
-- Add native Donate, Pro information and Other Apps pages to iOS and Android, with offline artwork and translated copy. (#3728)
+- Add Android release updates through Obtainium and a publisher-operated F-Droid repository (#3765)
+- Prepare a bundled, signed runtime and persistent folder grants for private Mac App Store validation (#3755)
+- Allow explicit external TestFlight beta uploads while keeping internal testing as the default (#3749)
+- Let Android and iOS users try models below the recommended RAM, with clear warnings and the existing licence and download checks (#3738)
+- Add native Donate, Pro information and Other Apps pages to iOS and Android, with offline artwork and translated copy (#3728)
 - Opt-in Settings switch fills [pause] markers and audiobook gaps with the take's own room tone instead of digital silence (#3615, #3611) — thanks @carmoe-prog for the idea!
 - OmniVoice GGUF uses AMD, Intel and NVIDIA GPUs through Vulkan on Windows and Linux, sizes its model to the GPU, adds a model quant picker with Download, and offers a one-time Use GPU prompt when PyTorch has no GPU (#3615, #3599) — thanks @dutch2005!
 - Galician (Galego) is now available as an app language on desktop and mobile (#3594) — thanks @B1NAR10!
@@ -118,39 +129,18 @@ metadata and the backend fallback mirror it.
 ### Docs
 
 - Document experimental Intel Mac Radeon inference and its current integration limits (#4014) — thanks @khawajaJunaid!
-- Removed the README star celebration and added spacing below the sponsor logos (#3975)
-- Updated Spicrawl sponsor links to open its landing page while preserving referral tracking (#3862)
+- README sponsor credits link strategic sponsors to their repositories, add Spicrawl as a special sponsor, align and space the logos, and direct inquiries to sponsor@voicestudio.sh; the star celebration is removed (#3674, #3717, #3721, #3862, #3975)
 - Added an install issue tracker that lists known problems by severity and fix status (#3838)
-- Showcased community video tutorials in the README (#3809)
-- Added Pro and Cloud links to README navigation (#3808)
-- Polished the README Discord community badges (#3807)
-- Added a prominent Discord badge above README platform downloads (#3800)
-- Moved the README Discord badge beside the views badge (#3799)
-- Highlighted the Discord community and enlarged the README tagline (#3798)
-- Simplified the README header text (#3797)
-- Compacted the README header and language navigation (#3796)
+- The READMEs showcase community video tutorials, including Nafay 3D's (#3735, #3809)
+- The README has a compact header with flat badges, the Trendshift badge, Discord, Pro and Cloud links and tidy language links, a larger headline describing VoiceStudio as an AI voice studio for every device, clear download actions and illustrated feature guides (#3653, #3658, #3659, #3660, #3676, #3677, #3691, #3693, #3796, #3797, #3798, #3799, #3800, #3807, #3808)
 - Expanded the README to 20 languages with consistent installation commands, guides and language navigation (#3791)
 - Celebrated 100,000 GitHub stars and thanked the community in all five READMEs (#3790)
 - Organize platform install methods, add Homebrew and keep Docker data on its volume (#3774)
 - Add AUR downloads and yay/pacman installation instructions to all READMEs (#3773)
 - Remove superseded implementation plans and index current guides, roadmap and retained design references (#3768)
-- Link to Nafay 3D's community VoiceStudio video tutorial at the bottom of the English and translated READMEs. (#3735)
-- Aligned the special-sponsor logo with the centered README sponsor credits. (#3721)
-- Linked strategic-sponsor logos to their GitHub repositories and added Spicrawl as a special sponsor. (#3717)
-- Align the README header icon vertically with the VoiceStudio title (#3693)
-- Enlarge the README headline, feature summary and device summary with a descending type hierarchy (#3691)
 - Feature OpenGTM, Opal and Supermetry as strategic sponsors and introduce their open-source projects in the README (#3687)
-- Place language links after the main navigation in all README headers (#3677)
-- Move README language links above the title and enlarge the header sponsor logo (#3676)
-- Direct README sponsorship inquiries to sponsor@voicestudio.sh (#3674)
 - Refresh the README and store screenshots with the default dark theme, a framed feature tour and lighter galleries (#3665)
-- Make the README platform comparison fit phone, tablet and desktop widths without sideways scrolling (#3663)
-- Add flat rose platform icons to the README download tables (#3662)
-- Group the Snap Store badge with Linux downloads under Platforms in the READMEs (#3661)
-- List laptops, desktops, servers, phones and tablets in the README device line (#3660)
-- Describe VoiceStudio as an AI voice studio in the README headlines (#3659)
-- Restore the official Trendshift ranking badge in the README headers (#3658)
-- Refresh the README with a compact header, flat badges, clear download actions and illustrated feature guides (#3653)
+- README download tables have flat platform icons, group the Snap Store badge with Linux, and fit phone and tablet widths without sideways scrolling (#3661, #3662, #3663)
 - The README and Linux install guide link straight to VoiceStudio on the Snap Store (#3649)
 - The project structure guide counts the current number of backend service modules (#3610)
 - Translated READMEs (Chinese, Japanese, Korean, Russian) follow the new layout (#3604)
@@ -187,7 +177,7 @@ metadata and the backend fallback mirror it.
 - Apple Silicon speech requests now retry cleanly when a native Qwen stream is using the MLX model (#3981) — thanks @kellerkind84!
 - CosyVoice 3 GGUF now explains why it is unavailable (runtime, model files or device probe) and falls back to the runtime's CPU path when the Vulkan probe fails (#3980)
 - Older NVIDIA cards (GTX 900/1000 series) now get an accurate explanation and a pointer to the Vulkan engines instead of advice to install a cu128 PyTorch build (#3978)
-- Storage, setup download and wheel prefetch sizes move to the next unit instead of showing "1024 KB" or "1024 MB" (#3972) — thanks @kevin9327!
+- Sizes in Settings, Storage, setup downloads and wheel prefetch move to the next unit instead of showing "1024 KB" or "1024 MB" (#3733, #3972) — thanks @kevin9327!
 - Dubbing now tells you which speakers had too little clean speech to clone and use the default voice, and shows transcription warnings such as a missing diarization model (#3419, #3971)
 - Dubbing now retries a failed background separation on a lighter setting and then on the CPU, and tells you right away if the original background could not be kept (#3751, #3970)
 - Voice cloning decodes non-WAV references for add-on engines and keeps cached source paths relative (#3709, #3958) — thanks @samay-hash!
@@ -198,7 +188,7 @@ metadata and the backend fallback mirror it.
 - Updates no longer leave a second copy of the installed update (about 270 MB) in the updater cache; a downloaded newer update is kept (#3939)
 - Sidebar tabs such as Design and Saved no longer cut off to a single letter next to the macOS window buttons (#3926)
 - MCP tools now say why VoiceStudio refused a request, such as a model licence to accept, instead of a bare HTTP status, with secrets and home paths removed (#3916) — thanks @meosbrand!
-- The Windows uninstaller now offers (default No) to also delete the downloaded runtime and models, keeping your voices and projects. (#3911)
+- The Windows uninstaller now offers (default No) to also delete the downloaded runtime and models, keeping your voices and projects (#3911)
 - Generate Dub and Batch no longer stop with "Choose a supported language" for Chinese (Simplified) or Chinese (Traditional) on engines that speak Chinese (#3685, #3883) — thanks @victorberinde2-debug!
 - The Snap now starts under XWayland by default instead of crashing on native Wayland (set `VOICESTUDIO_SNAP_OZONE_PLATFORM=wayland` to opt back in), and its dictation shortcut helper loads again (#3878, #3879)
 - MOSS-TTS-Nano loads and speaks again with transformers 5 (Docker and app installs) instead of failing to load or producing NaN audio (#3851) — thanks @kanakhinyegor-glitch!
@@ -212,11 +202,11 @@ metadata and the backend fallback mirror it.
 - Source checkouts in a non-ASCII folder on Windows (for example a Thai `cp874` system) now run `bun run dev` and `bun run setup:api` instead of failing to start Python (#1783, #3726) — thanks @Taksin014!
 - Resuming a long audiobook now shows every finished chapter instead of stopping the count at 500 (#3562) — thanks @HelloWorld3326!
 - Inline pronunciation overrides such as [[route|route]] now win over the pronunciation dictionary and are honored in audiobook chapters, which re-render once where they were read out wrongly (#3561) — thanks @HelloWorld3326!
-- Reset and Remove all data never delete a shared model cache, or your data, when the two folders are the same place or one sits inside the other (#3512) — thanks @Pates2004!
+- Reset, Remove all data and uninstall cleanup never delete a shared model cache or your data when the folders are the same, nested, lookalikes or linked (#3512) — thanks @Pates2004!
 - Clear stale synthesis and model-selection warnings after all required model licences are accepted (#3910)
 - A backend that exits without a traceback now explains itself: the report carries its last 20 stderr lines, hard exits name their caller, and idle model release can no longer end the process (#3904)
 - Desktop updates keep working when GitHub release downloads fail, by retrying through the GitHub API; a failed update check retries within an hour instead of six, and a stalled download is cancelled and retried (#3899)
-- Updated PyTorch to 2.10 to close a remote-code-execution flaw in checkpoint loading (CVE-2026-24747); AMD Linux GPU installs now use ROCm 7.1. (#3884)
+- Updated PyTorch to 2.10 to close a remote-code-execution flaw in checkpoint loading (CVE-2026-24747); AMD Linux GPU installs now use ROCm 7.1 (#3884)
 - Settings → Updates shows the current channel clearly, retries when GitHub briefly fails to respond, and no longer leaves Releases or Database backup loading forever (#3881)
 - Importing a shared project bundle no longer fails with a bogus "invalid project archive" on Windows when its title needs characters outside the system code page (#3871) — thanks @RerankerGuo!
 - IndexTTS honors requested generation seeds inside its inference worker (#3870) — thanks @swax!
@@ -233,12 +223,11 @@ metadata and the backend fallback mirror it.
 - Install matching Linux ROCm Torch for supported sidecars and report their effective AMD routing (#3787) — thanks @dutch2005!
 - Model install time estimates move to the next unit when rounding up reaches it (#3763) — thanks @kevin9327!
 - Preserve dub separation failure diagnostics, including interrupted progress, while redacting private paths (#3762) — thanks @DPhngNam!
-- Byte sizes in Settings move to the next unit when rounding reaches 1024, so you no longer see "1024 MB" (#3733) — thanks @kevin9327!
 - Backend deaths from an external kill (exit code 4294967295 / -1) are now explained as a termination from outside the app instead of a bare crash code (#3727) — thanks @meutex!
 - Relative times in the voice library move to the next unit when rounding reaches it, so you no longer see "60 minutes ago" (#3719) — thanks @kevin9327!
 - On Windows, crash reports, account settings and the PyTorch build choice are saved reliably even while antivirus is scanning the file (#3708) — thanks @samay-hash!
 - Dictation now ends a Chinese or Japanese sentence with its full stop when it closes on a bracket or quote (#3703) — thanks @kevin9327!
-- Clarify first-run app, runtime and model setup and show platform-specific disk requirements. (#3700) — thanks @EriconYu!
+- Clarify first-run app, runtime and model setup and show platform-specific disk requirements (#3700) — thanks @EriconYu!
 - OmniVoice dubs into Arabic, Chinese and Kurdish instead of stopping with "Choose a supported language" after translation (#3692, #3651) — thanks @hkarmoush!
 - OpenAI-compatible transcriptions no longer fail with HTTP 500 when MLX Whisper reports NaN or infinite segment scores (#3678) — thanks @filip-gooddata!
 - /health names the device the active engine generates on (vulkan, cuda, rocm, xpu, mps or cpu) and the engine itself, without reporting an unverified native device as cpu (#3675) — thanks @dutch2005!
@@ -249,7 +238,7 @@ metadata and the backend fallback mirror it.
 - The setup GPU check no longer tells NVIDIA users to update a driver that already qualifies; it names the CPU or ROCm PyTorch build instead (#3657) — thanks @ColinCee!
 - English keeps a space-grouped number like 10 000 whole instead of speaking "ten" and leaving "000" behind (#3656) — thanks @kevin9327!
 - Windows Smart App Control and other launch blocks during engine setup now name the blocked program instead of a bare "spawn UNKNOWN" (#3652) — thanks @ColinCee!
-- Keep native Vulkan GPU discovery working when hidden Windows full reports hang, and require the Windows Vulkan release payload. (#3648) — thanks @dutch2005!
+- Keep native Vulkan GPU discovery working when hidden Windows full reports hang, and require the Windows Vulkan release payload (#3648) — thanks @dutch2005!
 - Diarisation models that need licence acceptance, such as Sortformer, now show the licence button so you can accept it (#3642, #3647) — thanks @hkarmoush!
 - Source startup now explains when Node.js is too old and how to upgrade before setup or Electron downloads (#3854) — thanks @velixio!
 - Signing out of your VoiceStudio account always forgets it on this device, even offline (#3850)
@@ -257,28 +246,26 @@ metadata and the backend fallback mirror it.
 - AMD cards that need a remap now work on Linux from the first run, and a ROCm install stays selected across launches and updates (#3843)
 - Dubbing no longer turns an unlisted language tag into a different language: Filipino stays Filipino, Estonian stays Estonian, and unknown tags stay unknown instead of becoming Finnish or Spanish (#3834) — thanks @teehihi!
 - Creating workflows and other content no longer fails when VoiceStudio is opened over plain HTTP on a LAN (#3827) — thanks @mertkayacs!
-- Setup detects stalled downloads, offers diagnostic logs and support links, and allows more time for large package downloads. (#3785)
+- Setup detects stalled downloads, offers diagnostic logs and support links, and allows more time for large package downloads (#3785)
 - Android voice cloning shows progress and keeps Cancel visible while protecting the selected recording (#3782)
 - Backend launch tests model supported hosts explicitly so Intel Mac packaging can finish its checks (#3754)
 - Mac App Store packages use the bundle identifier registered for VoiceStudio Pro for Mac (#3753)
 - Phone model downloads resume with background transfers, parallel ranges, automatic retries, and visible percentage, speed and time remaining (#3752)
-- Fix iOS store upload by using a Share extension identifier accepted by App Store validation. (#3744)
-- Fix iOS store export by signing the workspace widget with its registered App ID. (#3743)
-- Fix iOS store signing with the registered Share extension and App Group, and bundle required privacy declarations. (#3742)
+- iOS store builds sign, export and upload: the Share extension, widget and App Group use their registered identifiers, and the required privacy declarations are bundled (#3742, #3743, #3744)
 - When the backend never answers and prints nothing, the error now quotes the backend's own log from that launch, so you can see where startup stalled (#3724) — thanks @meutex!
-- Restored mobile Speech and Gallery, expanded offline voice models, and skipped runtime CI for documentation/test-only changes. (#3715)
+- Restored mobile Speech and Gallery, expanded offline voice models, and skipped runtime CI for documentation/test-only changes (#3715)
 - Moving the data folder to a new location no longer fails with "identity_unavailable" on Linux, where a same-tick folder check could not see its own change (#3706) — thanks @samay-hash!
 - ASR engine rows show localized setup guidance, including NeMo’s installation warning, and name Settings → Models (#3643)
 - Startup reports blocked Python executables without automatically reinstalling intact runtimes (#3640)
-- Fix Windows installer process detection using CIM executable paths. (#3636)
+- Fix Windows installer process detection using CIM executable paths (#3636)
 - Safely move app data into existing empty folders or mounted drives, rejecting nested destinations and preserving unrelated files during rollback (#3631) — thanks @DeryFerd!
 - Use a searchable, keyboard-accessible preset voice picker with themed menus (#3630) — thanks @DeryFerd!
-- Handle native process exit races, preserve network error diagnostics and stabilize deferred UI cleanup and screenshot-test sheet transitions. (#3629)
-- Prevent spurious permission errors when timed-out operations finish cleanup on macOS. (#3626)
-- Keep portrait search results available and disabled while another portrait is saving. (#3625)
-- Prevent Windows updates from mistaking sibling folders or the installer for a running app. (#3624) — thanks @majalali83!
-- Keep regional model downloads eligible for automatic endpoint failover and reject mirrors without usable download metadata. (#3622)
-- Prevent startup crashes from incorrectly encoded environment files. (#3621)
+- Handle native process exit races, preserve network error diagnostics and stabilize deferred UI cleanup and screenshot-test sheet transitions (#3629)
+- Prevent spurious permission errors when timed-out operations finish cleanup on macOS (#3626)
+- Keep portrait search results available and disabled while another portrait is saving (#3625)
+- Prevent Windows updates from mistaking sibling folders or the installer for a running app (#3624) — thanks @majalali83!
+- Keep regional model downloads eligible for automatic endpoint failover and reject mirrors without usable download metadata (#3622)
+- Prevent startup crashes from incorrectly encoded environment files (#3621)
 - CosyVoice and the desktop bridge pick up hydra-core 1.3.8 and rustls 0.23.46; installed CosyVoice asks for one repair and keeps its model (#3615, #3597, #3598)
 - Android phones download models through hf-mirror.com CDN subdomains like iPhones do, and both refuse redirects to non-standard ports (#3615, #3609) — thanks @DeryFerd!
 - The backend no longer fails to start on Windows when a system tool prints characters the locale can't decode (#3615, #3612) — thanks @hachmit87-lab for the report!
@@ -300,13 +287,12 @@ metadata and the backend fallback mirror it.
 - Dubbed lines now start on detected speech, so a sigh, breath or footstep before a line no longer makes it start early, and trailing breaths no longer pad its slot (#3573, #3419)
 - VoxCPM2 generates again on NVIDIA GPUs when it runs in the main engine, instead of failing every time with a CUDA graph assertion (#3571, #3567) — thanks @Fguarien!
 - The OmniVoice GGUF engine now works out of the box: Windows, Apple Silicon and Linux installers ship its native runtime (#3569, #2780) — thanks @DestinyQJY and @chiarorosa!
-- OmniVoice on an older NVIDIA GPU that the installed PyTorch has no kernels for now shows as running on the CPU and gets the CPU time allowance, so slow renders are not cut short (#3565, #3067)
 - When Windows Smart App Control, an application control policy or an antivirus blocks one of the engine's files, the error names the blocker and VoiceStudio no longer re-downloads the runtime (#3557, #3209, #3224) — thanks @ark2006aug13-byte and @pauloerv-sketch!
 - First-run setup downloads large wheels such as the Windows CUDA `torch` over several connections and resumes them after Cancel or Retry, instead of crawling at about 1 MB/s on networks that limit each connection (#3557, #3411, #3060, #3202) — thanks @justcallme-A and @hadialshaer!
 - The app no longer crashes with an "insertBefore" error when browser page translation or an extension changes the page (#3555, #3168) — thanks @wwwfelipe29-ai!
 - An engine install that needs a C++ compiler, such as CosyVoice 3, now says which build tools to install instead of blaming the network (#3553, #3423)
 - Switching Linux to the AMD ROCm build of PyTorch finishes setup instead of failing on a Pillow version conflict (#3553, #3158) — thanks @Blade-pt and @prashker!
-- Older NVIDIA GPUs that the installed PyTorch has no kernels for (such as Maxwell cards) now show as running on the CPU instead of "CUDA ready" (#3553, #3067) — thanks @BheeshamKS!
+- Older NVIDIA GPUs that the installed PyTorch has no kernels for (such as Maxwell cards) show as running on the CPU instead of "CUDA ready", and OmniVoice gets the CPU time allowance so slow renders are not cut short (#3553, #3565, #3067) — thanks @BheeshamKS!
 - Voice cloning on Mac no longer fails with "couldn't synthesize audio" after a clone without reference text (#3552, #3551) — thanks @macfluryy!
 - Opening Calls after visiting Integrations no longer crashes the Calls page (#3550)
 - Gallery switches sections in the page header, Community gains search and lists each voice once, and the saved-voice list highlights only the current voice (#3547)
@@ -346,7 +332,6 @@ metadata and the backend fallback mirror it.
 - Voice Cloning sends manually entered reference transcripts with saved voices instead of dropping them before synthesis (#3534) — thanks @isnaenihidayat!
 - Convert no longer reads short non-Latin clips (e.g. Armenian) as the wrong language: pick the source language, or it follows the target voice's language (#3534) — thanks @YuraZakaryan!
 - Desktop releases now include Android and iPhone sideload downloads from the same version, without Apple signing blocking the iPhone file (#3516)
-- Prevent reset and uninstall cleanup from deleting data through lookalike or linked folders. (#3512)
 - Error banners show diagnosed problems in your language with a button that fixes them, such as installing a speech-to-text model, freeing memory or opening Storage (#3511)
 - A running Story or Audiobook render stays visible after you leave its page: the other book page and the notifications bell show its progress with Show progress and Stop, and interrupted Stories renders can be resumed (#3510)
 - Source checkouts with a missing Python environment get Retry instead of a folder picker that could not work, and installed apps never show the developer setup command (#3508)
@@ -399,32 +384,28 @@ metadata and the backend fallback mirror it.
 - The UI crawler waits for lazily loaded code before leaving a screen, and dev servers no longer send /api-reference pages to the backend, fixing a recurring CI flake (#3952)
 - CI skips heavy jobs whose exact inputs already passed, and merge-queue runs skip the Electron jobs a change cannot affect (#3933)
 - Main-process tests now run on macOS and Windows for every pull request, so platform-specific failures surface before a release (#3927)
-- Releases are refused if they carry another channel's update feed, and publishing checks that a beta never becomes the latest release. (#3898)
-- CI actions updated: setup-node 7, setup-java 6, deploy-pages 5, CodeQL 4.39.3 everywhere, Vulkan SDK and Docker login actions. (#3893, #3894, #3895, #3896, #3897)
-- Release builds retry macOS packaging when Apple's notarization service drops a connection, instead of failing the release. (#3889)
+- Releases are refused if they carry another channel's update feed, and publishing checks that a beta never becomes the latest release (#3898)
+- CI actions updated: setup-node 7, setup-java 6, deploy-pages 5, CodeQL 4.39.3 everywhere, Vulkan SDK and Docker login actions (#3893, #3894, #3895, #3896, #3897)
+- Release builds retry macOS packaging when Apple's notarization service drops a connection, instead of failing the release (#3889)
 - CI finishes sooner: Python tests run on 6 workers, Electron renderer tests reuse their test environment, and the UI crawler and accessibility smoke wait on real page readiness instead of fixed delays (#3874)
 - The iOS keyboard test no longer fails on a slow CI simulator after the keyboard is already gone (#3864) — thanks @velixio!
 - Desktop release tag builds no longer stop at startup when they call the phone release workflow (#3860)
 - Updated the Vite+ build and test toolchain to 1.5, clearing published dev-server advisories (#3858)
 - Read release notes and test fixtures as UTF-8 on Windows (#3766) — thanks @Bl0ck154!
-- Refresh the pinned Docker login action used to publish container images (#3761)
-- Refresh the pinned checkout action used by CI and release workflows (#3760)
-- Refresh the pinned Docker Buildx action used to build container images (#3759)
-- Refresh the pinned Python setup action used by CI (#3758)
-- Refresh the pinned Gradle setup action used by Android workflows (#3757)
+- Refresh the pinned checkout, Python setup, Gradle setup, Docker Buildx and Docker login actions used by CI and release workflows (#3757, #3758, #3759, #3760, #3761)
 - The iOS on-device speech test no longer fails when the small speech recognizer hears a generated "Hi" as "High" (#3852)
 - The CLA comment now links each signer's permanent signature record instead of an older pull request (#3842)
 - Pull requests with signed CLAs now get the `cla-signed` label and a comment linking the agreement and signatures automatically (#3840)
 - Retry the Android NDK and CMake install in CI when a download comes back corrupt (#3812)
 - Publish fork Docker images and registry caches under the repository owner namespace on GHCR (#3795)
-- Stabilize iOS UI checks for keyboard dismissal and gallery preset navigation. (#3746)
-- Run Apple Silicon smoke checks and native dependency builds on maintained macOS 15 runners. (#3736)
-- Reuse the existing iOS archive signing identity and keep camera hardware optional for Android store installs. (#3729)
+- Stabilize iOS UI checks for keyboard dismissal and gallery preset navigation (#3746)
+- Run Apple Silicon smoke checks and native dependency builds on maintained macOS 15 runners (#3736)
+- Reuse the existing iOS archive signing identity and keep camera hardware optional for Android store installs (#3729)
 - Android Play builds prepare native runtimes and verify self-signed upload keys before internal testing (#3725)
-- Wait for the iOS keyboard Done control to become hittable before tapping it in smoke tests. (#3646)
+- Wait for the iOS keyboard Done control to become hittable before tapping it in smoke tests (#3646)
 - Validate data relocation, engine setup and preset controls together against current main (#3644)
 - Disable CodeRabbit finishing-touch repair prompts on pull requests (#3641)
-- Stabilize iOS test readiness and cold-build validation, and cover ROCm recovery and batch-language interaction. (#3634)
+- Stabilize iOS test readiness and cold-build validation, and cover ROCm recovery and batch-language interaction (#3634)
 - Four renderer smoke tests run in CI again after a test-helper move hid them from the smoke inventory (#3600)
 - The broken-link check covers CHANGELOG.md and SPONSORS.md, so a rotted link on a repository-root page fails the suite instead of going unnoticed (#3572) — thanks @AliAladraj!
 - The Linux GGUF runtime build no longer runs out of memory on CI runners (#3569, #2780)
@@ -436,6 +417,40 @@ metadata and the backend fallback mirror it.
 - iOS Home UI tests no longer break when the contributor list is reordered or a card sits under the navigation bar, building on the first fix in #3481 (#3509) — thanks @XiaoPuOuO!
 - The Electron unit tests run on Node 25+ and Homebrew Node without extra flags (#3469) — thanks @BichengWang!
 - The backend registry test expects the OmniVoice sidecar on Apple Silicon, so it passes on every host (#2697) — thanks @rollroyces!
+
+### Contributors
+
+- @debpalash, @velixio, @rudycelekli, @kellerkind84, @RerankerGuo, @adrianchen91, @EriconYu, @sidmax7,
+- @meosbrand, @dutch2005, @kevin9327, @hkarmoush, @isnaenihidayat, @swadhinbiswas, @teehihi, @ColinCee,
+- @swax, @XiaoPuOuO, @mostafa-ismail-2004, @DeryFerd, @eaves-dropper, @sdf123098, @maatitechnologies-hue, @Thakay,
+- @Bortlesboat, @DPhngNam, @HEOJUNFO, @InesZenkri, @khawajaJunaid, @lucassmonn, @meutex, @Aksel103,
+- @Bl0ck154, @filip-gooddata, @meisolated, @mertkayacs, @mrnitrox, @samay-hash, @AliAladraj, @BichengWang,
+- @Faisal-Fayaz, @jonathanwxh-cell, @mvanhorn, @NishchayMahor, @vandyahmad24, @vanshsingh3711-wq, @YuraZakaryan, @014-code,
+- @agammann, @ai-v99, @al2m, @amhanesipeace, @B1NAR10, @bee-interactive, @bercedev, @DennyHo0917,
+- @esdedev, @Felixkw12, @Fredy002, @HyperionBurn, @IvanGrigin, @Jason69628723, @li-lizhe, @nur-zaman,
+- @rollroyces, @sebas-rodri, @shamil2, @vincentfranstyo, @windery, @writer0713, @ZFzuofeng, @chiarorosa,
+- @Ayushkumarxy, @fouadSalkini, @gifmac, @HelloWorld3326, @hiiqbiz-wq, @inteligencia66, @ketpatil77, @larrytoube,
+- @Pates2004, @sedatdagg, @shubhankarkanase90-byte, @Taksin014, @victorberinde2-debug, @Vivek1898, @zichen0116, @anupamme.
+
+### Bug reporters
+
+- @acartoplu-svg, @alihosseini0171-sketch, @alonsoneto2-a11y, @appideias, @aqqqua01, @ark2006aug13-byte, @benmqs, @BheeshamKS,
+- @BichengWang, @bigbigbiggang, @Blade-pt, @charlykayo, @code-lixm, @criativisandodg-a11y, @dahaideweiba, @dctheodore,
+- @DestinyQJY, @dgronos, @DMVP2016, @dutch2005, @ed85379, @EntityinArray, @erikdrum, @Eva28189946,
+- @FelipeMadson, @Fguarien, @FR-TheFury, @glaucius-m, @hachmit87-lab, @hadialshaer, @hongocbaovinh, @hsusul,
+- @iamhrhp, @Imammahmuda1804, @IMBrandao, @iurymagano, @justcallme-A, @k-dot-greyz, @kanakhinyegor-glitch, @kishcs,
+- @lincolnmachado-sudo, @luanweslley77, @m7slm, @macfluryy, @majalali83, @marciok, @matheusnegocios2601-rgb, @meosbrand,
+- @moh1434, @Monay001, @morus246, @mostafa-ismail-2004, @mr-ahmadusman, @nahidacm, @nandorochaba, @NeverBeLazyG,
+- @oryx-system, @pao-coder66, @Papomora, @pasgaard26-sketch, @Patrix9999, @pauloerv-sketch, @pimeNtex, @plantasmedicinalesyflores-stack,
+- @prashker, @PyTuH11952, @quan0pek, @rahul05ranjan, @roadeima1999-lang, @rollroyces, @samay-hash, @sigusr1,
+- @sntuoun, @solitarywild-sketch, @superdav42, @Taylock2, @teckG, @tera-png, @themrbeasley, @thernrStudio,
+- @tigerscurrying-prog, @tonysamperi, @Triet-Nguyen, @ubzippo, @unovlad, @windery, @wwwfelipe29-ai, @XushnudbekJumayev,
+- @ylnztrkk, @ynwwilson, @zodmagus.
+
+### Feature requests and feedback
+
+- @Begalov, @carmoe-prog, @cjxxu, @EntityinArray, @Felixkw12, @HuntingSuccubus, @inverspe, @JavadZohani,
+- @keyurdungarani, @leoy2026, @osram4, @PsychoRhythmist, @tera-png.
 
 ## [0.5.8-beta.5] — 2026-11-12
 
