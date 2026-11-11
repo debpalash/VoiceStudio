@@ -264,8 +264,11 @@ def test_status_page_without_a_cpu_choice_still_finds_an_extension_npu(monkeypat
     monkeypatch.delenv("OMNIVOICE_DEVICE", raising=False)
     monkeypatch.setattr("core.prefs.resolve", lambda key, **kw: kw.get("default"))
     snapshots: list[str] = []
+    # Patch the module the router imports now, not this file's collection-time copy.
     monkeypatch.setattr(
-        device_caps, "detect_host_caps", lambda: snapshots.append("caps") or None
+        importlib.import_module("core.device_caps"),
+        "detect_host_caps",
+        lambda: snapshots.append("caps") or None,
     )
     assert system._cpu_pinned() is False
     assert snapshots == [], "the choice check must not snapshot capabilities"
