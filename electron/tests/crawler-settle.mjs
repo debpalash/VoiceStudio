@@ -94,6 +94,24 @@ export function createTraffic({ now = () => performance.now() } = {}) {
 }
 
 /**
+ * The request that stalled a click, if any. Judged only from the click's own wait, and only when
+ * that wait ended unsettled (already a failed run): a request held through the waits before a
+ * click may still finish in time, so those waits never stop a mode that could pass.
+ */
+export function stalledClick(observation, traffic, ms) {
+  return observation.settled ? null : traffic.stalled(ms);
+}
+
+/**
+ * The request still open after a route's last click, if it has been pending for `ms`. Catches a
+ * hang that no click judged because every click missed or the screen had none; a request that
+ * settled during any click is no longer in flight here.
+ */
+export function stalledRoute(traffic, ms) {
+  return traffic.stalled(ms);
+}
+
+/**
  * Whether a request counts toward the quiet window: every same-origin load except event
  * streams, which stay open by design. Not only `/api/`: lazily loaded code shares the browser's
  * six connections per host with the API, so a screen still downloading modules after the crawler

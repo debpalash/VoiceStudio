@@ -488,7 +488,9 @@ Documentation-only and test-only changes skip runtime tests, desktop/mobile buil
 and Docker image rebuilds on pull requests and pushes to `main`. The required
 `Tests (backend + frontend)` check reports the explicit skip so branch protection
 still works. Mixed changes, workflow/build configuration, dependencies and bundled
-app icons still run their normal checks; unknown or truncated change lists run
+app icons still run their normal checks, as do changes to the UI crawler's
+harness (`CI_HARNESS` in `.github/scripts/ci_scope.py`), so the crawler job checks
+its own changes; unknown or truncated change lists run
 all checks. Manual runs and scheduled audits remain full runs. CLA, commit identity
 and secret scanning still run. The same skip applies while a pull request's
 opener has not signed the CLA (see [Contribution licensing](#contribution-licensing)). Run changed tests locally before submitting a
