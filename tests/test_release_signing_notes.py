@@ -164,6 +164,9 @@ def test_signpath_signing_is_gated_pinned_and_precedes_feed_and_checksums():
         assert needed in gate
     assert "ELECTRON_WINDOWS_CSC_LINK" in gate  # an own certificate wins
 
+    # SignPath's github-token needs actions: read; keep everything else read-only.
+    assert build["permissions"] == {"contents": "read", "actions": "read"}
+
     steps = build["steps"]
     names = [s.get("name") for s in steps]
     sign_steps = [s for s in steps if s.get("name", "").startswith(("Upload the unsigned Windows", "Sign the Windows installer with SignPath", "Replace the installer with the signed"))]

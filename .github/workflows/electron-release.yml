@@ -90,6 +90,12 @@ jobs:
 
   package:
     needs: [validate, omnivoice-tts]
+    # actions: read is what SignPath's action documents for its github-token (it
+    # reads the job and downloads the uploaded unsigned artifact); nothing else
+    # beyond the top-level contents: read.
+    permissions:
+      contents: read
+      actions: read
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 75  # three macOS build attempts when Apple drops a connection
     continue-on-error: ${{ matrix.experimental == true }}

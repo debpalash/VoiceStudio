@@ -115,8 +115,8 @@ signs nothing and behaves as before (`allow_unsigned` rules unchanged).
    </artifact-configuration>
    ```
 
-   Enforce the metadata rule: product name `VoiceStudio`, same product version
-   across builds. Set the policy origin to the GitHub trusted build system and
+   Enforce the metadata rule: product name `VoiceStudio`, and one product
+   version for all signed files within a build. Set the policy origin to the GitHub trusted build system and
    restrict it to this repository's release workflow.
 3. In GitHub, Settings, Secrets and variables, Actions:
    - Secret `SIGNPATH_API_TOKEN`: token of a SignPath user with submitter
@@ -130,15 +130,20 @@ signs nothing and behaves as before (`allow_unsigned` rules unchanged).
    Windows legs should pass "Sign the Windows installer with SignPath",
    "Replace the installer with the signed one and refresh the update feed" and
    the signature verification.
-5. Verify from the downloaded `electron-release-win32-x64` artifact on Windows:
-   `Get-AuthenticodeSignature` is `Valid` and names SignPath Foundation; the
-   `electron-*-win32-x64.yml` sha512 equals the installer's
-   (`certutil -hashfile <exe> SHA512` converted to base64); install it, then run
-   an in-app update from an older build to confirm the update (differential
-   and full) works.
-6. Then publish normally. Check that the release notes' Installer signing table
-   shows Windows as signed, and that README and the download page link here
-   (SignPath requires the words "Code signing policy" on both).
+5. Verify the downloaded workflow artifact `electron-release-win32-x64` on
+   Windows (a `publish=false` run publishes nothing, so do not test an in-app
+   update against GitHub Releases yet; it would use old assets):
+   `Get-AuthenticodeSignature` on the installer is `Valid` and names SignPath
+   Foundation; the `electron-*-win32-x64.yml` sha512 (base64) equals the
+   installer's SHA-512 and its size equals the file size; the `.blockmap` sits
+   next to it. Installing it by hand is a useful extra check.
+6. Publish normally (for example the next beta). Check that the release notes'
+   Installer signing table shows Windows as signed, and that README and the
+   download page link here (SignPath requires the words "Code signing policy"
+   on both).
+7. After that first signed publish, run the real in-app update test: update an
+   older installed build to the signed release (differential and full download)
+   and confirm it applies.
 
 Open points to settle with SignPath before applying:
 
