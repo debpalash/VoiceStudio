@@ -53,8 +53,10 @@ jobs:
   # do); ci.yml and electron-*.yml are not. pyproject.toml is not either (the
   # packaging contract parses its `readme =` key), nor uv.lock (the main process
   # bundles it and its tests read the real lock), nor backend/assets/ (the
-  # renderer smokes play its sample WAV). Merge-queue runs use the same rule
-  # against the queue commit's base.
+  # renderer smokes play its sample WAV), nor the scripts/*.py the desktop build
+  # runs or ships (freeze_cli.py builds the bundled CLI, smoke_windows_rocm.py is
+  # packaged, check_glibc_floor.py checks the package). Merge-queue runs use the
+  # same rule against the queue commit's base.
   changes:
     name: Changed paths
     needs: approve-external
@@ -117,7 +119,7 @@ jobs:
               echo "a file was deleted, renamed, copied or changed type (status check rc=$status_rc): running everything"
             else
               rc=0
-              outside=$(printf '%s\n' "$rows" | cut -f2 | grep -v -P '^(backend/(?!assets/)|omnivoice/|docs/|mobile/|\.github/ISSUE_TEMPLATE/|\.github/scripts/|\.github/[^/]+\.md$|tests/.*\.py$|scripts/[^/]+\.py$|[^/]+\.md$|Makefile$|\.github/workflows/(?!(ci|electron-[a-z-]+)\.yml$)[^/]+\.yml$)') || rc=$?
+              outside=$(printf '%s\n' "$rows" | cut -f2 | grep -v -P '^(backend/(?!assets/)|omnivoice/|docs/|mobile/|\.github/ISSUE_TEMPLATE/|\.github/scripts/|\.github/[^/]+\.md$|tests/.*\.py$|scripts/(?!(freeze_cli|check_glibc_floor|smoke_windows_rocm)\.py$)[^/]+\.py$|[^/]+\.md$|Makefile$|\.github/workflows/(?!(ci|electron-[a-z-]+)\.yml$)[^/]+\.yml$)') || rc=$?
               if [ "$rc" -eq 1 ]; then
                 electron=false
               elif [ "$rc" -eq 0 ]; then
@@ -491,11 +493,13 @@ jobs:
           path: ${{ steps.pass.outputs.path }}
           key: ${{ steps.pass.outputs.key }}
 
-  # The required check. Its name is what branch protection matches, so it stays
-  # "Tests (backend + frontend)" even though the work now runs in two jobs.
+  # The required check, and the only CI status the `main` ruleset needs: every
+  # other job in this workflow feeds it, so a failure anywhere blocks auto-merge
+  # without listing each job in the ruleset. Its name is what the ruleset matches,
+  # so it stays "Tests (backend + frontend)" although the work runs in other jobs.
   test:
     name: Tests (backend + frontend)
-    needs: [changes, test-python, test-electron, electron-smokes]
+    needs: [changes, installer, test-python, smoke-matrix, test-electron, electron-smokes, ui-crawler, linux-native-package, electron-ui, release-smoke]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -503,30 +507,41 @@ jobs:
       RUNTIME_NEEDED: ${{ needs.changes.outputs.runtime }}
       CLA_HOLD: ${{ needs.changes.outputs.cla }}
       CHANGES_RESULT: ${{ needs.changes.result }}
+      INSTALLER: ${{ needs.installer.result }}
       PYTHON: ${{ needs.test-python.result }}
+      PLATFORM_SMOKES: ${{ needs.smoke-matrix.result }}
       ELECTRON: ${{ needs.test-electron.result }}
       SMOKES: ${{ needs.electron-smokes.result }}
+      CRAWLER: ${{ needs.ui-crawler.result }}
+      NATIVE_PACKAGE: ${{ needs.linux-native-package.result }}
+      DESKTOP_UI: ${{ needs.electron-ui.result }}
+      RELEASE_SMOKE: ${{ needs.release-smoke.result }}
       ELECTRON_NEEDED: ${{ needs.changes.outputs.electron }}
     steps:
-      - name: Both test jobs passed
+      - name: Every CI job passed
         run: |
-          echo "Python: $PYTHON, Electron: $ELECTRON, smokes: $SMOKES (needed: $ELECTRON_NEEDED)"
+          echo "Installer: $INSTALLER, Python: $PYTHON, platform smokes: $PLATFORM_SMOKES"
+          echo "Electron: $ELECTRON, renderer smokes: $SMOKES, crawler: $CRAWLER, native package: $NATIVE_PACKAGE, desktop UI: $DESKTOP_UI, release smoke: $RELEASE_SMOKE (needed: $ELECTRON_NEEDED)"
+          runtime_jobs=("$INSTALLER" "$PYTHON" "$PLATFORM_SMOKES")
+          electron_jobs=("$ELECTRON" "$SMOKES" "$CRAWLER" "$NATIVE_PACKAGE" "$DESKTOP_UI" "$RELEASE_SMOKE")
           if [ "$RUNTIME_NEEDED" = false ] && [ "$CHANGES_RESULT" = success ]; then
-            for result in "$PYTHON" "$ELECTRON" "$SMOKES"; do
+            for result in "${runtime_jobs[@]}" "${electron_jobs[@]}"; do
               [ "$result" = skipped ] || exit 1
             done
             if [ "${CLA_HOLD:-}" = held ]; then
-              # Merging still needs the CLA status, and the merge queue runs everything.
+              # Merging still needs the CLA status, and main's CI runs everything after the merge.
               echo "CLA not signed yet: runtime CI skipped. Signing re-runs it automatically."
             else
               echo "Documentation/test-only change: runtime CI skipped."
             fi
             exit 0
           fi
-          [ "$PYTHON" = success ] || exit 1
+          for result in "${runtime_jobs[@]}"; do
+            [ "$result" = success ] || exit 1
+          done
           # Skipped is only acceptable when change detection said nothing in this
           # PR can affect the Electron jobs.
-          for result in "$ELECTRON" "$SMOKES"; do
+          for result in "${electron_jobs[@]}"; do
             [ "$result" = success ] || { [ "$result" = skipped ] && [ "$ELECTRON_NEEDED" = false ]; } || exit 1
           done
 
@@ -747,13 +762,14 @@ jobs:
       # into a stand-in app. v0.5.8-beta.4 failed only at release time: macOS kept a link
       # into the deleted build folder, and the Linux entry (the CLI, which AppImage starts)
       # rejected the switches the packaged smoke test launches Electron with.
+      # Release smoke runs it on macOS and Linux, next to the real packaged app.
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
-        if: steps.pass.outputs.hit != 'true'
+        if: steps.pass.outputs.hit != 'true' && runner.os == 'Windows'
         with:
           version: '0.12.13'
           enable-cache: false
       - name: Standalone CLI bundle
-        if: steps.pass.outputs.hit != 'true'
+        if: steps.pass.outputs.hit != 'true' && runner.os == 'Windows'
         run: node electron/tests/cli-bundle-smoke.mjs
 
       - name: Build Electron app
@@ -807,6 +823,158 @@ jobs:
           path: ${{ steps.pass.outputs.path }}
           key: ${{ steps.pass.outputs.key }}
 
+  # ── Release smoke (packaged app, no installers) ──────────────────────────
+  # What electron-release.yml does before publishing, minus installers, signing
+  # credentials, notarization and the GGUF runtime: build the app, run
+  # electron-builder's afterPack (bundled CLI, native helper, bundle symlink check)
+  # into an unpacked app, then the release's packaged-app checks. v0.5.8-beta.4's
+  # CLI broke only at tag time because no PR built the packaged app.
+  release-smoke:
+    name: Release smoke (${{ matrix.label }})
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.result != 'skipped' && needs.changes.outputs.electron != 'false' && needs.changes.outputs.runtime != 'false' }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The release's runners and targets (electron-release.yml `package`).
+          - { runner: ubuntu-22.04, label: Linux, platform: linux, arch: x64, target: x86_64-unknown-linux-gnu, flags: --linux --x64 }
+          - { runner: macos-15, label: macOS, platform: darwin, arch: arm64, target: aarch64-apple-darwin, flags: --mac --arm64 }
+    defaults:
+      run:
+        shell: bash
+    env:
+      VOICESTUDIO_RUST_TARGET: ${{ matrix.target }}
+      VOICESTUDIO_UPDATE_CHANNEL: electron-stable-${{ matrix.platform }}-${{ matrix.arch }}
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Inputs: everything but the phone apps, Python tests and changelog fragments;
+      # of backend/ and omnivoice/ (copied into the app as they are), the files
+      # Electron reads, plus which files exist.
+      # Skip the rest when these inputs already passed (.github/actions/ci-pass).
+      - id: pass
+        uses: ./.github/actions/ci-pass
+        with:
+          job: release-smoke-${{ matrix.label }}
+          content: |
+            . :(exclude)mobile :(exclude)backend :(exclude)omnivoice :(exclude,glob)tests/**/*.py :(exclude)changelog.d
+            backend/assets backend/core/windows_rocm backend/engines/omnivoice_gguf backend/main.py
+          names: |
+            backend omnivoice :(exclude)backend/tests
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.pass.outputs.hit != 'true'
+        with:
+          node-version: '22'
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: steps.pass.outputs.hit != 'true'
+        with:
+          bun-version: '1.4.2'
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        if: steps.pass.outputs.hit != 'true'
+        with:
+          targets: ${{ matrix.target }}
+      # Saved by main's runs, restored by pull requests (the native helper).
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        if: steps.pass.outputs.hit != 'true'
+        with:
+          workspaces: native/desktop-bridge -> target
+          key: release-smoke-${{ matrix.target }}
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+        if: steps.pass.outputs.hit != 'true'
+        with:
+          version: '0.12.13'
+          enable-cache: false
+      - name: Linux native dependencies
+        if: steps.pass.outputs.hit != 'true' && runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libxdo-dev libxtst-dev libx11-dev libxkbcommon-dev libwayland-dev libssl-dev pkg-config xvfb
+      - name: Bundle pinned uv for the host architecture
+        if: steps.pass.outputs.hit != 'true'
+        run: node electron/scripts/stage-bundled-uv.mjs
+
+      - name: Cache bun deps
+        if: steps.pass.outputs.hit != 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.bun/install/cache
+          key: ${{ runner.os }}-bun-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-bun-
+      # The Electron distribution electron-builder unpacks into the app
+      # (~100 MB per platform), keyed on the locked Electron version.
+      - name: Cache Electron downloads
+        if: steps.pass.outputs.hit != 'true'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cache/electron
+            ~/Library/Caches/electron
+          key: ${{ runner.os }}-${{ runner.arch }}-electron-${{ hashFiles('bun.lock') }}
+      - name: Install locked dependencies
+        if: steps.pass.outputs.hit != 'true'
+        run: bun install --frozen-lockfile
+
+      # The build half of `check:electron`; its typecheck, tests and packaging
+      # contract already run in Tests (Electron).
+      - name: Build Electron and the web UI
+        if: steps.pass.outputs.hit != 'true'
+        run: |
+          bun run --cwd electron build
+          bun run --cwd electron build:web
+
+      # --dir: the unpacked app every installer wraps. afterPack builds the bundled
+      # CLI (cli-bundle.mjs) and the native helper, and assertBundleSymlinks checks
+      # the bundle; macOS signs ad hoc, as an unsigned release does.
+      - name: Package the unpacked app
+        if: steps.pass.outputs.hit != 'true'
+        working-directory: electron
+        run: |
+          bun x electron-builder --config electron-builder.config.mjs ${{ matrix.flags }} --dir --publish never
+          node tests/packaging-contract.mjs --artifact
+
+      - name: macOS bundle signature is valid
+        if: steps.pass.outputs.hit != 'true' && runner.os == 'macOS'
+        run: |
+          APP=$(find electron/release -maxdepth 2 -name VoiceStudio.app -type d -print -quit)
+          test -n "$APP" || { echo "No VoiceStudio.app to verify"; exit 1; }
+          codesign --verify --deep --strict "$APP"
+
+      - name: Bundled native code must run on the Snap base (glibc <= 2.35)
+        if: steps.pass.outputs.hit != 'true' && runner.os == 'Linux'
+        run: python3 scripts/check_glibc_floor.py electron/release/linux-unpacked/resources/native
+
+      # Linux starts the public `voicestudio` entry (the bundled CLI), as the
+      # release's AppImage does; macOS starts the app itself.
+      - name: Packaged startup smoke test
+        if: steps.pass.outputs.hit != 'true'
+        working-directory: electron
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then
+            VOICESTUDIO_PACKAGED_EXE=electron/release/linux-unpacked/voicestudio xvfb-run -a node tests/packaged-smoke.mjs --setup
+          else
+            node tests/packaged-smoke.mjs --setup
+          fi
+
+      # The bundled CLI's own contract (desktop launch switches, HTTP, symlinks).
+      - name: Standalone CLI bundle
+        if: steps.pass.outputs.hit != 'true'
+        run: node electron/tests/cli-bundle-smoke.mjs
+
+      # Last: record that these inputs passed, for later runs to skip.
+      - if: steps.pass.outputs.hit != 'true' && steps.pass.outputs.record == 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.pass.outputs.path }}
+          key: ${{ steps.pass.outputs.key }}
+
   # ── Cross-platform Python runtime smoke (Phase 0 GATE-02) ───────────────
   # Loads the frozen tests/fixtures/omnivoice_data/ fixture and boots the
   # FastAPI app in-process via TestClient on macOS/Windows/Linux. Catches
@@ -815,12 +983,11 @@ jobs:
   # on Linux until Phase 1's INST-01 lands setuptools for WhisperX.
   smoke-matrix:
     name: Smoke (${{ matrix.label }})
-    # After the Python tests (the fast-failing half), not the whole test gate: waiting for
-    # the Electron jobs too left these 1-4 minute jobs idle for ~9 minutes of every run.
-    needs: test-python
-    # Internal approval is intentionally skipped; override implicit success()
-    # so that skipped ancestor does not silently skip these code checks too.
-    if: ${{ !cancelled() && needs.test-python.result == 'success' }}
+    # Beside the Python tests, not after them: Tests (Python) takes ~13 minutes, so
+    # starting after it made this the longest path of every run (~13 + 8 minutes).
+    # Same gating as Tests (Python); the required check below waits for both.
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.result != 'skipped' && needs.changes.outputs.runtime != 'false' }}
     strategy:
       fail-fast: false
       matrix:
