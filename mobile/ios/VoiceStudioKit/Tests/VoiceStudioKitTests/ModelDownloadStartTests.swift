@@ -18,7 +18,7 @@ import Testing
     let stopped = DispatchSemaphore(value: 0)
     let started = DispatchSemaphore(value: 0)
     DispatchQueue.global().async {
-        _ = gate.start { entered.signal(); release.wait() }
+        _ = gate.start { entered.signal(); _ = release.wait(timeout: .now()+30) }
         started.signal()
     }
     #expect(entered.wait(timeout: .now()+5) == .success)
