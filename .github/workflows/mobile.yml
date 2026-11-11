@@ -229,12 +229,15 @@ jobs:
 
       - name: UI smoke test
         if: steps.pass.outputs.hit != 'true'
+        # The suite takes about 30 minutes. No retry flags: on this runner a retry
+        # re-ran all 34 tests, so one failure doubled the step and pushed the job to
+        # its 90 minute limit. Each test gets a 10 minute allowance instead (the
+        # slowest takes under 5), so a hang fails that test by name and the run
+        # moves on; the step cap bounds anything the allowance cannot.
+        timeout-minutes: 50
         run: |
-          # Second line of defence behind the explicit waits in the UI tests: a test
-          # that fails is re-run once in a fresh process, and the job fails unless it
-          # then passes, so a repeatable failure still fails the build.
           xcodebuild -project mobile/ios/VoiceStudio/VoiceStudio.xcodeproj \
-            -retry-tests-on-failure -test-iterations 2 -test-repetition-relaunch-enabled YES \
+            -test-timeouts-enabled YES -default-test-execution-time-allowance 600 \
             -scheme VoiceStudio -destination "id=$SIM_UDID" \
             -resultBundlePath "$RUNNER_TEMP/ui.xcresult" \
             CODE_SIGNING_ALLOWED=NO test-without-building
