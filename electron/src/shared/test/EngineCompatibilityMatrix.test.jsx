@@ -841,6 +841,7 @@ describe('EngineCompatibilityMatrix', () => {
       num_samples: 19680,
       audio_seconds: 0.82,
       runtime_device: 'Vulkan 1: AMD Radeon RX 5500M',
+      runtime_log: 'ggml_vulkan: 1 = AMD Radeon RX 5500M | uma: 0',
     });
     render(
       <EngineCompatibilityMatrix
@@ -858,6 +859,10 @@ describe('EngineCompatibilityMatrix', () => {
         'Vulkan 1: AMD Radeon RX 5500M',
       ),
     );
+    // The runtime log is reachable by keyboard through a native disclosure.
+    expect(
+      within(panel).getByText('ggml_vulkan: 1 = AMD Radeon RX 5500M | uma: 0').closest('details'),
+    ).not.toBeNull();
   });
 
   it('does not offer Self-test on a non-TTS family (ASR)', async () => {

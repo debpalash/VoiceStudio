@@ -416,8 +416,8 @@ def _diagnostic_paths(rig, *, delay=0.0, calls=None):
 
 
 def test_selftest_runs_the_cli_without_downloading_or_the_server(rig, monkeypatch):
-    """The self-test is one bounded spawn: no weight download, no resident
-    server, and the CLI gets at most the self-test's budget."""
+    """With no server running, the self-test is one bounded spawn: no weight
+    download, no server start, and the CLI gets at most the budget."""
     calls, timeouts = [], []
     monkeypatch.setattr(rig.instance, "_resolve_quant_paths", _diagnostic_paths(rig, calls=calls))
 
@@ -466,8 +466,54 @@ def test_selftest_kills_a_cli_that_outruns_the_deadline(rig, monkeypatch):
 
     monkeypatch.setattr(subprocess, "run", fake_run)
     monkeypatch.setattr(rig.instance, "_resolve_quant_paths", _diagnostic_paths(rig))
-    with pytest.raises(RuntimeError, match="timed out after"):
+    with pytest.raises(RuntimeError, match="timed out after") as caught:
         rig.instance.selftest_generate("hello", timeout_s=5)
+    assert "OMNIVOICE_SELFTEST_TIMEOUT_S" in str(caught.value)
+    assert "GENERATE_TIMEOUT" not in str(caught.value)
+
+
+def test_selftest_says_missing_weights_are_not_installed(rig, monkeypatch):
+    """No download happens, so the advice is to install, not to retry."""
+    entry = {"base": "omnivoice-base-Q8_0.gguf", "tokenizer": "omnivoice-tokenizer-Q8_0.gguf"}
+
+    def missing(**_kw):
+        raise rig.mod.WeightsNotInstalled("Could not download ...", entry)
+
+    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", missing)
+    with pytest.raises(RuntimeError) as caught:
+        rig.instance.selftest_generate("hello", timeout_s=5)
+    message = str(caught.value)
+    assert "not installed yet" in message and "omnivoice-base-Q8_0.gguf" in message
+    assert "Could not download" not in message and "connection" not in message
+
+
+def test_selftest_uses_the_running_resident_server(rig, monkeypatch):
+    """A loaded resident model answers the self-test: no second copy in the
+    CLI, no restart, and the log is this server process's own output."""
+    log = rig.root / "logs" / "tts-server.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text("ggml_vulkan: 0 = An Earlier Server GPU | uma: 0\n", encoding="utf-8")
+    rig.instance.generate("hello")
+    proc = rig.server.process
+    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", _diagnostic_paths(rig))
+
+    audio, runtime_log = rig.instance.selftest_generate("hello", timeout_s=30, language="en")
+    assert audio.shape[0] == 1 and audio.shape[1] > 0
+    assert "Fake Vulkan GPU" in runtime_log and "Earlier Server" not in runtime_log
+    assert rig.cli_argvs == []
+    assert len(rig.events("start")) == 1 and rig.server.process is proc and proc.poll() is None
+
+
+def test_selftest_timeout_on_the_resident_server_keeps_it_loaded(rig, monkeypatch):
+    """The diagnostic never unloads the user's model, even when it times out."""
+    rig.instance.generate("hello")
+    proc = rig.server.process
+    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", _diagnostic_paths(rig))
+    rig.flag("slow_speech")
+    with pytest.raises(RuntimeError, match="OMNIVOICE_SELFTEST_TIMEOUT_S"):
+        rig.instance.selftest_generate("hello", timeout_s=0.5)
+    assert rig.server.process is proc and proc.poll() is None
+    assert rig.cli_argvs == []
 
 
 def test_each_selftest_gets_its_own_runtime_log(rig, monkeypatch):

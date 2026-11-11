@@ -25,6 +25,7 @@ export function GgufSelfTest() {
 
   const run = async () => {
     setRunning(true);
+    setResult(null);
     setFailed(null);
     try {
       setResult(
@@ -40,7 +41,7 @@ export function GgufSelfTest() {
 
   const detail = [result?.message, result?.runtime_log].filter(Boolean).join('\n') || undefined;
   return (
-    <div className="flex min-w-0 items-center gap-1.5">
+    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
       <Button size="sm" variant="ghost" disabled={running} onClick={() => void run()}>
         {running ? <LoaderCircleIcon className="animate-spin" /> : <Volume2Icon />}
         {t(running ? 'engines.selfTesting' : 'engines.selfTest')}
@@ -64,6 +65,14 @@ export function GgufSelfTest() {
             : t(result.timed_out ? 'engines.selfTestTimedOut' : 'engines.selfTestFailed')}
           {result.ok && result.runtime_device ? ` · ${result.runtime_device}` : null}
         </span>
+      )}
+      {detail && (
+        <details className="basis-full text-xs text-muted-foreground">
+          <summary className="cursor-pointer select-none">{t('common.details')}</summary>
+          <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-all font-mono text-[11px]">
+            {detail}
+          </pre>
+        </details>
       )}
       {failed && (
         <span role="alert" title={failed} className="text-xs font-medium text-destructive">

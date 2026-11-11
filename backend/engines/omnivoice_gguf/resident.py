@@ -190,6 +190,8 @@ class ResidentServer:
         self.pair: Optional[tuple[str, str]] = None
         self.voices: dict[str, str] = {}
         self.log_handle = None
+        #: Where this process's output starts in the shared, appended log.
+        self.log_start = 0
         #: (binary identity, pair) whose start failed: skip straight to the
         #: spawn path instead of paying a failing start on every request.
         self.failed_start: Optional[tuple] = None
@@ -224,6 +226,7 @@ class ResidentServer:
         log_path = _log_path()
         log_path.parent.mkdir(parents=True, exist_ok=True)
         self.log_handle = log_path.open("ab")
+        self.log_start = self.log_handle.tell()
         try:
             self.process = spawn_owned(
                 args,
@@ -287,6 +290,16 @@ class ResidentServer:
         if self.log_handle:
             self.log_handle.close()
             self.log_handle = None
+
+    def runtime_log(self, limit: int = 64 * 1024) -> str:
+        """This process's own output so far (its device lines), never an
+        earlier server's. Empty when the log cannot be read."""
+        try:
+            with _log_path().open("rb") as handle:
+                handle.seek(self.log_start)
+                return handle.read(limit).decode("utf-8", errors="replace")
+        except OSError:
+            return ""
 
     # ── protocol ────────────────────────────────────────────────────────
 

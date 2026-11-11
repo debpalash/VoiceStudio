@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 
 const mock = vi.hoisted(() => ({ api: vi.fn() }));
@@ -35,6 +35,31 @@ it('runs the GGUF self-test and names the Vulkan GPU, with the log on hover', as
   expect(status.textContent).toContain('engines.selfTestOk');
   expect(status.textContent).toContain('Vulkan 1: AMD Radeon RX 5500M');
   expect(status.getAttribute('title')).toBe('synthesized\nggml_vulkan: 1 = AMD Radeon RX 5500M');
+  // Keyboard users reach the same detail through a native disclosure.
+  const summary = screen.getByText('common.details');
+  expect(summary.tagName).toBe('SUMMARY');
+  expect(summary.parentElement?.textContent).toContain('ggml_vulkan: 1 = AMD Radeon RX 5500M');
+});
+
+it('clears the previous result while a new test runs', async () => {
+  mock.api.mockResolvedValueOnce({
+    ok: true,
+    message: 'synthesized',
+    duration_ms: 2400,
+    audio_seconds: 1.5,
+    runtime_device: 'Vulkan 1: AMD Radeon RX 5500M',
+  });
+  let finish: (value: unknown) => void = () => {};
+  mock.api.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
+  render(<GgufSelfTest />);
+  fireEvent.click(screen.getByRole('button', { name: /engines.selfTest/ }));
+  await screen.findByRole('status');
+
+  fireEvent.click(screen.getByRole('button', { name: /engines.selfTest/ }));
+  await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
+  expect(screen.queryByText(/RX 5500M/)).toBeNull();
+  finish({ ok: false, message: 'boom', duration_ms: 10 });
+  expect((await screen.findByRole('status')).textContent).toBe('engines.selfTestFailed');
 });
 
 it('reports a timed-out self-test without a device', async () => {

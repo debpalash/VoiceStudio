@@ -889,6 +889,48 @@ def _run_synth_bounded(backend, timeout_s: float) -> dict | None:
 _SELFTEST_DIR_RE = re.compile(r"(?:\b[A-Za-z]:|~|(?<![\w/\\]))[\\/][^\r\n'\"|<>]*[\\/]")
 
 
+# ``ggml_vulkan: 1 = AMD Radeon RX 5500M (AMD proprietary driver) | uma: 0 | ...``
+_VK_DEVICE_RE = re.compile(r"ggml_vulkan:\s*(\d+)\s*=\s*(.+)")
+
+
+def _logged_vulkan_device(lines: list[str]) -> str | None:
+    """The Vulkan device this run opened, named only from its own log.
+
+    The index is the one GGML was told to use (``GGML_BACKEND=Vulkan<N>``),
+    or GGML's automatic pick among the devices this run listed (first
+    discrete, else the first). ``None`` when the route is not Vulkan or the
+    log does not list that device, so a CPU run never borrows a GPU name.
+    """
+    devices: dict[int, tuple[str, bool]] = {}
+    for line in lines:
+        m = _VK_DEVICE_RE.search(line)
+        if not m:
+            continue
+        rest = m.group(2)
+        # Drop the " (driver)" and "| field" suffixes; keep "Radeon(TM)".
+        name = re.split(r"\s+\(|\s*\|", rest, maxsplit=1)[0].strip()
+        uma = re.search(r"\buma:\s*(\d)", rest)
+        if name:
+            devices.setdefault(int(m.group(1)), (name, bool(uma and uma.group(1) == "0")))
+    if not devices:
+        return None
+    try:
+        from engines.omnivoice_gguf.compute import apply_compute_env, selected_vulkan_adapter
+
+        if selected_vulkan_adapter() is None:  # CPU, CUDA or no verified Vulkan route
+            return None
+        ggml = apply_compute_env(os.environ.copy()).get("GGML_BACKEND", "").strip()
+    except Exception:  # noqa: BLE001 - diagnostic metadata is optional
+        return None
+    if ggml[6:].isdecimal():
+        index = int(ggml[6:])
+    else:
+        index = next((i for i in sorted(devices) if devices[i][1]), min(devices))
+    if index not in devices:
+        return None
+    return f"Vulkan {index}: {devices[index][0]}"
+
+
 def _selftest_runtime(raw_log: str) -> tuple[str | None, str | None]:
     """``(runtime_device, runtime_log)`` from a GGUF run, scrubbed of paths.
 
@@ -903,20 +945,12 @@ def _selftest_runtime(raw_log: str) -> tuple[str | None, str | None]:
         for line in raw_log.splitlines()
         if any(word in line.lower() for word in ("vulkan", "device", "backend"))
     ]
-    text = scrub_text("\n".join(lines[-12:]))
+    # Device enumeration comes first; a resident log may grow after it.
+    text = scrub_text("\n".join(lines[:12]))
     text = _SELFTEST_DIR_RE.sub("", text)
     runtime_log = text[:2400] or None
-    if not any("ggml_vulkan" in line.lower() for line in lines):
-        return None, runtime_log
-    try:
-        from engines.omnivoice_gguf.compute import selected_vulkan_adapter
-
-        adapter = selected_vulkan_adapter()
-    except Exception:  # noqa: BLE001 - diagnostic metadata is optional
-        return None, runtime_log
-    if adapter is None:
-        return None, runtime_log
-    return scrub_text(f"Vulkan {adapter.index}: {adapter.name}"), runtime_log
+    device = _logged_vulkan_device(lines)
+    return (scrub_text(device) if device else None), runtime_log
 
 
 class SelfTestResponse(BaseModel):

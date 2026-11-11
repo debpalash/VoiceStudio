@@ -273,6 +273,14 @@ export default function EngineDetail({
             {selfTest.ok && selfTest.runtime_device ? ` · ${selfTest.runtime_device}` : null}
           </span>
         )}
+        {canSelfTest && selfTest && !selfTest.inflight && selfTest.runtime_log && (
+          <details className="basis-full text-[11px] text-muted-foreground">
+            <summary className="cursor-pointer select-none">{t('clone.details')}</summary>
+            <pre className="mt-[4px] max-h-40 overflow-auto whitespace-pre-wrap break-all font-mono">
+              {selfTest.runtime_log}
+            </pre>
+          </details>
+        )}
         {resident?.unloadable && (
           <Button
             size="sm"

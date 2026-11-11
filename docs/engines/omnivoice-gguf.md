@@ -157,9 +157,12 @@ Select the engine via **Model Catalogue** (TTS tab → **Use**) or
 **Self-test.** Settings › Models › OmniVoice GGUF → **Self-test** runs one
 short real synthesis with installed weights (it never downloads them) and,
 when the runtime used Vulkan, names the GPU, for example `Vulkan 1: AMD Radeon
-RX 5500M`. Hover the result for the runtime's device log, with folder paths
-removed. One time limit (`OMNIVOICE_SELFTEST_TIMEOUT_S`, default 90 s) covers
-the whole test and stops the runtime when it runs out.
+RX 5500M`; the name comes from that run's own log, so a CPU run shows none.
+**Details** opens the runtime's device log, with folder paths removed. When
+resident mode already has the model loaded, the test runs on it instead of
+loading a second copy, and never stops it. One time limit
+(`OMNIVOICE_SELFTEST_TIMEOUT_S`, default 90 s) covers the whole test and
+stops the one-shot runtime when it runs out.
 
 **GPU offer.** When Compute device is Auto, PyTorch has no GPU, and the bundled
 runtime with its Vulkan module finds a GPU, VoiceStudio asks once: *Use your
