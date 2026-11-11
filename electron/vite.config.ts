@@ -62,7 +62,7 @@ export default defineConfig({
           // of this suite's CI time. Workers are recycled past the memory limit.
           pool: 'vmForks',
           vmMemoryLimit: '2GB',
-          setupFiles: ['./tests/vitest-web-streams.mjs'],
+          setupFiles: ['./tests/vitest-web-streams.mjs', './tests/vitest-async-timeout.mjs'],
           include: [
             'src/renderer/**/*.test.{ts,tsx}',
             'src/shared/repair-request.test.ts',
