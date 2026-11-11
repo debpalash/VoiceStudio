@@ -2,7 +2,10 @@
 import base64
 import importlib.util
 import json
+import posixpath
+import re
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -39,6 +42,65 @@ def test_mixed_changes_still_run_runtime_builds(path):
         {"status": "modified", "filename": "README.md"},
         {"status": "modified", "filename": path},
     ], 3000)
+
+
+def _crawler_harness() -> set[str]:
+    """What the UI crawler job runs, plus every module those files import by relative path.
+
+    Roots: the crawl step's script and the Vite config its `smoke:server` serves, read from
+    the workflow and electron/package.json so a renamed entry point cannot drop out.
+    """
+    ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    script = re.search(r"^\s*node (electron/tests/ui-crawler\.mjs)\s*$", ci, re.M).group(1)
+    smoke = json.loads((ROOT / "electron/package.json").read_text(encoding="utf-8"))["scripts"]["smoke:server"]
+    config = "electron/" + re.search(r"--config (\S+)", smoke).group(1)
+    assert "smoke:server" in ci
+    seen, todo = set(), [script, config]
+    while todo:
+        path = todo.pop()
+        if path in seen:
+            continue
+        seen.add(path)
+        source = (ROOT / path).read_text(encoding="utf-8")
+        # `import x from './a'`, `export { x } from './a'`, `import './a'` and `import('./a')`.
+        for spec in re.findall(r"""(?:\bfrom|\bimport)\s*\(?\s*['"](\.{1,2}/[^'"]+)['"]""", source):
+            resolved = posixpath.normpath(posixpath.join(posixpath.dirname(path), spec))
+            if resolved.startswith("electron/tests/"):  # app code outside tests/ is runtime anyway
+                todo.append(resolved)
+    return seen
+
+
+def test_crawler_harness_changes_run_the_crawler():
+    # PR #4008 changed only the crawler and was classified test-only, so the crawler job that
+    # should have proven the change skipped itself. The smoke server's config and its imports
+    # count too: a helper either one imports must be in CI_HARNESS.
+    harness = _crawler_harness()
+    assert {"electron/tests/crawler-settle.mjs", "electron/tests/crawler-shards.mjs",
+            "electron/tests/renderer-smoke.vite.config.mjs"} <= harness
+    assert harness <= scope.CI_HARNESS, f"add to CI_HARNESS: {sorted(harness - scope.CI_HARNESS)}"
+    for path in sorted(scope.CI_HARNESS):
+        assert (ROOT / path).is_file(), path
+        assert scope.runtime_needed([{"status": "modified", "filename": path}], 3000), path
+    # The crawler's own unit tests and other smokes keep the test-only skip.
+    assert not scope.runtime_needed([{"status": "modified", "filename": "electron/tests/ui-crawler.test.mjs"}], 3000)
+
+
+def test_crawler_harness_follows_the_smoke_server_config_imports(tmp_path, monkeypatch):
+    # A helper only the Vite config imports is part of the harness, as is one only ui-crawler imports.
+    for path, body in {
+        ".github/workflows/ci.yml": "      run: |\n          bun run --cwd electron smoke:server &\n          node electron/tests/ui-crawler.mjs\n",
+        "electron/package.json": json.dumps({"scripts": {"smoke:server": "vite --config tests/smoke.config.mjs"}}),
+        "electron/tests/ui-crawler.mjs": "import { a } from './a.mjs';\n",
+        "electron/tests/a.mjs": "export const a = 1;\n",
+        "electron/tests/smoke.config.mjs": "import './proxy.mjs';\nimport { x } from '../src/app.ts';\n",
+        "electron/tests/proxy.mjs": "export {} from './proxy-rules.mjs';\n",
+        "electron/tests/proxy-rules.mjs": "",
+    }.items():
+        (tmp_path / path).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / path).write_text(body, encoding="utf-8")
+    monkeypatch.setattr(sys.modules[__name__], "ROOT", tmp_path)
+    assert _crawler_harness() == {f"electron/tests/{name}" for name in
+                                  ("ui-crawler.mjs", "a.mjs", "smoke.config.mjs", "proxy.mjs", "proxy-rules.mjs")}
 
 
 def test_rename_cannot_hide_deleted_runtime_code_behind_a_documentation_name():
