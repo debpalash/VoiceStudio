@@ -45,7 +45,10 @@ import Foundation
         await trace.record("gpu-cleaned")
         await NativeLease.shared.release()
     }
-    while await trace.events.isEmpty { await Task.yield() }
+    defer { original.cancel() }
+    let deadline = ContinuousClock.now + .seconds(30)
+    while await trace.events.isEmpty, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+    try #require(await !trace.events.isEmpty, "the original job never acquired the native lease")
     var gate = PhoneJobRestartGate(); gate.request(.cpuHandoff); original.cancel()
     _ = try await original.value
     if gate.workerFinished() {

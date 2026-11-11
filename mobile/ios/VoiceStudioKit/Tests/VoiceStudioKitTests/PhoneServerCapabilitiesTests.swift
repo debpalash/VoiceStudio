@@ -74,7 +74,10 @@ private actor CapabilityGate {
     await router.configure(hosts: ["localhost"],port: 1234)
     let request = try featureRequest("/v1/audio/transcriptions",body: ["audio":try featureWave().base64EncodedString()])
     let task = Task { await router.respond(request) }
-    while !(await gate.entered) { try await Task.sleep(for: .milliseconds(5)) }
+    defer { task.cancel() }
+    let deadline = ContinuousClock.now + .seconds(30)
+    while !(await gate.entered), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(5)) }
+    try #require(await gate.entered, "transcription never entered the inference slot")
     #expect(await router.respond(request).status == 429)
     #expect(await router.respond(try featureRequest("/v1/audio/speech",body: ["input":"Hello"])).status == 404)
     task.cancel(); _ = await task.value

@@ -166,15 +166,21 @@ jobs:
         if: steps.pass.outputs.hit != 'true'
         run: python3 mobile/ios/scripts/test_resources.py
 
+      - name: Build VoiceStudioKit tests
+        if: steps.pass.outputs.hit != 'true'
+        working-directory: mobile/ios/VoiceStudioKit
+        timeout-minutes: 20
+        run: swift build --build-tests
+
       - name: VoiceStudioKit tests
         if: steps.pass.outputs.hit != 'true'
         working-directory: mobile/ios/VoiceStudioKit
-        # Serial on purpose. In parallel the suite hangs on the 3-core runner (the step
-        # sat for the whole 60 minute job timeout on three runs); run one at a time all
-        # 201 tests pass in about 155 s, the same time the parallel run used to take.
-        # A 15 minute cap turns any new hang into a fast, named failure.
-        timeout-minutes: 15
-        run: swift test --no-parallel
+        # Serial on purpose: in parallel the suite hangs on the 3-core runner. The
+        # watchdog runs it on a terminal so each test's start line reaches the log at
+        # once; a test that prints nothing for 120 s is named, its process stacks are
+        # printed, and the run is killed. The step cap is the backstop.
+        timeout-minutes: 10
+        run: python3 ../scripts/test_watchdog.py --stall 120 -- swift test --no-parallel --skip-build
 
       # iOS xcframeworks for the pinned on-device runtimes (sherpa-onnx, onnxruntime,
       # llama.cpp, omnivoice.cpp); needs Xcode, so it only runs here.

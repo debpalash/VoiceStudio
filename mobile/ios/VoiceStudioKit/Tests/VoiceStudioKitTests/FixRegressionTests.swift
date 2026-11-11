@@ -159,12 +159,10 @@ func playbackUsesMinutesAndSeconds(_ sample: (Double, String)) { #expect(Playbac
 @Test func buildPhaseBundlesAuthoritativeLanguagesAndVersion() throws {
     let output = repository.appendingPathComponent("mobile/ios/.generated/resources-" + UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: output) }
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-    process.arguments = ["python3", repository.appendingPathComponent("mobile/ios/scripts/prepare_resources.py").path,
-                         "--output", output.path, "--info-output", output.appendingPathComponent("Info.plist").path]
-    try process.run(); process.waitUntilExit()
-    #expect(process.terminationStatus == 0)
+    let child = try TestProcess(["python3", repository.appendingPathComponent("mobile/ios/scripts/prepare_resources.py").path,
+                                 "--output", output.path, "--info-output", output.appendingPathComponent("Info.plist").path])
+    let status = try child.finish(within: 120)
+    #expect(status == 0, Comment(rawValue: child.diagnostics))
     let source = try Data(contentsOf: repository.appendingPathComponent("electron/src/shared/languages.json"))
     #expect(try Data(contentsOf: output.appendingPathComponent("Catalogs/languages.json")) == source)
     let codes = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: output.appendingPathComponent("Catalogs/language-codes.json")))
