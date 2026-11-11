@@ -132,8 +132,8 @@ def test_xpu_host_cpu_engine_falls_back():
 
 
 def test_xpu_host_omnivoice_is_accelerated():
-    # Both OmniVoice paths load on Intel XPU via get_best_device(); routing must
-    # agree instead of reporting "no XPU path" for a model already on the GPU.
+    """Both OmniVoice paths load on Intel XPU via get_best_device(); routing must
+    agree instead of reporting "no XPU path" for a model already on the GPU."""
     from engines.omnivoice_subprocess import OmniVoiceSubprocessBackend
     from services.tts_backend import OmniVoiceBackend
 

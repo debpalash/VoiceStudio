@@ -40,13 +40,15 @@ def test_accelerators_keep_half_precision(device, monkeypatch):
 
 @pytest.mark.parametrize("device", ["xpu", "XPU", " xpu ", "xpu:0", "xpu:1"])
 def test_intel_xpu_loads_bfloat16(device, monkeypatch):
-    # float16 on an Arc 140V sounded choppier than CPU float32; bfloat16 keeps
-    # the XMX speed without that, and float32 was too slow to finish a render.
+    """float16 on an Arc 140V sounded choppier than CPU float32; bfloat16 keeps
+    the XMX speed without that, and float32 was too slow to finish a render."""
     monkeypatch.delenv("OMNIVOICE_XPU_DTYPE", raising=False)
     assert _dtype().tts_dtype_name(device) == "bfloat16"
 
 
 def test_xpu_dtype_override_is_validated(monkeypatch):
+    """OMNIVOICE_XPU_DTYPE picks the XPU precision, ignores unknown values and
+    never touches another device family (nor does OMNIVOICE_CPU_DTYPE)."""
     monkeypatch.setenv("OMNIVOICE_XPU_DTYPE", "float16")
     assert _dtype().tts_dtype_name("xpu") == "float16"
     monkeypatch.setenv("OMNIVOICE_XPU_DTYPE", " Float32 ")
@@ -131,6 +133,7 @@ def test_in_process_loader_keeps_float16_on_cuda(monkeypatch):
 
 
 def test_in_process_loader_uses_bfloat16_on_intel_xpu(monkeypatch):
+    """The backend's own loader passes the XPU policy to from_pretrained."""
     mm, seen = _capture_dtype(monkeypatch, "xpu")
     with pytest.raises(_Stop):
         mm._load_model_sync()

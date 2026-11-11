@@ -23,6 +23,7 @@ XPU_DTYPE_CHOICES: tuple[str, ...] = CPU_DTYPE_CHOICES
 
 
 def _override(env: str, choices: tuple[str, ...], default: str) -> str:
+    """``env``'s value when it names one of ``choices``, else ``default``."""
     value = os.environ.get(env, "").strip().lower()
     return value if value in choices else default
 

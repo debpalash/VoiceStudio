@@ -397,8 +397,8 @@ def test_omnivoice_variants_route_to_rocm(fresh_app, monkeypatch):
 
 
 def test_omnivoice_variants_route_to_intel_xpu(fresh_app, monkeypatch):
-    # Before "xpu" was declared, an Arc host showed a CPU fallback (and got
-    # CPU-sized budgets) while the model was actually loaded on the GPU.
+    """Before "xpu" was declared, an Arc host showed a CPU fallback (and got
+    CPU-sized budgets) while the model was actually loaded on the GPU."""
     _force_host(monkeypatch, "xpu")
 
     body = _client(fresh_app).get("/engines").json()
