@@ -1,6 +1,44 @@
 --- a/ggml/src/ggml-metal/ggml-metal-context.m
 +++ b/ggml/src/ggml-metal/ggml-metal-context.m
-@@ -353,10 +353,8 @@ void ggml_metal_set_tensor_async(ggml_metal_t ctx, struct ggml_tensor * tensor,
+@@ -72,6 +72,9 @@
+     // the last command buffer queued into the Metal queue with operations relevant to the current Metal backend
+     id<MTLCommandBuffer> cmd_buf_last;
+ 
++    // readback completion handlers still copying into caller memory (VoiceStudio)
++    dispatch_group_t readback_group;
++
+     // abort ggml_metal_graph_compute if callback returns true
+     ggml_abort_callback abort_callback;
+     void *              abort_callback_data;
+@@ -181,6 +184,7 @@ ggml_metal_t ggml_metal_init(ggml_metal_device_t dev) {
+         res->cmd_bufs_ext = [[NSMutableArray alloc] init];
+ 
+         res->cmd_buf_last = nil;
++        res->readback_group = dispatch_group_create();
+ 
+         res->pipelines_ext = ggml_metal_pipelines_init();
+ 
+@@ -191,6 +195,9 @@ ggml_metal_t ggml_metal_init(ggml_metal_device_t dev) {
+ void ggml_metal_free(ggml_metal_t ctx) {
+     GGML_LOG_INFO("%s: deallocating\n", __func__);
+ 
++    dispatch_group_wait(ctx->readback_group, DISPATCH_TIME_FOREVER);
++    dispatch_release(ctx->readback_group);
++
+     for (int i = 0; i < GGML_METAL_MAX_COMMAND_BUFFERS; ++i) {
+         if (ctx->cmd_bufs[i].obj) {
+             [ctx->cmd_bufs[i].obj release];
+@@ -244,6 +251,9 @@ void ggml_metal_synchronize(ggml_metal_t ctx) {
+         [ctx->cmd_buf_last waitUntilCompleted];
+         ctx->cmd_buf_last = nil;
+     }
++    // Completion handlers of earlier readbacks are not ordered against waiting on
++    // the last command buffer, so wait for each one to finish its copy.
++    dispatch_group_wait(ctx->readback_group, DISPATCH_TIME_FOREVER);
+ 
+     // check status of all command buffers
+     {
+@@ -353,10 +363,8 @@ void ggml_metal_set_tensor_async(ggml_metal_t ctx, struct ggml_tensor * tensor,
  void ggml_metal_get_tensor_async(ggml_metal_t ctx, const struct ggml_tensor * tensor, void * data, size_t offset, size_t size) {
      @autoreleasepool {
          id<MTLDevice> device = ggml_metal_device_get_obj(ctx->dev);
@@ -13,14 +51,18 @@
  
          GGML_ASSERT(buf_dst);
  
-@@ -380,6 +378,11 @@ void ggml_metal_get_tensor_async(ggml_metal_t ctx, const struct ggml_tensor * te
+@@ -380,6 +388,15 @@ void ggml_metal_get_tensor_async(ggml_metal_t ctx, const struct ggml_tensor * te
                             size:size];
  
          [encoder endEncoding];
 +        // The caller owns data until synchronization; copy before completion.
++        // The group lets synchronize and free wait for every pending copy.
++        dispatch_group_t readback_group = ctx->readback_group;
++        dispatch_group_enter(readback_group);
 +        [cmd_buf addCompletedHandler:^(id<MTLCommandBuffer> completed) {
 +            GGML_UNUSED(completed);
 +            memcpy(data, [buf_dst contents], size);
++            dispatch_group_leave(readback_group);
 +        }];
          [cmd_buf commit];
          [buf_dst release];

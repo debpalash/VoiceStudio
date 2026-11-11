@@ -264,6 +264,9 @@ if (DISTRIBUTION_TARGET === 'mac-app-store') {
 if (artifactRequested && bundledUvSource) {
   assert(existsSync(resolve(artifactResources, bundledUvSource.to)), 'Packaged uv executable');
 }
+// Diagnostics from external tools can carry the builder's home directory.
+const redactHome = (text) =>
+  String(text ?? '').replace(/(?:\/Users\/|\/home\/|[A-Za-z]:\\Users\\)[^/\\\s'"]+/g, '<home>');
 // #2780: release and rehearsal builds ship the OmniVoice GGUF runtime where
 // the backend looks for it (resources/bin/omnivoice-tts-<slug>). The workflow
 // names the slug it staged; it must be the one this target's backend resolves.
@@ -308,7 +311,7 @@ if (omnivoiceTtsPlatform) {
     for (const name of [binary, server]) {
       const packaged = resolve(artifactResources, OMNIVOICE_TTS_RESOURCE_DIR, name);
       const verify = spawnSync('codesign', ['--verify', '--strict', packaged], { encoding: 'utf8' });
-      assert.equal(verify.status, 0, `Packaged ${name} is signed: ${verify.stderr}`);
+      assert.equal(verify.status, 0, `Packaged ${name} is signed: ${redactHome(verify.stderr)}`);
     }
   }
 }

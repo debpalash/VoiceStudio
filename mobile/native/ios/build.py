@@ -206,6 +206,10 @@ def stamp_omni_source(verified, output):
     body = device.split('void ggml_metal_buffer_get_tensor(', 1)[1].split('\nbool ggml_metal_buffer_cpy_tensor(', 1)[0]
     if device.count('memcpy(data, [buf_dst contents], size);') != 1 or 'memcpy(data, [buf_dst contents], size);' not in body:
         raise RuntimeError('omnivoice-metal-transfers.patch landed outside ggml_metal_buffer_get_tensor; rebase it onto the pinned ggml')
+    context = (target / 'ggml/src/ggml-metal/ggml-metal-context.m').read_text(encoding='utf-8')
+    sync = context.split('void ggml_metal_synchronize(', 1)[1].split('\nstatic struct ggml_metal_buffer_id', 1)[0]
+    if 'dispatch_group_wait(ctx->readback_group' not in sync:
+        raise RuntimeError('omnivoice-metal-transfers.patch lost the readback wait in ggml_metal_synchronize')
     return target
 
 
