@@ -225,8 +225,7 @@ jobs:
       - name: Linux native dependencies
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libasound2-dev libxdo-dev libxtst-dev libx11-dev libxkbcommon-dev libwayland-dev libssl-dev pkg-config xvfb zsync
+          bash .github/scripts/apt-retry.sh install libasound2-dev libxdo-dev libxtst-dev libx11-dev libxkbcommon-dev libwayland-dev libssl-dev pkg-config xvfb zsync
       - name: Bundle pinned uv for the host architecture
         # The checkout is the release tag, which predates this helper when an older
         # tag is rebuilt from main; use the helper from the workflow's own commit.

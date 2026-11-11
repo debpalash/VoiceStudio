@@ -56,7 +56,7 @@ jobs:
           enable-cache: false
       - name: Linux build dependencies
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y build-essential pkg-config libasound2-dev libxdo-dev libxtst-dev libx11-dev libxkbcommon-dev libwayland-dev libssl-dev binutils zsync
+        run: bash .github/scripts/apt-retry.sh install build-essential pkg-config libasound2-dev libxdo-dev libxtst-dev libx11-dev libxkbcommon-dev libwayland-dev libssl-dev binutils zsync
       - name: Native PowerShell safety cases
         if: runner.os == 'Windows'
         shell: pwsh

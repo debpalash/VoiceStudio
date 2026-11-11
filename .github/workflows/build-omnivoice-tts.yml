@@ -101,9 +101,18 @@ jobs:
       # (GGML_BACKEND_DL), so a host without a Vulkan driver still starts on CPU.
       - name: Vulkan dev deps (Linux GPU backend)
         if: startsWith(matrix.platform, 'linux-')
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y glslc libvulkan-dev spirv-headers
+          # Rebuilding an older release tag checks out a tree that predates the
+          # helper; take it from the workflow's own commit instead.
+          helper=.github/scripts/apt-retry.sh
+          if [ ! -f "$helper" ]; then
+            helper="$RUNNER_TEMP/apt-retry.sh"
+            gh api -H "Accept: application/vnd.github.raw" \
+              "repos/$GITHUB_REPOSITORY/contents/.github/scripts/apt-retry.sh?ref=$GITHUB_SHA" > "$helper"
+          fi
+          bash "$helper" install glslc libvulkan-dev spirv-headers
 
       # Windows: the LunarG SDK provides glslc and the headers; the build script
       # detects it through VULKAN_SDK. Desktop releases require the Vulkan
