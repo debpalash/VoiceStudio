@@ -35,3 +35,13 @@ def test_playwright_with_deps_not_unwrapped():
                 raise AssertionError(f"{f.name}:{n}: split into retried install-deps + install")
             if re.search(r"playwright\s+install(-deps)?\b", line.split("#", 1)[0]):
                 assert "apt-retry.sh retry" in line, f"{f.name}:{n}: wrap in apt-retry.sh retry"
+
+
+def test_helper_falls_back_to_public_dns_when_mirrors_do_not_resolve():
+    # Runner DNS once failed for hours on the Ubuntu mirror names while public
+    # resolvers answered them; the helper must switch resolvers, not only retry.
+    script = (GH / "scripts" / "apt-retry.sh").read_text(encoding="utf-8")
+    assert "getent hosts" in script and "azure.archive.ubuntu.com" in script
+    assert "DNS=1.1.1.1 8.8.8.8" in script and "systemctl restart systemd-resolved" in script
+    install = script.split("apt_install() {", 1)[1].split("}", 1)[0]
+    assert install.lstrip().startswith("check_dns"), "check DNS before every install attempt"
