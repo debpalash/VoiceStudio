@@ -6,18 +6,24 @@ import XCTest
 let uiReadyTimeout: TimeInterval = 45
 
 extension XCUIElement {
-    /// Waits for the element to exist, then taps it (XCTest scrolls it into view itself).
+    /// Waits for the element to exist, then taps it. XCTest scrolls an element into view
+    /// only once it is in the accessibility hierarchy; a row of a lazy stack, grid or list
+    /// that has not been scrolled to is not, so reach those with `reveal` instead.
     @MainActor func tapReady(timeout: TimeInterval = uiReadyTimeout, file: StaticString = #filePath, line: UInt = #line) {
         guard waitReady(timeout: timeout, file: file, line: line) else { return }
         tap()
     }
     /// Waits for the element to exist; reports which element and which screen when it never does.
+    /// Lazy content that is not on screen never appears here: use `reveal` for it.
     @MainActor @discardableResult func waitReady(timeout: TimeInterval = uiReadyTimeout, file: StaticString = #filePath, line: UInt = #line) -> Bool {
         if waitForExistence(timeout: timeout) { return true }
         let app = XCUIApplication()
-        let screen = app.navigationBars.firstMatch.exists ? app.navigationBars.firstMatch.identifier : "(no navigation bar)"
-        let what = identifier.isEmpty ? label : identifier
-        XCTFail("Element '\(what)' did not appear within \(Int(timeout))s on screen '\(screen)'", file: file, line: line)
+        let bar = app.navigationBars.firstMatch
+        let screen = bar.exists ? bar.description : "(no navigation bar)"
+        // `description` names the query (e.g. `"home.gallery" Button`) without resolving it.
+        // `identifier` or `label` would resolve the missing element, and that failure
+        // ("Failed to get matching snapshot") would replace this message.
+        XCTFail("Element \(description) did not appear within \(Int(timeout))s on screen \(screen)", file: file, line: line)
         return false
     }
 }

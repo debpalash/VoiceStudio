@@ -22,6 +22,7 @@ private final class BoundedDownloadHost {
     deinit { if process.isRunning { process.terminate(); process.waitUntilExit() } }
     private static let script = #"""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import socket; socket.getfqdn = lambda name='': name  # skip HTTPServer's reverse DNS lookup on bind (35 s per server on CI)
 import time
 sent = 0
 class Host(BaseHTTPRequestHandler):
