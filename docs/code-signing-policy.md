@@ -51,7 +51,7 @@ All members use multi-factor authentication on GitHub and on SignPath.
 |---|---|---|
 | Authors / committers | [@debpalash](https://github.com/debpalash) and other maintainers with write access | Change the source. |
 | Reviewers | [@debpalash](https://github.com/debpalash) | Review every change from contributors without write access (pull requests; the merge queue and required checks apply). |
-| Approvers | [@debpalash](https://github.com/debpalash) | Approve each signing request in SignPath, after checking the draft release built from the tag. |
+| Approvers | [@debpalash](https://github.com/debpalash) | Approve each signing request in SignPath, after checking the request's origin (this repository, the release workflow, an exact version tag, and its commit) and the uploaded unsigned artifact `signpath-unsigned-win32-<arch>` of that workflow run. |
 
 <!-- OWNER: add further maintainers here when they get write access, and list
 them under the right role. Every listed person needs MFA. -->
@@ -70,23 +70,27 @@ program makes, all started or consented to by the user, are listed in the
 - First-run setup the user starts: the pinned ffmpeg download from GitHub,
   Python and package downloads from their locked URLs or the chosen mirror,
   and Hugging Face model downloads.
-- Update checks against GitHub Releases, which the user can turn off in
-  Settings, and the background download of a found update.
+- Update checks of packaged builds against GitHub Releases, and the background
+  download of a found update from that same release. Both are on by default
+  (an owner-approved exception to the local-first rule). Settings, Updates,
+  "Download updates automatically" turns the background download off, so
+  downloads wait for the user.
 - Product analytics, off unless the user says yes at the first-run prompt;
   allowlisted, content-free metadata only.
 - Account features, off by default and stopped at once when switched off.
 
-The program does not transfer other information to networked systems unless the
-user or the installer requests it. Third-party components keep their own
+Apart from the update check above, the program does not transfer information to
+networked systems unless the user or the installer requests it. Third-party components keep their own
 privacy policies (for example Hugging Face and GitHub when you download from
 them). More detail: [Electron privacy](electron-privacy.md).
 
 ## Reporting a problem with a signed file
 
-Report suspected misuse of the certificate or a problem with a signed release
-through [GitHub Issues](https://github.com/debpalash/VoiceStudio/issues) or the
-private channel in [SECURITY.md](../.github/SECURITY.md). We will cooperate with
-SignPath Foundation on any investigation.
+Report suspected misuse of the certificate, or any vulnerability in a signed
+release, through the private channel in [SECURITY.md](../.github/SECURITY.md),
+not a public issue. Other problems with a signed file can go to
+[GitHub Issues](https://github.com/debpalash/VoiceStudio/issues). We will
+cooperate with SignPath Foundation on any investigation.
 
 ## Owner checklist: enabling SignPath signing
 

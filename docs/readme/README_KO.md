@@ -506,7 +506,7 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 | 모델과 음질 | [엔진 가이드](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [벤치마크](../../docs/benchmarks.md) |
 | 연동 | [CLI](../../docs/install/script.md#terminal-command) · [로컬 API](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [예제](../../examples/README.md) |
 | 휴대폰 앱 | [iOS 및 Android](../../docs/mobile.md) |
-| 개발 | [기여하기](../../.github/CONTRIBUTING.md) (첫 PR 전에 [CLA 서명](../../.github/CONTRIBUTING.md#contribution-licensing) 필요) · [변경 기록](../../CHANGELOG.md) |
+| 개발 | [기여하기](../../.github/CONTRIBUTING.md) (첫 PR 전에 [CLA 서명](../../.github/CONTRIBUTING.md#contribution-licensing) 필요) · [변경 기록](../../CHANGELOG.md) · [코드 서명 정책](../code-signing-policy.md) |
 
 에이전트 스킬: `npx skills add debpalash/VoiceStudio` (오디오 작업에는 **voicestudio**, 저장소 관리에는 **voicestudio-maintainer**).
 

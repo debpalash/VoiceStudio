@@ -14,19 +14,17 @@
 // The release job re-checks sha512 against the bytes (prepare_electron_release.py)
 // and SHA256SUMS.txt is computed there, after this step.
 //
-// Usage: node scripts/apply-signed-windows.mjs <signedDir> [releaseDir]
+// Usage (cwd = electron/): node apply-signed-windows.mjs <signedDir> [releaseDir]
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { copyFileSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolve } from 'node:path';
 import { gunzipSync, inflateRawSync } from 'node:zlib';
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const signedDir = resolve(process.argv[2] ?? '');
-const releaseDir = resolve(root, process.argv[3] ?? 'release');
+const releaseDir = resolve(process.argv[3] ?? 'release');
 assert(process.argv[2], 'Usage: apply-signed-windows.mjs <signedDir> [releaseDir]');
 
 const sha512Base64 = (path) => createHash('sha512').update(readFileSync(path)).digest('base64');
@@ -35,21 +33,37 @@ function blockmapPath(exe) {
   return `${exe}.blockmap`;
 }
 
-function regenerateBlockmap(exe) {
-  const require = createRequire(import.meta.url);
-  const builderLib = dirname(require.resolve('app-builder-lib/package.json'));
-  const { appBuilderPath } = createRequire(`${builderLib}/`)('app-builder-bin');
-  execFileSync(appBuilderPath, ['blockmap', '--input', exe, '--output', blockmapPath(exe)], {
-    stdio: ['ignore', 'pipe', 'inherit'],
-  });
+// electron-builder's own blockmap writer (pure JS since 26.x), so the map is
+// byte-for-byte what a normal build would have produced for these bytes.
+// Resolved hop by hop (electron -> electron-builder -> app-builder-lib) so bun's
+// isolated layout works; cwd must be electron/ (the workflow loads this script
+// from its own commit, so cwd, not the script location, anchors resolution).
+function resolveBuildBlockMap() {
+  try {
+    const fromElectron = createRequire(resolve(process.cwd(), 'package.json'));
+    const fromBuilder = createRequire(fromElectron.resolve('electron-builder'));
+    const fromLib = createRequire(fromBuilder.resolve('app-builder-lib'));
+    const { buildBlockMap } = fromLib('app-builder-lib/out/targets/blockmap/blockmap');
+    assert.equal(typeof buildBlockMap, 'function', 'buildBlockMap export');
+    return buildBlockMap;
+  } catch (error) {
+    throw new Error(
+      `Cannot load electron-builder's blockmap writer from ${process.cwd()} (${error.message}); run from electron/ after bun install, and re-check this script after an electron-builder upgrade`,
+    );
+  }
+}
+
+async function regenerateBlockmap(exe) {
+  const info = await resolveBuildBlockMap()(exe, 'gzip', blockmapPath(exe));
+  assert.equal(info.sha512, sha512Base64(exe), 'Blockmap writer hashed the signed bytes');
   // Independent proof: the blockmap's chunk sizes must add up to the signed file.
-  // electron-updater reads it as raw deflate; accept gzip too in case that changes.
+  // The standalone installer blockmap is gzip (the embedded AppImage one is raw deflate).
   const packed = readFileSync(blockmapPath(exe));
   let unpacked;
   try {
-    unpacked = inflateRawSync(packed);
-  } catch {
     unpacked = gunzipSync(packed);
+  } catch {
+    unpacked = inflateRawSync(packed);
   }
   const map = JSON.parse(unpacked.toString('utf8'));
   const described = map.files.reduce((sum, f) => sum + f.sizes.reduce((a, b) => a + b, 0), 0);
@@ -73,7 +87,7 @@ for (const name of releaseExes) {
   const before = statSync(exe).size;
   copyFileSync(resolve(signedDir, name), exe);
   assert(statSync(exe).size > before, `Signed ${name} should carry a signature (grow in size)`);
-  regenerateBlockmap(exe);
+  await regenerateBlockmap(exe);
   const sha512 = sha512Base64(exe);
   const size = statSync(exe).size;
   let patched = 0;

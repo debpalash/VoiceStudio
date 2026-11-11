@@ -503,7 +503,7 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 | Моделі та якість | [Посібники рушіїв](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [Порівняльні тести](../../docs/benchmarks.md) |
 | Інтеграції | [CLI](../../docs/install/script.md#terminal-command) · [Локальний API](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [Приклади](../../examples/README.md) |
 | Програми для телефону | [iOS та Android](../../docs/mobile.md) |
-| Розробка | [Участь у розробці](../../.github/CONTRIBUTING.md) ([підпишіть CLA](../../.github/CONTRIBUTING.md#contribution-licensing) перед першим PR) · [Журнал змін](../../CHANGELOG.md) |
+| Розробка | [Участь у розробці](../../.github/CONTRIBUTING.md) ([підпишіть CLA](../../.github/CONTRIBUTING.md#contribution-licensing) перед першим PR) · [Журнал змін](../../CHANGELOG.md) · [Політика підпису коду](../code-signing-policy.md) |
 
 Навички агентів: `npx skills add debpalash/VoiceStudio` (**voicestudio** для роботи зі звуком, **voicestudio-maintainer** для репозиторію).
 

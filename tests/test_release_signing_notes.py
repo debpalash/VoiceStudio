@@ -61,7 +61,7 @@ def test_every_package_leg_reports_and_mac_check_ignores_allow_unsigned():
     assert mac["env"]["HAS_CREDENTIALS"] == "${{ secrets.ELECTRON_MACOS_CSC_LINK != '' }}"
     windows = steps["Report and enforce Windows signing"]
     assert windows["if"] == "matrix.platform == 'win32'"
-    assert windows["env"]["HAS_CREDENTIALS"] == "${{ secrets.ELECTRON_WINDOWS_CSC_LINK != '' }}"
+    assert windows["env"]["HAS_CREDENTIALS"] == "${{ secrets.ELECTRON_WINDOWS_CSC_LINK != '' || env.SIGNPATH_ENABLED == 'true' }}"
     assert steps["Report Linux signing"]["if"] == "matrix.platform == 'linux'"
     assert steps["Save the signing report"]["with"]["name"] == "electron-signing-${{ matrix.platform }}-${{ matrix.arch }}"
 
@@ -184,7 +184,10 @@ def test_signpath_signing_is_gated_pinned_and_precedes_feed_and_checksums():
     assert last < names.index("Save installers and updater metadata for review")
     replace = sign_steps[-1]["run"]
     assert "apply-signed-windows.mjs" in replace
-    assert replace.index("apply-signed-windows.mjs") < replace.index("update-package-contract.mjs")
+    # Loaded from the workflow commit (older tags lack the helper), never from the checkout.
+    assert "ref=$GITHUB_SHA" in replace and '"$RUNNER_TEMP/apply-signed-windows.mjs"' in replace
+    assert "node scripts/apply-signed-windows.mjs" not in replace
+    assert replace.index("apply-signed-windows.mjs\" release-signed") < replace.index("update-package-contract.mjs")
 
     # Signing is configured -> unsigned output must fail the report step.
     report = next(s for s in steps if s.get("name") == "Report and enforce Windows signing")

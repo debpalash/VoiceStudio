@@ -294,8 +294,17 @@ jobs:
       - name: Replace the installer with the signed one and refresh the update feed
         if: env.SIGNPATH_ENABLED == 'true'
         working-directory: electron
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          node scripts/apply-signed-windows.mjs release-signed release
+          # The checkout is the release tag, which predates this helper when an
+          # older tag is rebuilt from main (the documented test dispatch); load it
+          # from the workflow's own commit, like the other release helpers. It
+          # resolves electron-builder from the working directory (electron/).
+          gh api -H 'Accept: application/vnd.github.raw+json' \
+            "repos/$GITHUB_REPOSITORY/contents/electron/scripts/apply-signed-windows.mjs?ref=$GITHUB_SHA" \
+            > "$RUNNER_TEMP/apply-signed-windows.mjs"
+          node "$RUNNER_TEMP/apply-signed-windows.mjs" release-signed release
           node tests/update-package-contract.mjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
           node ../scripts/create_store_artifact_manifest.mjs --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
       - name: Verify macOS signing and notarization before publication
