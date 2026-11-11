@@ -82,8 +82,16 @@ def _foreign_feed(name: str, channel: str) -> bool:
 
 
 def verify_release(
-    release: dict[str, Any], manifest_dir: Path, *, channel: str, version: str
+    release: dict[str, Any], manifest_dir: Path, *, channel: str, version: str,
+    missing: list[str] | None = None,
 ) -> list[str]:
+    """Verify every target's feed and payloads; returns what was verified.
+
+    `missing` is for release rehearsals only: a required target with no trace at
+    all (its build leg failed) is appended there instead of failing, so the legs
+    that did build are still verified. The caller must fail on a non-empty list.
+    A target with some but not all of its files still fails at once.
+    """
     if channel not in CHANNEL_VERSION:
         raise ReleaseContractError(f"unsupported channel: {channel}")
     if CHANNEL_VERSION[channel].fullmatch(version) is None:
@@ -96,6 +104,22 @@ def verify_release(
         raise ReleaseContractError(f"{channel} release tag does not match {expected_tag}")
 
     assets = _asset_map(release)
+    targets = {**TARGETS, **OPTIONAL_TARGETS}
+
+    def no_trace(target: str) -> bool:
+        manifest_target, os_token, arch, extension = targets[target]
+        manifest_name = f"electron-{channel}-{manifest_target}.yml"
+        payload = artifact_name(version, os_token, arch, extension)
+        traces = (manifest_name, payload, f"{payload}.blockmap")
+        return not (manifest_dir / manifest_name).is_file() and not any(name in assets for name in traces)
+
+    # Skip only when NOTHING of a target is published: an installer or blockmap
+    # without its manifest is an incomplete release. Listed before any check
+    # can fail, so a rehearsal names every absent leg even when another leg
+    # turns out to be broken.
+    absent = {t for t in targets if (t in OPTIONAL_TARGETS or missing is not None) and no_trace(t)}
+    if missing is not None:
+        missing.extend(t for t in targets if t in absent and t not in OPTIONAL_TARGETS)
     # A feed of the other channel on this release would move its users: a
     # stable feed on a beta pulls stable users onto the beta's payloads (and
     # Tauri's latest*.json is served only through `latest/download`, which a
@@ -106,19 +130,11 @@ def verify_release(
             f"{channel} release carries another channel's update feed: {', '.join(sorted(forbidden))}"
         )
     verified: list[str] = []
-    for target, (manifest_target, os_token, arch, extension) in {
-        **TARGETS,
-        **OPTIONAL_TARGETS,
-    }.items():
+    for target, (manifest_target, os_token, arch, extension) in targets.items():
         manifest_name = f"electron-{channel}-{manifest_target}.yml"
         manifest_path = manifest_dir / manifest_name
-        if target in OPTIONAL_TARGETS:
-            # Skip only when NOTHING of this target is published: an installer
-            # or blockmap without its manifest is an incomplete release.
-            payload = artifact_name(version, os_token, arch, extension)
-            traces = (manifest_name, payload, f"{payload}.blockmap")
-            if not manifest_path.is_file() and not any(name in assets for name in traces):
-                continue
+        if target in absent:
+            continue
         if not manifest_path.is_file():
             raise ReleaseContractError(f"missing downloaded manifest: {manifest_name}")
         manifest_asset = assets.get(manifest_name)
