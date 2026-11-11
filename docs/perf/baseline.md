@@ -137,7 +137,7 @@ Findings:
 - **The dictation model loads by default, unprompted.** The log shows `Capture ASR backend selected: mlx-whisper` and the 1.6 GB model warming 30 s after boot, with no user action. It added about 1.2 GB. The code comment says this is deliberate ("BY DEFAULT", skipped under 4 GB free RAM).
 - **It stays resident for the idle timeout, 900 s by default.** That is 15 minutes of ~1.2 GB for someone who never dictates. Here it unloaded about 60 s after the warm-up, as set by the 45 s override.
 - **Unloading works.** Memory drops back to roughly the boot level, and the next transcription pays the reload (3.9 s, then 1.3 s warm).
-- **The AudioSeal watermark warm-up** logged "skipped: checkpoint is not cached", so it adds nothing here.
+- **The AudioSeal watermark warm-up** logged "skipped: checkpoint is not cached", so it adds nothing here. That message was a false negative: the cache check looked for the wrong filename (#2818). With the fix, a host with the checkpoint cached warms the generator at boot, and that memory is not yet measured.
 - `/transcribe` in accurate mode returned 409 because `whisper-large-v3-mlx` is not installed; not measured.
 
 Not yet measured:

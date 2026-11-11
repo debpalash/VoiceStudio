@@ -201,7 +201,7 @@ All tabs work without pairing once on-device models are installed (see M2); the 
 | Capability | Runtime | Pin |
 |---|---|---|
 | TTS (preset voices), dictation, transcription | sherpa-onnx | release `v1.13.8` |
-| Voice cloning | omnivoice.cpp (GGML) | commit `886fc079838ca7400cb2b42b36e2a65aa1daabe8` (same as desktop `quant_map.json`) |
+| Voice cloning | omnivoice.cpp (GGML) | commit `040c8b344d8c670ce1475194751d119b5ef82c78` (same as desktop `quant_map.json`) |
 | Dub translation | llama.cpp | release `b11716` |
 
 - Native libraries are built or fetched by `mobile/native/` scripts at the pins

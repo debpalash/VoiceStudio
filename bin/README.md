@@ -13,6 +13,7 @@ local backend). Today:
 | `omnivoice-tts-linux-x86_64` | same | Linux (x86_64) |
 | `omnivoice-tts-linux-aarch64` | same | Linux ARM64 — Apple Silicon under Asahi; built with GGML Vulkan where the toolchain supports it, so the Honeykrisp driver can accelerate generation |
 | `omnivoice-tts-windows-x86_64.exe` | same | Windows |
+| `tts-server-<platform>[.exe]` | same | Resident server for the opt-in "keep the GGUF engine loaded" mode (#3654); built beside `omnivoice-tts-*` for each platform above and listed in the manifest |
 | `checksums.sha256` | computed by `scripts/build-omnivoice-tts.sh` | SHA-256 manifest — verified by `VoiceStudioGGUFBackend.is_available()` |
 
 The pinned commit SHA for `omnivoice.cpp` lives in

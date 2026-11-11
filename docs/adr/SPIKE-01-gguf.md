@@ -41,7 +41,7 @@ The integration shape is `VoiceStudioGGUFBackend(TTSBackend)` wrapping Phase 2's
 ### Pinned SHAs (filled in Wave 1 by Task 1)
 
 - `Serveurperso/OmniVoice-GGUF` HuggingFace repo revision SHA: `361609388ae572a820d085185bbbe2a2aac4b30e` (resolved 2026-05-20 via `curl https://huggingface.co/api/models/Serveurperso/OmniVoice-GGUF`; lastModified `2026-04-30T13:39:10.000Z`)
-- `ServeurpersoCom/omnivoice.cpp` master HEAD SHA: `886fc079838ca7400cb2b42b36e2a65aa1daabe8` (resolved 2026-05-20 via `curl https://api.github.com/repos/ServeurpersoCom/omnivoice.cpp/commits/master`; commit `2026-05-17T12:41:06Z` — "cmake: scope /utf-8 to C and C++ so nvcc does not treat it as an input file")
+- `ServeurpersoCom/omnivoice.cpp` master HEAD SHA: `040c8b344d8c670ce1475194751d119b5ef82c78` (moved from `886fc079838ca7400cb2b42b36e2a65aa1daabe8` in November 2026 for the resident `tts-server` target and voice registry, #3654; commit `2026-09-05T07:06:45Z` — "server: add a voice registry and per request language")
 
 Both SHAs are mirrored in `backend/engines/omnivoice_gguf/quant_map.json` `_meta` block so the engine code and the ADR cannot drift apart.
 
@@ -60,7 +60,7 @@ Both SHAs are mirrored in `backend/engines/omnivoice_gguf/quant_map.json` `_meta
 - `omnivoice.cpp` README does not publish a standalone `buildmetal.sh` script; Apple Silicon Metal is built directly via `cmake -DGGML_METAL=ON` (#2105).
 
 **Mitigations:**
-- Pin `omnivoice.cpp` by commit SHA (`886fc079838ca7400cb2b42b36e2a65aa1daabe8`); rebuild from pinned SHA in CI for all 4 target platforms.
+- Pin `omnivoice.cpp` by commit SHA (`040c8b344d8c670ce1475194751d119b5ef82c78`); rebuild from pinned SHA in CI for all 4 target platforms.
 - Pin every quant file by commit SHA in `quant_map.json` (`361609388ae572a820d085185bbbe2a2aac4b30e`); shippable JSON so the table can update without an app release.
 - In-process `VoiceStudioBackend` remains as fallback if any GGUF step fails (probe, download, load, generate).
 - macOS Apple Silicon Metal build is verified via `cmake -DGGML_METAL=ON` (#2105); in-process `VoiceStudioBackend` remains available as general fallback.
@@ -73,6 +73,6 @@ Both SHAs are mirrored in `backend/engines/omnivoice_gguf/quant_map.json` `_meta
 - https://huggingface.co/Serveurperso/OmniVoice-GGUF (verified 2026-05-18 / re-verified 2026-05-20)
 - https://huggingface.co/api/models/Serveurperso/OmniVoice-GGUF (SHA `361609388ae572a820d085185bbbe2a2aac4b30e`, 2026-05-20)
 - https://github.com/ServeurpersoCom/omnivoice.cpp (verified 2026-05-18 / re-verified 2026-05-20)
-- https://api.github.com/repos/ServeurpersoCom/omnivoice.cpp/commits/master (SHA `886fc079838ca7400cb2b42b36e2a65aa1daabe8`, 2026-05-20)
+- https://api.github.com/repos/ServeurpersoCom/omnivoice.cpp/commits/040c8b344d8c670ce1475194751d119b5ef82c78 (current pin; initial pin was `886fc079838ca7400cb2b42b36e2a65aa1daabe8`, 2026-05-20)
 - https://huggingface.co/k2-fsa/OmniVoice (upstream; separate code/weight terms)
 - `backend/services/tts_backend.py` (existing `VoiceStudioBackend` reference)

@@ -91,7 +91,7 @@ version only after validation.
 ## Before tagging
 
 1. Merge only after required CI and review are green.
-2. Run the artifact-only Electron rehearsal, `.github/workflows/electron-build.yml`,
+2. Run the artifact-only Electron build, `.github/workflows/electron-build.yml`,
    and inspect all five outputs: Linux x64, Windows x64, Windows ARM64, macOS
    arm64, macOS x64. Windows ARM64 is experimental: a failed leg does not block
    the other four.
@@ -125,6 +125,40 @@ version only after validation.
    any file’s history; restore access to missing objects and rerun before
    treating its contributor list as complete.
 7. Confirm the version matches the intended tag.
+8. [Rehearse the release](#rehearse-a-release) from the commit you will tag.
+
+## Rehearse a release
+
+Run the real release workflow without a tag before every tag, and whenever a
+release workflow change needs proof:
+
+```bash
+gh workflow run electron-release.yml --ref <branch> -f rehearsal=true
+```
+
+It builds the dispatched commit exactly as a tag would: every desktop package
+(Linux x64, Windows x64 and ARM64, macOS arm64 and x64), the CLI bundle inside
+them, the `omnivoice-tts` runtimes, the Android APK/AAB and the unsigned iPhone
+IPA, and the packaged smoke tests. The release job then collects every asset and
+runs `prepare_electron_release.py --rehearsal` against the version in
+`package.json` (it must be `X.Y.Z` or `X.Y.Z-beta.N`, and `CHANGELOG.md` must have
+its section), the updater feed checksum and channel checks, the Tauri sunset
+feeds for Stable, and the signing table. The notes, `SHA256SUMS.txt` and the
+installers stay on the workflow run for 3 days. When some build legs fail, the
+rehearsal still verifies the ones that built, then fails and lists the missing
+legs in the run summary; a release still stops at the first failed leg.
+
+It never publishes: no tag, no GitHub Release or draft, no feed upload, no
+Docker or Android repository dispatch. `publish`, `release_tag` and
+`allow_unsigned` are refused with `rehearsal`. macOS builds are signed and
+notarized when the Apple secrets exist, like a release. Phone builds skip the
+protected `mobile-release` environment, so the APK/AAB are unsigned. SignPath is
+skipped unless you add `-f signpath_policy=test-signing`, which signs the Windows
+installers with the project's test certificate; the release policy is never used.
+
+It does not prove the publishing steps themselves, the Android repository update,
+release-signed Android or App Store builds, SignPath release approval, or Docker
+images (`docker.yml` builds those on `main`).
 
 ## Build a release draft
 
@@ -302,7 +336,10 @@ Every direct desktop installer except Intel macOS ships the OmniVoice GGUF
 runtime under `resources/bin/` (#2780). `electron-release.yml` and the
 packaging rehearsal call `build-omnivoice-tts.yml` (`desktop: true`) and stage
 each platform's artifact into `electron/build/omnivoice-tts/`; Windows ARM64
-ships the x64 build. Signing rewrites the binary, so the build refreshes
+ships the x64 build. Each platform ships `tts-server-<platform>` (the opt-in resident server,
+#3654) next to `omnivoice-tts-<platform>`; the build, the staging step and
+`packaging-contract.mjs` all fail if it is missing or absent from the manifest.
+Signing rewrites the binaries, so the build refreshes
 `bin/checksums.sha256` after signing (`electron/omnivoice-tts-bundle.mjs`; on
 macOS before the bundle is sealed). `packaging-contract.mjs` fails a release
 whose installer lacks the runtime, whose manifest no longer matches the shipped

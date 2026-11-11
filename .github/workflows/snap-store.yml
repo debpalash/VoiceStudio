@@ -72,9 +72,17 @@ jobs:
           version: '0.12.13'
           enable-cache: false
       - name: Install native build dependencies
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libasound2-dev libxdo-dev libxtst-dev libx11-dev libxkbcommon-dev libwayland-dev libssl-dev pkg-config squashfs-tools
+          helper=.github/scripts/apt-retry.sh
+          # An older release tag predates the helper; take it from this workflow's commit.
+          if [ ! -f "$helper" ]; then
+            helper="$RUNNER_TEMP/apt-retry.sh"
+            gh api -H "Accept: application/vnd.github.raw" \
+              "repos/$GITHUB_REPOSITORY/contents/.github/scripts/apt-retry.sh?ref=$GITHUB_SHA" > "$helper"
+          fi
+          bash "$helper" install libasound2-dev libxdo-dev libxtst-dev libx11-dev libxkbcommon-dev libwayland-dev libssl-dev pkg-config squashfs-tools
       - name: Bundle pinned uv
         run: |
           node --input-type=module <<'NODE'

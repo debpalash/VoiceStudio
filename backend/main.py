@@ -141,6 +141,15 @@ try:
 except ImportError:
     pass
 
+# transformers' 4-thread weight loader faults with 0xC0000005 in
+# torch/storage.py on some Windows hosts (#3767, #3772, #4024). Serial loading
+# is a host stability default on Windows only (load speed, not a feature
+# difference). Applied after .env and saved settings load so a user value such
+# as "0" wins; the desktop shell deliberately does not preset it. Must precede
+# any transformers import.
+if sys.platform == "win32":
+    os.environ.setdefault("HF_DEACTIVATE_ASYNC_LOAD", "1")
+
 # A mirror in HF_ENDPOINT must never receive the Hugging Face token, here or in
 # engine processes that inherit this environment.
 from services.hf_auth import apply_process_token_policy as _apply_hf_token_policy  # noqa: E402

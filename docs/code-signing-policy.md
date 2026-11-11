@@ -78,6 +78,10 @@ program makes, all started or consented to by the user, are listed in the
 - Product analytics, off unless the user says yes at the first-run prompt;
   allowlisted, content-free metadata only.
 - Account features, off by default and stopped at once when switched off.
+- The GitHub star badge, which fetches the public repository star count while
+  shown and refreshes it every 20 minutes while visible, with no credentials or
+  referrer. It sends no project, recording, or account data and keeps the last
+  count on failure (an owner-approved exception to the local-first rule).
 
 Apart from the update check above, the program does not transfer information to
 networked systems unless the user or the installer requests it. Third-party components keep their own
@@ -125,6 +129,10 @@ signs nothing and behaves as before (`allow_unsigned` rules unchanged).
      `SIGNPATH_SIGNING_POLICY_SLUG`.
    - Leave `ELECTRON_WINDOWS_CSC_LINK` unset: an own certificate takes
      precedence and disables the SignPath path.
+   - Optional: a second policy with the slug `test-signing` (test certificate)
+     lets a [release rehearsal](RELEASING.md#rehearse-a-release) dispatched with
+     `signpath_policy=test-signing` exercise this path from a branch. Rehearsals
+     never submit to the release policy.
 4. Test run: dispatch **Electron desktop release** with `release_tag` set to an
    existing tag, `publish=false`. Approve the signing request in SignPath. The
    Windows legs should pass "Sign the Windows installer with SignPath",

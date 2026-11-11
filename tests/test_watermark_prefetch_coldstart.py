@@ -13,6 +13,7 @@ import importlib
 import sys
 import threading
 import types
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -143,13 +144,53 @@ def test_prefetch_generator_does_not_download_with_empty_offline_cache(
     assert calls == []
 
 
+def _loader_cache_file(monkeypatch) -> Path:
+    """The file the REAL audioseal loader reads for the generator card.
+
+    Runs ``audioseal.loader.load_model_checkpoint`` on the card's checkpoint
+    with the download intercepted, so the expected path comes from the
+    loader itself, not a copy of its rules.
+    """
+    loader = pytest.importorskip("audioseal.loader")
+    card = loader.load_local_model_config("audioseal_wm_16bits")
+    seen: list[Path] = []
+
+    class _Stop(Exception):
+        pass
+
+    def _no_download(url, model_dir=None, map_location=None, file_name=None, **_kw):
+        seen.append(Path(model_dir) / file_name)
+        raise _Stop
+
+    def _no_hf_download(*_a, local_dir=None, filename=None, **_kw):
+        seen.append(Path(local_dir) / filename)
+        raise _Stop
+
+    monkeypatch.setattr("torch.hub.load_state_dict_from_url", _no_download)
+    hf_hub = pytest.importorskip("huggingface_hub")
+    monkeypatch.setattr(hf_hub, "hf_hub_download", _no_hf_download)
+    with pytest.raises(_Stop):
+        loader.load_model_checkpoint(card["checkpoint"])
+    assert len(seen) == 1
+    return seen[0]
+
+
+@pytest.mark.parametrize("env", ["AUDIOSEAL_CACHE_DIR", "XDG_CACHE_HOME"])
 def test_prefetch_generator_loads_cached_checkpoint_offline(
-    monkeypatch, tmp_path, watermark
+    monkeypatch, tmp_path, watermark, env
 ):
-    cache_dir = tmp_path / "audioseal"
-    cache_dir.mkdir()
-    (cache_dir / "generator_base.pth").touch()
-    monkeypatch.setenv("AUDIOSEAL_CACHE_DIR", str(tmp_path))
+    """#2818: the check looked for ``<cache>/audioseal/generator_base.pth``,
+    but the bundled card names an https URL that the loader caches under a
+    hashed filename, so every warm host logged "checkpoint is not cached"."""
+    monkeypatch.delenv("AUDIOSEAL_CACHE_DIR", raising=False)
+    monkeypatch.setenv(env, str(tmp_path))
+    real_file = _loader_cache_file(monkeypatch)
+    assert real_file.parent == tmp_path / "audioseal"
+    assert watermark._audioseal_checkpoint_path(
+        watermark._generator_card_checkpoint()
+    ) == real_file
+
+    real_file.write_bytes(b"checkpoint")
     monkeypatch.setenv("HF_HUB_OFFLINE", "1")
     monkeypatch.setattr(watermark, "will_mark", lambda: True)
     calls = []
@@ -158,6 +199,33 @@ def test_prefetch_generator_loads_cached_checkpoint_offline(
     watermark.prefetch_generator()
 
     assert calls == [{"mark_prefetched": True}]
+
+
+def test_checkpoint_named_after_the_card_file_is_not_the_loader_cache(
+    monkeypatch, tmp_path, watermark
+):
+    """A bare ``generator_base.pth`` is not what the loader reads for the
+    https card: reporting it as cached would turn prefetch into a download."""
+    monkeypatch.setenv("AUDIOSEAL_CACHE_DIR", str(tmp_path))
+    (tmp_path / "audioseal").mkdir()
+    (tmp_path / "audioseal" / "generator_base.pth").touch()
+    assert watermark._generator_checkpoint_cached() is False
+
+
+def test_checkpoint_path_follows_each_loader_branch(monkeypatch, tmp_path, watermark):
+    """Hub-repo paths land as ``<cache>/<file>`` (hf_hub_download local_dir),
+    local files are read in place, URLs use the hashed torch.hub name."""
+    monkeypatch.setenv("AUDIOSEAL_CACHE_DIR", str(tmp_path))
+    cache = tmp_path / "audioseal"
+    assert watermark._audioseal_checkpoint_path(
+        "facebook/audioseal/generator_base.pth"
+    ) == cache / "generator_base.pth"
+    local = tmp_path / "mine.pth"
+    local.touch()
+    assert watermark._audioseal_checkpoint_path(str(local)) == local
+    assert watermark._audioseal_checkpoint_path(
+        "https://huggingface.co/facebook/audioseal/resolve/main/generator_base.pth"
+    ) == cache / "0f195d476dd87ca1bd7b09e6"
 
 
 def test_detector_load_is_not_blocked_by_a_generator_prefetch(monkeypatch, watermark):

@@ -16,11 +16,18 @@ def _wm():
     return watermark
 
 
+def _ripple(like):
+    """A zero-mean ±0.05 residual (the mark is DC-free since #2818)."""
+    signs = torch.ones(like.shape[-1])
+    signs[1::2] = -1.0
+    return 0.05 * signs.expand_as(like)
+
+
 class _Offset:
-    """Additive residual that lifts every sample, like a mark riding a peak."""
+    """Additive residual that rides every peak, like a mark on a full take."""
 
     def __call__(self, audio, sample_rate, message):
-        return audio + 0.05
+        return audio + _ripple(audio)
 
 
 def test_marked_take_never_exceeds_full_scale(monkeypatch):
@@ -33,7 +40,7 @@ def test_marked_take_never_exceeds_full_scale(monkeypatch):
     # The mark itself is intact: marked - attenuated host is the residual.
     gain = (float(marked[0, 0]) - 0.05) / 0.98
     assert 0.0 < gain < 1.0
-    assert torch.allclose(marked - wave * gain, torch.full_like(wave, 0.05), atol=1e-5)
+    assert torch.allclose(marked - wave * gain, _ripple(wave), atol=1e-5)
 
 
 def test_take_with_headroom_is_not_attenuated(monkeypatch):
@@ -42,4 +49,4 @@ def test_take_with_headroom_is_not_attenuated(monkeypatch):
     monkeypatch.setattr(wm, "_get_generator", _Offset)
     wave = torch.full((1, 16000), 0.5)
     marked = wm.embed_watermark(wave, 16000, force=True)
-    assert torch.allclose(marked, wave + 0.05)
+    assert torch.allclose(marked, wave + _ripple(wave))

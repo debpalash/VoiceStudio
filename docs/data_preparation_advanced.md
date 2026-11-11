@@ -4,6 +4,7 @@ The advanced pipeline adds **denoising** and **prompt noise augmentation** on to
 
 ## Prerequisites
 
+- **Dependencies**: `uv sync --extra train` (WebDataset).
 - **Denoising**: Sidon model checkpoints (`feature_extractor_cuda.pt`, `decoder_cuda.pt`) from https://huggingface.co/sarulab-speech/sidon-v0.1/tree/main.
 - **Noise augmentation**: noise + RIR tar shards with `data.lst` manifests
 

@@ -122,7 +122,7 @@ class AndroidRepositoryTests(unittest.TestCase):
                 log = root / f'{channel}.txt'
                 subprocess.run(['bash', '-eu', '-c', step['run']], check=True,
                     env={**os.environ, 'PATH': str(root) + os.pathsep + os.environ['PATH'],
-                         'CHANNEL': channel, 'DISPATCH_LOG': str(log)})
+                         'CHANNEL': channel, 'DISPATCH_LOG': str(log), 'REHEARSAL': 'false'})
                 if channel == 'stable':
                     self.assertEqual(log.read_text(encoding="utf-8").strip(), 'workflow run android-repository.yml --ref main')
                 else:

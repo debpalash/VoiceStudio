@@ -167,6 +167,6 @@ def test_publish_proves_where_latest_points(tmp_path, channel, latest, ok):
     (fake / "gh").chmod(0o755)
     tag = "v0.5.8-beta.2" if channel == "beta" else "v0.5.8"
     env = dict(os.environ, PATH=f"{fake}{os.pathsep}{os.environ['PATH']}", CHANNEL=channel, TAG=tag,
-               GITHUB_REPOSITORY="debpalash/VoiceStudio")
+               GITHUB_REPOSITORY="debpalash/VoiceStudio", REHEARSAL="false")
     result = subprocess.run(["bash", "-e", "-c", step["run"]], env=env, capture_output=True, text=True)
     assert (result.returncode == 0) is ok, result.stdout + result.stderr

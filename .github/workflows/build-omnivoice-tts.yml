@@ -1,4 +1,4 @@
-# Build the `omnivoice-tts` C++ runtime binary (Phase 4 Plan 04-01, GGUF-03).
+# Build the `omnivoice-tts` C++ runtime binary (plus the `tts-server` resident server, #3654) (Phase 4 Plan 04-01, GGUF-03).
 #
 # The runtime is PINNED to a commit SHA in
 # `backend/engines/omnivoice_gguf/quant_map.json` (`_meta.runtime_commit_sha`),
@@ -47,6 +47,10 @@ on:
         description: "Build only the platforms the desktop installers ship"
         type: boolean
         default: false
+      retention_days:
+        description: "Days to keep the runtime artifacts (0 keeps the repository default)"
+        type: number
+        default: 0
 
 permissions:
   contents: read
@@ -97,9 +101,18 @@ jobs:
       # (GGML_BACKEND_DL), so a host without a Vulkan driver still starts on CPU.
       - name: Vulkan dev deps (Linux GPU backend)
         if: startsWith(matrix.platform, 'linux-')
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          sudo apt-get update
-          sudo apt-get install -y glslc libvulkan-dev spirv-headers
+          # Rebuilding an older release tag checks out a tree that predates the
+          # helper; take it from the workflow's own commit instead.
+          helper=.github/scripts/apt-retry.sh
+          if [ ! -f "$helper" ]; then
+            helper="$RUNNER_TEMP/apt-retry.sh"
+            gh api -H "Accept: application/vnd.github.raw" \
+              "repos/$GITHUB_REPOSITORY/contents/.github/scripts/apt-retry.sh?ref=$GITHUB_SHA" > "$helper"
+          fi
+          bash "$helper" install glslc libvulkan-dev spirv-headers
 
       # Windows: the LunarG SDK provides glslc and the headers; the build script
       # detects it through VULKAN_SDK. Desktop releases require the Vulkan
@@ -156,13 +169,29 @@ jobs:
           else
             echo "::error::$PLATFORM built without the ggml-vulkan module"; exit 1
           fi
+      # The resident server (#3654) is built by the same cmake run; without it
+      # the opt-in resident mode silently never engages in the installers.
+      - name: Check the resident server was built and checksummed
+        shell: bash
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          ext=""
+          if [[ "$PLATFORM" == windows-* ]]; then ext=".exe"; fi
+          for name in "omnivoice-tts-$PLATFORM$ext" "tts-server-$PLATFORM$ext"; do
+            test -s "bin/$name" || { echo "::error::$PLATFORM did not build $name"; exit 1; }
+            grep -q "  $name\$" bin/checksums.sha256 || { echo "::error::checksums.sha256 does not list $name"; exit 1; }
+          done
       - name: Upload binary artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: omnivoice-tts-${{ matrix.platform }}
+          # Release rehearsals keep these only briefly; empty means the default.
+          retention-days: ${{ inputs.retention_days || '' }}
           if-no-files-found: error
           path: |
             bin/omnivoice-tts-${{ matrix.platform }}*
+            bin/tts-server-${{ matrix.platform }}*
             bin/libggml*
             bin/ggml*.dll
             bin/vcruntime140*.dll

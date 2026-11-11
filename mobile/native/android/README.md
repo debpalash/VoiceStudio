@@ -21,7 +21,7 @@ Everything fetched or generated lives in the repository-ignored `build/`.
 The AAR's SHA-256 comes from `pins.json`. Source archives use the pinned commit
 in that file and a reviewed SHA-256 in `source-checksums.json`; a changed pin
 without a matching checksum fails closed. The additional GGML pin is the
-OmniVoice commit's `ggml` gitlink, `f3bc6505c4e2ede83a193e0fb4695938ff3804fd`.
+OmniVoice commit's `ggml` gitlink, `d5152bf4348453068aa8de0d479caef40a613b9d`.
 No git command changes the app checkout or populates a nested git repository.
 Standalone builds and Gradle fetch-task executions recheck archive hashes. Extracted sources and per-ABI CMake
 outputs are reused; deleting `build/` produces a complete source rebuild.

@@ -154,5 +154,5 @@ def test_a_failing_lookup_never_blocks_the_release(release, monkeypatch, tmp_pat
 def test_the_release_workflow_passes_the_repository_to_both_prepare_calls():
     workflow = (ROOT / ".github/workflows/electron-release.yml").read_text(encoding="utf-8")
     calls = [l for l in workflow.splitlines() if "prepare_electron_release.py --assets" in l]
-    assert len(calls) == 2
+    assert len(calls) == 4  # tag and rehearsal variants of both calls
     assert all('--repo "$GITHUB_REPOSITORY"' in l for l in calls)
