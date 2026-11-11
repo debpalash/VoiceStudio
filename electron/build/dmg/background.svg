@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="660" height="440" viewBox="0 0 660 440">
+  <!--
+    macOS DMG window background. Source of build/dmg-background.png and
+    build/dmg-background@2x.png: re-render with `bun run dmg:background`
+    (electron/scripts/render-dmg-background.mjs) after editing.
+    Palette: docs/branding.md (plum tile, voice rose, creative amber).
+
+    Layout is shared with the `dmg` block in electron-builder.config.mjs and
+    checked by electron/tests/dmg-window.test.mjs:
+    - 112 pt icons centred at (170, 160) and (490, 160).
+    - The window frame equals this image, so the title bar hides the bottom
+      32 pt; with Finder's tab, path and status bars on, about 124 pt are
+      hidden. Everything that matters stays above y = 316, and the icons'
+      cells (centre + 113 pt) end above it, so Finder never adds a scroll bar.
+    - Finder draws labels black in Light and white in Dark appearance; each
+      label sits on a mid-tone pill with about 4.5:1 contrast for both.
+  -->
+  <defs>
+    <linearGradient id="base" x1="0" y1="0" x2="660" y2="440" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#231C2E"/>
+      <stop offset="1" stop-color="#110E17"/>
+    </linearGradient>
+    <radialGradient id="warmth" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(570 20) rotate(140) scale(440 320)">
+      <stop stop-color="#6A2D4C" stop-opacity="0.6"/>
+      <stop offset="1" stop-color="#6A2D4C" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="ember" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(90 440) rotate(-25) scale(380 200)">
+      <stop stop-color="#F7AE73" stop-opacity="0.11"/>
+      <stop offset="1" stop-color="#F7AE73" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="voice" x1="0" y1="0" x2="660" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD0DB"/>
+      <stop offset="0.5" stop-color="#F47FA3"/>
+      <stop offset="1" stop-color="#F7AE73"/>
+    </linearGradient>
+    <linearGradient id="arrow" x1="266" y1="0" x2="394" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD0DB"/>
+      <stop offset="0.55" stop-color="#F47FA3"/>
+      <stop offset="1" stop-color="#F7AE73"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="86" x2="0" y2="254" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.03"/>
+    </linearGradient>
+    <linearGradient id="floor" x1="0" y1="318" x2="0" y2="440" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.15"/>
+    </linearGradient>
+    <mask id="fade">
+      <rect width="660" height="440" fill="url(#floor)"/>
+    </mask>
+    <filter id="soft" x="-20%" y="-300%" width="140%" height="700%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+    <filter id="grain" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="7" stitchTiles="stitch"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0" intercept="0.05"/>
+      </feComponentTransfer>
+    </filter>
+  </defs>
+
+  <rect width="660" height="440" fill="url(#base)"/>
+  <rect width="660" height="440" fill="url(#warmth)"/>
+  <rect width="660" height="440" fill="url(#ember)"/>
+
+  <!-- The brand waveform as a quiet floor below the footer. -->
+  <g fill="none" stroke="url(#voice)" stroke-linecap="round" stroke-linejoin="round" mask="url(#fade)">
+    <path d="M-10 368C30 368 50 346 90 346S150 392 190 392S250 332 290 332S350 402 390 402S450 340 490 340S550 380 590 380S650 362 680 362" stroke-width="2.5" stroke-opacity="0.34"/>
+    <path d="M-10 374C30 374 50 358 90 358S150 386 190 386S250 348 290 348S350 394 390 394S450 354 490 354S550 378 590 378S650 368 680 368" stroke-width="1.5" stroke-opacity="0.18"/>
+  </g>
+
+  <rect width="660" height="440" filter="url(#grain)"/>
+
+  <text x="330" y="56" text-anchor="middle" font-family="System Font, SF Pro Display, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="22" font-weight="600" letter-spacing="-0.2" fill="#F6EEF4">Drag VoiceStudio to Applications</text>
+
+  <!-- Icon slots: frosted cards with the app tile's hairline rim. -->
+  <g stroke="#FFFFFF" stroke-opacity="0.10">
+    <rect x="90.5" y="86.5" width="159" height="167" rx="22" fill="url(#card)"/>
+    <rect x="410.5" y="86.5" width="159" height="167" rx="22" fill="url(#card)"/>
+  </g>
+  <!-- Label pills, luminance ~0.19: ~4.5:1 against black and white text. -->
+  <g fill="#7E7487">
+    <rect x="104" y="217" width="132" height="23" rx="11.5"/>
+    <rect x="424" y="217" width="132" height="23" rx="11.5"/>
+  </g>
+
+  <!-- Drag arrow: solid brand gradient with a soft glow beneath. -->
+  <path d="M268 160H390" stroke="#F47FA3" stroke-opacity="0.5" stroke-width="10" stroke-linecap="round" filter="url(#soft)"/>
+  <path d="M268 160H392M376 144l18 16-18 16" fill="none" stroke="url(#arrow)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Footer. -->
+  <g font-family="System Font, SF Pro Text, Helvetica Neue, Helvetica, Arial, sans-serif" font-size="12" fill="#B8ACC0">
+    <path d="M176 299.6c-.2 0-.4-.1-.5-.2l-3.6-3.4c-1.8-1.7-1.9-4.2-.3-5.6 1.3-1.1 3.1-.9 4.4.3 1.3-1.2 3.1-1.4 4.4-.3 1.6 1.4 1.5 3.9-.3 5.6l-3.6 3.4c-.1.1-.3.2-.5.2Z" fill="#F47FA3"/>
+    <text x="187" y="299">Free &amp; open source · github.com/debpalash/VoiceStudio</text>
+  </g>
+</svg>

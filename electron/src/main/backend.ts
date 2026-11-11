@@ -29,7 +29,15 @@ import {
 } from './runtime-project';
 import { detectSetupHardware, type SetupHardware } from './setup-hardware';
 import { collectHostSnapshot, freeGb, type HostSnapshot } from './host-snapshot';
-import { collectTrustFacts, programBasename, runProbe, type TrustFacts } from './install-doctor';
+import {
+  collectFaultFacts,
+  collectTrustFacts,
+  programBasename,
+  runProbe,
+  type FaultFacts,
+  type TrustFacts,
+} from './install-doctor';
+import { isNativeFaultExit } from '../shared/utils/nativeExit';
 import {
   classifyInstallFailure,
   launchRefused,
@@ -40,7 +48,8 @@ import { runtimeSetupSupported } from './distribution';
 import { bundledPython, bundledRuntimeEnv } from './bundled-runtime';
 import { asciiSafePthFiles } from './pth-ascii';
 import { devProbeStamped, writeDevProbeStamp } from './dev-probe-stamp';
-import { CrashJournal } from './crash-journal';
+import { applyWeightLoadFallback, CrashJournal } from './crash-journal';
+import { pinComputeDeviceToCpu } from './compute-device-pref';
 import { nativeFaultSummary } from '../shared/utils/crashReport';
 import {
   backendLogEvidence,
@@ -929,16 +938,24 @@ export interface BackendLogTail {
  * survives a silent readiness timeout.
  */
 function backendLogPath(launch: Pick<BackendLaunchLog, 'env' | 'cwd'>): string {
+  return join(backendDataDir(launch), 'omnivoice.log');
+}
+
+/** The backend's DATA_DIR for one launch (backend/core/config.py `get_app_data_dir`). */
+export function backendDataDir(
+  launch: Pick<BackendLaunchLog, 'env' | 'cwd'>,
+  platform = process.platform,
+): string {
   const { env } = launch;
   const custom = env.OMNIVOICE_DATA_DIR?.trim();
   const dataDir = custom
     ? custom
-    : process.platform === 'darwin'
+    : platform === 'darwin'
       ? join(homedir(), 'Library', 'Application Support', 'OmniVoice')
-      : process.platform === 'win32'
+      : platform === 'win32'
         ? join(env.APPDATA ?? '', 'OmniVoice')
         : join(homedir(), '.omnivoice');
-  return join(resolve(launch.cwd || '.', dataDir), 'omnivoice.log');
+  return resolve(launch.cwd || '.', dataDir);
 }
 
 /** Enough for LOG_TAIL_LINES lines without reading a whole rotated log. */
@@ -1113,6 +1130,8 @@ export class BackendSupervisor extends EventEmitter<{
   private exitSignal: string | null | undefined;
   private startedAt = Date.now();
   private child: ChildProcess | null = null;
+  /** The last spawned backend's pid: Windows names a crash's faulting module by it. */
+  private childPid: number | undefined;
   private readonly log: string[] = [];
   /** Only the spawned process's own output, for quoting back in failure messages. */
   private readonly childLog: string[] = [];
@@ -1342,6 +1361,7 @@ export class BackendSupervisor extends EventEmitter<{
         status.smartAppControlWarning = true;
     }
     if (this.cpuSetupAvailable()) status.cpuSetupAvailable = true;
+    if (this.cpuRestartAvailable()) status.cpuRestartAvailable = true;
     if (/^(1|true|yes|on)$/i.test((process.env.OMNIVOICE_ANALYTICS_DISABLED ?? '').trim()))
       status.analyticsDisabled = true;
     if (this.diagnosis) status.diagnosis = this.diagnosis;
@@ -1934,6 +1954,39 @@ export class BackendSupervisor extends EventEmitter<{
     await this.setupRuntime();
   }
 
+  /**
+   * Whether "Restart on CPU" can work: our own local backend crashed, and the
+   * stored Settings choice decides its device. An `OMNIVOICE_DEVICE` the user
+   * set in the environment wins over Settings, and a custom
+   * `OMNIVOICE_BACKEND_CMD` may not read VoiceStudio's settings at all, so
+   * writing them would not help in either case.
+   */
+  private cpuRestartAvailable(): boolean {
+    return (
+      this.stage === 'crashed' &&
+      this.managed &&
+      !this.remoteUrl &&
+      !parseBackendCmdOverride(process.env.OMNIVOICE_BACKEND_CMD) &&
+      Boolean(this.launchLog) &&
+      !this.launchLog?.env.OMNIVOICE_DEVICE?.trim()
+    );
+  }
+
+  /**
+   * Recovery that needs no running backend: Settings → Performance & Device
+   * cannot load or save while the engine is down, so the failure screen stores
+   * the same CPU choice in the backend's prefs.json and starts it again. The
+   * user switches back in that Settings control once a driver update is in.
+   */
+  async restartOnCpu(): Promise<void> {
+    const launch = this.launchLog;
+    if (!this.cpuRestartAvailable() || !launch)
+      throw new Error('Restart on CPU is only available after the local engine crashed');
+    await pinComputeDeviceToCpu(backendDataDir(launch));
+    this.pushLog('out', 'Compute device set to CPU from the failure screen; restarting the engine.');
+    await this.restart();
+  }
+
   /** Kill the managed child (if any) and run the attach-or-spawn sequence again. */
   async restart(): Promise<void> {
     if (this.installation)
@@ -2146,7 +2199,7 @@ export class BackendSupervisor extends EventEmitter<{
       /Windows refused to load/.test(causeText) ||
       windowsLoadBlock(this.childErrorLog) !== null;
     const custom = Boolean(parseBackendCmdOverride(process.env.OMNIVOICE_BACKEND_CMD));
-    const build = (trust: TrustFacts = {}): InstallFailure => ({
+    const build = (trust: TrustFacts & FaultFacts = {}): InstallFailure => ({
       code: classifyInstallFailure({
         stage: this.stage,
         message: this.message,
@@ -2184,6 +2237,19 @@ export class BackendSupervisor extends EventEmitter<{
       ...trust,
     });
     this.failure = build();
+    if (!refused && this.stage === 'crashed' && this.managed) {
+      // A native fault's Python dump names a frame, not the library that crashed.
+      if (!isNativeFaultExit({ exitCode: this.exitCode, signal: this.exitSignal })) return;
+      void collectFaultFacts({
+        pid: this.childPid,
+        launchedAt: this.launchLog?.startedAt,
+      }).then((fault) => {
+        if (diagnosis !== this.failureDiagnosis || !fault.faultingModule) return;
+        this.failure = build(fault);
+        this.emitStatus();
+      });
+      return;
+    }
     if (!refused) return;
     void collectTrustFacts({
       program,
@@ -2331,6 +2397,11 @@ export class BackendSupervisor extends EventEmitter<{
     console.log(`[backend] spawning in ${plan.cwd}: ${plan.argv.join(' ')}`);
     let child: ChildProcess;
     const processOptions = managedBackendSpawnOptions(this.port, this.runtimeRegion);
+    const fallback = applyWeightLoadFallback(processOptions.env, this.crashes.all());
+    if (fallback) {
+      console.log(`[backend] ${fallback}`);
+      this.pushLog('out', fallback);
+    }
     // Per launch: a failed spawn must not leave an older launch's log in place.
     this.launchLog = null;
     try {
@@ -2352,6 +2423,7 @@ export class BackendSupervisor extends EventEmitter<{
       return;
     }
     this.child = child;
+    this.childPid = child.pid;
     this.launchLog = { env: processOptions.env, cwd: plan.cwd, startedAt: Date.now() };
     if (processOptions.drainFd !== null) {
       // Python passes this child-side descriptor to every nested operation.

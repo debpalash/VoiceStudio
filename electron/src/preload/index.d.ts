@@ -49,6 +49,8 @@ export interface BackendStatus {
   analyticsDisabled?: boolean;
   /** Code and facts for the current install or startup failure. */
   failure?: InstallFailure;
+  /** The local engine crashed and can be started again on CPU (`backend.restartOnCpu`). */
+  cpuRestartAvailable?: boolean;
   stage: BackendStage;
   setupIssue?:
     | 'space'
@@ -505,6 +507,8 @@ export interface VoiceStudioBridge {
     onStatus(cb: (status: BackendStatus) => void): () => void;
     /** Kill (if managed) and relaunch the backend. */
     restart(): Promise<void>;
+    /** Store CPU as the compute device and restart a crashed local engine. */
+    restartOnCpu?(): Promise<void>;
     setupRuntime(): Promise<void>;
     cleanSetupRuntime(): Promise<void>;
     setupRuntimeOnCpu(): Promise<void>;

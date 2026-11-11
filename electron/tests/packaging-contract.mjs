@@ -35,6 +35,7 @@ const distributionIdentityTest = spawnSync(
     '--test',
     resolve(root, 'tests/distribution-identity.test.mjs'),
     resolve(root, 'tests/mas-runtime-bundle.test.mjs'),
+    resolve(root, 'tests/dmg-window.test.mjs'),
   ],
   { encoding: 'utf8' },
 );
