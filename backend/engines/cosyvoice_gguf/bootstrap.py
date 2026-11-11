@@ -38,6 +38,9 @@ class NativeBackend:
     device_name: str
     target: str
     fallback_reason: str | None = None
+    #: Why the probe reported no Vulkan row (exit code, the runtime's own
+    #: Vulkan line), so a CPU fallback names its cause.
+    probe_detail: str | None = None
 
 
 def managed_dir() -> Path:
@@ -165,23 +168,33 @@ def frontend_dir() -> Path:
     )
 
 
+# One row of ``--list-backends``: name, bus id (``-`` when the device has
+# none, a PCI address such as ``0000:01:00.0`` for a GPU), description.
+#   Vulkan0    0000:01:00.0         NVIDIA GeForce GTX 1080 Ti
+#   CPU        -                    Intel(R) Core(TM) i5-10400F CPU @ 2.90GHz
+# The bus column must be ``-`` or a hex bus address, so the header and ggml's own
+# ``ggml_vulkan: ...`` log lines never parse as rows. Leading whitespace,
+# tabs and CRLF endings are tolerated; stdout and stderr are both read.
+_BACKEND_ROW = re.compile(
+    r"^\s*([A-Za-z][\w.-]*)\s+(?:-|[0-9A-Fa-f]+(?::[0-9A-Fa-f]+)+(?:\.[0-9A-Fa-f]+)?)\s+(\S.*?)\s*$"
+)
+
+
 def parse_backends(output: str) -> list[NativeBackend]:
     rows = []
-    for line in output.splitlines():
-        match = re.match(r"\s*([A-Za-z][\w.-]*)\s+-\s+(.+?)\s*$", line)
+    for line in (output or "").replace("\ufeff", "").splitlines():
+        match = _BACKEND_ROW.match(line)
         if match:
             name, device = match.groups()
-            rows.append(
-                NativeBackend(
-                    name,
-                    device,
-                    "vulkan"
-                    if name.lower().startswith("vulkan")
-                    else "cpu"
-                    if name.upper() == "CPU"
-                    else name.lower(),
-                )
+            lowered = name.lower()
+            target = (
+                "vulkan"
+                if lowered.startswith("vulkan")
+                else "cpu"
+                if lowered == "cpu"
+                else lowered
             )
+            rows.append(NativeBackend(name, device, target))
     return rows
 
 
@@ -241,9 +254,13 @@ def _probe_once(cli: Path) -> list[NativeBackend]:
     from core.scrub import scrub_text
 
     try:
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 -- fixed argv, resolved runtime binary
             [str(cli), "--list-backends"],
             capture_output=True,
+            # Same folder as the server launch, so DLLs beside the exe resolve
+            # identically; no console window flashes from the GUI backend.
+            cwd=str(cli.parent),
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -274,7 +291,26 @@ def _probe_once(cli: Path) -> list[NativeBackend]:
             f"CosyVoice GGUF native runtime: {cli.name} --list-backends printed no recognisable "
             f"device list{': ' + detail if detail else ''}"
         )
+    if not any(row.target == "vulkan" for row in devices):
+        note = _no_vulkan_detail(result.returncode, result.stderr or "", output)
+        devices = [replace(row, probe_detail=note) for row in devices]
     return devices
+
+
+def _no_vulkan_detail(returncode: int, stderr: str, output: str) -> str:
+    """Why the runtime listed no Vulkan device, scrubbed of paths."""
+    from core.scrub import scrub_text
+
+    parts = [f"exit code {returncode}"] if returncode else []
+    lines = [row.strip() for row in output.splitlines() if row.strip()]
+    said = next((row for row in lines if "vulkan" in row.lower()), None)
+    if said is None:
+        said = next((row.strip() for row in stderr.splitlines() if row.strip()), None)
+    if said:
+        parts.append(f"runtime said: {said}")
+    else:
+        parts.append("the runtime printed no Vulkan line (a CPU-only build?)")
+    return scrub_text("; ".join(parts))[:300]
 
 
 def choose_backend(rows: list[NativeBackend], requested: str = "auto") -> NativeBackend:
@@ -285,9 +321,10 @@ def choose_backend(rows: list[NativeBackend], requested: str = "auto") -> Native
             return gpu
         cpu = next((row for row in rows if row.name.upper() == "CPU"), None)
         if cpu:
+            why = f" ({cpu.probe_detail})" if cpu.probe_detail else ""
             return replace(
                 cpu,
-                fallback_reason="No Vulkan backend was reported by the native runtime; using CPU.",
+                fallback_reason=f"No Vulkan backend was reported by the native runtime{why}; using CPU.",
             )
         return _missing(requested)
     for row in rows:

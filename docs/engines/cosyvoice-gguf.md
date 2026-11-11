@@ -47,7 +47,9 @@ log as `CosyVoice GGUF unavailable: ...`; paste that line in a bug report.
 
 If the runtime's device probe (`cosyvoice-cli --list-backends`, up to 120 s on
 the first run) fails or crashes without listing a device, `auto` uses the
-runtime's CPU path and says so in the routing reason. Set
+runtime's CPU path and says so in the routing reason. When the probe succeeds
+but lists no Vulkan device, the reason names the runtime's exit code and its
+own Vulkan message (for example `ggml_vulkan: No devices found.`). Set
 `OMNIVOICE_COSYVOICE_GGUF_BACKEND=CPU` to skip the probe entirely. An explicit
 `Vulkan0` never falls back silently.
 
