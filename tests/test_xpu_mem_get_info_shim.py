@@ -134,3 +134,37 @@ def test_sidecars_that_pick_xpu_apply_the_fallback(engine):
     src = (_ROOT / "backend" / "engines" / engine / "main.py").read_text(encoding="utf-8")
     load = src[src.index("def _load_model("):]
     assert 'if device == "xpu":\n        _patch_xpu_mem_get_info(torch)' in load
+
+
+def test_get_best_device_installs_it_on_an_xpu_host(monkeypatch):
+    """Processes that load the TTS model without main.py (the OmniVoice
+    sidecar, the GPU sandbox worker) are covered by the device pick itself."""
+    xpu_compat = importlib.import_module("core.xpu_compat")
+    monkeypatch.setattr(xpu_compat, "_PATCHED", False)
+    monkeypatch.setattr(xpu_compat, "_WARNED", False)
+    device_caps = importlib.import_module("core.device_caps")
+    mm = importlib.import_module("services.model_manager")
+
+    torch, _ = _fake_torch(supported=False, total=16 * _GIB, reserved=2 * _GIB)
+    torch.xpu.get_device_name = lambda idx=0: "Intel(R) Arc(TM) 140V GPU (16GB)"
+    monkeypatch.setattr(mm, "_lazy_torch", lambda: torch)
+    monkeypatch.setattr(
+        device_caps, "detect_host_caps",
+        lambda: device_caps.HostCaps(family="xpu", available_families=("xpu", "cpu")),
+    )
+
+    assert mm.get_best_device() == "xpu"
+    assert torch.xpu.mem_get_info(0) == (14 * _GIB, 16 * _GIB)
+
+
+@pytest.mark.parametrize("rel,loader", [
+    ("backend/services/model_manager.py", "def _load_model_sync("),
+    ("backend/engines/omnivoice_subprocess/main.py", "def _load_model("),
+])
+def test_omnivoice_loaders_pick_the_device_before_loading(rel, loader):
+    """get_best_device() installs the fallback, so it has to run before
+    from_pretrained in both OmniVoice loaders."""
+    src = (_ROOT / rel).read_text(encoding="utf-8")
+    body = src[src.index(loader):]
+    body = body[: body.index("\ndef ", 1)]
+    assert body.index("get_best_device()") < body.index(".from_pretrained(")

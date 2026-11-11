@@ -52,6 +52,9 @@ The env var overrides the persisted UI choice.
   ROCm/HIP devices through its `cuda` API, while VoiceStudio's engine matrix
   reports the hardware as ROCm. An installed speech recognizer can supply
   missing reference transcripts for cloning.
+- On Intel Arc (XPU) the model runs bfloat16: float16 sounded choppy there,
+  and float32 is too slow because the Arc matrix units only speed up 16-bit
+  math. `OMNIVOICE_XPU_DTYPE` overrides it. On the CPU it runs float32.
 - Output is 24 kHz mono; the shared mastering chain (highpass + compressor)
   is tuned for this rate and applied automatically.
 - Cloning takes a short reference clip (`ref_audio`); 3–10 seconds is the
