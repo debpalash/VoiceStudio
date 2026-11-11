@@ -182,3 +182,13 @@ def test_direct_apt_pattern_catches_leading_options():
     for line in ("sudo apt -y install pkg", "apt-get -qq update", "apt install x", "sudo apt-get -o A=1 install y"):
         assert pattern.search(line), line
     assert not pattern.search("apt-get clean")
+
+
+def test_workflows_that_build_older_refs_fetch_the_helper_when_missing():
+    # electron-release/-build, snap-store, install-smoke and build-omnivoice-tts can
+    # check out an older tag that predates apt-retry.sh; they must fetch it from
+    # the workflow's own commit instead of failing.
+    for name in ("electron-release", "electron-build", "snap-store", "install-smoke", "build-omnivoice-tts"):
+        text = (GH / "workflows" / f"{name}.yml").read_text(encoding="utf-8")
+        assert "apt-retry.sh?ref=$GITHUB_SHA" in text, name
+        assert "bash .github/scripts/apt-retry.sh" not in text, name
