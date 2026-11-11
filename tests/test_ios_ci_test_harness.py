@@ -97,7 +97,8 @@ def test_watchdog_kills_a_silent_run_and_names_the_last_started_test():
     assert time.monotonic() - started < 30
     assert b"hung after: Test stuck() started" in out.getvalue()
     if shutil.which("sample"):
-        assert b"===== stacks of pid" in out.getvalue()
+        # Stacks, or an explicit per-pid failure line when `sample` cannot attach.
+        assert b"===== stacks of pid" in out.getvalue() or re.search(rb"\(sample \d+ failed", out.getvalue())
 
 
 def test_watchdog_still_times_out_a_child_that_closed_its_output():
