@@ -2365,6 +2365,7 @@
     "hint_in_page_error": "Windows konnte einen Teil einer Datei, die die Engine in den Speicher eingeblendet hatte, nicht lesen – meist eine Modelldatei. Häufigste Ursache ist ein Lesefehler des Laufwerks oder der Auslagerungsdatei. Speichere VoiceStudio und seine Modelle auf einem internen Laufwerk, prüfe dieses Laufwerk auf Fehler, lass Windows die Größe der Auslagerungsdatei verwalten und versuche es erneut. Tritt es auf einem fehlerfreien Laufwerk weiter auf, sende einen Bericht.",
     "hint_gpu_driver_fault": "Der Absturz trat im Grafiktreiber auf. Aktualisiere ihn über die Website deines GPU-Herstellers oder lass die Engine bis dahin auf der CPU laufen. Unter Einstellungen → Leistung & Gerät kannst du zurückwechseln.",
     "restart_on_cpu": "Auf CPU neu starten",
+    "restart_on_cpu_failed": "VoiceStudio konnte die CPU-Einstellung nicht speichern. Stelle sicher, dass der Datenordner beschreibbar und das Laufwerk nicht voll ist, und versuche es erneut.",
     "cause_missing_env": "Die Python-Umgebung fehlt oder ist unvollständig",
     "cause_permission": "Keine Schreibberechtigung für den Engine-Ordner",
     "cause_synced_folder": "Der Engine-Ordner liegt in einem Cloud-synchronisierten Ordner",

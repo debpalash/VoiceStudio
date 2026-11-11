@@ -283,3 +283,41 @@ def test_generic_directml_loader_respects_selected_family(monkeypatch, npu_avail
     monkeypatch.setattr(model_manager, "_lazy_torch", lambda: torch)
     with patch.dict("sys.modules", modules):
         assert model_manager.get_best_device() == expected
+
+
+@pytest.mark.parametrize("pin_by", ["prefs", "env"])
+@pytest.mark.parametrize(
+    "shape",
+    [{}, {"cuda_available": True}, {"mps_available": True}],
+    ids=["directml", "cuda", "mps"],
+)
+def test_explicit_cpu_choice_is_cpu_on_every_accelerated_host(monkeypatch, pin_by, shape):
+    """Restart on CPU after a graphics driver crash (#4002) stores
+    compute_device=cpu; the loader must then not open DirectML, CUDA or MPS."""
+    import importlib
+    from services import model_manager
+
+    live_caps = importlib.import_module("core.device_caps")
+    torch = _torch_mock(**shape)
+    modules = {
+        "torch": torch,
+        "torch_directml": types.SimpleNamespace(device_count=lambda: 1, device=lambda i: "privateuseone:0"),
+    }
+    if pin_by == "env":
+        monkeypatch.setenv("OMNIVOICE_DEVICE", "cpu")
+    else:
+        monkeypatch.delenv("OMNIVOICE_DEVICE", raising=False)
+        monkeypatch.setattr(
+            "core.prefs.resolve",
+            lambda key, **kw: "cpu" if key == "compute_device" else kw.get("default"),
+        )
+    with patch.dict("sys.modules", modules):
+        try:
+            caps = live_caps.refresh()
+        finally:
+            live_caps.detect_host_caps.cache_clear()
+    assert caps.requested_family == "cpu"
+    monkeypatch.setattr(live_caps, "detect_host_caps", lambda: caps)
+    monkeypatch.setattr(model_manager, "_lazy_torch", lambda: torch)
+    with patch.dict("sys.modules", modules):
+        assert model_manager.get_best_device() == "cpu"

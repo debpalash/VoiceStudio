@@ -317,8 +317,14 @@ it('restarts a crashed engine on CPU through the stored Settings choice', async 
   };
   expect(supervisor.status.cpuRestartAvailable).toBeUndefined();
   await expect(supervisor.restartOnCpu()).rejects.toThrow();
-  // Only after a crash of our own engine.
+  // A custom backend command may not read VoiceStudio's settings.
   internals.launchLog = { env: { OMNIVOICE_DATA_DIR: data }, cwd: data, startedAt: 1 };
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '["custom-python", "server.py"]');
+  expect(supervisor.status.cpuRestartAvailable).toBeUndefined();
+  await expect(supervisor.restartOnCpu()).rejects.toThrow();
+  vi.unstubAllEnvs();
+  expect(supervisor.status.cpuRestartAvailable).toBe(true);
+  // Only after a crash of our own engine.
   internals.stage = 'failed';
   expect(supervisor.status.cpuRestartAvailable).toBeUndefined();
   expect(restart).toHaveBeenCalledTimes(1);

@@ -2367,6 +2367,7 @@
     "hint_in_page_error": "Windows no pudo leer parte de un archivo que el motor tenía asignado en memoria, normalmente un archivo de modelo. La causa más común es un error de lectura del disco o del archivo de paginación. Guarda VoiceStudio y sus modelos en una unidad interna, comprueba si esa unidad tiene errores, deja que Windows administre el tamaño del archivo de paginación y vuelve a intentarlo. Si sigue ocurriendo en una unidad sana, envía un informe.",
     "hint_gpu_driver_fault": "El bloqueo ocurrió dentro del controlador gráfico. Actualízalo desde la web del fabricante de tu GPU o ejecuta el motor en la CPU mientras tanto. Puedes volver a cambiarlo en Ajustes → Rendimiento y dispositivo.",
     "restart_on_cpu": "Reiniciar en CPU",
+    "restart_on_cpu_failed": "VoiceStudio no pudo guardar el ajuste de CPU. Comprueba que su carpeta de datos permite escritura y que el disco no está lleno, y vuelve a intentarlo.",
     "cause_missing_env": "Falta el entorno de Python o está incompleto",
     "cause_permission": "No hay permiso para escribir en la carpeta del motor",
     "cause_synced_folder": "La carpeta del motor está dentro de una carpeta sincronizada en la nube",

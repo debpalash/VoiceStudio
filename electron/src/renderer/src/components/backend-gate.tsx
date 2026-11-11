@@ -140,6 +140,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
   const [restarting, setRestarting] = useState(false);
   const [choosingLocation, setChoosingLocation] = useState(false);
   const [diagnosticsCopied, setDiagnosticsCopied] = useState(false);
+  const [cpuRestartFailed, setCpuRestartFailed] = useState(false);
   const [cleanConfirmOpen, setCleanConfirmOpen] = useState(false);
   const setup = status.stage === 'setup_required';
   const installing = status.stage === 'installing';
@@ -242,9 +243,12 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
     Boolean(guidance?.hints.includes('backend.hint_gpu_driver_fault'));
   const restartOnCpu = async () => {
     setRestarting(true);
+    setCpuRestartFailed(false);
     try {
       await getBridge()?.backend.restartOnCpu?.();
     } catch {
+      // The settings file could not be read or written: say so, keep Retry.
+      setCpuRestartFailed(true);
       setRestarting(false);
     }
   };
@@ -550,6 +554,15 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                       <CpuIcon data-icon="inline-start" />
                       {t('backend.restart_on_cpu')}
                     </Button>
+                  ) : null}
+                  {cpuRestart && cpuRestartFailed ? (
+                    <p
+                      role="alert"
+                      className="w-full text-sm text-destructive"
+                      data-testid="backend-restart-cpu-error"
+                    >
+                      {t('backend.restart_on_cpu_failed')}
+                    </p>
                   ) : null}
                   <Button
                     variant={causeAction === 'retry' && !cpuRestart ? 'default' : 'outline'}

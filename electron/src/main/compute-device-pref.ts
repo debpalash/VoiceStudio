@@ -19,7 +19,7 @@ export async function pinComputeDeviceToCpu(
   platform: NodeJS.Platform = process.platform,
 ): Promise<void> {
   // Loaded on use: backend.ts imports this module, and its tests mock the fs.
-  const { chmod, mkdir, readFile } = await import('node:fs/promises');
+  const { mkdir, readFile } = await import('node:fs/promises');
   const { replaceFile } = await import('./replace-file');
   const path = join(dataDir, 'prefs.json');
   let prefs: Record<string, unknown> = {};
@@ -36,7 +36,11 @@ export async function pinComputeDeviceToCpu(
     prefs = parsed as Record<string, unknown>;
   }
   await mkdir(dataDir, { recursive: true });
-  await replaceFile(path, JSON.stringify({ ...prefs, [COMPUTE_DEVICE_PREF]: 'cpu' }, null, 2));
-  // Same mode the backend gives the file: it can hold tokens.
-  if (platform !== 'win32') await chmod(path, 0o600);
+  // Created 0600 from the start, the mode the backend gives the file: it can hold tokens.
+  await replaceFile(
+    path,
+    JSON.stringify({ ...prefs, [COMPUTE_DEVICE_PREF]: 'cpu' }, null, 2),
+    undefined,
+    { platform, mode: 0o600 },
+  );
 }

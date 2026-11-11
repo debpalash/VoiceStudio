@@ -1656,8 +1656,12 @@ the report. When the module is a graphics driver or GPU library (for example
 screen says so and offers **Restart on CPU**. Settings → Performance & Device needs
 a running engine, so this button stores the same CPU choice (`compute_device` in
 the data folder's `prefs.json`) and starts the engine again. Switch back to Auto in
-Settings → Performance & Device after updating the driver. The button is not shown
-when `OMNIVOICE_DEVICE` is set, because that variable overrides the setting.
+Settings → Performance & Device after updating the driver. An explicit CPU choice
+also keeps a DirectML-capable PC on the CPU. The button is not shown when
+`OMNIVOICE_DEVICE` is set, because that variable overrides the setting, or when
+`OMNIVOICE_BACKEND_CMD` starts a custom backend that may not read it. If the
+setting cannot be saved (an unwritable data folder or a full disk), the screen
+says so and Retry stays available.
 CPU libraries such as Intel MKL (`mkl_*.dll`) or OpenMP (`libiomp5md.dll`) do not
 count as driver faults.
 

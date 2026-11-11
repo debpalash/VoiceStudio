@@ -1957,13 +1957,16 @@ export class BackendSupervisor extends EventEmitter<{
   /**
    * Whether "Restart on CPU" can work: our own local backend crashed, and the
    * stored Settings choice decides its device. An `OMNIVOICE_DEVICE` the user
-   * set in the environment wins over Settings, so writing it would not help.
+   * set in the environment wins over Settings, and a custom
+   * `OMNIVOICE_BACKEND_CMD` may not read VoiceStudio's settings at all, so
+   * writing them would not help in either case.
    */
   private cpuRestartAvailable(): boolean {
     return (
       this.stage === 'crashed' &&
       this.managed &&
       !this.remoteUrl &&
+      !parseBackendCmdOverride(process.env.OMNIVOICE_BACKEND_CMD) &&
       Boolean(this.launchLog) &&
       !this.launchLog?.env.OMNIVOICE_DEVICE?.trim()
     );
