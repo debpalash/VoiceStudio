@@ -62,6 +62,14 @@ def dump_stacks(pids, out):
         out.flush()
 
 
+def _exited_within(child, seconds):
+    try:
+        child.wait(timeout=seconds)
+        return True
+    except subprocess.TimeoutExpired:
+        return False
+
+
 def run(command, stall, out=None, clock=time.monotonic):
     out = out or sys.stdout.buffer
     primary, secondary = pty.openpty()
@@ -69,17 +77,20 @@ def run(command, stall, out=None, clock=time.monotonic):
     child = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=secondary, stderr=secondary,
                              env=env, start_new_session=True)
     os.close(secondary)
-    last_output, last_started, pending = clock(), None, b""
+    last_output, last_started, pending, closed = clock(), None, b"", False
     try:
         while True:
-            ready, _, _ = select.select([primary], [], [], 1.0)
+            # After EOF the child may still be alive with its output closed: keep
+            # polling it against the same stall deadline instead of waiting forever.
+            ready = [] if closed else select.select([primary], [], [], 1.0)[0]
             if ready:
                 try:
                     chunk = os.read(primary, 65536)
                 except OSError:  # EIO once every writer has closed the terminal (Linux)
                     chunk = b""
                 if not chunk:
-                    break
+                    closed = True
+                    continue
                 out.write(chunk)
                 out.flush()
                 last_output = clock()
@@ -89,7 +100,7 @@ def run(command, stall, out=None, clock=time.monotonic):
                     match = STARTED.search(ANSI.sub(b"", line).decode("utf-8", "replace"))
                     if match:
                         last_started = match.group(1)
-            elif child.poll() is not None:
+            elif child.poll() is not None or (closed and _exited_within(child, 1.0)):
                 break
             elif clock() - last_output > stall:
                 name = last_started or "no test had started"

@@ -36,6 +36,10 @@ final class TestProcess: @unchecked Sendable {
     func waitForExit(seconds: Double) -> Bool {
         if lock.withLock({ exited }) { return true }
         guard exitSignal.wait(timeout: .now() + seconds) == .success else { return false }
+        // The pipes drain on their own handlers; give them a moment to deliver the last
+        // bytes so diagnostics are complete, but never wait on them unbounded.
+        let drained = Date(timeIntervalSinceNow: 2)
+        output.waitForClose(until: drained); errors.waitForClose(until: drained)
         lock.withLock { exited = true }
         return true
     }
@@ -91,6 +95,10 @@ final class TestStream: @unchecked Sendable {
             if let end = data.firstIndex(of: 10) { return String(decoding: data[..<end], as: UTF8.self) }
             if closed || !condition.wait(until: deadline) { return nil }
         }
+    }
+    func waitForClose(until deadline: Date) {
+        condition.lock(); defer { condition.unlock() }
+        while !closed, condition.wait(until: deadline) {}
     }
     var text: String { condition.lock(); defer { condition.unlock() }; return String(decoding: data, as: UTF8.self) }
 }

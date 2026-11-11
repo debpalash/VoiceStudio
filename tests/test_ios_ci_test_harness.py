@@ -98,3 +98,13 @@ def test_watchdog_kills_a_silent_run_and_names_the_last_started_test():
     assert b"hung after: Test stuck() started" in out.getvalue()
     if shutil.which("sample"):
         assert b"===== stacks of pid" in out.getvalue()
+
+
+def test_watchdog_still_times_out_a_child_that_closed_its_output():
+    # EOF on the terminal is not exit: a child can close stdout and stderr and then hang.
+    out = io.BytesIO()
+    script = "import os, time; print('Test closed() started.', flush=True); os.close(1); os.close(2); time.sleep(60)"
+    started = time.monotonic()
+    assert _watchdog().run([sys.executable, "-c", script], stall=1, out=out) == 124
+    assert time.monotonic() - started < 30
+    assert b"hung after: Test closed() started" in out.getvalue()
