@@ -41,7 +41,7 @@ metadata and the backend fallback mirror it.
 - The app opens with less code to load: the audio and video players load with the first clip played and returning users skip the first-run setup screens, cutting the startup bundle by about 6%, and a new offline benchmark with a CI check on bundle growth tracks startup, memory, CPU and bundle size (#3924, #3940, #3943)
 - Settings → VoiceStudio account lists what to sync and your devices as compact, aligned rows with icons, a Pro badge with one Get Pro link for locked items, and device rows that show OS and when each was last active (#3937)
 - The runtime setup screen fits one window: one status line, the install folder with free space, one main action (or the exact fix, such as choosing another folder when the drive is full), with language, region, Python and remote options under Options and recovery tools under More fixes (#3934)
-- OmniVoice GGUF can keep its runtime loaded between requests to skip the reload before each generation, as an opt-in under Settings → Performance; it stays inactive until a build ships omnivoice.cpp's `tts-server`, so nothing changes today (#3965, #3654)
+- OmniVoice GGUF can keep its runtime loaded between requests to skip the reload before each generation, as an opt-in under Settings → Performance (#3965, #3654)
 - The audio.cpp runtime updates to v0.9.4; installed Breeze-TTS-2, dots.tts and Sortformer models keep working without a re-download, and the previous runtime keeps running them until you install the update (#3129)
 - Updates now download in the background and install when you quit, with a compact title-bar pill for progress, Restart and Retry, clearer error messages and a restart prompt when work is running (#3928)
 - The top bar is more compact: the account button is just your profile photo, or a person icon when signed out, and the GitHub star count is shortened (#3922).
@@ -445,6 +445,8 @@ metadata and the backend fallback mirror it.
 
 **Testing wanted:** these get their first real-hardware test in this beta, so reports are welcome: OmniVoice GGUF resident mode with the bundled `tts-server`, Intel Arc (XPU) GPUs, Restart on CPU after a graphics driver crash, the new Windows default of loading model weights one at a time, and the new macOS DMG window.
 
+![The new macOS installer window: drag VoiceStudio to Applications (preview built from the installer's own background and icons)](https://raw.githubusercontent.com/debpalash/VoiceStudio/main/docs/assets/releases/0.5.8-beta.5-macos-installer.png)
+
 **Thanks:** @mrnitrox (Intel Arc support, #4022) and @khawajaJunaid (Intel Mac Radeon docs, #4014) for code; @tera-png (#3980), @Imammahmuda1804 (#3767), @oryx-system (#3772), @pimeNtex (#4024) and @Patrix9999 (#2818) for bug reports.
 
 **Download**
@@ -478,7 +480,7 @@ metadata and the backend fallback mirror it.
 - The app opens with less code to load: the audio and video players load with the first clip played and returning users skip the first-run setup screens, cutting the startup bundle by about 6%, and a new offline benchmark with a CI check on bundle growth tracks startup, memory, CPU and bundle size (#3924, #3940, #3943)
 - Settings → VoiceStudio account lists what to sync and your devices as compact, aligned rows with icons, a Pro badge with one Get Pro link for locked items, and device rows that show OS and when each was last active (#3937)
 - The runtime setup screen fits one window: one status line, the install folder with free space, one main action (or the exact fix, such as choosing another folder when the drive is full), with language, region, Python and remote options under Options and recovery tools under More fixes (#3934)
-- OmniVoice GGUF can keep its runtime loaded between requests to skip the reload before each generation, as an opt-in under Settings → Performance; it stays inactive until a build ships omnivoice.cpp's `tts-server`, so nothing changes today (#3965, #3654)
+- OmniVoice GGUF can keep its runtime loaded between requests to skip the reload before each generation, as an opt-in under Settings → Performance (#3965, #3654)
 - The audio.cpp runtime updates to v0.9.4; installed Breeze-TTS-2, dots.tts and Sortformer models keep working without a re-download, and the previous runtime keeps running them until you install the update (#3129)
 - Updates now download in the background and install when you quit, with a compact title-bar pill for progress, Restart and Retry, clearer error messages and a restart prompt when work is running (#3928)
 - The top bar is more compact: the account button is just your profile photo, or a person icon when signed out, and the GitHub star count is shortened (#3922).
