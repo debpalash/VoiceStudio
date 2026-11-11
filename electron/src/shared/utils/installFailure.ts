@@ -39,6 +39,7 @@ export const INSTALL_FAILURE_CODES = [
   'BROKEN_VENV',
   'NATIVE_ACCESS_VIOLATION',
   'NATIVE_ILLEGAL_INSTRUCTION',
+  'NATIVE_IN_PAGE_ERROR',
   'NATIVE_CRASH',
   'STARTUP_TIMEOUT_SILENT',
   'STARTUP_TIMEOUT_OUTPUT',
@@ -78,6 +79,11 @@ export interface InstallFailure {
   region?: string;
   diskFreeGb?: number;
   pathFlags?: string[];
+  /** Windows Error Reporting's faulting module for a native crash: basename only. */
+  faultingModule?: string;
+  faultingModuleVersion?: string;
+  /** Offset of the fault inside that module, e.g. `0x1e3f4`. */
+  faultOffset?: string;
 }
 
 export interface FailureEvidence {
@@ -132,6 +138,7 @@ const DOWNLOAD_INTERRUPTED =
 
 const ILLEGAL_INSTRUCTION = 0xc000001d;
 const ACCESS_VIOLATION = 0xc0000005;
+const IN_PAGE_ERROR = 0xc0000006;
 
 function nativeCode(evidence: FailureEvidence, message: string): InstallFailureCode | null {
   const exitText = /exit code (-?\d+)/.exec(message)?.[1];
@@ -143,6 +150,7 @@ function nativeCode(evidence: FailureEvidence, message: string): InstallFailureC
   const posix = normalizeSignal(signal);
   if (nt === ILLEGAL_INSTRUCTION || posix === 4) return 'NATIVE_ILLEGAL_INSTRUCTION';
   if (nt === ACCESS_VIOLATION || posix === 11) return 'NATIVE_ACCESS_VIOLATION';
+  if (nt === IN_PAGE_ERROR) return 'NATIVE_IN_PAGE_ERROR';
   return 'NATIVE_CRASH';
 }
 
@@ -213,6 +221,7 @@ export type BackendCause =
   | 'noexec'
   | 'download'
   | 'native_crash'
+  | 'disk_read'
   | 'external_kill'
   | 'illegal_instruction'
   | 'missing_env'
@@ -230,6 +239,8 @@ export type BackendHintKey =
   | 'backend.hint_noexec'
   | 'backend.hint_download'
   | 'backend.hint_illegal_instruction'
+  | 'backend.hint_in_page_error'
+  | 'backend.hint_gpu_driver_fault'
   | 'backend.hint_external_kill'
   | 'backend.hint_slow_start'
   | 'backend.hint_synced_folder';
@@ -270,6 +281,7 @@ export const FAILURE_GUIDANCE: Record<InstallFailureCode, FailureGuidance> = {
     cause: 'illegal_instruction',
     hints: ['backend.hint_illegal_instruction'],
   },
+  NATIVE_IN_PAGE_ERROR: { cause: 'disk_read', hints: ['backend.hint_in_page_error'] },
   NATIVE_CRASH: { cause: 'native_crash', hints: [] },
   STARTUP_TIMEOUT_SILENT: { cause: 'slow_start', hints: ['backend.hint_slow_start'] },
   STARTUP_TIMEOUT_OUTPUT: { cause: 'slow_start', hints: ['backend.hint_slow_start'] },
@@ -278,6 +290,56 @@ export const FAILURE_GUIDANCE: Record<InstallFailureCode, FailureGuidance> = {
   ROCM_NOT_CONFIGURED: NO_GUIDANCE,
   UNCLASSIFIED: NO_GUIDANCE,
 };
+
+/**
+ * Graphics driver and GPU runtime libraries (NVIDIA, Intel, AMD), by the names
+ * their vendors ship. A native crash whose faulting module is one of these is a
+ * driver or GPU-library fault, which a driver update or CPU mode avoids. CPU
+ * runtimes that share a vendor prefix (Intel MKL `mkl_*`, OpenMP `libiomp5md`,
+ * oneAPI `ur_loader`) are deliberately not here: their crash is not a driver's.
+ */
+const GPU_DRIVER_MODULE = new RegExp(
+  '^(?:' +
+    [
+      // NVIDIA driver and CUDA libraries.
+      'nvcuda\\w*',
+      'nvoglv\\w*',
+      'nvwgf2um\\w*',
+      'nvd3dum\\w*',
+      'nvrtc\\w*',
+      'nvjitlink\\w*',
+      'cudart\\w*',
+      'cublas\\w*',
+      'cudnn\\w*',
+      'cufft\\w*',
+      'curand\\w*',
+      'cusolver\\w*',
+      'cusparse\\w*',
+      // Intel graphics driver, compiler and Level Zero GPU runtime.
+      'igc\\d*',
+      'igd\\w*',
+      'ze_loader',
+      'ze_intel_gpu\\w*',
+      'ur_adapter_level_zero\\w*',
+      // AMD driver and HIP/ROCm libraries.
+      'amdhip\\w*',
+      'amd_comgr\\w*',
+      'amdxc\\w*',
+      'atio\\w*',
+      'atiu\\w*',
+      'aticfx\\w*',
+      'hiprt\\w*',
+      'rocblas\\w*',
+      'miopen\\w*',
+    ].join('|') +
+    ')\\.dll$',
+  'i',
+);
+
+/** True when Windows Error Reporting named a graphics driver or GPU library. */
+export function isGpuDriverModule(module: string | undefined): boolean {
+  return Boolean(module && GPU_DRIVER_MODULE.test(module));
+}
 
 function exitCodeInMessage(message: string | undefined): number | null {
   const text = message ? /exit code (-?\d+)/.exec(message)?.[1] : undefined;
@@ -296,15 +358,22 @@ export function failureGuidance(
     smartAppControl,
     exitCode,
     logLines,
+    faultingModule,
   }: {
     message?: string;
     smartAppControl?: SmartAppControlState;
     exitCode?: number | null;
     logLines?: readonly string[];
+    faultingModule?: string;
   } = {},
 ): FailureGuidance {
   const base = FAILURE_GUIDANCE[code];
   let guidance = base;
+  if (base.cause === 'native_crash' || base.cause === 'illegal_instruction') {
+    // The module Windows blamed decides the fix: a driver fault is not a CPU gap.
+    if (isGpuDriverModule(faultingModule))
+      guidance = { cause: 'native_crash', hints: ['backend.hint_gpu_driver_fault'] };
+  }
   // Exit 0xFFFFFFFF / -1: ended from outside the app. Only claimed when no more
   // specific cause was named and the output shows no traceback or fault dump.
   if (
@@ -372,6 +441,17 @@ export function formatFailureFacts(failure: InstallFailure): string[] {
     ...line('Error', failure.errorCode),
     ...line('Exit code', failure.exitCode),
     ...line('Signal', failure.signal),
+    ...line(
+      'Faulting module',
+      failure.faultingModule &&
+        [
+          failure.faultingModule,
+          failure.faultingModuleVersion,
+          failure.faultOffset && `at ${failure.faultOffset}`,
+        ]
+          .filter(Boolean)
+          .join(' '),
+    ),
     ...line('Smart App Control', failure.smartAppControl),
     ...line('Blocked by Windows', failure.blockedFiles),
     ...line('Signature', failure.signature),

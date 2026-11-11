@@ -11,6 +11,7 @@ import {
   FAILURE_GUIDANCE,
   formatFailureFacts,
   INSTALL_FAILURE_CODES,
+  isGpuDriverModule,
   MAX_ENCODED_FACTS,
   refusedProgram,
 } from './installFailure';
@@ -132,6 +133,84 @@ describe('failureGuidance', () => {
       failureGuidance('UNCLASSIFIED', { message: 'x', exitCode: -1, logLines: [tb] }).cause,
     ).toBeNull();
     expect(failureGuidance('UNCLASSIFIED', { message: 'x', exitCode: 1 }).cause).toBeNull();
+  });
+});
+
+describe('native crash guidance', () => {
+  it('names a disk read failure for an in-page error, from the message alone too', () => {
+    const message = 'Backend exited unexpectedly (exit code 3221225478).';
+    expect(classifyInstallFailure({ stage: 'crashed', message })).toBe('NATIVE_IN_PAGE_ERROR');
+    expect(classifyInstallFailure({ stage: 'crashed', message: 'x', exitCode: -1073741818 })).toBe(
+      'NATIVE_IN_PAGE_ERROR',
+    );
+    expect(failureGuidance('NATIVE_IN_PAGE_ERROR')).toEqual({
+      cause: 'disk_read',
+      hints: ['backend.hint_in_page_error'],
+    });
+  });
+
+  it('points a crash inside the graphics driver at the driver, not the CPU', () => {
+    for (const code of ['NATIVE_ACCESS_VIOLATION', 'NATIVE_ILLEGAL_INSTRUCTION', 'NATIVE_CRASH'] as const)
+      for (const faultingModule of ['nvcuda64.dll', 'cublasLt64_12.dll', 'igc64.dll', 'amdhip64_6.dll'])
+        expect(failureGuidance(code, { faultingModule })).toEqual({
+          cause: 'native_crash',
+          hints: ['backend.hint_gpu_driver_fault'],
+        });
+  });
+
+  it('keeps the default guidance for other modules or none', () => {
+    for (const faultingModule of [undefined, 'torch_cpu.dll', 'ntdll.dll', 'python311.dll'])
+      expect(failureGuidance('NATIVE_ILLEGAL_INSTRUCTION', { faultingModule })).toEqual(
+        FAILURE_GUIDANCE.NATIVE_ILLEGAL_INSTRUCTION,
+      );
+    expect(isGpuDriverModule('C:\\Windows\\nvcuda64.dll')).toBe(false);
+  });
+
+  it('does not blame the driver for CPU runtimes that share a vendor prefix', () => {
+    for (const module of [
+      'libiomp5md.dll',
+      'mkl_core.2.dll',
+      'mkl_intel_thread.2.dll',
+      'mkl_avx512.2.dll',
+      'intel_openmp.dll',
+      'ur_loader.dll',
+      'ze_tracing_layer.dll',
+      'torch_cpu.dll',
+      'ctranslate2.dll',
+      'onnxruntime.dll',
+    ]) {
+      expect(isGpuDriverModule(module)).toBe(false);
+      expect(
+        failureGuidance('NATIVE_ILLEGAL_INSTRUCTION', { faultingModule: module }),
+      ).toEqual(FAILURE_GUIDANCE.NATIVE_ILLEGAL_INSTRUCTION);
+    }
+    for (const module of [
+      'nvcuda64.dll',
+      'cudnn_ops64_9.dll',
+      'igc64.dll',
+      'igd10iumd64.dll',
+      'ze_intel_gpu64.dll',
+      'ze_loader.dll',
+      'ur_adapter_level_zero.dll',
+      'amdhip64_6.dll',
+      'atio6axx.dll',
+    ])
+      expect(isGpuDriverModule(module)).toBe(true);
+    expect(
+      failureGuidance('EXEC_REFUSED', { faultingModule: 'nvcuda64.dll' }).hints,
+    ).not.toContain('backend.hint_gpu_driver_fault');
+  });
+
+  it('puts the faulting module in the report facts', () => {
+    const lines = formatFailureFacts({
+      code: 'NATIVE_ACCESS_VIOLATION',
+      stage: 'crashed',
+      exitCode: 3221225477,
+      faultingModule: 'torch_cpu.dll',
+      faultingModuleVersion: '2.8.0',
+      faultOffset: '0x1e3f4',
+    });
+    expect(lines).toContain('- Faulting module: torch_cpu.dll 2.8.0 at 0x1e3f4');
   });
 });
 

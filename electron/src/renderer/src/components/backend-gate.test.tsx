@@ -47,6 +47,8 @@ beforeEach(() => {
   delete backendStatus.setupPhase;
   delete backendStatus.setupProgress;
   delete backendStatus.setupHardware;
+  delete backendStatus.failure;
+  delete backendStatus.cpuRestartAvailable;
   platform.current = 'linux';
 });
 
@@ -474,6 +476,70 @@ it('names a native crash and makes Copy diagnostics the primary action', () => {
   );
   expect(screen.getByRole('button', { name: i18n.t('backend.copy_diagnostics') })).toBeEnabled();
   expect(screen.getByRole('button', { name: i18n.t('backend.retry') })).toBeEnabled();
+});
+
+it('offers Restart on CPU after a graphics driver crash, without the engine running', async () => {
+  const restartOnCpu = vi.fn(async () => undefined);
+  bridgeStub.current = { backend: { restartOnCpu, restart: vi.fn() } };
+  backendStatus.message = 'Backend exited unexpectedly (exit code 3221225477).';
+  backendStatus.failure = {
+    code: 'NATIVE_ACCESS_VIOLATION',
+    stage: 'crashed',
+    faultingModule: 'nvcuda64.dll',
+  };
+  backendStatus.cpuRestartAvailable = true;
+
+  renderGate('crashed');
+
+  expect(screen.getByTestId('backend-hint')).toHaveTextContent(
+    i18n.t('backend.hint_gpu_driver_fault'),
+  );
+  fireEvent.click(screen.getByRole('button', { name: i18n.t('backend.restart_on_cpu') }));
+  await waitFor(() => expect(restartOnCpu).toHaveBeenCalledTimes(1));
+  expect(screen.queryByTestId('backend-restart-cpu-error')).not.toBeInTheDocument();
+});
+
+it('explains a Restart on CPU that could not save the setting, and keeps it retryable', async () => {
+  const restartOnCpu = vi.fn(async () => {
+    throw new Error('prefs.json is not a settings object');
+  });
+  bridgeStub.current = { backend: { restartOnCpu, restart: vi.fn() } };
+  backendStatus.message = 'Backend exited unexpectedly (exit code 3221225477).';
+  backendStatus.failure = {
+    code: 'NATIVE_ACCESS_VIOLATION',
+    stage: 'crashed',
+    faultingModule: 'nvcuda64.dll',
+  };
+  backendStatus.cpuRestartAvailable = true;
+
+  renderGate('crashed');
+  const button = screen.getByRole('button', { name: i18n.t('backend.restart_on_cpu') });
+  fireEvent.click(button);
+
+  expect(await screen.findByTestId('backend-restart-cpu-error')).toHaveTextContent(
+    i18n.t('backend.restart_on_cpu_failed'),
+  );
+  expect(button).toBeEnabled();
+  expect(screen.getByRole('button', { name: i18n.t('backend.retry') })).toBeEnabled();
+});
+
+it('offers no CPU restart for a crash outside the graphics driver or when it cannot work', () => {
+  backendStatus.message = 'Backend exited unexpectedly (exit code 3221225477).';
+  backendStatus.failure = {
+    code: 'NATIVE_ACCESS_VIOLATION',
+    stage: 'crashed',
+    faultingModule: 'libiomp5md.dll',
+  };
+  backendStatus.cpuRestartAvailable = true;
+  const { unmount } = renderGate('crashed');
+  expect(screen.queryByTestId('backend-restart-cpu')).not.toBeInTheDocument();
+  unmount();
+
+  // OMNIVOICE_DEVICE pinned or a remote engine: main reports it unavailable.
+  backendStatus.failure = { ...backendStatus.failure, faultingModule: 'nvcuda64.dll' };
+  backendStatus.cpuRestartAvailable = false;
+  renderGate('crashed');
+  expect(screen.queryByTestId('backend-restart-cpu')).not.toBeInTheDocument();
 });
 
 it('explains an externally killed backend (exit code 4294967295) on the live screen', () => {
