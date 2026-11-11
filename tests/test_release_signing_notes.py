@@ -164,6 +164,15 @@ def test_signpath_signing_is_gated_pinned_and_precedes_feed_and_checksums():
         assert needed in gate
     assert "ELECTRON_WINDOWS_CSC_LINK" in gate  # an own certificate wins
 
+    # Approval waits: the leg's timeout grows only for Windows with SignPath
+    # configured (job timeouts cannot read secrets), the step fails clearly first.
+    timeout = build["timeout-minutes"]
+    assert "matrix.platform == 'win32'" in timeout and "vars.SIGNPATH_ORGANIZATION_ID" in timeout
+    assert "150" in timeout and "75" in timeout and "secrets." not in timeout
+    submit_step = next(s for s in build["steps"] if s.get("name") == "Sign the Windows installer with SignPath")
+    assert submit_step["timeout-minutes"] == "70"
+    assert int(submit_step["with"]["wait-for-completion-timeout-in-seconds"]) <= 70 * 60
+
     # SignPath's github-token needs actions: read; keep everything else read-only.
     assert build["permissions"] == {"contents": "read", "actions": "read"}
 

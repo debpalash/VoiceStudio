@@ -97,7 +97,11 @@ jobs:
       contents: read
       actions: read
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 75  # three macOS build attempts when Apple drops a connection
+    # 75: three macOS build attempts when Apple drops a connection. A Windows leg
+    # with SignPath configured also waits for a manual approval (up to 70 minutes
+    # in the signing step). Job-level timeouts cannot read secrets or job env, so
+    # this keys on the organization variable, one of the settings that enable it.
+    timeout-minutes: ${{ matrix.platform == 'win32' && vars.SIGNPATH_ORGANIZATION_ID != '' && 150 || 75 }}
     continue-on-error: ${{ matrix.experimental == true }}
     strategy:
       fail-fast: false
@@ -287,6 +291,7 @@ jobs:
           path: electron/release/VoiceStudio-*.exe
       - name: Sign the Windows installer with SignPath
         if: env.SIGNPATH_ENABLED == 'true'
+        timeout-minutes: 70
         uses: signpath/github-action-submit-signing-request@f6d04783b4569d051e0c80105fe66e82819d0092 # v3.0
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -295,7 +300,7 @@ jobs:
           signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
           github-artifact-id: ${{ steps.upload-unsigned-installer.outputs.artifact-id }}
           wait-for-completion: true
-          wait-for-completion-timeout-in-seconds: 3600
+          wait-for-completion-timeout-in-seconds: 4000
           output-artifact-directory: electron/release-signed
       - name: Replace the installer with the signed one and refresh the update feed
         if: env.SIGNPATH_ENABLED == 'true'
