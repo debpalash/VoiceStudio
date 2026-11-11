@@ -71,6 +71,7 @@ This release also brings dots.tts voice cloning to Windows with no Python setup,
 
 ### Added
 
+- OmniVoice GGUF gets a Self-test in Settings › Models that names the Vulkan GPU it ran on, with docs for older AMD cards such as the RX 5500M (#3993) — thanks @sasankgit!
 - Installers now bundle omnivoice.cpp's `tts-server`, so the opt-in OmniVoice GGUF resident mode (Settings → Performance) works in release builds and keeps falling back to the per-request runtime when unavailable (#4005, #3654)
 - Qwen Base can deliver audio during generation on the speech WebSocket (#3992) — thanks @kellerkind84!
 - OpenAI-compatible PCM speech can stream during synthesis, with native Qwen3-TTS Base support on Apple Silicon and provisioned NVIDIA systems (#3976) — thanks @kellerkind84!
@@ -428,7 +429,7 @@ This release also brings dots.tts voice cloning to Windows with no Python setup,
 - @Faisal-Fayaz, @jonathanwxh-cell, @mvanhorn, @NishchayMahor, @vandyahmad24, @vanshsingh3711-wq, @YuraZakaryan, @014-code,
 - @agammann, @ai-v99, @al2m, @amhanesipeace, @B1NAR10, @bee-interactive, @bercedev, @DennyHo0917,
 - @esdedev, @Felixkw12, @Fredy002, @HyperionBurn, @IvanGrigin, @Jason69628723, @li-lizhe, @nur-zaman,
-- @rollroyces, @sebas-rodri, @shamil2, @vincentfranstyo, @windery, @writer0713, @ZFzuofeng, @chiarorosa,
+- @rollroyces, @sasankgit, @sebas-rodri, @shamil2, @vincentfranstyo, @windery, @writer0713, @ZFzuofeng, @chiarorosa,
 - @Ayushkumarxy, @fouadSalkini, @gifmac, @HelloWorld3326, @hiiqbiz-wq, @inteligencia66, @ketpatil77, @larrytoube,
 - @Pates2004, @sedatdagg, @shubhankarkanase90-byte, @Taksin014, @victorberinde2-debug, @Vivek1898, @zichen0116, @anupamme.
 
