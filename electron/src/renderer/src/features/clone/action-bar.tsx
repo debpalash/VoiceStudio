@@ -37,7 +37,6 @@ import { ProgressIndicator, ProgressTrack } from '@/components/ui/progress';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { useGenerateClone } from '@/hooks/use-generate';
-import { useEngines } from '@/hooks/use-engines';
 import {
   resetVoiceControls,
   setCloneSetting,
@@ -55,7 +54,6 @@ import { EmotionControls } from './emotion-controls';
 import { ExpressionTip } from './expression-tip';
 import { CloneDemoAction } from './clone-demo';
 import { useCloneDemo } from '@/hooks/use-clone-demo';
-import { CloneEnginePicker } from './clone-engine-picker';
 
 type NumericKey = 'cfg' | 'speed' | 'tShift' | 'posTemp' | 'classTemp' | 'layerPenalty';
 
@@ -322,7 +320,6 @@ export function VoiceControls({ size = 'icon-lg' }: { size?: 'icon-sm' | 'icon-l
 export function ActionBar({ setup: shared }: { setup?: EngineSetup } = {}) {
   const { t } = useTranslation();
   const demo = useCloneDemo();
-  const engineInventory = useEngines();
   const mac = isMac();
   const readinessId = useId();
   const {
@@ -377,12 +374,8 @@ export function ActionBar({ setup: shared }: { setup?: EngineSetup } = {}) {
         />
       )}
       {!demo && !isGenerating && <ExpressionTip />}
-      <div className="flex min-w-0 flex-wrap items-center gap-3">
-        <div className="flex min-w-0 max-w-full flex-1 flex-wrap items-center gap-1 rounded-lg bg-background/50 p-1 ring-1 ring-border/50">
-          {!demo && engineInventory.data && <CloneEnginePicker disabled={isGenerating} />}
-          {!demo && engineInventory.data && (
-            <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />
-          )}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-1 rounded-lg bg-background/50 p-1 ring-1 ring-border/50">
           <EngineLanguagePicker />
           <PresetVoicePicker disabled={isGenerating} />
           <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />
@@ -391,7 +384,7 @@ export function ActionBar({ setup: shared }: { setup?: EngineSetup } = {}) {
           <EmotionControls disabled={isGenerating} />
         </div>
 
-        <div className="relative ml-auto flex min-w-0 max-w-full shrink-0 flex-wrap justify-end gap-2">
+        <div className="relative ml-auto flex shrink-0 gap-2">
           {demo ? (
             <CloneDemoAction />
           ) : needsSetup ? (

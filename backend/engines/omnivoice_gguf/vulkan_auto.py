@@ -1,12 +1,12 @@
 """Cached, zero-PyTorch discovery of the GPU the native GGML runtime opens.
 
-Vulkan parsing, probing, adapter metadata, duplicate-driver filtering, and
-shared-memory budgeting live in focused sibling modules. This module retains
-the stable public API and combines Vulkan evidence with the host GPU inventory
-when the Vulkan summary omits memory heaps.
+Full Vulkan Tools reports provide heaps and BF16 capabilities. If a hidden
+surface probe fails, its summary still proves the GPU driver; unique OS
+inventory identities can then supply 64-bit VRAM. Without native evidence the
+OS fallback remains sizing-only and cannot trigger the GPU offer.
 
-The probe never raises, performs no network access, and caches its result for
-the process lifetime. :func:`refresh` explicitly re-probes the host.
+Adapter numbering, duplicate-driver filtering, and shared-memory budgeting are
+shared by sizing and reporting. Public imports remain compatible.
 """
 from __future__ import annotations
 
@@ -16,7 +16,10 @@ import os
 import sys
 from pathlib import Path
 
-from .vulkan_parse import adapters_from_vulkaninfo, parse_vulkaninfo
+from .vulkan_parse import (
+    adapters_from_vulkaninfo,
+    parse_vulkaninfo,
+)
 from .vulkan_probe import run_vulkaninfo as _run_vulkaninfo
 from .vulkan_types import (
     APU_MAX_DEDICATED_GB,
@@ -31,7 +34,6 @@ from .vulkan_types import (
 logger = logging.getLogger("omnivoice.gguf.vulkan")
 _GIB = 1024 ** 3
 
-
 def system_ram_gb() -> float:
     """Total physical RAM in GiB; 0.0 when it cannot be read."""
     try:
@@ -43,7 +45,9 @@ def system_ram_gb() -> float:
 
 
 def has_vulkan_loader() -> bool:
-    """Whether the platform Vulkan loader is installed."""
+    """Whether the platform Vulkan loader (``vulkan-1.dll`` /
+    ``libvulkan.so.1``) is installed. A loader alone does not prove a GPU
+    driver; it only lets the OS-inventory fallback count a vendor GPU."""
     try:
         if sys.platform == "win32":
             root = os.environ.get("SystemRoot") or r"C:\Windows"
@@ -53,12 +57,8 @@ def has_vulkan_loader() -> bool:
 
             return ctypes.util.find_library("vulkan") is not None or any(
                 Path(d, "libvulkan.so.1").exists()
-                for d in (
-                    "/usr/lib/x86_64-linux-gnu",
-                    "/usr/lib/aarch64-linux-gnu",
-                    "/usr/lib64",
-                    "/usr/lib",
-                )
+                for d in ("/usr/lib/x86_64-linux-gnu", "/usr/lib/aarch64-linux-gnu",
+                          "/usr/lib64", "/usr/lib")
             )
     except Exception:
         logger.debug("Vulkan loader probe unavailable", exc_info=True)
@@ -66,7 +66,7 @@ def has_vulkan_loader() -> bool:
 
 
 def _probe() -> VulkanProfile:
-    """Build the profile from Vulkan evidence, then host inventory as fallback."""
+    """Build the profile: ``vulkaninfo`` first, then the OS inventory when the loader exists."""
     ram = system_ram_gb()
     text = _run_vulkaninfo()
     if text is not None:
@@ -87,7 +87,7 @@ def _probe() -> VulkanProfile:
             from core.gpu_inventory import detect_host_gpus
 
             adapters = adapters_from_inventory(detect_host_gpus(), ram)
-        except Exception:  # noqa: BLE001 - inventory is advisory
+        except Exception:  # noqa: BLE001 - the inventory is advisory
             adapters = ()
         if adapters:
             return VulkanProfile(verified=True, source="os", system_ram_gb=ram, adapters=adapters)
