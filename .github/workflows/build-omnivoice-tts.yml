@@ -98,8 +98,7 @@ jobs:
       - name: Vulkan dev deps (Linux GPU backend)
         if: startsWith(matrix.platform, 'linux-')
         run: |
-          sudo apt-get update
-          sudo apt-get install -y glslc libvulkan-dev spirv-headers
+          bash .github/scripts/apt-retry.sh install glslc libvulkan-dev spirv-headers
 
       # Windows: the LunarG SDK provides glslc and the headers; the build script
       # detects it through VULKAN_SDK. Desktop releases require the Vulkan
