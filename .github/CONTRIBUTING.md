@@ -387,7 +387,7 @@ bun run --cwd electron build
 bun run --cwd electron test:desktop-ui
 
 # The bundled `voicestudio` command, built as installers build it (needs uv).
-# The Desktop UI job runs this on all three systems.
+# CI runs this on all three systems (Release smoke on macOS and Linux, Desktop UI on Windows).
 node electron/tests/cli-bundle-smoke.mjs
 
 # Offline renderer smokes (what CI runs): start the smoke server, then the runner.
@@ -505,19 +505,33 @@ test-only PR. Docker Hub overview edits still publish through the small
 - **First CI run from a fork:** a pull request from a fork waits for a
   maintainer to approve it (the `external-pr` environment) before CI starts.
   Branches in this repository start at once.
+- **Required check:** `Tests (backend + frontend)` is the one CI status `main`
+  requires. It waits for every job in `ci.yml` and fails if any of them failed,
+  so a red UI crawler, Desktop UI or release smoke blocks the merge too.
+- **Release smoke:** every pull request that can affect the desktop app packages
+  it on Linux and macOS the way a release does, without installers or signing
+  credentials: `electron-builder --dir` (which builds the bundled `voicestudio`
+  command and the native helper), the release's packaging contract, glibc floor
+  and bundle signature checks, the packaged startup smoke test (on Linux through
+  the `voicestudio` entry, as the AppImage starts it) and
+  `electron/tests/cli-bundle-smoke.mjs`.
 - **CI scope:** the Electron-only jobs (UI crawler, Desktop UI, Linux native
-  package, and `Tests (Electron)` plus `Electron renderer smokes`, the Electron halves of `Tests (backend + frontend)`) are skipped on a
+  package, release smoke, `Tests (Electron)` and `Electron renderer smokes`) are skipped on a
   pull request whose every changed file is an *edit or addition* under `backend/`
-  (except `backend/assets/`), `omnivoice/`, `docs/` or `mobile/`, a Python file under `tests/` or `scripts/`,
+  (except `backend/assets/`), `omnivoice/`, `docs/` or `mobile/`, a Python file under `tests/` or `scripts/`
+  (except the scripts the desktop build runs or ships: `freeze_cli.py`,
+  `smoke_windows_rocm.py`, `check_glibc_floor.py`),
   a root `*.md`, `Makefile`, or a workflow other than `ci.yml` and
   `electron-*.yml`. Any other path (including `pyproject.toml`, `uv.lock`, `package.json`,
   `bun.lock` and shared test fixtures), any file that is not a plain edit or addition (**deleted, renamed**, copied or type-changed), 3,000 or
   more files, and every push to `main` run the full matrix; so does a failed
-  detection. Skipped jobs show as skipped in the PR. A merge-queue run applies
-  the same rule to the queue commit against its base (300 files or more run
-  everything). The rule is the `changes` job in `.github/workflows/ci.yml`.
+  detection. Skipped jobs show as skipped in the PR. If the merge queue is ever
+  turned on (it needs an organization-owned repository; see
+  `docs/RELEASING.md` → Merge queue), a queue run applies the same rule to the
+  queue commit against its base (300 files or more run everything). The rule is
+  the `changes` job in `.github/workflows/ci.yml`.
 - **Pass cache:** the heavy jobs in `ci.yml` (Python tests, the Electron jobs,
-  UI crawler, Desktop UI, smokes) and in `mobile.yml` (iOS, Android and their
+  UI crawler, Desktop UI, release smoke, smokes) and in `mobile.yml` (iOS, Android and their
   inference tests) skip their steps, and still pass, when their exact inputs
   already passed. Each job hashes the git entries (mode, content and path) of
   the files it reads, plus its workflow file and `.github/actions/ci-pass`; a

@@ -60,9 +60,15 @@ def test_mobile_builds_on_pull_requests_only_for_mobile_changes():
     assert any("locales" in p for p in triggers["push"]["paths"])
 
 
-def test_platform_smokes_start_after_the_python_tests_not_the_whole_gate():
-    needs = _load("ci.yml")["jobs"]["smoke-matrix"]["needs"]
-    assert needs == "test-python", "waiting on `test` delays the smokes by the Electron jobs' runtime"
+def test_platform_smokes_run_beside_the_python_tests_not_after_them():
+    # Tests (Python) takes ~13 minutes; queued behind it, the ~8 minute macOS smoke
+    # was the longest path of every run. Same gating as the Python tests instead.
+    jobs = _load("ci.yml")["jobs"]
+    smoke, python = jobs["smoke-matrix"], jobs["test-python"]
+    assert smoke["needs"] == python["needs"] == "changes"
+    assert smoke["if"] == python["if"]
+    # The required check still waits for them.
+    assert "smoke-matrix" in jobs["test"]["needs"]
 
 
 def test_workflows_do_not_schedule_retired_macos_runners():

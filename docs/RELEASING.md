@@ -398,16 +398,21 @@ Do not move or recreate an existing tag.
 
 ## Merge queue (maintainers)
 
-With "Require branches to be up to date" on, every merge to `main` puts every other open PR behind, and each needs an update plus a full CI run. The merge queue replaces that: a PR that passes its checks joins the queue, GitHub builds a temporary commit of `main` plus the queued PRs, runs CI once on it, and merges.
+GitHub's merge queue is available only to repositories owned by an organization. This repository is owned by a user account, so the queue cannot be turned on. The current setup instead:
 
-The workflows are ready: `ci.yml` runs on `merge_group`, and `merge-queue-checks.yml` reports the PR-level required checks ("CLA gate", "Commit identities", "CLA", "Commit identity policy") on the queue's commit, because they cannot run there. `tests/test_merge_queue.py` keeps those names equal to the ruleset's required list; change both together.
+- The `main` ruleset does **not** require branches to be up to date before merging, so a merge to `main` does not put every other open PR behind.
+- **Auto-merge** is on: `gh pr merge N --auto --merge` merges a PR once its required checks pass.
+- The only required CI status is **Tests (backend + frontend)**, which waits for every job in `ci.yml` (Python tests, platform smokes, Electron tests, renderer smokes, UI crawler, Desktop UI, Linux native package, installer contracts and the release smoke). A failure in any of them blocks the merge without listing each job in the ruleset.
+- A PR's CI tests it merged with `main` as `main` stood when the run started. Without the up-to-date requirement, `main` can move before the PR merges, so two PRs that each pass can still break `main` together. `ci.yml` runs in full on every push to `main`; when that run fails, fixing `main` comes before the next merge.
+
+Moving the repository to an organization would make the queue available, and the workflow support for it stays in place. The workflows are ready: `ci.yml` runs on `merge_group`, and `merge-queue-checks.yml` reports the PR-level required checks ("CLA gate", "Commit identities", "CLA", "Commit identity policy") on the queue's commit, because they cannot run there. `tests/test_merge_queue.py` keeps those names equal to the ruleset's required list; change both together.
 
 On the queue commit, `ci.yml` compares the commit with its base to decide the documentation-only and Electron scopes, as it does for a pull request. The pass cache (see `.github/CONTRIBUTING.md` → Quality gates) lets a queued job skip when its inputs match a green run on `main`, so jobs whose inputs the queued pull requests did not touch do not run again. Pushes to `main` always run in full.
 
-To turn it on (Settings → Rules → Rulesets → `main`):
+To turn it on once the repository belongs to an organization (Settings → Rules → Rulesets → `main`):
 
 1. Add **Require merge queue**: method *Merge commit*, build concurrency 1–3, minimum group size 1, wait time 0–5 minutes, status check timeout 60 minutes.
-2. Under **Require status checks to pass**, untick **Require branches to be up to date before merging**; the queue makes it unnecessary.
+2. Under **Require status checks to pass**, keep **Require branches to be up to date before merging** unticked; the queue makes it unnecessary.
 3. Merge PRs with **Merge when ready** (the queue button) instead of **Merge**. `gh pr merge N --merge` joins the queue once it is on.
 
 Try it on one PR first. If a queued PR stalls, a required check name in the ruleset no longer matches a job or status the queue commit reports: compare the ruleset with `tests/test_merge_queue.py`.
