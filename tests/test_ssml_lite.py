@@ -202,6 +202,8 @@ def test_spell_out_does_not_fuse_separate_tokens():
 
 
 def test_spell_out_keeps_flag_emoji_whole():
+    from services.ssml_lite import spell_out
+
     # Two regional indicators form one flag; four form two flags.
     assert spell_out("\U0001f1fa\U0001f1f8") == "\U0001f1fa\U0001f1f8"
     assert (
@@ -211,9 +213,29 @@ def test_spell_out_keeps_flag_emoji_whole():
 
 
 def test_spell_out_keeps_zwj_and_skin_tone_emoji_whole():
+    from services.ssml_lite import spell_out
+
     technologist = "\U0001f469\u200d\U0001f4bb"  # woman + ZWJ + laptop
     thumbs_up = "\U0001f44d\U0001f3fd"  # thumbs up + medium skin tone
     assert spell_out(f"a{technologist}{thumbs_up}") == f"a {technologist} {thumbs_up}"
+
+
+def test_spell_out_keeps_subdivision_flag_whole():
+    from services.ssml_lite import spell_out
+
+    # Black flag + TAG "gbsct" + CANCEL TAG is the Scotland flag.
+    scotland = "\U0001f3f4\U000e0067\U000e0062\U000e0073\U000e0063\U000e0074\U000e007f"
+    assert spell_out(f"a{scotland}b") == f"a {scotland} b"
+
+
+def test_spell_out_splits_letters_after_a_zwj():
+    from services.ssml_lite import spell_out
+
+    # A ZWJ between letters stays on the first letter; the next letter is
+    # still its own unit, and a flag after a letter + ZWJ keeps its pair.
+    assert spell_out("\u0645\u200d\u06cc") == "\u0645\u200d \u06cc"
+    assert spell_out("a\u200db") == "a\u200d b"
+    assert spell_out("A\u200d\U0001f1fa\U0001f1f8") == "A\u200d \U0001f1fa\U0001f1f8"
 
 
 def test_redos_safe_on_adversarial_input():
