@@ -21,6 +21,7 @@ Usage:
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import logging
 
 from core.render_trace import timed as _render_timed
@@ -30,6 +31,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 import torch
 
@@ -67,6 +69,16 @@ _prefetched_unused = False
 # whole session.
 _generator_failed_at: Optional[float] = None
 _GENERATOR_RETRY_SECONDS = 600.0
+
+
+#: AudioSeal model cards, and the checkpoint URI each names in audioseal 0.2
+#: (the fallback when a card can't be read).
+_GENERATOR_CARD = "audioseal_wm_16bits"
+_DETECTOR_CARD = "audioseal_detector_16bits"
+_KNOWN_CHECKPOINTS = {
+    _GENERATOR_CARD: "https://huggingface.co/facebook/audioseal/resolve/main/generator_base.pth",
+    _DETECTOR_CARD: "https://huggingface.co/facebook/audioseal/resolve/main/detector_base.pth",
+}
 
 
 class _GeneratorLoadDeferred(RuntimeError):
@@ -216,7 +228,7 @@ def _get_generator(mark_prefetched: bool = False):
                 )
             from audioseal import AudioSeal
             try:
-                _generator = AudioSeal.load_generator("audioseal_wm_16bits")
+                _generator = AudioSeal.load_generator(_GENERATOR_CARD)
             except Exception:
                 _generator_failed_at = time.monotonic()
                 raise
@@ -236,24 +248,75 @@ def _get_detector():
         _last_used = time.monotonic()
         if _detector is None:
             from audioseal import AudioSeal
-            _detector = AudioSeal.load_detector("audioseal_detector_16bits")
+            _detector = AudioSeal.load_detector(_DETECTOR_CARD)
             _detector.eval()
             logger.info("AudioSeal detector loaded (16-bit message mode)")
         return _detector
 
 
+def _card_checkpoint(card_name: str) -> str:
+    """The checkpoint URI an AudioSeal model card names (what the loader fetches)."""
+    try:
+        from audioseal.loader import load_local_model_config
+
+        card = load_local_model_config(card_name)
+        if card is not None and card.get("checkpoint"):
+            return str(card["checkpoint"])
+    except Exception:  # noqa: BLE001 — a card layout change falls back to the known URI
+        logger.debug("AudioSeal card %s unreadable; using the known URI", card_name, exc_info=True)
+    return _KNOWN_CHECKPOINTS[card_name]
+
+
+def _generator_card_checkpoint() -> str:
+    """The checkpoint URI the generator card names."""
+    return _card_checkpoint(_GENERATOR_CARD)
+
+
+def _audioseal_checkpoint_path(checkpoint: str) -> Path:
+    """Where ``audioseal.loader.load_model_checkpoint`` reads ``checkpoint``.
+
+    Mirrors the loader's three branches rather than guessing a filename: a
+    local file is read in place; a ``facebook/audioseal/<file>`` repo path is
+    an ``hf_hub_download(local_dir=<cache>)`` and lands as ``<cache>/<file>``;
+    an ``https`` URL (what the bundled cards use) goes through
+    ``torch.hub.load_state_dict_from_url`` with ``file_name`` set to the first
+    24 hex chars of the URL path's SHA-1. The cache dir is the first non-empty
+    of ``AUDIOSEAL_CACHE_DIR`` / ``XDG_CACHE_HOME`` (taken verbatim, as the
+    loader does), else ``~/.cache``, plus ``/audioseal``.
+    """
+    if Path(checkpoint).is_file():
+        return Path(checkpoint)
+    for env in ("AUDIOSEAL_CACHE_DIR", "XDG_CACHE_HOME"):
+        if os.environ.get(env):
+            cache_dir = Path(os.environ[env]) / "audioseal"
+            break
+    else:
+        cache_dir = Path("~/.cache").expanduser().resolve() / "audioseal"
+    for repo in ("facebook/audioseal", "meta-adtp/audioseal"):
+        if checkpoint.startswith(repo):
+            return cache_dir / checkpoint[len(repo) + 1:]
+    # A cache filename, not a security digest: torch.hub names the file after
+    # this hash, so it must match audioseal's sha1 exactly.
+    url_path = urlparse(checkpoint).path
+    digest = hashlib.sha1(url_path.encode(), usedforsecurity=False).hexdigest()
+    return cache_dir / digest[:24]
+
+
 def _generator_checkpoint_cached() -> bool:
     """Return whether AudioSeal can warm without contacting Hugging Face.
 
-    AudioSeal 0.2 stores the checkpoint in ``<cache>/audioseal`` even though
-    it uses huggingface_hub to fetch it. Keep startup local-first: an ordinary
-    boot may consume that file, but must never turn prefetch into a download.
+    Keep startup local-first: an ordinary boot may consume the cached file,
+    but must never turn prefetch into a download. The path must be the one
+    the loader reads — checking ``<cache>/audioseal/generator_base.pth``
+    reported "not cached" on every host, because the card's https URL is
+    cached under a hashed name (#2818).
     """
-    cache_root = os.environ.get("AUDIOSEAL_CACHE_DIR") or os.environ.get(
-        "XDG_CACHE_HOME"
-    )
-    root = Path(cache_root).expanduser() if cache_root else Path.home() / ".cache"
-    return (root / "audioseal" / "generator_base.pth").is_file()
+    return _checkpoint_cached(_GENERATOR_CARD)
+
+
+def _checkpoint_cached(card_name: str) -> bool:
+    """Whether ``card_name``'s checkpoint is already where the loader reads it."""
+    return _audioseal_checkpoint_path(_card_checkpoint(card_name)).is_file()
 
 
 def prefetch_generator(*, allow_download: bool = False) -> None:
@@ -468,17 +531,29 @@ def _audioseal_resample(audio: torch.Tensor, source: int, target: int) -> torch.
     return resample(audio, source, target)
 
 
+def _remove_dc(residual: torch.Tensor) -> torch.Tensor:
+    """Subtract the watermark residual's mean per channel.
+
+    The AudioSeal 16-bit generator's residual carries a constant bias of
+    about -7 LSB at int16 (-6.9 measured, identical in pauses and under
+    speech). Added as-is, every pause sits at a DC offset that the voice
+    never had (#2818). The watermark itself lives at 1–2 kHz, so removing
+    the mean leaves it intact; only the residual is touched, never the voice.
+    """
+    if residual.shape[-1] == 0:
+        return residual
+    return residual - residual.mean(dim=-1, keepdim=True)
+
+
 def _embed_chunk(generator, audio, sample_rate, message):
-    """Resample only the watermark residual back, preserving original high frequencies."""
+    """Add only the DC-free watermark residual, preserving the original audio."""
     model_audio = _audioseal_resample(audio, sample_rate, _AUDIOSEAL_SAMPLE_RATE)
     marked = generator(model_audio, sample_rate=_AUDIOSEAL_SAMPLE_RATE, message=message)
-    if sample_rate == _AUDIOSEAL_SAMPLE_RATE:
-        return marked
     delta = _audioseal_resample(marked - model_audio, _AUDIOSEAL_SAMPLE_RATE, sample_rate)
     missing = audio.shape[-1] - delta.shape[-1]
     if missing > 0:
         delta = torch.nn.functional.pad(delta, (0, missing))
-    return audio + delta[..., :audio.shape[-1]]
+    return audio + _remove_dc(delta[..., :audio.shape[-1]])
 
 
 @torch.no_grad()

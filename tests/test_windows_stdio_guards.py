@@ -22,6 +22,9 @@ Two crash classes from the wild, one boundary:
 import io
 import os
 import sys
+from pathlib import Path
+
+import pytest
 
 os.environ.setdefault("OMNIVOICE_MODEL", "test")
 os.environ.setdefault("OMNIVOICE_DISABLE_FILE_LOG", "1")
@@ -55,3 +58,39 @@ def test_main_sets_fortran_console_guard_and_utf8_stdio():
         fp = getattr(stream, "fp", stream)
         enc = (getattr(fp, "encoding", None) or "utf-8").lower().replace("-", "")
         assert enc == "utf8", f"stdio still on {enc}"
+
+
+@pytest.mark.parametrize(
+    ("platform", "dotenv_value", "expected"),
+    [("win32", None, "1"), ("win32", "0", "0"), ("linux", None, None), ("darwin", None, None)],
+)
+def test_main_serial_weight_load_default_is_windows_only(monkeypatch, tmp_path, platform, dotenv_value, expected):
+    """#3767/#3772/#4024: threaded weight loading faults on some Windows hosts; .env wins."""
+    pytest.importorskip("dotenv")
+    monkeypatch.setattr(sys, "platform", platform)
+    # setenv records the original state (absent or set) so teardown restores it,
+    # even though the code under test sets the variable again below.
+    monkeypatch.setenv("HF_DEACTIVATE_ASYNC_LOAD", "unset-marker")
+    monkeypatch.delenv("HF_DEACTIVATE_ASYNC_LOAD")
+    monkeypatch.setenv("OMNIVOICE_DATA_DIR", str(tmp_path / "data"))
+    # Never read the developer's saved settings file.
+    monkeypatch.setenv("OMNIVOICE_ENV_FILE", str(tmp_path / "no-saved-settings.env"))
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        f"HF_DEACTIVATE_ASYNC_LOAD={dotenv_value}\n" if dotenv_value is not None else "", encoding="utf-8"
+    )
+    backend = Path(__file__).resolve().parents[1] / "backend"
+    if str(backend) not in sys.path:
+        monkeypatch.syspath_prepend(str(backend))
+    from core.env_startup import load_startup_env
+
+    main_src = (backend / "main.py").read_text("utf-8")
+    # The default must be applied after .env loads and before transformers imports.
+    marker = 'if sys.platform == "win32":\n    os.environ.setdefault("HF_DEACTIVATE_ASYNC_LOAD"'
+    start = main_src.index(marker)
+    assert main_src.index("_load_startup_env(_discovered_env") < start
+    assert start < main_src.index("from services.hf_auth import")
+    block = main_src[start : main_src.index("\n\n", start)]
+    load_startup_env(str(env_file), str(env_file))
+    exec(block, {"os": os, "sys": sys})
+    assert os.environ.get("HF_DEACTIVATE_ASYNC_LOAD") == expected

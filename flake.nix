@@ -472,8 +472,8 @@
       # The rev must equal quant_map.json's runtime_commit_sha (asserted
       # below); the ggml rev is that commit's submodule gitlink. When the pin
       # moves, update both revs and both hashes.
-      omnivoiceRuntimeRev = "886fc079838ca7400cb2b42b36e2a65aa1daabe8";
-      omnivoiceGgmlRev = "f3bc6505c4e2ede83a193e0fb4695938ff3804fd";
+      omnivoiceRuntimeRev = "040c8b344d8c670ce1475194751d119b5ef82c78";
+      omnivoiceGgmlRev = "d5152bf4348453068aa8de0d479caef40a613b9d";
       pinnedRuntimeRev =
         (lib.importJSON ./backend/engines/omnivoice_gguf/quant_map.json)._meta.runtime_commit_sha;
 
@@ -489,7 +489,7 @@
             owner = "ServeurpersoCom";
             repo = "ggml";
             rev = omnivoiceGgmlRev;
-            hash = "sha256-C3pmL0NFFHTlnfeRWzS5EVz1bDW3cPO5Q6CSLXnLP3M=";
+            hash = "sha256-qRyucqwOppbd0ZjjrX48Bbdh9yyljYHuUwk3sQFXLnU=";
           };
         in
         pkgs.stdenv.mkDerivation {
@@ -500,7 +500,7 @@
             owner = "ServeurpersoCom";
             repo = "omnivoice.cpp";
             rev = omnivoiceRuntimeRev;
-            hash = "sha256-apD4EVVNiuCC11iTP4dtFaMOLlEi86102WSDBx6ac/g=";
+            hash = "sha256-9XE5WZo55hB4HCXaYV1FknOy0A0yVKqurgfVfaE1GhI=";
           };
 
           # GitHub archives leave the ggml submodule as an empty directory.
@@ -537,6 +537,7 @@
             runHook preInstall
             mkdir -p "$out"
             cp -v build/omnivoice-tts "$out/omnivoice-tts-linux-x86_64"
+            cp -v build/tts-server "$out/tts-server-linux-x86_64"
             find build -name 'libggml*.so*' -type f -exec cp -v {} "$out/" \;
             find build -name 'libggml*.so*' -type l -exec cp -vL {} "$out/" \;
             for file in "$out"/*; do
@@ -1118,6 +1119,7 @@
               brand/trayTemplate.png \
               brand/trayRecordingTemplate.png \
               bin/omnivoice-tts-linux-x86_64 \
+              bin/tts-server-linux-x86_64 \
               bin/checksums.sha256 \
               tools/uv \
               native/voicestudio-desktop-bridge \

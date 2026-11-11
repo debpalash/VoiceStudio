@@ -1,5 +1,5 @@
 omnivoice-ggml
-Source: https://github.com/ServeurpersoCom/ggml/tree/f3bc6505c4e2ede83a193e0fb4695938ff3804fd
+Source: https://github.com/ServeurpersoCom/ggml/tree/d5152bf4348453068aa8de0d479caef40a613b9d
 
 LICENSE
 

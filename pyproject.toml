@@ -40,9 +40,14 @@ dependencies = [
     "transformers>=5.10.0",
     "accelerate",
     "pydub",
-    "gradio>=6.15.1",
+    # pydub imports the stdlib `audioop`, which Python 3.13 removed; gradio
+    # used to pull this backport in, so declare it now that gradio is in `ui`.
+    "audioop-lts ; python_version >= '3.13'",
+    # The SoniTranslate service imports gradio_client directly. It used to
+    # arrive through gradio; gradio itself is only for `omnivoice-demo` (`ui`).
+    "gradio_client",
+    # Used by accelerate's tensorboard tracker in omnivoice/training.
     "tensorboardX",
-    "webdataset",
     "numpy",
     "soundfile",
     # whisperx / faster-whisper import `pkg_resources` at runtime. setuptools
@@ -214,10 +219,15 @@ eval = [
     "zhon",                # Chinese punctuation
     "unidecode",            # Unicode normalization
 ]
+# `omnivoice-demo` (omnivoice/cli/demo.py) is the only gradio importer.
 ui = [
     "gradio>=6.15.1",
     "gradio_client",
     "requests",
+]
+# OmniVoice training and data preparation (omnivoice/data, omnivoice/scripts).
+train = [
+    "webdataset",
 ]
 # Phase 3 Plan 03-01 — Supertonic-3 opt-in engine. CPU-only ONNX TTS,
 # 31 languages, ~99M params, ~400 MB model on first use. Default

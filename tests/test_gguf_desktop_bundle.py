@@ -9,6 +9,7 @@ the packaged layout matches the backend's lookup.
 """
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -100,6 +101,7 @@ def _run_windows_build(tmp_path: Path, runtime: dict[str, str]):
         "git": 'if [[ "$1" == clone ]]; then for d in "$@"; do :; done; mkdir -p "$d"; fi',
         "cmake": 'if [[ "$1" == --build ]]; then mkdir -p build/Release;'
                  ' printf rt > build/Release/omnivoice-tts.exe;'
+                 ' printf srv > build/Release/tts-server.exe;'
                  ' printf lib > build/Release/ggml-cpu-haswell.dll; fi',
     }
     msvc = tmp_path / "msvc"
@@ -140,3 +142,38 @@ def test_every_parallel_build_is_bounded():
             assert '-j "$BUILD_JOBS"' in line, f"{rel}: {line.strip()}"
     script = (REPO / "scripts/build-omnivoice-tts.sh").read_text(encoding="utf-8")
     assert script.index("BUILD_JOBS=") < script.index('source "$REPO_ROOT/scripts/lib/omnivoice-vulkan.sh"')
+
+
+# ── resident tts-server ships beside the CLI (#3654) ───────────────────────
+
+def test_windows_build_ships_and_checksums_the_resident_server(tmp_path):
+    result = _run_windows_build(tmp_path, {"msvcp140.dll": "m", "vcruntime140.dll": "v"})
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (tmp_path / "bin" / "tts-server-windows-x86_64.exe").read_text(encoding="utf-8") == "srv"
+    manifest = (tmp_path / "bin" / "checksums.sha256").read_text(encoding="utf-8")
+    assert "  tts-server-windows-x86_64.exe\n" in manifest
+
+
+def test_build_fails_when_the_pin_has_no_resident_server(tmp_path):
+    # A pin older than omnivoice.cpp 040c8b3 builds no tts-server; shipping that
+    # would leave resident mode silently inactive in every installer.
+    tools = {
+        "git": 'if [[ "$1" == clone ]]; then for d in "$@"; do :; done; mkdir -p "$d"; fi',
+        "cmake": 'if [[ "$1" == --build ]]; then mkdir -p build/Release;'
+                 ' printf rt > build/Release/omnivoice-tts.exe; fi',
+    }
+    result = run_build(tmp_path, "windows-x86_64", tools=tools)
+    assert result.returncode != 0
+    assert "tts-server.exe not found" in result.stderr
+
+
+def test_build_workflow_uploads_and_checks_the_resident_server():
+    wf = _workflow("build-omnivoice-tts.yml")
+    job = wf["jobs"]["build-omnivoice-tts"]
+    upload = next(s for s in job["steps"] if s.get("name") == "Upload binary artifact")
+    assert "bin/tts-server-${{ matrix.platform }}*" in upload["with"]["path"]
+    check = next(s for s in job["steps"] if s.get("name") == "Check the resident server was built and checksummed")
+    assert "tts-server-$PLATFORM" in check["run"] and "checksums.sha256" in check["run"]
+    # The resident server needs a pin that builds it (voice registry, 040c8b3).
+    pin = json.loads((REPO / "backend/engines/omnivoice_gguf/quant_map.json").read_text(encoding="utf-8"))
+    assert pin["_meta"]["runtime_commit_sha"] == "040c8b344d8c670ce1475194751d119b5ef82c78"

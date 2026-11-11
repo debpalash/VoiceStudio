@@ -35,6 +35,14 @@ class FakeGenerator:
         return audio * 2.0  # position-independent transform → order is checkable
 
 
+def _expected(wave):
+    # The residual (here: the chunk itself) is added DC-free per chunk (#2818).
+    return torch.cat(
+        [seg + (seg - seg.mean(dim=-1, keepdim=True)) for seg in _iter_chunks(wave, SR)],
+        dim=-1,
+    )
+
+
 class FakeDetector:
     """Stands in for the AudioSeal detector; confidence peaks on the chunk
     holding the sentinel spike so best-chunk aggregation is observable."""
@@ -70,7 +78,7 @@ def test_embed_long_audio_is_chunk_bounded(fake_audioseal):
     assert all(n <= max_chunk for n in gen.seen_lengths), gen.seen_lengths
     # Every sample processed, in order, shape preserved
     assert out.shape == wave.shape
-    assert torch.equal(out, wave * 2.0)
+    assert torch.allclose(out, _expected(wave))
 
 
 def test_embed_short_audio_single_call(fake_audioseal):
@@ -78,7 +86,7 @@ def test_embed_short_audio_single_call(fake_audioseal):
     wave = torch.randn(1, SR * 3)
     out = embed_watermark(wave, SR, force=True)
     assert gen.seen_lengths == [SR * 3]
-    assert torch.equal(out, wave * 2.0)
+    assert torch.allclose(out, _expected(wave))
 
 
 def test_embed_subsecond_tail_folds_into_previous_chunk(fake_audioseal):

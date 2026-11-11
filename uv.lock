@@ -4043,6 +4043,7 @@ dependencies = [
     { name = "accelerate" },
     { name = "alembic" },
     { name = "argostranslate" },
+    { name = "audioop-lts", marker = "python_full_version >= '3.13' or (extra == 'group-9-omnivoice-cpu' and extra == 'group-9-omnivoice-cuda')" },
     { name = "audioseal" },
     { name = "boto3" },
     { name = "cryptography" },
@@ -4052,7 +4053,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "faster-whisper" },
     { name = "google-auth" },
-    { name = "gradio" },
+    { name = "gradio-client" },
     { name = "hf-xet" },
     { name = "httpx" },
     { name = "huggingface-hub" },
@@ -4097,7 +4098,6 @@ dependencies = [
     { name = "transformers" },
     { name = "truststore" },
     { name = "uvicorn" },
-    { name = "webdataset" },
     { name = "websockets" },
     { name = "whisperx" },
     { name = "yt-dlp" },
@@ -4119,6 +4119,9 @@ pockettts = [
 ]
 supertonic = [
     { name = "supertonic" },
+]
+train = [
+    { name = "webdataset" },
 ]
 ui = [
     { name = "gradio" },
@@ -4152,6 +4155,7 @@ requires-dist = [
     { name = "accelerate" },
     { name = "alembic", specifier = ">=1.16" },
     { name = "argostranslate", specifier = ">=1.9.0" },
+    { name = "audioop-lts", marker = "python_full_version >= '3.13'" },
     { name = "audioseal", specifier = ">=0.1.3" },
     { name = "boto3", specifier = ">=1.40" },
     { name = "cryptography", specifier = ">=41" },
@@ -4161,8 +4165,8 @@ requires-dist = [
     { name = "faster-whisper", specifier = ">=1.0.0" },
     { name = "funasr", marker = "extra == 'eval'" },
     { name = "google-auth", specifier = ">=2.29,<3" },
-    { name = "gradio", specifier = ">=6.15.1" },
     { name = "gradio", marker = "extra == 'ui'", specifier = ">=6.15.1" },
+    { name = "gradio-client" },
     { name = "gradio-client", marker = "extra == 'ui'" },
     { name = "hf-xet", specifier = ">=1.1" },
     { name = "httpx", specifier = ">=0.28.1" },
@@ -4211,14 +4215,14 @@ requires-dist = [
     { name = "truststore", specifier = ">=0.9" },
     { name = "unidecode", marker = "extra == 'eval'" },
     { name = "uvicorn" },
-    { name = "webdataset" },
+    { name = "webdataset", marker = "extra == 'train'" },
     { name = "websockets" },
     { name = "whisperx", specifier = ">=3.1.0" },
     { name = "yt-dlp", specifier = ">=2026.7.4" },
     { name = "zhconv", marker = "extra == 'eval'" },
     { name = "zhon", marker = "extra == 'eval'" },
 ]
-provides-extras = ["eval", "ui", "supertonic", "pockettts"]
+provides-extras = ["eval", "ui", "train", "supertonic", "pockettts"]
 
 [package.metadata.requires-dev]
 cpu = [

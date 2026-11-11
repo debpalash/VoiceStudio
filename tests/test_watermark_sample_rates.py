@@ -32,12 +32,17 @@ def test_model_rate_and_original_audio_are_preserved(monkeypatch, rate):
 
 def test_resampled_watermark_is_added_without_lowpassing_the_source(monkeypatch):
     watermark = _wm()
+    # A 1.5 kHz residual, in the band where the real AudioSeal mark lives.
+    def tone(n, rate):
+        return 0.01 * torch.sin(2 * torch.pi * 1500 * torch.arange(n) / rate)
     class Generator:
         def __call__(self, audio, sample_rate, message):
-            return audio + 0.01
+            return audio + tone(audio.shape[-1], sample_rate)
     monkeypatch.setattr(watermark, '_check_available', lambda: True)
     monkeypatch.setattr(watermark, '_get_generator', Generator)
     wave = torch.randn(1, 48007) * 0.1
     result = watermark.embed_watermark(wave, 48000, force=True)
     assert result.shape == wave.shape
-    assert torch.allclose(result[..., 100:-100] - wave[..., 100:-100], torch.full_like(wave[..., 100:-100], 0.01), atol=1e-4)
+    inner = slice(100, -100)
+    expected = tone(wave.shape[-1], 48000).unsqueeze(0)
+    assert torch.allclose(result[..., inner] - wave[..., inner], expected[..., inner], atol=1e-3)
