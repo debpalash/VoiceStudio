@@ -144,7 +144,9 @@ runs `prepare_electron_release.py --rehearsal` against the version in
 `package.json` (it must be `X.Y.Z` or `X.Y.Z-beta.N`, and `CHANGELOG.md` must have
 its section), the updater feed checksum and channel checks, the Tauri sunset
 feeds for Stable, and the signing table. The notes, `SHA256SUMS.txt` and the
-installers stay on the workflow run for 3 days.
+installers stay on the workflow run for 3 days. When some build legs fail, the
+rehearsal still verifies the ones that built, then fails and lists the missing
+legs in the run summary; a release still stops at the first failed leg.
 
 It never publishes: no tag, no GitHub Release or draft, no feed upload, no
 Docker or Android repository dispatch. `publish`, `release_tag` and

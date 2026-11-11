@@ -112,11 +112,14 @@ def _previous_beta(repo, tag, gh):
     return best and (best[1], best[2])
 
 
-def prepare(assets, tag, sunset_tag=None, repo=None, gh=_gh, head=None):
+def prepare(assets, tag, sunset_tag=None, repo=None, gh=_gh, head=None, missing=None):
     """Verify the assets as release `tag` and write its notes and SHA256SUMS.txt.
 
     `head` marks a rehearsal: `tag` is the one the package version would get and
     does not exist, so the Contributors comparison ends at that commit instead.
+    `missing` (rehearsals only) collects build legs that produced nothing instead
+    of stopping at the first, so the legs that did build are still verified; the
+    caller must fail on a non-empty list.
     """
     version = json.loads(Path("package.json").read_text(encoding="utf-8"))["version"]
     if tag != f"v{version}":
@@ -127,7 +130,7 @@ def prepare(assets, tag, sunset_tag=None, repo=None, gh=_gh, head=None):
         {"name": p.name, "size": p.stat().st_size,
          "digest": "sha256:" + hashlib.sha256(p.read_bytes()).hexdigest()}
         for p in files]}
-    verify_release(release, assets, channel=channel, version=version)
+    verify_release(release, assets, channel=channel, version=version, missing=missing)
     for manifest in assets.glob(f"electron-{channel}-*.yml"):
         text = manifest.read_text(encoding="utf-8")
         artifact = re.search(r"^\s+- url:\s*(.+)$", text, re.M)[1].strip().strip("'\"")
@@ -137,7 +140,9 @@ def prepare(assets, tag, sunset_tag=None, repo=None, gh=_gh, head=None):
             raise ValueError("Updater payload checksum mismatch")
     for suffix in ("mac-arm64.dmg", "mac-x64.dmg", "linux-x64.deb"):
         if not (assets / f"VoiceStudio-{version}-{suffix}").is_file():
-            raise ValueError(f"Missing installer: {suffix}")
+            if missing is None:
+                raise ValueError(f"Missing installer: {suffix}")
+            missing.append(f"installer {suffix}")
     # Archived Tauri clients read `latest/download`, which never serves a
     # prerelease, so betas carry no sunset feeds.
     if sunset_tag and channel == "stable":
@@ -178,6 +183,8 @@ if __name__ == "__main__":
     selector.add_argument("--tag")
     selector.add_argument("--rehearsal", action="store_true",
                           help="No tag exists yet: verify as the tag package.json's version would get")
+    parser.add_argument("--missing-report", type=Path,
+                        help="With --rehearsal: verify the legs that built, list the ones that did not here")
     parser.add_argument("--sunset-tag")
     parser.add_argument("--repo", help="owner/name; adds a Contributors section from the tag comparison")
     parser.add_argument("--print-channel", action="store_true",
@@ -185,9 +192,16 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.print_channel:
         print(channel_for(json.loads(Path("package.json").read_text(encoding="utf-8"))["version"]))
+    elif args.missing_report and not args.rehearsal:
+        parser.error("--missing-report is only for --rehearsal; a release needs every leg")
     elif args.assets and args.rehearsal:
         tag, head = rehearsal_target()
-        prepare(args.assets, tag, args.sunset_tag, repo=args.repo, head=head)
+        missing = [] if args.missing_report else None
+        prepare(args.assets, tag, args.sunset_tag, repo=args.repo, head=head, missing=missing)
+        if args.missing_report:
+            args.missing_report.write_text("".join(f"{item}\n" for item in missing), encoding="utf-8")
+            for item in missing:
+                print(f"::error::Rehearsal is missing {item}: its build leg failed", file=sys.stderr)
     elif args.assets and args.tag:
         prepare(args.assets, args.tag, args.sunset_tag, repo=args.repo)
     else:

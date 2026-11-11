@@ -246,7 +246,7 @@ jobs:
           retention-days: ${{ inputs.rehearsal && 3 || 30 }}
 
       - name: Write App Store Connect API key
-        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios
+        if: ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios) && !inputs.rehearsal
         env:
           ASC_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
         run: |
@@ -257,7 +257,7 @@ jobs:
       # Release recovery can check out an older tag without today's helper.
       # Pin signing tools to the workflow's own reviewed commit, outside that tree.
       - name: Checkout signing tools
-        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios
+        if: ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios) && !inputs.rehearsal
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ job.workflow_repository }}
@@ -270,7 +270,7 @@ jobs:
           persist-credentials: false
 
       - name: Install reusable archive identity
-        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios
+        if: ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios) && !inputs.rehearsal
         env:
           IOS_ARCHIVE_CERTIFICATE: ${{ secrets.IOS_ARCHIVE_CERTIFICATE }}
           IOS_ARCHIVE_CERTIFICATE_PASSWORD: ${{ secrets.IOS_ARCHIVE_CERTIFICATE_PASSWORD }}
@@ -282,7 +282,7 @@ jobs:
       # Reuse the installed development identity for the archive. Export still
       # uses Apple's cloud-managed Distribution certificate and App Store profile.
       - name: Archive
-        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios
+        if: ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios) && !inputs.rehearsal
         env:
           ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
@@ -301,7 +301,7 @@ jobs:
             archive
 
       - name: Export IPA
-        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios
+        if: ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios) && !inputs.rehearsal
         env:
           ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
@@ -324,7 +324,7 @@ jobs:
           ls "$RUNNER_TEMP/ipa"/*.ipa
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios
+        if: ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios) && !inputs.rehearsal
         with:
           name: VoiceStudio-ios-release
           path: ${{ runner.temp }}/ipa/*.ipa

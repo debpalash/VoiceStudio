@@ -160,6 +160,14 @@ def test_rehearsal_phone_builds_never_read_signing_secrets():
         assert 'git rev-parse HEAD)" = "$RELEASE_REF"' in rehearsal["run"]
     android = {s.get("name"): s for s in jobs["android"]["steps"]}
     assert android["Decode keystore"]["if"] == "${{ !inputs.rehearsal }}"
+    # Store signing needs the environment's secrets: skipped in a rehearsal even
+    # when a caller also asks for signed_ios (#4011 review). Cleanup still runs.
+    ios = jobs["ios"]["steps"]
+    signing = [s for s in ios if "inputs.signed_ios" in str(s.get("if", ""))]
+    assert len(signing) == 6
+    for s in signing:
+        assert s["if"].endswith(") && !inputs.rehearsal"), s.get("name")
+    assert next(s for s in ios if s.get("name") == "Remove API key")["if"] == "always()"
     build = android["Build signed APK and AAB"]
     assert "unset VOICESTUDIO_ANDROID_KEYSTORE" in build["run"]
     assert build["run"].index("unset VOICESTUDIO_ANDROID_KEYSTORE") < build["run"].index("./gradlew")
@@ -176,13 +184,48 @@ def test_signpath_runs_in_a_rehearsal_only_on_the_test_policy():
     assert "test-signed" in report["run"]
 
 
+_STUBS = r'''
+$rsa = [System.Security.Cryptography.RSA]::Create(2048)
+$request = [System.Security.Cryptography.X509Certificates.CertificateRequest]::new("CN=test", $rsa, "SHA256", [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
+$days = [int]$env:STUB_CERT_DAYS
+$stubCert = $request.CreateSelfSigned([DateTimeOffset]::Now.AddDays($days - 60), [DateTimeOffset]::Now.AddDays($days))
+function Get-ChildItem { [pscustomobject]@{ FullName = 'VoiceStudio-1.2.3-win-x64.exe'; Name = 'VoiceStudio-1.2.3-win-x64.exe' } }
+function Get-AuthenticodeSignature {
+  [pscustomobject]@{ Status = $env:STUB_STATUS; SignerCertificate = $(if ($env:STUB_SIGNED -eq 'true') { $stubCert } else { $null }) }
+}
+'''
+
+
+@pytest.mark.skipif(not __import__("shutil").which("pwsh"), reason="needs PowerShell")
+@pytest.mark.parametrize(("status", "signed", "cert_days", "ok"), [
+    ("UnknownError", "true", 30, True),   # SignPath's test certificate: untrusted root only
+    ("NotTrusted", "true", 30, True),
+    ("Valid", "true", 30, True),
+    ("HashMismatch", "true", 30, False),  # damaged after signing (#4011 review)
+    ("NotSigned", "false", 30, False),
+    ("UnknownError", "false", 30, False),
+    ("UnknownError", "true", -1, False),  # an expired certificate is more than an untrusted root
+])
+def test_test_signing_accepts_only_an_intact_signature_from_an_untrusted_root(tmp_path, status, signed, cert_days, ok):
+    script = step("package", "Report and enforce Windows signing")["run"].replace("${{ matrix.arch }}", "x64")
+    env = dict(os.environ, TEST_SIGNED="true", HAS_CREDENTIALS="true", STUB_STATUS=status,
+               STUB_SIGNED=signed, STUB_CERT_DAYS=str(cert_days))
+    result = subprocess.run(["pwsh", "-NoProfile", "-NonInteractive", "-Command", _STUBS + script],
+                            cwd=tmp_path, env=env, capture_output=True, text=True)
+    assert (result.returncode == 0) is ok, result.stdout + result.stderr
+    report = tmp_path / "electron/release-signing/signing-win32-x64.json"
+    assert report.is_file() is ok
+    if ok:
+        assert json.loads(report.read_text(encoding="utf-8-sig"))["status"] == "test-signed"
+
+
 def test_rehearsal_runs_the_same_verification_as_a_release():
     validate = step("release", "Validate all platforms before creating a release")["run"]
-    assert "--assets release-assets --rehearsal --repo" in validate
+    assert "--assets release-assets --rehearsal --missing-report" in validate
     assert '--assets release-assets --tag "$TAG" --repo' in validate
     sunset = step("release", "Preserve the final Tauri updater feeds")
     assert "rehearsal" not in sunset.get("if", "")
-    assert "--rehearsal --sunset-tag" in sunset["run"]
+    assert "--rehearsal --missing-report" in sunset["run"] and '--sunset-tag "$SUNSET_TAG"' in sunset["run"]
     describe = step("release", "Describe installer signing per platform")["run"]
     assert "--rehearsal" in describe and "NOTES_ARGS" in describe
     feeds = step("release", "Rehearsal - check the feeds the release would carry")
@@ -241,6 +284,60 @@ def test_prepare_rehearsal_verifies_as_the_package_version_and_credits_up_to_hea
         return "alice\n"
     block = release_module.contributors_section("o/r", "v1.2.3-beta.2", gh, head=head)
     assert compared == [f"repos/o/r/compare/v1.2.2...{head}"] and "@alice" in block
+
+
+def test_a_rehearsal_with_failed_legs_still_verifies_the_rest_and_then_fails():
+    job = RELEASE["jobs"]["release"]
+    # A release keeps needing every leg; only a rehearsal goes on after a failure.
+    assert job["if"] == "${{ success() || (inputs.rehearsal == true && !cancelled() && needs.validate.result == 'success') }}"
+    for name in ("Validate all platforms before creating a release", "Preserve the final Tauri updater feeds"):
+        assert '--rehearsal --missing-report "$RUNNER_TEMP/rehearsal-missing-desktop.txt"' in step("release", name)["run"]
+    fail = step("release", "Rehearsal - fail when a build leg produced nothing")
+    assert fail["if"] == "inputs.rehearsal == true" and "exit 1" in fail["run"]
+    names = [s.get("name") for s in steps("release")]
+    assert names.index("Rehearsal - save the release notes and checksums") < names.index(fail["name"]) < names.index("Create or update draft")
+
+
+@pytest.mark.parametrize("rehearsal,ok", [("true", True), ("false", False)])
+def test_missing_phone_binaries_are_listed_only_in_a_rehearsal(tmp_path, rehearsal, ok):
+    android = tmp_path / "phone-assets/VoiceStudio-android-release"
+    android.mkdir(parents=True)
+    (android / "VoiceStudio.apk").write_bytes(b"apk")
+    (android / "VoiceStudio.aab").write_bytes(b"aab")  # the iOS leg failed
+    env = dict(os.environ, TAG="v1.2.3", REHEARSAL=rehearsal, RUNNER_TEMP=str(tmp_path))
+    result = subprocess.run(["bash", "-e", "-c", step("release", "Collect phone binaries")["run"]],
+                            cwd=tmp_path, env=env, capture_output=True, text=True)
+    assert (result.returncode == 0) is ok, result.stdout + result.stderr
+    assert (tmp_path / "release-assets/VoiceStudio-1.2.3-android.apk").is_file()
+    if ok:
+        assert (tmp_path / "rehearsal-missing-phone.txt").read_text() == "phone binary VoiceStudio-1.2.3-ios-unsigned.ipa\n"
+
+
+def test_prepare_lists_failed_legs_only_when_asked(release_module, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    Path("package.json").write_text(json.dumps({"version": "1.2.3"}))
+    Path("CHANGELOG.md").write_text("## [1.2.3] — 2026-11-11\n\n- Fix\n")
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    (assets / "VoiceStudio-1.2.3-mac-arm64.dmg").write_bytes(b"x")
+    # Nothing at all from the other legs: a strict run stops at the first.
+    with pytest.raises(Exception, match="missing downloaded manifest"):
+        release_module.prepare(assets, "v1.2.3")
+    missing = []
+    release_module.prepare(assets, "v1.2.3", missing=missing)
+    assert missing == ["darwin-arm64", "darwin-x64", "linux-x64", "win32-x64",
+                       "installer mac-x64.dmg", "installer linux-x64.deb"]
+    assert (assets / "SHA256SUMS.txt").is_file()
+    # A leg with some of its files is broken, not missing: it still fails at once.
+    (assets / "VoiceStudio-1.2.3-win-x64.exe").write_bytes(b"x")
+    with pytest.raises(Exception, match="electron-stable-win32-x64.yml"):
+        release_module.prepare(assets, "v1.2.3", missing=[])
+
+
+def test_prepare_cli_keeps_releases_strict(tmp_path):
+    result = subprocess.run(["python3", str(ROOT / "scripts/prepare_electron_release.py"), "--assets", str(tmp_path),
+                             "--tag", "v1.2.3", "--missing-report", str(tmp_path / "m.txt")], capture_output=True, text=True)
+    assert result.returncode != 0 and "only for --rehearsal" in result.stderr
 
 
 def test_prepare_rehearsal_refuses_an_unreleasable_version(release_module, monkeypatch, tmp_path):

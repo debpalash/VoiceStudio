@@ -82,8 +82,16 @@ def _foreign_feed(name: str, channel: str) -> bool:
 
 
 def verify_release(
-    release: dict[str, Any], manifest_dir: Path, *, channel: str, version: str
+    release: dict[str, Any], manifest_dir: Path, *, channel: str, version: str,
+    missing: list[str] | None = None,
 ) -> list[str]:
+    """Verify every target's feed and payloads; returns what was verified.
+
+    `missing` is for release rehearsals only: a required target with no trace at
+    all (its build leg failed) is appended there instead of failing, so the legs
+    that did build are still verified. The caller must fail on a non-empty list.
+    A target with some but not all of its files still fails at once.
+    """
     if channel not in CHANNEL_VERSION:
         raise ReleaseContractError(f"unsupported channel: {channel}")
     if CHANNEL_VERSION[channel].fullmatch(version) is None:
@@ -112,12 +120,14 @@ def verify_release(
     }.items():
         manifest_name = f"electron-{channel}-{manifest_target}.yml"
         manifest_path = manifest_dir / manifest_name
-        if target in OPTIONAL_TARGETS:
+        if target in OPTIONAL_TARGETS or missing is not None:
             # Skip only when NOTHING of this target is published: an installer
             # or blockmap without its manifest is an incomplete release.
             payload = artifact_name(version, os_token, arch, extension)
             traces = (manifest_name, payload, f"{payload}.blockmap")
             if not manifest_path.is_file() and not any(name in assets for name in traces):
+                if target not in OPTIONAL_TARGETS:
+                    missing.append(target)
                 continue
         if not manifest_path.is_file():
             raise ReleaseContractError(f"missing downloaded manifest: {manifest_name}")

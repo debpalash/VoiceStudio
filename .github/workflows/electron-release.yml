@@ -415,11 +415,23 @@ jobs:
         run: |
           $installers = @(Get-ChildItem electron/release/VoiceStudio-*.exe)
           if ($installers.Count -eq 0) { throw "No installer to verify" }
-          # A rehearsal's test certificate chains to no trusted root: require a
-          # signature, not trust, and report it as test-signed.
+          # A rehearsal's test certificate chains to no trusted root. Accept that
+          # one failure only: the signature must be intact (no HashMismatch) and
+          # its chain may fail on nothing but the untrusted root.
           if ($env:TEST_SIGNED -eq 'true') {
-            $missing = @($installers | Where-Object { -not (Get-AuthenticodeSignature $_.FullName).SignerCertificate })
-            if ($missing.Count -ne 0) { throw "SignPath test signing left these installers unsigned: $($missing.Name -join ', ')" }
+            $bad = @()
+            foreach ($installer in $installers) {
+              $signature = Get-AuthenticodeSignature $installer.FullName
+              if (-not $signature.SignerCertificate) { $bad += "$($installer.Name): not signed"; continue }
+              if ($signature.Status -eq 'Valid') { continue }
+              if ($signature.Status -notin @('UnknownError', 'NotTrusted')) { $bad += "$($installer.Name): $($signature.Status)"; continue }
+              $chain = [System.Security.Cryptography.X509Certificates.X509Chain]::new()
+              $chain.ChainPolicy.RevocationMode = 'NoCheck'
+              [void]$chain.Build($signature.SignerCertificate)
+              $other = @($chain.ChainStatus | Where-Object { $_.Status -ne 'UntrustedRoot' })
+              if ($other.Count -ne 0) { $bad += "$($installer.Name): $(($other.Status) -join ', ')" }
+            }
+            if ($bad.Count -ne 0) { throw "SignPath test signing did not leave intact signatures: $($bad -join '; ')" }
             New-Item -ItemType Directory -Force electron/release-signing | Out-Null
             Set-Content "electron/release-signing/signing-win32-${{ matrix.arch }}.json" ('{"platform":"win32","arch":"${{ matrix.arch }}","status":"test-signed"}')
             exit 0
@@ -485,9 +497,12 @@ jobs:
 
   # A rehearsal runs this job up to the draft: it collects and verifies every
   # asset, then stops. Each publishing step is skipped by `if` and refuses a
-  # rehearsal again in its script.
+  # rehearsal again in its script. A rehearsal also runs when some build legs
+  # failed: it verifies the legs that built and fails at the end, naming the
+  # ones that did not. A release still needs every leg.
   release:
     needs: [validate, package, mobile]
+    if: ${{ success() || (inputs.rehearsal == true && !cancelled() && needs.validate.result == 'success') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -516,13 +531,21 @@ jobs:
       - name: Collect phone binaries
         run: |
           VERSION="${TAG#v}"
-          cp phone-assets/VoiceStudio-android-release/VoiceStudio.apk "release-assets/VoiceStudio-${VERSION}-android.apk"
-          cp phone-assets/VoiceStudio-android-release/VoiceStudio.aab "release-assets/VoiceStudio-${VERSION}-android.aab"
-          cp phone-assets/VoiceStudio-ios-unsigned/VoiceStudio-unsigned.ipa "release-assets/VoiceStudio-${VERSION}-ios-unsigned.ipa"
+          mkdir -p release-assets
+          # A release needs all three; a rehearsal lists a missing one and goes on.
+          collect() {
+            if [ -f "$1" ]; then cp "$1" "$2"
+            elif [ "$REHEARSAL" = true ]; then echo "phone binary ${2##*/}" >> "$RUNNER_TEMP/rehearsal-missing-phone.txt"
+            else echo "Missing phone binary $1"; exit 1
+            fi
+          }
+          collect phone-assets/VoiceStudio-android-release/VoiceStudio.apk "release-assets/VoiceStudio-${VERSION}-android.apk"
+          collect phone-assets/VoiceStudio-android-release/VoiceStudio.aab "release-assets/VoiceStudio-${VERSION}-android.aab"
+          collect phone-assets/VoiceStudio-ios-unsigned/VoiceStudio-unsigned.ipa "release-assets/VoiceStudio-${VERSION}-ios-unsigned.ipa"
       - name: Validate all platforms before creating a release
         run: |
           if [ "$REHEARSAL" = true ]; then
-            python3 scripts/prepare_electron_release.py --assets release-assets --rehearsal --repo "$GITHUB_REPOSITORY"
+            python3 scripts/prepare_electron_release.py --assets release-assets --rehearsal --missing-report "$RUNNER_TEMP/rehearsal-missing-desktop.txt" --repo "$GITHUB_REPOSITORY"
           else
             python3 scripts/prepare_electron_release.py --assets release-assets --tag "$TAG" --repo "$GITHUB_REPOSITORY"
           fi
@@ -537,7 +560,7 @@ jobs:
           gh release download "$SUNSET_TAG" --pattern latest.json --dir release-assets
           gh release download "$SUNSET_TAG" --pattern latest-user.json --dir release-assets
           if [ "$REHEARSAL" = true ]; then
-            python3 scripts/prepare_electron_release.py --assets release-assets --rehearsal --sunset-tag "$SUNSET_TAG" --repo "$GITHUB_REPOSITORY"
+            python3 scripts/prepare_electron_release.py --assets release-assets --rehearsal --missing-report "$RUNNER_TEMP/rehearsal-missing-desktop.txt" --sunset-tag "$SUNSET_TAG" --repo "$GITHUB_REPOSITORY"
           else
             python3 scripts/prepare_electron_release.py --assets release-assets --tag "$TAG" --sunset-tag "$SUNSET_TAG" --repo "$GITHUB_REPOSITORY"
           fi
@@ -593,6 +616,16 @@ jobs:
           path: |
             release-assets/RELEASE_NOTES.md
             release-assets/SHA256SUMS.txt
+      - name: Rehearsal - fail when a build leg produced nothing
+        if: inputs.rehearsal == true
+        run: |
+          cat "$RUNNER_TEMP"/rehearsal-missing-*.txt 2>/dev/null > "$RUNNER_TEMP/rehearsal-missing.txt" || true
+          if [ -s "$RUNNER_TEMP/rehearsal-missing.txt" ]; then
+            { echo; echo "### Missing (their build legs failed)"; echo; sed 's/^/- /' "$RUNNER_TEMP/rehearsal-missing.txt"; } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::The rehearsal verified the legs that built; these are missing:"
+            cat "$RUNNER_TEMP/rehearsal-missing.txt"
+            exit 1
+          fi
       - name: Create or update draft
         if: inputs.rehearsal != true
         run: |
