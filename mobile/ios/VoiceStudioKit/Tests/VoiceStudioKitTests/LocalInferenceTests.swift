@@ -351,6 +351,7 @@ private final class LoopbackRangeHost {
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = ["python3", "-u", "-c", #"""
 from http.server import BaseHTTPRequestHandler, HTTPServer
+import socket; socket.getfqdn = lambda name='': name  # skip HTTPServer's reverse DNS lookup on bind (35 s per server on CI)
 class Handler(BaseHTTPRequestHandler):
     calls = 0
     def log_message(self, *args): pass
