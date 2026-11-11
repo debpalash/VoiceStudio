@@ -131,7 +131,7 @@ The engine hit an instruction this computer could not run (`0xC000001D` or `SIGI
 
 ### `NATIVE_IN_PAGE_ERROR`
 
-Windows could not read part of a file the engine had open (`0xC0000006 STATUS_IN_PAGE_ERROR`), usually a model file that is memory-mapped from disk. This is a disk read error, not a bug in the engine. Keep VoiceStudio and its models on an internal drive (not a USB, network or sleeping external drive), check that drive for errors (`chkdsk`), and let Windows manage the paging file size. Then retry.
+Windows could not read part of a file the engine had mapped into memory (`0xC0000006 STATUS_IN_PAGE_ERROR`), usually a model file. The most common cause is a disk or paging-file read error; a failed write to a mapped file or memory pressure can also raise it, so the code alone does not rule out a defect. Keep VoiceStudio and its models on an internal drive (not a USB, network or sleeping external drive), check that drive for errors (`chkdsk`), and let Windows manage the paging file size. Then retry, and send the in-app report if it keeps happening on a healthy drive.
 
 ### `NATIVE_CRASH`
 
@@ -1653,7 +1653,13 @@ the offset to the report's install-failure facts. This happens only after a
 crash, reads only the local event log, and leaves the machine only if you submit
 the report. When the module is a graphics driver or GPU library (for example
 `nvcuda64.dll`, `cublasLt64_12.dll`, `igc64.dll`, `amdhip64_6.dll`), the failure
-screen says so: update the driver, or choose CPU in Settings → Performance & Device.
+screen says so and offers **Restart on CPU**. Settings → Performance & Device needs
+a running engine, so this button stores the same CPU choice (`compute_device` in
+the data folder's `prefs.json`) and starts the engine again. Switch back to Auto in
+Settings → Performance & Device after updating the driver. The button is not shown
+when `OMNIVOICE_DEVICE` is set, because that variable overrides the setting.
+CPU libraries such as Intel MKL (`mkl_*.dll`) or OpenMP (`libiomp5md.dll`) do not
+count as driver faults.
 
 On macOS, stopping a timed-out engine or installer operation can race with its
 supervisor exiting. VoiceStudio briefly rechecks that exact owned supervisor before

@@ -23,6 +23,7 @@ import {
 import {
   ChevronDownIcon,
   ClipboardCopyIcon,
+  CpuIcon,
   DownloadIcon,
   FolderOpenIcon,
   RotateCcwIcon,
@@ -229,6 +230,20 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
     setRestarting(true);
     try {
       await getBridge()?.backend.restart();
+    } catch {
+      setRestarting(false);
+    }
+  };
+
+  // A graphics driver crash: the Settings device control needs the engine
+  // running, so the screen offers the same CPU choice itself.
+  const cpuRestart =
+    Boolean(status.cpuRestartAvailable) &&
+    Boolean(guidance?.hints.includes('backend.hint_gpu_driver_fault'));
+  const restartOnCpu = async () => {
+    setRestarting(true);
+    try {
+      await getBridge()?.backend.restartOnCpu?.();
     } catch {
       setRestarting(false);
     }
@@ -526,8 +541,18 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
                         : t('backend.copy_diagnostics')}
                     </Button>
                   ) : null}
+                  {cpuRestart ? (
+                    <Button
+                      onClick={() => void restartOnCpu()}
+                      disabled={restarting}
+                      data-testid="backend-restart-cpu"
+                    >
+                      <CpuIcon data-icon="inline-start" />
+                      {t('backend.restart_on_cpu')}
+                    </Button>
+                  ) : null}
                   <Button
-                    variant={causeAction === 'retry' ? 'default' : 'outline'}
+                    variant={causeAction === 'retry' && !cpuRestart ? 'default' : 'outline'}
                     onClick={retry}
                     disabled={restarting}
                   >

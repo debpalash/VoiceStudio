@@ -164,6 +164,38 @@ describe('native crash guidance', () => {
         FAILURE_GUIDANCE.NATIVE_ILLEGAL_INSTRUCTION,
       );
     expect(isGpuDriverModule('C:\\Windows\\nvcuda64.dll')).toBe(false);
+  });
+
+  it('does not blame the driver for CPU runtimes that share a vendor prefix', () => {
+    for (const module of [
+      'libiomp5md.dll',
+      'mkl_core.2.dll',
+      'mkl_intel_thread.2.dll',
+      'mkl_avx512.2.dll',
+      'intel_openmp.dll',
+      'ur_loader.dll',
+      'ze_tracing_layer.dll',
+      'torch_cpu.dll',
+      'ctranslate2.dll',
+      'onnxruntime.dll',
+    ]) {
+      expect(isGpuDriverModule(module)).toBe(false);
+      expect(
+        failureGuidance('NATIVE_ILLEGAL_INSTRUCTION', { faultingModule: module }),
+      ).toEqual(FAILURE_GUIDANCE.NATIVE_ILLEGAL_INSTRUCTION);
+    }
+    for (const module of [
+      'nvcuda64.dll',
+      'cudnn_ops64_9.dll',
+      'igc64.dll',
+      'igd10iumd64.dll',
+      'ze_intel_gpu64.dll',
+      'ze_loader.dll',
+      'ur_adapter_level_zero.dll',
+      'amdhip64_6.dll',
+      'atio6axx.dll',
+    ])
+      expect(isGpuDriverModule(module)).toBe(true);
     expect(
       failureGuidance('EXEC_REFUSED', { faultingModule: 'nvcuda64.dll' }).hints,
     ).not.toContain('backend.hint_gpu_driver_fault');

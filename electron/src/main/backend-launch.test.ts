@@ -286,6 +286,44 @@ it('sends an Intel Mac checkout to a remote backend instead of setup:api (#3584)
   expect(await resolveSpawnPlan(3900, undefined, 'unsupported_platform')).toHaveProperty('argv');
 });
 
+it('restarts a crashed engine on CPU through the stored Settings choice', async () => {
+  const { BackendSupervisor, backendDataDir } = await import('./backend');
+  const { mkdtempSync, readFileSync } = await vi.importActual<typeof import('node:fs')>('node:fs');
+  const data = mkdtempSync(join(tmpdir(), 'voice-cpu-'));
+  const supervisor = new BackendSupervisor();
+  const internals = supervisor as unknown as {
+    stage: string;
+    managed: boolean;
+    launchLog: { env: NodeJS.ProcessEnv; cwd: string; startedAt: number } | null;
+  };
+  const restart = vi.spyOn(supervisor, 'restart').mockResolvedValue(undefined);
+  internals.stage = 'crashed';
+  internals.managed = true;
+  internals.launchLog = { env: { OMNIVOICE_DATA_DIR: data }, cwd: data, startedAt: 1 };
+  expect(backendDataDir(internals.launchLog)).toBe(resolve(data));
+  expect(supervisor.status.cpuRestartAvailable).toBe(true);
+
+  await supervisor.restartOnCpu();
+  expect(JSON.parse(readFileSync(join(data, 'prefs.json'), 'utf8'))).toEqual({
+    compute_device: 'cpu',
+  });
+  expect(restart).toHaveBeenCalledTimes(1);
+
+  // OMNIVOICE_DEVICE overrides Settings, so writing them could not help.
+  internals.launchLog = {
+    env: { OMNIVOICE_DATA_DIR: data, OMNIVOICE_DEVICE: 'cuda' },
+    cwd: data,
+    startedAt: 1,
+  };
+  expect(supervisor.status.cpuRestartAvailable).toBeUndefined();
+  await expect(supervisor.restartOnCpu()).rejects.toThrow();
+  // Only after a crash of our own engine.
+  internals.launchLog = { env: { OMNIVOICE_DATA_DIR: data }, cwd: data, startedAt: 1 };
+  internals.stage = 'failed';
+  expect(supervisor.status.cpuRestartAvailable).toBeUndefined();
+  expect(restart).toHaveBeenCalledTimes(1);
+});
+
 it('keeps native fault frames when the production log ring overflows', async () => {
   const { BackendSupervisor } = await import('./backend');
   const supervisor = new BackendSupervisor();

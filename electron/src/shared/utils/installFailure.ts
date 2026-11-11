@@ -292,12 +292,49 @@ export const FAILURE_GUIDANCE: Record<InstallFailureCode, FailureGuidance> = {
 };
 
 /**
- * Graphics driver and GPU runtime libraries (NVIDIA, Intel, AMD). A native
- * crash whose faulting module is one of these is a driver or GPU-library fault,
- * which a driver update or CPU mode avoids.
+ * Graphics driver and GPU runtime libraries (NVIDIA, Intel, AMD), by the names
+ * their vendors ship. A native crash whose faulting module is one of these is a
+ * driver or GPU-library fault, which a driver update or CPU mode avoids. CPU
+ * runtimes that share a vendor prefix (Intel MKL `mkl_*`, OpenMP `libiomp5md`,
+ * oneAPI `ur_loader`) are deliberately not here: their crash is not a driver's.
  */
-const GPU_DRIVER_MODULE =
-  /^(?:nvcuda\w*|nvoglv\w*|nvwgf\w*|nvd3dum\w*|nvrtc\w*|nvjitlink\w*|cublas\w*|cudnn\w*|cufft\w*|curand\w*|cusolver\w*|cusparse\w*|cudart\w*|igc\w*|igd\w*|ze_\w*|ur_\w*|intel_\w*|amdhip\w*|amd_comgr\w*|amdxc\w*|atio\w*|atiu\w*|hiprt\w*|rocblas\w*|miopen\w*)\.dll$/i;
+const GPU_DRIVER_MODULE = new RegExp(
+  '^(?:' +
+    [
+      // NVIDIA driver and CUDA libraries.
+      'nvcuda\\w*',
+      'nvoglv\\w*',
+      'nvwgf2um\\w*',
+      'nvd3dum\\w*',
+      'nvrtc\\w*',
+      'nvjitlink\\w*',
+      'cudart\\w*',
+      'cublas\\w*',
+      'cudnn\\w*',
+      'cufft\\w*',
+      'curand\\w*',
+      'cusolver\\w*',
+      'cusparse\\w*',
+      // Intel graphics driver, compiler and Level Zero GPU runtime.
+      'igc\\d*',
+      'igd\\w*',
+      'ze_loader',
+      'ze_intel_gpu\\w*',
+      'ur_adapter_level_zero\\w*',
+      // AMD driver and HIP/ROCm libraries.
+      'amdhip\\w*',
+      'amd_comgr\\w*',
+      'amdxc\\w*',
+      'atio\\w*',
+      'atiu\\w*',
+      'aticfx\\w*',
+      'hiprt\\w*',
+      'rocblas\\w*',
+      'miopen\\w*',
+    ].join('|') +
+    ')\\.dll$',
+  'i',
+);
 
 /** True when Windows Error Reporting named a graphics driver or GPU library. */
 export function isGpuDriverModule(module: string | undefined): boolean {

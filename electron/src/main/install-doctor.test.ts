@@ -135,7 +135,13 @@ describe('collectFaultFacts', () => {
     const run = vi.fn(
       async () => '{"module":"torch_cpu.dll","version":"2.8.0.0","offset":"0x000000000001E3F4"}',
     );
-    const facts = await collectFaultFacts({ platform: 'win32', pid: 4242, run, retryDelayMs: 0 });
+    const facts = await collectFaultFacts({
+      platform: 'win32',
+      pid: 4242,
+      launchedAt: 1_700_000_000_500,
+      run,
+      retryDelayMs: 0,
+    });
     const [command, args, options] = run.mock.calls[0] as unknown as [
       string,
       string[],
@@ -144,6 +150,10 @@ describe('collectFaultFacts', () => {
     expect(command).toBe('powershell.exe');
     expect(args.join(' ')).not.toContain('4242');
     expect(options.env.VS_PROBE_PID).toBe('4242');
+    // A reused pid's older crash is outside the window: events start at this launch.
+    expect(options.env.VS_PROBE_SINCE_MS).toBe('1699999999500');
+    expect(WINDOWS_FAULT_SCRIPT).toContain('StartTime=$since');
+    expect(WINDOWS_FAULT_SCRIPT).not.toContain('AddMinutes');
     expect(WINDOWS_FAULT_SCRIPT).toContain('Id=1000');
     expect(facts).toEqual({
       faultingModule: 'torch_cpu.dll',
@@ -157,23 +167,31 @@ describe('collectFaultFacts', () => {
     const outputs = ['', '{"module":"ntdll.dll","version":"10.0.26100.1","offset":"0x10"}'];
     const run = vi.fn(async () => outputs.shift() ?? '');
     await expect(
-      collectFaultFacts({ platform: 'win32', pid: 7, run, retryDelayMs: 0 }),
+      collectFaultFacts({ platform: 'win32', pid: 7, launchedAt: 1, run, retryDelayMs: 0 }),
     ).resolves.toMatchObject({ faultingModule: 'ntdll.dll' });
     const refused = vi.fn(async () => {
       throw new Error('spawn UNKNOWN');
     });
     await expect(
-      collectFaultFacts({ platform: 'win32', pid: 7, run: refused, retryDelayMs: 0 }),
+      collectFaultFacts({
+        platform: 'win32',
+        pid: 7,
+        launchedAt: 1,
+        run: refused,
+        retryDelayMs: 0,
+      }),
     ).resolves.toEqual({});
     expect(refused).toHaveBeenCalledTimes(2);
   });
 
-  it('runs only on Windows with a pid', async () => {
+  it('runs only on Windows with a pid and its launch time', async () => {
     const run = vi.fn(async () => '{}');
     for (const input of [
-      { platform: 'linux' as const, pid: 7 },
-      { platform: 'darwin' as const, pid: 7 },
-      { platform: 'win32' as const, pid: undefined },
+      { platform: 'linux' as const, pid: 7, launchedAt: 1 },
+      { platform: 'darwin' as const, pid: 7, launchedAt: 1 },
+      { platform: 'win32' as const, pid: undefined, launchedAt: 1 },
+      // Without the launch time an old event of a reused pid could match.
+      { platform: 'win32' as const, pid: 7, launchedAt: undefined },
     ])
       await expect(collectFaultFacts({ ...input, run, retryDelayMs: 0 })).resolves.toEqual({});
     expect(run).not.toHaveBeenCalled();
@@ -193,7 +211,10 @@ describe.runIf(process.platform === 'win32')('Windows fault event script', () =>
     const output = await runProbe(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_FAULT_SCRIPT],
-      { env: { ...process.env, VS_PROBE_PID: '999999999' }, timeoutMs: 30_000 },
+      {
+        env: { ...process.env, VS_PROBE_PID: '999999999', VS_PROBE_SINCE_MS: String(Date.now() - 60_000) },
+        timeoutMs: 30_000,
+      },
     );
     expect(output.trim()).toBe('');
   }, 40_000);

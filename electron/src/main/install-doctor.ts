@@ -162,16 +162,20 @@ export interface FaultFacts {
  * faulting module (3), its version (4), the exception code (6), the offset (7)
  * and the process id in hex (8). Python's fault dump names only the Python
  * frame, so this is the one local record of which library actually crashed
- * (#3767, #3684, #3835). The pid arrives through the environment, never the
- * script text; only an event for that pid counts.
+ * (#3767, #3684, #3835). The pid and launch time arrive through the
+ * environment, never the script text. Only an event for that pid written after
+ * that launch counts: Windows reuses pids, and an older crash of another
+ * program with the same pid must not be blamed.
  */
 export const WINDOWS_FAULT_SCRIPT = String.raw`$ErrorActionPreference='SilentlyContinue'
 $want=[int64]$env:VS_PROBE_PID
-$events=Get-WinEvent -FilterHashtable @{LogName='Application';ProviderName='Application Error';Id=1000;StartTime=(Get-Date).AddMinutes(-10)} -MaxEvents 50
+$since=[DateTimeOffset]::FromUnixTimeMilliseconds([int64]$env:VS_PROBE_SINCE_MS).LocalDateTime
+$events=Get-WinEvent -FilterHashtable @{LogName='Application';ProviderName='Application Error';Id=1000;StartTime=$since} -MaxEvents 50
 foreach($e in $events){$p=[string]$e.Properties[8].Value;$n=$null;if($p -match '^0x([0-9a-fA-F]+)$'){$n=[Convert]::ToInt64($Matches[1],16)}elseif($p -match '^\d+$'){$n=[int64]$p}
 if($n -eq $want){@{module=[string]$e.Properties[3].Value;version=[string]$e.Properties[4].Value;offset=[string]$e.Properties[7].Value}|ConvertTo-Json -Compress;break}}
 exit 0`;
 
+const FAULT_EVENT_SLACK_MS = 1000;
 const MODULE_NAME = /^[\w.+-]{1,80}$/;
 const MODULE_VERSION = /^[\w.+-]{1,40}$/;
 const FAULT_OFFSET = /^0x[0-9a-f]{1,16}$/i;
@@ -201,16 +205,21 @@ export function parseWindowsFault(output: string): FaultFacts {
  */
 export async function collectFaultFacts(input: {
   pid: number | undefined;
+  /** When that process was launched (epoch ms): older events are another process's. */
+  launchedAt: number | undefined;
   platform?: NodeJS.Platform;
   run?: ProbeRunner;
   retryDelayMs?: number;
 }): Promise<FaultFacts> {
   const platform = input.platform ?? process.platform;
   if (platform !== 'win32' || !input.pid || !Number.isInteger(input.pid)) return {};
+  if (!input.launchedAt || !Number.isFinite(input.launchedAt)) return {};
+  // Event Log times are whole milliseconds; a second of slack absorbs clock rounding.
+  const since = String(Math.floor(input.launchedAt) - FAULT_EVENT_SLACK_MS);
   const run = input.run ?? runProbe;
   const read = () =>
     run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_FAULT_SCRIPT], {
-      env: { ...process.env, VS_PROBE_PID: String(input.pid) },
+      env: { ...process.env, VS_PROBE_PID: String(input.pid), VS_PROBE_SINCE_MS: since },
       timeoutMs: TRUST_PROBE_DEADLINE_MS,
     })
       .then(parseWindowsFault)
