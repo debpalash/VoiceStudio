@@ -1329,8 +1329,9 @@ def _make_backend_class():
                     with self._resident.lock:
                         self._resident.stop()
                 return None
-            ok, _why = resident.server_status()
+            ok, why = resident.server_status()
             if not ok:
+                resident.log_unavailable_once(why)
                 return None
             reason = resident.spawn_only_reason(kw, has_transcript=bool(transcript))
             if reason:

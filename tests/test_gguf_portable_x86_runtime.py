@@ -30,6 +30,7 @@ def test_x86_cpu_build_is_portable(tmp_path, platform):
         "cmake": 'printf "%s\\n" "$*" >> "$CMAKE_LOG"\n'
                  'if [[ "$1" == --build ]]; then mkdir -p build/Release;'
                  ' printf rt > build/omnivoice-tts; printf rt > build/Release/omnivoice-tts.exe;'
+                 ' printf rt > build/tts-server; printf rt > build/Release/tts-server.exe;'
                  ' printf lib > build/libggml-cpu-haswell.so; fi',
     }
     log = tmp_path / "cmake.log"
