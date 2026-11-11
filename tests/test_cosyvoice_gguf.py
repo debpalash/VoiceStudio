@@ -2,16 +2,45 @@
 
 from __future__ import annotations
 
+import importlib
 import io
 from pathlib import Path
 
 import numpy as np
 import pytest
 import soundfile as sf
-from engines.cosyvoice_gguf import bootstrap
-from engines.cosyvoice_gguf.bootstrap import choose_backend, parse_backends
 from engines.cosyvoice_gguf.prompt_cache import prompt_cache_key
 from engines.cosyvoice_gguf.server import build_speech_payload, decode_speech_response
+
+
+class _LiveModule:
+    """Resolve the module at use time so sys.modules pollution cannot leave stale refs."""
+
+    def __init__(self, name):
+        object.__setattr__(self, "_name", name)
+
+    def _mod(self):
+        return importlib.import_module(object.__getattribute__(self, "_name"))
+
+    def __getattr__(self, attr):
+        return getattr(self._mod(), attr)
+
+    def __setattr__(self, attr, value):
+        setattr(self._mod(), attr, value)
+
+    def __delattr__(self, attr):
+        delattr(self._mod(), attr)
+
+
+bootstrap = _LiveModule("engines.cosyvoice_gguf.bootstrap")
+
+
+def parse_backends(*args, **kwargs):
+    return bootstrap.parse_backends(*args, **kwargs)
+
+
+def choose_backend(*args, **kwargs):
+    return bootstrap.choose_backend(*args, **kwargs)
 
 
 def test_parse_and_choose_vulkan_backend():

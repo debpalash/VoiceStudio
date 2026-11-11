@@ -2,12 +2,34 @@
 
 from __future__ import annotations
 
+import importlib
 import os
 import stat
 import sys
 
 import pytest
-from engines.cosyvoice_gguf import bootstrap
+
+
+class _LiveModule:
+    """Resolve the module at use time so sys.modules pollution cannot leave stale refs."""
+
+    def __init__(self, name):
+        object.__setattr__(self, "_name", name)
+
+    def _mod(self):
+        return importlib.import_module(object.__getattribute__(self, "_name"))
+
+    def __getattr__(self, attr):
+        return getattr(self._mod(), attr)
+
+    def __setattr__(self, attr, value):
+        setattr(self._mod(), attr, value)
+
+    def __delattr__(self, attr):
+        delattr(self._mod(), attr)
+
+
+bootstrap = _LiveModule("engines.cosyvoice_gguf.bootstrap")
 
 
 @pytest.fixture
