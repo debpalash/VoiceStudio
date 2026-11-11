@@ -103,6 +103,15 @@ export function stalledClick(observation, traffic, ms) {
 }
 
 /**
+ * The request still open after a route's last click, if it has been pending for `ms`. Catches a
+ * hang that no click judged because every click missed or the screen had none; a request that
+ * settled during any click is no longer in flight here.
+ */
+export function stalledRoute(traffic, ms) {
+  return traffic.stalled(ms);
+}
+
+/**
  * Whether a request counts toward the quiet window: every same-origin load except event
  * streams, which stay open by design. Not only `/api/`: lazily loaded code shares the browser's
  * six connections per host with the API, so a screen still downloading modules after the crawler

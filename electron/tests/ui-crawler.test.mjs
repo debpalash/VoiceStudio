@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { ROUTE_WEIGHTS, routesForShard } from './crawler-shards.mjs';
-import { createTraffic, stalledClick, tracksRequest, waitForQuietRequests } from './crawler-settle.mjs';
+import { createTraffic, stalledClick, stalledRoute, tracksRequest, waitForQuietRequests } from './crawler-settle.mjs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -202,6 +202,19 @@ test('only a click whose own wait failed can stop the mode', () => {
   assert.match(crawler, /const settle = \(grace = SETTLE_MS, snapshot\) => waitForQuietRequests\(/);
   assert.match(crawler, /page\.on\('framenavigated', \(frame\) => frame === page\.mainFrame\(\) && traffic\.committed\(\)\)/);
   assert.match(crawler, /error instanceof CrawlStalled\) && RELOAD_ERROR/, 'a stall is never mistaken for a reload');
+});
+
+test('a hang no click judged still fails the mode after its route', () => {
+  let time = 0;
+  const traffic = createTraffic({ now: () => time });
+  traffic.start('GET /api/model/status'); // every click on the route missed: no click wait ran
+  traffic.start('GET /api/engines');
+  time = 31_000;
+  traffic.finish('GET /api/engines'); // settled during a click: never reported
+  assert.equal(stalledRoute(traffic, 30_000).request, 'GET /api/model/status');
+  traffic.finish('GET /api/model/status');
+  assert.equal(stalledRoute(traffic, 30_000), null);
+  assert.match(crawler, /await crawlRoute\(route\);[\s\S]{0,160}await failStalled\(stalledRoute\(traffic, STALLED_MS\)\);/);
 });
 
 test('a dialog opener clicked outside visit() still names itself as the cause', () => {

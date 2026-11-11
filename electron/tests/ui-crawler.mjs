@@ -5,6 +5,7 @@ import { routesForShard } from './crawler-shards.mjs';
 import {
   createTraffic,
   stalledClick,
+  stalledRoute,
   tracksRequest,
   waitForQuietRequests,
 } from './crawler-settle.mjs';
@@ -57,9 +58,9 @@ const verbose = process.env.VOICESTUDIO_CRAWL_VERBOSE === '1';
 const REQUEST_BUDGET_MS = 8_000;
 /**
  * A request in flight this long means the backend or dev server stopped answering, not a slow
- * click. Judged only when a click's own wait ends unsettled, which already fails the run: the
- * waits before a click are never judged, so stopping the mode changes only how long a failure
- * takes, never the verdict.
+ * click. Judged when a click's own wait ends unsettled (already a failure) and after each route
+ * (a request no click judged, still open). The waits before a click are never judged: a request
+ * that settles during a later click still passes.
  */
 const STALLED_MS = 30_000;
 /** Grace after the traffic settles for React to drop its loading state. */
@@ -190,6 +191,16 @@ async function openSession(browser, mode) {
     budgetMs: REQUEST_BUDGET_MS,
     snapshot,
   });
+  /** Stop the mode on a stalled request, naming it, what started it and the backend's health. */
+  const failStalled = async (stalled) => {
+    if (!stalled) return;
+    const { request, ageMs, cause } = stalled;
+    throw new CrawlStalled(
+      `${request.method()} ${new URL(request.url()).pathname} has been pending for ` +
+        `${Math.round(ageMs / 1000)}s, since ${cause || 'the screen opened'} ` +
+        `(${traffic.inflight.size} request(s) pending; ${await backendHealth()})`,
+    );
+  };
   const navigate = (to) =>
     page.evaluate(async (target) => {
       // Import once per page load: re-importing after a Vite hot update can catch the
@@ -241,15 +252,7 @@ async function openSession(browser, mode) {
     } finally {
       state.faulting = false;
     }
-    const stalled = stalledClick(observation, traffic, STALLED_MS);
-    if (stalled) {
-      const { request, ageMs, cause } = stalled;
-      throw new CrawlStalled(
-        `${request.method()} ${new URL(request.url()).pathname} has been pending for ` +
-          `${Math.round(ageMs / 1000)}s, since ${cause || 'the screen opened'} ` +
-          `(${traffic.inflight.size} request(s) pending; ${await backendHealth()})`,
-      );
-    }
+    await failStalled(stalledClick(observation, traffic, STALLED_MS));
     const problems = [];
     const failedWrite = Boolean(state.failedWrites) && mode !== 'fixture' && observation.settled;
     // One read gathers the evidence and proves the renderer still answers.
@@ -301,7 +304,7 @@ async function openSession(browser, mode) {
   await page.goto(`${BASE}/#/settings/usage`);
   await page.locator('main').first().waitFor();
   await settle();
-  return { context, page, traffic, navigate, buttons, arm, clickAndCheck };
+  return { context, page, traffic, failStalled, navigate, buttons, arm, clickAndCheck };
 }
 
 const label = (locator) =>
@@ -467,7 +470,7 @@ async function fillForm(page) {
 
 async function crawlMode(browser, mode, routes) {
   const session = await openSession(browser, mode);
-  const { context, navigate, buttons, arm, clickAndCheck, page, traffic } = session;
+  const { context, navigate, buttons, arm, clickAndCheck, page, traffic, failStalled } = session;
   /** A click or upload that reloads the whole page (e.g. "Reload app") is legitimate. */
   const RELOAD_ERROR = /Execution context was destroyed|navigat|Target .*closed|detached/i;
   const reloaded = (error) => !(error instanceof CrawlStalled) && RELOAD_ERROR.test(error.message);
@@ -541,7 +544,11 @@ async function crawlMode(browser, mode, routes) {
 
   const seconds = {};
   try {
-    for (const route of routes) await crawlRoute(route);
+    for (const route of routes) {
+      await crawlRoute(route);
+      // No click judged it (every click missed, or the screen has none) and it is still open.
+      await failStalled(stalledRoute(traffic, STALLED_MS));
+    }
   } catch (error) {
     if (!(error instanceof CrawlStalled)) throw error;
     findings.push({ key: `${mode} stalled`, detail: error.message });
