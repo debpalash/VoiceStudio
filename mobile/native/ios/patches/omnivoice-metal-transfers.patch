@@ -51,7 +51,7 @@
  
          GGML_ASSERT(buf_dst);
  
-@@ -380,6 +388,15 @@ void ggml_metal_get_tensor_async(ggml_metal_t ctx, const struct ggml_tensor * te
+@@ -380,6 +388,18 @@ void ggml_metal_get_tensor_async(ggml_metal_t ctx, const struct ggml_tensor * te
                             size:size];
  
          [encoder endEncoding];
@@ -60,8 +60,11 @@
 +        dispatch_group_t readback_group = ctx->readback_group;
 +        dispatch_group_enter(readback_group);
 +        [cmd_buf addCompletedHandler:^(id<MTLCommandBuffer> completed) {
-+            GGML_UNUSED(completed);
-+            memcpy(data, [buf_dst contents], size);
++            // A failed blit leaves the temporary buffer undefined: do not copy it
++            // out; ggml_metal_synchronize reports the command buffer error.
++            if (completed.status == MTLCommandBufferStatusCompleted) {
++                memcpy(data, [buf_dst contents], size);
++            }
 +            dispatch_group_leave(readback_group);
 +        }];
          [cmd_buf commit];
