@@ -119,7 +119,7 @@ def test_publishing_steps_stop_a_rehearsal_before_calling_github(tmp_path):
     fake = tmp_path / "bin"
     fake.mkdir()
     calls = tmp_path / "calls"
-    (fake / "gh").write_text(f'#!/bin/sh\necho "$*" >> "{calls}"\n')
+    (fake / "gh").write_text(f'#!/bin/sh\necho "$*" >> "{calls}"\n', encoding="utf-8")
     (fake / "gh").chmod(0o755)
     for rehearsal in ("true", ""):
         for _, s in _publishing_steps(RELEASE):
@@ -266,7 +266,7 @@ def release_module(monkeypatch):
 def test_prepare_rehearsal_verifies_as_the_package_version_and_credits_up_to_head(release_module, monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     subprocess.run(["git", "init", "-q"], check=True)
-    Path("package.json").write_text(json.dumps({"version": "1.2.3-beta.2"}))
+    Path("package.json").write_text(json.dumps({"version": "1.2.3-beta.2"}), encoding="utf-8")
     subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q",
                     "--allow-empty", "-m", "x"], check=True)
     head = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
@@ -358,8 +358,8 @@ def test_a_surviving_phone_app_keeps_its_layout(tmp_path, built):
 
 def test_prepare_lists_failed_legs_only_when_asked(release_module, monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    Path("package.json").write_text(json.dumps({"version": "1.2.3"}))
-    Path("CHANGELOG.md").write_text("## [1.2.3] — 2026-11-11\n\n- Fix\n")
+    Path("package.json").write_text(json.dumps({"version": "1.2.3"}), encoding="utf-8")
+    Path("CHANGELOG.md").write_text("## [1.2.3] — 2026-11-11\n\n- Fix\n", encoding="utf-8")
     assets = tmp_path / "assets"
     assets.mkdir()
     (assets / "VoiceStudio-1.2.3-mac-arm64.dmg").write_bytes(b"x")
@@ -385,7 +385,7 @@ def test_prepare_cli_keeps_releases_strict(tmp_path):
 
 def test_prepare_rehearsal_refuses_an_unreleasable_version(release_module, monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    Path("package.json").write_text(json.dumps({"version": "1.2.3-rc.1"}))
+    Path("package.json").write_text(json.dumps({"version": "1.2.3-rc.1"}), encoding="utf-8")
     with pytest.raises(ValueError, match="stable or beta"):
         release_module.rehearsal_target()
 
@@ -400,7 +400,7 @@ def test_test_signed_windows_installers_are_described_only_in_a_rehearsal(tmp_pa
     spec = importlib.util.spec_from_file_location("release_signing_notes_rehearsal", ROOT / "scripts/release_signing_notes.py")
     notes = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(notes)
-    (tmp_path / "signing-win32-x64.json").write_text(json.dumps({"platform": "win32", "arch": "x64", "status": "test-signed"}))
+    (tmp_path / "signing-win32-x64.json").write_text(json.dumps({"platform": "win32", "arch": "x64", "status": "test-signed"}), encoding="utf-8")
     with pytest.raises(ValueError, match="Unknown signing status"):
         notes.render(tmp_path)
     assert "test certificate" in notes.render(tmp_path, rehearsal=True)
