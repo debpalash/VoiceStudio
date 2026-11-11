@@ -43,6 +43,20 @@ def choose_backend(*args, **kwargs):
     return bootstrap.choose_backend(*args, **kwargs)
 
 
+def test_bootstrap_proxy_follows_a_replaced_module(monkeypatch):
+    """Regression: a module captured at import goes stale once another test
+    replaces sys.modules["engines.cosyvoice_gguf.bootstrap"]; the proxy must not."""
+    import sys
+    import types
+
+    replacement = types.ModuleType("engines.cosyvoice_gguf.bootstrap")
+    replacement.parse_backends = lambda *a, **k: "replacement"
+    monkeypatch.setitem(sys.modules, "engines.cosyvoice_gguf.bootstrap", replacement)
+    assert parse_backends("") == "replacement"
+    bootstrap.marker = 1
+    assert replacement.marker == 1
+
+
 def test_parse_and_choose_vulkan_backend():
     rows = parse_backends(
         "Available GGML backends:\n"
