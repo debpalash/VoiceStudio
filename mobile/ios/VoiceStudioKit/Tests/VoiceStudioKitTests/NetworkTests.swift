@@ -24,6 +24,7 @@ private final class LoopbackHost {
     private static let script = #"""
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json, re, sys
+import socket; socket.getfqdn = lambda name='': name  # skip HTTPServer's reverse DNS lookup on bind (35 s per server on CI)
 upload_status = int(sys.argv[1])
 class Host(BaseHTTPRequestHandler):
     def log_message(self, *args): pass
