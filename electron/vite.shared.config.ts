@@ -42,7 +42,7 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    setupFiles: ['./src/shared/test/setup.js'],
+    setupFiles: ['./src/shared/test/setup.js', './tests/vitest-async-timeout.mjs'],
     // Node 25+ ships a global localStorage that is undefined without --localstorage-file
     // and shadows jsdom's Storage; CI runs Node 22, where this flag is a no-op.
     execArgv: ['--no-experimental-webstorage'],

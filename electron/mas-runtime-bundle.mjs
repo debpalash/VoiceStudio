@@ -13,7 +13,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { codesignArgs, isMachO, signMac } from './omnivoice-tts-bundle.mjs';
+import { codesignArgs, isMachO, runCodesign, signMac } from './omnivoice-tts-bundle.mjs';
 
 /** Sign executable code, not binary model/data assets or static archives. */
 export function runtimeSignTargets(root) {
@@ -128,7 +128,7 @@ export async function signMasRuntime(opts, packager) {
   for (const directory of directories) {
     const binaries = runtimeSignTargets(directory);
     for (const file of binaries) {
-      execFileSync('codesign', codesignArgs(opts, file), { stdio: 'inherit' });
+      await runCodesign(codesignArgs(opts, file), opts.codesignRetry);
       execFileSync('codesign', ['--verify', '--strict', file], { stdio: 'inherit' });
     }
     if (directory === runtime && existsSync(runtime)) refreshSignedRuntime(runtime, binaries);
