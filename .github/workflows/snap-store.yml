@@ -73,8 +73,7 @@ jobs:
           enable-cache: false
       - name: Install native build dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libasound2-dev libxdo-dev libxtst-dev libx11-dev libxkbcommon-dev libwayland-dev libssl-dev pkg-config squashfs-tools
+          bash .github/scripts/apt-retry.sh install libasound2-dev libxdo-dev libxtst-dev libx11-dev libxkbcommon-dev libwayland-dev libssl-dev pkg-config squashfs-tools
       - name: Bundle pinned uv
         run: |
           node --input-type=module <<'NODE'
