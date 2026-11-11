@@ -71,12 +71,14 @@ _generator_failed_at: Optional[float] = None
 _GENERATOR_RETRY_SECONDS = 600.0
 
 
-#: AudioSeal model card for the generator, and the checkpoint URI that card
-#: names in audioseal 0.2 (the fallback when the card can't be read).
+#: AudioSeal model cards, and the checkpoint URI each names in audioseal 0.2
+#: (the fallback when a card can't be read).
 _GENERATOR_CARD = "audioseal_wm_16bits"
-_GENERATOR_CHECKPOINT = (
-    "https://huggingface.co/facebook/audioseal/resolve/main/generator_base.pth"
-)
+_DETECTOR_CARD = "audioseal_detector_16bits"
+_KNOWN_CHECKPOINTS = {
+    _GENERATOR_CARD: "https://huggingface.co/facebook/audioseal/resolve/main/generator_base.pth",
+    _DETECTOR_CARD: "https://huggingface.co/facebook/audioseal/resolve/main/detector_base.pth",
+}
 
 
 class _GeneratorLoadDeferred(RuntimeError):
@@ -246,23 +248,28 @@ def _get_detector():
         _last_used = time.monotonic()
         if _detector is None:
             from audioseal import AudioSeal
-            _detector = AudioSeal.load_detector("audioseal_detector_16bits")
+            _detector = AudioSeal.load_detector(_DETECTOR_CARD)
             _detector.eval()
             logger.info("AudioSeal detector loaded (16-bit message mode)")
         return _detector
 
 
-def _generator_card_checkpoint() -> str:
-    """The checkpoint URI the generator card names (what the loader fetches)."""
+def _card_checkpoint(card_name: str) -> str:
+    """The checkpoint URI an AudioSeal model card names (what the loader fetches)."""
     try:
         from audioseal.loader import load_local_model_config
 
-        card = load_local_model_config(_GENERATOR_CARD)
+        card = load_local_model_config(card_name)
         if card is not None and card.get("checkpoint"):
             return str(card["checkpoint"])
     except Exception:  # noqa: BLE001 — a card layout change falls back to the known URI
-        logger.debug("AudioSeal generator card unreadable; using the known URI", exc_info=True)
-    return _GENERATOR_CHECKPOINT
+        logger.debug("AudioSeal card %s unreadable; using the known URI", card_name, exc_info=True)
+    return _KNOWN_CHECKPOINTS[card_name]
+
+
+def _generator_card_checkpoint() -> str:
+    """The checkpoint URI the generator card names."""
+    return _card_checkpoint(_GENERATOR_CARD)
 
 
 def _audioseal_checkpoint_path(checkpoint: str) -> Path:
@@ -288,8 +295,11 @@ def _audioseal_checkpoint_path(checkpoint: str) -> Path:
     for repo in ("facebook/audioseal", "meta-adtp/audioseal"):
         if checkpoint.startswith(repo):
             return cache_dir / checkpoint[len(repo) + 1:]
+    # A cache filename, not a security digest: torch.hub names the file after
+    # this hash, so it must match audioseal's sha1 exactly.
     url_path = urlparse(checkpoint).path
-    return cache_dir / hashlib.sha1(url_path.encode()).hexdigest()[:24]
+    digest = hashlib.sha1(url_path.encode(), usedforsecurity=False).hexdigest()
+    return cache_dir / digest[:24]
 
 
 def _generator_checkpoint_cached() -> bool:
@@ -301,7 +311,12 @@ def _generator_checkpoint_cached() -> bool:
     reported "not cached" on every host, because the card's https URL is
     cached under a hashed name (#2818).
     """
-    return _audioseal_checkpoint_path(_generator_card_checkpoint()).is_file()
+    return _checkpoint_cached(_GENERATOR_CARD)
+
+
+def _checkpoint_cached(card_name: str) -> bool:
+    """Whether ``card_name``'s checkpoint is already where the loader reads it."""
+    return _audioseal_checkpoint_path(_card_checkpoint(card_name)).is_file()
 
 
 def prefetch_generator(*, allow_download: bool = False) -> None:
