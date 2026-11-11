@@ -4,22 +4,12 @@ import Testing
 @testable import VoiceStudioKit
 
 private final class BoundedDownloadHost {
-    let process = Process()
+    let child: TestProcess
     let port: Int
     init() throws {
-        let pipe = Pipe()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
-        process.arguments = ["python3","-u","-c",Self.script]
-        process.standardOutput = pipe
-        try process.run()
-        var line = Data()
-        while let byte = try pipe.fileHandleForReading.read(upToCount: 1), !byte.isEmpty {
-            if byte == Data([10]) { break }; line.append(byte)
-        }
-        guard let port = Int(String(decoding: line,as: UTF8.self)) else { process.terminate(); throw ClientError("mobile.errors.invalid_response") }
-        self.port = port
+        child = try TestProcess(["python3","-u","-c",Self.script])
+        port = try child.port()
     }
-    deinit { if process.isRunning { process.terminate(); process.waitUntilExit() } }
     private static let script = #"""
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import socket; socket.getfqdn = lambda name='': name  # skip HTTPServer's reverse DNS lookup on bind (35 s per server on CI)

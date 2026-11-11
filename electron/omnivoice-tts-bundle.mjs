@@ -11,6 +11,7 @@
 // in afterPack on Windows (the .exe is signed while it is copied), and before
 // the bundle seal on macOS (signMac).
 import { execFileSync } from 'node:child_process';
+import { homedir } from 'node:os';
 import { createHash } from 'node:crypto';
 import {
   chmodSync,
@@ -143,6 +144,55 @@ export function isMachO(path) {
   }
 }
 
+const TIMESTAMP_RETRY_PATTERNS = [
+  /a timestamp was expected but was not found/i,
+  /the timestamp service is not available/i,
+  /timestamp[^\n]*(timed out|timeout|network|connection|unreachable|could not connect|offline|internet)/i,
+  /(timed out|network|connection|unreachable|offline|internet)[^\n]*timestamp/i,
+];
+
+/** True when codesign failed only because Apple's timestamp service was unreachable. */
+export function isTimestampServiceError(text) {
+  return TIMESTAMP_RETRY_PATTERNS.some((pattern) => pattern.test(String(text ?? '')));
+}
+
+function redactHome(text) {
+  const home = homedir();
+  return home && home.length > 1 ? String(text).split(home).join('~') : String(text);
+}
+
+const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Run `codesign`, retrying only transient timestamp-service failures with
+ * growing backoff. Any other failure throws immediately.
+ */
+export async function runCodesign(args, {
+  run = execFileSync,
+  sleep = defaultSleep,
+  delaysMs = [5000, 15000, 30000],
+  log = console.warn,
+} = {}) {
+  const attempts = delaysMs.length + 1;
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      run('codesign', args, { stdio: ['inherit', 'inherit', 'pipe'] });
+      return;
+    } catch (error) {
+      const stderr = redactHome(error?.stderr ?? '');
+      if (stderr) process.stderr.write(stderr.endsWith('\n') ? stderr : `${stderr}\n`);
+      const reason = stderr || String(error?.message ?? error);
+      if (!isTimestampServiceError(reason)) throw error;
+      if (attempt >= attempts) {
+        throw new Error(`codesign timestamp service failed after ${attempts} attempts: ${redactHome(reason).trim()}`, { cause: error });
+      }
+      const delay = delaysMs[attempt - 1];
+      log(`codesign timestamp service error (attempt ${attempt}/${attempts}), retrying in ${delay / 1000}s: ${redactHome(reason).trim().split('\n')[0]}`);
+      await sleep(delay);
+    }
+  }
+}
+
 /** The codesign arguments @electron/osx-sign uses for one file. */
 export function codesignArgs(opts, file) {
   const options = (opts.optionsForFile && opts.optionsForFile(file)) || {};
@@ -177,14 +227,14 @@ export async function signMac(opts, packager) {
   });
   // PyInstaller's interpreter and extension modules need the app's signing identity too.
   if (opts.identity) {
-    for (const file of cliFiles(cliDir)) execFileSync('codesign', codesignArgs(opts, file), { stdio: 'inherit' });
+    for (const file of cliFiles(cliDir)) await runCodesign(codesignArgs(opts, file), opts.codesignRetry);
   }
   const binDir = join(opts.app, 'Contents', 'Resources', OMNIVOICE_TTS_RESOURCE_DIR);
   let ignore = opts.ignore;
   if (opts.identity && existsSync(join(binDir, OMNIVOICE_TTS_MANIFEST))) {
     for (const name of stagedFiles(binDir)) {
       const file = join(binDir, name);
-      if (isMachO(file)) execFileSync('codesign', codesignArgs(opts, file), { stdio: 'inherit' });
+      if (isMachO(file)) await runCodesign(codesignArgs(opts, file), opts.codesignRetry);
     }
     rewriteManifest(binDir);
     const previous = [opts.ignore ?? []].flat();

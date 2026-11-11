@@ -1,4 +1,4 @@
-import { act, cleanup, configure, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { UpdateState } from '../../../../preload/index.d';
 
@@ -54,8 +54,6 @@ vi.mock('react-i18next', () => ({
 import { capNotes, UpdatePill, updatePillVisible } from './update-pill';
 import { UpdateRestartConfirm } from '@/components/update-restart-confirm';
 import { beginAppActivity } from '@/lib/app-activity';
-
-configure({ asyncUtilTimeout: 5_000 });
 
 const base: UpdateState = {
   status: 'idle',

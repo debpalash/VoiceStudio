@@ -203,6 +203,15 @@ build falls back to CPU. Expect roughly 2–4x slower generation than macOS
 Metal while upstream Mesa and llama.cpp Vulkan optimizations mature; still
 well ahead of CPU-only.
 
+## Intel Mac Radeon experiments
+
+Intel Mac installers use a remote backend and include no GGUF runtime. The
+local Intel source-build recipe remains CPU-only. For the discrete-Metal
+failures reproduced in a native source build, the experimental workaround,
+and the remaining application integration work, see
+[Intel Mac Radeon findings](intel-mac-radeon.md). This does not enable Metal
+inside Docker Desktop or change supported hardware defaults.
+
 ## Vulkan acceleration
 
 The Windows x64 and Linux x64 installer builds require the runtime with GGML's Vulkan

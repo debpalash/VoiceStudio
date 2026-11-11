@@ -15,9 +15,16 @@ from __future__ import annotations
 
 import types
 
+import psutil  # noqa: F401  (see below)
 import pytest
 
 from core import device_caps
+
+# psutil picks its platform module when first imported. The autouse fixture
+# below fakes sys.platform == "linux", so a first import inside a test (via
+# services.model_manager) failed on macOS and Windows and left psutil._common
+# cached as Linux, breaking every later importer in the same session. Importing
+# it here, under the real platform, keeps this file from polluting others.
 from core.device_caps import KERNEL_RISK_MARKER
 
 # A rocm7.2 wheel's real arch list shape; gfx1151 is natively supported there.
