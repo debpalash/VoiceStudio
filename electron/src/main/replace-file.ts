@@ -15,6 +15,12 @@ const NODE_FILE_SYSTEM: ReplaceFileSystem = { open, rename };
 export interface ReplaceFileOptions {
   platform?: NodeJS.Platform;
   sleep?: (ms: number) => Promise<void>;
+  /**
+   * POSIX permission bits for the new file, applied when the hidden sibling is
+   * created, so content such as a token is never readable through a wider mode
+   * even while it is written. Without it, an existing file's bits are kept.
+   */
+  mode?: number;
 }
 
 /** Follow an existing symlink so the link keeps pointing at the replaced file. */
@@ -45,11 +51,16 @@ export async function replaceFile(
   const destination = await resolveDestination(path);
   const existing = await stat(destination).catch(() => null);
   const temporary = join(dirname(destination), `.${basename(destination)}.${randomUUID()}.partial`);
-  const handle = await fs.open(temporary, 'wx');
+  const { mode, ...retry } = options;
+  const handle = await fs.open(temporary, 'wx', mode ?? 0o666);
   try {
     try {
+      if (mode !== undefined && process.platform !== 'win32') {
+        // The umask may only narrow the creation mode; pin it exactly.
+        await handle.chmod(mode);
+      }
       await handle.writeFile(data);
-      if (existing?.isFile() && process.platform !== 'win32') {
+      if (mode === undefined && existing?.isFile() && process.platform !== 'win32') {
         await handle.chmod(existing.mode & 0o7777);
       }
       await handle.sync();
@@ -58,7 +69,7 @@ export async function replaceFile(
     }
     await renameWithRetry(temporary, destination, {
       ...FILE_RENAME,
-      ...options,
+      ...retry,
       rename: (from, to) => fs.rename(from, to),
     });
   } catch (error) {

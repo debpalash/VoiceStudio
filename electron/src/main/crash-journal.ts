@@ -3,11 +3,63 @@ import { renameSyncWithRetry } from './rename-retry';
 import type { NativeCrashRecord } from '../preload/index.d';
 import { type CrashContext, parseCrashContext } from '../shared/utils/crashContext';
 import { nativeCrashExcerpt } from '../shared/utils/crashReport';
+import { describeExitCode, isNativeFaultExit } from '../shared/utils/nativeExit';
 import { scrubText } from '../shared/utils/scrub';
 
 /** Bounds a buffered fault dump: four GPU workers plus server threads at
  * Python's 100-frame faulthandler depth stay well inside it. */
 const MAX_DUMP_LINES = 2000;
+
+/** The frames of the thread that faulted: Python's dump calls it "Current thread". */
+function faultingThread(lines: readonly string[]): string[] {
+  const start = lines.findIndex((line) => line.trim().startsWith('Current thread '));
+  if (start < 0) return [];
+  const end = lines.findIndex((line, index) => index > start && line.trim().startsWith('Thread '));
+  return lines.slice(start + 1, end < 0 ? undefined : end);
+}
+
+/** transformers' worker threads that read weights from the memory-mapped file. */
+const THREADED_WEIGHT_LOAD =
+  /transformers[\\/]core_model_loading\.py", line \d+ in (?:_materialize_copy|_job|spawn_materialize)\b/;
+
+/**
+ * A native crash whose faulting thread was one of transformers' weight-loading
+ * workers (#3767, #3772: two machines, the same frame). transformers reads
+ * weights on four threads unless HF_DEACTIVATE_ASYNC_LOAD is set, and loads one
+ * at a time under memory pressure itself.
+ */
+export function threadedWeightLoadCrash(
+  records: readonly NativeCrashRecord[],
+): NativeCrashRecord | undefined {
+  return records.find(
+    (record) =>
+      isNativeFaultExit({ exitCode: record.exitCode, signal: record.signal }) &&
+      faultingThread(record.logTail).some((line) => THREADED_WEIGHT_LOAD.test(line)),
+  );
+}
+
+export const SEQUENTIAL_WEIGHT_LOAD_ENV = 'HF_DEACTIVATE_ASYNC_LOAD';
+
+/**
+ * After such a crash, later starts of this version load weights on one thread.
+ * It changes only load speed and is logged with its reason; the crash record
+ * stays for the report, and an upgrade starts with the default again. A value
+ * the user set is never overridden. Returns the log line, or undefined.
+ */
+export function applyWeightLoadFallback(
+  env: NodeJS.ProcessEnv,
+  records: readonly NativeCrashRecord[],
+): string | undefined {
+  if (env[SEQUENTIAL_WEIGHT_LOAD_ENV] !== undefined) return undefined;
+  const crash = threadedWeightLoadCrash(records);
+  if (!crash) return undefined;
+  env[SEQUENTIAL_WEIGHT_LOAD_ENV] = '1';
+  return (
+    `A previous backend crashed natively (${describeExitCode(crash.exitCode, crash.signal ?? 'unknown')}) ` +
+    `inside the threaded model weight loader; loading model weights one at a time ` +
+    `(${SEQUENTIAL_WEIGHT_LOAD_ENV}=1).`
+  );
+}
 
 /** Small version-scoped local journal. Read failures must never block startup. */
 export class CrashJournal {
@@ -91,6 +143,10 @@ export class CrashJournal {
   }
   latest(): NativeCrashRecord | undefined {
     return this.records[0];
+  }
+  /** Newest first; only this version's records. */
+  all(): readonly NativeCrashRecord[] {
+    return this.records;
   }
   acknowledgeLatest(): NativeCrashRecord | undefined {
     const latest = this.records[0];
