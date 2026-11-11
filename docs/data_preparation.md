@@ -2,6 +2,8 @@
 
 VoiceStudio trains on a custom WebDataset format where audio data is packed into **tar shards** with paired **JSONL metadata** files. Each tar shard contains hundreds to thousands of samples (as `.npy` audio token arrays), drastically reducing disk I/O during training. The separated jsonl file allows for easier modification of metadata. This document explains the data format in detail and walks through the preparation pipeline.
 
+The preparation scripts need the `train` extra: `uv sync --extra train`.
+
 
 ## 1. Input Format
 

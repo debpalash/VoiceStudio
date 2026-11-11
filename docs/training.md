@@ -1,5 +1,11 @@
 # Training
 
+Install the training dependencies first:
+
+```bash
+uv sync --extra train
+```
+
 ## Training Config
 
 All training is controlled by a JSON training config file and a JSON data config file. 

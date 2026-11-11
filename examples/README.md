@@ -9,6 +9,12 @@ training, fine-tuning, and evaluating VoiceStudio.
 | Fine-tuning | [run_finetune.sh](run_finetune.sh) | Fine-tune from a pretrained checkpoint using your own JSONL data |
 | Evaluation | [run_eval.sh](run_eval.sh) | Evaluate WER, speaker similarity, and UTMOS on standard test sets |
 
+Training and data preparation need the `train` extra (WebDataset):
+
+```bash
+uv sync --extra train
+```
+
 ---
 
 ## Training from Scratch (Emilia)
