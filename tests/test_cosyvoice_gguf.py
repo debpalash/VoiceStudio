@@ -26,6 +26,44 @@ def test_parse_and_choose_vulkan_backend():
     assert chosen.device_name == "AMD Radeon RX 6700 XT"
 
 
+# #3980: the exact ``cosyvoice-cli.exe --list-backends`` output from a GTX 1080 Ti.
+# GPU rows carry a PCI bus id in the middle column; CPU rows carry ``-``.
+REPORTED_LOG = (
+    "ggml_vulkan: Found 1 Vulkan devices:\n"
+    "ggml_vulkan: 0 = NVIDIA GeForce GTX 1080 Ti (NVIDIA)\n"
+)
+REPORTED_TABLE = (
+    "Available GGML backends:\n"
+    "  Vulkan0    0000:01:00.0         NVIDIA GeForce GTX 1080 Ti\n"
+    "  CPU        -                    Intel(R) Core(TM) i5-10400F CPU @ 2.90GHz\n"
+)
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        REPORTED_LOG + REPORTED_TABLE,
+        (REPORTED_LOG + REPORTED_TABLE).replace("\n", "\r\n"),  # Windows console
+        REPORTED_TABLE + "\n" + REPORTED_LOG,  # stdout first, ggml log on stderr
+        "\ufeff" + REPORTED_TABLE.replace("    ", "\t"),
+    ],
+)
+def test_reported_list_backends_output_selects_vulkan(output):
+    rows = parse_backends(output)
+    assert [(row.name, row.target, row.device_name) for row in rows] == [
+        ("Vulkan0", "vulkan", "NVIDIA GeForce GTX 1080 Ti"),
+        ("CPU", "cpu", "Intel(R) Core(TM) i5-10400F CPU @ 2.90GHz"),
+    ]
+    chosen = choose_backend(rows, "auto")
+    assert (chosen.name, chosen.fallback_reason) == ("Vulkan0", None)
+
+
+def test_log_and_header_lines_never_parse_as_devices():
+    assert parse_backends(
+        REPORTED_LOG + "Available GGML backends:\nDevice count: 2\nusage: cosyvoice-cli [options]\n"
+    ) == []
+
+
 def test_backend_selection_falls_back_only_in_auto_mode():
     rows = parse_backends("Available GGML backends:\nCPU - Ryzen 9\n")
     chosen = choose_backend(rows, "auto")

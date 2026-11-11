@@ -66,9 +66,18 @@ def _probe_accelerators(torch_module, cpu_pinned: bool) -> tuple[bool, bool, boo
 
 
 def _cpu_pinned() -> bool:
-    from core.device_caps import gpu_probe_skipped
+    """The user's explicit CPU choice, read without detecting capabilities.
 
-    return gpu_probe_skipped()
+    ``detect_host_caps()`` would cache its snapshot here, at import, before
+    ``_probe_accelerators`` imports ``torch_npu``; a host whose Ascend
+    extension does not autoload would then lose its NPU for the whole
+    process. The choice alone is enough to decide whether to probe."""
+    try:
+        from core.device_caps import requested_device_override
+
+        return requested_device_override() == "cpu"
+    except Exception:  # noqa: BLE001 - a status page must never stop startup
+        return False
 
 
 # Cache device checks at module load — they don't change at runtime
