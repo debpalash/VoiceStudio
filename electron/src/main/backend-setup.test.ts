@@ -286,19 +286,20 @@ it('passes a live nested-operation drain descriptor to POSIX managed backends', 
   expect(windows.env.OMNIVOICE_DESKTOP_DRAIN_FD).toBeUndefined();
 });
 
-it('loads weights serially by default on Windows only, and a preset value wins', () => {
+it('leaves the serial weight-load default to the backend so .env can override it', () => {
   const saved = process.env.HF_DEACTIVATE_ASYNC_LOAD;
   try {
     delete process.env.HF_DEACTIVATE_ASYNC_LOAD;
-    expect(managedBackendSpawnOptions(3900, 'auto', 'win32').env.HF_DEACTIVATE_ASYNC_LOAD).toBe('1');
-    expect(
-      managedBackendSpawnOptions(3900, 'auto', 'linux').env.HF_DEACTIVATE_ASYNC_LOAD,
-    ).toBeUndefined();
-    expect(
-      managedBackendSpawnOptions(3900, 'auto', 'darwin').env.HF_DEACTIVATE_ASYNC_LOAD,
-    ).toBeUndefined();
+    for (const platform of ['win32', 'linux', 'darwin'] as const) {
+      const env = managedBackendSpawnOptions(3900, 'auto', platform).env;
+      expect(env.HF_DEACTIVATE_ASYNC_LOAD).toBeUndefined();
+    }
+    // An inherited value passes through once, never duplicated under another casing.
     process.env.HF_DEACTIVATE_ASYNC_LOAD = '0';
-    expect(managedBackendSpawnOptions(3900, 'auto', 'win32').env.HF_DEACTIVATE_ASYNC_LOAD).toBe('0');
+    const env = managedBackendSpawnOptions(3900, 'auto', 'win32').env;
+    const keys = Object.keys(env).filter((k) => k.toUpperCase() === 'HF_DEACTIVATE_ASYNC_LOAD');
+    expect(keys).toHaveLength(1);
+    expect(env.HF_DEACTIVATE_ASYNC_LOAD).toBe('0');
   } finally {
     if (saved === undefined) delete process.env.HF_DEACTIVATE_ASYNC_LOAD;
     else process.env.HF_DEACTIVATE_ASYNC_LOAD = saved;

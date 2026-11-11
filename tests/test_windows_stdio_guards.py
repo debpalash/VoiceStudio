@@ -61,17 +61,32 @@ def test_main_sets_fortran_console_guard_and_utf8_stdio():
 
 
 @pytest.mark.parametrize(
-    ("platform", "preset", "expected"),
+    ("platform", "dotenv_value", "expected"),
     [("win32", None, "1"), ("win32", "0", "0"), ("linux", None, None), ("darwin", None, None)],
 )
-def test_main_serial_weight_load_default_is_windows_only(monkeypatch, platform, preset, expected):
-    """#3767/#3772/#4024: threaded transformers weight loading faults on some Windows hosts."""
+def test_main_serial_weight_load_default_is_windows_only(monkeypatch, tmp_path, platform, dotenv_value, expected):
+    """#3767/#3772/#4024: threaded weight loading faults on some Windows hosts; .env wins."""
+    pytest.importorskip("dotenv")
     monkeypatch.setattr(sys, "platform", platform)
     monkeypatch.delenv("HF_DEACTIVATE_ASYNC_LOAD", raising=False)
-    if preset is not None:
-        monkeypatch.setenv("HF_DEACTIVATE_ASYNC_LOAD", preset)
-    main_src = (Path(__file__).resolve().parents[1] / "backend" / "main.py").read_text("utf-8")
-    start = main_src.index('if sys.platform == "win32":\n    os.environ.setdefault("HF_DEACTIVATE_ASYNC_LOAD"')
+    monkeypatch.setenv("OMNIVOICE_DATA_DIR", str(tmp_path / "data"))
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        f"HF_DEACTIVATE_ASYNC_LOAD={dotenv_value}\n" if dotenv_value is not None else "", encoding="utf-8"
+    )
+    backend = Path(__file__).resolve().parents[1] / "backend"
+    if str(backend) not in sys.path:
+        monkeypatch.syspath_prepend(str(backend))
+    from core.env_startup import load_startup_env
+
+    main_src = (backend / "main.py").read_text("utf-8")
+    # The default must be applied after .env loads and before transformers imports.
+    marker = 'if sys.platform == "win32":\n    os.environ.setdefault("HF_DEACTIVATE_ASYNC_LOAD"'
+    start = main_src.index(marker)
+    assert main_src.index("_load_startup_env(_discovered_env") < start
+    assert start < main_src.index("from services.hf_auth import")
     block = main_src[start : main_src.index("\n\n", start)]
+    load_startup_env(str(env_file), str(env_file))
     exec(block, {"os": os, "sys": sys})
     assert os.environ.get("HF_DEACTIVATE_ASYNC_LOAD") == expected
+    monkeypatch.delenv("HF_DEACTIVATE_ASYNC_LOAD", raising=False)

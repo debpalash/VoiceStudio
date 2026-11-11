@@ -92,14 +92,6 @@ if sys.platform == "win32":
 # handling console events (macOS/Linux), hence unconditional (and testable).
 os.environ.setdefault("FOR_DISABLE_CONSOLE_CTRL_HANDLER", "1")
 
-# transformers' 4-thread weight loader faults with 0xC0000005 in
-# torch/storage.py on some Windows hosts (#3767, #3772, #4024). Serial loading
-# is a host stability default on Windows only (load speed, not a feature
-# difference); setdefault so a user value such as "0" wins. Must precede any
-# transformers import.
-if sys.platform == "win32":
-    os.environ.setdefault("HF_DEACTIVATE_ASYNC_LOAD", "1")
-
 # The backend's stdout/stderr are pipes owned by the desktop shell that
 # spawned it. If that shell exits while the backend survives (crash,
 # relaunch, orphan), the pipes close — and the next write raises
@@ -148,6 +140,15 @@ try:
     _load_startup_env(_discovered_env, _project_env)
 except ImportError:
     pass
+
+# transformers' 4-thread weight loader faults with 0xC0000005 in
+# torch/storage.py on some Windows hosts (#3767, #3772, #4024). Serial loading
+# is a host stability default on Windows only (load speed, not a feature
+# difference). Applied after .env and saved settings load so a user value such
+# as "0" wins; the desktop shell deliberately does not preset it. Must precede
+# any transformers import.
+if sys.platform == "win32":
+    os.environ.setdefault("HF_DEACTIVATE_ASYNC_LOAD", "1")
 
 # A mirror in HF_ENDPOINT must never receive the Hugging Face token, here or in
 # engine processes that inherit this environment.
