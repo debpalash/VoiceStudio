@@ -68,8 +68,13 @@ def test_main_serial_weight_load_default_is_windows_only(monkeypatch, tmp_path, 
     """#3767/#3772/#4024: threaded weight loading faults on some Windows hosts; .env wins."""
     pytest.importorskip("dotenv")
     monkeypatch.setattr(sys, "platform", platform)
-    monkeypatch.delenv("HF_DEACTIVATE_ASYNC_LOAD", raising=False)
+    # setenv records the original state (absent or set) so teardown restores it,
+    # even though the code under test sets the variable again below.
+    monkeypatch.setenv("HF_DEACTIVATE_ASYNC_LOAD", "unset-marker")
+    monkeypatch.delenv("HF_DEACTIVATE_ASYNC_LOAD")
     monkeypatch.setenv("OMNIVOICE_DATA_DIR", str(tmp_path / "data"))
+    # Never read the developer's saved settings file.
+    monkeypatch.setenv("OMNIVOICE_ENV_FILE", str(tmp_path / "no-saved-settings.env"))
     env_file = tmp_path / ".env"
     env_file.write_text(
         f"HF_DEACTIVATE_ASYNC_LOAD={dotenv_value}\n" if dotenv_value is not None else "", encoding="utf-8"
@@ -89,4 +94,3 @@ def test_main_serial_weight_load_default_is_windows_only(monkeypatch, tmp_path, 
     load_startup_env(str(env_file), str(env_file))
     exec(block, {"os": os, "sys": sys})
     assert os.environ.get("HF_DEACTIVATE_ASYNC_LOAD") == expected
-    monkeypatch.delenv("HF_DEACTIVATE_ASYNC_LOAD", raising=False)
