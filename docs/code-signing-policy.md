@@ -50,7 +50,7 @@ All members use multi-factor authentication on GitHub and on SignPath.
 | Role | Who | Responsibility |
 |---|---|---|
 | Authors / committers | [@debpalash](https://github.com/debpalash) and other maintainers with write access | Change the source. |
-| Reviewers | [@debpalash](https://github.com/debpalash) | Review every change from contributors without write access (pull requests; the merge queue and required checks apply). |
+| Reviewers | [@debpalash](https://github.com/debpalash) | Review every change from contributors without write access (pull requests; the required checks apply, and a pull request merges only once they pass). |
 | Approvers | [@debpalash](https://github.com/debpalash) | Approve each signing request in SignPath, after checking the request's origin (this repository, the release workflow, an exact version tag, and its commit) and the uploaded unsigned artifact `signpath-unsigned-win32-<arch>` of that workflow run. |
 
 <!-- OWNER: add further maintainers here when they get write access, and list
