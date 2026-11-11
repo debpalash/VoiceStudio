@@ -139,14 +139,14 @@ copy_msvc_runtime() {
 # Multi-config generators (Visual Studio) put the executable under
 # build/Release/; single-config ones (Ninja, Makefiles) put it in build/.
 built_windows_exe() {
-    local candidate
-    for candidate in build/Release/omnivoice-tts.exe build/omnivoice-tts.exe; do
+    local candidate tool="${1:-omnivoice-tts}"
+    for candidate in "build/Release/$tool.exe" "build/$tool.exe"; do
         if [[ -f "$candidate" ]]; then
             printf '%s\n' "$candidate"
             return 0
         fi
     done
-    echo "omnivoice-tts.exe not found in build/Release/ or build/" >&2
+    echo "$tool.exe not found in build/Release/ or build/" >&2
     return 1
 }
 
@@ -170,9 +170,23 @@ case "$PLATFORM" in
 esac
 
 OUT_NAME="omnivoice-tts-$PLATFORM"
+# The resident server (#3654) ships beside the CLI: the backend looks for
+# tts-server-<platform> next to omnivoice-tts-<platform>. It is built by the
+# same cmake invocation (an always-built target since 040c8b3), so a missing
+# binary means the pin predates it and must fail the build, not ship a runtime
+# whose resident mode silently never engages.
+SERVER_NAME="tts-server-$PLATFORM"
 case "$PLATFORM" in
-    windows-x86_64) OUT_NAME="$OUT_NAME.exe" ;;
+    windows-x86_64) OUT_NAME="$OUT_NAME.exe"; SERVER_NAME="$SERVER_NAME.exe" ;;
 esac
+
+copy_server() {
+    if [[ ! -f build/tts-server ]]; then
+        echo "tts-server not found in build/ (omnivoice.cpp pin predates it)" >&2
+        return 1
+    fi
+    cp -v build/tts-server "$BIN_DIR/$SERVER_NAME"
+}
 
 case "$PLATFORM" in
     linux-x86_64|linux-aarch64)
@@ -187,6 +201,7 @@ case "$PLATFORM" in
             fi
         fi
         cp -v build/omnivoice-tts "$BIN_DIR/$OUT_NAME"
+        copy_server
         copy_shared_libs
         ;;
     windows-x86_64)
@@ -196,6 +211,7 @@ case "$PLATFORM" in
         fi
         exe="$(built_windows_exe)"
         cp -v "$exe" "$BIN_DIR/$OUT_NAME"
+        cp -v "$(built_windows_exe tts-server)" "$BIN_DIR/$SERVER_NAME"
         copy_shared_libs
         copy_msvc_runtime
         ;;
@@ -203,6 +219,7 @@ case "$PLATFORM" in
         # x86_64 Macs build the CPU variant; Metal on Intel is undocumented.
         portable_x86_cpu_build -DCMAKE_OSX_ARCHITECTURES=x86_64
         cp -v build/omnivoice-tts "$BIN_DIR/$OUT_NAME"
+        copy_server
         copy_shared_libs
         ;;
     darwin-arm64)
@@ -211,6 +228,7 @@ case "$PLATFORM" in
         if cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_METAL=ON -DCMAKE_OSX_ARCHITECTURES=arm64; then
             if cmake --build build --config Release -j "$BUILD_JOBS"; then
                 cp -v build/omnivoice-tts "$BIN_DIR/$OUT_NAME"
+                copy_server
                 copy_shared_libs
             else
                 echo "→ Metal build failed during compilation; macOS Apple Silicon falls back to in-process VoiceStudioBackend per Pitfall 1." >&2
@@ -244,7 +262,7 @@ DIGEST="$(sha256_of "$OUT_NAME")"
 MANIFEST="$BIN_DIR/checksums.sha256"
 TMP_MANIFEST="$(mktemp)"
 OWNED="$(mktemp)"
-{ printf '%s\n' "$OUT_NAME"; sort -u "$COPIED_LIBS"; } > "$OWNED"
+{ printf '%s\n' "$OUT_NAME" "$SERVER_NAME"; sort -u "$COPIED_LIBS"; } > "$OWNED"
 if [[ -f "$MANIFEST" ]]; then
     awk 'NR == FNR { owned[$0] = 1; next } !($2 in owned)' "$OWNED" "$MANIFEST" > "$TMP_MANIFEST"
 fi

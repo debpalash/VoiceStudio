@@ -31,7 +31,7 @@ The `_meta` block of `quant_map.json` carries the pins:
   used to download quant files. Currently `361609388ae572a820d085185bbbe2a2aac4b30e`.
 - `runtime_commit_sha` — `omnivoice.cpp` master HEAD that the bundled
   `bin/omnivoice-tts-<platform>` binaries were built from. Currently
-  `886fc079838ca7400cb2b42b36e2a65aa1daabe8`.
+  `040c8b344d8c670ce1475194751d119b5ef82c78`.
 
 Both SHAs are mirrored in the SPIKE-01 ADR so the engine code and the
 decision doc cannot drift.

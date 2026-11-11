@@ -130,6 +130,17 @@ def test_without_a_server_binary_every_request_spawns_the_cli(rig):
     assert rig.resident.server_status() == (False, "no tts-server binary is bundled")
 
 
+def test_a_missing_server_logs_why_resident_mode_fell_back(rig, caplog):
+    rig.server_bin.unlink()
+    rig.resident._STATUS_CACHE.clear()
+    rig.resident._UNAVAILABLE_LOGGED.clear()
+    with caplog.at_level("INFO", logger="omnivoice.gguf"):
+        rig.instance.generate("one")
+        rig.instance.generate("two")
+    lines = [r.getMessage() for r in caplog.records if "unavailable" in r.getMessage()]
+    assert len(lines) == 1 and "no tts-server binary is bundled" in lines[0]
+
+
 def test_an_installer_manifest_must_list_the_server(rig, monkeypatch):
     monkeypatch.setattr(rig.mod, "_load_checksum_manifest", lambda: {rig.cli.name: "0" * 64})
     rig.resident._STATUS_CACHE.clear()

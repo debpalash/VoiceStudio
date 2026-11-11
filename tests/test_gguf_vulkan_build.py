@@ -28,6 +28,8 @@ if [[ "${1:-}" == --build ]]; then
     mkdir -p build/Release
     printf runtime > build/omnivoice-tts
     printf runtime > build/Release/omnivoice-tts.exe
+    printf server > build/tts-server
+    printf server > build/Release/tts-server.exe
     printf library > build/libggml-vulkan.so
     printf library > build/Release/ggml-vulkan.dll
 fi

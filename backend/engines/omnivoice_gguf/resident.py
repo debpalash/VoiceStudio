@@ -133,6 +133,16 @@ def _verify_server_binary(path: Path) -> tuple[bool, str]:
     return True, "ready"
 
 
+_UNAVAILABLE_LOGGED: set[str] = set()
+
+
+def log_unavailable_once(why: str) -> None:
+    """Say once per reason why the opt-in resident mode fell back to the CLI."""
+    if why not in _UNAVAILABLE_LOGGED:
+        _UNAVAILABLE_LOGGED.add(why)
+        logger.info("OmniVoice GGUF resident mode is on but unavailable; using the per-request runtime: %s", why)
+
+
 def resident_enabled() -> bool:
     """Env ``OMNIVOICE_GGUF_RESIDENT`` > prefs.json > off. Read per call.
 

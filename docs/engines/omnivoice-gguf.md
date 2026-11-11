@@ -309,10 +309,10 @@ Before reporting ready, the engine:
 ## Resident server
 
 Each generation normally spawns `omnivoice-tts`, which reloads the model
-every time (a few seconds per request, whatever the text length). When the
-build also bundles omnivoice.cpp's `tts-server` as
+every time (a few seconds per request, whatever the text length). The
+desktop installers bundle omnivoice.cpp's `tts-server` as
 `bin/tts-server-<platform>` (next to `omnivoice-tts-<platform>`, same
-integrity rules), you can opt in to keeping one server per loaded quant
+integrity rules), and you can opt in to keeping one server per loaded quant
 running instead, so later requests skip the reload
 ([#3654](https://github.com/debpalash/VoiceStudio/issues/3654)). It is off
 by default.
@@ -337,7 +337,9 @@ by default.
 Turn it on in **Settings → Performance → Keep the GGUF engine loaded
 between requests** (shown only when the server is bundled), or with
 `OMNIVOICE_GGUF_RESIDENT=1`; `0` keeps it off and overrides Settings.
-Without a bundled server, nothing changes.
+Without a usable server binary (a source build that lacks it, a failed
+integrity check), nothing changes: requests use the per-request binary and the
+log says why once.
 
 ### Before making this the default
 

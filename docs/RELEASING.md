@@ -302,7 +302,10 @@ Every direct desktop installer except Intel macOS ships the OmniVoice GGUF
 runtime under `resources/bin/` (#2780). `electron-release.yml` and the
 packaging rehearsal call `build-omnivoice-tts.yml` (`desktop: true`) and stage
 each platform's artifact into `electron/build/omnivoice-tts/`; Windows ARM64
-ships the x64 build. Signing rewrites the binary, so the build refreshes
+ships the x64 build. Each platform ships `tts-server-<platform>` (the opt-in resident server,
+#3654) next to `omnivoice-tts-<platform>`; the build, the staging step and
+`packaging-contract.mjs` all fail if it is missing or absent from the manifest.
+Signing rewrites the binaries, so the build refreshes
 `bin/checksums.sha256` after signing (`electron/omnivoice-tts-bundle.mjs`; on
 macOS before the bundle is sealed). `packaging-contract.mjs` fails a release
 whose installer lacks the runtime, whose manifest no longer matches the shipped

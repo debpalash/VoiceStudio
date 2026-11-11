@@ -49,18 +49,34 @@ export function omnivoiceTtsBinaryName(slug) {
   return `omnivoice-tts-${slug}${slug.startsWith('windows') ? '.exe' : ''}`;
 }
 
+/** The resident server (#3654) the backend looks for beside the CLI. */
+export function omnivoiceTtsServerName(slug) {
+  return `tts-server-${slug}${slug.startsWith('windows') ? '.exe' : ''}`;
+}
+
 function stagedFiles(dir) {
   if (!existsSync(dir)) return [];
   return readdirSync(dir).filter((name) => statSync(join(dir, name)).isFile());
 }
 
-/** extraResources entry for a staged runtime; empty when nothing was staged. */
+/**
+ * extraResources entry for a staged runtime; empty when nothing was staged.
+ * A staged runtime must carry the resident server too: a build whose pin
+ * predates it would otherwise ship a runtime on which resident mode can never
+ * engage, so packaging fails instead.
+ */
 export function omnivoiceTtsResources(dir = OMNIVOICE_TTS_STAGING_DIR) {
   const files = stagedFiles(dir);
-  return files.some((name) => name.startsWith('omnivoice-tts-')) &&
-    files.includes(OMNIVOICE_TTS_MANIFEST)
-    ? [{ from: dir, to: OMNIVOICE_TTS_RESOURCE_DIR, filter: ['**/*'] }]
-    : [];
+  const cli = files.filter((name) => name.startsWith('omnivoice-tts-'));
+  if (!cli.length || !files.includes(OMNIVOICE_TTS_MANIFEST)) return [];
+  const manifest = readManifest(join(dir, OMNIVOICE_TTS_MANIFEST));
+  for (const name of cli) {
+    const server = name.replace(/^omnivoice-tts-/, 'tts-server-');
+    if (!files.includes(server) || !manifest.has(server)) {
+      throw new Error(`Staged GGUF runtime is missing the resident server ${server} (or its ${OMNIVOICE_TTS_MANIFEST} entry)`);
+    }
+  }
+  return [{ from: dir, to: OMNIVOICE_TTS_RESOURCE_DIR, filter: ['**/*'] }];
 }
 
 export function sha256File(path) {

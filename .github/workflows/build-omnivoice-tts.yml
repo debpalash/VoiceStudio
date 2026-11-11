@@ -1,4 +1,4 @@
-# Build the `omnivoice-tts` C++ runtime binary (Phase 4 Plan 04-01, GGUF-03).
+# Build the `omnivoice-tts` C++ runtime binary (plus the `tts-server` resident server, #3654) (Phase 4 Plan 04-01, GGUF-03).
 #
 # The runtime is PINNED to a commit SHA in
 # `backend/engines/omnivoice_gguf/quant_map.json` (`_meta.runtime_commit_sha`),
@@ -156,6 +156,19 @@ jobs:
           else
             echo "::error::$PLATFORM built without the ggml-vulkan module"; exit 1
           fi
+      # The resident server (#3654) is built by the same cmake run; without it
+      # the opt-in resident mode silently never engages in the installers.
+      - name: Check the resident server was built and checksummed
+        shell: bash
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          ext=""
+          if [[ "$PLATFORM" == windows-* ]]; then ext=".exe"; fi
+          for name in "omnivoice-tts-$PLATFORM$ext" "tts-server-$PLATFORM$ext"; do
+            test -s "bin/$name" || { echo "::error::$PLATFORM did not build $name"; exit 1; }
+            grep -q "  $name\$" bin/checksums.sha256 || { echo "::error::checksums.sha256 does not list $name"; exit 1; }
+          done
       - name: Upload binary artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
@@ -163,6 +176,7 @@ jobs:
           if-no-files-found: error
           path: |
             bin/omnivoice-tts-${{ matrix.platform }}*
+            bin/tts-server-${{ matrix.platform }}*
             bin/libggml*
             bin/ggml*.dll
             bin/vcruntime140*.dll

@@ -10,7 +10,7 @@
     "ios": "built from source at the commit above with its build-ios.sh (needs Xcode; CI macOS runner)"
   },
   "omnivoice.cpp": {
-    "source": {"repo": "https://github.com/ServeurpersoCom/omnivoice.cpp", "commit": "886fc079838ca7400cb2b42b36e2a65aa1daabe8", "submodules": true},
+    "source": {"repo": "https://github.com/ServeurpersoCom/omnivoice.cpp", "commit": "040c8b344d8c670ce1475194751d119b5ef82c78", "submodules": true},
     "licence": "MIT",
     "note": "Same commit as the desktop engine (backend/engines/omnivoice_gguf/quant_map.json runtime_commit_sha). Built from source: iOS via CMake + Xcode toolchain (Metal), Android via NDK CMake (arm64-v8a, x86_64)."
   },

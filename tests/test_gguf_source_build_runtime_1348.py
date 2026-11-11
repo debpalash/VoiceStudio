@@ -191,6 +191,8 @@ if [[ "${1:-}" == "--build" ]]; then
     mkdir -p build
     printf '\177ELFfake' > build/omnivoice-tts
     chmod +x build/omnivoice-tts
+    printf '\177ELFserver' > build/tts-server
+    chmod +x build/tts-server
 else
     mkdir -p build
     if [[ "$FAKE_FAIL_CONFIGURE" == "1" && "$*" == *"-DGGML_VULKAN=ON"* ]]; then
@@ -350,9 +352,11 @@ def test_windows_build_finds_the_exe_for_either_generator():
     # failed every Ninja build at the copy step (#3042).
     script = (REPO / "scripts" / "build-omnivoice-tts.sh").read_text(encoding="utf-8")
     finder = script.split("built_windows_exe() {", 1)[1].split("\n}", 1)[0]
-    assert "build/Release/omnivoice-tts.exe" in finder
-    assert "build/omnivoice-tts.exe" in finder
+    assert 'tool="${1:-omnivoice-tts}"' in finder
+    assert '"build/Release/$tool.exe"' in finder
+    assert '"build/$tool.exe"' in finder
     assert 'exe="$(built_windows_exe)"' in script
+    assert "built_windows_exe tts-server" in script
 
 
 def test_manifest_covers_every_copied_library():
