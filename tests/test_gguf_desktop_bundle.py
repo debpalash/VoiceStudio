@@ -149,7 +149,7 @@ def test_every_parallel_build_is_bounded():
 def test_windows_build_ships_and_checksums_the_resident_server(tmp_path):
     result = _run_windows_build(tmp_path, {"msvcp140.dll": "m", "vcruntime140.dll": "v"})
     assert result.returncode == 0, result.stdout + result.stderr
-    assert (tmp_path / "bin" / "tts-server-windows-x86_64.exe").read_text() == "srv"
+    assert (tmp_path / "bin" / "tts-server-windows-x86_64.exe").read_text(encoding="utf-8") == "srv"
     manifest = (tmp_path / "bin" / "checksums.sha256").read_text(encoding="utf-8")
     assert "  tts-server-windows-x86_64.exe\n" in manifest
 
