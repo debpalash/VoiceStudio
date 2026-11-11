@@ -78,6 +78,10 @@ program makes, all started or consented to by the user, are listed in the
 - Product analytics, off unless the user says yes at the first-run prompt;
   allowlisted, content-free metadata only.
 - Account features, off by default and stopped at once when switched off.
+- The GitHub star badge, which fetches the public repository star count while
+  shown and refreshes it every 20 minutes while visible, with no credentials or
+  referrer. It sends no project, recording, or account data and keeps the last
+  count on failure (an owner-approved exception to the local-first rule).
 
 Apart from the update check above, the program does not transfer information to
 networked systems unless the user or the installer requests it. Third-party components keep their own
