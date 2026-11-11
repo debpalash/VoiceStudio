@@ -455,7 +455,9 @@ jobs:
       # Browser workflow smokes exercise the maintained Electron renderer.
       - name: Install Playwright chromium
         if: steps.pass.outputs.hit != 'true'
-        run: bunx playwright install --with-deps chromium
+        run: |
+          bash .github/scripts/apt-retry.sh retry bunx playwright install-deps chromium
+          bash .github/scripts/apt-retry.sh retry bunx playwright install chromium
       - name: Electron renderer workflow smokes
         if: steps.pass.outputs.hit != 'true'
         shell: bash
@@ -604,7 +606,9 @@ jobs:
 
       - name: Install Playwright chromium
         if: steps.pass.outputs.hit != 'true'
-        run: bunx playwright install --with-deps chromium
+        run: |
+          bash .github/scripts/apt-retry.sh retry bunx playwright install-deps chromium
+          bash .github/scripts/apt-retry.sh retry bunx playwright install chromium
 
       - name: Crawl every button
         if: steps.pass.outputs.hit != 'true'
@@ -670,8 +674,7 @@ jobs:
       - name: Install native build dependencies
         if: steps.pass.outputs.hit != 'true'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libxdo-dev libxtst-dev libx11-dev libxkbcommon-dev libwayland-dev libssl-dev pkg-config
+          bash .github/scripts/apt-retry.sh install libxdo-dev libxtst-dev libx11-dev libxkbcommon-dev libwayland-dev libssl-dev pkg-config
       - name: Verify relocation without build-time libraries
         if: steps.pass.outputs.hit != 'true'
         run: node --test electron/tests/native-linux-libraries.test.mjs
@@ -899,8 +902,7 @@ jobs:
       - name: Linux native dependencies
         if: steps.pass.outputs.hit != 'true' && runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libasound2-dev libxdo-dev libxtst-dev libx11-dev libxkbcommon-dev libwayland-dev libssl-dev pkg-config xvfb
+          bash .github/scripts/apt-retry.sh install libasound2-dev libxdo-dev libxtst-dev libx11-dev libxkbcommon-dev libwayland-dev libssl-dev pkg-config xvfb
       - name: Bundle pinned uv for the host architecture
         if: steps.pass.outputs.hit != 'true'
         run: node electron/scripts/stage-bundled-uv.mjs

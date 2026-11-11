@@ -101,8 +101,7 @@ jobs:
       - name: Linux native dependencies
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libasound2-dev libxdo-dev libxtst-dev libx11-dev libxkbcommon-dev libwayland-dev libssl-dev pkg-config xvfb zsync
+          bash .github/scripts/apt-retry.sh install libasound2-dev libxdo-dev libxtst-dev libx11-dev libxkbcommon-dev libwayland-dev libssl-dev pkg-config xvfb zsync
       - name: Bundle pinned uv for the host architecture
         run: node electron/scripts/stage-bundled-uv.mjs
       - name: Stage the OmniVoice GGUF runtime
