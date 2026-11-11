@@ -749,6 +749,10 @@ function childEnv(
     env.HF_HUB_DISABLE_SYMLINKS_WARNING = '1';
     // MKL's Fortran runtime aborts the child on console CLOSE/LOGOFF events (#1153).
     env.FOR_DISABLE_CONSOLE_CTRL_HANDLER ??= '1';
+    // HF_DEACTIVATE_ASYNC_LOAD (serial weight loading, #3767/#3772/#4024) is
+    // defaulted by the backend after it reads the project .env, so a `.env`
+    // value of "0" wins. Do not preset it here: Windows env keys are
+    // case-insensitive and a preset would also beat the .env.
   }
   return env;
 }
