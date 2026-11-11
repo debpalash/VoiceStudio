@@ -2,7 +2,12 @@ import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { startHealthBackend } from './fake-health-backend.mjs';
 import { routesForShard } from './crawler-shards.mjs';
-import { createTraffic, tracksRequest, waitForQuietRequests } from './crawler-settle.mjs';
+import {
+  createTraffic,
+  stalledClick,
+  tracksRequest,
+  waitForQuietRequests,
+} from './crawler-settle.mjs';
 
 /**
  * Clicks every enabled button on every static route, once per backend fault mode, and fails on
@@ -52,9 +57,9 @@ const verbose = process.env.VOICESTUDIO_CRAWL_VERBOSE === '1';
 const REQUEST_BUDGET_MS = 8_000;
 /**
  * A request in flight this long means the backend or dev server stopped answering, not a slow
- * click. Above the 3 x REQUEST_BUDGET_MS a request can spend in the two arm() waits plus the
- * click's own wait, so any request this old has already failed a click as `unsettled`: stopping
- * the mode then changes only how long the failure takes, never the verdict.
+ * click. Judged only when a click's own wait ends unsettled, which already fails the run: the
+ * waits before a click are never judged, so stopping the mode changes only how long a failure
+ * takes, never the verdict.
  */
 const STALLED_MS = 30_000;
 /** Grace after the traffic settles for React to drop its loading state. */
@@ -179,24 +184,12 @@ async function openSession(browser, mode) {
   page.on('dialog', (dialog) => dialog.accept().catch(() => {}));
   context.on('page', (popup) => popup !== page && popup.close().catch(() => {}));
 
-  const settle = async (grace = SETTLE_MS, snapshot) => {
-    const observation = await waitForQuietRequests(traffic, {
-      wait: (duration) => page.waitForTimeout(duration),
-      graceMs: grace,
-      budgetMs: REQUEST_BUDGET_MS,
-      snapshot,
-    });
-    const stalled = !observation.settled && traffic.stalled(STALLED_MS);
-    if (stalled) {
-      const { request, ageMs, cause } = stalled;
-      throw new CrawlStalled(
-        `${request.method()} ${new URL(request.url()).pathname} has been pending for ` +
-          `${Math.round(ageMs / 1000)}s, since ${cause || 'the screen opened'} ` +
-          `(${traffic.inflight.size} request(s) pending; ${await backendHealth()})`,
-      );
-    }
-    return observation;
-  };
+  const settle = (grace = SETTLE_MS, snapshot) => waitForQuietRequests(traffic, {
+    wait: (duration) => page.waitForTimeout(duration),
+    graceMs: grace,
+    budgetMs: REQUEST_BUDGET_MS,
+    snapshot,
+  });
   const navigate = (to) =>
     page.evaluate(async (target) => {
       // Import once per page load: re-importing after a Vite hot update can catch the
@@ -247,6 +240,15 @@ async function openSession(browser, mode) {
       observation = await settle(SETTLE_MS, busy);
     } finally {
       state.faulting = false;
+    }
+    const stalled = stalledClick(observation, traffic, STALLED_MS);
+    if (stalled) {
+      const { request, ageMs, cause } = stalled;
+      throw new CrawlStalled(
+        `${request.method()} ${new URL(request.url()).pathname} has been pending for ` +
+          `${Math.round(ageMs / 1000)}s, since ${cause || 'the screen opened'} ` +
+          `(${traffic.inflight.size} request(s) pending; ${await backendHealth()})`,
+      );
     }
     const problems = [];
     const failedWrite = Boolean(state.failedWrites) && mode !== 'fixture' && observation.settled;
@@ -568,12 +570,14 @@ async function crawlMode(browser, mode, routes) {
     for (const opener of openers) {
       await reset(route);
       const openerName = await label(buttons().nth(opener)).catch(() => '?');
+      traffic.cause = `the click on ${route} ${openerName}`;
       await buttons()
         .nth(opener)
         .click({ timeout: 2_000 })
         .catch(() => {});
       for (let index = 0, total = await dialogButtons().count(); index < total; index += 1)
         await visit(route, `${openerName} > `, async () => {
+          traffic.cause = `the click on ${route} ${openerName}`;
           const button = buttons().nth(opener);
           await button.click({ timeout: 2_000 }).catch(() => {});
           await dialogs()

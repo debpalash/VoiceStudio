@@ -2,6 +2,8 @@
 import base64
 import importlib.util
 import json
+import posixpath
+import re
 import subprocess
 from pathlib import Path
 
@@ -39,6 +41,33 @@ def test_mixed_changes_still_run_runtime_builds(path):
         {"status": "modified", "filename": "README.md"},
         {"status": "modified", "filename": path},
     ], 3000)
+
+
+def _crawler_harness() -> set[str]:
+    """ui-crawler.mjs plus every module it imports by relative path, transitively."""
+    seen, todo = set(), ["electron/tests/ui-crawler.mjs"]
+    while todo:
+        path = todo.pop()
+        if path in seen:
+            continue
+        seen.add(path)
+        source = (ROOT / path).read_text(encoding="utf-8")
+        for spec in re.findall(r"""(?:from|import\()\s*['"](\.{1,2}/[^'"]+)['"]""", source):
+            todo.append(posixpath.normpath(posixpath.join(posixpath.dirname(path), spec)))
+    return seen
+
+
+def test_crawler_harness_changes_run_the_crawler():
+    # PR #4008 changed only the crawler and was classified test-only, so the crawler job that
+    # should have proven the change skipped itself. Its smoke server's config counts too.
+    harness = _crawler_harness() | {"electron/tests/renderer-smoke.vite.config.mjs"}
+    assert {"electron/tests/crawler-settle.mjs", "electron/tests/crawler-shards.mjs"} <= harness
+    for path in sorted(harness):
+        assert (ROOT / path).is_file(), path
+        assert scope.runtime_needed([{"status": "modified", "filename": path}], 3000), path
+    assert "renderer-smoke.vite.config.mjs" in (ROOT / "electron/package.json").read_text(encoding="utf-8")
+    # The crawler's own unit tests and other smokes keep the test-only skip.
+    assert not scope.runtime_needed([{"status": "modified", "filename": "electron/tests/ui-crawler.test.mjs"}], 3000)
 
 
 def test_rename_cannot_hide_deleted_runtime_code_behind_a_documentation_name():
