@@ -8,6 +8,7 @@ packaged-app checks on the release's own Linux and macOS runners.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import yaml
@@ -50,11 +51,24 @@ def test_release_smoke_signs_ad_hoc_and_never_sees_a_certificate():
     # electron-builder skips signing on pull requests unless told otherwise; the
     # macOS bundle then keeps Electron's stale signature and fails `codesign --verify`.
     assert JOB["env"]["CSC_FOR_PULL_REQUEST"] == "true"
-    # ...which is only safe because no signing material is ever passed in.
-    text = yaml.safe_dump(JOB)
-    assert "secrets." not in text
-    for name in ("CSC_LINK", "CSC_KEY_PASSWORD", "APPLE_API_KEY", "APPLE_ID"):
-        assert name not in text, name
+    # ...which is only safe because no signing material can reach the job: neither
+    # its own definition nor the workflow-level env it inherits may read the
+    # `secrets` context in any form (secrets.X, secrets['X'], toJSON(secrets)),
+    # and it has no environment (whose secrets would otherwise be in scope).
+    assert "environment" not in JOB and "secrets" not in JOB
+    inherited = CI.get("env") or {}
+    for scope, value in (("job", JOB), ("workflow env", inherited)):
+        text = yaml.safe_dump(value)
+        assert not re.search(r"\bsecrets\b", text, re.IGNORECASE), scope
+        for name in ("CSC_LINK", "CSC_KEY_PASSWORD", "CSC_NAME", "WIN_CSC_LINK", "APPLE_"):
+            assert name not in text, (scope, name)
+    assert set(inherited) == {"FORCE_JAVASCRIPT_ACTIONS_TO_NODE24"}
+
+
+def test_the_secret_scan_catches_every_reference_form():
+    for expression in ("${{ secrets.CSC_LINK }}", "${{ secrets['CSC_LINK'] }}", '${{secrets [ "X" ]}}',
+                       "${{ toJSON(secrets) }}", "${{ toJson( secrets ) }}", "${{ SECRETS.X }}"):
+        assert re.search(r"\bsecrets\b", yaml.safe_dump({"env": {"X": expression}}), re.IGNORECASE), expression
 
 
 def test_release_smoke_is_gated_like_the_other_electron_jobs():
