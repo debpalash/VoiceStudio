@@ -1657,7 +1657,11 @@ screen says so and offers **Restart on CPU**. Settings → Performance & Device 
 a running engine, so this button stores the same CPU choice (`compute_device` in
 the data folder's `prefs.json`) and starts the engine again. Switch back to Auto in
 Settings → Performance & Device after updating the driver. An explicit CPU choice
-also keeps a DirectML-capable PC on the CPU. The button is not shown when
+also keeps a DirectML-capable PC on the CPU, and the engine then does not probe any
+GPU runtime (CUDA, DirectML, XPU, MPS) at startup, so the faulting driver is not
+loaded again; Settings offers Auto and CPU until you choose Auto. A device override
+saved in Settings' environment variables (`env.OMNIVOICE_DEVICE` in `prefs.json`)
+is removed by this button, because it would win over the CPU choice. The button is not shown when
 `OMNIVOICE_DEVICE` is set, because that variable overrides the setting, or when
 `OMNIVOICE_BACKEND_CMD` starts a custom backend that may not read it. If the
 setting cannot be saved (an unwritable data folder or a full disk), the screen
