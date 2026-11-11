@@ -286,6 +286,25 @@ it('passes a live nested-operation drain descriptor to POSIX managed backends', 
   expect(windows.env.OMNIVOICE_DESKTOP_DRAIN_FD).toBeUndefined();
 });
 
+it('loads weights serially by default on Windows only, and a preset value wins', () => {
+  const saved = process.env.HF_DEACTIVATE_ASYNC_LOAD;
+  try {
+    delete process.env.HF_DEACTIVATE_ASYNC_LOAD;
+    expect(managedBackendSpawnOptions(3900, 'auto', 'win32').env.HF_DEACTIVATE_ASYNC_LOAD).toBe('1');
+    expect(
+      managedBackendSpawnOptions(3900, 'auto', 'linux').env.HF_DEACTIVATE_ASYNC_LOAD,
+    ).toBeUndefined();
+    expect(
+      managedBackendSpawnOptions(3900, 'auto', 'darwin').env.HF_DEACTIVATE_ASYNC_LOAD,
+    ).toBeUndefined();
+    process.env.HF_DEACTIVATE_ASYNC_LOAD = '0';
+    expect(managedBackendSpawnOptions(3900, 'auto', 'win32').env.HF_DEACTIVATE_ASYNC_LOAD).toBe('0');
+  } finally {
+    if (saved === undefined) delete process.env.HF_DEACTIVATE_ASYNC_LOAD;
+    else process.env.HF_DEACTIVATE_ASYNC_LOAD = saved;
+  }
+});
+
 it('recognizes only expected child-pipe close errors', () => {
   expect(isExpectedPipeClose(Object.assign(new Error('closed'), { code: 'EPIPE' }))).toBe(true);
   expect(isExpectedPipeClose(Object.assign(new Error('reset'), { code: 'ECONNRESET' }))).toBe(true);

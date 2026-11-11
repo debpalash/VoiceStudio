@@ -749,6 +749,11 @@ function childEnv(
     env.HF_HUB_DISABLE_SYMLINKS_WARNING = '1';
     // MKL's Fortran runtime aborts the child on console CLOSE/LOGOFF events (#1153).
     env.FOR_DISABLE_CONSOLE_CTRL_HANDLER ??= '1';
+    // transformers' 4-thread weight loader reads the mapped file and faults
+    // with 0xC0000005 in torch/storage.py on some Windows hosts (#3767, #3772,
+    // #4024). Serial loading is a host stability default (load speed only, no
+    // user-visible feature difference); a user-set value, e.g. "0", wins.
+    env.HF_DEACTIVATE_ASYNC_LOAD ??= '1';
   }
   return env;
 }

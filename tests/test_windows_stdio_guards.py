@@ -22,6 +22,9 @@ Two crash classes from the wild, one boundary:
 import io
 import os
 import sys
+from pathlib import Path
+
+import pytest
 
 os.environ.setdefault("OMNIVOICE_MODEL", "test")
 os.environ.setdefault("OMNIVOICE_DISABLE_FILE_LOG", "1")
@@ -55,3 +58,20 @@ def test_main_sets_fortran_console_guard_and_utf8_stdio():
         fp = getattr(stream, "fp", stream)
         enc = (getattr(fp, "encoding", None) or "utf-8").lower().replace("-", "")
         assert enc == "utf8", f"stdio still on {enc}"
+
+
+@pytest.mark.parametrize(
+    ("platform", "preset", "expected"),
+    [("win32", None, "1"), ("win32", "0", "0"), ("linux", None, None), ("darwin", None, None)],
+)
+def test_main_serial_weight_load_default_is_windows_only(monkeypatch, platform, preset, expected):
+    """#3767/#3772/#4024: threaded transformers weight loading faults on some Windows hosts."""
+    monkeypatch.setattr(sys, "platform", platform)
+    monkeypatch.delenv("HF_DEACTIVATE_ASYNC_LOAD", raising=False)
+    if preset is not None:
+        monkeypatch.setenv("HF_DEACTIVATE_ASYNC_LOAD", preset)
+    main_src = (Path(__file__).resolve().parents[1] / "backend" / "main.py").read_text("utf-8")
+    start = main_src.index('if sys.platform == "win32":\n    os.environ.setdefault("HF_DEACTIVATE_ASYNC_LOAD"')
+    block = main_src[start : main_src.index("\n\n", start)]
+    exec(block, {"os": os, "sys": sys})
+    assert os.environ.get("HF_DEACTIVATE_ASYNC_LOAD") == expected
