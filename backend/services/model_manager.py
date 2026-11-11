@@ -192,6 +192,11 @@ def _pick_gpu_workers() -> int:
         except ValueError:
             logger.warning("OMNIVOICE_GPU_WORKERS=%r is not an integer; ignoring", override)
     try:
+        from core.device_caps import gpu_probe_skipped
+
+        # CPU was chosen: one worker, sized without touching a GPU driver (#4006).
+        if gpu_probe_skipped():
+            return 1
         torch = _lazy_torch()
         if hasattr(torch, "cuda") and torch.cuda.is_available():
             free_bytes, _total = torch.cuda.mem_get_info()
@@ -1637,8 +1642,12 @@ def check_device_compatibility():
     ``core.device_caps.arch_unsupported()`` — shared with the probe, and
     CUDA/ROCm-aware (a ROCm build lists ``gfx…``, not ``sm_…`` — #1228).
     """
-    from core.device_caps import arch_unsupported
+    from core.device_caps import arch_unsupported, gpu_probe_skipped
 
+    # CPU was chosen: no GPU is used, and asking CUDA would initialise the
+    # driver that choice avoids (/system/notifications polls this, #4006).
+    if gpu_probe_skipped():
+        return True, None
     torch = _lazy_torch()
     if not torch.cuda.is_available():
         return True, None
@@ -1693,8 +1702,14 @@ def get_best_device():
     """
     from core.device_caps import detect_host_caps
 
-    torch = _lazy_torch()
     caps = detect_host_caps()
+    # An explicit CPU choice (Settings, OMNIVOICE_DEVICE=cpu, or the failure
+    # screen's Restart on CPU after a graphics driver crash) means CPU, decided
+    # before any GPU runtime is touched: on a DirectML host the branch below
+    # would otherwise land on the same driver again. The probe skipped GPUs too.
+    if getattr(caps, "requested_family", None) == "cpu":
+        return "cpu"
+    torch = _lazy_torch()
     family = caps.family
 
     # ── NVIDIA CUDA or AMD ROCm (both present through torch.cuda) ─────
@@ -1741,12 +1756,6 @@ def get_best_device():
     # ── DirectML — universal Windows GPU (probe reports this as "cpu") ─
     # Reached only when no torch family was detected (family == "cpu"), which is
     # exactly the DirectML case — the probe classifies DirectML hosts as cpu.
-    # An explicit CPU choice (Settings, OMNIVOICE_DEVICE=cpu, or the failure
-    # screen's Restart on CPU after a graphics driver crash) must mean CPU: on a
-    # DirectML host it would otherwise land on the same GPU driver again.
-    if family == "cpu" and caps.requested_family == "cpu":
-        logger.info("Using CPU: compute device pinned to CPU (DirectML not opened)")
-        return "cpu"
     if family == "cpu":
         try:
             import torch_directml
@@ -3875,6 +3884,13 @@ def release_device_cache(*, device: str | None = None, raise_on_failure: bool = 
     ``free_vram()``'s original contract for unload callers that report a failed
     flush to the user.
     """
+    if device is None:
+        from core.device_caps import gpu_probe_skipped
+
+        # CPU was chosen: no accelerator holds a cache, and probing for one
+        # would initialise the driver that choice avoids (#4006).
+        if gpu_probe_skipped():
+            return
     torch = _lazy_torch()
     try:
         name = str(device).split(":", 1)[0] if device is not None else _active_accelerator_name(torch)
