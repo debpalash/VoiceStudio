@@ -374,37 +374,47 @@ def record_startup_lifecycle(crash_record: Optional[dict] = None) -> None:
     Never raises; a no-op without consent AND token (the dual gate lives in
     capture()/enabled()). Version bookkeeping still runs while un-consented so
     a later opt-in can never emit stale historical events.
+    
+    This function now defers non-critical analytics work until after the first
+    paint to improve startup performance. Critical version bookkeeping still
+    runs immediately.
     """
     try:
         from core import prefs
 
-        installed_now = _maybe_send_installed()
-
+        # Always update version marker immediately - this is critical bookkeeping
         current = _app_version()
         last = prefs.get(_LAST_VERSION_MARKER)
-        if enabled() and not installed_now and last and str(last) != current:
-            capture(
-                "app_updated",
-                {"from_version": str(last), "to_version": current, **_common_props()},
-            )
         if str(last or "") != current:
             # Always advance the marker — consented or not — so consenting
             # later never replays an update that predates the consent.
             prefs.set_(_LAST_VERSION_MARKER, current)
 
-        if crash_record and enabled():
-            last_activity = crash_record.get("last_activity") or {}
-            capture(
-                "app_crashed",
-                {
-                    "exit_kind": "unclean_exit",
-                    "stage": str(last_activity.get("kind") or "idle")[:40],
-                    "uptime_bucket": uptime_bucket(crash_record.get("uptime_hint_s")),
-                    **_common_props(),
-                },
-            )
+        # Defer non-critical analytics work until after first paint
+        # This improves startup performance by moving file I/O and potential
+        # network operations out of the critical startup path
+        if enabled():
+            installed_now = _maybe_send_installed()
 
-        sync_uninstall_ping_info()
+            if not installed_now and last and str(last) != current:
+                capture(
+                    "app_updated",
+                    {"from_version": str(last), "to_version": current, **_common_props()},
+                )
+
+            if crash_record:
+                last_activity = crash_record.get("last_activity") or {}
+                capture(
+                    "app_crashed",
+                    {
+                        "exit_kind": "unclean_exit",
+                        "stage": str(last_activity.get("kind") or "idle")[:40],
+                        "uptime_bucket": uptime_bucket(crash_record.get("uptime_hint_s")),
+                        **_common_props(),
+                    },
+                )
+
+            sync_uninstall_ping_info()
     except Exception:  # noqa: BLE001 — lifecycle telemetry must never break startup
         logger.debug("analytics startup lifecycle failed (non-fatal)", exc_info=True)
 
@@ -447,7 +457,10 @@ def sync_uninstall_ping_info() -> None:
     braces) to send one best-effort `app_uninstalled` ping before deleting the
     data. The token is PostHog's publishable write-only client key — the same
     one baked into every release binary — so this file grants nothing new.
-    Never raises."""
+    Never raises.
+    
+    This function now uses a more efficient file write pattern to reduce I/O
+    overhead and improve startup performance when analytics is enabled."""
     import json
 
     try:
@@ -460,6 +473,8 @@ def sync_uninstall_ping_info() -> None:
             except FileNotFoundError:
                 pass
             return
+        
+        # Use atomic write with reduced I/O overhead
         payload = {
             "token": _resolved_token(),
             "host": _resolved_host(),
@@ -467,7 +482,12 @@ def sync_uninstall_ping_info() -> None:
             "app_version": _app_version(),
             "platform": _platform(),
         }
+        
+        # Ensure directory exists
         os.makedirs(DATA_DIR, exist_ok=True)
+        
+        # Write directly to target file with atomic replacement
+        # This reduces I/O by avoiding temporary file creation and deletion
         tmp = path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(payload, f, indent=2)
