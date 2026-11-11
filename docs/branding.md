@@ -15,6 +15,7 @@ spark identifies creation. The product voice is clear, calm, and direct.
 | macOS menu-bar templates | `electron/build/icons/trayTemplate.svg` and `trayRecordingTemplate.svg` |
 | Electron sidebar and browser icon | `electron/public/favicon.svg` via `electron/src/renderer/src/lib/brand.ts` |
 | Sidebar/launchpad artwork | `electron/public/signal-field.webp` |
+| macOS DMG window background | `electron/build/dmg/background.svg` |
 
 Regenerate every desktop icon from the canonical vector after changing the
 mark:
@@ -28,6 +29,17 @@ It renders `docs/logo.svg` to the README PNGs and every PNG, ICO and ICNS under
 the macOS artwork to Apple's icon grid. Then run the Electron packaging contract.
 Keep `fill="none"` on the waveform path in every SVG copy of the mark; without it
 the curve fills black.
+
+The DMG install window uses the brand palette on the dark plum tile, with one
+headline and one footer line. After editing its SVG, re-render the 1x and 2x
+PNGs on macOS (needs `rsvg-convert`) with `bun run --cwd electron
+dmg:background`. Keep its icon slots in step with the `dmg` block in
+`electron/electron-builder.config.mjs`; `electron/tests/dmg-window.test.mjs`
+checks the sizes, slots and title.
+
+App icons can look grey on macOS 26 and later when **System Settings →
+Appearance → Icon & widget style** is Clear or Tinted. macOS applies that style
+to every app, Safari included; with the default style the ICNS shows in colour.
 
 Android generates its vectors from the same SVG with
 `mobile/android/scripts/generate_brand_resources.py`. SVG paint `none` becomes
