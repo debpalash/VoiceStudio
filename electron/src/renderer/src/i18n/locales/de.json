@@ -3257,7 +3257,13 @@
     "setupStatusFileMissing": "Eine benötigte Datei fehlt oder ist nicht lesbar. Installiere die Engine unter Einstellungen → Modelle erneut.",
     "setupStatusPlatform": "Diese Engine läuft auf der Plattform dieses Computers nicht. Die unterstützten Plattformen stehen in ihrer Anleitung.",
     "setupStatusNoMps": "Diese Engine benötigt Apples GPU (MPS), die PyTorch in dieser Installation nicht nutzen kann. Ein macOS-Update oder eine Neuinstallation von VoiceStudio behebt das meist.",
-    "asrSetupRepairBundled": "Die mitgelieferten Python-Pakete des Backends fehlen oder sind beschädigt. Repariere die Backend-Umgebung oder erstelle sie mit den festgelegten Abhängigkeiten der Quellinstallation neu und starte dann neu."
+    "asrSetupRepairBundled": "Die mitgelieferten Python-Pakete des Backends fehlen oder sind beschädigt. Repariere die Backend-Umgebung oder erstelle sie mit den festgelegten Abhängigkeiten der Quellinstallation neu und starte dann neu.",
+    "selfTest": "Selbsttest",
+    "selfTesting": "Synthese läuft…",
+    "selfTestOk": "{{seconds}} s @ {{khz}} kHz in {{took}}",
+    "selfTestFailed": "Selbsttest fehlgeschlagen",
+    "selfTestTimedOut": "Zeitüberschreitung beim Selbsttest",
+    "selfTestUnreachable": "Der Selbsttest konnte nicht gestartet werden. Prüfe, ob VoiceStudio noch läuft, und versuche es erneut."
   },
   "performanceProfile": {
     "requiresEngine": "Installiere und wähle {{engine}}, um Geschwindigkeit und Qualität anzupassen.",
