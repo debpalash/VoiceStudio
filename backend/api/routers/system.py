@@ -66,12 +66,9 @@ def _probe_accelerators(torch_module, cpu_pinned: bool) -> tuple[bool, bool, boo
 
 
 def _cpu_pinned() -> bool:
-    try:
-        from core.device_caps import detect_host_caps
+    from core.device_caps import gpu_probe_skipped
 
-        return detect_host_caps().requested_family == "cpu"
-    except Exception:  # noqa: BLE001 - a status page must never stop startup
-        return False
+    return gpu_probe_skipped()
 
 
 # Cache device checks at module load — they don't change at runtime
