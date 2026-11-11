@@ -39,7 +39,8 @@ export function GgufSelfTest() {
     }
   };
 
-  const detail = [result?.message, result?.runtime_log].filter(Boolean).join('\n') || undefined;
+  const detail =
+    [result?.message, result?.runtime_log, failed].filter(Boolean).join('\n') || undefined;
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-1.5">
       <Button size="sm" variant="ghost" disabled={running} onClick={() => void run()}>
@@ -66,6 +67,11 @@ export function GgufSelfTest() {
           {result.ok && result.runtime_device ? ` · ${result.runtime_device}` : null}
         </span>
       )}
+      {failed && (
+        <span role="alert" className="text-xs font-medium text-destructive">
+          {t('engines.selfTestUnreachable')}
+        </span>
+      )}
       {detail && (
         <details className="basis-full text-xs text-muted-foreground">
           <summary className="cursor-pointer select-none">{t('common.details')}</summary>
@@ -73,11 +79,6 @@ export function GgufSelfTest() {
             {detail}
           </pre>
         </details>
-      )}
-      {failed && (
-        <span role="alert" title={failed} className="text-xs font-medium text-destructive">
-          {t('engines.selfTestFailed')}
-        </span>
       )}
     </div>
   );

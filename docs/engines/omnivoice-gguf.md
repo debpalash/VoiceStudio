@@ -160,9 +160,11 @@ when the runtime used Vulkan, names the GPU, for example `Vulkan 1: AMD Radeon
 RX 5500M`; the name comes from that run's own log, so a CPU run shows none.
 **Details** opens the runtime's device log, with folder paths removed. When
 resident mode already has the model loaded, the test runs on it instead of
-loading a second copy, and never stops it. One time limit
-(`OMNIVOICE_SELFTEST_TIMEOUT_S`, default 90 s) covers the whole test and
-stops the one-shot runtime when it runs out.
+loading a second copy, and never stops it; if it still holds a different
+quant than the one selected, run one generation first. A single time limit
+(`OMNIVOICE_SELFTEST_TIMEOUT_S`, default 90 s) covers the whole test,
+including any wait for a previous test to finish, and stops the one-shot
+runtime when it runs out.
 
 **GPU offer.** When Compute device is Auto, PyTorch has no GPU, and the bundled
 runtime with its Vulkan module finds a GPU, VoiceStudio asks once: *Use your

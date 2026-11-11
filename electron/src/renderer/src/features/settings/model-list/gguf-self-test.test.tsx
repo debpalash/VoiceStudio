@@ -77,11 +77,14 @@ it('reports a timed-out self-test without a device', async () => {
   expect(status.textContent).toBe('engines.selfTestTimedOut');
 });
 
-it('shows a request failure as an alert', async () => {
+it('shows a request failure as visible, actionable text with details', async () => {
   mock.api.mockRejectedValue('backend offline');
   render(<GgufSelfTest />);
   fireEvent.click(screen.getByRole('button', { name: /engines.selfTest/ }));
 
   const alert = await screen.findByRole('alert');
-  expect(alert.getAttribute('title')).toBe('backend offline');
+  // Visible, actionable text; the raw cause sits in the keyboard-reachable disclosure.
+  expect(alert.textContent).toBe('engines.selfTestUnreachable');
+  expect(screen.getByText('common.details').tagName).toBe('SUMMARY');
+  expect(screen.getByText('backend offline').closest('details')).not.toBeNull();
 });

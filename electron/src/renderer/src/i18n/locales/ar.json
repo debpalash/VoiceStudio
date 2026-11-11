@@ -3314,7 +3314,8 @@
     "selfTesting": "جارٍ التوليف…",
     "selfTestOk": "{{seconds}} ث @ {{khz}} كيلوهرتز خلال {{took}}",
     "selfTestFailed": "فشل الاختبار الذاتي",
-    "selfTestTimedOut": "انتهت مهلة الاختبار الذاتي"
+    "selfTestTimedOut": "انتهت مهلة الاختبار الذاتي",
+    "selfTestUnreachable": "تعذّر تشغيل الاختبار الذاتي. تأكد من أن VoiceStudio ما زال يعمل، ثم حاول مرة أخرى."
   },
   "performanceProfile": {
     "requiresEngine": "ثبّت {{engine}} وحدده لضبط السرعة والجودة.",

@@ -1132,7 +1132,8 @@ def test_gguf_selftest_reports_vulkan_device_and_a_path_free_log(fresh_app, monk
         assert r.status_code == 200, r.text
         body = r.json()
         assert body["ok"] is True and body["num_samples"] == 2400
-        assert seen == [42.0]  # the route's deadline reaches the engine
+        # The route's one deadline reaches the engine, minus the lock wait.
+        assert len(seen) == 1 and 41.0 < seen[0] <= 42.0
         assert body["runtime_device"] == "Vulkan 1: AMD Radeon RX 5500M"
         out = body["runtime_log"]
         assert "ggml-vulkan.dll" in out and "omnivoice-base-Q8_0.gguf" in out

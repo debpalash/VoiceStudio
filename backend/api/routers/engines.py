@@ -20,7 +20,7 @@ import logging
 import os
 import re
 import threading
-from time import perf_counter
+from time import monotonic, perf_counter
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from huggingface_hub import utils as hf_utils
@@ -1007,6 +1007,8 @@ def engine_selftest(engine_id: str):
         )
 
     timeout_s = _selftest_timeout_s()
+    # One deadline covers the wait for a previous test and this run.
+    deadline = monotonic() + timeout_s
     # Serialise so a click-storm can't stack concurrent model loads. The
     # worker releases the lock, so a timed-out run keeps it until it stops.
     if not _SELFTEST_LOCK.acquire(timeout=timeout_s):
@@ -1021,7 +1023,7 @@ def engine_selftest(engine_id: str):
     except BaseException:
         _SELFTEST_LOCK.release()
         raise
-    res = _run_synth_bounded(backend, timeout_s)
+    res = _run_synth_bounded(backend, max(0.001, deadline - monotonic()))
 
     if res is None:
         return SelfTestResponse(

@@ -471,7 +471,8 @@
     "selfTesting": "Synthesizing…",
     "selfTestOk": "{{seconds}}s @ {{khz}} kHz in {{took}}",
     "selfTestFailed": "Self-test failed",
-    "selfTestTimedOut": "Self-test timed out"
+    "selfTestTimedOut": "Self-test timed out",
+    "selfTestUnreachable": "Couldn't run the self-test. Check that VoiceStudio is still running, then try again."
   },
   "clone": {
     "title": "Voice cloning",

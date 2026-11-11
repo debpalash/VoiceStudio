@@ -3262,7 +3262,8 @@
     "selfTesting": "Syntetiserar…",
     "selfTestOk": "{{seconds}} s @ {{khz}} kHz på {{took}}",
     "selfTestFailed": "Självtestet misslyckades",
-    "selfTestTimedOut": "Självtestet tog för lång tid"
+    "selfTestTimedOut": "Självtestet tog för lång tid",
+    "selfTestUnreachable": "Självtestet kunde inte köras. Kontrollera att VoiceStudio fortfarande körs och försök igen."
   },
   "performanceProfile": {
     "requiresEngine": "Installera och välj {{engine}} för att justera hastighet och kvalitet.",

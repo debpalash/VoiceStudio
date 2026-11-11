@@ -3262,7 +3262,8 @@
     "selfTesting": "กำลังสังเคราะห์…",
     "selfTestOk": "{{seconds}} วิ @ {{khz}} kHz ใน {{took}}",
     "selfTestFailed": "ทดสอบตัวเองล้มเหลว",
-    "selfTestTimedOut": "ทดสอบตัวเองหมดเวลา"
+    "selfTestTimedOut": "ทดสอบตัวเองหมดเวลา",
+    "selfTestUnreachable": "เรียกใช้การทดสอบตัวเองไม่ได้ ตรวจสอบว่า VoiceStudio ยังทำงานอยู่ แล้วลองอีกครั้ง"
   },
   "performanceProfile": {
     "requiresEngine": "ติดตั้งและเลือก {{engine}} เพื่อปรับความเร็วและคุณภาพ",

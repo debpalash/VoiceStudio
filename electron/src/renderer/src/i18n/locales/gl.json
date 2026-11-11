@@ -471,7 +471,8 @@
     "selfTesting": "Sintetizando…",
     "selfTestOk": "{{seconds}}s @ {{khz}} kHz en {{took}}",
     "selfTestFailed": "Fallou a autoproba",
-    "selfTestTimedOut": "Esgotouse o tempo da autoproba"
+    "selfTestTimedOut": "Esgotouse o tempo da autoproba",
+    "selfTestUnreachable": "Non se puido executar a autoproba. Comproba que VoiceStudio segue en marcha e téntao de novo."
   },
   "clone": {
     "title": "Clonación de voz",

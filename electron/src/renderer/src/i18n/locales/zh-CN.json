@@ -3258,7 +3258,8 @@
     "selfTesting": "正在合成…",
     "selfTestOk": "{{seconds}} 秒 @ {{khz}} kHz，用时 {{took}}",
     "selfTestFailed": "自检失败",
-    "selfTestTimedOut": "自检超时"
+    "selfTestTimedOut": "自检超时",
+    "selfTestUnreachable": "无法运行自检。请确认 VoiceStudio 仍在运行，然后重试。"
   },
   "performanceProfile": {
     "requiresEngine": "安装并选择 {{engine}} 以调整速度和质量。",

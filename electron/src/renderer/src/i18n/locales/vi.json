@@ -3262,7 +3262,8 @@
     "selfTesting": "Đang tổng hợp…",
     "selfTestOk": "{{seconds}} giây @ {{khz}} kHz trong {{took}}",
     "selfTestFailed": "Tự kiểm tra thất bại",
-    "selfTestTimedOut": "Tự kiểm tra hết thời gian"
+    "selfTestTimedOut": "Tự kiểm tra hết thời gian",
+    "selfTestUnreachable": "Không thể chạy tự kiểm tra. Hãy kiểm tra VoiceStudio vẫn đang chạy rồi thử lại."
   },
   "performanceProfile": {
     "requiresEngine": "Cài đặt và chọn {{engine}} để điều chỉnh tốc độ và chất lượng.",

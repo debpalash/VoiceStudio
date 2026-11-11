@@ -517,7 +517,9 @@ def test_selftest_timeout_on_the_resident_server_keeps_it_loaded(rig, monkeypatc
 
 
 def test_each_selftest_gets_its_own_runtime_log(rig, monkeypatch):
-    """Concurrent runs on one engine never read each other's log."""
+    """Concurrent runs on one engine never read each other's log. Resident
+    mode is off here: with it on, a self-test holds the server lock."""
+    monkeypatch.setenv(rig.resident.RESIDENT_ENV, "0")
     monkeypatch.setattr(rig.instance, "_resolve_quant_paths", _diagnostic_paths(rig))
     both_running = threading.Barrier(2, timeout=5)
 
@@ -541,3 +543,70 @@ def test_each_selftest_gets_its_own_runtime_log(rig, monkeypatch):
         worker.join(10)
     assert logs == {"first": "ggml_vulkan: run first", "second": "ggml_vulkan: run second"}
     assert not hasattr(rig.instance, "_last_runtime_log")
+
+
+def test_selftest_holds_the_render_lease(rig, monkeypatch):
+    """Unload and the idle sweep skip the engine while the self-test runs."""
+    from services import tts_backend
+
+    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", _diagnostic_paths(rig))
+    leased = []
+
+    def fake_run(argv, **kw):
+        if argv[0] != str(rig.cli):
+            return subprocess.CompletedProcess(argv, 1, "", "")
+        leased.append(tts_backend._ENGINE_IN_USE.get(type(rig.instance), 0))
+        _write_wav(Path(argv[argv.index("-o") + 1]))
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    rig.instance.selftest_generate("hello", timeout_s=30)
+    assert leased == [1]
+    assert tts_backend._ENGINE_IN_USE.get(type(rig.instance), 0) == 0
+
+
+def test_selftest_cli_blocks_a_resident_start_until_it_ends(rig, monkeypatch):
+    """With no server running, a generation cannot start one (a second model
+    copy) while the self-test's CLI holds the model."""
+    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", _diagnostic_paths(rig))
+    others = []
+
+    def try_lock():
+        lock = rig.instance._resident.lock
+        got = lock.acquire(blocking=False)
+        if got:
+            lock.release()
+        others.append(got)
+
+    def fake_run(argv, **kw):
+        if argv[0] != str(rig.cli):
+            return subprocess.CompletedProcess(argv, 1, "", "")
+        probe = threading.Thread(target=try_lock)
+        probe.start()
+        probe.join(5)
+        _write_wav(Path(argv[argv.index("-o") + 1]))
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    rig.instance.selftest_generate("hello", timeout_s=30)
+    assert others == [False]
+    try_lock()
+    assert others == [False, True]  # released when the self-test ends
+    assert rig.events("start") == []
+
+
+def test_selftest_reports_a_resident_server_holding_another_quant(rig, monkeypatch):
+    """A quant change not yet applied fails the test without touching the server."""
+    rig.instance.generate("hello")
+    proc = rig.server.process
+    other = rig.root / "omnivoice-base-BF16.gguf"
+    other.write_bytes(b"0")
+
+    def resolve(**_kw):
+        return other, rig.codec, {"base": other.name, "tokenizer": rig.codec.name}
+
+    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", resolve)
+    with pytest.raises(RuntimeError, match="still has omnivoice-base-Q8_0.gguf loaded"):
+        rig.instance.selftest_generate("hello", timeout_s=30)
+    assert rig.server.process is proc and proc.poll() is None
+    assert rig.cli_argvs == [] and len(rig.events("start")) == 1

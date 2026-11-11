@@ -3262,7 +3262,8 @@
     "selfTesting": "Sentezleniyor…",
     "selfTestOk": "{{seconds}} sn @ {{khz}} kHz, {{took}} içinde",
     "selfTestFailed": "Öz sınama başarısız",
-    "selfTestTimedOut": "Öz sınama zaman aşımına uğradı"
+    "selfTestTimedOut": "Öz sınama zaman aşımına uğradı",
+    "selfTestUnreachable": "Öz sınama çalıştırılamadı. VoiceStudio'nun hâlâ çalıştığını kontrol edip yeniden deneyin."
   },
   "performanceProfile": {
     "requiresEngine": "Hız ve kaliteyi ayarlamak için {{engine}} yükleyip seçin.",

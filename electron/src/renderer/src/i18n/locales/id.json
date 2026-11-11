@@ -3262,7 +3262,8 @@
     "selfTesting": "Menyintesis…",
     "selfTestOk": "{{seconds}} dtk @ {{khz}} kHz dalam {{took}}",
     "selfTestFailed": "Uji mandiri gagal",
-    "selfTestTimedOut": "Uji mandiri kehabisan waktu"
+    "selfTestTimedOut": "Uji mandiri kehabisan waktu",
+    "selfTestUnreachable": "Uji mandiri tidak dapat dijalankan. Pastikan VoiceStudio masih berjalan, lalu coba lagi."
   },
   "performanceProfile": {
     "requiresEngine": "Instal dan pilih {{engine}} untuk menyesuaikan kecepatan dan kualitas.",

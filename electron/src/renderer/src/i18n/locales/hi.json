@@ -3262,7 +3262,8 @@
     "selfTesting": "संश्लेषण हो रहा है…",
     "selfTestOk": "{{seconds}} से @ {{khz}} kHz, {{took}} में",
     "selfTestFailed": "स्व-परीक्षण विफल",
-    "selfTestTimedOut": "स्व-परीक्षण का समय समाप्त"
+    "selfTestTimedOut": "स्व-परीक्षण का समय समाप्त",
+    "selfTestUnreachable": "स्व-परीक्षण नहीं चल सका। जाँचें कि VoiceStudio अभी भी चल रहा है, फिर दोबारा कोशिश करें।"
   },
   "performanceProfile": {
     "requiresEngine": "गति और गुणवत्ता समायोजित करने के लिए {{engine}} इंस्टॉल करके चुनें।",

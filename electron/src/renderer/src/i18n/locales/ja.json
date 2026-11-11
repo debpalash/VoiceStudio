@@ -3262,7 +3262,8 @@
     "selfTesting": "合成中…",
     "selfTestOk": "{{seconds}} 秒 @ {{khz}} kHz（{{took}}）",
     "selfTestFailed": "セルフテストに失敗しました",
-    "selfTestTimedOut": "セルフテストがタイムアウトしました"
+    "selfTestTimedOut": "セルフテストがタイムアウトしました",
+    "selfTestUnreachable": "セルフテストを実行できませんでした。VoiceStudio が動作中か確認してから、もう一度お試しください。"
   },
   "performanceProfile": {
     "requiresEngine": "速度と品質を調整するには、{{engine}} をインストールして選択してください。",

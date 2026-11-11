@@ -3264,7 +3264,8 @@
     "selfTesting": "Synthèse…",
     "selfTestOk": "{{seconds}} s @ {{khz}} kHz en {{took}}",
     "selfTestFailed": "Échec de l’autotest",
-    "selfTestTimedOut": "Délai de l’autotest dépassé"
+    "selfTestTimedOut": "Délai de l’autotest dépassé",
+    "selfTestUnreachable": "Impossible de lancer l’autotest. Vérifiez que VoiceStudio est toujours ouvert, puis réessayez."
   },
   "performanceProfile": {
     "requiresEngine": "Installez et sélectionnez {{engine}} pour régler la vitesse et la qualité.",

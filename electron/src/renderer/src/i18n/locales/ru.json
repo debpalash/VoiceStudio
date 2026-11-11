@@ -3288,7 +3288,8 @@
     "selfTesting": "Синтез…",
     "selfTestOk": "{{seconds}} с @ {{khz}} кГц за {{took}}",
     "selfTestFailed": "Самопроверка не удалась",
-    "selfTestTimedOut": "Время самопроверки истекло"
+    "selfTestTimedOut": "Время самопроверки истекло",
+    "selfTestUnreachable": "Не удалось запустить самопроверку. Убедитесь, что VoiceStudio всё ещё работает, и повторите попытку."
   },
   "performanceProfile": {
     "requiresEngine": "Установите и выберите {{engine}}, чтобы настроить скорость и качество.",

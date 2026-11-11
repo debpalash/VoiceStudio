@@ -3264,7 +3264,8 @@
     "selfTesting": "Sintetizando…",
     "selfTestOk": "{{seconds}} s @ {{khz}} kHz em {{took}}",
     "selfTestFailed": "O autoteste falhou",
-    "selfTestTimedOut": "O autoteste expirou"
+    "selfTestTimedOut": "O autoteste expirou",
+    "selfTestUnreachable": "Não foi possível executar o autoteste. Verifique se o VoiceStudio ainda está em execução e tente novamente."
   },
   "performanceProfile": {
     "requiresEngine": "Instale e selecione {{engine}} para ajustar a velocidade e a qualidade.",

@@ -3262,7 +3262,8 @@
     "selfTesting": "Synthese läuft…",
     "selfTestOk": "{{seconds}} s @ {{khz}} kHz in {{took}}",
     "selfTestFailed": "Selbsttest fehlgeschlagen",
-    "selfTestTimedOut": "Zeitüberschreitung beim Selbsttest"
+    "selfTestTimedOut": "Zeitüberschreitung beim Selbsttest",
+    "selfTestUnreachable": "Der Selbsttest konnte nicht gestartet werden. Prüfe, ob VoiceStudio noch läuft, und versuche es erneut."
   },
   "performanceProfile": {
     "requiresEngine": "Installiere und wähle {{engine}}, um Geschwindigkeit und Qualität anzupassen.",

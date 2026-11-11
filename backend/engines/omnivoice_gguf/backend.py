@@ -1299,6 +1299,8 @@ def _make_backend_class():
             transcript_path: Optional[Path] = None
             converted_prompt: Optional[Path] = None
             runtime_log = ""
+            # The resident server a self-test holds until its run ends.
+            held = None
             try:
                 if ref_audio and ref_text:
                     # A file keeps arbitrary transcript text out of argv.
@@ -1318,9 +1320,11 @@ def _make_backend_class():
                         ref_audio = str(converted_prompt)
                 wav = None
                 if diagnostic:
-                    answered = self._resident_selftest(text, kw, deadline)
-                    if answered is not None:
-                        wav, runtime_log = answered
+                    held = self._hold_resident_for_selftest(deadline)
+                    if held is not None and held.alive():
+                        wav, runtime_log = self._resident_selftest(
+                            held, text, kw, base=base, tokenizer=tokenizer, deadline=deadline,
+                        )
                 else:
                     try:
                         wav = self._resident_wav(
@@ -1353,6 +1357,8 @@ def _make_backend_class():
                     runtime_log = self._run_subprocess(argv, stdin_text=text, **bound) or ""
                     samples, _rate = sf.read(str(out_path), dtype="float32")
             finally:
+                if held is not None:
+                    held.lock.release()
                 for leftover in (out_path, transcript_path, converted_prompt):
                     if leftover is None:
                         continue
@@ -1363,47 +1369,63 @@ def _make_backend_class():
             audio = torch.from_numpy(samples.astype("float32", copy=False)).unsqueeze(0)
             return audio, runtime_log
 
-        def _resident_selftest(self, text: str, kw: dict, deadline: float):
-            """``(wav, log)`` from a running resident server, or ``None``.
+        def _hold_resident_for_selftest(self, deadline: float):
+            """Hold the resident server's lock for the whole self-test.
 
-            Only a server that is already serving answers: the self-test then
-            uses the model the user already has loaded instead of loading a
-            second copy beside it, and never starts, restarts or stops the
-            server. ``None`` (no server running) leaves the one-shot CLI.
+            ``None`` when resident mode cannot serve (off, or no verified
+            ``tts-server``). Otherwise the caller owns ``server.lock`` until
+            its run ends: a running server answers the test, and when none is
+            running, a generation cannot start one while the self-test's CLI
+            holds the model, so two copies never load at once.
             """
             from . import resident
 
-            server = self._resident
-            if server is None or not resident.resident_enabled():
+            if not resident.resident_enabled() or not resident.server_status()[0]:
                 return None
+            with self._resident_init:
+                if self._resident is None:
+                    self._resident = resident.ResidentServer()
+                server = self._resident
             if not server.lock.acquire(timeout=_time_left(deadline)):
                 raise RuntimeError(_selftest_timeout_message("waiting for the resident server"))
-            try:
-                if not server.alive():
-                    return None
-                payload = resident.speech_payload(
-                    text, voice=None, language=_iso_to_omnivoice_lang(kw.get("language")),
-                    instruct=None, seed=None,
+            return server
+
+        def _resident_selftest(self, server, text: str, kw: dict, *, base: Path,
+                               tokenizer: Path, deadline: float) -> tuple[bytes, str]:
+            """``(wav, log)`` from the running resident server the caller holds.
+
+            Uses the model the user already has loaded instead of loading a
+            second copy, and never starts, restarts or stops the server. A
+            server still holding another quant fails the test rather than
+            testing the wrong weights.
+            """
+            from . import resident
+
+            if server.pair != (str(base), str(tokenizer)):
+                loaded = Path(server.pair[0]).name if server.pair else "another quant"
+                raise RuntimeError(
+                    f"The resident server still has {loaded} loaded, but {Path(base).name} is "
+                    "selected. Run one normal generation to switch it, then test again."
                 )
-                try:
-                    wav = server.speak(payload, timeout=_time_left(deadline))
-                except urllib.error.HTTPError as exc:
-                    raise RuntimeError(
-                        f"GGUF resident server refused the self-test (HTTP {exc.code})"
-                    ) from None
-                except (OSError, ValueError, http.client.HTTPException) as exc:
-                    if isinstance(exc, TimeoutError) or isinstance(
-                        getattr(exc, "reason", None), TimeoutError
-                    ):
-                        raise RuntimeError(
-                            _selftest_timeout_message("on the resident server")
-                        ) from None
-                    raise RuntimeError(
-                        f"GGUF resident server failed the self-test: {_mask_token(str(exc))}"
-                    ) from None
-                return wav, server.runtime_log()
-            finally:
-                server.lock.release()
+            payload = resident.speech_payload(
+                text, voice=None, language=_iso_to_omnivoice_lang(kw.get("language")),
+                instruct=None, seed=None,
+            )
+            try:
+                wav = server.speak(payload, timeout=_time_left(deadline))
+            except urllib.error.HTTPError as exc:
+                raise RuntimeError(
+                    f"GGUF resident server refused the self-test (HTTP {exc.code})"
+                ) from None
+            except (OSError, ValueError, http.client.HTTPException) as exc:
+                if isinstance(exc, TimeoutError) or isinstance(
+                    getattr(exc, "reason", None), TimeoutError
+                ):
+                    raise RuntimeError(_selftest_timeout_message("on the resident server")) from None
+                raise RuntimeError(
+                    f"GGUF resident server failed the self-test: {_mask_token(str(exc))}"
+                ) from None
+            return wav, server.runtime_log()
 
         def _resident_wav(
             self,

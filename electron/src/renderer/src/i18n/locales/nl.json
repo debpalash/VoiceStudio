@@ -3262,7 +3262,8 @@
     "selfTesting": "Synthetiseren…",
     "selfTestOk": "{{seconds}} s @ {{khz}} kHz in {{took}}",
     "selfTestFailed": "Zelftest mislukt",
-    "selfTestTimedOut": "Zelftest verlopen"
+    "selfTestTimedOut": "Zelftest verlopen",
+    "selfTestUnreachable": "De zelftest kon niet worden uitgevoerd. Controleer of VoiceStudio nog draait en probeer het opnieuw."
   },
   "performanceProfile": {
     "requiresEngine": "Installeer en selecteer {{engine}} om snelheid en kwaliteit af te stellen.",
