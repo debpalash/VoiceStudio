@@ -140,6 +140,16 @@ test('default signing skips the pre-signed runtime and keeps other ignores', asy
   assert(!forwarded.opts.ignore(join(app, 'Contents', 'MacOS', 'VoiceStudio')));
 });
 
+test('ignores empty CLI placeholders for other platforms (Mac App Store copy of bin/)', () => {
+  const dir = stage({
+    'omnivoice-tts-darwin-arm64': 'rt',
+    'tts-server-darwin-arm64': 'srv',
+    'omnivoice-tts-darwin-x86_64': '',
+    'omnivoice-tts-linux-aarch64': '',
+  });
+  assert.equal(omnivoiceTtsResources(dir).length, 1);
+});
+
 test('refuses to package a runtime without its resident tts-server (#3654)', () => {
   const missing = stage({ 'omnivoice-tts-linux-x86_64': 'rt', 'libggml.so': 'lib' });
   assert.throws(() => omnivoiceTtsResources(missing), /missing the resident server tts-server-linux-x86_64/);

@@ -141,6 +141,16 @@ def test_a_missing_server_logs_why_resident_mode_fell_back(rig, caplog):
     assert len(lines) == 1 and "no tts-server binary is bundled" in lines[0]
 
 
+def test_the_fallback_log_never_exposes_an_absolute_path(rig, caplog):
+    rig.resident._UNAVAILABLE_LOGGED.clear()
+    with caplog.at_level("INFO", logger="omnivoice.gguf"):
+        rig.resident.log_unavailable_once("PermissionError: [Errno 13] '/Users/someone/app/bin/tts-server-x'")
+        rig.resident.log_unavailable_once(r"could not read C:\\Users\\someone\\bin\\tts-server.exe")
+    text = " ".join(r.getMessage() for r in caplog.records)
+    assert "someone" not in text and "<path>" in text
+    assert "bin/checksums.sha256" in rig.resident._ABSOLUTE_PATH.sub("<path>", "not listed in bin/checksums.sha256")
+
+
 def test_an_installer_manifest_must_list_the_server(rig, monkeypatch):
     monkeypatch.setattr(rig.mod, "_load_checksum_manifest", lambda: {rig.cli.name: "0" * 64})
     rig.resident._STATUS_CACHE.clear()

@@ -34,6 +34,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import socket
 import subprocess  # nosec B404 -- executable and args are resolved locally
 import threading
@@ -102,7 +103,8 @@ def server_status() -> tuple[bool, str]:
         _STATUS_CACHE[key] = result
         return result
     except Exception as exc:  # noqa: BLE001 -- status must never raise
-        return False, f"{type(exc).__name__}: {exc}"
+        # No exception text: it can carry an absolute path (home directory).
+        return False, f"the tts-server binary could not be checked ({type(exc).__name__})"
 
 
 def _verify_server_binary(path: Path) -> tuple[bool, str]:
@@ -134,10 +136,14 @@ def _verify_server_binary(path: Path) -> tuple[bool, str]:
 
 
 _UNAVAILABLE_LOGGED: set[str] = set()
+_ABSOLUTE_PATH = re.compile(r"(?:[A-Za-z]:)?[\\/][^\s:'\"]+(?:[\\/][^\s:'\"]*)+")
 
 
 def log_unavailable_once(why: str) -> None:
     """Say once per reason why the opt-in resident mode fell back to the CLI."""
+    # Reasons name files by basename; strip any absolute path that slipped in
+    # (a filesystem error message) so the log never exposes a home directory.
+    why = _ABSOLUTE_PATH.sub("<path>", why)
     if why not in _UNAVAILABLE_LOGGED:
         _UNAVAILABLE_LOGGED.add(why)
         logger.info("OmniVoice GGUF resident mode is on but unavailable; using the per-request runtime: %s", why)

@@ -67,7 +67,12 @@ function stagedFiles(dir) {
  */
 export function omnivoiceTtsResources(dir = OMNIVOICE_TTS_STAGING_DIR) {
   const files = stagedFiles(dir);
-  const cli = files.filter((name) => name.startsWith('omnivoice-tts-'));
+  // Zero-byte placeholders (the files tracked in bin/ for other platforms,
+  // which the Mac App Store workflow copies along with the built runtime) are
+  // not runtimes and need no server.
+  const cli = files.filter(
+    (name) => name.startsWith('omnivoice-tts-') && statSync(join(dir, name)).size > 0,
+  );
   if (!cli.length || !files.includes(OMNIVOICE_TTS_MANIFEST)) return [];
   const manifest = readManifest(join(dir, OMNIVOICE_TTS_MANIFEST));
   for (const name of cli) {
