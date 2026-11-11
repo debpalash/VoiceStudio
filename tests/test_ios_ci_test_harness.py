@@ -108,3 +108,26 @@ def test_watchdog_still_times_out_a_child_that_closed_its_output():
     assert _watchdog().run([sys.executable, "-c", script], stall=1, out=out) == 124
     assert time.monotonic() - started < 30
     assert b"hung after: Test closed() started" in out.getvalue()
+
+
+def test_watchdog_stack_sampling_reports_failures_and_keeps_to_its_budget(monkeypatch):
+    watchdog = _watchdog()
+    monkeypatch.setattr(watchdog.shutil, "which", lambda name: "/usr/bin/sample")
+
+    class Done:
+        returncode, stderr = 1, b"sample: process not found"
+
+    calls = []
+    monkeypatch.setattr(watchdog.subprocess, "run", lambda *a, **kw: calls.append(kw["timeout"]) or Done())
+    out = io.BytesIO()
+    # A failed sample is reported as a failure, never as an empty stack section.
+    watchdog.dump_stacks([11], out)
+    assert b"sample 11 failed: exit 1: sample: process not found" in out.getvalue()
+    assert b"===== stacks" not in out.getvalue()
+
+    # Once the total budget is spent, later processes are skipped, not sampled.
+    ticks = iter([0.0, 0.0, 95.0])
+    out = io.BytesIO()
+    calls.clear()
+    watchdog.dump_stacks([21, 22], out, budget=90.0, clock=lambda: next(ticks))
+    assert calls == [60] and b"skipped pid 22" in out.getvalue()

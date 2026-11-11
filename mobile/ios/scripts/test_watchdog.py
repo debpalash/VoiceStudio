@@ -46,17 +46,33 @@ def descendants(root):
     return list(reversed(found))
 
 
-def dump_stacks(pids, out):
+#: Total time all stack samples may take, so sampling a large process tree
+#: cannot delay the kill that follows.
+SAMPLE_BUDGET_S = 90.0
+
+
+def dump_stacks(pids, out, budget=SAMPLE_BUDGET_S, clock=time.monotonic):
     sampler = shutil.which("sample")
     if not sampler:
         out.write(b"(no `sample` on this host; stacks unavailable)\n")
         return
+    deadline = clock() + budget
     for pid in pids:
+        remaining = deadline - clock()
+        if remaining <= 1:
+            out.write(f"\n(sampling budget spent; skipped pid {pid})\n".encode())
+            continue
         with tempfile.NamedTemporaryFile(suffix=".txt") as report:
             try:
-                subprocess.run([sampler, str(pid), "3", "-mayDie", "-file", report.name],
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60)
-                out.write(f"\n===== stacks of pid {pid} =====\n".encode() + pathlib.Path(report.name).read_bytes())
+                done = subprocess.run([sampler, str(pid), "3", "-mayDie", "-file", report.name],
+                                      stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                                      timeout=min(60, remaining))
+                stacks = pathlib.Path(report.name).read_bytes()
+                if done.returncode != 0 or not stacks.strip():
+                    reason = (done.stderr or b"").decode(errors="replace").strip() or "empty report"
+                    out.write(f"\n(sample {pid} failed: exit {done.returncode}: {reason})\n".encode())
+                else:
+                    out.write(f"\n===== stacks of pid {pid} =====\n".encode() + stacks)
             except (OSError, subprocess.SubprocessError) as error:
                 out.write(f"\n(sample {pid} failed: {error})\n".encode())
         out.flush()
