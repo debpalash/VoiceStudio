@@ -26,17 +26,19 @@ def _run(tmp_path, args, script_body="", extra_env=None):
     (stubs / "sudo").write_text(
         '#!/bin/sh\n'
         'case "$1" in\n'
-        f'  tee) for a in "$@"; do last=$a; done; case "$last" in {tmp_path}/*) exec "$@";; *) cat >/dev/null; exit 0;; esac;;\n'
-        '  mkdir|systemctl) exit 0;;\n'
+        f'  tee) for a in "$@"; do last=$a; done; case "$last" in {tmp_path}/*) exec "$@";; *resolv*) cat >/dev/null; touch {tmp_path}/dns-switched; exit 0;; *) cat >/dev/null; exit 0;; esac;;\n'
+        f'  systemctl) touch {tmp_path}/dns-switched; exit 0;;\n'
+        '  mkdir) exit 0;;\n'
         '  *) exec "$@";;\n'
-        'esac\n'
+        'esac\n',
+        encoding="utf-8",
     )
-    (stubs / "sleep").write_text("#!/bin/sh\nexit 0\n")
+    (stubs / "sleep").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
     # Always report a non-root user, so the helper routes every privileged write
     # through the sudo stub above even when the test suite itself runs as root.
-    (stubs / "id").write_text('#!/bin/sh\n[ "$1" = "-u" ] && { echo 1000; exit 0; }\nexec /usr/bin/id "$@"\n')
+    (stubs / "id").write_text('#!/bin/sh\n[ "$1" = "-u" ] && { echo 1000; exit 0; }\nexec /usr/bin/id "$@"\n', encoding="utf-8")
     for name, body in (script_body or {}).items():
-        (stubs / name).write_text("#!/bin/bash\n" + body)
+        (stubs / name).write_text("#!/bin/bash\n" + body, encoding="utf-8")
     for f in stubs.iterdir():
         f.chmod(0o755)
     env = {
@@ -54,7 +56,7 @@ def _run(tmp_path, args, script_body="", extra_env=None):
 
 def _flaky(tmp_path, fail_times):
     counter = tmp_path / "count"
-    counter.write_text("0")
+    counter.write_text("0", encoding="utf-8")
     return (
         f'n=$(( $(cat {counter}) + 1 )); echo $n > {counter}; '
         f"[ $n -gt {fail_times} ]\n"
@@ -66,7 +68,7 @@ def test_retry_succeeds_after_transient_failures(tmp_path):
     body, counter = _flaky(tmp_path, 2)
     r = _run(tmp_path, ["retry", "flaky"], {"flaky": body, "getent": "exit 0\n"})
     assert r.returncode == 0, r.stderr
-    assert counter.read_text().strip() == "3"
+    assert counter.read_text(encoding="utf-8").strip() == "3"
 
 
 @bash
@@ -74,14 +76,14 @@ def test_retry_gives_up_after_four_attempts(tmp_path):
     body, counter = _flaky(tmp_path, 99)
     r = _run(tmp_path, ["retry", "flaky"], {"flaky": body, "getent": "exit 0\n"})
     assert r.returncode == 1
-    assert counter.read_text().strip() == "4"
+    assert counter.read_text(encoding="utf-8").strip() == "4"
     assert "failed after 4 attempts" in r.stderr
 
 
 @bash
 def test_update_that_exits_zero_with_fetch_failures_is_retried(tmp_path):
     counter = tmp_path / "n"
-    counter.write_text("0")
+    counter.write_text("0", encoding="utf-8")
     apt = (
         f'case "$*" in *update*) n=$(( $(cat {counter}) + 1 )); echo $n > {counter}; '
         'if [ $n -lt 2 ]; then echo "W: Failed to fetch http://x Temporary failure"; fi; exit 0;; '
@@ -89,14 +91,14 @@ def test_update_that_exits_zero_with_fetch_failures_is_retried(tmp_path):
     )
     r = _run(tmp_path, ["install", "pkg"], {"apt-get": apt, "getent": "exit 0\n"})
     assert r.returncode == 0, r.stderr
-    assert counter.read_text().strip() == "2"
+    assert counter.read_text(encoding="utf-8").strip() == "2"
 
 
 @bash
 def test_apt_conf_dropin_written(tmp_path):
     (tmp_path / "conf").mkdir()
     _run(tmp_path, ["retry", "true"], {"getent": "exit 0\n", "true": "exit 0\n"})
-    conf = (tmp_path / "conf" / "80-ci-retries").read_text()
+    conf = (tmp_path / "conf" / "80-ci-retries").read_text(encoding="utf-8")
     assert 'Acquire::Retries "5"' in conf
 
 
@@ -114,7 +116,7 @@ def test_unresolvable_mirrors_are_pinned_in_hosts(tmp_path):
         {"APT_RETRY_DNS_SETTLE": "0"},
     )
     assert r.returncode == 0, r.stderr
-    text = hosts.read_text()
+    text = hosts.read_text(encoding="utf-8")
     for h in ("azure.archive.ubuntu.com", "archive.ubuntu.com", "security.ubuntu.com", "ports.ubuntu.com"):
         assert f"192.0.2.7 {h}" in text
     assert "mirrors resolve after /etc/hosts pinning" in r.stderr
@@ -122,13 +124,14 @@ def test_unresolvable_mirrors_are_pinned_in_hosts(tmp_path):
 
 @bash
 def test_resolvers_switch_alone_is_enough_when_it_works(tmp_path):
-    flag = tmp_path / "switched"
-    # fails once, then "resolves" -> no hosts pinning
-    getent = f'[ -f {flag} ] || {{ touch {flag}; exit 2; }}\n'
+    # Names resolve only once the helper has switched resolvers (the sudo stub
+    # records that), so the test fails if use_public_dns never runs.
+    getent = f'[ -f {tmp_path}/dns-switched ] || exit 2\n'
     r = _run(tmp_path, ["retry", "true"], {"getent": getent, "true": "exit 0\n"},
              {"APT_RETRY_DNS_SETTLE": "0"})
     assert r.returncode == 0, r.stderr
     assert not (tmp_path / "hosts").exists()
+    assert (tmp_path / "dns-switched").exists()
 
 
 def test_no_direct_networked_apt():
@@ -168,7 +171,7 @@ def test_helper_takes_the_stubbed_sudo_path_even_as_root(tmp_path):
     probe = tmp_path / "probe.sh"
     probe.write_text('SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo"; echo "SUDO=$SUDO"\n')
     stubs = tmp_path / "bin"
-    _run(tmp_path, ["retry", "true"])  # creates the stubs
+    _run(tmp_path, ["retry", "true"], {"getent": "exit 0\n", "true": "exit 0\n"})  # stubs only, no real DNS
     out = subprocess.run(["bash", str(probe)], env={"PATH": f"{stubs}:/usr/bin:/bin"},
                          capture_output=True, text=True, timeout=10).stdout
     assert out.strip() == "SUDO=sudo"
