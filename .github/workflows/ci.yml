@@ -849,6 +849,11 @@ jobs:
       VOICESTUDIO_RUST_TARGET: ${{ matrix.target }}
       VOICESTUDIO_UPDATE_CHANNEL: electron-stable-${{ matrix.platform }}-${{ matrix.arch }}
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      # electron-builder skips all signing on pull requests, which leaves the macOS
+      # bundle with Electron's stale signature. This job has no certificate (no
+      # CSC_LINK or Apple secrets), so this only enables the ad hoc signing an
+      # unsigned release does.
+      CSC_FOR_PULL_REQUEST: 'true'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

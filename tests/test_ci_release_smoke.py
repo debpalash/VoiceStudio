@@ -46,6 +46,17 @@ def test_release_smoke_uses_the_release_runners_and_targets():
     assert JOB["timeout-minutes"] <= 20
 
 
+def test_release_smoke_signs_ad_hoc_and_never_sees_a_certificate():
+    # electron-builder skips signing on pull requests unless told otherwise; the
+    # macOS bundle then keeps Electron's stale signature and fails `codesign --verify`.
+    assert JOB["env"]["CSC_FOR_PULL_REQUEST"] == "true"
+    # ...which is only safe because no signing material is ever passed in.
+    text = yaml.safe_dump(JOB)
+    assert "secrets." not in text
+    for name in ("CSC_LINK", "CSC_KEY_PASSWORD", "APPLE_API_KEY", "APPLE_ID"):
+        assert name not in text, name
+
+
 def test_release_smoke_is_gated_like_the_other_electron_jobs():
     assert JOB["needs"] == "changes"
     assert JOB["if"] == CI["jobs"]["electron-ui"]["if"]
