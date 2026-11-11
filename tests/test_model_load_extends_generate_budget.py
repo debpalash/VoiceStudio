@@ -87,6 +87,10 @@ async def _assert_silent_job_times_out(mm, pool, caplog):
         assert "extending while heartbeats continue" not in caplog.text
     finally:
         release.set()
+        # Join the released worker: the pool has one thread, so a no-op runs only
+        # after the abandoned job returns, and it cannot leak into later tests.
+        drained = pool.submit(lambda: None)
+        await asyncio.to_thread(drained.result, 10.0)
 
 
 # ── the fix ───────────────────────────────────────────────────────────────
