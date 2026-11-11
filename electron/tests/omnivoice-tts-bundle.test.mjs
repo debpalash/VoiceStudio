@@ -8,7 +8,9 @@ import {
   OMNIVOICE_TTS_MANIFEST,
   codesignArgs,
   finalizeOmnivoiceTts,
+  isTimestampServiceError,
   manifestMismatches,
+  runCodesign,
   omnivoiceTtsBinaryName,
   omnivoiceTtsResources,
   omnivoiceTtsSlug,
@@ -133,4 +135,51 @@ test('default signing skips the pre-signed runtime and keeps other ignores', asy
   assert(forwarded.opts.ignore(join(bin, 'omnivoice-tts-darwin-arm64')));
   assert(forwarded.opts.ignore('/x/driver.kext'));
   assert(!forwarded.opts.ignore(join(app, 'Contents', 'MacOS', 'VoiceStudio')));
+});
+
+const TS_ERR = 'file: A timestamp was expected but was not found.\n';
+const fakeRun = (failures) => {
+  const calls = [];
+  const run = (cmd, args) => {
+    calls.push([cmd, args]);
+    const failure = failures[calls.length - 1];
+    if (failure) throw Object.assign(new Error('Command failed: codesign'), { stderr: failure });
+  };
+  return { run, calls };
+};
+
+test('runCodesign retries a timestamp-service error once then succeeds', async () => {
+  const { run, calls } = fakeRun([TS_ERR]);
+  const sleeps = [];
+  const logs = [];
+  await runCodesign(['--sign', 'x', 'f'], { run, sleep: async (ms) => sleeps.push(ms), log: (m) => logs.push(m) });
+  assert.equal(calls.length, 2);
+  assert.deepEqual(sleeps, [5000]);
+  assert.match(logs[0], /attempt 1\/4.*timestamp was expected/);
+});
+
+test('runCodesign fails at once on non-timestamp errors', async () => {
+  const { run, calls } = fakeRun(['f: no identity found\n']);
+  const sleeps = [];
+  await assert.rejects(runCodesign(['f'], { run, sleep: async (ms) => sleeps.push(ms), log() {} }), /Command failed/);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(sleeps, []);
+});
+
+test('runCodesign gives up after the max attempts with the stderr message', async () => {
+  const { run, calls } = fakeRun([TS_ERR, TS_ERR, TS_ERR, TS_ERR, TS_ERR]);
+  const sleeps = [];
+  await assert.rejects(
+    runCodesign(['f'], { run, sleep: async (ms) => sleeps.push(ms), log() {} }),
+    /failed after 4 attempts: .*A timestamp was expected/,
+  );
+  assert.equal(calls.length, 4);
+  assert.deepEqual(sleeps, [5000, 15000, 30000]);
+});
+
+test('isTimestampServiceError matches only timestamp-service failures', () => {
+  assert(isTimestampServiceError('The timestamp service is not available.'));
+  assert(isTimestampServiceError('timestamp: network connection was lost'));
+  assert(!isTimestampServiceError('invalid entitlements'));
+  assert(!isTimestampServiceError(''));
 });
