@@ -368,13 +368,33 @@ def test_prepare_lists_failed_legs_only_when_asked(release_module, monkeypatch, 
         release_module.prepare(assets, "v1.2.3")
     missing = []
     release_module.prepare(assets, "v1.2.3", missing=missing)
-    assert missing == ["darwin-arm64", "darwin-x64", "linux-x64", "win32-x64",
-                       "installer mac-x64.dmg", "installer linux-x64.deb"]
+    assert missing == ["installer mac-x64.dmg", "installer linux-x64.deb",
+                       "darwin-arm64", "darwin-x64", "linux-x64", "win32-x64"]
     assert (assets / "SHA256SUMS.txt").is_file()
     # A leg with some of its files is broken, not missing: it still fails at once.
     (assets / "VoiceStudio-1.2.3-win-x64.exe").write_bytes(b"x")
     with pytest.raises(Exception, match="electron-stable-win32-x64.yml"):
         release_module.prepare(assets, "v1.2.3", missing=[])
+
+
+def test_a_broken_leg_still_fails_but_every_absent_leg_is_reported(tmp_path):
+    """One leg with an incomplete feed must not hide the legs that built nothing (#4011 review)."""
+    work = tmp_path / "work"
+    (work / "assets").mkdir(parents=True)
+    (work / "package.json").write_text(json.dumps({"version": "1.2.3"}), encoding="utf-8")
+    (work / "CHANGELOG.md").write_text("## [1.2.3] — 2026-11-11\n\n- Fix\n", encoding="utf-8")
+    # Windows x64 is broken (installer without its feed); every other leg is absent.
+    (work / "assets/VoiceStudio-1.2.3-win-x64.exe").write_bytes(b"x")
+    git = ["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
+    subprocess.run(["git", "init", "-q"], cwd=work, check=True)
+    subprocess.run([*git, "commit", "-q", "--allow-empty", "-m", "x"], cwd=work, check=True)
+    report = tmp_path / "missing.txt"
+    result = subprocess.run(["python3", str(ROOT / "scripts/prepare_electron_release.py"), "--assets", "assets",
+                             "--rehearsal", "--missing-report", str(report)], cwd=work, capture_output=True, text=True)
+    assert result.returncode != 0 and "electron-stable-win32-x64.yml" in result.stderr
+    assert report.read_text(encoding="utf-8").splitlines() == [
+        "installer mac-arm64.dmg", "installer mac-x64.dmg", "installer linux-x64.deb",
+        "darwin-arm64", "darwin-x64", "linux-x64"]
 
 
 def test_prepare_cli_keeps_releases_strict(tmp_path):

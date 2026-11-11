@@ -130,6 +130,11 @@ def prepare(assets, tag, sunset_tag=None, repo=None, gh=_gh, head=None, missing=
         {"name": p.name, "size": p.stat().st_size,
          "digest": "sha256:" + hashlib.sha256(p.read_bytes()).hexdigest()}
         for p in files]}
+    installers = ("mac-arm64.dmg", "mac-x64.dmg", "linux-x64.deb")
+    absent_installers = [s for s in installers if not (assets / f"VoiceStudio-{version}-{s}").is_file()]
+    if missing is not None:
+        # Recorded before any check can fail (the caller writes the list even then).
+        missing.extend(f"installer {suffix}" for suffix in absent_installers)
     verify_release(release, assets, channel=channel, version=version, missing=missing)
     for manifest in assets.glob(f"electron-{channel}-*.yml"):
         text = manifest.read_text(encoding="utf-8")
@@ -138,11 +143,8 @@ def prepare(assets, tag, sunset_tag=None, repo=None, gh=_gh, head=None, missing=
         actual = base64.b64encode(hashlib.sha512((assets / artifact).read_bytes()).digest()).decode()
         if actual != expected:
             raise ValueError("Updater payload checksum mismatch")
-    for suffix in ("mac-arm64.dmg", "mac-x64.dmg", "linux-x64.deb"):
-        if not (assets / f"VoiceStudio-{version}-{suffix}").is_file():
-            if missing is None:
-                raise ValueError(f"Missing installer: {suffix}")
-            missing.append(f"installer {suffix}")
+    if absent_installers and missing is None:
+        raise ValueError(f"Missing installer: {absent_installers[0]}")
     # Archived Tauri clients read `latest/download`, which never serves a
     # prerelease, so betas carry no sunset feeds.
     if sunset_tag and channel == "stable":
@@ -197,11 +199,15 @@ if __name__ == "__main__":
     elif args.assets and args.rehearsal:
         tag, head = rehearsal_target()
         missing = [] if args.missing_report else None
-        prepare(args.assets, tag, args.sunset_tag, repo=args.repo, head=head, missing=missing)
-        if args.missing_report:
-            args.missing_report.write_text("".join(f"{item}\n" for item in missing), encoding="utf-8")
-            for item in missing:
-                print(f"::error::Rehearsal is missing {item}: its build leg failed", file=sys.stderr)
+        try:
+            prepare(args.assets, tag, args.sunset_tag, repo=args.repo, head=head, missing=missing)
+        finally:
+            # Also when another leg is broken: the absent legs are already known
+            # and the rehearsal's last step lists them; the error still fails this step.
+            if args.missing_report:
+                args.missing_report.write_text("".join(f"{item}\n" for item in missing), encoding="utf-8")
+                for item in missing:
+                    print(f"::error::Rehearsal is missing {item}: its build leg failed", file=sys.stderr)
     elif args.assets and args.tag:
         prepare(args.assets, args.tag, args.sunset_tag, repo=args.repo)
     else:

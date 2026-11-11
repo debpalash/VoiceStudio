@@ -104,6 +104,22 @@ def verify_release(
         raise ReleaseContractError(f"{channel} release tag does not match {expected_tag}")
 
     assets = _asset_map(release)
+    targets = {**TARGETS, **OPTIONAL_TARGETS}
+
+    def no_trace(target: str) -> bool:
+        manifest_target, os_token, arch, extension = targets[target]
+        manifest_name = f"electron-{channel}-{manifest_target}.yml"
+        payload = artifact_name(version, os_token, arch, extension)
+        traces = (manifest_name, payload, f"{payload}.blockmap")
+        return not (manifest_dir / manifest_name).is_file() and not any(name in assets for name in traces)
+
+    # Skip only when NOTHING of a target is published: an installer or blockmap
+    # without its manifest is an incomplete release. Listed before any check
+    # can fail, so a rehearsal names every absent leg even when another leg
+    # turns out to be broken.
+    absent = {t for t in targets if (t in OPTIONAL_TARGETS or missing is not None) and no_trace(t)}
+    if missing is not None:
+        missing.extend(t for t in targets if t in absent and t not in OPTIONAL_TARGETS)
     # A feed of the other channel on this release would move its users: a
     # stable feed on a beta pulls stable users onto the beta's payloads (and
     # Tauri's latest*.json is served only through `latest/download`, which a
@@ -114,21 +130,11 @@ def verify_release(
             f"{channel} release carries another channel's update feed: {', '.join(sorted(forbidden))}"
         )
     verified: list[str] = []
-    for target, (manifest_target, os_token, arch, extension) in {
-        **TARGETS,
-        **OPTIONAL_TARGETS,
-    }.items():
+    for target, (manifest_target, os_token, arch, extension) in targets.items():
         manifest_name = f"electron-{channel}-{manifest_target}.yml"
         manifest_path = manifest_dir / manifest_name
-        if target in OPTIONAL_TARGETS or missing is not None:
-            # Skip only when NOTHING of this target is published: an installer
-            # or blockmap without its manifest is an incomplete release.
-            payload = artifact_name(version, os_token, arch, extension)
-            traces = (manifest_name, payload, f"{payload}.blockmap")
-            if not manifest_path.is_file() and not any(name in assets for name in traces):
-                if target not in OPTIONAL_TARGETS:
-                    missing.append(target)
-                continue
+        if target in absent:
+            continue
         if not manifest_path.is_file():
             raise ReleaseContractError(f"missing downloaded manifest: {manifest_name}")
         manifest_asset = assets.get(manifest_name)
