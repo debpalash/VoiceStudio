@@ -14,10 +14,17 @@ import {
 
 const sac = async () => 'on' as const;
 
+// Real PowerShell starts slowly on shared release runners (Windows on Arm): these checks
+// prove the scripts, so they get room to start instead of racing the host.
+const POWERSHELL_TIMEOUT_MS = 60_000;
+const POWERSHELL_TEST_TIMEOUT_MS = 90_000;
+
 describe('collectTrustFacts', () => {
   it('passes the refused path by environment, never in the script', async () => {
     const program = "C:\\x'; Remove-Item C:\\ ;'\\python.exe";
-    const run = vi.fn(async () => '{"blocked":["python.exe"],"antivirus":"Defender","signature":"NotSigned"}');
+    const run = vi.fn(
+      async () => '{"blocked":["python.exe"],"antivirus":"Defender","signature":"NotSigned"}',
+    );
     const facts = await collectTrustFacts({
       platform: 'win32',
       program,
@@ -25,7 +32,11 @@ describe('collectTrustFacts', () => {
       run,
       readSmartAppControl: sac,
     });
-    const [, args, options] = run.mock.calls[0] as unknown as [string, string[], { env: NodeJS.ProcessEnv }];
+    const [, args, options] = run.mock.calls[0] as unknown as [
+      string,
+      string[],
+      { env: NodeJS.ProcessEnv },
+    ];
     expect(args.join(' ')).not.toContain('Remove-Item');
     expect(options.env.VS_PROBE_PROGRAM).toBe(program);
     expect(WINDOWS_TRUST_SCRIPT).toContain('$env:VS_PROBE_RUNTIME');
@@ -63,7 +74,12 @@ describe('collectTrustFacts', () => {
   it('reads the macOS quarantine attribute', async () => {
     const readSmartAppControl = sac;
     await expect(
-      collectTrustFacts({ platform: 'darwin', program: '/a/python', run: async () => 'x', readSmartAppControl }),
+      collectTrustFacts({
+        platform: 'darwin',
+        program: '/a/python',
+        run: async () => 'x',
+        readSmartAppControl,
+      }),
     ).resolves.toEqual({ quarantined: true });
     await expect(
       collectTrustFacts({
@@ -79,10 +95,20 @@ describe('collectTrustFacts', () => {
     const readMountInfo = async () =>
       '22 1 8:1 / / rw,relatime - ext4 /dev/sda1 rw\n40 22 8:2 / /mnt/data rw,noexec - ext4 /dev/sda2 rw\n';
     await expect(
-      collectTrustFacts({ platform: 'linux', program: '/mnt/data/python', readMountInfo, readSmartAppControl: sac }),
+      collectTrustFacts({
+        platform: 'linux',
+        program: '/mnt/data/python',
+        readMountInfo,
+        readSmartAppControl: sac,
+      }),
     ).resolves.toEqual({ noexecMount: true });
     await expect(
-      collectTrustFacts({ platform: 'linux', program: '/home/u/python', readMountInfo, readSmartAppControl: sac }),
+      collectTrustFacts({
+        platform: 'linux',
+        program: '/home/u/python',
+        readMountInfo,
+        readSmartAppControl: sac,
+      }),
     ).resolves.toEqual({});
   });
 });
@@ -119,15 +145,23 @@ describe.runIf(process.platform === 'win32')('Windows block matching', () => {
     ['\\Device\\HarddiskVolume3\\Users\\a\\tools\\python.exe', 'yes'],
     ['\\Device\\HarddiskVolume3\\Users\\a\\VS-old\\x.dll', 'no'],
     ['\\Device\\HarddiskVolume3\\Windows\\python.exe', 'no'],
-  ])('%s -> %s', async (event, expected) => {
-    const script = `${WINDOWS_BLOCK_MATCH}
+  ])(
+    '%s -> %s',
+    async (event, expected) => {
+      const script = `${WINDOWS_BLOCK_MATCH}
 if(Test-VsBlock $env:VS_E $env:VS_R $env:VS_P){'yes'}else{'no'}`;
-    const output = await runProbe('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], {
-      env: { ...process.env, VS_E: event, VS_R: root, VS_P: program },
-      timeoutMs: 30_000,
-    });
-    expect(output.trim()).toBe(expected);
-  }, 40_000);
+      const output = await runProbe(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-Command', script],
+        {
+          env: { ...process.env, VS_E: event, VS_R: root, VS_P: program },
+          timeoutMs: POWERSHELL_TIMEOUT_MS,
+        },
+      );
+      expect(output.trim()).toBe(expected);
+    },
+    POWERSHELL_TEST_TIMEOUT_MS,
+  );
 });
 
 describe('collectFaultFacts', () => {
@@ -206,16 +240,47 @@ describe('collectFaultFacts', () => {
   });
 });
 
-describe.runIf(process.platform === 'win32')('Windows fault event script', () => {
-  it('runs cleanly and prints nothing for a pid with no fault event', async () => {
-    const output = await runProbe(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_FAULT_SCRIPT],
-      {
-        env: { ...process.env, VS_PROBE_PID: '999999999', VS_PROBE_SINCE_MS: String(Date.now() - 60_000) },
-        timeoutMs: 30_000,
-      },
-    );
-    expect(output.trim()).toBe('');
-  }, 40_000);
+describe('runProbe', () => {
+  it('settles at its deadline even when an orphan keeps the output open', async () => {
+    // A stalled Get-WinEvent must not hold up the crash report: the probe hangs and
+    // leaves a child holding its stdout, and still settles at the deadline.
+    const hang = `require('node:child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 5000)'], { stdio: 'inherit' });
+setTimeout(() => {}, 60000);`;
+    const started = Date.now();
+    await expect(runProbe(process.execPath, ['-e', hang], { timeoutMs: 300 })).rejects.toThrow();
+    expect(Date.now() - started).toBeLessThan(4000);
+  });
+
+  it('returns the output of a probe that answers in time', async () => {
+    await expect(
+      runProbe(process.execPath, ['-e', 'process.stdout.write("ok")'], { timeoutMs: 20_000 }),
+    ).resolves.toBe('ok');
+  });
+});
+
+/**
+ * Parses without running: what the scripts find depends on the host's event log,
+ * whose first query can stall for half a minute on a busy runner. The product
+ * bounds that wait (runProbe above); this proves every script is valid PowerShell.
+ */
+const PARSE_ONLY = String.raw`$errors=$null
+[void][System.Management.Automation.Language.Parser]::ParseInput($env:VS_SCRIPT,[ref]$null,[ref]$errors)
+if($errors){$errors|ForEach-Object{$_.Message}}else{'ok'}`;
+
+describe.runIf(process.platform === 'win32')('Windows probe scripts', () => {
+  it.each([
+    ['fault event', WINDOWS_FAULT_SCRIPT],
+    ['trust', WINDOWS_TRUST_SCRIPT],
+  ])(
+    'the %s script is valid PowerShell',
+    async (_name, script) => {
+      const output = await runProbe(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-Command', PARSE_ONLY],
+        { env: { ...process.env, VS_SCRIPT: script }, timeoutMs: POWERSHELL_TIMEOUT_MS },
+      );
+      expect(output.trim()).toBe('ok');
+    },
+    POWERSHELL_TEST_TIMEOUT_MS,
+  );
 });
