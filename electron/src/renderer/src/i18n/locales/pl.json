@@ -3283,7 +3283,13 @@
     "setupStatusFileMissing": "Brakuje pliku wymaganego przez ten silnik lub jest on nieczytelny. Zainstaluj silnik ponownie w Ustawienia → Modele.",
     "setupStatusPlatform": "Ten silnik nie działa na platformie tego komputera. Obsługiwane platformy wymieniono w jego instrukcji.",
     "setupStatusNoMps": "Ten silnik wymaga GPU Apple (MPS), ale PyTorch w tej instalacji nie może z niego korzystać. Aktualizacja macOS lub ponowna instalacja VoiceStudio zwykle rozwiązuje problem.",
-    "asrSetupRepairBundled": "Brakuje pakietów Python dołączonych do backendu lub są one uszkodzone. Napraw środowisko backendu albo utwórz je ponownie z przypiętymi zależnościami instalacji ze źródeł, a następnie uruchom ponownie."
+    "asrSetupRepairBundled": "Brakuje pakietów Python dołączonych do backendu lub są one uszkodzone. Napraw środowisko backendu albo utwórz je ponownie z przypiętymi zależnościami instalacji ze źródeł, a następnie uruchom ponownie.",
+    "selfTest": "Autotest",
+    "selfTesting": "Synteza…",
+    "selfTestOk": "{{seconds}} s @ {{khz}} kHz w {{took}}",
+    "selfTestFailed": "Autotest nie powiódł się",
+    "selfTestTimedOut": "Przekroczono czas autotestu",
+    "selfTestUnreachable": "Nie udało się uruchomić autotestu. Sprawdź, czy VoiceStudio nadal działa, i spróbuj ponownie."
   },
   "performanceProfile": {
     "requiresEngine": "Zainstaluj i wybierz {{engine}}, aby dostosować szybkość i jakość.",

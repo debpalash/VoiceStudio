@@ -193,3 +193,13 @@ backend/assets/samples/demo/dubbing/*.src.wav
 # handoff (canonical in vssaas) and Microsoft Store listing text drafts.
 /account_login/
 /store-*-en.txt
+
+# Local Windows GGML/Vulkan runtime DLLs built beside the TTS executable.
+/bin/ggml-*.dll
+/bin/ggml.dll
+/bin/msvcp140*.dll
+/bin/vcomp140.dll
+/bin/vcruntime140*.dll
+
+# Per-user Visual Studio Code workspace settings.
+/.vscode/settings.json

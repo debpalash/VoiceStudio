@@ -3257,7 +3257,13 @@
     "setupStatusFileMissing": "Berkas yang diperlukan mesin ini hilang atau tidak dapat dibaca. Pasang ulang dari Pengaturan → Model.",
     "setupStatusPlatform": "Mesin ini tidak berjalan pada platform komputer ini. Panduannya mencantumkan platform yang didukung.",
     "setupStatusNoMps": "Mesin ini memerlukan GPU Apple (MPS), tetapi PyTorch pada instalasi ini tidak dapat menggunakannya. Memperbarui macOS atau memasang ulang VoiceStudio biasanya mengatasinya.",
-    "asrSetupRepairBundled": "Paket Python bawaan backend hilang atau rusak. Perbaiki lingkungan backend atau buat ulang dengan dependensi terkunci dari penyiapan sumber, lalu mulai ulang."
+    "asrSetupRepairBundled": "Paket Python bawaan backend hilang atau rusak. Perbaiki lingkungan backend atau buat ulang dengan dependensi terkunci dari penyiapan sumber, lalu mulai ulang.",
+    "selfTest": "Uji mandiri",
+    "selfTesting": "Menyintesis…",
+    "selfTestOk": "{{seconds}} dtk @ {{khz}} kHz dalam {{took}}",
+    "selfTestFailed": "Uji mandiri gagal",
+    "selfTestTimedOut": "Uji mandiri kehabisan waktu",
+    "selfTestUnreachable": "Uji mandiri tidak dapat dijalankan. Pastikan VoiceStudio masih berjalan, lalu coba lagi."
   },
   "performanceProfile": {
     "requiresEngine": "Instal dan pilih {{engine}} untuk menyesuaikan kecepatan dan kualitas.",

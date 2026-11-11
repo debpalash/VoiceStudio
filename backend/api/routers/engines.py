@@ -18,8 +18,9 @@ a backend without Settings silently undoing it.
 import asyncio
 import logging
 import os
+import re
 import threading
-from time import perf_counter
+from time import monotonic, perf_counter
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from huggingface_hub import utils as hf_utils
@@ -796,18 +797,25 @@ def engine_health(engine_id: str):
 # route goes one step further: for an AVAILABLE, IN-PROCESS TTS engine it runs
 # a *tiny real synthesis* from a fixed short phrase and reports duration +
 # sample-rate + sample count, proving the engine actually emits audio rather
-# than merely importing. The Compat Matrix's "Self-test" button calls it.
+# than merely importing. The Compat Matrix's "Self-test" button and the
+# OmniVoice GGUF row in Settings › Models call it.
 #
 # Guardrails (kept identical across macOS/Windows/Linux per the default-feature
 # rule — the phrase, timeout and gating don't branch on OS):
 #   * TTS family + available + in-process only. Subprocess engines keep their
 #     spawn-and-ping ``health_check`` (a real synth there is a sidecar
 #     cold-start — out of scope for a click-to-test affordance).
+#   * An engine with ``selftest_generate`` (OmniVoice GGUF, which drives a
+#     native CLI) runs that instead: one bounded per-request run that returns
+#     its own runtime log, so the response can name the Vulkan device used.
 #   * Bounded wall-clock timeout (``OMNIVOICE_SELFTEST_TIMEOUT_S``, default 90s):
 #     a runaway synth returns ``ok=False`` / ``timed_out=True`` instead of
-#     hanging the Settings panel. The orphaned worker is best-effort daemon.
+#     hanging the Settings panel. ``selftest_generate`` applies the same
+#     deadline to its whole run and kills its child; an in-process orphan is
+#     a best-effort daemon thread.
 #   * A process-wide lock serialises self-tests so a click-storm can't stack
-#     concurrent model loads.
+#     concurrent model loads. The worker owns the lock until it exits, so a
+#     timed-out test can never overlap the next one.
 #   * Only ever on user click (POST) — never on Settings load. Admin-gated.
 
 # Deliberately short + ASCII so the synth stays CPU-cheap and the phrase never
@@ -838,27 +846,111 @@ def _sample_count(audio) -> int:
 def _run_synth_bounded(backend, timeout_s: float) -> dict | None:
     """Run one tiny synthesis in a daemon thread, bounded by ``timeout_s``.
 
-    Returns ``{"audio": .., "duration_ms": ..}`` on success, ``{"error": exc}``
-    on a synth exception, or ``None`` when the timeout elapsed (worker left
-    running best-effort — Python threads can't be force-killed)."""
+    The caller must hold ``_SELFTEST_LOCK``; ownership passes to the worker,
+    which releases it when it exits, so a timed-out run still blocks the next
+    self-test until it has really stopped.
+
+    Returns ``{"audio": .., "duration_ms": ..}`` on success (plus
+    ``runtime_log`` from a ``selftest_generate`` engine), ``{"error": exc}``
+    on a synth exception, or ``None`` when the timeout elapsed."""
     box: dict = {}
 
     def _worker():
         t0 = perf_counter()
         try:
-            audio = backend.generate(_SELFTEST_PHRASE, language="en", num_step=8)
+            if callable(getattr(type(backend), "selftest_generate", None)):
+                audio, runtime_log = backend.selftest_generate(
+                    _SELFTEST_PHRASE, timeout_s=timeout_s, language="en",
+                )
+                box["runtime_log"] = runtime_log or ""
+            else:
+                audio = backend.generate(_SELFTEST_PHRASE, language="en", num_step=8)
             box["audio"] = audio
         except Exception as exc:  # noqa: BLE001 — surfaced to the caller as ok=False
             box["error"] = exc
         finally:
             box["duration_ms"] = (perf_counter() - t0) * 1000.0
+            _SELFTEST_LOCK.release()
 
     th = threading.Thread(target=_worker, name="engine-selftest", daemon=True)
-    th.start()
+    try:
+        th.start()
+    except BaseException:
+        _SELFTEST_LOCK.release()
+        raise
     th.join(timeout_s)
     if th.is_alive():
         return None
     return box
+
+
+# The directory part of an absolute path (POSIX, ``~``, drive letter or UNC),
+# up to its line's last separator so directories with spaces go too.
+_SELFTEST_DIR_RE = re.compile(r"(?:\b[A-Za-z]:|~|(?<![\w/\\]))[\\/][^\r\n'\"|<>]*[\\/]")
+
+
+# ``ggml_vulkan: 1 = AMD Radeon RX 5500M (AMD proprietary driver) | uma: 0 | ...``
+_VK_DEVICE_RE = re.compile(r"ggml_vulkan:\s*(\d+)\s*=\s*(.+)")
+
+
+def _logged_vulkan_device(lines: list[str]) -> str | None:
+    """The Vulkan device this run opened, named only from its own log.
+
+    The index is the one GGML was told to use (``GGML_BACKEND=Vulkan<N>``),
+    or GGML's automatic pick among the devices this run listed (first
+    discrete, else the first). ``None`` when the route is not Vulkan or the
+    log does not list that device, so a CPU run never borrows a GPU name.
+    """
+    devices: dict[int, tuple[str, bool]] = {}
+    for line in lines:
+        m = _VK_DEVICE_RE.search(line)
+        if not m:
+            continue
+        rest = m.group(2)
+        # Drop the " (driver)" and "| field" suffixes; keep "Radeon(TM)".
+        name = re.split(r"\s+\(|\s*\|", rest, maxsplit=1)[0].strip()
+        uma = re.search(r"\buma:\s*(\d)", rest)
+        if name:
+            devices.setdefault(int(m.group(1)), (name, bool(uma and uma.group(1) == "0")))
+    if not devices:
+        return None
+    try:
+        from engines.omnivoice_gguf.compute import apply_compute_env, selected_vulkan_adapter
+
+        if selected_vulkan_adapter() is None:  # CPU, CUDA or no verified Vulkan route
+            return None
+        ggml = apply_compute_env(os.environ.copy()).get("GGML_BACKEND", "").strip()
+    except Exception:  # noqa: BLE001 - diagnostic metadata is optional
+        return None
+    if ggml[6:].isdecimal():
+        index = int(ggml[6:])
+    else:
+        index = next((i for i in sorted(devices) if devices[i][1]), min(devices))
+    if index not in devices:
+        return None
+    return f"Vulkan {index}: {devices[index][0]}"
+
+
+def _selftest_runtime(raw_log: str) -> tuple[str | None, str | None]:
+    """``(runtime_device, runtime_log)`` from a GGUF run, scrubbed of paths.
+
+    Secrets and home paths go through ``scrub_text``; every remaining
+    absolute path is cut to its file name (``ggml-vulkan.dll`` stays useful;
+    the install and model directories are dropped).
+    """
+    from core.scrub import scrub_text
+
+    lines = [
+        line.strip()
+        for line in raw_log.splitlines()
+        if any(word in line.lower() for word in ("vulkan", "device", "backend"))
+    ]
+    # Device enumeration comes first; a resident log may grow after it.
+    text = scrub_text("\n".join(lines[:12]))
+    text = _SELFTEST_DIR_RE.sub("", text)
+    runtime_log = text[:2400] or None
+    device = _logged_vulkan_device(lines)
+    return (scrub_text(device) if device else None), runtime_log
 
 
 class SelfTestResponse(BaseModel):
@@ -870,6 +962,8 @@ class SelfTestResponse(BaseModel):
     num_samples: int | None = None
     audio_seconds: float | None = None
     timed_out: bool = False
+    runtime_device: str | None = None
+    runtime_log: str | None = None
 
 
 @router.post(
@@ -913,10 +1007,23 @@ def engine_selftest(engine_id: str):
         )
 
     timeout_s = _selftest_timeout_s()
-    # Serialise so a click-storm can't stack concurrent model loads.
-    with _SELFTEST_LOCK:
+    # One deadline covers the wait for a previous test and this run.
+    deadline = monotonic() + timeout_s
+    # Serialise so a click-storm can't stack concurrent model loads. The
+    # worker releases the lock, so a timed-out run keeps it until it stops.
+    if not _SELFTEST_LOCK.acquire(timeout=timeout_s):
+        return SelfTestResponse(
+            id=engine_id,
+            ok=False,
+            message="a previous self-test is still running; try again when it finishes",
+            duration_ms=0.0,
+        )
+    try:
         backend = _get_engine_instance(cls)
-        res = _run_synth_bounded(backend, timeout_s)
+    except BaseException:
+        _SELFTEST_LOCK.release()
+        raise
+    res = _run_synth_bounded(backend, max(0.001, deadline - monotonic()))
 
     if res is None:
         return SelfTestResponse(
@@ -928,10 +1035,12 @@ def engine_selftest(engine_id: str):
         )
     if "error" in res:
         exc = res["error"]
+        from core.scrub import scrub_text
+
         return SelfTestResponse(
             id=engine_id,
             ok=False,
-            message=tts_backend._mask_hf_tokens(f"{type(exc).__name__}: {exc}"),
+            message=scrub_text(tts_backend._mask_hf_tokens(f"{type(exc).__name__}: {exc}")),
             duration_ms=res.get("duration_ms", 0.0),
         )
 
@@ -941,6 +1050,9 @@ def engine_selftest(engine_id: str):
     except Exception:
         sr = None
     secs = round(n / sr, 3) if (sr and n) else None
+    runtime_device, runtime_log = (
+        _selftest_runtime(str(res["runtime_log"])) if "runtime_log" in res else (None, None)
+    )
     return SelfTestResponse(
         id=engine_id,
         ok=n > 0,
@@ -949,6 +1061,8 @@ def engine_selftest(engine_id: str):
         sample_rate=sr,
         num_samples=n or None,
         audio_seconds=secs,
+        runtime_device=runtime_device,
+        runtime_log=runtime_log,
     )
 
 
