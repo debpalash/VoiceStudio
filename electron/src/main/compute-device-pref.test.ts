@@ -25,6 +25,23 @@ describe('pinComputeDeviceToCpu', () => {
       expect(statSync(join(data, 'prefs.json')).mode & 0o777).toBe(0o600);
   });
 
+  it('drops a stored OMNIVOICE_DEVICE override that would beat the CPU choice', async () => {
+    const data = dir();
+    writeFileSync(
+      join(data, 'prefs.json'),
+      JSON.stringify({
+        compute_device: 'auto',
+        'env.OMNIVOICE_DEVICE': 'cuda',
+        'env.HF_ENDPOINT': 'https://hf-mirror.com',
+      }),
+    );
+    await pinComputeDeviceToCpu(data);
+    expect(read(data)).toEqual({
+      compute_device: 'cpu',
+      'env.HF_ENDPOINT': 'https://hf-mirror.com',
+    });
+  });
+
   it('creates the file and folder on a fresh data folder', async () => {
     const data = join(dir(), 'OmniVoice');
     await pinComputeDeviceToCpu(data);

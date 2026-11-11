@@ -13,6 +13,8 @@ from __future__ import annotations
 import types
 from unittest.mock import patch
 
+import pytest
+
 from core import device_caps
 
 
@@ -126,7 +128,8 @@ def test_unknown_values_normalize_to_auto(monkeypatch):
 def test_torch_unimportable_still_reports_the_request(monkeypatch):
     # Even a degraded CPU-only probe carries the requested family so the
     # Settings panel renders the user's pick instead of resetting to auto.
-    monkeypatch.setenv("OMNIVOICE_DEVICE", "cpu")
+    # (A CPU pick never imports torch at all: see the no-GPU-probe test below.)
+    monkeypatch.setenv("OMNIVOICE_DEVICE", "cuda")
     real_import = __import__
 
     def _no_torch(name, *a, **kw):
@@ -142,6 +145,78 @@ def test_torch_unimportable_still_reports_the_request(monkeypatch):
             with patch("builtins.__import__", side_effect=_no_torch):
                 caps = device_caps.refresh()
         assert caps.probe_ok is False
-        assert caps.requested_family == "cpu"
+        assert caps.requested_family == "cuda"
     finally:
         _cleanup()
+
+
+# Every GPU runtime call a probe made. Probes swallow exceptions, so raising
+# alone would not prove anything: the calls are recorded and must stay empty.
+_GPU_CALLS: list[str] = []
+
+
+def _exploding_torch():
+    """A torch whose every accelerator probe is recorded and fails."""
+
+    def boom(*_a, **_kw):
+        _GPU_CALLS.append("torch")
+        raise AssertionError("a GPU runtime was probed on a host pinned to CPU")
+
+    accel = types.SimpleNamespace(
+        is_available=boom, device_count=boom, get_device_name=boom,
+        mem_get_info=boom, get_device_capability=boom, get_device_properties=boom,
+    )
+    return types.SimpleNamespace(
+        cuda=accel, xpu=accel, npu=accel, version=types.SimpleNamespace(cuda="12.8"),
+        backends=types.SimpleNamespace(mps=types.SimpleNamespace(is_available=boom)),
+    )
+
+
+def _exploding_directml():
+    def boom(*_a, **_kw):
+        _GPU_CALLS.append("directml")
+        raise AssertionError("DirectML was opened on a host pinned to CPU")
+
+    return types.SimpleNamespace(device_count=boom, device=boom)
+
+
+@pytest.mark.parametrize("pin_by", ["prefs", "env"])
+def test_cpu_choice_never_probes_a_gpu_runtime(monkeypatch, pin_by):
+    """Restart on CPU after a graphics driver crash (#4002): no startup path may
+    initialise CUDA, MPS, XPU or DirectML, or it could hit the same driver."""
+    import importlib
+
+    # Imported with the real torch: only the probes below see the exploding one.
+    import main
+    from api.routers import system
+    from services import model_manager
+
+    if pin_by == "env":
+        monkeypatch.setenv("OMNIVOICE_DEVICE", "cpu")
+    else:
+        monkeypatch.delenv("OMNIVOICE_DEVICE", raising=False)
+        monkeypatch.setattr(
+            "core.prefs.resolve",
+            lambda key, **kw: "cpu" if key == "compute_device" else kw.get("default"),
+        )
+    live_caps = importlib.import_module("core.device_caps")
+    _GPU_CALLS.clear()
+    torch = _exploding_torch()
+    modules = {"torch": torch, "torch_directml": _exploding_directml()}
+    try:
+        with patch.dict("sys.modules", modules):
+            caps = live_caps.refresh()
+            assert caps.family == "cpu"
+            assert caps.requested_family == "cpu"
+            assert caps.available_families == ("cpu",)
+            assert any("pinned" in n for n in caps.notes)
+
+            monkeypatch.setattr(model_manager, "_lazy_torch", lambda: torch)
+            assert model_manager.get_best_device() == "cpu"
+
+            assert system._probe_accelerators(torch, True) == (False, False, False, False)
+            assert main._torch_device_label() == "cpu"
+        assert _GPU_CALLS == []
+    finally:
+        _cleanup()
+        live_caps.detect_host_caps.cache_clear()

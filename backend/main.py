@@ -2085,7 +2085,12 @@ _HEALTH_DEVICE_TTL_S = 60.0
 
 def _torch_device_label() -> str:
     """This process's PyTorch device. ROCm presents through ``torch.cuda``, so
-    ``torch.version.hip`` tells it apart from CUDA."""
+    ``torch.version.hip`` tells it apart from CUDA. A host pinned to CPU is
+    reported without touching a GPU runtime (#4002)."""
+    from core.device_caps import detect_host_caps
+
+    if detect_host_caps().requested_family == "cpu":
+        return "cpu"
     import torch
 
     if torch.cuda.is_available():

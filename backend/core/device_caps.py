@@ -746,9 +746,29 @@ def requested_device_override() -> str:
     return val if val in DEVICE_OVERRIDE_CHOICES else "auto"
 
 
+#: Note on a host pinned to CPU, where no accelerator is probed.
+CPU_PINNED_NOTE = (
+    "compute device pinned to 'cpu' by user override; GPUs were not probed "
+    "(choose Auto in Settings → Performance & Device to detect them again)"
+)
+
+
 def _probe() -> HostCaps:
     """Run the probe once. Enumerates every failure branch from the spec's
     degradation contract; never raises."""
+    # An explicit CPU choice is honoured before anything touches a GPU: it is
+    # the recovery after a graphics driver crash (#4002, Restart on CPU), and
+    # initialising CUDA or opening DirectML here could hit that driver again.
+    # It also stops every caller of the cached caps (routing, /health, the
+    # loader) from probing an accelerator afterwards.
+    if requested_device_override() == "cpu":
+        return HostCaps(
+            family="cpu",
+            available_families=("cpu",),
+            notes=(CPU_PINNED_NOTE,),
+            probe_ok=True,
+            requested_family="cpu",
+        )
     try:
         import torch
     except Exception:
