@@ -2,7 +2,13 @@ import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { startHealthBackend } from './fake-health-backend.mjs';
 import { routesForShard } from './crawler-shards.mjs';
-import { createTraffic, tracksRequest, waitForQuietRequests } from './crawler-settle.mjs';
+import {
+  createTraffic,
+  stalledClick,
+  stalledRoute,
+  tracksRequest,
+  waitForQuietRequests,
+} from './crawler-settle.mjs';
 
 /**
  * Clicks every enabled button on every static route, once per backend fault mode, and fails on
@@ -52,9 +58,9 @@ const verbose = process.env.VOICESTUDIO_CRAWL_VERBOSE === '1';
 const REQUEST_BUDGET_MS = 8_000;
 /**
  * A request in flight this long means the backend or dev server stopped answering, not a slow
- * click. Above the 3 x REQUEST_BUDGET_MS a request can spend in the two arm() waits plus the
- * click's own wait, so any request this old has already failed a click as `unsettled`: stopping
- * the mode then changes only how long the failure takes, never the verdict.
+ * click. Judged when a click's own wait ends unsettled (already a failure) and after each route
+ * (a request no click judged, still open). The waits before a click are never judged: a request
+ * that settles during a later click still passes.
  */
 const STALLED_MS = 30_000;
 /** Grace after the traffic settles for React to drop its loading state. */
@@ -179,23 +185,21 @@ async function openSession(browser, mode) {
   page.on('dialog', (dialog) => dialog.accept().catch(() => {}));
   context.on('page', (popup) => popup !== page && popup.close().catch(() => {}));
 
-  const settle = async (grace = SETTLE_MS, snapshot) => {
-    const observation = await waitForQuietRequests(traffic, {
-      wait: (duration) => page.waitForTimeout(duration),
-      graceMs: grace,
-      budgetMs: REQUEST_BUDGET_MS,
-      snapshot,
-    });
-    const stalled = !observation.settled && traffic.stalled(STALLED_MS);
-    if (stalled) {
-      const { request, ageMs, cause } = stalled;
-      throw new CrawlStalled(
-        `${request.method()} ${new URL(request.url()).pathname} has been pending for ` +
-          `${Math.round(ageMs / 1000)}s, since ${cause || 'the screen opened'} ` +
-          `(${traffic.inflight.size} request(s) pending; ${await backendHealth()})`,
-      );
-    }
-    return observation;
+  const settle = (grace = SETTLE_MS, snapshot) => waitForQuietRequests(traffic, {
+    wait: (duration) => page.waitForTimeout(duration),
+    graceMs: grace,
+    budgetMs: REQUEST_BUDGET_MS,
+    snapshot,
+  });
+  /** Stop the mode on a stalled request, naming it, what started it and the backend's health. */
+  const failStalled = async (stalled) => {
+    if (!stalled) return;
+    const { request, ageMs, cause } = stalled;
+    throw new CrawlStalled(
+      `${request.method()} ${new URL(request.url()).pathname} has been pending for ` +
+        `${Math.round(ageMs / 1000)}s, since ${cause || 'the screen opened'} ` +
+        `(${traffic.inflight.size} request(s) pending; ${await backendHealth()})`,
+    );
   };
   const navigate = (to) =>
     page.evaluate(async (target) => {
@@ -248,6 +252,7 @@ async function openSession(browser, mode) {
     } finally {
       state.faulting = false;
     }
+    await failStalled(stalledClick(observation, traffic, STALLED_MS));
     const problems = [];
     const failedWrite = Boolean(state.failedWrites) && mode !== 'fixture' && observation.settled;
     // One read gathers the evidence and proves the renderer still answers.
@@ -299,7 +304,7 @@ async function openSession(browser, mode) {
   await page.goto(`${BASE}/#/settings/usage`);
   await page.locator('main').first().waitFor();
   await settle();
-  return { context, page, traffic, navigate, buttons, arm, clickAndCheck };
+  return { context, page, traffic, failStalled, navigate, buttons, arm, clickAndCheck };
 }
 
 const label = (locator) =>
@@ -465,7 +470,7 @@ async function fillForm(page) {
 
 async function crawlMode(browser, mode, routes) {
   const session = await openSession(browser, mode);
-  const { context, navigate, buttons, arm, clickAndCheck, page, traffic } = session;
+  const { context, navigate, buttons, arm, clickAndCheck, page, traffic, failStalled } = session;
   /** A click or upload that reloads the whole page (e.g. "Reload app") is legitimate. */
   const RELOAD_ERROR = /Execution context was destroyed|navigat|Target .*closed|detached/i;
   const reloaded = (error) => !(error instanceof CrawlStalled) && RELOAD_ERROR.test(error.message);
@@ -539,7 +544,11 @@ async function crawlMode(browser, mode, routes) {
 
   const seconds = {};
   try {
-    for (const route of routes) await crawlRoute(route);
+    for (const route of routes) {
+      await crawlRoute(route);
+      // No click judged it (every click missed, or the screen has none) and it is still open.
+      await failStalled(stalledRoute(traffic, STALLED_MS));
+    }
   } catch (error) {
     if (!(error instanceof CrawlStalled)) throw error;
     findings.push({ key: `${mode} stalled`, detail: error.message });
@@ -568,12 +577,14 @@ async function crawlMode(browser, mode, routes) {
     for (const opener of openers) {
       await reset(route);
       const openerName = await label(buttons().nth(opener)).catch(() => '?');
+      traffic.cause = `the click on ${route} ${openerName}`;
       await buttons()
         .nth(opener)
         .click({ timeout: 2_000 })
         .catch(() => {});
       for (let index = 0, total = await dialogButtons().count(); index < total; index += 1)
         await visit(route, `${openerName} > `, async () => {
+          traffic.cause = `the click on ${route} ${openerName}`;
           const button = buttons().nth(opener);
           await button.click({ timeout: 2_000 }).catch(() => {});
           await dialogs()

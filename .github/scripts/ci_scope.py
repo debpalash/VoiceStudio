@@ -20,6 +20,19 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from cla_check import BOT_IDS, MAINTAINER_IDS, OVERRIDE_LABEL, SIGNATURE_BRANCH, SIGNATURE_PATH, SIGNED_LABEL
 
 
+# The UI crawler CI job's own harness: the script, everything it imports, and the dev server it
+# crawls. Editing them changes what that job checks, so the job must run on them; other test
+# files are still checked locally. tests/test_ci_runtime_scope.py follows the crawler's
+# imports, so a new helper module fails it until it is listed here.
+CI_HARNESS = frozenset({
+    "electron/tests/ui-crawler.mjs",
+    "electron/tests/crawler-settle.mjs",
+    "electron/tests/crawler-shards.mjs",
+    "electron/tests/fake-health-backend.mjs",
+    "electron/tests/renderer-smoke.vite.config.mjs",
+})
+
+
 def non_runtime(path: str) -> bool:
     if not isinstance(path, str) or not path or PurePosixPath(path).is_absolute():
         return False
@@ -27,7 +40,7 @@ def non_runtime(path: str) -> bool:
     if not parts or any(part in {".", ".."} for part in parts):
         return False
     # These documentation-tree assets are inputs to the installed phone apps.
-    if path in {"docs/logo.svg", "docs/logo.png"}:
+    if path in {"docs/logo.svg", "docs/logo.png"} or path in CI_HARNESS:
         return False
     if PurePosixPath(path).suffix.lower() in {".md", ".mdx", ".rst", ".adoc"}:
         return True
