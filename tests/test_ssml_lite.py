@@ -249,3 +249,28 @@ def test_redos_safe_on_adversarial_input():
     # All 5000 opens unclosed -> the single 'x' run is slow.
     assert segs[-1]["text"] == "x"
     assert segs[-1]["speed"] == SLOW_SPEED
+
+
+def test_spell_out_long_zwj_emoji_run_is_linear_time():
+    # A long ZWJ emoji sequence stays one unit and O(n): copying the unit on
+    # every ZWJ cost ~64x for an 8x longer input; the 24x limit leaves margin.
+    import time
+
+    def best(n):
+        payload = "\U0001f469" + "‍\U0001f4bb" * n
+        runs = []
+        for _ in range(5):
+            t0 = time.perf_counter()
+            out = spell_out(payload)
+            runs.append(time.perf_counter() - t0)
+        assert out == payload  # a single grapheme unit, nothing spaced out
+        return min(runs)
+
+    small, large = best(5_000), best(40_000)
+    assert large < max(small, 0.005) * 24, (small, large)
+
+
+def test_zwj_joins_only_after_a_pictograph_base():
+    assert spell_out("\U0001f469\U0001f3fd‍\U0001f4bb") == "\U0001f469\U0001f3fd‍\U0001f4bb"
+    assert spell_out("\U0001f3f3️‍\U0001f308") == "\U0001f3f3️‍\U0001f308"
+    assert spell_out("a‍\U0001f4bb") == "a‍ \U0001f4bb"

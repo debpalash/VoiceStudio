@@ -242,7 +242,19 @@ def _extends_unit(unit: list[str], ch: str) -> bool:
     if ch == _ZWJ or _is_emoji_tag(ch):
         return True
     if unit[-1] == _ZWJ:
-        return _is_pictographic(ch) and any(_is_pictographic(c) for c in unit[:-1])
+        # UAX #29 GB11: a pictograph joins only when the code point before the
+        # ZWJ (skipping combining marks, skin tones and tags) is a pictograph.
+        # Looking back from the ZWJ keeps long ZWJ runs linear (no list copies).
+        if not _is_pictographic(ch):
+            return False
+        i = len(unit) - 2
+        while i >= 0 and (
+            unicodedata.category(unit[i]) in ("Mn", "Mc", "Me")
+            or "\U0001f3fb" <= unit[i] <= "\U0001f3ff"
+            or _is_emoji_tag(unit[i])
+        ):
+            i -= 1
+        return i >= 0 and _is_pictographic(unit[i])
     if "\U0001f3fb" <= ch <= "\U0001f3ff":  # emoji skin-tone modifiers
         return True
     return (
