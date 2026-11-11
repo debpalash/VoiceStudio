@@ -193,7 +193,8 @@ well ahead of CPU-only.
 
 ## Intel Mac Radeon experiments
 
-The packaged Intel Mac runtime remains a CPU build. For the discrete-Metal
+Intel Mac installers use a remote backend and include no GGUF runtime. The
+local Intel source-build recipe remains CPU-only. For the discrete-Metal
 failures reproduced in a native source build, the experimental workaround,
 and the remaining application integration work, see
 [Intel Mac Radeon findings](intel-mac-radeon.md). This does not enable Metal
