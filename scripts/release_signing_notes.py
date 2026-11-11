@@ -42,6 +42,10 @@ def render(reports_dir: Path, rehearsal: bool = False) -> str:
         reports[(report["platform"], report["arch"])] = report["status"]
     rows = [(label, reports[(platform, arch)]) for platform, arch, label in PLATFORMS if (platform, arch) in reports]
     unknown = set(reports) - {(platform, arch) for platform, arch, _ in PLATFORMS}
+    if rehearsal and not reports:
+        # Every package leg failed or was skipped; the rehearsal lists them as
+        # missing at its end, so the notes must not stop it first.
+        return "\n### Installer signing\n\nNo package leg reported its signing.\n"
     if unknown or not rows:
         raise ValueError(f"Unexpected signing reports: {sorted(unknown) or 'none'}")
     lines = ["", "### Installer signing", "", "| Platform | Signing |", "|---|---|"]

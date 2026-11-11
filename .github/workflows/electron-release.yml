@@ -524,10 +524,19 @@ jobs:
           pattern: electron-release-*
           merge-multiple: true
           path: release-assets
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      # One download per phone app, each into its own folder: a pattern that
+      # matches a single artifact extracts it without the artifact-name folder,
+      # which would lose the surviving app when the other phone leg fails.
+      - name: Download the Android build
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: VoiceStudio-*
-          path: phone-assets
+          pattern: VoiceStudio-android-release
+          path: phone-assets/VoiceStudio-android-release
+      - name: Download the iPhone build
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: VoiceStudio-ios-unsigned
+          path: phone-assets/VoiceStudio-ios-unsigned
       - name: Collect phone binaries
         run: |
           VERSION="${TAG#v}"
@@ -616,8 +625,10 @@ jobs:
           path: |
             release-assets/RELEASE_NOTES.md
             release-assets/SHA256SUMS.txt
+      # Runs even when an earlier rehearsal step failed, so the missing legs
+      # are always listed.
       - name: Rehearsal - fail when a build leg produced nothing
-        if: inputs.rehearsal == true
+        if: ${{ !cancelled() && inputs.rehearsal == true }}
         run: |
           cat "$RUNNER_TEMP"/rehearsal-missing-*.txt 2>/dev/null > "$RUNNER_TEMP/rehearsal-missing.txt" || true
           if [ -s "$RUNNER_TEMP/rehearsal-missing.txt" ]; then

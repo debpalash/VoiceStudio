@@ -293,7 +293,8 @@ def test_a_rehearsal_with_failed_legs_still_verifies_the_rest_and_then_fails():
     for name in ("Validate all platforms before creating a release", "Preserve the final Tauri updater feeds"):
         assert '--rehearsal --missing-report "$RUNNER_TEMP/rehearsal-missing-desktop.txt"' in step("release", name)["run"]
     fail = step("release", "Rehearsal - fail when a build leg produced nothing")
-    assert fail["if"] == "inputs.rehearsal == true" and "exit 1" in fail["run"]
+    # Runs after any earlier failure too, so the missing legs are always listed (#4011 review).
+    assert fail["if"] == "${{ !cancelled() && inputs.rehearsal == true }}" and "exit 1" in fail["run"]
     names = [s.get("name") for s in steps("release")]
     assert names.index("Rehearsal - save the release notes and checksums") < names.index(fail["name"]) < names.index("Create or update draft")
 
@@ -311,6 +312,48 @@ def test_missing_phone_binaries_are_listed_only_in_a_rehearsal(tmp_path, rehears
     assert (tmp_path / "release-assets/VoiceStudio-1.2.3-android.apk").is_file()
     if ok:
         assert (tmp_path / "rehearsal-missing-phone.txt").read_text() == "phone binary VoiceStudio-1.2.3-ios-unsigned.ipa\n"
+
+
+PHONE_ARTIFACTS = {"VoiceStudio-android-release": ("VoiceStudio.apk", "VoiceStudio.aab"),
+                   "VoiceStudio-ios-unsigned": ("VoiceStudio-unsigned.ipa",)}
+
+
+def _download(step_with: dict, available: dict, workspace: Path) -> None:
+    """actions/download-artifact at the pinned v8.0.2 commit: a pattern download
+    writes into `path` itself when exactly one artifact matches (or with
+    merge-multiple), and into `path/<artifact name>` when several do."""
+    from fnmatch import fnmatchcase
+    matched = [name for name in available if fnmatchcase(name, step_with["pattern"])]
+    for name in matched:
+        flat = len(matched) == 1 or step_with.get("merge-multiple") in (True, "true")
+        target = workspace / step_with["path"] / ("" if flat else name)
+        target.mkdir(parents=True, exist_ok=True)
+        for file in available[name]:
+            (target / file).write_bytes(b"x")
+
+
+@pytest.mark.parametrize("built", [
+    ("VoiceStudio-android-release", "VoiceStudio-ios-unsigned"),
+    ("VoiceStudio-android-release",),
+    ("VoiceStudio-ios-unsigned",),
+])
+def test_a_surviving_phone_app_keeps_its_layout(tmp_path, built):
+    """One phone leg failing must not move the other app out of its folder (#4011 review)."""
+    available = {name: PHONE_ARTIFACTS[name] for name in built}
+    downloads = [s for s in steps("release") if s.get("uses", "").startswith("actions/download-artifact@")
+                 and s["with"].get("path", "").startswith("phone-assets")]
+    assert {s["with"]["pattern"] for s in downloads} == set(PHONE_ARTIFACTS)
+    for s in downloads:
+        _download(s["with"], available, tmp_path)
+    env = dict(os.environ, TAG="v1.2.3", REHEARSAL="true", RUNNER_TEMP=str(tmp_path))
+    subprocess.run(["bash", "-e", "-c", step("release", "Collect phone binaries")["run"]],
+                   cwd=tmp_path, env=env, check=True, capture_output=True, text=True)
+    collected = {p.name for p in (tmp_path / "release-assets").iterdir()}
+    expected = {"VoiceStudio-android-release": {"VoiceStudio-1.2.3-android.apk", "VoiceStudio-1.2.3-android.aab"},
+                "VoiceStudio-ios-unsigned": {"VoiceStudio-1.2.3-ios-unsigned.ipa"}}
+    assert collected == set().union(*(expected[name] for name in built))
+    missing = tmp_path / "rehearsal-missing-phone.txt"
+    assert missing.is_file() is (len(built) == 1)
 
 
 def test_prepare_lists_failed_legs_only_when_asked(release_module, monkeypatch, tmp_path):
@@ -361,6 +404,16 @@ def test_test_signed_windows_installers_are_described_only_in_a_rehearsal(tmp_pa
     with pytest.raises(ValueError, match="Unknown signing status"):
         notes.render(tmp_path)
     assert "test certificate" in notes.render(tmp_path, rehearsal=True)
+
+
+def test_signing_notes_without_any_report_stop_only_a_release(tmp_path):
+    """omnivoice-tts failing skips every package leg: a rehearsal still reaches its missing-leg list."""
+    spec = importlib.util.spec_from_file_location("release_signing_notes_empty", ROOT / "scripts/release_signing_notes.py")
+    notes = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(notes)
+    with pytest.raises(ValueError, match="Unexpected signing reports: none"):
+        notes.render(tmp_path / "release-signing")
+    assert "No package leg reported its signing" in notes.render(tmp_path / "release-signing", rehearsal=True)
 
 
 def test_releasing_docs_explain_the_rehearsal():
