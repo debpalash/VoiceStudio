@@ -47,6 +47,11 @@ def test_release_smoke_uses_the_release_runners_and_targets():
     assert JOB["timeout-minutes"] <= 20
 
 
+def _mentions_secrets(value) -> bool:
+    """Whether a workflow fragment reads the `secrets` context in any form."""
+    return re.search(r"\bsecrets\b", yaml.safe_dump(value), re.IGNORECASE) is not None
+
+
 def test_release_smoke_signs_ad_hoc_and_never_sees_a_certificate():
     # electron-builder skips signing on pull requests unless told otherwise; the
     # macOS bundle then keeps Electron's stale signature and fails `codesign --verify`.
@@ -59,7 +64,7 @@ def test_release_smoke_signs_ad_hoc_and_never_sees_a_certificate():
     inherited = CI.get("env") or {}
     for scope, value in (("job", JOB), ("workflow env", inherited)):
         text = yaml.safe_dump(value)
-        assert not re.search(r"\bsecrets\b", text, re.IGNORECASE), scope
+        assert not _mentions_secrets(value), scope
         for name in ("CSC_LINK", "CSC_KEY_PASSWORD", "CSC_NAME", "WIN_CSC_LINK", "APPLE_"):
             assert name not in text, (scope, name)
     assert set(inherited) == {"FORCE_JAVASCRIPT_ACTIONS_TO_NODE24"}
@@ -68,7 +73,8 @@ def test_release_smoke_signs_ad_hoc_and_never_sees_a_certificate():
 def test_the_secret_scan_catches_every_reference_form():
     for expression in ("${{ secrets.CSC_LINK }}", "${{ secrets['CSC_LINK'] }}", '${{secrets [ "X" ]}}',
                        "${{ toJSON(secrets) }}", "${{ toJson( secrets ) }}", "${{ SECRETS.X }}"):
-        assert re.search(r"\bsecrets\b", yaml.safe_dump({"env": {"X": expression}}), re.IGNORECASE), expression
+        assert _mentions_secrets({"env": {"X": expression}}), expression
+    assert not _mentions_secrets({"env": {"X": "${{ github.sha }}"}})
 
 
 def test_release_smoke_is_gated_like_the_other_electron_jobs():
