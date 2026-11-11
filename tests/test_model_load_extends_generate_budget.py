@@ -60,6 +60,39 @@ async def _run(mm, pool, fn, timeout):
     )
 
 
+async def _assert_silent_job_times_out(mm, pool, caplog):
+    """A silent job must be abandoned at its soft budget, while still running.
+
+    Deterministic, no wall-clock bound: the job signals it entered the callable
+    and then blocks on an Event released only afterwards. The guard logs
+    "extending while heartbeats continue" the moment it grants any extension
+    past the soft budget, so asserting that line is absent proves the timeout
+    fired at the soft budget rather than at the hard cap (which would also
+    raise GpuJobTimeoutError, just later). The 30 s outer deadline only turns
+    a hang into a failure.
+    """
+    entered, release = threading.Event(), threading.Event()
+
+    def job():
+        entered.set()
+        release.wait(60)
+
+    caplog.clear()
+    try:
+        with caplog.at_level("INFO", logger=mm.logger.name):
+            with pytest.raises(mm.GpuJobTimeoutError):
+                await asyncio.wait_for(_run(mm, pool, job, timeout=0.4), 30.0)
+        assert not release.is_set()
+        assert await asyncio.to_thread(entered.wait, 10.0), "job never ran"
+        assert "extending while heartbeats continue" not in caplog.text
+    finally:
+        release.set()
+        # Join the released worker: the pool has one thread, so a no-op runs only
+        # after the abandoned job returns, and it cannot leak into later tests.
+        drained = pool.submit(lambda: None)
+        await asyncio.to_thread(drained.result, 10.0)
+
+
 # ── the fix ───────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
@@ -97,17 +130,10 @@ async def test_the_extension_is_logged_once(mm, pool, caplog):
 # ── the guard is untouched ────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_a_silent_job_still_times_out_at_the_original_deadline(mm, pool):
+async def test_a_silent_job_still_times_out_at_the_original_deadline(mm, pool, caplog):
     """The non-regression that matters most: no heartbeats, no extension. A
     wedged job dies at ~timeout, not at the hard cap."""
-    t0 = time.monotonic()
-    with pytest.raises(mm.GpuJobTimeoutError):
-        await _run(mm, pool, lambda: time.sleep(10), timeout=0.4)
-    elapsed = time.monotonic() - t0
-    assert elapsed < 1.5, (
-        f"a silent job survived {elapsed:.1f}s on a 0.4s budget — the wedge "
-        f"guard has been weakened"
-    )
+    await _assert_silent_job_times_out(mm, pool, caplog)
 
 
 @pytest.mark.asyncio
@@ -160,7 +186,7 @@ async def test_a_fast_job_is_unaffected(mm, pool):
 
 
 @pytest.mark.asyncio
-async def test_heartbeats_do_not_leak_between_jobs(mm, pool):
+async def test_heartbeats_do_not_leak_between_jobs(mm, pool, caplog):
     """Thread idents are reused. Job A's heartbeats must not vouch for job B
     running later on the same pool thread — the entry is cleared when the job
     ends."""
@@ -170,14 +196,11 @@ async def test_heartbeats_do_not_leak_between_jobs(mm, pool):
         "thread would inherit unearned extension credit"
     )
     # ...and the silent-job guard still holds on that same thread.
-    t0 = time.monotonic()
-    with pytest.raises(mm.GpuJobTimeoutError):
-        await _run(mm, pool, lambda: time.sleep(10), timeout=0.4)
-    assert time.monotonic() - t0 < 1.5
+    await _assert_silent_job_times_out(mm, pool, caplog)
 
 
 @pytest.mark.asyncio
-async def test_another_threads_heartbeat_does_not_extend_this_job(mm, pool):
+async def test_another_threads_heartbeat_does_not_extend_this_job(mm, pool, caplog):
     """The heartbeat is per worker thread, so activity elsewhere in the
     process is not this job's alibi."""
     stop = threading.Event()
@@ -189,10 +212,7 @@ async def test_another_threads_heartbeat_does_not_extend_this_job(mm, pool):
     t = threading.Thread(target=other_thread, daemon=True)
     t.start()
     try:
-        t0 = time.monotonic()
-        with pytest.raises(mm.GpuJobTimeoutError):
-            await _run(mm, pool, lambda: time.sleep(10), timeout=0.4)
-        assert time.monotonic() - t0 < 1.5
+        await _assert_silent_job_times_out(mm, pool, caplog)
     finally:
         stop.set()
         mm._MODEL_LOAD_ACTIVITY.pop(999999999, None)
