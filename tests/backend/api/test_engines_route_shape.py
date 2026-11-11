@@ -1222,6 +1222,10 @@ def test_timed_out_selftest_keeps_the_lock_until_its_worker_stops(fresh_app, mon
         assert third["ok"] is True
     finally:
         gate.set()
+        # Every worker releases the lock as it exits, including one whose
+        # entry was delayed past an assertion: owning it means none is left.
+        assert engines_router._SELFTEST_LOCK.acquire(timeout=10.0)
+        engines_router._SELFTEST_LOCK.release()
         for worker in workers:
             worker.join(10.0)
         restore()
