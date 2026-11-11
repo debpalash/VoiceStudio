@@ -1322,9 +1322,14 @@ def _make_backend_class():
                 if diagnostic:
                     held = self._hold_resident_for_selftest(deadline)
                     if held is not None and held.alive():
-                        wav, runtime_log = self._resident_selftest(
-                            held, text, kw, base=base, tokenizer=tokenizer, deadline=deadline,
-                        )
+                        try:
+                            wav, runtime_log = self._resident_selftest(
+                                held, text, kw, base=base, tokenizer=tokenizer, deadline=deadline,
+                            )
+                        finally:
+                            # Used like any request: the idle sweep must not
+                            # unload the model the test just exercised.
+                            self._resident_used = time.monotonic()
                 else:
                     try:
                         wav = self._resident_wav(

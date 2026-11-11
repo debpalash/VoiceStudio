@@ -610,3 +610,20 @@ def test_selftest_reports_a_resident_server_holding_another_quant(rig, monkeypat
         rig.instance.selftest_generate("hello", timeout_s=30)
     assert rig.server.process is proc and proc.poll() is None
     assert rig.cli_argvs == [] and len(rig.events("start")) == 1
+
+
+def test_selftest_on_the_resident_server_counts_as_use(rig, monkeypatch):
+    """The idle sweep sees a resident self-test as use, even a failed one."""
+    rig.instance.generate("hello")
+    proc = rig.server.process
+    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", _diagnostic_paths(rig))
+
+    rig.instance._resident_used -= 7200
+    rig.instance.selftest_generate("hello", timeout_s=30)
+    assert rig.instance.release_if_idle(3600) is False and proc.poll() is None
+
+    rig.instance._resident_used -= 7200
+    rig.flag("reject_speech")
+    with pytest.raises(RuntimeError, match="refused the self-test"):
+        rig.instance.selftest_generate("hello", timeout_s=30)
+    assert rig.instance.release_if_idle(3600) is False and proc.poll() is None
