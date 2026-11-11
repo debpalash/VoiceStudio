@@ -503,7 +503,7 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 | Modeller ve kalite | [Motor kılavuzları](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [Karşılaştırmalar](../../docs/benchmarks.md) |
 | Entegrasyonlar | [CLI](../../docs/install/script.md#terminal-command) · [Yerel API](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [Örnekler](../../examples/README.md) |
 | Telefon uygulamaları | [iOS ve Android](../../docs/mobile.md) |
-| Geliştirme | [Katkıda bulunuyor](../../.github/CONTRIBUTING.md) ([CLA'yı imzalayın](../../.github/CONTRIBUTING.md#contribution-licensing) ilk PR'ınızdan önce) · [Değişiklik günlüğü](../../CHANGELOG.md) |
+| Geliştirme | [Katkıda bulunuyor](../../.github/CONTRIBUTING.md) ([CLA'yı imzalayın](../../.github/CONTRIBUTING.md#contribution-licensing) ilk PR'ınızdan önce) · [Değişiklik günlüğü](../../CHANGELOG.md) · [Kod imzalama politikası](../code-signing-policy.md) |
 
 Ajan becerileri: `npx skills add debpalash/VoiceStudio` (ses çalışmaları için **voicestudio**, depo bakımı için **voicestudio-maintainer**).
 

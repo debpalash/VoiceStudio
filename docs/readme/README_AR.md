@@ -503,7 +503,7 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 | النماذج والجودة | [أدلة المحرك](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [المعايير](../../docs/benchmarks.md) |
 | التكامل | [CLI](../../docs/install/script.md#terminal-command) · [واجهة API المحلية](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [أمثلة](../../examples/README.md) |
 | تطبيقات الهاتف | [iOS وAndroid](../../docs/mobile.md) |
-| تطوير | [المساهمة](../../.github/CONTRIBUTING.md) ([قم بالتوقيع على CLA](../../.github/CONTRIBUTING.md#contribution-licensing) قبل العلاقات العامة الأولى) · [سجل التغيير](../../CHANGELOG.md) |
+| تطوير | [المساهمة](../../.github/CONTRIBUTING.md) ([قم بالتوقيع على CLA](../../.github/CONTRIBUTING.md#contribution-licensing) قبل العلاقات العامة الأولى) · [سجل التغيير](../../CHANGELOG.md) · [سياسة توقيع الشيفرة](../code-signing-policy.md) |
 
 مهارات الوكيل: `npx skills add debpalash/VoiceStudio` (**voicestudio** لأعمال الصوت، و**voicestudio-maintainer** للمستودع).
 

@@ -14,6 +14,12 @@ app (MSI installers) is no longer maintained; if you still run it, follow the
 Python, FFmpeg, and model weights are bootstrapped by the app itself on first
 launch; no toolchain is needed for the installer.
 
+Windows installers are being moved to free SignPath Foundation code signing; the
+release notes' **Installer signing** table says whether your download is signed.
+See the [code signing policy](../code-signing-policy.md). It signs the installer,
+not the third-party Python files setup downloads, so Smart App Control can still
+block those (see [troubleshooting](troubleshooting.md)).
+
 ## Keep engine environments off `C:`
 
 Engine environments (IndexTTS, CosyVoice, MOSS-TTS and other sidecars, plus the

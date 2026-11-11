@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { ROUTE_WEIGHTS, routesForShard } from './crawler-shards.mjs';
-import { tracksRequest, waitForQuietRequests } from './crawler-settle.mjs';
+import { createTraffic, tracksRequest, waitForQuietRequests } from './crawler-settle.mjs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -133,6 +133,70 @@ test('a snapshot completed after the deadline is still unresponsive', async () =
     snapshot: async () => { time = 1001; return 0; },
   });
   assert.deepEqual(result, { settled: false, pending: 0, unresponsive: true });
+});
+
+test('a reload ends the old document\'s requests, which Playwright never reports', async () => {
+  // "Reset and reload" on /settings/storage reloaded the page while two polls were in flight;
+  // they stayed pending forever and every later click in the shard waited out its budget.
+  const traffic = createTraffic();
+  traffic.start('GET /api/model/status');
+  traffic.start('GET /api/batch/jobs');
+  traffic.start('document', { navigation: true });
+  const before = traffic.activity;
+  traffic.committed();
+  assert.equal(traffic.inflight.size, 0);
+  assert.ok(traffic.activity > before, 'dropping requests restarts the quiet window');
+  traffic.start('GET /api/engines');
+  traffic.finish('GET /api/model/status'); // a late event for a dropped request is harmless
+  assert.deepEqual([...traffic.inflight], ['GET /api/engines'], 'the new document is still tracked');
+  let time = 0;
+  const result = await waitForQuietRequests(
+    (traffic.finish('GET /api/engines'), traffic),
+    { graceMs: 400, budgetMs: 1000, now: () => time, wait: async (ms) => { time += ms; } },
+  );
+  assert.equal(result.settled, true);
+});
+
+test('route changes inside the app keep their requests in flight', () => {
+  const traffic = createTraffic();
+  traffic.start('GET /api/engines');
+  traffic.committed(); // hash navigation: no navigation request came first
+  assert.equal(traffic.inflight.size, 1);
+  traffic.start('document', { navigation: true });
+  traffic.navigationFailed(); // e.g. a download: the document stays
+  traffic.finish('document');
+  traffic.committed();
+  assert.equal(traffic.inflight.size, 1);
+});
+
+test('a request pending past the stall limit names what started it', () => {
+  let time = 0;
+  const traffic = createTraffic({ now: () => time });
+  traffic.cause = 'the click on /settings/storage Reset and reload';
+  traffic.start('GET /api/model/status');
+  time = 5_000;
+  traffic.cause = 'opening /stories';
+  traffic.start('GET /api/engines');
+  time = 29_999;
+  assert.equal(traffic.stalled(30_000), null);
+  time = 31_000;
+  assert.deepEqual(traffic.stalled(30_000), {
+    request: 'GET /api/model/status',
+    document: 0,
+    at: 0,
+    cause: 'the click on /settings/storage Reset and reload',
+    ageMs: 31_000,
+  });
+});
+
+test('a stalled backend stops the mode without changing its verdict', () => {
+  const constant = (name) => Number(crawler.match(new RegExp(`const ${name} = ([\\d_]+);`))[1].replaceAll('_', ''));
+  // A request can sit through two arm() waits and the click's own wait before a click reports it
+  // unsettled; any older request has already failed the run, so stopping only saves time.
+  assert.ok(constant('STALLED_MS') >= 3 * constant('REQUEST_BUDGET_MS'));
+  assert.match(crawler, /page\.on\('framenavigated', \(frame\) => frame === page\.mainFrame\(\) && traffic\.committed\(\)\)/);
+  assert.match(crawler, /traffic\.stalled\(STALLED_MS\)/);
+  assert.match(crawler, /error instanceof CrawlStalled\) && RELOAD_ERROR/, 'a stall is never mistaken for a reload');
 });
 
 test('lazily loaded code counts toward the quiet window, event streams do not', () => {

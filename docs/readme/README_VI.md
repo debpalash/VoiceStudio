@@ -503,7 +503,7 @@ Nâng cấp từ phiên bản 0.5.3 trở xuống (ứng dụng Tauri)? [Cài ri
 | Mô hình và chất lượng | [Hướng dẫn các công cụ](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [Đo hiệu năng](../../docs/benchmarks.md) |
 | Tích hợp | [CLI](../../docs/install/script.md#terminal-command) · [API cục bộ](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [Ví dụ](../../examples/README.md) |
 | Ứng dụng điện thoại | [iOS và Android](../../docs/mobile.md) |
-| Phát triển | [Đóng góp](../../.github/CONTRIBUTING.md) ([ký CLA](../../.github/CONTRIBUTING.md#contribution-licensing) trước PR đầu tiên) · [Nhật ký thay đổi](../../CHANGELOG.md) |
+| Phát triển | [Đóng góp](../../.github/CONTRIBUTING.md) ([ký CLA](../../.github/CONTRIBUTING.md#contribution-licensing) trước PR đầu tiên) · [Nhật ký thay đổi](../../CHANGELOG.md) · [Chính sách ký mã](../code-signing-policy.md) |
 
 Kỹ năng cho trợ lý lập trình: `npx skills add debpalash/VoiceStudio` (**voicestudio** cho công việc âm thanh, **voicestudio-maintainer** cho kho mã).
 

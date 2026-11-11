@@ -503,7 +503,7 @@ https://github.com/debpalash/VoiceStudio/blob/main/docs/install/agent.md
 | मॉडल और गुणवत्ता | [इंजन गाइड](../../docs/engines/README.md) · [whisper.cpp ASR](../../docs/engines/whisper-cpp.md) · [बेंचमार्क](../../docs/benchmarks.md) |
 | एकीकरण | [CLI](../../docs/install/script.md#terminal-command) · [स्थानीय एपीआई](../../docs/speech-platform.md) · [MCP](../../docs/mcp.md) · [उदाहरण](../../examples/README.md) |
 | फ़ोन ऐप्स | [आईओएस और एंड्रॉइड](../../docs/mobile.md) |
-| विकास | [योगदान](../../.github/CONTRIBUTING.md) ([अपने पहले पीआर से पहले CLA पर हस्ताक्षर करें](../../.github/CONTRIBUTING.md#contribution-licensing)) · [Changelog](../../CHANGELOG.md) |
+| विकास | [योगदान](../../.github/CONTRIBUTING.md) ([अपने पहले पीआर से पहले CLA पर हस्ताक्षर करें](../../.github/CONTRIBUTING.md#contribution-licensing)) · [Changelog](../../CHANGELOG.md) · [कोड साइनिंग नीति](../code-signing-policy.md) |
 
 एजेंट स्किल: `npx skills add debpalash/VoiceStudio` (ऑडियो कार्य के लिए **voicestudio** और रिपॉजिटरी के लिए **voicestudio-maintainer**)।
 

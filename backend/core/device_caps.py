@@ -723,6 +723,11 @@ class HostCaps:
     ``family`` reflects what was actually honored: an override that names a
     family this host doesn't have is noted and ignored, never obeyed blindly."""
 
+    gpu_probe_skipped: bool = False
+    """``True`` when the user chose CPU, so no GPU runtime was probed: the
+    host's accelerators are unknown, not absent. Reports must say the user
+    chose CPU, never that a GPU failed (#4006)."""
+
 
 #: Every value the compute-device override accepts. "auto" = today's
 #: priority pick; "cpu" is always honorable (invariant: cpu is always
@@ -746,9 +751,30 @@ def requested_device_override() -> str:
     return val if val in DEVICE_OVERRIDE_CHOICES else "auto"
 
 
+#: Note on a host pinned to CPU, where no accelerator is probed.
+CPU_PINNED_NOTE = (
+    "compute device pinned to 'cpu' by user override; GPUs were not probed "
+    "(choose Auto in Settings → Performance & Device to detect them again)"
+)
+
+
 def _probe() -> HostCaps:
     """Run the probe once. Enumerates every failure branch from the spec's
     degradation contract; never raises."""
+    # An explicit CPU choice is honoured before anything touches a GPU: it is
+    # the recovery after a graphics driver crash (#4002, Restart on CPU), and
+    # initialising CUDA or opening DirectML here could hit that driver again.
+    # It also stops every caller of the cached caps (routing, /health, the
+    # loader) from probing an accelerator afterwards.
+    if requested_device_override() == "cpu":
+        return HostCaps(
+            family="cpu",
+            available_families=("cpu",),
+            notes=(CPU_PINNED_NOTE,),
+            probe_ok=True,
+            requested_family="cpu",
+            gpu_probe_skipped=True,
+        )
     try:
         import torch
     except Exception:
@@ -954,6 +980,18 @@ def detect_host_caps() -> HostCaps:
     engine does not re-probe — routing is recomputed from these same caps), so
     a single probe per process is correct. ``probe_ok=False`` is cached too."""
     return _probe()
+
+
+def gpu_probe_skipped() -> bool:
+    """Whether this process runs on an explicit CPU choice and must not touch a
+    GPU runtime: background checks (pool sizing, compatibility notices, cache
+    release) ask this instead of ``torch.cuda.is_available()``, which would
+    initialise the driver the choice is avoiding. Frozen per process like the
+    caps it reads. Never raises."""
+    try:
+        return bool(getattr(detect_host_caps(), "gpu_probe_skipped", False))
+    except Exception:  # noqa: BLE001 - a status question must never fail its caller
+        return False
 
 
 def refresh() -> HostCaps:

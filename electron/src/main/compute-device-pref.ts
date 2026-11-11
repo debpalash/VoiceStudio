@@ -9,6 +9,13 @@ import { join } from 'node:path';
 export const COMPUTE_DEVICE_PREF = 'compute_device';
 
 /**
+ * A saved environment override (backend/core/prefs.py `restore_env` puts
+ * `env.*` keys into the backend's environment at startup). A stored
+ * `OMNIVOICE_DEVICE` there beats `compute_device`, so the CPU choice must clear it.
+ */
+export const STORED_DEVICE_ENV_PREF = 'env.OMNIVOICE_DEVICE';
+
+/**
  * Store CPU as the compute device in the backend's prefs.json, keeping every
  * other setting. Only called while the backend is down, so nothing else writes
  * the file. A file that is not a JSON object is left alone rather than
@@ -35,6 +42,12 @@ export async function pinComputeDeviceToCpu(
       throw new Error('prefs.json is not a settings object');
     prefs = parsed as Record<string, unknown>;
   }
+  // A stored device override would be restored into the backend's environment
+  // and win over the CPU choice, sending the restart back to the GPU that
+  // crashed. Dropping it hands the device back to Settings, where the user can
+  // choose Auto again after a driver update.
+  const { [STORED_DEVICE_ENV_PREF]: _storedOverride, ...kept } = prefs;
+  prefs = kept;
   await mkdir(dataDir, { recursive: true });
   // Created 0600 from the start, the mode the backend gives the file: it can hold tokens.
   await replaceFile(

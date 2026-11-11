@@ -42,21 +42,46 @@ from services.ffmpeg_utils import find_ffmpeg, run_ffmpeg
 router = APIRouter(dependencies=[Depends(require_admin)])
 logger = logging.getLogger("omnivoice.api")
 
+def _probe_accelerators(torch_module, cpu_pinned: bool) -> tuple[bool, bool, bool, bool]:
+    """(mps, cuda, xpu, npu) availability. A host pinned to CPU probes none of
+    them: that choice is the recovery after a graphics driver crash (#4002),
+    and initialising the driver for a status page could crash it again."""
+    if cpu_pinned:
+        return False, False, False, False
+    is_mac = hasattr(torch_module.backends, "mps") and torch_module.backends.mps.is_available()
+    is_cuda = torch_module.cuda.is_available()
+    try:
+        is_xpu = hasattr(torch_module, "xpu") and torch_module.xpu.is_available()
+    except Exception:
+        is_xpu = False
+    try:
+        # torch.npu exists only once the Ascend extension registers it; torch_npu
+        # releases before 2.5.1 do not autoload, so import it where installed.
+        if not hasattr(torch_module, "npu") and importlib.util.find_spec("torch_npu"):
+            importlib.import_module("torch_npu")
+        is_npu = hasattr(torch_module, "npu") and torch_module.npu.is_available()
+    except Exception:
+        is_npu = False
+    return is_mac, is_cuda, is_xpu, is_npu
+
+
+def _cpu_pinned() -> bool:
+    """The user's explicit CPU choice, read without detecting capabilities.
+
+    ``detect_host_caps()`` would cache its snapshot here, at import, before
+    ``_probe_accelerators`` imports ``torch_npu``; a host whose Ascend
+    extension does not autoload would then lose its NPU for the whole
+    process. The choice alone is enough to decide whether to probe."""
+    try:
+        from core.device_caps import requested_device_override
+
+        return requested_device_override() == "cpu"
+    except Exception:  # noqa: BLE001 - a status page must never stop startup
+        return False
+
+
 # Cache device checks at module load — they don't change at runtime
-_is_mac = hasattr(torch.backends, "mps") and torch.backends.mps.is_available()
-_is_cuda = torch.cuda.is_available()
-try:
-    _is_xpu = hasattr(torch, "xpu") and torch.xpu.is_available()
-except Exception:
-    _is_xpu = False
-try:
-    # torch.npu exists only once the Ascend extension registers it; torch_npu
-    # releases before 2.5.1 do not autoload, so import it where installed.
-    if not hasattr(torch, "npu") and importlib.util.find_spec("torch_npu"):
-        importlib.import_module("torch_npu")
-    _is_npu = hasattr(torch, "npu") and torch.npu.is_available()
-except Exception:
-    _is_npu = False
+_is_mac, _is_cuda, _is_xpu, _is_npu = _probe_accelerators(torch, _cpu_pinned())
 # Prime psutil's internal CPU counter so the first non-blocking call returns useful data
 psutil.cpu_percent(interval=None)
 
