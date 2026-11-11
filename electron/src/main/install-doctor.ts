@@ -150,6 +150,86 @@ export async function collectTrustFacts(input: TrustProbeInput): Promise<TrustFa
   return {};
 }
 
+export interface FaultFacts {
+  faultingModule?: string;
+  faultingModuleVersion?: string;
+  faultOffset?: string;
+}
+
+/**
+ * Windows Error Reporting writes an "Application Error" event (ID 1000) for a
+ * process that died of an unhandled native exception. Its properties name the
+ * faulting module (3), its version (4), the exception code (6), the offset (7)
+ * and the process id in hex (8). Python's fault dump names only the Python
+ * frame, so this is the one local record of which library actually crashed
+ * (#3767, #3684, #3835). The pid and launch time arrive through the
+ * environment, never the script text. Only an event for that pid written after
+ * that launch counts: Windows reuses pids, and an older crash of another
+ * program with the same pid must not be blamed.
+ */
+export const WINDOWS_FAULT_SCRIPT = String.raw`$ErrorActionPreference='SilentlyContinue'
+$want=[int64]$env:VS_PROBE_PID
+$since=[DateTimeOffset]::FromUnixTimeMilliseconds([int64]$env:VS_PROBE_SINCE_MS).LocalDateTime
+$events=Get-WinEvent -FilterHashtable @{LogName='Application';ProviderName='Application Error';Id=1000;StartTime=$since} -MaxEvents 50
+foreach($e in $events){$p=[string]$e.Properties[8].Value;$n=$null;if($p -match '^0x([0-9a-fA-F]+)$'){$n=[Convert]::ToInt64($Matches[1],16)}elseif($p -match '^\d+$'){$n=[int64]$p}
+if($n -eq $want){@{module=[string]$e.Properties[3].Value;version=[string]$e.Properties[4].Value;offset=[string]$e.Properties[7].Value}|ConvertTo-Json -Compress;break}}
+exit 0`;
+
+const FAULT_EVENT_SLACK_MS = 1000;
+const MODULE_NAME = /^[\w.+-]{1,80}$/;
+const MODULE_VERSION = /^[\w.+-]{1,40}$/;
+const FAULT_OFFSET = /^0x[0-9a-f]{1,16}$/i;
+
+/** Identifiers only: anything shaped like a path or free text is dropped. */
+export function parseWindowsFault(output: string): FaultFacts {
+  try {
+    const parsed = JSON.parse(output) as Record<string, unknown>;
+    const module = typeof parsed.module === 'string' ? win32.basename(parsed.module) : '';
+    if (!MODULE_NAME.test(module)) return {};
+    const version = typeof parsed.version === 'string' ? parsed.version : '';
+    const offset = typeof parsed.offset === 'string' ? parsed.offset : '';
+    return {
+      faultingModule: module,
+      ...(MODULE_VERSION.test(version) ? { faultingModuleVersion: version } : {}),
+      ...(FAULT_OFFSET.test(offset) ? { faultOffset: offset.toLowerCase() } : {}),
+    };
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Reads after the crash screen is up, so it can never delay it. Windows Error
+ * Reporting can finish writing its event just after the exit is seen, so an
+ * empty first read is repeated once.
+ */
+export async function collectFaultFacts(input: {
+  pid: number | undefined;
+  /** When that process was launched (epoch ms): older events are another process's. */
+  launchedAt: number | undefined;
+  platform?: NodeJS.Platform;
+  run?: ProbeRunner;
+  retryDelayMs?: number;
+}): Promise<FaultFacts> {
+  const platform = input.platform ?? process.platform;
+  if (platform !== 'win32' || !input.pid || !Number.isInteger(input.pid)) return {};
+  if (!input.launchedAt || !Number.isFinite(input.launchedAt)) return {};
+  // Event Log times are whole milliseconds; a second of slack absorbs clock rounding.
+  const since = String(Math.floor(input.launchedAt) - FAULT_EVENT_SLACK_MS);
+  const run = input.run ?? runProbe;
+  const read = () =>
+    run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_FAULT_SCRIPT], {
+      env: { ...process.env, VS_PROBE_PID: String(input.pid), VS_PROBE_SINCE_MS: since },
+      timeoutMs: TRUST_PROBE_DEADLINE_MS,
+    })
+      .then(parseWindowsFault)
+      .catch((): FaultFacts => ({}));
+  const first = await read();
+  if (first.faultingModule) return first;
+  await new Promise((resolve) => setTimeout(resolve, input.retryDelayMs ?? 3000));
+  return read();
+}
+
 /** Basename on any host: a report from Windows may be classified anywhere in tests. */
 export function programBasename(program: string): string {
   return program.includes('\\') ? win32.basename(program) : basename(program);

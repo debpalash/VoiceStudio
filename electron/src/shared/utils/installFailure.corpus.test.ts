@@ -107,6 +107,31 @@ const CORPUS: [string, FailureEvidence, InstallFailureCode][] = [
     },
     'WINDOWS_APP_CONTROL_BLOCKED',
   ],
+  [
+    '#3835 heap corruption, reported as a bare number',
+    {
+      stage: 'crashed',
+      exitCode: 3221226356,
+      message:
+        'Backend exited unexpectedly (exit code 3221226356). Last output: Windows fatal exception: code 0xc0000374 at …/logging/__init__.py:624 in formatTime (from backend/services/tts_backend.py:2444 in _ensure_loaded)',
+    },
+    'NATIVE_CRASH',
+  ],
+  [
+    '#3872 in-page error while a clone was loading',
+    {
+      stage: 'crashed',
+      exitCode: 3221225478,
+      message:
+        'Backend exited unexpectedly (exit code 3221225478). Last output: 2026-11-08 08:59:40,719 WARNING [omnivoice.loop_stall] Event loop has not run for 432.9s; /health cannot answer.',
+    },
+    'NATIVE_IN_PAGE_ERROR',
+  ],
+  [
+    '#3994 0.5.7 readiness probe refused, message without the program',
+    { stage: 'failed', message: 'spawn UNKNOWN' },
+    'EXEC_REFUSED',
+  ],
 ];
 
 describe('real reports classify to the right code', () => {

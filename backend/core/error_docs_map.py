@@ -63,6 +63,7 @@ ERROR_DOCS: dict[str, str] = {
     "BROKEN_VENV": f"{_BASE}/docs/install/troubleshooting.md#broken_venv",
     "NATIVE_ACCESS_VIOLATION": f"{_BASE}/docs/install/troubleshooting.md#native_access_violation",
     "NATIVE_ILLEGAL_INSTRUCTION": f"{_BASE}/docs/install/troubleshooting.md#native_illegal_instruction",
+    "NATIVE_IN_PAGE_ERROR": f"{_BASE}/docs/install/troubleshooting.md#native_in_page_error",
     "NATIVE_CRASH": f"{_BASE}/docs/install/troubleshooting.md#native_crash",
     "STARTUP_TIMEOUT_SILENT": f"{_BASE}/docs/install/troubleshooting.md#startup_timeout_silent",
     "STARTUP_TIMEOUT_OUTPUT": f"{_BASE}/docs/install/troubleshooting.md#startup_timeout_output",

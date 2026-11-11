@@ -1694,7 +1694,8 @@ def get_best_device():
     from core.device_caps import detect_host_caps
 
     torch = _lazy_torch()
-    family = detect_host_caps().family
+    caps = detect_host_caps()
+    family = caps.family
 
     # ── NVIDIA CUDA or AMD ROCm (both present through torch.cuda) ─────
     if family in ("cuda", "rocm"):
@@ -1740,6 +1741,12 @@ def get_best_device():
     # ── DirectML — universal Windows GPU (probe reports this as "cpu") ─
     # Reached only when no torch family was detected (family == "cpu"), which is
     # exactly the DirectML case — the probe classifies DirectML hosts as cpu.
+    # An explicit CPU choice (Settings, OMNIVOICE_DEVICE=cpu, or the failure
+    # screen's Restart on CPU after a graphics driver crash) must mean CPU: on a
+    # DirectML host it would otherwise land on the same GPU driver again.
+    if family == "cpu" and caps.requested_family == "cpu":
+        logger.info("Using CPU: compute device pinned to CPU (DirectML not opened)")
+        return "cpu"
     if family == "cpu":
         try:
             import torch_directml
