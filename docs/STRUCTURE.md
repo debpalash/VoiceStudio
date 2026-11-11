@@ -80,7 +80,6 @@ VoiceStudio/
 │   ├── conftest.py              redirects OMNIVOICE_DATA_DIR to disposable state for the whole session
 │   ├── backend/ / scripts/      path-shaped coverage for those source areas
 │   ├── smoke/                   quick end-to-end gates; isolated CI job runs with HF_HUB_OFFLINE=1
-│   ├── evals/                   evals.yml-driven output-quality checks
 │   ├── probe/ / fixtures/       diagnostic probes and reusable inputs
 │   └── frontend/                retained node:test suite for utilities and developer tooling
 │
@@ -129,7 +128,7 @@ VoiceStudio/
 │                                   DB + HF cache live here when running via compose
 │
 ├── .github/workflows/           ⟵ ci, electron-build, electron-release, docker, security,
-│                                   docs-drift, evals, install-smoke, build-omnivoice-tts,
+│                                   docs-drift, install-smoke, build-omnivoice-tts,
 │                                   cla, commit-identity, cosyvoice-dependencies
 └── .git/
 ```
