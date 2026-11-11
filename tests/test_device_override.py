@@ -17,11 +17,6 @@ import pytest
 
 from core import device_caps
 
-# Imported at collection, before any test patches sys.platform (psutil, which
-# these import, resolves its platform module at import time).
-import main as _backend_main  # noqa: E402
-from api.routers import system as _system_router  # noqa: E402
-
 
 def _torch_mock(*, cuda_available=False, mps_available=False):
     """Minimal torch mock — just enough accelerator shape for the override
@@ -191,9 +186,13 @@ def test_cpu_choice_never_probes_a_gpu_runtime(monkeypatch, pin_by):
     initialise CUDA, MPS, XPU or DirectML, or it could hit the same driver."""
     import importlib
 
+    import importlib
+
     from services import model_manager
 
-    main, system = _backend_main, _system_router
+    # Resolved per test: other tests may replace these sys.modules entries.
+    main = importlib.import_module("main")
+    system = importlib.import_module("api.routers.system")
 
     if pin_by == "env":
         monkeypatch.setenv("OMNIVOICE_DEVICE", "cpu")
@@ -253,3 +252,42 @@ def test_cpu_choice_reports_as_the_users_choice_not_a_gpu_failure():
     # A probed host with no CPU choice is never reported as pinned.
     probed = device_caps.HostCaps(family="cpu", available_families=("cpu",))
     assert gpu_report.classify_host(probed, nvidia, cuda_build)[0] != "pinned_cpu"
+
+
+def test_status_page_without_a_cpu_choice_still_finds_an_extension_npu(monkeypatch):
+    """/system/info decides whether to probe from the choice alone. Reading the
+    capability snapshot there cached it before torch_npu was imported, so an
+    Ascend NPU whose extension does not autoload vanished for the process."""
+    import importlib
+
+    system = importlib.import_module("api.routers.system")
+    monkeypatch.delenv("OMNIVOICE_DEVICE", raising=False)
+    monkeypatch.setattr("core.prefs.resolve", lambda key, **kw: kw.get("default"))
+    snapshots: list[str] = []
+    monkeypatch.setattr(
+        device_caps, "detect_host_caps", lambda: snapshots.append("caps") or None
+    )
+    assert system._cpu_pinned() is False
+    assert snapshots == [], "the choice check must not snapshot capabilities"
+
+    # torch.npu only exists once the Ascend extension is imported.
+    torch = types.SimpleNamespace(
+        cuda=types.SimpleNamespace(is_available=lambda: False),
+        xpu=types.SimpleNamespace(is_available=lambda: False),
+        backends=types.SimpleNamespace(mps=types.SimpleNamespace(is_available=lambda: False)),
+    )
+    real_import, real_find = system.importlib.import_module, system.importlib.util.find_spec
+
+    def fake_import(name, *args):
+        if name == "torch_npu":
+            torch.npu = types.SimpleNamespace(is_available=lambda: True)
+            return types.SimpleNamespace()
+        return real_import(name, *args)
+
+    monkeypatch.setattr(system.importlib, "import_module", fake_import)
+    monkeypatch.setattr(
+        system.importlib.util,
+        "find_spec",
+        lambda name, *a: object() if name == "torch_npu" else real_find(name, *a),
+    )
+    assert system._probe_accelerators(torch, system._cpu_pinned()) == (False, False, False, True)
