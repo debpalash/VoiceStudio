@@ -32,6 +32,9 @@ def _run(tmp_path, args, script_body="", extra_env=None):
         'esac\n'
     )
     (stubs / "sleep").write_text("#!/bin/sh\nexit 0\n")
+    # Always report a non-root user, so the helper routes every privileged write
+    # through the sudo stub above even when the test suite itself runs as root.
+    (stubs / "id").write_text('#!/bin/sh\n[ "$1" = "-u" ] && { echo 1000; exit 0; }\nexec /usr/bin/id "$@"\n')
     for name, body in (script_body or {}).items():
         (stubs / name).write_text("#!/bin/bash\n" + body)
     for f in stubs.iterdir():
@@ -157,3 +160,15 @@ def test_helper_falls_back_to_public_dns_when_mirrors_do_not_resolve():
     assert "DNS=1.1.1.1 8.8.8.8" in script and "systemctl restart systemd-resolved" in script
     install = script.split("apt_install() {", 1)[1].split("}", 1)[0]
     assert install.lstrip().startswith("check_dns"), "check DNS before every install attempt"
+
+
+@bash
+def test_helper_takes_the_stubbed_sudo_path_even_as_root(tmp_path):
+    # With the id stub, SUDO is always "sudo", so no real system file is written.
+    probe = tmp_path / "probe.sh"
+    probe.write_text('SUDO=""; [ "$(id -u)" -ne 0 ] && SUDO="sudo"; echo "SUDO=$SUDO"\n')
+    stubs = tmp_path / "bin"
+    _run(tmp_path, ["retry", "true"])  # creates the stubs
+    out = subprocess.run(["bash", str(probe)], env={"PATH": f"{stubs}:/usr/bin:/bin"},
+                         capture_output=True, text=True, timeout=10).stdout
+    assert out.strip() == "SUDO=sudo"
