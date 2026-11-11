@@ -129,6 +129,10 @@ signs nothing and behaves as before (`allow_unsigned` rules unchanged).
      `SIGNPATH_SIGNING_POLICY_SLUG`.
    - Leave `ELECTRON_WINDOWS_CSC_LINK` unset: an own certificate takes
      precedence and disables the SignPath path.
+   - Optional: a second policy with the slug `test-signing` (test certificate)
+     lets a [release rehearsal](RELEASING.md#rehearse-a-release) dispatched with
+     `signpath_policy=test-signing` exercise this path from a branch. Rehearsals
+     never submit to the release policy.
 4. Test run: dispatch **Electron desktop release** with `release_tag` set to an
    existing tag, `publish=false`. Approve the signing request in SignPath. The
    Windows legs should pass "Sign the Windows installer with SignPath",

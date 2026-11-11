@@ -4,6 +4,13 @@ name: Electron desktop release
 # Two channels, both cut from main: `vX.Y.Z` is Stable (GitHub's `latest`),
 # `vX.Y.Z-beta.N` is Beta (a prerelease that never becomes `latest`). No other
 # prerelease shape (-rc, -alpha, ...) is accepted.
+#
+# `rehearsal: true` runs the same build and verification from any branch
+# without a tag: every package leg, the GGUF runtimes, the phone builds, the
+# packaged smoke tests and prepare_electron_release.py against the version in
+# package.json. It never publishes: no release or draft, no feed upload, no
+# Docker or Android repository dispatch. Its artifacts stay on the run for a
+# few days. tests/test_release_rehearsal.py pins these guards.
 on:
   push:
     tags: ['v*']
@@ -21,16 +28,27 @@ on:
         description: "Explicitly accept unsigned/unnotarized Electron installers and documented updater limitations"
         type: boolean
         default: false
+      rehearsal:
+        description: "Rehearse the release from the selected branch: build and verify everything, publish nothing"
+        type: boolean
+        default: false
+      signpath_policy:
+        description: "Rehearsals only: submit Windows installers to this SignPath policy (none skips SignPath)"
+        type: choice
+        options: [none, test-signing]
+        default: none
 
 permissions:
   contents: read
 
 concurrency:
-  group: electron-release-${{ inputs.release_tag || github.ref_name }}
+  group: electron-release-${{ inputs.rehearsal && format('rehearsal-{0}', github.ref_name) || inputs.release_tag || github.ref_name }}
   cancel-in-progress: false
 
 env:
-  RELEASE_REF: ${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || github.ref }}
+  # A rehearsal pins every leg to the dispatched commit, not the moving branch.
+  RELEASE_REF: ${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || inputs.rehearsal && github.sha || github.ref }}
+  REHEARSAL: ${{ inputs.rehearsal == true }}
 
 jobs:
   validate:
@@ -39,11 +57,13 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       channel: ${{ steps.channel.outputs.channel }}
+      version: ${{ steps.channel.outputs.version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.RELEASE_REF }}
       - name: Require an exact version tag
+        if: inputs.rehearsal != true
         env:
           REF: ${{ env.RELEASE_REF }}
           WORKFLOW_REF: ${{ github.ref }}
@@ -55,6 +75,7 @@ jobs:
           # Comma-separated logins the owner trusts with unsigned publishes. Only repo
           # admins can edit Actions variables, so the owner stays in control of it.
           UNSIGNED_PUBLISHERS: ${{ vars.UNSIGNED_RELEASE_PUBLISHERS }}
+          SIGNPATH_POLICY: ${{ inputs.signpath_policy }}
         run: |
           may_publish_unsigned() {
             [ -n "$1" ] || return 1
@@ -75,18 +96,34 @@ jobs:
           VERSION=$(node -p "require('./package.json').version")
           test "$REF" = "refs/tags/v$VERSION" || { echo "Select the exact version tag"; exit 1; }
           test "$(git rev-parse HEAD)" = "$(git rev-parse "$REF^{commit}")" || { echo "Checkout does not match the release tag"; exit 1; }
+          test "$SIGNPATH_POLICY" = none || test -z "$SIGNPATH_POLICY" || { echo "signpath_policy is for rehearsals; releases use the configured policy"; exit 1; }
+      - name: Validate the rehearsal request
+        if: inputs.rehearsal == true
+        env:
+          PUBLISH: ${{ inputs.publish }}
+          RELEASE_TAG_OVERRIDE: ${{ inputs.release_tag }}
+          ALLOW_UNSIGNED: ${{ inputs.allow_unsigned }}
+        run: |
+          # A rehearsal builds the dispatched commit and publishes nothing.
+          test "$PUBLISH" != true || { echo "A rehearsal never publishes; dispatch it without publish"; exit 1; }
+          test -z "$RELEASE_TAG_OVERRIDE" || { echo "A rehearsal builds the selected branch; leave release_tag empty"; exit 1; }
+          test "$ALLOW_UNSIGNED" != true || { echo "allow_unsigned only applies to publishing; a rehearsal reports signing as built"; exit 1; }
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA" || { echo "Checkout does not match the dispatched commit"; exit 1; }
       - name: Resolve the release channel
         id: channel
         run: |
-          # stable (X.Y.Z) or beta (X.Y.Z-beta.N); any other shape fails here.
+          # stable (X.Y.Z) or beta (X.Y.Z-beta.N); any other shape fails here,
+          # for a rehearsal as for a tag.
           echo "channel=$(python3 scripts/prepare_electron_release.py --print-channel)" >> "$GITHUB_OUTPUT"
+          echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
   omnivoice-tts:
     # The OmniVoice GGUF runtime each installer ships under resources/bin (#2780).
     needs: validate
     uses: ./.github/workflows/build-omnivoice-tts.yml
     with:
-      ref: ${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || github.ref }}
+      ref: ${{ inputs.release_tag && format('refs/tags/{0}', inputs.release_tag) || inputs.rehearsal && github.sha || github.ref }}
       desktop: true
+      retention_days: ${{ inputs.rehearsal && 3 || 0 }}
 
   package:
     needs: [validate, omnivoice-tts]
@@ -158,8 +195,12 @@ jobs:
       # SignPath (docs/code-signing-policy.md): active only when the API token
       # secret and all three repository variables exist, and no own Windows
       # certificate is configured. Otherwise nothing below runs and Windows
-      # signing behaves exactly as before.
-      SIGNPATH_ENABLED: ${{ matrix.platform == 'win32' && secrets.SIGNPATH_API_TOKEN != '' && vars.SIGNPATH_ORGANIZATION_ID != '' && vars.SIGNPATH_PROJECT_SLUG != '' && vars.SIGNPATH_SIGNING_POLICY_SLUG != '' && secrets.ELECTRON_WINDOWS_CSC_LINK == '' }}
+      # signing behaves exactly as before. A rehearsal submits nothing unless
+      # it names a policy (signpath_policy=test-signing), and never the
+      # release policy.
+      SIGNPATH_ENABLED: ${{ matrix.platform == 'win32' && secrets.SIGNPATH_API_TOKEN != '' && vars.SIGNPATH_ORGANIZATION_ID != '' && vars.SIGNPATH_PROJECT_SLUG != '' && vars.SIGNPATH_SIGNING_POLICY_SLUG != '' && secrets.ELECTRON_WINDOWS_CSC_LINK == '' && (inputs.rehearsal != true || inputs.signpath_policy == 'test-signing') }}
+      SIGNPATH_POLICY: ${{ inputs.rehearsal == true && inputs.signpath_policy || vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+      ARTIFACT_RETENTION_DAYS: ${{ inputs.rehearsal && 3 || 14 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -280,7 +321,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: signpath-unsigned-${{ matrix.platform }}-${{ matrix.arch }}
-          retention-days: 7
+          retention-days: ${{ inputs.rehearsal && 3 || 7 }}
           if-no-files-found: error
           path: electron/release/VoiceStudio-*.exe
       - name: Sign the Windows installer with SignPath
@@ -291,7 +332,7 @@ jobs:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
           project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
-          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          signing-policy-slug: ${{ env.SIGNPATH_POLICY }}
           github-artifact-id: ${{ steps.upload-unsigned-installer.outputs.artifact-id }}
           wait-for-completion: true
           wait-for-completion-timeout-in-seconds: 4000
@@ -364,9 +405,31 @@ jobs:
         shell: pwsh
         env:
           HAS_CREDENTIALS: ${{ secrets.ELECTRON_WINDOWS_CSC_LINK != '' || env.SIGNPATH_ENABLED == 'true' }}
+          TEST_SIGNED: ${{ env.REHEARSAL == 'true' && env.SIGNPATH_ENABLED == 'true' && env.SIGNPATH_POLICY == 'test-signing' }}
         run: |
           $installers = @(Get-ChildItem electron/release/VoiceStudio-*.exe)
           if ($installers.Count -eq 0) { throw "No installer to verify" }
+          # A rehearsal's test certificate chains to no trusted root. Accept that
+          # one failure only: the signature must be intact (no HashMismatch) and
+          # its chain may fail on nothing but the untrusted root.
+          if ($env:TEST_SIGNED -eq 'true') {
+            $bad = @()
+            foreach ($installer in $installers) {
+              $signature = Get-AuthenticodeSignature $installer.FullName
+              if (-not $signature.SignerCertificate) { $bad += "$($installer.Name): not signed"; continue }
+              if ($signature.Status -eq 'Valid') { continue }
+              if ($signature.Status -notin @('UnknownError', 'NotTrusted')) { $bad += "$($installer.Name): $($signature.Status)"; continue }
+              $chain = [System.Security.Cryptography.X509Certificates.X509Chain]::new()
+              $chain.ChainPolicy.RevocationMode = 'NoCheck'
+              [void]$chain.Build($signature.SignerCertificate)
+              $other = @($chain.ChainStatus | Where-Object { $_.Status -ne 'UntrustedRoot' })
+              if ($other.Count -ne 0) { $bad += "$($installer.Name): $(($other.Status) -join ', ')" }
+            }
+            if ($bad.Count -ne 0) { throw "SignPath test signing did not leave intact signatures: $($bad -join '; ')" }
+            New-Item -ItemType Directory -Force electron/release-signing | Out-Null
+            Set-Content "electron/release-signing/signing-win32-${{ matrix.arch }}.json" ('{"platform":"win32","arch":"${{ matrix.arch }}","status":"test-signed"}')
+            exit 0
+          }
           $unsigned = @($installers | Where-Object { (Get-AuthenticodeSignature $_.FullName).Status -ne 'Valid' })
           if ($unsigned.Count -eq 0) { $status = 'signed' }
           elseif ($env:HAS_CREDENTIALS -eq 'true') { throw "Windows signing is configured but these installers are not validly signed: $($unsigned.Name -join ', ')" }
@@ -382,7 +445,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: electron-signing-${{ matrix.platform }}-${{ matrix.arch }}
-          retention-days: 14
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
           if-no-files-found: error
           path: electron/release-signing/signing-*.json
       - name: Bundled native code must run on the Snap base (glibc <= 2.35)
@@ -402,7 +465,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: electron-release-${{ matrix.platform }}-${{ matrix.arch }}
-          retention-days: 14
+          retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
           if-no-files-found: error
           path: |
             electron/release/VoiceStudio-*
@@ -421,11 +484,19 @@ jobs:
       contents: write
     uses: ./.github/workflows/mobile-release.yml
     with:
-      release_ref: ${{ inputs.release_tag || github.ref_name }}
+      # A rehearsal has no tag: it builds the dispatched commit, unsigned.
+      release_ref: ${{ inputs.rehearsal && github.sha || inputs.release_tag || github.ref_name }}
+      rehearsal: ${{ inputs.rehearsal == true }}
     secrets: inherit
 
+  # A rehearsal runs this job up to the draft: it collects and verifies every
+  # asset, then stops. Each publishing step is skipped by `if` and refuses a
+  # rehearsal again in its script. A rehearsal also runs when some build legs
+  # failed: it verifies the legs that built and fails at the end, naming the
+  # ones that did not. A release still needs every leg.
   release:
     needs: [validate, package, mobile]
+    if: ${{ success() || (inputs.rehearsal == true && !cancelled() && needs.validate.result == 'success') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -433,7 +504,8 @@ jobs:
       actions: write
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      TAG: ${{ inputs.release_tag || github.ref_name }}
+      # A rehearsal names files after the tag the version would get; no tag exists.
+      TAG: ${{ inputs.rehearsal && format('v{0}', needs.validate.outputs.version) || inputs.release_tag || github.ref_name }}
       SUNSET_TAG: ${{ vars.TAURI_SUNSET_TAG }}
       PUBLISH: ${{ inputs.publish }}
       CHANNEL: ${{ needs.validate.outputs.channel }}
@@ -446,19 +518,40 @@ jobs:
           pattern: electron-release-*
           merge-multiple: true
           path: release-assets
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      # One download per phone app, each into its own folder: a pattern that
+      # matches a single artifact extracts it without the artifact-name folder,
+      # which would lose the surviving app when the other phone leg fails.
+      - name: Download the Android build
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          pattern: VoiceStudio-*
-          path: phone-assets
+          pattern: VoiceStudio-android-release
+          path: phone-assets/VoiceStudio-android-release
+      - name: Download the iPhone build
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: VoiceStudio-ios-unsigned
+          path: phone-assets/VoiceStudio-ios-unsigned
       - name: Collect phone binaries
         run: |
           VERSION="${TAG#v}"
-          cp phone-assets/VoiceStudio-android-release/VoiceStudio.apk "release-assets/VoiceStudio-${VERSION}-android.apk"
-          cp phone-assets/VoiceStudio-android-release/VoiceStudio.aab "release-assets/VoiceStudio-${VERSION}-android.aab"
-          cp phone-assets/VoiceStudio-ios-unsigned/VoiceStudio-unsigned.ipa "release-assets/VoiceStudio-${VERSION}-ios-unsigned.ipa"
+          mkdir -p release-assets
+          # A release needs all three; a rehearsal lists a missing one and goes on.
+          collect() {
+            if [ -f "$1" ]; then cp "$1" "$2"
+            elif [ "$REHEARSAL" = true ]; then echo "phone binary ${2##*/}" >> "$RUNNER_TEMP/rehearsal-missing-phone.txt"
+            else echo "Missing phone binary $1"; exit 1
+            fi
+          }
+          collect phone-assets/VoiceStudio-android-release/VoiceStudio.apk "release-assets/VoiceStudio-${VERSION}-android.apk"
+          collect phone-assets/VoiceStudio-android-release/VoiceStudio.aab "release-assets/VoiceStudio-${VERSION}-android.aab"
+          collect phone-assets/VoiceStudio-ios-unsigned/VoiceStudio-unsigned.ipa "release-assets/VoiceStudio-${VERSION}-ios-unsigned.ipa"
       - name: Validate all platforms before creating a release
         run: |
-          python3 scripts/prepare_electron_release.py --assets release-assets --tag "$TAG" --repo "$GITHUB_REPOSITORY"
+          if [ "$REHEARSAL" = true ]; then
+            python3 scripts/prepare_electron_release.py --assets release-assets --rehearsal --missing-report "$RUNNER_TEMP/rehearsal-missing-desktop.txt" --repo "$GITHUB_REPOSITORY"
+          else
+            python3 scripts/prepare_electron_release.py --assets release-assets --tag "$TAG" --repo "$GITHUB_REPOSITORY"
+          fi
       - name: Preserve the final Tauri updater feeds
         # Archived Tauri clients read `latest/download`, which never serves a
         # prerelease, so only Stable releases carry the sunset feeds.
@@ -469,7 +562,11 @@ jobs:
           # so archived Tauri clients never receive Electron installers.
           gh release download "$SUNSET_TAG" --pattern latest.json --dir release-assets
           gh release download "$SUNSET_TAG" --pattern latest-user.json --dir release-assets
-          python3 scripts/prepare_electron_release.py --assets release-assets --tag "$TAG" --sunset-tag "$SUNSET_TAG" --repo "$GITHUB_REPOSITORY"
+          if [ "$REHEARSAL" = true ]; then
+            python3 scripts/prepare_electron_release.py --assets release-assets --rehearsal --missing-report "$RUNNER_TEMP/rehearsal-missing-desktop.txt" --sunset-tag "$SUNSET_TAG" --repo "$GITHUB_REPOSITORY"
+          else
+            python3 scripts/prepare_electron_release.py --assets release-assets --tag "$TAG" --sunset-tag "$SUNSET_TAG" --repo "$GITHUB_REPOSITORY"
+          fi
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: electron-signing-*
@@ -483,8 +580,10 @@ jobs:
             "repos/$GITHUB_REPOSITORY/contents/scripts/release_signing_notes.py?ref=$GITHUB_SHA" \
             > "$RUNNER_TEMP/release_signing_notes.py"
           # The table leads the notes so downloaders see it before the changelog.
+          NOTES_ARGS=()
+          if [ "$REHEARSAL" = true ]; then NOTES_ARGS=(--rehearsal); fi
           {
-            python3 "$RUNNER_TEMP/release_signing_notes.py" release-signing
+            python3 "$RUNNER_TEMP/release_signing_notes.py" "${NOTES_ARGS[@]}" release-signing
             echo
             echo '### Phone downloads'
             echo
@@ -496,8 +595,47 @@ jobs:
             cat release-assets/RELEASE_NOTES.md
           } > "$RUNNER_TEMP/RELEASE_NOTES.md"
           mv "$RUNNER_TEMP/RELEASE_NOTES.md" release-assets/RELEASE_NOTES.md
-      - name: Create or update draft
+      - name: Rehearsal - check the feeds the release would carry
+        if: inputs.rehearsal == true
         run: |
+          # What the draft check below reads from GitHub, read from the local assets.
+          find release-assets -maxdepth 1 -type f ! -name RELEASE_NOTES.md -printf '%f\n' | python3 scripts/check_electron_release_assets.py --foreign-feeds "$CHANNEL"
+          {
+            echo "## Release rehearsal for $TAG ($CHANNEL)"
+            echo
+            echo "Built and verified from $GITHUB_SHA. Nothing was published."
+            echo
+            echo '```'
+            cat release-assets/SHA256SUMS.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Rehearsal - save the release notes and checksums
+        if: inputs.rehearsal == true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: electron-rehearsal-notes
+          retention-days: 3
+          if-no-files-found: error
+          path: |
+            release-assets/RELEASE_NOTES.md
+            release-assets/SHA256SUMS.txt
+      # Runs even when an earlier rehearsal step failed, so the missing legs
+      # are always listed.
+      - name: Rehearsal - fail when a build leg produced nothing
+        if: ${{ !cancelled() && inputs.rehearsal == true }}
+        run: |
+          cat "$RUNNER_TEMP"/rehearsal-missing-*.txt 2>/dev/null > "$RUNNER_TEMP/rehearsal-missing.txt" || true
+          if [ -s "$RUNNER_TEMP/rehearsal-missing.txt" ]; then
+            { echo; echo "### Missing (their build legs failed)"; echo; sed 's/^/- /' "$RUNNER_TEMP/rehearsal-missing.txt"; } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::The rehearsal verified the legs that built; these are missing:"
+            cat "$RUNNER_TEMP/rehearsal-missing.txt"
+            exit 1
+          fi
+      - name: Create or update draft
+        if: inputs.rehearsal != true
+        run: |
+          # Rehearsals never publish (tests/test_release_rehearsal.py).
+          if [ "$REHEARSAL" != false ]; then echo "::error::A rehearsal run reached a publishing step"; exit 1; fi
           # A beta is always a prerelease so GitHub never makes it `latest`.
           PRERELEASE=false
           if [ "$CHANNEL" = beta ]; then PRERELEASE=true; fi
@@ -512,8 +650,10 @@ jobs:
           gh release view "$TAG" --json assets --jq '.assets[].name' | python3 scripts/check_electron_release_assets.py --foreign-feeds "$CHANNEL"
       - name: Publish only when explicitly requested
         id: publish_release
-        if: github.event_name == 'workflow_dispatch' && inputs.publish == true
+        if: github.event_name == 'workflow_dispatch' && inputs.publish == true && inputs.rehearsal != true
         run: |
+          # Rehearsals never publish (tests/test_release_rehearsal.py).
+          if [ "$REHEARSAL" != false ]; then echo "::error::A rehearsal run reached a publishing step"; exit 1; fi
           if [ "$CHANNEL" = beta ]; then
             gh release edit "$TAG" --draft=false --prerelease=true --latest=false
           else
@@ -536,8 +676,10 @@ jobs:
           fi
       # GITHUB_TOKEN publication does not emit another workflow's release event.
       - name: Update the Android repository after stable publication
-        if: github.event_name == 'workflow_dispatch' && inputs.publish == true
+        if: github.event_name == 'workflow_dispatch' && inputs.publish == true && inputs.rehearsal != true
         run: |
+          # Rehearsals never publish (tests/test_release_rehearsal.py).
+          if [ "$REHEARSAL" != false ]; then echo "::error::A rehearsal run reached a publishing step"; exit 1; fi
           if [ "$CHANNEL" = stable ]; then
             gh workflow run android-repository.yml --ref main
           fi
@@ -545,8 +687,10 @@ jobs:
       # GITHUB_TOKEN publish cannot trigger; dispatch its release backfill path.
       # Only Stable moves `:stable`; a beta gets `:beta` and its exact tag.
       - name: Publish release container images
-        if: ${{ !cancelled() && steps.publish_release.outcome == 'success' && github.event_name == 'workflow_dispatch' && inputs.publish == true }}
+        if: ${{ !cancelled() && steps.publish_release.outcome == 'success' && github.event_name == 'workflow_dispatch' && inputs.publish == true && inputs.rehearsal != true }}
         run: |
+          # Rehearsals never publish (tests/test_release_rehearsal.py).
+          if [ "$REHEARSAL" != false ]; then echo "::error::A rehearsal run reached a publishing step"; exit 1; fi
           PROMOTE=false
           if [ "$CHANNEL" = stable ]; then PROMOTE=true; fi
           gh workflow run docker.yml --ref main \

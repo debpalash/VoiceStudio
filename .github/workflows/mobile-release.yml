@@ -2,7 +2,8 @@
 # signed Android APK/AAB and an unsigned iOS IPA for sideloading; optional App
 # Store signing runs afterwards. Legacy mobile-v* tags still draft a prerelease.
 # Store uploads stay in android-play-internal.yml and ios-testflight.yml.
-# Secrets live in the protected mobile-release environment.
+# Secrets live in the protected mobile-release environment. A release
+# rehearsal (`rehearsal: true`) runs without that environment and its secrets.
 
 name: mobile-release
 
@@ -15,6 +16,13 @@ on:
         required: true
       signed_ios:
         description: Also build the App Store Connect IPA
+        type: boolean
+        default: false
+      rehearsal:
+        description: >-
+          Release rehearsal: release_ref is the dispatched commit, not a tag.
+          Builds an unsigned APK/AAB and the unsigned IPA outside the
+          mobile-release environment, so no signing secret is read.
         type: boolean
         default: false
   workflow_dispatch:
@@ -50,7 +58,7 @@ jobs:
     if: github.event_name == 'push' || inputs.release_ref != '' || inputs.android
     runs-on: ubuntu-24.04
     timeout-minutes: 60
-    environment: mobile-release
+    environment: ${{ !inputs.rehearsal && 'mobile-release' || '' }}
     concurrency:
       group: signed-android-builds
       cancel-in-progress: false
@@ -64,7 +72,7 @@ jobs:
           persist-credentials: false
 
       - name: Validate release source
-        if: inputs.release_ref != ''
+        if: inputs.release_ref != '' && !inputs.rehearsal
         working-directory: ${{ github.workspace }}
         shell: bash
         env:
@@ -73,6 +81,16 @@ jobs:
           [[ "$RELEASE_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]]
           test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/${RELEASE_REF}^{commit}")"
           test "${RELEASE_REF#v}" = "$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
+
+      - name: Validate rehearsal source
+        if: inputs.rehearsal
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        env:
+          RELEASE_REF: ${{ inputs.release_ref }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$RELEASE_REF"
+          [[ "$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]]
 
       - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         with:
@@ -107,6 +125,7 @@ jobs:
           key: android-native-${{ hashFiles('mobile/native/pins.json', 'mobile/native/android/**', '!mobile/native/android/build/**', 'mobile/native/mp3/**', 'mobile/ios/VoiceStudioKit/Sources/VSNative/Lame/**', 'mobile/ios/VoiceStudioKit/Sources/VSNative/Mp3Encoder.c', 'mobile/ios/VoiceStudioKit/Sources/VSNative/include/Mp3Encoder.h') }}
 
       - name: Decode keystore
+        if: ${{ !inputs.rehearsal }}
         env:
           KEYSTORE: ${{ secrets.ANDROID_UPLOAD_KEYSTORE }}
         run: |
@@ -120,7 +139,12 @@ jobs:
           VOICESTUDIO_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
           VOICESTUDIO_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
           VOICESTUDIO_ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+          REHEARSAL: ${{ inputs.rehearsal == true }}
         run: |
+          # A rehearsal has no keystore: Gradle leaves the release build unsigned.
+          if [ "$REHEARSAL" = true ]; then
+            unset VOICESTUDIO_ANDROID_KEYSTORE VOICESTUDIO_ANDROID_KEYSTORE_PASSWORD VOICESTUDIO_ANDROID_KEY_ALIAS VOICESTUDIO_ANDROID_KEY_PASSWORD
+          fi
           # Shared clock and serialized builds keep codes increasing across both release workflows.
           export VOICESTUDIO_ANDROID_VERSION_CODE="$(python3 "$GITHUB_WORKSPACE/scripts/android_version_code.py")"
           test -n "$VOICESTUDIO_ANDROID_VERSION_CODE"
@@ -137,7 +161,7 @@ jobs:
           name: VoiceStudio-android-release
           path: ${{ runner.temp }}/out
           if-no-files-found: error
-          retention-days: 30
+          retention-days: ${{ inputs.rehearsal && 3 || 30 }}
 
       - name: Remove keystore
         if: always()
@@ -147,7 +171,7 @@ jobs:
     if: github.event_name == 'push' || inputs.release_ref != '' || inputs.ios
     runs-on: macos-26
     timeout-minutes: 80
-    environment: mobile-release
+    environment: ${{ !inputs.rehearsal && 'mobile-release' || '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -155,7 +179,7 @@ jobs:
           persist-credentials: false
 
       - name: Validate release source
-        if: inputs.release_ref != ''
+        if: inputs.release_ref != '' && !inputs.rehearsal
         working-directory: ${{ github.workspace }}
         shell: bash
         env:
@@ -164,6 +188,16 @@ jobs:
           [[ "$RELEASE_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]]
           test "$(git rev-parse HEAD)" = "$(git rev-parse "refs/tags/${RELEASE_REF}^{commit}")"
           test "${RELEASE_REF#v}" = "$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')"
+
+      - name: Validate rehearsal source
+        if: inputs.rehearsal
+        working-directory: ${{ github.workspace }}
+        shell: bash
+        env:
+          RELEASE_REF: ${{ inputs.release_ref }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$RELEASE_REF"
+          [[ "$(python3 -c 'import json; print(json.load(open("package.json"))["version"])')" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$ ]]
 
       - name: Restore native runtimes
         id: native-cache
@@ -209,10 +243,10 @@ jobs:
           name: VoiceStudio-ios-unsigned
           path: ${{ runner.temp }}/VoiceStudio-unsigned.ipa
           if-no-files-found: error
-          retention-days: 30
+          retention-days: ${{ inputs.rehearsal && 3 || 30 }}
 
       - name: Write App Store Connect API key
-        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios
+        if: ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios) && !inputs.rehearsal
         env:
           ASC_KEY: ${{ secrets.APP_STORE_CONNECT_API_KEY }}
         run: |
@@ -223,7 +257,7 @@ jobs:
       # Release recovery can check out an older tag without today's helper.
       # Pin signing tools to the workflow's own reviewed commit, outside that tree.
       - name: Checkout signing tools
-        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios
+        if: ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios) && !inputs.rehearsal
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: ${{ job.workflow_repository }}
@@ -236,7 +270,7 @@ jobs:
           persist-credentials: false
 
       - name: Install reusable archive identity
-        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios
+        if: ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios) && !inputs.rehearsal
         env:
           IOS_ARCHIVE_CERTIFICATE: ${{ secrets.IOS_ARCHIVE_CERTIFICATE }}
           IOS_ARCHIVE_CERTIFICATE_PASSWORD: ${{ secrets.IOS_ARCHIVE_CERTIFICATE_PASSWORD }}
@@ -248,7 +282,7 @@ jobs:
       # Reuse the installed development identity for the archive. Export still
       # uses Apple's cloud-managed Distribution certificate and App Store profile.
       - name: Archive
-        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios
+        if: ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios) && !inputs.rehearsal
         env:
           ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
@@ -267,7 +301,7 @@ jobs:
             archive
 
       - name: Export IPA
-        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios
+        if: ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios) && !inputs.rehearsal
         env:
           ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
@@ -290,7 +324,7 @@ jobs:
           ls "$RUNNER_TEMP/ipa"/*.ipa
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        if: (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios
+        if: ((github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')) || inputs.signed_ios) && !inputs.rehearsal
         with:
           name: VoiceStudio-ios-release
           path: ${{ runner.temp }}/ipa/*.ipa

@@ -47,6 +47,10 @@ on:
         description: "Build only the platforms the desktop installers ship"
         type: boolean
         default: false
+      retention_days:
+        description: "Days to keep the runtime artifacts (0 keeps the repository default)"
+        type: number
+        default: 0
 
 permissions:
   contents: read
@@ -169,6 +173,8 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: omnivoice-tts-${{ matrix.platform }}
+          # Release rehearsals keep these only briefly; empty means the default.
+          retention-days: ${{ inputs.retention_days || '' }}
           if-no-files-found: error
           path: |
             bin/omnivoice-tts-${{ matrix.platform }}*
