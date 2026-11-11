@@ -1,3 +1,12 @@
+> [!IMPORTANT]
+> **This repository is RedVoice, a modified fork of <a href="https://github.com/debpalash/VoiceStudio">VoiceStudio</a>.** RedVoice is an independent project and is not affiliated with or endorsed by the VoiceStudio team.
+>
+> **What has changed so far (since 2026-11-11):** documentation only. This notice and the <a href="docs/MASTER-PROMPT_redvoice_v01.md">RedVoice project plan</a> were added. The app code is still identical to VoiceStudio, so everything below this notice describes VoiceStudio, and its download links, install commands, Pro and Cloud links lead to VoiceStudio, not to RedVoice. There is no RedVoice release yet.
+>
+> **What RedVoice will change:** an offline voice cloning and text-to-speech app for video editors that works on AMD Radeon graphics cards as well as NVIDIA and CPU; one clip with several takes for each script line; speech timed to subtitle files; sending chosen takes to a DaVinci Resolve timeline; a dark theme with a red accent; and the online parts (accounts, Pro, Cloud, update checks) switched off. This list will be updated as changes land.
+>
+> RedVoice keeps VoiceStudio's <a href="LICENSE">AGPL-3.0 license</a> and all original copyright notices (<a href="LICENSE-NOTICE.md">license notice</a>).
+
 <div align="center">
   <h1><sub><img src="docs/logo.png" alt="" width="36" height="36" /></sub> VoiceStudio</h1>
   <p>
