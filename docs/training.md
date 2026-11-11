@@ -6,6 +6,10 @@ Install the training dependencies first:
 uv sync --extra train
 ```
 
+`uv sync` does not activate the environment in your shell. Run the training
+commands through it with `uv run --extra train ...` (for example
+`uv run --extra train accelerate launch ...`), or activate `.venv` first.
+
 ## Training Config
 
 All training is controlled by a JSON training config file and a JSON data config file. 
