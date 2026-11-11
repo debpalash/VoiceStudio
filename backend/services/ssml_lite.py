@@ -177,11 +177,39 @@ def _grapheme_units(text: str) -> list[str]:
     normalized = unicodedata.normalize("NFC", text)
     units: list[list[str]] = []
     for ch in normalized:
-        if units and unicodedata.category(ch) in ("Mn", "Mc", "Me"):
+        if units and _extends_unit(units[-1], ch):
             units[-1].append(ch)
         else:
             units.append([ch])
     return ["".join(unit) for unit in units]
+
+
+_ZWJ = "\u200d"
+
+
+def _is_regional_indicator(ch: str) -> bool:
+    return "\U0001f1e6" <= ch <= "\U0001f1ff"
+
+
+def _extends_unit(unit: list[str], ch: str) -> bool:
+    """Whether ``ch`` belongs to the grapheme unit ``unit`` instead of a new one.
+
+    Besides combining marks (see :func:`_grapheme_units`), this keeps emoji
+    clusters whole: a skin-tone modifier stays on its base, a zero-width
+    joiner and the code point after it stay in the sequence (``👩‍💻``), and
+    regional indicators pair up into one flag (``🇺🇸``).
+    """
+    if unicodedata.category(ch) in ("Mn", "Mc", "Me"):
+        return True
+    if ch == _ZWJ or unit[-1] == _ZWJ:
+        return True
+    if "\U0001f3fb" <= ch <= "\U0001f3ff":  # emoji skin-tone modifiers
+        return True
+    return (
+        _is_regional_indicator(ch)
+        and len(unit) == 1
+        and _is_regional_indicator(unit[0])
+    )
 
 
 def spell_out(word: str) -> str:

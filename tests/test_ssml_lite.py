@@ -201,6 +201,21 @@ def test_spell_out_does_not_fuse_separate_tokens():
     assert spell_out("\u1100 \u1161") == "\u1100 \u1161"
 
 
+def test_spell_out_keeps_flag_emoji_whole():
+    # Two regional indicators form one flag; four form two flags.
+    assert spell_out("\U0001f1fa\U0001f1f8") == "\U0001f1fa\U0001f1f8"
+    assert (
+        spell_out("\U0001f1fa\U0001f1f8\U0001f1f0\U0001f1f7")
+        == "\U0001f1fa\U0001f1f8 \U0001f1f0\U0001f1f7"
+    )
+
+
+def test_spell_out_keeps_zwj_and_skin_tone_emoji_whole():
+    technologist = "\U0001f469\u200d\U0001f4bb"  # woman + ZWJ + laptop
+    thumbs_up = "\U0001f44d\U0001f3fd"  # thumbs up + medium skin tone
+    assert spell_out(f"a{technologist}{thumbs_up}") == f"a {technologist} {thumbs_up}"
+
+
 def test_redos_safe_on_adversarial_input():
     # Many bracket-like fragments must not blow up (linear-time guarantee).
     import time
