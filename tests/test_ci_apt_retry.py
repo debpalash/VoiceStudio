@@ -139,7 +139,7 @@ def test_no_direct_networked_apt():
     for f in FILES:
         for n, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
             code = line.split("#", 1)[0]
-            if re.search(r"\bapt(-get)?\s+(update|install|upgrade)\b", code) or (
+            if re.search(r"\bapt(-get)?\s+(?:-\S+\s+)*(update|install|upgrade|dist-upgrade|full-upgrade)\b", code) or (
                 "apt-get" in code and not OFFLINE.search(code)
             ):
                 bad.append(f"{f.name}:{n}: {line.strip()}")
@@ -175,3 +175,10 @@ def test_helper_takes_the_stubbed_sudo_path_even_as_root(tmp_path):
     out = subprocess.run(["bash", str(probe)], env={"PATH": f"{stubs}:/usr/bin:/bin"},
                          capture_output=True, text=True, timeout=10).stdout
     assert out.strip() == "SUDO=sudo"
+
+
+def test_direct_apt_pattern_catches_leading_options():
+    pattern = re.compile(r"\bapt(-get)?\s+(?:-\S+\s+)*(update|install|upgrade|dist-upgrade|full-upgrade)\b")
+    for line in ("sudo apt -y install pkg", "apt-get -qq update", "apt install x", "sudo apt-get -o A=1 install y"):
+        assert pattern.search(line), line
+    assert not pattern.search("apt-get clean")
