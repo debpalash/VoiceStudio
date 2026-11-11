@@ -7,9 +7,11 @@ final class ProductionScreens: XCTestCase {
         app.launch()
         app.declineConsent()
         for (route,title) in [("transcriptions","Transcriptions"),("handoff","Project handoff and backup"),("design","Voice design"),("stories","Stories"),("audiobook","Audiobook"),("batch","Batch dubbing"),("gallery","Gallery"),("workflows","Workflows"),("calls","Calls"),("local-api","Phone speech API"),("tools","Tools")] {
+            // Home's cards sit in a LazyVGrid: a card below the rendered rows is not in
+            // the accessibility hierarchy until the grid scrolls to it, so waiting for it
+            // without scrolling can never succeed. reveal() scrolls until it is on screen.
             let card = app.buttons["home."+route]
-            card.waitReady()
-            for _ in 0..<8 { if card.isHittable { break }; app.swipeUp() }
+            app.reveal(card)
             XCTAssertTrue(card.isHittable,route); card.tap()
             XCTAssertTrue(app.navigationBars[title].waitForExistence(timeout: uiReadyTimeout),route)
             XCTAssertFalse(app.navigationBars["Connect to VoiceStudio"].exists,route)
