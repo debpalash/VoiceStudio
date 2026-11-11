@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import os
-import time
+import threading
 from unittest.mock import patch
 
 import pytest
@@ -475,6 +475,8 @@ class TestEndpoints:
         job = {"id": "j4", "audio_path": str(wav)}
         backend = MagicMock()
         backend.id = "fake-asr"
+        unloaded = threading.Event()
+        backend.unload.side_effect = lambda *a, **k: unloaded.set()
         with patch.object(dub_core, "_get_job", return_value=job), \
              patch.object(asr_backend, "load_active_asr_backend",
                           return_value=backend), \
@@ -485,10 +487,8 @@ class TestEndpoints:
         assert str(wav) not in r.text
         # The stream's `finally` hands unload() to the GPU pool
         # fire-and-forget by design (it blocks, and runs under GeneratorExit),
-        # so it lands after the response closes. Poll for it, not sleep.
-        deadline = time.monotonic() + 10.0
-        while not backend.unload.called and time.monotonic() < deadline:
-            time.sleep(0.01)
+        # so it lands after the response closes. Wait on an Event it sets.
+        assert unloaded.wait(10.0), "ASR backend was never unloaded"
         backend.unload.assert_called_once()
 
 
