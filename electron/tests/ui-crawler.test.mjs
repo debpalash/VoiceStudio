@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { ROUTE_WEIGHTS, routesForShard } from './crawler-shards.mjs';
-import { createTraffic, tracksRequest, waitForQuietRequests } from './crawler-settle.mjs';
+import { createTraffic, stalledClick, stalledRoute, tracksRequest, waitForQuietRequests } from './crawler-settle.mjs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -189,14 +189,38 @@ test('a request pending past the stall limit names what started it', () => {
   });
 });
 
-test('a stalled backend stops the mode without changing its verdict', () => {
-  const constant = (name) => Number(crawler.match(new RegExp(`const ${name} = ([\\d_]+);`))[1].replaceAll('_', ''));
-  // A request can sit through two arm() waits and the click's own wait before a click reports it
-  // unsettled; any older request has already failed the run, so stopping only saves time.
-  assert.ok(constant('STALLED_MS') >= 3 * constant('REQUEST_BUDGET_MS'));
+test('only a click whose own wait failed can stop the mode', () => {
+  let time = 0;
+  const traffic = createTraffic({ now: () => time });
+  traffic.start('GET /api/engines');
+  time = 45_000; // held through setup and pre-click waits, which a mode may still pass after
+  assert.equal(stalledClick({ settled: true, pending: 0 }, traffic, 30_000), null);
+  assert.equal(stalledClick({ settled: false, pending: 1 }, traffic, 30_000).request, 'GET /api/engines');
+  // The pre-click waits (openSession, reset, arm) never judge a stall; only the click's does.
+  assert.equal(crawler.match(/stalledClick\(/g).length, 1);
+  assert.match(crawler, /observation = await settle\(SETTLE_MS, busy\);[\s\S]{0,120}stalledClick\(observation, traffic, STALLED_MS\)/);
+  assert.match(crawler, /const settle = \(grace = SETTLE_MS, snapshot\) => waitForQuietRequests\(/);
   assert.match(crawler, /page\.on\('framenavigated', \(frame\) => frame === page\.mainFrame\(\) && traffic\.committed\(\)\)/);
-  assert.match(crawler, /traffic\.stalled\(STALLED_MS\)/);
   assert.match(crawler, /error instanceof CrawlStalled\) && RELOAD_ERROR/, 'a stall is never mistaken for a reload');
+});
+
+test('a hang no click judged still fails the mode after its route', () => {
+  let time = 0;
+  const traffic = createTraffic({ now: () => time });
+  traffic.start('GET /api/model/status'); // every click on the route missed: no click wait ran
+  traffic.start('GET /api/engines');
+  time = 31_000;
+  traffic.finish('GET /api/engines'); // settled during a click: never reported
+  assert.equal(stalledRoute(traffic, 30_000).request, 'GET /api/model/status');
+  traffic.finish('GET /api/model/status');
+  assert.equal(stalledRoute(traffic, 30_000), null);
+  assert.match(crawler, /await crawlRoute\(route\);[\s\S]{0,160}await failStalled\(stalledRoute\(traffic, STALLED_MS\)\);/);
+});
+
+test('a dialog opener clicked outside visit() still names itself as the cause', () => {
+  const pass3 = crawler.slice(crawler.indexOf('// Pass 3'));
+  const named = pass3.match(/traffic\.cause = `the click on \$\{route\} \$\{openerName\}`;\s*(?:await buttons\(\)|const button = buttons\(\))/g);
+  assert.equal(named?.length, 2, 'both opener clicks set the cause first');
 });
 
 test('lazily loaded code counts toward the quiet window, event streams do not', () => {
