@@ -13,6 +13,7 @@ import {
   runCodesign,
   omnivoiceTtsBinaryName,
   omnivoiceTtsResources,
+  omnivoiceTtsServerName,
   omnivoiceTtsSlug,
   rewriteManifest,
   sha256File,
@@ -45,7 +46,11 @@ test('maps each installer target to the slug the backend resolves (#2780)', () =
 
 test('packages a staged runtime under resources/bin and nothing otherwise', () => {
   assert.deepEqual(omnivoiceTtsResources(join(tmpdir(), 'missing-omnivoice-tts')), []);
-  const dir = stage({ 'omnivoice-tts-linux-x86_64': 'rt', 'libggml.so': 'lib' });
+  const dir = stage({
+    'omnivoice-tts-linux-x86_64': 'rt',
+    'tts-server-linux-x86_64': 'srv',
+    'libggml.so': 'lib',
+  });
   assert.deepEqual(omnivoiceTtsResources(dir), [{ from: dir, to: 'bin', filter: ['**/*'] }]);
 });
 
@@ -135,6 +140,32 @@ test('default signing skips the pre-signed runtime and keeps other ignores', asy
   assert(forwarded.opts.ignore(join(bin, 'omnivoice-tts-darwin-arm64')));
   assert(forwarded.opts.ignore('/x/driver.kext'));
   assert(!forwarded.opts.ignore(join(app, 'Contents', 'MacOS', 'VoiceStudio')));
+});
+
+test('ignores empty CLI placeholders for other platforms (Mac App Store copy of bin/)', () => {
+  const dir = stage({
+    'omnivoice-tts-darwin-arm64': 'rt',
+    'tts-server-darwin-arm64': 'srv',
+    'omnivoice-tts-darwin-x86_64': '',
+    'omnivoice-tts-linux-aarch64': '',
+  });
+  assert.equal(omnivoiceTtsResources(dir).length, 1);
+});
+
+test('refuses to package a runtime without its resident tts-server (#3654)', () => {
+  const missing = stage({ 'omnivoice-tts-linux-x86_64': 'rt', 'libggml.so': 'lib' });
+  assert.throws(() => omnivoiceTtsResources(missing), /missing the resident server tts-server-linux-x86_64/);
+  // Present on disk but not covered by the manifest is refused too.
+  const unlisted = stage({ 'omnivoice-tts-linux-x86_64': 'rt' });
+  writeFileSync(join(unlisted, 'tts-server-linux-x86_64'), 'srv');
+  assert.throws(() => omnivoiceTtsResources(unlisted), /missing the resident server/);
+  const complete = stage({
+    'omnivoice-tts-windows-x86_64.exe': 'rt',
+    'tts-server-windows-x86_64.exe': 'srv',
+  });
+  assert.equal(omnivoiceTtsResources(complete).length, 1);
+  assert.equal(omnivoiceTtsServerName('windows-x86_64'), 'tts-server-windows-x86_64.exe');
+  assert.equal(omnivoiceTtsServerName('darwin-arm64'), 'tts-server-darwin-arm64');
 });
 
 const TS_ERR = 'file: A timestamp was expected but was not found.\n';
