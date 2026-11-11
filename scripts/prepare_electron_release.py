@@ -54,7 +54,7 @@ def is_credit_worthy(login):
                 or name in agents.AGENT_LOGINS or name == UNLINKED_LOGIN)
 
 
-def contributors_section(repo, tag, gh=_gh):
+def contributors_section(repo, tag, gh=_gh, head=None):
     """A `### Contributors` block for everyone who contributed since the last stable release.
 
     Two sources, because either alone misses people: commit authors in the tag
@@ -62,11 +62,12 @@ def contributors_section(repo, tag, gh=_gh):
     release whose commits are not linked to their GitHub account. The base is the
     latest published stable release, so a beta and a stable release both cover the
     whole span since the previous stable. Bots, AI agents and unlinked placeholders
-    are left out. Returns "" when there is nobody to thank.
+    are left out. Returns "" when there is nobody to thank. `head` replaces the
+    tag as the end of the comparison when the tag does not exist yet (a rehearsal).
     """
     latest = gh("api", f"repos/{repo}/releases/latest", "--jq", ".tag_name + \" \" + .published_at").split()
     base, since = latest[0], latest[1][:10]
-    ordered = _ranked_contributors(repo, base, since, tag, gh)
+    ordered = _ranked_contributors(repo, base, since, head or tag, gh)
     if not ordered:
         return ""
     mentions = ", ".join(f"@{login}" for login in ordered)
@@ -75,14 +76,14 @@ def contributors_section(repo, tag, gh=_gh):
         return f"### Contributors\n\nThanks to everyone who contributed to this release: {mentions}\n"
     # A beta's notes span everything since the last stable, so its full list repeats
     # from beta to beta; name who is new since the previous beta first.
-    new = _ranked_contributors(repo, previous[0], previous[1], tag, gh)
+    new = _ranked_contributors(repo, previous[0], previous[1], head or tag, gh)
     new_line = ", ".join(f"@{login}" for login in new) if new else "no new contributors"
     return (f"### Contributors\n\nNew since {previous[0]}: {new_line}\n\n"
             f"Everyone who contributed since {base}: {mentions}\n")
 
 
-def _ranked_contributors(repo, base, since, tag, gh):
-    commit_authors = gh("api", f"repos/{repo}/compare/{base}...{tag}", "--paginate",
+def _ranked_contributors(repo, base, since, head, gh):
+    commit_authors = gh("api", f"repos/{repo}/compare/{base}...{head}", "--paginate",
                         "--jq", ".commits[].author.login // empty").split()
     pr_authors = gh("pr", "list", "--repo", repo, "--state", "merged", "--search", f"merged:>={since}",
                     "--limit", "1000", "--json", "author", "--jq", ".[].author.login").split()
@@ -111,7 +112,12 @@ def _previous_beta(repo, tag, gh):
     return best and (best[1], best[2])
 
 
-def prepare(assets, tag, sunset_tag=None, repo=None, gh=_gh):
+def prepare(assets, tag, sunset_tag=None, repo=None, gh=_gh, head=None):
+    """Verify the assets as release `tag` and write its notes and SHA256SUMS.txt.
+
+    `head` marks a rehearsal: `tag` is the one the package version would get and
+    does not exist, so the Contributors comparison ends at that commit instead.
+    """
     version = json.loads(Path("package.json").read_text(encoding="utf-8"))["version"]
     if tag != f"v{version}":
         raise ValueError("Tag must match package version")
@@ -145,7 +151,7 @@ def prepare(assets, tag, sunset_tag=None, repo=None, gh=_gh):
     # A hand-written Contributors block (with roles, reporters) always wins.
     if repo and not re.search(r"^#{2,4} Contributors", notes, re.M):
         try:
-            block = contributors_section(repo, tag, gh)
+            block = contributors_section(repo, tag, gh, head=head)
         except (subprocess.CalledProcessError, OSError) as error:
             # Credits must never block a release; say so loudly instead.
             print(f"::warning::Contributors section skipped: {error}", file=sys.stderr)
@@ -157,10 +163,21 @@ def prepare(assets, tag, sunset_tag=None, repo=None, gh=_gh):
         f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}" for p in sorted(files)
         if p.name not in {"SHA256SUMS.txt", "RELEASE_NOTES.md"}) + "\n", encoding="utf-8")
 
+def rehearsal_target():
+    """`(tag, commit)` for a rehearsal: the tag package.json's version would get, and HEAD."""
+    version = json.loads(Path("package.json").read_text(encoding="utf-8"))["version"]
+    channel_for(version)  # a rehearsal needs a releasable version shape too
+    head = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    return f"v{version}", head
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--assets", type=Path)
-    parser.add_argument("--tag")
+    selector = parser.add_mutually_exclusive_group()
+    selector.add_argument("--tag")
+    selector.add_argument("--rehearsal", action="store_true",
+                          help="No tag exists yet: verify as the tag package.json's version would get")
     parser.add_argument("--sunset-tag")
     parser.add_argument("--repo", help="owner/name; adds a Contributors section from the tag comparison")
     parser.add_argument("--print-channel", action="store_true",
@@ -168,7 +185,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.print_channel:
         print(channel_for(json.loads(Path("package.json").read_text(encoding="utf-8"))["version"]))
+    elif args.assets and args.rehearsal:
+        tag, head = rehearsal_target()
+        prepare(args.assets, tag, args.sunset_tag, repo=args.repo, head=head)
     elif args.assets and args.tag:
         prepare(args.assets, args.tag, args.sunset_tag, repo=args.repo)
     else:
-        parser.error("--assets and --tag are required")
+        parser.error("--assets and --tag (or --rehearsal) are required")

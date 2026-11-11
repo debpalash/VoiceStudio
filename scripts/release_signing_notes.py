@@ -25,12 +25,19 @@ STATUS = {
     "not-applicable": "— Linux packages are not code-signed",
 }
 
+# A release rehearsal may sign Windows installers with SignPath's test
+# certificate; a real release never accepts (or describes) such a build.
+REHEARSAL_STATUS = {
+    "test-signed": "⚠️ Signed with a test certificate (release rehearsal only)",
+}
 
-def render(reports_dir: Path) -> str:
+
+def render(reports_dir: Path, rehearsal: bool = False) -> str:
+    known = {**STATUS, **REHEARSAL_STATUS} if rehearsal else STATUS
     reports = {}
     for path in sorted(reports_dir.glob("signing-*.json")):
         report = json.loads(path.read_text())
-        if report["status"] not in STATUS:
+        if report["status"] not in known:
             raise ValueError(f"Unknown signing status in {path.name}: {report['status']}")
         reports[(report["platform"], report["arch"])] = report["status"]
     rows = [(label, reports[(platform, arch)]) for platform, arch, label in PLATFORMS if (platform, arch) in reports]
@@ -38,14 +45,16 @@ def render(reports_dir: Path) -> str:
     if unknown or not rows:
         raise ValueError(f"Unexpected signing reports: {sorted(unknown) or 'none'}")
     lines = ["", "### Installer signing", "", "| Platform | Signing |", "|---|---|"]
-    lines += [f"| {label} | {STATUS[status]} |" for label, status in rows]
+    lines += [f"| {label} | {known[status]} |" for label, status in rows]
     return "\n".join(lines) + "\n"
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--rehearsal", action="store_true", help="Also accept rehearsal-only statuses")
     parser.add_argument("reports", type=Path)
-    print(render(parser.parse_args().reports), end="")
+    args = parser.parse_args()
+    print(render(args.reports, rehearsal=args.rehearsal), end="")
 
 
 if __name__ == "__main__":

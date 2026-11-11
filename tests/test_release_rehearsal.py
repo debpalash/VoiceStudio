@@ -1,0 +1,272 @@
+"""A release rehearsal builds and verifies everything a release does, and publishes nothing.
+
+`electron-release.yml` with `rehearsal: true` runs from any branch without a tag.
+These guards pin the two halves of that promise: the rehearsal reaches the same
+verification as a tag (prepare_electron_release.py, the feed checks, the signing
+notes), and no step that writes to GitHub, dispatches a workflow or submits to
+SignPath can run in it.
+"""
+from __future__ import annotations
+
+import importlib.util
+import json
+import os
+import re
+import subprocess
+from pathlib import Path
+
+import pytest
+import yaml
+
+ROOT = Path(__file__).resolve().parents[1]
+WORKFLOWS = ROOT / ".github" / "workflows"
+
+# Anything that changes state outside the run: releases, tags, feeds, dispatches.
+PUBLISHING = re.compile(
+    r"gh release (create|edit|upload|delete)|gh workflow run|gh api [^\n]*-X\s*(POST|PUT|PATCH|DELETE)"
+    r"|git push|git tag |docker push|gh pr (create|merge)"
+)
+PUBLISHING_ACTIONS = ("softprops/action-gh-release", "docker/build-push-action", "docker/login-action")
+GUARD = 'if [ "$REHEARSAL" != false ]; then echo "::error::A rehearsal run reached a publishing step"; exit 1; fi'
+
+
+def workflow(name: str) -> dict:
+    data = yaml.safe_load((WORKFLOWS / name).read_text(encoding="utf-8"))
+    data["on"] = data.pop(True, data.get("on"))
+    return data
+
+
+RELEASE = workflow("electron-release.yml")
+
+
+def steps(job: str) -> list[dict]:
+    return RELEASE["jobs"][job]["steps"]
+
+
+def step(job: str, name: str) -> dict:
+    return next(s for s in steps(job) if s.get("name") == name)
+
+
+def test_rehearsal_is_an_opt_in_dispatch_with_a_test_only_signpath_choice():
+    inputs = RELEASE["on"]["workflow_dispatch"]["inputs"]
+    assert inputs["rehearsal"] == {
+        "description": inputs["rehearsal"]["description"], "type": "boolean", "default": False,
+    }
+    policy = inputs["signpath_policy"]
+    # The release policy is never a choice: a rehearsal can only test-sign.
+    assert policy["type"] == "choice" and policy["options"] == ["none", "test-signing"]
+    assert policy["default"] == "none"
+    assert RELEASE["env"]["REHEARSAL"] == "${{ inputs.rehearsal == true }}"
+    # Every leg builds the dispatched commit, not whatever the branch moves to.
+    assert "inputs.rehearsal && github.sha" in RELEASE["env"]["RELEASE_REF"]
+    assert "inputs.rehearsal && github.sha" in RELEASE["jobs"]["omnivoice-tts"]["with"]["ref"]
+    assert "rehearsal" in RELEASE["concurrency"]["group"]
+
+
+def test_tags_keep_the_exact_tag_check_and_rehearsals_take_their_own_path():
+    exact = step("validate", "Require an exact version tag")
+    assert exact["if"] == "inputs.rehearsal != true"
+    assert 'test "$REF" = "refs/tags/v$VERSION"' in exact["run"]
+    assert "test \"$WORKFLOW_REF\" = refs/heads/main" in exact["run"]
+    # A real release cannot pick a SignPath policy; it uses the configured one.
+    assert "signpath_policy is for rehearsals" in exact["run"]
+    rehearsal = step("validate", "Validate the rehearsal request")
+    assert rehearsal["if"] == "inputs.rehearsal == true"
+    # The version shape is checked for both paths by the channel step.
+    channel = step("validate", "Resolve the release channel")
+    assert "if" not in channel and "--print-channel" in channel["run"]
+
+
+@pytest.mark.parametrize(("publish", "release_tag", "allow_unsigned", "ok"), [
+    ("false", "", "false", True),
+    ("true", "", "false", False),
+    ("false", "v1.2.3", "false", False),
+    ("false", "", "true", False),
+])
+def test_a_rehearsal_request_cannot_ask_to_publish(publish, release_tag, allow_unsigned, ok):
+    head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
+    env = dict(os.environ, PUBLISH=publish, RELEASE_TAG_OVERRIDE=release_tag,
+               ALLOW_UNSIGNED=allow_unsigned, GITHUB_SHA=head)
+    result = subprocess.run(["bash", "-e", "-c", step("validate", "Validate the rehearsal request")["run"]],
+                            cwd=ROOT, env=env, capture_output=True, text=True)
+    assert (result.returncode == 0) is ok, result.stdout + result.stderr
+
+
+def _publishing_steps(data: dict) -> list[tuple[str, dict]]:
+    found = []
+    for job_name, job in data["jobs"].items():
+        for s in job.get("steps", []):
+            uses = s.get("uses", "")
+            if PUBLISHING.search(s.get("run", "")) or uses.startswith(PUBLISHING_ACTIONS):
+                found.append((job_name, s))
+    return found
+
+
+def test_every_publishing_step_is_skipped_and_refuses_a_rehearsal():
+    found = _publishing_steps(RELEASE)
+    names = {s["name"] for _, s in found}
+    assert {"Create or update draft", "Publish only when explicitly requested",
+            "Update the Android repository after stable publication",
+            "Publish release container images"} <= names
+    for _, s in found:
+        assert "inputs.rehearsal != true" in s["if"], s["name"]
+        # Second line of defense: the script itself refuses before any gh call.
+        first = next(line.strip() for line in s["run"].splitlines() if line.strip() and not line.strip().startswith("#"))
+        assert first == GUARD, s["name"]
+
+
+def test_publishing_steps_stop_a_rehearsal_before_calling_github(tmp_path):
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    calls = tmp_path / "calls"
+    (fake / "gh").write_text(f'#!/bin/sh\necho "$*" >> "{calls}"\n')
+    (fake / "gh").chmod(0o755)
+    for rehearsal in ("true", ""):
+        for _, s in _publishing_steps(RELEASE):
+            env = dict(os.environ, PATH=f"{fake}{os.pathsep}{os.environ['PATH']}", REHEARSAL=rehearsal,
+                       CHANNEL="stable", TAG="v1.2.3", GITHUB_REPOSITORY="o/r")
+            result = subprocess.run(["bash", "-e", "-c", s["run"]], cwd=tmp_path, env=env,
+                                    capture_output=True, text=True)
+            assert result.returncode != 0, s["name"]
+            assert "A rehearsal run reached a publishing step" in result.stdout, s["name"]
+    assert not calls.exists()
+
+
+def test_called_workflows_publish_nothing_in_a_rehearsal():
+    mobile = RELEASE["jobs"]["mobile"]
+    assert mobile["with"]["rehearsal"] == "${{ inputs.rehearsal == true }}"
+    assert "inputs.rehearsal && github.sha" in mobile["with"]["release_ref"]
+    # Store signing stays off: electron-release never asks the phone build for it.
+    assert "signed_ios" not in mobile["with"]
+    called = workflow("mobile-release.yml")
+    assert called["on"]["workflow_call"]["inputs"]["rehearsal"]["default"] is False
+    # The only job there that writes is for mobile-v* tag pushes.
+    for job_name, s in _publishing_steps(called):
+        assert job_name == "release"
+    assert called["jobs"]["release"]["if"] == "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/mobile-v')"
+    assert not _publishing_steps(workflow("build-omnivoice-tts.yml"))
+
+
+def test_rehearsal_phone_builds_never_read_signing_secrets():
+    jobs = workflow("mobile-release.yml")["jobs"]
+    for platform in ("android", "ios"):
+        job = jobs[platform]
+        # The protected environment (and its secrets) stays out of a rehearsal.
+        assert job["environment"] == "${{ !inputs.rehearsal && 'mobile-release' || '' }}"
+        source = next(s for s in job["steps"] if s.get("name") == "Validate release source")
+        assert "!inputs.rehearsal" in source["if"]
+        rehearsal = next(s for s in job["steps"] if s.get("name") == "Validate rehearsal source")
+        assert rehearsal["if"] == "inputs.rehearsal"
+        assert 'git rev-parse HEAD)" = "$RELEASE_REF"' in rehearsal["run"]
+    android = {s.get("name"): s for s in jobs["android"]["steps"]}
+    assert android["Decode keystore"]["if"] == "${{ !inputs.rehearsal }}"
+    build = android["Build signed APK and AAB"]
+    assert "unset VOICESTUDIO_ANDROID_KEYSTORE" in build["run"]
+    assert build["run"].index("unset VOICESTUDIO_ANDROID_KEYSTORE") < build["run"].index("./gradlew")
+
+
+def test_signpath_runs_in_a_rehearsal_only_on_the_test_policy():
+    env = RELEASE["jobs"]["package"]["env"]
+    assert "(inputs.rehearsal != true || inputs.signpath_policy == 'test-signing')" in env["SIGNPATH_ENABLED"]
+    assert env["SIGNPATH_POLICY"] == "${{ inputs.rehearsal == true && inputs.signpath_policy || vars.SIGNPATH_SIGNING_POLICY_SLUG }}"
+    submit = step("package", "Sign the Windows installer with SignPath")
+    assert submit["with"]["signing-policy-slug"] == "${{ env.SIGNPATH_POLICY }}"
+    report = step("package", "Report and enforce Windows signing")
+    assert "env.REHEARSAL == 'true'" in report["env"]["TEST_SIGNED"]
+    assert "test-signed" in report["run"]
+
+
+def test_rehearsal_runs_the_same_verification_as_a_release():
+    validate = step("release", "Validate all platforms before creating a release")["run"]
+    assert "--assets release-assets --rehearsal --repo" in validate
+    assert '--assets release-assets --tag "$TAG" --repo' in validate
+    sunset = step("release", "Preserve the final Tauri updater feeds")
+    assert "rehearsal" not in sunset.get("if", "")
+    assert "--rehearsal --sunset-tag" in sunset["run"]
+    describe = step("release", "Describe installer signing per platform")["run"]
+    assert "--rehearsal" in describe and "NOTES_ARGS" in describe
+    feeds = step("release", "Rehearsal - check the feeds the release would carry")
+    assert feeds["if"] == "inputs.rehearsal == true"
+    assert "check_electron_release_assets.py --foreign-feeds" in feeds["run"]
+    tag = RELEASE["jobs"]["release"]["env"]["TAG"]
+    assert tag.startswith("${{ inputs.rehearsal && format('v{0}', needs.validate.outputs.version)")
+    names = [s.get("name") for s in steps("release")]
+    assert names.index("Rehearsal - check the feeds the release would carry") < names.index("Create or update draft")
+
+
+def test_rehearsal_artifacts_expire_within_days():
+    for job_name, job in RELEASE["jobs"].items():
+        for s in job.get("steps", []):
+            if s.get("uses", "").startswith("actions/upload-artifact@"):
+                days = str(s["with"]["retention-days"])
+                assert days in ("3", "${{ env.ARTIFACT_RETENTION_DAYS }}") or "inputs.rehearsal && 3" in days, s["name"]
+    assert RELEASE["jobs"]["package"]["env"]["ARTIFACT_RETENTION_DAYS"] == "${{ inputs.rehearsal && 3 || 14 }}"
+    assert RELEASE["jobs"]["omnivoice-tts"]["with"]["retention_days"] == "${{ inputs.rehearsal && 3 || 0 }}"
+    upload = next(s for s in workflow("build-omnivoice-tts.yml")["jobs"]["build-omnivoice-tts"]["steps"]
+                  if s.get("name") == "Upload binary artifact")
+    assert upload["with"]["retention-days"] == "${{ inputs.retention_days || '' }}"
+    mobile = workflow("mobile-release.yml")["jobs"]
+    for job_name, artifact in (("android", "VoiceStudio-android-release"), ("ios", "VoiceStudio-ios-unsigned")):
+        upload = next(s for s in mobile[job_name]["steps"] if s.get("with", {}).get("name") == artifact)
+        assert upload["with"]["retention-days"] == "${{ inputs.rehearsal && 3 || 30 }}"
+
+
+@pytest.fixture
+def release_module(monkeypatch):
+    monkeypatch.syspath_prepend(str(ROOT / "scripts"))
+    spec = importlib.util.spec_from_file_location("prepare_release_rehearsal_test", ROOT / "scripts/prepare_electron_release.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_prepare_rehearsal_verifies_as_the_package_version_and_credits_up_to_head(release_module, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    subprocess.run(["git", "init", "-q"], check=True)
+    Path("package.json").write_text(json.dumps({"version": "1.2.3-beta.2"}))
+    subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "commit", "-q",
+                    "--allow-empty", "-m", "x"], check=True)
+    head = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    assert release_module.rehearsal_target() == ("v1.2.3-beta.2", head)
+
+    compared = []
+    def gh(*args):
+        if args[0] == "pr":
+            return ""
+        if args[1].endswith("/releases/latest"):
+            return "v1.2.2 2026-10-01T00:00:00Z\n"
+        if args[1].endswith("/releases"):
+            return ""
+        compared.append(args[1])
+        return "alice\n"
+    block = release_module.contributors_section("o/r", "v1.2.3-beta.2", gh, head=head)
+    assert compared == [f"repos/o/r/compare/v1.2.2...{head}"] and "@alice" in block
+
+
+def test_prepare_rehearsal_refuses_an_unreleasable_version(release_module, monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    Path("package.json").write_text(json.dumps({"version": "1.2.3-rc.1"}))
+    with pytest.raises(ValueError, match="stable or beta"):
+        release_module.rehearsal_target()
+
+
+def test_prepare_cli_takes_a_tag_or_rehearsal_not_both(tmp_path):
+    result = subprocess.run(["python3", str(ROOT / "scripts/prepare_electron_release.py"), "--assets", str(tmp_path),
+                             "--tag", "v1.2.3", "--rehearsal"], capture_output=True, text=True)
+    assert result.returncode != 0 and "not allowed with" in result.stderr
+
+
+def test_test_signed_windows_installers_are_described_only_in_a_rehearsal(tmp_path):
+    spec = importlib.util.spec_from_file_location("release_signing_notes_rehearsal", ROOT / "scripts/release_signing_notes.py")
+    notes = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(notes)
+    (tmp_path / "signing-win32-x64.json").write_text(json.dumps({"platform": "win32", "arch": "x64", "status": "test-signed"}))
+    with pytest.raises(ValueError, match="Unknown signing status"):
+        notes.render(tmp_path)
+    assert "test certificate" in notes.render(tmp_path, rehearsal=True)
+
+
+def test_releasing_docs_explain_the_rehearsal():
+    text = (ROOT / "docs/RELEASING.md").read_text(encoding="utf-8")
+    assert "## Rehearse a release" in text
+    assert "gh workflow run electron-release.yml --ref <branch> -f rehearsal=true" in text
