@@ -60,6 +60,24 @@ async def _run(mm, pool, fn, timeout):
     )
 
 
+async def _assert_silent_job_times_out(mm, pool):
+    """A silent job must be abandoned with GpuJobTimeoutError while it is STILL
+    running. The job blocks on an Event that is only set afterwards, so a guard
+    that waited for the job (or extended on a leaked heartbeat) would never
+    return; the generous outer deadline turns that into a failure instead of a
+    hang. No wall-clock bound on the timeout itself: that flaked on loaded
+    runners."""
+    release = threading.Event()
+    try:
+        with pytest.raises(mm.GpuJobTimeoutError):
+            await asyncio.wait_for(
+                _run(mm, pool, lambda: release.wait(60), timeout=0.4), 30.0
+            )
+        assert not release.is_set()
+    finally:
+        release.set()
+
+
 # ── the fix ───────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
@@ -170,10 +188,7 @@ async def test_heartbeats_do_not_leak_between_jobs(mm, pool):
         "thread would inherit unearned extension credit"
     )
     # ...and the silent-job guard still holds on that same thread.
-    t0 = time.monotonic()
-    with pytest.raises(mm.GpuJobTimeoutError):
-        await _run(mm, pool, lambda: time.sleep(10), timeout=0.4)
-    assert time.monotonic() - t0 < 1.5
+    await _assert_silent_job_times_out(mm, pool)
 
 
 @pytest.mark.asyncio
@@ -189,10 +204,7 @@ async def test_another_threads_heartbeat_does_not_extend_this_job(mm, pool):
     t = threading.Thread(target=other_thread, daemon=True)
     t.start()
     try:
-        t0 = time.monotonic()
-        with pytest.raises(mm.GpuJobTimeoutError):
-            await _run(mm, pool, lambda: time.sleep(10), timeout=0.4)
-        assert time.monotonic() - t0 < 1.5
+        await _assert_silent_job_times_out(mm, pool)
     finally:
         stop.set()
         mm._MODEL_LOAD_ACTIVITY.pop(999999999, None)

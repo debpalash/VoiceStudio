@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import time
 from unittest.mock import patch
 
 import pytest
@@ -482,6 +483,12 @@ class TestEndpoints:
         assert r.status_code == 200
         assert "Transcription failed. Check the selected ASR engine and try again." in r.text
         assert str(wav) not in r.text
+        # The stream's `finally` hands unload() to the GPU pool
+        # fire-and-forget by design (it blocks, and runs under GeneratorExit),
+        # so it lands after the response closes. Poll for it, not sleep.
+        deadline = time.monotonic() + 10.0
+        while not backend.unload.called and time.monotonic() < deadline:
+            time.sleep(0.01)
         backend.unload.assert_called_once()
 
 
