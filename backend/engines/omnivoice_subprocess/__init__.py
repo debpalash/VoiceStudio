@@ -55,7 +55,9 @@ class OmniVoiceSubprocessBackend(SubprocessBackend):
     inline_tags = OMNIVOICE_INLINE_TAGS
     supports_voice_design = True
     _DEFAULT_SAMPLE_RATE = 24000
-    gpu_compat = ("cuda", "rocm", "mps", "cpu")
+    # Same as OmniVoiceBackend: the child resolves its device through the
+    # parent torch's get_best_device(), Intel XPU included.
+    gpu_compat = ("cuda", "rocm", "xpu", "mps", "cpu")
     # Match OmniVoiceBackend: the measured floor below which a render that
     # should take seconds runs for minutes (the #1226/#1222 4 GB reports).
     min_vram_gb = 6.0

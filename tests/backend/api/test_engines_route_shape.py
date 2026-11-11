@@ -357,13 +357,14 @@ def test_mps_api_hides_alias_but_accepts_it_for_selection(fresh_app, monkeypatch
     assert (selection.status_code, selection.json()["active"]) == (200, "omnivoice-subprocess")
 
 
-def test_gpu_compat_omnivoice_variants_include_rocm(fresh_app, monkeypatch):
-    """Both OmniVoice paths use torch's HIP-backed CUDA device on ROCm."""
+def test_gpu_compat_omnivoice_variants_include_rocm_and_xpu(fresh_app, monkeypatch):
+    """Both OmniVoice paths use torch's HIP-backed CUDA device on ROCm, and
+    load on Intel XPU through the same get_best_device()."""
     _force_host(monkeypatch, "rocm")
     client = _client(fresh_app)
     r = client.get("/engines")
     by_id = {b["id"]: b for b in r.json()["tts"]["backends"]}
-    expected = {"cuda", "rocm", "mps", "cpu"}
+    expected = {"cuda", "rocm", "xpu", "mps", "cpu"}
     assert set(by_id["omnivoice"]["gpu_compat"]) == expected
     assert set(by_id["omnivoice-subprocess"]["gpu_compat"]) == expected
 
@@ -391,6 +392,19 @@ def test_omnivoice_variants_route_to_rocm(fresh_app, monkeypatch):
     by_id = {b["id"]: b for b in body["tts"]["backends"]}
     for backend_id in ("omnivoice", "omnivoice-subprocess"):
         assert by_id[backend_id]["effective_device"] == "rocm"
+        assert by_id[backend_id]["routing_status"] == "accelerated"
+        assert by_id[backend_id]["routing_reason"] is None
+
+
+def test_omnivoice_variants_route_to_intel_xpu(fresh_app, monkeypatch):
+    """Before "xpu" was declared, an Arc host showed a CPU fallback (and got
+    CPU-sized budgets) while the model was actually loaded on the GPU."""
+    _force_host(monkeypatch, "xpu")
+
+    body = _client(fresh_app).get("/engines").json()
+    by_id = {b["id"]: b for b in body["tts"]["backends"]}
+    for backend_id in ("omnivoice", "omnivoice-subprocess"):
+        assert by_id[backend_id]["effective_device"] == "xpu"
         assert by_id[backend_id]["routing_status"] == "accelerated"
         assert by_id[backend_id]["routing_reason"] is None
 
