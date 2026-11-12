@@ -226,7 +226,7 @@ def test_rehearsal_runs_the_same_verification_as_a_release():
     sunset = step("release", "Preserve the final Tauri updater feeds")
     assert "rehearsal" not in sunset.get("if", "")
     assert "--rehearsal --missing-report" in sunset["run"] and '--sunset-tag "$SUNSET_TAG"' in sunset["run"]
-    describe = step("release", "Describe installer signing per platform")["run"]
+    describe = step("release", "Describe downloads and signing per platform")["run"]
     assert "--rehearsal" in describe and "NOTES_ARGS" in describe
     feeds = step("release", "Rehearsal - check the feeds the release would carry")
     assert feeds["if"] == "inputs.rehearsal == true"

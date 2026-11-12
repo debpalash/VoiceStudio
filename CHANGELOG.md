@@ -10,6 +10,14 @@ metadata and the backend fallback mirror it.
 
 ## [0.5.8] — 2026-11-12
 
+**Highlights**
+
+- OmniVoice GGUF uses AMD, Intel and NVIDIA GPUs through Vulkan on Windows and Linux, and Intel Arc GPUs run OmniVoice
+- Setup falls back to a smaller CPU build when PyTorch downloads fail, and the app falls back to the CPU when the GPU fails
+- Windows loads models one file at a time, and an engine crash names its cause and offers Restart on CPU
+- dots.tts voice cloning runs on Windows through audio.cpp, with no Python setup
+- Convert can keep your delivery and takes video; Dubbing exports subtitles first and moves lines between speakers
+
 **OmniVoice now uses your AMD, Intel or NVIDIA GPU, and VoiceStudio gets much harder to break.** OmniVoice GGUF runs on any Vulkan GPU on Windows and Linux, sizes its model to your card and can stay loaded between requests (opt-in, Settings → Performance), and Intel Arc GPUs run OmniVoice too. When something goes wrong, the app now keeps going: setup offers a much smaller CPU build when the PyTorch download keeps failing, retries stalled downloads, and VoiceStudio moves to the CPU with a notice when the GPU fails. On Windows, models load one file at a time to avoid a crash on first launch, and an engine crash names the library behind it and offers Restart on CPU.
 
 This release also brings dots.tts voice cloning to Windows with no Python setup, Convert that keeps your delivery and takes video, dubbing that exports subtitles first and moves lines between speakers, a `voicestudio` terminal command, background updates, a new macOS installer window, and hundreds of fixes to dubbing, setup, audiobooks and the phone apps.
@@ -18,31 +26,11 @@ This release also brings dots.tts voice cloning to Windows with no Python setup,
 
 *The new macOS installer window (#4001).*
 
-**Download**
-
-| Platform | Installer |
-| --- | --- |
-| Windows x64 | [Installer](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-win-x64.exe) |
-| Windows ARM64 (experimental) | [Installer](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-win-arm64.exe) |
-| macOS Apple Silicon | [DMG](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-mac-arm64.dmg) |
-| macOS Intel | [DMG](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-mac-x64.dmg) |
-| Linux x64 | [AppImage](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-linux-x64.AppImage) · [deb](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-linux-x64.deb) |
-| Android | [APK](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-android.apk) · [AAB](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-android.aab) |
-| iPhone | [Unsigned IPA](https://github.com/debpalash/VoiceStudio/releases/download/v0.5.8/VoiceStudio-0.5.8-ios-unsigned.ipa) (sideload with your own Apple ID) |
-
 **Updating from 0.5.7:** Take the in-app update offered by 0.5.7, or install over your existing app; voices, projects and settings are kept. On first launch the local runtime updates its packages in place, including the PyTorch 2.10 security update (#3884)
 
 **Updating from a 0.5.8 beta:** Nothing to do: the Beta channel rolls forward onto 0.5.8 automatically. To stop getting betas, switch to Stable in Settings → Updates → Update channel.
 
 **Running from source:** The Gradio demo and model training are no longer installed by default; add the `ui` or `train` extra if you use them (#4027)
-
-**Highlights**
-
-- OmniVoice GGUF uses AMD, Intel and NVIDIA GPUs through Vulkan on Windows and Linux, and Intel Arc GPUs run OmniVoice
-- Setup falls back to a smaller CPU build when PyTorch downloads fail, and the app falls back to the CPU when the GPU fails
-- Windows loads models one file at a time, and an engine crash names its cause and offers Restart on CPU
-- dots.tts voice cloning runs on Windows through audio.cpp, with no Python setup
-- Convert can keep your delivery and takes video; Dubbing exports subtitles first and moves lines between speakers
 
 ### Changed
 

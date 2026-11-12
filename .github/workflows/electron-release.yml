@@ -581,27 +581,20 @@ jobs:
           pattern: electron-signing-*
           merge-multiple: true
           path: release-signing
-      - name: Describe installer signing per platform
+      - name: Describe downloads and signing per platform
         # The checkout is the release tag, which predates this helper when an older
         # tag is rebuilt from main; use the helper from the workflow's own commit.
         run: |
           gh api -H "Accept: application/vnd.github.raw" \
             "repos/$GITHUB_REPOSITORY/contents/scripts/release_signing_notes.py?ref=$GITHUB_SHA" \
             > "$RUNNER_TEMP/release_signing_notes.py"
-          # The table leads the notes so downloaders see it before the changelog.
-          NOTES_ARGS=()
-          if [ "$REHEARSAL" = true ]; then NOTES_ARGS=(--rehearsal); fi
+          # One download-and-signing table (desktop and phones) leads the notes, so
+          # downloaders see it before the changelog section and its Highlights.
+          NOTES_ARGS=(--assets release-assets --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG")
+          if [ "$REHEARSAL" = true ]; then NOTES_ARGS+=(--rehearsal); fi
           {
-            python3 "$RUNNER_TEMP/release_signing_notes.py" "${NOTES_ARGS[@]}" release-signing
-            echo
-            echo '### Phone downloads'
-            echo
-            BASE="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/VoiceStudio-${TAG#v}"
-            echo "Android: [signed APK](${BASE}-android.apk) · [Play bundle](${BASE}-android.aab)."
-            echo
-            echo "iPhone: [unsigned sideload IPA](${BASE}-ios-unsigned.ipa). Sign with your own Apple ID to install; this is not a TestFlight build."
-            echo
-            cat release-assets/RELEASE_NOTES.md
+            # An older tag's changelog section may carry its own download table; it is dropped.
+            python3 "$RUNNER_TEMP/release_signing_notes.py" "${NOTES_ARGS[@]}" --notes release-assets/RELEASE_NOTES.md release-signing
           } > "$RUNNER_TEMP/RELEASE_NOTES.md"
           mv "$RUNNER_TEMP/RELEASE_NOTES.md" release-assets/RELEASE_NOTES.md
       - name: Rehearsal - check the feeds the release would carry

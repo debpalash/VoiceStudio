@@ -15,7 +15,7 @@ Python, FFmpeg, and model weights are bootstrapped by the app itself on first
 launch; no toolchain is needed for the installer.
 
 Windows installers are being moved to free SignPath Foundation code signing; the
-release notes' **Installer signing** table says whether your download is signed.
+release notes' **Download** table says whether your download is signed.
 See the [code signing policy](../code-signing-policy.md). It signs the installer,
 not the third-party Python files setup downloads, so Smart App Control can still
 block those (see [troubleshooting](troubleshooting.md)).

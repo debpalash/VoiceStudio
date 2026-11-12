@@ -104,7 +104,8 @@ version only after validation.
    check alone is not evidence that runtime installation works.
 3. Verify a packaged launch and managed backend startup on the changed platforms.
 4. Fold the `changelog.d/` fragments into `## [Unreleased]` (`scripts/release.py` does this and deletes them; by hand: `uv run python scripts/changelog_fragments.py`), then rename `## [Unreleased]` in `CHANGELOG.md` to `## [X.Y.Z] — YYYY-MM-DD`.
-   Lead with the largest user-visible change, keep Highlights to 3–5 bullets,
+   Open the section with its **Highlights** (3–5 bullets, the largest user-visible
+   change first; the workflow puts the Download table above them),
    include migration steps and real screenshots when relevant, and verify human
    contributors and bug reporters from the tag comparison and included PRs. The
    release workflow adds a `### Contributors` block to the GitHub Release notes
@@ -196,9 +197,10 @@ Dispatch `electron-release.yml` for the exact tag with `publish=true`. Signing
 and notarization are required by default. The owner may explicitly set
 `allow_unsigned=true`. Never select that exception without the owner's decision.
 Every build, published or not, verifies what each platform leg actually ships
-and the release notes open with an **Installer signing** table built from those
-checks (✅ signed and notarized, ⚠️ unsigned or ad hoc, with what users will
-see). A macOS bundle with an invalid signature always fails, and a platform
+and the release notes open with one **Download** table: every desktop and phone
+download with its signing, built from those checks (✅ signed and notarized, ⚠️
+unsigned or ad hoc, with what users will see). The changelog section follows
+it, starting with its **Highlights**, so it needs no download table of its own. A macOS bundle with an invalid signature always fails, and a platform
 whose signing credentials are configured fails if its installers are not signed
 with them, even with `allow_unsigned=true`.
 The owner can delegate it: accounts listed in the `UNSIGNED_RELEASE_PUBLISHERS`
@@ -263,7 +265,7 @@ type the tag name.
   its password) and, for any platform without them, stops unless you explicitly
   accept shipping that platform unsigned. The dispatch's `allow_unsigned` flag
   only accepts platforms without credentials: a platform with signing configured
-  must still produce signed installers, and the notes' **Installer signing**
+  must still produce signed installers, and the notes' **Download**
   table shows each platform's measured result.
 - `--publish vX.Y.Z[-beta.N]` (`make release-publish TAG=…`) publishes an existing
   draft build later.
