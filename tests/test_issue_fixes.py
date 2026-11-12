@@ -32,7 +32,6 @@ NEW_DISCORD = "discord.gg/bzQavDfVV9"
 _LINK_FILES = [
     "README.md",
     ".github/CONTRIBUTING.md",
-    "electron/src/shared/pages/EnterprisePage.jsx",
     "electron/src/shared/components/LogsFooter.jsx",
 ]
 

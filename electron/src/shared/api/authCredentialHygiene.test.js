@@ -87,7 +87,6 @@ describe('administrator credential hygiene static guard', () => {
       .map(({ file, source }) => ({ file, authenticated: source.includes('authenticatedWsUrl') }));
 
     expect(constructors).toEqual([
-      { file: 'components/CaptureWidget.jsx', authenticated: true },
       { file: 'hooks/useDubLivePreview.js', authenticated: true },
       { file: 'hooks/useRealtimeEvents.js', authenticated: true },
     ]);

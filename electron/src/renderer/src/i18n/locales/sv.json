@@ -3257,7 +3257,13 @@
     "setupStatusFileMissing": "En fil som motorn behöver saknas eller kan inte läsas. Installera om den via Inställningar → Modeller.",
     "setupStatusPlatform": "Motorn fungerar inte på den här datorns plattform. Guiden listar vilka plattformar som stöds.",
     "setupStatusNoMps": "Motorn behöver Apples GPU (MPS), men PyTorch i den här installationen kan inte använda den. En uppdatering av macOS eller ominstallation av VoiceStudio löser det oftast.",
-    "asrSetupRepairBundled": "Backendens medföljande Python-paket saknas eller är skadade. Reparera backendmiljön eller återskapa den med källinstallationens låsta beroenden och starta sedan om."
+    "asrSetupRepairBundled": "Backendens medföljande Python-paket saknas eller är skadade. Reparera backendmiljön eller återskapa den med källinstallationens låsta beroenden och starta sedan om.",
+    "selfTest": "Självtest",
+    "selfTesting": "Syntetiserar…",
+    "selfTestOk": "{{seconds}} s @ {{khz}} kHz på {{took}}",
+    "selfTestFailed": "Självtestet misslyckades",
+    "selfTestTimedOut": "Självtestet tog för lång tid",
+    "selfTestUnreachable": "Självtestet kunde inte köras. Kontrollera att VoiceStudio fortfarande körs och försök igen."
   },
   "performanceProfile": {
     "requiresEngine": "Installera och välj {{engine}} för att justera hastighet och kvalitet.",

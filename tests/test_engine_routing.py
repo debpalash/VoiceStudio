@@ -131,6 +131,19 @@ def test_xpu_host_cpu_engine_falls_back():
     assert "no XPU path" in r["routing_reason"]
 
 
+def test_xpu_host_omnivoice_is_accelerated():
+    """Both OmniVoice paths load on Intel XPU via get_best_device(); routing must
+    agree instead of reporting "no XPU path" for a model already on the GPU."""
+    from engines.omnivoice_subprocess import OmniVoiceSubprocessBackend
+    from services.tts_backend import OmniVoiceBackend
+
+    for cls in (OmniVoiceBackend, OmniVoiceSubprocessBackend):
+        assert "xpu" in cls.gpu_compat, cls.id
+        r = resolve_routing(cls.gpu_compat, _caps("xpu"), cls.min_vram_gb)
+        assert r == {"effective_device": "xpu", "routing_status": "accelerated",
+                     "routing_reason": None}, cls.id
+
+
 # ── Rule 5: cpu_only (benign) ─────────────────────────────────────────────
 def test_cpu_host_cpu_engine_is_neutral():
     r = resolve_routing(("cuda", "cpu"), _caps("cpu"))

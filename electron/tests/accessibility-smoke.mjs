@@ -91,8 +91,10 @@ async function settled(route) {
       return;
     }
     if (Date.now() > deadline) {
+      // Name what it waited on, so a CI timeout points at its cause.
+      const urls = [...pending].map((request) => request.url()).join(', ');
       throw new Error(
-        `${route} never settled: ${pending.size} requests pending or DOM still changing`,
+        `${route} never settled: ${pending.size} requests pending${urls ? ` (${urls})` : ''} or DOM still changing`,
       );
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
