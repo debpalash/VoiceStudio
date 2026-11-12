@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { SaveIcon, TrashIcon } from 'lucide-react';
+import { PlusIcon, SaveIcon, TrashIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { blankLongformDraft, type Draft, type Mode } from './longform-session';
@@ -35,6 +35,7 @@ export function ProjectSettings({
     action: 'open' | 'delete';
     project: LongformProject;
   } | null>(null);
+  const [confirmNew, setConfirmNew] = useState(false);
   const query = useQuery({
     queryKey: ['longform-projects'],
     queryFn: projectLibrary.list,
@@ -88,6 +89,17 @@ export function ProjectSettings({
       }
       setConfirmation(null);
     });
+  // A new project only replaces the open draft; saved projects are never touched.
+  const startNew = () => {
+    if (locked || pending.current) return;
+    onChange(blankLongformDraft());
+    dirtyName.current = false;
+    setName('');
+    setSaved(false);
+    setError(null);
+    setConfirmation(null);
+    setConfirmNew(false);
+  };
   const Wrapper = bare ? 'div' : 'details';
   return (
     <Wrapper className="space-y-3">
@@ -107,6 +119,19 @@ export function ProjectSettings({
         />
       </label>
       <div className="flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={locked}
+          aria-expanded={confirmNew}
+          onClick={() => {
+            setConfirmation(null);
+            setConfirmNew(true);
+          }}
+        >
+          <PlusIcon />
+          {t('projectActions.new')}
+        </Button>
         <Button size="sm" disabled={locked || !name.trim()} onClick={() => void save(false)}>
           <SaveIcon />
           {t('common.save')}
@@ -122,6 +147,19 @@ export function ProjectSettings({
           </Button>
         )}
       </div>
+      {confirmNew && (
+        <div className="space-y-2 rounded-md bg-muted/40 p-2 text-xs">
+          <p>{t('projectActions.new_confirm')}</p>
+          <div className="flex gap-2">
+            <Button size="sm" disabled={locked} onClick={startNew}>
+              {t('common.confirm')}
+            </Button>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirmNew(false)}>
+              {t('common.cancel')}
+            </Button>
+          </div>
+        </div>
+      )}
       {saved && (
         <p role="status" className="text-xs text-muted-foreground">
           {t('app.toast_project_saved')}
@@ -151,7 +189,10 @@ export function ProjectSettings({
                   className="min-w-0 flex-1 justify-start truncate"
                   variant={draft.projectId === project.id ? 'secondary' : 'ghost'}
                   disabled={locked}
-                  onClick={() => setConfirmation({ action: 'open', project })}
+                  onClick={() => {
+                    setConfirmNew(false);
+                    setConfirmation({ action: 'open', project });
+                  }}
                 >
                   {project.name}
                 </Button>
@@ -160,7 +201,10 @@ export function ProjectSettings({
                   variant="ghost"
                   disabled={locked}
                   aria-label={t('common.delete') + ' ' + project.name}
-                  onClick={() => setConfirmation({ action: 'delete', project })}
+                  onClick={() => {
+                    setConfirmNew(false);
+                    setConfirmation({ action: 'delete', project });
+                  }}
                 >
                   <TrashIcon />
                 </Button>

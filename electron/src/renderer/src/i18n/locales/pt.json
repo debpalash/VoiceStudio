@@ -1655,7 +1655,9 @@
   },
   "projectActions": {
     "open": "Abrir “{{name}}” e substituir o rascunho atual? Salve seu trabalho primeiro.",
-    "save_copy": "Salvar uma cópia"
+    "save_copy": "Salvar uma cópia",
+    "new": "Novo projeto",
+    "new_confirm": "Começar um projeto novo e vazio? Os projetos salvos permanecem como estão; as alterações não salvas no rascunho atual serão perdidas."
   },
   "sidebar": {
     "save_project": "Salvar projeto de dublagem",

@@ -1655,7 +1655,9 @@
   },
   "projectActions": {
     "open": "¿Abrir «{{name}}» y reemplazar el borrador actual? Guarda tu trabajo primero.",
-    "save_copy": "Guardar una copia"
+    "save_copy": "Guardar una copia",
+    "new": "Nuevo proyecto",
+    "new_confirm": "¿Empezar un proyecto nuevo y vacío? Los proyectos guardados no cambian; los cambios sin guardar del borrador actual se perderán."
   },
   "sidebar": {
     "save_project": "Guardar proyecto de doblaje",

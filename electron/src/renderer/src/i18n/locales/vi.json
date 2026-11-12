@@ -1653,7 +1653,9 @@
   },
   "projectActions": {
     "open": "Mở “{{name}}” và thay thế bản nháp hiện tại? Hãy lưu công việc trước.",
-    "save_copy": "Lưu bản sao"
+    "save_copy": "Lưu bản sao",
+    "new": "Dự án mới",
+    "new_confirm": "Bắt đầu một dự án mới, trống? Các dự án đã lưu vẫn giữ nguyên; những thay đổi chưa lưu trong bản nháp hiện tại sẽ bị mất."
   },
   "sidebar": {
     "save_project": "Lưu dự án lồng tiếng",

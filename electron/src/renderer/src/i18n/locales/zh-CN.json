@@ -1653,7 +1653,9 @@
   },
   "projectActions": {
     "open": "打开“{{name}}”并替换当前草稿？请先保存当前工作。",
-    "save_copy": "保存副本"
+    "save_copy": "保存副本",
+    "new": "新建项目",
+    "new_confirm": "新建一个空白项目？已保存的项目保持不变；当前草稿中未保存的更改将会丢失。"
   },
   "sidebar": {
     "save_project": "保存配音项目",

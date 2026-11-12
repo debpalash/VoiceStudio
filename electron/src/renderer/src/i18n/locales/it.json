@@ -1655,7 +1655,9 @@
   },
   "projectActions": {
     "open": "Aprire “{{name}}” e sostituire la bozza attuale? Salva prima il tuo lavoro.",
-    "save_copy": "Salva una copia"
+    "save_copy": "Salva una copia",
+    "new": "Nuovo progetto",
+    "new_confirm": "Iniziare un nuovo progetto vuoto? I progetti salvati restano invariati; le modifiche non salvate alla bozza attuale andranno perse."
   },
   "sidebar": {
     "save_project": "Salva progetto doppiato",
