@@ -2405,6 +2405,32 @@ export class BackendSupervisor extends EventEmitter<{
   }
 
   /** Launch the resolved backend command and wire its lifecycle events. */
+  /**
+   * Schedules another launch after a transient spawn failure (the OS timed out or
+   * had no room for the process, #4035). False when the failure is final.
+   */
+  private retrySpawn(err: unknown, plan: SpawnPlan, gen: number, attempt: number): boolean {
+    const code = (err as NodeJS.ErrnoException | undefined)?.code;
+    if (code !== 'ETIMEDOUT' && code !== 'EAGAIN') return false;
+    if (attempt >= SPAWN_RETRY_DELAYS_MS.length) return false;
+    // A synchronous first failure leaves start() without a readiness wait; an
+    // asynchronous one keeps the wait that is already running for this launch.
+    const needsReadyWait = this.stage !== 'starting';
+    const delay = SPAWN_RETRY_DELAYS_MS[attempt];
+    this.pushLog(
+      'err',
+      `Starting the backend failed (${errorMessage(err)}); retrying in ${delay / 1000} s.`,
+    );
+    setTimeout(() => {
+      if (gen !== this.generation || this.shuttingDown || this.child) return;
+      this.spawnChild(plan, gen, attempt + 1);
+      if (needsReadyWait && gen === this.generation && this.stage === 'starting') {
+        void this.waitUntilReady(gen, startupBudgetMs());
+      }
+    }, delay);
+    return true;
+  }
+
   private spawnChild(plan: SpawnPlan, gen: number, attempt = 0): void {
     this.crashes.startProcess();
     const [command, ...args] = plan.argv;
@@ -2436,27 +2462,7 @@ export class BackendSupervisor extends EventEmitter<{
         detached: process.platform !== 'win32',
       });
     } catch (err) {
-      // A launch the OS timed out or had no room for is transient: try again shortly
-      // before giving up (#4035).
-      const code = (err as NodeJS.ErrnoException | undefined)?.code;
-      if ((code === 'ETIMEDOUT' || code === 'EAGAIN') && attempt < SPAWN_RETRY_DELAYS_MS.length) {
-        const delay = SPAWN_RETRY_DELAYS_MS[attempt];
-        this.pushLog(
-          'err',
-          `Starting the backend failed (${errorMessage(err)}); retrying in ${delay / 1000} s.`,
-        );
-        setTimeout(() => {
-          if (gen === this.generation && !this.shuttingDown && !this.child) {
-            this.spawnChild(plan, gen, attempt + 1);
-            // start() returned after the first failure without waiting for readiness;
-            // a launch that has now started needs that wait, or it never reaches ready.
-            if (gen === this.generation && this.stage === 'starting') {
-              void this.waitUntilReady(gen, startupBudgetMs());
-            }
-          }
-        }, delay);
-        return;
-      }
+      if (this.retrySpawn(err, plan, gen, attempt)) return;
       // The launch was ours: reports must not call this an attached backend.
       this.setStage('failed', {
         managed: runtimeOwned,
@@ -2489,6 +2495,9 @@ export class BackendSupervisor extends EventEmitter<{
     child.on('error', (err) => {
       if (gen !== this.generation) return;
       this.child = null;
+      // Node reports EAGAIN (and other resource limits) here rather than throwing;
+      // a child that never got a pid can be launched again.
+      if (child.pid === undefined && this.retrySpawn(err, plan, gen, attempt)) return;
       this.setStage('failed', {
         managed: runtimeOwned,
         message: spawnFailureMessage(command, err, { runtimeOwned }),

@@ -327,3 +327,25 @@ it('drops a pending retry once a newer launch has started (#4035)', async () => 
   await vi.advanceTimersByTimeAsync(7_000);
   expect(mocks.spawn).toHaveBeenCalledTimes(1);
 });
+
+it('retries an EAGAIN that Node reports through the error event (#4039 review)', async () => {
+  const supervisor = new BackendSupervisor();
+  const internal = supervisor as unknown as SupervisorInternals;
+  const refused = deadChild() as unknown as EventEmitter & { pid?: number };
+  refused.pid = undefined;
+  const child = deadChild();
+  mocks.spawn.mockReset();
+  mocks.spawn.mockReturnValueOnce(refused).mockReturnValueOnce(child);
+  const waitUntilReady = vi
+    .spyOn(supervisor as unknown as { waitUntilReady: () => Promise<void> }, 'waitUntilReady')
+    .mockResolvedValue();
+  internal.generation = 1;
+  internal.spawnChild({ argv: ['python'], cwd: '/project' }, 1);
+  refused.emit('error', Object.assign(new Error('spawn python EAGAIN'), { code: 'EAGAIN' }));
+  expect(supervisor.status.stage).toBe('starting');
+  await vi.advanceTimersByTimeAsync(2_000);
+  expect(mocks.spawn).toHaveBeenCalledTimes(2);
+  expect(supervisor.status.stage).toBe('starting');
+  // start()'s readiness wait is still running for this launch; no second one.
+  expect(waitUntilReady).not.toHaveBeenCalled();
+});
