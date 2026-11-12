@@ -146,6 +146,8 @@ def configured_allowed_origins() -> frozenset[tuple[str, str, int | None]]:
 # tests/test_cors_exposed_headers.py scans the renderer to keep this complete.
 CORS_EXPOSED_HEADERS = (
     "Content-Disposition",
+    # The share PIN lockout (429) tells the PIN form how long to wait.
+    "Retry-After",
     "X-Audio-Id",
     "X-Audio-Path",
     "X-Audio-Duration",
