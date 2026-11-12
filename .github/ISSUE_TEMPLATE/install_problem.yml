@@ -84,3 +84,5 @@ body:
     id: tried
     attributes:
       label: What have you already tried?
+      description: List any steps you have already taken to resolve the issue.
+      render: text
