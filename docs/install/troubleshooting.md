@@ -1711,6 +1711,10 @@ reconnecting automatically; the workspace stays usable.
   blocked executable. Add VoiceStudio's runtime folder to your antivirus
   exclusions (Windows Security → Virus & threat protection → Manage settings →
   Exclusions) and make sure it is not inside OneDrive, then retry.
+- **`Could not start <program>: spawn ETIMEDOUT`** — the operating system gave
+  up starting the program; on macOS this happens when its security check of the
+  executable stalls. VoiceStudio retries twice on its own (after 2 s and 5 s).
+  If it still fails, restart the computer and open VoiceStudio again.
 - **`… spawn UNKNOWN. Windows Smart App Control blocked it.`** — Smart App
   Control (Windows 11) blocks programs without a known reputation, including the
   runtime's `python.exe`; Event Viewer → Applications and Services Logs →
