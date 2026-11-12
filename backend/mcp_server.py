@@ -575,7 +575,7 @@ def _ensure_mcp():
         msg = (
             f"MCP SDK import failed ({e}). The `mcp` package ships with the "
             "app environment — the launcher's Clean & Retry (or `uv sync`) "
-            "reinstalls it. For a standalone run: pip install 'mcp[cli]'."
+            "reinstalls it. For a standalone run: pip install \"mcp[cli]\"."
         )
         logger.error(msg)
         raise ImportError(msg) from e
