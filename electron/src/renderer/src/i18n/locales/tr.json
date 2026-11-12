@@ -2179,6 +2179,8 @@
     "current": "geçerli",
     "loading": "Sürümler yükleniyor…",
     "none": "Yayın bulunamadı",
+    "stable_newer": "Kararlı v{{version}}, son betadan daha yeni.",
+    "switch_to_stable": "Kararlı sürüme geç",
     "load_error": "Sürümler yüklenemedi (çevrimdışı mı?)",
     "retry_load": "Yeniden dene",
     "backup_line": "Veritabanı yedeği",

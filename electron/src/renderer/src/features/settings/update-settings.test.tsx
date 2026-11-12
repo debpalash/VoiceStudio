@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { UpdateState } from '../../../../preload/index.d';
@@ -263,6 +263,27 @@ describe('UpdateSettings', () => {
     ]);
     renderSettings();
     expect(await screen.findByText('v0.5.9-beta.1')).toBeInTheDocument();
+  });
+
+  test('Beta keeps stables out of its list and offers a newer stable as a switch', async () => {
+    mocks.state = { ...mocks.state, channel: 'beta', currentVersion: '0.5.8-beta.5' };
+    mocks.listReleases.mockResolvedValue([
+      { version: '0.5.8', name: 'v0.5.8', date: '2026-11-12T08:53:00Z', prerelease: false, notes: '' },
+      {
+        version: '0.5.8-beta.5',
+        name: 'v0.5.8-beta.5',
+        date: '2026-11-12T00:27:00Z',
+        prerelease: true,
+        notes: '',
+      },
+    ]);
+    renderSettings();
+    expect(await screen.findByText('v0.5.8-beta.5')).toBeInTheDocument();
+    expect(screen.queryByText('v0.5.8')).not.toBeInTheDocument();
+    const suggestion = screen.getByTestId('newer-stable');
+    expect(suggestion).toHaveTextContent('updates.stable_newer');
+    fireEvent.click(within(suggestion).getByRole('button', { name: 'updates.switch_to_stable' }));
+    await waitFor(() => expect(mocks.setChannel).toHaveBeenCalledWith('stable'));
   });
 
   test('lists tagged releases only', async () => {

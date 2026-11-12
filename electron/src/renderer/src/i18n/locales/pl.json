@@ -2203,6 +2203,8 @@
     "current": "aktualna",
     "loading": "Ładowanie wersji…",
     "none": "Nie znaleziono żadnych wydań",
+    "stable_newer": "Stabilna wersja v{{version}} jest nowsza niż najnowsza beta.",
+    "switch_to_stable": "Przełącz na Stabilną",
     "load_error": "Nie można wczytać wersji (offline?)",
     "retry_load": "Spróbuj ponownie",
     "backup_line": "Kopia bazy danych",

@@ -2181,6 +2181,8 @@
     "current": "actuelle",
     "loading": "Chargement des versions…",
     "none": "Aucune version trouvée",
+    "stable_newer": "La version stable v{{version}} est plus récente que la dernière bêta.",
+    "switch_to_stable": "Passer en Stable",
     "load_error": "Impossible de charger les versions (hors ligne ?)",
     "retry_load": "Réessayer",
     "backup_line": "Sauvegarde de la base de données",

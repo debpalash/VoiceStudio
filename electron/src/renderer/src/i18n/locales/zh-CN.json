@@ -2179,6 +2179,8 @@
     "current": "当前",
     "loading": "正在加载版本...",
     "none": "未找到任何版本",
+    "stable_newer": "稳定版 v{{version}} 比最新测试版更新。",
+    "switch_to_stable": "切换到稳定版",
     "load_error": "无法加载版本（离线？）",
     "retry_load": "重试",
     "notes_for": "版本说明——v{{version}}",

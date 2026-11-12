@@ -27,6 +27,7 @@ import { useBackendStatus, isBackendReachable } from '@/hooks/use-backend-status
 import { apiJson, describeError } from '@/lib/api/client';
 import { formatBytes, updateErrorTitleKey, updateReleaseUrl } from '@/lib/update-format';
 import { openUpdateRelease, requestUpdateRestart } from '@/lib/update-actions';
+import { channelReleases } from '@/lib/release-list';
 import { SettingsSection } from './settings-layout';
 import type { UpdateChannel, UpdateReleaseInfo, UpdateState } from '../../../../preload/index.d';
 
@@ -153,15 +154,12 @@ export function UpdateSettings() {
   });
   const backupDeadline = useLoadDeadline(backendUp && backup.isPending);
   const releasesDeadline = useLoadDeadline(canListReleases && releaseHistory.isPending);
-  const releaseRows = (releaseHistory.data || [])
-    // Betas are tagged prereleases; only beta users are offered them.
-    .filter((release) => state.channel === 'beta' || !release.prerelease)
-    .slice()
-    .sort((left, right) => right.date.localeCompare(left.date))
-    .map((release) => ({
-      ...release,
-      current: release.version === state.currentVersion,
-    }));
+  // Each channel lists only its own releases; Beta suggests a newer stable instead.
+  const { rows: releaseRows, newerStable } = channelReleases(
+    releaseHistory.data || [],
+    state.channel,
+    state.currentVersion,
+  );
 
   useEffect(() => {
     if (!updates) return;
@@ -592,10 +590,36 @@ export function UpdateSettings() {
             </div>
           ) : releaseHistory.isPending ? (
             <SectionSkeleton label={t('updates.loading')} />
-          ) : releaseRows.length === 0 ? (
+          ) : releaseRows.length === 0 && !newerStable ? (
             <p className="px-4 py-4 text-sm text-muted-foreground">{t('updates.none')}</p>
           ) : (
             <div className="divide-y divide-border/50">
+              {newerStable && (
+                <div
+                  data-testid="newer-stable"
+                  className="flex flex-wrap items-center gap-x-3 gap-y-2 bg-primary/5 px-4 py-3 text-sm"
+                >
+                  <SparklesIcon className="size-4 shrink-0 text-primary" aria-hidden="true" />
+                  <span className="min-w-0 flex-1">
+                    {t('updates.stable_newer', { version: newerStable.version })}
+                  </span>
+                  {newerStable.current && (
+                    <span className="rounded-full bg-primary/12 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                      {t('updates.current')}
+                    </span>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      action || ['checking', 'downloading', 'downloaded'].includes(state.status)
+                    }
+                    onClick={() => switchChannel('stable')}
+                  >
+                    {t('updates.switch_to_stable')}
+                  </Button>
+                </div>
+              )}
               {releaseRows.map((release: UpdateReleaseInfo & { current: boolean }) => (
                 <details key={`${release.version}-${release.date}`} className="group px-4 py-3">
                   <summary className="flex cursor-pointer list-none items-center gap-2 text-sm outline-none">

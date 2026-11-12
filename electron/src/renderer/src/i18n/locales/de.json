@@ -2179,6 +2179,8 @@
     "current": "aktuell",
     "loading": "Veröffentlichungen werden geladen…",
     "none": "Keine Veröffentlichungen gefunden",
+    "stable_newer": "Die stabile Version v{{version}} ist neuer als die letzte Beta.",
+    "switch_to_stable": "Zu Stabil wechseln",
     "load_error": "Veröffentlichungen konnten nicht geladen werden (offline?)",
     "retry_load": "Versuchen Sie es noch einmal",
     "backup_line": "Datenbanksicherung",

@@ -2178,6 +2178,8 @@
     "current": "현재",
     "loading": "릴리스 로드 중…",
     "none": "릴리스를 찾을 수 없습니다.",
+    "stable_newer": "안정 버전 v{{version}}이(가) 최신 베타보다 새롭습니다.",
+    "switch_to_stable": "안정 버전으로 전환",
     "load_error": "릴리스를 로드할 수 없습니다(오프라인?)",
     "retry_load": "재시도",
     "notes_for": "v{{version}} 릴리스 노트",

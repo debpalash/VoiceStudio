@@ -2361,6 +2361,8 @@
     "current": "actual",
     "loading": "Cargando versións…",
     "none": "Non se atoparon versións",
+    "stable_newer": "A versión estable v{{version}} é máis recente que a última beta.",
+    "switch_to_stable": "Cambiar a Estable",
     "load_error": "Non se puideron cargar as versións (sen conexión?)",
     "retry_load": "Volve tentar",
     "notes_for": "Notas da versión — v{{version}}",

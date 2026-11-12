@@ -2179,6 +2179,8 @@
     "current": "nuvarande",
     "loading": "Läser in utgåvor...",
     "none": "Inga utgåvor hittades",
+    "stable_newer": "Stabila v{{version}} är nyare än den senaste betan.",
+    "switch_to_stable": "Byt till Stabil",
     "load_error": "Det gick inte att läsa in utgåvor (offline?)",
     "retry_load": "Försök igen",
     "backup_line": "Databassäkerhetskopia",

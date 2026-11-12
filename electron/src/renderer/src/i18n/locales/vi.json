@@ -2179,6 +2179,8 @@
     "current": "hiện tại",
     "loading": "Đang tải bản phát hành…",
     "none": "Không tìm thấy bản phát hành nào",
+    "stable_newer": "Bản ổn định v{{version}} mới hơn bản beta gần nhất.",
+    "switch_to_stable": "Chuyển sang Ổn định",
     "load_error": "Không thể tải bản phát hành (ngoại tuyến?)",
     "retry_load": "Thử lại",
     "backup_line": "Bản sao lưu cơ sở dữ liệu",

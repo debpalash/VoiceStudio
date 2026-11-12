@@ -2361,6 +2361,8 @@
     "current": "current",
     "loading": "Loading releases…",
     "none": "No releases found",
+    "stable_newer": "Stable v{{version}} is newer than the latest beta.",
+    "switch_to_stable": "Switch to Stable",
     "load_error": "Couldn't load releases (offline?)",
     "retry_load": "Retry",
     "notes_for": "Release notes — v{{version}}",
