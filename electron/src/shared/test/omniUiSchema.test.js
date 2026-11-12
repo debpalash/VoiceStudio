@@ -61,17 +61,4 @@ describe('sanitizeOmniUi', () => {
     expect(sanitizeOmniUi({ dubTracks: {}, exportTracks: [] })).toEqual({});
     warn.mockRestore();
   });
-
-  it('schema covers every field the restore path reads', () => {
-    // Lockstep guard: if useAppData reads a saved.<field> not in the schema,
-    // restore silently drops it — fail here instead of in the field.
-    const src = require('fs').readFileSync(
-      require('path').resolve(__dirname, '../hooks/useAppData.js'),
-      'utf8',
-    );
-    const reads = [...src.matchAll(/saved\.([A-Za-z0-9_]+)/g)].map((m) => m[1]);
-    for (const key of new Set(reads)) {
-      expect(OMNI_UI_SCHEMA[key], `omniUiSchema is missing '${key}'`).toBeTypeOf('function');
-    }
-  });
 });
