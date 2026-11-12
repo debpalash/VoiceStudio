@@ -402,7 +402,9 @@
     "hint_long_reference": "まだ文字起こし中です。長い参照音声は時間がかかります。正常です。",
     "hint_ranking_reference": "参照音声から最も明瞭な15秒を選んでいます。長い音声やCPUでは時間がかかります。",
     "hint_cold_load": "モデル読込中です。インストール直後やフラッシュ後の初回は数分かかることがあります。",
-    "hint_slow_engine": "まだ合成中です。CPUや初回のGGUFはウォームなGPUより遅くなります。"
+    "waiting": "待機中",
+    "hint_waiting_no_percent": "エンジン待ち — まだ％なし（GGUF/CPUはWAV完成時に終わることが多い）。タイマーが進捗です。",
+    "hint_likely_stuck": "数分経っても音声の進捗がありません。キャンセルし、Settings → Logs → Backend を確認してから短い文か軽いエンジンで再試行。タイムアウトしたCPUジョブはバックエンド再起動まで残ることがあります。"
   },
   "scriptEdit": {
     "paste_options": "貼り付けオプション",

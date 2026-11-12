@@ -421,7 +421,11 @@ export function ActionBar({ setup: shared }: { setup?: EngineSetup } = {}) {
               </span>
               {isGenerating ? (
                 <span className="shrink-0 text-xs font-normal tabular-nums opacity-80">
-                  {`${modelProgress != null && stage === 'loading' ? `${Math.round(modelProgress)}% · ` : ''}${elapsedSeconds.toFixed(1)}s`}
+                  {stage === 'loading' && modelProgress != null
+                    ? `${Math.round(modelProgress)}% · ${elapsedSeconds.toFixed(1)}s`
+                    : progress != null
+                      ? `${Math.round(progress)}% · ${elapsedSeconds.toFixed(1)}s`
+                      : `${t('synthesisState.waiting')} · ${elapsedSeconds.toFixed(1)}s`}
                 </span>
               ) : (
                 <KbdGroup aria-hidden="true" className="shrink-0">

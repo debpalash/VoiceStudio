@@ -404,7 +404,9 @@
     "hint_long_reference": "Trascrizione ancora in corso: un riferimento lungo richiede più tempo. È normale.",
     "hint_ranking_reference": "Ancora in corso la scelta dei 15 secondi più chiari del riferimento — tipico su CPU con clip lunghi.",
     "hint_cold_load": "Caricamento del modello ancora in corso: la prima esecuzione dopo install o flush può richiedere minuti.",
-    "hint_slow_engine": "Sintesi ancora in corso: CPU e prime esecuzioni GGUF sono più lente di un motore GPU già caldo."
+    "waiting": "In attesa",
+    "hint_waiting_no_percent": "In attesa del motore — ancora senza percentuale (GGUF/CPU spesso finiscono solo quando il WAV è pronto). Il timer è l’avanzamento.",
+    "hint_likely_stuck": "Nessun progresso audio dopo diversi minuti. Annulla, apri Settings → Logs → Backend, poi riprova con testo più corto o un motore più leggero. Un job CPU scaduto può continuare finché non riavvii il backend."
   },
   "scriptEdit": {
     "paste_options": "Opzioni incolla",

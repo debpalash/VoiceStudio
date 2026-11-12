@@ -8,10 +8,12 @@ describe('synthesisDelayHint', () => {
     expect(synthesisDelayHint('preparing', 60)).toBeNull();
   });
 
-  it('names why a take is still running once it is late for that stage', () => {
+  it('names a wait with no percent, then escalates when it looks stuck', () => {
     expect(synthesisDelayHint('transcribing', 8)).toBe('synthesisState.hint_long_reference');
     expect(synthesisDelayHint('ranking', 12)).toBe('synthesisState.hint_ranking_reference');
     expect(synthesisDelayHint('loading', 25)).toBe('synthesisState.hint_cold_load');
-    expect(synthesisDelayHint('generating', 45)).toBe('synthesisState.hint_slow_engine');
+    expect(synthesisDelayHint('generating', 45)).toBe('synthesisState.hint_waiting_no_percent');
+    expect(synthesisDelayHint('generating', 180)).toBe('synthesisState.hint_likely_stuck');
+    expect(synthesisDelayHint('generating', 200, { hasByteProgress: true })).toBeNull();
   });
 });

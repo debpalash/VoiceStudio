@@ -402,7 +402,9 @@
     "hint_long_reference": "Transkriberar fortfarande — ett långt referensklipp tar längre tid. Det är förväntat.",
     "hint_ranking_reference": "Väljer fortfarande de tydligaste 15 sekunderna — vanligt för långa klipp på CPU.",
     "hint_cold_load": "Modellen laddas fortfarande — första körningen efter installation eller flush kan ta några minuter.",
-    "hint_slow_engine": "Syntetiserar fortfarande — CPU och första GGUF-körningar är långsammare än en varm GPU-motor."
+    "waiting": "Väntar",
+    "hint_waiting_no_percent": "Väntar på motorn — ingen procent än (GGUF/CPU avslutas ofta först när WAV är klar). Timern är förloppet.",
+    "hint_likely_stuck": "Ingen ljudförloppet efter flera minuter. Avbryt, öppna Settings → Logs → Backend och försök kortare text eller lättare motor. En tidsgränsad CPU-jobb kan fortsätta tills du startar om backend."
   },
   "scriptEdit": {
     "paste_options": "Inklistringsalternativ",

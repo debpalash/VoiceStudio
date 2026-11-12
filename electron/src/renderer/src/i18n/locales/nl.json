@@ -402,7 +402,9 @@
     "hint_long_reference": "Nog bezig met transcriberen — een lange referentieclip duurt langer. Dat is normaal.",
     "hint_ranking_reference": "Nog de duidelijkste 15 seconden van de referentie kiezen — gebruikelijk bij lange clips op CPU.",
     "hint_cold_load": "Model laadt nog — de eerste run na installatie of flush kan enkele minuten duren.",
-    "hint_slow_engine": "Nog bezig met synthesiseren — CPU en eerste GGUF-runs zijn trager dan een warme GPU-engine."
+    "waiting": "Wachten",
+    "hint_waiting_no_percent": "Wachten op de engine — nog geen procent (GGUF/CPU eindigen vaak pas als de WAV klaar is). De timer is de voortgang.",
+    "hint_likely_stuck": "Na enkele minuten nog geen audiovoortgang. Annuleer, open Settings → Logs → Backend en probeer kortere tekst of een lichtere engine. Een verlopen CPU-job kan blijven lopen tot je de backend herstart."
   },
   "scriptEdit": {
     "paste_options": "Plakopties",

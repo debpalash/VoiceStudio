@@ -402,7 +402,9 @@
     "hint_long_reference": "Vẫn đang phiên âm — mẫu dài sẽ mất nhiều thời gian hơn. Điều này là bình thường.",
     "hint_ranking_reference": "Vẫn đang chọn 15 giây rõ nhất của mẫu — thường gặp với clip dài trên CPU.",
     "hint_cold_load": "Vẫn đang tải mô hình — lần chạy đầu sau cài đặt hoặc xả bộ nhớ có thể mất vài phút.",
-    "hint_slow_engine": "Vẫn đang tổng hợp — CPU và lần chạy GGUF đầu chậm hơn engine GPU đã ấm."
+    "waiting": "Đang chờ",
+    "hint_waiting_no_percent": "Đang chờ engine — chưa có phần trăm (GGUF/CPU thường chỉ xong khi WAV sẵn sàng). Đồng hồ là tiến độ.",
+    "hint_likely_stuck": "Vài phút vẫn không có tiến độ âm thanh. Hủy, mở Settings → Logs → Backend, rồi thử văn bản ngắn hơn hoặc engine nhẹ hơn. Job CPU hết hạn có thể chạy tới khi bạn khởi động lại backend."
   },
   "scriptEdit": {
     "paste_options": "Tùy chọn dán",

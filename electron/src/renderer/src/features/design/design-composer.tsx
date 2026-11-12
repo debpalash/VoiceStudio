@@ -155,7 +155,9 @@ export function DesignComposer({
                   </span>
                   {isGenerating && (
                     <span className="shrink-0 text-xs font-normal tabular-nums opacity-80">
-                      {`${progress == null ? '' : `${Math.round(progress)}% · `}${generation.elapsedSeconds.toFixed(1)}s`}
+                      {progress != null
+                        ? `${Math.round(progress)}% · ${generation.elapsedSeconds.toFixed(1)}s`
+                        : `${t('synthesisState.waiting')} · ${generation.elapsedSeconds.toFixed(1)}s`}
                     </span>
                   )}
                 </Button>

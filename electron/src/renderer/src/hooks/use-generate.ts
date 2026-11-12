@@ -72,8 +72,20 @@ function stageFromGeneration(raw: string | null | undefined): SynthesisStage | n
   }
 }
 
-/** Time-based "why it's still going" hint for the live stage. */
-export function synthesisDelayHint(stage: SynthesisStage, elapsedSeconds: number): string | null {
+/**
+ * Time-based status under the synthesize button.
+ *
+ * These are wait-state explanations, not proof the engine is healthy. GGUF and
+ * many CPU takes report no percent until the WAV returns — a long spinner with
+ * only a timer is normal until the budget is hit. After a long wait with still
+ * no byte progress, escalate to a "likely stuck — cancel and check logs" hint.
+ */
+export function synthesisDelayHint(
+  stage: SynthesisStage,
+  elapsedSeconds: number,
+  *,
+  hasByteProgress = false,
+): string | null {
   if (stage === 'transcribing' && elapsedSeconds >= 8) {
     return 'synthesisState.hint_long_reference';
   }
@@ -83,8 +95,13 @@ export function synthesisDelayHint(stage: SynthesisStage, elapsedSeconds: number
   if (stage === 'loading' && elapsedSeconds >= 20) {
     return 'synthesisState.hint_cold_load';
   }
-  if (stage === 'generating' && elapsedSeconds >= 45) {
-    return 'synthesisState.hint_slow_engine';
+  if (stage === 'generating' || stage === 'receiving') {
+    if (!hasByteProgress && elapsedSeconds >= 180) {
+      return 'synthesisState.hint_likely_stuck';
+    }
+    if (!hasByteProgress && elapsedSeconds >= 45) {
+      return 'synthesisState.hint_waiting_no_percent';
+    }
   }
   return null;
 }
@@ -252,7 +269,9 @@ function useGenerateController(): UseGenerateClone {
   const [stage, setStage] = useState<SynthesisStage>('preparing');
   const [modelStage, setModelStage] = useState<UseGenerateClone['modelStage']>(null);
   const [modelProgress, setModelProgress] = useState<number | null>(null);
-  const delayHint = isGenerating ? synthesisDelayHint(stage, elapsedSeconds) : null;
+  const delayHint = isGenerating
+    ? synthesisDelayHint(stage, elapsedSeconds, { hasByteProgress: progress != null })
+    : null;
   const abortRef = useRef<AbortController | null>(null);
   const reportModeRef = useRef<'clone' | 'design' | null>(null);
   const cancelledRef = useRef(false);

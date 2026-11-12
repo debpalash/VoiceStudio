@@ -850,7 +850,9 @@
     "hint_long_reference": "Still transcribing — a long reference clip takes longer. This is expected.",
     "hint_ranking_reference": "Still choosing the clearest 15 seconds of the reference — common for long clips on CPU.",
     "hint_cold_load": "Still loading the model — the first run after install or a flush can take a few minutes.",
-    "hint_slow_engine": "Still synthesizing — CPU takes and first GGUF runs are slower than a warm GPU engine."
+    "hint_waiting_no_percent": "Waiting on the engine — no percent yet (GGUF/CPU often only finish when the WAV is ready). The timer is the progress.",
+    "hint_likely_stuck": "No audio progress after several minutes. Cancel, open Settings → Logs → Backend, then retry with shorter text or a lighter engine. A timed-out CPU job can keep running until you restart the backend.",
+    "waiting": "Waiting"
   },
   "scriptEdit": {
     "paste_options": "Paste options",

@@ -402,7 +402,9 @@
     "hint_long_reference": "Hâlâ yazıya dökülüyor — uzun referans daha uzun sürer. Bu beklenen bir durum.",
     "hint_ranking_reference": "Referansın en net 15 saniyesi seçiliyor — uzun kliplerde CPU’da yaygındır.",
     "hint_cold_load": "Model hâlâ yükleniyor — kurulum veya flush sonrası ilk çalıştırma birkaç dakika sürebilir.",
-    "hint_slow_engine": "Hâlâ sentezleniyor — CPU ve ilk GGUF çalıştırmaları ısınmış GPU’dan daha yavaştır."
+    "waiting": "Bekleniyor",
+    "hint_waiting_no_percent": "Motor bekleniyor — henüz yüzde yok (GGUF/CPU çoğu zaman WAV hazır olunca biter). İlerleme zamanlayıcıdır.",
+    "hint_likely_stuck": "Birkaç dakikadır ses ilerlemesi yok. İptal edin, Settings → Logs → Backend’i açın, daha kısa metin veya daha hafif motor deneyin. Zaman aşımına uğramış CPU işi backend yeniden başlatılana kadar sürebilir."
   },
   "scriptEdit": {
     "paste_options": "Yapıştırma seçenekleri",

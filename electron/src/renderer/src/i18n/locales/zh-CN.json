@@ -417,7 +417,9 @@
     "hint_long_reference": "仍在转写——较长的参考音频会更久，属正常情况。",
     "hint_ranking_reference": "仍在选取参考音频中最清晰的15秒——长音频在CPU上常见。",
     "hint_cold_load": "仍在加载模型——安装或清空缓存后的首次运行可能需要几分钟。",
-    "hint_slow_engine": "仍在合成——CPU与首次GGUF运行比已预热的GPU引擎更慢。"
+    "waiting": "等待中",
+    "hint_waiting_no_percent": "正在等待引擎——尚无百分比（GGUF/CPU 往往在 WAV 就绪时才结束）。计时器即进度。",
+    "hint_likely_stuck": "数分钟仍无音频进度。请取消，打开 Settings → Logs → Backend，再用更短文本或更轻引擎重试。已超时的 CPU 任务可能持续占用，直到重启后端。"
   },
   "scriptEdit": {
     "paste_options": "粘贴选项",

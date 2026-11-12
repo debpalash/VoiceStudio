@@ -402,7 +402,9 @@
     "hint_long_reference": "Masih mentranskripsi — klip referensi panjang membutuhkan waktu lebih. Ini wajar.",
     "hint_ranking_reference": "Masih memilih 15 detik terdengar paling jelas — umum untuk klip panjang di CPU.",
     "hint_cold_load": "Model masih dimuat — jalan pertama setelah instal atau flush bisa memakan beberapa menit.",
-    "hint_slow_engine": "Masih mensintesis — CPU dan jalan GGUF pertama lebih lambat daripada mesin GPU yang sudah hangat."
+    "waiting": "Menunggu",
+    "hint_waiting_no_percent": "Menunggu mesin — belum ada persen (GGUF/CPU sering selesai hanya saat WAV siap). Timer adalah progres.",
+    "hint_likely_stuck": "Beberapa menit tanpa kemajuan audio. Batalkan, buka Settings → Logs → Backend, lalu coba teks lebih pendek atau mesin lebih ringan. Job CPU yang habis waktu bisa terus berjalan sampai Anda restart backend."
   },
   "scriptEdit": {
     "paste_options": "Opsi tempel",

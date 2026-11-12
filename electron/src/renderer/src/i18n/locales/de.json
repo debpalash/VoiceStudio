@@ -402,7 +402,9 @@
     "hint_long_reference": "Transkription läuft noch — ein langes Referenzclip braucht länger. Das ist normal.",
     "hint_ranking_reference": "Noch wird die klarste 15-Sekunden-Passage der Referenz gewählt — üblich bei langen Clips auf CPU.",
     "hint_cold_load": "Modell wird noch geladen — der erste Lauf nach Installation oder Flush kann Minuten dauern.",
-    "hint_slow_engine": "Synthese läuft noch — CPU und erste GGUF-Läufe sind langsamer als eine warme GPU."
+    "waiting": "Warten",
+    "hint_waiting_no_percent": "Warte auf die Engine — noch kein Prozent (GGUF/CPU liefern oft erst die fertige WAV). Der Timer ist der Fortschritt.",
+    "hint_likely_stuck": "Nach mehreren Minuten kein Audio-Fortschritt. Abbrechen, Settings → Logs → Backend prüfen, kürzeren Text oder leichtere Engine. Ein abgelaufener CPU-Job kann weiterlaufen, bis Sie das Backend neu starten."
   },
   "scriptEdit": {
     "paste_options": "Einfügeoptionen",

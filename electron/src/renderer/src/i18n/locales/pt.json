@@ -404,7 +404,9 @@
     "hint_long_reference": "Ainda a transcrever — um clipe de referência longo demora mais. É esperado.",
     "hint_ranking_reference": "Ainda a escolher os 15 segundos mais claros da referência — comum em clips longos no CPU.",
     "hint_cold_load": "O modelo ainda está a carregar — a primeira execução após instalar ou limpar pode demorar minutos.",
-    "hint_slow_engine": "Ainda a sintetizar — CPU e as primeiras execuções GGUF são mais lentas que um motor GPU aquecido."
+    "waiting": "A aguardar",
+    "hint_waiting_no_percent": "À espera do motor — ainda sem percentagem (GGUF/CPU costumam só terminar quando o WAV está pronto). O temporizador é o progresso.",
+    "hint_likely_stuck": "Sem progresso de áudio após vários minutos. Cancele, abra Settings → Logs → Backend e tente texto mais curto ou um motor mais leve. Um trabalho CPU esgotado pode continuar até reiniciar o backend."
   },
   "scriptEdit": {
     "paste_options": "Opções de colagem",

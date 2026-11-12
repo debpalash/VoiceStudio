@@ -412,7 +412,9 @@
     "hint_long_reference": "Trwa transkrypcja — długi klip referencyjny zajmuje więcej czasu. To normalne.",
     "hint_ranking_reference": "Trwa wybór najczystszych 15 sekund próbki — typowe dla długich klipów na CPU.",
     "hint_cold_load": "Model nadal się ładuje — pierwsze uruchomienie po instalacji lub flushu może trwać kilka minut.",
-    "hint_slow_engine": "Synteza nadal trwa — CPU i pierwsze uruchomienia GGUF są wolniejsze niż rozgrzany silnik GPU."
+    "waiting": "Oczekiwanie",
+    "hint_waiting_no_percent": "Oczekiwanie na silnik — na razie bez procentów (GGUF/CPU często kończą dopiero gdy WAV jest gotowy). Licznik to postęp.",
+    "hint_likely_stuck": "Po kilku minutach brak postępu audio. Anuluj, otwórz Settings → Logs → Backend, spróbuj krótszego tekstu lub lżejszego silnika. Przeterminowane zadanie CPU może trwać do restartu backendu."
   },
   "scriptEdit": {
     "paste_options": "Opcje wklejania",
