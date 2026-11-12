@@ -96,11 +96,16 @@ const CORPUS_TREES = ['electron/src/', 'mobile/', 'scripts/', 'backend/'];
 // outside CI; in CI a missing tree means the scan itself broke, so fail.
 const missingTrees = [];
 for (const tree of CORPUS_TREES) {
-  await readdir(new URL(tree, repository)).catch(() => missingTrees.push(tree));
+  await readdir(new URL(tree, repository)).catch((error) => {
+    // Only an absent tree means a partial checkout; any other read failure is real.
+    if (error.code !== 'ENOENT') throw error;
+    missingTrees.push(tree);
+  });
 }
+const inCI = !['', '0', 'false'].includes((process.env.CI ?? '').toLowerCase());
 if (missingTrees.length) {
   assert.ok(
-    !process.env.CI,
+    !inCI,
     `Unused-key scan cannot find ${missingTrees.join(', ')}; update CORPUS_TREES`,
   );
   console.log(`Locale unused keys: skipped (partial checkout, no ${missingTrees.join(', ')})`);

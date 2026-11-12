@@ -20,6 +20,9 @@ try {
   assert.equal(partial.status, 0, partial.stderr);
   assert.match(partial.stdout, /Locale unused keys: skipped \(partial checkout/);
 
+  const ciFalse = spawnSync(process.execPath, [script], { env: { ...env, CI: 'false' }, encoding: 'utf8' });
+  assert.equal(ciFalse.status, 0, ciFalse.stderr);
+
   const ci = spawnSync(process.execPath, [script], { env: { ...env, CI: 'true' }, encoding: 'utf8' });
   assert.notEqual(ci.status, 0);
   assert.match(ci.stderr, /Unused-key scan cannot find/);
