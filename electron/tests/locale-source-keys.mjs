@@ -64,7 +64,7 @@ console.log(`Locale source keys: ${used.size} static renderer keys exist in en.j
 
 // Unused-key gate: every English key must be referenced by shipped code, or
 // the catalog accumulates strings no screen renders (and every translator
-// pays for them). Keys count as referenced when the full key appears in
+// pays for them). Keys count as referenced when the whole key appears in
 // non-test product code, in the mobile/scripts/backend trees that read the
 // catalog, or when a dynamic key (`t(`ns.${x}`)`, `t('ns.' + x)`) names a
 // prefix and the key's next segment appears in code too (longer or partial prefixes keep all
@@ -98,21 +98,33 @@ for (const tree of ['electron/src/', 'mobile/', 'scripts/', 'backend/']) {
   }
 }
 const corpus = chunks.join('\n');
+// Whole identifiers in the corpus, so `example.title` is not counted as used just
+// because `example.title_extra` appears.
+const tokens = new Set(corpus.match(/[A-Za-z0-9_][A-Za-z0-9_.-]*/g) ?? []);
 // Dynamic prefix → the literal suffixes that follow its placeholder ('' when none),
-// so `t(`workflowRun.${id}_recipe`)` narrows by `id`, not by `id_recipe`.
+// so `t(`workflowRun.${id}_recipe`)` narrows by `id`, not by `id_recipe`. JS template
+// literals (`ns.${x}`), concatenation ('ns.' + x) and Python f-strings
+// (f"ns.{x}_name", which the backend sends as keys) all count.
 const dynamicPrefixes = new Map();
+const addDynamic = (prefix, suffix) => {
+  const suffixes = dynamicPrefixes.get(prefix) ?? new Set();
+  suffixes.add(suffix ?? '');
+  dynamicPrefixes.set(prefix, suffixes);
+};
 for (const match of corpus.matchAll(
   /['"`]([A-Za-z][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+)*[._]?)(?:['"`]\s*\+|\$\{[^}`]*\}([A-Za-z0-9_.-]*))/g,
-)) {
-  const suffixes = dynamicPrefixes.get(match[1]) ?? new Set();
-  suffixes.add(match[2] ?? '');
-  dynamicPrefixes.set(match[1], suffixes);
-}
+))
+  addDynamic(match[1], match[2]);
+for (const match of corpus.matchAll(
+  /\bf(['"])([A-Za-z][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+)*[._]?)\{[^}'"]*\}([A-Za-z0-9_.-]*)\1/g,
+))
+  addDynamic(match[2], match[3]);
 const baseKey = (key) => key.replace(/_(?:one|other|zero|two|few|many)$/, '');
 const unused = [...catalog].filter((key) => {
   const base = baseKey(key);
   if (ALLOWED_PREFIXES.some((prefix) => key.startsWith(prefix))) return false;
-  if (corpus.includes(base)) return false;
+  // A key may itself end in a plural-looking word (`reco_install_one`): try it whole first.
+  if (tokens.has(key) || tokens.has(base)) return false;
   for (const [prefix, suffixes] of dynamicPrefixes) {
     if (!base.startsWith(prefix)) continue;
     // `ns.${x}`: only a one-segment namespace is narrowed by its next segment appearing
@@ -123,7 +135,7 @@ const unused = [...catalog].filter((key) => {
       // `ns.${x}_suffix`: the part the placeholder fills is what must appear in code.
       const segment =
         suffix && rest.endsWith(suffix) ? rest.slice(0, -suffix.length) : rest.split('.')[0];
-      if (segment.length >= 3 && corpus.includes(segment)) return false;
+      if (segment.length >= 3 && tokens.has(segment)) return false;
     }
   }
   return true;
