@@ -2710,10 +2710,12 @@ def _load_model_sync():
         from omnivoice.utils.dtype import tts_dtype_name
 
         checkpoint = resolve_omnivoice_checkpoint()
+        local_fingerprint = None
         if not os.environ.get("OMNIVOICE_MODEL", "").strip():
-            from services.local_model_paths import get, validate
+            from services.local_model_paths import get, loading_fingerprint, validate
             if checkpoint == get("tts", "omnivoice"):
                 validate("tts", "omnivoice", checkpoint)
+                local_fingerprint = loading_fingerprint(checkpoint)
         _set_loading("loading_weights", f"Loading TTS weights on {device}…")
         logger.info("Loading VoiceStudio model on device: %s", device)
         preload_asr = should_preload_tts_asr()
@@ -3025,6 +3027,9 @@ def _load_model_sync():
             # back to the effective configured checkpoint below.
             logger.debug("Could not attach resident model identity", exc_info=True)
 
+        if local_fingerprint is not None:
+            from services.local_model_paths import note_loaded
+            note_loaded("tts", "omnivoice", checkpoint, local_fingerprint)
         _set_loading("ready", "Model ready", progress=100)
         logger.info("VoiceStudio model loaded successfully.")
         return _model

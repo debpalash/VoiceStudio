@@ -147,3 +147,136 @@ def test_persist_and_clear_survive_real_preferences_reload(monkeypatch, tmp_path
     assert paths.get("tts", "omnivoice") == str(model)
     paths.clear("tts", "omnivoice")
     assert paths.get("tts", "omnivoice") is None
+
+
+def _fake_engine_cache(monkeypatch, tmp_path):
+    from services import model_manager
+    from services import tts_backend as tts
+    monkeypatch.setattr(paths.prefs, "_PREFS_PATH", str(tmp_path / "prefs.json"))
+    monkeypatch.setattr(paths, "_APPLIED", {})
+
+    class Fake:
+        unloaded = 0
+
+        def unload(self):
+            Fake.unloaded += 1
+
+    cls = tts.get_backend_class("omnivoice")
+    inst = Fake()
+    monkeypatch.setitem(tts._ENGINE_INSTANCES, cls, inst)
+    shared = []
+    monkeypatch.setattr(model_manager, "unload_shared_model", lambda: shared.append(1) or True)
+    monkeypatch.setattr(tts, "_retire_engine", lambda i: i.unload())
+    return Fake, shared
+
+
+def test_resaving_same_local_model_keeps_engine_warm(monkeypatch, tmp_path):
+    Fake, shared = _fake_engine_cache(monkeypatch, tmp_path)
+    model = checkpoint(tmp_path / "model")
+    paths.change("tts", "omnivoice", str(model))  # real change: reloads
+    assert shared == [1]
+    from services import tts_backend as tts
+    cls = tts.get_backend_class("omnivoice")
+    tts._ENGINE_INSTANCES[cls] = Fake()
+    Fake.unloaded = 0
+    paths.change("tts", "omnivoice", str(model))  # same value: no-op
+    paths.change("tts", "omnivoice", str(model))
+    assert shared == [1] and Fake.unloaded == 0
+    assert cls in tts._ENGINE_INSTANCES
+
+
+def test_clearing_unset_local_model_keeps_engine_warm(monkeypatch, tmp_path):
+    Fake, shared = _fake_engine_cache(monkeypatch, tmp_path)
+    paths.change("tts", "omnivoice", None)
+    assert shared == [] and Fake.unloaded == 0
+
+
+def test_changing_or_clearing_local_model_still_reloads(monkeypatch, tmp_path):
+    _, shared = _fake_engine_cache(monkeypatch, tmp_path)
+    a = checkpoint(tmp_path / "a")
+    b = checkpoint(tmp_path / "b")
+    paths.change("tts", "omnivoice", str(a))
+    paths.change("tts", "omnivoice", str(b))
+    paths.change("tts", "omnivoice", None)
+    assert len(shared) == 3
+
+
+def test_resaving_after_replacing_the_weights_reloads(monkeypatch, tmp_path):
+    """Re-saving the same folder used to be how a user picked up swapped weights."""
+    import os
+    _, shared = _fake_engine_cache(monkeypatch, tmp_path)
+    model = checkpoint(tmp_path / "model")
+    paths.change("tts", "omnivoice", str(model))
+    newer = max(e.stat().st_mtime_ns for e in os.scandir(model)) + 10**9
+    replaced = next(f for f in sorted(model.rglob("*")) if f.is_file())
+    os.utime(replaced, ns=(newer, newer))
+    paths.change("tts", "omnivoice", str(model))
+    assert len(shared) == 2
+
+
+def test_replacing_a_nested_tokenizer_file_reloads(monkeypatch, tmp_path):
+    """Nested assets count, and any change counts, not only a newer maximum (#4043 review)."""
+    import os
+    _, shared = _fake_engine_cache(monkeypatch, tmp_path)
+    model = checkpoint(tmp_path / "model")
+    nested = model / "audio_tokenizer"
+    nested.mkdir(exist_ok=True)
+    weights = nested / "model.safetensors"
+    weights.write_bytes(b"v1")
+    old = 10**18
+    os.utime(weights, ns=(old, old))  # newest file in the folder
+    paths.change("tts", "omnivoice", str(model))
+    weights.write_bytes(b"v2, a different size")
+    os.utime(weights, ns=(old - 10**9, old - 10**9))  # older than before: max() would miss it
+    paths.change("tts", "omnivoice", str(model))
+    assert len(shared) == 2
+
+
+def test_first_resave_after_restart_keeps_a_loaded_engine_warm(monkeypatch, tmp_path):
+    """The loader records the folder it loaded, so an unchanged re-save is a no-op (#4043 review)."""
+    _, shared = _fake_engine_cache(monkeypatch, tmp_path)
+    model = checkpoint(tmp_path / "model")
+    paths.set_path("tts", "omnivoice", str(model))  # saved in an earlier session
+    snap = paths.loading_fingerprint(str(model))  # loader snapshots, then loads
+    paths.note_loaded("tts", "omnivoice", str(model), snap)  # after a successful load
+    paths.change("tts", "omnivoice", str(model))
+    assert shared == []
+
+
+def test_a_huge_folder_tree_is_not_walked_in_full(monkeypatch, tmp_path):
+    """Empty subfolders count toward the bound, not only files (#4043 review)."""
+    root = tmp_path / "many"
+    root.mkdir()
+    for i in range(30):
+        (root / f"d{i}").mkdir()
+    monkeypatch.setattr(paths, "_FINGERPRINT_MAX_FILES", 10)
+    a = paths._weights_fingerprint(str(root))
+    b = paths._weights_fingerprint(str(root))
+    assert a != b  # over the bound: never treated as unchanged
+
+
+def test_a_load_of_a_folder_no_longer_saved_is_not_recorded(monkeypatch, tmp_path):
+    """An overlapping load must not record weights the saved folder no longer names (#4043 review)."""
+    _, shared = _fake_engine_cache(monkeypatch, tmp_path)
+    a = checkpoint(tmp_path / "a")
+    b = checkpoint(tmp_path / "b")
+    snap = paths.loading_fingerprint(str(a))  # a load of A starts
+    paths.change("tts", "omnivoice", str(b))  # the user switches to B meanwhile
+    paths.note_loaded("tts", "omnivoice", str(a), snap)  # A's load finishes late
+    paths.change("tts", "omnivoice", str(b))  # re-saving B is unchanged: no extra reload
+    assert len(shared) == 1
+    assert paths._APPLIED[("tts", "omnivoice")][0] == str(b)
+
+
+def test_an_unreadable_file_never_looks_unchanged(monkeypatch, tmp_path):
+    """A stat error must force a reload, not drop the file from the comparison (#4043 review)."""
+    model = checkpoint(tmp_path / "model")
+    real_stat = paths.os.stat
+
+    def failing_stat(target, *args, **kwargs):
+        if str(target).endswith("model.safetensors"):
+            raise PermissionError("locked")
+        return real_stat(target, *args, **kwargs)
+
+    monkeypatch.setattr(paths.os, "stat", failing_stat)
+    assert paths._weights_fingerprint(str(model)) != paths._weights_fingerprint(str(model))

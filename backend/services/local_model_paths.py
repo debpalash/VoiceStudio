@@ -344,6 +344,55 @@ def clear(family: str, engine_id: str) -> None:
         prefs.set_(PREF_KEY, current)
 
 
+_FINGERPRINT_MAX_FILES = 5000
+
+
+def _weights_fingerprint(path: str | None) -> tuple:
+    """Every file under the folder (relative path, size, mtime), so replacing any
+    weight, nested tokenizer files included, makes a re-save reload while a plain
+    re-save does not. A tree of more than _FINGERPRINT_MAX_FILES entries never matches."""
+    if not path:
+        return (path,)
+    files = []
+    visited = 0  # files and folders: a tree of empty folders is bounded too
+    try:
+        def _unreadable(error: OSError) -> None:
+            raise error
+
+        # An unreadable folder or file must never look unchanged: any error
+        # returns a fingerprint that matches nothing, so the engine reloads.
+        for root, dirs, names in os.walk(path, onerror=_unreadable):
+            visited += 1 + len(dirs) + len(names)
+            if visited > _FINGERPRINT_MAX_FILES:
+                return (path, object())
+            for name in names:
+                full = os.path.join(root, name)
+                st = os.stat(full)
+                files.append((os.path.relpath(full, path), st.st_size, st.st_mtime_ns))
+    except OSError:
+        return (path, object())
+    return (path, tuple(sorted(files)))
+
+
+def loading_fingerprint(path: str) -> tuple:
+    """Snapshot a local folder right before an engine loads it (see note_loaded)."""
+    return _weights_fingerprint(path)
+
+
+def note_loaded(family: str, engine_id: str, path: str, fingerprint: tuple) -> None:
+    """Record the folder an engine finished loading, so the first re-save after a
+    restart can keep it warm when nothing changed. Called only after a successful
+    load, with the snapshot taken before it, and only while that folder is still
+    the saved one: an overlapping load or change never records stale weights."""
+    if get(family, engine_id) == path:
+        _APPLIED[(family, engine_id)] = fingerprint
+
+
+# Fingerprint of the folder each engine last switched to, so a re-save can tell
+# whether the weights it loads would differ.
+_APPLIED: dict[tuple[str, str], tuple] = {}
+
+
 def change(family: str, engine_id: str, path: str | None) -> dict:
     """Serialize mutation with engine leases; busy never persists or unloads.
 
@@ -355,10 +404,17 @@ def change(family: str, engine_id: str, path: str | None) -> dict:
     with tts._ENGINE_CACHE_LOCK:
         if tts._ENGINE_IN_USE.get(cls):
             raise EngineBusyError("This engine is busy; wait for generation to finish")
+        before = get(family, engine_id)
         if path is None:
             clear(family, engine_id)
         else:
             set_path(family, engine_id, path)
+        after = _weights_fingerprint(get(family, engine_id))
+        if (before is None and after[0] is None) or _APPLIED.get((family, engine_id)) == after:
+            # The effective checkpoint did not change (clearing an unset path, or
+            # the same folder re-saved with the same files): the loaded weights
+            # are still correct.
+            return state(family, engine_id)
         # Only evict this engine, never an unrelated active engine.
         inst = tts._ENGINE_INSTANCES.pop(cls, None)
         active = tts._active_instance if tts._active_instance_id == engine_id else None
@@ -369,4 +425,6 @@ def change(family: str, engine_id: str, path: str | None) -> dict:
         if engine_id == "omnivoice":
             from services import model_manager
             model_manager.unload_shared_model()
+        # Recorded only once the old weights are gone, so a failed eviction retries.
+        _APPLIED[(family, engine_id)] = after
     return state(family, engine_id)
