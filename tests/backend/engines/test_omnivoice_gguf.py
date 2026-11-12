@@ -178,6 +178,54 @@ def test_is_available_passes_when_manifest_absent(monkeypatch, tmp_path, cached_
     assert ok is True, reason
 
 
+def test_installed_app_finds_the_runtime_outside_the_staged_backend(
+    monkeypatch, tmp_path, cached_weights
+):
+    """#4051 — an installed app runs a copy of backend/ staged in its runtime
+    folder (``<app environment>/project``), which has no bin/. The runtime and
+    its manifest stay in the installer's resources/bin, which the desktop app
+    passes as OMNIVOICE_GGUF_BIN_DIR."""
+    import hashlib
+
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    project = tmp_path / "project"
+    project.mkdir()
+    resources_bin = tmp_path / "resources" / "bin"
+    resources_bin.mkdir(parents=True)
+    exe = resources_bin / "omnivoice-tts-linux-x86_64"
+    exe.write_bytes(b"\x7fELF-real-enough")
+    exe.chmod(0o755)
+    digest = hashlib.sha256(exe.read_bytes()).hexdigest()
+    (resources_bin / "checksums.sha256").write_text(
+        f"{digest}  {exe.name}\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(gguf_backend, "_REPO_ROOT", project)
+    monkeypatch.setattr(gguf_backend, "_platform_slug", lambda: "linux-x86_64")
+    monkeypatch.setattr(gguf_backend, "_is_macos_quarantined", lambda p: False)
+    monkeypatch.setenv("OMNIVOICE_GGUF_BIN_DIR", str(resources_bin))
+
+    ok, reason = gguf_backend._make_backend_class().is_available()
+    assert ok is True, reason
+    assert gguf_backend._binary_path() == exe
+    assert gguf_backend._load_checksum_manifest() == {exe.name: digest}
+
+
+def test_runtime_dir_defaults_to_the_repo_bin(monkeypatch):
+    """Source checkouts (no OMNIVOICE_GGUF_BIN_DIR) keep using <repo>/bin, and a
+    relative value is ignored rather than resolved against the working directory."""
+    from engines.omnivoice_gguf import backend as gguf_backend
+
+    monkeypatch.delenv("OMNIVOICE_GGUF_BIN_DIR", raising=False)
+    assert gguf_backend._binary_path("linux-x86_64") == (
+        gguf_backend._REPO_ROOT / "bin" / "omnivoice-tts-linux-x86_64"
+    )
+    monkeypatch.setenv("OMNIVOICE_GGUF_BIN_DIR", "bin")
+    assert gguf_backend._binary_path("linux-x86_64") == (
+        gguf_backend._REPO_ROOT / "bin" / "omnivoice-tts-linux-x86_64"
+    )
+
+
 def test_probe_load_timeout(monkeypatch, tmp_path):
     """T-04-06 — a hung binary surfaces as subprocess.TimeoutExpired."""
     from engines.omnivoice_gguf import backend as gguf_backend

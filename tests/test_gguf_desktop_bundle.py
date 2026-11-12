@@ -81,11 +81,12 @@ def test_release_builds_the_runtime_from_the_release_ref():
     assert "release_tag" in build["with"]["ref"]
 
 
-def test_packaged_layout_matches_the_backend_lookup():
-    # The packaged backend runs from resources/, so `<root>/bin` is
-    # resources/bin — exactly where the installer puts the runtime.
+def test_packaged_layout_matches_the_backend_lookup(monkeypatch):
+    # Without OMNIVOICE_GGUF_BIN_DIR the lookup is `<root>/bin`: resources/bin
+    # for a backend that runs from resources/ (store builds, a selected Python).
     from engines.omnivoice_gguf import backend
 
+    monkeypatch.delenv(backend.BIN_DIR_ENV, raising=False)
     assert (backend._REPO_ROOT / "backend" / "engines" / "omnivoice_gguf").resolve() == \
         backend._PKG_DIR
     assert backend._binary_path("windows-x86_64") == backend._REPO_ROOT / "bin" / \
@@ -94,6 +95,11 @@ def test_packaged_layout_matches_the_backend_lookup():
     assert "from: '../backend',\n      to: 'backend'" in config
     bundle = (REPO / "electron" / "omnivoice-tts-bundle.mjs").read_text(encoding="utf-8")
     assert "OMNIVOICE_TTS_RESOURCE_DIR = 'bin'" in bundle
+    # The managed runtime runs a copy of backend/ staged outside resources/,
+    # with no bin/ beside it, so the app names resources/bin explicitly (#4051).
+    main = (REPO / "electron" / "src" / "main" / "backend.ts").read_text(encoding="utf-8")
+    assert f"env.{backend.BIN_DIR_ENV} = bundledGgufBinPath()" in main
+    assert "return join(backendRoot(), 'bin');" in main
 
 
 def _run_windows_build(tmp_path: Path, runtime: dict[str, str]):

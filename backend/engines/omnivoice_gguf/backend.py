@@ -84,6 +84,12 @@ _PKG_DIR = Path(__file__).resolve().parent
 #: ``bin/checksums.sha256``. backend/engines/omnivoice_gguf/ → root.
 _REPO_ROOT = _PKG_DIR.parent.parent.parent
 
+#: Absolute directory that holds the bundled runtime, set by the desktop app.
+#: An installed app runs a copy of ``backend/`` staged in its runtime folder
+#: (``<app environment>/project``), which has no ``bin/``; the installer keeps
+#: the runtime in ``resources/bin`` (#4051).
+BIN_DIR_ENV = "OMNIVOICE_GGUF_BIN_DIR"
+
 #: HuggingFace repo ID for the quants. Pinned by SHA via ``quant_map.json``.
 _HF_REPO_ID = "Serveurperso/OmniVoice-GGUF"
 
@@ -133,13 +139,25 @@ def _platform_slug() -> str:
     return "linux-x86_64"
 
 
+def _bin_dir() -> Path:
+    """Directory of the bundled runtime and its ``checksums.sha256``.
+
+    ``OMNIVOICE_GGUF_BIN_DIR`` when it is an absolute path, else ``bin/`` at
+    the repo root (source checkouts and builds that run from ``resources/``).
+    """
+    raw = os.environ.get(BIN_DIR_ENV, "").strip()
+    if raw and os.path.isabs(raw):
+        return Path(raw)
+    return _REPO_ROOT / "bin"
+
+
 def _binary_path(slug: Optional[str] = None) -> Path:
     """Resolve the on-disk path for the platform binary."""
     s = slug or _platform_slug()
     name = "omnivoice-tts-" + s
     if s.startswith("windows"):
         name += ".exe"
-    return _REPO_ROOT / "bin" / name
+    return _bin_dir() / name
 
 
 def _generate_timeout_s() -> float:
@@ -747,7 +765,7 @@ def _load_checksum_manifest() -> dict[str, str]:
     :class:`ChecksumManifestError`: an entry that may have declared a checksum
     must never be skipped silently.
     """
-    manifest = _REPO_ROOT / "bin" / "checksums.sha256"
+    manifest = _bin_dir() / "checksums.sha256"
     out: dict[str, str] = {}
     if not manifest.is_file():
         return out
