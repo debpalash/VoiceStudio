@@ -28,12 +28,45 @@ def test_table_lists_each_platform_with_its_measured_status(tmp_path):
     text = notes.render(tmp_path)
     rows = [line for line in text.splitlines() if line.startswith("| ") and "Platform" not in line]
     assert [row.split(" | ")[0] for row in rows] == [
-        "| macOS (Apple Silicon)", "| macOS (Intel)", "| Windows x64", "| Linux x64",
+        "| Windows x64", "| macOS Apple Silicon", "| macOS Intel", "| Linux x64", "| Android", "| iPhone",
     ]
-    assert "✅ Signed with Developer ID and notarized" in rows[0]
-    assert rows[1].count("⚠️") == 1 and "shell installer" in rows[1]
-    assert "SmartScreen" in rows[2]
-    assert "### Installer signing" in text
+    assert "SmartScreen" in rows[0]
+    assert "✅ Signed with Developer ID and notarized" in rows[1]
+    assert rows[2].count("⚠️") == 1 and "shell installer" in rows[2]
+    assert "Signed APK" in rows[4] and "own Apple ID" in rows[5]
+    assert "### Download" in text and "| Platform | Download | Signing |" in text
+
+
+def test_one_table_links_every_download_present_and_marks_missing_ones(tmp_path):
+    """Owner, 2026-11-12: downloads, signing and phones merge into one table that opens the notes."""
+    reports, assets = tmp_path / "reports", tmp_path / "assets"
+    reports.mkdir()
+    assets.mkdir()
+    for platform, arch, status in [("win32", "x64", "unsigned"), ("win32", "arm64", "unsigned"),
+                                   ("darwin", "arm64", "notarized"), ("darwin", "x64", "notarized"),
+                                   ("linux", "x64", "not-applicable")]:
+        write(reports, platform, arch, status)
+    for name in ["win-x64.exe", "win-x64.exe.blockmap", "win-arm64.exe", "mac-arm64.dmg", "mac-x64.dmg",
+                 "linux-x64.AppImage", "android.apk", "android.aab", "ios-unsigned.ipa"]:
+        (assets / f"VoiceStudio-1.2.3-{name}").write_text("x")
+    base = "https://github.com/o/r/releases/download/v1.2.3"
+    text = notes.render(reports, assets=assets, base_url=base)
+    rows = {line.split(" | ")[0][2:]: line for line in text.splitlines() if line.startswith("| ") and "Platform" not in line}
+    assert list(rows) == ["Windows x64", "Windows ARM64 (experimental)", "macOS Apple Silicon", "macOS Intel",
+                          "Linux x64", "Android", "iPhone"]
+    assert f"[Installer]({base}/VoiceStudio-1.2.3-win-x64.exe) |" in rows["Windows x64"]
+    assert f"[DMG]({base}/VoiceStudio-1.2.3-mac-x64.dmg)" in rows["macOS Intel"]
+    # The .deb is missing: only the AppImage is linked, never a dead link.
+    assert f"[AppImage]({base}/VoiceStudio-1.2.3-linux-x64.AppImage) |" in rows["Linux x64"] and "deb" not in rows["Linux x64"]
+    assert f"[APK]({base}/VoiceStudio-1.2.3-android.apk) · [AAB]({base}/VoiceStudio-1.2.3-android.aab)" in rows["Android"]
+    assert f"[Unsigned IPA]({base}/VoiceStudio-1.2.3-ios-unsigned.ipa)" in rows["iPhone"]
+    assert "Installer signing" not in text and "Phone downloads" not in text
+
+
+def test_a_platform_with_no_file_shows_a_dash(tmp_path):
+    write(tmp_path, "linux", "x64", "not-applicable")
+    rows = [line for line in notes.render(tmp_path).splitlines() if line.startswith("| Linux x64")]
+    assert rows == ["| Linux x64 | — | — Linux packages are not code-signed |"]
 
 
 @pytest.mark.parametrize("platform,arch,status", [("darwin", "arm64", "signed-ish"), ("plan9", "x64", "signed")])
@@ -84,7 +117,7 @@ def test_mac_package_discovers_the_imported_developer_id(tmp_path):
 
 def test_release_notes_are_built_from_the_reports():
     steps = load_workflow()["jobs"]["release"]["steps"]
-    describe = next(step for step in steps if step.get("name") == "Describe installer signing per platform")
+    describe = next(step for step in steps if step.get("name") == "Describe downloads and signing per platform")
     assert "if" not in describe
     assert not any("Electron installer trust" in step.get("run", "") for step in steps)
 
@@ -94,7 +127,7 @@ def test_release_notes_helper_comes_from_the_workflow_commit(tmp_path):
     import os
     import subprocess
     steps = load_workflow()["jobs"]["release"]["steps"]
-    describe = next(step for step in steps if step.get("name") == "Describe installer signing per platform")
+    describe = next(step for step in steps if step.get("name") == "Describe downloads and signing per platform")
     assert "python3 scripts/" not in describe["run"]
     fake = tmp_path / "bin"
     fake.mkdir()
@@ -106,15 +139,19 @@ def test_release_notes_helper_comes_from_the_workflow_commit(tmp_path):
     work = tmp_path / "tag-checkout"
     (work / "release-signing").mkdir(parents=True)
     (work / "release-assets").mkdir()
-    (work / "release-assets/RELEASE_NOTES.md").write_text("**Highlights**\n")
+    (work / "release-assets/RELEASE_NOTES.md").write_text(
+        "**Download**\n\n| Platform | Installer |\n| --- | --- |\n| Linux x64 | [AppImage](https://e.test/a) |\n\n**Highlights**\n"
+    )
     write(work / "release-signing", "linux", "x64", "not-applicable")
     env = dict(os.environ, PATH=f"{fake}{os.pathsep}{os.environ['PATH']}", GITHUB_SHA="workflow-sha",
                GITHUB_REPOSITORY="debpalash/VoiceStudio", RUNNER_TEMP=str(tmp_path))
     subprocess.run(["bash", "-e", "-c", describe["run"]], cwd=work, env=env, check=True)
     text = (work / "release-assets/RELEASE_NOTES.md").read_text(encoding="utf-8")
     # The table leads the notes; the changelog follows unchanged.
-    assert "| Linux x64 |" in text
-    assert text.index("### Installer signing") < text.index("**Highlights**")
+    assert "| Linux x64 |" in text and "| iPhone |" in text
+    assert text.index("### Download") < text.index("**Highlights**")
+    assert "releases/download/v" not in text  # no assets in this checkout: no links
+    assert text.count("| Linux x64 |") == 1 and "| Platform | Installer |" not in text
 
 
 @pytest.mark.parametrize("failures,message,calls,ok", [
@@ -205,3 +242,26 @@ def test_signpath_signing_is_gated_pinned_and_precedes_feed_and_checksums():
     report = next(s for s in steps if s.get("name") == "Report and enforce Windows signing")
     assert "SIGNPATH_ENABLED" in report["env"]["HAS_CREDENTIALS"]
 
+
+def test_rehearsal_without_desktop_reports_still_lists_the_phones(tmp_path):
+    """Every desktop leg failed in a rehearsal, but the phone builds still get their rows (#4037 review)."""
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    (assets / "VoiceStudio-1.2.3-android.apk").write_text("x")
+    text = notes.render(tmp_path / "reports", rehearsal=True, assets=assets, base_url="https://x/d")
+    assert "No package leg reported its signing." in text
+    assert "| Android | [APK](https://x/d/VoiceStudio-1.2.3-android.apk) |" in text and "| iPhone | — |" in text
+    assert "| Windows x64 |" not in text
+
+
+def test_an_older_tags_own_download_table_is_dropped(tmp_path):
+    """Rebuilding an older tag must not show two download tables (#4037 review)."""
+    section = (
+        "**Headline.** The release.\n\n**Download**\n\n| Platform | Installer |\n| --- | --- |\n"
+        "| Windows x64 | [Installer](https://example.test/a.exe) |\n\n**Highlights**\n\n- One\n"
+    )
+    out = notes.without_own_download_table(section)
+    assert out == "**Headline.** The release.\n\n**Highlights**\n\n- One\n"
+    # Notes without one are unchanged, tables elsewhere included.
+    other = "**Highlights**\n\n- One\n\n| a | b |\n|---|---|\n"
+    assert notes.without_own_download_table(other) == other

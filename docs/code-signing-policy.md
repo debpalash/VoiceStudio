@@ -9,7 +9,7 @@ this repository.
 > by [SignPath Foundation](https://signpath.org).
 
 Status: the application to SignPath Foundation is pending. Until a release says
-otherwise in its **Installer signing** table, Windows installers are unsigned
+otherwise in its **Download** table, Windows installers are unsigned
 and Windows SmartScreen shows a warning.
 
 ## Project
@@ -146,7 +146,7 @@ signs nothing and behaves as before (`allow_unsigned` rules unchanged).
    installer's SHA-512 and its size equals the file size; the `.blockmap` sits
    next to it. Installing it by hand is a useful extra check.
 6. Publish normally (for example the next beta). Check that the release notes'
-   Installer signing table shows Windows as signed, and that README and the
+   Download table shows Windows as signed, and that README and the
    download page link here (SignPath requires the words "Code signing policy"
    on both).
 7. After that first signed publish, run the real in-app update test: update an
