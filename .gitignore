@@ -16,11 +16,10 @@ build/
 .playwright-mcp
 
 # ─────────────────────────────────────────────────────────────────────────
-#  Node / Turborepo / Tauri
+#  Node / Tauri
 # ─────────────────────────────────────────────────────────────────────────
 node_modules/
 node_modules
-.turbo/
 bun.lockb
 frontend/src-tauri/
 electron/.tmp-native-target/
