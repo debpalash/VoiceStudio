@@ -2416,6 +2416,9 @@ export class BackendSupervisor extends EventEmitter<{
     // A synchronous first failure leaves start() without a readiness wait; an
     // asynchronous one keeps the wait that is already running for this launch.
     const needsReadyWait = this.stage !== 'starting';
+    // Anything that moves the stage meanwhile (a backend answered, the user
+    // stopped it, a failure was reported) owns what happens next.
+    const stageAtFailure = this.stage;
     const delay = SPAWN_RETRY_DELAYS_MS[attempt];
     this.pushLog(
       'err',
@@ -2423,6 +2426,7 @@ export class BackendSupervisor extends EventEmitter<{
     );
     setTimeout(() => {
       if (gen !== this.generation || this.shuttingDown || this.child) return;
+      if (this.stage !== stageAtFailure) return;
       this.spawnChild(plan, gen, attempt + 1);
       if (needsReadyWait && gen === this.generation && this.stage === 'starting') {
         void this.waitUntilReady(gen, startupBudgetMs());
