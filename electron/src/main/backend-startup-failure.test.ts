@@ -267,3 +267,58 @@ it('quotes a bounded stderr tail, not only the last line, on an unexpected exit 
   expect(message.length).toBeLessThan(4000);
   await supervisor.shutdown();
 });
+
+/** macOS posix_spawn can time out while it checks the executable; Node throws a bare `spawn ETIMEDOUT` (#4035). */
+function timedOutSpawn() {
+  return Object.assign(new Error('spawn ETIMEDOUT'), { code: 'ETIMEDOUT', syscall: 'spawn' });
+}
+
+it('retries a launch the OS timed out, then starts the backend (#4035)', async () => {
+  const supervisor = new BackendSupervisor();
+  const internal = supervisor as unknown as SupervisorInternals;
+  const child = deadChild();
+  mocks.spawn.mockReset();
+  mocks.spawn
+    .mockImplementationOnce(() => {
+      throw timedOutSpawn();
+    })
+    .mockReturnValueOnce(child);
+  internal.generation = 1;
+  internal.spawnChild({ argv: ['python'], cwd: '/project' }, 1);
+  expect(supervisor.status.stage).not.toBe('failed');
+  await vi.advanceTimersByTimeAsync(2_000);
+  expect(mocks.spawn).toHaveBeenCalledTimes(2);
+  expect(supervisor.status.stage).toBe('starting');
+});
+
+it('says what to do when every launch attempt times out (#4035)', async () => {
+  const supervisor = new BackendSupervisor();
+  const internal = supervisor as unknown as SupervisorInternals;
+  mocks.spawn.mockReset();
+  mocks.spawn.mockImplementation(() => {
+    throw timedOutSpawn();
+  });
+  internal.generation = 1;
+  internal.spawnChild({ argv: ['/rt/.venv/bin/python'], cwd: '/project' }, 1);
+  await vi.advanceTimersByTimeAsync(7_000);
+  expect(mocks.spawn).toHaveBeenCalledTimes(3);
+  expect(supervisor.status.stage).toBe('failed');
+  expect(supervisor.status.message).toContain(
+    'Could not start /rt/.venv/bin/python: spawn ETIMEDOUT',
+  );
+  expect(supervisor.status.message).toContain('restarting the computer');
+});
+
+it('drops a pending retry once a newer launch has started (#4035)', async () => {
+  const supervisor = new BackendSupervisor();
+  const internal = supervisor as unknown as SupervisorInternals;
+  mocks.spawn.mockReset();
+  mocks.spawn.mockImplementationOnce(() => {
+    throw timedOutSpawn();
+  });
+  internal.generation = 1;
+  internal.spawnChild({ argv: ['python'], cwd: '/project' }, 1);
+  internal.generation = 2;
+  await vi.advanceTimersByTimeAsync(7_000);
+  expect(mocks.spawn).toHaveBeenCalledTimes(1);
+});
