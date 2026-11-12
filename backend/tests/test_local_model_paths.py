@@ -240,3 +240,15 @@ def test_first_resave_after_restart_keeps_a_loaded_engine_warm(monkeypatch, tmp_
     paths.note_loaded("tts", "omnivoice", str(model))  # loaded at startup
     paths.change("tts", "omnivoice", str(model))
     assert shared == []
+
+
+def test_a_huge_folder_tree_is_not_walked_in_full(monkeypatch, tmp_path):
+    """Empty subfolders count toward the bound, not only files (#4043 review)."""
+    root = tmp_path / "many"
+    root.mkdir()
+    for i in range(30):
+        (root / f"d{i}").mkdir()
+    monkeypatch.setattr(paths, "_FINGERPRINT_MAX_FILES", 10)
+    a = paths._weights_fingerprint(str(root))
+    b = paths._weights_fingerprint(str(root))
+    assert a != b  # over the bound: never treated as unchanged

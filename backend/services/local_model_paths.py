@@ -350,12 +350,16 @@ _FINGERPRINT_MAX_FILES = 5000
 def _weights_fingerprint(path: str | None) -> tuple:
     """Every file under the folder (relative path, size, mtime), so replacing any
     weight, nested tokenizer files included, makes a re-save reload while a plain
-    re-save does not. A folder too large to list cheaply never matches."""
+    re-save does not. A tree of more than _FINGERPRINT_MAX_FILES entries never matches."""
     if not path:
         return (path,)
     files = []
+    visited = 0  # files and folders: a tree of empty folders is bounded too
     try:
-        for root, _dirs, names in os.walk(path):
+        for root, dirs, names in os.walk(path):
+            visited += 1 + len(dirs) + len(names)
+            if visited > _FINGERPRINT_MAX_FILES:
+                return (path, object())
             for name in names:
                 full = os.path.join(root, name)
                 try:
@@ -363,8 +367,6 @@ def _weights_fingerprint(path: str | None) -> tuple:
                 except OSError:
                     continue
                 files.append((os.path.relpath(full, path), st.st_size, st.st_mtime_ns))
-                if len(files) > _FINGERPRINT_MAX_FILES:
-                    return (path, object())
     except OSError:
         return (path, object())
     return (path, tuple(sorted(files)))
