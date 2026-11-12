@@ -94,5 +94,6 @@ it('turns the primary action into setup while text-to-speech is not ready', () =
 it('shows cancel and elapsed time inside the bar while rendering', () => {
   renderComposer(null, { isGenerating: true, elapsedSeconds: 2.5, stage: 'generating' });
   expect(screen.getByRole('button', { name: 'Cancel generation' })).toBeEnabled();
-  expect(screen.getByText('2.5s')).toBeInTheDocument();
+  expect(screen.getByText(/2\.5s/)).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /Generation logs/i })).toBeInTheDocument();
 });

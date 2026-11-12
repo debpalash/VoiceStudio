@@ -48,6 +48,7 @@ import { cn } from '@/lib/utils';
 import { EngineLanguagePicker } from './engine-language-picker';
 import { PresetVoicePicker } from './preset-voice-picker';
 import { CloneReadinessNotice } from './clone-readiness-notice';
+import { GenerateLogPanel } from './generate-log-panel';
 import { QualityControls } from './quality-controls';
 import { QualityOffer } from './quality-offer';
 import { EmotionControls } from './emotion-controls';
@@ -475,6 +476,7 @@ export function ActionBar({ setup: shared }: { setup?: EngineSetup } = {}) {
           {t(delayHint)}
         </p>
       ) : null}
+      {!demo ? <GenerateLogPanel active={isGenerating} /> : null}
       {!demo && !needsSetup && (
         <QualityOffer text={script} isGenerating={isGenerating} className="mt-2 justify-end" />
       )}

@@ -14,6 +14,7 @@ import { EngineLanguagePicker } from '@/features/clone/engine-language-picker';
 import { QualityControls } from '@/features/clone/quality-controls';
 import { VoiceControls } from '@/features/clone/action-bar';
 import { QualityOffer } from '@/features/clone/quality-offer';
+import { GenerateLogPanel } from '@/features/clone/generate-log-panel';
 import type { DesignBlocker, UseGenerateClone } from '@/hooks/use-generate';
 import { cn } from '@/lib/utils';
 
@@ -194,6 +195,7 @@ export function DesignComposer({
           </div>
         )}
       </div>
+      <GenerateLogPanel active={isGenerating} />
       {!needsSetup && (
         <QualityOffer text={text} isGenerating={isGenerating} className="mt-2 justify-end px-1" />
       )}

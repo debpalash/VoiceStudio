@@ -103,6 +103,9 @@ export default defineConfig({
     server: {
       port: rendererPort,
       strictPort: true,
+      // Desktop Electron loads this URL; never auto-open a browser tab.
+      // Opt in with VOICESTUDIO_OPEN_DEV_UI_IN_BROWSER=1 (see main process).
+      open: false,
       // Dev counterpart of main's app:// proxy (CONTRACT.md, same-origin API rule).
       proxy: {
         '/api/ws': {

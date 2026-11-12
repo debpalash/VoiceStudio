@@ -19,6 +19,7 @@ import { registerRepairAgents } from './repair-agents';
 import { installRendererPermissions } from './media-permissions';
 import { installBlankWindowGuard } from './blank-window-guard';
 import { shouldOpenDevTools } from './devtools-policy';
+import { shouldOpenDevUiInBrowser } from './dev-ui-browser-policy';
 import {
   installMainProcessErrorHandlers,
   MainErrorJournal,
@@ -340,6 +341,11 @@ function createWindow(): BrowserWindow {
     // promise so a transient dev-server/package read failure is not uncaught.
     void win.loadURL(appUrl).catch(() => {});
     if (shouldOpenDevTools()) win.webContents.openDevTools({ mode: 'detach' });
+    // Electron is the product surface. Opening the Vite URL in a browser is
+    // opt-in only (VOICESTUDIO_OPEN_DEV_UI_IN_BROWSER=1) for dual debugging.
+    if (shouldOpenDevUiInBrowser()) {
+      void shell.openExternal(process.env.ELECTRON_RENDERER_URL).catch(() => {});
+    }
   } else {
     void win.loadURL(appUrl).catch(() => {});
   }
