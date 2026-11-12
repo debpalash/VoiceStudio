@@ -274,3 +274,11 @@ def test_parent_loss_retires_crash_sentinel_before_immediate_exit(monkeypatch):
 
     assert cleared == [True]
     assert exited == [0]
+
+
+def test_windows_pipe_poll_is_not_a_busy_wakeup():
+    # Idle CPU: this thread wakes for the life of the backend, so the default
+    # period must not be sub-second, while exit latency stays bounded.
+    from core.parent_liveness import WINDOWS_PIPE_POLL_INTERVAL_S
+
+    assert 1.0 <= WINDOWS_PIPE_POLL_INTERVAL_S <= 2.0
