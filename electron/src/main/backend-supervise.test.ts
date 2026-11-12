@@ -227,6 +227,26 @@ it('still reports an attached backend that refuses connections as crashed', asyn
   }
 });
 
+it('probes a steady backend less often, and still reports a crash within seconds (#3924)', async () => {
+  const health: Health = { mode: 'up' };
+  const supervisor = await attachedSupervisor(health);
+  try {
+    await vi.advanceTimersByTimeAsync(120_000); // past the healthy streak
+    const before = calls.filter((url) => url.endsWith('/health')).length;
+    await vi.advanceTimersByTimeAsync(60_000);
+    const steady = calls.filter((url) => url.endsWith('/health')).length - before;
+    // 2 s active cadence would be 30 probes a minute; the calm cadence is about 10.
+    expect(steady).toBeLessThanOrEqual(12);
+    expect(steady).toBeGreaterThanOrEqual(8);
+
+    health.mode = 'down';
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(supervisor.status.stage).toBe('crashed');
+  } finally {
+    await supervisor.shutdown();
+  }
+});
+
 it('waits out an attached backend that accepts connections but is busy (#2601)', async () => {
   const health: Health = { mode: 'up' };
   const supervisor = await attachedSupervisor(health);

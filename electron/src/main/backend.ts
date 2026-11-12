@@ -2825,7 +2825,10 @@ export class BackendSupervisor extends EventEmitter<{
         return;
       }
       if (await this.probe()) {
-        healthy++;
+        // Only a backend that is ready and settled earns the slower cadence; a
+        // recovering or auth_required one keeps the active period, so its
+        // tick-counted re-validation (AUTH_RECHECK_TICKS) stays about 30 s.
+        healthy = this.stage === 'ready' && !this.diagnosis ? healthy + 1 : 0;
         misses = 0;
         refusals = 0;
         rejections = 0;
