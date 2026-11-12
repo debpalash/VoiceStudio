@@ -9,8 +9,9 @@ from typing import Any, BinaryIO, Callable, Optional
 
 # Poll cadence for the Windows pipe watcher. Exit latency after the desktop
 # closes its end is bounded by this; the desktop's own kill-on-close Job is the
-# hard backstop, so a quarter second is plenty and costs nothing measurable.
-WINDOWS_PIPE_POLL_INTERVAL_S = 0.25
+# hard backstop, so one second is plenty, and a longer period means fewer
+# idle wake-ups of a thread that otherwise does nothing.
+WINDOWS_PIPE_POLL_INTERVAL_S = 1.0
 _FILE_TYPE_PIPE = 3  # winbase.h FILE_TYPE_PIPE
 
 def _exit_after_parent_loss(code: int) -> None:

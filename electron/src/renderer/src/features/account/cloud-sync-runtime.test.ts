@@ -109,3 +109,26 @@ it('window focus asks for a sync round and stop removes everything', async () =>
   window.dispatchEvent(new Event('focus'));
   expect(calls.length).toBe(count);
 });
+
+function setVisibility(state: 'hidden' | 'visible') {
+  Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => state });
+  document.dispatchEvent(new Event('visibilitychange'));
+}
+
+it('does not poll while the window is hidden and catches up when it is shown', async () => {
+  vi.useFakeTimers();
+  const { api, calls } = fakeApi([]);
+  stop = await startCloudSyncRuntime({ api: api as never, intervalMs: 1000 });
+  const pulls = () => calls.filter(([p]) => p.startsWith('/api/cloud-sync/local?since=')).length;
+  setVisibility('hidden');
+  try {
+    const before = pulls();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(pulls()).toBe(before);
+    setVisibility('visible');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(pulls()).toBe(before + 1);
+  } finally {
+    setVisibility('visible');
+  }
+});
