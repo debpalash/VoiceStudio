@@ -83,9 +83,9 @@ function stageFromGeneration(raw: string | null | undefined): SynthesisStage | n
 export function synthesisDelayHint(
   stage: SynthesisStage,
   elapsedSeconds: number,
-  *,
-  hasByteProgress = false,
+  options: { hasByteProgress?: boolean } = {},
 ): string | null {
+  const hasByteProgress = options.hasByteProgress === true;
   if (stage === 'transcribing' && elapsedSeconds >= 8) {
     return 'synthesisState.hint_long_reference';
   }
