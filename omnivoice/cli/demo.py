@@ -33,7 +33,7 @@ try:
 except ImportError as exc:  # gradio lives in the optional `ui` extra
     raise SystemExit(
         "omnivoice-demo needs Gradio. In a source checkout run: uv sync --extra ui; "
-        "for a pip install run: python -m pip install 'omnivoice[ui]'"
+        "for a pip install run: python -m pip install \"omnivoice[ui]\""
     ) from exc
 import numpy as np
 import torch
