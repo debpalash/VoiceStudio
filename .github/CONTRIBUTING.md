@@ -561,7 +561,10 @@ test-only PR. Docker Hub overview edits still publish through the small
   `t('...')` and the key must exist in **every** file of the catalog the code
   uses: `electron/src/shared/i18n/locales/` (checked by
   `tests/test_locale_parity.py`) or `electron/src/renderer/src/i18n/locales/`
-  (checked by `bun run --cwd electron locale:check`). Translate; don't copy
+  (checked by `bun run --cwd electron locale:check`, which also fails on an
+  `en.json` key no code references; delete it from every locale, or add a
+  prefix to `ALLOWED_PREFIXES` in `electron/tests/locale-source-keys.mjs` if code
+  builds it dynamically). Translate; don't copy
   English into non-English locales. CI fails on hardcoded CJK outside the allowlist in
   `tests/test_no_hardcoded_cjk.py` (extend `_ALLOWED_FILES` with a
   justification for legitimate functional CJK).

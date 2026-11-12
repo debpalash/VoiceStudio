@@ -13,7 +13,6 @@ const locales = import.meta.glob<Record<string, Record<string, string>>>(
   },
 );
 const MARKUP_KEYS = [
-  ['audiobook', 'markup_hint'],
   ['audiobook', 'script_placeholder'],
   ['stories', 'linePlaceholder'],
   ['stories', 'insertPause'],

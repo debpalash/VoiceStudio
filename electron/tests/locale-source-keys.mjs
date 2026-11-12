@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 
 const sourceDirectory = new URL('../src/renderer/src/', import.meta.url);
 const englishPath = new URL('../src/renderer/src/i18n/locales/en.json', import.meta.url);
@@ -60,3 +61,71 @@ assert.deepEqual(
     .join('\n')}`,
 );
 console.log(`Locale source keys: ${used.size} static renderer keys exist in en.json`);
+
+// Unused-key gate: every English key must be referenced by shipped code, or
+// the catalog accumulates strings no screen renders (and every translator
+// pays for them). Keys count as referenced when the full key appears in
+// non-test product code, in the mobile/scripts/backend trees that read the
+// catalog, or when a dynamic key (`t(`ns.${x}`)`, `t('ns.' + x)`) names a
+// prefix and the key's next segment appears in code too (longer or partial prefixes keep all
+// their keys). Plural suffixes (_one/_other/...) are checked through their base key.
+const repository = new URL('../../', import.meta.url);
+// Prefixes consumed by code the scan cannot follow. `mobile.` is read by the
+// native apps through generated catalogs, not through t('...') calls.
+const ALLOWED_PREFIXES = ['mobile.'];
+const codeFile = /\.(?:tsx?|jsx?|mjs|cjs|py|swift|kts?|xml|plist|json|ya?ml|html|strings|gradle)$/;
+const skipDirectory = new Set([
+  'node_modules', '.git', 'out', 'dist', 'build', 'release', '.venv', 'locales', 'tests',
+  'Tests', 'test', 'docs', 'changelog.d', 'Pods', '.generated', 'omnivoice_data',
+]);
+const skipFile = /(?:\.test\.[jt]sx?|\.lock|package-lock\.json|strings[^/]*\.en\.json)$/;
+
+async function corpusFiles(directory, output = []) {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (skipDirectory.has(entry.name)) continue;
+    const child = new URL(`${entry.name}${entry.isDirectory() ? '/' : ''}`, directory);
+    if (entry.isDirectory()) await corpusFiles(child, output);
+    else if (codeFile.test(entry.name) && !skipFile.test(entry.name)) output.push(child);
+  }
+  return output;
+}
+
+const chunks = [];
+for (const tree of ['electron/src/', 'mobile/', 'scripts/', 'backend/']) {
+  for (const file of await corpusFiles(new URL(tree, repository))) {
+    const text = await readFile(file, 'utf8').catch(() => '');
+    if (text.length < 3_000_000) chunks.push(text);
+  }
+}
+const corpus = chunks.join('\n');
+const dynamicPrefixes = new Set();
+for (const match of corpus.matchAll(
+  /['"`]([A-Za-z][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+)*[._]?)(?:['"`]\s*\+|\$\{)/g,
+))
+  dynamicPrefixes.add(match[1]);
+const baseKey = (key) => key.replace(/_(?:one|other|zero|two|few|many)$/, '');
+const unused = [...catalog].filter((key) => {
+  const base = baseKey(key);
+  if (ALLOWED_PREFIXES.some((prefix) => key.startsWith(prefix))) return false;
+  if (corpus.includes(base)) return false;
+  for (const prefix of dynamicPrefixes) {
+    if (!base.startsWith(prefix)) continue;
+    // `ns.${x}`: only a one-segment namespace is narrowed by its next segment appearing
+    // in code; any longer or partial prefix (`ns.sub.`, `ns.opt_`, `ns.short`) keeps every key.
+    if (!/^[A-Za-z0-9_-]+\.$/.test(prefix)) return false;
+    const segment = base.slice(prefix.length).split('.')[0];
+    if (segment.length >= 3 && corpus.includes(segment)) return false;
+  }
+  return true;
+});
+assert.deepEqual(
+  unused,
+  [],
+  `en.json has ${unused.length} key(s) no source references; delete them from every ` +
+    `catalog in electron/src/renderer/src/i18n/locales/ (or add a prefix to ALLOWED_PREFIXES ` +
+    `in ${fileURLToPath(import.meta.url).split('/electron/')[1]} if code builds them dynamically):\n${unused
+      .slice(0, 40)
+      .map((key) => `  ${key}`)
+      .join('\n')}${unused.length > 40 ? `\n  ... and ${unused.length - 40} more` : ''}`,
+);
+console.log(`Locale source keys: all ${catalog.size} en.json keys are referenced`);
