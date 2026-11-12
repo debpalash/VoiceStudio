@@ -40,12 +40,28 @@ def gguf(monkeypatch):
 
 
 def test_default_timeout_exceeds_the_pool_generate_budget(gguf, monkeypatch):
-    # The pool guard (OMNIVOICE_GENERATE_TIMEOUT_S, 300s floor) must be the
-    # deadline users actually hit — it classifies and explains. The inner
-    # subprocess timeout only reaps a wedged C++ process, so it must sit
-    # strictly above the pool floor or it fires first with a worse error.
+    # The pool guard must be the deadline users actually hit — it classifies
+    # and explains. The inner subprocess timeout only reaps a wedged C++
+    # process, so it must sit strictly above the shared budget (GPU or CPU,
+    # including Settings / length-scaling) or it fires first with a worse error.
     monkeypatch.delenv("OMNIVOICE_GGUF_GENERATE_TIMEOUT_S", raising=False)
-    assert gguf._generate_timeout_s() > 300.0
+    from services.model_manager import generate_timeout_s
+
+    budget = generate_timeout_s("hello")
+    assert gguf._generate_timeout_s(text="hello") > budget
+    assert gguf._generate_timeout_s(text="hello") >= 600.0
+
+
+def test_default_timeout_tracks_a_raised_cpu_budget(gguf, monkeypatch):
+    # Flat 600s used to ignore Settings → CPU generate timeout, so raising
+    # OMNIVOICE_CPU_GENERATE_TIMEOUT_S still died at the GGUF wedge first.
+    monkeypatch.delenv("OMNIVOICE_GGUF_GENERATE_TIMEOUT_S", raising=False)
+    import services.model_manager as mm
+
+    monkeypatch.setattr(mm, "CPU_JOB_TIMEOUT_S", 1800.0)
+    monkeypatch.setattr(mm, "_CPU_GENERATE_TIMEOUT_EXPLICIT", True)
+    timeout = gguf._generate_timeout_s(text="short")
+    assert timeout >= 1800.0 + gguf._WEDGE_MARGIN_S
 
 
 def test_env_override_is_read_at_call_time(gguf, monkeypatch):
@@ -57,9 +73,12 @@ def test_env_override_is_read_at_call_time(gguf, monkeypatch):
 def test_bad_env_values_fall_back_to_the_default(gguf, monkeypatch, raw):
     # inf would disarm the wedge guard entirely (subprocess.run never times
     # out); nan poisons the max() clamp. Both parse as float, so a plain
-    # ValueError guard is not enough.
+    # ValueError guard is not enough — fall back to the computed default.
+    monkeypatch.delenv("OMNIVOICE_GGUF_GENERATE_TIMEOUT_S", raising=False)
+    expected = gguf._generate_timeout_s()
     monkeypatch.setenv("OMNIVOICE_GGUF_GENERATE_TIMEOUT_S", raw)
-    assert gguf._generate_timeout_s() == 600.0
+    assert gguf._generate_timeout_s() == expected
+    assert expected >= 600.0
 
 
 def test_tiny_values_are_floored_not_instant_kill(gguf, monkeypatch):

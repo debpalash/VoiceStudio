@@ -40,7 +40,9 @@ Security (see plan front-matter threat model):
               the ``quant_map.json`` allow-list before reaching this
               module.
     T-04-06 — DoS via hung subprocess: every spawn enforces a hard
-              timeout (5 s for ``probe_load``, 120 s for ``generate``).
+              timeout (5 s for ``probe_load``; generate sits above the
+              shared pool budget, floor 600 s, override via
+              ``OMNIVOICE_GGUF_GENERATE_TIMEOUT_S``).
 
 Public surface:
     :class:`OmniVoiceGGUFBackend` — the registered TTSBackend class.
@@ -142,14 +144,44 @@ def _binary_path(slug: Optional[str] = None) -> Path:
     return _REPO_ROOT / "bin" / name
 
 
-def _generate_timeout_s() -> float:
+# How far above the shared pool budget the C++ wedge guard sits. The pool
+# deadline is the diagnosed one users hit; this only reaps a wedged binary.
+_WEDGE_MARGIN_S = 60.0
+# Historical floor from #1348 (was 120s, then 600s above the 300s GPU floor).
+_DEFAULT_FLOOR_S = 600.0
+
+
+def _pool_generate_budget_s(text: str | None = None) -> float:
+    """Shared generate budget this host would give the same request.
+
+    Lazily imported so engine import stays free of the model-manager cycle.
+    Falls back to the accelerated floor when the shared helper is unavailable.
+    """
+    try:
+        from services.model_manager import generate_timeout_s
+
+        budget = float(generate_timeout_s(text))
+        if math.isfinite(budget) and budget > 0:
+            return budget
+    except Exception:
+        logger.debug(
+            "GGUF timeout could not read the shared generate budget",
+            exc_info=True,
+        )
+    return 300.0
+
+
+def _generate_timeout_s(*, text: str | None = None) -> float:
     """Hard per-spawn timeout for the C++ binary, read from the env at call time.
 
     ``OMNIVOICE_GGUF_GENERATE_TIMEOUT_S`` overrides; the default sits ABOVE
-    the GPU-pool generate budget (``OMNIVOICE_GENERATE_TIMEOUT_S``, 300s
-    floor) on purpose — the pool guard is the real, well-diagnosed deadline,
-    and this one only reaps a truly wedged C++ process. The old hardcoded
-    120s killed legitimate CPU-only generates mid-synthesis (#1348).
+    the shared generate budget (``OMNIVOICE_GENERATE_TIMEOUT_S`` /
+    ``OMNIVOICE_CPU_GENERATE_TIMEOUT_S``, including CPU length-scaling) on
+    purpose — the pool guard is the real, well-diagnosed deadline, and this
+    one only reaps a truly wedged C++ process. The old hardcoded 120s killed
+    legitimate CPU-only generates mid-synthesis (#1348). A later flat 600s
+    default raced the CPU pool's own 600s floor and ignored a raised CPU
+    budget in Settings, so slow CPU hosts died at the GGUF wedge first.
     """
     raw = os.environ.get("OMNIVOICE_GGUF_GENERATE_TIMEOUT_S")
     if raw:
@@ -163,7 +195,7 @@ def _generate_timeout_s() -> float:
         logger.warning(
             "Ignoring invalid OMNIVOICE_GGUF_GENERATE_TIMEOUT_S=%r", raw
         )
-    return 600.0
+    return max(_DEFAULT_FLOOR_S, _pool_generate_budget_s(text) + _WEDGE_MARGIN_S)
 
 
 def _spawn_env() -> dict[str, str]:
@@ -1497,7 +1529,7 @@ def _make_backend_class():
                 if self._resident is None:
                     self._resident = resident.ResidentServer()
                 server = self._resident
-            timeout_s = _generate_timeout_s()
+            timeout_s = _generate_timeout_s(text=text)
             with server.lock:
                 for attempt in (1, 2):
                     try:
@@ -1634,7 +1666,7 @@ def _make_backend_class():
             )
             validate_executable(Path(argv[0]), hint=_binary_repair_hint())
             if timeout_s is None:
-                timeout_s = _generate_timeout_s()
+                timeout_s = _generate_timeout_s(text=stdin_text)
             try:
                 proc = subprocess.run(
                     argv,

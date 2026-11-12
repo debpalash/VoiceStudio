@@ -182,7 +182,10 @@ sentence is not repeated on every synthesis. Switching engines re-arms it.
 
 If you are already on a CPU-tuned engine (OmniVoice GGUF, Supertonic-3) the
 warning drops the "try a CPU-tuned engine" suggestion — it would be advice to
-switch to what you are already using.
+switch to what you are already using. OmniVoice GGUF's binary watchdog
+(`OMNIVOICE_GGUF_GENERATE_TIMEOUT_S`) defaults above this shared budget so
+raising the CPU or GPU row in Settings also covers GGUF; set the GGUF var
+only when you need the wedge guard higher still.
 
 ## Flush caches / Unload resident model
 

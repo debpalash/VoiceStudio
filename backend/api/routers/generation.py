@@ -1203,13 +1203,32 @@ def _oom_friendly_reraise(e):
         # Test the MESSAGE, not _safe_exc_text() — that always prefixes the
         # type name, so it is never empty and the check would never fire.
         _tail = f" Underlying error: {_safe_exc_text(e)}" if str(e).strip() else ""
+        # Name the knobs that actually move the deadline. A flat
+        # OMNIVOICE_GENERATE_TIMEOUT_S tip misled CPU and GGUF users whose
+        # real budgets are OMNIVOICE_CPU_GENERATE_TIMEOUT_S / the GGUF
+        # wedge guard (bugs/bug.md class: 600s GGUF race on CPU).
+        _detail = str(e).lower()
+        if "gguf" in _detail:
+            _knobs = (
+                "OMNIVOICE_CPU_GENERATE_TIMEOUT_S (CPU) or "
+                "OMNIVOICE_GENERATE_TIMEOUT_S (GPU) in Settings → "
+                "Performance & Device — OmniVoice GGUF follows that budget; "
+                "raise OMNIVOICE_GGUF_GENERATE_TIMEOUT_S only if you need "
+                "the binary watchdog above it"
+            )
+        else:
+            _knobs = (
+                "OMNIVOICE_CPU_GENERATE_TIMEOUT_S (CPU hosts) or "
+                "OMNIVOICE_GENERATE_TIMEOUT_S (accelerated hosts) in "
+                "Settings → Performance & Device"
+            )
         raise RuntimeError(
             "The engine hit its time limit before finishing, so generation was "
             "stopped. Nothing is broken and flushing memory won't help. The "
             "usual causes are a first-use model download still in progress "
             "(retry once it finishes — it resumes), a very long input, or an "
             "engine running on CPU. Shorter text, or raising "
-            "OMNIVOICE_GENERATE_TIMEOUT_S, will get it through."
+            f"{_knobs}, will get it through."
             + _tail
         ) from e
     # #1334: Windows refusing to back a large model mapping (WinError 1455) is

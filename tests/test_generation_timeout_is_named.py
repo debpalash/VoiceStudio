@@ -150,7 +150,24 @@ def test_the_message_explains_the_first_run_download_case(gen):
 def test_the_message_names_the_override(gen):
     """Someone on slow CPU-only hardware needs a way through, not just an
     explanation."""
-    assert "OMNIVOICE_GENERATE_TIMEOUT_S" in _reraise(gen, TimeoutError())
+    msg = _reraise(gen, TimeoutError())
+    assert "OMNIVOICE_GENERATE_TIMEOUT_S" in msg
+    assert "OMNIVOICE_CPU_GENERATE_TIMEOUT_S" in msg
+
+
+def test_a_gguf_timeout_names_the_gguf_and_shared_knobs(gen):
+    """A GGUF wedge used to tip only OMNIVOICE_GENERATE_TIMEOUT_S, which does
+    not move the binary watchdog or the CPU Settings row."""
+    msg = _reraise(
+        gen,
+        RuntimeError(
+            "GGUF subprocess timed out after 600s (T-04-06; raise "
+            "OMNIVOICE_GGUF_GENERATE_TIMEOUT_S if this host is genuinely "
+            "that slow)"
+        ),
+    )
+    assert "OMNIVOICE_GGUF_GENERATE_TIMEOUT_S" in msg
+    assert "OMNIVOICE_CPU_GENERATE_TIMEOUT_S" in msg
 
 
 def test_an_empty_timeout_message_does_not_end_the_sentence_in_a_colon(gen):

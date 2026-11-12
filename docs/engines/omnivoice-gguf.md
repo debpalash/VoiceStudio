@@ -396,7 +396,7 @@ log says why once.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `OMNIVOICE_GGUF_GENERATE_TIMEOUT_S` | (generous built-in) | Per-generation timeout for the spawned binary |
+| `OMNIVOICE_GGUF_GENERATE_TIMEOUT_S` | shared generate budget + 60s (min 600s) | Wedge guard for the spawned binary. Defaults above `OMNIVOICE_GENERATE_TIMEOUT_S` / `OMNIVOICE_CPU_GENERATE_TIMEOUT_S` (including Settings and CPU length-scaling) so the pool's diagnosed deadline wins; set this only when you need the binary watchdog higher still. |
 | `OMNIVOICE_GGUF_QUANT` | `auto` | Pin a quant (`Q4_K_M`, `Q8_0`, `BF16`, `F32`); overrides Settings |
 | `OMNIVOICE_GGUF_RESIDENT` | `0` | `1` keeps a bundled `tts-server` loaded between requests (opt-in, see Resident server); overrides Settings |
 
@@ -417,6 +417,12 @@ log says why once.
   backend.
 - Checksum mismatch or quarantine messages: follow the printed fix, or
   reinstall.
+- "GGUF subprocess timed out" / "hit its time limit" on a CPU host: the
+  generate ran longer than the shared budget. Raise **Settings → Performance
+  & Device → CPU generate timeout** (`OMNIVOICE_CPU_GENERATE_TIMEOUT_S`);
+  GGUF follows that budget automatically. Use
+  `OMNIVOICE_GGUF_GENERATE_TIMEOUT_S` only if you need the binary watchdog
+  above the pool deadline. Shorter script text also helps.
 - Other issues: [install/troubleshooting.md](../install/troubleshooting.md).
 
 See also: [benchmarks.md](../benchmarks.md),
