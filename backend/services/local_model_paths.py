@@ -344,27 +344,41 @@ def clear(family: str, engine_id: str) -> None:
         prefs.set_(PREF_KEY, current)
 
 
-def _weights_fingerprint(path: str | None) -> tuple[str | None, int]:
-    """The stored folder plus its newest file time, so a re-save after the weights
-    inside it were replaced still reloads, while a plain re-save does not."""
+_FINGERPRINT_MAX_FILES = 5000
+
+
+def _weights_fingerprint(path: str | None) -> tuple:
+    """Every file under the folder (relative path, size, mtime), so replacing any
+    weight, nested tokenizer files included, makes a re-save reload while a plain
+    re-save does not. A folder too large to list cheaply never matches."""
     if not path:
-        return (path, 0)
-    newest = 0
+        return (path,)
+    files = []
     try:
-        with os.scandir(path) as entries:
-            for entry in entries:
+        for root, _dirs, names in os.walk(path):
+            for name in names:
+                full = os.path.join(root, name)
                 try:
-                    newest = max(newest, entry.stat().st_mtime_ns)
+                    st = os.stat(full)
                 except OSError:
                     continue
+                files.append((os.path.relpath(full, path), st.st_size, st.st_mtime_ns))
+                if len(files) > _FINGERPRINT_MAX_FILES:
+                    return (path, object())
     except OSError:
-        pass
-    return (path, newest)
+        return (path, object())
+    return (path, tuple(sorted(files)))
+
+
+def note_loaded(family: str, engine_id: str, path: str) -> None:
+    """Record the folder an engine is loading from, so the first re-save after a
+    restart can keep that engine warm when nothing changed."""
+    _APPLIED[(family, engine_id)] = _weights_fingerprint(path)
 
 
 # Fingerprint of the folder each engine last switched to, so a re-save can tell
 # whether the weights it loads would differ.
-_APPLIED: dict[tuple[str, str], tuple[str | None, int]] = {}
+_APPLIED: dict[tuple[str, str], tuple] = {}
 
 
 def change(family: str, engine_id: str, path: str | None) -> dict:

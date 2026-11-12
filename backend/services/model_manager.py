@@ -2711,9 +2711,10 @@ def _load_model_sync():
 
         checkpoint = resolve_omnivoice_checkpoint()
         if not os.environ.get("OMNIVOICE_MODEL", "").strip():
-            from services.local_model_paths import get, validate
+            from services.local_model_paths import get, note_loaded, validate
             if checkpoint == get("tts", "omnivoice"):
                 validate("tts", "omnivoice", checkpoint)
+                note_loaded("tts", "omnivoice", checkpoint)
         _set_loading("loading_weights", f"Loading TTS weights on {device}…")
         logger.info("Loading VoiceStudio model on device: %s", device)
         preload_asr = should_preload_tts_asr()

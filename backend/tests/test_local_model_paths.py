@@ -208,7 +208,35 @@ def test_resaving_after_replacing_the_weights_reloads(monkeypatch, tmp_path):
     model = checkpoint(tmp_path / "model")
     paths.change("tts", "omnivoice", str(model))
     newer = max(e.stat().st_mtime_ns for e in os.scandir(model)) + 10**9
-    replaced = next(iter(sorted(model.iterdir())))
+    replaced = next(f for f in sorted(model.rglob("*")) if f.is_file())
     os.utime(replaced, ns=(newer, newer))
     paths.change("tts", "omnivoice", str(model))
     assert len(shared) == 2
+
+
+def test_replacing_a_nested_tokenizer_file_reloads(monkeypatch, tmp_path):
+    """Nested assets count, and any change counts, not only a newer maximum (#4043 review)."""
+    import os
+    _, shared = _fake_engine_cache(monkeypatch, tmp_path)
+    model = checkpoint(tmp_path / "model")
+    nested = model / "audio_tokenizer"
+    nested.mkdir(exist_ok=True)
+    weights = nested / "model.safetensors"
+    weights.write_bytes(b"v1")
+    old = 10**18
+    os.utime(weights, ns=(old, old))  # newest file in the folder
+    paths.change("tts", "omnivoice", str(model))
+    weights.write_bytes(b"v2, a different size")
+    os.utime(weights, ns=(old - 10**9, old - 10**9))  # older than before: max() would miss it
+    paths.change("tts", "omnivoice", str(model))
+    assert len(shared) == 2
+
+
+def test_first_resave_after_restart_keeps_a_loaded_engine_warm(monkeypatch, tmp_path):
+    """The loader records the folder it loaded, so an unchanged re-save is a no-op (#4043 review)."""
+    _, shared = _fake_engine_cache(monkeypatch, tmp_path)
+    model = checkpoint(tmp_path / "model")
+    paths.set_path("tts", "omnivoice", str(model))  # saved in an earlier session
+    paths.note_loaded("tts", "omnivoice", str(model))  # loaded at startup
+    paths.change("tts", "omnivoice", str(model))
+    assert shared == []
