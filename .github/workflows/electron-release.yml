@@ -593,9 +593,8 @@ jobs:
           NOTES_ARGS=(--assets release-assets --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG")
           if [ "$REHEARSAL" = true ]; then NOTES_ARGS+=(--rehearsal); fi
           {
-            python3 "$RUNNER_TEMP/release_signing_notes.py" "${NOTES_ARGS[@]}" release-signing
-            echo
-            cat release-assets/RELEASE_NOTES.md
+            # An older tag's changelog section may carry its own download table; it is dropped.
+            python3 "$RUNNER_TEMP/release_signing_notes.py" "${NOTES_ARGS[@]}" --notes release-assets/RELEASE_NOTES.md release-signing
           } > "$RUNNER_TEMP/RELEASE_NOTES.md"
           mv "$RUNNER_TEMP/RELEASE_NOTES.md" release-assets/RELEASE_NOTES.md
       - name: Rehearsal - check the feeds the release would carry

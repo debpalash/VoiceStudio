@@ -139,7 +139,9 @@ def test_release_notes_helper_comes_from_the_workflow_commit(tmp_path):
     work = tmp_path / "tag-checkout"
     (work / "release-signing").mkdir(parents=True)
     (work / "release-assets").mkdir()
-    (work / "release-assets/RELEASE_NOTES.md").write_text("**Highlights**\n")
+    (work / "release-assets/RELEASE_NOTES.md").write_text(
+        "**Download**\n\n| Platform | Installer |\n| --- | --- |\n| Linux x64 | [AppImage](https://e.test/a) |\n\n**Highlights**\n"
+    )
     write(work / "release-signing", "linux", "x64", "not-applicable")
     env = dict(os.environ, PATH=f"{fake}{os.pathsep}{os.environ['PATH']}", GITHUB_SHA="workflow-sha",
                GITHUB_REPOSITORY="debpalash/VoiceStudio", RUNNER_TEMP=str(tmp_path))
@@ -149,6 +151,7 @@ def test_release_notes_helper_comes_from_the_workflow_commit(tmp_path):
     assert "| Linux x64 |" in text and "| iPhone |" in text
     assert text.index("### Download") < text.index("**Highlights**")
     assert "releases/download/v" not in text  # no assets in this checkout: no links
+    assert text.count("| Linux x64 |") == 1 and "| Platform | Installer |" not in text
 
 
 @pytest.mark.parametrize("failures,message,calls,ok", [
@@ -239,3 +242,26 @@ def test_signpath_signing_is_gated_pinned_and_precedes_feed_and_checksums():
     report = next(s for s in steps if s.get("name") == "Report and enforce Windows signing")
     assert "SIGNPATH_ENABLED" in report["env"]["HAS_CREDENTIALS"]
 
+
+def test_rehearsal_without_desktop_reports_still_lists_the_phones(tmp_path):
+    """Every desktop leg failed in a rehearsal, but the phone builds still get their rows (#4037 review)."""
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    (assets / "VoiceStudio-1.2.3-android.apk").write_text("x")
+    text = notes.render(tmp_path / "reports", rehearsal=True, assets=assets, base_url="https://x/d")
+    assert "No package leg reported its signing." in text
+    assert "| Android | [APK](https://x/d/VoiceStudio-1.2.3-android.apk) |" in text and "| iPhone | — |" in text
+    assert "| Windows x64 |" not in text
+
+
+def test_an_older_tags_own_download_table_is_dropped(tmp_path):
+    """Rebuilding an older tag must not show two download tables (#4037 review)."""
+    section = (
+        "**Headline.** The release.\n\n**Download**\n\n| Platform | Installer |\n| --- | --- |\n"
+        "| Windows x64 | [Installer](https://example.test/a.exe) |\n\n**Highlights**\n\n- One\n"
+    )
+    out = notes.without_own_download_table(section)
+    assert out == "**Headline.** The release.\n\n**Highlights**\n\n- One\n"
+    # Notes without one are unchanged, tables elsewhere included.
+    other = "**Highlights**\n\n- One\n\n| a | b |\n|---|---|\n"
+    assert notes.without_own_download_table(other) == other

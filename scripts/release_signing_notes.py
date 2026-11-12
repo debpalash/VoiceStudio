@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 # (platform, arch, label, [(link text, asset glob)]); desktop rows need a signing report.
@@ -77,13 +78,13 @@ def render(
             raise ValueError(f"Unknown signing status in {path.name}: {report['status']}")
         reports[(report["platform"], report["arch"])] = report["status"]
     unknown = set(reports) - {(platform, arch) for platform, arch, _, _ in DESKTOP}
-    if rehearsal and not reports:
-        # Every package leg failed or was skipped; the rehearsal lists them as
-        # missing at its end, so the notes must not stop it first.
-        return "\n### Download\n\nNo package leg reported its signing.\n"
-    if unknown or not reports:
+    if unknown or (not reports and not rehearsal):
         raise ValueError(f"Unexpected signing reports: {sorted(unknown) or 'none'}")
     lines = list(HEADER)
+    if not reports:
+        # Every package leg failed or was skipped; the rehearsal lists them as
+        # missing at its end, so the notes must not stop it first. Phones still show.
+        lines[2:2] = ["No package leg reported its signing.", ""]
     for platform, arch, label, files in DESKTOP:
         if (platform, arch) in reports:
             lines.append(f"| {label} | {_links(assets, base_url, files)} | {known[reports[(platform, arch)]]} |")
@@ -92,14 +93,27 @@ def render(
     return "\n".join(lines) + "\n"
 
 
+# A changelog section's own download table: a bold `**Download**` label, then a
+# Markdown table. Older tags carry one; the generated table replaces it.
+_OWN_TABLE = re.compile(r"^\*\*Downloads?\*\*[ \t]*\n+(?:\|[^\n]*\n?)+\n*", re.M)
+
+
+def without_own_download_table(notes: str) -> str:
+    return _OWN_TABLE.sub("", notes, count=1)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--rehearsal", action="store_true", help="Also accept rehearsal-only statuses")
     parser.add_argument("--assets", type=Path, help="Release assets folder the download links point into")
     parser.add_argument("--base-url", default="", help="Download URL prefix of the release's assets")
+    parser.add_argument("--notes", type=Path, help="Changelog notes to print after the table, minus their own download table")
     parser.add_argument("reports", type=Path)
     args = parser.parse_args()
     print(render(args.reports, rehearsal=args.rehearsal, assets=args.assets, base_url=args.base_url), end="")
+    if args.notes:
+        print()
+        print(without_own_download_table(args.notes.read_text(encoding="utf-8")), end="")
 
 
 if __name__ == "__main__":
