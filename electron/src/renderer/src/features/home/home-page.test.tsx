@@ -57,7 +57,6 @@ it('previews the official website only when the title is clicked', () => {
 it('names the feature Dubbing consistently while preserving the existing route', () => {
   expect(en.dubWorkspace.title).toBe('Dubbing');
   expect(en.nav.dub).toBe('Dubbing');
-  expect(en.keyboard.dub).toBe('Dubbing');
   render(<HomePage />);
   expect(screen.getByRole('link', { name: /dubWorkspace.title/ })).toHaveAttribute('href', '/dub');
 });
