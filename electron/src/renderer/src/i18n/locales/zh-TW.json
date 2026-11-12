@@ -2179,6 +2179,8 @@
     "current": "目前",
     "loading": "正在載入版本...",
     "none": "未找到任何版本",
+    "stable_newer": "穩定版 v{{version}} 比最新測試版更新。",
+    "switch_to_stable": "切換到穩定版",
     "load_error": "無法載入版本（離線？）",
     "retry_load": "重試",
     "backup_line": "資料庫備份",

@@ -2181,6 +2181,8 @@
     "current": "corrente",
     "loading": "Caricamento versioni…",
     "none": "Nessuna versione trovata",
+    "stable_newer": "La versione stabile v{{version}} è più recente dell'ultima beta.",
+    "switch_to_stable": "Passa a Stabile",
     "load_error": "Impossibile caricare le versioni (offline?)",
     "retry_load": "Riprova",
     "backup_line": "Backup del database",

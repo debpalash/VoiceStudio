@@ -2179,6 +2179,8 @@
     "current": "現在",
     "loading": "リリースを読み込み中…",
     "none": "リリースが見つかりませんでした",
+    "stable_newer": "安定版 v{{version}} は最新のベータより新しいバージョンです。",
+    "switch_to_stable": "安定版に切り替える",
     "load_error": "リリースをロードできませんでした (オフライン?)",
     "retry_load": "再試行",
     "backup_line": "データベースのバックアップ",

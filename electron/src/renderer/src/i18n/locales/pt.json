@@ -2181,6 +2181,8 @@
     "current": "atual",
     "loading": "Carregando lançamentos…",
     "none": "Nenhum lançamento encontrado",
+    "stable_newer": "A versão estável v{{version}} é mais recente que a última beta.",
+    "switch_to_stable": "Mudar para Estável",
     "load_error": "Não foi possível carregar as versões (off-line?)",
     "retry_load": "Tentar novamente",
     "backup_line": "Backup do banco de dados",

@@ -2179,6 +2179,8 @@
     "current": "saat ini",
     "loading": "Memuat rilis…",
     "none": "Tidak ada rilis yang ditemukan",
+    "stable_newer": "Versi stabil v{{version}} lebih baru dari beta terakhir.",
+    "switch_to_stable": "Beralih ke Stabil",
     "load_error": "Tidak dapat memuat rilis (offline?)",
     "retry_load": "Coba lagi",
     "backup_line": "Cadangan basis data",

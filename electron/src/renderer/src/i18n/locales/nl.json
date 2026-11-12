@@ -2179,6 +2179,8 @@
     "current": "actueel",
     "loading": "Releases laden…",
     "none": "Geen releases gevonden",
+    "stable_newer": "Stabiele versie v{{version}} is nieuwer dan de laatste bèta.",
+    "switch_to_stable": "Overschakelen naar Stabiel",
     "load_error": "Kan releases niet laden (offline?)",
     "retry_load": "Opnieuw proberen",
     "backup_line": "Databaseback-up",
