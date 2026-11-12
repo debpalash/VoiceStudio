@@ -177,11 +177,91 @@ def _grapheme_units(text: str) -> list[str]:
     normalized = unicodedata.normalize("NFC", text)
     units: list[list[str]] = []
     for ch in normalized:
-        if units and unicodedata.category(ch) in ("Mn", "Mc", "Me"):
+        if units and _extends_unit(units[-1], ch):
             units[-1].append(ch)
         else:
             units.append([ch])
     return ["".join(unit) for unit in units]
+
+
+_ZWJ = "\u200d"
+
+
+def _is_regional_indicator(ch: str) -> bool:
+    return "\U0001f1e6" <= ch <= "\U0001f1ff"
+
+
+# Approximate Unicode Extended_Pictographic ranges (UAX #29 rule GB11). The
+# stdlib has no property lookup, so this covers the emoji blocks; regional
+# indicators and skin-tone modifiers are not pictographic and stay out.
+_PICTOGRAPHIC_RANGES = (
+    ("\u00a9", "\u00a9"),
+    ("\u00ae", "\u00ae"),
+    ("\u203c", "\u203c"),
+    ("\u2049", "\u2049"),
+    ("\u2122", "\u2122"),
+    ("\u2139", "\u2139"),
+    ("\u2194", "\u21aa"),
+    ("\u2300", "\u23ff"),
+    ("\u25aa", "\u25fe"),
+    ("\u2600", "\u27bf"),
+    ("\u2934", "\u2935"),
+    ("\u2b00", "\u2bff"),
+    ("\u3030", "\u3030"),
+    ("\u303d", "\u303d"),
+    ("\u3297", "\u3297"),
+    ("\u3299", "\u3299"),
+    ("\U0001f000", "\U0001f1e5"),
+    ("\U0001f200", "\U0001f3fa"),
+    ("\U0001f400", "\U0001faff"),
+)
+
+
+def _is_pictographic(ch: str) -> bool:
+    return any(lo <= ch <= hi for lo, hi in _PICTOGRAPHIC_RANGES)
+
+
+def _is_emoji_tag(ch: str) -> bool:
+    # TAG characters spell subdivision flags such as Scotland (UTS #51).
+    return "\U000e0020" <= ch <= "\U000e007f"
+
+
+def _extends_unit(unit: list[str], ch: str) -> bool:
+    """Whether ``ch`` belongs to the grapheme unit ``unit`` instead of a new one.
+
+    Besides combining marks (see :func:`_grapheme_units`), this keeps emoji
+    clusters whole: a skin-tone modifier stays on its base, a zero-width
+    joiner stays on the code point before it, a pictograph after an emoji
+    ZWJ stays in the sequence (``👩‍💻``), emoji tag characters stay on their
+    base (subdivision flags), and regional indicators pair up into one flag
+    (``🇺🇸``). A letter after a ZWJ starts a new unit, as UAX #29 says, so
+    ``"م\u200dی"`` is still spelled as two letters.
+    """
+    if unicodedata.category(ch) in ("Mn", "Mc", "Me"):
+        return True
+    if ch == _ZWJ or _is_emoji_tag(ch):
+        return True
+    if unit[-1] == _ZWJ:
+        # UAX #29 GB11: a pictograph joins only when the code point before the
+        # ZWJ (skipping combining marks, skin tones and tags) is a pictograph.
+        # Looking back from the ZWJ keeps long ZWJ runs linear (no list copies).
+        if not _is_pictographic(ch):
+            return False
+        i = len(unit) - 2
+        while i >= 0 and (
+            unicodedata.category(unit[i]) in ("Mn", "Mc", "Me")
+            or "\U0001f3fb" <= unit[i] <= "\U0001f3ff"
+            or _is_emoji_tag(unit[i])
+        ):
+            i -= 1
+        return i >= 0 and _is_pictographic(unit[i])
+    if "\U0001f3fb" <= ch <= "\U0001f3ff":  # emoji skin-tone modifiers
+        return True
+    return (
+        _is_regional_indicator(ch)
+        and len(unit) == 1
+        and _is_regional_indicator(unit[0])
+    )
 
 
 def spell_out(word: str) -> str:

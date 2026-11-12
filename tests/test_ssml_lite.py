@@ -201,6 +201,43 @@ def test_spell_out_does_not_fuse_separate_tokens():
     assert spell_out("\u1100 \u1161") == "\u1100 \u1161"
 
 
+def test_spell_out_keeps_flag_emoji_whole():
+    from services.ssml_lite import spell_out
+
+    # Two regional indicators form one flag; four form two flags.
+    assert spell_out("\U0001f1fa\U0001f1f8") == "\U0001f1fa\U0001f1f8"
+    assert (
+        spell_out("\U0001f1fa\U0001f1f8\U0001f1f0\U0001f1f7")
+        == "\U0001f1fa\U0001f1f8 \U0001f1f0\U0001f1f7"
+    )
+
+
+def test_spell_out_keeps_zwj_and_skin_tone_emoji_whole():
+    from services.ssml_lite import spell_out
+
+    technologist = "\U0001f469\u200d\U0001f4bb"  # woman + ZWJ + laptop
+    thumbs_up = "\U0001f44d\U0001f3fd"  # thumbs up + medium skin tone
+    assert spell_out(f"a{technologist}{thumbs_up}") == f"a {technologist} {thumbs_up}"
+
+
+def test_spell_out_keeps_subdivision_flag_whole():
+    from services.ssml_lite import spell_out
+
+    # Black flag + TAG "gbsct" + CANCEL TAG is the Scotland flag.
+    scotland = "\U0001f3f4\U000e0067\U000e0062\U000e0073\U000e0063\U000e0074\U000e007f"
+    assert spell_out(f"a{scotland}b") == f"a {scotland} b"
+
+
+def test_spell_out_splits_letters_after_a_zwj():
+    from services.ssml_lite import spell_out
+
+    # A ZWJ between letters stays on the first letter; the next letter is
+    # still its own unit, and a flag after a letter + ZWJ keeps its pair.
+    assert spell_out("\u0645\u200d\u06cc") == "\u0645\u200d \u06cc"
+    assert spell_out("a\u200db") == "a\u200d b"
+    assert spell_out("A\u200d\U0001f1fa\U0001f1f8") == "A\u200d \U0001f1fa\U0001f1f8"
+
+
 def test_redos_safe_on_adversarial_input():
     # Many bracket-like fragments must not blow up (linear-time guarantee).
     import time
@@ -212,3 +249,32 @@ def test_redos_safe_on_adversarial_input():
     # All 5000 opens unclosed -> the single 'x' run is slow.
     assert segs[-1]["text"] == "x"
     assert segs[-1]["speed"] == SLOW_SPEED
+
+
+def test_spell_out_long_zwj_emoji_run_is_linear_time():
+    # A long ZWJ emoji sequence stays one unit and O(n): copying the unit on
+    # every ZWJ cost ~64x for an 8x longer input; the 24x limit leaves margin.
+    import time
+
+    from services.ssml_lite import spell_out
+
+    def best(n):
+        payload = "\U0001f469" + "‍\U0001f4bb" * n
+        runs = []
+        for _ in range(5):
+            t0 = time.perf_counter()
+            out = spell_out(payload)
+            runs.append(time.perf_counter() - t0)
+        assert out == payload  # a single grapheme unit, nothing spaced out
+        return min(runs)
+
+    small, large = best(5_000), best(40_000)
+    assert large < max(small, 0.005) * 24, (small, large)
+
+
+def test_zwj_joins_only_after_a_pictograph_base():
+    from services.ssml_lite import spell_out
+
+    assert spell_out("\U0001f469\U0001f3fd‍\U0001f4bb") == "\U0001f469\U0001f3fd‍\U0001f4bb"
+    assert spell_out("\U0001f3f3️‍\U0001f308") == "\U0001f3f3️‍\U0001f308"
+    assert spell_out("a‍\U0001f4bb") == "a‍ \U0001f4bb"
