@@ -1165,6 +1165,8 @@ export class BackendSupervisor extends EventEmitter<{
   private readonly childErrorLog: string[] = [];
   /** When the spawned process last printed a line (0 = nothing yet this launch). */
   private lastChildOutputAt = 0;
+  /** When the running readiness wait's budget started; a launch retry moves it. */
+  private readinessClockAt = 0;
   /** The current managed launch's env and spawn time, for its own log. */
   private launchLog: BackendLaunchLog | null = null;
   /** Bumped on every start/shutdown so stale poll loops and exit handlers no-op. */
@@ -2420,6 +2422,9 @@ export class BackendSupervisor extends EventEmitter<{
     // stopped it, a failure was reported) owns what happens next.
     const stageAtFailure = this.stage;
     const delay = SPAWN_RETRY_DELAYS_MS[attempt];
+    // The readiness wait already running counts its budget from the retried
+    // launch, not from the attempt that failed.
+    if (!needsReadyWait) this.readinessClockAt = Date.now() + delay;
     this.pushLog(
       'err',
       `Starting the backend failed (${errorMessage(err)}); retrying in ${delay / 1000} s.`,
@@ -2796,7 +2801,7 @@ export class BackendSupervisor extends EventEmitter<{
     // candidates. Once that pre-spawn work outlasted the budget, this loop
     // failed on its very first probe — killing a backend that had been alive
     // for a second and reporting "did not answer within 300 s".
-    const pollStartedAt = Date.now();
+    this.readinessClockAt = Date.now();
     const waitingStage = this.stage;
     while (gen === this.generation && this.stage === waitingStage) {
       const ready = await this.probe();
@@ -2810,7 +2815,7 @@ export class BackendSupervisor extends EventEmitter<{
       if (gen !== this.generation || (this.stage !== 'starting' && this.stage !== 'attaching')) {
         return;
       }
-      if (Date.now() > readinessDeadline(pollStartedAt, budgetMs, this.lastChildOutputAt)) {
+      if (Date.now() > readinessDeadline(this.readinessClockAt, budgetMs, this.lastChildOutputAt)) {
         this.generation++;
         // killChild() nulls this.child, so record whether this launch owned a
         // process *before* tearing it down. Checking afterwards would

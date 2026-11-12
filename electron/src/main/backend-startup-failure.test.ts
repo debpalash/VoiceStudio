@@ -367,3 +367,32 @@ it('drops a pending retry when a backend answered during the delay (#4039 review
   expect(mocks.spawn).toHaveBeenCalledTimes(1);
   expect(supervisor.status.stage).toBe('ready');
 });
+
+it('counts the startup budget from the retried launch, not the failed one (#4039 review)', async () => {
+  const supervisor = new BackendSupervisor();
+  const internal = supervisor as unknown as SupervisorInternals & {
+    waitUntilReady(gen: number, budgetMs: number): Promise<void>;
+  };
+  const refused = () => {
+    const child = deadChild() as unknown as EventEmitter & { pid?: number };
+    child.pid = undefined;
+    return child;
+  };
+  const first = refused();
+  const second = refused();
+  mocks.spawn.mockReset();
+  mocks.spawn
+    .mockReturnValueOnce(first)
+    .mockReturnValueOnce(second)
+    .mockReturnValueOnce(deadChild());
+  internal.generation = 1;
+  internal.spawnChild({ argv: ['python'], cwd: '/project' }, 1);
+  void internal.waitUntilReady(1, 5_000); // what start() runs after a spawn
+  first.emit('error', Object.assign(new Error('spawn python EAGAIN'), { code: 'EAGAIN' }));
+  await vi.advanceTimersByTimeAsync(2_000);
+  second.emit('error', Object.assign(new Error('spawn python EAGAIN'), { code: 'EAGAIN' }));
+  await vi.advanceTimersByTimeAsync(5_500);
+  // Both delays (7 s) outlast the 5 s budget; the third launch still gets its own.
+  expect(mocks.spawn).toHaveBeenCalledTimes(3);
+  expect(supervisor.status.stage).toBe('starting');
+});
