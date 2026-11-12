@@ -47,6 +47,48 @@ const TIMER_TICK_MS = 100;
 const PROGRESS_THROTTLE_MS = 100;
 const MODEL_NOT_DOWNLOADED = 'model_not_downloaded';
 
+export type SynthesisStage =
+  | 'preparing'
+  | 'transcribing'
+  | 'ranking'
+  | 'loading'
+  | 'generating'
+  | 'receiving';
+
+/** Map the backend's in-flight `/generate` stage onto the composer stage. */
+function stageFromGeneration(raw: string | null | undefined): SynthesisStage | null {
+  switch (raw) {
+    case 'preparing':
+      return 'preparing';
+    case 'transcribing_reference':
+      return 'transcribing';
+    case 'ranking_reference':
+      return 'ranking';
+    case 'synthesizing':
+    case 'finalizing':
+      return 'generating';
+    default:
+      return null;
+  }
+}
+
+/** Time-based "why it's still going" hint for the live stage. */
+export function synthesisDelayHint(stage: SynthesisStage, elapsedSeconds: number): string | null {
+  if (stage === 'transcribing' && elapsedSeconds >= 8) {
+    return 'synthesisState.hint_long_reference';
+  }
+  if (stage === 'ranking' && elapsedSeconds >= 10) {
+    return 'synthesisState.hint_ranking_reference';
+  }
+  if (stage === 'loading' && elapsedSeconds >= 20) {
+    return 'synthesisState.hint_cold_load';
+  }
+  if (stage === 'generating' && elapsedSeconds >= 45) {
+    return 'synthesisState.hint_slow_engine';
+  }
+  return null;
+}
+
 // One synthesis at a time across every mounted hook instance: the backend
 // serialises on the GPU anyway, and a second request would only queue behind
 // the first while the UI shows two spinners.
@@ -92,10 +134,15 @@ export interface UseGenerateClone {
   elapsedSeconds: number;
   /** 0..100 while the WAV body streams in; null when unknown. */
   progress: number | null;
-  stage: 'preparing' | 'loading' | 'generating' | 'receiving';
+  stage: SynthesisStage;
   modelStage: 'importing' | 'loading_weights' | 'loading_asr' | 'compiling' | null;
   /** 0..100 reported while model weights or runtime are loading. */
   modelProgress: number | null;
+  /**
+   * Why a long take is still running — an i18n key under `synthesisState.*`
+   * chosen from the live stage and elapsed time (null when nothing to say).
+   */
+  delayHint: string | null;
   error: string | null;
   /** Stable backend failure topic of `error` (e.g. `REFERENCE_STT_MISSING`), when it sent one. */
   errorTopic: string | null;
@@ -202,9 +249,10 @@ function useGenerateController(): UseGenerateClone {
   const [isGenerating, setIsGenerating] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [progress, setProgress] = useState<number | null>(null);
-  const [stage, setStage] = useState<UseGenerateClone['stage']>('preparing');
+  const [stage, setStage] = useState<SynthesisStage>('preparing');
   const [modelStage, setModelStage] = useState<UseGenerateClone['modelStage']>(null);
   const [modelProgress, setModelProgress] = useState<number | null>(null);
+  const delayHint = isGenerating ? synthesisDelayHint(stage, elapsedSeconds) : null;
   const abortRef = useRef<AbortController | null>(null);
   const reportModeRef = useRef<'clone' | 'design' | null>(null);
   const cancelledRef = useRef(false);
@@ -243,6 +291,7 @@ function useGenerateController(): UseGenerateClone {
           checkpoint?: string | null;
           detail?: string | null;
           error?: string | null;
+          generation?: { stage?: string; detail?: string | null; elapsed_s?: number } | null;
         }>('/model/status', { signal: controller.signal });
         if (!controller.signal.aborted) {
           // The composer and Engine Ready panel describe the same runtime.
@@ -263,13 +312,16 @@ function useGenerateController(): UseGenerateClone {
           setModelProgress(
             typeof model.progress === 'number' ? Math.max(0, Math.min(100, model.progress)) : null,
           );
-          setStage((current) =>
-            current === 'receiving'
-              ? current
-              : model.loading || model.status === 'loading'
-                ? 'loading'
-                : 'generating',
-          );
+          const activityStage = stageFromGeneration(model.generation?.stage);
+          setStage((current) => {
+            if (current === 'receiving') return current;
+            if (model.loading || model.status === 'loading') return 'loading';
+            // Prefer the backend's named prep stage over a generic "generating"
+            // so reference transcription / ranking explain a slow take.
+            if (activityStage && activityStage !== 'generating') return activityStage;
+            if (activityStage === 'generating') return 'generating';
+            return current === 'preparing' ? 'generating' : current;
+          });
         }
       } catch {
         /* Status is optional; never interrupt the generation request. */
@@ -530,6 +582,7 @@ function useGenerateController(): UseGenerateClone {
     stage,
     modelStage,
     modelProgress,
+    delayHint,
     error,
     errorTopic,
     clearError,

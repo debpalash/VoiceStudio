@@ -55,7 +55,11 @@ export function DesignComposer({
             ? 'synthesisState.receiving'
             : generation.stage === 'preparing'
               ? 'synthesisState.preparing'
-              : 'clone.generating_status',
+              : generation.stage === 'transcribing'
+                ? 'synthesisState.transcribing_reference'
+                : generation.stage === 'ranking'
+                  ? 'synthesisState.ranking_reference'
+                  : 'synthesisState.synthesizing',
       )
     : t('clone.synthesize');
   return (
@@ -170,6 +174,11 @@ export function DesignComposer({
             </Button>
           )}
         </div>
+        {isGenerating && generation.delayHint ? (
+          <p className="mt-2 text-end text-xs text-muted-foreground" role="status">
+            {t(generation.delayHint)}
+          </p>
+        ) : null}
         {isGenerating && (
           <div className="absolute inset-x-0 bottom-0 h-0.5 overflow-hidden bg-muted">
             <div

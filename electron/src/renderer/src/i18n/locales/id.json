@@ -395,7 +395,14 @@
     "importing": "Memulai runtime AI…",
     "loading_weights": "Memuat bobot model…",
     "loading_asr": "Menyiapkan pengenalan suara…",
-    "compiling": "Mengoptimalkan model…"
+    "compiling": "Mengoptimalkan model…",
+    "transcribing_reference": "Mentranskripsikan referensi…",
+    "ranking_reference": "Memilih cuplikan referensi terbaik…",
+    "synthesizing": "Menghasilkan audio…",
+    "hint_long_reference": "Masih mentranskripsi — klip referensi panjang membutuhkan waktu lebih. Ini wajar.",
+    "hint_ranking_reference": "Masih memilih 15 detik terdengar paling jelas — umum untuk klip panjang di CPU.",
+    "hint_cold_load": "Model masih dimuat — jalan pertama setelah instal atau flush bisa memakan beberapa menit.",
+    "hint_slow_engine": "Masih mensintesis — CPU dan jalan GGUF pertama lebih lambat daripada mesin GPU yang sudah hangat."
   },
   "scriptEdit": {
     "paste_options": "Opsi tempel",

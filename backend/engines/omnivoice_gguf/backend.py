@@ -1232,8 +1232,9 @@ def _make_backend_class():
             Keyword arguments understood (anything else is ignored):
 
             * ``ref_audio`` – path of a voice prompt clip to clone from.
-            * ``ref_text`` – transcript of that clip; only used together with
-              ``ref_audio`` and passed to the CLI through a temporary file.
+            * ``ref_text`` – transcript of that clip; required with
+              ``ref_audio`` (auto-transcribed when missing) and passed to the
+              CLI through a temporary file.
             * ``language`` – ISO code or name; unknown values let the CLI guess.
             * ``instruct`` – free-text voice-design instruction.
             * ``duration`` – target length in seconds.
@@ -1292,6 +1293,27 @@ def _make_backend_class():
             base, tokenizer, _ = paths
             ref_audio = kw.get("ref_audio")
             ref_text = kw.get("ref_text")
+            # The C++ CLI (and resident tts-server voice registry) reject
+            # ``--ref-wav`` without ``--ref-text``. Streaming / audiobook /
+            # dub can hand a transcript-less profile through, so resolve one
+            # here the same way CosyVoice GGUF does — never spawn with a
+            # bare ``--ref-wav`` and surface the CLI's opaque exit as
+            # "an error VoiceStudio doesn't recognize".
+            if ref_audio:
+                from services.tts_backend import (
+                    TTSInputError,
+                    required_reference_transcript,
+                )
+
+                ref_text = required_reference_transcript(ref_audio, ref_text)
+                if not (isinstance(ref_text, str) and ref_text.strip()):
+                    raise TTSInputError(
+                        "OmniVoice GGUF needs the reference clip's transcript "
+                        "to clone a voice. Type what the clip says into the "
+                        "transcript box, or install and select a "
+                        "speech-to-text model in Model Catalogue so "
+                        "VoiceStudio can write one."
+                    )
 
             fd, out_name = tempfile.mkstemp(suffix=".wav")
             os.close(fd)
@@ -1575,11 +1597,15 @@ def _make_backend_class():
 
             if ref_audio:
                 # Two-stage validation (defense in depth) — see
-                # :func:`_validated_reference`.
+                # :func:`_validated_reference`. The C++ CLI refuses
+                # ``--ref-wav`` without ``--ref-text``; never emit one alone.
+                if not ref_text:
+                    raise RuntimeError(
+                        "OmniVoice GGUF: --ref-wav requires a staged "
+                        "--ref-text path (internal invariant)"
+                    )
                 prompt = _validated_reference(ref_audio)
-                argv += ["--ref-wav", str(prompt)]
-                if ref_text:
-                    argv += ["--ref-text", str(ref_text)]
+                argv += ["--ref-wav", str(prompt), "--ref-text", str(ref_text)]
             return argv
 
         def _run_subprocess(

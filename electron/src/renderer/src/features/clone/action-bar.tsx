@@ -331,6 +331,7 @@ export function ActionBar({ setup: shared }: { setup?: EngineSetup } = {}) {
     stage,
     modelStage,
     modelProgress,
+    delayHint,
     error,
     errorTopic,
     clearError,
@@ -346,7 +347,11 @@ export function ActionBar({ setup: shared }: { setup?: EngineSetup } = {}) {
             ? 'synthesisState.receiving'
             : stage === 'preparing'
               ? 'synthesisState.preparing'
-              : 'clone.generating_status',
+              : stage === 'transcribing'
+                ? 'synthesisState.transcribing_reference'
+                : stage === 'ranking'
+                  ? 'synthesisState.ranking_reference'
+                  : 'synthesisState.synthesizing',
       )
     : t('clone.synthesize');
   // Not ready: the primary action is the setup that fixes it, not a dead Synthesize.
@@ -461,6 +466,11 @@ export function ActionBar({ setup: shared }: { setup?: EngineSetup } = {}) {
           ) : null}
         </div>
       </div>
+      {isGenerating && delayHint ? (
+        <p className="mt-2 text-end text-xs text-muted-foreground" role="status">
+          {t(delayHint)}
+        </p>
+      ) : null}
       {!demo && !needsSetup && (
         <QualityOffer text={script} isGenerating={isGenerating} className="mt-2 justify-end" />
       )}

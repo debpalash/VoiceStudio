@@ -395,7 +395,14 @@
     "importing": "AIランタイムを起動中…",
     "loading_weights": "モデルの重みを読み込み中…",
     "loading_asr": "音声認識を準備中…",
-    "compiling": "モデルを最適化中…"
+    "compiling": "モデルを最適化中…",
+    "transcribing_reference": "参照音声を文字起こし中…",
+    "ranking_reference": "最適な参照区間を選定中…",
+    "synthesizing": "音声を生成中…",
+    "hint_long_reference": "まだ文字起こし中です。長い参照音声は時間がかかります。正常です。",
+    "hint_ranking_reference": "参照音声から最も明瞭な15秒を選んでいます。長い音声やCPUでは時間がかかります。",
+    "hint_cold_load": "モデル読込中です。インストール直後やフラッシュ後の初回は数分かかることがあります。",
+    "hint_slow_engine": "まだ合成中です。CPUや初回のGGUFはウォームなGPUより遅くなります。"
   },
   "scriptEdit": {
     "paste_options": "貼り付けオプション",

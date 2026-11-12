@@ -397,7 +397,14 @@
     "importing": "Avvio del runtime IA…",
     "loading_weights": "Caricamento dei pesi del modello…",
     "loading_asr": "Preparazione del riconoscimento vocale…",
-    "compiling": "Ottimizzazione del modello…"
+    "compiling": "Ottimizzazione del modello…",
+    "transcribing_reference": "Trascrizione del riferimento…",
+    "ranking_reference": "Selezione del miglior passaggio di riferimento…",
+    "synthesizing": "Generazione audio…",
+    "hint_long_reference": "Trascrizione ancora in corso: un riferimento lungo richiede più tempo. È normale.",
+    "hint_ranking_reference": "Ancora in corso la scelta dei 15 secondi più chiari del riferimento — tipico su CPU con clip lunghi.",
+    "hint_cold_load": "Caricamento del modello ancora in corso: la prima esecuzione dopo install o flush può richiedere minuti.",
+    "hint_slow_engine": "Sintesi ancora in corso: CPU e prime esecuzioni GGUF sono più lente di un motore GPU già caldo."
   },
   "scriptEdit": {
     "paste_options": "Opzioni incolla",

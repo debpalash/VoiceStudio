@@ -843,7 +843,14 @@
     "importing": "Starting AI runtime…",
     "loading_weights": "Loading model weights…",
     "loading_asr": "Warming up speech recognition…",
-    "compiling": "Optimizing model…"
+    "compiling": "Optimizing model…",
+    "transcribing_reference": "Transcribing reference…",
+    "ranking_reference": "Finding the best reference passage…",
+    "synthesizing": "Generating audio…",
+    "hint_long_reference": "Still transcribing — a long reference clip takes longer. This is expected.",
+    "hint_ranking_reference": "Still choosing the clearest 15 seconds of the reference — common for long clips on CPU.",
+    "hint_cold_load": "Still loading the model — the first run after install or a flush can take a few minutes.",
+    "hint_slow_engine": "Still synthesizing — CPU takes and first GGUF runs are slower than a warm GPU engine."
   },
   "scriptEdit": {
     "paste_options": "Paste options",

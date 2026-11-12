@@ -395,7 +395,14 @@
     "importing": "Yapay zekâ çalışma ortamı başlatılıyor…",
     "loading_weights": "Model ağırlıkları yükleniyor…",
     "loading_asr": "Konuşma tanıma hazırlanıyor…",
-    "compiling": "Model optimize ediliyor…"
+    "compiling": "Model optimize ediliyor…",
+    "transcribing_reference": "Referans yazıya dökülüyor…",
+    "ranking_reference": "En iyi referans geçidi seçiliyor…",
+    "synthesizing": "Ses üretiliyor…",
+    "hint_long_reference": "Hâlâ yazıya dökülüyor — uzun referans daha uzun sürer. Bu beklenen bir durum.",
+    "hint_ranking_reference": "Referansın en net 15 saniyesi seçiliyor — uzun kliplerde CPU’da yaygındır.",
+    "hint_cold_load": "Model hâlâ yükleniyor — kurulum veya flush sonrası ilk çalıştırma birkaç dakika sürebilir.",
+    "hint_slow_engine": "Hâlâ sentezleniyor — CPU ve ilk GGUF çalıştırmaları ısınmış GPU’dan daha yavaştır."
   },
   "scriptEdit": {
     "paste_options": "Yapıştırma seçenekleri",

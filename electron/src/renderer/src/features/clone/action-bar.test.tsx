@@ -35,6 +35,7 @@ const runtime = {
   stage: 'preparing',
   modelStage: null as string | null,
   modelProgress: null as number | null,
+  delayHint: null as string | null,
 };
 
 const settings = {
@@ -102,6 +103,7 @@ describe('ActionBar', () => {
       stage: 'preparing',
       modelStage: null,
       modelProgress: null,
+      delayHint: null,
     });
   });
   it.each(['reference', 'text', 'preparing'] as const)(

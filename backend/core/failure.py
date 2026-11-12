@@ -992,6 +992,11 @@ def classify(reason: BaseException | str) -> str:
     # write one (omnivoice.models.omnivoice._ReferenceAsrNotInstalled).
     if "automatic reference transcription needs an installed speech-to-text" in low:
         return "REFERENCE_STT_MISSING"
+    # OmniVoice GGUF's C++ CLI: ``--ref-wav`` / ``--ref-rvq`` without
+    # ``--ref-text``. The engine now fills or refuses before spawn; keep the
+    # classifier for older traces and any residual path that still hits it.
+    if "requires --ref-text" in low:
+        return "REFERENCE_STT_MISSING"
     # Last and narrowest-by-type: an engine imported a package that is not
     # installed. Every earlier no-module rule (encodings, omnivoice) wins first.
     if "no module named '" in low:

@@ -189,13 +189,18 @@ chosen explicitly.
 
 ## Generation failure diagnosis
 
-OmniVoice's in-process and subprocess engines both reuse an installed speech
-recognizer when reference audio has no transcript, including short clips sent
-through batch or API callers. A supplied transcript is preserved for short
-references. Subprocess reference recognition runs inside the killable child,
-under its synthesis watchdog, releasing reference ASR weights before loading TTS.
-Sidecar stderr is scrubbed for home directories and secrets before logging.
-This does not download an ASR model automatically: if no installed
+OmniVoice's in-process and subprocess engines, and the GGUF clone engines
+(OmniVoice GGUF, CosyVoice GGUF), reuse an installed speech recognizer when
+reference audio has no transcript, including short clips sent through batch,
+streaming, audiobook, dub or API callers. A supplied transcript is preserved
+for short references. Subprocess reference recognition runs inside the
+killable child, under its synthesis watchdog, releasing reference ASR weights
+before loading TTS. Sidecar stderr is scrubbed for home directories and
+secrets before logging. OmniVoice GGUF's C++ runtime refuses a reference clip
+without a transcript (`--ref-wav` requires `--ref-text`); VoiceStudio fills
+one from the installed speech-to-text model, or returns a clear
+`REFERENCE_STT_MISSING` recovery instead of an unrecognized mid-generation
+failure. This does not download an ASR model automatically: if no installed
 recognizer can transcribe the clip and no local model fallback is available,
 provide the matching transcript or explicitly install a speech-to-text model.
 The Clone page offers an **Install** button for the model recommended for your

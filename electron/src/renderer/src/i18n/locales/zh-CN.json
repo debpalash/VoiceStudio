@@ -410,7 +410,14 @@
     "loading_weights": "正在加载模型权重…",
     "loading_asr": "正在准备语音识别…",
     "compiling": "正在优化模型…",
-    "preparing": "正在准备…"
+    "preparing": "正在准备…",
+    "transcribing_reference": "正在转写参考音频…",
+    "ranking_reference": "正在选取最佳参考片段…",
+    "synthesizing": "正在生成音频…",
+    "hint_long_reference": "仍在转写——较长的参考音频会更久，属正常情况。",
+    "hint_ranking_reference": "仍在选取参考音频中最清晰的15秒——长音频在CPU上常见。",
+    "hint_cold_load": "仍在加载模型——安装或清空缓存后的首次运行可能需要几分钟。",
+    "hint_slow_engine": "仍在合成——CPU与首次GGUF运行比已预热的GPU引擎更慢。"
   },
   "scriptEdit": {
     "paste_options": "粘贴选项",

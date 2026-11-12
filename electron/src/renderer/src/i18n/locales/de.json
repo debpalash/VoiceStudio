@@ -395,7 +395,14 @@
     "importing": "KI-Laufzeit wird gestartet…",
     "loading_weights": "Modellgewichte werden geladen…",
     "loading_asr": "Spracherkennung wird vorbereitet…",
-    "compiling": "Modell wird optimiert…"
+    "compiling": "Modell wird optimiert…",
+    "transcribing_reference": "Referenz wird transkribiert…",
+    "ranking_reference": "Beste Referenzpassage wird gesucht…",
+    "synthesizing": "Audio wird erzeugt…",
+    "hint_long_reference": "Transkription läuft noch — ein langes Referenzclip braucht länger. Das ist normal.",
+    "hint_ranking_reference": "Noch wird die klarste 15-Sekunden-Passage der Referenz gewählt — üblich bei langen Clips auf CPU.",
+    "hint_cold_load": "Modell wird noch geladen — der erste Lauf nach Installation oder Flush kann Minuten dauern.",
+    "hint_slow_engine": "Synthese läuft noch — CPU und erste GGUF-Läufe sind langsamer als eine warme GPU."
   },
   "scriptEdit": {
     "paste_options": "Einfügeoptionen",

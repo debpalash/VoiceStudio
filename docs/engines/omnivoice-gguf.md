@@ -353,9 +353,10 @@ by default.
 - A crash gets one restart. A server that cannot start, crashes again, or
   refuses a request hands that request to the per-request binary; the log
   says why.
-- Requests that set duration, chunk duration or threshold, no-denoise,
-  no-preprocess-prompt, or a reference clip without a transcript always use
-  the per-request binary, because the server does not take those controls.
+- Requests that set duration, chunk duration or threshold, no-denoise, or
+  no-preprocess-prompt always use the per-request binary, because the
+  server does not take those controls. A reference clip is never sent
+  without a transcript (the engine auto-transcribes or refuses first).
 - The server needs omnivoice.cpp `040c8b344d8c` or newer (voice registry).
   An older server is detected at start-up and not used.
 - Upstream `tts-server` has no API key and answers any origin
@@ -382,7 +383,8 @@ log says why once.
 ## Behaviour notes
 
 - Output is 24 kHz mono — same model, same rate as in-process OmniVoice.
-- Cloning from a reference clip (with optional transcript) and style
+- Cloning from a reference clip **requires** a transcript (auto-filled from
+  an installed speech-to-text model when the voice has none) and style
   instructions are supported; no voice design.
 - The runtime reads WAV containers only, and inside a WAV it decodes
   PCM16, PCM24 and float32, so a reference clip saved in another format

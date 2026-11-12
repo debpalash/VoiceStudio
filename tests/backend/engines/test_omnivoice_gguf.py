@@ -369,6 +369,51 @@ def test_transcript_without_ref_audio_is_ignored(monkeypatch, tmp_path):
     assert "--ref-text" not in rig.argvs[-1]
 
 
+def test_ref_wav_without_transcript_is_auto_filled(monkeypatch, tmp_path):
+    """A transcript-less clone must not spawn ``--ref-wav`` alone.
+
+    The C++ CLI exits 1 with ``--ref-wav … requires --ref-text <path>``, which
+    used to surface as an unrecognized mid-generation failure. Resolve the
+    transcript (or refuse) before spawn — same contract as CosyVoice GGUF.
+    """
+    clip = tmp_path / "prompt.wav"
+    _write_3s_wav(clip)
+    seen = {}
+
+    def fake_required(ref_audio, ref_text):
+        seen["args"] = (ref_audio, ref_text)
+        return "auto filled words"
+
+    def peek(argv):
+        path = Path(argv[argv.index("--ref-text") + 1])
+        seen["body"] = path.read_bytes().decode("utf-8")
+
+    monkeypatch.setattr(
+        "services.tts_backend.required_reference_transcript", fake_required,
+    )
+    rig = _GgufRig(monkeypatch, tmp_path, runner=peek)
+    rig.instance.generate("x", ref_audio=str(clip), ref_text="")
+    assert seen["args"] == (str(clip), "")
+    assert seen["body"] == "auto filled words"
+    assert "--ref-wav" in rig.argvs[-1]
+    assert "--ref-text" in rig.argvs[-1]
+
+
+def test_ref_wav_without_resolvable_transcript_raises_input_error(monkeypatch, tmp_path):
+    from services.tts_backend import TTSInputError
+
+    clip = tmp_path / "prompt.wav"
+    _write_3s_wav(clip)
+    monkeypatch.setattr(
+        "services.tts_backend.required_reference_transcript",
+        lambda *_a, **_k: None,
+    )
+    rig = _GgufRig(monkeypatch, tmp_path)
+    with pytest.raises(TTSInputError, match="transcript"):
+        rig.instance.generate("x", ref_audio=str(clip), ref_text=None)
+    assert rig.argvs == []
+
+
 @pytest.mark.parametrize("how", ["runner_raises", "bad_ref_audio"])
 def test_transcript_file_never_outlives_a_failed_call(monkeypatch, tmp_path, how):
     clip = tmp_path / "prompt.wav"

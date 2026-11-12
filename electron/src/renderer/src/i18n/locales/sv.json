@@ -395,7 +395,14 @@
     "importing": "Startar AI-körmiljön…",
     "loading_weights": "Läser in modellvikter…",
     "loading_asr": "Förbereder taligenkänning…",
-    "compiling": "Optimerar modellen…"
+    "compiling": "Optimerar modellen…",
+    "transcribing_reference": "Transkriberar referensen…",
+    "ranking_reference": "Väljer bästa referenspassagen…",
+    "synthesizing": "Genererar ljud…",
+    "hint_long_reference": "Transkriberar fortfarande — ett långt referensklipp tar längre tid. Det är förväntat.",
+    "hint_ranking_reference": "Väljer fortfarande de tydligaste 15 sekunderna — vanligt för långa klipp på CPU.",
+    "hint_cold_load": "Modellen laddas fortfarande — första körningen efter installation eller flush kan ta några minuter.",
+    "hint_slow_engine": "Syntetiserar fortfarande — CPU och första GGUF-körningar är långsammare än en varm GPU-motor."
   },
   "scriptEdit": {
     "paste_options": "Inklistringsalternativ",

@@ -397,7 +397,14 @@
     "importing": "Démarrage du moteur d’IA…",
     "loading_weights": "Chargement des poids du modèle…",
     "loading_asr": "Préparation de la reconnaissance vocale…",
-    "compiling": "Optimisation du modèle…"
+    "compiling": "Optimisation du modèle…",
+    "transcribing_reference": "Transcription de la référence…",
+    "ranking_reference": "Recherche du meilleur passage de référence…",
+    "synthesizing": "Génération de l’audio…",
+    "hint_long_reference": "Transcription en cours — un long clip de référence prend plus de temps. C’est normal.",
+    "hint_ranking_reference": "Sélection des 15 secondes les plus claires de la référence — courant pour les longs clips sur CPU.",
+    "hint_cold_load": "Chargement du modèle encore en cours — le premier lancement après install ou flush peut prendre des minutes.",
+    "hint_slow_engine": "Synthèse toujours en cours — le CPU et les premiers runs GGUF sont plus lents qu’un moteur GPU chaud."
   },
   "scriptEdit": {
     "paste_options": "Options de collage",

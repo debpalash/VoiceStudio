@@ -397,7 +397,14 @@
     "importing": "Iniciando o ambiente de IA…",
     "loading_weights": "Carregando os pesos do modelo…",
     "loading_asr": "Preparando o reconhecimento de voz…",
-    "compiling": "Otimizando o modelo…"
+    "compiling": "Otimizando o modelo…",
+    "transcribing_reference": "Transcrevendo a referência…",
+    "ranking_reference": "A escolher o melhor trecho de referência…",
+    "synthesizing": "A gerar áudio…",
+    "hint_long_reference": "Ainda a transcrever — um clipe de referência longo demora mais. É esperado.",
+    "hint_ranking_reference": "Ainda a escolher os 15 segundos mais claros da referência — comum em clips longos no CPU.",
+    "hint_cold_load": "O modelo ainda está a carregar — a primeira execução após instalar ou limpar pode demorar minutos.",
+    "hint_slow_engine": "Ainda a sintetizar — CPU e as primeiras execuções GGUF são mais lentas que um motor GPU aquecido."
   },
   "scriptEdit": {
     "paste_options": "Opções de colagem",

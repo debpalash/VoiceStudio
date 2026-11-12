@@ -22,6 +22,13 @@ from core.public_errors import public_exception_response, stream_generation_fail
             ),
             "REFERENCE_STT_MISSING",
         ),
+        (
+            RuntimeError(
+                "GGUF subprocess exited 1: [CLI] ERROR: --ref-wav / --ref-rvq "
+                "requires --ref-text <path>"
+            ),
+            "REFERENCE_STT_MISSING",
+        ),
     ],
 )
 def test_distinct_causes_are_classified(exc, topic):

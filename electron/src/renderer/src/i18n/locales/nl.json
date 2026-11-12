@@ -395,7 +395,14 @@
     "importing": "AI-runtime starten…",
     "loading_weights": "Modelgewichten laden…",
     "loading_asr": "Spraakherkenning voorbereiden…",
-    "compiling": "Model optimaliseren…"
+    "compiling": "Model optimaliseren…",
+    "transcribing_reference": "Referentie wordt getranscribeerd…",
+    "ranking_reference": "Beste referentiepassage zoeken…",
+    "synthesizing": "Audio wordt gegenereerd…",
+    "hint_long_reference": "Nog bezig met transcriberen — een lange referentieclip duurt langer. Dat is normaal.",
+    "hint_ranking_reference": "Nog de duidelijkste 15 seconden van de referentie kiezen — gebruikelijk bij lange clips op CPU.",
+    "hint_cold_load": "Model laadt nog — de eerste run na installatie of flush kan enkele minuten duren.",
+    "hint_slow_engine": "Nog bezig met synthesiseren — CPU en eerste GGUF-runs zijn trager dan een warme GPU-engine."
   },
   "scriptEdit": {
     "paste_options": "Plakopties",

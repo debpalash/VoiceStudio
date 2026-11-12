@@ -364,8 +364,25 @@ _loaded_models_poll = PollGuard("model-loaded", _list_loaded_snapshot)
 
 @router.get("/model/status", response_model=ModelStatusResponse)
 async def model_status():
-    """Report model loading state for frontend warm-up indicators."""
-    return await _model_status_poll.get()
+    """Report model loading state for frontend warm-up indicators.
+
+    An in-flight ``/generate`` also attaches ``generation`` (stage + elapsed)
+    from a fresh snapshot so the composer can name prep work (reference
+    transcription, passage ranking) that model-load sub-stages do not cover.
+    Merged after the poll so a stale model snapshot never freezes the stage.
+    """
+    status = await _model_status_poll.get()
+    try:
+        from core.generation_activity import snapshot as generation_snapshot
+
+        activity = generation_snapshot()
+    except Exception:  # noqa: BLE001 — status must never 500 for an activity miss
+        activity = None
+    if not activity:
+        return status
+    out = dict(status) if isinstance(status, dict) else status.model_dump()
+    out["generation"] = activity
+    return out
 
 
 @router.get("/model/loaded")

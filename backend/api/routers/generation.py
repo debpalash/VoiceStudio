@@ -1245,6 +1245,12 @@ def _oom_friendly_reraise(e):
             "this install can't access yet. " + _HINTS["HF_AUTH_FAILED"]
             + f" Underlying error: {_safe_exc_text(e)}"
         ) from e
+    if classify(str(e)) == "REFERENCE_STT_MISSING":
+        # A clone without a transcript is bad input, not an unrecognized
+        # engine crash — re-raise as ValueError so /generate returns 400
+        # with the owned remedy (Add transcript / Install STT) instead of
+        # "doesn't recognize" + Flush.
+        raise ValueError(_HINTS["REFERENCE_STT_MISSING"]) from e
     if _is_oom_failure(e):
         # The flush at the top ran while this traceback still pinned the
         # failed generation's activations; release them so the NEXT request
@@ -2260,6 +2266,13 @@ async def generate_speech(
                     detail=clone_ref_transcript_too_long_message(_ref_seconds),
                 )
 
+    # Live stage for GET /model/status while this take runs — otherwise the
+    # composer stays on a static "Generating audio…" through transcription
+    # and ranking (the work that makes a take feel "late").
+    from core import generation_activity as gen_act
+
+    gen_act.begin()
+
     # #308: a transcript-less reference is transcribed with the active ASR
     # backend (whisperx / faster-whisper / mlx-whisper) instead of the model's
     # built-in transformers pipeline, which cannot load whisper-large-v3-turbo
@@ -2267,6 +2280,7 @@ async def generate_speech(
     # installed-only fallback can try without downloading another ASR model.
     if ref_audio_path and not ref_text and not ref_picks_own_passage:
         from services.asr_backend import transcribe_reference
+        gen_act.set_stage("transcribing_reference")
         # Same #730 hang risk as any whisperx transcribe — bound + reset the pool
         # so a wedged reference transcribe can't brick the backend. This path is
         # best-effort (transcribe_reference returns None on failure → the model's
@@ -2309,6 +2323,7 @@ async def generate_speech(
     # effort: a timeout leaves the engine to rank inline exactly as before.
     if ref_audio_path and ref_picks_own_passage and backend_cls is OmniVoiceBackend:
         from services.tts_backend import prepare_reference_passage
+        gen_act.set_stage("ranking_reference")
 
         try:
             from omnivoice.utils.audio import CLONE_REF_MAX_WINDOWS
@@ -2374,6 +2389,7 @@ async def generate_speech(
         text = apply_inline_overrides(text)
 
     start_time = time.time()
+    gen_act.set_stage("synthesizing")
 
     from services import gpu_gateway
 
@@ -2711,6 +2727,7 @@ async def generate_speech(
                 )
                 yield _line({"type": "error", **stream_generation_failure(exc)})
             finally:
+                gen_act.end()
                 # Ownership of the temp reference clip moves to this generator
                 # in stream mode (the route returns before rendering starts).
                 if cleanup_ref and ref_lease is not None:
@@ -2889,6 +2906,7 @@ async def generate_speech(
             ),
         )
     finally:
+        gen_act.end()
         if cleanup_ref and ref_lease is not None:
             ref_lease.finish_request()
 

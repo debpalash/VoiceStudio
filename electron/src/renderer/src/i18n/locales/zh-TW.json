@@ -395,7 +395,14 @@
     "importing": "正在啟動 AI 執行環境…",
     "loading_weights": "正在載入模型權重…",
     "loading_asr": "正在準備語音辨識…",
-    "compiling": "正在最佳化模型…"
+    "compiling": "正在最佳化模型…",
+    "transcribing_reference": "正在轉寫參考音訊…",
+    "ranking_reference": "正在選取最佳參考片段…",
+    "synthesizing": "正在產生音訊…",
+    "hint_long_reference": "仍在轉寫——較長的參考音訊會更久，屬正常情況。",
+    "hint_ranking_reference": "仍在選取參考音訊中最清晰的15秒——長音訊在CPU上常見。",
+    "hint_cold_load": "仍在載入模型——安裝或清空快取後的首次執行可能需要幾分鐘。",
+    "hint_slow_engine": "仍在合成——CPU與首次GGUF執行比已預熱的GPU引擎更慢。"
   },
   "scriptEdit": {
     "paste_options": "貼上選項",

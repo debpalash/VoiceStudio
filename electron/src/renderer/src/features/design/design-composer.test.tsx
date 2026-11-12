@@ -39,6 +39,7 @@ function generation(overrides: Partial<UseGenerateClone> = {}): UseGenerateClone
     stage: 'preparing',
     modelStage: null,
     modelProgress: null,
+    delayHint: null,
     error: null,
     errorTopic: null,
     cancel: vi.fn(),

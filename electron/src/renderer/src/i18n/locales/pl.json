@@ -405,7 +405,14 @@
     "importing": "Uruchamianie środowiska AI…",
     "loading_weights": "Wczytywanie wag modelu…",
     "loading_asr": "Przygotowywanie rozpoznawania mowy…",
-    "compiling": "Optymalizowanie modelu…"
+    "compiling": "Optymalizowanie modelu…",
+    "transcribing_reference": "Transkrypcja próbki…",
+    "ranking_reference": "Wybieranie najlepszego fragmentu próbki…",
+    "synthesizing": "Generowanie dźwięku…",
+    "hint_long_reference": "Trwa transkrypcja — długi klip referencyjny zajmuje więcej czasu. To normalne.",
+    "hint_ranking_reference": "Trwa wybór najczystszych 15 sekund próbki — typowe dla długich klipów na CPU.",
+    "hint_cold_load": "Model nadal się ładuje — pierwsze uruchomienie po instalacji lub flushu może trwać kilka minut.",
+    "hint_slow_engine": "Synteza nadal trwa — CPU i pierwsze uruchomienia GGUF są wolniejsze niż rozgrzany silnik GPU."
   },
   "scriptEdit": {
     "paste_options": "Opcje wklejania",

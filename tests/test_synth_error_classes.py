@@ -215,3 +215,23 @@ def test_pockettts_missing_cloning_weights_names_the_gate(reraise):
     msg = str(excinfo.value)
     assert "doesn't recognize" not in msg
     assert "huggingface.co/kyutai/pocket-tts" in msg
+
+
+def test_gguf_missing_ref_text_is_named_not_called_unrecognized(reraise):
+    """OmniVoice GGUF's CLI refuses ``--ref-wav`` without ``--ref-text``.
+
+    That used to land in the unrecognized mid-generation catch-all. It is
+    bad input (no transcript / no STT), so re-raise as ValueError with the
+    owned REFERENCE_STT_MISSING remedy.
+    """
+    raw = (
+        "GGUF subprocess exited 1: [CLI] ERROR: --ref-wav / --ref-rvq "
+        "requires --ref-text <path>"
+    )
+    assert classify(raw) == "REFERENCE_STT_MISSING"
+    with pytest.raises(ValueError) as excinfo:
+        reraise(RuntimeError(raw))
+    msg = str(excinfo.value)
+    assert "doesn't recognize" not in msg
+    assert "transcript" in msg.lower()
+    assert "speech-to-text" in msg.lower()

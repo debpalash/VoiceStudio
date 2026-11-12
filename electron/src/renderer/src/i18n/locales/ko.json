@@ -395,7 +395,14 @@
     "loading_weights": "모델 가중치 불러오는 중…",
     "loading_asr": "음성 인식 준비 중…",
     "compiling": "모델 최적화 중…",
-    "loading": "모델 불러오는 중…"
+    "loading": "모델 불러오는 중…",
+    "transcribing_reference": "참조 음성 받아쓰는 중…",
+    "ranking_reference": "가장 좋은 참조 구간 찾는 중…",
+    "synthesizing": "오디오 생성 중…",
+    "hint_long_reference": "아직 받아쓰는 중입니다. 긴 참조 클립은 더 걸립니다. 정상입니다.",
+    "hint_ranking_reference": "참조에서 가장 맑은 15초를 고르는 중입니다. CPU의 긴 클립에서 흔합니다.",
+    "hint_cold_load": "모델을 아직 불러오는 중입니다. 설치나 플러시 후 첫 실행은 몇 분 걸릴 수 있습니다.",
+    "hint_slow_engine": "아직 합성 중입니다. CPU와 첫 GGUF 실행은 예열된 GPU보다 느립니다."
   },
   "scriptEdit": {
     "paste_options": "붙여넣기 옵션",
