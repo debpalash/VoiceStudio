@@ -4346,5 +4346,26 @@
     "error_busy": "GPU 正忙於其他工作。請稍後再試。",
     "error_timeout": "產生此音效耗時過久。請嘗試較短的時長。",
     "error_out_of_memory": "GPU 記憶體不足。請關閉其他佔用 GPU 的應用程式，或嘗試較短的時長。"
+  },
+  "generationQueue": {
+    "title": "Generation queue",
+    "waiting_one": "{{count}} waiting",
+    "waiting_other": "{{count}} waiting",
+    "added_one": "Added to the queue — {{count}} waiting",
+    "added_other": "Added to the queue — {{count}} waiting",
+    "full": "The queue is full ({{count}} takes). Wait for some to finish first.",
+    "add": "Add to queue",
+    "add_hint": "Queue this script with the current voice and settings. It starts when the take before it finishes.",
+    "remove": "Remove from queue",
+    "clear_finished": "Clear finished",
+    "cancel_all": "Cancel all",
+    "position": "#{{position}} in line",
+    "status": {
+      "queued": "Waiting",
+      "running": "Generating",
+      "done": "Done",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    }
   }
 }

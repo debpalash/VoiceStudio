@@ -4346,5 +4346,26 @@
     "error_busy": "De GPU is bezig met een andere taak. Probeer het zo meteen opnieuw.",
     "error_timeout": "Het maken van dit geluidseffect duurde te lang. Probeer een kortere duur.",
     "error_out_of_memory": "De GPU had te weinig geheugen. Sluit andere zware GPU-apps of probeer een kortere duur."
+  },
+  "generationQueue": {
+    "title": "Generation queue",
+    "waiting_one": "{{count}} waiting",
+    "waiting_other": "{{count}} waiting",
+    "added_one": "Added to the queue — {{count}} waiting",
+    "added_other": "Added to the queue — {{count}} waiting",
+    "full": "The queue is full ({{count}} takes). Wait for some to finish first.",
+    "add": "Add to queue",
+    "add_hint": "Queue this script with the current voice and settings. It starts when the take before it finishes.",
+    "remove": "Remove from queue",
+    "clear_finished": "Clear finished",
+    "cancel_all": "Cancel all",
+    "position": "#{{position}} in line",
+    "status": {
+      "queued": "Waiting",
+      "running": "Generating",
+      "done": "Done",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    }
   }
 }

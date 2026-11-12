@@ -128,7 +128,7 @@ export function ClonePage() {
         return;
       }
       if (!(event.ctrlKey || event.metaKey) || event.key !== 'Enter' || event.repeat) return;
-      if (isGenerating || demo || event.defaultPrevented) return;
+      if (demo || event.defaultPrevented) return;
       if (event.target instanceof HTMLElement && event.target.closest('[role="dialog"], aside'))
         return;
       event.preventDefault();
@@ -136,7 +136,7 @@ export function ClonePage() {
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [demo, generate, isGenerating, panel]);
+  }, [demo, generate, panel]);
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden">
@@ -212,7 +212,6 @@ export function ClonePage() {
                 <div className="flex items-center justify-between gap-3">
                   <Button
                     variant="ghost"
-                    disabled={isGenerating}
                     aria-label={t('cloneFlow.change_voice')}
                     className="h-12 min-w-0 justify-start gap-2.5 px-0 hover:bg-transparent"
                     onClick={() => {

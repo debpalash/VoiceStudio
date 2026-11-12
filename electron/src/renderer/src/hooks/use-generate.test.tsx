@@ -824,3 +824,104 @@ it.each([
       steps: 32,
     });
 });
+
+describe('generation queue', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    modelStatus.value = { status: 'ready', loading: false };
+  });
+  function QueueConsumer() {
+    const state = useGenerateClone();
+    return (
+      <>
+        <button onClick={() => void state.generate()}>go</button>
+        <button onClick={() => state.cancelAll()}>cancel all</button>
+        <span data-testid="waiting">{state.queuedCount}</span>
+        <ul>
+          {state.queue.map((item) => (
+            <li key={item.id} data-testid="item" data-status={item.status}>
+              {item.label}
+            </li>
+          ))}
+        </ul>
+      </>
+    );
+  }
+  const take = (id: string) => ({
+    blob: new Blob(),
+    id,
+    audioPath: id + '.wav',
+    durationSeconds: 1,
+    genTimeSeconds: 1,
+    seed: 1,
+    routing: null,
+    dropped: null,
+  });
+  function deferredRenders() {
+    const pending: Array<{ resolve: (value: unknown) => void; reject: (err: unknown) => void }> =
+      [];
+    vi.mocked(generateClone).mockImplementation(
+      (_input, options) =>
+        new Promise((resolve, reject) => {
+          pending.push({ resolve: resolve as (value: unknown) => void, reject });
+          options?.signal?.addEventListener('abort', () =>
+            reject(new DOMException('Aborted', 'AbortError')),
+          );
+        }),
+    );
+    return pending;
+  }
+  const statuses = () => screen.getAllByTestId('item').map((el) => el.dataset.status);
+  const mount = () =>
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <GenerationProvider>
+          <QueueConsumer />
+        </GenerationProvider>
+      </QueryClientProvider>,
+    );
+
+  it('queues takes requested mid-render and runs them in order with their own script', async () => {
+    const renders = deferredRenders();
+    mount();
+    patchCloneSettings({ text: 'First line', selectedProfileId: 'voice-1', autoPlay: false });
+    fireEvent.click(screen.getByText('go'));
+    patchCloneSettings({ text: 'Second line' });
+    fireEvent.click(screen.getByText('go'));
+    patchCloneSettings({ text: 'Third line' });
+    fireEvent.click(screen.getByText('go'));
+
+    // Only one render reaches the backend at a time; the rest wait.
+    expect(generateClone).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('waiting')).toHaveTextContent('2');
+    expect(statuses()).toEqual(['running', 'queued', 'queued']);
+    expect(toast.info).toHaveBeenCalledTimes(2);
+
+    await act(async () => renders[0]!.resolve(take('a')));
+    await waitFor(() => expect(generateClone).toHaveBeenCalledTimes(2));
+    // The queued take kept the script typed when it was requested.
+    expect(vi.mocked(generateClone).mock.calls[1]![0].text).toBe('Second line');
+
+    // A failure is recorded and the queue moves on.
+    await act(async () => renders[1]!.reject(new Error('engine crashed')));
+    await waitFor(() => expect(generateClone).toHaveBeenCalledTimes(3));
+    expect(vi.mocked(generateClone).mock.calls[2]![0].text).toBe('Third line');
+    await act(async () => renders[2]!.resolve(take('c')));
+    await waitFor(() => expect(statuses()).toEqual(['done', 'failed', 'done']));
+    expect(screen.getByTestId('waiting')).toHaveTextContent('0');
+  });
+
+  it('cancel all stops the running take and drops the waiting ones', async () => {
+    deferredRenders();
+    mount();
+    patchCloneSettings({ text: 'One', selectedProfileId: 'voice-1', autoPlay: false });
+    fireEvent.click(screen.getByText('go'));
+    fireEvent.click(screen.getByText('go'));
+    expect(statuses()).toEqual(['running', 'queued']);
+
+    fireEvent.click(screen.getByText('cancel all'));
+    expect(vi.mocked(generateClone).mock.calls[0]![1]!.signal!.aborted).toBe(true);
+    await waitFor(() => expect(statuses()).toEqual(['cancelled', 'cancelled']));
+    expect(generateClone).toHaveBeenCalledTimes(1);
+  });
+});

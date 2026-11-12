@@ -31,7 +31,11 @@ import { effectiveSamplingSteps } from '@/lib/audio/quality';
 import { cachedTtsLanguagesSupported } from '@/lib/language-options';
 import { tr } from '@/lib/i18n-text';
 import { queryKeys } from '@/lib/query';
-import { cloneSettingsStore, DEFAULT_CLONE_SETTINGS } from '@/lib/store/clone-settings';
+import {
+  cloneSettingsStore,
+  DEFAULT_CLONE_SETTINGS,
+  type CloneSettings,
+} from '@/lib/store/clone-settings';
 import { setLatestOutput } from '@/lib/store/output';
 import { referenceStore } from '@/lib/store/reference';
 import { beginAppActivity } from '@/lib/app-activity';
@@ -48,12 +52,59 @@ const PROGRESS_THROTTLE_MS = 100;
 const MODEL_NOT_DOWNLOADED = 'model_not_downloaded';
 
 // One synthesis at a time across every mounted hook instance: the backend
-// serialises on the GPU anyway, and a second request would only queue behind
-// the first while the UI shows two spinners.
+// serialises on the GPU anyway. Takes requested while one renders wait in a
+// client-side queue and start one after another.
 
 // The routing notice fires once per distinct status per session — a batch of
 // renders on a CPU-fallback box must not toast on every take.
 let lastRoutingStatus: string | null = null;
+
+/** Takes that may wait at once; beyond this a click is refused with a toast. */
+const MAX_QUEUED = 50;
+/** Finished entries kept in the queue list before the oldest drop off. */
+const MAX_FINISHED_SHOWN = 20;
+const QUEUE_LABEL_CHARS = 80;
+/** How often a waiting take re-checks a synthesis slot another feature holds. */
+const QUEUE_RETRY_MS = 1000;
+let takeCounter = 0;
+
+type CloneInput = Parameters<typeof generateClone>[0];
+
+export type GenerationQueueStatus = 'queued' | 'running' | 'done' | 'failed' | 'cancelled';
+
+export interface GenerationQueueItem {
+  id: string;
+  /** The start of the script, for display. */
+  label: string;
+  /** Saved voice, clip file or preset voice name, when there is one. */
+  voice: string | null;
+  mode: 'clone' | 'design';
+  status: GenerationQueueStatus;
+  error?: string;
+}
+
+/** Everything a take needs, captured when it was requested. */
+interface PreparedTake {
+  id: string;
+  mode: 'clone' | 'design';
+  input: CloneInput;
+  /** Sampling steps actually sent, resolved for the engine active at request time. */
+  steps: ReturnType<typeof effectiveSamplingSteps>;
+  spokenText: string;
+  direction: string;
+  settings: CloneSettings;
+  engine: { id: string; device: Parameters<typeof recordTakeSpeed>[1] } | null;
+  label: string;
+  voice: string | null;
+}
+
+function trimFinished(items: GenerationQueueItem[]): GenerationQueueItem[] {
+  const finished = items.filter((item) => item.status !== 'queued' && item.status !== 'running');
+  const drop = new Set(
+    finished.slice(0, Math.max(0, finished.length - MAX_FINISHED_SHOWN)).map((item) => item.id),
+  );
+  return drop.size ? items.filter((item) => !drop.has(item.id)) : items;
+}
 
 export interface DesignGenerateInput {
   text: string;
@@ -87,7 +138,16 @@ export function clonesSavedSample(profile: Profile | null | undefined): boolean 
 export interface UseGenerateClone {
   generateDesign(input: DesignGenerateInput): Promise<void>;
   generate(): Promise<void>;
+  /** Stop the running take; the queue moves on to the next one. */
   cancel(): void;
+  /** Stop the running take and drop every waiting one. */
+  cancelAll(): void;
+  /** Running, waiting and recently finished takes, oldest first. */
+  queue: GenerationQueueItem[];
+  /** How many takes are waiting (not counting the running one). */
+  queuedCount: number;
+  removeQueued(id: string): void;
+  clearFinished(): void;
   isGenerating: boolean;
   elapsedSeconds: number;
   /** 0..100 while the WAV body streams in; null when unknown. */
@@ -212,6 +272,12 @@ function useGenerateController(): UseGenerateClone {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // A take that waited for model loading says nothing about render speed.
   const sawModelLoadRef = useRef(false);
+  // Takes waiting their turn, oldest first; the running one is not in here.
+  const pendingRef = useRef<PreparedTake[]>([]);
+  const currentTakeIdRef = useRef<string | null>(null);
+  const drainRetryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const drainRef = useRef<() => void>(() => {});
+  const [queue, setQueue] = useState<GenerationQueueItem[]>([]);
 
   // Trailing-edge throttle can fire after completion; `activeRef` gates it so
   // a stale 100% never lands on an idle form.
@@ -286,14 +352,26 @@ function useGenerateController(): UseGenerateClone {
   useEffect(
     () => () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      if (drainRetryRef.current) clearTimeout(drainRetryRef.current);
+      pendingRef.current = [];
       abortRef.current?.abort();
     },
     [],
   );
 
-  /** Synthesize a clone or designed take; only supported clone engines get emotion. */
-  const generate = useCallback(
-    async (design?: DesignGenerateInput) => {
+  /** Patch one queue entry by id. */
+  const patchQueueItem = useCallback((id: string, patch: Partial<GenerationQueueItem>) => {
+    setQueue((items) => items.map((item) => (item.id === id ? { ...item, ...patch } : item)));
+  }, []);
+
+  /**
+   * Validate a take and snapshot everything it needs at click time, so the
+   * user can edit the script, voice and settings for the next take while this
+   * one waits in the queue. Returns null (with any feedback shown) when the
+   * take can't be rendered.
+   */
+  const prepareTake = useCallback(
+    (design?: DesignGenerateInput): PreparedTake | null => {
       const settings = cloneSettingsStore.state;
       const reference = referenceStore.state;
       if (
@@ -303,7 +381,7 @@ function useGenerateController(): UseGenerateClone {
       ) {
         setErrorCause(null);
         setError(tr('languagePicker.chooseSupported'));
-        return;
+        return null;
       }
       if (
         design
@@ -320,17 +398,123 @@ function useGenerateController(): UseGenerateClone {
             (!presetOnly && !settings.selectedProfileId && !reference.file?.size)
       ) {
         if (blocker === 'reference') setWorkspace({ panel: 'voice' });
-        return;
+        return null;
       }
-      const release = acquireSynthesis();
-      if (!release) {
-        toast.info(tr('tts_errors.generation_in_progress'));
-        return;
-      }
+      // A preset-only engine that can't design never reads a style
+      // instruct, and /generate refuses one there as a design request: the
+      // preset voice take keeps working with a leftover instruct (#3413).
+      const style =
+        design?.instruct ??
+        (presetOnly && activeTts?.supports_voice_design === false ? '' : settings.instruct);
+      // Delivery direction is a per-engine draft like IndexTTS2 emotion: only
+      // engines whose instruct steers a clone receive it; others never see it.
+      const direction = !design && sendsDirection ? settings.direction.trim() : '';
+      const free = [style.trim(), direction].filter(Boolean).join(', ');
+      // Only tag-list engines need the text filtered (with warnings); a
+      // free-form engine reads whatever was written.
+      const wording = free.trim();
+      let instruct = wording;
+      if (wording && instructVocabulary !== 'freeform') instruct = announceInstructWarnings(free);
+      const profiles = queryClient.getQueryData<Profile[]>(queryKeys.profiles);
+      const profileId = design
+        ? (design.profileId ?? null)
+        : presetOnly
+          ? null
+          : settings.selectedProfileId;
+      const refAudio = design || settings.selectedProfileId || presetOnly ? null : reference.file;
+      const presetVoice = activeTts?.preset_voices?.includes(settings.presetVoice)
+        ? settings.presetVoice
+        : undefined;
+      const steps = effectiveSamplingSteps(
+        settings.steps,
+        queryClient.getQueryData<EnginesResponse>(queryKeys.engines)?.tts?.active,
+      );
+      const input: CloneInput = {
+        text: design?.text ?? settings.text,
+        seed: design?.seed,
+        language: design?.language ?? settings.language,
+        // A preset-only engine renders its preset voice; sending the saved
+        // voice or clip would be refused (it cannot clone).
+        profileId,
+        refAudio,
+        refText:
+          design || presetOnly
+            ? undefined
+            : settings.selectedProfileId
+              ? manualProfileTranscript(
+                  settings.refText,
+                  profiles?.find((profile) => profile.id === settings.selectedProfileId)?.ref_text,
+                )
+              : settings.refText,
+        instruct,
+        instructVocabulary,
+        designRecipe: design?.recipe,
+        // IndexTTS2's emotion controls affect the performance, not the
+        // reference voice. Never leak stale emotion options to other engines
+        // or to the separate Voice Design workspace.
+        ...(!design && activeTts?.supports_emotion
+          ? settings.emotionMode === 'vector'
+            ? { emoVector: [...settings.emotionVector] }
+            : settings.emotionMode === 'text' && settings.emotionText.trim()
+              ? { emoText: settings.emotionText.trim(), emoAlpha: settings.emotionAlpha }
+              : {}
+          : {}),
+        steps,
+        wavBits: settings.wavBits,
+        effectPreset: settings.effectPreset,
+        presetVoice,
+        cfg: settings.cfg,
+        speed: settings.speed,
+        tShift: settings.tShift,
+        posTemp: settings.posTemp,
+        classTemp: settings.classTemp,
+        layerPenalty: settings.layerPenalty,
+        denoise: settings.denoise,
+        postprocess: settings.postprocess,
+        duration: settings.duration,
+      };
+      const spokenText = input.text.trim();
+      return {
+        id: `take-${Date.now().toString(36)}-${(takeCounter += 1)}`,
+        mode: design ? 'design' : 'clone',
+        input,
+        steps,
+        spokenText,
+        direction,
+        settings: { ...settings, emotionVector: [...settings.emotionVector] },
+        engine: activeTts ? { id: activeTts.id, device: activeTts.effective_device } : null,
+        label:
+          spokenText.length > QUEUE_LABEL_CHARS
+            ? `${spokenText.slice(0, QUEUE_LABEL_CHARS).trimEnd()}…`
+            : spokenText,
+        voice:
+          (profileId && profiles?.find((profile) => profile.id === profileId)?.name) ||
+          refAudio?.name ||
+          presetVoice ||
+          null,
+      };
+    },
+    [
+      queryClient,
+      blocker,
+      designBlockerFor,
+      instructVocabulary,
+      activeTts,
+      presetOnly,
+      sendsDirection,
+    ],
+  );
+
+  /** Drive one synthesis lifecycle; the caller already holds the synthesis slot. */
+  const runTake = useCallback(
+    async (take: PreparedTake, release: () => void) => {
       const finishActivity = beginAppActivity('synthesis');
-      const reportMode = design ? 'design' : 'clone';
+      const reportMode = take.mode;
+      const { input } = take;
       reportModeRef.current = reportMode;
+      currentTakeIdRef.current = take.id;
       recordActionBreadcrumb(`generate:${reportMode}:start`);
+      patchQueueItem(take.id, { status: 'running' });
 
       activeRef.current = true;
       cancelledRef.current = false;
@@ -351,109 +535,39 @@ function useGenerateController(): UseGenerateClone {
       const controller = new AbortController();
       abortRef.current = controller;
       try {
-        // A preset-only engine that can't design never reads a style
-        // instruct, and /generate refuses one there as a design request: the
-        // preset voice take keeps working with a leftover instruct (#3413).
-        const style =
-          design?.instruct ??
-          (presetOnly && activeTts?.supports_voice_design === false ? '' : settings.instruct);
-        // Delivery direction is a per-engine draft like IndexTTS2 emotion: only
-        // engines whose instruct steers a clone receive it; others never see it.
-        const direction = !design && sendsDirection ? settings.direction.trim() : '';
-        const free = [style.trim(), direction].filter(Boolean).join(', ');
-        // Only tag-list engines need the text filtered (with warnings); a
-        // free-form engine reads whatever was written.
-        const wording = free.trim();
-        let instruct = wording;
-        if (wording && instructVocabulary !== 'freeform') instruct = announceInstructWarnings(free);
-        const input = {
-          text: design?.text ?? settings.text,
-          seed: design?.seed,
-          language: design?.language ?? settings.language,
-          // A preset-only engine renders its preset voice; sending the saved
-          // voice or clip would be refused (it cannot clone).
-          profileId: design
-            ? (design.profileId ?? null)
-            : presetOnly
-              ? null
-              : settings.selectedProfileId,
-          refAudio: design || settings.selectedProfileId || presetOnly ? null : reference.file,
-          refText:
-            design || presetOnly
-              ? undefined
-              : settings.selectedProfileId
-                ? manualProfileTranscript(
-                    settings.refText,
-                    queryClient
-                      .getQueryData<Profile[]>(queryKeys.profiles)
-                      ?.find((profile) => profile.id === settings.selectedProfileId)?.ref_text,
-                  )
-                : settings.refText,
-          instruct,
-          instructVocabulary,
-          designRecipe: design?.recipe,
-          // IndexTTS2's emotion controls affect the performance, not the
-          // reference voice. Never leak stale emotion options to other engines
-          // or to the separate Voice Design workspace.
-          ...(!design && activeTts?.supports_emotion
-            ? settings.emotionMode === 'vector'
-              ? { emoVector: [...settings.emotionVector] }
-              : settings.emotionMode === 'text' && settings.emotionText.trim()
-                ? { emoText: settings.emotionText.trim(), emoAlpha: settings.emotionAlpha }
-                : {}
-            : {}),
-          steps: effectiveSamplingSteps(
-            settings.steps,
-            queryClient.getQueryData<EnginesResponse>(queryKeys.engines)?.tts?.active,
-          ),
-          wavBits: settings.wavBits,
-          effectPreset: settings.effectPreset,
-          presetVoice: activeTts?.preset_voices?.includes(settings.presetVoice)
-            ? settings.presetVoice
-            : undefined,
-          cfg: settings.cfg,
-          speed: settings.speed,
-          tShift: settings.tShift,
-          posTemp: settings.posTemp,
-          classTemp: settings.classTemp,
-          layerPenalty: settings.layerPenalty,
-          denoise: settings.denoise,
-          postprocess: settings.postprocess,
-          duration: settings.duration,
-        };
         const result = await generateClone(input, {
           signal: controller.signal,
           onProgress,
         });
         announceResultNotices(result);
-        const spokenText = (design?.text ?? settings.text).trim();
         if (
-          activeTts &&
+          take.engine &&
           !sawModelLoadRef.current &&
           result.genTimeSeconds !== null &&
           result.durationSeconds !== null
         )
           // Local only: per engine and device, so the next estimate is this machine's.
-          recordTakeSpeed(activeTts.id, activeTts.effective_device, {
-            chars: spokenText.length,
+          recordTakeSpeed(take.engine.id, take.engine.device, {
+            chars: take.spokenText.length,
             audioSeconds: result.durationSeconds,
             renderSeconds: result.genTimeSeconds,
-            steps: input.steps,
+            steps: take.steps,
             at: Date.now(),
           });
-        setLatestOutput(result, design?.text ?? settings.text);
+        setLatestOutput(result, input.text);
         recordActionBreadcrumb(`generate:${reportMode}:complete`);
+        patchQueueItem(take.id, { status: 'done' });
         toast.success(tr('tts.generationComplete'), { position: 'top-right' });
-        if (!design)
+        if (reportMode === 'clone')
           // Record what was actually rendered: a take sent without emotion (an
           // engine without IndexTTS2 controls, or Off) or without a delivery
           // direction is saved without it, so reusing it later never adds
           // direction the recording did not use.
           rememberTake(result.id, {
-            ...settings,
+            ...take.settings,
             // The steps actually rendered, not "best quality" for whichever engine is active later.
-            steps: input.steps,
-            direction,
+            steps: take.steps,
+            direction: take.direction,
             ...('emoText' in input || 'emoVector' in input
               ? {}
               : {
@@ -469,17 +583,19 @@ function useGenerateController(): UseGenerateClone {
           queryClient.invalidateQueries({ queryKey: queryKeys.engines }),
         ]).catch(() => {});
       } catch (err) {
-        if (!cancelledRef.current) {
+        if (cancelledRef.current) {
+          patchQueueItem(take.id, { status: 'cancelled' });
+        } else {
           recordActionBreadcrumb(`generate:${reportMode}:error`);
+          const message = isAbortError(err)
+            ? tr('tts_errors.timeout')
+            : isModelNotDownloaded(err)
+              ? tr('tts_errors.model_not_downloaded')
+              : describeError(err);
           setErrorCause(err);
           setErrorTopic(failureTopicOf(err) ?? null);
-          setError(
-            isAbortError(err)
-              ? tr('tts_errors.timeout')
-              : isModelNotDownloaded(err)
-                ? tr('tts_errors.model_not_downloaded')
-                : describeError(err),
-          );
+          setError(message);
+          patchQueueItem(take.id, { status: 'failed', error: message });
         }
       } finally {
         finishActivity();
@@ -487,6 +603,7 @@ function useGenerateController(): UseGenerateClone {
         activeRef.current = false;
         abortRef.current = null;
         reportModeRef.current = null;
+        currentTakeIdRef.current = null;
         if (timerRef.current) clearInterval(timerRef.current);
         timerRef.current = null;
         setIsGenerating(false);
@@ -498,19 +615,69 @@ function useGenerateController(): UseGenerateClone {
             queryKey: ['sidebar-model-status'],
           })
           .catch(() => {});
+        // Start the next queued take, if any.
+        drainRef.current();
       }
     },
-    [
-      queryClient,
-      onProgress,
-      blocker,
-      designBlockerFor,
-      instructVocabulary,
-      activeTts,
-      presetOnly,
-      sendsDirection,
-    ],
+    [queryClient, onProgress, patchQueueItem],
   );
+
+  /**
+   * Start the next waiting take when nothing is rendering. Another feature
+   * (voice convert, SFX, a profile preview) may hold the shared synthesis
+   * slot; then wait for it to free up instead of dropping the take.
+   */
+  const drain = useCallback(() => {
+    if (activeRef.current || drainRetryRef.current) return;
+    const next = pendingRef.current[0];
+    if (!next) return;
+    const release = acquireSynthesis();
+    if (!release) {
+      drainRetryRef.current = setTimeout(() => {
+        drainRetryRef.current = null;
+        drainRef.current();
+      }, QUEUE_RETRY_MS);
+      return;
+    }
+    pendingRef.current.shift();
+    void runTake(next, release);
+  }, [runTake]);
+  drainRef.current = drain;
+
+  /** Render a take now, or add it to the queue when one is already running. */
+  const generate = useCallback(
+    async (design?: DesignGenerateInput) => {
+      if (pendingRef.current.length >= MAX_QUEUED) {
+        toast.warning(tr('generationQueue.full', { count: MAX_QUEUED }));
+        return;
+      }
+      const take = prepareTake(design);
+      if (!take) return;
+      pendingRef.current.push(take);
+      setQueue((items) => [
+        // Keep only the most recent finished takes alongside the live ones.
+        ...trimFinished(items),
+        { id: take.id, label: take.label, voice: take.voice, mode: take.mode, status: 'queued' },
+      ]);
+      drain();
+      if (pendingRef.current.includes(take))
+        toast.info(tr('generationQueue.added', { count: pendingRef.current.length }));
+    },
+    [prepareTake, drain],
+  );
+
+  /** Drop a take that hasn't started yet. */
+  const removeQueued = useCallback((id: string) => {
+    pendingRef.current = pendingRef.current.filter((take) => take.id !== id);
+    setQueue((items) => items.filter((item) => item.id !== id || item.status !== 'queued'));
+  }, []);
+
+  /** Remove finished, failed and cancelled entries from the list. */
+  const clearFinished = useCallback(() => {
+    setQueue((items) =>
+      items.filter((item) => item.status === 'queued' || item.status === 'running'),
+    );
+  }, []);
 
   const cancel = useCallback(() => {
     if (!abortRef.current) return;
@@ -519,6 +686,18 @@ function useGenerateController(): UseGenerateClone {
     if (reportMode) recordActionBreadcrumb(`generate:${reportMode}:cancel`);
     abortRef.current.abort();
   }, []);
+
+  /** Stop the running take and drop everything still waiting. */
+  const cancelAll = useCallback(() => {
+    const dropped = new Set(pendingRef.current.map((take) => take.id));
+    pendingRef.current = [];
+    if (drainRetryRef.current) clearTimeout(drainRetryRef.current);
+    drainRetryRef.current = null;
+    setQueue((items) =>
+      items.map((item) => (dropped.has(item.id) ? { ...item, status: 'cancelled' } : item)),
+    );
+    cancel();
+  }, [cancel]);
 
   return {
     generate: () => generate(),
@@ -533,8 +712,14 @@ function useGenerateController(): UseGenerateClone {
     error,
     errorTopic,
     clearError,
-    canGenerate: blocker === null && !isGenerating,
+    // A take started while another renders joins the queue.
+    canGenerate: blocker === null,
     canGenerateDesign: designBlocker === null && !isGenerating,
+    queue,
+    queuedCount: queue.filter((item) => item.status === 'queued').length,
+    removeQueued,
+    clearFinished,
+    cancelAll,
     designBlocker,
     designBlockerFor,
     cloneBlocker: blocker,

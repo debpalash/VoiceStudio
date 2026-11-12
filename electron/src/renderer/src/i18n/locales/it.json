@@ -4348,5 +4348,26 @@
     "error_busy": "La GPU è occupata con un altro lavoro. Riprova tra un momento.",
     "error_timeout": "La generazione di questo effetto sonoro ha richiesto troppo tempo. Prova una durata più breve.",
     "error_out_of_memory": "La GPU ha esaurito la memoria. Chiudi le altre app che usano molto la GPU o prova una durata più breve."
+  },
+  "generationQueue": {
+    "title": "Generation queue",
+    "waiting_one": "{{count}} waiting",
+    "waiting_other": "{{count}} waiting",
+    "added_one": "Added to the queue — {{count}} waiting",
+    "added_other": "Added to the queue — {{count}} waiting",
+    "full": "The queue is full ({{count}} takes). Wait for some to finish first.",
+    "add": "Add to queue",
+    "add_hint": "Queue this script with the current voice and settings. It starts when the take before it finishes.",
+    "remove": "Remove from queue",
+    "clear_finished": "Clear finished",
+    "cancel_all": "Cancel all",
+    "position": "#{{position}} in line",
+    "status": {
+      "queued": "Waiting",
+      "running": "Generating",
+      "done": "Done",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    }
   }
 }

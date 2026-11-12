@@ -4346,5 +4346,26 @@
     "error_busy": "GPU đang bận với tác vụ khác. Hãy thử lại sau giây lát.",
     "error_timeout": "Việc tạo hiệu ứng âm thanh này mất quá nhiều thời gian. Hãy thử thời lượng ngắn hơn.",
     "error_out_of_memory": "GPU hết bộ nhớ. Hãy đóng các ứng dụng nặng GPU khác hoặc thử thời lượng ngắn hơn."
+  },
+  "generationQueue": {
+    "title": "Generation queue",
+    "waiting_one": "{{count}} waiting",
+    "waiting_other": "{{count}} waiting",
+    "added_one": "Added to the queue — {{count}} waiting",
+    "added_other": "Added to the queue — {{count}} waiting",
+    "full": "The queue is full ({{count}} takes). Wait for some to finish first.",
+    "add": "Add to queue",
+    "add_hint": "Queue this script with the current voice and settings. It starts when the take before it finishes.",
+    "remove": "Remove from queue",
+    "clear_finished": "Clear finished",
+    "cancel_all": "Cancel all",
+    "position": "#{{position}} in line",
+    "status": {
+      "queued": "Waiting",
+      "running": "Generating",
+      "done": "Done",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    }
   }
 }

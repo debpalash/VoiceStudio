@@ -14,6 +14,7 @@ import {
   FocusIcon,
   GaugeIcon,
   LayersIcon,
+  ListPlusIcon,
   PlayIcon,
   LoaderCircleIcon,
   RotateCcwIcon,
@@ -52,6 +53,7 @@ import { QualityControls } from './quality-controls';
 import { QualityOffer } from './quality-offer';
 import { EmotionControls } from './emotion-controls';
 import { ExpressionTip } from './expression-tip';
+import { GenerationQueue } from './generation-queue';
 import { CloneDemoAction } from './clone-demo';
 import { useCloneDemo } from '@/hooks/use-clone-demo';
 
@@ -335,6 +337,7 @@ export function ActionBar({ setup: shared }: { setup?: EngineSetup } = {}) {
     errorTopic,
     clearError,
     cloneBlocker: blocker,
+    queuedCount,
   } = useGenerateClone();
   const generationLabel = isGenerating
     ? t(
@@ -377,11 +380,11 @@ export function ActionBar({ setup: shared }: { setup?: EngineSetup } = {}) {
       <div className="flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-1 rounded-lg bg-background/50 p-1 ring-1 ring-border/50">
           <EngineLanguagePicker />
-          <PresetVoicePicker disabled={isGenerating} />
+          <PresetVoicePicker />
           <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />
-          <QualityControls disabled={isGenerating} />
+          <QualityControls />
           <VoiceControls />
-          <EmotionControls disabled={isGenerating} />
+          <EmotionControls />
         </div>
 
         <div className="relative ml-auto flex shrink-0 gap-2">
@@ -434,11 +437,31 @@ export function ActionBar({ setup: shared }: { setup?: EngineSetup } = {}) {
           )}
           {isGenerating && !demo ? (
             <Button
+              size="lg"
+              className="h-10 shrink-0 gap-2 rounded-lg px-3"
+              variant="outline"
+              onClick={() => void generate()}
+              disabled={blocker !== null}
+              title={t('generationQueue.add_hint')}
+              aria-keyshortcuts="Control+Enter Meta+Enter"
+            >
+              <ListPlusIcon data-icon="inline-start" />
+              {t('generationQueue.add')}
+              {queuedCount > 0 && (
+                <span className="rounded-full bg-primary/10 px-1.5 text-xs tabular-nums text-primary">
+                  {queuedCount}
+                </span>
+              )}
+            </Button>
+          ) : null}
+          {isGenerating && !demo ? (
+            <Button
               size="icon-lg"
               className="size-10 shrink-0"
               variant="outline"
               onClick={() => cancel()}
               aria-label={t('clone.cancel_generation')}
+              title={t('clone.cancel_generation')}
             >
               <XIcon data-icon="inline-start" />
             </Button>
@@ -461,6 +484,7 @@ export function ActionBar({ setup: shared }: { setup?: EngineSetup } = {}) {
           ) : null}
         </div>
       </div>
+      {!demo && <GenerationQueue className="mt-4" />}
       {!demo && !needsSetup && (
         <QualityOffer text={script} isGenerating={isGenerating} className="mt-2 justify-end" />
       )}
