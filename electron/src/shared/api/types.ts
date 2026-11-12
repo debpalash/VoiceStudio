@@ -156,6 +156,9 @@ export interface EngineSelfTestResponse {
   num_samples?: number | null;
   audio_seconds?: number | null;
   timed_out?: boolean;
+  // OmniVoice GGUF only: the Vulkan adapter and a path-free runtime log.
+  runtime_device?: string | null;
+  runtime_log?: string | null;
 }
 
 // ── System / diagnostics ─────────────────────────────────────────────────

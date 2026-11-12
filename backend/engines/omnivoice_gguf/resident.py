@@ -204,8 +204,12 @@ class ResidentServer:
         self.process = None
         self.port: Optional[int] = None
         self.pair: Optional[tuple[str, str]] = None
+        #: The ``GGML_BACKEND`` the process was launched with ("" = automatic).
+        self.compute: Optional[str] = None
         self.voices: dict[str, str] = {}
         self.log_handle = None
+        #: Where this process's output starts in the shared, appended log.
+        self.log_start = 0
         #: (binary identity, pair) whose start failed: skip straight to the
         #: spawn path instead of paying a failing start on every request.
         self.failed_start: Optional[tuple] = None
@@ -222,7 +226,13 @@ class ResidentServer:
         from . import backend
 
         pair = (str(base), str(tokenizer))
-        if self.alive() and self.pair == pair:
+        try:
+            env = backend._spawn_env()
+        except Exception as exc:  # an invalid compute override
+            raise ResidentUnavailable(f"tts-server did not start: {exc}") from exc
+        compute = env.get("GGML_BACKEND", "")
+        # A compute change (CPU to GPU, another device) needs a new process too.
+        if self.alive() and self.pair == pair and self.compute == compute:
             return
         self.stop()
         binary = server_binary_path()
@@ -240,17 +250,19 @@ class ResidentServer:
         log_path = _log_path()
         log_path.parent.mkdir(parents=True, exist_ok=True)
         self.log_handle = log_path.open("ab")
+        self.log_start = self.log_handle.tell()
         try:
             self.process = spawn_owned(
                 args,
                 stdout=self.log_handle,
                 stderr=subprocess.STDOUT,
                 stdin=subprocess.DEVNULL,
-                env=backend._spawn_env(),
+                env=env,
                 # Same rule as the CLI: ggml's backend scan stays inside bin/.
                 cwd=str(binary.parent),
             )
             self.pair = pair
+            self.compute = compute
             self._wait_ready(Path(base).name)
         except Exception as exc:
             self.stop()
@@ -288,6 +300,7 @@ class ResidentServer:
         """Stop the process and forget its voices. Idempotent."""
         proc, self.process = self.process, None
         self.pair = None
+        self.compute = None
         self.port = None
         self.voices.clear()
         if proc is not None:
@@ -303,6 +316,16 @@ class ResidentServer:
         if self.log_handle:
             self.log_handle.close()
             self.log_handle = None
+
+    def runtime_log(self, limit: int = 64 * 1024) -> str:
+        """This process's own output so far (its device lines), never an
+        earlier server's. Empty when the log cannot be read."""
+        try:
+            with _log_path().open("rb") as handle:
+                handle.seek(self.log_start)
+                return handle.read(limit).decode("utf-8", errors="replace")
+        except OSError:
+            return ""
 
     # ── protocol ────────────────────────────────────────────────────────
 

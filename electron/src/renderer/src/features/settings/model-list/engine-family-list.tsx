@@ -32,6 +32,7 @@ import { FamilyList } from './family-list';
 import type { FamilyItem } from './family-row';
 import { useEngineSelect } from './use-engine-select';
 import { GGUF_ENGINE, GgufQuantPicker } from './gguf-quant-picker';
+import { GgufSelfTest } from './gguf-self-test';
 import { asrSetupHint, engineUnavailableReason } from './engine-guidance';
 import { LocalModelPath } from './local-model-path';
 
@@ -123,6 +124,7 @@ function engineItem(ctx: Context, engine: EngineBackend): FamilyItem {
       tools={
         <>
           {engine.id === GGUF_ENGINE && engine.available && <GgufQuantPicker />}
+          {engine.id === GGUF_ENGINE && engine.available && <GgufSelfTest />}
           <LocalModelPath family={ctx.family} engineId={engine.id} />
           <EngineHealth
             id={engine.id}

@@ -77,7 +77,7 @@ def _probe() -> VulkanProfile:
 
                 devices = with_inventory_memory(devices, detect_host_gpus())
             except Exception:
-                logger.debug("Vulkan loader probe unavailable", exc_info=True)
+                logger.debug("Vulkan inventory memory probe unavailable", exc_info=True)
         adapters = adapters_from_vulkaninfo(devices, ram)
         return VulkanProfile(
             verified=bool(adapters), source="vulkaninfo", system_ram_gb=ram, adapters=adapters,
