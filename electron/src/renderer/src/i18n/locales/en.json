@@ -1847,7 +1847,9 @@
   },
   "projectActions": {
     "open": "Open “{{name}}” and replace the current draft? Save your current work first.",
-    "save_copy": "Save a copy"
+    "save_copy": "Save a copy",
+    "new": "New project",
+    "new_confirm": "Start a new, empty project? Saved projects stay as they are; unsaved changes to the current draft are lost."
   },
   "sidebar": {
     "save_project": "Save Dubbing Project",

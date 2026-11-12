@@ -1653,7 +1653,9 @@
   },
   "projectActions": {
     "open": "Öppna ”{{name}}” och ersätta det aktuella utkastet? Spara ditt arbete först.",
-    "save_copy": "Spara en kopia"
+    "save_copy": "Spara en kopia",
+    "new": "Nytt projekt",
+    "new_confirm": "Starta ett nytt, tomt projekt? Sparade projekt förblir oförändrade; osparade ändringar i det aktuella utkastet går förlorade."
   },
   "sidebar": {
     "save_project": "Spara Dub Project",
