@@ -355,10 +355,15 @@ def change(family: str, engine_id: str, path: str | None) -> dict:
     with tts._ENGINE_CACHE_LOCK:
         if tts._ENGINE_IN_USE.get(cls):
             raise EngineBusyError("This engine is busy; wait for generation to finish")
+        before = get(family, engine_id)
         if path is None:
             clear(family, engine_id)
         else:
             set_path(family, engine_id, path)
+        if get(family, engine_id) == before:
+            # The effective checkpoint did not change (same folder re-saved, or
+            # clearing an unset path): the loaded weights are still correct.
+            return state(family, engine_id)
         # Only evict this engine, never an unrelated active engine.
         inst = tts._ENGINE_INSTANCES.pop(cls, None)
         active = tts._active_instance if tts._active_instance_id == engine_id else None

@@ -147,3 +147,53 @@ def test_persist_and_clear_survive_real_preferences_reload(monkeypatch, tmp_path
     assert paths.get("tts", "omnivoice") == str(model)
     paths.clear("tts", "omnivoice")
     assert paths.get("tts", "omnivoice") is None
+
+
+def _fake_engine_cache(monkeypatch, tmp_path):
+    from services import tts_backend as tts, model_manager
+    monkeypatch.setattr(paths.prefs, "_PREFS_PATH", str(tmp_path / "prefs.json"))
+
+    class Fake:
+        unloaded = 0
+
+        def unload(self):
+            Fake.unloaded += 1
+
+    cls = tts.get_backend_class("omnivoice")
+    inst = Fake()
+    monkeypatch.setitem(tts._ENGINE_INSTANCES, cls, inst)
+    shared = []
+    monkeypatch.setattr(model_manager, "unload_shared_model", lambda: shared.append(1) or True)
+    monkeypatch.setattr(tts, "_retire_engine", lambda i: i.unload())
+    return Fake, shared
+
+
+def test_resaving_same_local_model_keeps_engine_warm(monkeypatch, tmp_path):
+    Fake, shared = _fake_engine_cache(monkeypatch, tmp_path)
+    model = checkpoint(tmp_path / "model")
+    paths.change("tts", "omnivoice", str(model))  # real change: reloads
+    assert shared == [1]
+    from services import tts_backend as tts
+    cls = tts.get_backend_class("omnivoice")
+    tts._ENGINE_INSTANCES[cls] = Fake()
+    Fake.unloaded = 0
+    paths.change("tts", "omnivoice", str(model))  # same value: no-op
+    paths.change("tts", "omnivoice", str(model))
+    assert shared == [1] and Fake.unloaded == 0
+    assert cls in tts._ENGINE_INSTANCES
+
+
+def test_clearing_unset_local_model_keeps_engine_warm(monkeypatch, tmp_path):
+    Fake, shared = _fake_engine_cache(monkeypatch, tmp_path)
+    paths.change("tts", "omnivoice", None)
+    assert shared == [] and Fake.unloaded == 0
+
+
+def test_changing_or_clearing_local_model_still_reloads(monkeypatch, tmp_path):
+    Fake, shared = _fake_engine_cache(monkeypatch, tmp_path)
+    a = checkpoint(tmp_path / "a")
+    b = checkpoint(tmp_path / "b")
+    paths.change("tts", "omnivoice", str(a))
+    paths.change("tts", "omnivoice", str(b))
+    paths.change("tts", "omnivoice", None)
+    assert len(shared) == 3
