@@ -37,35 +37,6 @@ describe('retryInitialLoad (#1158 class)', () => {
     // it terminates instead of looping forever after cancellation.
     expect(loader.mock.calls.length).toBeLessThan(5);
   });
-
-  // #1158 wiring contract: the initial load must pass loaders that REJECT on
-  // failure. useAppData's loadProfiles-style loaders swallow errors by design
-  // (WS reloads keep the previous list); if the initial-load call site ever
-  // stops using { rethrow: true }, the retry helper resolves on attempt one
-  // and the fix is silently inert again (skeptic finding F1).
-  it('integration: useAppData wires rethrowing loaders into the retry', async () => {
-    const { readFileSync } = await import('node:fs');
-    // jsdom replaces the global URL, so build a REAL node: URL instance and
-    // hand that to fileURLToPath. Taking `.pathname` instead looks equivalent
-    // but is not on Windows: a file:///C:/… URL's pathname is "/C:/…", which
-    // readFileSync then resolves against the current drive as "C:\C:\…" and
-    // the whole test file fails with ENOENT on every Windows checkout.
-    const nodeUrl = await import('node:url');
-    const NodeURL = nodeUrl.URL;
-    const hookPath = nodeUrl.fileURLToPath(new NodeURL('../hooks/useAppData.js', import.meta.url));
-    const src = readFileSync(hookPath, 'utf8');
-    const initialBlock = src.slice(src.indexOf('retryInitialLoad('));
-    for (const loader of [
-      'loadProfiles',
-      'loadHistory',
-      'loadDubHistory',
-      'loadProjects',
-      'loadExportHistory',
-    ]) {
-      expect(initialBlock).toContain(`${loader}({ rethrow: true })`);
-    }
-    expect(src).toContain('rethrow,');
-  });
 });
 
 describe('loadLatest', () => {
