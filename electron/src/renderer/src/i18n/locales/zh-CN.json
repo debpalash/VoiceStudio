@@ -3303,6 +3303,9 @@
     "add_audio": "添加音频",
     "invalid_media": "添加有效音频片段，每个小于 64 MiB。",
     "asr_required": "请先在设置中准备转录引擎。",
+    "transcription_recipe": "音频转文字",
+    "conversion_recipe": "更换声音",
+    "localization_recipe": "翻译并配音",
     "invalid_language": "请选择源语言和目标语言。",
     "invalid_condition": "请输入条件要查找的文本。"
   },

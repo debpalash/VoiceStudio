@@ -3307,6 +3307,9 @@
     "add_audio": "Audio hinzufügen",
     "invalid_media": "Gültige Audioclips unter jeweils 64 MiB hinzufügen.",
     "asr_required": "Zuerst eine Transkriptionsengine in den Einstellungen einrichten.",
+    "transcription_recipe": "Audio in Text",
+    "conversion_recipe": "Stimme ändern",
+    "localization_recipe": "Übersetzen und vertonen",
     "invalid_language": "Ausgangs- und Zielsprache auswählen.",
     "invalid_condition": "Gib den Text ein, nach dem die Bedingung suchen soll."
   },

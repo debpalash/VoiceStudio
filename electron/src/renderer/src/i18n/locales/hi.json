@@ -3307,6 +3307,9 @@
     "add_audio": "ऑडियो जोड़ें",
     "invalid_media": "वैध ऑडियो क्लिप जोड़ें, प्रत्येक 64 MiB से कम।",
     "asr_required": "पहले सेटिंग में ट्रांसक्रिप्शन इंजन तैयार करें।",
+    "transcription_recipe": "ऑडियो से पाठ",
+    "conversion_recipe": "आवाज़ बदलें",
+    "localization_recipe": "अनुवाद और वाचन",
     "invalid_language": "स्रोत और लक्ष्य भाषाएँ चुनें।",
     "invalid_condition": "वह पाठ दर्ज करें जिसे शर्त खोजेगी।"
   },

@@ -3307,6 +3307,9 @@
     "add_audio": "오디오 추가",
     "invalid_media": "각각 64 MiB 미만인 유효한 오디오 클립을 추가하세요.",
     "asr_required": "먼저 설정에서 받아쓰기 엔진을 준비하세요.",
+    "transcription_recipe": "오디오를 텍스트로",
+    "conversion_recipe": "목소리 변경",
+    "localization_recipe": "번역하고 읽기",
     "invalid_language": "원본 및 대상 언어를 선택하세요.",
     "invalid_condition": "조건이 찾을 텍스트를 입력하세요."
   },

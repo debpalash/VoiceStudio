@@ -3309,6 +3309,9 @@
     "add_audio": "Aggiungi audio",
     "invalid_media": "Aggiungi clip audio valide sotto 64 MiB ciascuna.",
     "asr_required": "Configura prima un motore di trascrizione nelle impostazioni.",
+    "transcription_recipe": "Da audio a testo",
+    "conversion_recipe": "Cambia voce",
+    "localization_recipe": "Traduci e narra",
     "invalid_language": "Scegli le lingue di origine e destinazione.",
     "invalid_condition": "Inserisci il testo che la condizione deve cercare."
   },

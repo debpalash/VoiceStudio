@@ -3307,6 +3307,9 @@
     "add_audio": "Tambah audio",
     "invalid_media": "Tambahkan klip audio valid di bawah 64 MiB per klip.",
     "asr_required": "Siapkan mesin transkripsi di Pengaturan terlebih dahulu.",
+    "transcription_recipe": "Audio menjadi teks",
+    "conversion_recipe": "Ubah suara",
+    "localization_recipe": "Terjemahkan dan narasikan",
     "invalid_language": "Pilih bahasa sumber dan tujuan.",
     "invalid_condition": "Masukkan teks yang harus dicari oleh kondisi."
   },

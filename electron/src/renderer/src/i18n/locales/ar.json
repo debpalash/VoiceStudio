@@ -3359,6 +3359,9 @@
     "add_audio": "إضافة صوت",
     "invalid_media": "أضف مقاطع صوتية صالحة، أقل من 64 MiB لكل مقطع.",
     "asr_required": "جهّز محرك نسخ صوتي في الإعدادات أولًا.",
+    "transcription_recipe": "الصوت إلى نص",
+    "conversion_recipe": "تغيير الصوت",
+    "localization_recipe": "ترجمة وسرد",
     "invalid_language": "اختر لغتي المصدر والهدف.",
     "invalid_condition": "أدخل النص الذي يبحث عنه الشرط."
   },

@@ -3307,6 +3307,9 @@
     "add_audio": "Thêm âm thanh",
     "invalid_media": "Thêm đoạn âm thanh hợp lệ dưới 64 MiB mỗi đoạn.",
     "asr_required": "Thiết lập bộ máy chép lời trong Cài đặt trước.",
+    "transcription_recipe": "Âm thanh thành văn bản",
+    "conversion_recipe": "Đổi giọng nói",
+    "localization_recipe": "Dịch và thuyết minh",
     "invalid_language": "Chọn ngôn ngữ nguồn và đích.",
     "invalid_condition": "Nhập văn bản mà điều kiện cần tìm."
   },

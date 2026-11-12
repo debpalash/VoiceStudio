@@ -3307,6 +3307,9 @@
     "add_audio": "音声を追加",
     "invalid_media": "各64 MiB未満の有効な音声クリップを追加してください。",
     "asr_required": "設定で文字起こしエンジンを準備してください。",
+    "transcription_recipe": "音声を文字起こし",
+    "conversion_recipe": "声を変更",
+    "localization_recipe": "翻訳して読み上げ",
     "invalid_language": "元の言語と翻訳先の言語を選んでください。",
     "invalid_condition": "条件が探すテキストを入力してください。"
   },

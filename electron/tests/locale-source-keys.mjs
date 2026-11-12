@@ -98,23 +98,33 @@ for (const tree of ['electron/src/', 'mobile/', 'scripts/', 'backend/']) {
   }
 }
 const corpus = chunks.join('\n');
-const dynamicPrefixes = new Set();
+// Dynamic prefix → the literal suffixes that follow its placeholder ('' when none),
+// so `t(`workflowRun.${id}_recipe`)` narrows by `id`, not by `id_recipe`.
+const dynamicPrefixes = new Map();
 for (const match of corpus.matchAll(
-  /['"`]([A-Za-z][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+)*[._]?)(?:['"`]\s*\+|\$\{)/g,
-))
-  dynamicPrefixes.add(match[1]);
+  /['"`]([A-Za-z][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+)*[._]?)(?:['"`]\s*\+|\$\{[^}`]*\}([A-Za-z0-9_.-]*))/g,
+)) {
+  const suffixes = dynamicPrefixes.get(match[1]) ?? new Set();
+  suffixes.add(match[2] ?? '');
+  dynamicPrefixes.set(match[1], suffixes);
+}
 const baseKey = (key) => key.replace(/_(?:one|other|zero|two|few|many)$/, '');
 const unused = [...catalog].filter((key) => {
   const base = baseKey(key);
   if (ALLOWED_PREFIXES.some((prefix) => key.startsWith(prefix))) return false;
   if (corpus.includes(base)) return false;
-  for (const prefix of dynamicPrefixes) {
+  for (const [prefix, suffixes] of dynamicPrefixes) {
     if (!base.startsWith(prefix)) continue;
     // `ns.${x}`: only a one-segment namespace is narrowed by its next segment appearing
     // in code; any longer or partial prefix (`ns.sub.`, `ns.opt_`, `ns.short`) keeps every key.
     if (!/^[A-Za-z0-9_-]+\.$/.test(prefix)) return false;
-    const segment = base.slice(prefix.length).split('.')[0];
-    if (segment.length >= 3 && corpus.includes(segment)) return false;
+    const rest = base.slice(prefix.length);
+    for (const suffix of suffixes) {
+      // `ns.${x}_suffix`: the part the placeholder fills is what must appear in code.
+      const segment =
+        suffix && rest.endsWith(suffix) ? rest.slice(0, -suffix.length) : rest.split('.')[0];
+      if (segment.length >= 3 && corpus.includes(segment)) return false;
+    }
   }
   return true;
 });

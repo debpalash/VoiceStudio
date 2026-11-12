@@ -3307,6 +3307,9 @@
     "add_audio": "Ses ekle",
     "invalid_media": "Her biri 64 MiB altında geçerli ses klipleri ekleyin.",
     "asr_required": "Önce Ayarlar’dan bir yazıya dökme motoru kurun.",
+    "transcription_recipe": "Sesten metne",
+    "conversion_recipe": "Sesi değiştir",
+    "localization_recipe": "Çevir ve seslendir",
     "invalid_language": "Kaynak ve hedef dilleri seçin.",
     "invalid_condition": "Koşulun arayacağı metni girin."
   },

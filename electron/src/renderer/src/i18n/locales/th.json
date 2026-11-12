@@ -3307,6 +3307,9 @@
     "add_audio": "เพิ่มเสียง",
     "invalid_media": "เพิ่มคลิปเสียงที่ถูกต้อง ขนาดต่ำกว่า 64 MiB ต่อคลิป",
     "asr_required": "ตั้งค่าเอนจินถอดเสียงในหน้าการตั้งค่าก่อน",
+    "transcription_recipe": "เสียงเป็นข้อความ",
+    "conversion_recipe": "เปลี่ยนเสียง",
+    "localization_recipe": "แปลและบรรยาย",
     "invalid_language": "เลือกภาษาต้นทางและปลายทาง",
     "invalid_condition": "ป้อนข้อความที่เงื่อนไขจะค้นหา"
   },

@@ -3333,6 +3333,9 @@
     "add_audio": "Dodaj audio",
     "invalid_media": "Dodaj poprawne klipy audio mniejsze niż 64 MiB każdy.",
     "asr_required": "Najpierw skonfiguruj silnik transkrypcji w Ustawieniach.",
+    "transcription_recipe": "Audio na tekst",
+    "conversion_recipe": "Zmień głos",
+    "localization_recipe": "Przetłumacz i przeczytaj",
     "invalid_language": "Wybierz język źródłowy i docelowy.",
     "invalid_condition": "Wpisz tekst, którego ma szukać warunek."
   },

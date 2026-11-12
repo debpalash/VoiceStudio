@@ -3307,6 +3307,9 @@
     "add_audio": "Engadir audio",
     "invalid_media": "Engade clips de audio válidos, cada un de menos de 64 MiB.",
     "asr_required": "Configura primeiro un motor de transcrición en Configuración.",
+    "transcription_recipe": "Audio para transcribir",
+    "conversion_recipe": "Cambia a voz",
+    "localization_recipe": "Traducir e narrar",
     "invalid_language": "Escolle as linguas de orixe e destino.",
     "invalid_condition": "Introduza o texto que debe buscar unha condición."
   },

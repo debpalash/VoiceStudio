@@ -3307,6 +3307,9 @@
     "add_audio": "Audio toevoegen",
     "invalid_media": "Voeg geldige audioclips van minder dan 64 MiB toe.",
     "asr_required": "Stel eerst een transcriptie-engine in bij Instellingen.",
+    "transcription_recipe": "Audio naar tekst",
+    "conversion_recipe": "Stem wijzigen",
+    "localization_recipe": "Vertalen en vertellen",
     "invalid_language": "Kies bron- en doeltaal.",
     "invalid_condition": "Voer de tekst in waarnaar de voorwaarde moet zoeken."
   },

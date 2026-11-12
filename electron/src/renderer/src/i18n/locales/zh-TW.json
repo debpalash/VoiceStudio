@@ -3307,6 +3307,9 @@
     "add_audio": "新增音訊",
     "invalid_media": "新增有效音訊片段，每個小於 64 MiB。",
     "asr_required": "請先在設定中準備轉錄引擎。",
+    "transcription_recipe": "音訊轉文字",
+    "conversion_recipe": "更換聲音",
+    "localization_recipe": "翻譯並配音",
     "invalid_language": "請選擇來源語言和目標語言。",
     "invalid_condition": "請輸入條件要尋找的文字。"
   },

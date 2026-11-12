@@ -3307,6 +3307,9 @@
     "add_audio": "Lägg till ljud",
     "invalid_media": "Lägg till giltiga ljudklipp under 64 MiB vardera.",
     "asr_required": "Ställ först in en transkriptionsmotor i Inställningar.",
+    "transcription_recipe": "Ljud till text",
+    "conversion_recipe": "Byt röst",
+    "localization_recipe": "Översätt och berätta",
     "invalid_language": "Välj käll- och målspråk.",
     "invalid_condition": "Ange texten som villkoret ska leta efter."
   },

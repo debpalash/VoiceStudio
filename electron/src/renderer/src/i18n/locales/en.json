@@ -3307,6 +3307,9 @@
     "add_audio": "Add audio",
     "invalid_media": "Add valid audio clips, each under 64 MiB.",
     "asr_required": "Set up a transcription engine in Settings first.",
+    "transcription_recipe": "Audio to transcript",
+    "conversion_recipe": "Change the voice",
+    "localization_recipe": "Translate and narrate",
     "invalid_language": "Choose source and target languages.",
     "invalid_condition": "Enter the text a condition should look for."
   },
