@@ -145,9 +145,10 @@ jobs:
     if: ${{ !cancelled() && needs.changes.outputs.runtime != 'false' }}
     # Same SDK as the TestFlight upload, so App Store toolchain breaks show up here first.
     runs-on: macos-26
-    # Cold simulator/device compilation can exhaust an hour after tests pass.
+    # Cold simulator/device compilation can exhaust an hour after tests pass, and a
+    # native-runtime cache miss adds about 21 minutes (main, 2026-11-12: 92 minutes).
     # Keep the full validation run bounded without relaxing UI-test deadlines.
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -237,7 +238,7 @@ jobs:
         if: steps.pass.outputs.hit != 'true'
         # The suite takes about 30 minutes. No retry flags: on this runner a retry
         # re-ran all 34 tests, so one failure doubled the step and pushed the job to
-        # its 90 minute limit. Each test gets a 10 minute allowance instead (the
+        # its job time limit. Each test gets a 10 minute allowance instead (the
         # slowest takes under 5), so a hang fails that test by name and the run
         # moves on; the step cap bounds anything the allowance cannot.
         timeout-minutes: 50

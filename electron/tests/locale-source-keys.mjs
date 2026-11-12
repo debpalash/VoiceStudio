@@ -90,8 +90,30 @@ async function corpusFiles(directory, output = []) {
   return output;
 }
 
+const CORPUS_TREES = ['electron/src/', 'mobile/', 'scripts/', 'backend/'];
+// The Docker web build (and other partial trees) copy only electron/, so the code that
+// reads the catalog is not all there and "unused" would be meaningless. Skip the gate
+// outside CI; in CI a missing tree means the scan itself broke, so fail.
+const missingTrees = [];
+for (const tree of CORPUS_TREES) {
+  await readdir(new URL(tree, repository)).catch((error) => {
+    // Only an absent tree means a partial checkout; any other read failure is real.
+    if (error.code !== 'ENOENT') throw error;
+    missingTrees.push(tree);
+  });
+}
+const inCI = !['', '0', 'false'].includes((process.env.CI ?? '').toLowerCase());
+if (missingTrees.length) {
+  assert.ok(
+    !inCI,
+    `Unused-key scan cannot find ${missingTrees.join(', ')}; update CORPUS_TREES`,
+  );
+  console.log(`Locale unused keys: skipped (partial checkout, no ${missingTrees.join(', ')})`);
+  process.exit(0);
+}
+
 const chunks = [];
-for (const tree of ['electron/src/', 'mobile/', 'scripts/', 'backend/']) {
+for (const tree of CORPUS_TREES) {
   for (const file of await corpusFiles(new URL(tree, repository))) {
     const text = await readFile(file, 'utf8').catch(() => '');
     if (text.length < 3_000_000) chunks.push(text);
