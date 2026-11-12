@@ -372,10 +372,18 @@ def _weights_fingerprint(path: str | None) -> tuple:
     return (path, tuple(sorted(files)))
 
 
-def note_loaded(family: str, engine_id: str, path: str) -> None:
-    """Record the folder an engine is loading from, so the first re-save after a
-    restart can keep that engine warm when nothing changed."""
-    _APPLIED[(family, engine_id)] = _weights_fingerprint(path)
+def loading_fingerprint(path: str) -> tuple:
+    """Snapshot a local folder right before an engine loads it (see note_loaded)."""
+    return _weights_fingerprint(path)
+
+
+def note_loaded(family: str, engine_id: str, path: str, fingerprint: tuple) -> None:
+    """Record the folder an engine finished loading, so the first re-save after a
+    restart can keep it warm when nothing changed. Called only after a successful
+    load, with the snapshot taken before it, and only while that folder is still
+    the saved one: an overlapping load or change never records stale weights."""
+    if get(family, engine_id) == path:
+        _APPLIED[(family, engine_id)] = fingerprint
 
 
 # Fingerprint of the folder each engine last switched to, so a re-save can tell

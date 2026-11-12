@@ -3246,12 +3246,15 @@ class MLXAudioBackend(TTSBackend):
     def _ensure_loaded(self):
         if self._model is not None:
             return
-        from services.local_model_paths import get as local_model_path, note_loaded, validate
+        from services.local_model_paths import (
+            get as local_model_path, loading_fingerprint, note_loaded, validate,
+        )
+        local_fingerprint = None
         if (not os.environ.get("OMNIVOICE_MLX_AUDIO_MODEL", "").strip()
                 and self._model_id
                 and self._model_id == local_model_path("tts", "mlx-audio")):
             validate("tts", "mlx-audio", self._model_id)
-            note_loaded("tts", "mlx-audio", self._model_id)
+            local_fingerprint = loading_fingerprint(self._model_id)
         if self._curated_key() == "melotts":
             _ensure_melotts_text_frontend()
         elif self._curated_key() == "kokoro":
@@ -3283,6 +3286,8 @@ class MLXAudioBackend(TTSBackend):
             # this worker; the installed model ships the same voices/ folder.
             model.repo_id = self._model_id
         self._model = model
+        if local_fingerprint is not None:
+            note_loaded("tts", "mlx-audio", self._model_id, local_fingerprint)
 
     def _is_voice_design(self) -> bool:
         """Whether the loaded model builds a voice from a text description.

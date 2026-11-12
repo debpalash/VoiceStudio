@@ -237,7 +237,8 @@ def test_first_resave_after_restart_keeps_a_loaded_engine_warm(monkeypatch, tmp_
     _, shared = _fake_engine_cache(monkeypatch, tmp_path)
     model = checkpoint(tmp_path / "model")
     paths.set_path("tts", "omnivoice", str(model))  # saved in an earlier session
-    paths.note_loaded("tts", "omnivoice", str(model))  # loaded at startup
+    snap = paths.loading_fingerprint(str(model))  # loader snapshots, then loads
+    paths.note_loaded("tts", "omnivoice", str(model), snap)  # after a successful load
     paths.change("tts", "omnivoice", str(model))
     assert shared == []
 
@@ -252,3 +253,16 @@ def test_a_huge_folder_tree_is_not_walked_in_full(monkeypatch, tmp_path):
     a = paths._weights_fingerprint(str(root))
     b = paths._weights_fingerprint(str(root))
     assert a != b  # over the bound: never treated as unchanged
+
+
+def test_a_load_of_a_folder_no_longer_saved_is_not_recorded(monkeypatch, tmp_path):
+    """An overlapping load must not record weights the saved folder no longer names (#4043 review)."""
+    _, shared = _fake_engine_cache(monkeypatch, tmp_path)
+    a = checkpoint(tmp_path / "a")
+    b = checkpoint(tmp_path / "b")
+    snap = paths.loading_fingerprint(str(a))  # a load of A starts
+    paths.change("tts", "omnivoice", str(b))  # the user switches to B meanwhile
+    paths.note_loaded("tts", "omnivoice", str(a), snap)  # A's load finishes late
+    paths.change("tts", "omnivoice", str(b))  # re-saving B is unchanged: no extra reload
+    assert len(shared) == 1
+    assert paths._APPLIED[("tts", "omnivoice")][0] == str(b)
