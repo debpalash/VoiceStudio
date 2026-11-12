@@ -8,7 +8,6 @@ env/
 # Node modules
 node_modules/
 bun.lockb
-.turbo/
 
 # Python caches
 __pycache__/
