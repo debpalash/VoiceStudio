@@ -153,6 +153,7 @@ def _fake_engine_cache(monkeypatch, tmp_path):
     from services import model_manager
     from services import tts_backend as tts
     monkeypatch.setattr(paths.prefs, "_PREFS_PATH", str(tmp_path / "prefs.json"))
+    monkeypatch.setattr(paths, "_APPLIED", {})
 
     class Fake:
         unloaded = 0
@@ -198,3 +199,16 @@ def test_changing_or_clearing_local_model_still_reloads(monkeypatch, tmp_path):
     paths.change("tts", "omnivoice", str(b))
     paths.change("tts", "omnivoice", None)
     assert len(shared) == 3
+
+
+def test_resaving_after_replacing_the_weights_reloads(monkeypatch, tmp_path):
+    """Re-saving the same folder used to be how a user picked up swapped weights."""
+    import os
+    _, shared = _fake_engine_cache(monkeypatch, tmp_path)
+    model = checkpoint(tmp_path / "model")
+    paths.change("tts", "omnivoice", str(model))
+    newer = max(e.stat().st_mtime_ns for e in os.scandir(model)) + 10**9
+    replaced = next(iter(sorted(model.iterdir())))
+    os.utime(replaced, ns=(newer, newer))
+    paths.change("tts", "omnivoice", str(model))
+    assert len(shared) == 2

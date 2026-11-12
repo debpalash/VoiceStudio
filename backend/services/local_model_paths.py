@@ -344,6 +344,29 @@ def clear(family: str, engine_id: str) -> None:
         prefs.set_(PREF_KEY, current)
 
 
+def _weights_fingerprint(path: str | None) -> tuple[str | None, int]:
+    """The stored folder plus its newest file time, so a re-save after the weights
+    inside it were replaced still reloads, while a plain re-save does not."""
+    if not path:
+        return (path, 0)
+    newest = 0
+    try:
+        with os.scandir(path) as entries:
+            for entry in entries:
+                try:
+                    newest = max(newest, entry.stat().st_mtime_ns)
+                except OSError:
+                    continue
+    except OSError:
+        pass
+    return (path, newest)
+
+
+# Fingerprint of the folder each engine last switched to, so a re-save can tell
+# whether the weights it loads would differ.
+_APPLIED: dict[tuple[str, str], tuple[str | None, int]] = {}
+
+
 def change(family: str, engine_id: str, path: str | None) -> dict:
     """Serialize mutation with engine leases; busy never persists or unloads.
 
@@ -360,9 +383,11 @@ def change(family: str, engine_id: str, path: str | None) -> dict:
             clear(family, engine_id)
         else:
             set_path(family, engine_id, path)
-        if get(family, engine_id) == before:
-            # The effective checkpoint did not change (same folder re-saved, or
-            # clearing an unset path): the loaded weights are still correct.
+        after = _weights_fingerprint(get(family, engine_id))
+        if (before is None and after[0] is None) or _APPLIED.get((family, engine_id)) == after:
+            # The effective checkpoint did not change (clearing an unset path, or
+            # the same folder re-saved with the same files): the loaded weights
+            # are still correct.
             return state(family, engine_id)
         # Only evict this engine, never an unrelated active engine.
         inst = tts._ENGINE_INSTANCES.pop(cls, None)
@@ -374,4 +399,6 @@ def change(family: str, engine_id: str, path: str | None) -> dict:
         if engine_id == "omnivoice":
             from services import model_manager
             model_manager.unload_shared_model()
+        # Recorded only once the old weights are gone, so a failed eviction retries.
+        _APPLIED[(family, engine_id)] = after
     return state(family, engine_id)
