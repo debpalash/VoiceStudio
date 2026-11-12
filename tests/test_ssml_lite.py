@@ -256,6 +256,8 @@ def test_spell_out_long_zwj_emoji_run_is_linear_time():
     # every ZWJ cost ~64x for an 8x longer input; the 24x limit leaves margin.
     import time
 
+    from services.ssml_lite import spell_out
+
     def best(n):
         payload = "\U0001f469" + "‍\U0001f4bb" * n
         runs = []
@@ -271,6 +273,8 @@ def test_spell_out_long_zwj_emoji_run_is_linear_time():
 
 
 def test_zwj_joins_only_after_a_pictograph_base():
+    from services.ssml_lite import spell_out
+
     assert spell_out("\U0001f469\U0001f3fd‍\U0001f4bb") == "\U0001f469\U0001f3fd‍\U0001f4bb"
     assert spell_out("\U0001f3f3️‍\U0001f308") == "\U0001f3f3️‍\U0001f308"
     assert spell_out("a‍\U0001f4bb") == "a‍ \U0001f4bb"
