@@ -2448,6 +2448,11 @@ export class BackendSupervisor extends EventEmitter<{
         setTimeout(() => {
           if (gen === this.generation && !this.shuttingDown && !this.child) {
             this.spawnChild(plan, gen, attempt + 1);
+            // start() returned after the first failure without waiting for readiness;
+            // a launch that has now started needs that wait, or it never reaches ready.
+            if (gen === this.generation && this.stage === 'starting') {
+              void this.waitUntilReady(gen, startupBudgetMs());
+            }
           }
         }, delay);
         return;

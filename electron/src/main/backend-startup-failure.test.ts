@@ -283,12 +283,17 @@ it('retries a launch the OS timed out, then starts the backend (#4035)', async (
       throw timedOutSpawn();
     })
     .mockReturnValueOnce(child);
+  const waitUntilReady = vi
+    .spyOn(supervisor as unknown as { waitUntilReady: () => Promise<void> }, 'waitUntilReady')
+    .mockResolvedValue();
   internal.generation = 1;
   internal.spawnChild({ argv: ['python'], cwd: '/project' }, 1);
   expect(supervisor.status.stage).not.toBe('failed');
   await vi.advanceTimersByTimeAsync(2_000);
   expect(mocks.spawn).toHaveBeenCalledTimes(2);
   expect(supervisor.status.stage).toBe('starting');
+  // start() skipped readiness after the first failure; the retry starts it (#4039 review).
+  expect(waitUntilReady).toHaveBeenCalledWith(1, expect.any(Number));
 });
 
 it('says what to do when every launch attempt times out (#4035)', async () => {
