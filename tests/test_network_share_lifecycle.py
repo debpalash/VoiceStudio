@@ -62,6 +62,37 @@ def test_overlapping_lifecycle_calls_leave_no_listener_or_mcp_hosts(monkeypatch,
     asyncio.run(exercise())
 
 
+def test_share_server_does_not_rerun_app_lifespan(monkeypatch):
+    """The share server serves the already-started app, so it must not run the
+    app lifespan a second time: a failing second startup makes uvicorn call
+    sys.exit() inside the share task, which takes the whole backend down."""
+    configs = []
+
+    class Server:
+        def __init__(self, config):
+            configs.append(config)
+            self.started = False
+            self.should_exit = False
+
+        async def serve(self):
+            self.started = True
+            while not self.should_exit:
+                await asyncio.sleep(0)
+
+    async def exercise():
+        monkeypatch.setattr(ns, '_runtime', ns._ShareRuntime())
+        monkeypatch.setattr(ns.uvicorn, 'Server', Server)
+        monkeypatch.setattr(ns, '_find_free_port', lambda *_: 3901)
+        monkeypatch.setattr(ns, 'lan_ipv4_addresses', lambda: ['192.168.1.42'])
+        app = SimpleNamespace(state=SimpleNamespace())
+        await ns.enable(app)
+        await ns.disable(app)
+
+    asyncio.run(exercise())
+    assert len(configs) == 1
+    assert configs[0].lifespan == "off"
+
+
 def _can_connect(port: int, host: str = "127.0.0.1", timeout: float = 0.5) -> bool:
     """True if a TCP connection to host:port is accepted."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
