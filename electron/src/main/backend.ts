@@ -106,13 +106,13 @@ import {
 } from './setup-progress';
 import { SetupDownloadReporter, inFlightDownloadBytes } from './setup-downloads';
 import { scrubText } from '../shared/utils/scrub';
+import { SUPERVISE_ACTIVE_MS as SUPERVISE_POLL_MS, superviseDelayMs } from './supervise-cadence';
 import { DEFAULT_BACKEND_PORT } from '../../../config/app-config.mjs';
 
 const DEFAULT_BUDGET_S = 300;
 const READY_POLL_MS = 500;
 /** Allow another VoiceStudio shell to take ownership without showing a false crash. */
 const REPLACEMENT_ATTACH_GRACE_MS = 10_000;
-const SUPERVISE_POLL_MS = 2000;
 const PROBE_TIMEOUT_MS = 1500;
 const SHUTDOWN_INTENT_TIMEOUT_MS = 1000;
 /** Consecutive supervisor probe misses (2 s apart) before a ready backend is declared gone. */
@@ -2807,21 +2807,28 @@ export class BackendSupervisor extends EventEmitter<{
     let rejections = 0;
     // Healthy ticks since an auth_required remote was last re-validated.
     let authRecheck = 0;
+    // Consecutive healthy probes: a steady backend is probed less often.
+    let healthy = 0;
     const noteMiss = (): number => {
       refusals = this.lastProbeOutcome === 'refused' ? refusals + 1 : 0;
       rejections = this.lastProbeOutcome === 'rejected' ? rejections + 1 : 0;
+      healthy = 0;
       return ++misses;
     };
     const release = (): void => {
       if (this.supervisingGeneration === gen) this.supervisingGeneration = null;
     };
     const tick = async (): Promise<void> => {
-      await delay(SUPERVISE_POLL_MS);
+      await delay(superviseDelayMs(healthy));
       if (gen !== this.generation) {
         release();
         return;
       }
       if (await this.probe()) {
+        // Only a backend that is ready and settled earns the slower cadence; a
+        // recovering or auth_required one keeps the active period, so its
+        // tick-counted re-validation (AUTH_RECHECK_TICKS) stays about 30 s.
+        healthy = this.stage === 'ready' && !this.diagnosis ? healthy + 1 : 0;
         misses = 0;
         refusals = 0;
         rejections = 0;
