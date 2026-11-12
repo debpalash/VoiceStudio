@@ -377,7 +377,12 @@ async def _enable(app) -> ShareState:
         return _runtime.state
     port = _find_free_port(share_port_base())
     pin = _gen_pin()
-    config = uvicorn.Config(app, host=SHARE_BIND_HOST, port=port, log_level="warning")
+    # lifespan="off": the main server already ran the app's startup/shutdown.
+    # Re-running it here fails (MCP session manager is single-use) and uvicorn
+    # then calls sys.exit() inside this task, which kills the whole backend.
+    config = uvicorn.Config(
+        app, host=SHARE_BIND_HOST, port=port, log_level="warning", lifespan="off"
+    )
     server = uvicorn.Server(config)
     server.install_signal_handlers = lambda: None  # never hijack signals in-process
     _runtime.task = asyncio.create_task(server.serve())
