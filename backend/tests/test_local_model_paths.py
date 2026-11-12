@@ -266,3 +266,17 @@ def test_a_load_of_a_folder_no_longer_saved_is_not_recorded(monkeypatch, tmp_pat
     paths.change("tts", "omnivoice", str(b))  # re-saving B is unchanged: no extra reload
     assert len(shared) == 1
     assert paths._APPLIED[("tts", "omnivoice")][0] == str(b)
+
+
+def test_an_unreadable_file_never_looks_unchanged(monkeypatch, tmp_path):
+    """A stat error must force a reload, not drop the file from the comparison (#4043 review)."""
+    model = checkpoint(tmp_path / "model")
+    real_stat = paths.os.stat
+
+    def failing_stat(target, *args, **kwargs):
+        if str(target).endswith("model.safetensors"):
+            raise PermissionError("locked")
+        return real_stat(target, *args, **kwargs)
+
+    monkeypatch.setattr(paths.os, "stat", failing_stat)
+    assert paths._weights_fingerprint(str(model)) != paths._weights_fingerprint(str(model))

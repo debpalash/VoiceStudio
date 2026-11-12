@@ -356,16 +356,18 @@ def _weights_fingerprint(path: str | None) -> tuple:
     files = []
     visited = 0  # files and folders: a tree of empty folders is bounded too
     try:
-        for root, dirs, names in os.walk(path):
+        def _unreadable(error: OSError) -> None:
+            raise error
+
+        # An unreadable folder or file must never look unchanged: any error
+        # returns a fingerprint that matches nothing, so the engine reloads.
+        for root, dirs, names in os.walk(path, onerror=_unreadable):
             visited += 1 + len(dirs) + len(names)
             if visited > _FINGERPRINT_MAX_FILES:
                 return (path, object())
             for name in names:
                 full = os.path.join(root, name)
-                try:
-                    st = os.stat(full)
-                except OSError:
-                    continue
+                st = os.stat(full)
                 files.append((os.path.relpath(full, path), st.st_size, st.st_mtime_ns))
     except OSError:
         return (path, object())
