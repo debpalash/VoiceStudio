@@ -150,7 +150,8 @@ def test_persist_and_clear_survive_real_preferences_reload(monkeypatch, tmp_path
 
 
 def _fake_engine_cache(monkeypatch, tmp_path):
-    from services import tts_backend as tts, model_manager
+    from services import model_manager
+    from services import tts_backend as tts
     monkeypatch.setattr(paths.prefs, "_PREFS_PATH", str(tmp_path / "prefs.json"))
 
     class Fake:
@@ -190,7 +191,7 @@ def test_clearing_unset_local_model_keeps_engine_warm(monkeypatch, tmp_path):
 
 
 def test_changing_or_clearing_local_model_still_reloads(monkeypatch, tmp_path):
-    Fake, shared = _fake_engine_cache(monkeypatch, tmp_path)
+    _, shared = _fake_engine_cache(monkeypatch, tmp_path)
     a = checkpoint(tmp_path / "a")
     b = checkpoint(tmp_path / "b")
     paths.change("tts", "omnivoice", str(a))
