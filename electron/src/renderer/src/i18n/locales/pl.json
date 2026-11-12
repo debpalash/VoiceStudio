@@ -773,6 +773,7 @@
     "saved_empty": "Zapisane projekty pojawią się tutaj.",
     "save_failed": "Nie udało się zapisać profilu głosowego",
     "engine_cannot_design": "{{engine}} nie może projektować głosów, ponieważ wymaga klipu referencyjnego. Wybierz silnik obsługujący projektowanie głosu, np. OmniVoice, albo sklonuj głos.",
+    "open_clone": "Otwórz klonowanie głosu",
     "engine_cannot_reuse_sample": "{{engine}} nie może używać dźwięku referencyjnego, więc nie odtworzy tego zapisanego głosu z jego próbki. Wybierz silnik obsługujący klonowanie głosu, np. OmniVoice."
   },
   "dub": {

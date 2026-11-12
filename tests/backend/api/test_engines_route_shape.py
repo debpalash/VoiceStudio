@@ -1020,6 +1020,28 @@ def test_no_hf_token_leak_in_selftest_response(fresh_app):
         restore()
 
 
+def test_selftest_timeout_defaults_higher_on_cpu(monkeypatch):
+    """CPU hosts share the generate floor so a cold GGUF CLI load is not a
+    false "timed out (model still loading?)" on a healthy machine."""
+    from types import SimpleNamespace
+
+    from api.routers import engines as engines_router
+
+    monkeypatch.delenv("OMNIVOICE_SELFTEST_TIMEOUT_S", raising=False)
+    monkeypatch.setattr(
+        "core.device_caps.detect_host_caps",
+        lambda: SimpleNamespace(family="cpu"),
+    )
+    assert engines_router._selftest_timeout_s() == engines_router._SELFTEST_CPU_DEFAULT_S
+    monkeypatch.setattr(
+        "core.device_caps.detect_host_caps",
+        lambda: SimpleNamespace(family="cuda"),
+    )
+    assert engines_router._selftest_timeout_s() == engines_router._SELFTEST_DEFAULT_S
+    monkeypatch.setenv("OMNIVOICE_SELFTEST_TIMEOUT_S", "12")
+    assert engines_router._selftest_timeout_s() == 12.0
+
+
 def test_selftest_timeout_returns_timed_out(fresh_app, monkeypatch):
     """A synth that outruns the bounded timeout returns ok=False/timed_out —
     the panel never hangs. Pin the timeout tiny and block generate briefly."""
@@ -1060,6 +1082,7 @@ def test_selftest_timeout_returns_timed_out(fresh_app, monkeypatch):
         assert body["ok"] is False
         assert body["timed_out"] is True
         assert "timed out" in body["message"]
+        assert "OMNIVOICE_SELFTEST_TIMEOUT_S" in body["message"]
     finally:
         gate.set()  # let the orphaned worker finish and exit
         tts_mod._REGISTRY.clear()

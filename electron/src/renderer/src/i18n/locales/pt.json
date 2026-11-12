@@ -765,6 +765,7 @@
     "saved_empty": "Os designs salvos aparecem aqui.",
     "save_failed": "Falha ao salvar o perfil de voz",
     "engine_cannot_design": "{{engine}} não consegue criar vozes porque precisa de um clipe de referência. Mude para um motor compatível com design de voz, como o OmniVoice, ou clone uma voz.",
+    "open_clone": "Abrir clonagem de voz",
     "engine_cannot_reuse_sample": "{{engine}} não consegue usar áudio de referência, por isso não pode gerar novamente esta voz salva a partir da amostra. Mude para um motor compatível com clonagem de voz, como o OmniVoice."
   },
   "dub": {

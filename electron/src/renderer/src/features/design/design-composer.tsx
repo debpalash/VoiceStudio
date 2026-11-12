@@ -1,5 +1,6 @@
 import { LoaderCircleIcon, PlayIcon, XIcon } from 'lucide-react';
 import { useId } from 'react';
+import { Link } from '@tanstack/react-router';
 import { useTranslation } from 'react-i18next';
 import {
   EngineSetupButton,
@@ -9,7 +10,7 @@ import {
 } from '@/components/engine-notice';
 import { DisabledReason, firstReason } from '@/components/disabled-reason';
 import { PipelineFailure } from '@/components/pipeline-failure';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { EngineLanguagePicker } from '@/features/clone/engine-language-picker';
 import { QualityControls } from '@/features/clone/quality-controls';
 import { VoiceControls } from '@/features/clone/action-bar';
@@ -76,7 +77,14 @@ export function DesignComposer({
               { engine: engineName },
             )}
           </p>
-          <SetUpLink family="tts" />
+          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+            {blocker === 'design' ? (
+              <Link to="/clone" className={cn(buttonVariants({ size: 'sm' }), 'shrink-0')}>
+                {t('designWorkspace.open_clone')}
+              </Link>
+            ) : null}
+            <SetUpLink family="tts" />
+          </div>
         </div>
       )}
       {blocker === 'loading' && !isGenerating && (

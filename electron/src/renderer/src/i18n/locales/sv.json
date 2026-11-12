@@ -763,6 +763,7 @@
     "saved_empty": "Sparade designer visas här.",
     "save_failed": "Det gick inte att spara röstprofilen",
     "engine_cannot_design": "{{engine}} kan inte designa röster eftersom den behöver ett referensklipp. Byt till en motor som stöder röstdesign, till exempel OmniVoice, eller klona en röst i stället.",
+    "open_clone": "Öppna röstkloning",
     "engine_cannot_reuse_sample": "{{engine}} kan inte använda referensljud och kan därför inte återskapa den sparade rösten från dess exempel. Byt till en motor som stöder röstkloning, till exempel OmniVoice."
   },
   "dub": {

@@ -765,6 +765,7 @@
     "saved_empty": "Les créations enregistrées apparaissent ici.",
     "save_failed": "Échec de l'enregistrement du profil vocal",
     "engine_cannot_design": "{{engine}} ne peut pas concevoir de voix, car il a besoin d'un extrait de référence. Choisissez un moteur compatible avec la conception de voix, comme OmniVoice, ou clonez plutôt une voix.",
+    "open_clone": "Ouvrir le clonage vocal",
     "engine_cannot_reuse_sample": "{{engine}} ne peut pas utiliser d'audio de référence ; il ne peut donc pas régénérer cette voix enregistrée à partir de son échantillon. Choisissez un moteur compatible avec le clonage de voix, comme OmniVoice."
   },
   "dub": {

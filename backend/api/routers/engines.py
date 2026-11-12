@@ -808,11 +808,14 @@ def engine_health(engine_id: str):
 #   * An engine with ``selftest_generate`` (OmniVoice GGUF, which drives a
 #     native CLI) runs that instead: one bounded per-request run that returns
 #     its own runtime log, so the response can name the Vulkan device used.
-#   * Bounded wall-clock timeout (``OMNIVOICE_SELFTEST_TIMEOUT_S``, default 90s):
-#     a runaway synth returns ``ok=False`` / ``timed_out=True`` instead of
-#     hanging the Settings panel. ``selftest_generate`` applies the same
-#     deadline to its whole run and kills its child; an in-process orphan is
-#     a best-effort daemon thread.
+#   * Bounded wall-clock timeout (``OMNIVOICE_SELFTEST_TIMEOUT_S``; default
+#     90s on accelerated hosts, 600s on CPU — same floor as the CPU generate
+#     budget): a runaway synth returns ``ok=False`` / ``timed_out=True``
+#     instead of hanging the Settings panel. OmniVoice GGUF on CPU routinely
+#     needs minutes for a cold binary load + short synth, so the old flat
+#     90s reported "timed out (model still loading?)" on healthy hosts.
+#     ``selftest_generate`` applies the same deadline to its whole run and
+#     kills its child; an in-process orphan is a best-effort daemon thread.
 #   * A process-wide lock serialises self-tests so a click-storm can't stack
 #     concurrent model loads. The worker owns the lock until it exits, so a
 #     timed-out test can never overlap the next one.
@@ -822,13 +825,34 @@ def engine_health(engine_id: str):
 # trips the no-hardcoded-CJK guard.
 _SELFTEST_PHRASE = "VoiceStudio engine self test."
 _SELFTEST_LOCK = threading.Lock()
+_SELFTEST_DEFAULT_S = 90.0
+# Match OMNIVOICE_CPU_GENERATE_TIMEOUT_S's floor: a cold OmniVoice GGUF CLI
+# load on CPU often outruns the GPU-oriented 90s click-to-test budget.
+_SELFTEST_CPU_DEFAULT_S = 600.0
 
 
 def _selftest_timeout_s() -> float:
+    """Wall-clock budget for one Settings self-test click.
+
+    ``OMNIVOICE_SELFTEST_TIMEOUT_S`` always wins when set. Otherwise
+    accelerated hosts keep the historical 90s default; CPU / unknown hosts
+    get the CPU generate floor so a healthy GGUF cold start is not reported
+    as a failed self-test.
+    """
+    raw = os.environ.get("OMNIVOICE_SELFTEST_TIMEOUT_S")
+    if raw is not None and str(raw).strip() != "":
+        try:
+            return max(1.0, float(raw))
+        except (TypeError, ValueError):
+            pass
     try:
-        return max(1.0, float(os.environ.get("OMNIVOICE_SELFTEST_TIMEOUT_S", "90")))
-    except (TypeError, ValueError):
-        return 90.0
+        from core.device_caps import detect_host_caps
+
+        if detect_host_caps().family in ("cpu", "unknown"):
+            return _SELFTEST_CPU_DEFAULT_S
+    except Exception:
+        pass
+    return _SELFTEST_DEFAULT_S
 
 
 def _sample_count(audio) -> int:
@@ -1029,7 +1053,10 @@ def engine_selftest(engine_id: str):
         return SelfTestResponse(
             id=engine_id,
             ok=False,
-            message=f"timed out after {timeout_s:.0f}s (model still loading?)",
+            message=(
+                f"timed out after {timeout_s:.0f}s (model still loading, or "
+                f"this host is slow — raise OMNIVOICE_SELFTEST_TIMEOUT_S)"
+            ),
             duration_ms=timeout_s * 1000.0,
             timed_out=True,
         )

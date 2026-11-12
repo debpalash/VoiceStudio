@@ -763,6 +763,7 @@
     "saved_empty": "저장한 디자인이 여기에 표시됩니다.",
     "save_failed": "음성 프로필을 저장하지 못했습니다.",
     "engine_cannot_design": "{{engine}}은(는) 참조 클립이 필요해서 음성을 디자인할 수 없습니다. OmniVoice처럼 음성 디자인을 지원하는 엔진으로 전환하거나, 대신 음성을 복제하세요.",
+    "open_clone": "음성 복제 열기",
     "engine_cannot_reuse_sample": "{{engine}}은(는) 참조 오디오를 사용할 수 없어 저장된 이 음성을 샘플로 다시 생성할 수 없습니다. OmniVoice처럼 음성 복제를 지원하는 엔진으로 전환하세요."
   },
   "dub": {

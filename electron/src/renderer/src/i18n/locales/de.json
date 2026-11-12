@@ -763,6 +763,7 @@
     "saved_empty": "Gespeicherte Designs erscheinen hier.",
     "save_failed": "Das Sprachprofil konnte nicht gespeichert werden",
     "engine_cannot_design": "{{engine}} kann keine Stimmen entwerfen, weil es einen Referenzclip benötigt. Wechsle zu einer Engine mit Voice Design, etwa OmniVoice, oder klone stattdessen eine Stimme.",
+    "open_clone": "Stimmenklonen öffnen",
     "engine_cannot_reuse_sample": "{{engine}} kann kein Referenzaudio verwenden und diese gespeicherte Stimme daher nicht aus ihrem Sample neu erzeugen. Wechsle zu einer Engine mit Stimmklonen, etwa OmniVoice."
   },
   "dub": {

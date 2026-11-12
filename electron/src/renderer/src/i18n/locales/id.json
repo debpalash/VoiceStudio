@@ -763,6 +763,7 @@
     "saved_empty": "Desain tersimpan muncul di sini.",
     "save_failed": "Gagal menyimpan profil suara",
     "engine_cannot_design": "{{engine}} tidak dapat mendesain suara karena memerlukan klip referensi. Beralihlah ke mesin yang mendukung Desain Suara, seperti OmniVoice, atau kloning suara sebagai gantinya.",
+    "open_clone": "Buka kloning suara",
     "engine_cannot_reuse_sample": "{{engine}} tidak dapat menggunakan audio referensi, sehingga tidak dapat membuat ulang suara tersimpan ini dari sampelnya. Beralihlah ke mesin yang mendukung kloning suara, seperti OmniVoice."
   },
   "dub": {

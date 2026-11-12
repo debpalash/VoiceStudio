@@ -763,6 +763,7 @@
     "saved_empty": "Kaydedilen tasarımlar burada görünür.",
     "save_failed": "Ses profili kaydedilemedi",
     "engine_cannot_design": "{{engine}} referans klip gerektirdiği için ses tasarlayamaz. OmniVoice gibi ses tasarımını destekleyen bir motora geçin ya da bunun yerine bir ses klonlayın.",
+    "open_clone": "Ses klonlamayı aç",
     "engine_cannot_reuse_sample": "{{engine}} referans ses kullanamadığı için kayıtlı bu sesi örneğinden yeniden oluşturamaz. OmniVoice gibi ses klonlamayı destekleyen bir motora geçin."
   },
   "dub": {

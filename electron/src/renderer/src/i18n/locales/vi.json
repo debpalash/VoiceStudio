@@ -763,6 +763,7 @@
     "saved_empty": "Các thiết kế đã lưu hiển thị ở đây.",
     "save_failed": "Không lưu được hồ sơ giọng nói",
     "engine_cannot_design": "{{engine}} không thể thiết kế giọng nói vì cần một đoạn âm thanh tham chiếu. Hãy chuyển sang công cụ hỗ trợ thiết kế giọng nói, chẳng hạn OmniVoice, hoặc nhân bản một giọng nói.",
+    "open_clone": "Mở nhân bản giọng",
     "engine_cannot_reuse_sample": "{{engine}} không thể dùng âm thanh tham chiếu nên không thể tạo lại giọng đã lưu này từ mẫu của nó. Hãy chuyển sang công cụ hỗ trợ nhân bản giọng nói, chẳng hạn OmniVoice."
   },
   "dub": {

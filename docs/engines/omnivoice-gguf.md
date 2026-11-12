@@ -162,9 +162,11 @@ RX 5500M`; the name comes from that run's own log, so a CPU run shows none.
 resident mode already has the model loaded, the test runs on it instead of
 loading a second copy, and never stops it; if it still holds a different
 quant than the one selected, run one generation first. A single time limit
-(`OMNIVOICE_SELFTEST_TIMEOUT_S`, default 90 s) covers the whole test,
+(`OMNIVOICE_SELFTEST_TIMEOUT_S`; default 90 s on GPU hosts, 600 s on CPU —
+the same floor as the CPU generate budget) covers the whole test,
 including any wait for a previous test to finish, and stops the one-shot
-runtime when it runs out.
+runtime when it runs out. Raise the env var if a cold CPU load still
+times out.
 
 **GPU offer.** When Compute device is Auto, PyTorch has no GPU, and the bundled
 runtime with its Vulkan module finds a GPU, VoiceStudio asks once: *Use your

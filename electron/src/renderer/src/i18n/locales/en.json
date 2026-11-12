@@ -1019,6 +1019,7 @@
     "saved_empty": "Saved designs appear here.",
     "save_failed": "Failed to save voice profile",
     "engine_cannot_design": "{{engine}} can't design voices because it needs a reference clip. Switch to an engine that supports Voice Design, such as OmniVoice, or clone a voice instead.",
+    "open_clone": "Open Voice Cloning",
     "engine_cannot_reuse_sample": "{{engine}} can't use reference audio, so it can't re-render this saved voice from its sample. Switch to an engine that supports voice cloning, such as OmniVoice."
   },
   "dub": {

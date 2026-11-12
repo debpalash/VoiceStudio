@@ -763,6 +763,7 @@
     "saved_empty": "Opgeslagen ontwerpen verschijnen hier.",
     "save_failed": "Kan stemprofiel niet opslaan",
     "engine_cannot_design": "{{engine}} kan geen stemmen ontwerpen, omdat het een referentieclip nodig heeft. Kies een engine die stemontwerp ondersteunt, zoals OmniVoice, of kloon in plaats daarvan een stem.",
+    "open_clone": "Stemklonen openen",
     "engine_cannot_reuse_sample": "{{engine}} kan geen referentieaudio gebruiken en deze opgeslagen stem dus niet opnieuw maken uit het voorbeeld. Kies een engine die stemklonen ondersteunt, zoals OmniVoice."
   },
   "dub": {
