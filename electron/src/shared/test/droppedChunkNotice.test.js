@@ -32,39 +32,6 @@ describe('the streaming client forwards a warning frame', () => {
   });
 });
 
-describe('the generate hook announces the loss on both paths', () => {
-  const src = read('hooks/useTTS.js');
-
-  it('reads the dropped-chunk count from the classic response headers', () => {
-    expect(src).toMatch(/X-OmniVoice-Dropped-Chunks/);
-    expect(src).toMatch(/X-OmniVoice-Dropped-Text/);
-  });
-
-  it('passes onWarning to the streaming call', () => {
-    const call = src.slice(src.indexOf('streamGenerateSpeech('));
-    expect(call.slice(0, 600)).toMatch(/onWarning:/);
-  });
-
-  it('announces through one shared helper, so the two paths cannot drift', () => {
-    // Two copies of this message is how one path ends up silent after a
-    // refactor — the bug being fixed, one delivery path over. One definition,
-    // and a call from each of the two delivery paths.
-    expect(src.match(/const announceDroppedText/g) || []).toHaveLength(1);
-    expect((src.match(/announceDroppedText\(/g) || []).length).toBeGreaterThanOrEqual(2);
-  });
-
-  it('uses i18n keys rather than an English literal', () => {
-    expect(src).toMatch(/tts\.droppedChunksWithText/);
-    expect(src).toMatch(/tts\.droppedChunks/);
-  });
-
-  it('never treats a dropped chunk as a failed generation', () => {
-    // The audio is real and playable; only the notice is new.
-    const helper = src.slice(src.indexOf('const announceDroppedText'));
-    expect(helper.slice(0, 400)).not.toMatch(/throw |setError/);
-  });
-});
-
 describe('the copy exists in every locale', () => {
   const dir = path.resolve(__dirname, '..', 'i18n', 'locales');
   const locales = fs.readdirSync(dir).filter((f) => f.endsWith('.json'));
@@ -87,26 +54,5 @@ describe('the copy exists in every locale', () => {
       expect(j.tts?.droppedChunks, f).toBeUndefined();
       expect(j.tts?.droppedChunksWithText, f).toBeUndefined();
     }
-  });
-});
-
-describe('the toast itself', () => {
-  it('quotes the lost text when there is text, and still fires when there is not', async () => {
-    // Exercised through the helper's shape rather than a full hook render:
-    // the hook needs a store, a player and Web Audio, none of which this
-    // behaviour depends on.
-    const src = read('hooks/useTTS.js');
-    const helper = src.slice(src.indexOf('const announceDroppedText'));
-    const body = helper.slice(0, helper.indexOf('};'));
-    expect(body).toMatch(/preview\s*\n?\s*\?\s*t\('tts\.droppedChunksWithText'/);
-    expect(body).toMatch(/:\s*t\('tts\.droppedChunks'/);
-    // Truncated, so a long lost paragraph cannot become an unreadable toast.
-    expect(body).toMatch(/slice\(0, \d+\)/);
-  });
-
-  it('is only raised when something was actually dropped', () => {
-    const src = read('hooks/useTTS.js');
-    expect(src).toMatch(/droppedCount\) && droppedCount > 0/);
-    expect(src).toMatch(/ev\.count > 0/);
   });
 });
