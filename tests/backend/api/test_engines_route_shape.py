@@ -357,13 +357,14 @@ def test_mps_api_hides_alias_but_accepts_it_for_selection(fresh_app, monkeypatch
     assert (selection.status_code, selection.json()["active"]) == (200, "omnivoice-subprocess")
 
 
-def test_gpu_compat_omnivoice_variants_include_rocm(fresh_app, monkeypatch):
-    """Both OmniVoice paths use torch's HIP-backed CUDA device on ROCm."""
+def test_gpu_compat_omnivoice_variants_include_rocm_and_xpu(fresh_app, monkeypatch):
+    """Both OmniVoice paths use torch's HIP-backed CUDA device on ROCm, and
+    load on Intel XPU through the same get_best_device()."""
     _force_host(monkeypatch, "rocm")
     client = _client(fresh_app)
     r = client.get("/engines")
     by_id = {b["id"]: b for b in r.json()["tts"]["backends"]}
-    expected = {"cuda", "rocm", "mps", "cpu"}
+    expected = {"cuda", "rocm", "xpu", "mps", "cpu"}
     assert set(by_id["omnivoice"]["gpu_compat"]) == expected
     assert set(by_id["omnivoice-subprocess"]["gpu_compat"]) == expected
 
@@ -391,6 +392,19 @@ def test_omnivoice_variants_route_to_rocm(fresh_app, monkeypatch):
     by_id = {b["id"]: b for b in body["tts"]["backends"]}
     for backend_id in ("omnivoice", "omnivoice-subprocess"):
         assert by_id[backend_id]["effective_device"] == "rocm"
+        assert by_id[backend_id]["routing_status"] == "accelerated"
+        assert by_id[backend_id]["routing_reason"] is None
+
+
+def test_omnivoice_variants_route_to_intel_xpu(fresh_app, monkeypatch):
+    """Before "xpu" was declared, an Arc host showed a CPU fallback (and got
+    CPU-sized budgets) while the model was actually loaded on the GPU."""
+    _force_host(monkeypatch, "xpu")
+
+    body = _client(fresh_app).get("/engines").json()
+    by_id = {b["id"]: b for b in body["tts"]["backends"]}
+    for backend_id in ("omnivoice", "omnivoice-subprocess"):
+        assert by_id[backend_id]["effective_device"] == "xpu"
         assert by_id[backend_id]["routing_status"] == "accelerated"
         assert by_id[backend_id]["routing_reason"] is None
 
@@ -1050,6 +1064,185 @@ def test_selftest_timeout_returns_timed_out(fresh_app, monkeypatch):
         gate.set()  # let the orphaned worker finish and exit
         tts_mod._REGISTRY.clear()
         tts_mod._REGISTRY.update(saved)
+
+
+def _register_bounded_selftest(tts_mod, engine_id, selftest):
+    """An engine that offers ``selftest_generate``, like OmniVoice GGUF."""
+
+    class _Bounded(tts_mod.TTSBackend):
+        id = engine_id
+        display_name = f"Fake {engine_id}"
+
+        @property
+        def sample_rate(self):
+            return 24000
+
+        @property
+        def supported_languages(self):
+            return ["en"]
+
+        @classmethod
+        def is_available(cls):
+            return True, "ready"
+
+        def generate(self, text, **kw):
+            raise AssertionError("the self-test must use selftest_generate")
+
+        def selftest_generate(self, text, *, timeout_s, **kw):
+            return selftest(timeout_s)
+
+    saved = dict(tts_mod._REGISTRY)
+    tts_mod._REGISTRY[engine_id] = _Bounded
+
+    def restore():
+        tts_mod._REGISTRY.clear()
+        tts_mod._REGISTRY.update(saved)
+
+    return restore
+
+
+def _vulkan_route(monkeypatch, ggml_backend=""):
+    """Pin the GGUF compute route: a verified Vulkan adapter whose OS-order
+    name must never be shown, and the given ``GGML_BACKEND``."""
+    from types import SimpleNamespace
+
+    from engines.omnivoice_gguf import compute
+
+    monkeypatch.setattr(compute, "selected_vulkan_adapter",
+                        lambda: SimpleNamespace(index=0, name="OS-order guess"))
+    monkeypatch.setattr(compute, "apply_compute_env",
+                        lambda env: {**env, "GGML_BACKEND": ggml_backend})
+
+
+def test_gguf_selftest_reports_vulkan_device_and_a_path_free_log(fresh_app, monkeypatch):
+    """#3993: GGUF runs its own bounded synthesis and names the Vulkan GPU
+    from that run's log; the runtime log keeps device lines but no paths."""
+    import os
+
+    from api.routers import engines as engines_router
+    from services import tts_backend as tts_mod
+
+    monkeypatch.setattr(engines_router, "_selftest_timeout_s", lambda: 42.0)
+    _vulkan_route(monkeypatch)  # automatic: GGML opens the first discrete GPU
+    home = os.path.expanduser("~")
+    log = "\n".join([
+        r"load_backend: loaded Vulkan backend from C:\Program Files\VoiceStudio\bin\ggml-vulkan.dll",
+        "ggml_vulkan: Found 2 Vulkan devices:",
+        "ggml_vulkan: 0 = AMD Radeon(TM) Graphics (AMD proprietary driver) | uma: 1 | fp16: 1",
+        "ggml_vulkan: 1 = AMD Radeon RX 5500M (AMD proprietary driver) | uma: 0 | fp16: 1",
+        "model on device Vulkan1: /opt/private dir/hub/omnivoice-base-Q8_0.gguf",
+        f"backend cache {home}/models/omnivoice-tokenizer-Q8_0.gguf",
+        "decoding chunk 3 of 8 from /srv/secret/input.txt",
+    ])
+    seen = []
+
+    def selftest(timeout_s):
+        seen.append(timeout_s)
+        return [0.0] * 2400, log
+
+    restore = _register_bounded_selftest(tts_mod, "fake-gguf", selftest)
+    try:
+        r = _client(fresh_app).post("/engines/fake-gguf/selftest")
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["ok"] is True and body["num_samples"] == 2400
+        # The route's one deadline reaches the engine, minus the lock wait.
+        assert len(seen) == 1 and 41.0 < seen[0] <= 42.0
+        assert body["runtime_device"] == "Vulkan 1: AMD Radeon RX 5500M"
+        out = body["runtime_log"]
+        assert "ggml-vulkan.dll" in out and "omnivoice-base-Q8_0.gguf" in out
+        assert "AMD Radeon RX 5500M" in out
+        for leaked in ("Program Files", "/opt/", "private dir", home, "/srv/", "input.txt"):
+            assert leaked not in out
+    finally:
+        restore()
+
+
+def test_gguf_selftest_names_the_pinned_device_from_its_log(fresh_app, monkeypatch):
+    """``Vulkan0`` pinned: the name is this run's device 0, not the
+    adapter list's guess; a device the log never listed stays unnamed."""
+    from services import tts_backend as tts_mod
+
+    log = "ggml_vulkan: 0 = AMD Radeon(TM) Graphics (AMD proprietary driver) | uma: 1"
+    restore = _register_bounded_selftest(tts_mod, "fake-gguf-pin", lambda _t: ([0.0] * 10, log))
+    try:
+        _vulkan_route(monkeypatch, "Vulkan0")
+        body = _client(fresh_app).post("/engines/fake-gguf-pin/selftest").json()
+        assert body["runtime_device"] == "Vulkan 0: AMD Radeon(TM) Graphics"
+        _vulkan_route(monkeypatch, "Vulkan1")
+        body = _client(fresh_app).post("/engines/fake-gguf-pin/selftest").json()
+        assert body["runtime_device"] is None
+    finally:
+        restore()
+
+
+def test_gguf_selftest_on_cpu_never_borrows_a_gpu_name(fresh_app, monkeypatch):
+    """Vulkan found nothing (or the route is CPU): no device, even when the
+    OS GPU list would offer one."""
+    from engines.omnivoice_gguf import compute
+    from services import tts_backend as tts_mod
+
+    restore = _register_bounded_selftest(
+        tts_mod, "fake-gguf-cpu", lambda _t: ([0.0] * 10, "ggml_vulkan: No devices found.\nusing CPU backend"))
+    try:
+        _vulkan_route(monkeypatch)
+        body = _client(fresh_app).post("/engines/fake-gguf-cpu/selftest").json()
+        assert body["ok"] is True and body["runtime_device"] is None
+        assert body["runtime_log"] == "ggml_vulkan: No devices found.\nusing CPU backend"
+
+        monkeypatch.setattr(compute, "selected_vulkan_adapter", lambda: None)
+        listed = "ggml_vulkan: 0 = AMD Radeon RX 5500M | uma: 0"
+        restore()
+        restore = _register_bounded_selftest(tts_mod, "fake-gguf-cpu", lambda _t: ([0.0] * 10, listed))
+        body = _client(fresh_app).post("/engines/fake-gguf-cpu/selftest").json()
+        assert body["runtime_device"] is None  # CPU route: listed GPUs were not used
+    finally:
+        restore()
+
+
+def test_timed_out_selftest_keeps_the_lock_until_its_worker_stops(fresh_app, monkeypatch):
+    """A self-test that outruns the route must not overlap the next one."""
+    import threading as _threading
+
+    from api.routers import engines as engines_router
+    from services import tts_backend as tts_mod
+
+    monkeypatch.setattr(engines_router, "_selftest_timeout_s", lambda: 0.05)
+    entered = _threading.Event()
+    gate = _threading.Event()
+    workers = []
+
+    def selftest(_timeout_s):
+        workers.append(_threading.current_thread())
+        entered.set()
+        assert gate.wait(10.0), "test never released the worker"
+        return [0.0] * 10, ""
+
+    restore = _register_bounded_selftest(tts_mod, "fake-gguf-slow", selftest)
+    client = _client(fresh_app)
+    try:
+        first = client.post("/engines/fake-gguf-slow/selftest").json()
+        assert first["timed_out"] is True
+        assert entered.wait(10.0)  # the worker is inside its run, holding the lock
+        second = client.post("/engines/fake-gguf-slow/selftest").json()
+        assert second["ok"] is False and "still running" in second["message"]
+        assert len(workers) == 1  # the second request never started a run
+        gate.set()
+        workers[0].join(10.0)
+        assert not workers[0].is_alive()
+        assert not engines_router._SELFTEST_LOCK.locked()
+        monkeypatch.setattr(engines_router, "_selftest_timeout_s", lambda: 10.0)
+        third = client.post("/engines/fake-gguf-slow/selftest").json()
+        assert third["ok"] is True
+    finally:
+        gate.set()
+        # Every worker releases the lock as it exits, including one whose
+        # entry was delayed past an assertion: owning it means none is left.
+        assert engines_router._SELFTEST_LOCK.acquire(timeout=10.0)
+        engines_router._SELFTEST_LOCK.release()
+        for worker in workers:
+            worker.join(10.0)
+        restore()
 
 
 # ── setup_snippet — copy-paste-ready env-var line for opt-in engines ────────

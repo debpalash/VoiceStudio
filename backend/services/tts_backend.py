@@ -252,7 +252,11 @@ class TTSBackend(ABC):
     def __init_subclass__(cls, **kwargs):
         super().__init_subclass__(**kwargs)
         # Enforce lifetime at the engine boundary so every caller is covered.
-        for name in ("generate", "generate_batch", "_ensure_loaded", "convert_voice"):
+        # ``selftest_generate`` (OmniVoice GGUF's bounded diagnostic) is a
+        # render too: an unload or idle sweep must not run under it.
+        for name in (
+            "generate", "generate_batch", "_ensure_loaded", "convert_voice", "selftest_generate",
+        ):
             method = cls.__dict__.get(name)
             if method is not None:
                 setattr(cls, name, _lease_render(method))
@@ -1855,7 +1859,10 @@ class OmniVoiceBackend(TTSBackend):
     supports_voice_design = True
     # The model draws from a per-request generator, so a seed reproduces a take.
     supports_generation_seed = True
-    gpu_compat = ("cuda", "rocm", "mps", "cpu")
+    # "xpu": the in-process loader and the sidecar both run on Intel Arc via
+    # get_best_device(); without it routing reported a CPU fallback (and gave
+    # CPU budgets) for a model that was actually on the GPU.
+    gpu_compat = ("cuda", "rocm", "xpu", "mps", "cpu")
     # Derived from the pool's own per-job budget (_GPU_VRAM_PER_JOB_GB = 5.0 in
     # model_manager, itself measured from the ~1.6 GB forward + autoregressive
     # decode and the co-loaded WhisperX on the clone path), plus room for the

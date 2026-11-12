@@ -3909,6 +3909,28 @@
       "title": "Ok",
       "type": "boolean"
      },
+     "runtime_device": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Runtime Device"
+     },
+     "runtime_log": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Runtime Log"
+     },
      "sample_rate": {
       "anyOf": [
        {

@@ -3257,7 +3257,13 @@
     "setupStatusFileMissing": "이 엔진에 필요한 파일이 없거나 읽을 수 없습니다. 설정 → 모델에서 다시 설치하세요.",
     "setupStatusPlatform": "이 엔진은 이 컴퓨터의 플랫폼에서 실행되지 않습니다. 지원 플랫폼은 엔진 안내서에 나와 있습니다.",
     "setupStatusNoMps": "이 엔진에는 Apple GPU(MPS)가 필요하지만 이 설치의 PyTorch가 이를 사용할 수 없습니다. 대개 macOS를 업데이트하거나 VoiceStudio를 다시 설치하면 해결됩니다.",
-    "asrSetupRepairBundled": "백엔드에 포함된 Python 패키지가 없거나 손상되었습니다. 백엔드 환경을 복구하거나 소스 설치의 고정된 종속성으로 환경을 다시 만든 뒤 재시작하세요."
+    "asrSetupRepairBundled": "백엔드에 포함된 Python 패키지가 없거나 손상되었습니다. 백엔드 환경을 복구하거나 소스 설치의 고정된 종속성으로 환경을 다시 만든 뒤 재시작하세요.",
+    "selfTest": "자체 테스트",
+    "selfTesting": "합성 중…",
+    "selfTestOk": "{{seconds}}초 @ {{khz}} kHz, {{took}} 소요",
+    "selfTestFailed": "자체 테스트 실패",
+    "selfTestTimedOut": "자체 테스트 시간 초과",
+    "selfTestUnreachable": "자체 테스트를 실행할 수 없습니다. VoiceStudio가 실행 중인지 확인한 후 다시 시도하세요."
   },
   "performanceProfile": {
     "requiresEngine": "속도와 품질을 조절하려면 {{engine}}을 설치하고 선택하세요.",

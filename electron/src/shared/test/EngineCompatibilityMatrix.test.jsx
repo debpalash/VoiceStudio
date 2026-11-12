@@ -820,6 +820,51 @@ describe('EngineCompatibilityMatrix', () => {
     expect(within(panel).queryByRole('button', { name: /self-test/i })).not.toBeInTheDocument();
   });
 
+  it('shows the Vulkan device an OmniVoice GGUF self-test ran on', async () => {
+    const response = makeEnginesResponse();
+    response.tts.backends.push({
+      id: 'omnivoice-gguf',
+      display_name: 'OmniVoice GGUF (test)',
+      available: true,
+      reason: null,
+      install_hint: null,
+      last_error: null,
+      isolation_mode: 'in-process',
+      gpu_compat: ['cpu'],
+    });
+    const apiSelfTestEngine = vi.fn().mockResolvedValue({
+      id: 'omnivoice-gguf',
+      ok: true,
+      message: 'synthesized',
+      duration_ms: 820,
+      sample_rate: 24000,
+      num_samples: 19680,
+      audio_seconds: 0.82,
+      runtime_device: 'Vulkan 1: AMD Radeon RX 5500M',
+      runtime_log: 'ggml_vulkan: 1 = AMD Radeon RX 5500M | uma: 0',
+    });
+    render(
+      <EngineCompatibilityMatrix
+        family="tts"
+        apiListEngines={vi.fn().mockResolvedValue(response)}
+        apiGetEngineHealth={vi.fn()}
+        apiSelfTestEngine={apiSelfTestEngine}
+      />,
+    );
+    await waitForRow('omnivoice-gguf');
+    const panel = openDetails('omnivoice-gguf');
+    fireEvent.click(within(panel).getByRole('button', { name: /self-test omnivoice gguf/i }));
+    await waitFor(() =>
+      expect(within(panel).getByTestId('selftest-result-omnivoice-gguf')).toHaveTextContent(
+        'Vulkan 1: AMD Radeon RX 5500M',
+      ),
+    );
+    // The runtime log is reachable by keyboard through a native disclosure.
+    expect(
+      within(panel).getByText('ggml_vulkan: 1 = AMD Radeon RX 5500M | uma: 0').closest('details'),
+    ).not.toBeNull();
+  });
+
   it('does not offer Self-test on a non-TTS family (ASR)', async () => {
     const apiListEngines = vi.fn().mockResolvedValue({
       tts: { active: '', backends: [] },

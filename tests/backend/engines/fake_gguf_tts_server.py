@@ -114,6 +114,8 @@ class Handler(BaseHTTPRequestHandler):
 
 def main() -> None:
     _event(kind="start", pid=os.getpid(), argv=sys.argv[1:])
+    # What ggml-vulkan prints while the real server loads (self-test log).
+    print("ggml_vulkan: 0 = Fake Vulkan GPU (test driver) | uma: 0", file=sys.stderr, flush=True)
     if _flag("exit_at_start"):
         sys.exit(1)
     server = ThreadingHTTPServer((_arg("--host"), int(_arg("--port"))), Handler)

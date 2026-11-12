@@ -418,3 +418,271 @@ def test_the_memory_controls_see_and_unload_the_server(rig, monkeypatch):
     assert "active-engine:omnivoice-gguf" not in [
         m["id"] for m in model_lifecycle.list_loaded()["models"]
     ]
+
+
+# ── self-test (#3993) ─────────────────────────────────────────────────────
+
+
+def _diagnostic_paths(rig, *, delay=0.0, calls=None):
+    """A ``_resolve_quant_paths`` stand-in that records its kwargs."""
+    import time
+
+    def resolve(**kw):
+        if calls is not None:
+            calls.append(kw)
+        time.sleep(delay)
+        return rig.base, rig.codec, {"base": rig.base.name, "tokenizer": rig.codec.name}
+
+    return resolve
+
+
+def test_selftest_runs_the_cli_without_downloading_or_the_server(rig, monkeypatch):
+    """With no server running, the self-test is one bounded spawn: no weight
+    download, no server start, and the CLI gets at most the budget."""
+    calls, timeouts = [], []
+    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", _diagnostic_paths(rig, calls=calls))
+
+    def fake_run(argv, **kw):
+        if argv[0] != str(rig.cli):
+            return subprocess.CompletedProcess(argv, 1, "", "")
+        timeouts.append(kw["timeout"])
+        _write_wav(Path(argv[argv.index("-o") + 1]))
+        return subprocess.CompletedProcess(argv, 0, "", "ggml_vulkan: 0 = Radeon\n")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    audio, log = rig.instance.selftest_generate("hello", timeout_s=30, language="en")
+    assert audio.shape == (1, 72_000)
+    assert log == "ggml_vulkan: 0 = Radeon"
+    assert calls == [{"download": False}]
+    assert len(timeouts) == 1 and 0 < timeouts[0] <= 30
+    assert rig.server_argvs == [] and rig.events("start") == []
+
+
+def test_selftest_deadline_covers_preparation(rig, monkeypatch):
+    """Time spent before the spawn comes out of the same budget; a spent
+    budget starts no process at all. A controlled clock, no real waiting."""
+    import time as real_time
+
+    now = [1000.0]
+
+    class _Clock:
+        def __getattr__(self, name):
+            return getattr(real_time, name)
+
+        def monotonic(self):
+            return now[0]
+
+    monkeypatch.setattr(rig.mod, "time", _Clock())
+    spawned = []
+
+    def fake_run(argv, **kw):
+        if argv[0] == str(rig.cli):
+            spawned.append(kw["timeout"])
+            _write_wav(Path(argv[argv.index("-o") + 1]))
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    def slow_resolve(**_kw):
+        now[0] += 0.3  # preparation takes 0.3 s of the budget
+        return rig.base, rig.codec, {"base": rig.base.name, "tokenizer": rig.codec.name}
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", slow_resolve)
+    with pytest.raises(RuntimeError, match="ran out of time"):
+        rig.instance.selftest_generate("hello", timeout_s=0.2)
+    assert spawned == []
+
+    rig.instance.selftest_generate("hello", timeout_s=1.0)
+    assert spawned == [pytest.approx(0.7)]
+
+
+def test_selftest_kills_a_cli_that_outruns_the_deadline(rig, monkeypatch):
+    def fake_run(argv, **kw):
+        if argv[0] == str(rig.cli):
+            raise subprocess.TimeoutExpired(argv, kw["timeout"])
+        return subprocess.CompletedProcess(argv, 1, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", _diagnostic_paths(rig))
+    with pytest.raises(RuntimeError, match="timed out after") as caught:
+        rig.instance.selftest_generate("hello", timeout_s=5)
+    assert "OMNIVOICE_SELFTEST_TIMEOUT_S" in str(caught.value)
+    assert "GENERATE_TIMEOUT" not in str(caught.value)
+
+
+def test_selftest_says_missing_weights_are_not_installed(rig, monkeypatch):
+    """No download happens, so the advice is to install, not to retry."""
+    entry = {"base": "omnivoice-base-Q8_0.gguf", "tokenizer": "omnivoice-tokenizer-Q8_0.gguf"}
+
+    def missing(**_kw):
+        raise rig.mod.WeightsNotInstalled("Could not download ...", entry)
+
+    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", missing)
+    with pytest.raises(RuntimeError) as caught:
+        rig.instance.selftest_generate("hello", timeout_s=5)
+    message = str(caught.value)
+    assert "not installed yet" in message and "omnivoice-base-Q8_0.gguf" in message
+    assert "Could not download" not in message and "connection" not in message
+
+
+def test_selftest_uses_the_running_resident_server(rig, monkeypatch):
+    """A loaded resident model answers the self-test: no second copy in the
+    CLI, no restart, and the log is this server process's own output."""
+    log = rig.root / "logs" / "tts-server.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text("ggml_vulkan: 0 = An Earlier Server GPU | uma: 0\n", encoding="utf-8")
+    rig.instance.generate("hello")
+    proc = rig.server.process
+    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", _diagnostic_paths(rig))
+
+    audio, runtime_log = rig.instance.selftest_generate("hello", timeout_s=30, language="en")
+    assert audio.shape[0] == 1 and audio.shape[1] > 0
+    assert "Fake Vulkan GPU" in runtime_log and "Earlier Server" not in runtime_log
+    assert rig.cli_argvs == []
+    assert len(rig.events("start")) == 1 and rig.server.process is proc and proc.poll() is None
+
+
+def test_selftest_timeout_on_the_resident_server_keeps_it_loaded(rig, monkeypatch):
+    """The diagnostic never unloads the user's model, even when it times out."""
+    rig.instance.generate("hello")
+    proc = rig.server.process
+    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", _diagnostic_paths(rig))
+    rig.flag("slow_speech")
+    with pytest.raises(RuntimeError, match="OMNIVOICE_SELFTEST_TIMEOUT_S"):
+        rig.instance.selftest_generate("hello", timeout_s=0.5)
+    assert rig.server.process is proc and proc.poll() is None
+    assert rig.cli_argvs == []
+
+
+def test_each_selftest_gets_its_own_runtime_log(rig, monkeypatch):
+    """Concurrent runs on one engine never read each other's log. Resident
+    mode is off here: with it on, a self-test holds the server lock."""
+    monkeypatch.setenv(rig.resident.RESIDENT_ENV, "0")
+    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", _diagnostic_paths(rig))
+    both_running = threading.Barrier(2, timeout=5)
+
+    def fake_run(argv, **kw):
+        if argv[0] != str(rig.cli):
+            return subprocess.CompletedProcess(argv, 1, "", "")
+        both_running.wait()
+        _write_wav(Path(argv[argv.index("-o") + 1]))
+        return subprocess.CompletedProcess(argv, 0, "", f"ggml_vulkan: run {kw['input']}")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    logs: dict = {}
+
+    def run(text):
+        logs[text] = rig.instance.selftest_generate(text, timeout_s=10)[1]
+
+    workers = [threading.Thread(target=run, args=(name,)) for name in ("first", "second")]
+    for worker in workers:
+        worker.start()
+    for worker in workers:
+        worker.join(10)
+    assert logs == {"first": "ggml_vulkan: run first", "second": "ggml_vulkan: run second"}
+    assert not hasattr(rig.instance, "_last_runtime_log")
+
+
+def test_selftest_holds_the_render_lease(rig, monkeypatch):
+    """Unload and the idle sweep skip the engine while the self-test runs."""
+    from services import tts_backend
+
+    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", _diagnostic_paths(rig))
+    leased = []
+
+    def fake_run(argv, **kw):
+        if argv[0] != str(rig.cli):
+            return subprocess.CompletedProcess(argv, 1, "", "")
+        leased.append(tts_backend._ENGINE_IN_USE.get(type(rig.instance), 0))
+        _write_wav(Path(argv[argv.index("-o") + 1]))
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    rig.instance.selftest_generate("hello", timeout_s=30)
+    assert leased == [1]
+    assert tts_backend._ENGINE_IN_USE.get(type(rig.instance), 0) == 0
+
+
+def test_selftest_cli_blocks_a_resident_start_until_it_ends(rig, monkeypatch):
+    """With no server running, a generation cannot start one (a second model
+    copy) while the self-test's CLI holds the model."""
+    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", _diagnostic_paths(rig))
+    others = []
+
+    def try_lock():
+        lock = rig.instance._resident.lock
+        got = lock.acquire(blocking=False)
+        if got:
+            lock.release()
+        others.append(got)
+
+    def fake_run(argv, **kw):
+        if argv[0] != str(rig.cli):
+            return subprocess.CompletedProcess(argv, 1, "", "")
+        probe = threading.Thread(target=try_lock)
+        probe.start()
+        probe.join(5)
+        _write_wav(Path(argv[argv.index("-o") + 1]))
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    rig.instance.selftest_generate("hello", timeout_s=30)
+    assert others == [False]
+    try_lock()
+    assert others == [False, True]  # released when the self-test ends
+    assert rig.events("start") == []
+
+
+def test_selftest_reports_a_resident_server_holding_another_quant(rig, monkeypatch):
+    """A quant change not yet applied fails the test without touching the server."""
+    rig.instance.generate("hello")
+    proc = rig.server.process
+    other = rig.root / "omnivoice-base-BF16.gguf"
+    other.write_bytes(b"0")
+
+    def resolve(**_kw):
+        return other, rig.codec, {"base": other.name, "tokenizer": rig.codec.name}
+
+    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", resolve)
+    with pytest.raises(RuntimeError, match="still has omnivoice-base-Q8_0.gguf loaded"):
+        rig.instance.selftest_generate("hello", timeout_s=30)
+    assert rig.server.process is proc and proc.poll() is None
+    assert rig.cli_argvs == [] and len(rig.events("start")) == 1
+
+
+def test_selftest_on_the_resident_server_counts_as_use(rig, monkeypatch):
+    """The idle sweep sees a resident self-test as use, even a failed one."""
+    rig.instance.generate("hello")
+    proc = rig.server.process
+    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", _diagnostic_paths(rig))
+
+    rig.instance._resident_used -= 7200
+    rig.instance.selftest_generate("hello", timeout_s=30)
+    assert rig.instance.release_if_idle(3600) is False and proc.poll() is None
+
+    rig.instance._resident_used -= 7200
+    rig.flag("reject_speech")
+    with pytest.raises(RuntimeError, match="refused the self-test"):
+        rig.instance.selftest_generate("hello", timeout_s=30)
+    assert rig.instance.release_if_idle(3600) is False and proc.poll() is None
+
+
+def test_selftest_reports_a_resident_server_on_an_old_compute_setting(rig, monkeypatch):
+    """A compute change the running server has not picked up fails the test
+    without touching the server; the next generation applies it."""
+    monkeypatch.delenv("OMNIVOICE_GGUF_BACKEND", raising=False)
+    monkeypatch.delenv("OMNIVOICE_GGUF_DEVICE", raising=False)
+    rig.instance.generate("hello")
+    proc = rig.server.process
+    monkeypatch.setattr(rig.instance, "_resolve_quant_paths", _diagnostic_paths(rig))
+    monkeypatch.setenv("OMNIVOICE_GGUF_BACKEND", "cpu")
+
+    with pytest.raises(RuntimeError, match="previous compute setting"):
+        rig.instance.selftest_generate("hello", timeout_s=30)
+    assert rig.server.process is proc and proc.poll() is None
+    assert rig.cli_argvs == [] and len(rig.events("start")) == 1
+
+    rig.instance.generate("hello")  # restarts the server under the new setting
+    assert proc.poll() is not None and len(rig.events("start")) == 2
+    assert rig.server.compute == "CPU"
+    audio, _log = rig.instance.selftest_generate("hello", timeout_s=30)
+    assert audio.shape[1] > 0

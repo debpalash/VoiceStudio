@@ -44,7 +44,9 @@ export const SEQUENTIAL_WEIGHT_LOAD_ENV = 'HF_DEACTIVATE_ASYNC_LOAD';
  * After such a crash, later starts of this version load weights on one thread.
  * It changes only load speed and is logged with its reason; the crash record
  * stays for the report, and an upgrade starts with the default again. A value
- * the user set is never overridden. Returns the log line, or undefined.
+ * the user set is never overridden. Windows already starts serial (the launch
+ * env sets it), so this now only acts on macOS and Linux. Returns the log line,
+ * or undefined.
  */
 export function applyWeightLoadFallback(
   env: NodeJS.ProcessEnv,

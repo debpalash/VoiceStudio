@@ -182,3 +182,72 @@ def test_direct_apt_pattern_catches_leading_options():
     for line in ("sudo apt -y install pkg", "apt-get -qq update", "apt install x", "sudo apt-get -o A=1 install y"):
         assert pattern.search(line), line
     assert not pattern.search("apt-get clean")
+
+
+def _helper_fetch_steps():
+    import yaml
+
+    found = []
+    for name in ("electron-release", "electron-build", "snap-store", "install-smoke", "build-omnivoice-tts"):
+        doc = yaml.safe_load((GH / "workflows" / f"{name}.yml").read_text(encoding="utf-8"))
+        steps = [
+            (name, s.get("name", "?"), s["run"])
+            for job in doc["jobs"].values()
+            for s in job.get("steps", [])
+            if "apt-retry.sh?ref=" in s.get("run", "")
+        ]
+        assert steps, f"{name}: no step fetches apt-retry.sh from the workflow commit"
+        found.extend(steps)
+    return found
+
+
+def _run_step(tmp_path, run, with_helper):
+    work = tmp_path / "work"
+    (work / ".github" / "scripts").mkdir(parents=True)
+    log = tmp_path / "helper-args"
+    gh_log = tmp_path / "gh-args"
+    fake = f'#!/bin/sh\necho "$@" > {log}\n'
+    if with_helper:
+        (work / ".github" / "scripts" / "apt-retry.sh").write_text(fake, encoding="utf-8")
+    stubs = tmp_path / "bin"
+    stubs.mkdir()
+    # gh prints a fake helper that records its arguments.
+    (stubs / "gh").write_text(
+        f'#!/bin/sh\necho "$@" > {gh_log}\ncat <<\'EOS\'\n{fake}EOS\n', encoding="utf-8"
+    )
+    (stubs / "gh").chmod(0o755)
+    runner_temp = tmp_path / "runner"
+    runner_temp.mkdir()
+    env = {
+        "PATH": f"{stubs}:/usr/bin:/bin",
+        "RUNNER_TEMP": str(runner_temp),
+        "GITHUB_REPOSITORY": "owner/repo",
+        "GITHUB_SHA": "abc123",
+        "GH_TOKEN": "x",
+    }
+    r = subprocess.run(["bash", "-eo", "pipefail", "-c", run], cwd=work, env=env,
+                       capture_output=True, text=True, timeout=30)
+    return r, log, gh_log
+
+
+@bash
+@pytest.mark.parametrize("with_helper", [True, False], ids=["helper-present", "helper-missing"])
+def test_workflows_that_build_older_refs_fetch_the_helper_when_missing(tmp_path, with_helper):
+    # electron-release/-build, snap-store, install-smoke and build-omnivoice-tts can
+    # check out an older tag that predates apt-retry.sh; each step must fetch it from
+    # the workflow's own commit and still run `install` with its packages.
+    for i, (name, step, run) in enumerate(_helper_fetch_steps()):
+        case = tmp_path / f"case{i}"
+        case.mkdir()
+        expected = re.search(r'bash "\$helper" install ([^\n\\]+)', run)
+        assert expected, f"{name}/{step}: helper is never run with `install`"
+        pkgs = expected.group(1).split()
+        r, log, gh_log = _run_step(case, run, with_helper)
+        assert r.returncode == 0, f"{name}/{step}: {r.stderr}"
+        got = log.read_text(encoding="utf-8").split()
+        assert got[0] == "install" and got[1:] == pkgs, f"{name}/{step}: {got}"
+        if with_helper:
+            assert not gh_log.exists(), f"{name}/{step}: fetched despite local helper"
+        else:
+            args = gh_log.read_text(encoding="utf-8")
+            assert "repos/owner/repo/contents/.github/scripts/apt-retry.sh?ref=abc123" in args, f"{name}/{step}: {args}"
