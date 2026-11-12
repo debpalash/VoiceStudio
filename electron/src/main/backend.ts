@@ -3,7 +3,11 @@ import { windowsRocmInstalled, windowsRocmRequested } from './runtime-windows-ro
 import { runtimeProjectReady } from './runtime-readiness';
 import { cpuSetupOffered, rememberTorchVariant, saveTorchVariant } from './torch-choice';
 import { runRuntimeProbe } from './runtime-probe';
-import { needsManagedRuntime, selectedPythonPath, validatePythonRuntime } from './runtime-python-selection';
+import {
+  needsManagedRuntime,
+  selectedPythonPath,
+  validatePythonRuntime,
+} from './runtime-python-selection';
 import { RuntimeLaunchRefusedError } from './runtime-launch-refusal';
 import { pypiFilesHost } from './pypi-mirror';
 import { SetupLog, scrubSetupText } from './setup-log';
@@ -99,11 +103,7 @@ import {
   type RemoteSession,
 } from './remote-backend';
 import { toolSearchDirs, toolSearchDirsAsync } from './tool-path';
-import {
-  SetupProgressTracker,
-  cleanProcessLine,
-  downloadStallExceeded,
-} from './setup-progress';
+import { SetupProgressTracker, cleanProcessLine, downloadStallExceeded } from './setup-progress';
 import { SetupDownloadReporter, inFlightDownloadBytes } from './setup-downloads';
 import { scrubText } from '../shared/utils/scrub';
 import { SUPERVISE_ACTIVE_MS as SUPERVISE_POLL_MS, superviseDelayMs } from './supervise-cadence';
@@ -592,7 +592,10 @@ export async function resolveSpawnPlan(
       };
     }
     // -B: never write bytecode into the app's bundled sources.
-    return { argv: [selectedPython, '-B', '-m', ...UVICORN_ARGS, '--port', String(port)], cwd: project };
+    return {
+      argv: [selectedPython, '-B', '-m', ...UVICORN_ARGS, '--port', String(port)],
+      cwd: project,
+    };
   }
   if (app.isPackaged) {
     const project = packagedProject ?? join(defaultRuntimeRoot(), 'project');
@@ -849,6 +852,11 @@ export function spawnFailureMessage(
 ): string {
   const detail = errorMessage(error);
   const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  if (code === 'ETIMEDOUT') {
+    // The OS gave up starting the program (on macOS, posix_spawn times out when its
+    // security check of the executable stalls); Node throws a bare `spawn ETIMEDOUT` (#4035).
+    return `Could not start ${command}: ${detail}. The system did not start it in time, which usually clears after restarting the computer. Restart it, then open VoiceStudio again.`;
+  }
   const launchRejected = ['ENOENT', 'UNKNOWN', 'EACCES', 'EPERM'].includes(code ?? '');
   if (!launchRejected) return `Could not start ${command}: ${detail}`;
   if (runtimeOwned && code === 'UNKNOWN') {
@@ -864,6 +872,9 @@ export function spawnFailureMessage(
     ? `Could not start ${command}: ${detail}. Install or repair the local runtime, then restart VoiceStudio.`
     : `Could not start ${command}: ${detail}. Check that the program exists and can be launched, then try again.`;
 }
+
+/** Waits before each retry of a launch the OS timed out (#4035). */
+export const SPAWN_RETRY_DELAYS_MS = [2_000, 5_000];
 
 function runtimeFailureMessage(error: unknown): string {
   return error instanceof RuntimeLaunchRefusedError
@@ -1077,7 +1088,10 @@ export function startupTimeoutMessage(
       // rather than dropping the only evidence. Even a path that leaves no
       // room keeps a short end: the report cuts the message, not the advice
       // shown on screen. Whole characters only, so no emoji is split.
-      const room = Math.max(MIN_QUOTED_LINE_CHARS, MAX_MSG_CHARS - (message.length - lines[0].length) - 1);
+      const room = Math.max(
+        MIN_QUOTED_LINE_CHARS,
+        MAX_MSG_CHARS - (message.length - lines[0].length) - 1,
+      );
       const chars = Array.from(lines[0]);
       let kept = '';
       for (let i = chars.length - 1; i >= 0 && kept.length + chars[i].length <= room; i--) {
@@ -1151,6 +1165,8 @@ export class BackendSupervisor extends EventEmitter<{
   private readonly childErrorLog: string[] = [];
   /** When the spawned process last printed a line (0 = nothing yet this launch). */
   private lastChildOutputAt = 0;
+  /** When the running readiness wait's budget started; a launch retry moves it. */
+  private readinessClockAt = 0;
   /** The current managed launch's env and spawn time, for its own log. */
   private launchLog: BackendLaunchLog | null = null;
   /** Bumped on every start/shutdown so stale poll loops and exit handlers no-op. */
@@ -1987,7 +2003,10 @@ export class BackendSupervisor extends EventEmitter<{
     if (!this.cpuRestartAvailable() || !launch)
       throw new Error('Restart on CPU is only available after the local engine crashed');
     await pinComputeDeviceToCpu(backendDataDir(launch));
-    this.pushLog('out', 'Compute device set to CPU from the failure screen; restarting the engine.');
+    this.pushLog(
+      'out',
+      'Compute device set to CPU from the failure screen; restarting the engine.',
+    );
     await this.restart();
   }
 
@@ -2388,7 +2407,40 @@ export class BackendSupervisor extends EventEmitter<{
   }
 
   /** Launch the resolved backend command and wire its lifecycle events. */
-  private spawnChild(plan: SpawnPlan, gen: number): void {
+  /**
+   * Schedules another launch after a transient spawn failure (the OS timed out or
+   * had no room for the process, #4035). False when the failure is final.
+   */
+  private retrySpawn(err: unknown, plan: SpawnPlan, gen: number, attempt: number): boolean {
+    const code = (err as NodeJS.ErrnoException | undefined)?.code;
+    if (code !== 'ETIMEDOUT' && code !== 'EAGAIN') return false;
+    if (attempt >= SPAWN_RETRY_DELAYS_MS.length) return false;
+    // A synchronous first failure leaves start() without a readiness wait; an
+    // asynchronous one keeps the wait that is already running for this launch.
+    const needsReadyWait = this.stage !== 'starting';
+    // Anything that moves the stage meanwhile (a backend answered, the user
+    // stopped it, a failure was reported) owns what happens next.
+    const stageAtFailure = this.stage;
+    const delay = SPAWN_RETRY_DELAYS_MS[attempt];
+    // The readiness wait already running counts its budget from the retried
+    // launch, not from the attempt that failed.
+    if (!needsReadyWait) this.readinessClockAt = Date.now() + delay;
+    this.pushLog(
+      'err',
+      `Starting the backend failed (${errorMessage(err)}); retrying in ${delay / 1000} s.`,
+    );
+    setTimeout(() => {
+      if (gen !== this.generation || this.shuttingDown || this.child) return;
+      if (this.stage !== stageAtFailure) return;
+      this.spawnChild(plan, gen, attempt + 1);
+      if (needsReadyWait && gen === this.generation && this.stage === 'starting') {
+        void this.waitUntilReady(gen, startupBudgetMs());
+      }
+    }, delay);
+    return true;
+  }
+
+  private spawnChild(plan: SpawnPlan, gen: number, attempt = 0): void {
     this.crashes.startProcess();
     const [command, ...args] = plan.argv;
     // A custom command bypasses the managed runtime; its own executable is the
@@ -2419,6 +2471,7 @@ export class BackendSupervisor extends EventEmitter<{
         detached: process.platform !== 'win32',
       });
     } catch (err) {
+      if (this.retrySpawn(err, plan, gen, attempt)) return;
       // The launch was ours: reports must not call this an attached backend.
       this.setStage('failed', {
         managed: runtimeOwned,
@@ -2451,6 +2504,9 @@ export class BackendSupervisor extends EventEmitter<{
     child.on('error', (err) => {
       if (gen !== this.generation) return;
       this.child = null;
+      // Node reports EAGAIN (and other resource limits) here rather than throwing;
+      // a child that never got a pid can be launched again.
+      if (child.pid === undefined && this.retrySpawn(err, plan, gen, attempt)) return;
       this.setStage('failed', {
         managed: runtimeOwned,
         message: spawnFailureMessage(command, err, { runtimeOwned }),
@@ -2745,7 +2801,7 @@ export class BackendSupervisor extends EventEmitter<{
     // candidates. Once that pre-spawn work outlasted the budget, this loop
     // failed on its very first probe — killing a backend that had been alive
     // for a second and reporting "did not answer within 300 s".
-    const pollStartedAt = Date.now();
+    this.readinessClockAt = Date.now();
     const waitingStage = this.stage;
     while (gen === this.generation && this.stage === waitingStage) {
       const ready = await this.probe();
@@ -2759,7 +2815,7 @@ export class BackendSupervisor extends EventEmitter<{
       if (gen !== this.generation || (this.stage !== 'starting' && this.stage !== 'attaching')) {
         return;
       }
-      if (Date.now() > readinessDeadline(pollStartedAt, budgetMs, this.lastChildOutputAt)) {
+      if (Date.now() > readinessDeadline(this.readinessClockAt, budgetMs, this.lastChildOutputAt)) {
         this.generation++;
         // killChild() nulls this.child, so record whether this launch owned a
         // process *before* tearing it down. Checking afterwards would
