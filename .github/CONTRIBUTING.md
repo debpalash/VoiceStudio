@@ -197,7 +197,7 @@ VoiceStudio/
 │       ├── main/            # Electron main process (IPC, updater, runtime)
 │       ├── preload/         # Narrow renderer bridges
 │       ├── renderer/src/    # App shell, features, shadcn ui/, i18n catalog
-│       └── shared/          # Pages, components, hooks, Zustand store/, i18n
+│       └── shared/          # Legacy modules the renderer still imports (being retired, #2603)
 ├── native/                  # Rust desktop helper used by Electron
 ├── deploy/                  # Dockerfile, compose, install worker
 ├── docs/                    # User, install, release and design docs
@@ -312,15 +312,15 @@ one. The rules:
 
 - **Size caps:** **soft 300 lines**, **hard 500 lines** per component file
   (`.jsx`/`.tsx`). Anything over 500 lines must be split.
-- **Pages are thin orchestrators.** A file in `electron/src/shared/pages/` is just
-  layout + routing + state wiring that composes feature components — no inline
-  sub-component over ~50 lines.
-- **One component per file.** Co-locate `Foo.jsx` + `Foo.test.jsx` together in a
-  per-page feature folder under `electron/src/shared/components/` (e.g.
-  `components/settings/`, `components/dub/`). Style with utilities + shadcn
-  first (see the CSS rule above).
-- **Shared bits go in a `primitives/` folder** inside the feature folder
-  (`components/settings/primitives/` is the existing example).
+- **Pages are thin orchestrators.** A page in `electron/src/renderer/src/features/<feature>/`
+  (routed from `electron/src/renderer/src/routes/`) is just layout + routing + state
+  wiring that composes feature components — no inline sub-component over ~50 lines.
+- **One component per file.** Co-locate `foo.tsx` + `foo.test.tsx` together in the
+  feature folder under `electron/src/renderer/src/features/` (e.g. `features/settings/`,
+  `features/dub/`). Style with utilities + shadcn first (see the CSS rule above).
+- **Shared bits go in a subfolder** inside the feature folder, or in
+  `electron/src/renderer/src/components/` when several features use them.
+  New UI never goes in `electron/src/shared/`.
 - **Enforced in review, not by lint:** `bun run lint` (oxlint) has no
   `max-lines` rule, so reviewers apply the caps.
 
