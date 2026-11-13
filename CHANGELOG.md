@@ -26,6 +26,7 @@ metadata and the backend fallback mirror it.
 
 ### Added
 
+- A dub interrupted by a crash or restart now picks up from its finished segments instead of starting over (#4088)
 - omnivoice-gguf now supports voice design, non-verbal tags and the decode-steps slider (#4084) — thanks @snazzybean!
 - Cebuano is now a dub translation target (#4058, #4072) — thanks @onparr-24!
 - Home shows a What's new link, winter pixel snow, a Christmas-week Santa, two rows of contributor portraits, and an easter egg that hides the credits until the next update after you visit three contributor profiles (#4070)
@@ -69,11 +70,11 @@ metadata and the backend fallback mirror it.
 - OmniVoice GGUF does voice design, non-verbal tags like [laughter] and a decode-steps slider
 - Stories and Audiobook stay open when the window recovers from a blank screen, and Restart to update works again
 - Other local apps such as AIRI get the exact setting they need to use the API
-- Dubbing keeps each cloned voice's own recording
+- Dubbing keeps each cloned voice's own recording, and a crashed dub picks up from its finished segments
 
 **Windows setup is sturdier.** If the Python download stalls on GitHub, setup now tries the mirror once by itself (Auto-detect region) and says so in the setup log. Cancelling or retrying a download no longer ends in "A JavaScript error occurred in the main process".
 
-**Testing wanted:** first-run setup on Windows over slow or restricted networks; OmniVoice GGUF voice design and tags on Vulkan and CPU; Restart to update from v0.5.9-beta.1 on macOS.
+**Testing wanted:** first-run setup on Windows over slow or restricted networks; OmniVoice GGUF voice design and tags on Vulkan and CPU; Restart to update from v0.5.9-beta.1 on macOS; and quitting mid-dub on OmniVoice or CosyVoice, then generating again.
 
 **Thanks:** @RerankerGuo (MOSS-TTS-Nano, #4078) for code; @snazzybean (#4080, #4081, with tested patches) and @rockziepromax (#4063) for reports; and everyone on Discord who sent setup screenshots and logs.
 
@@ -97,6 +98,7 @@ metadata and the backend fallback mirror it.
 
 ### Added
 
+- A dub interrupted by a crash or restart now picks up from its finished segments instead of starting over (#4088)
 - omnivoice-gguf now supports voice design, non-verbal tags and the decode-steps slider (#4084) — thanks @snazzybean!
 - Cebuano is now a dub translation target (#4058, #4072) — thanks @onparr-24!
 - Home shows a What's new link, winter pixel snow, a Christmas-week Santa, two rows of contributor portraits, and an easter egg that hides the credits until the next update after you visit three contributor profiles (#4070)
