@@ -8,6 +8,118 @@ metadata and the backend fallback mirror it.
 
 ## [Unreleased]
 
+**Highlights**
+
+- Voice Cloning queues takes instead of refusing a second one while rendering
+- Home shows a What's new link, winter pixel snow and a Christmas-week Santa
+- Audiobook MP3 exports play and download again, and full dubs survive free-text directions like "slow"
+- OmniVoice GGUF falls back to the CPU when the GPU crashes, and finds its runtime in moved app folders
+- Long lists stay fast, and a hidden window no longer runs timers
+
+**Voice Cloning gets a generation queue.** Start a take while another renders and it waits its turn, keeping the script, voice and settings you had when you clicked; cancel one or all from the queue panel. A waiting take is skipped, with the reason, if you replace, lock, unlock or re-transcribe its voice before it starts.
+
+**Testing wanted:** the queue with voice edits while takes wait; OmniVoice GGUF falling back to the CPU after a GPU crash (Pascal cards such as the GTX 1080, and Apple Silicon); and long Projects, dub project and Transcribe history lists.
+
+**Thanks:** @ItzSudhan (generation queue, #4064), @b84330808 (OmniVoice GGUF runtime, #4053), @blutuxyz (LAN sharing, #4059), @hkarmoush (Colab, #4069) and @kevin9327 (SSML emoji, #4020) for code; @dimfk001git (#4071), @user555gtb (#4054), @onparr-24 (#4058), @MeinLive (#4050, #4051), @JoanSPabon (#4066, #4067) and @adluanbo (#4035) for bug reports.
+
+**Upgrading:** Install over your existing app, or take the in-app update on the Beta channel; voices, projects and settings are kept.
+
+
+### Changed
+
+- Long Projects, dub project and Transcribe history lists now render only the rows on screen, so they stay fast with thousands of items (#4074)
+- Idle CPU: a hidden or minimised window no longer runs polling timers or elapsed-time clocks, and they refresh once when it is shown again (#4073)
+- Removed unused renderer files and 477 unused translation strings, and `locale:check` now fails on an English key no code uses (#4047)
+- Removed more unused legacy shared components, utilities and API helpers from the old shared UI folder (#4045)
+- Local-model folder saves no longer unload the engine when the stored folder did not change (#4043)
+- Removed more unused legacy settings, gallery and engine screens from the old shared UI folder (#4042)
+- Idle polling is relaxed: the backend health probe slows when steady, cloud-sync polling pauses while the window is hidden, and the Windows parent watcher polls less often (#4041)
+- Removed more unused legacy dubbing screens and hooks from the old shared UI folder (#4040)
+- Release notes now open with one Download table listing every desktop and phone download with its signing, followed by the Highlights (#4037)
+- Removed about 25,000 lines of unused legacy interface code, two unused font packages and the always-skipped weekly evals job; the app itself is unchanged (#2603, #4032)
+
+### Added
+
+- Cebuano is now a dub translation target (#4058, #4072) — thanks @onparr-24!
+- Home shows a What's new link, winter pixel snow, a Christmas-week Santa, two rows of contributor portraits, and an easter egg that hides the credits until the next update after you visit three contributor profiles (#4070)
+- Voice Cloning has a generation queue: takes started while one is rendering wait their turn and run one after another — thanks @ItzSudhan! (#4064)
+- Audiobooks and Stories have a New project button that starts an empty draft without touching saved projects (#4055)
+
+### Fixed
+
+- OmniVoice GGUF falls back to the CPU when the GPU backend crashes, for example Vulkan on a GTX 1080 (#4050, #4072) — thanks @MeinLive!
+- Full dubs no longer fail when translation fills segments with free-text directions like "slow"; unsupported ones are dropped for that segment (#4054, #4072) — thanks @user555gtb!
+- Audiobook MP3 exports play and download again instead of returning 404 (#4071, #4072) — thanks @dimfk001git!
+- Colab: setup cells show the failing command's output, the security-floor check judges the Mako copy Python imports, and the web UI loads through the new `*.prod.r.colab.dev` proxy — thanks @hkarmoush! (#4069)
+- Turning on LAN sharing no longer crashes the backend with an Internal Server Error — thanks @blutuxyz! (#4059)
+- The OmniVoice GGUF engine finds its bundled runtime again in installed apps instead of reporting it missing — thanks @b84330808! (#4053)
+- When the operating system times out starting the engine (`spawn ETIMEDOUT`, seen on macOS), VoiceStudio retries twice and then says to restart the computer (#4039)
+- Settings → Updates lists only your channel's releases, and Beta suggests switching to Stable when a newer stable is out (#4038)
+- SSML `[spell]` keeps flag, ZWJ-joined and skin-tone emoji whole instead of splitting them (#4020) — thanks @kevin9327!
+
+### CI
+
+- Docker's web build no longer fails the unused-key check when only `electron/` is copied, and the iPhone CI job allows for a native-runtime cache miss (#4052)
+- Removed unused scripts, the old Tauri MSI tooling and leftover Turborepo ignore lines (#4046)
+- Accessibility smoke timeouts now name the requests still pending, so a flaky CI failure points at its cause (#4036)
+
+## [0.5.9-beta.1] — 2026-11-13
+
+**Highlights**
+
+- Voice Cloning queues takes instead of refusing a second one while rendering
+- Home shows a What's new link, winter pixel snow and a Christmas-week Santa
+- Audiobook MP3 exports play and download again, and full dubs survive free-text directions like "slow"
+- OmniVoice GGUF falls back to the CPU when the GPU crashes, and finds its runtime in moved app folders
+- Long lists stay fast, and a hidden window no longer runs timers
+
+**Voice Cloning gets a generation queue.** Start a take while another renders and it waits its turn, keeping the script, voice and settings you had when you clicked; cancel one or all from the queue panel. A waiting take is skipped, with the reason, if you replace, lock, unlock or re-transcribe its voice before it starts.
+
+**Testing wanted:** the queue with voice edits while takes wait; OmniVoice GGUF falling back to the CPU after a GPU crash (Pascal cards such as the GTX 1080, and Apple Silicon); and long Projects, dub project and Transcribe history lists.
+
+**Thanks:** @ItzSudhan (generation queue, #4064), @b84330808 (OmniVoice GGUF runtime, #4053), @blutuxyz (LAN sharing, #4059), @hkarmoush (Colab, #4069) and @kevin9327 (SSML emoji, #4020) for code; @dimfk001git (#4071), @user555gtb (#4054), @onparr-24 (#4058), @MeinLive (#4050, #4051), @JoanSPabon (#4066, #4067) and @adluanbo (#4035) for bug reports.
+
+**Upgrading:** Install over your existing app, or take the in-app update on the Beta channel; voices, projects and settings are kept.
+
+
+### Changed
+
+- Long Projects, dub project and Transcribe history lists now render only the rows on screen, so they stay fast with thousands of items (#4074)
+- Idle CPU: a hidden or minimised window no longer runs polling timers or elapsed-time clocks, and they refresh once when it is shown again (#4073)
+- Removed unused renderer files and 477 unused translation strings, and `locale:check` now fails on an English key no code uses (#4047)
+- Removed more unused legacy shared components, utilities and API helpers from the old shared UI folder (#4045)
+- Local-model folder saves no longer unload the engine when the stored folder did not change (#4043)
+- Removed more unused legacy settings, gallery and engine screens from the old shared UI folder (#4042)
+- Idle polling is relaxed: the backend health probe slows when steady, cloud-sync polling pauses while the window is hidden, and the Windows parent watcher polls less often (#4041)
+- Removed more unused legacy dubbing screens and hooks from the old shared UI folder (#4040)
+- Release notes now open with one Download table listing every desktop and phone download with its signing, followed by the Highlights (#4037)
+- Removed about 25,000 lines of unused legacy interface code, two unused font packages and the always-skipped weekly evals job; the app itself is unchanged (#2603, #4032)
+
+### Added
+
+- Cebuano is now a dub translation target (#4058, #4072) — thanks @onparr-24!
+- Home shows a What's new link, winter pixel snow, a Christmas-week Santa, two rows of contributor portraits, and an easter egg that hides the credits until the next update after you visit three contributor profiles (#4070)
+- Voice Cloning has a generation queue: takes started while one is rendering wait their turn and run one after another — thanks @ItzSudhan! (#4064)
+- Audiobooks and Stories have a New project button that starts an empty draft without touching saved projects (#4055)
+
+### Fixed
+
+- OmniVoice GGUF falls back to the CPU when the GPU backend crashes, for example Vulkan on a GTX 1080 (#4050, #4072) — thanks @MeinLive!
+- Full dubs no longer fail when translation fills segments with free-text directions like "slow"; unsupported ones are dropped for that segment (#4054, #4072) — thanks @user555gtb!
+- Audiobook MP3 exports play and download again instead of returning 404 (#4071, #4072) — thanks @dimfk001git!
+- Colab: setup cells show the failing command's output, the security-floor check judges the Mako copy Python imports, and the web UI loads through the new `*.prod.r.colab.dev` proxy — thanks @hkarmoush! (#4069)
+- Turning on LAN sharing no longer crashes the backend with an Internal Server Error — thanks @blutuxyz! (#4059)
+- The OmniVoice GGUF engine finds its bundled runtime again in installed apps instead of reporting it missing — thanks @b84330808! (#4053)
+- When the operating system times out starting the engine (`spawn ETIMEDOUT`, seen on macOS), VoiceStudio retries twice and then says to restart the computer (#4039)
+- Settings → Updates lists only your channel's releases, and Beta suggests switching to Stable when a newer stable is out (#4038)
+- SSML `[spell]` keeps flag, ZWJ-joined and skin-tone emoji whole instead of splitting them (#4020) — thanks @kevin9327!
+
+### CI
+
+- Docker's web build no longer fails the unused-key check when only `electron/` is copied, and the iPhone CI job allows for a native-runtime cache miss (#4052)
+- Removed unused scripts, the old Tauri MSI tooling and leftover Turborepo ignore lines (#4046)
+- Accessibility smoke timeouts now name the requests still pending, so a flaky CI failure points at its cause (#4036)
+
 ## [0.5.8] — 2026-11-12
 
 **Highlights**
