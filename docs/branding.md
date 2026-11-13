@@ -10,7 +10,6 @@ spark identifies creation. The product voice is clear, calm, and direct.
 | Primary vector mark | `docs/logo.svg` |
 | README mark | `docs/logo.png` and `docs/logo-256.png` |
 | Browser icon | `electron/public/favicon.svg` |
-| In-app mark | `electron/src/shared/components/brand/VoiceStudioMark.jsx` |
 | Desktop/platform icons | `electron/build/icons/` |
 | macOS menu-bar templates | `electron/build/icons/trayTemplate.svg` and `trayRecordingTemplate.svg` |
 | Electron sidebar and browser icon | `electron/public/favicon.svg` via `electron/src/renderer/src/lib/brand.ts` |
@@ -50,7 +49,7 @@ macOS artwork (`icon.icns` and `icon-macos.png`) keeps Apple's icon grid: the ti
 spans the centred 824 px of a 1024 px canvas, so it matches other apps in the Dock,
 Launchpad and Finder. `tests/test_macos_icon_grid.py` checks it.
 
-Do not redraw the waveform per screen. Use `VoiceStudioMark` in React and the
+Do not redraw the waveform per screen. Use `electron/src/renderer/src/lib/brand.ts` in React and the
 canonical SVG elsewhere so the silhouette stays recognizable at 16–512 px.
 
 ## Palette

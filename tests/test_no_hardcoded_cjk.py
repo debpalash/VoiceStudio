@@ -1,8 +1,8 @@
 """Keep CJK user-facing text in translation catalogs.
 
 UI copy must use i18n ``t('...')`` keys backed by locale JSON. Native language
-names belong in ``electron/src/shared/i18n/index.ts``. Functional CJK may be
-allowlisted below, with a justification for every file.
+names come from ``Intl.DisplayNames`` in ``electron/src/renderer/src/i18n/``.
+Functional CJK may be allowlisted below, with a justification for every file.
 """
 from __future__ import annotations
 
@@ -34,7 +34,6 @@ _SKIP_DIRECTORIES = {
     "target", ".specify", ".claude", ".pytest_cache",
 }
 _ALLOWED_PREFIXES = (
-    "electron/src/shared/i18n/",
     "electron/src/renderer/src/i18n/",
     "docs/specs/",
     "docs/readme/",  # translated READMEs and their native language-switcher links
@@ -53,8 +52,6 @@ _ALLOWED_FILES = {
     "backend/services/subtitle_segmenter.py",  # CJK subtitle segmentation.
     "backend/services/text_normalization.py",  # CJK normalization patterns.
     "backend/core/http_headers.py",  # Parses localized HTTP filenames.
-    "electron/src/shared/components/DubSegmentRow.jsx",  # Functional language-name data.
-    "electron/src/shared/components/StoriesEditor.jsx",  # Functional multilingual samples.
     "electron/src/shared/utils/voiceInstruct.js",  # CJK instruction vocabulary.
     "omnivoice/utils/text.py",  # Core multilingual text processing.
     "backend/services/tts_backend.py",  # Engine speaker vocabulary.
@@ -144,7 +141,7 @@ def test_no_hardcoded_cjk_outside_locales():
 @pytest.mark.parametrize(
     "path",
     [
-        "electron/src/shared/i18n/locales/zh-CN.json",
+        "electron/src/renderer/src/i18n/locales/zh-CN.json",
         "widget.test.ts",
         "test_widget.py",
         "widget_test.py",

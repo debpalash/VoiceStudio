@@ -33,7 +33,7 @@ describe('the streaming client forwards a warning frame', () => {
 });
 
 describe('the copy exists in every locale', () => {
-  const dir = path.resolve(__dirname, '..', 'i18n', 'locales');
+  const dir = path.resolve(__dirname, '..', '..', 'renderer', 'src', 'i18n', 'locales');
   const locales = fs.readdirSync(dir).filter((f) => f.endsWith('.json'));
 
   it('has both keys in all locale files, with their placeholders intact', () => {
