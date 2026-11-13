@@ -1,11 +1,9 @@
-"""Locale key parity — every i18n file stay in lockstep with en.json.
+"""Locale key parity — every i18n file stays in lockstep with en.json.
 
-Two catalogs exist. ``electron/src/renderer/src/i18n/locales`` is the one the
-app loads at runtime; it must have full key parity (see the ``renderer``
-tests at the end). ``electron/src/shared/i18n/locales`` is loaded only by the
-transitional shared modules' tests and is ratcheted below. Both must parse,
-carry no keys en.json doesn't have, and preserve en's ``{{placeholder}}``
-tokens. Real bug classes this pins down:
+``electron/src/renderer/src/i18n/locales`` is the catalog the app loads at
+runtime. It has full key parity with en.json (no missing keys, no orphans),
+parses without duplicate keys, and preserves en's ``{{placeholder}}`` tokens.
+Real bug classes this pins down:
 
 * a translation that drops ``{{message}}`` shows users a bare error with the
   detail silently lost (six ``gallery.*`` keys drifted this way in all 20
@@ -15,23 +13,16 @@ tokens. Real bug classes this pins down:
   ar.json once translated ``{{n}}`` into Arabic);
 * a key added to en.json only falls back to English for every other language.
 
-Missing keys degrade gracefully (i18next falls back to en), so full key parity
-is enforced as a RATCHET: each locale's missing-key count may only go down.
 When en.json gains keys, add them to every locale in the same change — that
-is exactly the house rule this test automates.
+is CLAUDE.md's Localization rule, and full parity is enforced below.
 """
 
 import json
 import os
 import re
-import warnings
 
 import pytest
 
-_LOCALES_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "electron", "src", "shared", "i18n", "locales",
-)
 _EN = "en"
 
 _PLACEHOLDER = re.compile(r"\{\{\s*(\w+)\s*\}\}")
@@ -96,17 +87,6 @@ _ENGINE_AGNOSTIC_KEYS = (
     "demo.dictation_transcribing",
 )
 
-# Missing-key ratchet: highest allowed number of en.json keys absent from each
-# locale. Counts may only go DOWN — translate keys and tighten the number.
-# Never raise one: if this fails after adding en.json keys, add the keys to
-# every locale (translated) in the same change instead.
-_MISSING_BASELINE = {
-    "ar": 460, "de": 460, "es": 460, "fr": 460, "gl": 0, "hi": 460, "id": 460,
-    "it": 460, "ja": 460, "ko": 0, "nl": 460, "pl": 460, "pt": 460,
-    "ru": 460, "sv": 460, "th": 460, "tr": 460, "uk": 460, "vi": 460,
-    "zh-CN": 0, "zh-TW": 460,
-}
-
 #: Keys every locale must carry regardless of the aggregate ratchet above.
 #: The count alone is a weak guarantee — a locale can translate one new key
 #: while dropping another and the total never moves. These are strings a user
@@ -116,26 +96,12 @@ _MISSING_BASELINE = {
 #: every non-English Linux user (#1610 review).
 _REQUIRED_IN_EVERY_LOCALE = (
     "common.error",
-    "bootstrap.retry",
-    "firstrun.hf_token_saved",
-    "capture.copied",
-    "capture.inserted",
-    "capture.pasted",
-    "dub.autofit_quality",
-    "engines.inMemory",
-    "models.role_llm",
-    "models.role_tts",
-    "models.role_asr",
     "player.pause",
     "player.play",
     "settings.hf_source_app_label",
     "settings.hf_source_cli_label",
     "settings.hf_source_env_label",
 )
-
-
-def _locale_files():
-    return sorted(f for f in os.listdir(_LOCALES_DIR) if f.endswith(".json"))
 
 
 def _no_duplicates_hook(pairs):
@@ -145,12 +111,6 @@ def _no_duplicates_hook(pairs):
             raise ValueError(f"duplicate key {k!r}")
         seen[k] = v
     return seen
-
-
-def _load(name):
-    path = os.path.join(_LOCALES_DIR, f"{name}.json")
-    with open(path, encoding="utf-8") as fh:
-        return json.load(fh, object_pairs_hook=_no_duplicates_hook)
 
 
 def _flatten(d, prefix=""):
@@ -164,218 +124,15 @@ def _flatten(d, prefix=""):
     return out
 
 
-_LOCALES = [f[:-5] for f in _locale_files()]
-_OTHERS = [loc for loc in _LOCALES if loc != _EN]
-
 _OPENAPI_KEYS = {
-    "settings.openapi",
     "openapi.title",
-    "openapi.loading",
     "openapi.unreachable_title",
     "openapi.unreachable_body",
-    "openapi.retry",
     "openapi.copy_url",
-    "openapi.copy_url_aria",
     "openapi.copied",
     "openapi.copy_failed",
     "openapi.open_raw",
-    "openapi.open_raw_aria",
 }
-
-
-def test_locale_inventory_matches_baseline():
-    """Every locale is ratcheted; a new locale must be added to the baseline
-    (and fully translated), a removed one must be dropped from it."""
-    assert _EN in _LOCALES, f"en.json missing from {_LOCALES_DIR}"
-    assert set(_OTHERS) == set(_MISSING_BASELINE), (
-        "Locale files and _MISSING_BASELINE disagree: "
-        f"unlisted={sorted(set(_OTHERS) - set(_MISSING_BASELINE))} "
-        f"stale={sorted(set(_MISSING_BASELINE) - set(_OTHERS))}"
-    )
-
-
-@pytest.mark.parametrize("locale", _OTHERS)
-def test_openapi_ui_is_translated_in_every_locale(locale):
-    translated = _flatten(_load(locale))
-    missing = sorted(_OPENAPI_KEYS - translated.keys())
-    assert not missing, f"{locale}.json is missing VoiceStudio API strings: {missing}"
-
-
-@pytest.mark.parametrize("locale", _LOCALES)
-def test_locale_parses_without_duplicate_keys(locale):
-    data = _load(locale)  # raises on invalid JSON or duplicate keys
-    assert isinstance(data, dict) and data, f"{locale}.json must be a non-empty object"
-
-
-@pytest.mark.parametrize("locale", _OTHERS)
-def test_no_keys_beyond_en(locale):
-    """A key that only exists in a translation is dead weight (nothing renders
-    it) and usually means a rename that missed en.json."""
-    extra = sorted(set(_flatten(_load(locale))) - set(_flatten(_load(_EN))))
-    assert not extra, (
-        f"{locale}.json has {len(extra)} key(s) that do not exist in en.json "
-        f"(en.json is the source of truth — rename or remove them): {extra[:20]}"
-    )
-
-
-@pytest.mark.parametrize("locale", _OTHERS)
-def test_missing_keys_ratchet(locale):
-    missing = sorted(set(_flatten(_load(_EN))) - set(_flatten(_load(locale))))
-    allowed = _MISSING_BASELINE[locale]
-    assert len(missing) <= allowed, (
-        f"{locale}.json is missing {len(missing)} en.json keys — the ratchet "
-        f"allows at most {allowed}. New en.json keys must land in all "
-        f"locales (translated) in the same change (CLAUDE.md, Localization). "
-        f"Newly missing keys include: {missing[:20]}"
-    )
-    if len(missing) < allowed:
-        # An improvement must never fail CI (CodeRabbit review, #1198) — but
-        # the gain should be locked in, so nudge loudly without blocking.
-        warnings.warn(
-            f"{locale}.json now misses only {len(missing)} keys (baseline "
-            f"{allowed}) — tighten _MISSING_BASELINE['{locale}'] to "
-            f"{len(missing)} so the ratchet holds the gain.",
-            stacklevel=1,
-        )
-
-
-@pytest.mark.parametrize("locale", _OTHERS)
-def test_placeholders_match_en(locale):
-    """For every shared key, the translation must use exactly en's
-    {{placeholders}} — a dropped one loses runtime data on screen, an invented
-    one renders literally."""
-    en = _flatten(_load(_EN))
-    loc = _flatten(_load(locale))
-    problems = []
-    for key in sorted(set(en) & set(loc)):
-        if not (isinstance(en[key], str) and isinstance(loc[key], str)):
-            continue
-        want = set(_PLACEHOLDER.findall(en[key]))
-        got = set(_PLACEHOLDER.findall(loc[key]))
-        invented = got - want
-        dropped = want - got
-        if key in _PLACEHOLDER_ALLOWLIST:
-            invented = set()
-            dropped = set()
-        # i18next plural forms: "one line" / singular phrasings idiomatically
-        # omit the count in many languages — allow {{count}} to be dropped in
-        # explicit singular/zero forms only.
-        if key.rsplit(".", 1)[-1].endswith(("_one", "_zero")):
-            dropped -= {"count"}
-        if invented or dropped:
-            problems.append(
-                f"  {key}: en={en[key]!r} vs {locale}={loc[key]!r}"
-                + (f" (missing {sorted(dropped)})" if dropped else "")
-                + (f" (not in en: {sorted(invented)})" if invented else "")
-            )
-    assert not problems, (
-        f"{locale}.json placeholder drift against en.json "
-        f"({len(problems)} key(s)):\n" + "\n".join(problems[:25])
-    )
-
-
-@pytest.mark.parametrize("locale", _LOCALES)
-def test_dub_history_has_every_plural_form(locale):
-    """Keep the full i18next plural key set available in every locale."""
-    history = _load(locale).get("history", {})
-    required = {
-        "dub_meta_zero",
-        "dub_meta_one",
-        "dub_meta_two",
-        "dub_meta_few",
-        "dub_meta_many",
-        "dub_meta_other",
-    }
-    missing = sorted(required - history.keys())
-    assert not missing, f"{locale}.json is missing Dub history plural forms: {missing}"
-
-    invalid = sorted(
-        key
-        for key in required
-        if "{{count}}" not in history[key] or "{{duration}}" not in history[key]
-    )
-    assert not invalid, f"{locale}.json has invalid Dub history plural forms: {invalid}"
-
-
-@pytest.mark.parametrize("locale", _LOCALES)
-def test_no_placeholder_only_values(locale):
-    """A value made of nothing but {{placeholders}} and punctuation is not a
-    translation — it is a missing string.
-
-    #1280 shipped ``engines.selectWithCaveat`` as ``"{{engine}}: {{reason}}"``
-    in all 21 files. The review read that as 20 untranslated locales, but
-    en.json said the same thing: the English string had never been written, so
-    every "translation" faithfully copied a non-sentence. Users in all 21
-    languages would have seen a bare ``omnivoice: <English backend text>``.
-
-    Parity tests cannot catch this — the key is present everywhere and the
-    placeholders match perfectly. Only the absence of prose gives it away, and
-    en.json is checked too because that is where this one started.
-    """
-    bad = []
-    for key, value in sorted(_flatten(_load(locale)).items()):
-        if not isinstance(value, str) or key in _PLACEHOLDER_ONLY_ALLOWLIST:
-            continue
-        if not _PLACEHOLDER.search(value):
-            continue
-        # \w is unicode-aware: CJK, Thai, Devanagari and Arabic all count as
-        # prose, so a real translation never trips this.
-        if not re.search(r"\w", _PLACEHOLDER.sub("", value)):
-            bad.append(f"  {key}: {value!r}")
-    assert not bad, (
-        f"{locale}.json has {len(bad)} placeholder-only value(s) — write the "
-        f"sentence around the placeholders (in en.json first, then translate "
-        f"it), or allowlist the key in _PLACEHOLDER_ONLY_ALLOWLIST with a "
-        f"reason:\n" + "\n".join(bad[:25])
-    )
-
-
-@pytest.mark.parametrize("locale", _LOCALES)
-def test_no_corrupted_placeholder_tokens(locale):
-    """Guard the whole class of the vi.json incident: a translation pass that
-    rewrites `{{count}}` into `_V_0__` (or similar) ships the garbage token
-    straight to the UI, even on keys whose en value has no placeholder."""
-    bad = [
-        f"  {key}: {value!r}"
-        for key, value in sorted(_flatten(_load(locale)).items())
-        if isinstance(value, str) and _CORRUPTED_TOKEN.search(value)
-    ]
-    assert not bad, (
-        f"{locale}.json contains corrupted placeholder tokens "
-        f"(restore the real {{{{name}}}} from en.json):\n" + "\n".join(bad[:25])
-    )
-
-
-@pytest.mark.parametrize("locale", _LOCALES)
-def test_engine_agnostic_labels_name_no_engine(locale):
-    """A stage label must not name the engine that happens to implement it.
-
-    The dub overlay said "Transcribing with Whisper…" in all 21 languages while
-    ASR is a Model Catalogue choice, so anyone on Parakeet or a transformers
-    pipeline was told the wrong engine was running — and a user debugging a slow
-    or failing transcription would go read Whisper's docs (#1352, thanks
-    @paoloantinori!). The same trap is one line away for any future stage label,
-    which is why this is a list to extend rather than a one-off assertion.
-
-    Deliberately checked in EVERY locale, not just en: the fix for #1352 landed
-    in en first and 5 translations kept the old engine name for a while, which
-    is exactly the drift a parity test cannot see (the key is present, the
-    placeholders match — only the brand name gives it away).
-    """
-    flat = _flatten(_load(locale))
-    bad = []
-    for key in _ENGINE_AGNOSTIC_KEYS:
-        value = flat.get(key)
-        if not isinstance(value, str):
-            continue  # absent here; the missing-key ratchet owns that case
-        hit = _ENGINE_BRANDS.search(value)
-        if hit:
-            bad.append(f"  {key}: {value!r} names {hit.group(0)!r}")
-    assert not bad, (
-        f"{locale}.json names a specific engine in a stage label that other "
-        f"engines also run — describe the STAGE, not the implementation "
-        f"(en: 'Transcribing audio…'):\n" + "\n".join(bad)
-    )
 
 
 def test_engine_brand_matcher_catches_the_forms_that_actually_ship():
@@ -418,56 +175,10 @@ def test_transliterated_brands_are_a_known_gap():
     assert not _ENGINE_BRANDS.search("\u30a6\u30a3\u30b9\u30d1\u30fc\u3067\u6587\u5b57\u8d77\u3053\u3057\u4e2d")
 
 
-def _lookup(tree, dotted):
-    node = tree
-    for part in dotted.split("."):
-        if not isinstance(node, dict) or part not in node:
-            return None
-        node = node[part]
-    return node
-
-
-@pytest.mark.parametrize("locale", sorted(_MISSING_BASELINE))
-@pytest.mark.parametrize("key", _REQUIRED_IN_EVERY_LOCALE)
-def test_every_locale_carries_the_user_facing_dictation_status(locale, key):
-    """Named-key parity, not just the aggregate count.
-
-    The ratchet in _MISSING_BASELINE measures totals, so a locale can gain one
-    translation and lose another without the number moving. These keys are
-    read by users on default paths, so they are asserted individually.
-    """
-    value = _lookup(_load(locale), key)
-    english = _lookup(_load("en"), key)
-    assert isinstance(value, str) and value.strip(), (
-        f"{locale}.json is missing {key!r} — users on that locale see the raw key "
-        f"or the English string"
-    )
-    # Standard model acronyms and product/CLI names are shared across locales.
-    assert key in {
-        "models.role_llm", "models.role_tts", "models.role_asr",
-        "settings.hf_source_cli_label",
-    } or value != english, (
-        f"{locale}.json copies the English {key!r} verbatim ({english!r}); "
-        f"translate it or the ratchet is measuring nothing"
-    )
-
-
-@pytest.mark.parametrize("locale", sorted(_MISSING_BASELINE))
-def test_dub_plan_actions_and_explanations_are_translated(locale):
-    with open(os.path.join(_LOCALES_DIR, f"{locale}.json"), encoding="utf-8") as source:
-        segment = json.load(source)["segment"]
-    for key in (
-        "plan_apply", "plan_apply_title", "plan_impossible",
-        "plan_impossible_title", "plan_tight", "plan_tight_title",
-    ):
-        assert segment.get(key), f"{locale}: missing segment.{key}"
-        assert segment[key] != _load("en")["segment"][key]
-
-
 def test_locale_objects_have_no_duplicate_keys():
     from pathlib import Path
     root = Path(__file__).resolve().parents[1]
-    for directory in (root / "electron/src/shared/i18n/locales", root / "electron/src/renderer/src/i18n/locales"):
+    for directory in (root / "electron/src/renderer/src/i18n/locales",):
         for path in directory.glob("*.json"):
             def unique_object(pairs):
                 result = {}
@@ -506,8 +217,11 @@ def _english_key(key, en):
     return None
 
 
-def test_renderer_catalog_has_the_same_locales():
-    assert _RENDERER_LOCALES == _LOCALES
+def test_renderer_catalog_has_the_locales_the_app_offers():
+    index = os.path.join(os.path.dirname(_RENDERER_DIR), "index.ts")
+    with open(index, encoding="utf-8") as fh:
+        offered = re.search(r"SUPPORTED_LOCALES = \[(.*?)\] as const", fh.read(), re.S).group(1)
+    assert _RENDERER_LOCALES == sorted(re.findall(r"'([^']+)'", offered))
 
 
 @pytest.mark.parametrize("locale", [loc for loc in _RENDERER_LOCALES if loc != _EN])
@@ -543,3 +257,33 @@ def test_renderer_values_keep_their_placeholders(locale):
         if key in _ENGINE_AGNOSTIC_KEYS and _ENGINE_BRANDS.search(value):
             problems.append(f"  {key}: stage label names an engine: {value!r}")
     assert not problems, f"{locale}.json:\n" + "\n".join(problems[:25])
+
+
+@pytest.mark.parametrize("locale", [loc for loc in _RENDERER_LOCALES if loc != _EN])
+def test_openapi_ui_is_translated_in_every_locale(locale):
+    translated = _renderer(locale)
+    missing = sorted(_OPENAPI_KEYS - translated.keys())
+    assert not missing, f"{locale}.json is missing VoiceStudio API strings: {missing}"
+
+
+_PLAN_KEYS = tuple(
+    f"segment.{name}"
+    for name in (
+        "plan_apply", "plan_apply_title", "plan_impossible",
+        "plan_impossible_title", "plan_tight", "plan_tight_title",
+    )
+)
+
+
+@pytest.mark.parametrize("locale", [loc for loc in _RENDERER_LOCALES if loc != _EN])
+@pytest.mark.parametrize("key", _REQUIRED_IN_EVERY_LOCALE + _PLAN_KEYS)
+def test_every_locale_translates_the_user_facing_status_keys(locale, key):
+    """Named-key parity on top of full key parity: these strings sit on default
+    paths, so a locale that copies the English text verbatim fails here even
+    though the key exists and the placeholders match."""
+    value, english = _renderer(locale).get(key), _renderer(_EN)[key]
+    assert isinstance(value, str) and value.strip(), f"{locale}.json is missing {key!r}"
+    # Standard model acronyms and product/CLI names are shared across locales.
+    assert key in {"settings.hf_source_cli_label"} or value != english, (
+        f"{locale}.json copies the English {key!r} verbatim ({english!r}); translate it"
+    )

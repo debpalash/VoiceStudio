@@ -71,7 +71,7 @@ CLONE_VOICE_INSTRUCT = "female, young adult, low pitch, american accent"
 CLONE_RENDER_STEPS = 48
 
 # Dictation replay scripts. `text` MUST match SCRIPTS in
-# electron/src/shared/components/DictationDemo.jsx verbatim — the card shows that
+# electron/src/shared/utils/dictationScripts.js verbatim — the card shows that
 # string as "what you would say" and then shows what the recogniser heard, so
 # any drift between the two reads as a transcription error.
 DICTATION_SCRIPTS = [

@@ -50,20 +50,13 @@ def test_visible_brand_surfaces_say_voicestudio() -> None:
     assert "**OmniVoice** (default)" not in readme
 
 
-def test_brand_mark_is_shared_and_fills_the_icon() -> None:
-    mark = (ROOT / "electron/src/shared/components/brand/VoiceStudioMark.jsx").read_text(encoding="utf-8")
-    header = (ROOT / "electron/src/shared/components/Header.jsx").read_text(encoding="utf-8")
-    about = (ROOT / "electron/src/shared/components/settings/AboutTab.jsx").read_text(encoding="utf-8")
+def test_brand_mark_fills_the_icon() -> None:
     logo = (ROOT / "docs/logo.svg").read_text(encoding="utf-8")
     favicon = (ROOT / "electron/public/favicon.svg").read_text(encoding="utf-8")
 
     signature = "M6 34c4 0 5-7 9-7"
-    assert signature in mark
     assert signature in logo
     assert signature in favicon
-    assert "<VoiceStudioMark" in header
-    assert "<VoiceStudioMark" in about
-    assert 'data-testid="voice-studio-logo"' in header
 
     # The previous icon devoted most of its canvas to an empty ring. The new
     # mark uses the full tile and keeps only a narrow 2-unit outer margin.
@@ -162,14 +155,6 @@ def test_active_source_launch_is_electron_and_web_ports_clean_quietly() -> None:
     command = scripts["predev:web"]
     assert command.endswith("bun scripts/clear-dev-ports.mjs")
     assert "|| true" not in command
-
-
-def test_icon_rail_has_no_static_section_captions_and_keeps_air_between_items() -> None:
-    rail = (ROOT / "electron/src/shared/components/NavRail.jsx").read_text(encoding="utf-8")
-    for stale_caption in ("Start", "Create", "Workflows", "Reference"):
-        assert stale_caption not in rail
-    assert "pt-[18px]" in rail
-    assert "gap-[9px]" in rail
 
 
 def test_electron_launch_preserves_an_existing_backend():

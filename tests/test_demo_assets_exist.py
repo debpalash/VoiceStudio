@@ -37,7 +37,7 @@ _BACKEND = os.path.join(_REPO_ROOT, "backend")
 _DEMO_ROOT = os.path.join(_BACKEND, "assets", "samples")
 
 _DICTATION_DEMO = os.path.join(
-    _REPO_ROOT, "electron", "src", "shared", "components", "DictationDemo.jsx"
+    _REPO_ROOT, "electron", "src", "shared", "utils", "dictationScripts.js"
 )
 
 
@@ -84,20 +84,20 @@ def test_every_voice_design_preview_exists():
 
 
 def _dictation_wavs() -> list[str]:
-    """The replay clips DictationDemo.jsx posts to /transcribe."""
+    """The replay clips the dictation demo (renderer components/dictation-demo.tsx) posts to /transcribe."""
     source = open(_DICTATION_DEMO, encoding="utf-8").read()
     return re.findall(r"wav:\s*'(/demo_audio/[^']+)'", source)
 
 
 def test_dictation_demo_lists_its_scripts():
-    assert len(_dictation_wavs()) == 3, "DictationDemo should offer three scripts"
+    assert len(_dictation_wavs()) == 3, "the dictation demo should offer three scripts"
 
 
 @pytest.mark.parametrize("url", _dictation_wavs())
 def test_every_dictation_clip_exists(url):
     path = _resolve(url)
     assert os.path.isfile(path), (
-        f"DictationDemo replays {url} but {path} is missing. "
+        f"The dictation demo replays {url} but {path} is missing. "
         "Render it with scripts/render_demos_omnivoice.py --only dictation."
     )
     assert os.path.getsize(path) > 8000, f"{path} is too small to be real audio"
