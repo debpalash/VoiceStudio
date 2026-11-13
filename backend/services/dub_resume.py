@@ -42,7 +42,7 @@ from core.durable_io import flush_dir, flush_file
 logger = logging.getLogger("omnivoice.dub")
 
 JOURNAL_DIRNAME = ".resume"
-KEY_VERSION = 1
+KEY_VERSION = 2  # Invalidate records made before immutable loaded-artifact proof.
 # All renders sharing one track journal use this bound; past it new segments
 # are not journaled (the render is unaffected, it cannot resume those).
 DEFAULT_MAX_BYTES = 1 << 30

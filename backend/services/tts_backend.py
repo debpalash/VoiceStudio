@@ -3629,8 +3629,8 @@ class CosyVoiceBackend(TTSBackend):
         checkpoint = os.path.realpath(model_dir)
         fingerprint = None
         try:
-            from services.local_model_paths import loading_fingerprint
-            fingerprint = loading_fingerprint(checkpoint)
+            from core.model_fingerprint import tree_fingerprint
+            fingerprint = tree_fingerprint(checkpoint)
         except Exception as err:  # noqa: BLE001 - optional recovery proof
             logger.debug("CosyVoice recovery fingerprint unavailable: %s", type(err).__name__)
         logger.info("Loading CosyVoice from %s", model_dir)

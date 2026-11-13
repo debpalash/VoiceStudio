@@ -2714,9 +2714,9 @@ def _load_model_sync():
         # after loading. Keep this snapshot on the model that actually loaded.
         resume_fingerprint = None
         try:
-            from services.local_model_paths import loading_fingerprint
+            from core.model_fingerprint import tree_fingerprint
             if os.path.isabs(checkpoint) or os.path.isdir(checkpoint):
-                resume_fingerprint = loading_fingerprint(os.path.realpath(checkpoint))
+                resume_fingerprint = tree_fingerprint(os.path.realpath(checkpoint))
         except Exception as err:  # noqa: BLE001 - optional recovery proof
             logger.debug("Recovery fingerprint unavailable: %s", type(err).__name__)
         local_fingerprint = None

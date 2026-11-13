@@ -217,7 +217,7 @@ def test_journal_failure_never_fails_the_dub(dub, monkeypatch):
 
 @pytest.mark.parametrize("failure_point", ["prune", "recover", "model_folder"])
 def test_resume_failures_do_not_log_private_paths(dub, monkeypatch, caplog, failure_point, tmp_path):
-    from services import dub_resume, local_model_paths
+    from services import dub_resume
 
     def fail(*_args, **_kwargs):
         raise PermissionError("/home/resume-private-user/recordings/private.wav")
@@ -226,7 +226,7 @@ def test_resume_failures_do_not_log_private_paths(dub, monkeypatch, caplog, fail
         folder = tmp_path / "checkpoint"
         folder.mkdir()
         monkeypatch.setenv("OMNIVOICE_MODEL", str(folder))
-        monkeypatch.setattr(local_model_paths, "_weights_fingerprint", fail)
+        monkeypatch.setattr("core.model_fingerprint.tree_fingerprint", fail)
     else:
         monkeypatch.setattr(dub_resume.DubResumeJournal, failure_point, fail)
     caplog.set_level("DEBUG", logger="omnivoice.dub")
@@ -265,8 +265,6 @@ def test_explicit_partial_render_never_reuses_recovery_copies(dub, regen_only):
 
 
 def test_unreadable_model_fingerprint_never_records_reusable_speech(dub, monkeypatch, tmp_path):
-    from services import local_model_paths
-
     folder = tmp_path / "checkpoint"
     folder.mkdir()
     monkeypatch.setenv("OMNIVOICE_MODEL", str(folder))
@@ -274,7 +272,7 @@ def test_unreadable_model_fingerprint_never_records_reusable_speech(dub, monkeyp
     def fail(_folder):
         raise PermissionError("weights unavailable")
 
-    monkeypatch.setattr(local_model_paths, "_weights_fingerprint", fail)
+    monkeypatch.setattr("core.model_fingerprint.tree_fingerprint", fail)
     _crash_after(dub, 2)
     assert not list(dub.journal.glob("*.json"))
     dub.run()

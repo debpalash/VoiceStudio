@@ -862,7 +862,7 @@ async def dub_generate(job_id: str, req: DubRequest):
             model can first load while this render is synthesizing a segment.
             """
             try:
-                from services import local_model_paths
+                from core.model_fingerprint import tree_fingerprint
 
                 if engine_id not in ("omnivoice", "cosyvoice") or getattr(backend, "runs_out_of_process", False):
                     return True, None, None
@@ -887,7 +887,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                     result = (False, None, checkpoint)
                     if folder:
                         checkpoint = os.path.realpath(folder)
-                        fp = local_model_paths._weights_fingerprint(checkpoint)
+                        fp = tree_fingerprint(checkpoint)
                         files = fp[1] if len(fp) > 1 else None
                         result = (True, repr(files) if isinstance(files, tuple) else None, checkpoint)
                     _model_load_proof.append((checkpoint, fp))
