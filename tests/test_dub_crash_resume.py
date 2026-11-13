@@ -328,6 +328,13 @@ async def test_cancelled_journal_write_finishes_before_withdrawn_job_cleanup(dub
     release = threading.Event()
     finished = threading.Event()
     original = dub_resume.DubResumeJournal.record
+    loop_thread = threading.get_ident()
+    cleanup_threads = []
+    original_cleanup = dub.dg._drop_resume_journal_if_withdrawn
+
+    def cleanup(*args):
+        cleanup_threads.append(threading.get_ident())
+        return original_cleanup(*args)
 
     def record(self, *args):
         started.set()
@@ -338,6 +345,7 @@ async def test_cancelled_journal_write_finishes_before_withdrawn_job_cleanup(dub
             finished.set()
 
     monkeypatch.setattr(dub_resume.DubResumeJournal, "record", record)
+    monkeypatch.setattr(dub.dg, "_drop_resume_journal_if_withdrawn", cleanup)
     draining = asyncio.Queue()
     original_wait = asyncio.wait
 
@@ -361,6 +369,7 @@ async def test_cancelled_journal_write_finishes_before_withdrawn_job_cleanup(dub
     with pytest.raises(asyncio.CancelledError):
         await task
     assert finished.is_set()
+    assert cleanup_threads and all(thread != loop_thread for thread in cleanup_threads)
     assert not (dub.path / ".resume").exists()
     assert not list(dub.path.glob(".render-*"))
 
