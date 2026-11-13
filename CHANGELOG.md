@@ -8,23 +8,6 @@ metadata and the backend fallback mirror it.
 
 ## [Unreleased]
 
-**Highlights**
-
-- Voice Cloning queues takes instead of refusing a second one while rendering
-- Home shows a What's new link, winter pixel snow and a Christmas-week Santa
-- Audiobook MP3 exports play and download again, and full dubs survive free-text directions like "slow"
-- OmniVoice GGUF falls back to the CPU when the GPU crashes, and finds its runtime in moved app folders
-- Long lists stay fast, and a hidden window no longer runs timers
-
-**Voice Cloning gets a generation queue.** Start a take while another renders and it waits its turn, keeping the script, voice and settings you had when you clicked; cancel one or all from the queue panel. A waiting take is skipped, with the reason, if you replace, lock, unlock or re-transcribe its voice before it starts.
-
-**Testing wanted:** the queue with voice edits while takes wait; OmniVoice GGUF falling back to the CPU after a GPU crash (Pascal cards such as the GTX 1080, and Apple Silicon); and long Projects, dub project and Transcribe history lists.
-
-**Thanks:** @ItzSudhan (generation queue, #4064), @b84330808 (OmniVoice GGUF runtime, #4053), @blutuxyz (LAN sharing, #4059), @hkarmoush (Colab, #4069) and @kevin9327 (SSML emoji, #4020) for code; @dimfk001git (#4071), @user555gtb (#4054), @onparr-24 (#4058), @MeinLive (#4050, #4051), @JoanSPabon (#4066, #4067) and @adluanbo (#4035) for bug reports.
-
-**Upgrading:** Install over your existing app, or take the in-app update on the Beta channel; voices, projects and settings are kept.
-
-
 ### Changed
 
 - Long Projects, dub project and Transcribe history lists now render only the rows on screen, so they stay fast with thousands of items (#4074)
