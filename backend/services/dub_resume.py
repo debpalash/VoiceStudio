@@ -28,6 +28,7 @@ import logging
 import os
 import re
 import shutil
+import sys
 import threading
 import time
 import uuid
@@ -48,6 +49,7 @@ DEFAULT_MAX_AGE_S = 7 * 24 * 3600
 
 _SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]")
 _HASH_CHUNK = 1 << 20
+_DARWIN_PC_CASE_SENSITIVE = 11
 _locks_guard = threading.Lock()
 
 
@@ -61,13 +63,51 @@ class _RootState:
 _states: weakref.WeakValueDictionary[str, _RootState] = weakref.WeakValueDictionary()
 
 
+def _root_identity(root: str) -> Optional[tuple[int, int, tuple[str, ...]]]:
+    """Identify existing roots or missing descendants without creating them."""
+    parent = root
+    missing = []
+    while True:
+        try:
+            info = os.stat(parent)
+            break
+        except FileNotFoundError:
+            ancestor, name = os.path.split(parent)
+            if ancestor == parent:
+                return None
+            missing.append(name)
+            parent = ancestor
+        except OSError:
+            return None
+    if missing and sys.platform == "darwin":
+        try:
+            # Darwin's _PC_CASE_SENSITIVE is not in Python's pathconf_names.
+            # Query the actual volume: macOS also supports case-sensitive APFS.
+            if os.pathconf(parent, _DARWIN_PC_CASE_SENSITIVE) == 0:
+                missing = [name.lower() for name in missing]
+        except (OSError, ValueError):
+            # An unknown filesystem stays conservative; existing aliases still
+            # compare by device/inode below.
+            pass
+    return info.st_dev, info.st_ino, tuple(reversed(missing))
+
+
 def _state_for(root: str) -> _RootState:
     # Equivalent path spellings must share both the lock and accounting.
     key = os.path.normcase(os.path.realpath(root))
     with _locks_guard:
         state = _states.get(key)
         if state is None:
-            state = _RootState()
+            identity = _root_identity(key)
+            # realpath/normcase preserve casing on macOS, even on its default
+            # case-insensitive filesystem. Compare filesystem identity across
+            # live roots as well, including their still-missing suffixes.
+            for candidate, active in list(_states.items()):
+                if identity is not None and _root_identity(candidate) == identity:
+                    state = active
+                    break
+            if state is None:
+                state = _RootState()
             _states[key] = state
         return state
 

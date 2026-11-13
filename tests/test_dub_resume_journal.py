@@ -113,6 +113,55 @@ def test_overlapping_journals_share_the_track_size_bound(tmp_path, dub_resume, a
     assert first.record("a", "k", source, 1)
 
 
+@pytest.mark.parametrize("root_exists", [False, True])
+def test_case_insensitive_root_aliases_share_the_track_size_bound(tmp_path, dub_resume, root_exists):
+    parent = tmp_path / "CaseParent"
+    parent.mkdir()
+    parent_alias = tmp_path / "caseparent"
+    if not parent_alias.exists() or not parent.samefile(parent_alias):
+        pytest.skip("temporary filesystem is case-sensitive")
+    root = parent / "Journal"
+    alias = parent_alias / "journal"
+    if root_exists:
+        root.mkdir()
+    first = dub_resume.DubResumeJournal(str(root), max_bytes=100)
+    second = dub_resume.DubResumeJournal(str(alias), max_bytes=100)
+    assert root.exists() is root_exists  # Looking up state must not create the journal.
+    first.prune({"a", "b"})
+    second.prune({"a", "b"})
+    source = _wav(tmp_path / "source.wav", b"x" * 80)
+    assert first.record("a", "k", source, 1)
+    assert not second.record("b", "k", source, 1)
+    assert sum(path.stat().st_size for path in root.glob("*.wav")) <= 100
+    second.discard()
+    assert first.record("b", "k", source, 1)
+
+
+def test_distinct_case_sensitive_roots_keep_independent_size_bounds(tmp_path, dub_resume):
+    first_root = tmp_path / "Journal"
+    first_root.mkdir()
+    second_root = tmp_path / "journal"
+    if second_root.exists() and first_root.samefile(second_root):
+        pytest.skip("temporary filesystem is case-insensitive")
+    second_root.mkdir()
+    first = dub_resume.DubResumeJournal(str(first_root), max_bytes=100)
+    second = dub_resume.DubResumeJournal(str(second_root), max_bytes=100)
+    source = _wav(tmp_path / "source.wav", b"x" * 80)
+    assert first.record("a", "k", source, 1)
+    assert second.record("b", "k", source, 1)
+
+
+def test_missing_distinct_roots_stay_lazy_and_keep_independent_bounds(tmp_path, dub_resume):
+    first_root = tmp_path / "first"
+    second_root = tmp_path / "second"
+    first = dub_resume.DubResumeJournal(str(first_root), max_bytes=100)
+    second = dub_resume.DubResumeJournal(str(second_root), max_bytes=100)
+    assert not first_root.exists() and not second_root.exists()
+    source = _wav(tmp_path / "source.wav", b"x" * 80)
+    assert first.record("a", "k", source, 1)
+    assert second.record("b", "k", source, 1)
+
+
 def test_replacing_a_segment_only_counts_the_replacement_once(tmp_path, dub_resume):
     journal = dub_resume.DubResumeJournal(str(tmp_path / "j"), max_bytes=100)
     source = _wav(tmp_path / "source.wav", b"x" * 80)

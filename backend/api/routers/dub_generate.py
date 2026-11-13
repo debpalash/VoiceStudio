@@ -831,22 +831,33 @@ async def dub_generate(job_id: str, req: DubRequest):
         _model_fp_memo: list = []
 
         def _model_folder_fingerprint():
-            """Fingerprint of the engine's user-chosen local model folder.
+            """Effective OmniVoice checkpoint and selected local model files.
 
-            ``(False, None)`` when the engine has no such folder (skipped
-            silently); ``(True, None)`` when it has one that cannot be
-            fingerprinted, which disables reuse rather than guess.
+            A missing fingerprint for a configured folder, or a failed model
+            lookup, disables reuse rather than guessing at the checkpoint.
             """
             if not _model_fp_memo:
-                result = (False, None)
+                result = (True, None, None)
                 try:
                     from services import local_model_paths
 
-                    folder = local_model_paths.get("tts", engine_id)
+                    identity = getattr(backend, "model_identity", None)
+                    selected = identity() if callable(identity) else None
+                    checkpoint = None
+                    if engine_id in ("omnivoice", "omnivoice-subprocess"):
+                        from services.model_manager import resolve_omnivoice_checkpoint
+
+                        checkpoint = resolve_omnivoice_checkpoint()
+                        selected = checkpoint
+                    if selected:
+                        folder = selected if os.path.isabs(selected) or os.path.isdir(selected) else None
+                    else:
+                        folder = local_model_paths.get("tts", engine_id)
+                    result = (False, None, checkpoint)
                     if folder:
                         fp = local_model_paths._weights_fingerprint(folder)
                         files = fp[1] if len(fp) > 1 else None
-                        result = (True, repr(files) if isinstance(files, tuple) else None)
+                        result = (True, repr(files) if isinstance(files, tuple) else None, checkpoint)
                 except Exception as err:  # noqa: BLE001
                     logger.debug("model folder fingerprint skipped: %s", type(err).__name__)
                 _model_fp_memo.append(result)
@@ -854,7 +865,7 @@ async def dub_generate(job_id: str, req: DubRequest):
 
         def _resume_key_for(prepared: dict) -> str | None:
             """Digest of everything that decides this segment's audio, or None."""
-            has_folder, folder_fp = _model_folder_fingerprint()
+            has_folder, folder_fp, checkpoint = _model_folder_fingerprint()
             if has_folder and folder_fp is None:
                 return None
             ref_audio = prepared.get("ref_audio")
@@ -866,6 +877,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                 "engine": engine_id,
                 "backend": type(backend).__qualname__,
                 "model_identity": identity() if callable(identity) else None,
+                "checkpoint": checkpoint,
                 "sample_rate": backend.sample_rate,
                 "own_mastering": bool(getattr(backend, "applies_own_mastering", False)),
                 "track_lang": lang_code,

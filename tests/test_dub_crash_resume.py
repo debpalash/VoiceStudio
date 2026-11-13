@@ -148,6 +148,26 @@ def test_changed_loaded_model_does_not_reuse_speech(dub):
     assert len(dub.generated) == 4
 
 
+def test_changed_omnivoice_environment_checkpoint_does_not_reuse_speech(dub, monkeypatch):
+    monkeypatch.setenv("OMNIVOICE_MODEL", "models/checkpoint-a")
+    _crash_after(dub, 2)
+    monkeypatch.setenv("OMNIVOICE_MODEL", "models/checkpoint-b")
+    dub.run()
+    assert len(dub.generated) == 4
+
+
+def test_changed_environment_checkpoint_weights_do_not_reuse_speech(dub, monkeypatch, tmp_path):
+    folder = tmp_path / "checkpoint"
+    folder.mkdir()
+    weights = folder / "model.safetensors"
+    weights.write_bytes(b"checkpoint-a")
+    monkeypatch.setenv("OMNIVOICE_MODEL", str(folder))
+    _crash_after(dub, 2)
+    weights.write_bytes(b"replacement-checkpoint-b")
+    dub.run()
+    assert len(dub.generated) == 4
+
+
 def test_truncated_recovered_wav_is_rerendered(dub):
     _crash_after(dub, 2)
     wav = dub.journal / "seg_a.wav"
@@ -191,14 +211,17 @@ def test_journal_failure_never_fails_the_dub(dub, monkeypatch):
 
 
 @pytest.mark.parametrize("failure_point", ["prune", "recover", "model_folder"])
-def test_resume_failures_do_not_log_private_paths(dub, monkeypatch, caplog, failure_point):
+def test_resume_failures_do_not_log_private_paths(dub, monkeypatch, caplog, failure_point, tmp_path):
     from services import dub_resume, local_model_paths
 
     def fail(*_args, **_kwargs):
         raise PermissionError("/home/resume-private-user/recordings/private.wav")
 
     if failure_point == "model_folder":
-        monkeypatch.setattr(local_model_paths, "get", fail)
+        folder = tmp_path / "checkpoint"
+        folder.mkdir()
+        monkeypatch.setenv("OMNIVOICE_MODEL", str(folder))
+        monkeypatch.setattr(local_model_paths, "_weights_fingerprint", fail)
     else:
         monkeypatch.setattr(dub_resume.DubResumeJournal, failure_point, fail)
     caplog.set_level("DEBUG", logger="omnivoice.dub")
@@ -279,6 +302,7 @@ def test_mastering_or_effect_chain_change_rerenders(dub, monkeypatch):
 def test_local_model_folder_change_rerenders(dub, monkeypatch, tmp_path):
     from services import local_model_paths
 
+    monkeypatch.delenv("OMNIVOICE_MODEL", raising=False)
     folder = tmp_path / "weights"
     folder.mkdir()
     (folder / "model.safetensors").write_bytes(b"v1")
@@ -292,3 +316,18 @@ def test_local_model_folder_change_rerenders(dub, monkeypatch, tmp_path):
     (folder / "model.safetensors").write_bytes(b"version two")
     dub.run()
     assert len(dub.generated) == 4
+
+
+def test_environment_checkpoint_ignores_unused_saved_folder_changes(dub, monkeypatch, tmp_path):
+    from services import local_model_paths
+
+    folder = tmp_path / "unused-model"
+    folder.mkdir()
+    weights = folder / "model.safetensors"
+    weights.write_bytes(b"v1")
+    monkeypatch.setattr(local_model_paths, "get", lambda family, engine: str(folder))
+    monkeypatch.setenv("OMNIVOICE_MODEL", "models/active-checkpoint")
+    _crash_after(dub, 2)
+    weights.write_bytes(b"unused-folder-version-two")
+    dub.run()
+    assert len(dub.generated) == 2
