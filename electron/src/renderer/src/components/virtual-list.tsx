@@ -117,3 +117,139 @@ export function VirtualList<T>({
     </ul>
   );
 }
+
+/** Column count of `repeat(auto-fill, minmax(min(minWidth, 100%), 1fr))` at a width. */
+export function gridColumns(width: number, minWidth: number, gap: number): number {
+  if (!(width > 0)) return 1;
+  return Math.max(1, Math.floor((width + gap) / (minWidth + gap)));
+}
+
+interface VirtualGridProps<T> {
+  items: readonly T[];
+  scrollRef: RefObject<HTMLElement | null>;
+  getKey: (item: T) => Key;
+  /** Card content; the wrapper supplies the list item. */
+  renderCard: (item: T, index: number) => ReactNode;
+  /** Must match the CSS grid it replaces: min card width and gap, in px. */
+  minCardWidth?: number;
+  gap?: number;
+  estimateRowSize?: number;
+  threshold?: number;
+  'aria-label'?: string;
+}
+
+/**
+ * A responsive card grid that mounts only the visible rows once it grows past
+ * `threshold`. Columns follow the container width with the same rule as the
+ * `auto-fill` CSS grid it stands in for; rows are measured so cards keep their height.
+ */
+export function VirtualGrid<T>({
+  items,
+  scrollRef,
+  getKey,
+  renderCard,
+  minCardWidth = 280,
+  gap = 12,
+  estimateRowSize = 180,
+  threshold = VIRTUALIZE_LIST_ABOVE,
+  'aria-label': ariaLabel,
+}: VirtualGridProps<T>) {
+  const virtual = items.length > threshold;
+  const listRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  const [margin, setMargin] = useState(0);
+  const [mounted, setMounted] = useState(false);
+  useLayoutEffect(() => {
+    setMounted(true);
+    const scroller = scrollRef.current;
+    const list = listRef.current;
+    if (!scroller || !list) return;
+    const next = Math.round(
+      list.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop,
+    );
+    setMargin((current) => (current === next ? current : next));
+  });
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    setWidth(list.offsetWidth);
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver((entries) => {
+      const next = entries[0]?.contentRect.width;
+      if (typeof next === 'number') setWidth(next);
+    });
+    observer.observe(list);
+    return () => observer.disconnect();
+    // The root element changes (ul ↔ div) when the list crosses the threshold:
+    // observe the one now mounted.
+  }, [virtual]);
+
+  const columns = gridColumns(width, minCardWidth, gap);
+  const rowCount = Math.ceil(items.length / columns);
+  const virtualizer = useVirtualizer({
+    count: virtual ? rowCount : 0,
+    getScrollElement: () => (mounted ? scrollRef.current : null),
+    estimateSize: () => estimateRowSize,
+    overscan: 3,
+    gap,
+    scrollMargin: margin,
+    getItemKey: (row) => `row-${row}-${columns}`,
+  });
+
+  if (!virtual) {
+    return (
+      <ul
+        ref={listRef as unknown as RefObject<HTMLUListElement>}
+        aria-label={ariaLabel}
+        className="grid grid-cols-[repeat(auto-fill,minmax(min(280px,100%),1fr))] gap-3"
+      >
+        {items.map((item, index) => (
+          <li key={getKey(item)} className="min-w-0">
+            {renderCard(item, index)}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  return (
+    <div
+      ref={listRef}
+      role="list"
+      aria-label={ariaLabel}
+      className="relative w-full"
+      style={{ height: virtualizer.getTotalSize() }}
+    >
+      {virtualizer.getVirtualItems().map((row) => {
+        const start = row.index * columns;
+        if (start >= items.length) return null;
+        const slice = items.slice(start, start + columns);
+        return (
+          <div
+            key={row.key}
+            role="presentation"
+            ref={virtualizer.measureElement}
+            data-index={row.index}
+            className="absolute top-0 left-0 grid w-full"
+            style={{
+              gap,
+              gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
+              transform: `translateY(${row.start - margin}px)`,
+            }}
+          >
+            {slice.map((item, offset) => (
+              <div
+                key={getKey(item)}
+                role="listitem"
+                aria-setsize={items.length}
+                aria-posinset={start + offset + 1}
+                className="min-w-0"
+              >
+                {renderCard(item, start + offset)}
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
