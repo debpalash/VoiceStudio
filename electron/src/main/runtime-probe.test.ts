@@ -2,7 +2,7 @@
 import { spawnSync } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { afterEach, expect, it } from 'vitest';
-import { runRuntimeProbe } from './runtime-probe';
+import { runRuntimeProbe, withFields } from './runtime-probe';
 
 const children: ChildProcess[] = [];
 afterEach(() => {
@@ -54,4 +54,39 @@ it('terminates a non-terminating native-probe stand-in and awaits close before r
       { timeoutMs: 5000 },
     ),
   ).toContain('retry-ready');
+});
+
+it('rejects with the abort reason instead of throwing when a running probe is cancelled', async () => {
+  const controller = new AbortController();
+  const failure = runRuntimeProbe(
+    process.execPath,
+    ['-e', "console.log('probe-started'); setInterval(() => {}, 1000)"],
+    process.cwd(),
+    process.env,
+    {
+      timeoutMs: 30_000,
+      signal: controller.signal,
+      onSpawn: (spawned) => {
+        children.push(spawned);
+        spawned.stdout?.once('data', () => controller.abort());
+      },
+    },
+  );
+  // The default abort reason is a DOMException: its `code` has only a getter.
+  const error = await failure.catch((reason: unknown) => reason);
+  expect(error).toBe(controller.signal.reason);
+  expect(error).toMatchObject({
+    name: 'AbortError',
+    stdout: expect.stringContaining('probe-started'),
+  });
+});
+
+it('sets fields over getter-only accessors without throwing', () => {
+  const error = new DOMException('cancelled', 'AbortError');
+  expect(() => Object.assign(error, { code: 1 })).toThrow(TypeError);
+  expect(withFields(error, { code: 'X', stdout: 'out' })).toMatchObject({
+    code: 'X',
+    stdout: 'out',
+  });
+  expect(withFields(Object.freeze(new Error('frozen')), { code: 'X' }).message).toBe('frozen');
 });

@@ -46,7 +46,7 @@ import {
 import { useDeleteProfile } from '@/hooks/use-profiles';
 import { deleteHistoryItem } from '@/lib/api/history';
 import { Input } from '@/components/ui/input';
-import { VirtualList } from '@/components/virtual-list';
+import { VirtualGrid, VirtualList } from '@/components/virtual-list';
 import { apiJson, apiPath, describeError } from '@/lib/api/client';
 import { runRendererTask } from '@/lib/global-error-recovery';
 import { isImeComposing } from '@/lib/ime';
@@ -614,13 +614,7 @@ export function ProjectsPage() {
                 {search ? t('projects.no_matches', { query: search }) : t('projects.empty')}
               </p>
             )}
-            <div
-              className={
-                view === 'grid'
-                  ? 'grid grid-cols-[repeat(auto-fill,minmax(min(280px,100%),1fr))] gap-3'
-                  : undefined
-              }
-            >
+            <div>
               {(() => {
                 const renderRow = (row: (typeof visible)[number]) => {
                   const typeLabel = t(
@@ -859,7 +853,13 @@ export function ProjectsPage() {
                   );
                 };
                 return view === 'grid' ? (
-                  visible.map((row) => <Fragment key={row.key}>{renderRow(row)}</Fragment>)
+                  <VirtualGrid
+                    items={visible}
+                    scrollRef={scrollRef}
+                    getKey={(row) => row.key}
+                    estimateRowSize={190}
+                    renderCard={renderRow}
+                  />
                 ) : (
                   <VirtualList
                     items={visible}

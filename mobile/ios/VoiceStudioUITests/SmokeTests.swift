@@ -218,7 +218,7 @@ final class SmokeTests: XCTestCase {
         app.launch()
         connect(app)
         XCTAssertTrue(app.textViews["speak.text"].waitForExistence(timeout: uiReadyTimeout))
-        XCTAssertTrue(app.descendants(matching: .any)["page.loading"].firstMatch.exists)
+        XCTAssertTrue(app.descendants(matching: .any)["page.loading"].firstMatch.waitForExistence(timeout: uiReadyTimeout))
         app.tabButton("Dub").tapReady()
         XCTAssertTrue(app.textFields["dub.source_url"].waitForExistence(timeout: uiReadyTimeout))
         app.tabButton("Voices").tapReady()

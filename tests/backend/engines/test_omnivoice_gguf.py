@@ -377,21 +377,39 @@ class _GgufRig:
 def test_generate_translates_controls_into_flags(monkeypatch, tmp_path):
     rig = _GgufRig(monkeypatch, tmp_path)
     rig.instance.generate(
-        "x", instruct="whisper", duration=1.75, seed=99,
+        "x", instruct="whisper", duration=1.75, num_step=16, seed=99,
         denoise=False, preprocess_prompt=False, chunk_duration=0, chunk_threshold=500,
     )
     assert rig.flag_value("--instruct") == "whisper"
     assert rig.flag_value("--duration") == "1.75"
+    assert rig.flag_value("--steps") == "16"
     assert rig.flag_value("--seed") == "99"
     assert rig.flag_value("--chunk-duration") == "0.0"
     assert rig.flag_value("--chunk-threshold") == "500.0"
     assert {"--no-denoise", "--no-preprocess-prompt"} <= set(rig.argvs[-1])
 
 
+def test_voice_design_and_inline_tags_are_advertised():
+    """#4080: omnivoice.cpp designs from --instruct and tokenizes the same tags."""
+    from engines.omnivoice_gguf import backend as gguf_backend
+    from services.expression import OMNIVOICE_INLINE_TAGS
+
+    cls = gguf_backend._make_backend_class()
+    assert cls.supports_voice_design is True
+    assert cls.inline_tags == OMNIVOICE_INLINE_TAGS
+
+
+def test_design_without_a_reference_forwards_the_instruction(monkeypatch, tmp_path):
+    rig = _GgufRig(monkeypatch, tmp_path)
+    rig.instance.generate("x [laughter]", instruct="female, low pitch")
+    assert rig.flag_value("--instruct") == "female, low pitch"
+    assert "--ref-wav" not in rig.argvs[-1]
+
+
 def test_generate_without_controls_emits_no_extra_flags(monkeypatch, tmp_path):
     rig = _GgufRig(monkeypatch, tmp_path)
     rig.instance.generate("x")
-    optional = {"--instruct", "--duration", "--seed", "--no-denoise", "--no-preprocess-prompt",
+    optional = {"--instruct", "--duration", "--steps", "--seed", "--no-denoise", "--no-preprocess-prompt",
                 "--chunk-duration", "--chunk-threshold", "--ref-text", "--ref-wav"}
     assert optional.isdisjoint(rig.argvs[-1])
 
@@ -1213,7 +1231,7 @@ def test_generate_leaves_quality_knobs_to_the_caller(monkeypatch):
     from engines.omnivoice_gguf import backend as gguf_backend
 
     cls = gguf_backend._make_backend_class()
-    assert cls.supports_num_step is False
+    assert cls.supports_num_step is True
     assert cls.supports_guidance_scale is False
     backend = cls()
     monkeypatch.setattr(
@@ -1225,3 +1243,16 @@ def test_generate_leaves_quality_knobs_to_the_caller(monkeypatch):
                {"guidance_scale": 5.0}):
         with pytest.raises(FileNotFoundError, match="test-no-binary"):
             backend.generate("hello world", **kw)
+
+
+@pytest.mark.parametrize("tier", [None, "fast", "max"])
+def test_every_route_defaults_gguf_to_its_native_step_count(monkeypatch, tier):
+    """Batch, dubbing, /convert and /generate fill num_step from tts_defaults;
+    GGUF is untiered, so they must get 32 rather than the generic 16 (#4084)."""
+    from engines.omnivoice_gguf.resident import DEFAULT_DECODE_STEPS
+    from services import performance_profiles
+
+    monkeypatch.setattr(performance_profiles, "requested_tier", lambda _family: tier)
+    assert performance_profiles.ENGINE_DEFAULT_NUM_STEP["omnivoice-gguf"] == DEFAULT_DECODE_STEPS
+    assert performance_profiles.tts_defaults("omnivoice-gguf") == {"num_step": DEFAULT_DECODE_STEPS}
+    assert "num_step" not in performance_profiles.tts_defaults("kokoro")
