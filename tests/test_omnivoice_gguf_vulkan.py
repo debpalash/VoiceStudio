@@ -217,3 +217,20 @@ def test_no_vulkan_adapter_reported_after_gpu_crash(monkeypatch):
 
     monkeypatch.setattr(b, "_GPU_CRASHED", True)
     assert compute.selected_vulkan_adapter() is None
+
+
+def test_quant_tier_survives_a_gpu_crash(monkeypatch):
+    """After a GPU crash renders move to the CPU, but the quant tier (and so the
+    voice) stays the same for the rest of the job."""
+    from types import SimpleNamespace
+
+    from engines.omnivoice_gguf import backend as b, compute, hardware_probe
+
+    adapter = SimpleNamespace(effective_vram_mb=12_000, bf16=False)
+    monkeypatch.setattr(compute, "_configured_vulkan_adapter", lambda: adapter)
+    monkeypatch.setattr(b, "_GPU_CRASHED", False)
+    before = compute.automatic_compute_class()
+    monkeypatch.setattr(b, "_GPU_CRASHED", True)
+    assert compute.selected_vulkan_adapter() is None
+    assert compute.automatic_compute_class() == before != "cpu"
+    assert before == hardware_probe._bucket(12_000) or before == "mid-vram"

@@ -46,12 +46,31 @@ def test_conflicting_categories_keep_the_first():
     assert tag_safe_instruct("male, female") == "male"
 
 
-def test_cached_ref_helper_applies_the_guard():
-    import pathlib
+def test_cached_ref_helper_applies_the_guard(monkeypatch):
+    """Audiobook and /generate call generate_with_cached_ref directly: the model
+    must receive the reduced instruct, not the free text."""
+    import contextlib
 
-    src = (pathlib.Path(__file__).resolve().parents[1] / "backend/services/tts_backend.py").read_text(encoding="utf-8")
-    body = src.split("def generate_with_cached_ref", 1)[1].split("\ndef ", 1)[0]
-    assert "tag_safe_instruct" in body
+    import services.model_manager as model_manager
+    import services.tts_backend as tts_backend
+
+    monkeypatch.setattr(tts_backend, "engine_in_use", lambda _backend: contextlib.nullcontext())
+    monkeypatch.setattr(model_manager, "tts_inference", contextlib.nullcontext)
+    monkeypatch.setattr(
+        tts_backend, "omnivoice_inline_reference", lambda audio, text: (audio, text, None)
+    )
+    seen = {}
+
+    class Model:
+        def generate(self, **kw):
+            seen.update(kw)
+            return "audio"
+
+    out = tts_backend.generate_with_cached_ref(
+        Model(), ref_audio=None, ref_text=None, text="Hi", instruct="slow, male, energetic"
+    )
+    assert out == "audio"
+    assert seen["instruct"] == "male"
 
 
 def test_every_tags_backend_applies_the_guard():
@@ -64,3 +83,14 @@ def test_every_tags_backend_applies_the_guard():
         "engines/omnivoice_gguf/backend.py",
     ):
         assert "tag_safe_instruct" in (root / rel).read_text(encoding="utf-8"), rel
+
+
+def test_long_whitespace_runs_stay_fast():
+    import time
+
+    from services.instruct_safety import tag_safe_instruct
+
+    started = time.perf_counter()
+    out = tag_safe_instruct("male" + " " * 50_000 + ",  " + " " * 50_000 + "whisper")
+    assert out.replace(" ", "") == "male,whisper"
+    assert time.perf_counter() - started < 2

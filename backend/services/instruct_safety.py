@@ -30,6 +30,9 @@ def _accepted(value: str) -> bool:
 def _one(value):
     if not isinstance(value, str) or not value.strip():
         return value
+    # Collapse whitespace runs first: OmniVoice's comma split backtracks across
+    # them, so a long run of spaces would cost quadratic time in the resolver.
+    value = " ".join(value.split())
     if _accepted(value):
         return value
     from omnivoice.utils.voice_design import sanitize_instruct
