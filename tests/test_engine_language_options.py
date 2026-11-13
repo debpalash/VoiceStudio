@@ -215,3 +215,13 @@ def test_kokoro_guard_uses_installed_labels(monkeypatch, tts):
     assert backend._check_language('British English') is None
     assert backend._check_language('Auto') is None
     assert calls == ['British English']
+
+
+def test_translation_only_dub_targets_resolve_to_nllb_codes():
+    """Kabyle, Uyghur and Cebuano (#4058) are picker targets Whisper cannot hear."""
+    pytest.importorskip("transformers")
+    from api.routers.dub_translate import _nllb_language
+
+    assert _nllb_language("ceb") == "ceb_Latn"
+    assert _nllb_language("kab") == "kab_Latn"
+    assert _nllb_language("ug") == "uig_Arab"
