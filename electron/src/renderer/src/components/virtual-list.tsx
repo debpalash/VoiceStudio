@@ -68,15 +68,16 @@ export function VirtualList<T>({
     estimateSize: () => estimateSize,
     overscan: 8,
     scrollMargin: margin,
-    getItemKey: (index) => (items[index] ? getKey(items[index]) : index),
+    getItemKey: (index) => (index < items.length ? getKey(items[index] as T) : index),
   });
   useEffect(() => {
-    if (!virtual || activeKey == null) return;
+    // Wait for the scroller: a scroll issued before it attaches is dropped.
+    if (!virtual || !mounted || activeKey == null) return;
     const index = items.findIndex((item) => getKey(item) === activeKey);
     if (index >= 0) virtualizer.scrollToIndex(index, { align: 'auto' });
     // Only a changed active row should scroll; list updates must not fight the user.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeKey, virtual]);
+  }, [activeKey, virtual, mounted]);
 
   if (!virtual) {
     return (
@@ -97,8 +98,8 @@ export function VirtualList<T>({
       style={{ height: virtualizer.getTotalSize() }}
     >
       {virtualizer.getVirtualItems().map((row) => {
-        const item = items[row.index];
-        if (!item) return null;
+        if (row.index >= items.length) return null;
+        const item = items[row.index] as T;
         return (
           <li
             key={row.key}

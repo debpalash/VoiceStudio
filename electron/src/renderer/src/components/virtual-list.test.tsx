@@ -48,6 +48,8 @@ it('mounts only a window of rows for a 1000-item list and keeps rows clickable',
   expect(rows.length).toBeGreaterThan(0);
   expect(rows.length).toBeLessThan(40);
   expect(screen.queryByRole('button', { name: 'Row 999' })).toBeNull();
+  // Falsy items (0) are rows too.
+  expect(screen.getByRole('button', { name: 'Row 0' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Row 3' }));
   expect(onPick).toHaveBeenCalledWith(3);
 });
@@ -68,4 +70,14 @@ it('scrolls an unmounted active row into view', async () => {
   rerender(<Harness count={1000} onPick={vi.fn()} activeKey={500} />);
   await waitFor(() => expect(scrollTo).toHaveBeenCalled());
   expect(scrollTo.mock.calls[0][0].top).toBeGreaterThan(1000);
+});
+
+it('scrolls to an active row that is already set when the list mounts', async () => {
+  mockSizes();
+  vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(40000);
+  const scrollTo = vi.fn();
+  Object.defineProperty(HTMLElement.prototype, 'scrollTo', { configurable: true, value: scrollTo });
+  render(<Harness count={1000} onPick={vi.fn()} activeKey={500} />);
+  await waitFor(() => expect(scrollTo).toHaveBeenCalled());
+  expect(scrollTo.mock.calls.at(-1)![0].top).toBeGreaterThan(1000);
 });
