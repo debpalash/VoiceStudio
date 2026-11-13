@@ -446,3 +446,24 @@ def test_loopback_proxy_websocket_with_a_ticket_is_not_host_checked(default_host
         with proxied.websocket_connect(f"/ws/tts?ws_ticket={ticket}") as ws:
             ws.receive_text()
     admin_session_store.clear()
+
+
+def test_cross_site_refusal_gives_the_exact_line_that_allows_the_app(spawned, public_dns, monkeypatch):
+    monkeypatch.delenv("OMNIVOICE_ALLOWED_ORIGINS", raising=False)
+    app_origin = "http://localhost:6121"
+    detail = _client().post(_DOWNLOAD, headers={"Origin": app_origin}).json()["detail"]
+    assert f"({app_origin})" in detail
+    assert "%USERPROFILE%\\.config\\omnivoice\\env" in detail
+    line = detail.split("add OMNIVOICE_ALLOWED_ORIGINS=", 1)[1].split(" ", 1)[0]
+    # The line keeps the defaults (the variable replaces them) and adds the app.
+    assert "app://voicestudio" in line.split(",") and line.endswith(f",{app_origin}")
+    monkeypatch.setenv("OMNIVOICE_ALLOWED_ORIGINS", line)
+    assert _client().post(_DOWNLOAD, headers={"Origin": app_origin}).status_code != 403
+    assert _client().post(_DOWNLOAD, headers={"Origin": "app://voicestudio"}).status_code != 403
+
+
+@pytest.mark.parametrize("headers", [{"Origin": "null"}, {"Sec-Fetch-Site": "cross-site"}])
+def test_opaque_cross_site_refusal_keeps_the_generic_hint(spawned, public_dns, headers):
+    from core.browser_guard import CROSS_SITE_DETAIL
+
+    assert _client().post(_DOWNLOAD, headers=headers).json()["detail"] == CROSS_SITE_DETAIL
