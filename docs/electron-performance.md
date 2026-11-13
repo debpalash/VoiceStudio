@@ -61,3 +61,7 @@ Reference mode fails closed if local installation cannot be verified, including 
 
 When dedicated GPU capacity is unavailable, the planner still considers installed
 CPU-only candidates within the RAM budget. It does not assume GPU models fit.
+
+## Long lists
+
+Lists that grow without a bound mount only the rows in view once they pass 100 items: Recent takes and saved voices (Clone), the Projects list view, dub projects and the Transcribe history. They share `components/virtual-list.tsx`, which keeps real `ul`/`li` semantics, measures rows so inline confirmations keep their height, and scrolls the active row into view. Shorter lists render every row. The Projects grid view, the gallery and community catalogues (paged 60 and 100 at a time) and the batch job list (capped at 100) stay fully rendered.

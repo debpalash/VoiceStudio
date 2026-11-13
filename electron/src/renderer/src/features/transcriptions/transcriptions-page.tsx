@@ -35,6 +35,7 @@ import { toast } from 'sonner';
 import { runRendererTask } from '@/lib/global-error-recovery';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { VirtualList } from '@/components/virtual-list';
 import { Switch } from '@/components/ui/switch';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { WaveformPlayer } from '@/components/waveform-player';
@@ -172,6 +173,7 @@ export function TranscriptionsPage() {
     setUrl(next);
     return () => URL.revokeObjectURL(next);
   }, [file]);
+  const historyRef = useRef<HTMLDivElement>(null);
   const visible = useMemo(
     () =>
       entries.filter((entry) =>
@@ -258,42 +260,50 @@ export function TranscriptionsPage() {
             />
           ) : null}
           {entries.length > 0 && (
-            <div className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto">
-              {visible.map((entry) => (
-                <button
-                  key={entry.id}
-                  className={cn(
-                    'w-full rounded-xl border border-transparent px-3 py-2.5 text-left text-sm transition-[color,background-color,border-color,box-shadow] hover:border-border/55 hover:bg-accent/60',
-                    selectedId === entry.id &&
-                      'border-primary/20 bg-primary/[0.07] shadow-[inset_2px_0_0_var(--primary)]',
-                  )}
-                  aria-pressed={selectedId === entry.id}
-                  onClick={() => setSelectedId(entry.id)}
-                >
-                  <p className="line-clamp-2 text-[13px] leading-5 font-medium" dir="auto">
-                    {preferredTranscript(entry)}
-                  </p>
-                  <div className="mt-1 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-                    <span className="inline-flex min-w-0 items-center gap-1">
-                      <Clock3Icon className="size-3 shrink-0" aria-hidden="true" />
-                      <span className="truncate">
-                        {formatRelative(entry.timestamp, i18n.language)}
-                      </span>
-                    </span>
-                    {entry.language && entry.language !== 'unknown' ? (
+            <div ref={historyRef} className="mt-3 min-h-0 flex-1 overflow-y-auto">
+              <VirtualList
+                items={visible}
+                scrollRef={historyRef}
+                getKey={(entry) => entry.id}
+                activeKey={selectedId}
+                estimateSize={72}
+                rowClassName="pb-1"
+                renderRow={(entry) => (
+                  <button
+                    key={entry.id}
+                    className={cn(
+                      'w-full rounded-xl border border-transparent px-3 py-2.5 text-left text-sm transition-[color,background-color,border-color,box-shadow] hover:border-border/55 hover:bg-accent/60',
+                      selectedId === entry.id &&
+                        'border-primary/20 bg-primary/[0.07] shadow-[inset_2px_0_0_var(--primary)]',
+                    )}
+                    aria-pressed={selectedId === entry.id}
+                    onClick={() => setSelectedId(entry.id)}
+                  >
+                    <p className="line-clamp-2 text-[13px] leading-5 font-medium" dir="auto">
+                      {preferredTranscript(entry)}
+                    </p>
+                    <div className="mt-1 flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
                       <span className="inline-flex min-w-0 items-center gap-1">
-                        <LanguagesIcon className="size-3 shrink-0" aria-hidden="true" />
-                        <span className="truncate">{entry.language}</span>
+                        <Clock3Icon className="size-3 shrink-0" aria-hidden="true" />
+                        <span className="truncate">
+                          {formatRelative(entry.timestamp, i18n.language)}
+                        </span>
                       </span>
-                    ) : null}
-                    {Number(entry.duration_s) > 0 ? (
-                      <span className="shrink-0 tabular-nums">
-                        {Number(entry.duration_s).toFixed(1)}s
-                      </span>
-                    ) : null}
-                  </div>
-                </button>
-              ))}
+                      {entry.language && entry.language !== 'unknown' ? (
+                        <span className="inline-flex min-w-0 items-center gap-1">
+                          <LanguagesIcon className="size-3 shrink-0" aria-hidden="true" />
+                          <span className="truncate">{entry.language}</span>
+                        </span>
+                      ) : null}
+                      {Number(entry.duration_s) > 0 ? (
+                        <span className="shrink-0 tabular-nums">
+                          {Number(entry.duration_s).toFixed(1)}s
+                        </span>
+                      ) : null}
+                    </div>
+                  </button>
+                )}
+              />
             </div>
           )}
           {entries.length > 0 && (
