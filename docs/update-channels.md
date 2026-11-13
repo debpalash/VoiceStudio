@@ -57,6 +57,8 @@ the version's GitHub release page. VoiceStudio only offers **Restart** after
 the package has downloaded and passed the updater's checksum verification.
 Restarting while work runs asks first ("Restarting will stop running
 tasks"); drafts are flushed before the restart.
+Update status stays available until the window closes, including while the
+local engine is shutting down for the restart.
 
 A verified update also installs when you quit VoiceStudio on macOS, Windows
 and the Linux AppImage, so **Later** just hides the prompt for that version.
