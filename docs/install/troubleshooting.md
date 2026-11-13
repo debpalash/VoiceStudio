@@ -1305,13 +1305,16 @@ Full guide: [dubbing/translation-engines.md](../dubbing/translation-engines.md#i
 
 ## First-run setup fails on a restricted network (GitHub/PyPI blocked)
 
-On networks that block or can't resolve **GitHub**, the first-run bootstrap may
-fail to download the managed Python (`uv venv ... failed`, often a DNS error).
-VoiceStudio now tries, in order: the default GitHub host → a gh-proxy mirror → your
-**system Python** (if 3.11+ is installed). If all three fail:
+On networks that block, throttle or can't resolve **GitHub**, first-run setup may
+stall or fail while downloading the managed Python (the setup screen shows
+`cpython-3.11.… (download)`). With the download region on **Auto-detect**,
+setup retries a failed or stalled Python download once from the other source
+(GitHub ↔ the `gh-proxy.com` mirror) and notes the switch in the setup log; a
+region you picked, or your own `UV_PYTHON_INSTALL_MIRROR`, is kept as is. If
+both fail:
 
-1. **Install Python 3.11+** from <https://www.python.org/downloads/> (on Windows,
-   tick *"Add Python to PATH"*), then relaunch — VoiceStudio will use it.
+1. **Choose the Russia or Restricted download region** under **Options** on the
+   setup screen and press Retry: both start from the mirror.
 2. **Point at a reachable mirror** for the Python download:
    - `UV_PYTHON_INSTALL_MIRROR=https://gh-proxy.com/https://github.com/astral-sh/python-build-standalone/releases/download`
 3. **In China, keep Auto-detect or pick the China download region** under

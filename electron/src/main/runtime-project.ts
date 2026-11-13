@@ -244,7 +244,7 @@ async function effectiveRegion(region: RuntimeRegion, signal: AbortSignal): Prom
   if (region !== 'auto') return region;
   const [direct, mirror] = await Promise.all([
     probeLatency('https://github.com', signal),
-    probeLatency('https://ghproxy.net/https://github.com', signal),
+    probeLatency(`${new URL(PYTHON_DOWNLOAD_MIRROR).origin}/https://github.com`, signal),
   ]);
   if (direct !== null && (mirror === null || mirror * 5 > direct * 4)) return 'global';
   return 'restricted';
@@ -1206,6 +1206,49 @@ export async function retryTransientDownload(
   }
 }
 
+/**
+ * `uv python install`, switching once between GitHub and its mirror when the
+ * first source fails. A Python download that stalls on GitHub (release
+ * assets throttled while github.com itself answers the region probe) would
+ * otherwise stall again in the sync. Only for the Auto region with no
+ * user-set `UV_PYTHON_INSTALL_MIRROR`; a chosen region or mirror is kept. The
+ * source that worked stays in `env` for the rest of setup.
+ */
+export async function installManagedPython(
+  uv: string,
+  args: string[],
+  project: string,
+  env: NodeJS.ProcessEnv,
+  run: RuntimeRunner,
+  signal: AbortSignal,
+  allowFallback: boolean,
+  log: (line: string) => void = () => {},
+): Promise<void> {
+  try {
+    await run(uv, args, project, env);
+    return;
+  } catch (error) {
+    signal.throwIfAborted();
+    if (!allowFallback || runtimeLaunchRefusal(uv, error)) throw error;
+    const original = env.UV_PYTHON_INSTALL_MIRROR;
+    const mirrorHost = new URL(PYTHON_DOWNLOAD_MIRROR).host;
+    const viaMirror = original === PYTHON_DOWNLOAD_MIRROR;
+    log(
+      `Python download from ${viaMirror ? mirrorHost : 'GitHub'} failed (${errorSummary(error)}); ` +
+        `retrying from ${viaMirror ? 'GitHub' : mirrorHost}.`,
+    );
+    if (viaMirror) delete env.UV_PYTHON_INSTALL_MIRROR;
+    else env.UV_PYTHON_INSTALL_MIRROR = PYTHON_DOWNLOAD_MIRROR;
+    try {
+      await run(uv, args, project, env);
+    } catch (second) {
+      if (original === undefined) delete env.UV_PYTHON_INSTALL_MIRROR;
+      else env.UV_PYTHON_INSTALL_MIRROR = original;
+      throw second;
+    }
+  }
+}
+
 /** Called only by the user's install action; normal startup never downloads. */
 /**
  * Runs the pinned interpreter once before gigabytes of wheels arrive, so a machine
@@ -1220,6 +1263,7 @@ async function interpreterCanary(
   run: RuntimeRunner,
   signal: AbortSignal,
   downloads: MirrorReporter,
+  allowMirrorFallback = false,
 ): Promise<void> {
   const refused = (program: string, error: unknown) => {
     const refusal = runtimeLaunchRefusal(program, error);
@@ -1235,7 +1279,16 @@ async function interpreterCanary(
   let python = '';
   try {
     // Stays inside the runtime: no user-wide python on PATH, no Windows registry entry.
-    await run(uv, ['python', 'install', '--no-bin', '--no-registry', request], project, env);
+    await installManagedPython(
+      uv,
+      ['python', 'install', '--no-bin', '--no-registry', request],
+      project,
+      env,
+      run,
+      signal,
+      allowMirrorFallback,
+      downloads.log,
+    );
     signal.throwIfAborted();
     const found = await run(uv, ['python', 'find', '--managed-python', request], project, env, {
       timeoutMs: CANARY_TIMEOUT_MS,
@@ -1410,7 +1463,16 @@ export async function installRuntime(
   const pythonArgs = existingPython
     ? ['--python', runtimePython(project)]
     : ['--managed-python', '--python', managedPythonRequest()];
-  if (!existingPython) await interpreterCanary(uv, project, env, run, signal, downloads);
+  if (!existingPython)
+    await interpreterCanary(
+      uv,
+      project,
+      env,
+      run,
+      signal,
+      downloads,
+      region === 'auto' && !process.env.UV_PYTHON_INSTALL_MIRROR,
+    );
   const cpuTorch = torch.variant === 'cpu';
   // A failed native import may leave distribution metadata intact, so uv's
   // ordinary sync would otherwise consider the broken wheel already satisfied.
