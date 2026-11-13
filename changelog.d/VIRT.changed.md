@@ -1,1 +1,0 @@
-Long Projects, dub project and Transcribe history lists now render only the rows on screen, so they stay fast with thousands of items.
