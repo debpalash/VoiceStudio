@@ -208,6 +208,10 @@ and native save dialogs remain unverified or incomplete.
 
 Timing options now match Tauri: Concise, Smart Fit, Stretch Video and Lip sync.
 Voice matching offers per-line references or one consistent reference per speaker.
+Manually selected saved voices use their stored reference recording and transcript
+on every segment, including designed voices and clones with style instructions.
+A locked voice uses its locked take; legacy instruction-only voices still use
+their description and seed without a reference recording.
 These choices persist in working drafts and projects and are sent to generation;
 existing defaults remain Strict slot and Per line. Interrupted generation retains
 its submitted timing strategy. Completed output retains that strategy separately
