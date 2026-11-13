@@ -24,6 +24,10 @@ def dub(monkeypatch, tmp_path):
     job = {"duration": 4.0, "dubbed_tracks": {}, "segments": []}
     path = tmp_path / "job"
     path.mkdir()
+    checkpoint = tmp_path / "fixture-model"
+    checkpoint.mkdir()
+    (checkpoint / "model.safetensors").write_bytes(b"fixture weights")
+    monkeypatch.setenv("OMNIVOICE_MODEL", str(checkpoint))
     events, generated = [], []
     state = {"fail_on_call": None, "cancel_after": None, "model_identity": "checkpoint-a"}
 
@@ -412,7 +416,10 @@ def test_environment_checkpoint_ignores_unused_saved_folder_changes(dub, monkeyp
     weights = folder / "model.safetensors"
     weights.write_bytes(b"v1")
     monkeypatch.setattr(local_model_paths, "get", lambda family, engine: str(folder))
-    monkeypatch.setenv("OMNIVOICE_MODEL", "models/active-checkpoint")
+    active = tmp_path / "active-checkpoint"
+    active.mkdir()
+    (active / "model.safetensors").write_bytes(b"active weights")
+    monkeypatch.setenv("OMNIVOICE_MODEL", str(active))
     _crash_after(dub, 2)
     weights.write_bytes(b"unused-folder-version-two")
     dub.run()
@@ -562,4 +569,12 @@ def test_model_change_during_load_never_publishes_mixed_recovered_weights(dub, m
     assert any(event["type"] == "error" for event in events)
     assert not list(dub.path.glob("seg_en_*.wav"))
     assert any(event["type"] == "done" for event in dub.run())
+    assert len(dub.generated) == 4
+
+
+def test_hub_repository_name_alone_never_records_reusable_speech(dub, monkeypatch):
+    monkeypatch.setenv("OMNIVOICE_MODEL", "example/mutable-hub-checkpoint")
+    _crash_after(dub, 2)
+    assert not list(dub.journal.glob("*.json"))
+    dub.run()
     assert len(dub.generated) == 4

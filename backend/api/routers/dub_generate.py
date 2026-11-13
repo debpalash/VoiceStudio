@@ -883,20 +883,20 @@ async def dub_generate(job_id: str, req: DubRequest):
                         if not checkpoint:
                             raise ValueError("CosyVoice weights directory unavailable")
                     folder = checkpoint if os.path.isabs(checkpoint) or os.path.isdir(checkpoint) else None
-                    fp = None
-                    result = (False, None, checkpoint)
-                    if folder:
-                        checkpoint = os.path.realpath(folder)
-                        fp = tree_fingerprint(checkpoint)
-                        files = fp[1] if len(fp) > 1 else None
-                        result = (True, repr(files) if isinstance(files, tuple) else None, checkpoint)
+                    if not folder:
+                        # A mutable Hub repo name does not identify its loaded
+                        # snapshot or tokenizer files across backend restarts.
+                        return True, None, None
+                    checkpoint = os.path.realpath(folder)
+                    fp = tree_fingerprint(checkpoint)
+                    files = fp[1] if len(fp) > 1 else None
+                    result = (True, repr(files) if isinstance(files, tuple) else None, checkpoint)
                     _model_load_proof.append((checkpoint, fp))
                     _model_fp_memo.append(result)
                 if resident is not None:
                     checkpoint, fp = _model_load_proof[0]
-                    loaded_folder = os.path.realpath(loaded_checkpoint) if fp is not None else loaded_checkpoint
-                    if loaded_folder != checkpoint or (
-                        fp is not None and getattr(resident, "_voicestudio_weights_fingerprint", None) != fp
+                    if os.path.realpath(loaded_checkpoint) != checkpoint or (
+                        getattr(resident, "_voicestudio_weights_fingerprint", None) != fp
                     ):
                         return True, None, None
                 return _model_fp_memo[0]
