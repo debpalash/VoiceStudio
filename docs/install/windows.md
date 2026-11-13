@@ -69,6 +69,18 @@ cannot be closed when the app is stopped, run the installer from a different
 folder (for example Downloads) and retry; keep your existing runtime, model
 cache and data folders.
 
+Installer process checks run PowerShell without user startup profiles or
+interactive prompts. This prevents a custom profile that waits for input or
+runs a long command from stopping the Windows installation wizard.
+
+If the native Windows installer still stops progressing, record its exact
+filename and version, your Windows version and architecture, whether this is
+a fresh install or an update, and how long it has waited. Include the last
+installer detail line if available, and note whether Task Manager shows the
+installer or a PowerShell child using CPU or disk. This screen runs before the
+app's Python setup, so the app's download log cannot diagnose it. Keep the
+existing runtime, models, voices and projects while collecting this evidence.
+
 Or, from a regular (non-admin) PowerShell, let the
 [install script](script.md) pick the right installer, verify it, and open the
 wizard:
