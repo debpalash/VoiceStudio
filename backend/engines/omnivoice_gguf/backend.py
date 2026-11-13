@@ -182,7 +182,10 @@ def _spawn_env() -> dict[str, str]:
         prev = env.get(var)
         env[var] = bin_dir if not prev else bin_dir + os.pathsep + prev
     from .compute import apply_compute_env
-    return apply_compute_env(env)
+    env = apply_compute_env(env)
+    if _GPU_CRASHED and env.get("GGML_BACKEND", "").strip().upper() != "CPU":
+        env["GGML_BACKEND"] = "CPU"
+    return env
 
 
 #: Shared ggml runtime libraries the build drops next to the binary. With
@@ -229,6 +232,33 @@ _ILLEGAL_INSTRUCTION_EXITS = frozenset({-4, 132, 0xC000001D, 0xC000001D - (1 << 
 #: file identity they had then. Until the file changes (rebuilt/reinstalled),
 #: the engine reports itself unavailable instead of failing every generate.
 _CPU_INCOMPATIBLE: dict[str, tuple[int, int]] = {}
+
+#: Exit codes of a native crash (access violation, stack-buffer overrun, heap
+#: corruption, SIGSEGV/SIGBUS/SIGABRT as the OS or a shell reports them). The
+#: illegal-instruction codes are handled earlier and are not GPU crashes.
+_NATIVE_CRASH_EXITS = frozenset(
+    {0xC0000005, 0xC0000409, 0xC0000374, -11, 139, -7, 135, -6, 134}
+    | {c - (1 << 32) for c in (0xC0000005, 0xC0000409, 0xC0000374)}
+)
+
+#: Set for the rest of the session once a GPU run crashed natively (#4050):
+#: the runtime loaded a GPU backend the driver cannot run (for example Vulkan
+#: on a Pascal card), so every later request is pinned to ``GGML_BACKEND=CPU``.
+_GPU_CRASHED = False
+
+
+def _native_gpu_crash(returncode, env: dict[str, str]) -> bool:
+    """Whether a nonzero exit is a native crash of a run that could use a GPU."""
+    if returncode not in _NATIVE_CRASH_EXITS:
+        return False
+    chosen = env.get("GGML_BACKEND", "").strip().upper()
+    if chosen == "CPU":
+        return False
+    if chosen:  # an explicit Vulkan<N> / CUDA<N> / Metal pin
+        return True
+    from .compute import binary_has_vulkan_module
+
+    return binary_has_vulkan_module()
 
 
 def _file_identity(path: Path) -> tuple[int, int] | None:
@@ -1613,8 +1643,8 @@ def _make_backend_class():
             validate_executable(Path(argv[0]), hint=_binary_repair_hint())
             if timeout_s is None:
                 timeout_s = _generate_timeout_s()
-            try:
-                proc = subprocess.run(
+            def _spawn(env):
+                return subprocess.run(
                     argv,
                     input=stdin_text,
                     text=True,
@@ -1623,10 +1653,30 @@ def _make_backend_class():
                     capture_output=True,
                     timeout=timeout_s,
                     check=False,
-                    env=_spawn_env(),
+                    env=env,
                     # See probe_load: keep ggml's backend scan inside bin/.
                     cwd=str(_binary_path().parent),
                 )
+
+            try:
+                env = _spawn_env()
+                proc = _spawn(env)
+                if _native_gpu_crash(proc.returncode, env):
+                    # The GPU backend crashed the process (#4050, Vulkan on a
+                    # GTX 1080). Retry this request on the CPU and keep every
+                    # later one there; any other failure is reported as-is.
+                    global _GPU_CRASHED
+                    _GPU_CRASHED = True
+                    logger.warning(
+                        "OmniVoice GGUF: the GPU backend crashed (exit %s); retrying on "
+                        "the CPU and using the CPU for the rest of this session. Set "
+                        "OMNIVOICE_GGUF_BACKEND=cpu to skip the GPU on every start. "
+                        "Runtime output: %s",
+                        proc.returncode,
+                        _mask_token((proc.stderr or "").strip()[-600:]) or "<no stderr>",
+                    )
+                    env = _spawn_env()
+                    proc = _spawn(env)
             except subprocess.TimeoutExpired as exc:
                 raise RuntimeError(
                     f"GGUF subprocess timed out after "

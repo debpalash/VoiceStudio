@@ -278,6 +278,18 @@ explicit CPU choice also selects the CPU quant (Q4_K_M) and requires that
 pair to be installed — a larger cached quant is not substituted for it. An
 explicit quant override remains authoritative in either case.
 
+### GPU crash fallback
+
+Some GPU and driver pairs load ggml's Vulkan backend and then crash the
+runtime natively (for example an access violation, exit `3221225477` /
+`0xC0000005`, on a GeForce GTX 1080, a Pascal card without fp16 shaders).
+When a run that could use a GPU exits with such a crash code, VoiceStudio
+retries that request on the CPU (`GGML_BACKEND=CPU`), keeps every later request
+of the session on the CPU, and logs the reason once. The CPU quant is not
+re-selected; the loaded pair is reused. Ordinary errors, timeouts and crashes
+of an explicit CPU run are reported unchanged. To skip the GPU attempt on every
+start, set `OMNIVOICE_GGUF_BACKEND=cpu`.
+
 ## Checking Vulkan on your machine
 
 1. **Driver.** Run `vulkaninfo --summary` (installed with the GPU driver on

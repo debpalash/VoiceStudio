@@ -140,3 +140,64 @@ def test_gguf_lang_arg_keeps_plain_iso_mapping(gguf):
 def test_gguf_lang_arg_keeps_ids_already_valid(gguf):
     assert gguf._iso_to_omnivoice_lang("ht") == "ht"
     assert gguf._iso_to_omnivoice_lang("ug") == "ug"
+
+
+def _crash_harness(monkeypatch, gguf, *, first, second=0):
+    """Run _run_subprocess with scripted exit codes; return (error, envs)."""
+    from types import SimpleNamespace
+
+    from services import binary_preflight
+
+    monkeypatch.setenv("OMNIVOICE_DEVICE", "auto")
+    monkeypatch.setattr(gguf, "_GPU_CRASHED", False)
+    monkeypatch.setattr(binary_preflight, "validate_executable", lambda *a, **k: None)
+    monkeypatch.setattr(gguf, "_binary_path", lambda slug=None: Path("tts"))
+    codes = [first, second]
+    envs = []
+
+    def run(argv, **kwargs):
+        envs.append(kwargs["env"].get("GGML_BACKEND"))
+        return SimpleNamespace(returncode=codes.pop(0), stderr="ggml_vulkan: found", stdout="")
+
+    monkeypatch.setattr(gguf.subprocess, "run", run)
+    return envs
+
+
+def test_gpu_access_violation_retries_on_cpu_and_sticks(monkeypatch, gguf):
+    """A native GPU crash (#4050, GTX 1080 on Vulkan) falls back to the CPU."""
+    monkeypatch.setenv(gguf.BACKEND_ENV, "vulkan")
+    envs = _crash_harness(monkeypatch, gguf, first=3221225477)
+    gguf.OmniVoiceGGUFBackend()._run_subprocess(["tts"], stdin_text="hello")
+    assert envs == ["Vulkan0", "CPU"]
+    assert gguf._GPU_CRASHED is True
+    # Later requests start on the CPU directly.
+    envs.clear()
+    monkeypatch.setattr(gguf.subprocess, "run", lambda argv, **kw: (
+        envs.append(kw["env"].get("GGML_BACKEND"))
+        or __import__("types").SimpleNamespace(returncode=0, stderr="", stdout="")))
+    gguf.OmniVoiceGGUFBackend()._run_subprocess(["tts"], stdin_text="hello")
+    assert envs == ["CPU"]
+    monkeypatch.setattr(gguf, "_GPU_CRASHED", False)
+
+
+def test_cpu_crash_and_ordinary_errors_are_not_masked(monkeypatch, gguf):
+    monkeypatch.setenv(gguf.BACKEND_ENV, "cpu")
+    envs = _crash_harness(monkeypatch, gguf, first=3221225477)
+    with pytest.raises(RuntimeError, match="exited 3221225477"):
+        gguf.OmniVoiceGGUFBackend()._run_subprocess(["tts"], stdin_text="hello")
+    assert envs == ["CPU"]
+
+    monkeypatch.setenv(gguf.BACKEND_ENV, "vulkan")
+    envs = _crash_harness(monkeypatch, gguf, first=1)
+    with pytest.raises(RuntimeError, match="exited 1"):
+        gguf.OmniVoiceGGUFBackend()._run_subprocess(["tts"], stdin_text="hello")
+    assert envs == ["Vulkan0"] and gguf._GPU_CRASHED is False
+
+
+def test_a_crash_on_cpu_after_the_gpu_retry_still_raises(monkeypatch, gguf):
+    monkeypatch.setenv(gguf.BACKEND_ENV, "vulkan")
+    envs = _crash_harness(monkeypatch, gguf, first=-11, second=-11)
+    with pytest.raises(RuntimeError, match="exited -11"):
+        gguf.OmniVoiceGGUFBackend()._run_subprocess(["tts"], stdin_text="hello")
+    assert envs == ["Vulkan0", "CPU"]
+    monkeypatch.setattr(gguf, "_GPU_CRASHED", False)
