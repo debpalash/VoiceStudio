@@ -13,6 +13,12 @@ from services.performance_selection import selection_snapshot, unchanged_selecti
 #: the same model in its registered crash-isolated sidecar. The one source for
 #: the backend gates and the renderer (via ``tts_tiered_engines``).
 TIERED_TTS_ENGINES = frozenset({"omnivoice", "omnivoice-subprocess"})
+#: Untiered engines whose own default decode step count differs from the
+#: generic 16 the routes fall back to. omnivoice.cpp decodes 32 MaskGIT steps
+#: by default; filling 16 would halve its quality on every untouched request
+#: (#4084). Kept equal to ``engines.omnivoice_gguf.resident.DEFAULT_DECODE_STEPS``
+#: by tests/backend/engines/test_omnivoice_gguf.py.
+ENGINE_DEFAULT_NUM_STEP = {"omnivoice-gguf": 32}
 
 #: ASR engines the performance tiers manage: the CTranslate2 Whisper runtime and,
 #: on Apple Silicon, MLX Whisper (#3349). Any other active ASR engine (Parakeet
@@ -583,7 +589,8 @@ def tts_defaults(engine: str = "omnivoice") -> dict:
     """Only map sampling controls verified for the selected engine family."""
     tier = requested_tier("tts")
     if tier is None or engine not in TIERED_TTS_ENGINES:
-        return {}
+        native = ENGINE_DEFAULT_NUM_STEP.get(engine)
+        return {"num_step": native} if native is not None else {}
     target = _PERFORMANCE_TARGETS["tts"][tier]
     return {"num_step": target["steps"], "postprocess_output": target["postprocess"]}
 

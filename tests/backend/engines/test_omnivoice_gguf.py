@@ -397,7 +397,6 @@ def test_voice_design_and_inline_tags_are_advertised():
     cls = gguf_backend._make_backend_class()
     assert cls.supports_voice_design is True
     assert cls.inline_tags == OMNIVOICE_INLINE_TAGS
-    assert cls.default_num_step == 32
 
 
 def test_design_without_a_reference_forwards_the_instruction(monkeypatch, tmp_path):
@@ -1244,3 +1243,16 @@ def test_generate_leaves_quality_knobs_to_the_caller(monkeypatch):
                {"guidance_scale": 5.0}):
         with pytest.raises(FileNotFoundError, match="test-no-binary"):
             backend.generate("hello world", **kw)
+
+
+@pytest.mark.parametrize("tier", [None, "fast", "max"])
+def test_every_route_defaults_gguf_to_its_native_step_count(monkeypatch, tier):
+    """Batch, dubbing, /convert and /generate fill num_step from tts_defaults;
+    GGUF is untiered, so they must get 32 rather than the generic 16 (#4084)."""
+    from engines.omnivoice_gguf.resident import DEFAULT_DECODE_STEPS
+    from services import performance_profiles
+
+    monkeypatch.setattr(performance_profiles, "requested_tier", lambda _family: tier)
+    assert performance_profiles.ENGINE_DEFAULT_NUM_STEP["omnivoice-gguf"] == DEFAULT_DECODE_STEPS
+    assert performance_profiles.tts_defaults("omnivoice-gguf") == {"num_step": DEFAULT_DECODE_STEPS}
+    assert "num_step" not in performance_profiles.tts_defaults("kokoro")

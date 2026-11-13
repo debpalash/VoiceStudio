@@ -71,7 +71,6 @@ from services.expression import OMNIVOICE_INLINE_TAGS
 
 from .compute import BACKEND_ENV as BACKEND_ENV, DEVICE_ENV as DEVICE_ENV
 from .quant_cache import resolve_installed_pair
-from .resident import DEFAULT_DECODE_STEPS
 
 if TYPE_CHECKING:
     from core.device_caps import HostCaps
@@ -924,9 +923,6 @@ def _make_backend_class():
         # has no flag in either, so it is still rejected with a 400 (#3654).
         supports_num_step = True
         num_step_range = (1, 64)
-        #: The runtime's own default; /generate fills this instead of its
-        #: generic 16 so an untouched request decodes exactly as before.
-        default_num_step = DEFAULT_DECODE_STEPS
         supports_guidance_scale = False
         # The seed reaches the binary as --seed; the parent's torch RNG never
         # does, so /generate must forward it (#3413).

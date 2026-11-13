@@ -1992,9 +1992,7 @@ async def generate_speech(
             ),
         )
     if num_step is None:
-        num_step = sampling_defaults.get(
-            "num_step", getattr(backend_cls, "default_num_step", None) or 16
-        )
+        num_step = sampling_defaults.get("num_step", 16)
     if postprocess_output is None:
         postprocess_output = sampling_defaults.get("postprocess_output", True)
     # Validate expressive controls before model loads or GPU routing. A
