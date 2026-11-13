@@ -100,9 +100,10 @@ generation). Fresh segment speech enters the cache behind segment previews and p
 regeneration only when its track is published, together with its fingerprint; a new track starts
 without the previous track's QC marks, and a dub that finishes as cancellation arrives reports
 done. If the app or backend stops mid-dub, the segments that had finished are kept as recovery
-copies inside that job's folder (one set per track language, at most 1 GiB, dropped after 7 days,
-once the track is published, or with the job). The next generation of the same job reuses a copy
-only when its text, voice reference audio, engine (and its local model folder, when set), language, steps, guidance, speed, seed, watermark setting, mastering and
+copies inside that job's folder (one set per track language, at most 1 GiB). The next eligible
+generation removes copies older than 7 days; publication or deleting the job removes them too.
+The next generation of the same job reuses a copy
+only when its text, voice reference audio, engine and loaded model (and its local model folder, when set), language, steps, guidance, speed, seed, watermark setting, mastering and
 effect preset are all identical, and only after the audio verifies; anything else, or any problem
 reading the copies, renders the segment normally without an error. Recovery copies never count as
 cached speech: previews and partial regeneration still see a segment only after its track is

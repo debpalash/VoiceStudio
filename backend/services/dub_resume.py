@@ -31,6 +31,7 @@ import shutil
 import threading
 import time
 import uuid
+import weakref
 from typing import Callable, Optional
 
 from core.durable_io import flush_dir, flush_file
@@ -39,8 +40,8 @@ logger = logging.getLogger("omnivoice.dub")
 
 JOURNAL_DIRNAME = ".resume"
 KEY_VERSION = 1
-# One journal never holds more than this; past it new segments are simply not
-# journaled (the render is unaffected, it just cannot resume those).
+# All renders sharing one track journal use this bound; past it new segments
+# are not journaled (the render is unaffected, it cannot resume those).
 DEFAULT_MAX_BYTES = 1 << 30
 # Entries untouched this long are dropped at the next render of the job.
 DEFAULT_MAX_AGE_S = 7 * 24 * 3600
@@ -48,12 +49,27 @@ DEFAULT_MAX_AGE_S = 7 * 24 * 3600
 _SAFE_NAME_RE = re.compile(r"[^A-Za-z0-9._-]")
 _HASH_CHUNK = 1 << 20
 _locks_guard = threading.Lock()
-_locks: dict[str, threading.RLock] = {}
 
 
-def _lock_for(root: str) -> threading.RLock:
+class _RootState:
+    def __init__(self) -> None:
+        self.lock = threading.RLock()
+        self.bytes: Optional[int] = None
+        self.sizes: dict[str, int] = {}
+
+
+_states: weakref.WeakValueDictionary[str, _RootState] = weakref.WeakValueDictionary()
+
+
+def _state_for(root: str) -> _RootState:
+    # Equivalent path spellings must share both the lock and accounting.
+    key = os.path.normcase(os.path.realpath(root))
     with _locks_guard:
-        return _locks.setdefault(root, threading.RLock())
+        state = _states.get(key)
+        if state is None:
+            state = _RootState()
+            _states[key] = state
+        return state
 
 
 def _sha256_file(path: str) -> str:
@@ -105,8 +121,8 @@ class DubResumeJournal:
         self.root = root
         self.max_bytes = max_bytes
         self.max_age_s = max_age_s
-        self._lock = _lock_for(root)
-        self._bytes = 0
+        self._state = _state_for(root)
+        self._lock = self._state.lock
 
     # -- names -----------------------------------------------------------
     def _base(self, seg_id: str) -> str:
@@ -119,12 +135,36 @@ class DubResumeJournal:
         return self._base(seg_id) + ".json"
 
     # -- housekeeping ----------------------------------------------------
+    def _total_bytes(self) -> int:
+        """Initialize once from disk; all journal mutations hold the root lock."""
+        if self._state.bytes is None:
+            sizes = {}
+            try:
+                entries = os.scandir(self.root)
+            except FileNotFoundError:
+                # A new journal has no directory until its first record.
+                entries = None
+            if entries is not None:
+                with entries:
+                    for entry in entries:
+                        if entry.name.endswith(".wav"):
+                            try:
+                                sizes[entry.name] = entry.stat().st_size
+                            except FileNotFoundError:
+                                # External cleanup may remove an entry mid-scan.
+                                continue
+            self._state.sizes = sizes
+            self._state.bytes = sum(sizes.values())
+        return self._state.bytes
+
     def prune(self, keep_ids: set[str]) -> None:
         """Drop entries for segments no longer in the job, stale entries and
         torn files, then total what remains for the size bound."""
         with self._lock:
-            self._bytes = 0
+            self._state.bytes = None
+            self._state.sizes.clear()
             if not os.path.isdir(self.root):
+                self._state.bytes = 0
                 return
             keep_bases = {self._base(sid) for sid in keep_ids}
             cutoff = time.time() - self.max_age_s
@@ -150,20 +190,25 @@ class DubResumeJournal:
                 try:
                     if not os.path.exists(partner):
                         os.unlink(path)
-                    elif ext == ".wav":
-                        self._bytes += os.path.getsize(path)
                 except OSError:
                     continue
+            # Count every remaining WAV, including one cleanup could not
+            # remove. A failed scan keeps the state uninitialized so another
+            # render never trusts a partial total.
+            self._total_bytes()
 
     def discard(self) -> None:
         """Remove the whole journal (render published, or job withdrawn)."""
         with self._lock:
             shutil.rmtree(self.root, ignore_errors=True)
-            self._bytes = 0
+            # Failed deletions still consume the track's bound.
+            self._state.bytes = None
+            self._state.sizes.clear()
             parent = os.path.dirname(self.root)
             try:
                 os.rmdir(parent)  # only when no other track language still has one
             except OSError:
+                # Other tracks may still use the parent; cleanup is best effort.
                 pass
 
     # -- lookup ----------------------------------------------------------
@@ -227,13 +272,22 @@ class DubResumeJournal:
 
     def drop(self, seg_id: str) -> None:
         """Forget one entry (it failed a check, or is being replaced)."""
-        for path in (self._wav(seg_id), self._meta(seg_id)):
-            try:
-                size = os.path.getsize(path) if path.endswith(".wav") else 0
-                os.unlink(path)
-                self._bytes = max(0, self._bytes - size)
-            except OSError:
-                pass
+        with self._lock:
+            for path in (self._wav(seg_id), self._meta(seg_id)):
+                try:
+                    total = self._total_bytes()
+                    try:
+                        os.unlink(path)
+                    except FileNotFoundError:
+                        # Already removed files no longer consume the bound.
+                        pass
+                    # Use the accounted size: a corrupt/truncated file may
+                    # no longer have the size it had when it was recorded.
+                    size = self._state.sizes.pop(os.path.basename(path), 0)
+                    self._state.bytes = max(0, total - size)
+                except OSError:
+                    # A later prune retries files that cannot be removed now.
+                    pass
 
     # -- write -----------------------------------------------------------
     def record(self, seg_id: str, key: str, source_wav: str, sample_rate: int) -> bool:
@@ -249,11 +303,13 @@ class DubResumeJournal:
         with self._lock:
             try:
                 size = os.path.getsize(source_wav)
-                if self._bytes + size > self.max_bytes:
+                wav = self._wav(seg_id)
+                total = self._total_bytes()
+                previous_size = self._state.sizes.get(os.path.basename(wav), 0)
+                if total - previous_size + size > self.max_bytes:
                     logger.info("dub resume: journal full, segment %s not kept", seg_id)
                     return False
                 os.makedirs(self.root, exist_ok=True)
-                wav = self._wav(seg_id)
                 token = uuid.uuid4().hex[:8]
                 tmp_wav = f"{wav}.{token}.tmp"
                 shutil.copyfile(source_wav, tmp_wav)
@@ -261,6 +317,10 @@ class DubResumeJournal:
                 digest = _sha256_file(tmp_wav)
                 self.drop(seg_id)  # a replaced entry stops counting first
                 os.replace(tmp_wav, wav)
+                # Count the audio immediately, even if its metadata fails to
+                # publish and a later prune must remove the torn write.
+                self._state.sizes[os.path.basename(wav)] = size
+                self._state.bytes += size
                 tmp_meta = f"{self._meta(seg_id)}.{token}.tmp"
                 with open(tmp_meta, "w", encoding="utf-8") as handle:
                     json.dump(
@@ -276,15 +336,15 @@ class DubResumeJournal:
                 flush_file(tmp_meta)
                 os.replace(tmp_meta, self._meta(seg_id))
                 flush_dir(self.root)
-                self._bytes += size
                 return True
             except Exception as err:  # noqa: BLE001
-                logger.info("dub resume: segment %s not journaled: %s", seg_id, err)
+                logger.info("dub resume: segment %s not journaled: %s", seg_id, type(err).__name__)
                 for leftover in (locals().get("tmp_wav"), locals().get("tmp_meta")):
                     if leftover:
                         try:
                             os.unlink(leftover)
                         except OSError:
+                            # A later prune removes temporary files left behind.
                             pass
                 return False
 
@@ -299,4 +359,5 @@ def copy_into_stage(recovered_wav: str, staged_path: str) -> None:
         try:
             os.unlink(tmp)
         except OSError:
+            # A successful replace already consumed the temporary file.
             pass

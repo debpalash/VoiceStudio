@@ -504,7 +504,7 @@ def _drop_resume_journal_if_withdrawn(job_id: str, lang_code: str) -> None:
                 ignore_errors=True,
             )
     except Exception as err:  # noqa: BLE001
-        logger.debug("dub resume cleanup skipped: %s", err)
+        logger.debug("dub resume cleanup skipped: %s", type(err).__name__)
 
 
 @router.post("/dub/generate/{job_id}")
@@ -823,7 +823,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                 journal = dub_resume.DubResumeJournal(_resume_journal_root(job_id, lang_code))
                 journal.prune({str(sid) for sid in seg_order})
             except Exception as err:  # noqa: BLE001
-                logger.info("dub resume unavailable, rendering normally: %s", err)
+                logger.info("dub resume unavailable, rendering normally: %s", type(err).__name__)
                 journal = None
         _ref_hash_memo: dict = {}
         _oom_degraded: set[str] = set()
@@ -848,7 +848,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                         files = fp[1] if len(fp) > 1 else None
                         result = (True, repr(files) if isinstance(files, tuple) else None)
                 except Exception as err:  # noqa: BLE001
-                    logger.debug("model folder fingerprint skipped: %s", err)
+                    logger.debug("model folder fingerprint skipped: %s", type(err).__name__)
                 _model_fp_memo.append(result)
             return _model_fp_memo[0]
 
@@ -861,9 +861,11 @@ async def dub_generate(job_id: str, req: DubRequest):
             ref_hash = dub_resume.hash_reference_file(ref_audio, _ref_hash_memo)
             if ref_audio and ref_hash is None:
                 return None
+            identity = getattr(backend, "model_identity", None)
             return dub_resume.build_key({
                 "engine": engine_id,
                 "backend": type(backend).__qualname__,
+                "model_identity": identity() if callable(identity) else None,
                 "sample_rate": backend.sample_rate,
                 "own_mastering": bool(getattr(backend, "applies_own_mastering", False)),
                 "track_lang": lang_code,
@@ -1359,7 +1361,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                             if recoverable_key and journal.has(candidate_id, recoverable_key):
                                 continue
                         except Exception as err:  # noqa: BLE001
-                            logger.debug("dub resume lookup skipped: %s", err)
+                            logger.debug("dub resume lookup skipped: %s", type(err).__name__)
                     # Fixed-seed profiles deliberately keep their established
                     # one-row deterministic RNG contract.
                     if prepared["seed"] is not None:
@@ -1537,7 +1539,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                             if _rsr != backend.sample_rate or _speech_unusable(_recovered_audio):
                                 raise ValueError("recovered audio is empty or at another sample rate")
                     except Exception as err:  # noqa: BLE001
-                        logger.info("dub resume: rendering %s normally: %s", seg_id, err)
+                        logger.info("dub resume: rendering %s normally: %s", seg_id, type(err).__name__)
                         if _recovered_wav:
                             journal.drop(seg_id)
                         _recovered_wav = None

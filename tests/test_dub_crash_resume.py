@@ -12,8 +12,6 @@ from types import SimpleNamespace
 import pytest
 import torch
 
-from schemas.requests import DubRequest
-
 SEGMENTS = [dict(start=i, end=i + 1, text=f"line {i}") for i in range(4)]
 IDS = ["a", "b", "c", "d"]
 
@@ -26,7 +24,7 @@ def dub(monkeypatch, tmp_path):
     path = tmp_path / "job"
     path.mkdir()
     events, generated = [], []
-    state = {"fail_on_call": None, "cancel_after": None}
+    state = {"fail_on_call": None, "cancel_after": None, "model_identity": "checkpoint-a"}
 
     def generate(**kwargs):
         generated.append(kwargs)
@@ -34,7 +32,10 @@ def dub(monkeypatch, tmp_path):
             raise RuntimeError("engine crashed")
         return torch.ones(1, 24000) * 0.1
 
-    backend = SimpleNamespace(sample_rate=24000, generate=generate, applies_own_mastering=True)
+    backend = SimpleNamespace(
+        sample_rate=24000, generate=generate, applies_own_mastering=True,
+        model_identity=lambda: state["model_identity"],
+    )
 
     async def resolve():
         return "omnivoice", backend
@@ -60,6 +61,8 @@ def dub(monkeypatch, tmp_path):
     monkeypatch.setattr(dg, "normalize_audio", lambda a, **kw: a)
 
     def run(**kwargs):
+        from schemas.requests import DubRequest
+
         body = dict(segments=SEGMENTS, segment_ids=IDS, language_code="en", num_step=4)
         body.update(kwargs)
         events.clear()
@@ -137,6 +140,14 @@ def test_other_track_language_does_not_reuse_speech(dub):
     assert len(dub.generated) == 4
 
 
+def test_changed_loaded_model_does_not_reuse_speech(dub):
+    """Curated checkpoints can share an engine, class and sample rate."""
+    _crash_after(dub, 2)
+    dub.state["model_identity"] = "checkpoint-b"
+    dub.run()
+    assert len(dub.generated) == 4
+
+
 def test_truncated_recovered_wav_is_rerendered(dub):
     _crash_after(dub, 2)
     wav = dub.journal / "seg_a.wav"
@@ -151,9 +162,9 @@ def test_truncated_wav_with_a_matching_record_is_still_rejected(dub):
     wav = dub.journal / "seg_b.wav"
     wav.write_bytes(wav.read_bytes()[:-5000])
     meta_path = dub.journal / "seg_b.json"
-    meta = json.loads(meta_path.read_text())
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
     meta["sha256"] = hashlib.sha256(wav.read_bytes()).hexdigest()
-    meta_path.write_text(json.dumps(meta))
+    meta_path.write_text(json.dumps(meta), encoding="utf-8")
     dub.run()
     assert [g["text"] for g in dub.generated] == ["line 1", "line 2", "line 3"]
 
@@ -177,6 +188,24 @@ def test_journal_failure_never_fails_the_dub(dub, monkeypatch):
     assert any(e["type"] == "done" for e in events)
     assert len(dub.generated) == 4
     assert not (dub.path / ".resume").exists()
+
+
+@pytest.mark.parametrize("failure_point", ["prune", "recover", "model_folder"])
+def test_resume_failures_do_not_log_private_paths(dub, monkeypatch, caplog, failure_point):
+    from services import dub_resume, local_model_paths
+
+    def fail(*_args, **_kwargs):
+        raise PermissionError("/home/resume-private-user/recordings/private.wav")
+
+    if failure_point == "model_folder":
+        monkeypatch.setattr(local_model_paths, "get", fail)
+    else:
+        monkeypatch.setattr(dub_resume.DubResumeJournal, failure_point, fail)
+    caplog.set_level("DEBUG", logger="omnivoice.dub")
+    events = dub.run()
+    assert any(event["type"] == "done" for event in events)
+    assert "resume-private-user" not in caplog.text
+    assert "PermissionError" in caplog.text
 
 
 def test_cancelled_render_promotes_nothing(dub):
