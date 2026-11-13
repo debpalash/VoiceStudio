@@ -11,13 +11,7 @@ vi.mock('@/lib/api/profiles', () => ({ updateProfileImage: mock.update }));
 vi.mock('sonner', () => ({ toast: { error: mock.error } }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock('./portrait-search', () => ({
-  PortraitSearch: ({
-    disabled,
-    onSelect,
-  }: {
-    disabled: boolean;
-    onSelect: (file: File) => void;
-  }) => (
+  PortraitSearch: ({ disabled, onSelect }: { disabled: boolean; onSelect: (file: File) => void }) => (
     <button
       type="button"
       disabled={disabled}

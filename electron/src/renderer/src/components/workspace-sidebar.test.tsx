@@ -7,9 +7,7 @@ import { WorkspaceHeader } from '@/components/app-shell/workspace-header';
 
 const platform = vi.hoisted(() => ({ mac: false, fullscreen: false }));
 vi.mock('@/components/bridge', () => ({ isMac: () => platform.mac }));
-vi.mock('@/hooks/use-window-fullscreen', () => ({
-  useWindowFullscreen: () => platform.fullscreen,
-}));
+vi.mock('@/hooks/use-window-fullscreen', () => ({ useWindowFullscreen: () => platform.fullscreen }));
 vi.mock('@/components/app-shell/support-shortcut', () => ({ SupportShortcut: () => null }));
 vi.mock('@/components/app-shell/sidebar-toggle', () => ({ SidebarToggle: () => null }));
 
@@ -176,9 +174,7 @@ describe('macOS traffic lights', () => {
   it('moves header tabs to their own row beside the lights so labels stay readable', () => {
     platform.mac = true;
     vi.stubGlobal('ResizeObserver', NoopObserver);
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
-      left: 64,
-    } as DOMRect);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 64 } as DOMRect);
     render(pane({ tabsInHeader: true, libraryLabel: 'Saved', library: <p>lib</p> }));
     const list = screen.getByRole('tablist');
     expect(header().contains(list)).toBe(false);
@@ -188,9 +184,7 @@ describe('macOS traffic lights', () => {
   it('keeps keyboard focus on the selected tab when fullscreen moves the tabs', () => {
     platform.mac = true;
     vi.stubGlobal('ResizeObserver', NoopObserver);
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
-      left: 64,
-    } as DOMRect);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 64 } as DOMRect);
     const view = render(pane({ tabsInHeader: true, libraryLabel: 'Saved', library: <p>lib</p> }));
     const saved = screen.getByRole('tab', { name: 'Saved' });
     fireEvent.click(saved);
@@ -209,9 +203,7 @@ describe('macOS traffic lights', () => {
   it('keeps header tabs in the header far from the lights', () => {
     platform.mac = true;
     vi.stubGlobal('ResizeObserver', NoopObserver);
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
-      left: 300,
-    } as DOMRect);
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 300 } as DOMRect);
     render(pane({ tabsInHeader: true, libraryLabel: 'Saved', library: <p>lib</p> }));
     expect(header().contains(screen.getByRole('tablist'))).toBe(true);
   });

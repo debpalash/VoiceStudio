@@ -40,79 +40,76 @@ it('replaces caller origin with main-owned desktop identity on packaged API requ
   expect(options.headers.get('authorization')).toBe('Bearer scoped-session');
 });
 
-it.each(['/dub/upload', '/convert'])(
-  'streams a local %s upload before the request body finishes (#3853)',
-  async (route) => {
-    let releaseTail!: () => void;
-    const receivedHead = new Promise<void>((resolve) => {
-      releaseTail = resolve;
-    });
-    const server = createServer(async (req, res) => {
-      const chunks: Buffer[] = [];
-      for await (const chunk of req) {
-        chunks.push(chunk);
-        releaseTail();
-      }
-      res.statusCode = 202;
-      res.setHeader('content-type', 'application/json');
-      res.end(
-        JSON.stringify({
-          body: Buffer.concat(chunks).toString(),
-          authorization: req.headers.authorization,
-          origin: req.headers['x-voicestudio-desktop-origin'],
-          contentType: req.headers['content-type'],
-          path: req.url,
-        }),
-      );
-    });
-    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-    try {
-      const address = server.address() as AddressInfo;
-      installAppProtocol(
-        () => `http://127.0.0.1:${address.port}`,
-        '/unused',
-        () => ({
-          'X-VoiceStudio-Desktop-Origin': APP_ORIGIN,
-          Authorization: 'Bearer scoped-session',
-        }),
-      );
-      const handler = mocks.handle.mock.lastCall![1];
-      const contentType = 'multipart/form-data; boundary=upload-test';
-      const head =
-        '--upload-test\r\nContent-Disposition: form-data; name="video"; filename="clip.mp4"\r\n\r\n';
-      const tail = 'video bytes\r\n--upload-test--\r\n';
-      const encoder = new TextEncoder();
-      const body = new ReadableStream<Uint8Array>({
-        async start(controller) {
-          controller.enqueue(encoder.encode(head));
-          await receivedHead;
-          controller.enqueue(encoder.encode(tail));
-          controller.close();
-        },
-      });
-      const response = await handler(
-        new Request(`${APP_ORIGIN}/api${route}?test=1`, {
-          method: 'POST',
-          headers: { 'content-type': contentType, Authorization: 'Bearer renderer-secret' },
-          body,
-          duplex: 'half',
-          signal: AbortSignal.timeout(2000),
-        }),
-      );
-      expect(response.status).toBe(202);
-      expect(await response.json()).toEqual({
-        body: head + tail,
-        authorization: 'Bearer scoped-session',
-        origin: APP_ORIGIN,
-        contentType,
-        path: `${route}?test=1`,
-      });
-    } finally {
-      server.closeAllConnections();
-      await new Promise<void>((resolve) => server.close(() => resolve()));
+it.each(['/dub/upload', '/convert'])('streams a local %s upload before the request body finishes (#3853)', async (route) => {
+  let releaseTail!: () => void;
+  const receivedHead = new Promise<void>((resolve) => {
+    releaseTail = resolve;
+  });
+  const server = createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) {
+      chunks.push(chunk);
+      releaseTail();
     }
-  },
-);
+    res.statusCode = 202;
+    res.setHeader('content-type', 'application/json');
+    res.end(
+      JSON.stringify({
+        body: Buffer.concat(chunks).toString(),
+        authorization: req.headers.authorization,
+        origin: req.headers['x-voicestudio-desktop-origin'],
+        contentType: req.headers['content-type'],
+        path: req.url,
+      }),
+    );
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const address = server.address() as AddressInfo;
+    installAppProtocol(
+      () => `http://127.0.0.1:${address.port}`,
+      '/unused',
+      () => ({
+        'X-VoiceStudio-Desktop-Origin': APP_ORIGIN,
+        Authorization: 'Bearer scoped-session',
+      }),
+    );
+    const handler = mocks.handle.mock.lastCall![1];
+    const contentType = 'multipart/form-data; boundary=upload-test';
+    const head =
+      '--upload-test\r\nContent-Disposition: form-data; name="video"; filename="clip.mp4"\r\n\r\n';
+    const tail = 'video bytes\r\n--upload-test--\r\n';
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        controller.enqueue(encoder.encode(head));
+        await receivedHead;
+        controller.enqueue(encoder.encode(tail));
+        controller.close();
+      },
+    });
+    const response = await handler(
+      new Request(`${APP_ORIGIN}/api${route}?test=1`, {
+        method: 'POST',
+        headers: { 'content-type': contentType, Authorization: 'Bearer renderer-secret' },
+        body,
+        duplex: 'half',
+        signal: AbortSignal.timeout(2000),
+      }),
+    );
+    expect(response.status).toBe(202);
+    expect(await response.json()).toEqual({
+      body: head + tail,
+      authorization: 'Bearer scoped-session',
+      origin: APP_ORIGIN,
+      contentType,
+      path: `${route}?test=1`,
+    });
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
 
 it('keeps remote dub uploads on the authenticated Electron transport', async () => {
   const backend = 'https://remote.example/voicestudio';

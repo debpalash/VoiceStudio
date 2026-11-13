@@ -146,8 +146,9 @@ function instructField(input: CloneGenerateInput): string {
  */
 export function toGenerateForm(
   input: CloneGenerateInput,
-  engineId: string | null | undefined = queryClient.getQueryData<EnginesResponse>(queryKeys.engines)
-    ?.tts?.active,
+  engineId: string | null | undefined = queryClient.getQueryData<EnginesResponse>(
+    queryKeys.engines,
+  )?.tts?.active,
 ): FormData {
   const form = new FormData();
   // A pinned engine wins: its own step range applies, and /generate renders on it.

@@ -79,9 +79,7 @@ describe('external termination (0xFFFFFFFF / -1)', () => {
     const tb = ['Traceback (most recent call last):', '  File "a.py"', 'ValueError: x'];
     expect(describeExitCode(-1, 'unknown', tb)).toBe('-1');
     expect(describeExitCode(-1, 'unknown', tb.join('\n'))).toBe('-1');
-    expect(describeExitCode(-1, 'unknown', ['plain output'])).toBe(
-      '-1 (0xFFFFFFFF EXTERNAL_TERMINATION)',
-    );
+    expect(describeExitCode(-1, 'unknown', ['plain output'])).toBe('-1 (0xFFFFFFFF EXTERNAL_TERMINATION)');
   });
 });
 

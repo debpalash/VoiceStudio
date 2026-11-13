@@ -22,10 +22,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('startInputLevelMonitor setup failure', () => {
   it('closes the AudioContext when graph setup throws', () => {
-    vi.stubGlobal(
-      'requestAnimationFrame',
-      vi.fn(() => 1),
-    );
+    vi.stubGlobal('requestAnimationFrame', vi.fn(() => 1));
     vi.stubGlobal('cancelAnimationFrame', vi.fn());
     const context = stubAudioContext({
       createMediaStreamSource: vi.fn(() => {

@@ -10,10 +10,7 @@ export function useWindowFullscreen(): boolean {
     let live = true;
     let changed = false;
     // An event that lands before the initial answer is newer, so it wins.
-    void app
-      .isFullScreen?.()
-      .then((value) => live && !changed && setFullscreen(value))
-      .catch(() => {});
+    void app.isFullScreen?.().then((value) => live && !changed && setFullscreen(value)).catch(() => {});
     const off = app.onFullScreen((value) => {
       changed = true;
       setFullscreen(value);

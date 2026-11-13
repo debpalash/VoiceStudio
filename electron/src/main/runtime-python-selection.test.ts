@@ -4,25 +4,12 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'no
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
-import {
-  SELECTED_RUNTIME_IMPORT_PROBE,
-  STARTUP_IMPORT_PROBE,
-  buildPythonRepairPlan,
-  isVenvInterpreter,
-  createOpaqueToken,
-  sanitizedPythonEnvironment,
-} from './runtime-python-selection';
+import { SELECTED_RUNTIME_IMPORT_PROBE, STARTUP_IMPORT_PROBE, buildPythonRepairPlan, isVenvInterpreter, createOpaqueToken, sanitizedPythonEnvironment } from './runtime-python-selection';
 
 const userData = mkdtempSync(join(tmpdir(), 'voicestudio-runtime-test-'));
 vi.mock('electron', () => ({ app: { getPath: () => userData } }));
 
-import {
-  needsManagedRuntime,
-  validatePythonRuntime,
-  clearPythonRuntimeSelection,
-  loadPythonRuntimeSelection,
-  savePythonRuntimeSelection,
-} from './runtime-python-selection';
+import { needsManagedRuntime, validatePythonRuntime, clearPythonRuntimeSelection, loadPythonRuntimeSelection, savePythonRuntimeSelection } from './runtime-python-selection';
 
 describe('existing Python runtime selection', () => {
   beforeEach(() => clearPythonRuntimeSelection());
@@ -66,62 +53,34 @@ describe('existing Python runtime selection', () => {
   function fakePython(lines: string[], exitCode = 0): string {
     const dir = mkdtempSync(join(tmpdir(), 'voicestudio-fake-python-'));
     const path = join(dir, 'python');
-    writeFileSync(
-      path,
-      `#!/bin/sh\n${lines.map((l) => `echo '${l}'`).join('\n')}\nexit ${exitCode}\n`,
-    );
+    writeFileSync(path, `#!/bin/sh\n${lines.map((l) => `echo '${l}'`).join('\n')}\nexit ${exitCode}\n`);
     chmodSync(path, 0o755);
     return path;
   }
 
-  it.skipIf(process.platform === 'win32')(
-    'accepts a compatible non-venv (Conda/pyenv/system) interpreter',
-    async () => {
-      const python = fakePython([
-        'VOICESTUDIO_PYTHON=3.11.9',
-        'VOICESTUDIO_VENV=0',
-        'VOICESTUDIO_EXTERNALLY_MANAGED=1',
-        'VOICESTUDIO_BACKEND_IMPORT=main',
-        'VOICESTUDIO_STARTUP_IMPORTS=3',
-      ]);
-      await expect(validatePythonRuntime(python, process.cwd())).resolves.toMatchObject({
-        ok: true,
-        version: '3.11.9',
-      });
-    },
-  );
+  it.skipIf(process.platform === 'win32')('accepts a compatible non-venv (Conda/pyenv/system) interpreter', async () => {
+    const python = fakePython([
+      'VOICESTUDIO_PYTHON=3.11.9', 'VOICESTUDIO_VENV=0', 'VOICESTUDIO_EXTERNALLY_MANAGED=1',
+      'VOICESTUDIO_BACKEND_IMPORT=main', 'VOICESTUDIO_STARTUP_IMPORTS=3',
+    ]);
+    await expect(validatePythonRuntime(python, process.cwd())).resolves.toMatchObject({ ok: true, version: '3.11.9' });
+  });
 
-  it.skipIf(process.platform === 'win32')(
-    'names the deferred startup import that failed after main imported',
-    async () => {
-      const python = fakePython(
-        [
-          'VOICESTUDIO_PYTHON=3.11.9',
-          'VOICESTUDIO_VENV=1',
-          'VOICESTUDIO_EXTERNALLY_MANAGED=0',
-          'VOICESTUDIO_IMPORT=torch',
-          'VOICESTUDIO_BACKEND_IMPORT=main',
-          'VOICESTUDIO_STARTUP_IMPORTS=2',
-          'VOICESTUDIO_IMPORT=api.routers',
-          'VOICESTUDIO_IMPORT=api.routers.dub_core',
-        ],
-        1,
-      );
-      const result = await validatePythonRuntime(python, process.cwd());
-      expect(result).toMatchObject({ ok: false, detail: 'missing_or_failed:api.routers.dub_core' });
-    },
-  );
+  it.skipIf(process.platform === 'win32')('names the deferred startup import that failed after main imported', async () => {
+    const python = fakePython([
+      'VOICESTUDIO_PYTHON=3.11.9', 'VOICESTUDIO_VENV=1', 'VOICESTUDIO_EXTERNALLY_MANAGED=0',
+      'VOICESTUDIO_IMPORT=torch', 'VOICESTUDIO_BACKEND_IMPORT=main', 'VOICESTUDIO_STARTUP_IMPORTS=2',
+      'VOICESTUDIO_IMPORT=api.routers', 'VOICESTUDIO_IMPORT=api.routers.dub_core',
+    ], 1);
+    const result = await validatePythonRuntime(python, process.cwd());
+    expect(result).toMatchObject({ ok: false, detail: 'missing_or_failed:api.routers.dub_core' });
+  });
 
   const hostPython = [process.env.VOICESTUDIO_TEST_PYTHON, '/usr/bin/python3', 'python3', 'python']
     .filter((p): p is string => Boolean(p))
     .find((p) => {
       if (isAbsolute(p) && !existsSync(p)) return false;
-      try {
-        execFileSync(p, ['-c', 'import ast'], { stdio: 'ignore' });
-        return true;
-      } catch {
-        return false;
-      }
+      try { execFileSync(p, ['-c', 'import ast'], { stdio: 'ignore' }); return true; } catch { return false; }
     });
 
   it.skipIf(!hostPython)('imports the unguarded _phase_a_build_inner imports from main.py', () => {
@@ -131,33 +90,15 @@ describe('existing Python runtime selection', () => {
     writeFileSync(join(root, 'backend', 'api', '__init__.py'), '');
     writeFileSync(join(routers, '__init__.py'), '');
     writeFileSync(join(routers, 'good.py'), '');
-    writeFileSync(
-      join(routers, 'broken.py'),
-      "raise RuntimeError('Form data requires python-multipart')\n",
-    );
-    const main = (body: string) =>
-      writeFileSync(join(root, 'backend', 'main.py'), `def _phase_a_build_inner():\n${body}`);
-    const run = () =>
-      execFileSync(
-        hostPython!,
-        [
-          '-c',
-          `import sys, os\nsys.path.insert(0, os.path.join(os.getcwd(), 'backend'))\n${STARTUP_IMPORT_PROBE}`,
-        ],
-        { cwd: root, encoding: 'utf8', stdio: 'pipe' },
-      );
+    writeFileSync(join(routers, 'broken.py'), "raise RuntimeError('Form data requires python-multipart')\n");
+    const main = (body: string) => writeFileSync(join(root, 'backend', 'main.py'), `def _phase_a_build_inner():\n${body}`);
+    const run = () => execFileSync(hostPython!, ['-c', `import sys, os\nsys.path.insert(0, os.path.join(os.getcwd(), 'backend'))\n${STARTUP_IMPORT_PROBE}`], { cwd: root, encoding: 'utf8', stdio: 'pipe' });
     // Guarded (try/except) imports are optional at startup and are not probed.
-    main(
-      '    try:\n        from api.routers import broken\n    except Exception:\n        pass\n    from api.routers import (good,)\n',
-    );
+    main("    try:\n        from api.routers import broken\n    except Exception:\n        pass\n    from api.routers import (good,)\n");
     expect(run()).toContain('VOICESTUDIO_STARTUP_IMPORTS=1');
     main('    from api.routers import (\n        good,\n        broken,\n    )\n');
     let output = '';
-    try {
-      run();
-    } catch (error) {
-      output = String((error as { stdout?: unknown }).stdout ?? '');
-    }
+    try { run(); } catch (error) { output = String((error as { stdout?: unknown }).stdout ?? ''); }
     expect(output.trim().split('\n').at(-1)).toBe('VOICESTUDIO_IMPORT=api.routers.broken');
     // A main.py without the build function must fail, never pass silently.
     main('    pass\n');
@@ -167,30 +108,16 @@ describe('existing Python runtime selection', () => {
 
   it('builds repair plans only from reviewed project requirements', () => {
     const project = mkdtempSync(join(tmpdir(), 'voicestudio-manifest-'));
-    writeFileSync(
-      join(project, 'pyproject.toml'),
-      '[project]\ndependencies = [\n  "torch>=2.4",\n  "torchaudio>=2.4",\n  "setuptools>=75,<80",\n]\n',
-    );
+    writeFileSync(join(project, 'pyproject.toml'), '[project]\ndependencies = [\n  "torch>=2.4",\n  "torchaudio>=2.4",\n  "setuptools>=75,<80",\n]\n');
     expect(buildPythonRepairPlan('/tmp/requirements/project', ['torch'], project)).toEqual({
-      interpreter: resolve('/tmp/requirements/project'),
-      packages: ['torch>=2.4'],
+      interpreter: resolve('/tmp/requirements/project'), packages: ['torch>=2.4'],
     });
-    expect(
-      buildPythonRepairPlan('/tmp/requirements/project', ['torch', 'NoSuchModule'], project),
-    ).toBeNull();
-    expect(
-      buildPythonRepairPlan('/tmp/requirements/project', ['torchaudio'], project)?.packages,
-    ).toEqual(['torchaudio>=2.4']);
+    expect(buildPythonRepairPlan('/tmp/requirements/project', ['torch', 'NoSuchModule'], project)).toBeNull();
+    expect(buildPythonRepairPlan('/tmp/requirements/project', ['torchaudio'], project)?.packages).toEqual(['torchaudio>=2.4']);
   });
 
   it('does not inherit Python or pip installation overrides', () => {
-    const env = sanitizedPythonEnvironment({
-      PYTHONPATH: '/tmp/evil',
-      PIP_TARGET: '/tmp/evil',
-      PIP_PREFIX: '/tmp/evil',
-      PIP_USER: '1',
-      PIP_INDEX_URL: 'https://evil.invalid',
-    });
+    const env = sanitizedPythonEnvironment({ PYTHONPATH: '/tmp/evil', PIP_TARGET: '/tmp/evil', PIP_PREFIX: '/tmp/evil', PIP_USER: '1', PIP_INDEX_URL: 'https://evil.invalid' });
     expect(env.PYTHONPATH).toBeUndefined();
     expect(env.PIP_TARGET).toBeUndefined();
     expect(env.PIP_PREFIX).toBeUndefined();
@@ -211,10 +138,7 @@ describe('existing Python runtime selection', () => {
   it('accepts the isolated verification interpreter when requested', async () => {
     const python = process.env.VOICESTUDIO_REAL_TEST_PYTHON;
     if (!python) return;
-    const result = await validatePythonRuntime(
-      python,
-      process.cwd().endsWith('/electron') ? resolve(process.cwd(), '..') : process.cwd(),
-    );
+    const result = await validatePythonRuntime(python, process.cwd().endsWith('/electron') ? resolve(process.cwd(), '..') : process.cwd());
     expect(result).toMatchObject({ ok: true, pythonPath: python });
     expect(result.version).toMatch(/^\d+\.\d+(?:\.\d+)?$/);
   }, 180_000);

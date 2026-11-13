@@ -23,10 +23,7 @@ export interface LastRunCrashRecord {
   uptime_hint_s: number | null;
   version: string;
   last_activity:
-    | ({ ts: number | null; kind: string; detail: string | null } & Omit<
-        CrashContext,
-        'kind' | 'detail'
-      >)
+    | ({ ts: number | null; kind: string; detail: string | null } & Omit<CrashContext, 'kind' | 'detail'>)
     | null;
   log_tail: string[];
 }

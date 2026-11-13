@@ -8,7 +8,11 @@ import { Input } from '@/components/ui/input';
 import { PipelineFailure } from '@/components/pipeline-failure';
 import { WaveformPlayer } from '@/components/waveform-player';
 import { apiFetch, describeError } from '@/lib/api/client';
-import { decodeToMonoLowRate, sliceToMono, encodeWav } from '@shared/utils/audioTrim';
+import {
+  decodeToMonoLowRate,
+  sliceToMono,
+  encodeWav,
+} from '@shared/utils/audioTrim';
 
 const MAX_TRIM_SECONDS = 60;
 

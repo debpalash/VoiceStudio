@@ -59,10 +59,7 @@ async function exists(path: string | null): Promise<boolean | null> {
   }
 }
 
-export async function freeGb(
-  path: string | null,
-  statfsFn: typeof statfs = statfs,
-): Promise<number | null> {
+export async function freeGb(path: string | null, statfsFn: typeof statfs = statfs): Promise<number | null> {
   if (!path) return null;
   // First run: the project dir does not exist yet, but its drive does.
   let probe = path;

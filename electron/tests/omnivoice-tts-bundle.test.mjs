@@ -154,10 +154,7 @@ test('ignores empty CLI placeholders for other platforms (Mac App Store copy of 
 
 test('refuses to package a runtime without its resident tts-server (#3654)', () => {
   const missing = stage({ 'omnivoice-tts-linux-x86_64': 'rt', 'libggml.so': 'lib' });
-  assert.throws(
-    () => omnivoiceTtsResources(missing),
-    /missing the resident server tts-server-linux-x86_64/,
-  );
+  assert.throws(() => omnivoiceTtsResources(missing), /missing the resident server tts-server-linux-x86_64/);
   // Present on disk but not covered by the manifest is refused too.
   const unlisted = stage({ 'omnivoice-tts-linux-x86_64': 'rt' });
   writeFileSync(join(unlisted, 'tts-server-linux-x86_64'), 'srv');
@@ -186,11 +183,7 @@ test('runCodesign retries a timestamp-service error once then succeeds', async (
   const { run, calls } = fakeRun([TS_ERR]);
   const sleeps = [];
   const logs = [];
-  await runCodesign(['--sign', 'x', 'f'], {
-    run,
-    sleep: async (ms) => sleeps.push(ms),
-    log: (m) => logs.push(m),
-  });
+  await runCodesign(['--sign', 'x', 'f'], { run, sleep: async (ms) => sleeps.push(ms), log: (m) => logs.push(m) });
   assert.equal(calls.length, 2);
   assert.deepEqual(sleeps, [5000]);
   assert.match(logs[0], /attempt 1\/4.*timestamp was expected/);
@@ -199,10 +192,7 @@ test('runCodesign retries a timestamp-service error once then succeeds', async (
 test('runCodesign fails at once on non-timestamp errors', async () => {
   const { run, calls } = fakeRun(['f: no identity found\n']);
   const sleeps = [];
-  await assert.rejects(
-    runCodesign(['f'], { run, sleep: async (ms) => sleeps.push(ms), log() {} }),
-    /Command failed/,
-  );
+  await assert.rejects(runCodesign(['f'], { run, sleep: async (ms) => sleeps.push(ms), log() {} }), /Command failed/);
   assert.equal(calls.length, 1);
   assert.deepEqual(sleeps, []);
 });

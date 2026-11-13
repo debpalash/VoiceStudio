@@ -147,9 +147,7 @@ export function QualityControls({
                 >
                   <span className="flex w-full items-center justify-between gap-1 text-xs font-medium">
                     <span className="truncate">{t(`cloneQuality.preset${value}`)}</span>
-                    {selected && (
-                      <CheckIcon aria-hidden="true" className="size-3 shrink-0 text-primary" />
-                    )}
+                    {selected && <CheckIcon aria-hidden="true" className="size-3 shrink-0 text-primary" />}
                   </span>
                   <span className="truncate font-mono text-[10px] tabular-nums text-muted-foreground">
                     {t(`cloneQuality.bits${value}`)}
@@ -159,10 +157,7 @@ export function QualityControls({
             })}
           </div>
           <p className="mt-2 px-1 text-xs text-muted-foreground">{t(`cloneQuality.hint${bits}`)}</p>
-          <p
-            id={`${id}-size`}
-            className="mt-0.5 px-1 text-[11px] text-muted-foreground/80 tabular-nums"
-          >
+          <p id={`${id}-size`} className="mt-0.5 px-1 text-[11px] text-muted-foreground/80 tabular-nums">
             {estimatedSize
               ? t('cloneQuality.size', { size: estimatedSize })
               : t('cloneQuality.sizeUnknown')}

@@ -18,7 +18,10 @@ export function scopedStorage(root: string): ScopedStorage {
  * environment values are kept; an existing install (no recorded choice) never
  * reaches this and so never has data moved or redirected.
  */
-export function scopedStorageEnv(root: string, env: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+export function scopedStorageEnv(
+  root: string,
+  env: NodeJS.ProcessEnv = {},
+): NodeJS.ProcessEnv {
   const s = scopedStorage(root);
   const out: NodeJS.ProcessEnv = {};
   const set = (key: string, value: string) => {

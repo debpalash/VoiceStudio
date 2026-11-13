@@ -56,8 +56,7 @@ it('opens the Model Catalogue when every recommended model is already installed'
   mock.api.mockResolvedValue({ models: [{ repo_id: 'asr/a', role: 'ASR', installed: true }] });
   renderButton();
   fireEvent.click(screen.getByRole('button', { name: /speech-to-text/i }));
-  await waitFor(() =>
-    expect(mock.navigate).toHaveBeenCalledWith({
+  await waitFor(() => expect(mock.navigate).toHaveBeenCalledWith({
       to: '/settings/models/$family',
       params: { family: 'asr' },
     }),

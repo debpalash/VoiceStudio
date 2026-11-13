@@ -16,11 +16,7 @@ export async function inspectRuntimeInterpreter(
   // Names system libraries the native wheels link against but the host lacks;
   // no wheel can supply those, so they must not trigger a reinstall (#3058).
   diagnose: () => Promise<{ missingSystemLibraries: string[] }>,
-): Promise<{
-  existingPython: boolean;
-  repairPackages: string[];
-  missingSystemLibraries: string[];
-}> {
+): Promise<{ existingPython: boolean; repairPackages: string[]; missingSystemLibraries: string[] }> {
   const repairs: string[] = [];
   let missingSystemLibraries: string[] = [];
   try {

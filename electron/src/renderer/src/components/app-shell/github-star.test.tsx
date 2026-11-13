@@ -51,7 +51,9 @@ it('shows an exact live count and refreshes it every 20 minutes', async () => {
   });
   expect(screen.getByText('43.8K')).toBeVisible();
   expect(fetchCount).toHaveBeenCalledOnce();
-  expect(fetchCount.mock.calls[0][0]).toBe('https://api.github.com/repos/debpalash/VoiceStudio');
+  expect(fetchCount.mock.calls[0][0]).toBe(
+    'https://api.github.com/repos/debpalash/VoiceStudio',
+  );
   expect(fetchCount.mock.calls[0][1]).toMatchObject({
     credentials: 'omit',
     referrerPolicy: 'no-referrer',

@@ -371,11 +371,7 @@ export function ModelLicense({
               )}
               {/* Every licence the engine needs is inspectable, not just listed (#3855). */}
               {(dependencies ?? []).map((dependency) => (
-                <DependencyLicenceView
-                  key={dependency.repo_id}
-                  repoId={dependency.repo_id}
-                  open={open}
-                />
+                <DependencyLicenceView key={dependency.repo_id} repoId={dependency.repo_id} open={open} />
               ))}
             </div>
           </LicenceAcceptanceFooter>

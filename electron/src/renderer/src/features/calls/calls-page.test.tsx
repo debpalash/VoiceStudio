@@ -158,14 +158,9 @@ it('offers only verified or designed voices', async () => {
 
 it('prefills a workflow call without bypassing confirmation', async () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
-    <QueryClientProvider client={client}>
-      <CallsPage
-        initialDraft={{ to: '+15550100199', brief: 'Ask about opening hours' }}
-        onCanvas={() => {}}
-      />
-    </QueryClientProvider>,
-  );
+  render(<QueryClientProvider client={client}>
+    <CallsPage initialDraft={{ to: '+15550100199', brief: 'Ask about opening hours' }} onCanvas={() => {}} />
+  </QueryClientProvider>);
   expect(await screen.findByLabelText('Phone number')).toHaveValue('+15550100199');
   expect(screen.getByDisplayValue('Ask about opening hours')).toBeVisible();
   expect(screen.getByRole('button', { name: 'Canvas' })).toBeVisible();

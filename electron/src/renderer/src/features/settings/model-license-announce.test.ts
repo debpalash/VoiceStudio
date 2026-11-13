@@ -7,14 +7,7 @@ import {
 const licence = {
   code: 'model_licence_required',
   message: 'Accept the licence',
-  models: [
-    {
-      repo_id: 'org/model',
-      license: 'cc-by-nc-4.0',
-      category: 'noncommercial',
-      fingerprint: 'fp1',
-    },
-  ],
+  models: [{ repo_id: 'org/model', license: 'cc-by-nc-4.0', category: 'noncommercial', fingerprint: 'fp1' }],
 };
 
 afterEach(() => vi.restoreAllMocks());

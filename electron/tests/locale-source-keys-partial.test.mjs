@@ -11,10 +11,7 @@ import { fileURLToPath } from 'node:url';
 const electron = fileURLToPath(new URL('../', import.meta.url));
 const root = mkdtempSync(join(tmpdir(), 'locale-partial-'));
 try {
-  cpSync(
-    join(electron, 'tests/locale-source-keys.mjs'),
-    join(root, 'electron/tests/locale-source-keys.mjs'),
-  );
+  cpSync(join(electron, 'tests/locale-source-keys.mjs'), join(root, 'electron/tests/locale-source-keys.mjs'));
   cpSync(join(electron, 'src'), join(root, 'electron/src'), { recursive: true });
   const script = join(root, 'electron/tests/locale-source-keys.mjs');
   const { CI: _ci, ...env } = process.env;
@@ -23,16 +20,10 @@ try {
   assert.equal(partial.status, 0, partial.stderr);
   assert.match(partial.stdout, /Locale unused keys: skipped \(partial checkout/);
 
-  const ciFalse = spawnSync(process.execPath, [script], {
-    env: { ...env, CI: 'false' },
-    encoding: 'utf8',
-  });
+  const ciFalse = spawnSync(process.execPath, [script], { env: { ...env, CI: 'false' }, encoding: 'utf8' });
   assert.equal(ciFalse.status, 0, ciFalse.stderr);
 
-  const ci = spawnSync(process.execPath, [script], {
-    env: { ...env, CI: 'true' },
-    encoding: 'utf8',
-  });
+  const ci = spawnSync(process.execPath, [script], { env: { ...env, CI: 'true' }, encoding: 'utf8' });
   assert.notEqual(ci.status, 0);
   assert.match(ci.stderr, /Unused-key scan cannot find/);
   console.log('Locale source keys: partial checkout skips the unused-key scan; CI fails');

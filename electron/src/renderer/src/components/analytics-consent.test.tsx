@@ -214,10 +214,9 @@ it('asks again and stays off when saving the early answer fails', async () => {
       prompted: false,
     }),
   );
-  expect(vi.mocked(mock.api).mock.calls.filter(([, init]) => init?.method === 'PUT')).toHaveLength(
-    1,
-  );
+  expect(vi.mocked(mock.api).mock.calls.filter(([, init]) => init?.method === 'PUT')).toHaveLength(1);
 });
+
 
 it('holds first-run events while setup runs and sends them once the backend answers', async () => {
   const { sendAnalytics: sender } = await import('./analytics-consent');

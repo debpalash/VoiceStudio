@@ -78,10 +78,7 @@ export const VideoPlayer = memo(function VideoPlayer({
         loaders={videoLoaders}
         className="relative aspect-video [&_video]:h-full [&_video]:w-full [&_iframe]:h-full [&_iframe]:w-full"
       >
-        <Poster
-          alt=""
-          className="absolute inset-0 h-full w-full object-contain opacity-0 data-[visible]:opacity-100 data-[hidden]:hidden"
-        />
+        <Poster alt="" className="absolute inset-0 h-full w-full object-contain opacity-0 data-[visible]:opacity-100 data-[hidden]:hidden" />
       </MediaProvider>
       <VideoControls
         player={player}

@@ -23,7 +23,11 @@ vi.mock('@/components/ui/select', () => ({
     value: string;
     onValueChange: (value: string) => void;
   }) => (
-    <select role="combobox" value={value} onChange={(event) => onValueChange(event.target.value)}>
+    <select
+      role="combobox"
+      value={value}
+      onChange={(event) => onValueChange(event.target.value)}
+    >
       <option value="" />
       {items.map((item) => (
         <option key={item.value} value={item.value}>
@@ -45,14 +49,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-const row = {
-  id: 'e1',
-  term: 'x',
-  replacement: 'y',
-  type: 'respelling',
-  language: '*',
-  enabled: true,
-};
+const row = { id: 'e1', term: 'x', replacement: 'y', type: 'respelling', language: '*', enabled: true };
 
 function setup() {
   mock.api.mockImplementation((path: string) => {
@@ -88,7 +85,9 @@ it('never retargets a pending import to another voice', async () => {
   await screen.findByText('pronunciation.import_replace_prompt');
 
   fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'B' } });
-  await waitFor(() => expect(screen.queryByText('pronunciation.import_replace_prompt')).toBeNull());
+  await waitFor(() =>
+    expect(screen.queryByText('pronunciation.import_replace_prompt')).toBeNull(),
+  );
   expect(posts('/pronunciation/import')).toHaveLength(0);
 });
 

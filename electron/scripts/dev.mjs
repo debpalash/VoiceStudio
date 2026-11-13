@@ -24,8 +24,8 @@ import {
 } from './mac-dev-cache.mjs';
 
 // Check before importing configuration with syntax that older Node cannot parse.
-const isEntryPoint =
-  process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
+const isEntryPoint = process.argv[1] &&
+  import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
 if (isEntryPoint) {
   try {
     assertSupportedNode();

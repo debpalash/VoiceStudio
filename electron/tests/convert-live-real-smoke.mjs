@@ -1,9 +1,6 @@
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
-const browser = await chromium.launch({
-  channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge',
-  headless: true,
-});
+const browser = await chromium.launch({ channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge', headless: true });
 try {
   const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
   await page.addInitScript(() => {
@@ -35,7 +32,9 @@ try {
     .getByRole('button', { name: 'Convert', exact: true })
     .click();
   const source = page.getByRole('region', { name: 'Source clip', exact: true });
-  const sample = await page.request.get(base + '/api/demo_audio/dictation/en_conversational.wav');
+  const sample = await page.request.get(
+    base + '/api/demo_audio/dictation/en_conversational.wav',
+  );
   assert.ok(sample.ok());
   await source
     .locator('input[type=file]')

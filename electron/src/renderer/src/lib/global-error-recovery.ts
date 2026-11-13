@@ -1,7 +1,10 @@
 import { isBenignWindowError } from '@shared/utils/foreignErrors';
 import { scrubText } from '@shared/utils/scrub';
 import { openRepairAgent } from '@/lib/repair-agent-events';
-import { captureException, type AnalyticsExceptionStage } from '@shared/utils/analytics';
+import {
+  captureException,
+  type AnalyticsExceptionStage,
+} from '@shared/utils/analytics';
 
 const THROTTLE_MS = 30_000;
 const lastOpened = new Map<string, number>();

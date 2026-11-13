@@ -20,8 +20,7 @@ export type PlatformFamily = 'mac' | 'windows' | 'linux';
 /** Which OS design language native-feeling UI should follow; browser tabs fall back to the user agent. */
 export function platformFamily(): PlatformFamily {
   const platform =
-    getBridge()?.app.platform ??
-    (typeof navigator === 'undefined' ? '' : navigator.platform || navigator.userAgent);
+    getBridge()?.app.platform ?? (typeof navigator === 'undefined' ? '' : navigator.platform || navigator.userAgent);
   if (platform === 'darwin' || /mac|iphone|ipad/i.test(platform)) return 'mac';
   if (platform === 'win32' || /win/i.test(platform)) return 'windows';
   return 'linux';

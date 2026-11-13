@@ -123,13 +123,13 @@ it('anchors the modal below the clicked item inside the right workspace and repo
   } as DOMRect);
   vi.spyOn(anchor, 'getBoundingClientRect').mockReturnValue({ left: 280, bottom: 140 } as DOMRect);
   const original = HTMLElement.prototype.getBoundingClientRect;
-  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
-    this: HTMLElement,
-  ) {
-    if (this.className === 'site-browser-viewport')
-      return { x: 268, y: 250, width: 738, height: 490 } as DOMRect;
-    return original.call(this);
-  });
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+    function (this: HTMLElement) {
+      if (this.className === 'site-browser-viewport')
+        return { x: 268, y: 250, width: 738, height: 490 } as DOMRect;
+      return original.call(this);
+    },
+  );
   try {
     render(<SiteBrowserPage anchor={anchor} />);
     const modal = screen.getByRole('dialog');

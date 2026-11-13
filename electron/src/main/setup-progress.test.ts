@@ -98,26 +98,23 @@ describe('SetupProgressTracker', () => {
   it.each([
     ['torch', 'torchvision'],
     ['torchvision', 'torch'],
-  ])(
-    'credits concurrent bytes to the right package when %s is announced first',
-    (first, second) => {
-      const tracker = new SetupProgressTracker();
-      const sizes: Record<string, string> = { torch: '20 MiB', torchvision: '10 MiB' };
-      tracker.ingest(`Downloading ${first} (${sizes[first]})`);
-      tracker.ingest(`Downloading ${second} (${sizes[second]})`);
+  ])('credits concurrent bytes to the right package when %s is announced first', (first, second) => {
+    const tracker = new SetupProgressTracker();
+    const sizes: Record<string, string> = { torch: '20 MiB', torchvision: '10 MiB' };
+    tracker.ingest(`Downloading ${first} (${sizes[first]})`);
+    tracker.ingest(`Downloading ${second} (${sizes[second]})`);
 
-      expect(tracker.ingest('torchvision ------ 5 MiB/10 MiB')).toMatchObject({
-        activePackage: 'torchvision',
-        downloadedBytes: 5 * 1024 ** 2,
-        totalBytes: 30 * 1024 ** 2,
-      });
-      expect(tracker.ingest('torch ------ 4 MiB/20 MiB')).toMatchObject({
-        activePackage: 'torch',
-        downloadedBytes: 9 * 1024 ** 2,
-        totalBytes: 30 * 1024 ** 2,
-      });
-    },
-  );
+    expect(tracker.ingest('torchvision ------ 5 MiB/10 MiB')).toMatchObject({
+      activePackage: 'torchvision',
+      downloadedBytes: 5 * 1024 ** 2,
+      totalBytes: 30 * 1024 ** 2,
+    });
+    expect(tracker.ingest('torch ------ 4 MiB/20 MiB')).toMatchObject({
+      activePackage: 'torch',
+      downloadedBytes: 9 * 1024 ** 2,
+      totalBytes: 30 * 1024 ** 2,
+    });
+  });
 
   it.each([
     ['nvidia-cublas', 'nvidia-cublas-cu12'],

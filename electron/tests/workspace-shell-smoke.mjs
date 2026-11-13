@@ -2,10 +2,7 @@ import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 
 const baseUrl = process.env.VOICESTUDIO_UI_URL || 'http://localhost:3912';
-const browser = await chromium.launch({
-  channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge',
-  headless: true,
-});
+const browser = await chromium.launch({ channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge', headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 const errors = [];
 page.on('pageerror', (error) => errors.push(String(error)));
@@ -63,10 +60,7 @@ try {
   const expandedSidebar = page.locator('.brand-sidebar:not([data-slot=compact-main-sidebar])');
   await expandedSidebar.waitFor();
   const expandedWidth = (await expandedSidebar.boundingBox()).width;
-  assert.ok(
-    expandedWidth >= 196 && expandedWidth <= 288,
-    `Expanded navigation width ${expandedWidth}`,
-  );
+  assert.ok(expandedWidth >= 196 && expandedWidth <= 288, `Expanded navigation width ${expandedWidth}`);
   assert.equal(
     await expandedSidebar.getByRole('navigation', { name: 'Workspaces', exact: true }).count(),
     1,

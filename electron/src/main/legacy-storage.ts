@@ -13,19 +13,16 @@ export function legacyStorageEnv(roots: string[]): NodeJS.ProcessEnv {
           : undefined;
       const portable = absolute(config.portable_dir ?? config.portableDir);
       const isPortable = (config.install_mode ?? config.installMode) === 'portable';
-      const data =
-        isPortable && portable
-          ? join(portable, 'data')
-          : absolute(config.data_dir ?? config.dataDir);
-      const models =
-        isPortable && portable
-          ? join(portable, 'data', 'models')
-          : absolute(config.models_dir ?? config.modelsDir);
-      if (data || models)
-        return {
-          ...(data ? { OMNIVOICE_DATA_DIR: data } : {}),
-          ...(models ? { OMNIVOICE_CACHE_DIR: models } : {}),
-        };
+      const data = isPortable && portable
+        ? join(portable, 'data')
+        : absolute(config.data_dir ?? config.dataDir);
+      const models = isPortable && portable
+        ? join(portable, 'data', 'models')
+        : absolute(config.models_dir ?? config.modelsDir);
+      if (data || models) return {
+        ...(data ? { OMNIVOICE_DATA_DIR: data } : {}),
+        ...(models ? { OMNIVOICE_CACHE_DIR: models } : {}),
+      };
     } catch {
       // Missing or malformed legacy configuration must not block a fresh install.
     }

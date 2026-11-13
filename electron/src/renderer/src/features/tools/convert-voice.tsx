@@ -38,15 +38,8 @@ export function ConvertVoice() {
       b.available && b.supports_voice_conversion === true && b.routing_status !== 'unavailable',
   );
   const client = useQueryClient();
-  const {
-    file,
-    voice,
-    search,
-    match,
-    keepDelivery: keepDeliveryChoice,
-    language,
-    result,
-  } = useConversion();
+  const { file, voice, search, match, keepDelivery: keepDeliveryChoice, language, result } =
+    useConversion();
   // A video always swaps the voice in place: re-speaking could not stay in sync.
   const video = isVideoFile(file);
   const keepDelivery = keepDeliveryChoice || video;

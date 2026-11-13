@@ -3,9 +3,7 @@ import { readFileSync } from 'node:fs';
 import { chromium } from 'playwright';
 
 const browser = await chromium.launch({
-  ...(process.env.PLAYWRIGHT_BUNDLED === '1'
-    ? {}
-    : { channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge' }),
+  ...(process.env.PLAYWRIGHT_BUNDLED === '1' ? {} : { channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge' }),
   headless: true,
 });
 const ui = process.env.VOICESTUDIO_UI_URL || 'http://localhost:3912';
@@ -61,15 +59,10 @@ try {
       await page.goto(ui + '/#/clone');
       const sidebar = page.locator('aside').first();
       const footer = sidebar.locator('footer');
-      await footer
-        .getByRole('slider', { name: strings.performanceProfile.title, exact: true })
-        .waitFor();
+      await footer.getByRole('slider', { name: strings.performanceProfile.title, exact: true }).waitFor();
       // The three-way view switch lives in the popover that the speed/quality label opens.
       const chooseView = async (level) => {
-        const group = page.getByRole('radiogroup', {
-          name: strings.sidebarTools.title,
-          exact: true,
-        });
+        const group = page.getByRole('radiogroup', { name: strings.sidebarTools.title, exact: true });
         if (!(await group.isVisible())) {
           await footer.locator('[data-slot=performance-trigger]').click();
           await group.waitFor();

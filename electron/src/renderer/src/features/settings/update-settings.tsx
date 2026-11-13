@@ -505,10 +505,10 @@ export function UpdateSettings() {
             {!backendUp
               ? t('updates.backup_needs_runtime')
               : backup.data?.available && backup.data.latest
-                ? t('updates.backup_latest', {
-                    when: new Date(backup.data.latest.created_at * 1000).toLocaleString(),
-                  })
-                : t('updates.backup_none')}
+                  ? t('updates.backup_latest', {
+                      when: new Date(backup.data.latest.created_at * 1000).toLocaleString(),
+                    })
+                  : t('updates.backup_none')}
           </div>
         )}
       </SettingsSection>

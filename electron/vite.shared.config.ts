@@ -30,10 +30,7 @@ export default defineConfig({
     },
     react(),
   ],
-  define: {
-    __APP_VERSION__: JSON.stringify('0.0.0-test'),
-    __BUILD_COMMIT__: JSON.stringify('000000000'),
-  },
+  define: { __APP_VERSION__: JSON.stringify('0.0.0-test'), __BUILD_COMMIT__: JSON.stringify('000000000') },
   resolve: {
     alias: [
       ...tauriModules.map((id) => ({ find: id, replacement: `${tauriStub}?module=${id}` })),

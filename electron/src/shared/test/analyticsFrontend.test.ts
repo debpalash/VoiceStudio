@@ -83,6 +83,7 @@ describe('initAnalyticsFromConsent — silence is not consent', () => {
   });
 });
 
+
 it('sends nothing until the user has opted in, then stops on withdrawal', async () => {
   const sent = vi.fn(async () => ({}));
   setAnalyticsSender(sent);

@@ -22,7 +22,11 @@ import { DonationGoal } from './donation-goal';
 import { ReportBug } from '@/components/report-bug';
 import { ExternalLink } from '@/components/external-link';
 import { GITHUB_SPONSORS_URL, KOFI_URL, PAYPAL_URL } from '@shared/utils/donateLinks';
-import { SPONSORS, SPONSOR_TIERS, SPONSOR_CONTACT } from '@shared/config/sponsors';
+import {
+  SPONSORS,
+  SPONSOR_TIERS,
+  SPONSOR_CONTACT,
+} from '@shared/config/sponsors';
 import {
   ISSUES_URL,
   DISCORD_URL,

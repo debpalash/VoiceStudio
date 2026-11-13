@@ -1290,7 +1290,9 @@ describe('falling back to the CPU build', () => {
       }),
     );
     let finish = () => {};
-    mocks.install.mockImplementation(() => new Promise<void>((resolve) => (finish = resolve)));
+    mocks.install.mockImplementation(
+      () => new Promise<void>((resolve) => (finish = resolve)),
+    );
     const supervisor = new BackendSupervisor();
     onTestFinished(() => supervisor.shutdown());
     await supervisor.start();

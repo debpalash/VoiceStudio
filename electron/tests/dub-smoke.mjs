@@ -372,10 +372,7 @@ try {
   await page.getByRole('button', { name: 'Redo', exact: true }).click();
   assert.equal(await segmentRows.count(), 3);
   await segmentRows.first().locator('[data-segment-options-trigger]').click();
-  await segmentRows
-    .first()
-    .getByRole('spinbutton', { name: 'Start', exact: true })
-    .press('Control+z');
+  await segmentRows.first().getByRole('spinbutton', { name: 'Start', exact: true }).press('Control+z');
   assert.equal(await segmentRows.count(), 3);
   await segmentRows.first().locator('[data-segment-options-trigger]').click();
   await segmentRows.nth(1).getByRole('button', { name: 'Delete', exact: true }).click();
@@ -532,7 +529,9 @@ try {
   assert.equal(await page.getByRole('button', { name: 'Export', exact: true }).isEnabled(), true);
   if (video) {
     assert.equal(
-      await page.getByRole('switch', { name: 'Burn into video', exact: true }).isDisabled(),
+      await page
+        .getByRole('switch', { name: 'Burn into video', exact: true })
+        .isDisabled(),
       true,
     );
     await page.getByText('Stretch Video: export subtitles separately.', { exact: true }).waitFor();
@@ -818,9 +817,7 @@ try {
   await page.evaluate(() => sessionStorage.setItem('voicestudio.test.reset-dub', '1'));
   await page.reload();
   failTranscription = true;
-  await page
-    .getByRole('textbox', { name: /paste a video URL/ })
-    .fill('https://example.com/movie.mp4');
+  await page.getByRole('textbox', { name: /paste a video URL/ }).fill('https://example.com/movie.mp4');
   await page
     .locator('summary')
     .filter({ hasText: /^Advanced$/ })

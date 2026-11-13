@@ -21,13 +21,7 @@ try {
     base_url_from_env: true,
   };
   await page.route('**/api/api/settings/llm-providers', (route) =>
-    route.fulfill({
-      json: {
-        active,
-        engine_active: active === 'custom' ? 'openai-compat' : 'off',
-        providers: [provider],
-      },
-    }),
+    route.fulfill({ json: { active, engine_active: active === 'custom' ? 'openai-compat' : 'off', providers: [provider] } }),
   );
   await page.route('**/api/api/settings/llm-providers/custom', (route) => {
     const body = route.request().postDataJSON();

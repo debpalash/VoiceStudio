@@ -46,9 +46,7 @@ vi.mock('./account-token-bridge', async (importOriginal) => {
   return {
     ...real,
     startAccountTokenBridge: (...args: Parameters<typeof real.startAccountTokenBridge>) =>
-      h.bridgeFails
-        ? Promise.reject(new Error('port in use'))
-        : real.startAccountTokenBridge(...args),
+      h.bridgeFails ? Promise.reject(new Error('port in use')) : real.startAccountTokenBridge(...args),
   };
 });
 

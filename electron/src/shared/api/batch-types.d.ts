@@ -24,12 +24,7 @@ export interface BatchJob {
         kind: 'model_licence_required';
         code?: string;
         message?: string;
-        models?: {
-          repo_id: string;
-          license?: string | null;
-          category?: string;
-          fingerprint: string;
-        }[];
+        models?: { repo_id: string; license?: string | null; category?: string; fingerprint: string }[];
       };
   progress?: {
     stage: string;

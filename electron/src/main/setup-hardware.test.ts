@@ -44,12 +44,7 @@ describe('detectSetupHardware', () => {
   });
   it('falls back to CPU without NVIDIA', async () => {
     expect(
-      await detectSetupHardware({
-        platform: 'linux',
-        arch: 'x64',
-        env: {},
-        hasNvidia: () => false,
-      }),
+      await detectSetupHardware({ platform: 'linux', arch: 'x64', env: {}, hasNvidia: () => false }),
     ).toEqual({ build: 'cpu', reason: 'no_nvidia' });
   });
   it('reports Windows on Arm', async () => {

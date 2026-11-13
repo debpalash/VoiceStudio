@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  classifyInstallFailure,
-  type FailureEvidence,
-  type InstallFailureCode,
-} from './installFailure';
+import { classifyInstallFailure, type FailureEvidence, type InstallFailureCode } from './installFailure';
 
 // Text from real reports. When an issue reveals a new class, add it here.
 const CORPUS: [string, FailureEvidence, InstallFailureCode][] = [
@@ -12,11 +8,7 @@ const CORPUS: [string, FailureEvidence, InstallFailureCode][] = [
     { stage: 'failed', message: 'spawn UNKNOWN', smartAppControl: 'on' },
     'WINDOWS_APP_CONTROL_BLOCKED',
   ],
-  [
-    '#3801 bare refusal, nothing else known',
-    { stage: 'failed', message: 'spawn UNKNOWN' },
-    'EXEC_REFUSED',
-  ],
+  ['#3801 bare refusal, nothing else known', { stage: 'failed', message: 'spawn UNKNOWN' }, 'EXEC_REFUSED'],
   [
     '#3748 torch download stuck at 12.9 MB',
     {
@@ -89,8 +81,7 @@ const CORPUS: [string, FailureEvidence, InstallFailureCode][] = [
     '#3704 port conflict',
     {
       stage: 'port_in_use',
-      message:
-        'Port 3900 is already in use by another application, and VoiceStudio could not free it.',
+      message: 'Port 3900 is already in use by another application, and VoiceStudio could not free it.',
     },
     'PORT_IN_USE',
   ],
@@ -98,8 +89,7 @@ const CORPUS: [string, FailureEvidence, InstallFailureCode][] = [
     '#3612 named startup step',
     {
       stage: 'crashed',
-      message:
-        "Backend failed to start during 'api_routes' (exit code 1): 'NoneType' object has no attribute",
+      message: "Backend failed to start during 'api_routes' (exit code 1): 'NoneType' object has no attribute",
     },
     'BACKEND_STARTUP_FAILED',
   ],
@@ -113,9 +103,7 @@ const CORPUS: [string, FailureEvidence, InstallFailureCode][] = [
     {
       stage: 'crashed',
       message: 'Backend exited (exit code 1).',
-      logLines: [
-        'ImportError: DLL load failed while importing _sqlite3: An Application Control policy has blocked this file.',
-      ],
+      logLines: ['ImportError: DLL load failed while importing _sqlite3: An Application Control policy has blocked this file.'],
     },
     'WINDOWS_APP_CONTROL_BLOCKED',
   ],

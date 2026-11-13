@@ -26,7 +26,9 @@ export function SavedVoicesPage() {
             size="sm"
             variant="ghost"
             title={t('clone.title')}
-            onClick={() => runRendererTask('Open voice cloning', () => navigate({ to: '/clone' }))}
+            onClick={() =>
+              runRendererTask('Open voice cloning', () => navigate({ to: '/clone' }))
+            }
           >
             <FingerprintIcon />
             <span className="hidden sm:inline">{t('clone.title')}</span>
@@ -35,7 +37,9 @@ export function SavedVoicesPage() {
             size="sm"
             variant="ghost"
             title={t('designWorkspace.title')}
-            onClick={() => runRendererTask('Open voice design', () => navigate({ to: '/design' }))}
+            onClick={() =>
+              runRendererTask('Open voice design', () => navigate({ to: '/design' }))
+            }
           >
             <WandSparklesIcon />
             <span className="hidden sm:inline">{t('designWorkspace.title')}</span>

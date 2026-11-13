@@ -39,7 +39,7 @@ Props: `items` ( `{id, label, icon?, accent?}` ) · `value` · `onChange(id)` ·
   value={uiScale}
   onChange={setUiScale}
   items={[
-    { value: 1, label: 'S' },
+    { value: 1,   label: 'S' },
     { value: 1.3, label: 'M' },
     { value: 1.5, label: 'L' },
   ]}
@@ -57,16 +57,14 @@ import { Pencil, Copy, Trash2 } from 'lucide-react';
 <Menu
   placement="bottom-end"
   items={[
-    { id: 'rename', label: 'Rename', icon: Pencil, onSelect: onRename, shortcut: '⌘R' },
-    { id: 'duplicate', label: 'Duplicate', icon: Copy, onSelect: onDup },
+    { id: 'rename',    label: 'Rename',    icon: Pencil, onSelect: onRename, shortcut: '⌘R' },
+    { id: 'duplicate', label: 'Duplicate', icon: Copy,   onSelect: onDup },
     'separator',
-    { id: 'delete', label: 'Delete', icon: Trash2, destructive: true, onSelect: onDelete },
+    { id: 'delete',    label: 'Delete',    icon: Trash2, destructive: true, onSelect: onDelete },
   ]}
 >
-  <Button variant="icon" iconSize="sm">
-    …
-  </Button>
-</Menu>;
+  <Button variant="icon" iconSize="sm">…</Button>
+</Menu>
 ```
 
 - Wraps exactly one child (the trigger). Click opens, click-outside / ESC / Tab closes.
@@ -82,9 +80,7 @@ Props: `items` · `placement` (`bottom-start` | `bottom-end` | `top-start` | `to
 
 ```jsx
 <Tooltip content="Reset all shortcuts" placement="bottom">
-  <Button variant="ghost" size="sm">
-    Reset
-  </Button>
+  <Button variant="ghost" size="sm">Reset</Button>
 </Tooltip>
 ```
 
@@ -148,12 +144,8 @@ Props on `Field`: `label` · `hint` · `error` · `icon`. `Field` auto-wires `id
   size="lg"
   footer={
     <>
-      <Button variant="ghost" onClick={close}>
-        Cancel
-      </Button>
-      <Button variant="primary" onClick={save}>
-        Save
-      </Button>
+      <Button variant="ghost" onClick={close}>Cancel</Button>
+      <Button variant="primary" onClick={save}>Save</Button>
     </>
   }
 >
@@ -173,7 +165,7 @@ Handles focus return, ESC close, backdrop click, `role=dialog` automatically.
   min={0}
   max={200}
   step={1}
-  format={(v) => `${v}%`}
+  format={v => `${v}%`}
   label="Volume"
 />
 ```
@@ -196,16 +188,10 @@ Every design decision is a token in [`tokens.css`](./tokens.css). Colour, spacin
 
 ```css
 /* GOOD */
-.thing {
-  padding: var(--space-4);
-  background: var(--color-bg-elev-2);
-}
+.thing { padding: var(--space-4); background: var(--color-bg-elev-2); }
 
 /* BAD */
-.thing {
-  padding: 8px;
-  background: rgba(0, 0, 0, 0.3);
-}
+.thing { padding: 8px; background: rgba(0,0,0,0.3); }
 ```
 
 Import the barrel (`import '../ui'`) once in `main.jsx` and the tokens load for the whole app.
@@ -252,4 +238,4 @@ Next (after first migration waves prove these):
 
 ## Governance
 
-Design-system changes go through a **design audit** (see `ROADMAP.md` Design track). Any commit that touches a primitive's _visual_ behaviour requires a before/after screenshot in the PR description.
+Design-system changes go through a **design audit** (see `ROADMAP.md` Design track). Any commit that touches a primitive's *visual* behaviour requires a before/after screenshot in the PR description.

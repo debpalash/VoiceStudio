@@ -150,17 +150,8 @@ describe('native crash guidance', () => {
   });
 
   it('points a crash inside the graphics driver at the driver, not the CPU', () => {
-    for (const code of [
-      'NATIVE_ACCESS_VIOLATION',
-      'NATIVE_ILLEGAL_INSTRUCTION',
-      'NATIVE_CRASH',
-    ] as const)
-      for (const faultingModule of [
-        'nvcuda64.dll',
-        'cublasLt64_12.dll',
-        'igc64.dll',
-        'amdhip64_6.dll',
-      ])
+    for (const code of ['NATIVE_ACCESS_VIOLATION', 'NATIVE_ILLEGAL_INSTRUCTION', 'NATIVE_CRASH'] as const)
+      for (const faultingModule of ['nvcuda64.dll', 'cublasLt64_12.dll', 'igc64.dll', 'amdhip64_6.dll'])
         expect(failureGuidance(code, { faultingModule })).toEqual({
           cause: 'native_crash',
           hints: ['backend.hint_gpu_driver_fault'],
@@ -189,9 +180,9 @@ describe('native crash guidance', () => {
       'onnxruntime.dll',
     ]) {
       expect(isGpuDriverModule(module)).toBe(false);
-      expect(failureGuidance('NATIVE_ILLEGAL_INSTRUCTION', { faultingModule: module })).toEqual(
-        FAILURE_GUIDANCE.NATIVE_ILLEGAL_INSTRUCTION,
-      );
+      expect(
+        failureGuidance('NATIVE_ILLEGAL_INSTRUCTION', { faultingModule: module }),
+      ).toEqual(FAILURE_GUIDANCE.NATIVE_ILLEGAL_INSTRUCTION);
     }
     for (const module of [
       'nvcuda64.dll',
@@ -205,9 +196,9 @@ describe('native crash guidance', () => {
       'atio6axx.dll',
     ])
       expect(isGpuDriverModule(module)).toBe(true);
-    expect(failureGuidance('EXEC_REFUSED', { faultingModule: 'nvcuda64.dll' }).hints).not.toContain(
-      'backend.hint_gpu_driver_fault',
-    );
+    expect(
+      failureGuidance('EXEC_REFUSED', { faultingModule: 'nvcuda64.dll' }).hints,
+    ).not.toContain('backend.hint_gpu_driver_fault');
   });
 
   it('puts the faulting module in the report facts', () => {
@@ -243,11 +234,7 @@ describe('reports', () => {
     const url = composeBugReportUrl({
       title: '[Install] EXEC_REFUSED: spawn UNKNOWN',
       labels: 'bug,install',
-      factsSection: formatFailureFacts({
-        code: 'EXEC_REFUSED',
-        stage: 'failed',
-        program: 'python.exe',
-      }),
+      factsSection: formatFailureFacts({ code: 'EXEC_REFUSED', stage: 'failed', program: 'python.exe' }),
       error: new Error('x'.repeat(5000)),
       ctx: 'y'.repeat(9000),
       crashSection: ['```', 'z'.repeat(20000), '```'],
@@ -261,11 +248,7 @@ describe('reports', () => {
   });
 
   it('collapses repeated log lines', () => {
-    expect(collapseRepeatedLines(['a', 'b', 'b', 'b', 'c', 'c'])).toEqual([
-      'a',
-      'b (×3)',
-      'c (×2)',
-    ]);
+    expect(collapseRepeatedLines(['a', 'b', 'b', 'b', 'c', 'c'])).toEqual(['a', 'b (×3)', 'c (×2)']);
     expect(collapseRepeatedLines([])).toEqual([]);
   });
 

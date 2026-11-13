@@ -135,10 +135,7 @@ describe('consumeLongformStream', () => {
       body: {
         getReader: () => ({
           read: () =>
-            Promise.resolve({
-              done: false,
-              value: enc.encode(sse({ type: 'started', chapters: 1 })),
-            }),
+            Promise.resolve({ done: false, value: enc.encode(sse({ type: 'started', chapters: 1 })) }),
           cancel: () => {
             cancelled += 1;
             return Promise.resolve();

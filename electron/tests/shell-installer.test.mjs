@@ -1,14 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  mkdtempSync,
-  mkdirSync,
-  writeFileSync,
-  readFileSync,
-  readlinkSync,
-  existsSync,
-  rmSync,
-} from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, readlinkSync, existsSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -28,9 +20,7 @@ test('installer isolates the app version from generic tooling variables', () => 
 for (const mac of [false, true]) {
   test(`uninstall preserves data and a recoverable app (${mac ? 'macOS' : 'Linux'})`, (t) => {
     const f = fixture(t, { mac });
-    const app = mac
-      ? join(f.home, 'Applications/VoiceStudio.app')
-      : join(f.home, '.local/bin/VoiceStudio');
+    const app = mac ? join(f.home, 'Applications/VoiceStudio.app') : join(f.home, '.local/bin/VoiceStudio');
     if (mac) {
       mkdirSync(join(app, 'Contents/Resources'), { recursive: true });
       writeFileSync(join(app, 'Contents/Resources/app.asar'), 'app');
@@ -84,10 +74,7 @@ fi
   );
   shim('sysctl', `[ "$TEST_ROSETTA" = 1 ] && echo 1 || echo 0\n`);
   shim('xattr', 'printf "%s\\n" "$*" >> "$TEST_ROOT/xattr"\n');
-  shim(
-    'codesign',
-    `printf "%s\\n" "$*" >> "$TEST_ROOT/codesign"\ncase "$*" in *--verify*) [ "$TEST_SIG_INVALID" = 0 ];; esac\n`,
-  );
+  shim('codesign', `printf "%s\\n" "$*" >> "$TEST_ROOT/codesign"\ncase "$*" in *--verify*) [ "$TEST_SIG_INVALID" = 0 ];; esac\n`);
   shim('ditto', 'cp -R "$1" "$2"\n');
   shim(
     'curl',
@@ -138,19 +125,10 @@ if [ "$1 $2" = 'run electron-builder' ]; then printf '${payload}' > release/Voic
   shim('uv', 'exit 0\n');
   shim('readelf', 'exit 0\n');
   shim('zsyncmake', 'exit 0\n');
-  shim(
-    'pgrep',
-    options.linuxRunning
-      ? `case "$*" in *voicestudio-*) exit 0;; *) exit 1;; esac\n`
-      : options.running
-        ? 'exit 0\n'
-        : 'exit 1\n',
-  );
-  shim(
-    'lsregister',
-    'printf "%s\\n" "$*" >> "$TEST_ROOT/registration"\n' +
-      (options.registrationFails ? 'exit 1\n' : ''),
-  );
+  shim('pgrep', options.linuxRunning
+    ? `case "$*" in *voicestudio-*) exit 0;; *) exit 1;; esac\n`
+    : options.running ? 'exit 0\n' : 'exit 1\n');
+  shim('lsregister', 'printf "%s\\n" "$*" >> "$TEST_ROOT/registration"\n' + (options.registrationFails ? 'exit 1\n' : ''));
   const settings = join(home, 'settings');
   writeFileSync(settings, 'preserve me');
   return {
@@ -171,9 +149,9 @@ if [ "$1 $2" = 'run electron-builder' ]; then printf '${payload}' > release/Voic
           TMPDIR: root,
           TEST_ROOT: root,
           TEST_DIGEST: options.badChecksum ? '0'.repeat(64) : digest,
-          VOICESTUDIO_INSTALL_DIR:
-            options.installDir ??
-            (options.mac ? join(home, 'Applications') : join(home, '.local/bin')),
+          VOICESTUDIO_INSTALL_DIR: options.installDir ?? (options.mac
+            ? join(home, 'Applications')
+            : join(home, '.local/bin')),
           TEST_ROSETTA: options.rosetta ? '1' : '0',
           TEST_SIG_INVALID: options.sigInvalid ? '1' : '0',
           TEST_ATTACH_FAIL: options.attachFails ? '1' : '0',
@@ -191,14 +169,12 @@ for (const mac of [false, true]) {
     writeFileSync(join(f.home, '.bashrc'), '# my settings\n');
     const command = join(f.home, '.local/bin/voicestudio');
     assert.equal(f.run().status, 0);
-    const target = mac
-      ? join(f.home, 'Applications/VoiceStudio.app/Contents/Resources/cli/voicestudio')
+    const target = mac ? join(f.home, 'Applications/VoiceStudio.app/Contents/Resources/cli/voicestudio')
       : join(f.home, '.local/bin/VoiceStudio');
     // Where both names are one file, the AppImage itself answers to `voicestudio`.
-    const check = () =>
-      !mac && f.caseInsensitive
-        ? assert.equal(readFileSync(command, 'utf8'), payload)
-        : assert.equal(readlinkSync(command), target);
+    const check = () => !mac && f.caseInsensitive
+      ? assert.equal(readFileSync(command, 'utf8'), payload)
+      : assert.equal(readlinkSync(command), target);
     check();
     assert.equal(f.run().status, 0);
     check();
@@ -273,12 +249,7 @@ for (const [name, args, version, brand] of [
     assert.equal(readFileSync(join(f.home, '.local/bin/VoiceStudio'), 'utf8'), payload);
     assert.equal(readFileSync(f.settings, 'utf8'), 'preserve me');
     const requests = readFileSync(join(f.root, 'requests'), 'utf8');
-    assert.match(
-      requests,
-      new RegExp(
-        `download/v${version}/${brand}-${version.replaceAll('.', '\\.')}-linux-x64\\.AppImage`,
-      ),
-    );
+    assert.match(requests, new RegExp(`download/v${version}/${brand}-${version.replaceAll('.', '\\.')}-linux-x64\\.AppImage`));
     assert.doesNotMatch(requests, /latest\.json/);
     if (args.length) assert.doesNotMatch(requests, /releases\/latest/);
   });
@@ -301,10 +272,7 @@ for (const option of ['--main', '--source']) {
     assert.match(commands, /git clone --depth 1 --branch main --single-branch/);
     assert.match(commands, /bun install --frozen-lockfile/);
     assert.match(commands, /bun run build:web/);
-    assert.match(
-      commands,
-      /bun run electron-builder --config electron-builder.config.mjs --publish never --linux --x64/,
-    );
+    assert.match(commands, /bun run electron-builder --config electron-builder.config.mjs --publish never --linux --x64/);
     assert.doesNotMatch(commands, /git pull|git reset|frontend.*build/);
   });
 }
@@ -338,21 +306,13 @@ test('macOS installs the verified Electron bundle and replaces only the app', (t
 for (const [name, options, asset, intel] of [
   ['Apple Silicon', { mac: true, machine: 'arm64' }, 'mac-arm64.dmg', false],
   ['Intel', { mac: true, machine: 'x86_64' }, 'mac-x64.dmg', true],
-  [
-    'Apple Silicon terminal under Rosetta',
-    { mac: true, machine: 'x86_64', rosetta: true },
-    'mac-arm64.dmg',
-    false,
-  ],
+  ['Apple Silicon terminal under Rosetta', { mac: true, machine: 'x86_64', rosetta: true }, 'mac-arm64.dmg', false],
 ]) {
   test(`macOS ${name} downloads ${asset}`, (t) => {
     const f = fixture(t, options);
     const r = f.run();
     assert.equal(r.status, 0, r.stderr);
-    assert.match(
-      readFileSync(join(f.root, 'requests'), 'utf8'),
-      new RegExp(`/VoiceStudio-1\\.2\\.3-${asset.replace('.', '\\.')}`),
-    );
+    assert.match(readFileSync(join(f.root, 'requests'), 'utf8'), new RegExp(`/VoiceStudio-1\\.2\\.3-${asset.replace('.', '\\.')}`));
     assert.equal(r.stdout.includes('Intel Mac'), intel);
   });
 }
@@ -361,14 +321,8 @@ test('macOS clears quarantine and repairs an invalid signature after install', (
   const f = fixture(t, { mac: true, sigInvalid: true });
   const r = f.run();
   assert.equal(r.status, 0, r.stderr);
-  assert.match(
-    readFileSync(join(f.root, 'xattr'), 'utf8'),
-    /-dr com\.apple\.quarantine .*VoiceStudio\.app/,
-  );
-  assert.match(
-    readFileSync(join(f.root, 'codesign'), 'utf8'),
-    /--force --deep --sign - .*VoiceStudio\.app/,
-  );
+  assert.match(readFileSync(join(f.root, 'xattr'), 'utf8'), /-dr com\.apple\.quarantine .*VoiceStudio\.app/);
+  assert.match(readFileSync(join(f.root, 'codesign'), 'utf8'), /--force --deep --sign - .*VoiceStudio\.app/);
   assert.match(r.stdout, /Repaired the app signature/);
 });
 

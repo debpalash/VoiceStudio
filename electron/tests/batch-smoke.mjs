@@ -104,9 +104,7 @@ try {
   await page.getByRole('button', { name: 'French', exact: true }).waitFor();
   await language.click();
   const list = page.getByRole('listbox', { name: 'Language', exact: true });
-  await list.evaluate((element) => {
-    element.scrollTop = 0;
-  });
+  await list.evaluate((element) => { element.scrollTop = 0; });
   await list.hover();
   await page.mouse.wheel(0, 400);
   await page.waitForFunction(() => document.querySelector('[role="listbox"]')?.scrollTop > 0);

@@ -154,10 +154,7 @@ it('runs a selected interpreter against bundled resources, never the absent mana
   state.packaged = true;
   state.selected = '/existing/bin/python';
   const original = process.resourcesPath;
-  Object.defineProperty(process, 'resourcesPath', {
-    configurable: true,
-    value: '/packaged/resources',
-  });
+  Object.defineProperty(process, 'resourcesPath', { configurable: true, value: '/packaged/resources' });
   try {
     const plan = await resolveSpawnPlan(3912, '/missing/managed/project');
     expect(plan).toMatchObject({ cwd: '/packaged/resources' });

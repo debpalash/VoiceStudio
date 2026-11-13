@@ -79,9 +79,7 @@ export function omnivoiceTtsResources(dir = OMNIVOICE_TTS_STAGING_DIR) {
   for (const name of cli) {
     const server = name.replace(/^omnivoice-tts-/, 'tts-server-');
     if (!files.includes(server) || !manifest.has(server)) {
-      throw new Error(
-        `Staged GGUF runtime is missing the resident server ${server} (or its ${OMNIVOICE_TTS_MANIFEST} entry)`,
-      );
+      throw new Error(`Staged GGUF runtime is missing the resident server ${server} (or its ${OMNIVOICE_TTS_MANIFEST} entry)`);
     }
   }
   return [{ from: dir, to: OMNIVOICE_TTS_RESOURCE_DIR, filter: ['**/*'] }];
@@ -190,15 +188,12 @@ const defaultSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  * Run `codesign`, retrying only transient timestamp-service failures with
  * growing backoff. Any other failure throws immediately.
  */
-export async function runCodesign(
-  args,
-  {
-    run = execFileSync,
-    sleep = defaultSleep,
-    delaysMs = [5000, 15000, 30000],
-    log = console.warn,
-  } = {},
-) {
+export async function runCodesign(args, {
+  run = execFileSync,
+  sleep = defaultSleep,
+  delaysMs = [5000, 15000, 30000],
+  log = console.warn,
+} = {}) {
   const attempts = delaysMs.length + 1;
   for (let attempt = 1; ; attempt += 1) {
     try {
@@ -210,15 +205,10 @@ export async function runCodesign(
       const reason = stderr || String(error?.message ?? error);
       if (!isTimestampServiceError(reason)) throw error;
       if (attempt >= attempts) {
-        throw new Error(
-          `codesign timestamp service failed after ${attempts} attempts: ${redactHome(reason).trim()}`,
-          { cause: error },
-        );
+        throw new Error(`codesign timestamp service failed after ${attempts} attempts: ${redactHome(reason).trim()}`, { cause: error });
       }
       const delay = delaysMs[attempt - 1];
-      log(
-        `codesign timestamp service error (attempt ${attempt}/${attempts}), retrying in ${delay / 1000}s: ${redactHome(reason).trim().split('\n')[0]}`,
-      );
+      log(`codesign timestamp service error (attempt ${attempt}/${attempts}), retrying in ${delay / 1000}s: ${redactHome(reason).trim().split('\n')[0]}`);
       await sleep(delay);
     }
   }
@@ -252,21 +242,13 @@ export function codesignArgs(opts, file) {
  */
 export async function signMac(opts, packager) {
   const cliDir = join(opts.app, 'Contents', 'Resources', 'cli');
-  const cliFiles = (dir) =>
-    !existsSync(dir)
-      ? []
-      : readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
-          const path = join(dir, entry.name);
-          return entry.isDirectory()
-            ? cliFiles(path)
-            : entry.isFile() && isMachO(path)
-              ? [path]
-              : [];
-        });
+  const cliFiles = (dir) => !existsSync(dir) ? [] : readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    return entry.isDirectory() ? cliFiles(path) : entry.isFile() && isMachO(path) ? [path] : [];
+  });
   // PyInstaller's interpreter and extension modules need the app's signing identity too.
   if (opts.identity) {
-    for (const file of cliFiles(cliDir))
-      await runCodesign(codesignArgs(opts, file), opts.codesignRetry);
+    for (const file of cliFiles(cliDir)) await runCodesign(codesignArgs(opts, file), opts.codesignRetry);
   }
   const binDir = join(opts.app, 'Contents', 'Resources', OMNIVOICE_TTS_RESOURCE_DIR);
   let ignore = opts.ignore;

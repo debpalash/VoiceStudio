@@ -117,8 +117,7 @@ export function AnalyticsRuntime() {
   // from here, on the early answer until the backend can give its own.
   const allowed = analytics.data
     ? analytics.data.available && analytics.data.opted_in && !backend.analyticsDisabled
-    : analyticsAvailable() &&
-      setupAnalyticsAllowed(readSetupAnalytics(), backend.analyticsDisabled);
+    : analyticsAvailable() && setupAnalyticsAllowed(readSetupAnalytics(), backend.analyticsDisabled);
   useEffect(() => {
     const events = funnel.current.observe(backend, setupWasCompleted(), allowed);
     if (!allowed || !events.length) return;

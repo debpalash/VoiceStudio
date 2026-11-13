@@ -22,10 +22,7 @@ const NAME_MAX = 60;
 
 export function sanitizeGpuName(raw: string | undefined): string | undefined {
   // eslint-disable-next-line no-control-regex
-  const first = raw
-    ?.split(/\r?\n/)
-    .find((line) => line.trim())
-    ?.replace(/[\u0000-\u001f]/g, '');
+  const first = raw?.split(/\r?\n/).find((line) => line.trim())?.replace(/[\u0000-\u001f]/g, '');
   const name = first?.trim().replace(/\s+/g, ' ');
   return name ? name.slice(0, NAME_MAX) : undefined;
 }

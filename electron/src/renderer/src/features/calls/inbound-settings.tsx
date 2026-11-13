@@ -46,13 +46,7 @@ export function InboundSettings({
   const save = async () => {
     setSaving(true);
     try {
-      onSaved(
-        await saveCallSettings({
-          inbound_mode: mode,
-          inbound_brief: brief,
-          allow_remote_control: remoteControl,
-        }),
-      );
+      onSaved(await saveCallSettings({ inbound_mode: mode, inbound_brief: brief, allow_remote_control: remoteControl }));
       toast.success(t('nav.saved'));
       onOpenChange(false);
     } catch (error) {
@@ -118,19 +112,10 @@ export function InboundSettings({
           )}
           <div className="flex items-start justify-between gap-3 rounded-lg border p-3">
             <div>
-              <label htmlFor={`${ids}-remote`} className="text-sm font-medium">
-                {t('mobile.calls.remote_control')}
-              </label>
-              <p id={`${ids}-remote-hint`} className="text-xs text-muted-foreground">
-                {t('mobile.calls.remote_control_hint')}
-              </p>
+              <label htmlFor={`${ids}-remote`} className="text-sm font-medium">{t('mobile.calls.remote_control')}</label>
+              <p id={`${ids}-remote-hint`} className="text-xs text-muted-foreground">{t('mobile.calls.remote_control_hint')}</p>
             </div>
-            <Switch
-              id={`${ids}-remote`}
-              checked={remoteControl}
-              onCheckedChange={setRemoteControl}
-              aria-describedby={`${ids}-remote-hint`}
-            />
+            <Switch id={`${ids}-remote`} checked={remoteControl} onCheckedChange={setRemoteControl} aria-describedby={`${ids}-remote-hint`} />
           </div>
           <p className="text-xs text-muted-foreground">
             {t('calls.inbound_twilio_note')}{' '}

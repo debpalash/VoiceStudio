@@ -71,8 +71,7 @@ try {
   await page.getByRole('button', { name: 'Audiobook', exact: true }).click();
   assert.ok((await page.getByRole('textbox').inputValue()).includes('Audiobook'));
   assert.equal(await page.getByRole('button', { name: 'Send', exact: true }).isEnabled(), true);
-  if (process.env.VOICESTUDIO_AGENT_SCREENSHOT)
-    await page.screenshot({ path: process.env.VOICESTUDIO_AGENT_SCREENSHOT });
+  if (process.env.VOICESTUDIO_AGENT_SCREENSHOT) await page.screenshot({ path: process.env.VOICESTUDIO_AGENT_SCREENSHOT });
   await page.evaluate(() => localStorage.setItem('voicestudio.locale', 'fr'));
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.getByText('Canal de mise à jour', { exact: true }).first().waitFor();

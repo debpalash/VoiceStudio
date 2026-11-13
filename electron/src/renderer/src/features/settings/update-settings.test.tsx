@@ -268,13 +268,7 @@ describe('UpdateSettings', () => {
   test('Beta keeps stables out of its list and offers a newer stable as a switch', async () => {
     mocks.state = { ...mocks.state, channel: 'beta', currentVersion: '0.5.8-beta.5' };
     mocks.listReleases.mockResolvedValue([
-      {
-        version: '0.5.8',
-        name: 'v0.5.8',
-        date: '2026-11-12T08:53:00Z',
-        prerelease: false,
-        notes: '',
-      },
+      { version: '0.5.8', name: 'v0.5.8', date: '2026-11-12T08:53:00Z', prerelease: false, notes: '' },
       {
         version: '0.5.8-beta.5',
         name: 'v0.5.8-beta.5',

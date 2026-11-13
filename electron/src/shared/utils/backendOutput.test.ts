@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  backendStartupFailure,
-  isBrokenEnvironmentOutput,
-  windowsLoadBlock,
-} from './backendOutput';
+import { backendStartupFailure, isBrokenEnvironmentOutput, windowsLoadBlock } from './backendOutput';
 
 const TRACE = [
   'Traceback (most recent call last):',
@@ -61,7 +57,9 @@ describe('isBrokenEnvironmentOutput', () => {
 
   it('does not treat an import error about something else as a broken environment', () => {
     expect(
-      isBrokenEnvironmentOutput(['ModuleNotFoundError: No module named "some_user_package"']),
+      isBrokenEnvironmentOutput([
+        'ModuleNotFoundError: No module named "some_user_package"',
+      ]),
     ).toBe(false);
   });
 

@@ -28,8 +28,7 @@ const PATTERNS: Array<[FailureCause, RegExp]> = [
 export function classifyFailure(...texts: Array<string | undefined>): FailureCause | null {
   const joined = texts.filter(Boolean).join('\n');
   if (!joined) return null;
-  if (looksLikeHtml(joined))
-    return /\b(?:504|524|408)\b|time/i.test(joined) ? 'timeout' : 'bad_response';
+  if (looksLikeHtml(joined)) return /\b(?:504|524|408)\b|time/i.test(joined) ? 'timeout' : 'bad_response';
   for (const [cause, pattern] of PATTERNS) if (pattern.test(joined)) return cause;
   return null;
 }

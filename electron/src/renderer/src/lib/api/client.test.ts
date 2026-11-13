@@ -1,6 +1,9 @@
-import i18next from 'i18next';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { _resetBackendContactForTests, lastBackendContact } from '@shared/utils/backendContact';
+import i18next from "i18next";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  _resetBackendContactForTests,
+  lastBackendContact,
+} from "@shared/utils/backendContact";
 import {
   ApiError,
   apiFetch,
@@ -12,8 +15,8 @@ import {
   profileAudioUrl,
   resolveApiBase,
   joinApiPath,
-} from './client';
-import { rewriteDevApiProxyPath } from '../../../../shared/web-api-routing';
+} from "./client";
+import { rewriteDevApiProxyPath } from "../../../../shared/web-api-routing";
 
 beforeEach(() => {
   _resetBackendContactForTests();
@@ -25,326 +28,379 @@ afterEach(() => {
   _resetBackendContactForTests();
 });
 
-describe('errorFromResponse', () => {
-  it('localizes Argos runtime errors and retains diagnostics', async () => {
-    const translate = vi.spyOn(i18next, 't').mockReturnValue('Localized recovery guidance');
+describe("errorFromResponse", () => {
+  it("localizes Argos runtime errors and retains diagnostics", async () => {
+    const translate = vi
+      .spyOn(i18next, "t")
+      .mockReturnValue("Localized recovery guidance");
     const detail = {
-      code: 'argos_runtime_unavailable',
-      message: 'Raw native diagnostic',
+      code: "argos_runtime_unavailable",
+      message: "Raw native diagnostic",
     };
-    const err = await errorFromResponse(new Response(JSON.stringify({ detail }), { status: 400 }));
-    expect(err.detail).toBe('Localized recovery guidance');
-    expect(translate).toHaveBeenCalledWith('engines.argosRuntimeUnavailable');
+    const err = await errorFromResponse(
+      new Response(JSON.stringify({ detail }), { status: 400 }),
+    );
+    expect(err.detail).toBe("Localized recovery guidance");
+    expect(translate).toHaveBeenCalledWith("engines.argosRuntimeUnavailable");
     expect(err.payload?.detail).toEqual(detail);
   });
-  it('localizes the unknown source language gate and retains diagnostics', async () => {
-    const translate = vi.spyOn(i18next, 't').mockReturnValue('Choose source and target languages.');
+  it("localizes the unknown source language gate and retains diagnostics", async () => {
+    const translate = vi
+      .spyOn(i18next, "t")
+      .mockReturnValue("Choose source and target languages.");
     const detail = {
-      code: 'source_language_required',
+      code: "source_language_required",
       message:
-        'Source language is unknown. Select the source language before checking or installing its language pack.',
+        "Source language is unknown. Select the source language before checking or installing its language pack.",
     };
-    const err = await errorFromResponse(new Response(JSON.stringify({ detail }), { status: 422 }));
-    expect(err.detail).toBe('Choose source and target languages.');
-    expect(translate).toHaveBeenCalledWith('workflowRun.invalid_language');
+    const err = await errorFromResponse(
+      new Response(JSON.stringify({ detail }), { status: 422 }),
+    );
+    expect(err.detail).toBe("Choose source and target languages.");
+    expect(translate).toHaveBeenCalledWith("workflowRun.invalid_language");
     expect(err.payload?.detail).toEqual(detail);
   });
-  it('announces unaccepted model licences so the app can ask for acceptance', async () => {
-    const translate = vi.spyOn(i18next, 't').mockReturnValue('Accept the licence first');
+  it("announces unaccepted model licences so the app can ask for acceptance", async () => {
+    const translate = vi
+      .spyOn(i18next, "t")
+      .mockReturnValue("Accept the licence first");
     const models = [
       {
-        repo_id: 'a/b',
-        category: 'noncommercial',
-        fingerprint: `v1:${'a'.repeat(64)}`,
+        repo_id: "a/b",
+        category: "noncommercial",
+        fingerprint: `v1:${"a".repeat(64)}`,
       },
     ];
-    const detail = { code: 'model_licence_required', message: 'raw', models };
+    const detail = { code: "model_licence_required", message: "raw", models };
     const seen: unknown[] = [];
     const listener = (event: Event) => seen.push((event as CustomEvent).detail);
-    window.addEventListener('ov:model-licence-required', listener);
+    window.addEventListener("ov:model-licence-required", listener);
     try {
       const err = await errorFromResponse(
         new Response(JSON.stringify({ detail }), { status: 403 }),
       );
-      expect(err.detail).toBe('Accept the licence first');
-      expect(translate).toHaveBeenCalledWith('modelLicense.requiredError');
+      expect(err.detail).toBe("Accept the licence first");
+      expect(translate).toHaveBeenCalledWith("modelLicense.requiredError");
       expect(seen).toEqual([models]);
     } finally {
-      window.removeEventListener('ov:model-licence-required', listener);
+      window.removeEventListener("ov:model-licence-required", listener);
     }
   });
-  it('localizes background preservation errors and retains diagnostics', async () => {
+  it("localizes background preservation errors and retains diagnostics", async () => {
     const detail = {
-      code: 'dub_background_unavailable',
-      message: 'Raw diagnostic',
+      code: "dub_background_unavailable",
+      message: "Raw diagnostic",
     };
-    const err = await errorFromResponse(new Response(JSON.stringify({ detail }), { status: 409 }));
-    expect(err.detail).not.toBe('Raw diagnostic');
-    expect(err.detail).not.toContain('Raw diagnostic');
+    const err = await errorFromResponse(
+      new Response(JSON.stringify({ detail }), { status: 409 }),
+    );
+    expect(err.detail).not.toBe("Raw diagnostic");
+    expect(err.detail).not.toContain("Raw diagnostic");
     expect(err.payload?.detail).toEqual(detail);
   });
-  it('uses a string detail verbatim and keeps the payload', async () => {
-    const res = new Response(JSON.stringify({ detail: 'Unsupported instruct items' }), {
-      status: 400,
-    });
+  it("uses a string detail verbatim and keeps the payload", async () => {
+    const res = new Response(
+      JSON.stringify({ detail: "Unsupported instruct items" }),
+      {
+        status: 400,
+      },
+    );
     const err = await errorFromResponse(res);
     expect(err).toBeInstanceOf(ApiError);
     expect(err.status).toBe(400);
-    expect(err.detail).toBe('Unsupported instruct items');
-    expect(err.message).toBe('Unsupported instruct items');
-    expect(err.payload).toEqual({ detail: 'Unsupported instruct items' });
+    expect(err.detail).toBe("Unsupported instruct items");
+    expect(err.message).toBe("Unsupported instruct items");
+    expect(err.payload).toEqual({ detail: "Unsupported instruct items" });
   });
 
-  it('compact-stringifies a structured detail', async () => {
-    const detail = { error: 'model_not_downloaded', repo_ids: ['a/b'] };
+  it("compact-stringifies a structured detail", async () => {
+    const detail = { error: "model_not_downloaded", repo_ids: ["a/b"] };
     const res = new Response(JSON.stringify({ detail }), { status: 409 });
     const err = await errorFromResponse(res);
     expect(err.detail).toBe(JSON.stringify(detail));
     expect(err.payload?.detail).toEqual(detail);
   });
 
-  it('falls back to the text body when it is not JSON', async () => {
-    const res = new Response('Internal Server Error', { status: 500 });
+  it("falls back to the text body when it is not JSON", async () => {
+    const res = new Response("Internal Server Error", { status: 500 });
     const err = await errorFromResponse(res);
-    expect(err.detail).toBe('Internal Server Error');
+    expect(err.detail).toBe("Internal Server Error");
     expect(err.payload).toBeNull();
   });
 
-  it('falls back to the status line on an empty body', async () => {
-    const res = new Response(null, { status: 502, statusText: 'Bad Gateway' });
+  it("falls back to the status line on an empty body", async () => {
+    const res = new Response(null, { status: 502, statusText: "Bad Gateway" });
     const err = await errorFromResponse(res);
-    expect(err.detail).toBe('HTTP 502 Bad Gateway');
+    expect(err.detail).toBe("HTTP 502 Bad Gateway");
   });
 });
 
-describe('apiFetch', () => {
-  it('prefixes API_BASE and returns the response when ok', async () => {
-    const fetchMock = vi.fn(async () => new Response('{"ok":true}', { status: 200 }));
-    vi.stubGlobal('fetch', fetchMock);
-    const body = await apiJson<{ ok: boolean }>('/system/info');
+describe("apiFetch", () => {
+  it("prefixes API_BASE and returns the response when ok", async () => {
+    const fetchMock = vi.fn(
+      async () => new Response('{"ok":true}', { status: 200 }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const body = await apiJson<{ ok: boolean }>("/system/info");
     expect(body).toEqual({ ok: true });
-    expect(fetchMock).toHaveBeenCalledWith('/api/system/info', undefined);
+    expect(fetchMock).toHaveBeenCalledWith("/api/system/info", undefined);
     expect(lastBackendContact()).not.toBeNull();
   });
 
-  it('throws ApiError for a non-2xx response', async () => {
-    vi.stubGlobal('fetch', async () => new Response('{"detail":"nope"}', { status: 404 }));
-    await expect(apiFetch('/profiles/x')).rejects.toMatchObject({
-      name: 'ApiError',
+  it("throws ApiError for a non-2xx response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      async () => new Response('{"detail":"nope"}', { status: 404 }),
+    );
+    await expect(apiFetch("/profiles/x")).rejects.toMatchObject({
+      name: "ApiError",
       status: 404,
-      detail: 'nope',
+      detail: "nope",
     });
     expect(lastBackendContact()).not.toBeNull();
   });
 
-  it('maps a network failure to status 0 with the backend_unreachable key', async () => {
-    vi.stubGlobal('fetch', async () => {
-      throw new TypeError('Failed to fetch');
+  it("maps a network failure to status 0 with the backend_unreachable key", async () => {
+    vi.stubGlobal("fetch", async () => {
+      throw new TypeError("Failed to fetch");
     });
-    await expect(apiFetch('/engines')).rejects.toMatchObject({
-      name: 'ApiError',
+    await expect(apiFetch("/engines")).rejects.toMatchObject({
+      name: "ApiError",
       status: 0,
-      detail: 'tts_errors.backend_unreachable',
+      detail: "tts_errors.backend_unreachable",
     });
     expect(lastBackendContact()).toBeNull();
   });
 
-  it('sends a web PIN lockout back to the PIN form with the wait', async () => {
-    vi.stubGlobal('__WEB_DEPLOYMENT__', true);
+  it("sends a web PIN lockout back to the PIN form with the wait", async () => {
+    vi.stubGlobal("__WEB_DEPLOYMENT__", true);
     vi.stubGlobal(
-      'fetch',
+      "fetch",
       async () =>
         new Response('{"detail":"Too many wrong PINs. Try again later."}', {
           status: 429,
-          headers: { 'Retry-After': '120' },
+          headers: { "Retry-After": "120" },
         }),
     );
     const events: CustomEvent[] = [];
     const listen = (e: Event) => events.push(e as CustomEvent);
-    window.addEventListener('ov:auth-required', listen);
+    window.addEventListener("ov:auth-required", listen);
     try {
-      await expect(apiFetch('/engines')).rejects.toMatchObject({ status: 429 });
+      await expect(apiFetch("/engines")).rejects.toMatchObject({ status: 429 });
     } finally {
-      window.removeEventListener('ov:auth-required', listen);
+      window.removeEventListener("ov:auth-required", listen);
     }
-    expect(events.map((e) => e.detail)).toEqual([{ mode: 'pin', retryAfter: 120 }]);
+    expect(events.map((e) => e.detail)).toEqual([{ mode: "pin", retryAfter: 120 }]);
   });
 
-  it('re-throws aborts untouched', async () => {
-    vi.stubGlobal('fetch', async () => {
-      throw new DOMException('Aborted', 'AbortError');
+  it("re-throws aborts untouched", async () => {
+    vi.stubGlobal("fetch", async () => {
+      throw new DOMException("Aborted", "AbortError");
     });
-    await expect(apiFetch('/generate')).rejects.toMatchObject({
-      name: 'AbortError',
+    await expect(apiFetch("/generate")).rejects.toMatchObject({
+      name: "AbortError",
     });
   });
 });
 
-describe('url helpers', () => {
-  it('builds same-origin audio URLs', () => {
-    expect(audioUrl('take 1.wav')).toBe('/api/audio/take%201.wav');
-    expect(profileAudioUrl('abc')).toBe('/api/profiles/abc/audio');
-    expect(profileAudioUrl('abc', null)).toBe('/api/profiles/abc/audio');
+describe("url helpers", () => {
+  it("builds same-origin audio URLs", () => {
+    expect(audioUrl("take 1.wav")).toBe("/api/audio/take%201.wav");
+    expect(profileAudioUrl("abc")).toBe("/api/profiles/abc/audio");
+    expect(profileAudioUrl("abc", null)).toBe("/api/profiles/abc/audio");
     // The versioned URL changes when the reference is replaced (#2282).
-    expect(profileAudioUrl('abc', '/profiles/abc/audio?v=42')).toBe('/api/profiles/abc/audio?v=42');
+    expect(profileAudioUrl("abc", "/profiles/abc/audio?v=42")).toBe(
+      "/api/profiles/abc/audio?v=42",
+    );
   });
 
-  it('describes errors for toasts', () => {
-    expect(describeError(new ApiError(500, 'boom'))).toBe('boom');
-    expect(describeError(new Error('plain'))).toBe('plain');
-    expect(describeError('str')).toBe('str');
+  it("describes errors for toasts", () => {
+    expect(describeError(new ApiError(500, "boom"))).toBe("boom");
+    expect(describeError(new Error("plain"))).toBe("plain");
+    expect(describeError("str")).toBe("str");
   });
 });
 
-describe('deployment API base', () => {
-  it('keeps Electron and web development on the /api proxy', () => {
-    expect(resolveApiBase(false, false)).toBe('/api');
-    expect(resolveApiBase(true, true)).toBe('/api');
+describe("deployment API base", () => {
+  it("keeps Electron and web development on the /api proxy", () => {
+    expect(resolveApiBase(false, false)).toBe("/api");
+    expect(resolveApiBase(true, true)).toBe("/api");
   });
 
-  it('uses backend-root routes in the production web bundle', () => {
-    expect(resolveApiBase(true, false)).toBe('');
+  it("uses backend-root routes in the production web bundle", () => {
+    expect(resolveApiBase(true, false)).toBe("");
   });
 
-  it('honors the runtime Docker/reverse-proxy override', () => {
+  it("honors the runtime Docker/reverse-proxy override", () => {
     const win = {
-      __OMNIVOICE_API_BASE__: 'https://voice.example/studio/',
+      __OMNIVOICE_API_BASE__: "https://voice.example/studio/",
     } as Window & {
       __OMNIVOICE_API_BASE__?: string;
     };
-    expect(resolveApiBase(true, false, win)).toBe('https://voice.example/studio');
-  });
-
-  it('keeps transport prefixes separate from logical /api routes', () => {
-    expect(joinApiPath('https://voice.example/studio', '/engines')).toBe(
-      'https://voice.example/studio/engines',
-    );
-    expect(joinApiPath('https://voice.example/api', '/api/settings/analytics')).toBe(
-      'https://voice.example/api/api/settings/analytics',
+    expect(resolveApiBase(true, false, win)).toBe(
+      "https://voice.example/studio",
     );
   });
 
-  it('strips only the development transport prefix', () => {
-    expect(rewriteDevApiProxyPath('/api/engines')).toBe('/engines');
-    expect(rewriteDevApiProxyPath('/api/ws/events')).toBe('/ws/events');
-    expect(rewriteDevApiProxyPath('/api/settings/analytics')).toBe('/api/settings/analytics');
-    expect(rewriteDevApiProxyPath('/api/auth/session')).toBe('/api/auth/session');
-    expect(rewriteDevApiProxyPath('/api/integrations/twilio/state')).toBe(
-      '/api/integrations/twilio/state',
+  it("keeps transport prefixes separate from logical /api routes", () => {
+    expect(joinApiPath("https://voice.example/studio", "/engines")).toBe(
+      "https://voice.example/studio/engines",
     );
-    expect(rewriteDevApiProxyPath('/api/mcp/bindings')).toBe('/api/mcp/bindings');
+    expect(
+      joinApiPath("https://voice.example/api", "/api/settings/analytics"),
+    ).toBe("https://voice.example/api/api/settings/analytics");
+  });
+
+  it("strips only the development transport prefix", () => {
+    expect(rewriteDevApiProxyPath("/api/engines")).toBe("/engines");
+    expect(rewriteDevApiProxyPath("/api/ws/events")).toBe("/ws/events");
+    expect(rewriteDevApiProxyPath("/api/settings/analytics")).toBe(
+      "/api/settings/analytics",
+    );
+    expect(rewriteDevApiProxyPath("/api/auth/session")).toBe(
+      "/api/auth/session",
+    );
+    expect(rewriteDevApiProxyPath("/api/integrations/twilio/state")).toBe(
+      "/api/integrations/twilio/state",
+    );
+    expect(rewriteDevApiProxyPath("/api/mcp/bindings")).toBe(
+      "/api/mcp/bindings",
+    );
   });
 });
 
-describe('JSON request headers', () => {
-  it('labels serialized JSON bodies while preserving caller headers', async () => {
+describe("JSON request headers", () => {
+  it("labels serialized JSON bodies while preserving caller headers", async () => {
     const fetchMock = vi.fn(
-      async (_url: RequestInfo | URL, _init?: RequestInit) => new Response('{}'),
+      async (_url: RequestInfo | URL, _init?: RequestInit) =>
+        new Response("{}"),
     );
-    vi.stubGlobal('fetch', fetchMock);
-    await apiJson('/audiobook/plan', {
-      method: 'POST',
-      body: JSON.stringify({ text: 'Chapter' }),
-      headers: { 'X-Test': 'preserved' },
+    vi.stubGlobal("fetch", fetchMock);
+    await apiJson("/audiobook/plan", {
+      method: "POST",
+      body: JSON.stringify({ text: "Chapter" }),
+      headers: { "X-Test": "preserved" },
     });
     const headers = new Headers(fetchMock.mock.calls[0][1]?.headers);
-    expect(headers.get('content-type')).toBe('application/json');
-    expect(headers.get('x-test')).toBe('preserved');
+    expect(headers.get("content-type")).toBe("application/json");
+    expect(headers.get("x-test")).toBe("preserved");
   });
-  it('leaves multipart boundaries and explicit content types to the caller', async () => {
+  it("leaves multipart boundaries and explicit content types to the caller", async () => {
     const fetchMock = vi.fn(
-      async (_url: RequestInfo | URL, _init?: RequestInit) => new Response('{}'),
+      async (_url: RequestInfo | URL, _init?: RequestInit) =>
+        new Response("{}"),
     );
-    vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal("fetch", fetchMock);
     const body = new FormData();
-    body.set('cover', new Blob(['image']), 'cover.png');
-    await apiJson('/audiobook/cover', { method: 'POST', body });
-    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).has('content-type')).toBe(false);
-    await apiJson('/custom', {
-      method: 'POST',
-      body: 'text',
-      headers: { 'content-type': 'text/plain' },
+    body.set("cover", new Blob(["image"]), "cover.png");
+    await apiJson("/audiobook/cover", { method: "POST", body });
+    expect(
+      new Headers(fetchMock.mock.calls[0][1]?.headers).has("content-type"),
+    ).toBe(false);
+    await apiJson("/custom", {
+      method: "POST",
+      body: "text",
+      headers: { "content-type": "text/plain" },
     });
-    expect(new Headers(fetchMock.mock.calls[1][1]?.headers).get('content-type')).toBe('text/plain');
+    expect(
+      new Headers(fetchMock.mock.calls[1][1]?.headers).get("content-type"),
+    ).toBe("text/plain");
   });
 });
-it('uses a structured error message without losing recovery metadata', async () => {
+it("uses a structured error message without losing recovery metadata", async () => {
   const detail = {
-    error: 'asr_model_missing',
-    message: 'Install the selected speech model.',
-    recommended: { repo_id: 'test/model' },
+    error: "asr_model_missing",
+    message: "Install the selected speech model.",
+    recommended: { repo_id: "test/model" },
   };
-  const error = await errorFromResponse(new Response(JSON.stringify({ detail }), { status: 409 }));
+  const error = await errorFromResponse(
+    new Response(JSON.stringify({ detail }), { status: 409 }),
+  );
   expect(error.message).toBe(detail.message);
   expect(error.payload?.detail).toEqual(detail);
 });
 
-it('localizes structured profile language failures', async () => {
-  const translate = vi.spyOn(i18next, 't').mockReturnValue('Localized profile guidance');
+it("localizes structured profile language failures", async () => {
+  const translate = vi
+    .spyOn(i18next, "t")
+    .mockReturnValue("Localized profile guidance");
   try {
     const detail = {
-      code: 'profile_language_rejected',
-      language: 'Persian',
-      message: 'English fallback',
+      code: "profile_language_rejected",
+      language: "Persian",
+      message: "English fallback",
     };
     const error = await errorFromResponse(
       new Response(JSON.stringify({ detail }), { status: 400 }),
     );
-    expect(error.detail).toBe('Localized profile guidance');
-    expect(translate).toHaveBeenCalledWith('tts_errors.profile_language_rejected', {
-      language: 'Persian',
-    });
+    expect(error.detail).toBe("Localized profile guidance");
+    expect(translate).toHaveBeenCalledWith(
+      "tts_errors.profile_language_rejected",
+      {
+        language: "Persian",
+      },
+    );
   } finally {
     translate.mockRestore();
   }
 });
 
-it('localizes a no-audio-track upload rejection (422)', async () => {
-  const translate = vi.spyOn(i18next, 't').mockReturnValue('Localized no-audio guidance');
+it("localizes a no-audio-track upload rejection (422)", async () => {
+  const translate = vi
+    .spyOn(i18next, "t")
+    .mockReturnValue("Localized no-audio guidance");
   try {
     const detail = {
-      code: 'no_audio_track',
-      docs_topic: 'NO_AUDIO_TRACK',
-      message: 'This file has no audio track, so there is no speech to transcribe, dub or clone.',
-      hint: 'English hint',
+      code: "no_audio_track",
+      docs_topic: "NO_AUDIO_TRACK",
+      message:
+        "This file has no audio track, so there is no speech to transcribe, dub or clone.",
+      hint: "English hint",
     };
     const error = await errorFromResponse(
       new Response(JSON.stringify({ detail }), { status: 422 }),
     );
-    expect(error.message).toBe('Localized no-audio guidance');
+    expect(error.message).toBe("Localized no-audio guidance");
     expect(error.payload?.detail).toEqual(detail);
-    expect(translate).toHaveBeenCalledWith('tts_errors.no_audio_track');
+    expect(translate).toHaveBeenCalledWith("tts_errors.no_audio_track");
   } finally {
     translate.mockRestore();
   }
 });
 
-it.each([false, true])('localizes HTTP failure topics (nested: %s)', async (nested) => {
-  const translate = vi.spyOn(i18next, 't').mockReturnValue('Localized recovery');
-  try {
-    const failure = {
-      docs_topic: 'GPU_ARCH_UNSUPPORTED',
-      detail: 'English fallback',
-    };
-    const payload = nested ? { detail: failure } : failure;
-    const error = await errorFromResponse(new Response(JSON.stringify(payload), { status: 500 }));
-    expect(error.message).toBe('Localized recovery');
-    expect(error.payload).toEqual(payload);
-    expect(translate).toHaveBeenCalledWith('tts_errors.gpu_arch_unsupported');
-  } finally {
-    translate.mockRestore();
-  }
-});
+it.each([false, true])(
+  "localizes HTTP failure topics (nested: %s)",
+  async (nested) => {
+    const translate = vi
+      .spyOn(i18next, "t")
+      .mockReturnValue("Localized recovery");
+    try {
+      const failure = {
+        docs_topic: "GPU_ARCH_UNSUPPORTED",
+        detail: "English fallback",
+      };
+      const payload = nested ? { detail: failure } : failure;
+      const error = await errorFromResponse(
+        new Response(JSON.stringify(payload), { status: 500 }),
+      );
+      expect(error.message).toBe("Localized recovery");
+      expect(error.payload).toEqual(payload);
+      expect(translate).toHaveBeenCalledWith("tts_errors.gpu_arch_unsupported");
+    } finally {
+      translate.mockRestore();
+    }
+  },
+);
 
-it('replaces a proxy gateway page with a localized explanation (#2781)', async () => {
-  const translate = vi.spyOn(i18next, 't').mockReturnValue('Proxy gave up');
+it("replaces a proxy gateway page with a localized explanation (#2781)", async () => {
+  const translate = vi.spyOn(i18next, "t").mockReturnValue("Proxy gave up");
   try {
     const html =
-      '<html><head><title>504 Gateway Time-out</title></head><body>nginx/1.31.6</body></html>';
+      "<html><head><title>504 Gateway Time-out</title></head><body>nginx/1.31.6</body></html>";
     const error = await errorFromResponse(new Response(html, { status: 504 }));
-    expect(error.message).toBe('Proxy gave up');
-    expect(error.message).not.toContain('<html>');
-    expect(translate).toHaveBeenCalledWith('tts_errors.proxy_gateway_error', {
+    expect(error.message).toBe("Proxy gave up");
+    expect(error.message).not.toContain("<html>");
+    expect(translate).toHaveBeenCalledWith("tts_errors.proxy_gateway_error", {
       status: 504,
     });
   } finally {
@@ -352,14 +408,14 @@ it('replaces a proxy gateway page with a localized explanation (#2781)', async (
   }
 });
 
-it('explains a Cloudflare 524 timeout page the same way (#3219)', async () => {
-  const translate = vi.spyOn(i18next, 't').mockReturnValue('Proxy gave up');
+it("explains a Cloudflare 524 timeout page the same way (#3219)", async () => {
+  const translate = vi.spyOn(i18next, "t").mockReturnValue("Proxy gave up");
   try {
     const html =
-      '<!DOCTYPE html><html><head><title>example.com | 524: A timeout occurred</title></head></html>';
+      "<!DOCTYPE html><html><head><title>example.com | 524: A timeout occurred</title></head></html>";
     const error = await errorFromResponse(new Response(html, { status: 524 }));
-    expect(error.message).toBe('Proxy gave up');
-    expect(translate).toHaveBeenCalledWith('tts_errors.proxy_gateway_error', {
+    expect(error.message).toBe("Proxy gave up");
+    expect(translate).toHaveBeenCalledWith("tts_errors.proxy_gateway_error", {
       status: 524,
     });
   } finally {
@@ -367,68 +423,72 @@ it('explains a Cloudflare 524 timeout page the same way (#3219)', async () => {
   }
 });
 
-it('keeps a backend-marked 504 as the backend answered it', async () => {
+it("keeps a backend-marked 504 as the backend answered it", async () => {
   const error = await errorFromResponse(
-    new Response('upstream said no', {
+    new Response("upstream said no", {
       status: 504,
-      headers: { 'x-omnivoice-backend': '1' },
+      headers: { "x-omnivoice-backend": "1" },
     }),
   );
-  expect(error.message).toBe('upstream said no');
+  expect(error.message).toBe("upstream said no");
 });
 
-it('names the missing route for an unrouted 404 (#2627)', async () => {
-  const translate = vi.spyOn(i18next, 't').mockReturnValue('No such route');
+it("names the missing route for an unrouted 404 (#2627)", async () => {
+  const translate = vi.spyOn(i18next, "t").mockReturnValue("No such route");
   try {
-    const res = new Response(JSON.stringify({ detail: 'Not Found' }), {
+    const res = new Response(JSON.stringify({ detail: "Not Found" }), {
       status: 404,
     });
-    Object.defineProperty(res, 'url', {
-      value: 'http://127.0.0.1:3900/api/generate/preview',
+    Object.defineProperty(res, "url", {
+      value: "http://127.0.0.1:3900/api/generate/preview",
     });
     const error = await errorFromResponse(res);
-    expect(error.message).toBe('No such route');
-    expect(translate).toHaveBeenCalledWith('tts_errors.route_not_found', {
-      route: '/api/generate/preview',
+    expect(error.message).toBe("No such route");
+    expect(translate).toHaveBeenCalledWith("tts_errors.route_not_found", {
+      route: "/api/generate/preview",
     });
   } finally {
     translate.mockRestore();
   }
 });
 
-it('leaves a specific 404 detail untouched', async () => {
+it("leaves a specific 404 detail untouched", async () => {
   const error = await errorFromResponse(
-    new Response(JSON.stringify({ detail: 'Audio file not found' }), {
+    new Response(JSON.stringify({ detail: "Audio file not found" }), {
       status: 404,
     }),
   );
-  expect(error.message).toBe('Audio file not found');
+  expect(error.message).toBe("Audio file not found");
 });
 
-it('shows top-level API recovery errors without exposing raw JSON', async () => {
+it("shows top-level API recovery errors without exposing raw JSON", async () => {
   const payload = {
-    error: 'Install the Argos language pack for en → es before translating.',
-    code: 'argos_pack_missing',
-    pairs: [{ source_lang: 'en', target_lang: 'es', installed: false }],
+    error: "Install the Argos language pack for en → es before translating.",
+    code: "argos_pack_missing",
+    pairs: [{ source_lang: "en", target_lang: "es", installed: false }],
   };
-  const error = await errorFromResponse(new Response(JSON.stringify(payload), { status: 400 }));
+  const error = await errorFromResponse(
+    new Response(JSON.stringify(payload), { status: 400 }),
+  );
   expect(error.message).toBe(payload.error);
   expect(error.payload).toEqual(payload);
 });
 
-describe('engine selection event', () => {
-  it('fires after a successful POST /engines/select only', async () => {
-    vi.stubGlobal('fetch', async () => new Response('{}', { status: 200 }));
+describe("engine selection event", () => {
+  it("fires after a successful POST /engines/select only", async () => {
+    vi.stubGlobal("fetch", async () => new Response("{}", { status: 200 }));
     const seen = vi.fn();
     window.addEventListener(ENGINE_SELECTED_EVENT, seen);
     try {
-      await apiFetch('/engines/select');
-      await apiFetch('/engines/select', { method: 'GET' });
+      await apiFetch("/engines/select");
+      await apiFetch("/engines/select", { method: "GET" });
       expect(seen).not.toHaveBeenCalled();
-      await apiFetch('/engines/select', { method: 'POST', body: '{}' });
+      await apiFetch("/engines/select", { method: "POST", body: "{}" });
       expect(seen).toHaveBeenCalledTimes(1);
-      vi.stubGlobal('fetch', async () => new Response('{}', { status: 500 }));
-      await apiFetch('/engines/select', { method: 'POST', body: '{}' }).catch(() => {});
+      vi.stubGlobal("fetch", async () => new Response("{}", { status: 500 }));
+      await apiFetch("/engines/select", { method: "POST", body: "{}" }).catch(
+        () => {},
+      );
       expect(seen).toHaveBeenCalledTimes(1);
     } finally {
       window.removeEventListener(ENGINE_SELECTED_EVENT, seen);

@@ -26,14 +26,15 @@ export function allowsRendererPermission(
  * camera request remains denied.
  */
 export function installRendererPermissions(session: Session, devOrigin?: string): void {
-  session.setPermissionCheckHandler((webContents, permission, requestingOrigin, details) =>
-    allowsRendererPermission(
-      permission,
-      details.requestingUrl || requestingOrigin || webContents?.getURL() || '',
-      details.mediaType ? [details.mediaType] : undefined,
-      devOrigin,
-      details.isMainFrame,
-    ),
+  session.setPermissionCheckHandler(
+    (webContents, permission, requestingOrigin, details) =>
+      allowsRendererPermission(
+        permission,
+        details.requestingUrl || requestingOrigin || webContents?.getURL() || '',
+        details.mediaType ? [details.mediaType] : undefined,
+        devOrigin,
+        details.isMainFrame,
+      ),
   );
   session.setPermissionRequestHandler((webContents, permission, callback, details) => {
     const request = details as Electron.MediaAccessPermissionRequest;

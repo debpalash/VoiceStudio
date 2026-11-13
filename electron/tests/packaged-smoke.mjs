@@ -208,10 +208,7 @@ try {
       'Setup gate must not overflow horizontally',
     );
     const setupStatus = await waitForRuntimeGate(window, 30_000);
-    const installButton = window.getByRole('button', {
-      name: 'Install local runtime',
-      exact: true,
-    });
+    const installButton = window.getByRole('button', { name: 'Install local runtime', exact: true });
     if (process.platform === 'darwin' && targetArch === 'x64') {
       assert.equal(setupStatus.setupIssue, 'unsupported_platform');
       await window.getByRole('textbox', { name: 'Backend URL', exact: true }).waitFor();

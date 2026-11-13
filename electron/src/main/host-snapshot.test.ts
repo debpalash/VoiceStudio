@@ -92,8 +92,7 @@ it('reports uv missing only when the search completed with no result', async () 
 
 it('validates the caller before the host snapshot IPC reads anything', () => {
   const source = readFileSync(join(__dirname, 'ipc.ts'), 'utf8');
-  const handler =
-    source.split('CHANNELS.backendHostSnapshot,')[1]?.split('ipcMain.handle')[0] ?? '';
+  const handler = source.split('CHANNELS.backendHostSnapshot,')[1]?.split('ipcMain.handle')[0] ?? '';
   expect(handler).toContain('assertTrustedMainFrame(event, ');
 });
 

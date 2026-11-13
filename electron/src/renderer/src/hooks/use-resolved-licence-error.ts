@@ -10,21 +10,17 @@ import { modelLicenceDetailsKey } from '@/features/settings/model-licence-view';
 export function useResolvedLicenceError(error: unknown, onResolved: () => void) {
   const client = useQueryClient();
   useEffect(() => {
-    const required =
-      error && typeof error === 'object' && 'payload' in error
-        ? modelLicenceRequirements(error.payload)
-        : null;
+    const required = error && typeof error === 'object' && 'payload' in error
+      ? modelLicenceRequirements(error.payload)
+      : null;
     if (!required) return;
     const clearResolved = () => {
-      if (
-        required.every((model) => {
-          const acceptance = client.getQueryData<ModelLicenceDetails>(
-            modelLicenceDetailsKey(model.repo_id),
-          )?.acceptance;
-          return acceptance?.accepted && acceptance.fingerprint === model.fingerprint;
-        })
-      )
-        onResolved();
+      if (required.every((model) => {
+        const acceptance = client.getQueryData<ModelLicenceDetails>(
+          modelLicenceDetailsKey(model.repo_id),
+        )?.acceptance;
+        return acceptance?.accepted && acceptance.fingerprint === model.fingerprint;
+      })) onResolved();
     };
     const unsubscribe = client.getQueryCache().subscribe(clearResolved);
     clearResolved();
