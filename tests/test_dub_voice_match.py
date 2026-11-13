@@ -459,3 +459,54 @@ def test_consistent_pick_rejects_oversized_fallback_reference():
          'usable': {'ref_audio': '/v/usable.wav', 'ref_text': 'usable', 'duration': 9.0}},
     )
     assert resolve_consistent_ref(job, 'speaker_1')['ref_audio'] == '/v/usable.wav'
+
+
+@pytest.mark.parametrize("kind", ["clone", "design"])
+@pytest.mark.parametrize("locked", [False, True])
+def test_saved_profile_instructions_keep_the_reference_for_every_dub_line(
+    patched_generate, monkeypatch, tmp_path, kind, locked,
+):
+    """A style instruction must not discard the saved speaker's identity."""
+    import contextlib
+    import sqlite3
+
+    import api.routers.dub_generate as dg
+    from services.audio_io import atomic_save_wav
+
+    voices = tmp_path / "voices"
+    voices.mkdir()
+    monkeypatch.setattr(dg, "VOICES_DIR", str(voices))
+    with contextlib.closing(sqlite3.connect(":memory:", check_same_thread=False)) as conn:
+        conn.row_factory = sqlite3.Row
+        conn.execute(
+            "CREATE TABLE voice_profiles (id TEXT, kind TEXT, instruct TEXT, "
+            "is_locked INTEGER, locked_audio_path TEXT, ref_audio_path TEXT, "
+            "ref_text TEXT, seed INTEGER, vd_states TEXT)"
+        )
+        expected = []
+        for index in range(2):
+            ref = f"voice-{index}.wav"
+            take = f"locked-{index}.wav"
+            for name in (ref, take):
+                atomic_save_wav(str(voices / name), torch.full((1, SR), 0.1), SR)
+            conn.execute(
+                "INSERT INTO voice_profiles VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (f"saved-{index}", kind, "[gender:female]", int(locked), take,
+                 ref, f"Reference for speaker {index}.", 42 + index, "{}"),
+            )
+            expected.append((str(voices / (take if locked else ref)),
+                             f"Reference for speaker {index}.", True))
+        monkeypatch.setattr(dg, "db_conn", lambda: contextlib.nullcontext(conn))
+        body = {
+            "segments": [
+                {"start": 0.0, "end": 3.0, "text": "hola", "profile_id": "saved-0"},
+                {"start": 3.0, "end": 6.0, "text": "buenas", "profile_id": "saved-1"},
+            ],
+            "segment_ids": ["0", "1"],
+            "language": "Auto",
+            "language_code": "es",
+            "num_step": 4,
+            "timing_strategy": "concise",
+        }
+        model = patched_generate({"duration": 6.0, "dubbed_tracks": {}}, body)
+        assert model.refs == expected

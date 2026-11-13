@@ -1072,7 +1072,10 @@ async def dub_generate(job_id: str, req: DubRequest):
                             ref_audio = contained_join(VOICES_DIR, row["locked_audio_path"])
                             ref_text = stored_reference_transcript(row)
                             used_seed = row["seed"]
-                        elif row["instruct"] and not row["is_locked"]:
+                        elif row["instruct"] and not row["is_locked"] and not row["ref_audio_path"]:
+                            # Only legacy instruction-only voices have no
+                            # sample. A clone or rendered design keeps its
+                            # saved reference even when it has style tags.
                             used_seed = row["seed"] 
                         else:
                             ref_audio = contained_join(VOICES_DIR, row["ref_audio_path"])
