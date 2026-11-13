@@ -180,7 +180,9 @@ export function VirtualGrid<T>({
     });
     observer.observe(list);
     return () => observer.disconnect();
-  }, []);
+    // The root element changes (ul ↔ div) when the list crosses the threshold:
+    // observe the one now mounted.
+  }, [virtual]);
 
   const columns = gridColumns(width, minCardWidth, gap);
   const rowCount = Math.ceil(items.length / columns);
