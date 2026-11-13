@@ -60,19 +60,23 @@ def dub(monkeypatch, tmp_path):
     monkeypatch.setattr(dg, "get_effect_chain", lambda _: None)
     monkeypatch.setattr(dg, "normalize_audio", lambda a, **kw: a)
 
-    def run(**kwargs):
+    async def run_async(**kwargs):
         from schemas.requests import DubRequest
 
         body = dict(segments=SEGMENTS, segment_ids=IDS, language_code="en", num_step=4)
         body.update(kwargs)
         events.clear()
         generated.clear()
-        asyncio.run(dg.dub_generate("job", DubRequest(**body)))
+        await dg.dub_generate("job", DubRequest(**body))
         return list(events)
+
+    def run(**kwargs):
+        return asyncio.run(run_async(**kwargs))
 
     journal = path / ".resume" / "en"
     return SimpleNamespace(
-        run=run, job=job, path=path, generated=generated, state=state, journal=journal, dg=dg
+        run=run, run_async=run_async, job=job, path=path, generated=generated,
+        state=state, journal=journal, dg=dg,
     )
 
 
@@ -248,6 +252,89 @@ def test_recovery_copies_do_not_count_as_cached_speech(dub):
     _crash_after(dub, 2)
     assert not dub.job.get("seg_hashes_by_lang")
     assert not list(dub.path.glob("seg_en_*.wav"))
+
+
+@pytest.mark.parametrize("regen_only", [["a"], []])
+def test_explicit_partial_render_never_reuses_recovery_copies(dub, regen_only):
+    _crash_after(dub, 2)
+    # No published natural cache exists, so cache repair expands this request
+    # to a full render. Its explicit regeneration intent must still win.
+    dub.run(regen_only=regen_only)
+    assert len(dub.generated) == 4
+
+
+def test_unreadable_model_fingerprint_never_records_reusable_speech(dub, monkeypatch, tmp_path):
+    from services import local_model_paths
+
+    folder = tmp_path / "checkpoint"
+    folder.mkdir()
+    monkeypatch.setenv("OMNIVOICE_MODEL", str(folder))
+
+    def fail(_folder):
+        raise PermissionError("weights unavailable")
+
+    monkeypatch.setattr(local_model_paths, "_weights_fingerprint", fail)
+    _crash_after(dub, 2)
+    assert not list(dub.journal.glob("*.json"))
+    dub.run()
+    assert len(dub.generated) == 4
+
+
+def test_journal_writes_run_outside_the_event_loop(dub, monkeypatch):
+    import threading
+    from services import dub_resume
+
+    loop_thread = threading.get_ident()
+    write_threads = []
+    original = dub_resume.DubResumeJournal.record
+
+    def record(self, *args):
+        write_threads.append(threading.get_ident())
+        return original(self, *args)
+
+    monkeypatch.setattr(dub_resume.DubResumeJournal, "record", record)
+    events = dub.run()
+    assert any(event["type"] == "done" for event in events)
+    assert len(write_threads) == 4
+    assert all(thread != loop_thread for thread in write_threads)
+
+
+@pytest.mark.asyncio
+async def test_cancelled_journal_write_finishes_before_withdrawn_job_cleanup(dub, monkeypatch):
+    import threading
+    from services import dub_pipeline, dub_resume
+
+    started = threading.Event()
+    release = threading.Event()
+    finished = threading.Event()
+    original = dub_resume.DubResumeJournal.record
+
+    def record(self, *args):
+        started.set()
+        assert release.wait(10), "test did not release journal writer"
+        try:
+            return original(self, *args)
+        finally:
+            finished.set()
+
+    monkeypatch.setattr(dub_resume.DubResumeJournal, "record", record)
+    task = asyncio.create_task(dub.run_async())
+    try:
+        assert await asyncio.to_thread(started.wait, 10)
+        monkeypatch.setitem(dub_pipeline._withdrawn_jobs, "job", 0.0)
+        task.cancel()
+        await asyncio.sleep(0)
+        assert not task.done()
+        task.cancel()  # Repeated cancellation must still drain the writer.
+        await asyncio.sleep(0)
+        assert not task.done()
+    finally:
+        release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert finished.is_set()
+    assert not (dub.path / ".resume").exists()
+    assert not list(dub.path.glob(".render-*"))
 
 
 def test_rvc_and_preview_renders_do_not_journal(dub, monkeypatch):

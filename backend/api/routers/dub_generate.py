@@ -507,6 +507,24 @@ def _drop_resume_journal_if_withdrawn(job_id: str, lang_code: str) -> None:
         logger.debug("dub resume cleanup skipped: %s", type(err).__name__)
 
 
+async def _run_journal_io(operation, *args):
+    """Keep disk work off the loop and finish it before staging cleanup."""
+    task = asyncio.create_task(asyncio.to_thread(operation, *args))
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        # A cancelled await cannot stop its worker. Drain it before the render
+        # removes staging or withdraws the job, including repeated cancels.
+        while not task.done():
+            try:
+                await asyncio.wait({task})
+            except asyncio.CancelledError:
+                continue
+        if not task.cancelled():
+            task.exception()  # Consume a soft I/O failure without losing cancel.
+        raise
+
+
 @router.post("/dub/generate/{job_id}")
 @consumer_generation
 async def dub_generate(job_id: str, req: DubRequest):
@@ -818,10 +836,12 @@ async def dub_generate(job_id: str, req: DubRequest):
         # back to rendering normally. Fast previews and RVC renders (which
         # rewrite the audio after synthesis) do not take part.
         journal = None
-        if not req.preview and not rvc_is_enabled():
+        if not req.preview and req.regen_only is None and not rvc_is_enabled():
             try:
-                journal = dub_resume.DubResumeJournal(_resume_journal_root(job_id, lang_code))
-                journal.prune({str(sid) for sid in seg_order})
+                journal = await _run_journal_io(
+                    dub_resume.DubResumeJournal, _resume_journal_root(job_id, lang_code),
+                )
+                await _run_journal_io(journal.prune, {str(sid) for sid in seg_order})
             except Exception as err:  # noqa: BLE001
                 logger.info("dub resume unavailable, rendering normally: %s", type(err).__name__)
                 journal = None
@@ -859,6 +879,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                         files = fp[1] if len(fp) > 1 else None
                         result = (True, repr(files) if isinstance(files, tuple) else None, checkpoint)
                 except Exception as err:  # noqa: BLE001
+                    result = (True, None, None)
                     logger.debug("model folder fingerprint skipped: %s", type(err).__name__)
                 _model_fp_memo.append(result)
             return _model_fp_memo[0]
@@ -1369,8 +1390,8 @@ async def dub_generate(job_id: str, req: DubRequest):
                     # re-rendered; the main loop reuses it.
                     if journal is not None:
                         try:
-                            recoverable_key = _resume_key_for(prepared)
-                            if recoverable_key and journal.has(candidate_id, recoverable_key):
+                            recoverable_key = await _run_journal_io(_resume_key_for, prepared)
+                            if recoverable_key and await _run_journal_io(journal.has, candidate_id, recoverable_key):
                                 continue
                         except Exception as err:  # noqa: BLE001
                             logger.debug("dub resume lookup skipped: %s", type(err).__name__)
@@ -1534,26 +1555,28 @@ async def dub_generate(job_id: str, req: DubRequest):
                 if journal is not None:
                     try:
                         _rargs = _segment_generation_args(i, seg)
-                        _resume_key = _resume_key_for(_gen(
+                        _prepared = _gen(
                             _rargs["text"], _rargs["language"], _rargs["instruct"],
                             _rargs["duration"], _rargs["num_step"], _rargs["guidance_scale"],
                             _rargs["speed"], _rargs["profile_id"], _rargs["effect_preset"],
                             prepare_only=True, current_seg_id=_rargs["seg_id"],
-                        ))
+                        )
+                        _resume_key = await _run_journal_io(_resume_key_for, _prepared)
                         if _resume_key:
-                            _recovered_wav = journal.recover(
-                                seg_id, _resume_key, backend.sample_rate, _recovered_intact
+                            _recovered_wav = await _run_journal_io(
+                                journal.recover_into, seg_id, _resume_key, backend.sample_rate,
+                                _recovered_intact, _staged_seg_path(seg_id),
                             )
                         if _recovered_wav:
                             from services.audio_io import load_audio
 
-                            _recovered_audio, _rsr = load_audio(_recovered_wav)
+                            _recovered_audio, _rsr = await _run_journal_io(load_audio, _recovered_wav)
                             if _rsr != backend.sample_rate or _speech_unusable(_recovered_audio):
                                 raise ValueError("recovered audio is empty or at another sample rate")
                     except Exception as err:  # noqa: BLE001
                         logger.info("dub resume: rendering %s normally: %s", seg_id, type(err).__name__)
                         if _recovered_wav:
-                            journal.drop(seg_id)
+                            await _run_journal_io(journal.drop, seg_id)
                         _recovered_wav = None
                         _recovered_audio = None
 
@@ -1662,9 +1685,7 @@ async def dub_generate(job_id: str, req: DubRequest):
 
                 seg_wav_path = _staged_seg_path(seg_id)
                 try:
-                    if _recovered_wav is not None:
-                        dub_resume.copy_into_stage(_recovered_wav, seg_wav_path)
-                    else:
+                    if _recovered_wav is None:
                         atomic_save_wav(seg_wav_path, audio_tensor, backend.sample_rate)
                     _staged[seg_id] = (seg_wav_path, _seg_lang_path(seg_id))
                     if (
@@ -1673,7 +1694,9 @@ async def dub_generate(job_id: str, req: DubRequest):
                         and _resume_key
                         and str(seg_id) not in _oom_degraded
                     ):
-                        journal.record(seg_id, _resume_key, seg_wav_path, backend.sample_rate)
+                        await _run_journal_io(
+                            journal.record, seg_id, _resume_key, seg_wav_path, backend.sample_rate,
+                        )
                     all_segment_wavs.append(
                         (seg.start, seg.end, seg_wav_path, backend.sample_rate)
                     )
@@ -2080,7 +2103,7 @@ async def dub_generate(job_id: str, req: DubRequest):
         # Published: the shared cache now holds this speech, so the recovery
         # copies have nothing left to recover.
         if journal is not None:
-            journal.discard()
+            await _run_journal_io(journal.discard)
 
         _t_total = time.perf_counter() - _t_start
         logger.info(

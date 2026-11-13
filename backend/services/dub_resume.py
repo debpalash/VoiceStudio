@@ -310,6 +310,27 @@ class DubResumeJournal:
             self.drop(seg_id)
             return None
 
+    def recover_into(
+        self,
+        seg_id: str,
+        key: str,
+        sample_rate: int,
+        validate: Callable[[str], bool],
+        staged_path: str,
+    ) -> Optional[str]:
+        """Verify and snapshot an entry into the render's private staging path.
+
+        Journal audio can be replaced by another render after ``recover``
+        returns. Keep its root lock through the copy so the caller consumes
+        the bytes that were verified, independent of later journal writes.
+        """
+        with self._lock:
+            recovered = self.recover(seg_id, key, sample_rate, validate)
+            if recovered is None:
+                return None
+            copy_into_stage(recovered, staged_path)
+            return staged_path
+
     def drop(self, seg_id: str) -> None:
         """Forget one entry (it failed a check, or is being replaced)."""
         with self._lock:

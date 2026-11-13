@@ -209,3 +209,83 @@ def test_journal_write_failure_does_not_log_filesystem_paths(tmp_path, dub_resum
         assert not journal.record("a", "k", source, 1)
     assert "PermissionError" in caplog.text
     assert str(tmp_path) not in caplog.text
+
+
+def test_recovery_stages_a_snapshot_that_survives_journal_replacement(tmp_path, dub_resume):
+    journal = dub_resume.DubResumeJournal(str(tmp_path / "j"))
+    old = b"verified first render"
+    assert journal.record("a", "old", _wav(tmp_path / "old.wav", old), 24000)
+    staged = tmp_path / "private-stage.wav"
+    assert journal.recover_into("a", "old", 24000, _ok, str(staged)) == str(staged)
+    assert journal.record("a", "new", _wav(tmp_path / "new.wav", b"second render"), 24000)
+    assert journal.has("a", "new")
+    assert staged.read_bytes() == old
+
+
+def test_recovery_holds_the_root_lock_until_staging_finishes(tmp_path, dub_resume, monkeypatch):
+    from queue import Queue
+    from threading import Thread
+
+    root = str(tmp_path / "j")
+    reader = dub_resume.DubResumeJournal(root)
+    writer = dub_resume.DubResumeJournal(os.path.join(root, "."))
+    old = b"verified first render"
+    assert reader.record("a", "old", _wav(tmp_path / "old.wav", old), 24000)
+    replacement = _wav(tmp_path / "replacement.wav", b"other render")
+    copied = tmp_path / "private-stage.wav"
+    attempts = Queue()
+    lock_observations = []
+    writes = []
+    failures = []
+    threads = []
+    copy = dub_resume.copy_into_stage
+
+    def replace_audio():
+        acquired = writer._lock.acquire(blocking=False)
+        try:
+            if acquired:
+                # An unlocked copy must observe this replacement: coordinate
+                # the write before copying instead of relying on scheduling.
+                writes.append(writer.record("a", "new", replacement, 24000))
+                attempts.put(True)
+            else:
+                attempts.put(False)
+                writes.append(writer.record("a", "new", replacement, 24000))
+        except BaseException as error:
+            failures.append(error)
+        finally:
+            if acquired:
+                writer._lock.release()
+
+    def copy_while_writer_waits(source, destination):
+        thread = Thread(target=replace_audio, daemon=True)
+        threads.append(thread)
+        thread.start()
+        lock_observations.append(attempts.get(timeout=2))
+        copy(source, destination)
+
+    monkeypatch.setattr(dub_resume, "copy_into_stage", copy_while_writer_waits)
+    try:
+        assert reader.recover_into("a", "old", 24000, _ok, str(copied)) == str(copied)
+    finally:
+        for thread in threads:
+            thread.join(timeout=2)
+    assert threads and all(not thread.is_alive() for thread in threads)
+    assert not failures
+    assert lock_observations == [False]
+    assert writes == [True]
+    assert writer.has("a", "new")
+    assert copied.read_bytes() == old
+
+
+@pytest.mark.parametrize("key, sample_rate, valid", [
+    ("missing", 24000, True), ("old", 16000, True), ("old", 24000, False),
+])
+def test_invalid_recovery_does_not_publish_a_staged_snapshot(
+    tmp_path, dub_resume, key, sample_rate, valid,
+):
+    journal = dub_resume.DubResumeJournal(str(tmp_path / "j"))
+    assert journal.record("a", "old", _wav(tmp_path / "old.wav"), 24000)
+    staged = tmp_path / "private-stage.wav"
+    assert journal.recover_into("a", key, sample_rate, lambda _: valid, str(staged)) is None
+    assert not staged.exists()
