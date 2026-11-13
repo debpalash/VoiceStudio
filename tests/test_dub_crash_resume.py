@@ -321,15 +321,23 @@ async def test_cancelled_journal_write_finishes_before_withdrawn_job_cleanup(dub
             finished.set()
 
     monkeypatch.setattr(dub_resume.DubResumeJournal, "record", record)
+    draining = asyncio.Queue()
+    original_wait = asyncio.wait
+
+    async def acknowledged_wait(*args, **kwargs):
+        draining.put_nowait(None)
+        return await original_wait(*args, **kwargs)
+
+    monkeypatch.setattr(dub.dg.asyncio, "wait", acknowledged_wait)
     task = asyncio.create_task(dub.run_async())
     try:
         assert await asyncio.to_thread(started.wait, 10)
         monkeypatch.setitem(dub_pipeline._withdrawn_jobs, "job", 0.0)
         task.cancel()
-        await asyncio.sleep(0)
+        await asyncio.wait_for(draining.get(), 10)
         assert not task.done()
         task.cancel()  # Repeated cancellation must still drain the writer.
-        await asyncio.sleep(0)
+        await asyncio.wait_for(draining.get(), 10)
         assert not task.done()
     finally:
         release.set()
@@ -578,3 +586,22 @@ def test_hub_repository_name_alone_never_records_reusable_speech(dub, monkeypatc
     assert not list(dub.journal.glob("*.json"))
     dub.run()
     assert len(dub.generated) == 4
+
+
+def test_unhashable_later_reference_does_not_fail_after_recovery(dub, monkeypatch, tmp_path):
+    from services import dub_resume
+
+    reference = tmp_path / "reference.wav"
+    reference.write_bytes(b"reference")
+    dub.job["segment_clones"] = {"c": {"ref_audio": str(reference), "ref_text": "a reference", "duration": 1.0}}
+    segments = [dict(segment) for segment in SEGMENTS]
+    segments[2]["profile_id"] = "auto-seg:c"
+    dub.state["fail_on_call"] = 3
+    assert any(event["type"] == "error" for event in dub.run(segments=segments))
+    dub.state["fail_on_call"] = None
+    original_hash = dub_resume.hash_reference_file
+    monkeypatch.setattr(dub_resume, "hash_reference_file", lambda path, memo: None if path else original_hash(path, memo))
+    events = dub.run(segments=segments)
+    assert any(event["type"] == "done" for event in events)
+    assert [row["text"] for row in dub.generated] == ["line 2", "line 3"]
+    assert dub.generated[0]["ref_audio"] == str(reference)

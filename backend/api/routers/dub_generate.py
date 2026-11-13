@@ -1704,13 +1704,15 @@ async def dub_generate(job_id: str, req: DubRequest):
                     audio_tensor = mark_synthetic(audio_tensor, backend.sample_rate,
                                                   context="dub_generate.segment")
 
-                if journal is not None and (_resume_key or _used_recovery):
-                    _validated_key = await _run_journal_io(_resume_key_for, _prepared)
-                    if _used_recovery and (not _validated_key or _validated_key != _resume_key):
+                if journal is not None and _used_recovery:
+                    _, _validated_model_fp, _ = await _run_journal_io(_model_folder_fingerprint)
+                    if _validated_model_fp is None:
                         # A cold model can load after earlier segments were
                         # recovered. Never publish those alongside audio from
                         # different weights; a retry renders the new artifact.
                         raise RuntimeError("Model artifact changed during dub recovery")
+                if journal is not None and _resume_key:
+                    _validated_key = await _run_journal_io(_resume_key_for, _prepared)
                     if _validated_key != _resume_key:
                         _resume_key = None
 
