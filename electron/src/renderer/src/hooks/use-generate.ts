@@ -425,10 +425,14 @@ function useGenerateController(): UseGenerateClone {
       const presetVoice = activeTts?.preset_voices?.includes(settings.presetVoice)
         ? settings.presetVoice
         : undefined;
-      const steps = effectiveSamplingSteps(
-        settings.steps,
-        queryClient.getQueryData<EnginesResponse>(queryKeys.engines)?.tts?.active,
-      );
+      // Pin the engine active now: a take that waits in the queue must not move
+      // to an engine switched to in Settings meanwhile, which would read this
+      // take's engine-specific controls (steps, presets, emotion) differently.
+      const engineId =
+        queryClient.getQueryData<EnginesResponse>(queryKeys.engines)?.tts?.active ??
+        activeTts?.id ??
+        undefined;
+      const steps = effectiveSamplingSteps(settings.steps, engineId);
       const input: CloneInput = {
         text: design?.text ?? settings.text,
         seed: design?.seed,
@@ -460,6 +464,7 @@ function useGenerateController(): UseGenerateClone {
               : {}
           : {}),
         steps,
+        ...(engineId ? { engine: engineId } : {}),
         wavBits: settings.wavBits,
         effectPreset: settings.effectPreset,
         presetVoice,
@@ -482,7 +487,13 @@ function useGenerateController(): UseGenerateClone {
         spokenText,
         direction,
         settings: { ...settings, emotionVector: [...settings.emotionVector] },
-        engine: activeTts ? { id: activeTts.id, device: activeTts.effective_device } : null,
+        // The take renders on the pinned engine, so its speed sample belongs there.
+        engine: engineId
+          ? {
+              id: engineId,
+              device: activeTts?.id === engineId ? activeTts.effective_device : undefined,
+            }
+          : null,
         label:
           spokenText.length > QUEUE_LABEL_CHARS
             ? `${spokenText.slice(0, QUEUE_LABEL_CHARS).trimEnd()}…`

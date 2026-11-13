@@ -911,6 +911,36 @@ describe('generation queue', () => {
     expect(screen.getByTestId('waiting')).toHaveTextContent('0');
   });
 
+  it('pins each queued take to the engine active when it was requested', async () => {
+    const renders = deferredRenders();
+    const client = new QueryClient();
+    client.setQueryData(queryKeys.engines, { tts: { active: 'supertonic3', backends: [] } });
+    render(
+      <QueryClientProvider client={client}>
+        <GenerationProvider>
+          <QueueConsumer />
+        </GenerationProvider>
+      </QueryClientProvider>,
+    );
+    patchCloneSettings({
+      text: 'First',
+      selectedProfileId: 'voice-1',
+      steps: null,
+      autoPlay: false,
+    });
+    fireEvent.click(screen.getByText('go'));
+    fireEvent.click(screen.getByText('go'));
+    // The user switches engines while the second take waits.
+    act(() => {
+      client.setQueryData(queryKeys.engines, { tts: { active: 'omnivoice', backends: [] } });
+    });
+    await act(async () => renders[0]!.resolve(take('a')));
+    await waitFor(() => expect(generateClone).toHaveBeenCalledTimes(2));
+    const waited = vi.mocked(generateClone).mock.calls[1]![0];
+    expect(waited.engine).toBe('supertonic3');
+    expect(waited.steps).toBe(12);
+  });
+
   it('cancel all stops the running take and drops the waiting ones', async () => {
     deferredRenders();
     mount();
