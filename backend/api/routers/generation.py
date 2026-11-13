@@ -1981,10 +1981,6 @@ async def generate_speech(
     from services.performance_profiles import tts_defaults
 
     sampling_defaults = tts_defaults(engine_id)
-    if num_step is None:
-        num_step = sampling_defaults.get("num_step", 16)
-    if postprocess_output is None:
-        postprocess_output = sampling_defaults.get("postprocess_output", True)
     try:
         backend_cls = get_backend_class(engine_id)
     except ValueError:
@@ -1995,6 +1991,12 @@ async def generate_speech(
                 "See GET /engines/tts for the list of valid engine ids."
             ),
         )
+    if num_step is None:
+        num_step = sampling_defaults.get(
+            "num_step", getattr(backend_cls, "default_num_step", None) or 16
+        )
+    if postprocess_output is None:
+        postprocess_output = sampling_defaults.get("postprocess_output", True)
     # Validate expressive controls before model loads or GPU routing. A
     # request must not silently lose emotion when switching to an engine
     # without this capability, or send conflicting emotion sources.

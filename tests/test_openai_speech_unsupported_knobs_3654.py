@@ -151,12 +151,12 @@ def test_speech_omits_knobs_cleanly_on_unsupported_engine(client, monkeypatch):
     assert res.status_code == 200, res.text
 
 
-def test_real_gguf_backend_advertises_no_knob_support():
-    """The actual reported engine, not just the fakes."""
+def test_real_gguf_backend_advertises_steps_but_not_guidance():
+    """The actual reported engine, not just the fakes (steps: #4081)."""
     from engines.omnivoice_gguf.backend import _make_backend_class
 
     cls = _make_backend_class()
-    assert cls.supports_num_step is False
+    assert cls.supports_num_step is True
     assert cls.supports_guidance_scale is False
 
 

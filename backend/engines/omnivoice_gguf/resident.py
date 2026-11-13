@@ -62,6 +62,11 @@ _POLL_S = 0.25
 _SPAWN_ONLY_CONTROLS = ("duration", "chunk_duration", "chunk_threshold")
 
 
+#: MaskGIT decode steps the runtime uses when none is given. The pinned
+#: ``tts-server`` ignores a ``steps`` field, so it always decodes this many.
+DEFAULT_DECODE_STEPS = 32
+
+
 class ResidentUnavailable(RuntimeError):
     """The resident server could not serve this request; use the spawn path."""
 
@@ -171,6 +176,9 @@ def spawn_only_reason(kw: dict, *, has_transcript: bool) -> Optional[str]:
     for name in _SPAWN_ONLY_CONTROLS:
         if kw.get(name) is not None:
             return f"{name} is not accepted by tts-server"
+    num_step = kw.get("num_step")
+    if num_step is not None and int(num_step) != DEFAULT_DECODE_STEPS:
+        return f"num_step={int(num_step)} needs --steps; tts-server always decodes {DEFAULT_DECODE_STEPS}"
     if kw.get("denoise", True) is False:
         return "no-denoise is not accepted by tts-server"
     if kw.get("preprocess_prompt", True) is False:

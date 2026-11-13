@@ -345,10 +345,25 @@ def test_a_timeout_stops_the_server_and_raises(rig, monkeypatch):
     {"chunk_threshold": 50},
     {"denoise": False},
     {"preprocess_prompt": False},
+    {"num_step": 16},
 ])
 def test_controls_the_server_lacks_take_the_cli(rig, controls):
     rig.instance.generate("hello", **controls)
     assert len(rig.cli_argvs) == 1 and rig.events("start") == []
+
+
+def test_the_default_step_count_stays_on_the_server(rig):
+    rig.instance.generate("hello", num_step=32)
+    assert rig.cli_argvs == [] and len(rig.events("start")) == 1
+
+
+def test_a_non_default_step_count_logs_why_it_took_the_cli(rig, caplog):
+    import logging
+
+    with caplog.at_level(logging.INFO):
+        rig.instance.generate("hello", num_step=8)
+    assert "--steps" in rig.cli_argvs[0]
+    assert "num_step=8" in caplog.text
 
 
 def test_a_reference_without_a_transcript_takes_the_cli(rig, tmp_path):

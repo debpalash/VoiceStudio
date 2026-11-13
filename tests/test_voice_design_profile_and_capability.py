@@ -116,8 +116,10 @@ def test_catalogue_reports_voice_design_support():
     entries = {e["id"]: e for e in _tts().list_backends(include_hidden=True)}
     assert entries["omnivoice"]["supports_voice_design"] is True
     assert entries["voxcpm2"]["supports_voice_design"] is True
+    if "omnivoice-gguf" in entries:  # #4080
+        assert entries["omnivoice-gguf"]["supports_voice_design"] is True
     for bid in ("indextts2", "moss-tts-v15", "dots-tts", "confucius4-tts",
-                "supertonic3", "omnivoice-gguf", "gpt-sovits", "moss-tts-nano"):
+                "supertonic3", "gpt-sovits", "moss-tts-nano"):
         if bid in entries:
             assert entries[bid]["supports_voice_design"] is False, bid
     for bid, entry in entries.items():
