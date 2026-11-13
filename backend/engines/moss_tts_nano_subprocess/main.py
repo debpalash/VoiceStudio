@@ -171,14 +171,46 @@ def _configure_tokenizer_cache(model):
     return model
 
 
-def _accept_list_ignore_patterns():
-    """Let transformers 5 load remote code that lists its ignore patterns.
+def _transformers_unions_ignore_patterns() -> bool:
+    """True where transformers unions ``_keys_to_ignore_*`` with its own set.
 
-    transformers 5 unions ``_keys_to_ignore_on_load_unexpected`` with a set of
-    its own patterns, so the list MOSS-TTS-Nano's model declares (accepted by
-    transformers 4) fails every load with a ``TypeError`` (#3851). The
-    patterns are only ever matched, so a set is equivalent.
+    transformers 5.9.0 turned the additional load-ignore patterns into a set
+    and unions them with ``|``, so the list MOSS-TTS-Nano's model declares
+    fails every load with a ``TypeError`` (#3851). Everything before that —
+    transformers 4 and 5 through 5.8 — concatenates them with ``+``, where a
+    set on the left fails instead with ``set + list`` (#4063). The engine
+    venv pins transformers 4.57.1, so the shim is only needed, and only safe,
+    on the set side.
     """
+    try:
+        import transformers  # noqa: PLC0415
+    except Exception:  # noqa: BLE001 — the PreTrainedModel import reports it too
+        return False
+    numbers = []
+    for part in str(getattr(transformers, "__version__", "")).split(".")[:2]:
+        digits = re.match(r"\d+", part)
+        numbers.append(int(digits.group(0)) if digits else 0)
+    if len(numbers) < 2:
+        # An unparsable version keeps the shim off: the load then fails with
+        # transformers' own error, which names the actual cause.
+        return False
+    return tuple(numbers) >= (5, 9)
+
+
+def _accept_list_ignore_patterns():
+    """Let transformers 5.9+ load remote code that lists its ignore patterns.
+
+    transformers 5.9.0 unions ``_keys_to_ignore_on_load_unexpected`` with a
+    set of its own patterns, so the list MOSS-TTS-Nano's model declares
+    (accepted by transformers 4) fails every load with a ``TypeError``
+    (#3851). The patterns are only ever matched, so a set is equivalent.
+    Earlier releases — transformers 4 and 5 through 5.8 — still concatenate
+    the patterns as lists, so the rewrite would break every load there with
+    ``set + list`` instead (#4063): only install the shim where transformers
+    actually needs it.
+    """
+    if not _transformers_unions_ignore_patterns():
+        return
     try:
         from transformers.modeling_utils import PreTrainedModel  # noqa: PLC0415
     except Exception:  # noqa: BLE001 — upstream's own import reports it
