@@ -75,6 +75,10 @@ class OmniVoiceSubprocessBackend(SubprocessBackend):
         # in-process prompt cache where a whole-clip transcript on an over-long
         # reference is dropped. Apply the same rule before the request leaves.
         passage = None
+        if kw.get("instruct"):
+            from services.instruct_safety import tag_safe_instruct
+
+            kw["instruct"] = tag_safe_instruct(kw["instruct"])
         audio = kw.get("ref_audio")
         if isinstance(audio, str):
             from services.tts_backend import omnivoice_inline_reference

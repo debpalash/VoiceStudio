@@ -97,6 +97,15 @@ def selected_vulkan_adapter() -> Optional["VulkanAdapter"]:
     ``Vulkan<N>`` is used; otherwise GGML's own automatic pick (first
     discrete GPU, else first integrated).
     """
+    from . import backend as _backend
+
+    if _backend._GPU_CRASHED:  # pinned to the CPU for this session
+        return None
+    return _configured_vulkan_adapter()
+
+
+def _configured_vulkan_adapter() -> Optional["VulkanAdapter"]:
+    """:func:`selected_vulkan_adapter` without the session's GPU-crash pin."""
     effective = apply_compute_env(os.environ.copy())
     ggml = effective.get("GGML_BACKEND", "").strip()
     index: Optional[int] = None
@@ -123,7 +132,10 @@ def automatic_compute_class() -> str:
     validated first, and the parent's PyTorch GPU memory is never used as
     evidence about the native process's adapter.
     """
-    adapter = selected_vulkan_adapter()
+    # The hardware's tier, not the session's CPU pin: after a GPU crash the
+    # renders move to the CPU but keep the same quant, so a job's voice does not
+    # change between segments.
+    adapter = _configured_vulkan_adapter()
     if adapter is None:
         return "cpu"
     from .hardware_probe import _bucket

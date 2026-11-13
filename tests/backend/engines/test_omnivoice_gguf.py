@@ -377,10 +377,10 @@ class _GgufRig:
 def test_generate_translates_controls_into_flags(monkeypatch, tmp_path):
     rig = _GgufRig(monkeypatch, tmp_path)
     rig.instance.generate(
-        "x", instruct="whispering", duration=1.75, seed=99,
+        "x", instruct="whisper", duration=1.75, seed=99,
         denoise=False, preprocess_prompt=False, chunk_duration=0, chunk_threshold=500,
     )
-    assert rig.flag_value("--instruct") == "whispering"
+    assert rig.flag_value("--instruct") == "whisper"
     assert rig.flag_value("--duration") == "1.75"
     assert rig.flag_value("--seed") == "99"
     assert rig.flag_value("--chunk-duration") == "0.0"

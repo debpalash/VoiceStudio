@@ -34,6 +34,7 @@ from typing import Literal, Optional
 
 import torch
 
+from services.instruct_safety import tag_safe_instruct
 from services.expression import COSYVOICE_INLINE_TAGS, OMNIVOICE_INLINE_TAGS, expression_caps
 
 logger = logging.getLogger("omnivoice.tts")
@@ -1782,6 +1783,11 @@ def generate_with_cached_ref(model, *, ref_audio, ref_text, **gen_kw):
     # TypeError on an unknown kwarg.
     from services.model_manager import tts_inference
 
+    # Every native OmniVoice caller (audiobook, /generate, stream) converges
+    # here, so free-text directions degrade instead of raising (#4054).
+    if gen_kw.get("instruct"):
+        gen_kw["instruct"] = tag_safe_instruct(gen_kw["instruct"])
+
     # tts_inference: no device move of the shared model while this runs, and
     # it is restored first if an offload left it in RAM (#2618).
     with engine_in_use(OmniVoiceBackend(model=model)), tts_inference():
@@ -1958,7 +1964,7 @@ class OmniVoiceBackend(TTSBackend):
         gen_kw = dict(
             text=text,
             language=language if language and language != "Auto" else None,
-            instruct=kw.get("instruct"),
+            instruct=tag_safe_instruct(kw.get("instruct")),
             duration=kw.get("duration"),
             num_step=kw.get("num_step", 16),
             guidance_scale=kw.get("guidance_scale", 2.0),
@@ -2042,7 +2048,7 @@ class OmniVoiceBackend(TTSBackend):
 
         gen_kw = dict(
             language=kw.get("language"),
-            instruct=kw.get("instruct"),
+            instruct=tag_safe_instruct(kw.get("instruct")),
             duration=kw.get("duration"),
             speed=kw.get("speed", 1.0),
             denoise=kw.get("denoise", True),

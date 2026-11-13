@@ -111,3 +111,18 @@ def test_encoded_audio_routes_document_binary_audio(monkeypatch, tmp_path, path,
     content = schema["paths"][path]["get"]["responses"]["200"]["content"]
     assert list(content) == [media_type]
     assert content[media_type]["schema"]["format"] == "binary"
+
+
+def test_non_render_names_fall_through_to_the_outputs_files(monkeypatch, tmp_path):
+    """audiobook_<job>.mp3 is a real file in OUTPUTS_DIR, not a WAV render id."""
+    (tmp_path / "audiobook_deadbeef.mp3").write_bytes(b"ID3fake")
+    (tmp_path / "take.ogg").write_bytes(b"OggSfake")
+    (tmp_path / "take.opus").write_bytes(b"OggSfake")
+    client = _client(monkeypatch, tmp_path)
+    r = client.get("/audio/audiobook_deadbeef.mp3")
+    assert r.status_code == 200 and r.content == b"ID3fake"
+    assert r.headers["x-content-type-options"] == "nosniff"
+    assert client.get("/audio/take.ogg").content == b"OggSfake"
+    assert client.get("/audio/take.opus").content == b"OggSfake"
+    assert client.get("/audio/missing.mp3").status_code == 404
+    assert client.get("/audio/..%2Fsecret.mp3").status_code == 404
