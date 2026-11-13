@@ -280,12 +280,13 @@ function useGenerateController(): UseGenerateClone {
   const [queue, setQueue] = useState<GenerationQueueItem[]>([]);
 
   // Trailing-edge throttle can fire after completion; `activeRef` gates it so
-  // a stale 100% never lands on an idle form.
+  // a stale 100% never lands on an idle form, and the take id so a queued take
+  // that has already started never shows the previous take's last progress.
   const onProgress = useMemo(
     () =>
       throttle(
-        (pct: number | null) => {
-          if (activeRef.current) {
+        (takeId: string, pct: number | null) => {
+          if (activeRef.current && currentTakeIdRef.current === takeId) {
             setProgress(pct);
             setStage('receiving');
           }
@@ -548,7 +549,7 @@ function useGenerateController(): UseGenerateClone {
       try {
         const result = await generateClone(input, {
           signal: controller.signal,
-          onProgress,
+          onProgress: (pct) => onProgress(take.id, pct),
         });
         announceResultNotices(result);
         if (

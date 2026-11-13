@@ -837,6 +837,7 @@ describe('generation queue', () => {
         <button onClick={() => void state.generate()}>go</button>
         <button onClick={() => state.cancelAll()}>cancel all</button>
         <span data-testid="waiting">{state.queuedCount}</span>
+        <span data-testid="queue-stage">{state.stage}</span>
         <ul>
           {state.queue.map((item) => (
             <li key={item.id} data-testid="item" data-status={item.status}>
@@ -939,6 +940,25 @@ describe('generation queue', () => {
     const waited = vi.mocked(generateClone).mock.calls[1]![0];
     expect(waited.engine).toBe('supertonic3');
     expect(waited.steps).toBe(12);
+  });
+
+  it("never shows the previous take's last progress on the next queued take", async () => {
+    const renders = deferredRenders();
+    mount();
+    patchCloneSettings({ text: 'One', selectedProfileId: 'voice-1', autoPlay: false });
+    fireEvent.click(screen.getByText('go'));
+    fireEvent.click(screen.getByText('go'));
+    // Take A streams: the first update lands, the second waits on the throttle.
+    const progressA = vi.mocked(generateClone).mock.calls[0]![1]!.onProgress!;
+    act(() => {
+      progressA(10);
+      progressA(90);
+    });
+    await act(async () => renders[0]!.resolve(take('a')));
+    await waitFor(() => expect(generateClone).toHaveBeenCalledTimes(2));
+    // A's throttled trailing update fires after B has started.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 250)));
+    expect(screen.getByTestId('queue-stage')).not.toHaveTextContent('receiving');
   });
 
   it('cancel all stops the running take and drops the waiting ones', async () => {

@@ -29,6 +29,7 @@ import { ScriptPanel } from './script-panel';
 import { useCloneDemo } from '@/hooks/use-clone-demo';
 import { runRendererTask } from '@/lib/global-error-recovery';
 import { SynthesisDock } from '@/components/synthesis-dock';
+import { isSynthesizeShortcut } from './synthesize-shortcut';
 
 const DEMO_PROFILE_ID = 'demo0001';
 const DEMO_PROMPTED_KEY = 'omnivoice.demoClonePrompted';
@@ -127,7 +128,7 @@ export function ClonePage() {
         setWorkspace({ panel: null, editingProfileId: null });
         return;
       }
-      if (!(event.ctrlKey || event.metaKey) || event.key !== 'Enter' || event.repeat) return;
+      if (!isSynthesizeShortcut(event)) return;
       if (demo || event.defaultPrevented) return;
       if (event.target instanceof HTMLElement && event.target.closest('[role="dialog"], aside'))
         return;
