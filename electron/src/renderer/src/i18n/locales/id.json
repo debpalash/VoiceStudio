@@ -4348,24 +4348,24 @@
     "error_out_of_memory": "Memori GPU habis. Tutup aplikasi lain yang berat di GPU atau coba durasi yang lebih pendek."
   },
   "generationQueue": {
-    "title": "Generation queue",
-    "waiting_one": "{{count}} waiting",
-    "waiting_other": "{{count}} waiting",
-    "added_one": "Added to the queue — {{count}} waiting",
-    "added_other": "Added to the queue — {{count}} waiting",
-    "full": "The queue is full ({{count}} takes). Wait for some to finish first.",
-    "add": "Add to queue",
-    "add_hint": "Queue this script with the current voice and settings. It starts when the take before it finishes.",
-    "remove": "Remove from queue",
-    "clear_finished": "Clear finished",
-    "cancel_all": "Cancel all",
-    "position": "#{{position}} in line",
+    "title": "Antrean pembuatan",
+    "waiting_one": "Menunggu: {{count}}",
+    "waiting_other": "Menunggu: {{count}}",
+    "added_one": "Ditambahkan ke antrean. Menunggu: {{count}}",
+    "added_other": "Ditambahkan ke antrean. Menunggu: {{count}}",
+    "full": "Antrean penuh ({{count}}). Tunggu beberapa selesai dulu.",
+    "add": "Tambahkan ke antrean",
+    "add_hint": "Antrekan naskah ini dengan suara dan pengaturan saat ini. Dimulai setelah take sebelumnya selesai.",
+    "remove": "Hapus dari antrean",
+    "clear_finished": "Hapus yang selesai",
+    "cancel_all": "Batalkan semua",
+    "position": "Urutan {{position}}",
     "status": {
-      "queued": "Waiting",
-      "running": "Generating",
-      "done": "Done",
-      "failed": "Failed",
-      "cancelled": "Cancelled"
+      "queued": "Menunggu",
+      "running": "Membuat",
+      "done": "Selesai",
+      "failed": "Gagal",
+      "cancelled": "Dibatalkan"
     }
   }
 }

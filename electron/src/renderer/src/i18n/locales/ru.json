@@ -4376,24 +4376,28 @@
     "error_out_of_memory": "Видеопамять GPU закончилась. Закройте другие приложения, активно использующие GPU, или попробуйте меньшую длительность."
   },
   "generationQueue": {
-    "title": "Generation queue",
-    "waiting_one": "{{count}} waiting",
-    "waiting_other": "{{count}} waiting",
-    "added_one": "Added to the queue — {{count}} waiting",
-    "added_other": "Added to the queue — {{count}} waiting",
-    "full": "The queue is full ({{count}} takes). Wait for some to finish first.",
-    "add": "Add to queue",
-    "add_hint": "Queue this script with the current voice and settings. It starts when the take before it finishes.",
-    "remove": "Remove from queue",
-    "clear_finished": "Clear finished",
-    "cancel_all": "Cancel all",
-    "position": "#{{position}} in line",
+    "title": "Очередь генерации",
+    "waiting_one": "В ожидании: {{count}}",
+    "waiting_few": "В ожидании: {{count}}",
+    "waiting_many": "В ожидании: {{count}}",
+    "waiting_other": "В ожидании: {{count}}",
+    "added_one": "Добавлено в очередь. В ожидании: {{count}}",
+    "added_few": "Добавлено в очередь. В ожидании: {{count}}",
+    "added_many": "Добавлено в очередь. В ожидании: {{count}}",
+    "added_other": "Добавлено в очередь. В ожидании: {{count}}",
+    "full": "Очередь заполнена ({{count}}). Дождитесь завершения части дублей.",
+    "add": "Добавить в очередь",
+    "add_hint": "Поставить этот текст в очередь с текущим голосом и настройками. Начнётся, когда завершится предыдущий дубль.",
+    "remove": "Убрать из очереди",
+    "clear_finished": "Очистить завершённые",
+    "cancel_all": "Отменить все",
+    "position": "Позиция {{position}}",
     "status": {
-      "queued": "Waiting",
-      "running": "Generating",
-      "done": "Done",
-      "failed": "Failed",
-      "cancelled": "Cancelled"
+      "queued": "Ожидание",
+      "running": "Генерация",
+      "done": "Готово",
+      "failed": "Сбой",
+      "cancelled": "Отменено"
     }
   }
 }

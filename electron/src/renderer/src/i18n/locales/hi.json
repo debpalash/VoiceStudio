@@ -4348,24 +4348,24 @@
     "error_out_of_memory": "GPU की मेमोरी खत्म हो गई। GPU का भारी उपयोग करने वाले अन्य ऐप बंद करें या कम अवधि आज़माएँ।"
   },
   "generationQueue": {
-    "title": "Generation queue",
-    "waiting_one": "{{count}} waiting",
-    "waiting_other": "{{count}} waiting",
-    "added_one": "Added to the queue — {{count}} waiting",
-    "added_other": "Added to the queue — {{count}} waiting",
-    "full": "The queue is full ({{count}} takes). Wait for some to finish first.",
-    "add": "Add to queue",
-    "add_hint": "Queue this script with the current voice and settings. It starts when the take before it finishes.",
-    "remove": "Remove from queue",
-    "clear_finished": "Clear finished",
-    "cancel_all": "Cancel all",
-    "position": "#{{position}} in line",
+    "title": "जनरेशन कतार",
+    "waiting_one": "प्रतीक्षा में: {{count}}",
+    "waiting_other": "प्रतीक्षा में: {{count}}",
+    "added_one": "कतार में जोड़ा गया। प्रतीक्षा में: {{count}}",
+    "added_other": "कतार में जोड़ा गया। प्रतीक्षा में: {{count}}",
+    "full": "कतार भरी हुई है ({{count}})। पहले कुछ के पूरा होने की प्रतीक्षा करें।",
+    "add": "कतार में जोड़ें",
+    "add_hint": "इस स्क्रिप्ट को मौजूदा आवाज़ और सेटिंग्स के साथ कतार में जोड़ें। यह पिछला टेक पूरा होने पर शुरू होगा।",
+    "remove": "कतार से हटाएँ",
+    "clear_finished": "पूरे हुए हटाएँ",
+    "cancel_all": "सभी रद्द करें",
+    "position": "क्रम {{position}}",
     "status": {
-      "queued": "Waiting",
-      "running": "Generating",
-      "done": "Done",
-      "failed": "Failed",
-      "cancelled": "Cancelled"
+      "queued": "प्रतीक्षा में",
+      "running": "बनाया जा रहा है",
+      "done": "पूरा",
+      "failed": "विफल",
+      "cancelled": "रद्द"
     }
   }
 }

@@ -4376,24 +4376,28 @@
     "error_out_of_memory": "У GPU закінчилася пам’ять. Закрийте інші програми, що активно використовують GPU, або спробуйте меншу тривалість."
   },
   "generationQueue": {
-    "title": "Generation queue",
-    "waiting_one": "{{count}} waiting",
-    "waiting_other": "{{count}} waiting",
-    "added_one": "Added to the queue — {{count}} waiting",
-    "added_other": "Added to the queue — {{count}} waiting",
-    "full": "The queue is full ({{count}} takes). Wait for some to finish first.",
-    "add": "Add to queue",
-    "add_hint": "Queue this script with the current voice and settings. It starts when the take before it finishes.",
-    "remove": "Remove from queue",
-    "clear_finished": "Clear finished",
-    "cancel_all": "Cancel all",
-    "position": "#{{position}} in line",
+    "title": "Черга генерації",
+    "waiting_one": "В очікуванні: {{count}}",
+    "waiting_few": "В очікуванні: {{count}}",
+    "waiting_many": "В очікуванні: {{count}}",
+    "waiting_other": "В очікуванні: {{count}}",
+    "added_one": "Додано до черги. В очікуванні: {{count}}",
+    "added_few": "Додано до черги. В очікуванні: {{count}}",
+    "added_many": "Додано до черги. В очікуванні: {{count}}",
+    "added_other": "Додано до черги. В очікуванні: {{count}}",
+    "full": "Черга заповнена ({{count}}). Зачекайте, доки частина завершиться.",
+    "add": "Додати до черги",
+    "add_hint": "Поставити цей текст у чергу з поточним голосом і налаштуваннями. Почнеться, коли завершиться попередній дубль.",
+    "remove": "Прибрати з черги",
+    "clear_finished": "Очистити завершені",
+    "cancel_all": "Скасувати все",
+    "position": "Позиція {{position}}",
     "status": {
-      "queued": "Waiting",
-      "running": "Generating",
-      "done": "Done",
-      "failed": "Failed",
-      "cancelled": "Cancelled"
+      "queued": "Очікування",
+      "running": "Генерація",
+      "done": "Готово",
+      "failed": "Збій",
+      "cancelled": "Скасовано"
     }
   }
 }

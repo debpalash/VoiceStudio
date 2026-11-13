@@ -4348,24 +4348,24 @@
     "error_out_of_memory": "GPUのメモリが不足しました。GPUを多く使う他のアプリを閉じるか、より短い長さをお試しください。"
   },
   "generationQueue": {
-    "title": "Generation queue",
-    "waiting_one": "{{count}} waiting",
-    "waiting_other": "{{count}} waiting",
-    "added_one": "Added to the queue — {{count}} waiting",
-    "added_other": "Added to the queue — {{count}} waiting",
-    "full": "The queue is full ({{count}} takes). Wait for some to finish first.",
-    "add": "Add to queue",
-    "add_hint": "Queue this script with the current voice and settings. It starts when the take before it finishes.",
-    "remove": "Remove from queue",
-    "clear_finished": "Clear finished",
-    "cancel_all": "Cancel all",
-    "position": "#{{position}} in line",
+    "title": "生成キュー",
+    "waiting_one": "待機中: {{count}}",
+    "waiting_other": "待機中: {{count}}",
+    "added_one": "キューに追加しました。待機中: {{count}}",
+    "added_other": "キューに追加しました。待機中: {{count}}",
+    "full": "キューがいっぱいです（{{count}}）。いくつか完了するまでお待ちください。",
+    "add": "キューに追加",
+    "add_hint": "現在の音声と設定でこの台本をキューに追加します。前のテイクが終わると開始します。",
+    "remove": "キューから削除",
+    "clear_finished": "完了分をクリア",
+    "cancel_all": "すべてキャンセル",
+    "position": "{{position}} 番目",
     "status": {
-      "queued": "Waiting",
-      "running": "Generating",
-      "done": "Done",
-      "failed": "Failed",
-      "cancelled": "Cancelled"
+      "queued": "待機中",
+      "running": "生成中",
+      "done": "完了",
+      "failed": "失敗",
+      "cancelled": "キャンセル済み"
     }
   }
 }

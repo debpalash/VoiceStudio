@@ -4376,24 +4376,28 @@
     "error_out_of_memory": "GPU zabrakło pamięci. Zamknij inne aplikacje obciążające GPU lub spróbuj krótszego czasu trwania."
   },
   "generationQueue": {
-    "title": "Generation queue",
-    "waiting_one": "{{count}} waiting",
-    "waiting_other": "{{count}} waiting",
-    "added_one": "Added to the queue — {{count}} waiting",
-    "added_other": "Added to the queue — {{count}} waiting",
-    "full": "The queue is full ({{count}} takes). Wait for some to finish first.",
-    "add": "Add to queue",
-    "add_hint": "Queue this script with the current voice and settings. It starts when the take before it finishes.",
-    "remove": "Remove from queue",
-    "clear_finished": "Clear finished",
-    "cancel_all": "Cancel all",
-    "position": "#{{position}} in line",
+    "title": "Kolejka generowania",
+    "waiting_one": "Oczekujące: {{count}}",
+    "waiting_few": "Oczekujące: {{count}}",
+    "waiting_many": "Oczekujące: {{count}}",
+    "waiting_other": "Oczekujące: {{count}}",
+    "added_one": "Dodano do kolejki. Oczekujące: {{count}}",
+    "added_few": "Dodano do kolejki. Oczekujące: {{count}}",
+    "added_many": "Dodano do kolejki. Oczekujące: {{count}}",
+    "added_other": "Dodano do kolejki. Oczekujące: {{count}}",
+    "full": "Kolejka jest pełna ({{count}}). Poczekaj, aż część się zakończy.",
+    "add": "Dodaj do kolejki",
+    "add_hint": "Dodaj ten skrypt do kolejki z bieżącym głosem i ustawieniami. Rozpocznie się po zakończeniu poprzedniego nagrania.",
+    "remove": "Usuń z kolejki",
+    "clear_finished": "Wyczyść zakończone",
+    "cancel_all": "Anuluj wszystko",
+    "position": "Pozycja {{position}}",
     "status": {
-      "queued": "Waiting",
-      "running": "Generating",
-      "done": "Done",
-      "failed": "Failed",
-      "cancelled": "Cancelled"
+      "queued": "Oczekuje",
+      "running": "Generowanie",
+      "done": "Gotowe",
+      "failed": "Niepowodzenie",
+      "cancelled": "Anulowano"
     }
   }
 }

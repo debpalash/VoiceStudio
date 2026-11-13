@@ -4348,24 +4348,24 @@
     "error_out_of_memory": "Der GPU ist der Speicher ausgegangen. Schließe andere GPU-intensive Apps oder wähle eine kürzere Dauer."
   },
   "generationQueue": {
-    "title": "Generation queue",
-    "waiting_one": "{{count}} waiting",
-    "waiting_other": "{{count}} waiting",
-    "added_one": "Added to the queue — {{count}} waiting",
-    "added_other": "Added to the queue — {{count}} waiting",
-    "full": "The queue is full ({{count}} takes). Wait for some to finish first.",
-    "add": "Add to queue",
-    "add_hint": "Queue this script with the current voice and settings. It starts when the take before it finishes.",
-    "remove": "Remove from queue",
-    "clear_finished": "Clear finished",
-    "cancel_all": "Cancel all",
-    "position": "#{{position}} in line",
+    "title": "Generierungswarteschlange",
+    "waiting_one": "Wartend: {{count}}",
+    "waiting_other": "Wartend: {{count}}",
+    "added_one": "Zur Warteschlange hinzugefügt. Wartend: {{count}}",
+    "added_other": "Zur Warteschlange hinzugefügt. Wartend: {{count}}",
+    "full": "Die Warteschlange ist voll ({{count}}). Warte, bis einige fertig sind.",
+    "add": "Zur Warteschlange",
+    "add_hint": "Dieses Skript mit der aktuellen Stimme und den aktuellen Einstellungen einreihen. Es startet, sobald die vorherige Aufnahme fertig ist.",
+    "remove": "Aus der Warteschlange entfernen",
+    "clear_finished": "Fertige entfernen",
+    "cancel_all": "Alle abbrechen",
+    "position": "Platz {{position}}",
     "status": {
-      "queued": "Waiting",
-      "running": "Generating",
-      "done": "Done",
-      "failed": "Failed",
-      "cancelled": "Cancelled"
+      "queued": "Wartet",
+      "running": "Wird generiert",
+      "done": "Erledigt",
+      "failed": "Fehlgeschlagen",
+      "cancelled": "Abgebrochen"
     }
   }
 }

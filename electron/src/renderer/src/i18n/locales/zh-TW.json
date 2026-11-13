@@ -4348,24 +4348,24 @@
     "error_out_of_memory": "GPU 記憶體不足。請關閉其他佔用 GPU 的應用程式，或嘗試較短的時長。"
   },
   "generationQueue": {
-    "title": "Generation queue",
-    "waiting_one": "{{count}} waiting",
-    "waiting_other": "{{count}} waiting",
-    "added_one": "Added to the queue — {{count}} waiting",
-    "added_other": "Added to the queue — {{count}} waiting",
-    "full": "The queue is full ({{count}} takes). Wait for some to finish first.",
-    "add": "Add to queue",
-    "add_hint": "Queue this script with the current voice and settings. It starts when the take before it finishes.",
-    "remove": "Remove from queue",
-    "clear_finished": "Clear finished",
-    "cancel_all": "Cancel all",
-    "position": "#{{position}} in line",
+    "title": "生成佇列",
+    "waiting_one": "等待中：{{count}}",
+    "waiting_other": "等待中：{{count}}",
+    "added_one": "已加入佇列。等待中：{{count}}",
+    "added_other": "已加入佇列。等待中：{{count}}",
+    "full": "佇列已滿（{{count}}）。請等待部分項目完成。",
+    "add": "加入佇列",
+    "add_hint": "以目前的聲音和設定將此腳本加入佇列。上一條完成後開始。",
+    "remove": "從佇列中移除",
+    "clear_finished": "清除已完成",
+    "cancel_all": "全部取消",
+    "position": "第 {{position}} 位",
     "status": {
-      "queued": "Waiting",
-      "running": "Generating",
-      "done": "Done",
-      "failed": "Failed",
-      "cancelled": "Cancelled"
+      "queued": "等待中",
+      "running": "生成中",
+      "done": "已完成",
+      "failed": "失敗",
+      "cancelled": "已取消"
     }
   }
 }

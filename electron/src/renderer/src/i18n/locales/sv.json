@@ -4348,24 +4348,24 @@
     "error_out_of_memory": "GPU:n fick slut på minne. Stäng andra GPU-tunga appar eller prova en kortare längd."
   },
   "generationQueue": {
-    "title": "Generation queue",
-    "waiting_one": "{{count}} waiting",
-    "waiting_other": "{{count}} waiting",
-    "added_one": "Added to the queue — {{count}} waiting",
-    "added_other": "Added to the queue — {{count}} waiting",
-    "full": "The queue is full ({{count}} takes). Wait for some to finish first.",
-    "add": "Add to queue",
-    "add_hint": "Queue this script with the current voice and settings. It starts when the take before it finishes.",
-    "remove": "Remove from queue",
-    "clear_finished": "Clear finished",
-    "cancel_all": "Cancel all",
-    "position": "#{{position}} in line",
+    "title": "Genereringskö",
+    "waiting_one": "Väntar: {{count}}",
+    "waiting_other": "Väntar: {{count}}",
+    "added_one": "Tillagd i kön. Väntar: {{count}}",
+    "added_other": "Tillagd i kön. Väntar: {{count}}",
+    "full": "Kön är full ({{count}}). Vänta tills några är klara.",
+    "add": "Lägg till i kön",
+    "add_hint": "Köa det här manuset med nuvarande röst och inställningar. Det startar när tagningen före är klar.",
+    "remove": "Ta bort från kön",
+    "clear_finished": "Rensa klara",
+    "cancel_all": "Avbryt alla",
+    "position": "Plats {{position}}",
     "status": {
-      "queued": "Waiting",
-      "running": "Generating",
-      "done": "Done",
-      "failed": "Failed",
-      "cancelled": "Cancelled"
+      "queued": "Väntar",
+      "running": "Genererar",
+      "done": "Klar",
+      "failed": "Misslyckades",
+      "cancelled": "Avbruten"
     }
   }
 }

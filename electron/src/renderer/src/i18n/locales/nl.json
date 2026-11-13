@@ -4348,24 +4348,24 @@
     "error_out_of_memory": "De GPU had te weinig geheugen. Sluit andere zware GPU-apps of probeer een kortere duur."
   },
   "generationQueue": {
-    "title": "Generation queue",
-    "waiting_one": "{{count}} waiting",
-    "waiting_other": "{{count}} waiting",
-    "added_one": "Added to the queue — {{count}} waiting",
-    "added_other": "Added to the queue — {{count}} waiting",
-    "full": "The queue is full ({{count}} takes). Wait for some to finish first.",
-    "add": "Add to queue",
-    "add_hint": "Queue this script with the current voice and settings. It starts when the take before it finishes.",
-    "remove": "Remove from queue",
-    "clear_finished": "Clear finished",
-    "cancel_all": "Cancel all",
-    "position": "#{{position}} in line",
+    "title": "Generatiewachtrij",
+    "waiting_one": "Wachtend: {{count}}",
+    "waiting_other": "Wachtend: {{count}}",
+    "added_one": "Toegevoegd aan de wachtrij. Wachtend: {{count}}",
+    "added_other": "Toegevoegd aan de wachtrij. Wachtend: {{count}}",
+    "full": "De wachtrij is vol ({{count}}). Wacht tot er een paar klaar zijn.",
+    "add": "Aan wachtrij toevoegen",
+    "add_hint": "Zet dit script in de wachtrij met de huidige stem en instellingen. Het start zodra de vorige opname klaar is.",
+    "remove": "Uit wachtrij verwijderen",
+    "clear_finished": "Voltooide wissen",
+    "cancel_all": "Alles annuleren",
+    "position": "Plaats {{position}}",
     "status": {
-      "queued": "Waiting",
-      "running": "Generating",
-      "done": "Done",
-      "failed": "Failed",
-      "cancelled": "Cancelled"
+      "queued": "Wachten",
+      "running": "Bezig met genereren",
+      "done": "Klaar",
+      "failed": "Mislukt",
+      "cancelled": "Geannuleerd"
     }
   }
 }

@@ -4350,24 +4350,24 @@
     "error_out_of_memory": "La GPU ha esaurito la memoria. Chiudi le altre app che usano molto la GPU o prova una durata più breve."
   },
   "generationQueue": {
-    "title": "Generation queue",
-    "waiting_one": "{{count}} waiting",
-    "waiting_other": "{{count}} waiting",
-    "added_one": "Added to the queue — {{count}} waiting",
-    "added_other": "Added to the queue — {{count}} waiting",
-    "full": "The queue is full ({{count}} takes). Wait for some to finish first.",
-    "add": "Add to queue",
-    "add_hint": "Queue this script with the current voice and settings. It starts when the take before it finishes.",
-    "remove": "Remove from queue",
-    "clear_finished": "Clear finished",
-    "cancel_all": "Cancel all",
-    "position": "#{{position}} in line",
+    "title": "Coda di generazione",
+    "waiting_one": "In attesa: {{count}}",
+    "waiting_other": "In attesa: {{count}}",
+    "added_one": "Aggiunto alla coda. In attesa: {{count}}",
+    "added_other": "Aggiunto alla coda. In attesa: {{count}}",
+    "full": "La coda è piena ({{count}}). Attendi che alcune finiscano.",
+    "add": "Aggiungi alla coda",
+    "add_hint": "Metti in coda questo copione con la voce e le impostazioni attuali. Parte quando finisce la ripresa precedente.",
+    "remove": "Rimuovi dalla coda",
+    "clear_finished": "Cancella completate",
+    "cancel_all": "Annulla tutto",
+    "position": "Posizione {{position}}",
     "status": {
-      "queued": "Waiting",
-      "running": "Generating",
-      "done": "Done",
-      "failed": "Failed",
-      "cancelled": "Cancelled"
+      "queued": "In attesa",
+      "running": "Generazione",
+      "done": "Fatto",
+      "failed": "Non riuscito",
+      "cancelled": "Annullato"
     }
   }
 }
