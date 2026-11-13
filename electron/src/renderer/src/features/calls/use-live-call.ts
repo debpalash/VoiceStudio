@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { getCall, callTime, type CallEvent, type CallRecord } from '@/lib/api/calls';
 import { callPhase, initialLiveState, liveCallReducer, type LiveCallState } from './call-state';
+import { useVisibleInterval } from '@/lib/visible-interval';
 import { useCallEvents, type StreamState } from './use-call-events';
 
 export const CALLS_KEY = ['calls'] as const;
@@ -62,11 +63,7 @@ export function useLiveCall(callId: string | null): LiveCall {
       setAnsweredAt(callTime(query.data?.started_at) ?? Date.now());
     }
   }, [phase, answeredAt, query.data?.started_at]);
-  useEffect(() => {
-    if (!live || phase !== 'in_call') return;
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [live, phase]);
+  useVisibleInterval(() => setNow(Date.now()), 1000, live && phase === 'in_call');
 
   const started = callTime(query.data?.started_at) ?? answeredAt;
   const elapsed = state.ended

@@ -25,6 +25,8 @@ During synthesis, the fixed-width primary action polls the existing model-status
 
 The backend publishes explicit model lifecycle transitions to the renderer event stream. Engine Ready refreshes immediately from those events and keeps one-second polling only while work is active; idle model, worker, batch, performance-profile and diarisation checks back off to bounded 15–30 second recovery intervals.
 
+Idle CPU: a hidden or minimised window skips interval polling and on-screen clocks. Query polling is pinned to `refetchIntervalInBackground: false` in the shared query client, and elapsed-time clocks and the cloud-sync pull use `useVisibleInterval` / `startVisibleInterval` (`lib/visible-interval.ts`), which clear their timers while hidden and refresh once on show. Deliberately unchanged, so they still run while hidden: job progress while a job runs, recording and streaming timers, the update-check schedule, folder watching, and the idle-shutdown timer.
+
 `electron/tests/performance-settings-smoke.mjs` checks saved/active separation, failed saves, environment pinning, unavailable devices, the platform guard, budget validation and external overrides with mocked contracts. Live read-only checks verified the compute, compile and hardware response schemas. Tests did not change the user's device, optimization or timeout preferences. Native hardware behavior on macOS/Linux still requires platform verification.
 
 ## Speed and quality presets

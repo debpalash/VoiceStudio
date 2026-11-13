@@ -1,3 +1,4 @@
+import { useVisibleInterval } from '@/lib/visible-interval';
 import { SetupGate } from './setup-gate';
 import { SetupProgressCard } from './setup-progress-card';
 import { ReportBug } from './report-bug';
@@ -29,7 +30,7 @@ import {
   RotateCcwIcon,
   TriangleAlertIcon,
 } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AgentFixButton } from '@/components/agent-fix-button';
 import { Button } from '@/components/ui/button';
@@ -97,15 +98,16 @@ function PanelToggle({
 function useElapsedSeconds(elapsedMs: number, running: boolean): number {
   // The bridge only pushes a status on change; tick locally so the counter moves.
   const [seconds, setSeconds] = useState(() => Math.floor(elapsedMs / 1000));
+  const startedAt = useRef(Date.now() - elapsedMs);
   useEffect(() => {
-    const startedAt = Date.now() - elapsedMs;
+    startedAt.current = Date.now() - elapsedMs;
     setSeconds(Math.floor(elapsedMs / 1000));
-    if (!running) return;
-    const id = window.setInterval(() => {
-      setSeconds(Math.floor((Date.now() - startedAt) / 1000));
-    }, 1000);
-    return () => window.clearInterval(id);
   }, [elapsedMs, running]);
+  useVisibleInterval(
+    () => setSeconds(Math.floor((Date.now() - startedAt.current) / 1000)),
+    1000,
+    running,
+  );
   return seconds;
 }
 

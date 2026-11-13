@@ -1,3 +1,4 @@
+import { startVisibleInterval } from '@/lib/visible-interval';
 import { useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiJson } from '@/lib/api/client';
@@ -91,23 +92,18 @@ export async function startCloudSyncRuntime(deps: {
 
   const tick = async () => {
     // A hidden or minimised window has nobody to show the result to; the
-    // visibilitychange handler below catches up the moment it is shown again.
+    // interval helper catches up the moment it is shown again.
     if (stopped || document.visibilityState === 'hidden') return;
     await applyPulled();
     await mirrorShortcutIfChangedHere();
   };
-  const timer = setInterval(() => void tick(), deps.intervalMs ?? 3000);
+  const stopTicking = startVisibleInterval(() => void tick(), deps.intervalMs ?? 3000);
   const onFocus = () => void api('/api/cloud-sync/run', { method: 'POST' }).catch(() => {});
   window.addEventListener('focus', onFocus);
-  const onVisible = () => {
-    if (document.visibilityState === 'visible') void tick();
-  };
-  document.addEventListener('visibilitychange', onVisible);
   return () => {
     stopped = true;
-    clearInterval(timer);
+    stopTicking();
     window.removeEventListener('focus', onFocus);
-    document.removeEventListener('visibilitychange', onVisible);
     synced.uninstall();
   };
 }
