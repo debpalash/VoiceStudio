@@ -201,3 +201,19 @@ def test_a_crash_on_cpu_after_the_gpu_retry_still_raises(monkeypatch, gguf):
         gguf.OmniVoiceGGUFBackend()._run_subprocess(["tts"], stdin_text="hello")
     assert envs == ["Vulkan0", "CPU"]
     monkeypatch.setattr(gguf, "_GPU_CRASHED", False)
+
+
+def test_metal_auto_run_qualifies_for_cpu_retry(monkeypatch):
+    from engines.omnivoice_gguf import backend as b
+
+    monkeypatch.setattr(b.sys, "platform", "darwin")
+    monkeypatch.setattr(b.platform, "machine", lambda: "arm64")
+    assert b._native_gpu_crash(-11, {}) is True
+    assert b._native_gpu_crash(-11, {"GGML_BACKEND": "CPU"}) is False
+
+
+def test_no_vulkan_adapter_reported_after_gpu_crash(monkeypatch):
+    from engines.omnivoice_gguf import backend as b, compute
+
+    monkeypatch.setattr(b, "_GPU_CRASHED", True)
+    assert compute.selected_vulkan_adapter() is None

@@ -283,9 +283,12 @@ explicit quant override remains authoritative in either case.
 Some GPU and driver pairs load ggml's Vulkan backend and then crash the
 runtime natively (for example an access violation, exit `3221225477` /
 `0xC0000005`, on a GeForce GTX 1080, a Pascal card without fp16 shaders).
-When a run that could use a GPU exits with such a crash code, VoiceStudio
-retries that request on the CPU (`GGML_BACKEND=CPU`), keeps every later request
-of the session on the CPU, and logs the reason once. The CPU quant is not
+When a run that could use a GPU (an explicit GPU pin, Metal on Apple Silicon, or
+Vulkan where the runtime ships that module) exits with such a crash code,
+VoiceStudio retries that request on the CPU (`GGML_BACKEND=CPU`) within the time
+left of the original timeout, keeps every later request of the session on the
+CPU (Compute device and the generate timeout then report the CPU), and logs the
+reason once. The CPU quant is not
 re-selected; the loaded pair is reused. Ordinary errors, timeouts and crashes
 of an explicit CPU run are reported unchanged. To skip the GPU attempt on every
 start, set `OMNIVOICE_GGUF_BACKEND=cpu`.

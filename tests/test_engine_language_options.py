@@ -38,7 +38,9 @@ def _app_translation_targets():
     root = Path(__file__).resolve().parents[1] / 'electron' / 'src'
     source = ((root / 'shared' / 'utils' / 'languages.js').read_text(encoding='utf-8')
               + (root / 'renderer' / 'src' / 'lib' / 'translation-targets.ts').read_text(encoding='utf-8'))
-    targets = re.findall(r"\{ code: '([^']+)', label: '([^']+)' \}", source)
+    targets = re.findall(r"""\{ code: ["']([^"']+)["'], label: ["']([^"']+)["'] \}""", source)
+    # Target-only entries (no Whisper vocabulary) must be found, whatever the quoting.
+    assert {'Cebuano', 'Kabyle', 'Uyghur'} <= {label for _, label in targets}
     assert len(targets) > 90, 'translation target lists moved; update this parser'
     return targets
 

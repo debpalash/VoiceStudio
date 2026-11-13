@@ -97,6 +97,10 @@ def selected_vulkan_adapter() -> Optional["VulkanAdapter"]:
     ``Vulkan<N>`` is used; otherwise GGML's own automatic pick (first
     discrete GPU, else first integrated).
     """
+    from . import backend as _backend
+
+    if _backend._GPU_CRASHED:  # pinned to the CPU for this session
+        return None
     effective = apply_compute_env(os.environ.copy())
     ggml = effective.get("GGML_BACKEND", "").strip()
     index: Optional[int] = None

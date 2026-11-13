@@ -10,29 +10,36 @@ model call, which covers dub, batch, audiobook, preview and API callers alike.
 from __future__ import annotations
 
 import logging
-import re
 
 logger = logging.getLogger("omnivoice.instruct")
 
 _logged: set[str] = set()
 
 
-def _is_valid(value: str) -> bool:
-    from omnivoice.utils.voice_design import _INSTRUCT_ALL_VALID
+def _accepted(value: str) -> bool:
+    """Whether OmniVoice's own resolver takes ``value`` (vocabulary and categories)."""
+    from omnivoice.models.omnivoice import _resolve_instruct
 
-    items = [i.strip().lower() for i in re.split(r"[,，]", value) if i.strip()]
-    items = [i for i in items if i != "[object object]"]
-    return all(i in _INSTRUCT_ALL_VALID for i in items)
+    try:
+        _resolve_instruct(value)
+        return True
+    except ValueError:
+        return False
 
 
 def _one(value):
     if not isinstance(value, str) or not value.strip():
         return value
-    if _is_valid(value):
+    if _accepted(value):
         return value
     from omnivoice.utils.voice_design import sanitize_instruct
 
-    kept = sanitize_instruct(value) or None
+    # Whitelisted tags, one per category; then drop from the end until the
+    # resolver agrees (covers a dialect mixed with an accent).
+    items = [i for i in sanitize_instruct(value).split(", ") if i]
+    while items and not _accepted(", ".join(items)):
+        items.pop()
+    kept = ", ".join(items) or None
     if value not in _logged and len(_logged) < 200:
         _logged.add(value)
         logger.warning(

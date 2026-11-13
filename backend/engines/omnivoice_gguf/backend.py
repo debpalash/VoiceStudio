@@ -258,6 +258,10 @@ def _native_gpu_crash(returncode, env: dict[str, str]) -> bool:
         return True
     from .compute import binary_has_vulkan_module
 
+    # Unset GGML_BACKEND: ggml picks a GPU itself, Metal on Apple Silicon or
+    # Vulkan where the runtime ships that module.
+    if sys.platform == "darwin" and platform.machine().lower() in ("arm64", "aarch64"):
+        return True
     return binary_has_vulkan_module()
 
 
@@ -1643,7 +1647,9 @@ def _make_backend_class():
             validate_executable(Path(argv[0]), hint=_binary_repair_hint())
             if timeout_s is None:
                 timeout_s = _generate_timeout_s()
-            def _spawn(env):
+            started = time.monotonic()
+
+            def _spawn(env, budget=None):
                 return subprocess.run(
                     argv,
                     input=stdin_text,
@@ -1651,7 +1657,7 @@ def _make_backend_class():
                     encoding="utf-8",
                     errors="replace",
                     capture_output=True,
-                    timeout=timeout_s,
+                    timeout=timeout_s if budget is None else budget,
                     check=False,
                     env=env,
                     # See probe_load: keep ggml's backend scan inside bin/.
@@ -1676,7 +1682,11 @@ def _make_backend_class():
                         _mask_token((proc.stderr or "").strip()[-600:]) or "<no stderr>",
                     )
                     env = _spawn_env()
-                    proc = _spawn(env)
+                    # The retry only gets what is left of the original deadline.
+                    left = timeout_s - (time.monotonic() - started)
+                    if left <= 0:
+                        raise subprocess.TimeoutExpired(argv, timeout_s)
+                    proc = _spawn(env, left)
             except subprocess.TimeoutExpired as exc:
                 raise RuntimeError(
                     f"GGUF subprocess timed out after "
