@@ -89,11 +89,10 @@ reviews:
         every user-visible failure has an actionable, non-technical error
         message; loading/disabled states during long operations. Every new
         user-facing string must be an i18n t('...') key present in ALL 21
-        locale files of the catalog the code imports from —
-        electron/src/shared/i18n/locales/*.json (tests/test_locale_parity.py)
-        or electron/src/renderer/src/i18n/locales/*.json (electron
-        locale:check) — flag hardcoded UI strings and keys missing from any
-        locale.
+        locale files of the catalog —
+        electron/src/renderer/src/i18n/locales/*.json (tests/test_locale_parity.py
+        and electron locale:check) — flag hardcoded UI strings and keys missing
+        from any locale.
     - path: "electron/**/*.{ts,tsx}"
       instructions: >-
         Electron is the only maintained desktop; Tauri is sunset and archived.
@@ -163,8 +162,7 @@ reviews:
         mode: warning
         instructions: >-
           For every new or changed t('...') key in Electron UI code, verify the
-          key exists in all 21 files of the catalog it uses:
-          electron/src/shared/i18n/locales/ or
+          key exists in all 21 files of the catalog:
           electron/src/renderer/src/i18n/locales/. List any locale files
           missing the key. Also flag hardcoded user-facing strings
           that bypass i18n entirely.

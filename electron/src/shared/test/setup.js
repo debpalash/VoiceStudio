@@ -4,11 +4,20 @@
 import * as matchers from '@testing-library/jest-dom/matchers';
 import { afterEach, beforeEach, expect } from 'vite-plus/test';
 import { cleanupReact } from './react-cleanup';
-// Initialize the real i18n instance so components that call the global
-// i18next.t() singleton (e.g. class components like ErrorBoundary) render
-// actual strings in tests instead of bare keys. fallbackLng: 'en' keeps
-// assertions on English text stable regardless of detected locale.
-import '../i18n';
+// Initialize i18next with the live renderer's English catalog so shared modules
+// that call the global i18next.t() singleton render the strings the app ships.
+// fallbackLng: 'en' keeps assertions on English text stable.
+import i18next from 'i18next';
+import { initReactI18next } from 'react-i18next';
+import en from '../../renderer/src/i18n/locales/en.json';
+
+i18next.use(initReactI18next).init({
+  resources: { en: { translation: en } },
+  lng: 'en',
+  fallbackLng: 'en',
+  interpolation: { escapeValue: false },
+  returnNull: false,
+});
 
 expect.extend(matchers);
 

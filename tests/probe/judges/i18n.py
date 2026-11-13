@@ -12,6 +12,7 @@ layer. These judges check the locale files for *structural* correctness:
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from ..spec import JudgeResult
@@ -59,6 +60,19 @@ def locale_valid_json(locales_dir: str) -> JudgeResult:
     )
 
 
+_CLDR_PLURAL = re.compile(r"^(.*)_(?:zero|one|two|few|many|other)$")
+
+
+def _answers_to_reference(key: str, ref: set) -> bool:
+    """A key is not an orphan when the reference has it, or when it is a CLDR
+    plural form the reference lacks (ar ``_few``, ru ``_many``) whose
+    ``_other`` form the reference defines."""
+    if key in ref:
+        return True
+    match = _CLDR_PLURAL.match(key)
+    return bool(match and f"{match.group(1)}_other" in ref)
+
+
 def locale_no_orphan_keys(locales_dir: str, reference: str = "en") -> JudgeResult:
     locales, _ = _load_locales(locales_dir)
     ref = set(locales.get(reference, {}))
@@ -69,7 +83,7 @@ def locale_no_orphan_keys(locales_dir: str, reference: str = "en") -> JudgeResul
     for name, keys in locales.items():
         if name == reference:
             continue
-        orphans = set(keys) - ref
+        orphans = {key for key in keys if not _answers_to_reference(key, ref)}
         if orphans:
             offenders[name] = sorted(orphans)[:5]
     ok = not offenders

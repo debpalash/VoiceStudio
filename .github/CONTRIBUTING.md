@@ -558,10 +558,9 @@ test-only PR. Docker Hub overview edits still publish through the small
   Platform-only features go behind an explicit opt-in (Settings toggle, env
   var, or CLI flag).
 - **i18n — every locale (hard rule):** every user-facing string goes through
-  `t('...')` and the key must exist in **every** file of the catalog the code
-  uses: `electron/src/shared/i18n/locales/` (checked by
-  `tests/test_locale_parity.py`) or `electron/src/renderer/src/i18n/locales/`
-  (checked by `bun run --cwd electron locale:check`, which also fails on an
+  `t('...')` and the key must exist in **every** file of the catalog:
+  `electron/src/renderer/src/i18n/locales/` (checked by
+  `tests/test_locale_parity.py` and `bun run --cwd electron locale:check`, which also fails on an
   `en.json` key no code references; delete it from every locale, or add a
   prefix to `ALLOWED_PREFIXES` in `electron/tests/locale-source-keys.mjs` if code
   builds it dynamically). Translate; don't copy

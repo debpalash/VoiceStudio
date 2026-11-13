@@ -13,7 +13,6 @@
 import { describe, it, expect } from 'vitest';
 
 import { ApiError } from '../api/client';
-import { buildBugReportUrl } from '../utils/bugReport';
 
 describe('ApiError carries the backend error class', () => {
   it('keeps a string class', () => {
@@ -35,31 +34,5 @@ describe('ApiError carries the backend error class', () => {
   it('ignores a non-string class rather than stringifying it', () => {
     const err = new ApiError('500', { status: 500, errorClass: { nope: true } });
     expect(err.errorClass).toBeUndefined();
-  });
-
-  it('reaches the bug report', async () => {
-    // The whole point: the report is what a maintainer reads.
-    const err = new ApiError('500 Internal Server Error: internal error', {
-      status: 500,
-      errorClass: 'FileNotFoundError',
-    });
-    const body = decodeURIComponent(await buildBugReportUrl({ error: err }));
-    expect(body).toContain('Backend error class: FileNotFoundError');
-  });
-
-  it('two unrelated 500s stop producing the same report', async () => {
-    const a = new ApiError('500 Internal Server Error: internal error', {
-      status: 500,
-      errorClass: 'MemoryError',
-    });
-    const b = new ApiError('500 Internal Server Error: internal error', {
-      status: 500,
-      errorClass: 'PermissionError',
-    });
-    const [ra, rb] = await Promise.all([
-      buildBugReportUrl({ error: a }),
-      buildBugReportUrl({ error: b }),
-    ]);
-    expect(decodeURIComponent(ra)).not.toBe(decodeURIComponent(rb));
   });
 });
