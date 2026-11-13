@@ -878,12 +878,15 @@ def _phase_a_finalize() -> None:
                 "MCP server not mounted (%s); /mcp disabled.", _mcp_err
             )
 
-    app.mount("/audio", StaticFiles(directory=OUTPUTS_DIR), name="audio")
-    app.mount("/voice_audio", StaticFiles(directory=VOICES_DIR), name="voice_audio")
+    # User and engine files: never served as a page (core/safe_static.py).
+    from core.safe_static import SafeMediaFiles
+
+    app.mount("/audio", SafeMediaFiles(directory=OUTPUTS_DIR), name="audio")
+    app.mount("/voice_audio", SafeMediaFiles(directory=VOICES_DIR), name="voice_audio")
     # Bundled demo assets — read-only, ships with the app, no network.
     _demo_dir = os.path.join(os.path.dirname(__file__), "assets", "samples")
     if os.path.isdir(_demo_dir):
-        app.mount("/demo_audio", StaticFiles(directory=_demo_dir), name="demo_audio")
+        app.mount("/demo_audio", SafeMediaFiles(directory=_demo_dir), name="demo_audio")
 
     # SPA shell LAST so the "/" StaticFiles mount can't shadow any router.
     from core.spa_inject import (
@@ -1867,9 +1870,25 @@ class NetworkAccessMiddleware:
             or request.cookies.get("ov_pin")
             or ""
         )
+        from services.pin_guard import pin_guard
+
+        # A locked-out client is refused before its PIN is compared, so guessing
+        # while locked out learns nothing. A request with no PIN is not a guess.
+        if supplied:
+            wait = pin_guard.retry_after(client, pin)
+            if wait > 0:
+                resp = JSONResponse(
+                    {"detail": "Too many wrong PINs. Try again later."},
+                    status_code=429,
+                    headers={"Retry-After": str(wait)},
+                )
+                return await resp(scope, receive, send)
         if not credential_matches(supplied, pin):
+            if supplied:
+                pin_guard.failed(client, pin)
             resp = JSONResponse({"detail": "PIN required"}, status_code=401)
             return await resp(scope, receive, send)
+        pin_guard.passed(client, pin)
         # Valid PIN. Set the cookie by wrapping send to inject Set-Cookie on the
         # http.response.start message — without ever materialising the body.
         if request.cookies.get("ov_pin") != pin:

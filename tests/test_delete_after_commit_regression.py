@@ -129,11 +129,16 @@ def test_unlock_removes_locked_take_after_commit(profile):
     assert not (profile / "voice_locked.wav").exists()
 
 
-def test_rerecord_consent_failure_keeps_previous_recording(profile):
+def test_rerecord_consent_failure_keeps_previous_recording(profile, monkeypatch):
     import asyncio
     import io
     from starlette.datastructures import UploadFile
     from api.routers import profiles
+
+    async def _decodes(_path):  # this test is about file installs, not content
+        return True
+
+    monkeypatch.setattr(profiles, "_is_decodable_audio", _decodes)
 
     for ext in ("webm", "wav"):  # extension change and in-place overwrite
         upload = UploadFile(io.BytesIO(b"x" * 2000), filename=f"c.{ext}")
@@ -143,12 +148,17 @@ def test_rerecord_consent_failure_keeps_previous_recording(profile):
         assert sorted(p.name for p in profile.iterdir() if "consent" in p.name) == ["voice_consent.wav"]
 
 
-def test_rerecord_consent_replaces_in_place_after_commit(profile):
+def test_rerecord_consent_replaces_in_place_after_commit(profile, monkeypatch):
     import asyncio
     import io
     from core import db
     from starlette.datastructures import UploadFile
     from api.routers import profiles
+
+    async def _decodes(_path):  # this test is about file installs, not content
+        return True
+
+    monkeypatch.setattr(profiles, "_is_decodable_audio", _decodes)
 
     with db.db_conn() as conn:
         conn.execute("DROP TRIGGER reject_update")

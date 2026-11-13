@@ -6,6 +6,7 @@ import os
 import re
 import uuid
 import weakref
+import tempfile
 import time
 import shutil
 import threading
@@ -1234,10 +1235,6 @@ async def unlock_profile(profile_id: str):
 
 _MIN_CONSENT_AUDIO_BYTES = 1000  # same floor as the frontend recorder
 
-# Upload filename extension whitelist — anything else falls back to .wav so a
-# crafted filename can never influence the on-disk path (py/path-injection).
-_CONSENT_EXT_RE = re.compile(r"^\.[A-Za-z0-9]{1,8}$")
-
 
 def _voices_path(filename: str) -> Optional[str]:
     """Resolve a DB-stored audio filename strictly inside VOICES_DIR.
@@ -1274,9 +1271,17 @@ async def record_consent(
     if not row:
         raise HTTPException(status_code=404, detail="Profile not found")
 
+    # The file is served back from /voice_audio, so it must be audio under an
+    # audio extension: a client-chosen ".html" became a stored page there.
     ext = upload_suffix(consent_audio.filename)
-    if not ext or not _CONSENT_EXT_RE.fullmatch(ext):
+    if not ext:
         ext = ".wav"
+    ext = ext.lower()
+    if ext not in _REF_AUDIO_EXTS:
+        raise HTTPException(
+            status_code=415,
+            detail="Choose a supported audio file: WAV, MP3, M4A, FLAC, OGG, Opus, AAC, or WebM.",
+        )
     audio_filename = f"{profile_id}_consent{ext}"
     audio_path = _voices_path(audio_filename)
     if audio_path is None:  # profile_id is server-generated; this is belt+braces
@@ -1286,6 +1291,21 @@ async def record_consent(
     # so consent metadata and audio never disagree.
     recorded_at = time.time()
     staged_path = f"{audio_path}.part"
+    # Check the content is audio before taking the (thread) lock, which must
+    # not be held across an await.
+    fd, probe_path = tempfile.mkstemp(prefix="consent-", suffix=ext)
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        decodable = await _is_decodable_audio(probe_path)
+    finally:
+        with contextlib.suppress(OSError):
+            os.remove(probe_path)
+    if not decodable:
+        raise HTTPException(
+            status_code=422,
+            detail="That file could not be read as audio. Choose another recording.",
+        )
     with _voice_file_lock:
         with db_conn() as conn:
             current = conn.execute(

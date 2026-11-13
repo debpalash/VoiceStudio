@@ -36,7 +36,7 @@ VoiceStudio/
 │   │   └── setup/               setup-wizard endpoints and model acquisition
 │   ├── core/                    shared infrastructure: configuration, persistence, job/event plumbing,
 │   │                            auth and CSRF, safe paths, analytics consent, version and diagnostics
-│   ├── services/                131 modules of business logic spanning speech, dubbing, DSP, GPU dispatch,
+│   ├── services/                132 modules of business logic spanning speech, dubbing, DSP, GPU dispatch,
 │   │                            engine selection and loaded-model ownership
 │   ├── engines/                 per-engine adapters: audiocpp, confucius4, cosyvoice_gguf,
 │   │                            cosyvoice_subprocess, dots_tts, indextts, ming_tts, moss_sfx,

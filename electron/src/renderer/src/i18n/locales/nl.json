@@ -143,7 +143,10 @@
     "maintainerPalash": "Palash Debnath",
     "maintainerShimul": "Shimul Debnath",
     "follow": "Volgen",
-    "website": "Website"
+    "website": "Website",
+    "hideUntilUpdate": "Verbergen tot de volgende update",
+    "hideThanks": "Bedankt voor je bezoek aan onze bijdragers! Dit komt terug bij de volgende update.",
+    "hoHoHo": "Ho ho ho!"
   },
   "twilioIntegration": {
     "exposureWarning": "Inschakelen opent een aparte lokale poort die je tunnel op internet publiceert. Alleen verzoeken die met je Twilio Auth Token zijn ondertekend worden geaccepteerd; de rest van VoiceStudio blijft privé.",
@@ -1653,7 +1656,9 @@
   },
   "projectActions": {
     "open": "‘{{name}}’ openen en het huidige concept vervangen? Sla je werk eerst op.",
-    "save_copy": "Kopie opslaan"
+    "save_copy": "Kopie opslaan",
+    "new": "Nieuw project",
+    "new_confirm": "Een nieuw, leeg project beginnen? Opgeslagen projecten blijven ongewijzigd; niet-opgeslagen wijzigingen in het huidige concept gaan verloren."
   },
   "sidebar": {
     "save_project": "Dub-project opslaan",
@@ -2931,6 +2936,7 @@
     "route_not_found": "De draaiende VoiceStudio-backend heeft geen {{route}}-endpoint. Start VoiceStudio opnieuw zodat app en backend overeenkomen; blijft het probleem, werk dan beide bij naar dezelfde versie."
   },
   "network": {
+    "pin_locked": "Te veel verkeerde pincodes. Probeer het over {{minutes}} min. opnieuw.",
     "copied": "Gekopieerd",
     "network": "Netwerk",
     "switching": "Overstappen...",

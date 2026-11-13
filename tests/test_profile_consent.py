@@ -15,7 +15,26 @@ import pytest
 os.environ.setdefault("OMNIVOICE_MODEL", "test")
 os.environ.setdefault("OMNIVOICE_DISABLE_FILE_LOG", "1")
 
-_FAKE_AUDIO = b"RIFF" + b"\x00" * 2000  # > _MIN_CONSENT_AUDIO_BYTES floor
+def _wav_bytes(seconds: float = 0.2, rate: int = 16000) -> bytes:
+    """A real, decodable WAV above the _MIN_CONSENT_AUDIO_BYTES floor."""
+    import io
+    import math
+    import struct
+    import wave
+
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as out:
+        out.setnchannels(1)
+        out.setsampwidth(2)
+        out.setframerate(rate)
+        n = int(seconds * rate)
+        out.writeframes(b"".join(
+            struct.pack("<h", int(8000 * math.sin(2 * math.pi * 220 * i / rate))) for i in range(n)
+        ))
+    return buf.getvalue()
+
+
+_FAKE_AUDIO = _wav_bytes()  # > _MIN_CONSENT_AUDIO_BYTES floor
 _CONSENT_TEXT = "I confirm this is my own voice and I consent to cloning it in OmniVoice Studio."
 
 
@@ -268,3 +287,60 @@ def test_migration_0003_downgrade_drops_columns(tmp_path):
     for col in ("verified_own_voice", "consent_text", "consent_audio_path", "consent_recorded_at"):
         assert col not in cols
     assert "is_demo" in cols  # 0002 still applied
+
+
+_HTML_PAGE = (b"<!doctype html><html><body><script>document.title='x'</script>" + b" " * 2000 + b"</body></html>")
+
+
+def test_consent_refuses_a_non_audio_extension(app_client):
+    """VulnCheck VC-CVD-01892-V: a ".html" consent upload became a stored page."""
+    client, cfg = app_client
+    pid = _create_profile(client)
+    r = client.post(
+        f"/profiles/{pid}/consent",
+        data={"consent_text": _CONSENT_TEXT},
+        files={"consent_audio": ("a.html", _HTML_PAGE, "audio/wav")},
+    )
+    assert r.status_code == 415
+    assert not os.path.exists(os.path.join(cfg.VOICES_DIR, f"{pid}_consent.html"))
+    assert client.get(f"/profiles/{pid}").json()["verified_own_voice"] == 0
+
+
+def test_consent_refuses_content_that_is_not_audio(app_client):
+    client, cfg = app_client
+    pid = _create_profile(client)
+    r = client.post(
+        f"/profiles/{pid}/consent",
+        data={"consent_text": _CONSENT_TEXT},
+        files={"consent_audio": ("a.wav", _HTML_PAGE, "audio/wav")},
+    )
+    assert r.status_code == 422
+    assert not os.path.exists(os.path.join(cfg.VOICES_DIR, f"{pid}_consent.wav"))
+    assert client.get(f"/profiles/{pid}").json()["verified_own_voice"] == 0
+
+
+def test_voice_audio_is_never_served_as_a_page(app_client):
+    """Even a file already on disk under an HTML name is only ever a download."""
+    client, cfg = app_client
+    os.makedirs(cfg.VOICES_DIR, exist_ok=True)
+    with open(os.path.join(cfg.VOICES_DIR, "planted.html"), "wb") as f:
+        f.write(_HTML_PAGE)
+    r = client.get("/voice_audio/planted.html")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/octet-stream"
+    assert r.headers["content-disposition"] == "attachment"
+    assert r.headers["x-content-type-options"] == "nosniff"
+    assert "sandbox" in r.headers["content-security-policy"]
+
+    pid = _create_profile(client)
+    r = client.post(
+        f"/profiles/{pid}/consent",
+        data={"consent_text": _CONSENT_TEXT},
+        files={"consent_audio": ("consent.wav", _FAKE_AUDIO, "audio/wav")},
+    )
+    assert r.status_code == 200, r.text
+    r = client.get(f"/voice_audio/{pid}_consent.wav")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("audio/wav")
+    assert "content-disposition" not in r.headers
+    assert r.headers["x-content-type-options"] == "nosniff"

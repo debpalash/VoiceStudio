@@ -143,7 +143,10 @@
     "maintainerPalash": "Palash Debnath",
     "maintainerShimul": "Shimul Debnath",
     "follow": "Follow",
-    "website": "Website"
+    "website": "Website",
+    "hideUntilUpdate": "Hide until the next update",
+    "hideThanks": "Thanks for visiting our contributors! This comes back with the next update.",
+    "hoHoHo": "Ho ho ho!"
   },
   "twilioIntegration": {
     "exposureWarning": "Turning this on opens a separate local port that your tunnel publishes to the internet. Only requests signed with your Twilio Auth Token are accepted; the rest of VoiceStudio stays private.",
@@ -1847,7 +1850,9 @@
   },
   "projectActions": {
     "open": "Open “{{name}}” and replace the current draft? Save your current work first.",
-    "save_copy": "Save a copy"
+    "save_copy": "Save a copy",
+    "new": "New project",
+    "new_confirm": "Start a new, empty project? Saved projects stay as they are; unsaved changes to the current draft are lost."
   },
   "sidebar": {
     "save_project": "Save Dubbing Project",
@@ -2931,6 +2936,7 @@
     "autoHint": "Picks the best level for this computer."
   },
   "network": {
+    "pin_locked": "Too many wrong PINs. Try again in {{minutes}} min.",
     "copied": "Copied",
     "network": "Network",
     "switching": "Switching…",

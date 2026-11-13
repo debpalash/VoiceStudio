@@ -143,7 +143,10 @@
     "maintainerPalash": "Palash Debnath",
     "maintainerShimul": "Shimul Debnath",
     "follow": "Seguir",
-    "website": "Sitio web"
+    "website": "Sitio web",
+    "hideUntilUpdate": "Ocultar hasta la próxima actualización",
+    "hideThanks": "¡Gracias por visitar a nuestros colaboradores! Volverá con la próxima actualización.",
+    "hoHoHo": "¡Jo, jo, jo!"
   },
   "twilioIntegration": {
     "exposureWarning": "Al activarlo se abre un puerto local independiente que tu túnel publica en internet. Solo se aceptan solicitudes firmadas con tu Auth Token de Twilio; el resto de VoiceStudio sigue siendo privado.",
@@ -1655,7 +1658,9 @@
   },
   "projectActions": {
     "open": "¿Abrir «{{name}}» y reemplazar el borrador actual? Guarda tu trabajo primero.",
-    "save_copy": "Guardar una copia"
+    "save_copy": "Guardar una copia",
+    "new": "Nuevo proyecto",
+    "new_confirm": "¿Empezar un proyecto nuevo y vacío? Los proyectos guardados no cambian; los cambios sin guardar del borrador actual se perderán."
   },
   "sidebar": {
     "save_project": "Guardar proyecto de doblaje",
@@ -2933,6 +2938,7 @@
     "route_not_found": "El backend de VoiceStudio en ejecución no tiene el endpoint {{route}}. Reinicia VoiceStudio para que la app y el backend coincidan; si persiste, actualiza ambos a la misma versión."
   },
   "network": {
+    "pin_locked": "Demasiados PIN incorrectos. Vuelve a intentarlo en {{minutes}} min.",
     "copied": "Copiado",
     "network": "Red",
     "switching": "Cambiando…",

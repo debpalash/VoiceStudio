@@ -143,7 +143,10 @@
     "maintainerPalash": "Palash Debnath",
     "maintainerShimul": "Shimul Debnath",
     "follow": "Suivre",
-    "website": "Site web"
+    "website": "Site web",
+    "hideUntilUpdate": "Masquer jusqu’à la prochaine mise à jour",
+    "hideThanks": "Merci d’avoir rendu visite à nos contributeurs ! Cette section reviendra à la prochaine mise à jour.",
+    "hoHoHo": "Ho ho ho !"
   },
   "twilioIntegration": {
     "exposureWarning": "L'activation ouvre un port local distinct que votre tunnel publie sur internet. Seules les requêtes signées avec votre Auth Token Twilio sont acceptées ; le reste de VoiceStudio reste privé.",
@@ -1655,7 +1658,9 @@
   },
   "projectActions": {
     "open": "Ouvrir « {{name}} » et remplacer le brouillon actuel ? Enregistrez votre travail au préalable.",
-    "save_copy": "Enregistrer une copie"
+    "save_copy": "Enregistrer une copie",
+    "new": "Nouveau projet",
+    "new_confirm": "Commencer un nouveau projet vide ? Les projets enregistrés restent intacts ; les modifications non enregistrées du brouillon actuel seront perdues."
   },
   "sidebar": {
     "save_project": "Enregistrer le projet de doublage",
@@ -2933,6 +2938,7 @@
     "route_not_found": "Le backend VoiceStudio en cours d'exécution n'a pas le point d'accès {{route}}. Redémarrez VoiceStudio pour que l'application et le backend correspondent ; si le problème persiste, mettez les deux à jour vers la même version."
   },
   "network": {
+    "pin_locked": "Trop de codes PIN incorrects. Réessayez dans {{minutes}} min.",
     "copied": "Copié",
     "network": "Réseau",
     "switching": "Commutation…",

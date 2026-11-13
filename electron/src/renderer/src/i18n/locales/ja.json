@@ -143,7 +143,10 @@
     "maintainerPalash": "Palash Debnath",
     "maintainerShimul": "Shimul Debnath",
     "follow": "フォロー",
-    "website": "ウェブサイト"
+    "website": "ウェブサイト",
+    "hideUntilUpdate": "次のアップデートまで非表示",
+    "hideThanks": "コントリビューターを訪ねてくれてありがとう！次のアップデートでまた表示されます。",
+    "hoHoHo": "ホッホッホー！"
   },
   "twilioIntegration": {
     "exposureWarning": "オンにすると、トンネルがインターネットに公開する別のローカルポートが開きます。Twilio Auth Token で署名されたリクエストのみ受け付け、VoiceStudio のその他の部分は非公開のままです。",
@@ -1653,7 +1656,9 @@
   },
   "projectActions": {
     "open": "「{{name}}」を開いて現在の下書きを置き換えますか？先に作業を保存してください。",
-    "save_copy": "コピーを保存"
+    "save_copy": "コピーを保存",
+    "new": "新規プロジェクト",
+    "new_confirm": "新しい空のプロジェクトを始めますか？保存済みのプロジェクトはそのまま残りますが、現在の下書きの未保存の変更は失われます。"
   },
   "sidebar": {
     "save_project": "ダブプロジェクトの保存",
@@ -2931,6 +2936,7 @@
     "route_not_found": "実行中の VoiceStudio バックエンドに {{route}} エンドポイントがありません。アプリとバックエンドを一致させるため VoiceStudio を再起動してください。解決しない場合は両方を同じバージョンに更新してください。"
   },
   "network": {
+    "pin_locked": "PIN の誤りが多すぎます。{{minutes}} 分後にもう一度お試しください。",
     "copied": "コピーされました",
     "network": "ネットワーク",
     "switching": "切り替え中…",

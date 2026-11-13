@@ -230,6 +230,28 @@ describe('apiFetch 401 routing', () => {
     expect((authEvent() as any).detail.mode).toBe('pin');
   });
 
+  it('sends a PIN lockout (429) back to the PIN form with the wait', async () => {
+    globalThis.fetch = vi.fn(() =>
+      Promise.resolve({
+        ok: false,
+        status: 429,
+        statusText: 'Too Many Requests',
+        headers: new Headers({ 'Retry-After': '61' }),
+        text: async () => JSON.stringify({ detail: 'Too many wrong PINs. Try again later.' }),
+      }),
+    ) as any;
+    const { apiFetch } = await import('./client');
+    await expect(apiFetch('/system/info')).rejects.toBeTruthy();
+    expect((authEvent() as any).detail).toEqual({ mode: 'pin', retryAfter: 61 });
+  });
+
+  it('does not treat another 429 as a PIN lockout', async () => {
+    globalThis.fetch = stubStatus(429, 'Too Many Requests', 'rate limited');
+    const { apiFetch } = await import('./client');
+    await expect(apiFetch('/system/info')).rejects.toBeTruthy();
+    expect(authEvent()).toBeUndefined();
+  });
+
   const stub403 = (detail: string) => stubStatus(403, 'Forbidden', detail);
 
   it('dispatches ov:auth-required {mode:"apikey"} on an admin-gate 403 (#1525)', async () => {

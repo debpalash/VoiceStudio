@@ -143,7 +143,10 @@
     "maintainerPalash": "Palash Debnath",
     "maintainerShimul": "Shimul Debnath",
     "follow": "팔로우",
-    "website": "웹사이트"
+    "website": "웹사이트",
+    "hideUntilUpdate": "다음 업데이트까지 숨기기",
+    "hideThanks": "기여자들을 방문해 주셔서 감사합니다! 다음 업데이트 때 다시 표시됩니다.",
+    "hoHoHo": "호호호!"
   },
   "twilioIntegration": {
     "exposureWarning": "켜면 터널이 인터넷에 공개하는 별도의 로컬 포트가 열립니다. Twilio Auth Token으로 서명된 요청만 허용되며 VoiceStudio의 나머지 부분은 비공개로 유지됩니다.",
@@ -1653,7 +1656,9 @@
   },
   "projectActions": {
     "open": "“{{name}}”을(를) 열고 현재 초안을 바꿀까요? 먼저 작업을 저장하세요.",
-    "save_copy": "사본 저장"
+    "save_copy": "사본 저장",
+    "new": "새 프로젝트",
+    "new_confirm": "새 빈 프로젝트를 시작할까요? 저장된 프로젝트는 그대로 유지되지만, 현재 초안의 저장하지 않은 변경 사항은 사라집니다."
   },
   "sidebar": {
     "save_project": "더빙 프로젝트 저장",
@@ -2931,6 +2936,7 @@
     "route_not_found": "실행 중인 VoiceStudio 백엔드에 {{route}} 엔드포인트가 없습니다. 앱과 백엔드가 일치하도록 VoiceStudio를 다시 시작하세요. 계속되면 둘 다 같은 버전으로 업데이트하세요."
   },
   "network": {
+    "pin_locked": "잘못된 PIN을 너무 많이 입력했습니다. {{minutes}}분 후에 다시 시도하세요.",
     "copied": "복사됨",
     "network": "네트워크",
     "switching": "전환 중…",

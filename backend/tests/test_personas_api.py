@@ -43,6 +43,18 @@ def client():
     return TestClient(app, client=("127.0.0.1", 50000))
 
 
+@pytest.fixture(autouse=True)
+def _clips_decode(monkeypatch):
+    """These bundles carry filler bytes; refusing clips that do not decode is
+    covered in tests/test_persona_kind.py."""
+    from api.routers import profiles
+
+    async def _decodes(_path):
+        return True
+
+    monkeypatch.setattr(profiles, "_is_decodable_audio", _decodes)
+
+
 # ── bundle builders (no torch) ───────────────────────────────────────────────
 
 def _ovsvoice(*, manifest_over=None, ref=b"R" * 200, locked=None, preview=b"P" * 200,

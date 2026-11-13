@@ -218,6 +218,13 @@ async def import_persona(file: UploadFile = File(...)):
             consent_path = _voices_dest(consent_filename)
             parsed.extract_member("consent_audio", consent_path); written.append(consent_path)
 
+        # Every clip is served back from /voice_audio: refuse a bundle whose
+        # "audio" is not audio (VC-CVD-01892-V).
+        from api.routers.profiles import _is_decodable_audio
+        for path in written:
+            if not await _is_decodable_audio(path):
+                raise HTTPException(status_code=400, detail="Invalid bundle: its audio could not be read.")
+
         verified = _consent_verified(parsed, consent_path)
         consent_text = ((parsed.consent or {}).get("consent_text") or "").strip()
         recorded_at = None

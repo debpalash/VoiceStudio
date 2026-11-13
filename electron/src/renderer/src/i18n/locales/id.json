@@ -143,7 +143,10 @@
     "maintainerPalash": "Palash Debnath",
     "maintainerShimul": "Shimul Debnath",
     "follow": "Ikuti",
-    "website": "Situs web"
+    "website": "Situs web",
+    "hideUntilUpdate": "Sembunyikan hingga pembaruan berikutnya",
+    "hideThanks": "Terima kasih telah mengunjungi para kontributor kami! Bagian ini kembali pada pembaruan berikutnya.",
+    "hoHoHo": "Ho ho ho!"
   },
   "twilioIntegration": {
     "exposureWarning": "Mengaktifkan ini membuka port lokal terpisah yang dipublikasikan tunnel Anda ke internet. Hanya permintaan yang ditandatangani dengan Auth Token Twilio Anda yang diterima; bagian lain VoiceStudio tetap privat.",
@@ -1653,7 +1656,9 @@
   },
   "projectActions": {
     "open": "Buka “{{name}}” dan ganti draf saat ini? Simpan pekerjaan Anda terlebih dahulu.",
-    "save_copy": "Simpan salinan"
+    "save_copy": "Simpan salinan",
+    "new": "Proyek baru",
+    "new_confirm": "Mulai proyek baru yang kosong? Proyek tersimpan tetap utuh; perubahan yang belum disimpan pada draf saat ini akan hilang."
   },
   "sidebar": {
     "save_project": "Simpan Proyek Dub",
@@ -2931,6 +2936,7 @@
     "route_not_found": "Backend VoiceStudio yang berjalan tidak memiliki endpoint {{route}}. Mulai ulang VoiceStudio agar aplikasi dan backend cocok; jika masih terjadi, perbarui keduanya ke versi yang sama."
   },
   "network": {
+    "pin_locked": "Terlalu banyak PIN yang salah. Coba lagi dalam {{minutes}} menit.",
     "copied": "Disalin",
     "network": "Jaringan",
     "switching": "Beralih…",

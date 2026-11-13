@@ -143,7 +143,10 @@
     "maintainerPalash": "Palash Debnath",
     "maintainerShimul": "Shimul Debnath",
     "follow": "Segue",
-    "website": "Sitio web"
+    "website": "Sitio web",
+    "hideUntilUpdate": "Agochar ata a próxima actualización",
+    "hideThanks": "Grazas por visitar as persoas colaboradoras! Volverá coa próxima actualización.",
+    "hoHoHo": "Jo, jo, jo!"
   },
   "twilioIntegration": {
     "exposureWarning": "Ao activar esta opción ábrese un porto local separado que o teu túnel publica en Internet. Só se aceptan solicitudes asinadas co teu Twilio Auth Token; o resto de VoiceStudio permanece privado.",
@@ -1847,7 +1850,9 @@
   },
   "projectActions": {
     "open": "Queres abrir \"{{name}}\" e substituír o borrador actual? Garda primeiro o teu traballo actual.",
-    "save_copy": "Garda unha copia"
+    "save_copy": "Garda unha copia",
+    "new": "Novo proxecto",
+    "new_confirm": "Comezar un proxecto novo e baleiro? Os proxectos gardados non cambian; perderanse os cambios sen gardar do borrador actual."
   },
   "sidebar": {
     "save_project": "Gardar proxecto de dobraxe",
@@ -2931,6 +2936,7 @@
     "autoHint": "Escolle o mellor nivel para este ordenador."
   },
   "network": {
+    "pin_locked": "Demasiados PIN incorrectos. Téntao de novo en {{minutes}} min.",
     "copied": "Copiouse",
     "network": "Rede",
     "switching": "Cambiando…",

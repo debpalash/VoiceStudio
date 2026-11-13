@@ -143,7 +143,10 @@
     "maintainerPalash": "Palash Debnath",
     "maintainerShimul": "Shimul Debnath",
     "follow": "Obserwuj",
-    "website": "Strona"
+    "website": "Strona",
+    "hideUntilUpdate": "Ukryj do następnej aktualizacji",
+    "hideThanks": "Dziękujemy za odwiedzenie naszych współtwórców! Wróci to z następną aktualizacją.",
+    "hoHoHo": "Ho, ho, ho!"
   },
   "twilioIntegration": {
     "exposureWarning": "Włączenie otwiera osobny port lokalny, który Twój tunel publikuje w internecie. Akceptowane są tylko żądania podpisane Twoim Auth Token Twilio; reszta VoiceStudio pozostaje prywatna.",
@@ -1667,7 +1670,9 @@
   },
   "projectActions": {
     "open": "Otworzyć „{{name}}” i zastąpić bieżący szkic? Najpierw zapisz swoją pracę.",
-    "save_copy": "Zapisz kopię"
+    "save_copy": "Zapisz kopię",
+    "new": "Nowy projekt",
+    "new_confirm": "Rozpocząć nowy, pusty projekt? Zapisane projekty pozostaną bez zmian; niezapisane zmiany w bieżącym szkicu zostaną utracone."
   },
   "sidebar": {
     "save_project": "Zapisz projekt dubowy",
@@ -2957,6 +2962,7 @@
     "route_not_found": "Uruchomiony backend VoiceStudio nie ma punktu końcowego {{route}}. Uruchom VoiceStudio ponownie, aby aplikacja i backend do siebie pasowały; jeśli problem się utrzymuje, zaktualizuj oba do tej samej wersji."
   },
   "network": {
+    "pin_locked": "Zbyt wiele błędnych kodów PIN. Spróbuj ponownie za {{minutes}} min.",
     "copied": "Skopiowano",
     "network": "Sieć",
     "switching": "Przełączanie…",
