@@ -372,17 +372,38 @@ async def enable(app) -> ShareState:
         return await _enable(app)
 
 
+async def _serve_share(server: "uvicorn.Server") -> None:
+    """Run the share server, turning uvicorn's sys.exit() into an exception.
+
+    ``uvicorn.Server.startup()`` calls ``sys.exit(STARTUP_FAILURE)`` when the
+    port cannot be bound. Raised inside an asyncio task, that ``SystemExit``
+    escapes ``run_forever()`` and takes the main server down with it, so
+    ``_enable`` would never reach its "bind failed, stay Local" branch.
+    """
+    try:
+        await server.serve()
+    except SystemExit as exc:
+        raise RuntimeError(
+            f"share listener exited during startup (code {exc.code})"
+        ) from exc
+
+
 async def _enable(app) -> ShareState:
     if _runtime.state.enabled:
         return _runtime.state
     port = _find_free_port(share_port_base())
     pin = _gen_pin()
-    config = uvicorn.Config(app, host=SHARE_BIND_HOST, port=port, log_level="warning")
+    # lifespan="off": the main server already ran the app's startup/shutdown.
+    # Re-running it here fails (MCP session manager is single-use) and uvicorn
+    # then calls sys.exit() inside this task, which kills the whole backend.
+    config = uvicorn.Config(
+        app, host=SHARE_BIND_HOST, port=port, log_level="warning", lifespan="off"
+    )
     server = uvicorn.Server(config)
     server.install_signal_handlers = lambda: None  # never hijack signals in-process
-    _runtime.task = asyncio.create_task(server.serve())
+    _runtime.task = asyncio.create_task(_serve_share(server))
     for _ in range(100):  # ~5s for the socket to bind
-        if getattr(server, "started", False):
+        if getattr(server, "started", False) or _runtime.task.done():
             break
         await asyncio.sleep(0.05)
     if not getattr(server, "started", False):
