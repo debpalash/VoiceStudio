@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 const mocks = vi.hoisted(() => {
   const handlers = new Map<string, Set<(...args: any[]) => void>>();
   const ipcHandlers = new Map<string, (...args: any[]) => unknown>();
+  const appHandlers = new Map<string, (...args: any[]) => void>();
   // updates.json holds the saved update channel ("preview" is a retired value).
   const disk = { file: undefined as string | undefined };
   const fs = {
@@ -45,9 +46,13 @@ const mocks = vi.hoisted(() => {
     app: {
       isPackaged: true,
       getVersion: vi.fn(() => '0.5.2'),
+      once: vi.fn((event: string, listener: (...args: any[]) => void) => {
+        appHandlers.set(event, listener);
+      }),
       getPath: vi.fn(() => 'C:\\VoiceStudio-test'),
     },
     autoUpdater,
+    appHandlers,
     disk,
     fs,
     handlers,
@@ -973,6 +978,7 @@ describe('update IPC', () => {
   beforeEach(() => {
     mocks.handlers.clear();
     mocks.ipcHandlers.clear();
+    mocks.appHandlers.clear();
     mocks.disk.file = undefined;
     mocks.app.isPackaged = true;
     vi.clearAllMocks();
@@ -1026,7 +1032,63 @@ describe('update IPC', () => {
     });
 
     dispose();
+    mocks.appHandlers.get('will-quit')?.();
     expect(mocks.ipcMain.removeHandler).toHaveBeenCalledTimes(9);
+  });
+
+  test('keeps state readable while Restart to update stops the backend', async () => {
+    const updater = new DesktopUpdater();
+    emit('update-downloaded', { version: '0.5.3', releaseNotes: null });
+    const webContents = {
+      mainFrame: { url: 'app://voicestudio/index.html' },
+      send: vi.fn(),
+      isDestroyed: () => false,
+    };
+    const owner = { webContents, isDestroyed: () => false } as any;
+    const event = { sender: webContents, senderFrame: webContents.mainFrame };
+    let finishShutdown!: () => void;
+    const beforeInstall = vi.fn(() => {
+      // index.ts tears down updater resources before awaiting backend shutdown,
+      // while the renderer is still mounted and can refresh update state.
+      dispose();
+      dispose(); // Repeated quit preparation must not register cleanup twice.
+      return new Promise<void>((resolve) => (finishShutdown = resolve));
+    });
+    const dispose = registerUpdateIpc(updater, () => owner, beforeInstall);
+    const invoke = (channel: string) => {
+      const handler = mocks.ipcHandlers.get(channel);
+      if (!handler) throw new Error(`No handler registered for '${channel}'`);
+      return handler(event);
+    };
+
+    const install = invoke(UPDATE_CHANNELS.install);
+    expect(() => invoke(UPDATE_CHANNELS.getState)).not.toThrow();
+    expect(invoke(UPDATE_CHANNELS.getState)).toMatchObject({ status: 'downloaded' });
+    expect(mocks.app.once).toHaveBeenCalledTimes(1);
+    expect(() =>
+      mocks.ipcHandlers.get(UPDATE_CHANNELS.getState)!({
+        sender: {},
+        senderFrame: { url: 'https://attacker.invalid' },
+      }),
+    ).toThrow('Untrusted update request');
+    finishShutdown();
+    await install;
+    expect(mocks.autoUpdater.quitAndInstall).toHaveBeenCalledWith(false, true);
+    expect(() => invoke(UPDATE_CHANNELS.getState)).not.toThrow();
+
+    mocks.appHandlers.get('will-quit')?.();
+    dispose();
+    expect(() => invoke(UPDATE_CHANNELS.getState)).toThrow('No handler registered');
+    expect(mocks.ipcMain.removeHandler).toHaveBeenCalledTimes(9);
+  });
+
+  test('removes update IPC immediately when no renderer remains', () => {
+    const updater = new DesktopUpdater();
+    const dispose = registerUpdateIpc(updater, () => null, vi.fn());
+    dispose();
+    dispose();
+    expect(mocks.ipcMain.removeHandler).toHaveBeenCalledTimes(9);
+    expect(mocks.appHandlers.has('will-quit')).toBe(false);
   });
 });
 

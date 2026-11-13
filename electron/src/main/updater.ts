@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { isTrustedRenderer } from './trusted-renderer';
 import type { UpdateErrorKind, UpdateReleaseInfo, UpdateState } from '../preload/index.d';
-import { sendToLiveWindow } from './window-safety';
+import { isLiveWindow, sendToLiveWindow } from './window-safety';
 import { applicationUpdatesUnsupportedReason, CURRENT_DISTRIBUTION } from './distribution';
 import type { DistributionTarget } from '../../../config/distributions.mjs';
 import { GitHubAssetProvider, releaseAssets, type ReleaseAssets } from './github-asset-provider';
@@ -1107,10 +1107,19 @@ export function registerUpdateIpc(
   const unsubscribe = updater.subscribe((state) => {
     sendToLiveWindow(getMainWindow(), UPDATE_CHANNELS.state, state);
   });
+  let disposed = false;
   return () => {
+    if (disposed) return;
+    disposed = true;
     unsubscribe();
-    Object.values(UPDATE_CHANNELS)
-      .filter((channel) => channel !== UPDATE_CHANNELS.state)
-      .forEach((channel) => ipcMain.removeHandler(channel));
+    const removeHandlers = () => {
+      Object.values(UPDATE_CHANNELS)
+        .filter((channel) => channel !== UPDATE_CHANNELS.state)
+        .forEach((channel) => ipcMain.removeHandler(channel));
+    };
+    // Teardown awaits the backend while the renderer is still mounted. Keep
+    // its update requests valid until Electron has closed every window.
+    if (isLiveWindow(getMainWindow())) app.once('will-quit', removeHandlers);
+    else removeHandlers();
   };
 }

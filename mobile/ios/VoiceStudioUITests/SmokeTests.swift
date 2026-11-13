@@ -13,6 +13,15 @@ extension XCUIElement {
         guard waitReady(timeout: timeout, file: file, line: line) else { return }
         tap()
     }
+    /// Typing lands asynchronously: the last keystroke can reach the accessibility value a
+    /// moment after `typeText` returns (CI saw "…smoke tes" for "…smoke test"). Wait for the
+    /// value instead of reading it once; a keystroke that is really lost still fails.
+    @MainActor func waitForValue(_ expected: String, timeout: TimeInterval = 10, file: StaticString = #filePath, line: UInt = #line) {
+        let typed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", expected), object: self)
+        if XCTWaiter().wait(for: [typed], timeout: timeout) != .completed {
+            XCTAssertEqual(value as? String, expected, file: file, line: line)
+        }
+    }
     /// Waits for the element to exist; reports which element and which screen when it never does.
     /// Lazy content that is not on screen never appears here: use `reveal` for it.
     @MainActor @discardableResult func waitReady(timeout: TimeInterval = uiReadyTimeout, file: StaticString = #filePath, line: UInt = #line) -> Bool {
@@ -326,7 +335,7 @@ final class SmokeTests: XCTestCase {
         XCTAssertTrue(app.buttons["choice.option.spanish"].exists)
         app.buttons["Close"].tapReady()
         editor.tapReady(); editor.typeText("VoiceStudio smoke test")
-        XCTAssertEqual(editor.value as? String, "VoiceStudio smoke test")
+        editor.waitForValue("VoiceStudio smoke test")
         dismissUsingDone(app)
         app.swipeUp()
         app.buttons["speak.generate"].tapReady()
