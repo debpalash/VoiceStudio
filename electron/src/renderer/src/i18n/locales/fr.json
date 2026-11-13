@@ -143,7 +143,10 @@
     "maintainerPalash": "Palash Debnath",
     "maintainerShimul": "Shimul Debnath",
     "follow": "Suivre",
-    "website": "Site web"
+    "website": "Site web",
+    "hideUntilUpdate": "Masquer jusqu’à la prochaine mise à jour",
+    "hideThanks": "Merci d’avoir rendu visite à nos contributeurs ! Cette section reviendra à la prochaine mise à jour.",
+    "hoHoHo": "Ho ho ho !"
   },
   "twilioIntegration": {
     "exposureWarning": "L'activation ouvre un port local distinct que votre tunnel publie sur internet. Seules les requêtes signées avec votre Auth Token Twilio sont acceptées ; le reste de VoiceStudio reste privé.",

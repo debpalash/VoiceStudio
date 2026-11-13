@@ -20,12 +20,26 @@ function openProfile(event: MouseEvent<HTMLAnchorElement>) {
 
 type Credit = { login: string; avatar: string };
 
+/** Two rows of four below the maintainers: the top contributors by commits, then All. */
+export const HOME_CONTRIBUTOR_SLOTS = 8;
+
 /** Home contributor credits: core maintainers large on top, everyone else smaller below, then All. */
-export function HomeContributors() {
+export function HomeContributors({
+  onProfileOpen,
+}: {
+  /** Called with each personal profile link opened (not the All contributors page). */
+  onProfileOpen?: (href: string) => void;
+} = {}) {
   const { t } = useTranslation();
+  const openPersonal = (event: MouseEvent<HTMLAnchorElement>) => {
+    onProfileOpen?.(event.currentTarget.href);
+    openProfile(event);
+  };
   const maintainers = homeContributors.filter(({ login }) => login in MAINTAINER_CARDS);
   const others: Credit[] = [
-    ...homeContributors.filter(({ login }) => !(login in MAINTAINER_CARDS)),
+    ...homeContributors
+      .filter(({ login }) => !(login in MAINTAINER_CARDS))
+      .slice(0, HOME_CONTRIBUTOR_SLOTS - 1),
     { login: 'all', avatar: '' },
   ];
 
@@ -99,7 +113,7 @@ export function HomeContributors() {
                   href={href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  onClick={openProfile}
+                  onClick={openPersonal}
                 >
                   <span className="home-contributor-link-icon">
                     <KindIcon aria-hidden="true" />
@@ -140,7 +154,7 @@ export function HomeContributors() {
             aria-label={
               credit.login === 'all' ? t('homeUi.allContributors') : `GitHub · @${credit.login}`
             }
-            onClick={openProfile}
+            onClick={credit.login === 'all' ? openProfile : openPersonal}
           />
         }
       >

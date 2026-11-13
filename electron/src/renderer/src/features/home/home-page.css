@@ -50,7 +50,10 @@
   gap: 8px;
 }
 
-.home-contributors-rest {
+.home-contributors .home-contributors-rest {
+  display: grid;
+  /* Two rows of at most four portraits (HOME_CONTRIBUTOR_SLOTS). */
+  grid-template-columns: repeat(4, var(--contributor-size));
   gap: 2px;
 }
 
@@ -634,5 +637,191 @@
   }
   .home-destination:hover .home-destination-arrow {
     transform: none;
+  }
+}
+
+/* Version, What's new, the unlocked hide action and seasonal touches under the subtitle. */
+.home-hero-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: 10px;
+}
+
+.home-whats-new.home-whats-new {
+  height: auto;
+  gap: 6px;
+  padding: 0;
+  font-size: 12px;
+  color: color-mix(in oklab, var(--foreground) 60%, transparent);
+}
+
+.home-whats-new.home-whats-new:hover {
+  color: var(--primary);
+}
+
+.home-whats-new svg {
+  width: 12px;
+  height: 12px;
+}
+
+.home-hero-hide {
+  color: var(--muted-foreground);
+  animation: home-fade-in 600ms ease both;
+}
+
+/* Pixel snow, behind the artwork-free half and fading out toward the cards. */
+.home-snow {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  image-rendering: pixelated;
+  color: rgb(40 70 125);
+  mask-image: linear-gradient(to bottom, black 45%, transparent);
+}
+
+.dark .home-snow {
+  color: rgb(255 255 255);
+}
+
+.home-christmas {
+  position: relative;
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 6px;
+  margin-inline-start: 4px;
+}
+
+.home-christmas-bell {
+  width: 14px;
+  height: 14px;
+  color: rgb(217 164 65);
+  transform-origin: 50% 10%;
+}
+
+.home-christmas-santa {
+  position: relative;
+  display: block;
+  line-height: 0;
+}
+
+.home-christmas-santa svg {
+  display: block;
+}
+
+.home-christmas-bubble {
+  position: absolute;
+  top: 50%;
+  left: calc(100% + 8px);
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 8%);
+  opacity: 0;
+  transform: translate(-4px, -50%);
+  transition:
+    opacity 300ms ease,
+    transform 300ms ease;
+  pointer-events: none;
+}
+
+.home-christmas-bubble::after {
+  position: absolute;
+  top: 50%;
+  right: 100%;
+  width: 6px;
+  height: 6px;
+  margin-right: -3px;
+  border-bottom: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  background: var(--popover);
+  content: '';
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.home-christmas:hover .home-christmas-bubble {
+  opacity: 1;
+  transform: translate(0, -50%);
+}
+
+@keyframes home-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* Every 12 s Santa hops, the bell rings and "Ho ho ho!" shows for about 3 s. */
+  .home-christmas-santa svg {
+    animation: home-santa-hop 12s ease-in-out infinite;
+  }
+
+  .home-christmas-bell {
+    animation: home-bell-ring 12s ease-in-out infinite;
+  }
+
+  .home-christmas:not(:hover) .home-christmas-bubble {
+    animation: home-santa-bubble 12s ease-in-out infinite;
+  }
+}
+
+@keyframes home-santa-hop {
+  0%,
+  70%,
+  84%,
+  100% {
+    transform: translateY(0);
+  }
+  73%,
+  79% {
+    transform: translateY(-2px);
+  }
+  76%,
+  82% {
+    transform: translateY(0);
+  }
+}
+
+@keyframes home-bell-ring {
+  0%,
+  70%,
+  82%,
+  100% {
+    transform: rotate(0deg);
+  }
+  72%,
+  76% {
+    transform: rotate(12deg);
+  }
+  74%,
+  78% {
+    transform: rotate(-12deg);
+  }
+  80% {
+    transform: rotate(4deg);
+  }
+}
+
+@keyframes home-santa-bubble {
+  0%,
+  70%,
+  96%,
+  100% {
+    opacity: 0;
+    transform: translate(-4px, -50%);
+  }
+  73%,
+  92% {
+    opacity: 1;
+    transform: translate(0, -50%);
   }
 }
