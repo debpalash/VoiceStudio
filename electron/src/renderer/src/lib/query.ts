@@ -15,6 +15,9 @@ export const queryClient = new QueryClient({
       retry: retryQuery,
       // The backend is local; window focus is not a signal that data changed.
       refetchOnWindowFocus: false,
+      // Idle CPU: interval polls pause while the window is hidden or minimised
+      // and resume on show. Pinned so a call site cannot opt in by accident.
+      refetchIntervalInBackground: false,
     },
   },
 });

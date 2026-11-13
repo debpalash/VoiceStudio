@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useVisibleInterval } from '@/lib/visible-interval';
+import { useMemo, useState } from 'react';
 import {
   CheckIcon,
   CircleIcon,
@@ -57,10 +58,7 @@ export function GenerationProgress({
   const percent = Math.round(status.percent);
   const eta = status.etaS;
 
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
-  }, []);
+  useVisibleInterval(() => setNow(Date.now()), 1000);
 
   return (
     <div

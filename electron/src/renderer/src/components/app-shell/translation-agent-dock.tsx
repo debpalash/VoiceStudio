@@ -1,3 +1,4 @@
+import { useVisibleInterval } from '@/lib/visible-interval';
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '@tanstack/react-store';
 import { useTranslation } from 'react-i18next';
@@ -16,11 +17,7 @@ export function TranslationAgentDock() {
   const following = useRef(true);
   const latest = activity.runs.at(-1);
   const running = activity.runs.some((run) => run.status === 'running');
-  useEffect(() => {
-    if (!running) return;
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [running]);
+  useVisibleInterval(() => setNow(Date.now()), 1000, running);
   useEffect(() => {
     if (log.current && following.current) log.current.scrollTop = log.current.scrollHeight;
   }, [activity.runs, activity.tab]);

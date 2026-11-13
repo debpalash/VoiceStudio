@@ -1,3 +1,4 @@
+import { useVisibleInterval } from '@/lib/visible-interval';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Spinner } from '@/components/ui/spinner';
@@ -25,15 +26,19 @@ export function useFailureRepeats(failed: boolean, message: string | undefined):
 /** Seconds since `active` last became true; 0 while inactive. */
 export function useActiveSeconds(active: boolean): number {
   const [seconds, setSeconds] = useState(0);
+  const startedAt = useRef(Date.now());
   useEffect(() => {
     if (!active) {
       setSeconds(0);
       return;
     }
-    const startedAt = Date.now();
-    const id = window.setInterval(() => setSeconds(Math.floor((Date.now() - startedAt) / 1000)), 1000);
-    return () => window.clearInterval(id);
+    startedAt.current = Date.now();
   }, [active]);
+  useVisibleInterval(
+    () => setSeconds(Math.floor((Date.now() - startedAt.current) / 1000)),
+    1000,
+    active,
+  );
   return seconds;
 }
 
