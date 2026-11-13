@@ -17,6 +17,7 @@ from services.reference_transcript import stored_reference_transcript
 from core.db import db_conn
 from core.config import DUB_DIR, VOICES_DIR, dub_seg_path
 from core.path_security import contained_join
+from core.logging_utils import log_safe
 from core.tasks import task_manager
 from schemas.requests import DubRequest
 from services.model_manager import _gpu_pool, await_free_engine, run_on_gpu_pool_guarded
@@ -857,7 +858,6 @@ async def dub_generate(job_id: str, req: DubRequest):
             lookup, disables reuse rather than guessing at the checkpoint.
             """
             if not _model_fp_memo:
-                result = (True, None, None)
                 try:
                     from services import local_model_paths
 
@@ -869,7 +869,15 @@ async def dub_generate(job_id: str, req: DubRequest):
 
                         checkpoint = resolve_omnivoice_checkpoint()
                         selected = checkpoint
-                    if selected:
+                    if engine_id == "cosyvoice":
+                        # Its public identity is only a display basename.
+                        # Both loaders resolve the real weights separately.
+                        resolve_folder = getattr(backend, "_resolved_model_dir", None)
+                        folder = resolve_folder() if callable(resolve_folder) else None
+                        if not folder:
+                            raise ValueError("CosyVoice weights directory unavailable")
+                        checkpoint = os.path.realpath(folder)
+                    elif selected:
                         folder = selected if os.path.isabs(selected) or os.path.isdir(selected) else None
                     else:
                         folder = local_model_paths.get("tts", engine_id)
@@ -1574,7 +1582,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                             if _rsr != backend.sample_rate or _speech_unusable(_recovered_audio):
                                 raise ValueError("recovered audio is empty or at another sample rate")
                     except Exception as err:  # noqa: BLE001
-                        logger.info("dub resume: rendering %s normally: %s", seg_id, type(err).__name__)
+                        logger.info("dub resume: rendering %s normally: %s", log_safe(seg_id), type(err).__name__)
                         if _recovered_wav:
                             await _run_journal_io(journal.drop, seg_id)
                         _recovered_wav = None

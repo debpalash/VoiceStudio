@@ -116,10 +116,19 @@ class CosyVoiceSubprocessBackend(SubprocessBackend):
             msg["seed"] = int(seed)
         return self._exchange(msg, deadline_text="")
 
+    @staticmethod
+    def _resolved_model_dir() -> str | None:
+        """The actual weights directory selected by the sidecar loader."""
+        override = os.environ.get("OMNIVOICE_COSYVOICE_MODEL")
+        if override:
+            return override
+        checkout = os.environ.get(VENV_ENV_VAR)
+        return os.path.join(checkout, MANAGED_MODEL_SUBDIR) if checkout else None
+
     def model_identity(self) -> str:
         # v1/v2/v3 share the one "cosyvoice" id; the folder name tells them
         # apart, as it does for the in-process engine.
-        model_dir = os.environ.get("OMNIVOICE_COSYVOICE_MODEL") or MANAGED_MODEL_SUBDIR
+        model_dir = self._resolved_model_dir() or MANAGED_MODEL_SUBDIR
         return os.path.basename(os.path.normpath(model_dir))
 
 

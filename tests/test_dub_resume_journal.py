@@ -54,6 +54,26 @@ def test_size_bound(tmp_path, dub_resume):
     assert not (tmp_path / "j" / "seg_b.wav").exists()
 
 
+@pytest.mark.parametrize("operation", ["full", "discard", "failure"])
+def test_segment_diagnostics_are_bounded_single_line(tmp_path, dub_resume, caplog, operation):
+    import logging
+    from core.logging_utils import log_safe
+
+    sid = "segment\nFORGED\r\x1b[31m" + ("x" * 800 if operation != "discard" else "")
+    journal = dub_resume.DubResumeJournal(str(tmp_path / "j"), max_bytes=0 if operation == "full" else 100)
+    src = _wav(tmp_path / "s.wav")
+    with caplog.at_level(logging.INFO):
+        if operation == "discard":
+            assert journal.record(sid, "k", src, 1)
+            assert journal.recover(sid, "changed", 1, _ok) is None
+        else:
+            assert not journal.record(sid, "k", src if operation == "full" else str(tmp_path / "missing.wav"), 1)
+    assert caplog.records
+    message = caplog.records[-1].getMessage()
+    assert log_safe(sid) in message
+    assert not any(char in message for char in "\n\r\x1b")
+
+
 def test_prune_drops_unknown_stale_and_torn_entries(tmp_path, dub_resume):
     root = tmp_path / "j"
     journal = dub_resume.DubResumeJournal(str(root), max_age_s=3600)

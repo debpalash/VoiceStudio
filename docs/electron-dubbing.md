@@ -104,7 +104,7 @@ copies inside that job's folder (one set per track language, at most 1 GiB). The
 generation removes copies older than 7 days; publication or deleting the job removes them too.
 The next generation of the same job reuses a copy
 only when its text, voice reference audio, engine and effective checkpoint (including
-environment overrides and local model files), language, steps, guidance, speed, seed, watermark setting, mastering and
+environment overrides, CosyVoice's actual weights directory and local model files), language, steps, guidance, speed, seed, watermark setting, mastering and
 effect preset are all identical, and only after the audio verifies; anything else, or any problem
 reading the copies, renders the segment normally without an error. Recovery copies never count as
 cached speech: previews and partial regeneration still see a segment only after its track is

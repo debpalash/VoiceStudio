@@ -22,6 +22,8 @@ Pure file I/O, no torch, so it is unit-testable.
 """
 from __future__ import annotations
 
+from core.logging_utils import log_safe
+
 import hashlib
 import json
 import logging
@@ -306,7 +308,7 @@ class DubResumeJournal:
                     reason = f"audio unreadable ({type(err).__name__})"
             if reason is None:
                 return wav
-            logger.info("dub resume: discarding recovered segment %s: %s", seg_id, reason)
+            logger.info("dub resume: discarding recovered segment %s: %s", log_safe(seg_id), reason)
             self.drop(seg_id)
             return None
 
@@ -368,7 +370,7 @@ class DubResumeJournal:
                 total = self._total_bytes()
                 previous_size = self._state.sizes.get(os.path.basename(wav), 0)
                 if total - previous_size + size > self.max_bytes:
-                    logger.info("dub resume: journal full, segment %s not kept", seg_id)
+                    logger.info("dub resume: journal full, segment %s not kept", log_safe(seg_id))
                     return False
                 os.makedirs(self.root, exist_ok=True)
                 token = uuid.uuid4().hex[:8]
@@ -399,7 +401,7 @@ class DubResumeJournal:
                 flush_dir(self.root)
                 return True
             except Exception as err:  # noqa: BLE001
-                logger.info("dub resume: segment %s not journaled: %s", seg_id, type(err).__name__)
+                logger.info("dub resume: segment %s not journaled: %s", log_safe(seg_id), type(err).__name__)
                 for leftover in (locals().get("tmp_wav"), locals().get("tmp_meta")):
                     if leftover:
                         try:

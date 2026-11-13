@@ -7,6 +7,7 @@ synthesis input is identical.
 import asyncio
 import hashlib
 import json
+import os
 from types import SimpleNamespace
 
 import pytest
@@ -418,3 +419,49 @@ def test_environment_checkpoint_ignores_unused_saved_folder_changes(dub, monkeyp
     weights.write_bytes(b"unused-folder-version-two")
     dub.run()
     assert len(dub.generated) == 2
+
+
+@pytest.mark.parametrize("kind", ["inprocess", "sidecar-override", "sidecar-managed"])
+@pytest.mark.parametrize("change", ["unchanged", "weights", "same-name-folder"])
+def test_cosyvoice_actual_weights_change_rerenders(dub, monkeypatch, tmp_path, kind, change):
+    from services.tts_backend import CosyVoiceBackend
+    from engines.cosyvoice_subprocess import CosyVoiceSubprocessBackend, MANAGED_MODEL_SUBDIR
+
+    cls = CosyVoiceBackend if kind == "inprocess" else CosyVoiceSubprocessBackend
+    backend = cls()
+    def generate(**kwargs):
+        dub.generated.append(kwargs)
+        if dub.state["fail_on_call"] == len(dub.generated):
+            raise RuntimeError("engine crashed")
+        return torch.ones(1, 24000) * 0.1
+
+    backend.generate = generate
+    backend.applies_own_mastering = True
+
+    async def resolve():
+        return "cosyvoice", backend
+
+    monkeypatch.setattr(dub.dg, "_resolve_dub_execution", resolve)
+
+    def select(base):
+        folder = base / (MANAGED_MODEL_SUBDIR if kind == "sidecar-managed" else "same-model")
+        folder.mkdir(parents=True)
+        (folder / "model.pt").write_bytes(b"v1")
+        if kind == "sidecar-managed":
+            monkeypatch.delenv("OMNIVOICE_COSYVOICE_MODEL", raising=False)
+            monkeypatch.setenv("OMNIVOICE_COSYVOICE_DIR", str(base))
+        else:
+            monkeypatch.setenv("OMNIVOICE_COSYVOICE_MODEL", str(folder))
+        return folder
+
+    folder = select(tmp_path / "first")
+    _crash_after(dub, 2)
+    if change == "weights":
+        (folder / "model.pt").write_bytes(b"replacement weights")
+    elif change == "same-name-folder":
+        previous = (folder / "model.pt").stat()
+        replacement = select(tmp_path / "second") / "model.pt"
+        replacement.write_bytes(b"v2")
+        os.utime(replacement, ns=(previous.st_atime_ns, previous.st_mtime_ns))
+    dub.run()
+    assert len(dub.generated) == (2 if change == "unchanged" else 4)
