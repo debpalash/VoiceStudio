@@ -143,7 +143,10 @@
     "maintainerPalash": "Palash Debnath",
     "maintainerShimul": "Shimul Debnath",
     "follow": "Ikuti",
-    "website": "Situs web"
+    "website": "Situs web",
+    "hideUntilUpdate": "Sembunyikan hingga pembaruan berikutnya",
+    "hideThanks": "Terima kasih telah mengunjungi para kontributor kami! Bagian ini kembali pada pembaruan berikutnya.",
+    "hoHoHo": "Ho ho ho!"
   },
   "twilioIntegration": {
     "exposureWarning": "Mengaktifkan ini membuka port lokal terpisah yang dipublikasikan tunnel Anda ke internet. Hanya permintaan yang ditandatangani dengan Auth Token Twilio Anda yang diterima; bagian lain VoiceStudio tetap privat.",

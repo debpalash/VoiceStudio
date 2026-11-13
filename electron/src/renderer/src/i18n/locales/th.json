@@ -143,7 +143,10 @@
     "maintainerPalash": "Palash Debnath",
     "maintainerShimul": "Shimul Debnath",
     "follow": "ติดตาม",
-    "website": "เว็บไซต์"
+    "website": "เว็บไซต์",
+    "hideUntilUpdate": "ซ่อนจนถึงการอัปเดตครั้งถัดไป",
+    "hideThanks": "ขอบคุณที่แวะไปหาผู้ร่วมพัฒนาของเรา! ส่วนนี้จะกลับมาในการอัปเดตครั้งถัดไป",
+    "hoHoHo": "โฮ่ โฮ่ โฮ่!"
   },
   "twilioIntegration": {
     "exposureWarning": "การเปิดใช้งานจะเปิดพอร์ตภายในแยกต่างหากที่อุโมงค์ของคุณเผยแพร่สู่อินเทอร์เน็ต รับเฉพาะคำขอที่ลงนามด้วย Auth Token ของ Twilio ของคุณเท่านั้น ส่วนอื่นของ VoiceStudio ยังคงเป็นส่วนตัว",
