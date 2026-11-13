@@ -143,7 +143,10 @@
     "maintainerPalash": "Palash Debnath",
     "maintainerShimul": "Shimul Debnath",
     "follow": "关注",
-    "website": "网站"
+    "website": "网站",
+    "hideUntilUpdate": "隐藏到下次更新",
+    "hideThanks": "感谢你拜访我们的贡献者！下次更新时它会再次出现。",
+    "hoHoHo": "吼吼吼！"
   },
   "twilioIntegration": {
     "exposureWarning": "开启后会打开一个单独的本地端口，由你的隧道发布到互联网。只接受使用你的 Twilio Auth Token 签名的请求；VoiceStudio 的其余部分保持私密。",

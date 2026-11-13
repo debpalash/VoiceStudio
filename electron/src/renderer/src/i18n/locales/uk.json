@@ -143,7 +143,10 @@
     "maintainerPalash": "Palash Debnath",
     "maintainerShimul": "Shimul Debnath",
     "follow": "Стежити",
-    "website": "Сайт"
+    "website": "Сайт",
+    "hideUntilUpdate": "Сховати до наступного оновлення",
+    "hideThanks": "Дякуємо, що завітали до наших учасників! Це повернеться з наступним оновленням.",
+    "hoHoHo": "Хо-хо-хо!"
   },
   "twilioIntegration": {
     "exposureWarning": "Увімкнення відкриває окремий локальний порт, який ваш тунель публікує в інтернеті. Приймаються лише запити, підписані вашим Auth Token Twilio; решта VoiceStudio залишається приватною.",
