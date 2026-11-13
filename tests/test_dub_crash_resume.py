@@ -240,6 +240,23 @@ def test_resume_failures_do_not_log_private_paths(dub, monkeypatch, caplog, fail
     assert "PermissionError" in caplog.text
 
 
+def test_staging_write_failure_does_not_log_private_paths(dub, monkeypatch, caplog):
+    real = dub.dg.atomic_save_wav
+    failed = []
+
+    def fail_once(*args, **kwargs):
+        if not failed:
+            failed.append(True)
+            raise PermissionError("/home/resume-private-user/recordings/private.wav")
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(dub.dg, "atomic_save_wav", fail_once)
+    caplog.set_level("WARNING", logger="omnivoice.dub")
+    dub.run()
+    assert "could not stage speech" in caplog.text
+    assert "resume-private-user" not in caplog.text
+
+
 def test_cancelled_render_promotes_nothing(dub):
     dub.state["cancel_after"] = 2
     events = dub.run()

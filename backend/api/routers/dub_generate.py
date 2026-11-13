@@ -1736,7 +1736,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                 except Exception as write_err:  # noqa: BLE001
                     # Nothing is registered for publication; the render goes on
                     # with a scratch copy so one failed write cannot abort it.
-                    logger.warning("could not stage speech for %s: %s", seg_id, write_err)
+                    logger.warning("could not stage speech for %s: %s", log_safe(seg_id), type(write_err).__name__)
                     all_segment_wavs.append(
                         _store_mix_wav(seg.start, seg.end, audio_tensor, backend.sample_rate, f"mix_{seg_id}")
                     )
