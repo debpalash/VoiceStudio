@@ -57,7 +57,9 @@ function Run-Checked([string]$Command, [string[]]$Arguments) {
 }
 if ($vsVersion) { $vsVersion = $vsVersion -replace '^v', ''; Assert-Version $vsVersion }
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-$work = Join-Path ([IO.Path]::GetTempPath()) ('voicestudio-install-' + [Guid]::NewGuid())
+# MSVC still encounters MAX_PATH in nested Cargo dependency outputs. Keep this
+# unique checkout root short so main builds fit below the limit on normal TEMP.
+$work = Join-Path ([IO.Path]::GetTempPath()) ('vs-install-' + [IO.Path]::GetRandomFileName())
 New-Item -ItemType Directory -Path $work | Out-Null
 try {
     if ($mode -eq 'main') {
