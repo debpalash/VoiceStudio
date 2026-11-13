@@ -46,6 +46,7 @@ import {
 import { useDeleteProfile } from '@/hooks/use-profiles';
 import { deleteHistoryItem } from '@/lib/api/history';
 import { Input } from '@/components/ui/input';
+import { VirtualList } from '@/components/virtual-list';
 import { apiJson, apiPath, describeError } from '@/lib/api/client';
 import { runRendererTask } from '@/lib/global-error-recovery';
 import { isImeComposing } from '@/lib/ime';
@@ -142,6 +143,7 @@ export function ProjectsPage() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deletedCount, setDeletedCount] = useState(0);
   const cancelDelete = useRef<HTMLButtonElement>(null);
+  const scrollRef = useRef<HTMLElement>(null);
   const [busy, setBusy] = useState(false);
   const pending = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -505,7 +507,7 @@ export function ProjectsPage() {
             );
           })}
         </SecondarySidebar>
-        <section className="min-w-0 flex-1 overflow-y-auto p-6">
+        <section ref={scrollRef} className="min-w-0 flex-1 overflow-y-auto p-6">
           <div className="mx-auto max-w-6xl space-y-5">
             <div className="flex items-center gap-2">
               <div className="relative min-w-0 flex-1">
@@ -616,241 +618,259 @@ export function ProjectsPage() {
               className={
                 view === 'grid'
                   ? 'grid grid-cols-[repeat(auto-fill,minmax(min(280px,100%),1fr))] gap-3'
-                  : 'divide-y divide-border/50'
+                  : undefined
               }
             >
-              {visible.map((row) => {
-                const typeLabel = t(
-                  row.kind === 'dub'
-                    ? 'projects.dub_projects'
-                    : row.kind === 'stories'
-                      ? 'projects.stories'
-                      : row.kind === 'audiobooks'
-                        ? 'projects.audiobooks'
-                        : row.kind === 'profiles'
-                          ? 'projects.voice_profiles'
-                          : row.kind === 'transcripts'
-                            ? 'projects.transcripts'
-                            : row.kind === 'history'
-                              ? 'projects.history'
-                              : 'projects.exports',
-                );
-                return (
-                  <article
-                    key={row.key}
-                    className={
-                      view === 'grid'
-                        ? 'flex min-w-0 flex-col gap-4 rounded-xl border border-border/50 bg-card/35 p-4'
-                        : 'flex min-w-0 flex-wrap items-center gap-3 py-3'
-                    }
-                  >
-                    <div className="flex min-w-0 flex-1 items-center gap-3">
-                      <input
-                        type="checkbox"
-                        className="size-4 shrink-0 accent-primary"
-                        disabled={locked}
-                        aria-label={t('projects.select_item', { name: row.name })}
-                        checked={selected.has(row.key)}
-                        onChange={(event) => {
-                          const checked = event.target.checked;
-                          setSelected((current) => {
-                            const next = new Set(current);
-                            if (checked) next.add(row.key);
-                            else next.delete(row.key);
-                            return next;
-                          });
-                        }}
-                      />
-                      {row.profile ? (
-                        <ProfileAvatar name={row.profile.name} imageUrl={row.profile.image_url} />
-                      ) : (
-                        <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted/60 text-muted-foreground">
-                          {row.kind === 'dub' ? (
-                            <FilmIcon className="size-4" />
-                          ) : row.kind === 'audiobooks' ? (
-                            <BookOpenIcon className="size-4" />
-                          ) : row.kind === 'profiles' ? (
-                            <FingerprintIcon className="size-4" />
-                          ) : row.kind === 'transcripts' ? (
-                            <FileTextIcon className="size-4" />
-                          ) : row.kind === 'exports' ? (
-                            <DownloadIcon className="size-4" />
-                          ) : (
-                            <AudioLinesIcon className="size-4" />
-                          )}
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        {row.projectKind ? (
-                          <Button
-                            className="h-auto max-w-full justify-start p-0 text-left font-medium whitespace-normal hover:bg-transparent"
-                            variant="ghost"
-                            disabled={locked}
-                            onClick={() =>
-                              setConfirm({
-                                id: row.id,
-                                kind: row.projectKind!,
-                                action: 'open',
-                              })
-                            }
-                          >
-                            <span className="line-clamp-2">{row.name}</span>
-                          </Button>
-                        ) : (
-                          <h2 className="line-clamp-2 text-sm font-medium">{row.name}</h2>
-                        )}
-                        <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-                          <span>{typeLabel}</span>
-                          {row.subtitle && <span>{row.subtitle}</span>}
-                          {row.updatedAt > 0 && (
-                            <span className="inline-flex items-center gap-1">
-                              <ClockIcon className="size-3" />
-                              {when(row.updatedAt)}
-                            </span>
-                          )}
-                        </p>
-                        {row.render ? <RenderDisclosure render={row.render} /> : null}
-                      </div>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-1">
-                      {row.profile && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => void useProfile(row.profile!)}
-                        >
-                          {t('clone.select_profile')}
-                        </Button>
-                      )}
-                      {row.transcript && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            const transcript = row.transcript!;
-                            patchCloneSettings({
-                              text: preferredTranscript(transcript),
-                              ...(transcript.language && transcript.language !== 'unknown'
-                                ? { language: transcript.language }
-                                : {}),
+              {(() => {
+                const renderRow = (row: (typeof visible)[number]) => {
+                  const typeLabel = t(
+                    row.kind === 'dub'
+                      ? 'projects.dub_projects'
+                      : row.kind === 'stories'
+                        ? 'projects.stories'
+                        : row.kind === 'audiobooks'
+                          ? 'projects.audiobooks'
+                          : row.kind === 'profiles'
+                            ? 'projects.voice_profiles'
+                            : row.kind === 'transcripts'
+                              ? 'projects.transcripts'
+                              : row.kind === 'history'
+                                ? 'projects.history'
+                                : 'projects.exports',
+                  );
+                  return (
+                    <article
+                      key={row.key}
+                      className={
+                        view === 'grid'
+                          ? 'flex min-w-0 flex-col gap-4 rounded-xl border border-border/50 bg-card/35 p-4'
+                          : 'flex min-w-0 flex-wrap items-center gap-3 py-3'
+                      }
+                    >
+                      <div className="flex min-w-0 flex-1 items-center gap-3">
+                        <input
+                          type="checkbox"
+                          className="size-4 shrink-0 accent-primary"
+                          disabled={locked}
+                          aria-label={t('projects.select_item', { name: row.name })}
+                          checked={selected.has(row.key)}
+                          onChange={(event) => {
+                            const checked = event.target.checked;
+                            setSelected((current) => {
+                              const next = new Set(current);
+                              if (checked) next.add(row.key);
+                              else next.delete(row.key);
+                              return next;
                             });
-                            runRendererTask('Open profile in voice cloning', () =>
-                              navigate({ to: '/clone' }),
-                            );
                           }}
-                        >
-                          <FileTextIcon />
-                          {t('clone.text_label')}
-                        </Button>
-                      )}
-                      {row.take && (
-                        <>
-                          <PlayInDockButton
-                            src={apiPath('/audio/' + encodeURIComponent(row.take.audio_path))}
-                            source={'take-' + row.take.id}
-                            title={row.name}
-                            kind={takePlaybackKind(row.take.mode)}
-                            duration={row.take.duration_seconds}
-                          />
+                        />
+                        {row.profile ? (
+                          <ProfileAvatar name={row.profile.name} imageUrl={row.profile.image_url} />
+                        ) : (
+                          <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted/60 text-muted-foreground">
+                            {row.kind === 'dub' ? (
+                              <FilmIcon className="size-4" />
+                            ) : row.kind === 'audiobooks' ? (
+                              <BookOpenIcon className="size-4" />
+                            ) : row.kind === 'profiles' ? (
+                              <FingerprintIcon className="size-4" />
+                            ) : row.kind === 'transcripts' ? (
+                              <FileTextIcon className="size-4" />
+                            ) : row.kind === 'exports' ? (
+                              <DownloadIcon className="size-4" />
+                            ) : (
+                              <AudioLinesIcon className="size-4" />
+                            )}
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          {row.projectKind ? (
+                            <Button
+                              className="h-auto max-w-full justify-start p-0 text-left font-medium whitespace-normal hover:bg-transparent"
+                              variant="ghost"
+                              disabled={locked}
+                              onClick={() =>
+                                setConfirm({
+                                  id: row.id,
+                                  kind: row.projectKind!,
+                                  action: 'open',
+                                })
+                              }
+                            >
+                              <span className="line-clamp-2">{row.name}</span>
+                            </Button>
+                          ) : (
+                            <h2 className="line-clamp-2 text-sm font-medium">{row.name}</h2>
+                          )}
+                          <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+                            <span>{typeLabel}</span>
+                            {row.subtitle && <span>{row.subtitle}</span>}
+                            {row.updatedAt > 0 && (
+                              <span className="inline-flex items-center gap-1">
+                                <ClockIcon className="size-3" />
+                                {when(row.updatedAt)}
+                              </span>
+                            )}
+                          </p>
+                          {row.render ? <RenderDisclosure render={row.render} /> : null}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-1">
+                        {row.profile && (
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => void reuseTake(row.take!)}
+                            onClick={() => void useProfile(row.profile!)}
                           >
-                            {t('clone.history_reuse')}
+                            {t('clone.select_profile')}
                           </Button>
-                        </>
-                      )}
-                      {row.export && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => void reveal(row.export!)}
-                        >
-                          <FolderOpenIcon />
-                          {t('clone.reveal')}
-                        </Button>
-                      )}
-                      {row.render && (
-                        <PlayInDockButton
-                          src={apiPath('/audio/' + encodeURIComponent(row.render.output))}
-                          source={'projects-render-' + row.render.job_id}
-                          title={row.name}
-                          kind={row.render.type === 'story' ? 'story' : 'audiobook'}
-                        />
-                      )}
-                      {row.projectKind && (
-                        <>
+                        )}
+                        {row.transcript && (
                           <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label={t('sidebar.rename') + ' ' + row.name}
-                            disabled={locked}
+                            size="sm"
+                            variant="outline"
                             onClick={() => {
-                              setRename(row.name);
-                              setConfirm({
-                                id: row.id,
-                                kind: row.projectKind!,
-                                action: 'rename',
+                              const transcript = row.transcript!;
+                              patchCloneSettings({
+                                text: preferredTranscript(transcript),
+                                ...(transcript.language && transcript.language !== 'unknown'
+                                  ? { language: transcript.language }
+                                  : {}),
                               });
+                              runRendererTask('Open profile in voice cloning', () =>
+                                navigate({ to: '/clone' }),
+                              );
                             }}
                           >
-                            <PencilIcon />
+                            <FileTextIcon />
+                            {t('clone.text_label')}
                           </Button>
-                        </>
-                      )}
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={t('common.delete') + ' ' + row.name}
-                        disabled={locked}
-                        onClick={() => requestDelete([row])}
-                      >
-                        <TrashIcon />
-                      </Button>
-                    </div>
-                    {row.projectKind &&
-                      confirm?.id === row.id &&
-                      confirm.kind === row.projectKind && (
-                        <div className="flex w-full flex-wrap items-center gap-3 rounded-lg bg-muted/40 p-3 text-sm">
-                          {confirm.action === 'rename' ? (
-                            <Input
-                              className="min-w-48 flex-1"
-                              autoFocus
-                              aria-label={t('stories.projectName')}
-                              value={rename}
-                              onChange={(event) => setRename(event.target.value)}
-                              disabled={locked}
-                              onKeyDown={(event) => {
-                                if (isImeComposing(event)) return;
-                                if (event.key === 'Enter' && rename.trim()) void apply();
-                                if (event.key === 'Escape') setConfirm(null);
-                              }}
+                        )}
+                        {row.take && (
+                          <>
+                            <PlayInDockButton
+                              src={apiPath('/audio/' + encodeURIComponent(row.take.audio_path))}
+                              source={'take-' + row.take.id}
+                              title={row.name}
+                              kind={takePlaybackKind(row.take.mode)}
+                              duration={row.take.duration_seconds}
                             />
-                          ) : (
-                            <span className="flex-1">
-                              {t('projectActions.open', { name: row.name })}
-                            </span>
-                          )}
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void reuseTake(row.take!)}
+                            >
+                              {t('clone.history_reuse')}
+                            </Button>
+                          </>
+                        )}
+                        {row.export && (
                           <Button
-                            variant="default"
-                            disabled={locked || (confirm.action === 'rename' && !rename.trim())}
-                            onClick={() => void apply()}
+                            size="sm"
+                            variant="outline"
+                            onClick={() => void reveal(row.export!)}
                           >
-                            {t(
-                              confirm.action === 'rename'
-                                ? 'sidebar.rename_save'
-                                : 'common.confirm',
+                            <FolderOpenIcon />
+                            {t('clone.reveal')}
+                          </Button>
+                        )}
+                        {row.render && (
+                          <PlayInDockButton
+                            src={apiPath('/audio/' + encodeURIComponent(row.render.output))}
+                            source={'projects-render-' + row.render.job_id}
+                            title={row.name}
+                            kind={row.render.type === 'story' ? 'story' : 'audiobook'}
+                          />
+                        )}
+                        {row.projectKind && (
+                          <>
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={t('sidebar.rename') + ' ' + row.name}
+                              disabled={locked}
+                              onClick={() => {
+                                setRename(row.name);
+                                setConfirm({
+                                  id: row.id,
+                                  kind: row.projectKind!,
+                                  action: 'rename',
+                                });
+                              }}
+                            >
+                              <PencilIcon />
+                            </Button>
+                          </>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={t('common.delete') + ' ' + row.name}
+                          disabled={locked}
+                          onClick={() => requestDelete([row])}
+                        >
+                          <TrashIcon />
+                        </Button>
+                      </div>
+                      {row.projectKind &&
+                        confirm?.id === row.id &&
+                        confirm.kind === row.projectKind && (
+                          <div className="flex w-full flex-wrap items-center gap-3 rounded-lg bg-muted/40 p-3 text-sm">
+                            {confirm.action === 'rename' ? (
+                              <Input
+                                className="min-w-48 flex-1"
+                                autoFocus
+                                aria-label={t('stories.projectName')}
+                                value={rename}
+                                onChange={(event) => setRename(event.target.value)}
+                                disabled={locked}
+                                onKeyDown={(event) => {
+                                  if (isImeComposing(event)) return;
+                                  if (event.key === 'Enter' && rename.trim()) void apply();
+                                  if (event.key === 'Escape') setConfirm(null);
+                                }}
+                              />
+                            ) : (
+                              <span className="flex-1">
+                                {t('projectActions.open', { name: row.name })}
+                              </span>
                             )}
-                          </Button>
-                          <Button variant="ghost" disabled={busy} onClick={() => setConfirm(null)}>
-                            {t('common.cancel')}
-                          </Button>
-                        </div>
-                      )}
-                  </article>
+                            <Button
+                              variant="default"
+                              disabled={locked || (confirm.action === 'rename' && !rename.trim())}
+                              onClick={() => void apply()}
+                            >
+                              {t(
+                                confirm.action === 'rename'
+                                  ? 'sidebar.rename_save'
+                                  : 'common.confirm',
+                              )}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              disabled={busy}
+                              onClick={() => setConfirm(null)}
+                            >
+                              {t('common.cancel')}
+                            </Button>
+                          </div>
+                        )}
+                    </article>
+                  );
+                };
+                return view === 'grid' ? (
+                  visible.map((row) => <Fragment key={row.key}>{renderRow(row)}</Fragment>)
+                ) : (
+                  <VirtualList
+                    items={visible}
+                    scrollRef={scrollRef}
+                    getKey={(row) => row.key}
+                    estimateSize={72}
+                    rowClassName="border-b border-border/50 last:border-b-0"
+                    renderRow={renderRow}
+                  />
                 );
-              })}
+              })()}
             </div>
           </div>
         </section>
