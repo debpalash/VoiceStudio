@@ -54,8 +54,8 @@ VoiceStudio/
 │   ├── src/main/                lifecycle, backend supervisor, runtime setup, updater, native IPC
 │   ├── src/preload/             typed contextBridge → window.voicestudio
 │   ├── src/renderer/            desktop React app: routes/, features/, components/, i18n/locales/
-│   ├── src/shared/              modules shared by the desktop and browser builds (api/, i18n/,
-│   │                            store/, ui/, utils/) — not a runnable app
+│   ├── src/shared/              modules shared by the desktop and browser builds (api/, store/,
+│   │                            utils/) — not a runnable app
 │   ├── tests/                   packaged-app, installer and workflow smoke tests
 │   ├── build/                   packaging inputs: icons, entitlements, Info.plist
 │   ├── scripts/                 dev launcher, AppImage update-info embedding

@@ -43,7 +43,8 @@ def test_active_launchers_do_not_mirror_default_port_literals() -> None:
         "electron/vite.web.config.ts",
         "electron/src/main/backend.ts",
         "electron/src/main/dev-backend-proxy.ts",
-        "electron/src/shared/utils/apiBase.ts",
+        "electron/src/renderer/src/lib/api/client.ts",
+        "electron/src/shared/api/client.ts",
         "scripts/dev-backend.mjs",
         "scripts/clear-dev-ports.mjs",
     )

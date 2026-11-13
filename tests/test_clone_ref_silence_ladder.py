@@ -16,8 +16,8 @@ The fix (fail-before/pass-after — `remove_silence_safe` and
   * `validate_clone_reference` raises the one remaining hard failure — a clip
     with genuinely no audio (empty / digital silence / NaN) — with the
     machine-readable ``[clone_ref_unusable]`` marker the frontend maps to a
-    localized, actionable message (electron/src/shared/utils/errorToast.jsx →
-    tts_errors.ref_audio_unusable).
+    actionable message and as a terminal (non-retryable) error
+    (electron/src/renderer/src/lib/api/generate.ts).
 
 All clone producers share this path (`create_voice_clone_prompt` is the single
 chokepoint: /generate inline refs, the tts_backend prompt cache, and dubbing's
@@ -123,7 +123,7 @@ def test_validate_rejects_digital_silence_with_actionable_marker():
     with pytest.raises(ValueError) as exc:
         validate_clone_reference(silence, _rms(silence))
     msg = str(exc.value)
-    # The marker is the frontend's localization hook (errorToast.jsx) — it and
+    # The marker is the frontend's terminal-error hook (renderer lib/api/generate.ts) — it and
     # the concrete user fix must both survive any rewording.
     assert CLONE_REF_UNUSABLE_MARKER in msg
     assert "[clone_ref_unusable]" in msg
