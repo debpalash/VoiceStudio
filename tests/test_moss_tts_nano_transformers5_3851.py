@@ -138,3 +138,24 @@ def test_restore_runs_once_per_model_and_keeps_device_and_dtype(checkpoint, pris
 def test_non_module_models_pass_through(pristine_loader):
     model = types.SimpleNamespace()
     assert _sidecar()._restore_non_persistent_buffers(model) is model
+
+
+@pytest.mark.parametrize("version", ["4.57.1", "5.8.0"])
+def test_the_shim_stays_off_where_patterns_are_still_lists(pristine_loader, monkeypatch, version):
+    """transformers 4 and 5 through 5.8 concatenate the patterns with `+`, so a
+    set on the left fails every load with `set + list` (#4063). The engine
+    venv pins transformers 4.57.1, so the shim must only install on the
+    set-semantics side (>= 5.9)."""
+    sidecar = _sidecar()
+    monkeypatch.setattr(transformers, "__version__", version)
+    sidecar._accept_list_ignore_patterns()
+    method = _Base._adjust_missing_and_unexpected_keys
+    assert not hasattr(method, "_voicestudio_accepts_lists")
+
+
+@pytest.mark.parametrize("version", ["5.9.0", "5.20.2"])
+def test_the_shim_installs_where_patterns_are_sets(pristine_loader, monkeypatch, version):
+    sidecar = _sidecar()
+    monkeypatch.setattr(transformers, "__version__", version)
+    sidecar._accept_list_ignore_patterns()
+    assert getattr(_Base._adjust_missing_and_unexpected_keys, "_voicestudio_accepts_lists", False)
