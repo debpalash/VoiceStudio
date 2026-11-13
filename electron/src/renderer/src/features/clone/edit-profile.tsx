@@ -32,6 +32,12 @@ import { ReferenceSourcePicker, ReferenceUsageNote } from './reference-input';
 import { ProfileImageEditor } from './profile-image-editor';
 import { formatRelative } from './format';
 import { useTtsReadiness } from '@/hooks/use-tts-readiness';
+import {
+  beginTranscriptSave,
+  commitTranscriptSave,
+  beginVoiceChange,
+  failTranscriptSave,
+} from '@/lib/store/transcript-saves';
 
 export function EditProfile({ profile, onDone }: { profile: Profile; onDone: () => void }) {
   const { t, i18n } = useTranslation();
@@ -95,11 +101,17 @@ export function EditProfile({ profile, onDone }: { profile: Profile; onDone: () 
         if (busy || !draft.name.trim()) return;
         setBusy(true);
         setFailed(null);
+        let saveToken: number | null = null;
+        let saved = false;
+        const settled = beginVoiceChange(profile.id);
         try {
           // With a new clip, the edits and its transcript travel in the one
           // audio request: the backend saves all of them or none, and the old
           // clip's text is never saved against the new reference.
           const { ref_text: refText, ...fields } = draft;
+          // Before the request: a queued take that starts while it is in
+          // flight must already see that the transcript is being changed.
+          saveToken = beginTranscriptSave(profile.id, refText);
           const updated = replacement
             ? await replaceAudio.mutateAsync({
                 id: profile.id,
@@ -113,6 +125,7 @@ export function EditProfile({ profile, onDone }: { profile: Profile; onDone: () 
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(draft),
               });
+          saved = true;
           if (cloneSettingsStore.state.selectedProfileId === profile.id)
             patchCloneSettings({
               language: updated.language || 'Auto',
@@ -124,6 +137,9 @@ export function EditProfile({ profile, onDone }: { profile: Profile; onDone: () 
         } catch (error) {
           setFailed(describeError(error));
         } finally {
+          // After the profile refresh, so a take queued meanwhile is caught too.
+          if (saveToken !== null) (saved ? commitTranscriptSave : failTranscriptSave)(saveToken);
+          settled();
           setBusy(false);
         }
       }}

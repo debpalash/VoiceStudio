@@ -4349,5 +4349,27 @@
     "error_busy": "GPU:n är upptagen med ett annat jobb. Försök igen om en stund.",
     "error_timeout": "Det tog för lång tid att skapa ljudeffekten. Prova en kortare längd.",
     "error_out_of_memory": "GPU:n fick slut på minne. Stäng andra GPU-tunga appar eller prova en kortare längd."
+  },
+  "generationQueue": {
+    "title": "Genereringskö",
+    "waiting_one": "Väntar: {{count}}",
+    "waiting_other": "Väntar: {{count}}",
+    "added_one": "Tillagd i kön. Väntar: {{count}}",
+    "added_other": "Tillagd i kön. Väntar: {{count}}",
+    "full": "Kön är full ({{count}}). Vänta tills några är klara.",
+    "add": "Lägg till i kön",
+    "add_hint": "Köa det här manuset med nuvarande röst och inställningar. Det startar när tagningen före är klar.",
+    "remove": "Ta bort från kön",
+    "clear_finished": "Rensa klara",
+    "cancel_all": "Avbryt alla",
+    "position": "Plats {{position}}",
+    "voice_changed": "Den här rösten ändrades medan tagningen väntade, så den hoppades över. Köa den igen för att använda den uppdaterade rösten.",
+    "status": {
+      "queued": "Väntar",
+      "running": "Genererar",
+      "done": "Klar",
+      "failed": "Misslyckades",
+      "cancelled": "Avbruten"
+    }
   }
 }

@@ -4351,5 +4351,27 @@
     "error_busy": "La GPU è occupata con un altro lavoro. Riprova tra un momento.",
     "error_timeout": "La generazione di questo effetto sonoro ha richiesto troppo tempo. Prova una durata più breve.",
     "error_out_of_memory": "La GPU ha esaurito la memoria. Chiudi le altre app che usano molto la GPU o prova una durata più breve."
+  },
+  "generationQueue": {
+    "title": "Coda di generazione",
+    "waiting_one": "In attesa: {{count}}",
+    "waiting_other": "In attesa: {{count}}",
+    "added_one": "Aggiunto alla coda. In attesa: {{count}}",
+    "added_other": "Aggiunto alla coda. In attesa: {{count}}",
+    "full": "La coda è piena ({{count}}). Attendi che alcune finiscano.",
+    "add": "Aggiungi alla coda",
+    "add_hint": "Metti in coda questo copione con la voce e le impostazioni attuali. Parte quando finisce la ripresa precedente.",
+    "remove": "Rimuovi dalla coda",
+    "clear_finished": "Cancella completate",
+    "cancel_all": "Annulla tutto",
+    "position": "Posizione {{position}}",
+    "voice_changed": "Questa voce è cambiata mentre la ripresa era in attesa, quindi è stata saltata. Rimettila in coda per usare la voce aggiornata.",
+    "status": {
+      "queued": "In attesa",
+      "running": "Generazione",
+      "done": "Fatto",
+      "failed": "Non riuscito",
+      "cancelled": "Annullato"
+    }
   }
 }

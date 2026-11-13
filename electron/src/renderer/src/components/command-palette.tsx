@@ -32,6 +32,7 @@ import {
   HomeIcon,
   LayersIcon,
   LibraryIcon,
+  ListPlusIcon,
   MicIcon,
   MoonIcon,
   PhoneCallIcon,
@@ -285,24 +286,26 @@ export function CommandPalette() {
       ? [
           {
             id: 'generate',
-            label: t('clone.synthesize'),
+            // While a take renders, a new one joins the queue.
+            label: generation.isGenerating ? t('generationQueue.add') : t('clone.synthesize'),
             group: actionGroup,
-            icon: PlayIcon,
+            icon: generation.isGenerating ? ListPlusIcon : PlayIcon,
             shortcut: `${modifier} ↵`,
             run: () => generation.generate(),
           },
         ]
-      : generation.isGenerating
-        ? [
-            {
-              id: 'cancel',
-              label: t('clone.cancel_generation'),
-              group: actionGroup,
-              icon: XIcon,
-              run: () => generation.cancel(),
-            },
-          ]
-        : []),
+      : []),
+    ...(generation.isGenerating
+      ? [
+          {
+            id: 'cancel',
+            label: t('clone.cancel_generation'),
+            group: actionGroup,
+            icon: XIcon,
+            run: () => generation.cancel(),
+          },
+        ]
+      : []),
     ...(profiles.data ?? []).map((profile) => ({
       id: 'voice-' + profile.id,
       label: profile.name,

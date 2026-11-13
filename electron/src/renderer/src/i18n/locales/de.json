@@ -4349,5 +4349,27 @@
     "error_busy": "Die GPU ist mit einer anderen Aufgabe beschäftigt. Versuche es gleich noch einmal.",
     "error_timeout": "Das Erzeugen dieses Soundeffekts hat zu lange gedauert. Wähle eine kürzere Dauer.",
     "error_out_of_memory": "Der GPU ist der Speicher ausgegangen. Schließe andere GPU-intensive Apps oder wähle eine kürzere Dauer."
+  },
+  "generationQueue": {
+    "title": "Generierungswarteschlange",
+    "waiting_one": "Wartend: {{count}}",
+    "waiting_other": "Wartend: {{count}}",
+    "added_one": "Zur Warteschlange hinzugefügt. Wartend: {{count}}",
+    "added_other": "Zur Warteschlange hinzugefügt. Wartend: {{count}}",
+    "full": "Die Warteschlange ist voll ({{count}}). Warte, bis einige fertig sind.",
+    "add": "Zur Warteschlange",
+    "add_hint": "Dieses Skript mit der aktuellen Stimme und den aktuellen Einstellungen einreihen. Es startet, sobald die vorherige Aufnahme fertig ist.",
+    "remove": "Aus der Warteschlange entfernen",
+    "clear_finished": "Fertige entfernen",
+    "cancel_all": "Alle abbrechen",
+    "position": "Platz {{position}}",
+    "voice_changed": "Diese Stimme wurde geändert, während die Aufnahme wartete, daher wurde sie übersprungen. Reihe sie erneut ein, um die aktualisierte Stimme zu verwenden.",
+    "status": {
+      "queued": "Wartet",
+      "running": "Wird generiert",
+      "done": "Erledigt",
+      "failed": "Fehlgeschlagen",
+      "cancelled": "Abgebrochen"
+    }
   }
 }

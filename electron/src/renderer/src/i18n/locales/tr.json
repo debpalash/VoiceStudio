@@ -4349,5 +4349,27 @@
     "error_busy": "GPU başka bir işle meşgul. Biraz sonra tekrar deneyin.",
     "error_timeout": "Bu ses efektini oluşturmak çok uzun sürdü. Daha kısa bir süre deneyin.",
     "error_out_of_memory": "GPU belleği doldu. GPU'yu çok kullanan diğer uygulamaları kapatın veya daha kısa bir süre deneyin."
+  },
+  "generationQueue": {
+    "title": "Oluşturma kuyruğu",
+    "waiting_one": "Bekleyen: {{count}}",
+    "waiting_other": "Bekleyen: {{count}}",
+    "added_one": "Kuyruğa eklendi. Bekleyen: {{count}}",
+    "added_other": "Kuyruğa eklendi. Bekleyen: {{count}}",
+    "full": "Kuyruk dolu ({{count}}). Önce bazılarının bitmesini bekleyin.",
+    "add": "Kuyruğa ekle",
+    "add_hint": "Bu metni geçerli ses ve ayarlarla kuyruğa ekleyin. Önceki kayıt bitince başlar.",
+    "remove": "Kuyruktan kaldır",
+    "clear_finished": "Bitenleri temizle",
+    "cancel_all": "Tümünü iptal et",
+    "position": "Sıra {{position}}",
+    "voice_changed": "Kayıt beklerken bu ses değişti, bu yüzden atlandı. Güncellenen sesi kullanmak için yeniden kuyruğa ekleyin.",
+    "status": {
+      "queued": "Bekliyor",
+      "running": "Oluşturuluyor",
+      "done": "Tamam",
+      "failed": "Başarısız",
+      "cancelled": "İptal edildi"
+    }
   }
 }

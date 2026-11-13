@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { RecordingInputs } from '@/components/recording-inputs';
 import { useRecording } from '@/hooks/use-recording';
 import { apiJson, describeError } from '@/lib/api/client';
+import { beginVoiceChange } from '@/lib/store/transcript-saves';
 import { queryKeys } from '@/lib/query';
 import type { Profile } from '@/lib/api/types';
 
@@ -101,6 +102,7 @@ export function ProfileConsent({ profile }: { profile: Profile }) {
     active.current = controller;
     setBusy(true);
     setFailed(null);
+    const settled = beginVoiceChange(profile.id);
     try {
       const body = file ? new FormData() : undefined;
       if (body && file) {
@@ -131,6 +133,7 @@ export function ProfileConsent({ profile }: { profile: Profile }) {
     } catch (error) {
       if (!controller.signal.aborted) setFailed(describeError(error));
     } finally {
+      settled();
       active.current = null;
       if (!controller.signal.aborted) setBusy(false);
     }

@@ -4349,5 +4349,27 @@
     "error_busy": "A GPU está ocupada con outra tarefa. Téntao de novo nun momento.",
     "error_timeout": "Xerar este efecto de son tardou demasiado. Proba cunha duración menor.",
     "error_out_of_memory": "A GPU quedou sen memoria. Pecha outras apps que usen moito a GPU ou proba cunha duración menor."
+  },
+  "generationQueue": {
+    "title": "Cola de xeración",
+    "waiting_one": "Agardando: {{count}}",
+    "waiting_other": "Agardando: {{count}}",
+    "added_one": "Engadido á cola. Agardando: {{count}}",
+    "added_other": "Engadido á cola. Agardando: {{count}}",
+    "full": "A cola está chea ({{count}}). Agarda a que rematen algunhas.",
+    "add": "Engadir á cola",
+    "add_hint": "Pon na cola este guión coa voz e os axustes actuais. Comeza cando remate a toma anterior.",
+    "remove": "Quitar da cola",
+    "clear_finished": "Borrar rematadas",
+    "cancel_all": "Cancelar todo",
+    "position": "Posto {{position}}",
+    "voice_changed": "Esta voz cambiou mentres a toma agardaba, así que se omitiu. Volve poñela na cola para usar a voz actualizada.",
+    "status": {
+      "queued": "Agardando",
+      "running": "Xerando",
+      "done": "Feito",
+      "failed": "Fallou",
+      "cancelled": "Cancelado"
+    }
   }
 }

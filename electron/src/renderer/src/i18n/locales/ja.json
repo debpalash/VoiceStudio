@@ -4349,5 +4349,27 @@
     "error_busy": "GPUが別の処理で使用中です。しばらくしてからもう一度お試しください。",
     "error_timeout": "この効果音の生成に時間がかかりすぎました。より短い長さをお試しください。",
     "error_out_of_memory": "GPUのメモリが不足しました。GPUを多く使う他のアプリを閉じるか、より短い長さをお試しください。"
+  },
+  "generationQueue": {
+    "title": "生成キュー",
+    "waiting_one": "待機中: {{count}}",
+    "waiting_other": "待機中: {{count}}",
+    "added_one": "キューに追加しました。待機中: {{count}}",
+    "added_other": "キューに追加しました。待機中: {{count}}",
+    "full": "キューがいっぱいです（{{count}}）。いくつか完了するまでお待ちください。",
+    "add": "キューに追加",
+    "add_hint": "現在の音声と設定でこの台本をキューに追加します。前のテイクが終わると開始します。",
+    "remove": "キューから削除",
+    "clear_finished": "完了分をクリア",
+    "cancel_all": "すべてキャンセル",
+    "position": "{{position}} 番目",
+    "voice_changed": "テイクの待機中にこの音声が変更されたため、スキップしました。更新後の音声を使うには、もう一度キューに追加してください。",
+    "status": {
+      "queued": "待機中",
+      "running": "生成中",
+      "done": "完了",
+      "failed": "失敗",
+      "cancelled": "キャンセル済み"
+    }
   }
 }

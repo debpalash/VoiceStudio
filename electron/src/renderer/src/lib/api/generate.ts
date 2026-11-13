@@ -151,12 +151,15 @@ export function toGenerateForm(
   )?.tts?.active,
 ): FormData {
   const form = new FormData();
+  // A pinned engine wins: its own step range applies, and /generate renders on it.
+  const targetEngine = input.engine || engineId;
+  if (input.engine) form.append('engine', input.engine);
   form.append('text', input.text);
   if (input.seed !== undefined && Number.isInteger(input.seed))
     form.append('seed', String(input.seed));
   // Auto must be explicit: omission inherits the saved profile's default.
   if (input.language) form.append('language', input.language);
-  form.append('num_step', String(effectiveSamplingSteps(input.steps, engineId)));
+  form.append('num_step', String(effectiveSamplingSteps(input.steps, targetEngine)));
   form.append('wav_bits', String(input.wavBits ?? 16));
   form.append('effect_preset', input.effectPreset ?? 'broadcast');
   if (input.presetVoice) form.append('preset_voice', input.presetVoice);

@@ -4351,5 +4351,27 @@
     "error_busy": "Le GPU est occupé par une autre tâche. Réessayez dans un instant.",
     "error_timeout": "La génération de cet effet sonore a pris trop de temps. Essayez une durée plus courte.",
     "error_out_of_memory": "Le GPU n’a plus de mémoire. Fermez les autres applications gourmandes en GPU ou essayez une durée plus courte."
+  },
+  "generationQueue": {
+    "title": "File de génération",
+    "waiting_one": "En attente : {{count}}",
+    "waiting_other": "En attente : {{count}}",
+    "added_one": "Ajouté à la file. En attente : {{count}}",
+    "added_other": "Ajouté à la file. En attente : {{count}}",
+    "full": "La file est pleine ({{count}}). Attendez que certaines se terminent.",
+    "add": "Ajouter à la file",
+    "add_hint": "Mettre ce script en file avec la voix et les réglages actuels. Il démarre quand la prise précédente est terminée.",
+    "remove": "Retirer de la file",
+    "clear_finished": "Effacer les terminées",
+    "cancel_all": "Tout annuler",
+    "position": "Position {{position}}",
+    "voice_changed": "Cette voix a changé pendant que la prise attendait, elle a donc été ignorée. Remettez-la en file pour utiliser la voix mise à jour.",
+    "status": {
+      "queued": "En attente",
+      "running": "Génération",
+      "done": "Terminé",
+      "failed": "Échec",
+      "cancelled": "Annulé"
+    }
   }
 }

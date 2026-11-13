@@ -3,11 +3,18 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GenerationProvider, useGenerateClone } from './use-generate';
+import {
+  beginTranscriptSave,
+  beginVoiceChange,
+  commitTranscriptSave,
+} from '@/lib/store/transcript-saves';
 import { patchCloneSettings } from '@/lib/store/clone-settings';
 import { generateClone } from '@/lib/api/generate';
 import { setLatestOutput } from '@/lib/store/output';
 import { queryKeys } from '@/lib/query';
 import type { Profile } from '@/lib/api/types';
+import { tr } from '@/lib/i18n-text';
+import { acquireSynthesis } from '@/lib/synthesis-lock';
 const modelStatus = vi.hoisted(() => ({
   value: { status: 'loading', loading: true } as {
     status: string;
@@ -685,11 +692,17 @@ it.each([
   },
 );
 
-it.each([['clone', false], ['design', false], ['clone', true], ['design', true]] as const)(
+it.each([
+  ['clone', false],
+  ['design', false],
+  ['clone', true],
+  ['design', true],
+] as const)(
   'clears the %s synthesis banner after acceptance (close while pending: %s)',
   async (mode, closeWhilePending) => {
     const { ApiError, apiJson } = await import('@/lib/api/client');
-    const { announceModelLicenceRequired } = await import('@/features/settings/model-license-contract');
+    const { announceModelLicenceRequired } =
+      await import('@/features/settings/model-license-contract');
     const { ModelLicenceGate } = await import('@/features/settings/model-licence-acceptance');
     const { default: en } = await import('@/i18n/locales/en.json');
     const { createInstance } = await import('i18next');
@@ -702,7 +715,9 @@ it.each([['clone', false], ['design', false], ['clone', true], ['design', true]]
     ];
     const accepted = new Set<string>();
     let releaseAcceptance!: () => void;
-    const acceptanceReady = new Promise<void>((resolve) => { releaseAcceptance = resolve; });
+    const acceptanceReady = new Promise<void>((resolve) => {
+      releaseAcceptance = resolve;
+    });
     if (!closeWhilePending) releaseAcceptance();
     vi.mocked(apiJson).mockImplementation(async (path, init) => {
       if (path === '/models/licenses/accept') {
@@ -715,7 +730,11 @@ it.each([['clone', false], ['design', false], ['clone', true], ['design', true]]
         const model = models.find((item) => path.endsWith(item.repo_id))!;
         return {
           repo_id: model.repo_id,
-          info: { license: 'Test licence', credit: 'Test holder', license_category: model.category },
+          info: {
+            license: 'Test licence',
+            credit: 'Test holder',
+            license_category: model.category,
+          },
           acceptance: { ...model, required: true, accepted: accepted.has(model.repo_id) },
           history: [],
         };
@@ -723,24 +742,37 @@ it.each([['clone', false], ['design', false], ['clone', true], ['design', true]]
       return modelStatus.value;
     });
     patchCloneSettings({ text: 'Hello', selectedProfileId: 'voice-1', autoPlay: false });
-    vi.mocked(generateClone).mockReset().mockImplementationOnce(async () => {
-      const payload = { detail: { code: 'model_licence_required', models } };
-      announceModelLicenceRequired(payload);
-      throw new ApiError(403, en.modelLicense.requiredError, payload);
-    });
+    vi.mocked(generateClone)
+      .mockReset()
+      .mockImplementationOnce(async () => {
+        const payload = { detail: { code: 'model_licence_required', models } };
+        announceModelLicenceRequired(payload);
+        throw new ApiError(403, en.modelLicense.requiredError, payload);
+      });
     function Synthesis() {
       const state = useGenerateClone();
-      return <>
-        <button onClick={() => void (mode === 'clone'
-          ? state.generate()
-          : state.generateDesign({ text: 'Hello', instruct: 'male' }))}>Synthesize test</button>
-        {state.error && <p role="alert">{state.error}</p>}
-      </>;
+      return (
+        <>
+          <button
+            onClick={() =>
+              void (mode === 'clone'
+                ? state.generate()
+                : state.generateDesign({ text: 'Hello', instruct: 'male' }))
+            }
+          >
+            Synthesize test
+          </button>
+          {state.error && <p role="alert">{state.error}</p>}
+        </>
+      );
     }
     const view = render(
       <QueryClientProvider client={new QueryClient()}>
         <I18nextProvider i18n={i18n}>
-          <GenerationProvider><Synthesis /><ModelLicenceGate /></GenerationProvider>
+          <GenerationProvider>
+            <Synthesis />
+            <ModelLicenceGate />
+          </GenerationProvider>
         </I18nextProvider>
       </QueryClientProvider>,
     );
@@ -750,7 +782,9 @@ it.each([['clone', false], ['design', false], ['clone', true], ['design', true]]
       const boxes = await screen.findAllByRole('checkbox');
       await waitFor(() => expect(boxes[0]).not.toBeDisabled());
       for (const box of boxes) fireEvent.click(box);
-      fireEvent.click(screen.getByRole('button', { name: en.modelLicense.acceptAll.replace('{{count}}', '2') }));
+      fireEvent.click(
+        screen.getByRole('button', { name: en.modelLicense.acceptAll.replace('{{count}}', '2') }),
+      );
       if (closeWhilePending) {
         fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape', code: 'Escape' });
         await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
@@ -758,8 +792,11 @@ it.each([['clone', false], ['design', false], ['clone', true], ['design', true]]
         releaseAcceptance();
       }
       await waitFor(() => expect(accepted.size).toBe(2));
-      await waitFor(() => expect(screen.queryByText(en.modelLicense.requiredError)).not.toBeInTheDocument());
-      if (!closeWhilePending) fireEvent.click(screen.getByRole('button', { name: en.common.close }));
+      await waitFor(() =>
+        expect(screen.queryByText(en.modelLicense.requiredError)).not.toBeInTheDocument(),
+      );
+      if (!closeWhilePending)
+        fireEvent.click(screen.getByRole('button', { name: en.common.close }));
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
       expect(generateClone).toHaveBeenCalledOnce();
@@ -773,54 +810,410 @@ it.each([['clone', false], ['design', false], ['clone', true], ['design', true]]
 it.each([
   ['records a warm take', { status: 'ready', loading: false }, 1],
   ['skips a take that waited for model loading', { status: 'loading', loading: true }, 0],
-] as const)('measures render speed locally per engine and device (%s)', async (_name, status, count) => {
-  modelStatus.value = { ...status };
-  localStorage.removeItem('voicestudio.render-speed.v1');
-  patchCloneSettings({
-    text: 'A cloned voice line long enough to measure.',
-    selectedProfileId: 'speaker-speed',
-    steps: null,
-    autoPlay: false,
-  });
-  vi.mocked(generateClone)
-    .mockReset()
-    .mockImplementation(
-      () =>
-        new Promise((resolve) =>
-          setTimeout(
-            () =>
-              resolve({
-                id: `take-speed-${count}`,
-                durationSeconds: 3,
-                genTimeSeconds: 9,
-              } as Awaited<ReturnType<typeof generateClone>>),
-            50,
-          ),
-        ),
-    );
-  const client = new QueryClient();
-  client.setQueryData(queryKeys.engines, { tts: { active: 'omnivoice', backends: [] } });
-  render(
-    <QueryClientProvider client={client}>
-      <GenerationProvider>
-        <Consumer name={`speed-${count}`} />
-      </GenerationProvider>
-    </QueryClientProvider>,
-  );
-  fireEvent.click(screen.getByText(`speed-${count}:idle`));
-  await waitFor(() => {
-    const takes = JSON.parse(localStorage.getItem('voicestudio.take-settings.v1') ?? '{}');
-    // The take keeps the steps it rendered with, not "best for whatever engine is active".
-    expect(takes[`take-speed-${count}`]?.steps).toBe(32);
-  });
-  expect(vi.mocked(generateClone).mock.calls[0][0].steps).toBe(32);
-  const stored = JSON.parse(localStorage.getItem('voicestudio.render-speed.v1') ?? '{}');
-  expect(stored['omnivoice|cuda'] ?? []).toHaveLength(count);
-  if (count)
-    expect(stored['omnivoice|cuda'][0]).toMatchObject({
-      chars: 43,
-      audioSeconds: 3,
-      renderSeconds: 9,
-      steps: 32,
+] as const)(
+  'measures render speed locally per engine and device (%s)',
+  async (_name, status, count) => {
+    modelStatus.value = { ...status };
+    localStorage.removeItem('voicestudio.render-speed.v1');
+    patchCloneSettings({
+      text: 'A cloned voice line long enough to measure.',
+      selectedProfileId: 'speaker-speed',
+      steps: null,
+      autoPlay: false,
     });
+    vi.mocked(generateClone)
+      .mockReset()
+      .mockImplementation(
+        () =>
+          new Promise((resolve) =>
+            setTimeout(
+              () =>
+                resolve({
+                  id: `take-speed-${count}`,
+                  durationSeconds: 3,
+                  genTimeSeconds: 9,
+                } as Awaited<ReturnType<typeof generateClone>>),
+              50,
+            ),
+          ),
+      );
+    const client = new QueryClient();
+    client.setQueryData(queryKeys.engines, { tts: { active: 'omnivoice', backends: [] } });
+    render(
+      <QueryClientProvider client={client}>
+        <GenerationProvider>
+          <Consumer name={`speed-${count}`} />
+        </GenerationProvider>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByText(`speed-${count}:idle`));
+    await waitFor(() => {
+      const takes = JSON.parse(localStorage.getItem('voicestudio.take-settings.v1') ?? '{}');
+      // The take keeps the steps it rendered with, not "best for whatever engine is active".
+      expect(takes[`take-speed-${count}`]?.steps).toBe(32);
+    });
+    expect(vi.mocked(generateClone).mock.calls[0][0].steps).toBe(32);
+    const stored = JSON.parse(localStorage.getItem('voicestudio.render-speed.v1') ?? '{}');
+    expect(stored['omnivoice|cuda'] ?? []).toHaveLength(count);
+    if (count)
+      expect(stored['omnivoice|cuda'][0]).toMatchObject({
+        chars: 43,
+        audioSeconds: 3,
+        renderSeconds: 9,
+        steps: 32,
+      });
+  },
+);
+
+describe('generation queue', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    modelStatus.value = { status: 'ready', loading: false };
+  });
+  function QueueConsumer() {
+    const state = useGenerateClone();
+    return (
+      <>
+        <button onClick={() => void state.generate()}>go</button>
+        <button onClick={() => state.cancelAll()}>cancel all</button>
+        <button onClick={() => void state.generateDesign({ text: 'Designed', instruct: '' })}>
+          design
+        </button>
+        <span data-testid="waiting">{state.queuedCount}</span>
+        <span data-testid="queue-stage">{state.stage}</span>
+        <ul>
+          {state.queue.map((item) => (
+            <li key={item.id} data-testid="item" data-status={item.status}>
+              {item.label}
+            </li>
+          ))}
+        </ul>
+      </>
+    );
+  }
+  const take = (id: string) => ({
+    blob: new Blob(),
+    id,
+    audioPath: id + '.wav',
+    durationSeconds: 1,
+    genTimeSeconds: 1,
+    seed: 1,
+    routing: null,
+    dropped: null,
+  });
+  function deferredRenders() {
+    const pending: Array<{ resolve: (value: unknown) => void; reject: (err: unknown) => void }> =
+      [];
+    vi.mocked(generateClone).mockImplementation(
+      (_input, options) =>
+        new Promise((resolve, reject) => {
+          pending.push({ resolve: resolve as (value: unknown) => void, reject });
+          options?.signal?.addEventListener('abort', () =>
+            reject(new DOMException('Aborted', 'AbortError')),
+          );
+        }),
+    );
+    return pending;
+  }
+  const statuses = () => screen.getAllByTestId('item').map((el) => el.dataset.status);
+  const mount = () =>
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <GenerationProvider>
+          <QueueConsumer />
+        </GenerationProvider>
+      </QueryClientProvider>,
+    );
+
+  it('queues takes requested mid-render and runs them in order with their own script', async () => {
+    const renders = deferredRenders();
+    mount();
+    patchCloneSettings({ text: 'First line', selectedProfileId: 'voice-1', autoPlay: false });
+    fireEvent.click(screen.getByText('go'));
+    patchCloneSettings({ text: 'Second line' });
+    fireEvent.click(screen.getByText('go'));
+    patchCloneSettings({ text: 'Third line' });
+    fireEvent.click(screen.getByText('go'));
+
+    // Only one render reaches the backend at a time; the rest wait.
+    expect(generateClone).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('waiting')).toHaveTextContent('2');
+    expect(statuses()).toEqual(['running', 'queued', 'queued']);
+    expect(toast.info).toHaveBeenCalledTimes(2);
+
+    await act(async () => renders[0]!.resolve(take('a')));
+    await waitFor(() => expect(generateClone).toHaveBeenCalledTimes(2));
+    // The queued take kept the script typed when it was requested.
+    expect(vi.mocked(generateClone).mock.calls[1]![0].text).toBe('Second line');
+
+    // A failure is recorded and the queue moves on.
+    await act(async () => renders[1]!.reject(new Error('engine crashed')));
+    await waitFor(() => expect(generateClone).toHaveBeenCalledTimes(3));
+    expect(vi.mocked(generateClone).mock.calls[2]![0].text).toBe('Third line');
+    await act(async () => renders[2]!.resolve(take('c')));
+    await waitFor(() => expect(statuses()).toEqual(['done', 'failed', 'done']));
+    expect(screen.getByTestId('waiting')).toHaveTextContent('0');
+  });
+
+  it('pins each queued take to the engine active when it was requested', async () => {
+    const renders = deferredRenders();
+    const client = new QueryClient();
+    client.setQueryData(queryKeys.engines, { tts: { active: 'supertonic3', backends: [] } });
+    render(
+      <QueryClientProvider client={client}>
+        <GenerationProvider>
+          <QueueConsumer />
+        </GenerationProvider>
+      </QueryClientProvider>,
+    );
+    patchCloneSettings({
+      text: 'First',
+      selectedProfileId: 'voice-1',
+      steps: null,
+      autoPlay: false,
+    });
+    fireEvent.click(screen.getByText('go'));
+    fireEvent.click(screen.getByText('go'));
+    // The user switches engines while the second take waits.
+    act(() => {
+      client.setQueryData(queryKeys.engines, { tts: { active: 'omnivoice', backends: [] } });
+    });
+    await act(async () => renders[0]!.resolve(take('a')));
+    await waitFor(() => expect(generateClone).toHaveBeenCalledTimes(2));
+    const waited = vi.mocked(generateClone).mock.calls[1]![0];
+    expect(waited.engine).toBe('supertonic3');
+    expect(waited.steps).toBe(12);
+  });
+
+  it("never shows the previous take's last progress on the next queued take", async () => {
+    const renders = deferredRenders();
+    mount();
+    patchCloneSettings({ text: 'One', selectedProfileId: 'voice-1', autoPlay: false });
+    fireEvent.click(screen.getByText('go'));
+    fireEvent.click(screen.getByText('go'));
+    // Take A streams: the first update lands, the second waits on the throttle.
+    const progressA = vi.mocked(generateClone).mock.calls[0]![1]!.onProgress!;
+    act(() => {
+      progressA(10);
+      progressA(90);
+    });
+    await act(async () => renders[0]!.resolve(take('a')));
+    await waitFor(() => expect(generateClone).toHaveBeenCalledTimes(2));
+    // A's throttled trailing update fires after B has started.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 250)));
+    expect(screen.getByTestId('queue-stage')).not.toHaveTextContent('receiving');
+  });
+
+  it('skips a waiting take whose saved voice changed before it started', async () => {
+    const renders = deferredRenders();
+    const client = new QueryClient();
+    const voice = {
+      id: 'voice-1',
+      name: 'Narrator',
+      ref_audio_path: 'voice-1-aaaa.wav',
+      ref_text: 'Hello there.',
+    } as Profile;
+    client.setQueryData(queryKeys.profiles, [voice]);
+    render(
+      <QueryClientProvider client={client}>
+        <GenerationProvider>
+          <QueueConsumer />
+        </GenerationProvider>
+      </QueryClientProvider>,
+    );
+    patchCloneSettings({ text: 'Line', selectedProfileId: 'voice-1', autoPlay: false });
+    fireEvent.click(screen.getByText('go'));
+    fireEvent.click(screen.getByText('go'));
+    // The reference clip is replaced (a new versioned file) while take 2 waits.
+    act(() => {
+      client.setQueryData(queryKeys.profiles, [{ ...voice, ref_audio_path: 'voice-1-bbbb.wav' }]);
+    });
+    await act(async () => renders[0]!.resolve(take('a')));
+    await waitFor(() => expect(statuses()).toEqual(['done', 'failed']));
+    expect(generateClone).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds a waiting take while an unlock is in flight, then skips it once the voice changed', async () => {
+    const renders = deferredRenders();
+    const client = new QueryClient();
+    const voice = {
+      id: 'voice-1',
+      name: 'Narrator',
+      ref_audio_path: 'voice-1-aaaa.wav',
+      locked_audio_path: 'voice-1-lock.wav',
+      is_locked: true,
+      ref_text: 'Hello there.',
+    } as Profile;
+    client.setQueryData(queryKeys.profiles, [voice]);
+    render(
+      <QueryClientProvider client={client}>
+        <GenerationProvider>
+          <QueueConsumer />
+        </GenerationProvider>
+      </QueryClientProvider>,
+    );
+    patchCloneSettings({ text: 'Line', selectedProfileId: 'voice-1', autoPlay: false });
+    fireEvent.click(screen.getByText('go'));
+    fireEvent.click(screen.getByText('go'));
+    // The unlock has reached the backend, but the profile list is not refreshed yet.
+    const settled = beginVoiceChange('voice-1');
+    await act(async () => renders[0]!.resolve(take('a')));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(generateClone).toHaveBeenCalledTimes(1);
+    act(() => {
+      client.setQueryData(queryKeys.profiles, [{ ...voice, is_locked: false }]);
+      settled();
+    });
+    await waitFor(() => expect(statuses()).toEqual(['done', 'failed']));
+    expect(generateClone).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets Cancel all stop a take that waits for an in-flight voice change', async () => {
+    const renders = deferredRenders();
+    const client = new QueryClient();
+    const voice = { id: 'voice-1', name: 'Narrator', ref_audio_path: 'a.wav' } as Profile;
+    client.setQueryData(queryKeys.profiles, [voice]);
+    render(
+      <QueryClientProvider client={client}>
+        <GenerationProvider>
+          <QueueConsumer />
+        </GenerationProvider>
+      </QueryClientProvider>,
+    );
+    patchCloneSettings({ text: 'Line', selectedProfileId: 'voice-1', autoPlay: false });
+    fireEvent.click(screen.getByText('go'));
+    fireEvent.click(screen.getByText('go'));
+    const settled = beginVoiceChange('voice-1');
+    await act(async () => renders[0]!.resolve(take('a')));
+    await waitFor(() => expect(statuses()).toEqual(['done', 'running']));
+    fireEvent.click(screen.getByText('cancel all'));
+    await waitFor(() => expect(statuses()).toEqual(['done', 'cancelled']));
+    // The shared synthesis slot is free again: a new take runs once the change settles.
+    fireEvent.click(screen.getByText('go'));
+    act(() => settled());
+    await waitFor(() => expect(generateClone).toHaveBeenCalledTimes(2));
+  });
+
+  it('keeps waiting takes when the first render stores an automatic transcript', async () => {
+    const renders = deferredRenders();
+    const client = new QueryClient();
+    const voice = {
+      id: 'voice-1',
+      name: 'Narrator',
+      ref_audio_path: 'voice-1-aaaa.wav',
+      ref_text: null,
+    } as Profile;
+    client.setQueryData(queryKeys.profiles, [voice]);
+    render(
+      <QueryClientProvider client={client}>
+        <GenerationProvider>
+          <QueueConsumer />
+        </GenerationProvider>
+      </QueryClientProvider>,
+    );
+    patchCloneSettings({ text: 'Line', selectedProfileId: 'voice-1', autoPlay: false });
+    fireEvent.click(screen.getByText('go'));
+    fireEvent.click(screen.getByText('go'));
+    // /generate transcribes the clip on the first render and stores it.
+    act(() => {
+      client.setQueryData(queryKeys.profiles, [{ ...voice, ref_text: 'Automatic words.' }]);
+    });
+    await act(async () => renders[0]!.resolve(take('a')));
+    await waitFor(() => expect(generateClone).toHaveBeenCalledTimes(2));
+    await act(async () => renders[1]!.resolve(take('b')));
+    await waitFor(() => expect(statuses()).toEqual(['done', 'done']));
+  });
+
+  it.each([
+    ['corrected', 'Hello there.', 'Hello, friend.'],
+    ['typed in for a voice that had none', null, 'Typed by the user.'],
+    ['edited at a legacy cut length', 'a'.repeat(100), 'b'.repeat(100)],
+  ])(
+    'skips a waiting take when the user saved a transcript %s after it was queued',
+    async (_label, before, saved) => {
+      const renders = deferredRenders();
+      const client = new QueryClient();
+      const voice = {
+        id: 'voice-edit',
+        name: 'Narrator',
+        ref_audio_path: 'voice-edit-aaaa.wav',
+        ref_text: before,
+      } as Profile;
+      client.setQueryData(queryKeys.profiles, [voice]);
+      render(
+        <QueryClientProvider client={client}>
+          <GenerationProvider>
+            <QueueConsumer />
+          </GenerationProvider>
+        </QueryClientProvider>,
+      );
+      patchCloneSettings({
+        text: 'Line',
+        selectedProfileId: 'voice-edit',
+        refText: before ?? '',
+        autoPlay: false,
+      });
+      fireEvent.click(screen.getByText('go'));
+      fireEvent.click(screen.getByText('go'));
+      // The user saves a new transcript in the voice editor while take 2 waits;
+      // a saved voice sends no unchanged transcript (#3192), so /generate
+      // would read the edit.
+      act(() => {
+        commitTranscriptSave(beginTranscriptSave('voice-edit', saved));
+        client.setQueryData(queryKeys.profiles, [{ ...voice, ref_text: saved }]);
+      });
+      await act(async () => renders[0]!.resolve(take('a')));
+      await waitFor(() => expect(statuses()).toEqual(['done', 'failed']));
+      expect(generateClone).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('never lets Voice Design jump ahead of a waiting clone take', async () => {
+    deferredRenders();
+    mount();
+    // Another feature (voice convert, SFX) holds the synthesis slot.
+    const releaseOther = acquireSynthesis()!;
+    patchCloneSettings({ text: 'Clone line', selectedProfileId: 'voice-1', autoPlay: false });
+    fireEvent.click(screen.getByText('go'));
+    expect(statuses()).toEqual(['queued']);
+    // The slot frees up before the queue's retry runs.
+    releaseOther();
+    fireEvent.click(screen.getByText('design'));
+    expect(toast.info).toHaveBeenLastCalledWith(tr('tts_errors.generation_in_progress'));
+    expect(generateClone).not.toHaveBeenCalled();
+    // The waiting clone take still gets its turn.
+    await waitFor(() => expect(generateClone).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    expect(vi.mocked(generateClone).mock.calls[0]![0].text).toBe('Clone line');
+  });
+
+  it('keeps Voice Design one at a time instead of queuing it out of sight', async () => {
+    const renders = deferredRenders();
+    mount();
+    patchCloneSettings({ text: 'Clone line', selectedProfileId: 'voice-1', autoPlay: false });
+    fireEvent.click(screen.getByText('go'));
+    fireEvent.click(screen.getByText('design'));
+    expect(toast.info).toHaveBeenCalledWith(tr('tts_errors.generation_in_progress'));
+    expect(statuses()).toEqual(['running']);
+
+    await act(async () => renders[0]!.resolve(take('a')));
+    await waitFor(() => expect(statuses()).toEqual(['done']));
+    // Idle again: a design take renders straight away.
+    fireEvent.click(screen.getByText('design'));
+    await waitFor(() => expect(generateClone).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(generateClone).mock.calls[1]![0].text).toBe('Designed');
+  });
+
+  it('cancel all stops the running take and drops the waiting ones', async () => {
+    deferredRenders();
+    mount();
+    patchCloneSettings({ text: 'One', selectedProfileId: 'voice-1', autoPlay: false });
+    fireEvent.click(screen.getByText('go'));
+    fireEvent.click(screen.getByText('go'));
+    expect(statuses()).toEqual(['running', 'queued']);
+
+    fireEvent.click(screen.getByText('cancel all'));
+    expect(vi.mocked(generateClone).mock.calls[0]![1]!.signal!.aborted).toBe(true);
+    await waitFor(() => expect(statuses()).toEqual(['cancelled', 'cancelled']));
+    expect(generateClone).toHaveBeenCalledTimes(1);
+  });
 });

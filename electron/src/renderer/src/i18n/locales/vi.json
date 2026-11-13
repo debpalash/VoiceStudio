@@ -4349,5 +4349,27 @@
     "error_busy": "GPU đang bận với tác vụ khác. Hãy thử lại sau giây lát.",
     "error_timeout": "Việc tạo hiệu ứng âm thanh này mất quá nhiều thời gian. Hãy thử thời lượng ngắn hơn.",
     "error_out_of_memory": "GPU hết bộ nhớ. Hãy đóng các ứng dụng nặng GPU khác hoặc thử thời lượng ngắn hơn."
+  },
+  "generationQueue": {
+    "title": "Hàng đợi tạo giọng",
+    "waiting_one": "Đang chờ: {{count}}",
+    "waiting_other": "Đang chờ: {{count}}",
+    "added_one": "Đã thêm vào hàng đợi. Đang chờ: {{count}}",
+    "added_other": "Đã thêm vào hàng đợi. Đang chờ: {{count}}",
+    "full": "Hàng đợi đã đầy ({{count}}). Hãy chờ một số mục hoàn tất.",
+    "add": "Thêm vào hàng đợi",
+    "add_hint": "Xếp kịch bản này vào hàng đợi với giọng và cài đặt hiện tại. Nó bắt đầu khi bản trước hoàn tất.",
+    "remove": "Xóa khỏi hàng đợi",
+    "clear_finished": "Xóa mục đã xong",
+    "cancel_all": "Hủy tất cả",
+    "position": "Vị trí {{position}}",
+    "voice_changed": "Giọng này đã thay đổi trong lúc bản ghi đang chờ nên đã bị bỏ qua. Hãy xếp lại vào hàng đợi để dùng giọng đã cập nhật.",
+    "status": {
+      "queued": "Đang chờ",
+      "running": "Đang tạo",
+      "done": "Xong",
+      "failed": "Thất bại",
+      "cancelled": "Đã hủy"
+    }
   }
 }

@@ -4351,5 +4351,27 @@
     "error_busy": "La GPU está ocupada con otra tarea. Inténtalo de nuevo en un momento.",
     "error_timeout": "Generar este efecto de sonido tardó demasiado. Prueba con una duración menor.",
     "error_out_of_memory": "La GPU se quedó sin memoria. Cierra otras apps que usen mucho la GPU o prueba con una duración menor."
+  },
+  "generationQueue": {
+    "title": "Cola de generación",
+    "waiting_one": "En espera: {{count}}",
+    "waiting_other": "En espera: {{count}}",
+    "added_one": "Añadido a la cola. En espera: {{count}}",
+    "added_other": "Añadido a la cola. En espera: {{count}}",
+    "full": "La cola está llena ({{count}}). Espera a que terminen algunas.",
+    "add": "Añadir a la cola",
+    "add_hint": "Pon en cola este guion con la voz y los ajustes actuales. Empieza cuando termine la toma anterior.",
+    "remove": "Quitar de la cola",
+    "clear_finished": "Borrar terminadas",
+    "cancel_all": "Cancelar todo",
+    "position": "Puesto {{position}}",
+    "voice_changed": "Esta voz cambió mientras la toma esperaba, así que se omitió. Vuelve a ponerla en cola para usar la voz actualizada.",
+    "status": {
+      "queued": "En espera",
+      "running": "Generando",
+      "done": "Hecho",
+      "failed": "Error",
+      "cancelled": "Cancelado"
+    }
   }
 }

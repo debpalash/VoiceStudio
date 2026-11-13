@@ -4349,5 +4349,27 @@
     "error_busy": "GPU 正忙于其他任务。请稍后再试。",
     "error_timeout": "生成此音效耗时过长。请尝试更短的时长。",
     "error_out_of_memory": "GPU 内存不足。请关闭其他占用 GPU 的应用，或尝试更短的时长。"
+  },
+  "generationQueue": {
+    "title": "生成队列",
+    "waiting_one": "等待中：{{count}}",
+    "waiting_other": "等待中：{{count}}",
+    "added_one": "已加入队列。等待中：{{count}}",
+    "added_other": "已加入队列。等待中：{{count}}",
+    "full": "队列已满（{{count}}）。请等待部分任务完成。",
+    "add": "加入队列",
+    "add_hint": "用当前声音和设置将此脚本加入队列。上一条完成后开始。",
+    "remove": "从队列中移除",
+    "clear_finished": "清除已完成",
+    "cancel_all": "全部取消",
+    "position": "第 {{position}} 位",
+    "voice_changed": "该声音在等待期间已被更改，因此已跳过此条。请重新加入队列以使用更新后的声音。",
+    "status": {
+      "queued": "等待中",
+      "running": "生成中",
+      "done": "已完成",
+      "failed": "失败",
+      "cancelled": "已取消"
+    }
   }
 }
