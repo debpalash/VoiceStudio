@@ -176,9 +176,6 @@ def spawn_only_reason(kw: dict, *, has_transcript: bool) -> Optional[str]:
     for name in _SPAWN_ONLY_CONTROLS:
         if kw.get(name) is not None:
             return f"{name} is not accepted by tts-server"
-    num_step = kw.get("num_step")
-    if num_step is not None and int(num_step) != DEFAULT_DECODE_STEPS:
-        return f"num_step={int(num_step)} needs --steps; tts-server always decodes {DEFAULT_DECODE_STEPS}"
     if kw.get("denoise", True) is False:
         return "no-denoise is not accepted by tts-server"
     if kw.get("preprocess_prompt", True) is False:
@@ -380,8 +377,11 @@ class ResidentServer:
         return body
 
 
+_STEPS_IGNORED_LOGGED = False
+
+
 def speech_payload(text: str, *, voice: Optional[str], language: Optional[str],
-                   instruct: Optional[str], seed) -> dict:
+                   instruct: Optional[str], seed, steps=None) -> dict:
     """The ``/v1/audio/speech`` body for one request (WAV, one shot)."""
     # The CLI trims trailing newlines from stdin; keep the same input.
     payload: dict = {"input": text.rstrip("\r\n"), "response_format": "wav"}
@@ -393,6 +393,20 @@ def speech_payload(text: str, *, voice: Optional[str], language: Optional[str],
         payload["instructions"] = instruct
     if seed is not None:
         payload["seed"] = int(seed)
+    if steps is not None:
+        # Sent for runtimes whose tts-server reads it; the pinned one ignores
+        # unknown fields and decodes DEFAULT_DECODE_STEPS. Not routed to the
+        # CLI: dubbing sends 8/16 per segment, and a cold spawn per segment
+        # would undo the warm server the user turned on for speed.
+        payload["steps"] = int(steps)
+        global _STEPS_IGNORED_LOGGED
+        if int(steps) != DEFAULT_DECODE_STEPS and not _STEPS_IGNORED_LOGGED:
+            _STEPS_IGNORED_LOGGED = True
+            logger.info(
+                "GGUF resident server: num_step=%d sent as 'steps'; the pinned tts-server "
+                "decodes %d. Turn resident mode off to apply step counts.",
+                int(steps), DEFAULT_DECODE_STEPS,
+            )
     return payload
 
 

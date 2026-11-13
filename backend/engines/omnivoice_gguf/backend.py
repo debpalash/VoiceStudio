@@ -919,8 +919,8 @@ def _make_backend_class():
         supports_voice_design = True
         inline_tags = OMNIVOICE_INLINE_TAGS
         # The CLI takes ``--steps`` (MaskGIT decode steps, default 32). The
-        # resident tts-server at the pinned commit ignores it, so a request
-        # with a non-default value takes the CLI path (#4081). guidance_scale
+        # resident tts-server gets ``steps`` too; the pinned commit ignores it
+        # and decodes 32 (logged once, #4081). guidance_scale
         # has no flag in either, so it is still rejected with a 400 (#3654).
         supports_num_step = True
         num_step_range = (1, 64)
@@ -1556,6 +1556,7 @@ def _make_backend_class():
                             language=_iso_to_omnivoice_lang(kw.get("language")),
                             instruct=kw.get("instruct"),
                             seed=kw.get("seed"),
+                            steps=kw.get("num_step"),
                         )
                         return server.speak(payload, timeout=timeout_s)
                     except resident.ResidentUnavailable as exc:
