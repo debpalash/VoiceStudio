@@ -45,19 +45,20 @@ def proxy_trust_env():
 
 def test_trusts_exactly_the_session_proxy_origin(proxy_trust_env):
     env = proxy_trust_env(PROXY + "/?authuser=0", {})
+    # Hosts are "*": the Colab proxy forwards a Host unlike the address-bar URL (#4067).
     assert env == {
         "OMNIVOICE_ALLOWED_ORIGINS": PROXY,
-        "OMNIVOICE_ALLOWED_HOSTS": PROXY_HOST,
+        "OMNIVOICE_ALLOWED_HOSTS": "*",
     }
 
 
 def test_existing_allow_lists_are_kept(proxy_trust_env):
     env = proxy_trust_env(PROXY, {
         "OMNIVOICE_ALLOWED_ORIGINS": "http://localhost:3901",
-        "OMNIVOICE_ALLOWED_HOSTS": f"studio.example.com,{PROXY_HOST}",
+        "OMNIVOICE_ALLOWED_HOSTS": "studio.example.com",
     })
     assert env["OMNIVOICE_ALLOWED_ORIGINS"] == f"http://localhost:3901,{PROXY}"
-    assert env["OMNIVOICE_ALLOWED_HOSTS"] == f"studio.example.com,{PROXY_HOST}"
+    assert env["OMNIVOICE_ALLOWED_HOSTS"] == "studio.example.com,*"
 
 
 @pytest.mark.parametrize("bad", [
@@ -107,7 +108,10 @@ def test_proxied_ui_is_refused_without_the_trust(clean_env, forwarded_host):
     assert r.status_code == 403
 
 
-@pytest.mark.parametrize("forwarded_host", [PROXY_HOST, "localhost:3900"])
+@pytest.mark.parametrize(
+    "forwarded_host",
+    [PROXY_HOST, "localhost:3900", "3900-gpu-t4-s-abc-c.us-east1.prod.r.colab.dev"],  # #4067
+)
 def test_proxied_ui_reaches_the_api_with_the_trust(clean_env, proxy_trust_env, forwarded_host):
     for name, value in proxy_trust_env(PROXY, {}).items():
         clean_env.setenv(name, value)
@@ -123,4 +127,3 @@ def test_another_colab_session_stays_refused(clean_env, proxy_trust_env):
     other = "https://zzz-3900-colab.googleusercontent.com"
     client = _client(PROXY_HOST)
     assert client.post("/generate", headers={"Origin": other}).status_code == 403
-    assert _client(other.removeprefix("https://")).get("/profiles").status_code == 403

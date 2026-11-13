@@ -32,6 +32,7 @@ servers, LAN sharing by IP address and Tailscale MagicDNS names):
 
 from __future__ import annotations
 
+import logging
 import ipaddress
 import os
 import socket
@@ -49,6 +50,8 @@ from core.csrf import (
     configured_allowed_origins,
 )
 from core.user_env import DESKTOP_ENV_FILE_HINT
+
+logger = logging.getLogger(__name__)
 
 ALLOWED_HOSTS_ENV = "OMNIVOICE_ALLOWED_HOSTS"
 _MCP_HOSTS_ENV = "OMNIVOICE_MCP_ALLOWED_HOSTS"
@@ -292,6 +295,7 @@ class BrowserGuardMiddleware:
             and not host_allowed(_header(scope, b"host"))
             and _network_authorized_only(connection)
         ):
+            logger.debug("browser guard refused Host %r", _header(scope, b"host"))
             return HOST_DETAIL
         unsafe = scope["type"] != "http" or method not in SAFE_HTTP_METHODS
         return CROSS_SITE_DETAIL if unsafe and is_cross_site(connection) else None

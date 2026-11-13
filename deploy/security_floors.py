@@ -33,12 +33,13 @@ def floors(path: Path = CONSTRAINTS) -> list[Requirement]:
 
 
 def installed() -> dict[str, str]:
-    """Installed distributions by normalized name."""
-    return {
-        canonicalize_name(dist.metadata["Name"]): dist.version
-        for dist in md.distributions()
-        if dist.metadata["Name"]
-    }
+    """Installed distributions by normalized name; the first copy on sys.path wins, as in `import`."""
+    versions: dict[str, str] = {}
+    for dist in md.distributions():
+        name = dist.metadata["Name"]
+        if name:
+            versions.setdefault(canonicalize_name(name), dist.version)
+    return versions
 
 
 def below_floor(reqs: list[Requirement], versions: dict[str, str]) -> list[tuple[Requirement, str]]:
