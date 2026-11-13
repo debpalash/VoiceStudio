@@ -60,3 +60,43 @@ export function transcriptSavedSince(
     if (inFlight.profileId === profileId && inFlight.transcript !== then) return true;
   return false;
 }
+
+/*
+ * Requests that may change how a saved voice renders (edit, replace clip,
+ * lock, unlock). The backend resolves the profile when a take renders, so a
+ * waiting take must not start while one is in flight: it waits until the
+ * request settles and the profile list is refreshed, then compares the voice.
+ */
+const voiceChanges = new Map<number, string>();
+const settledListeners = new Set<() => void>();
+let nextVoiceChange = 0;
+
+/** Start a voice change; call the returned function once it has settled and the profiles are refreshed. */
+export function beginVoiceChange(profileId: string): () => void {
+  nextVoiceChange += 1;
+  const token = nextVoiceChange;
+  voiceChanges.set(token, profileId);
+  return () => {
+    if (!voiceChanges.delete(token)) return;
+    for (const listener of [...settledListeners]) listener();
+  };
+}
+
+/** True while a change to this voice is in flight. */
+export function voiceChangePending(profileId: string): boolean {
+  return [...voiceChanges.values()].includes(profileId);
+}
+
+/** Resolves once no change to this voice is in flight. */
+export function voiceChangesSettled(profileId: string): Promise<void> {
+  const busy = () => voiceChangePending(profileId);
+  if (!busy()) return Promise.resolve();
+  return new Promise((resolve) => {
+    const check = () => {
+      if (busy()) return;
+      settledListeners.delete(check);
+      resolve();
+    };
+    settledListeners.add(check);
+  });
+}

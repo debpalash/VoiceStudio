@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { LockIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiJson } from '@/lib/api/client';
+import { beginVoiceChange } from '@/lib/store/transcript-saves';
 import { queryKeys } from '@/lib/query';
 
 export function LockVoice({
@@ -30,6 +31,7 @@ export function LockVoice({
     if (pending.current || disabled) return;
     pending.current = true;
     setState('busy');
+    const settled = beginVoiceChange(profileId);
     try {
       const body = new FormData();
       body.append('history_id', historyId);
@@ -43,6 +45,7 @@ export function LockVoice({
     } catch {
       setState('failed');
     } finally {
+      settled();
       pending.current = false;
     }
   };

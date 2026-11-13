@@ -5,6 +5,8 @@ import {
   failTranscriptSave,
   transcriptSaveMarker,
   transcriptSavedSince,
+  beginVoiceChange,
+  voiceChangesSettled,
 } from './transcript-saves';
 
 function save(profileId: string, transcript: string): void {
@@ -54,5 +56,24 @@ describe('transcript saves', () => {
     expect(transcriptSavedSince('voice-g', marker, 'Old words.')).toBe(true);
     // A take queued after the commit sees the new cache and runs.
     expect(transcriptSavedSince('voice-g', transcriptSaveMarker(), 'New words.')).toBe(false);
+  });
+
+  it('holds a waiting take until every change to its voice settles', async () => {
+    await expect(voiceChangesSettled('voice-x')).resolves.toBeUndefined();
+    const lockDone = beginVoiceChange('voice-x');
+    const editDone = beginVoiceChange('voice-x');
+    const otherDone = beginVoiceChange('voice-y');
+    let settled = false;
+    const waiting = voiceChangesSettled('voice-x').then(() => {
+      settled = true;
+    });
+    lockDone();
+    otherDone();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    editDone();
+    editDone(); // settling twice is harmless
+    await waiting;
+    expect(settled).toBe(true);
   });
 });

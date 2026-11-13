@@ -46,7 +46,12 @@ import { recordActionBreadcrumb } from '@/lib/report-breadcrumb';
 import { useResolvedLicenceError } from './use-resolved-licence-error';
 import { announceDroppedSpeech } from '@/lib/dropped-speech';
 import { recordTakeSpeed } from '@/lib/store/quality-offer';
-import { transcriptSaveMarker, transcriptSavedSince } from '@/lib/store/transcript-saves';
+import {
+  transcriptSaveMarker,
+  transcriptSavedSince,
+  voiceChangePending,
+  voiceChangesSettled,
+} from '@/lib/store/transcript-saves';
 
 const TIMER_TICK_MS = 100;
 const PROGRESS_THROTTLE_MS = 100;
@@ -590,6 +595,10 @@ function useGenerateController(): UseGenerateClone {
       abortRef.current = controller;
       try {
         if (take.voiceFingerprint) {
+          // An edit, lock or unlock still in flight has reached (or may reach) the
+          // backend before the cache: wait for it to settle and refresh first.
+          if (input.profileId && voiceChangePending(input.profileId))
+            await voiceChangesSettled(input.profileId);
           // A voice replaced, re-locked, restyled or re-transcribed while the take waited
           // would render a voice the user never queued: skip it and say why.
           const current = queryClient

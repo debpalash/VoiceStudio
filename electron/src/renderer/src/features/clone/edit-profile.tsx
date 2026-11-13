@@ -35,6 +35,7 @@ import { useTtsReadiness } from '@/hooks/use-tts-readiness';
 import {
   beginTranscriptSave,
   commitTranscriptSave,
+  beginVoiceChange,
   failTranscriptSave,
 } from '@/lib/store/transcript-saves';
 
@@ -102,6 +103,7 @@ export function EditProfile({ profile, onDone }: { profile: Profile; onDone: () 
         setFailed(null);
         let saveToken: number | null = null;
         let saved = false;
+        const settled = beginVoiceChange(profile.id);
         try {
           // With a new clip, the edits and its transcript travel in the one
           // audio request: the backend saves all of them or none, and the old
@@ -137,6 +139,7 @@ export function EditProfile({ profile, onDone }: { profile: Profile; onDone: () 
         } finally {
           // After the profile refresh, so a take queued meanwhile is caught too.
           if (saveToken !== null) (saved ? commitTranscriptSave : failTranscriptSave)(saveToken);
+          settled();
           setBusy(false);
         }
       }}

@@ -3,7 +3,11 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GenerationProvider, useGenerateClone } from './use-generate';
-import { beginTranscriptSave, commitTranscriptSave } from '@/lib/store/transcript-saves';
+import {
+  beginTranscriptSave,
+  beginVoiceChange,
+  commitTranscriptSave,
+} from '@/lib/store/transcript-saves';
 import { patchCloneSettings } from '@/lib/store/clone-settings';
 import { generateClone } from '@/lib/api/generate';
 import { setLatestOutput } from '@/lib/store/output';
@@ -1025,6 +1029,41 @@ describe('generation queue', () => {
       client.setQueryData(queryKeys.profiles, [{ ...voice, ref_audio_path: 'voice-1-bbbb.wav' }]);
     });
     await act(async () => renders[0]!.resolve(take('a')));
+    await waitFor(() => expect(statuses()).toEqual(['done', 'failed']));
+    expect(generateClone).toHaveBeenCalledTimes(1);
+  });
+
+  it('holds a waiting take while an unlock is in flight, then skips it once the voice changed', async () => {
+    const renders = deferredRenders();
+    const client = new QueryClient();
+    const voice = {
+      id: 'voice-1',
+      name: 'Narrator',
+      ref_audio_path: 'voice-1-aaaa.wav',
+      locked_audio_path: 'voice-1-lock.wav',
+      is_locked: true,
+      ref_text: 'Hello there.',
+    } as Profile;
+    client.setQueryData(queryKeys.profiles, [voice]);
+    render(
+      <QueryClientProvider client={client}>
+        <GenerationProvider>
+          <QueueConsumer />
+        </GenerationProvider>
+      </QueryClientProvider>,
+    );
+    patchCloneSettings({ text: 'Line', selectedProfileId: 'voice-1', autoPlay: false });
+    fireEvent.click(screen.getByText('go'));
+    fireEvent.click(screen.getByText('go'));
+    // The unlock has reached the backend, but the profile list is not refreshed yet.
+    const settled = beginVoiceChange('voice-1');
+    await act(async () => renders[0]!.resolve(take('a')));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(generateClone).toHaveBeenCalledTimes(1);
+    act(() => {
+      client.setQueryData(queryKeys.profiles, [{ ...voice, is_locked: false }]);
+      settled();
+    });
     await waitFor(() => expect(statuses()).toEqual(['done', 'failed']));
     expect(generateClone).toHaveBeenCalledTimes(1);
   });
