@@ -32,6 +32,28 @@ function terminateProbe(child: ChildProcess): void {
   child.kill('SIGKILL');
 }
 
+/**
+ * Attach fields as own properties. `Object.assign` would throw on a cancelled
+ * probe: the abort reason is a DOMException whose `code` is a getter-only
+ * prototype accessor, and that TypeError escaped the `close` handler and
+ * crashed the main process.
+ */
+export function withFields<E extends object>(error: E, fields: Record<string, unknown>): E {
+  for (const [key, value] of Object.entries(fields)) {
+    try {
+      Object.defineProperty(error, key, {
+        value,
+        writable: true,
+        configurable: true,
+        enumerable: true,
+      });
+    } catch {
+      /* Frozen or non-configurable: keep the original error rather than crash. */
+    }
+  }
+  return error;
+}
+
 /** A deadline must release native DLLs before another install/repair can start. */
 export function runRuntimeProbe(
   command: string,
@@ -56,7 +78,7 @@ export function runRuntimeProbe(
       // Keep the OS code: setup maps EACCES/EPERM to its access hint.
       const refusal = runtimeLaunchRefusal(command, error);
       reject(
-        refusal ? Object.assign(refusal, { code: (error as NodeJS.ErrnoException).code }) : error,
+        refusal ? withFields(refusal, { code: (error as NodeJS.ErrnoException).code }) : error,
       );
       return;
     }
@@ -108,7 +130,7 @@ export function runRuntimeProbe(
       // have actually exited, so retry cannot race the old native process.
       if (failure || code !== 0)
         reject(
-          Object.assign(failure ?? new Error(`Runtime setup exited with code ${code}`), {
+          withFields(failure ?? new Error(`Runtime setup exited with code ${code}`), {
             stdout,
             stderr,
             code: failure && 'code' in failure ? failure.code : code,
