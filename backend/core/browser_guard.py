@@ -236,6 +236,39 @@ def is_cross_site(connection) -> bool:
     return not _origin_trusted(connection, _referer_origin(headers.get("referer")))
 
 
+def _format_origin(origin: tuple[str, str, int | None]) -> str:
+    scheme, host, port = origin
+    if ":" in host:
+        host = f"[{host}]"
+    # Browsers omit a scheme's default port from Origin, and CORS compares the
+    # configured strings exactly, so the suggestion must omit it too.
+    default = {"http": 80, "https": 443}.get(scheme)
+    return f"{scheme}://{host}" + (f":{port}" if port not in (None, default) else "")
+
+
+def cross_site_detail(connection) -> str:
+    """The refusal text, naming the refused origin and the exact line to add.
+
+    Only the requester itself can read it: a refused origin gets no CORS
+    headers, so another website's page never sees this body.
+    """
+    headers = connection.headers
+    origin = _origin_tuple(headers.get("origin")) if "origin" in headers else _referer_origin(
+        headers.get("referer")
+    )
+    if origin is None:
+        return CROSS_SITE_DETAIL
+    refused = _format_origin(origin)
+    # The variable replaces the defaults, so the line keeps them.
+    values = [value for value in allowed_origin_values() if value != refused] + [refused]
+    return (
+        f"Request refused: it came from another website ({refused}). The VoiceStudio "
+        "API only accepts browser requests from its own interface. To allow this app, "
+        f"add OMNIVOICE_ALLOWED_ORIGINS={','.join(values)} ({DESKTOP_ENV_FILE_HINT}) "
+        "and restart VoiceStudio."
+    )
+
+
 def reject_cross_site_get(request: Request) -> None:
     """Route dependency for GET endpoints with side effects.
 
@@ -245,7 +278,7 @@ def reject_cross_site_get(request: Request) -> None:
     from fastapi import HTTPException
 
     if is_cross_site(request):
-        raise HTTPException(status_code=403, detail=CROSS_SITE_DETAIL)
+        raise HTTPException(status_code=403, detail=cross_site_detail(request))
 
 
 def _network_authorized_only(connection) -> bool:
@@ -298,7 +331,7 @@ class BrowserGuardMiddleware:
             logger.debug("browser guard refused Host %r", _header(scope, b"host"))
             return HOST_DETAIL
         unsafe = scope["type"] != "http" or method not in SAFE_HTTP_METHODS
-        return CROSS_SITE_DETAIL if unsafe and is_cross_site(connection) else None
+        return cross_site_detail(connection) if unsafe and is_cross_site(connection) else None
 
     async def __call__(self, scope, receive, send) -> None:
         if scope["type"] not in ("http", "websocket"):

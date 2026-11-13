@@ -446,3 +446,59 @@ def test_loopback_proxy_websocket_with_a_ticket_is_not_host_checked(default_host
         with proxied.websocket_connect(f"/ws/tts?ws_ticket={ticket}") as ws:
             ws.receive_text()
     admin_session_store.clear()
+
+
+def test_cross_site_refusal_gives_the_exact_line_that_allows_the_app(spawned, public_dns, monkeypatch):
+    monkeypatch.delenv("OMNIVOICE_ALLOWED_ORIGINS", raising=False)
+    app_origin = "http://localhost:6121"
+    detail = _client().post(_DOWNLOAD, headers={"Origin": app_origin}).json()["detail"]
+    assert f"({app_origin})" in detail
+    assert "%USERPROFILE%\\.config\\omnivoice\\env" in detail
+    line = detail.split("add OMNIVOICE_ALLOWED_ORIGINS=", 1)[1].split(" ", 1)[0]
+    # The line keeps the defaults (the variable replaces them) and adds the app.
+    assert "app://voicestudio" in line.split(",") and line.endswith(f",{app_origin}")
+    monkeypatch.setenv("OMNIVOICE_ALLOWED_ORIGINS", line)
+    assert _client().post(_DOWNLOAD, headers={"Origin": app_origin}).status_code != 403
+    assert _client().post(_DOWNLOAD, headers={"Origin": "app://voicestudio"}).status_code != 403
+
+
+@pytest.mark.parametrize("headers", [{"Origin": "null"}, {"Sec-Fetch-Site": "cross-site"}])
+def test_opaque_cross_site_refusal_keeps_the_generic_hint(spawned, public_dns, headers):
+    from core.browser_guard import CROSS_SITE_DETAIL
+
+    assert _client().post(_DOWNLOAD, headers=headers).json()["detail"] == CROSS_SITE_DETAIL
+
+
+@pytest.mark.parametrize("origin", ["https://airi.example", "http://airi.example", "http://[::1]:6121"])
+def test_suggested_origin_is_exactly_what_the_browser_sends(spawned, public_dns, monkeypatch, origin):
+    """CORS matches strings exactly: no default port may be added to the suggestion."""
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.testclient import TestClient
+
+    from core.csrf import allowed_origin_values
+
+    monkeypatch.delenv("OMNIVOICE_ALLOWED_ORIGINS", raising=False)
+    detail = _client().post(_DOWNLOAD, headers={"Origin": origin}).json()["detail"]
+    line = detail.split("add OMNIVOICE_ALLOWED_ORIGINS=", 1)[1].split(" ", 1)[0]
+    assert line.split(",")[-1] == origin
+    monkeypatch.setenv("OMNIVOICE_ALLOWED_ORIGINS", line)
+    # CORS captures its allowlist at startup. Recreate that layer with the
+    # suggested setting, as restarting the backend would.
+    client = TestClient(CORSMiddleware(
+        _client().app,
+        allow_origins=allowed_origin_values(),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    ), client=LOOPBACK)
+    for allowed in (origin, "app://voicestudio"):
+        preflight = client.options(_DOWNLOAD, headers={
+            "Origin": allowed,
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        })
+        assert preflight.status_code == 200
+        assert preflight.headers["access-control-allow-origin"] == allowed
+        response = client.post(_DOWNLOAD, headers={"Origin": allowed})
+        assert response.status_code == 500  # Reached the stubbed yt-dlp route.
+        assert response.headers["access-control-allow-origin"] == allowed
