@@ -342,7 +342,7 @@
               pkgs.nodejs_22
             ];
             outputHashMode = "recursive";
-            outputHash = "sha256-rm7NuMY+mQQwdMfzlB7vC+ojyVdLl4tYqLXt2X0sUiI=";
+            outputHash = "sha256-bqxnoXhbM2HK+xW+pBOy71WjSuAhsbjbr429b+uT6WU=";
             sourceProvenance = null;
           } ''
           export HOME=$TMPDIR

@@ -190,6 +190,9 @@ Use this for development or to run current `main`. The install script's
 `main` mode (`$env:VOICESTUDIO_INSTALL_MODE='main'; irm https://voicestudio.sh/install.ps1 | iex`)
 builds and installs a desktop package from `main` without a checkout; see
 [the install script guide](script.md).
+The script uses a short, temporary checkout name to keep native dependency
+paths within MSVC's path limit. If your `TEMP` directory has a long path,
+choose a shorter temporary directory before starting a source build.
 
 Prerequisites:
 

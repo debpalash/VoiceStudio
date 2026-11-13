@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -29,35 +29,45 @@ test('installer-owned PowerShell probes skip profiles and interactive prompts', 
   }
 });
 
-test('the NSIS availability probe ignores a blocking user profile', {
+test('the NSIS availability probe does not load a user profile', {
   // PowerShell on macOS/Linux exposes an isolated profile through XDG_CONFIG_HOME.
   // Windows profile locations cannot be redirected without changing real user state.
   skip: process.platform === 'win32' || available.error?.code === 'ENOENT',
-  timeout: 10_000,
+  timeout: 60_000,
 }, () => {
   const scratch = mkdtempSync(join(tmpdir(), 'voice-nsis-profile-'));
-  const env = { ...process.env, XDG_CONFIG_HOME: scratch };
+  const loaded = join(scratch, 'profile-loaded');
+  const env = { ...process.env, XDG_CONFIG_HOME: scratch, VS_PROFILE_MARKER: loaded };
   try {
     const lookup = spawnSync(powershell, ['-NoProfile', '-NonInteractive', '-Command', '$PROFILE'], {
-      encoding: 'utf8', env, timeout: 5_000,
+      encoding: 'utf8', env, timeout: 20_000,
     });
     assert.equal(lookup.status, 0, lookup.stderr);
     const profile = lookup.stdout.trim();
     assert.ok(profile.startsWith(scratch), 'only a scratch PowerShell profile may be written');
     mkdirSync(dirname(profile), { recursive: true });
-    writeFileSync(profile, 'Start-Sleep -Seconds 30\n', 'utf8');
+    writeFileSync(profile, 'Set-Content -LiteralPath $env:VS_PROFILE_MARKER -Value loaded\n', 'utf8');
 
     // Execute the availability command shipped in the actual NSIS template.
     const marker = probes[0].indexOf('-C "');
     assert.ok(marker >= 0);
     const switches = probes[0].slice(0, marker).trim().split(/\s+/).filter(Boolean);
-    const command = probes[0].slice(marker + 4, -1);
+    // CIM is Windows-only. Supply the command locally so Get-Command does not
+    // search installed modules on macOS/Linux; the installed probe stays intact.
+    const command = `function Get-CimInstance { }\n${probes[0].slice(marker + 4, -1)}`;
+    const control = spawnSync(powershell, [...switches.filter((flag) => !/^-NoProfile$/i.test(flag)), '-Command', command], {
+      encoding: 'utf8', env, timeout: 20_000,
+    });
+    assert.ifError(control.error);
+    assert.equal(control.status, 0, control.stderr);
+    assert.ok(existsSync(loaded), 'negative control must load the isolated profile');
+    rmSync(loaded);
     const result = spawnSync(powershell, [...switches, '-Command', command], {
-      encoding: 'utf8', env, timeout: 5_000,
+      encoding: 'utf8', env, timeout: 20_000,
     });
     assert.ifError(result.error);
-    // CIM may be unavailable off Windows; either availability result must return.
-    assert.ok(result.status === 0 || result.status === 1, result.stderr);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(existsSync(loaded), false, 'installer probe must skip the isolated profile');
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }

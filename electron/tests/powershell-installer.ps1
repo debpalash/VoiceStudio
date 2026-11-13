@@ -138,3 +138,29 @@ try {
 } finally {
     Remove-Item -LiteralPath $uninstallRoot -Recurse -Force
 }
+
+# Exercise main's actual checkout path. MSVC rejected this exact dependency
+# path at 265 characters with the previous GUID-prefixed scratch directory.
+$script:cancel = $false
+function git {
+    param([Parameter(ValueFromRemainingArguments)] [string[]]$Arguments)
+    if ($Arguments[0] -eq 'clone') {
+        $checkout = $Arguments[-1]
+        $leaf = Split-Path (Split-Path $checkout -Parent) -Leaf
+        $windowsCheckout = "C:\Users\runneradmin\AppData\Local\Temp\$leaf\source"
+        $library = "$windowsCheckout\native\desktop-bridge\target\x86_64-pc-windows-msvc\release\build\rustls-platform-verifier\8fcc12423317bf98\out\librustls_platform_verifier-8fcc12423317bf98.rlib"
+        if ($library.Length -ge 260) { throw "MSVC cannot link the installer's dependency path ($($library.Length) characters)." }
+        New-Item -ItemType Directory -Path (Join-Path $checkout 'electron/release') -Force | Out-Null
+        [IO.File]::WriteAllText((Join-Path $checkout 'package.json'), '{"version":"1.2.3"}')
+        [IO.File]::WriteAllText((Join-Path $checkout 'electron/release/VoiceStudio-1.2.3-win-x64.exe'), 'fixture')
+    }
+    $global:LASTEXITCODE = 0
+}
+function node { $global:LASTEXITCODE = 0 }
+function bun { $global:LASTEXITCODE = 0 }
+function cargo { $global:LASTEXITCODE = 0 }
+function uv { $global:LASTEXITCODE = 0 }
+$script:launched = $false
+& $installer -Main -Silent
+if (-not $script:launched) { throw 'Main build did not launch setup' }
+Write-Output 'PASS: main build scratch directory stays within MSVC path limits'
