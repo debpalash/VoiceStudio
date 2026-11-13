@@ -698,6 +698,9 @@ def delete_single_dub_history(history_id: str):
             "dub delete %s: history row removed but directory kept — still "
             "referenced by job(s) %s (#1331)", log_safe(history_id), log_safe(", ".join(holders)),
         )
+        # The crash-resume copies belong to the deleted job alone.
+        if safe:
+            shutil.rmtree(os.path.join(safe, ".resume"), ignore_errors=True)
     elif safe and os.path.isdir(safe):
         shutil.rmtree(safe, ignore_errors=True)
     event_bus.emit("dub_history", {"action": "deleted", "id": history_id})

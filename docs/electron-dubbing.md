@@ -99,7 +99,14 @@ re-transcribing subtitles while it runs, keeps the previous track (the latter as
 generation). Fresh segment speech enters the cache behind segment previews and partial
 regeneration only when its track is published, together with its fingerprint; a new track starts
 without the previous track's QC marks, and a dub that finishes as cancellation arrives reports
-done. Subtitles imported, or a dub published, during transcription replace its result, and
+done. If the app or backend stops mid-dub, the segments that had finished are kept as recovery
+copies inside that job's folder (one set per track language, at most 1 GiB, dropped after 7 days,
+once the track is published, or with the job). The next generation of the same job reuses a copy
+only when its text, voice reference audio, engine, language, steps, guidance, speed, seed and
+effect preset are all identical, and only after the audio verifies; anything else, or any problem
+reading the copies, renders the segment normally without an error. Recovery copies never count as
+cached speech: previews and partial regeneration still see a segment only after its track is
+published. Subtitles imported, or a dub published, during transcription replace its result, and
 imported cues keep their matched voice references: each transcription writes its references to
 its own folder.
 Interrupted preparation/generation offers Resume, which reads the existing task
