@@ -582,7 +582,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                     async for event in events:
                         yield event
         finally:
-            _drop_resume_journal_if_withdrawn(job_id, lang_code)
+            await _run_journal_io(_drop_resume_journal_if_withdrawn, job_id, lang_code)
 
     async def _render(task_id, voice_lease, stage_dir):
         total = len(req.segments)
