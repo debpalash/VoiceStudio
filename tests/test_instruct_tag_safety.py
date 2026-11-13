@@ -90,7 +90,9 @@ def test_long_whitespace_runs_stay_fast():
 
     from services.instruct_safety import tag_safe_instruct
 
+    tag_safe_instruct("slow")  # import OmniVoice's resolver outside the timing
     started = time.perf_counter()
-    out = tag_safe_instruct("male" + " " * 50_000 + ",  " + " " * 50_000 + "whisper")
-    assert out.replace(" ", "") == "male,whisper"
+    # A whitespace run that does not touch a comma made the resolver's split
+    # backtrack quadratically before the whitespace was collapsed.
+    assert tag_safe_instruct("slow" + " " * 100_000 + "slow") is None
     assert time.perf_counter() - started < 2
