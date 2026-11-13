@@ -1,1 +1,0 @@
-Projects grid view stays smooth with thousands of items by drawing only the cards in view.
