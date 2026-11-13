@@ -240,7 +240,10 @@ def _format_origin(origin: tuple[str, str, int | None]) -> str:
     scheme, host, port = origin
     if ":" in host:
         host = f"[{host}]"
-    return f"{scheme}://{host}" + (f":{port}" if port is not None else "")
+    # Browsers omit a scheme's default port from Origin, and CORS compares the
+    # configured strings exactly, so the suggestion must omit it too.
+    default = {"http": 80, "https": 443}.get(scheme)
+    return f"{scheme}://{host}" + (f":{port}" if port not in (None, default) else "")
 
 
 def cross_site_detail(connection) -> str:

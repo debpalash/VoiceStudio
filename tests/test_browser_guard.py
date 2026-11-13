@@ -467,3 +467,12 @@ def test_opaque_cross_site_refusal_keeps_the_generic_hint(spawned, public_dns, h
     from core.browser_guard import CROSS_SITE_DETAIL
 
     assert _client().post(_DOWNLOAD, headers=headers).json()["detail"] == CROSS_SITE_DETAIL
+
+
+@pytest.mark.parametrize("origin", ["https://airi.example", "http://airi.example", "http://[::1]:6121"])
+def test_suggested_origin_is_exactly_what_the_browser_sends(spawned, public_dns, monkeypatch, origin):
+    """CORS matches strings exactly: no default port may be added to the suggestion."""
+    monkeypatch.delenv("OMNIVOICE_ALLOWED_ORIGINS", raising=False)
+    detail = _client().post(_DOWNLOAD, headers={"Origin": origin}).json()["detail"]
+    line = detail.split("add OMNIVOICE_ALLOWED_ORIGINS=", 1)[1].split(" ", 1)[0]
+    assert line.split(",")[-1] == origin
