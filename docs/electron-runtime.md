@@ -91,7 +91,7 @@ macOS packaging includes the microphone purpose description shared with Tauri an
 
 Setup reserves its active operation before asynchronous compatibility checks. Repeated install clicks cannot race those checks, cancellation invalidates preflight, and each explicit attempt starts with a fresh elapsed timer and activity log.
 
-If the renderer remains empty after three bounded reloads, Electron paints an asset-independent localized recovery page. Its retry clears only Chromium's display cache, schedules a relaunch, and still shuts the managed backend down cleanly; voices, projects, models and preferences remain untouched.
+Automatic blank-renderer recovery preserves the current trusted workspace route, including Stories and Audiobook, while reloading the known app document. If the renderer remains empty after three bounded reloads, Electron paints an asset-independent localized recovery page. Its retry clears only Chromium's display cache, schedules a relaunch, and still shuts the managed backend down cleanly; voices, projects, models and preferences remain untouched.
 
 Branding remains in a fixed native title row while onboarding status loads, installation runs or recovery needs retry. Runtime details scroll independently below it; installer phases wrap into two columns on narrow windows, so a growing progress/log surface cannot clip the wordmark or window controls.
 
