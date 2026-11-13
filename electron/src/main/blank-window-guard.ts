@@ -104,6 +104,21 @@ export function installBlankWindowGuard(
   // that began on an older page can never trigger recovery for a newer one.
   let generation = 0;
 
+  const recoveryUrl = () => {
+    try {
+      const current = contents.getURL();
+      if (!isTrustedRenderer(current, devOrigin)) return appUrl;
+      // The router stores the workspace in the hash. Keep that route while
+      // loading the known app document, so recovery does not send a working
+      // Stories/Audiobook session back to Home.
+      const target = new URL(appUrl);
+      target.hash = new URL(current).hash;
+      return target.href;
+    } catch {
+      return appUrl;
+    }
+  };
+
   const schedule = (delay: number) => {
     if (stopped || win.isDestroyed()) return;
     if (timer) clearTimeout(timer);
@@ -131,7 +146,7 @@ export function installBlankWindowGuard(
     reloads += 1;
     if (reloads <= MAX_RELOADS) {
       console.warn(`[window] empty renderer; reload ${reloads}/${MAX_RELOADS}`);
-      void win.loadURL(appUrl).catch(() => {});
+      void win.loadURL(recoveryUrl()).catch(() => {});
       schedule(RETRY_BASE_MS * reloads);
       return;
     }
