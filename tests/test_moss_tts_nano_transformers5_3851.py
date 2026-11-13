@@ -7,6 +7,7 @@ the list made every load raise ``TypeError``, and the buffer came back as
 uninitialized memory, so synthesis produced NaN/Inf.
 """
 import importlib.util
+import sys
 import types
 from pathlib import Path
 
@@ -92,6 +93,19 @@ def pristine_loader(monkeypatch):
     monkeypatch.setattr(_Base, "_adjust_missing_and_unexpected_keys", method)
 
 
+@pytest.fixture(params=[False, True], ids=["original-module", "rebound-module"])
+def runtime_transformers(request, monkeypatch):
+    """Model a sys.modules restore replacing the collection-time module."""
+    import transformers as current
+
+    if request.param:
+        rebound = types.ModuleType("transformers")
+        rebound.__dict__.update(vars(current))
+        monkeypatch.setitem(sys.modules, "transformers", rebound)
+        current = rebound
+    return current
+
+
 @pytest.mark.skipif(not _TF5, reason="transformers 4 accepts a list")
 def test_a_listed_ignore_pattern_breaks_the_unpatched_load(checkpoint, pristine_loader):
     with pytest.raises(TypeError):
@@ -141,21 +155,25 @@ def test_non_module_models_pass_through(pristine_loader):
 
 
 @pytest.mark.parametrize("version", ["4.57.1", "5.8.0"])
-def test_the_shim_stays_off_where_patterns_are_still_lists(pristine_loader, monkeypatch, version):
+def test_the_shim_stays_off_where_patterns_are_still_lists(
+    pristine_loader, monkeypatch, version, runtime_transformers,
+):
     """transformers 4 and 5 through 5.8 concatenate the patterns with `+`, so a
     set on the left fails every load with `set + list` (#4063). The engine
     venv pins transformers 4.57.1, so the shim must only install on the
     set-semantics side (>= 5.9)."""
     sidecar = _sidecar()
-    monkeypatch.setattr(transformers, "__version__", version)
+    monkeypatch.setattr(runtime_transformers, "__version__", version)
     sidecar._accept_list_ignore_patterns()
     method = _Base._adjust_missing_and_unexpected_keys
     assert not hasattr(method, "_voicestudio_accepts_lists")
 
 
 @pytest.mark.parametrize("version", ["5.9.0", "5.20.2"])
-def test_the_shim_installs_where_patterns_are_sets(pristine_loader, monkeypatch, version):
+def test_the_shim_installs_where_patterns_are_sets(
+    pristine_loader, monkeypatch, version, runtime_transformers,
+):
     sidecar = _sidecar()
-    monkeypatch.setattr(transformers, "__version__", version)
+    monkeypatch.setattr(runtime_transformers, "__version__", version)
     sidecar._accept_list_ignore_patterns()
     assert getattr(_Base._adjust_missing_and_unexpected_keys, "_voicestudio_accepts_lists", False)
