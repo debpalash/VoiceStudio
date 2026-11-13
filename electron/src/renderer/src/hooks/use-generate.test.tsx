@@ -9,6 +9,7 @@ import { setLatestOutput } from '@/lib/store/output';
 import { queryKeys } from '@/lib/query';
 import type { Profile } from '@/lib/api/types';
 import { tr } from '@/lib/i18n-text';
+import { acquireSynthesis } from '@/lib/synthesis-lock';
 const modelStatus = vi.hoisted(() => ({
   value: { status: 'loading', loading: true } as {
     status: string;
@@ -992,6 +993,54 @@ describe('generation queue', () => {
     await act(async () => renders[0]!.resolve(take('a')));
     await waitFor(() => expect(statuses()).toEqual(['done', 'failed']));
     expect(generateClone).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps waiting takes when the first render stores an automatic transcript', async () => {
+    const renders = deferredRenders();
+    const client = new QueryClient();
+    const voice = {
+      id: 'voice-1',
+      name: 'Narrator',
+      ref_audio_path: 'voice-1-aaaa.wav',
+      ref_text: null,
+    } as Profile;
+    client.setQueryData(queryKeys.profiles, [voice]);
+    render(
+      <QueryClientProvider client={client}>
+        <GenerationProvider>
+          <QueueConsumer />
+        </GenerationProvider>
+      </QueryClientProvider>,
+    );
+    patchCloneSettings({ text: 'Line', selectedProfileId: 'voice-1', autoPlay: false });
+    fireEvent.click(screen.getByText('go'));
+    fireEvent.click(screen.getByText('go'));
+    // /generate transcribes the clip on the first render and stores it.
+    act(() => {
+      client.setQueryData(queryKeys.profiles, [{ ...voice, ref_text: 'Automatic words.' }]);
+    });
+    await act(async () => renders[0]!.resolve(take('a')));
+    await waitFor(() => expect(generateClone).toHaveBeenCalledTimes(2));
+    await act(async () => renders[1]!.resolve(take('b')));
+    await waitFor(() => expect(statuses()).toEqual(['done', 'done']));
+  });
+
+  it('never lets Voice Design jump ahead of a waiting clone take', async () => {
+    deferredRenders();
+    mount();
+    // Another feature (voice convert, SFX) holds the synthesis slot.
+    const releaseOther = acquireSynthesis()!;
+    patchCloneSettings({ text: 'Clone line', selectedProfileId: 'voice-1', autoPlay: false });
+    fireEvent.click(screen.getByText('go'));
+    expect(statuses()).toEqual(['queued']);
+    // The slot frees up before the queue's retry runs.
+    releaseOther();
+    fireEvent.click(screen.getByText('design'));
+    expect(toast.info).toHaveBeenLastCalledWith(tr('tts_errors.generation_in_progress'));
+    expect(generateClone).not.toHaveBeenCalled();
+    // The waiting clone take still gets its turn.
+    await waitFor(() => expect(generateClone).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    expect(vi.mocked(generateClone).mock.calls[0]![0].text).toBe('Clone line');
   });
 
   it('keeps Voice Design one at a time instead of queuing it out of sight', async () => {

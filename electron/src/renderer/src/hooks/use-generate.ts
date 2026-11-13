@@ -101,10 +101,14 @@ interface PreparedTake {
 }
 
 /**
- * What /generate reads from a saved voice when it renders: the reference clip
- * (replacing it writes a new versioned file), the locked take, its transcript,
- * seed and style. A queued take compares this when it starts, because the
- * backend resolves the profile at render time, not at request time.
+ * Which voice /generate renders for a saved profile: the reference clip
+ * (replacing it writes a new versioned file), the locked take, seed and style.
+ * A queued take compares this when it starts, because the backend resolves the
+ * profile at render time, not at request time.
+ *
+ * The transcript is left out on purpose: it describes the same clip, and the
+ * first render of a voice without one stores an automatic transcript, which
+ * must not skip the takes queued behind it.
  */
 export function voiceFingerprint(profile: Profile | null | undefined): string | null {
   if (!profile) return null;
@@ -112,7 +116,6 @@ export function voiceFingerprint(profile: Profile | null | undefined): string | 
     profile.ref_audio_path ?? null,
     profile.locked_audio_path || null,
     Boolean(profile.is_locked),
-    profile.ref_text ?? null,
     profile.seed ?? null,
     profile.instruct ?? null,
   ]);
@@ -573,7 +576,7 @@ function useGenerateController(): UseGenerateClone {
       abortRef.current = controller;
       try {
         if (take.voiceFingerprint) {
-          // A voice replaced, re-locked or re-transcribed while the take waited
+          // A voice replaced, re-locked or restyled while the take waited
           // would render a voice the user never queued: skip it and say why.
           const current = queryClient
             .getQueryData<Profile[]>(queryKeys.profiles)
@@ -696,7 +699,8 @@ function useGenerateController(): UseGenerateClone {
       if (design) {
         // Voice Design has no queue view to show, remove or cancel waiting
         // takes, so it keeps one render at a time: start now or say it's busy.
-        if (activeRef.current) {
+        // A waiting clone take keeps its turn even when the slot just freed up.
+        if (activeRef.current || pendingRef.current.length > 0) {
           toast.info(tr('tts_errors.generation_in_progress'));
           return;
         }
