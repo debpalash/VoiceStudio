@@ -63,13 +63,15 @@ it('ignores broken saved edges and removes a step with all connected edges', () 
   const saved = JSON.stringify({
     version: 1,
     activeId: document.id,
-    documents: [{
-      ...document,
-      connections: [
-        ...document.connections,
-        { id: 'broken', source: document.steps[0].id, target: 'missing' },
-      ],
-    }],
+    documents: [
+      {
+        ...document,
+        connections: [
+          ...document.connections,
+          { id: 'broken', source: document.steps[0].id, target: 'missing' },
+        ],
+      },
+    ],
   });
   const loaded = parseWorkflowLibrary(saved, 'Untitled').documents[0];
   expect(loaded.connections).toHaveLength(2);
@@ -124,8 +126,15 @@ it('repairs copied legacy keys and numbers new copies without compounding names'
 it('preserves libraries and graphs beyond the former silent truncation limits', () => {
   const documents = Array.from({ length: 105 }, (_, i) => makeWorkflow(`Workflow ${i}`));
   documents[104].steps = Array.from({ length: 305 }, () => makeWorkflow('x').steps[0]);
-  documents[104].connections = Array.from({ length: 605 }, (_, i) => ({ id: String(i), source: documents[104].steps[0].id, target: documents[104].steps[1].id }));
-  const loaded = parseWorkflowLibrary(JSON.stringify({ version: 1, activeId: documents[104].id, documents }), 'Untitled');
+  documents[104].connections = Array.from({ length: 605 }, (_, i) => ({
+    id: String(i),
+    source: documents[104].steps[0].id,
+    target: documents[104].steps[1].id,
+  }));
+  const loaded = parseWorkflowLibrary(
+    JSON.stringify({ version: 1, activeId: documents[104].id, documents }),
+    'Untitled',
+  );
   expect(loaded.documents).toHaveLength(105);
   expect(loaded.documents[104].steps).toHaveLength(305);
   expect(loaded.documents[104].connections).toHaveLength(605);
@@ -146,6 +155,14 @@ it('deletes media only after its last shared reference and invalidates affected 
 it('retains queued media deletions across reloads and ignores malformed queue entries', () => {
   const document = makeWorkflow('Remaining');
   const queued = { media: ['deleted-source'], runs: ['deleted-workflow'] };
-  const loaded = parseWorkflowLibrary(JSON.stringify({ version: 1, activeId: document.id, documents: [document], cleanup: [queued, null, { media: [42], runs: [] }] }), 'Untitled');
+  const loaded = parseWorkflowLibrary(
+    JSON.stringify({
+      version: 1,
+      activeId: document.id,
+      documents: [document],
+      cleanup: [queued, null, { media: [42], runs: [] }],
+    }),
+    'Untitled',
+  );
   expect(loaded.cleanup).toEqual([queued]);
 });

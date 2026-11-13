@@ -37,14 +37,21 @@ it('streams requests to the current backend with only main-owned authorization',
 
   const proxy: DevBackendProxy = await startDevBackendProxy(
     () => `http://127.0.0.1:${address.port}`,
-    () => ({ Authorization: 'Bearer scoped-session', 'X-VoiceStudio-Desktop-Origin': 'app://voicestudio' }),
+    () => ({
+      Authorization: 'Bearer scoped-session',
+      'X-VoiceStudio-Desktop-Origin': 'app://voicestudio',
+    }),
     0,
     ['http://localhost:3902'],
   );
   cleanup.push(proxy.close);
   const response = await fetch(`${proxy.url}/system/info?full=1`, {
     method: 'POST',
-    headers: { Authorization: 'Bearer renderer-secret', Origin: 'http://localhost:3902', 'X-VoiceStudio-Desktop-Origin': 'app://forged' },
+    headers: {
+      Authorization: 'Bearer renderer-secret',
+      Origin: 'http://localhost:3902',
+      'X-VoiceStudio-Desktop-Origin': 'app://forged',
+    },
     body: 'stream me',
   });
 
@@ -129,7 +136,11 @@ it('refuses other websites and rebound host names before injecting credentials',
 
 it('binds an OS-assigned port when asked for port 0, so no pre-picked port can be stolen', async () => {
   expect(electronProxyPort('0')).toBe(0);
-  const proxy = await startDevBackendProxy(() => 'http://127.0.0.1:1', () => ({}), 0);
+  const proxy = await startDevBackendProxy(
+    () => 'http://127.0.0.1:1',
+    () => ({}),
+    0,
+  );
   cleanup.push(proxy.close);
   expect(Number(new URL(proxy.url).port)).toBeGreaterThan(0);
 });

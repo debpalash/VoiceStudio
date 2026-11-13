@@ -694,5 +694,7 @@ it('never splits an emoji when it shortens a log line', () => {
     logTail: [line],
   });
   expect(message.length).toBeLessThanOrEqual(MAX_MSG_CHARS);
-  expect(message).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/);
+  expect(message).not.toMatch(
+    /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/,
+  );
 });

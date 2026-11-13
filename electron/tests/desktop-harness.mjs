@@ -211,16 +211,21 @@ export async function withApp(t, options, body) {
     await collectGuards(started);
     const signal = AbortSignal.timeout(30_000);
     started.expectedExit = true;
-    await forceAndWaitForExit(started.child, started.app, () => {
-      if (process.platform === 'win32') {
-        // Playwright launches through cmd.exe. Kill the entire tree and verify
-        // both the wrapper exit and Electron close, even if taskkill races a child.
-        execFileSync('taskkill.exe', ['/PID', String(started.child.pid), '/T', '/F'], {
-          windowsHide: true,
-          timeout: 10_000,
-        });
-      } else started.child.kill('SIGKILL');
-    }, signal);
+    await forceAndWaitForExit(
+      started.child,
+      started.app,
+      () => {
+        if (process.platform === 'win32') {
+          // Playwright launches through cmd.exe. Kill the entire tree and verify
+          // both the wrapper exit and Electron close, even if taskkill races a child.
+          execFileSync('taskkill.exe', ['/PID', String(started.child.pid), '/T', '/F'], {
+            windowsHide: true,
+            timeout: 10_000,
+          });
+        } else started.child.kill('SIGKILL');
+      },
+      signal,
+    );
   };
   session.relaunch = async () => {
     const previous = live.at(-1);

@@ -75,7 +75,9 @@ it('offers an install call-to-action with size and licence when not installed', 
   expect(screen.getByText(/Apache-2.0/)).toBeTruthy();
   expect(screen.getByRole('button', { name: 'install moss-soundeffect' })).toBeTruthy();
   expect(screen.queryByRole('alert')).toBeNull();
-  expect((screen.getByRole('button', { name: /sfx.generate/ }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole('button', { name: /sfx.generate/ }) as HTMLButtonElement).disabled).toBe(
+    true,
+  );
 });
 
 it('disables Generate and says why on an unsupported host', async () => {
@@ -95,7 +97,9 @@ it('disables Generate and says why on an unsupported host', async () => {
   fireEvent.change(screen.getByPlaceholderText('sfx.prompt_placeholder'), {
     target: { value: 'rain' },
   });
-  expect((screen.getByRole('button', { name: /sfx.generate/ }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole('button', { name: /sfx.generate/ }) as HTMLButtonElement).disabled).toBe(
+    true,
+  );
 });
 
 it('generates with the chosen duration and shows the player', async () => {
@@ -159,9 +163,9 @@ it.each([
   await failWith(apiError(500, code));
   expect(await screen.findByText(new RegExp(`^${key}`))).toBeTruthy();
   expect(screen.queryByText(/English server detail/)).toBeNull();
-  expect((screen.getByPlaceholderText('sfx.prompt_placeholder') as HTMLTextAreaElement).disabled).toBe(
-    false,
-  );
+  expect(
+    (screen.getByPlaceholderText('sfx.prompt_placeholder') as HTMLTextAreaElement).disabled,
+  ).toBe(false);
 });
 
 it('falls back to the generic translated message for an unknown code or a plain error', async () => {

@@ -31,9 +31,10 @@ const used = new Map();
 const callPattern = /\b(?:t|tr)\(\s*(['"])([A-Za-z0-9_.:-]+)\1/g;
 const transPattern = /\bi18nKey\s*=\s*(['"])([A-Za-z0-9_.:-]+)\1/g;
 
-const sharedControls = ['SearchableSelect', 'VoiceSelector'].map((name) =>
-  new URL(`../src/shared/components/${name}.jsx`, import.meta.url));
-for (const file of [...await sourceFiles(sourceDirectory), ...sharedControls]) {
+const sharedControls = ['SearchableSelect', 'VoiceSelector'].map(
+  (name) => new URL(`../src/shared/components/${name}.jsx`, import.meta.url),
+);
+for (const file of [...(await sourceFiles(sourceDirectory)), ...sharedControls]) {
   const source = await readFile(file, 'utf8');
   for (const pattern of [callPattern, transPattern]) {
     pattern.lastIndex = 0;
@@ -75,8 +76,22 @@ const repository = new URL('../../', import.meta.url);
 const ALLOWED_PREFIXES = ['mobile.'];
 const codeFile = /\.(?:tsx?|jsx?|mjs|cjs|py|swift|kts?|xml|plist|json|ya?ml|html|strings|gradle)$/;
 const skipDirectory = new Set([
-  'node_modules', '.git', 'out', 'dist', 'build', 'release', '.venv', 'locales', 'tests',
-  'Tests', 'test', 'docs', 'changelog.d', 'Pods', '.generated', 'omnivoice_data',
+  'node_modules',
+  '.git',
+  'out',
+  'dist',
+  'build',
+  'release',
+  '.venv',
+  'locales',
+  'tests',
+  'Tests',
+  'test',
+  'docs',
+  'changelog.d',
+  'Pods',
+  '.generated',
+  'omnivoice_data',
 ]);
 const skipFile = /(?:\.test\.[jt]sx?|\.lock|package-lock\.json|strings[^/]*\.en\.json)$/;
 
@@ -104,10 +119,7 @@ for (const tree of CORPUS_TREES) {
 }
 const inCI = !['', '0', 'false'].includes((process.env.CI ?? '').toLowerCase());
 if (missingTrees.length) {
-  assert.ok(
-    !inCI,
-    `Unused-key scan cannot find ${missingTrees.join(', ')}; update CORPUS_TREES`,
-  );
+  assert.ok(!inCI, `Unused-key scan cannot find ${missingTrees.join(', ')}; update CORPUS_TREES`);
   console.log(`Locale unused keys: skipped (partial checkout, no ${missingTrees.join(', ')})`);
   process.exit(0);
 }

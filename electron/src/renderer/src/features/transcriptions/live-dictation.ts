@@ -1,11 +1,6 @@
 import { startMicCapture } from '@shared/utils/aec/micCapture';
 import { subscribeFarEnd } from '@shared/utils/aec/farEndBus';
-import {
-  AEC_FAR,
-  AEC_NEAR,
-  floatToInt16,
-  tagFrame,
-} from '@shared/utils/aec/pcm';
+import { AEC_FAR, AEC_NEAR, floatToInt16, tagFrame } from '@shared/utils/aec/pcm';
 import {
   classifySherpaFinal,
   joinDictationText,

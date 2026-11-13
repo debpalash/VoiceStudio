@@ -112,8 +112,14 @@ it('does not report HTTP errors or truncated samples as a successful speed test'
 });
 
 it('checks the CUDA wheel rather than the CPU wheel on the same PyTorch host', () => {
-  const both = lock.replace('/whl/torch-', '/whl/cpu/torch-') + lock.replace('/whl/torch-', '/whl/cu128/torch-');
-  const progress = { activePackage: 'torch', downloadHost: 'download-r2.pytorch.org', completedDownloads: 0 };
+  const both =
+    lock.replace('/whl/torch-', '/whl/cpu/torch-') +
+    lock.replace('/whl/torch-', '/whl/cu128/torch-');
+  const progress = {
+    activePackage: 'torch',
+    downloadHost: 'download-r2.pytorch.org',
+    completedDownloads: 0,
+  };
   const host = { platform: 'win32' as const, arch: 'x64', pythonMinor: 11 };
   expect(setupProbeUrl(both, progress, { ...host, torchVariant: 'default' })).toContain('/cu128/');
   expect(setupProbeUrl(both, progress, { ...host, torchVariant: 'cpu' })).toContain('/cpu/');

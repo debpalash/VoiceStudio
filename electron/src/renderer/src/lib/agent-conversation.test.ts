@@ -9,7 +9,11 @@ import {
 beforeEach(() => agentConversation.setState(() => ({ messages: [], activeId: '', draft: '' })));
 it('streams the active reply without mixing sessions and keeps history for follow-ups', () => {
   beginAgentTurn('Create a short audiobook');
-  receiveAgentEvent({ type: 'output', sessionId: 'previous', text: 'Late output from stopped run' });
+  receiveAgentEvent({
+    type: 'output',
+    sessionId: 'previous',
+    text: 'Late output from stopped run',
+  });
   receiveAgentEvent({ type: 'state', sessionId: 'one', status: 'running' });
   receiveAgentEvent({ type: 'output', sessionId: 'one', text: 'Created book-1.' });
   receiveAgentEvent({ type: 'output', sessionId: 'stale', text: 'Wrong session' });

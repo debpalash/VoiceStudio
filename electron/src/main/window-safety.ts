@@ -43,10 +43,7 @@ export function sendToLiveWindow(
   } catch (error) {
     // webContents can disappear between the guards and send(). Consume only
     // that normal close/reload race; keep unrelated IPC faults visible.
-    if (
-      !isLiveWindow(window) || isDestroyedFailure(error)
-    )
-      return false;
+    if (!isLiveWindow(window) || isDestroyedFailure(error)) return false;
     throw error;
   }
 }

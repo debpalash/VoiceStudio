@@ -113,18 +113,14 @@ export async function collectTrustFacts(input: TrustProbeInput): Promise<TrustFa
   if (platform === 'win32') {
     const [smartAppControl, trust] = await Promise.all([
       input.readSmartAppControl().catch((): SmartAppControlState => 'unknown'),
-      run(
-        'powershell.exe',
-        ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_TRUST_SCRIPT],
-        {
-          env: {
-            ...process.env,
-            VS_PROBE_PROGRAM: program ?? '',
-            VS_PROBE_RUNTIME: input.runtimeRoot ?? '',
-          },
-          timeoutMs: TRUST_PROBE_DEADLINE_MS,
+      run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', WINDOWS_TRUST_SCRIPT], {
+        env: {
+          ...process.env,
+          VS_PROBE_PROGRAM: program ?? '',
+          VS_PROBE_RUNTIME: input.runtimeRoot ?? '',
         },
-      )
+        timeoutMs: TRUST_PROBE_DEADLINE_MS,
+      })
         .then(parseWindowsTrust)
         .catch((): TrustFacts => ({})),
     ]);
@@ -141,9 +137,9 @@ export async function collectTrustFacts(input: TrustProbeInput): Promise<TrustFa
     );
   }
   if (platform === 'linux') {
-    const mountinfo = await (input.readMountInfo?.() ?? readFile('/proc/self/mountinfo', 'utf8')).catch(
-      () => '',
-    );
+    const mountinfo = await (
+      input.readMountInfo?.() ?? readFile('/proc/self/mountinfo', 'utf8')
+    ).catch(() => '');
     const noexecMount = mountIsNoexec(mountinfo, program);
     return noexecMount ? { noexecMount } : {};
   }

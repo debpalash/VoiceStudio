@@ -57,7 +57,10 @@ export interface AcceptableModel {
 
 export function toAcceptable(
   label: string,
-  acceptance: Pick<ModelLicenceAcceptance, 'repo_id' | 'fingerprint' | 'required' | 'accepted' | 'category'>,
+  acceptance: Pick<
+    ModelLicenceAcceptance,
+    'repo_id' | 'fingerprint' | 'required' | 'accepted' | 'category'
+  >,
 ): AcceptableModel {
   return {
     repo_id: acceptance.repo_id,
@@ -80,7 +83,8 @@ async function refreshLicenceQueries(client: ReturnType<typeof useQueryClient>, 
       await client.cancelQueries({ queryKey });
       return client.fetchQuery<ModelLicenceDetails>({
         queryKey,
-        queryFn: () => apiJson<ModelLicenceDetails>(`/models/licenses/details/${encodeURI(repoId)}`),
+        queryFn: () =>
+          apiJson<ModelLicenceDetails>(`/models/licenses/details/${encodeURI(repoId)}`),
         staleTime: 0,
       });
     }),
@@ -122,7 +126,8 @@ export function LicenceAcceptanceFooter({
     setError(null);
   }, [key]);
 
-  const allChecked = pending.length > 0 && pending.every((m) => checked[m.repo_id] && m.termsLoaded !== false);
+  const allChecked =
+    pending.length > 0 && pending.every((m) => checked[m.repo_id] && m.termsLoaded !== false);
 
   const accept = async () => {
     if (!allChecked || busy) return;
@@ -132,17 +137,26 @@ export function LicenceAcceptanceFooter({
       for (const model of pending) {
         await apiJson<ModelLicenceAcceptance>('/models/licenses/accept', {
           method: 'POST',
-          body: JSON.stringify({ repo_id: model.repo_id, fingerprint: model.fingerprint, accepted: true }),
+          body: JSON.stringify({
+            repo_id: model.repo_id,
+            fingerprint: model.fingerprint,
+            accepted: true,
+          }),
         });
       }
       onAccepted?.();
     } catch (err) {
       const changed =
-        err instanceof ApiError && err.status === 409 && JSON.stringify(err.payload ?? '').includes('terms_changed');
+        err instanceof ApiError &&
+        err.status === 409 &&
+        JSON.stringify(err.payload ?? '').includes('terms_changed');
       setError(changed ? 'changed' : 'failed');
     } finally {
       setBusy(false);
-      await refreshLicenceQueries(client, models.map((m) => m.repo_id));
+      await refreshLicenceQueries(
+        client,
+        models.map((m) => m.repo_id),
+      );
     }
   };
 
@@ -150,7 +164,10 @@ export function LicenceAcceptanceFooter({
     setBusy(true);
     setError(null);
     try {
-      await apiJson('/models/licenses/revoke', { method: 'POST', body: JSON.stringify({ repo_id: repoId }) });
+      await apiJson('/models/licenses/revoke', {
+        method: 'POST',
+        body: JSON.stringify({ repo_id: repoId }),
+      });
     } catch {
       setError('failed');
     } finally {
@@ -161,66 +178,80 @@ export function LicenceAcceptanceFooter({
 
   return (
     <>
-    <div className="min-h-0 flex-1 overflow-y-auto">
-    {children}
-    <div
-      data-licence-acceptance
-      data-platform={platform}
-      className="space-y-4 border-t border-border px-8 py-5"
-    >
-      {pending.length > 0 && (
-        <>
-          <p className="text-sm leading-relaxed text-foreground/85">{t('modelLicense.acceptNotice')}</p>
-          <ul className="divide-y divide-border/70 overflow-hidden rounded-lg border border-border" aria-live="polite">
-            {pending.map((model, index) => {
-              const id = `${baseId}-${index}`;
-              const checkedModel = !!checked[model.repo_id];
-              return (
-                <li key={model.repo_id}>
-                  <label
-                    htmlFor={id}
-                    className={cn(
-                      'flex cursor-pointer items-start gap-3 px-3 py-2.5 text-sm transition-colors motion-reduce:transition-none',
-                      checkedModel ? 'bg-primary/[0.06]' : 'hover:bg-muted/50',
-                    )}
-                  >
-                    <input
-                      id={id}
-                      type="checkbox"
-                      checked={checkedModel}
-                      disabled={busy || model.termsLoaded === false}
-                      onChange={(event) => {
-                        const value = event.currentTarget.checked;
-                        setChecked((prev) => ({ ...prev, [model.repo_id]: value }));
-                      }}
-                      className={cn(
-                        'mt-0.5 size-4 shrink-0 accent-primary focus-visible:ring-2 focus-visible:ring-ring',
-                        platform === 'windows' && 'rounded-[4px]',
-                      )}
-                    />
-                    <span className="min-w-0 flex-1 space-y-0.5">
-                      <span aria-hidden="true" className="flex items-center gap-1.5 font-medium text-foreground">
-                        <ModelLicenseIcon category={modelLicenseCategory(model.category)} className="size-3.5 shrink-0" />
-                        <span data-model-label={model.label} className="break-all after:content-[attr(data-model-label)]" />
-                      </span>
-                      <span className="block leading-snug text-foreground/80">
-                        {t('modelLicense.acceptCheckbox', { model: model.label })}
-                      </span>
-                    </span>
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
-        </>
-      )}
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {t(error === 'changed' ? 'modelLicense.acceptChanged' : 'modelLicense.acceptFailed')}
-        </p>
-      )}
-    </div>
-    </div>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        {children}
+        <div
+          data-licence-acceptance
+          data-platform={platform}
+          className="space-y-4 border-t border-border px-8 py-5"
+        >
+          {pending.length > 0 && (
+            <>
+              <p className="text-sm leading-relaxed text-foreground/85">
+                {t('modelLicense.acceptNotice')}
+              </p>
+              <ul
+                className="divide-y divide-border/70 overflow-hidden rounded-lg border border-border"
+                aria-live="polite"
+              >
+                {pending.map((model, index) => {
+                  const id = `${baseId}-${index}`;
+                  const checkedModel = !!checked[model.repo_id];
+                  return (
+                    <li key={model.repo_id}>
+                      <label
+                        htmlFor={id}
+                        className={cn(
+                          'flex cursor-pointer items-start gap-3 px-3 py-2.5 text-sm transition-colors motion-reduce:transition-none',
+                          checkedModel ? 'bg-primary/[0.06]' : 'hover:bg-muted/50',
+                        )}
+                      >
+                        <input
+                          id={id}
+                          type="checkbox"
+                          checked={checkedModel}
+                          disabled={busy || model.termsLoaded === false}
+                          onChange={(event) => {
+                            const value = event.currentTarget.checked;
+                            setChecked((prev) => ({ ...prev, [model.repo_id]: value }));
+                          }}
+                          className={cn(
+                            'mt-0.5 size-4 shrink-0 accent-primary focus-visible:ring-2 focus-visible:ring-ring',
+                            platform === 'windows' && 'rounded-[4px]',
+                          )}
+                        />
+                        <span className="min-w-0 flex-1 space-y-0.5">
+                          <span
+                            aria-hidden="true"
+                            className="flex items-center gap-1.5 font-medium text-foreground"
+                          >
+                            <ModelLicenseIcon
+                              category={modelLicenseCategory(model.category)}
+                              className="size-3.5 shrink-0"
+                            />
+                            <span
+                              data-model-label={model.label}
+                              className="break-all after:content-[attr(data-model-label)]"
+                            />
+                          </span>
+                          <span className="block leading-snug text-foreground/80">
+                            {t('modelLicense.acceptCheckbox', { model: model.label })}
+                          </span>
+                        </span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          )}
+          {error && (
+            <p role="alert" className="text-sm text-destructive">
+              {t(error === 'changed' ? 'modelLicense.acceptChanged' : 'modelLicense.acceptFailed')}
+            </p>
+          )}
+        </div>
+      </div>
       <div data-licence-actions className={footerActionsClass(platform)}>
         {accepted.map((model) => (
           <Button
@@ -237,12 +268,22 @@ export function LicenceAcceptanceFooter({
             </span>
           </Button>
         ))}
-        <Button variant={platform === 'linux' ? 'ghost' : 'outline'} disabled={busy || closeDisabled} onClick={onClose}>
+        <Button
+          variant={platform === 'linux' ? 'ghost' : 'outline'}
+          disabled={busy || closeDisabled}
+          onClick={onClose}
+        >
           {t('common.close')}
         </Button>
         {pending.length > 0 && (
-          <Button className={platform === 'linux' ? 'min-w-40' : undefined} disabled={!allChecked || busy} onClick={() => void accept()}>
-            {pending.length > 1 ? t('modelLicense.acceptAll', { count: pending.length }) : t('modelLicense.accept')}
+          <Button
+            className={platform === 'linux' ? 'min-w-40' : undefined}
+            disabled={!allChecked || busy}
+            onClick={() => void accept()}
+          >
+            {pending.length > 1
+              ? t('modelLicense.acceptAll', { count: pending.length })
+              : t('modelLicense.accept')}
           </Button>
         )}
       </div>
@@ -312,58 +353,76 @@ export function ModelLicenceGate() {
         )}
         data-platform={platform}
       >
-        <DialogHeader className={cn('px-8 pt-6 pb-4', platform === 'mac' && 'items-center text-center')}>
-          <div className={cn('flex gap-3', platform === 'mac' ? 'flex-col items-center' : 'items-start')}>
-            <ModelLicenseIcon category="conditions" className={platform === 'mac' ? 'size-8' : 'mt-1 size-6 shrink-0'} />
+        <DialogHeader
+          className={cn('px-8 pt-6 pb-4', platform === 'mac' && 'items-center text-center')}
+        >
+          <div
+            className={cn(
+              'flex gap-3',
+              platform === 'mac' ? 'flex-col items-center' : 'items-start',
+            )}
+          >
+            <ModelLicenseIcon
+              category="conditions"
+              className={platform === 'mac' ? 'size-8' : 'mt-1 size-6 shrink-0'}
+            />
             <div className="min-w-0 space-y-1">
-              <DialogTitle className={platform === 'windows' ? 'text-xl font-semibold' : 'text-base font-semibold'}>
+              <DialogTitle
+                className={
+                  platform === 'windows' ? 'text-xl font-semibold' : 'text-base font-semibold'
+                }
+              >
                 {t(done ? 'modelLicense.acceptedTitle' : 'modelLicense.requiredTitle')}
               </DialogTitle>
-              <DialogDescription className="leading-snug">{t('modelLicense.gateIntro')}</DialogDescription>
+              <DialogDescription className="leading-snug">
+                {t('modelLicense.gateIntro')}
+              </DialogDescription>
             </div>
           </div>
         </DialogHeader>
         {models ? (
-          <LicenceAcceptanceFooter models={acceptable} onAccepted={() => setDone(true)} onClose={close}>
-        <div className="space-y-3 px-8 pb-4">
-          {done && (
-            <p role="status" className="rounded-lg border border-success/40 bg-success/10 p-3 text-sm">
-              {t('modelLicense.retryHint')}
-            </p>
-          )}
-          {(models ?? []).map((model, index) => {
-            const query = queries[index];
-            const view = (
-              <ModelLicenceView
-                details={query?.data}
-                infoFallback={undefined}
-              />
-            );
-            const body = query?.isError ? (
-              <p className="text-sm text-destructive">{t('modelLicense.detailsFailed')}</p>
-            ) : query?.isPending ? (
-              <p role="status" className="text-sm">
-                {t('common.loading')}
-              </p>
-            ) : (
-              view
-            );
-            return models && models.length > 1 ? (
-              <LicenceSection
-                key={model.repo_id}
-                title={`${index + 1}. ${model.repo_id}`}
-                defaultOpen={index === 0}
-              >
-                {body}
-              </LicenceSection>
-            ) : (
-              <div key={model.repo_id} className="space-y-2">
-                <h3 className="break-all font-semibold">{model.repo_id}</h3>
-                {body}
-              </div>
-            );
-          })}
-        </div>
+          <LicenceAcceptanceFooter
+            models={acceptable}
+            onAccepted={() => setDone(true)}
+            onClose={close}
+          >
+            <div className="space-y-3 px-8 pb-4">
+              {done && (
+                <p
+                  role="status"
+                  className="rounded-lg border border-success/40 bg-success/10 p-3 text-sm"
+                >
+                  {t('modelLicense.retryHint')}
+                </p>
+              )}
+              {(models ?? []).map((model, index) => {
+                const query = queries[index];
+                const view = <ModelLicenceView details={query?.data} infoFallback={undefined} />;
+                const body = query?.isError ? (
+                  <p className="text-sm text-destructive">{t('modelLicense.detailsFailed')}</p>
+                ) : query?.isPending ? (
+                  <p role="status" className="text-sm">
+                    {t('common.loading')}
+                  </p>
+                ) : (
+                  view
+                );
+                return models && models.length > 1 ? (
+                  <LicenceSection
+                    key={model.repo_id}
+                    title={`${index + 1}. ${model.repo_id}`}
+                    defaultOpen={index === 0}
+                  >
+                    {body}
+                  </LicenceSection>
+                ) : (
+                  <div key={model.repo_id} className="space-y-2">
+                    <h3 className="break-all font-semibold">{model.repo_id}</h3>
+                    {body}
+                  </div>
+                );
+              })}
+            </div>
           </LicenceAcceptanceFooter>
         ) : null}
       </DialogContent>

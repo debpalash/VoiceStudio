@@ -49,12 +49,18 @@ async function prepare(page) {
     },
     { count: SCRIPT_LINES },
   );
-  await page.route('**/api/profiles', (r) => r.fulfill({ json: [{ id: 'v1', name: 'Reader', kind: 'clone' }] }));
+  await page.route('**/api/profiles', (r) =>
+    r.fulfill({ json: [{ id: 'v1', name: 'Reader', kind: 'clone' }] }),
+  );
   await page.route('**/api/audiobook/jobs', (r) => r.fulfill({ json: { jobs: [] } }));
   await page.route('**/api/engines', (r) =>
     r.fulfill({
       json: {
-        tts: { active: 'omnivoice', active_model: 'm1', backends: [{ id: 'omnivoice', name: 'OmniVoice', available: true }] },
+        tts: {
+          active: 'omnivoice',
+          active_model: 'm1',
+          backends: [{ id: 'omnivoice', name: 'OmniVoice', available: true }],
+        },
       },
     }),
   );
@@ -62,7 +68,16 @@ async function prepare(page) {
     r.fulfill({
       json: {
         target: 'local',
-        models: [{ repo_id: 'm1', label: 'Model', role: 'tts', size_gb: 1, installed: true, supported: true }],
+        models: [
+          {
+            repo_id: 'm1',
+            label: 'Model',
+            role: 'tts',
+            size_gb: 1,
+            installed: true,
+            supported: true,
+          },
+        ],
       },
     }),
   );
@@ -74,7 +89,10 @@ async function startFakeRender(page) {
       const { longformSession } = await import('/src/features/longform/longform-session.ts');
       const list = [];
       for (let n = 0; n < chapters; n++)
-        list.push({ title: `Section ${n + 1}`, status: n < 15 ? 'done' : n === 15 ? 'rendering' : 'pending' });
+        list.push({
+          title: `Section ${n + 1}`,
+          status: n < 15 ? 'done' : n === 15 ? 'rendering' : 'pending',
+        });
       longformSession.setState((state) => ({
         ...state,
         active: 'stories',
@@ -93,7 +111,9 @@ async function startFakeRender(page) {
 const browser = await chromium.launch({ ...launchOptions, headless: true });
 try {
   for (const screen of SCREENS) {
-    const page = await browser.newPage({ viewport: { width: screen.width, height: screen.height } });
+    const page = await browser.newPage({
+      viewport: { width: screen.width, height: screen.height },
+    });
     const pageErrors = [];
     page.on('pageerror', (e) => pageErrors.push(e.message));
     await prepare(page);
@@ -102,16 +122,27 @@ try {
     await startFakeRender(page);
 
     const setup = page.locator('[data-slot=secondary-sidebar]');
-    const stopInSetup = setup.locator('[data-slot=generate-panel]').getByRole('button', { name: 'Stop', exact: true });
+    const stopInSetup = setup
+      .locator('[data-slot=generate-panel]')
+      .getByRole('button', { name: 'Stop', exact: true });
     await stopInSetup.waitFor();
-    assertContained(await stopInSetup.boundingBox(), await setup.boundingBox(), `${screen.label}: Stop in setup pane`);
+    assertContained(
+      await stopInSetup.boundingBox(),
+      await setup.boundingBox(),
+      `${screen.label}: Stop in setup pane`,
+    );
 
     await setup.getByRole('button', { name: 'Collapse pane', exact: true }).click();
     const editor = page.locator('section:has([data-slot=story-editor])');
-    const stopInEditor = editor.locator('[data-slot=generate-panel]').getByRole('button', { name: 'Stop', exact: true });
+    const stopInEditor = editor
+      .locator('[data-slot=generate-panel]')
+      .getByRole('button', { name: 'Stop', exact: true });
     await stopInEditor.waitFor();
     for (const edge of ['top', 'bottom']) {
-      await editor.evaluate((el, which) => el.scrollTo(0, which === 'top' ? 0 : el.scrollHeight), edge);
+      await editor.evaluate(
+        (el, which) => el.scrollTo(0, which === 'top' ? 0 : el.scrollHeight),
+        edge,
+      );
       await page.waitForTimeout(80);
       assertContained(
         await stopInEditor.boundingBox(),
@@ -122,7 +153,11 @@ try {
 
     await page.locator('[data-slot=secondary-sidebar-expand]').click();
     await stopInSetup.waitFor();
-    assert.equal(await editor.locator('[data-slot=generate-panel]').count(), 0, `${screen.label}: sticky copy remains`);
+    assert.equal(
+      await editor.locator('[data-slot=generate-panel]').count(),
+      0,
+      `${screen.label}: sticky copy remains`,
+    );
     assert.deepEqual(pageErrors, [], `${screen.label}: page errors`);
     await page.close();
   }

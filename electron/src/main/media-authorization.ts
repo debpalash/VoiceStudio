@@ -17,7 +17,9 @@ async function writeAuthorization(dataDir: string, kind: string, path: string, s
   const authorization = randomBytes(32).toString('hex');
   await writeFile(
     join(directory, authorization + '.json'),
-    JSON.stringify(scope ? { token: authorization, kind, path, scope } : { token: authorization, kind, path }),
+    JSON.stringify(
+      scope ? { token: authorization, kind, path, scope } : { token: authorization, kind, path },
+    ),
     { flag: 'wx', mode: 0o600 },
   );
   return { authorization, path };

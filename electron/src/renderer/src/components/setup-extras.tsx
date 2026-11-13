@@ -90,10 +90,10 @@ export function SetupUpdateNotice() {
     state.status === 'error'
       ? t(updateErrorTitleKey(state), { version: state.availableVersion })
       : state.status === 'downloaded'
-      ? t('update.prompt_ready')
-      : state.status === 'downloading'
-        ? t('update.downloading', { pct: Math.round(state.progress) })
-        : t('update.prompt_available', { version: state.availableVersion });
+        ? t('update.prompt_ready')
+        : state.status === 'downloading'
+          ? t('update.downloading', { pct: Math.round(state.progress) })
+          : t('update.prompt_available', { version: state.availableVersion });
   return (
     <div
       role="status"

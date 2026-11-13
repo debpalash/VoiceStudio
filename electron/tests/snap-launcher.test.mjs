@@ -7,7 +7,8 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { configureSnapLauncher, verifySnapLauncher } from '../snap-launcher.mjs';
 
-const command = '#!/bin/bash -e\nexec "$SNAP/desktop-init.sh" "$SNAP/desktop-common.sh" "$SNAP/desktop-gnome-specific.sh" "$SNAP/voicestudio" "$@"';
+const command =
+  '#!/bin/bash -e\nexec "$SNAP/desktop-init.sh" "$SNAP/desktop-common.sh" "$SNAP/desktop-gnome-specific.sh" "$SNAP/voicestudio" "$@"';
 
 test('Snap launches without a sandbox permission probe and preserves desktop initialization and arguments', () => {
   const dir = mkdtempSync(join(tmpdir(), 'snap-launcher-'));
@@ -16,15 +17,21 @@ test('Snap launches without a sandbox permission probe and preserves desktop ini
       writeFileSync(join(dir, script), '#!/bin/sh\nexec "$@"\n', { mode: 0o755 });
     }
     writeFileSync(join(dir, 'voicestudio'), '#!/bin/sh\nprintf "%s\\n" "$@"\n', { mode: 0o755 });
-    const result = spawnSync('/bin/bash', ['-c', configureSnapLauncher(command), 'launcher', 'a b', '--example'], {
-      env: { SNAP: dir, PATH: dir }, encoding: 'utf8',
-    });
+    const result = spawnSync(
+      '/bin/bash',
+      ['-c', configureSnapLauncher(command), 'launcher', 'a b', '--example'],
+      {
+        env: { SNAP: dir, PATH: dir },
+        encoding: 'utf8',
+      },
+    );
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.stdout, '--no-sandbox\n--ozone-platform=x11\na b\n--example\n');
     assert.equal(result.stderr, '');
     // Opt back into native Wayland (#3878).
     const optIn = spawnSync('/bin/bash', ['-c', configureSnapLauncher(command), 'launcher'], {
-      env: { SNAP: dir, PATH: dir, VOICESTUDIO_SNAP_OZONE_PLATFORM: 'wayland' }, encoding: 'utf8',
+      env: { SNAP: dir, PATH: dir, VOICESTUDIO_SNAP_OZONE_PLATFORM: 'wayland' },
+      encoding: 'utf8',
     });
     assert.equal(optIn.stdout, '--no-sandbox\n--ozone-platform=wayland\n');
   } finally {
@@ -34,7 +41,9 @@ test('Snap launches without a sandbox permission probe and preserves desktop ini
 
 test('accepts the launcher electron-builder generates for allow-sandbox: false', () => {
   const builderRequire = createRequire(createRequire(import.meta.url).resolve('electron-builder'));
-  const { buildCommandShContent } = builderRequire('app-builder-lib/out/targets/snap/coreLegacy.js');
+  const { buildCommandShContent } = builderRequire(
+    'app-builder-lib/out/targets/snap/coreLegacy.js',
+  );
   const generated = buildCommandShContent({
     isTemplate: true,
     executableName: 'voicestudio',
@@ -42,7 +51,10 @@ test('accepts the launcher electron-builder generates for allow-sandbox: false',
   });
   assert.throws(() => verifySnapLauncher(generated), /launcher/);
   const configured = configureSnapLauncher(generated);
-  assert.match(configured, /'?--no-sandbox'? --ozone-platform="\$\{VOICESTUDIO_SNAP_OZONE_PLATFORM:-x11\}" "\$@"/);
+  assert.match(
+    configured,
+    /'?--no-sandbox'? --ozone-platform="\$\{VOICESTUDIO_SNAP_OZONE_PLATFORM:-x11\}" "\$@"/,
+  );
   assert.equal(configureSnapLauncher(configured), configured);
 });
 
@@ -57,7 +69,10 @@ test('rejects unexpected launch templates instead of silently shipping a broken 
   assert.throws(() => configureSnapLauncher(command.replace('voicestudio', 'other')), /launcher/);
   assert.throws(() => verifySnapLauncher(command), /launcher/);
   const configured = configureSnapLauncher(command);
-  assert.throws(() => verifySnapLauncher(`snapctl is-connected browser-support\n${configured}`), /launcher/);
+  assert.throws(
+    () => verifySnapLauncher(`snapctl is-connected browser-support\n${configured}`),
+    /launcher/,
+  );
 });
 
 test('comments cannot satisfy or bypass validation of the executed command', () => {
@@ -66,7 +81,10 @@ test('comments cannot satisfy or bypass validation of the executed command', () 
   const commented = [shebang, comment.trimEnd(), ...lines].join('\n');
   assert.throws(() => verifySnapLauncher(commented), /launcher/);
   const configured = configureSnapLauncher(commented);
-  assert.match(configured, /^exec .*"\$SNAP\/voicestudio" '?--no-sandbox'? --ozone-platform=\S+ "\$@"$/m);
+  assert.match(
+    configured,
+    /^exec .*"\$SNAP\/voicestudio" '?--no-sandbox'? --ozone-platform=\S+ "\$@"$/m,
+  );
   assert.equal(configureSnapLauncher(configured), configured);
   assert.throws(() => verifySnapLauncher(`#!/bin/sh\n${comment}`), /launcher/);
 });

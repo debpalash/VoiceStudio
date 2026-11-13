@@ -1273,9 +1273,13 @@ describe('packaged runtime setup', () => {
           code: 'UNKNOWN',
         });
     });
-    const refused = await installRuntime(bundle, project, 'uv', run, new AbortController().signal).catch(
-      (error: unknown) => error,
-    );
+    const refused = await installRuntime(
+      bundle,
+      project,
+      'uv',
+      run,
+      new AbortController().signal,
+    ).catch((error: unknown) => error);
     expect(refused).toBeInstanceOf(RuntimeLaunchRefusedError);
     expect((refused as RuntimeLaunchRefusedError).program).toBe('/managed/python');
     expect((refused as Error).message).toBe('spawn UNKNOWN');
@@ -1795,7 +1799,9 @@ describe('retryTransientDownload (#3882)', () => {
   it('keeps the original error code when giving up', async () => {
     const sync = vi
       .fn()
-      .mockRejectedValue(Object.assign(new Error('Request failed: operation timed out'), { code: 'EACCES' }));
+      .mockRejectedValue(
+        Object.assign(new Error('Request failed: operation timed out'), { code: 'EACCES' }),
+      );
     const { retryTransientDownload } = await import('./runtime-project');
     const failure = await retryTransientDownload(sync, signal(), undefined, [1], noWait).catch(
       (error: Error) => error,

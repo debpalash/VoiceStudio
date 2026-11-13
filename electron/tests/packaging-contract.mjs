@@ -310,7 +310,9 @@ if (omnivoiceTtsPlatform) {
   if (artifactRequested && process.platform === 'darwin') {
     for (const name of [binary, server]) {
       const packaged = resolve(artifactResources, OMNIVOICE_TTS_RESOURCE_DIR, name);
-      const verify = spawnSync('codesign', ['--verify', '--strict', packaged], { encoding: 'utf8' });
+      const verify = spawnSync('codesign', ['--verify', '--strict', packaged], {
+        encoding: 'utf8',
+      });
       assert.equal(verify.status, 0, `Packaged ${name} is signed: ${redactHome(verify.stderr)}`);
     }
   }
@@ -357,8 +359,11 @@ for (const platform of ['win', 'mac', 'linux']) {
   }
 }
 if (artifactRequested) {
-  const cliCommand = resolve(artifactResources, 'cli',
-    'voicestudio' + (process.platform === 'win32' ? '.exe' : ''));
+  const cliCommand = resolve(
+    artifactResources,
+    'cli',
+    'voicestudio' + (process.platform === 'win32' ? '.exe' : ''),
+  );
   assert(existsSync(cliCommand), 'Packaged unified command with its own interpreter');
   const cliVersion = spawnSync(cliCommand, ['version', '--json'], { encoding: 'utf8' });
   assert.equal(cliVersion.status, 0, cliVersion.stderr);

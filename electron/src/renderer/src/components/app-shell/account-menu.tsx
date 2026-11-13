@@ -69,10 +69,16 @@ export function AccountMenu({ className }: { className?: string }) {
         onClick={() => void signIn()}
         aria-label={label}
         title={label}
-        className={cn('shrink-0 rounded-full text-muted-foreground hover:text-foreground', className)}
+        className={cn(
+          'shrink-0 rounded-full text-muted-foreground hover:text-foreground',
+          className,
+        )}
       >
         {state.signingIn ? (
-          <Loader2Icon className="size-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+          <Loader2Icon
+            className="size-4 animate-spin motion-reduce:animate-none"
+            aria-hidden="true"
+          />
         ) : (
           <UserRoundIcon className="size-4" aria-hidden="true" />
         )}
@@ -118,7 +124,10 @@ export function AccountMenu({ className }: { className?: string }) {
                     </div>
                   )}
                   {email && (
-                    <div className="truncate text-xs text-muted-foreground" data-slot="account-email">
+                    <div
+                      className="truncate text-xs text-muted-foreground"
+                      data-slot="account-email"
+                    >
                       {email}
                     </div>
                   )}
@@ -131,7 +140,9 @@ export function AccountMenu({ className }: { className?: string }) {
                       data-plan={pro ? 'pro' : 'free'}
                       className={cn(
                         'inline-flex h-5 items-center gap-1 rounded-full px-2 font-medium',
-                        pro ? 'bg-primary text-primary-foreground' : 'bg-secondary text-secondary-foreground',
+                        pro
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-secondary text-secondary-foreground',
                       )}
                     >
                       <PlanIcon className="size-3" aria-hidden="true" />

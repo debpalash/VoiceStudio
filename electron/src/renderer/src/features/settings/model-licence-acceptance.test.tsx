@@ -38,7 +38,11 @@ vi.mock('@/components/external-link', () => ({
   ),
 }));
 import { ApiError } from '@/lib/api/client';
-import { LicenceAcceptanceFooter, ModelLicenceGate, type AcceptableModel } from './model-licence-acceptance';
+import {
+  LicenceAcceptanceFooter,
+  ModelLicenceGate,
+  type AcceptableModel,
+} from './model-licence-acceptance';
 
 const gated: ModelLicenceRequirement = {
   repo_id: 'test/noncommercial',
@@ -91,7 +95,8 @@ describe('model licence acceptance', () => {
     accepted: false,
     category,
   });
-  const boxes = () => Array.from(document.querySelectorAll('input[type="checkbox"]')) as HTMLInputElement[];
+  const boxes = () =>
+    Array.from(document.querySelectorAll('input[type="checkbox"]')) as HTMLInputElement[];
 
   it('states VoiceStudio is not the licensor and needs a ticked box per model', async () => {
     await render(
@@ -132,7 +137,9 @@ describe('model licence acceptance', () => {
   ])('follows the %s design language for the action row', async (nav, family) => {
     vi.spyOn(navigator, 'platform', 'get').mockReturnValue(nav);
     await render(<LicenceAcceptanceFooter models={[pending('a/one')]} onClose={() => {}} />);
-    expect(document.querySelector('[data-licence-acceptance]')?.getAttribute('data-platform')).toBe(family);
+    expect(document.querySelector('[data-licence-acceptance]')?.getAttribute('data-platform')).toBe(
+      family,
+    );
     vi.restoreAllMocks();
   });
 
@@ -140,12 +147,20 @@ describe('model licence acceptance', () => {
     const onAccepted = vi.fn();
     mock.api.mockResolvedValue({ accepted: true });
     const models = [pending('a/one', 'One'), pending('bb/two', 'Two')];
-    await render(<LicenceAcceptanceFooter models={models} onAccepted={onAccepted} onClose={() => {}} />);
+    await render(
+      <LicenceAcceptanceFooter models={models} onAccepted={onAccepted} onClose={() => {}} />,
+    );
     for (const box of boxes()) await act(async () => box.click());
     await act(async () => button(en.modelLicense.acceptAll.replace('{{count}}', '2'))!.click());
-    expect(mock.api.mock.calls.filter(([path]) => path === '/models/licenses/accept')
-      .map(([path, init]) => [path, JSON.parse(init.body)])).toEqual(
-      models.map((m) => ['/models/licenses/accept', { repo_id: m.repo_id, fingerprint: m.fingerprint, accepted: true }]),
+    expect(
+      mock.api.mock.calls
+        .filter(([path]) => path === '/models/licenses/accept')
+        .map(([path, init]) => [path, JSON.parse(init.body)]),
+    ).toEqual(
+      models.map((m) => [
+        '/models/licenses/accept',
+        { repo_id: m.repo_id, fingerprint: m.fingerprint, accepted: true },
+      ]),
     );
     expect(onAccepted).toHaveBeenCalledOnce();
   });
@@ -153,7 +168,13 @@ describe('model licence acceptance', () => {
   it('asks to review again when the terms changed', async () => {
     const onAccepted = vi.fn();
     mock.api.mockRejectedValue(new ApiError(409, 'x', { detail: { code: 'terms_changed' } }));
-    await render(<LicenceAcceptanceFooter models={[pending('a/one')]} onAccepted={onAccepted} onClose={() => {}} />);
+    await render(
+      <LicenceAcceptanceFooter
+        models={[pending('a/one')]}
+        onAccepted={onAccepted}
+        onClose={() => {}}
+      />,
+    );
     await act(async () => boxes()[0].click());
     await act(async () => button(en.modelLicense.accept)!.click());
     expect(text()).toContain(en.modelLicense.acceptChanged);
@@ -163,7 +184,10 @@ describe('model licence acceptance', () => {
   it('can withdraw an acceptance', async () => {
     mock.api.mockResolvedValue({ accepted: false });
     await render(
-      <LicenceAcceptanceFooter models={[{ ...pending(gated.repo_id), accepted: true }]} onClose={() => {}} />,
+      <LicenceAcceptanceFooter
+        models={[{ ...pending(gated.repo_id), accepted: true }]}
+        onClose={() => {}}
+      />,
     );
     expect(boxes()).toHaveLength(0);
     await act(async () => button(en.modelLicense.revoke)!.click());
@@ -174,7 +198,12 @@ describe('model licence acceptance', () => {
   });
 
   it('shows the full licence of every blocked model when another page reports it', async () => {
-    const second = { ...gated, repo_id: 'test/tokenizer', license: 'NOASSERTION', category: 'unknown' };
+    const second = {
+      ...gated,
+      repo_id: 'test/tokenizer',
+      license: 'NOASSERTION',
+      category: 'unknown',
+    };
     mock.api.mockImplementation(async (path: string) => {
       const repo = path.replace('/models/licenses/details/', '');
       const model = repo === gated.repo_id ? gated : second;
@@ -202,13 +231,17 @@ describe('model licence acceptance', () => {
     await render(<ModelLicenceGate />);
     expect(text()).not.toContain(en.modelLicense.requiredTitle);
     await act(async () => {
-      window.dispatchEvent(new CustomEvent(MODEL_LICENCE_REQUIRED_EVENT, { detail: [gated, second] }));
+      window.dispatchEvent(
+        new CustomEvent(MODEL_LICENCE_REQUIRED_EVENT, { detail: [gated, second] }),
+      );
     });
     await vi.waitFor(() => expect(text()).toContain('Holder of test/tokenizer'));
     expect(text()).toContain(en.modelLicense.requiredTitle);
     expect(text()).toContain('Holder of test/noncommercial');
     expect(text()).toContain(en.modelLicense.sectionAllows);
-    expect(document.querySelector('a[href="https://example.invalid/test/tokenizer"]')).not.toBeNull();
+    expect(
+      document.querySelector('a[href="https://example.invalid/test/tokenizer"]'),
+    ).not.toBeNull();
     expect(boxes()).toHaveLength(2);
   });
 
@@ -221,7 +254,11 @@ describe('model licence acceptance', () => {
       window.dispatchEvent(new CustomEvent(MODEL_LICENCE_REQUIRED_EVENT, { detail: [gated] }));
     });
     await vi.waitFor(() => expect(boxes()).toHaveLength(1));
-    expect((boxes()[0] as HTMLInputElement).disabled || boxes()[0].getAttribute('aria-disabled') === 'true' || boxes()[0].hasAttribute('data-disabled')).toBe(true);
+    expect(
+      (boxes()[0] as HTMLInputElement).disabled ||
+        boxes()[0].getAttribute('aria-disabled') === 'true' ||
+        boxes()[0].hasAttribute('data-disabled'),
+    ).toBe(true);
   });
 
   it('says the licences are accepted once they are, without assuming an action ran', async () => {

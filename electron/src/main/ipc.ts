@@ -69,7 +69,9 @@ const PYTHON_REPAIR_DIALOG_FALLBACK = {
 } as const;
 
 /** Translated native-dialog labels from the renderer, English when absent or malformed. */
-export function pythonRepairDialogLabels(raw: unknown): Record<keyof typeof PYTHON_REPAIR_DIALOG_FALLBACK, string> {
+export function pythonRepairDialogLabels(
+  raw: unknown,
+): Record<keyof typeof PYTHON_REPAIR_DIALOG_FALLBACK, string> {
   const input = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
   const pick = (key: keyof typeof PYTHON_REPAIR_DIALOG_FALLBACK) => {
     const value = input[key];
@@ -77,7 +79,12 @@ export function pythonRepairDialogLabels(raw: unknown): Record<keyof typeof PYTH
       ? value
       : PYTHON_REPAIR_DIALOG_FALLBACK[key];
   };
-  return { title: pick('title'), message: pick('message'), install: pick('install'), cancel: pick('cancel') };
+  return {
+    title: pick('title'),
+    message: pick('message'),
+    install: pick('install'),
+    cancel: pick('cancel'),
+  };
 }
 
 export const CHANNELS = {
@@ -388,19 +395,35 @@ export function registerIpc(
   let discoveryInFlight: Promise<PythonDiscoveryResult> | null = null;
   const PYTHON_STAGE_TTL_MS = 10 * 60 * 1000;
   const MAX_PYTHON_STAGES = 32;
-  const stagedPython = new Map<string, { pythonPath: string; validated: boolean; senderId: number; frameId: number; createdAt: number }>();
-  const stagedRepairs = new Map<string, { plan: PythonRepairPlan; senderId: number; frameId: number; createdAt: number }>();
+  const stagedPython = new Map<
+    string,
+    { pythonPath: string; validated: boolean; senderId: number; frameId: number; createdAt: number }
+  >();
+  const stagedRepairs = new Map<
+    string,
+    { plan: PythonRepairPlan; senderId: number; frameId: number; createdAt: number }
+  >();
   const prunePythonStages = () => {
     const now = Date.now();
-    for (const [token, value] of stagedPython) if (now - value.createdAt > PYTHON_STAGE_TTL_MS) stagedPython.delete(token);
-    for (const [token, value] of stagedRepairs) if (now - value.createdAt > PYTHON_STAGE_TTL_MS) stagedRepairs.delete(token);
-    while (stagedPython.size > MAX_PYTHON_STAGES) stagedPython.delete(stagedPython.keys().next().value!);
-    while (stagedRepairs.size > MAX_PYTHON_STAGES) stagedRepairs.delete(stagedRepairs.keys().next().value!);
+    for (const [token, value] of stagedPython)
+      if (now - value.createdAt > PYTHON_STAGE_TTL_MS) stagedPython.delete(token);
+    for (const [token, value] of stagedRepairs)
+      if (now - value.createdAt > PYTHON_STAGE_TTL_MS) stagedRepairs.delete(token);
+    while (stagedPython.size > MAX_PYTHON_STAGES)
+      stagedPython.delete(stagedPython.keys().next().value!);
+    while (stagedRepairs.size > MAX_PYTHON_STAGES)
+      stagedRepairs.delete(stagedRepairs.keys().next().value!);
   };
   const stagePython = (pythonPath: string, event: IpcMainInvokeEvent, validated: boolean) => {
     prunePythonStages();
     const token = createOpaqueToken();
-    stagedPython.set(token, { pythonPath, validated, senderId: event.sender.id, frameId: event.frameId, createdAt: Date.now() });
+    stagedPython.set(token, {
+      pythonPath,
+      validated,
+      senderId: event.sender.id,
+      frameId: event.frameId,
+      createdAt: Date.now(),
+    });
     return token;
   };
   const consumeStage = (token: unknown, event: IpcMainInvokeEvent) => {
@@ -408,7 +431,8 @@ export function registerIpc(
     if (typeof token !== 'string') throw new Error('invalid_python_confirmation');
     const staged = stagedPython.get(token);
     stagedPython.delete(token);
-    if (!staged || staged.senderId !== event.sender.id || staged.frameId !== event.frameId) throw new Error('python_confirmation_expired');
+    if (!staged || staged.senderId !== event.sender.id || staged.frameId !== event.frameId)
+      throw new Error('python_confirmation_expired');
     if (!staged.validated) throw new Error('python_runtime_not_validated');
     return staged;
   };
@@ -436,17 +460,19 @@ export function registerIpc(
     const owner = getMainWindow();
     assertTrustedMainFrame(event, owner);
     if (!discoveryInFlight) {
-      discoveryInFlight = discoverPythonRuntimes().then((result) => {
-        // The discovery result is informational. It is not a compatibility check.
-        discoveredPythonPaths = new Set(
-          result.candidates
-            .filter((candidate) => isAbsolute(candidate.pythonPath))
-            .map((candidate) => resolve(candidate.pythonPath)),
-        );
-        return result;
-      }).finally(() => {
-        discoveryInFlight = null;
-      });
+      discoveryInFlight = discoverPythonRuntimes()
+        .then((result) => {
+          // The discovery result is informational. It is not a compatibility check.
+          discoveredPythonPaths = new Set(
+            result.candidates
+              .filter((candidate) => isAbsolute(candidate.pythonPath))
+              .map((candidate) => resolve(candidate.pythonPath)),
+          );
+          return result;
+        })
+        .finally(() => {
+          discoveryInFlight = null;
+        });
     }
     return discoveryInFlight;
   });
@@ -455,7 +481,8 @@ export function registerIpc(
     assertTrustedMainFrame(event, owner);
     if (typeof raw !== 'string' || !isAbsolute(raw)) throw new Error('Invalid Python runtime path');
     const pythonPath = resolve(raw);
-    if (!discoveredPythonPaths.has(pythonPath)) throw new Error('Python runtime was not discovered; search again');
+    if (!discoveredPythonPaths.has(pythonPath))
+      throw new Error('Python runtime was not discovered; search again');
     const validation = await validatePythonRuntime(pythonPath, backendRoot());
     return { ...validation, token: stagePython(pythonPath, event, validation.ok) };
   });
@@ -475,12 +502,18 @@ export function registerIpc(
     if (typeof raw !== 'string') throw new Error('Python selection token is required');
     prunePythonStages();
     const staged = stagedPython.get(raw);
-    if (!staged || staged.senderId !== event.sender.id || staged.frameId !== event.frameId) throw new Error('python_selection_expired');
+    if (!staged || staged.senderId !== event.sender.id || staged.frameId !== event.frameId)
+      throw new Error('python_selection_expired');
     const validation = await validatePythonRuntime(staged.pythonPath, backendRoot());
     if (!validation.repairPlan) return validation;
     prunePythonStages();
     const repairToken = createOpaqueToken();
-    stagedRepairs.set(repairToken, { plan: validation.repairPlan, senderId: event.sender.id, frameId: event.frameId, createdAt: Date.now() });
+    stagedRepairs.set(repairToken, {
+      plan: validation.repairPlan,
+      senderId: event.sender.id,
+      frameId: event.frameId,
+      createdAt: Date.now(),
+    });
     return { ...validation, repairToken };
   });
   ipcMain.handle(CHANNELS.backendInstallPythonRepair, async (event, raw: unknown) => {
@@ -488,24 +521,48 @@ export function registerIpc(
     assertTrustedMainFrame(event, owner);
     if (!raw || typeof raw !== 'object') throw new Error('Invalid Python repair confirmation');
     const input = raw as { token?: unknown; pythonPath?: unknown; packages?: unknown };
-    if (typeof input.token !== 'string' || typeof input.pythonPath !== 'string' || !Array.isArray(input.packages) || input.packages.some((p) => typeof p !== 'string'))
+    if (
+      typeof input.token !== 'string' ||
+      typeof input.pythonPath !== 'string' ||
+      !Array.isArray(input.packages) ||
+      input.packages.some((p) => typeof p !== 'string')
+    )
       throw new Error('Explicit confirmation of the exact Python repair is required');
     prunePythonStages();
     const staged = stagedRepairs.get(input.token);
-    if (!staged || staged.senderId !== event.sender.id || staged.frameId !== event.frameId) throw new Error('python_repair_expired');
-    if (resolve(input.pythonPath) !== staged.plan.interpreter || JSON.stringify(input.packages) !== JSON.stringify(staged.plan.packages)) throw new Error('python_repair_changed');
+    if (!staged || staged.senderId !== event.sender.id || staged.frameId !== event.frameId)
+      throw new Error('python_repair_expired');
+    if (
+      resolve(input.pythonPath) !== staged.plan.interpreter ||
+      JSON.stringify(input.packages) !== JSON.stringify(staged.plan.packages)
+    )
+      throw new Error('python_repair_changed');
     const recheck = await validatePythonRuntime(staged.plan.interpreter, backendRoot());
-    if (recheck.ok || !recheck.repairPlan || JSON.stringify(recheck.repairPlan) !== JSON.stringify(staged.plan)) throw new Error('python_repair_changed');
+    if (
+      recheck.ok ||
+      !recheck.repairPlan ||
+      JSON.stringify(recheck.repairPlan) !== JSON.stringify(staged.plan)
+    )
+      throw new Error('python_repair_changed');
     // The renderer supplies only translated labels; the interpreter and packages
     // shown come from the trusted staged plan.
     const labels = pythonRepairDialogLabels((raw as { dialog?: unknown }).dialog);
     const choice = await dialog.showMessageBox(owner, {
-      type: 'question', buttons: [labels.install, labels.cancel], defaultId: 0, cancelId: 1,
+      type: 'question',
+      buttons: [labels.install, labels.cancel],
+      defaultId: 0,
+      cancelId: 1,
       title: labels.title,
       message: labels.message,
       detail: `${staged.plan.interpreter}\n\n${staged.plan.packages.join('\n')}`,
     });
-    if (choice.response !== 0) return { ...recheck, installed: false, canceled: true, token: stagePython(recheck.pythonPath, event, false) };
+    if (choice.response !== 0)
+      return {
+        ...recheck,
+        installed: false,
+        canceled: true,
+        token: stagePython(recheck.pythonPath, event, false),
+      };
     if (maintenanceBusy) throw new Error('maintenance_busy');
     maintenanceBusy = true;
     stagedRepairs.delete(input.token);
@@ -513,9 +570,32 @@ export function registerIpc(
     let installError: unknown;
     try {
       const finalCheck = await validatePythonRuntime(staged.plan.interpreter, backendRoot());
-      if (finalCheck.ok || !finalCheck.repairPlan || JSON.stringify(finalCheck.repairPlan) !== JSON.stringify(staged.plan)) throw new Error('python_repair_changed');
+      if (
+        finalCheck.ok ||
+        !finalCheck.repairPlan ||
+        JSON.stringify(finalCheck.repairPlan) !== JSON.stringify(staged.plan)
+      )
+        throw new Error('python_repair_changed');
       try {
-        output = await runRuntimeProbe(staged.plan.interpreter, ['-m', 'pip', 'install', '--disable-pip-version-check', '--no-input', ...staged.plan.packages], backendRoot(), sanitizedPythonEnvironment(), { timeoutMs: 15 * 60 * 1000, captureStderr: true, onOutput: (text, stream) => sendToLiveWindow(owner, CHANNELS.backendPythonRepairProgress, { text, stream }) });
+        output = await runRuntimeProbe(
+          staged.plan.interpreter,
+          [
+            '-m',
+            'pip',
+            'install',
+            '--disable-pip-version-check',
+            '--no-input',
+            ...staged.plan.packages,
+          ],
+          backendRoot(),
+          sanitizedPythonEnvironment(),
+          {
+            timeoutMs: 15 * 60 * 1000,
+            captureStderr: true,
+            onOutput: (text, stream) =>
+              sendToLiveWindow(owner, CHANNELS.backendPythonRepairProgress, { text, stream }),
+          },
+        );
       } catch (error) {
         installError = error;
         const failure = error as { stdout?: unknown; stderr?: unknown; message?: unknown };
@@ -527,12 +607,28 @@ export function registerIpc(
     const after = await validatePythonRuntime(staged.plan.interpreter, backendRoot());
     if (!after.ok && after.repairPlan) {
       const repairToken = createOpaqueToken();
-      stagedRepairs.set(repairToken, { plan: after.repairPlan, senderId: event.sender.id, frameId: event.frameId, createdAt: Date.now() });
+      stagedRepairs.set(repairToken, {
+        plan: after.repairPlan,
+        senderId: event.sender.id,
+        frameId: event.frameId,
+        createdAt: Date.now(),
+      });
       // A fresh unvalidated selection token keeps "Review dependency installation"
       // available for the next missing dependency without choosing the interpreter again.
-      return { ...after, installed: false, repairToken, token: stagePython(after.pythonPath, event, false), outputTail: output.slice(-4000) };
+      return {
+        ...after,
+        installed: false,
+        repairToken,
+        token: stagePython(after.pythonPath, event, false),
+        outputTail: output.slice(-4000),
+      };
     }
-    return { ...after, installed: after.ok && !installError, token: after.ok && !installError ? stagePython(after.pythonPath, event, true) : undefined, outputTail: output.slice(-4000) };
+    return {
+      ...after,
+      installed: after.ok && !installError,
+      token: after.ok && !installError ? stagePython(after.pythonPath, event, true) : undefined,
+      outputTail: output.slice(-4000),
+    };
   });
   ipcMain.handle(CHANNELS.backendHostSnapshot, (event) => {
     const owner = getMainWindow();
@@ -742,18 +838,21 @@ export function registerIpc(
       overrideActive: Boolean(String(process.env.OMNIVOICE_BACKEND_CMD ?? '').trim()),
     };
   });
-  ipcMain.handle(CHANNELS.backendChoosePythonRuntime, async (event: IpcMainInvokeEvent, rawTitle: unknown) => {
-    const owner = getMainWindow();
-    assertTrustedMainFrame(event, owner);
-    const title = typeof rawTitle === 'string' && rawTitle.length <= 200 ? rawTitle : undefined;
-    const picked = await dialog.showOpenDialog(owner, {
-      ...(title ? { title } : {}),
-      properties: ['openFile'],
-    });
-    if (picked.canceled || !picked.filePaths[0]) return { ok: false, canceled: true };
-    const validation = await validatePythonRuntime(picked.filePaths[0], backendRoot());
-    return { ...validation, token: stagePython(validation.pythonPath, event, validation.ok) };
-  });
+  ipcMain.handle(
+    CHANNELS.backendChoosePythonRuntime,
+    async (event: IpcMainInvokeEvent, rawTitle: unknown) => {
+      const owner = getMainWindow();
+      assertTrustedMainFrame(event, owner);
+      const title = typeof rawTitle === 'string' && rawTitle.length <= 200 ? rawTitle : undefined;
+      const picked = await dialog.showOpenDialog(owner, {
+        ...(title ? { title } : {}),
+        properties: ['openFile'],
+      });
+      if (picked.canceled || !picked.filePaths[0]) return { ok: false, canceled: true };
+      const validation = await validatePythonRuntime(picked.filePaths[0], backendRoot());
+      return { ...validation, token: stagePython(validation.pythonPath, event, validation.ok) };
+    },
+  );
   ipcMain.handle(CHANNELS.backendUseManagedPython, async (event: IpcMainInvokeEvent) => {
     const owner = getMainWindow();
     assertTrustedMainFrame(event, owner);
@@ -802,21 +901,27 @@ export function registerIpc(
     }
     return authorizeModelsDirectory(await backendDataDirectory(supervisor), selected);
   });
-  ipcMain.handle(CHANNELS.filesChooseEngineModelDirectory, async (event: IpcMainInvokeEvent, raw: unknown) => {
-    const owner = getMainWindow();
-    assertTrustedMainFrame(event, owner);
-    if (supervisor.connection.remote) throw new Error('Local model selection requires a local backend');
-    if (typeof raw !== 'string' || !['omnivoice', 'mlx-audio'].includes(raw))
-      throw new Error('Unsupported engine local model selector');
-    const picked = await dialog.showOpenDialog(owner,
-      securityScopedDialogOptions<Electron.OpenDialogOptions>({ properties: ['openDirectory'] }),
-    );
-    if (picked.canceled || !picked.filePaths[0]) return null;
-    retainSecurityScopedDirectory(picked);
-    const dataDirectory = await backendDataDirectory(supervisor);
-    if (supervisor.connection.remote) throw new Error('Local model selection requires a local backend');
-    return authorizeModelsDirectoryReadOnly(dataDirectory, picked.filePaths[0], raw);
-  });
+  ipcMain.handle(
+    CHANNELS.filesChooseEngineModelDirectory,
+    async (event: IpcMainInvokeEvent, raw: unknown) => {
+      const owner = getMainWindow();
+      assertTrustedMainFrame(event, owner);
+      if (supervisor.connection.remote)
+        throw new Error('Local model selection requires a local backend');
+      if (typeof raw !== 'string' || !['omnivoice', 'mlx-audio'].includes(raw))
+        throw new Error('Unsupported engine local model selector');
+      const picked = await dialog.showOpenDialog(
+        owner,
+        securityScopedDialogOptions<Electron.OpenDialogOptions>({ properties: ['openDirectory'] }),
+      );
+      if (picked.canceled || !picked.filePaths[0]) return null;
+      retainSecurityScopedDirectory(picked);
+      const dataDirectory = await backendDataDirectory(supervisor);
+      if (supervisor.connection.remote)
+        throw new Error('Local model selection requires a local backend');
+      return authorizeModelsDirectoryReadOnly(dataDirectory, picked.filePaths[0], raw);
+    },
+  );
 
   ipcMain.handle(CHANNELS.filesSaveAudio, async (event, raw: unknown): Promise<SaveAudioResult> => {
     const owner = windowFor(event) ?? getMainWindow();

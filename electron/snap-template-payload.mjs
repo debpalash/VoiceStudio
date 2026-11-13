@@ -1,5 +1,14 @@
 import { execFileSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdtempSync, readdirSync, renameSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { basename, dirname, resolve } from 'node:path';
 import { configureSnapLauncher } from './snap-launcher.mjs';
 
@@ -45,7 +54,9 @@ export function repairSnapTemplatePayload(artifact) {
   const listing = execFileSync('unsquashfs', ['-ll', artifact], { encoding: 'utf8' });
   try {
     verifySnapRuntimePayload(listing);
-    const command = execFileSync('unsquashfs', ['-cat', artifact, 'command.sh'], { encoding: 'utf8' });
+    const command = execFileSync('unsquashfs', ['-cat', artifact, 'command.sh'], {
+      encoding: 'utf8',
+    });
     if (configureSnapLauncher(command) === command) return false;
   } catch (error) {
     if (!listing.includes('squashfs-root/snap-template-electron-')) throw error;
@@ -58,7 +69,9 @@ export function repairSnapTemplatePayload(artifact) {
     execFileSync('unsquashfs', ['-quiet', '-d', extracted, artifact], { stdio: 'inherit' });
     const archives = readdirSync(extracted).filter((name) => NESTED_TEMPLATE_PATTERN.test(name));
     if (archives.length > 1) {
-      throw new Error(`Expected at most one nested Snap template archive, found: ${archives.join(', ')}`);
+      throw new Error(
+        `Expected at most one nested Snap template archive, found: ${archives.join(', ')}`,
+      );
     }
     if (archives.length === 1) {
       const archive = resolve(extracted, archives[0]);
@@ -100,7 +113,9 @@ export function repairSnapTemplatePayload(artifact) {
 export function repairSnapArtifacts(artifactPaths) {
   for (const artifact of artifactPaths.filter((path) => path.endsWith('.snap'))) {
     if (repairSnapTemplatePayload(artifact)) {
-      console.log(`Prepared the desktop runtime and strict-confinement launcher in ${basename(artifact)}`);
+      console.log(
+        `Prepared the desktop runtime and strict-confinement launcher in ${basename(artifact)}`,
+      );
     }
   }
   return [];

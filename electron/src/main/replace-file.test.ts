@@ -178,7 +178,10 @@ describe.skipIf(process.platform === 'win32')('private mode', () => {
       rename,
       open: (async (...args: Parameters<typeof open>) => {
         const handle = await open(...args);
-        const entry = { mode: args[2] as number | undefined, atWrite: undefined as number | undefined };
+        const entry = {
+          mode: args[2] as number | undefined,
+          atWrite: undefined as number | undefined,
+        };
         seen.push(entry);
         const write = handle.writeFile.bind(handle);
         handle.writeFile = (async (data: string | Uint8Array) => {

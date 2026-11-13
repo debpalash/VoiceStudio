@@ -29,7 +29,7 @@ export async function withDeadline<T>(task: Promise<T>, ms: number): Promise<T |
   }
 }
 
-const present =(value: boolean | null | undefined) =>
+const present = (value: boolean | null | undefined) =>
   value == null ? 'unknown' : value ? 'present' : 'MISSING';
 
 /**

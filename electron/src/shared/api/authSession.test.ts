@@ -267,11 +267,13 @@ describe('short-lived admin session client', () => {
 
     resolveOlder(response({ token: SESSION, expires_at: NOW_SECONDS + 3600 }));
     expect(await observedOlder).toBeInstanceOf(AuthSessionError);
-    expect(getAdminSession('https://new-gpu.test:3900', { now: () => NOW_SECONDS * 1000 })).toEqual({
-      token: newerToken,
-      expiresAt: NOW_SECONDS + 3600,
-      apiBase: 'https://new-gpu.test:3900',
-    });
+    expect(getAdminSession('https://new-gpu.test:3900', { now: () => NOW_SECONDS * 1000 })).toEqual(
+      {
+        token: newerToken,
+        expiresAt: NOW_SECONDS + 3600,
+        apiBase: 'https://new-gpu.test:3900',
+      },
+    );
   });
 
   it('accepts a bearer response when another tab only cleaned the expired snapshot', async () => {

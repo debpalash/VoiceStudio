@@ -62,7 +62,11 @@ export function ToolsPage() {
             <Button
               key={tool.id}
               className="h-9 w-full justify-start gap-2.5 rounded-lg px-2.5 font-normal [&_svg]:text-muted-foreground"
-              variant={!effects && !converting && !comparing && selected.id === tool.id ? 'secondary' : 'ghost'}
+              variant={
+                !effects && !converting && !comparing && selected.id === tool.id
+                  ? 'secondary'
+                  : 'ghost'
+              }
               aria-pressed={!effects && !converting && !comparing && selected.id === tool.id}
               onClick={() => {
                 setEffects(false);

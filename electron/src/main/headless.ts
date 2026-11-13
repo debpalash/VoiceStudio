@@ -46,13 +46,17 @@ export function keptLaunchSwitches(argv: readonly string[]): string[] {
     if (KEPT_FLAGS.has(arg)) kept.push(arg);
     for (const name of KEPT_VALUE_SWITCHES) {
       if (arg.startsWith(`${name}=`) && arg.length > name.length + 1) kept.push(arg);
-      else if (arg === name && argv[i + 1] && !argv[i + 1].startsWith('--')) kept.push(`${name}=${argv[++i]}`);
+      else if (arg === name && argv[i + 1] && !argv[i + 1].startsWith('--'))
+        kept.push(`${name}=${argv[++i]}`);
     }
   }
   return [...new Set(kept)];
 }
 
-export function relaunchArguments(intent: LaunchIntent, currentArgv: readonly string[] = []): string[] {
+export function relaunchArguments(
+  intent: LaunchIntent,
+  currentArgv: readonly string[] = [],
+): string[] {
   if (intent.stop) return [];
   return [
     ...keptLaunchSwitches(currentArgv),

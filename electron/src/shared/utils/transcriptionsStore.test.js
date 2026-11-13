@@ -71,7 +71,10 @@ describe('transcription identities', () => {
   });
 
   it('keeps the 200-entry bound and existing records untouched', () => {
-    const legacy = Array.from({ length: 200 }, (_, index) => ({ id: index + 1, text: `old ${index}` }));
+    const legacy = Array.from({ length: 200 }, (_, index) => ({
+      id: index + 1,
+      text: `old ${index}`,
+    }));
     localStorage.setItem(TRANSCRIPTIONS_KEY, JSON.stringify(legacy));
     addTranscription({ text: 'new' });
     const stored = loadTranscriptions();

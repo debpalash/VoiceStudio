@@ -33,8 +33,7 @@ export const modelLicenceDetailsKey = (repoId: string) => ['model-licence', repo
 export function useModelLicenceDetails(repoId: string, enabled = true) {
   return useQuery({
     queryKey: modelLicenceDetailsKey(repoId),
-    queryFn: () =>
-      apiJson<ModelLicenceDetails>(`/models/licenses/details/${encodeURI(repoId)}`),
+    queryFn: () => apiJson<ModelLicenceDetails>(`/models/licenses/details/${encodeURI(repoId)}`),
     enabled: enabled && !!repoId,
     staleTime: 0,
   });
@@ -45,7 +44,9 @@ export function formatLicenceDate(value: string | null | undefined, locale: stri
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   try {
-    return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+    return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short' }).format(
+      date,
+    );
   } catch {
     return date.toISOString();
   }
@@ -110,12 +111,16 @@ export function LicenceAcceptanceState({ acceptance }: { acceptance?: ModelLicen
       text = t('modelLicense.stateNotRequired');
       break;
     case 'accepted':
-      text = at ? t('modelLicense.stateAccepted', { date: at }) : t('modelLicense.stateAcceptedUndated');
+      text = at
+        ? t('modelLicense.stateAccepted', { date: at })
+        : t('modelLicense.stateAcceptedUndated');
       tone = 'text-success';
       Icon = CheckIcon;
       break;
     case 'withdrawn':
-      text = at ? t('modelLicense.stateWithdrawn', { date: at }) : t('modelLicense.stateWithdrawnUndated');
+      text = at
+        ? t('modelLicense.stateWithdrawn', { date: at })
+        : t('modelLicense.stateWithdrawnUndated');
       tone = 'text-warning';
       Icon = TriangleAlertIcon;
       break;
@@ -143,7 +148,9 @@ export function LicenceAcceptanceState({ acceptance }: { acceptance?: ModelLicen
         </p>
       )}
       {fields.length > 0 && (
-        <p className="ps-6 text-sm">{t('modelLicense.changedFields', { fields: fields.join(', ') })}</p>
+        <p className="ps-6 text-sm">
+          {t('modelLicense.changedFields', { fields: fields.join(', ') })}
+        </p>
       )}
     </div>
   );
@@ -189,7 +196,11 @@ export function LicenceSummary({
 type Verdict = 'allowed' | 'conditions' | 'not_allowed' | 'not_verified' | 'yours';
 
 const verdictStyle: Record<Verdict, { icon: ReactNode; tone: string; key: string }> = {
-  allowed: { icon: <CheckIcon className="size-3.5" />, tone: 'border-success/40 text-success', key: 'chipAllowed' },
+  allowed: {
+    icon: <CheckIcon className="size-3.5" />,
+    tone: 'border-success/40 text-success',
+    key: 'chipAllowed',
+  },
   conditions: {
     icon: <TriangleAlertIcon className="size-3.5" />,
     tone: 'border-warning/40 text-warning',
@@ -205,10 +216,15 @@ const verdictStyle: Record<Verdict, { icon: ReactNode; tone: string; key: string
     tone: 'border-border text-muted-foreground',
     key: 'chipNotVerified',
   },
-  yours: { icon: <UserRoundIcon className="size-3.5" />, tone: 'border-info/40 text-info', key: 'chipYours' },
+  yours: {
+    icon: <UserRoundIcon className="size-3.5" />,
+    tone: 'border-info/40 text-info',
+    key: 'chipYours',
+  },
 };
 
-const restricted = (value?: string) => value === 'restricted' || !!value?.startsWith('noncommercial');
+const restricted = (value?: string) =>
+  value === 'restricted' || !!value?.startsWith('noncommercial');
 
 export function licenceVerdicts(info?: ModelLicenseInfo): Record<string, Verdict> {
   const category = modelLicenseCategory(info?.license_category);
@@ -223,7 +239,10 @@ export function licenceVerdicts(info?: ModelLicenseInfo): Record<string, Verdict
           : 'not_verified';
   return {
     model,
-    outputs: restricted(info?.commercial_outputs) || category === 'noncommercial' ? 'not_allowed' : 'not_verified',
+    outputs:
+      restricted(info?.commercial_outputs) || category === 'noncommercial'
+        ? 'not_allowed'
+        : 'not_verified',
     redistribution: 'not_verified',
     voice: 'yours',
   };
@@ -245,7 +264,10 @@ export function LicencePermissions({ info }: { info?: ModelLicenseInfo }) {
         {rows.map(([id, label, hint]) => {
           const verdict = verdictStyle[verdicts[id]];
           return (
-            <div key={id} className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1 p-3">
+            <div
+              key={id}
+              className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1 p-3"
+            >
               <div className="min-w-0 flex-1 basis-56">
                 <dt className="font-medium">{t(`modelLicense.${label}`)}</dt>
                 <dd className="text-xs text-muted-foreground">{t(`modelLicense.${hint}`)}</dd>
@@ -340,7 +362,9 @@ export function LicenceVariants({ info }: { info?: ModelLicenseInfo }) {
               <p>{t(modelLicenseCategoryKey(variant.license_category))}</p>
               {variant.observations?.output_terms && <p>{variant.observations.output_terms}</p>}
               {variant.observations?.license_status && <p>{variant.observations.license_status}</p>}
-              {evidence && <ExternalLink href={evidence}>{t('modelLicense.readLicence')}</ExternalLink>}
+              {evidence && (
+                <ExternalLink href={evidence}>{t('modelLicense.readLicence')}</ExternalLink>
+              )}
             </li>
           );
         })}
@@ -368,9 +392,15 @@ function HistoryList({ history }: { history: ModelLicenceHistoryEntry[] }) {
       {history.map((entry, index) => (
         <li key={`${entry.at}-${index}`} className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
           <span className="font-medium">
-            {t(entry.action === 'withdrawn' ? 'modelLicense.historyWithdrawn' : 'modelLicense.historyAccepted')}
+            {t(
+              entry.action === 'withdrawn'
+                ? 'modelLicense.historyWithdrawn'
+                : 'modelLicense.historyAccepted',
+            )}
           </span>
-          <span>{formatLicenceDate(entry.at, i18n.language) ?? t('modelLicense.dateNotRecorded')}</span>
+          <span>
+            {formatLicenceDate(entry.at, i18n.language) ?? t('modelLicense.dateNotRecorded')}
+          </span>
           {entry.fingerprint && <CopyValue value={entry.fingerprint} />}
           {entry.app_version && (
             <span className="text-xs text-muted-foreground">
@@ -395,7 +425,10 @@ export function LicenceTechnical({
   const { t, i18n } = useTranslation();
   const rows: [string, ReactNode][] = [
     ['modelVersion', info?.runtime_revision ? <CopyValue value={info.runtime_revision} /> : null],
-    ['evidenceVersion', info?.evidence_revision ? <CopyValue value={info.evidence_revision} /> : null],
+    [
+      'evidenceVersion',
+      info?.evidence_revision ? <CopyValue value={info.evidence_revision} /> : null,
+    ],
     ['checked', formatLicenceDate(info?.evidence_checked_at, i18n.language)],
     ['termsHash', acceptance?.fingerprint ? <CopyValue value={acceptance.fingerprint} /> : null],
     [

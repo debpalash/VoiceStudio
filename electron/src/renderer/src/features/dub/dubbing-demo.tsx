@@ -91,7 +91,14 @@ export function DubbingDemo({
     from: MediaPlayerInstance | null,
     to: MediaPlayerInstance | null,
   ) => {
-    if (!synchronized || pendingDubbedPosition.current !== null || mirroring.current || !from || !to) return;
+    if (
+      !synchronized ||
+      pendingDubbedPosition.current !== null ||
+      mirroring.current ||
+      !from ||
+      !to
+    )
+      return;
     mirroring.current = true;
     try {
       to.currentTime = from.currentTime;
@@ -154,8 +161,11 @@ export function DubbingDemo({
                 onClick={() => {
                   setEditingVideo(true);
                   runRendererTask('Edit dubbing demo', async () => {
-                    try { await onEdit(editableVideo); }
-                    finally { setEditingVideo(false); }
+                    try {
+                      await onEdit(editableVideo);
+                    } finally {
+                      setEditingVideo(false);
+                    }
                   });
                 }}
               >
@@ -177,10 +187,12 @@ export function DubbingDemo({
             src={{ src: apiPath(`${DEMO_BASE}/${video}`), type: 'video/mp4' }}
             source={`${PLAYBACK_GROUP}-${tag}`}
             onCanPlay={() => {
-              if (channel !== 'B' || pendingDubbedPosition.current === null || !player.current) return;
+              if (channel !== 'B' || pendingDubbedPosition.current === null || !player.current)
+                return;
               player.current.currentTime = pendingDubbedPosition.current;
               pendingDubbedPosition.current = null;
-              if (activePlayer.current === player.current) synchronizePosition(player.current, peer.current);
+              if (activePlayer.current === player.current)
+                synchronizePosition(player.current, peer.current);
             }}
             onPlay={() => {
               const incoming = player.current;
@@ -193,7 +205,8 @@ export function DubbingDemo({
               synchronizePosition(incoming, peer.current);
             }}
             onPause={() => {
-              if (activePlayer.current === player.current) synchronizePosition(player.current, peer.current);
+              if (activePlayer.current === player.current)
+                synchronizePosition(player.current, peer.current);
             }}
             onSeeked={() => synchronizePosition(player.current, peer.current)}
           />
@@ -260,9 +273,11 @@ export function DubbingDemo({
             aria-pressed={item.code === dubbed.code}
             onClick={() => {
               if (item.code === language) return;
-              pendingDubbedPosition.current = pendingDubbedPosition.current ??
+              pendingDubbedPosition.current =
+                pendingDubbedPosition.current ??
                 (synchronized ? activePlayer.current?.currentTime : undefined) ??
-                dubbedPlayer.current?.currentTime ?? 0;
+                dubbedPlayer.current?.currentTime ??
+                0;
               setLanguage(item.code);
             }}
           >

@@ -8,7 +8,10 @@ const viewports = [
   { width: 640, height: 720 },
 ];
 
-const browser = await chromium.launch({ channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge', headless: true });
+const browser = await chromium.launch({
+  channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge',
+  headless: true,
+});
 const context = await browser.newContext();
 const page = await context.newPage();
 const failures = [];

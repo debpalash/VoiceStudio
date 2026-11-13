@@ -1,10 +1,22 @@
 // @vitest-environment node
-import { fixture, runner, report, recipe, beforeFixtureRemoval } from './runtime-windows-rocm.fixture';
+import {
+  fixture,
+  runner,
+  report,
+  recipe,
+  beforeFixtureRemoval,
+} from './runtime-windows-rocm.fixture';
 import { execFile } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
-import { installRuntime, runtimeDependenciesReady, runtimeReady, runtimeCompatible, runtimePython } from './runtime-project';
+import {
+  installRuntime,
+  runtimeDependenciesReady,
+  runtimeReady,
+  runtimeCompatible,
+  runtimePython,
+} from './runtime-project';
 import { RuntimeLaunchRefusedError } from './runtime-launch-refusal';
 const host = vi.hoisted(() => ({ data: '' }));
 const originalResources = Object.getOwnPropertyDescriptor(process, 'resourcesPath');
@@ -55,46 +67,72 @@ function nativeCalls() {
     .mock.calls.filter(([, args]) => (args as string[]).includes('--verify-only'));
 }
 
-it.each(['sync', 'callback'] as const)('reports an early Windows ROCm %s launch refusal without reinstalling', async (mode) => {
-  const { supervisor, target } = await prepared();
-  vi.spyOn(supervisor as unknown as { probe: () => Promise<boolean> }, 'probe').mockResolvedValue(false);
-  const repair = vi.spyOn(supervisor, 'setupRuntime').mockResolvedValue(undefined);
-  vi.mocked(execFile).mockImplementation(((
-    _c: unknown, _a: unknown, _o: unknown,
-    callback: (error: Error, out: string, err: string) => void,
-  ) => {
-    const error = Object.assign(new Error('spawn UNKNOWN'), { code: 'UNKNOWN' });
-    if (mode === 'sync') throw error;
-    callback(error, '', '');
-  }) as never);
+it.each(['sync', 'callback'] as const)(
+  'reports an early Windows ROCm %s launch refusal without reinstalling',
+  async (mode) => {
+    const { supervisor, target } = await prepared();
+    vi.spyOn(supervisor as unknown as { probe: () => Promise<boolean> }, 'probe').mockResolvedValue(
+      false,
+    );
+    const repair = vi.spyOn(supervisor, 'setupRuntime').mockResolvedValue(undefined);
+    vi.mocked(execFile).mockImplementation(((
+      _c: unknown,
+      _a: unknown,
+      _o: unknown,
+      callback: (error: Error, out: string, err: string) => void,
+    ) => {
+      const error = Object.assign(new Error('spawn UNKNOWN'), { code: 'UNKNOWN' });
+      if (mode === 'sync') throw error;
+      callback(error, '', '');
+    }) as never);
 
-  await supervisor.start();
+    await supervisor.start();
 
-  expect(supervisor.status.stage).toBe('failed');
-  expect(supervisor.status.message).toContain(runtimePython(target));
-  expect(repair).not.toHaveBeenCalled();
-  expect(nativeCalls()).toHaveLength(1);
-});
+    expect(supervisor.status.stage).toBe('failed');
+    expect(supervisor.status.message).toContain(runtimePython(target));
+    expect(repair).not.toHaveBeenCalled();
+    expect(nativeCalls()).toHaveLength(1);
+  },
+);
 
-it.each(['ready', 'compatible', 'dependencies'] as const)('propagates Windows ROCm launch refusal through %s checks', async (check) => {
-  const { bundle, target } = await prepared();
-  vi.mocked(execFile).mockImplementation(((
-    _c: unknown, _a: unknown, _o: unknown,
-    callback: (error: Error, out: string, err: string) => void,
-  ) => callback(Object.assign(new Error('spawn UNKNOWN'), { code: 'UNKNOWN' }), '', '')) as never);
-  const result = check === 'ready' ? runtimeReady(bundle, target)
-    : check === 'compatible' ? runtimeCompatible(bundle, target) : runtimeDependenciesReady(target);
-  await expect(result).rejects.toBeInstanceOf(RuntimeLaunchRefusedError);
-});
+it.each(['ready', 'compatible', 'dependencies'] as const)(
+  'propagates Windows ROCm launch refusal through %s checks',
+  async (check) => {
+    const { bundle, target } = await prepared();
+    vi.mocked(execFile).mockImplementation(((
+      _c: unknown,
+      _a: unknown,
+      _o: unknown,
+      callback: (error: Error, out: string, err: string) => void,
+    ) =>
+      callback(Object.assign(new Error('spawn UNKNOWN'), { code: 'UNKNOWN' }), '', '')) as never);
+    const result =
+      check === 'ready'
+        ? runtimeReady(bundle, target)
+        : check === 'compatible'
+          ? runtimeCompatible(bundle, target)
+          : runtimeDependenciesReady(target);
+    await expect(result).rejects.toBeInstanceOf(RuntimeLaunchRefusedError);
+  },
+);
 
 it('still repairs a genuinely failed model-free Windows ROCm verification', async () => {
   const { supervisor } = await prepared();
-  vi.spyOn(supervisor as unknown as { probe: () => Promise<boolean> }, 'probe').mockResolvedValue(false);
+  vi.spyOn(supervisor as unknown as { probe: () => Promise<boolean> }, 'probe').mockResolvedValue(
+    false,
+  );
   const repair = vi.spyOn(supervisor, 'setupRuntime').mockResolvedValue(undefined);
   vi.mocked(execFile).mockImplementation(((
-    _c: unknown, _a: unknown, _o: unknown,
+    _c: unknown,
+    _a: unknown,
+    _o: unknown,
     callback: (error: Error, out: string, err: string) => void,
-  ) => callback(new Error('verification failed'), JSON.stringify({ ready: false, scope: 'model-free' }), '')) as never);
+  ) =>
+    callback(
+      new Error('verification failed'),
+      JSON.stringify({ ready: false, scope: 'model-free' }),
+      '',
+    )) as never);
   await supervisor.start();
   expect(repair).toHaveBeenCalledOnce();
   expect(supervisor.status.stage).toBe('setup_required');

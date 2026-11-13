@@ -19,7 +19,15 @@ const mocks = vi.hoisted(() => ({
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock('@/lib/api/client', () => ({ apiJson: mocks.api, apiPath: (path: string) => path }));
 vi.mock('@/components/video-player', () => ({
-  VideoPlayer: ({ controls, playerRef, onPlay, onPause, onCanPlay, source, src }: Record<string, any>) => {
+  VideoPlayer: ({
+    controls,
+    playerRef,
+    onPlay,
+    onPause,
+    onCanPlay,
+    source,
+    src,
+  }: Record<string, any>) => {
     mocks.videoProps.push({ controls, source });
     let player = mocks.players.get(source);
     if (!player) {
@@ -44,7 +52,10 @@ vi.mock('@/components/video-player', () => ({
       <button
         type="button"
         aria-label={source}
-        onDoubleClick={() => { player!.paused = true; onPause?.({}); }}
+        onDoubleClick={() => {
+          player!.paused = true;
+          onPause?.({});
+        }}
         onClick={() => {
           player!.paused = false;
           onPlay?.({});
@@ -140,11 +151,14 @@ it('opens the selected dubbed sample in the editor', async () => {
   });
 });
 
-
 it('continues from the outgoing playhead when switching samples', async () => {
   mount();
-  const original = await screen.findByRole('button', {name: 'dubbing-demo-comparison-demo.original_tag'});
-  const translated = screen.getByRole('button', {name: 'dubbing-demo-comparison-demo.dubbed_tag'});
+  const original = await screen.findByRole('button', {
+    name: 'dubbing-demo-comparison-demo.original_tag',
+  });
+  const translated = screen.getByRole('button', {
+    name: 'dubbing-demo-comparison-demo.dubbed_tag',
+  });
   fireEvent.click(original);
   const source = mocks.players.get('dubbing-demo-comparison-demo.original_tag')!;
   const dubbed = mocks.players.get('dubbing-demo-comparison-demo.dubbed_tag')!;
@@ -156,7 +170,9 @@ it('continues from the outgoing playhead when switching samples', async () => {
 
 it('copies the final paused position to the other sample', async () => {
   mount();
-  const original = await screen.findByRole('button', {name: 'dubbing-demo-comparison-demo.original_tag'});
+  const original = await screen.findByRole('button', {
+    name: 'dubbing-demo-comparison-demo.original_tag',
+  });
   fireEvent.click(original);
   await Promise.resolve();
   const source = mocks.players.get('dubbing-demo-comparison-demo.original_tag')!;
@@ -165,10 +181,11 @@ it('copies the final paused position to the other sample', async () => {
   expect(mocks.players.get('dubbing-demo-comparison-demo.dubbed_tag')!.currentTime).toBe(5);
 });
 
-
 it('preserves the active dubbed position when its language source resets', async () => {
   mount();
-  const translated = await screen.findByRole('button', { name: 'dubbing-demo-comparison-demo.dubbed_tag' });
+  const translated = await screen.findByRole('button', {
+    name: 'dubbing-demo-comparison-demo.dubbed_tag',
+  });
   fireEvent.click(translated);
   await Promise.resolve();
   const dubbed = mocks.players.get('dubbing-demo-comparison-demo.dubbed_tag')!;

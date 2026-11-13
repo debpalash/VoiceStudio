@@ -17,7 +17,9 @@ class Context {
   state = 'running';
   destination = {};
   close = vi.fn(async () => {});
-  constructor() { Context.instances.push(this); }
+  constructor() {
+    Context.instances.push(this);
+  }
   createBuffer(_channels: number, length: number) {
     return { getChannelData: () => new Float32Array(length) };
   }
@@ -26,7 +28,8 @@ class Context {
   }
   createGain() {
     return {
-      connect() {}, disconnect() {},
+      connect() {},
+      disconnect() {},
       gain: { setValueAtTime() {}, linearRampToValueAtTime() {} },
     };
   }
@@ -41,11 +44,22 @@ class Socket {
   onerror: (() => void) | null = null;
   send = vi.fn();
   close = vi.fn();
-  constructor() { Socket.instances.push(this); }
-  frame(data: string | ArrayBuffer) { this.onmessage?.({ data }); }
+  constructor() {
+    Socket.instances.push(this);
+  }
+  frame(data: string | ArrayBuffer) {
+    this.onmessage?.({ data });
+  }
 }
 
-const segment = { id: 'line', start: 0, end: 1, text: 'Hello', text_original: 'Hello', profile_id: 'voice' };
+const segment = {
+  id: 'line',
+  start: 0,
+  end: 1,
+  text: 'Hello',
+  text_original: 'Hello',
+  profile_id: 'voice',
+};
 let extraRelease: (() => void) | null = null;
 
 beforeEach(() => {
@@ -66,10 +80,9 @@ afterEach(() => {
 });
 
 async function startPreview() {
-  const view = renderHook(
-    ({ enabled }) => useDubLivePreview({ enabled, language: 'English' }),
-    { initialProps: { enabled: true } },
-  );
+  const view = renderHook(({ enabled }) => useDubLivePreview({ enabled, language: 'English' }), {
+    initialProps: { enabled: true },
+  });
   await act(async () => view.result.current.onToggle(segment));
   const socket = Socket.instances[0]!;
   act(() => {

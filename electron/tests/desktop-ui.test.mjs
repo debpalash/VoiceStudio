@@ -260,7 +260,9 @@ test('guard: an unexpected desktop exit fails the run', async (t) => {
 test('guard: requests before an intentional crash still fail after relaunch', async (t) => {
   await assert.rejects(
     withApp(t, {}, async (session) => {
-      await session.app.evaluate(({ net }) => net.fetch('https://example.com/leak').catch(() => {}));
+      await session.app.evaluate(({ net }) =>
+        net.fetch('https://example.com/leak').catch(() => {}),
+      );
       await session.crash();
       await session.relaunch();
     }),

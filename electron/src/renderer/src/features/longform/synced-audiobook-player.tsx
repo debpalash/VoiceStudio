@@ -12,10 +12,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { formatClock } from '@/components/media-clock';
 import { cn } from '@/lib/utils';
-import {
-  activeWordIndex,
-  buildLyricsTimeline,
-} from '@shared/utils/audiobookLyrics';
+import { activeWordIndex, buildLyricsTimeline } from '@shared/utils/audiobookLyrics';
 import type { AudiobookRenderChapter } from './longform-session';
 
 interface TimelineWord {

@@ -21,11 +21,16 @@ const blocked = new ApiError(403, warning, {
 function mount() {
   const client = new QueryClient();
   const hook = renderHook(() => useSelection('tts', ['engines']), {
-    wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
   });
-  const accept = (model: typeof models[number], accepted = true) => act(() => {
-    client.setQueryData(modelLicenceDetailsKey(model.repo_id), { acceptance: { ...model, accepted } });
-  });
+  const accept = (model: (typeof models)[number], accepted = true) =>
+    act(() => {
+      client.setQueryData(modelLicenceDetailsKey(model.repo_id), {
+        acceptance: { ...model, accepted },
+      });
+    });
   return { ...hook, accept };
 }
 

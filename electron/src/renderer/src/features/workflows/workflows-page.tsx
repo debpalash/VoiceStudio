@@ -437,7 +437,9 @@ export function WorkflowsPage() {
         <WorkflowCanvas
           onCalls={(call) => {
             pendingCallDraft = call ? { to: call.phone, brief: call.text } : undefined;
-            runRendererTask('Open Calls from the workflow canvas', () => navigate({ to: '/calls' }));
+            runRendererTask('Open Calls from the workflow canvas', () =>
+              navigate({ to: '/calls' }),
+            );
           }}
         />
       </ReactFlowProvider>
@@ -455,9 +457,12 @@ export function WorkflowCallsPage() {
   });
   return (
     <div className="h-full min-h-0">
-      <CallsPage initialDraft={draft} onCanvas={() =>
+      <CallsPage
+        initialDraft={draft}
+        onCanvas={() =>
           runRendererTask('Return to the workflow canvas', () => navigate({ to: '/workflows' }))
-        } />
+        }
+      />
     </div>
   );
 }

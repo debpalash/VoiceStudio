@@ -30,7 +30,16 @@ export interface ExecutionPlan {
   branches: Record<string, Record<ConditionBranch, string>>;
 }
 export class WorkflowValidationError extends Error {
-  constructor(readonly code: 'graph' | 'unsupported' | 'scripts' | 'voice' | 'media' | 'language' | 'condition') {
+  constructor(
+    readonly code:
+      | 'graph'
+      | 'unsupported'
+      | 'scripts'
+      | 'voice'
+      | 'media'
+      | 'language'
+      | 'condition',
+  ) {
     super(code);
   }
 }
@@ -49,10 +58,14 @@ export function matchesCondition(step: WorkflowStep, value: string): boolean {
   const phrase = step.text.trim().toLowerCase();
   const text = value.trim().toLowerCase();
   switch (step.match) {
-    case 'equals': return text === phrase;
-    case 'starts': return text.startsWith(phrase);
-    case 'ends': return text.endsWith(phrase);
-    default: return text.includes(phrase);
+    case 'equals':
+      return text === phrase;
+    case 'starts':
+      return text.startsWith(phrase);
+    case 'ends':
+      return text.endsWith(phrase);
+    default:
+      return text.includes(phrase);
   }
 }
 
@@ -60,8 +73,11 @@ export function matchesCondition(step: WorkflowStep, value: string): boolean {
 export function compileWorkflow(document: WorkflowDocument, engine = ''): ExecutionPlan {
   const starts = document.steps.filter((step) => ['start', 'audio'].includes(step.kind));
   const ids = new Set(document.steps.map((step) => step.id));
-  if (starts.length !== 1 || ids.size !== document.steps.length ||
-    document.connections.some((edge) => !ids.has(edge.source) || !ids.has(edge.target)))
+  if (
+    starts.length !== 1 ||
+    ids.size !== document.steps.length ||
+    document.connections.some((edge) => !ids.has(edge.source) || !ids.has(edge.target))
+  )
     throw new WorkflowValidationError('graph');
   const byId = new Map<string, WorkflowStep>(document.steps.map((step) => [step.id, step]));
   const leaving = (id: string) => document.connections.filter((edge) => edge.source === id);
@@ -101,13 +117,21 @@ export function compileWorkflow(document: WorkflowDocument, engine = ''): Execut
       // with no defined destination, which must fail here rather than mid-run.
       if (type !== 'text') throw new WorkflowValidationError('unsupported');
       if (!step.text.trim()) throw new WorkflowValidationError('condition');
-      if (edges.length !== 2 || CONDITION_BRANCHES.some(
-        (branch) => edges.filter((edge) => edge.sourceHandle === branch).length !== 1))
+      if (
+        edges.length !== 2 ||
+        CONDITION_BRANCHES.some(
+          (branch) => edges.filter((edge) => edge.sourceHandle === branch).length !== 1,
+        )
+      )
         throw new WorkflowValidationError('graph');
-      branches[step.id] = Object.fromEntries(CONDITION_BRANCHES.map((branch) =>
-        [branch, edges.find((edge) => edge.sourceHandle === branch)!.target],
-      )) as Record<ConditionBranch, string>;
-      for (const branch of CONDITION_BRANCHES) walk(byId.get(branches[step.id][branch])!, type, onward);
+      branches[step.id] = Object.fromEntries(
+        CONDITION_BRANCHES.map((branch) => [
+          branch,
+          edges.find((edge) => edge.sourceHandle === branch)!.target,
+        ]),
+      ) as Record<ConditionBranch, string>;
+      for (const branch of CONDITION_BRANCHES)
+        walk(byId.get(branches[step.id][branch])!, type, onward);
       return;
     }
     if (edges.length !== 1 || edges[0].sourceHandle) throw new WorkflowValidationError('graph');
@@ -133,13 +157,25 @@ export function compileWorkflow(document: WorkflowDocument, engine = ''): Execut
   // already threw), so what is left to check is that nothing is stranded.
   if (steps.length !== document.steps.length) throw new WorkflowValidationError('graph');
   if (steps.length < 3) throw new WorkflowValidationError('unsupported');
-  const scripts = steps[0].kind === 'audio'
-    ? (steps[0].media || []).map((file) => ({ name: file.name.replace(/\.[^.]+$/, ''), text: '', sourceId: file.id }))
-    : steps[0].scripts?.length ? steps[0].scripts : steps[0].text
-      .split(/^\s*---\s*$/m).map((text, index) => ({ name: `${index + 1}`, text: text.trim() }));
+  const scripts =
+    steps[0].kind === 'audio'
+      ? (steps[0].media || []).map((file) => ({
+          name: file.name.replace(/\.[^.]+$/, ''),
+          text: '',
+          sourceId: file.id,
+        }))
+      : steps[0].scripts?.length
+        ? steps[0].scripts
+        : steps[0].text
+            .split(/^\s*---\s*$/m)
+            .map((text, index) => ({ name: `${index + 1}`, text: text.trim() }));
   if (steps[0].kind === 'audio') {
     if (!scripts.length || scripts.length > 50) throw new WorkflowValidationError('media');
-  } else if (!scripts.length || scripts.length > 50 || scripts.some((script) => !script.text.trim() || script.text.length > 20_000))
+  } else if (
+    !scripts.length ||
+    scripts.length > 50 ||
+    scripts.some((script) => !script.text.trim() || script.text.length > 20_000)
+  )
     throw new WorkflowValidationError('scripts');
   // Layout, names, and selection never invalidate generated audio; executable settings do.
   // Wiring counts as an executable setting now: with a fork in the graph, moving
@@ -147,11 +183,22 @@ export function compileWorkflow(document: WorkflowDocument, engine = ''): Execut
   // them, and a run restored across that edit would show output from a path the
   // draft no longer describes. Sorted, so the edge list is a set rather than an
   // authoring order.
-  const signature = JSON.stringify({ engine,
-    steps: steps.map(({ id, kind, voiceId, language, speed, targetDb, sourceLanguage, provider, text, match }) => ['speak', 'convert'].includes(kind)
-      ? { id, kind, voiceId, language: language || 'Auto', speed: speed ?? 1 } : kind === 'normalize' ? { id, kind, targetDb: targetDb ?? -2 } : kind === 'translate' ? { id, kind, sourceLanguage, language, provider: provider || 'argos' }
-      : kind === 'condition' ? { id, kind, text, match: match || 'contains' }
-      : kind === 'transcribe' ? { id, kind } : { id, kind }),
+  const signature = JSON.stringify({
+    engine,
+    steps: steps.map(
+      ({ id, kind, voiceId, language, speed, targetDb, sourceLanguage, provider, text, match }) =>
+        ['speak', 'convert'].includes(kind)
+          ? { id, kind, voiceId, language: language || 'Auto', speed: speed ?? 1 }
+          : kind === 'normalize'
+            ? { id, kind, targetDb: targetDb ?? -2 }
+            : kind === 'translate'
+              ? { id, kind, sourceLanguage, language, provider: provider || 'argos' }
+              : kind === 'condition'
+                ? { id, kind, text, match: match || 'contains' }
+                : kind === 'transcribe'
+                  ? { id, kind }
+                  : { id, kind },
+    ),
     edges: document.connections
       .filter((edge) => entered.has(edge.source))
       .map((edge) => [edge.source, edge.target, edge.sourceHandle ?? ''].join('>'))
@@ -162,11 +209,27 @@ export function compileWorkflow(document: WorkflowDocument, engine = ''): Execut
 }
 
 export function prepareRun(plan: ExecutionPlan, previous?: WorkflowRun | null): WorkflowRun {
-  if (previous?.version === 1 && previous.signature === plan.signature && previous.items.length === plan.scripts.length) {
+  if (
+    previous?.version === 1 &&
+    previous.signature === plan.signature &&
+    previous.items.length === plan.scripts.length
+  ) {
     const restored = structuredClone(previous);
-    return { ...restored, items: restored.items.map((item) => ({ ...item, state: item.state === 'done' ? 'done' : 'ready', error: undefined })) };
+    return {
+      ...restored,
+      items: restored.items.map((item) => ({
+        ...item,
+        state: item.state === 'done' ? 'done' : 'ready',
+        error: undefined,
+      })),
+    };
   }
-  return { version: 1, signature: plan.signature, updatedAt: Date.now(), items: plan.scripts.map((script) => ({ ...script, state: 'ready', audio: {}, texts: {} })) };
+  return {
+    version: 1,
+    signature: plan.signature,
+    updatedAt: Date.now(),
+    items: plan.scripts.map((script) => ({ ...script, state: 'ready', audio: {}, texts: {} })),
+  };
 }
 
 export interface WorkflowOperations {
@@ -180,8 +243,11 @@ export interface WorkflowOperations {
 
 /** Serial execution avoids competing model loads. Every successful step is a durable checkpoint. */
 export async function executeWorkflow(
-  plan: ExecutionPlan, run: WorkflowRun, operations: WorkflowOperations,
-  signal: AbortSignal, checkpoint: (run: WorkflowRun) => Promise<void>,
+  plan: ExecutionPlan,
+  run: WorkflowRun,
+  operations: WorkflowOperations,
+  signal: AbortSignal,
+  checkpoint: (run: WorkflowRun) => Promise<void>,
 ): Promise<WorkflowRun> {
   const save = async () => {
     run.updatedAt = Date.now();
@@ -198,7 +264,7 @@ export async function executeWorkflow(
       const input = plan.steps[0];
       if (!item.sourceId) item.texts[input.id] = item.text;
       if (item.sourceId) {
-        value = item.audio[input.id] || await operations.loadAudio!(item.sourceId);
+        value = item.audio[input.id] || (await operations.loadAudio!(item.sourceId));
         item.audio[input.id] = value;
         await save();
       }
@@ -212,7 +278,10 @@ export async function executeWorkflow(
         // Annotated because `cursor`'s next value is read off this step, and
         // inferring one from the other is circular.
         const step: WorkflowStep = byId.get(cursor)!;
-        if (step.kind === 'end') { finished = step; break; }
+        if (step.kind === 'end') {
+          finished = step;
+          break;
+        }
         if (step.kind === 'condition') {
           cursor = plan.branches[step.id][matchesCondition(step, value as string) ? 'yes' : 'no'];
           continue;
@@ -225,12 +294,23 @@ export async function executeWorkflow(
         if (cached !== undefined) value = cached;
         else {
           switch (step.kind) {
-            case 'speak': value = await operations.speak(value as string, step, signal); break;
-            case 'normalize': value = await operations.normalize(value as Blob, step, signal); break;
-            case 'transcribe': value = await operations.transcribe!(value as Blob, step, signal); break;
-            case 'translate': value = await operations.translate!(value as string, step, signal); break;
-            case 'convert': value = await operations.convert!(value as Blob, step, signal); break;
-            default: throw new WorkflowValidationError('unsupported');
+            case 'speak':
+              value = await operations.speak(value as string, step, signal);
+              break;
+            case 'normalize':
+              value = await operations.normalize(value as Blob, step, signal);
+              break;
+            case 'transcribe':
+              value = await operations.transcribe!(value as Blob, step, signal);
+              break;
+            case 'translate':
+              value = await operations.translate!(value as string, step, signal);
+              break;
+            case 'convert':
+              value = await operations.convert!(value as Blob, step, signal);
+              break;
+            default:
+              throw new WorkflowValidationError('unsupported');
           }
           if (typeof value === 'string') {
             if (!value.trim()) throw new Error('workflowRun.incomplete');
@@ -252,7 +332,11 @@ export async function executeWorkflow(
       await save();
     } catch (error) {
       item.state = signal.aborted ? 'cancelled' : 'failed';
-      item.error = signal.aborted ? undefined : error instanceof Error ? error.message : String(error);
+      item.error = signal.aborted
+        ? undefined
+        : error instanceof Error
+          ? error.message
+          : String(error);
       await save();
       break; // Explicit retry; never silently skip a failed clip.
     }
@@ -260,9 +344,18 @@ export async function executeWorkflow(
   return run;
 }
 
-export function outputName(workflowName: string, itemName: string, index: number, extension: 'wav' | 'txt' = 'wav'): string {
+export function outputName(
+  workflowName: string,
+  itemName: string,
+  index: number,
+  extension: 'wav' | 'txt' = 'wav',
+): string {
   // Windows disallows control bytes in filenames; stripping them also prevents path surprises.
   // eslint-disable-next-line no-control-regex
-  const safe = (value: string) => value.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').replace(/[. ]+$/g, '').slice(0, 70);
+  const safe = (value: string) =>
+    value
+      .replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_')
+      .replace(/[. ]+$/g, '')
+      .slice(0, 70);
   return `${safe(workflowName) || 'workflow'}-${String(index + 1).padStart(2, '0')}-${safe(itemName) || 'audio'}.${extension}`;
 }

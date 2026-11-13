@@ -143,7 +143,9 @@ describe('toGenerateForm', () => {
   });
   it('resolves best quality per engine and clamps explicit steps to its range', () => {
     expect(toGenerateForm({ ...BASE_INPUT, steps: null }, 'omnivoice').get('num_step')).toBe('32');
-    expect(toGenerateForm({ ...BASE_INPUT, steps: null }, 'supertonic3').get('num_step')).toBe('12');
+    expect(toGenerateForm({ ...BASE_INPUT, steps: null }, 'supertonic3').get('num_step')).toBe(
+      '12',
+    );
     // Engines that ignore steps keep the old wire value.
     expect(toGenerateForm({ ...BASE_INPUT, steps: null }, 'kittentts').get('num_step')).toBe('16');
     expect(toGenerateForm({ ...BASE_INPUT, steps: 100 }, 'voxcpm2').get('num_step')).toBe('64');

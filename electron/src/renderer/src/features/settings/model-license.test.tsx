@@ -107,7 +107,12 @@ async function render(licenseInfo = info, dependencies?: any[]) {
   await act(async () =>
     root.render(
       <QueryClientProvider client={queryClient}>
-        <ModelLicense repoId="test/model" label="Test model" info={licenseInfo} dependencies={dependencies} />
+        <ModelLicense
+          repoId="test/model"
+          label="Test model"
+          info={licenseInfo}
+          dependencies={dependencies}
+        />
       </QueryClientProvider>,
     ),
   );
@@ -246,7 +251,14 @@ describe('versioned model notices', () => {
   });
 
   it('keeps a dependency unacceptable until its terms have loaded', async () => {
-    const dep = { repo_id: 'dep/model', license: 'x', category: 'noncommercial', required: true, accepted: false, fingerprint };
+    const dep = {
+      repo_id: 'dep/model',
+      license: 'x',
+      category: 'noncommercial',
+      required: true,
+      accepted: false,
+      fingerprint,
+    };
     mock.details.mockImplementation((path: string) =>
       path.includes('dep/model')
         ? Promise.reject(new Error('down'))
@@ -255,7 +267,9 @@ describe('versioned model notices', () => {
     await render(info, [dep]);
     await open();
     await vi.waitFor(() => expect(text()).toContain(en.modelLicense.detailsFailed));
-    const box = document.querySelector('[role="dialog"] input[type="checkbox"]') as HTMLInputElement;
+    const box = document.querySelector(
+      '[role="dialog"] input[type="checkbox"]',
+    ) as HTMLInputElement;
     expect(box.disabled).toBe(true);
     expect(button(en.modelLicense.accept).disabled).toBe(true);
   });

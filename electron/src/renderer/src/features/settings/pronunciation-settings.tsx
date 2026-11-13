@@ -500,7 +500,10 @@ export function PronunciationSettings() {
           <p className="min-w-0 flex-1">
             {t('pronunciation.import_replace_prompt', { count: pendingImport.count })}
           </p>
-          <Button disabled={busy} onClick={() => void importEntries(pendingImport, pendingImport.profileId, true)}>
+          <Button
+            disabled={busy}
+            onClick={() => void importEntries(pendingImport, pendingImport.profileId, true)}
+          >
             {t('common.yes')}
           </Button>
           <Button

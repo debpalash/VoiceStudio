@@ -1,7 +1,10 @@
 import { chromium } from 'playwright';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
-const browser = await chromium.launch({ channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge', headless: true });
+const browser = await chromium.launch({
+  channel: process.env.PLAYWRIGHT_CHANNEL || 'msedge',
+  headless: true,
+});
 const page = await browser.newPage();
 await page.addInitScript(() => {
   localStorage.setItem('voicestudio.setup.complete.v1', '1');

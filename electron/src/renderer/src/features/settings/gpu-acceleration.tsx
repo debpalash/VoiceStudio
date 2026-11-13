@@ -174,7 +174,9 @@ export function GpuAcceleration() {
                   </span>
                 </span>
                 <span className="text-muted-foreground @xl:text-right">
-                  {engine.code === 'unknown' ? t('common.unknown') : t('settings.gpu_report_engine_' + engine.code, engine.params)}
+                  {engine.code === 'unknown'
+                    ? t('common.unknown')
+                    : t('settings.gpu_report_engine_' + engine.code, engine.params)}
                 </span>
               </li>
             ))}

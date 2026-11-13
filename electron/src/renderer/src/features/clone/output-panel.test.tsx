@@ -49,8 +49,5 @@ it('plays a completed take from its persistent audio path instead of a revocable
 
   render(<OutputPanel />);
 
-  expect(screen.getByTestId('player')).toHaveAttribute(
-    'data-src',
-    '/api/audio/take-1.wav',
-  );
+  expect(screen.getByTestId('player')).toHaveAttribute('data-src', '/api/audio/take-1.wav');
 });

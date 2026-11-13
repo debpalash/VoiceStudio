@@ -151,12 +151,14 @@ export async function startRepairApiBridge(
       }
     };
     if (pathname.startsWith('/__voicestudio/')) {
-      void control().then((handled) => {
-        if (!handled && !response.writableEnded)
-          json(404, { detail: 'Unknown Electron recovery operation' });
-      }).catch(() => {
-        if (!response.writableEnded) response.destroy();
-      });
+      void control()
+        .then((handled) => {
+          if (!handled && !response.writableEnded)
+            json(404, { detail: 'Unknown Electron recovery operation' });
+        })
+        .catch(() => {
+          if (!response.writableEnded) response.destroy();
+        });
       return;
     }
     let target: URL | null = null;

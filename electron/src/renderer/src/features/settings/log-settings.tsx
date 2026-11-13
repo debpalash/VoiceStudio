@@ -11,10 +11,7 @@ import { useBackendStatus } from '@/hooks/use-backend-status';
 import { logSeverity, stripLogAnsi, type LogSeverity } from '@/lib/log-format';
 import { openRepairAgent } from '@/lib/repair-agent-events';
 import { cn } from '@/lib/utils';
-import {
-  getFrontendLogs,
-  clearFrontendLogs,
-} from '@shared/utils/consoleBuffer';
+import { getFrontendLogs, clearFrontendLogs } from '@shared/utils/consoleBuffer';
 interface LogResponse {
   lines: string[];
   path?: string;

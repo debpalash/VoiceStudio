@@ -81,7 +81,12 @@ describe('MainErrorJournal', () => {
     const journal = new MainErrorJournal(journalPath(), '1.2.3');
     const report = vi.fn();
 
-    observeMainProcessTask(Promise.reject(new Error('pipe closed')), journal, 'Backend startup', report);
+    observeMainProcessTask(
+      Promise.reject(new Error('pipe closed')),
+      journal,
+      'Backend startup',
+      report,
+    );
     await Promise.resolve();
 
     expect(journal.recent()).toContain('Backend startup: pipe closed');

@@ -5,10 +5,7 @@ import { Button } from '@/components/ui/button';
 import { getBridge } from '@/components/bridge';
 import { PipelineFailure } from '@/components/pipeline-failure';
 import { describeError } from '@/lib/api/client';
-import {
-  createIngestTracker,
-  WATCH_POLL_MS,
-} from '@shared/utils/watchFolderTracker';
+import { createIngestTracker, WATCH_POLL_MS } from '@shared/utils/watchFolderTracker';
 import type { WatchSelection } from '../../../../preload/index.d';
 
 export function WatchFolder({

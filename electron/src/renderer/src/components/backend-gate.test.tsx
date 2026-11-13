@@ -30,7 +30,8 @@ vi.mock('./bridge', () => ({
   getBridge: () => bridgeStub.current,
   isMac: () => platform.current === 'darwin',
   appVersion: () => '0.5.8-beta.1',
-  platformFamily: () => (platform.current === 'darwin' ? 'mac' : platform.current === 'win32' ? 'windows' : 'linux'),
+  platformFamily: () =>
+    platform.current === 'darwin' ? 'mac' : platform.current === 'win32' ? 'windows' : 'linux',
 }));
 
 beforeEach(() => {
@@ -263,22 +264,25 @@ it('keeps agent repair available when the backend is down', () => {
 it.each([
   ['offers', { pythonPath: '/broken/env/bin/python' }],
   ['hides', null],
-] as const)('%s the way back to the managed runtime when a launch fails', async (_label, selection) => {
-  backendStatus.stage = 'failed';
-  const getPythonRuntime = vi.fn(async () => ({ selection, overrideActive: false }));
-  bridgeStub.current = { backend: { getPythonRuntime } };
+] as const)(
+  '%s the way back to the managed runtime when a launch fails',
+  async (_label, selection) => {
+    backendStatus.stage = 'failed';
+    const getPythonRuntime = vi.fn(async () => ({ selection, overrideActive: false }));
+    bridgeStub.current = { backend: { getPythonRuntime } };
 
-  render(
-    <BackendGate>
-      <div>workspace</div>
-    </BackendGate>,
-  );
+    render(
+      <BackendGate>
+        <div>workspace</div>
+      </BackendGate>,
+    );
 
-  await waitFor(() => expect(getPythonRuntime).toHaveBeenCalled());
-  const back = i18n.t('settings.python_runtime_use_managed');
-  if (selection) expect(await screen.findByRole('button', { name: back })).toBeEnabled();
-  else expect(screen.queryByRole('button', { name: back })).not.toBeInTheDocument();
-});
+    await waitFor(() => expect(getPythonRuntime).toHaveBeenCalled());
+    const back = i18n.t('settings.python_runtime_use_managed');
+    if (selection) expect(await screen.findByRole('button', { name: back })).toBeEnabled();
+    else expect(screen.queryByRole('button', { name: back })).not.toBeInTheDocument();
+  },
+);
 
 it('passes failed-backend output to the repair request as delimited untrusted data', async () => {
   backendStatus.stage = 'failed';
@@ -620,10 +624,12 @@ it('leads with the fix for a coded failure and keeps Report available', () => {
 
   renderGate('failed');
 
-  expect(screen.getByTestId('backend-cause')).toHaveTextContent(i18n.t('backend.cause_smart_app_control'));
-  expect(
-    screen.getAllByTestId('backend-hint').map((hint) => hint.textContent),
-  ).not.toContain(i18n.t('backend.hint_spawn_blocked'));
+  expect(screen.getByTestId('backend-cause')).toHaveTextContent(
+    i18n.t('backend.cause_smart_app_control'),
+  );
+  expect(screen.getAllByTestId('backend-hint').map((hint) => hint.textContent)).not.toContain(
+    i18n.t('backend.hint_spawn_blocked'),
+  );
   expect(screen.getByTestId('backend-failure-code')).toHaveTextContent(
     'WINDOWS_APP_CONTROL_BLOCKED',
   );
@@ -813,7 +819,6 @@ it('labels the binary disk preflight units as GiB and a minimum rather than a do
   );
 });
 
-
 it('names the app version and Beta channel in the setup header (setup screen info)', () => {
   render(
     <BackendGate>
@@ -840,12 +845,13 @@ it('offers help links before anything fails, and names the remote option plainly
   const help = screen.getByTestId('setup-help-links');
   expect(help).toHaveTextContent(i18n.t('setup.help_install'));
   expect(help).toHaveTextContent(i18n.t('setup.help_troubleshooting'));
-  expect(screen.getByRole('link', { name: new RegExp(i18n.t('setup.help_install')) })).toHaveAttribute(
-    'href',
-    expect.stringContaining('docs/install/linux.md'),
-  );
+  expect(
+    screen.getByRole('link', { name: new RegExp(i18n.t('setup.help_install')) }),
+  ).toHaveAttribute('href', expect.stringContaining('docs/install/linux.md'));
   openPanel('setup.options');
-  expect(screen.getByRole('button', { name: i18n.t('setup.use_other_computer') })).toBeInTheDocument();
+  expect(
+    screen.getByRole('button', { name: i18n.t('setup.use_other_computer') }),
+  ).toBeInTheDocument();
   backendStatus.runtimeInterrupted = true;
 });
 
@@ -889,7 +895,9 @@ it('offers a newer app before the runtime download', async () => {
   expect(notice).toHaveTextContent(i18n.t('setup.update_first'));
   fireEvent.click(screen.getByRole('button', { name: i18n.t('update.download') }));
   await waitFor(() =>
-    expect((bridgeStub.current as { updates: { download: () => void } }).updates.download).toHaveBeenCalled(),
+    expect(
+      (bridgeStub.current as { updates: { download: () => void } }).updates.download,
+    ).toHaveBeenCalled(),
   );
 });
 
@@ -908,7 +916,9 @@ it('keeps install help visible after a setup failure', () => {
       <div>workspace</div>
     </BackendGate>,
   );
-  expect(screen.getByTestId('setup-help-links')).toHaveTextContent(i18n.t('setup.help_troubleshooting'));
+  expect(screen.getByTestId('setup-help-links')).toHaveTextContent(
+    i18n.t('setup.help_troubleshooting'),
+  );
   backendStatus.runtimeInterrupted = true;
 });
 
@@ -950,7 +960,9 @@ it('a failed update download keeps the notice with Retry', async () => {
   expect(notice).toHaveTextContent(i18n.t('update.error_network'));
   fireEvent.click(screen.getByRole('button', { name: i18n.t('update.retry') }));
   await waitFor(() =>
-    expect((bridgeStub.current as { updates: { check: () => void } }).updates.check).toHaveBeenCalled(),
+    expect(
+      (bridgeStub.current as { updates: { check: () => void } }).updates.check,
+    ).toHaveBeenCalled(),
   );
 });
 
@@ -981,7 +993,11 @@ it('an update event that arrives before the initial snapshot is not overwritten'
 
 it.each([
   [{ gpu: 'Apple M3 Pro', build: 'metal' }, 'setup.hardware_metal', { gpu: 'Apple M3 Pro' }],
-  [{ gpu: 'NVIDIA GeForce RTX 4070', build: 'cuda' }, 'setup.hardware_cuda', { gpu: 'NVIDIA GeForce RTX 4070' }],
+  [
+    { gpu: 'NVIDIA GeForce RTX 4070', build: 'cuda' },
+    'setup.hardware_cuda',
+    { gpu: 'NVIDIA GeForce RTX 4070' },
+  ],
   [{ build: 'cuda' }, 'setup.hardware_cuda_unnamed', {}],
   [{ build: 'rocm' }, 'setup.hardware_rocm', {}],
   [{ build: 'cpu', reason: 'no_nvidia' }, 'setup.hardware_cpu_no_nvidia', {}],
@@ -1058,7 +1074,9 @@ it('offers each help destination once, swapping in the prefilled report after a 
       i18n.t('setupHelp.discord'),
     ]);
     expect(screen.getAllByRole('link', { name: i18n.t('setupHelp.discord') })).toHaveLength(1);
-    expect(screen.getAllByRole('button', { name: i18n.t('setupHelp.download_log') })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: i18n.t('setupHelp.download_log') })).toHaveLength(
+      1,
+    );
     expect(screen.queryByRole('link', { name: i18n.t('setup.help_report') })).toBeNull();
     // Secondary recovery waits behind one disclosure instead of three stacked buttons.
     expect(screen.queryByRole('button', { name: i18n.t('bootstrap.clean_retry') })).toBeNull();
@@ -1118,9 +1136,7 @@ it('makes moving the runtime the primary fix for a full drive (DISK_FULL)', asyn
 
 it('keeps an in-flight interpreter check and its result across closing and reopening Options', async () => {
   let resolveChoice: (value: unknown) => void = () => {};
-  const choosePythonRuntime = vi.fn(
-    () => new Promise((resolve) => (resolveChoice = resolve)),
-  );
+  const choosePythonRuntime = vi.fn(() => new Promise((resolve) => (resolveChoice = resolve)));
   bridgeStub.current = {
     backend: {
       getPythonRuntime: vi.fn(async () => ({ selection: null, overrideActive: false })),

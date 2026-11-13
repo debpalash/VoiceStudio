@@ -14,7 +14,9 @@ it('puts data, models and every temp variable under the chosen location (#2971)'
     TMP: s.temp,
     TMPDIR: s.temp,
   });
-  expect(s.data.startsWith(root) && s.models.startsWith(root) && s.temp.startsWith(root)).toBe(true);
+  expect(s.data.startsWith(root) && s.models.startsWith(root) && s.temp.startsWith(root)).toBe(
+    true,
+  );
 });
 
 it('keeps values the user already set explicitly', () => {

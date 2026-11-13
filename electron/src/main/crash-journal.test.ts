@@ -132,7 +132,8 @@ it('records the loading frame below deep recursion and the other threads (#2382)
 describe('crash context', () => {
   const contextLine = (fields: Record<string, unknown>) =>
     `VOICESTUDIO_CRASH_CONTEXT=${JSON.stringify(fields)}`;
-  const journal = () => new CrashJournal(join(mkdtempSync(join(tmpdir(), 'crash-')), 'j.json'), '1');
+  const journal = () =>
+    new CrashJournal(join(mkdtempSync(join(tmpdir(), 'crash-')), 'j.json'), '1');
 
   it('attaches the last activity and memory to the crash record', () => {
     const crashes = journal();

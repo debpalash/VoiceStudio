@@ -44,7 +44,8 @@ for (const platform of ['linux', 'darwin', 'win32']) {
     mkdirSync(framework, { recursive: true });
     writeFileSync(join(framework, 'Python'), 'interpreter');
     const linked = process.platform !== 'win32';
-    if (linked) symlinkSync('Python.framework/Versions/3.11/Python', join(bundle, '_internal/Python'));
+    if (linked)
+      symlinkSync('Python.framework/Versions/3.11/Python', join(bundle, '_internal/Python'));
     const cliName = platform === 'win32' ? 'voicestudio.exe' : 'voicestudio';
     writeFileSync(join(bundle, cliName), '#!/bin/sh\nprintf "CLI:%s\\n" "$*"\n', { mode: 0o755 });
     const desktop =

@@ -167,7 +167,11 @@ async function openSession(browser, mode) {
   // Name what kept the page busy, so an unsettled finding points at its request.
   const recent = [];
   const describeTraffic = () => {
-    const names = [...new Set([...traffic.inflight, ...recent].map((r) => `${r.method()} ${new URL(r.url()).pathname}`))];
+    const names = [
+      ...new Set(
+        [...traffic.inflight, ...recent].map((r) => `${r.method()} ${new URL(r.url()).pathname}`),
+      ),
+    ];
     return names.length ? `: ${names.slice(0, 6).join(', ')}` : '';
   };
   page.on('requestfinished', (request) => traffic.finish(request));
@@ -185,12 +189,13 @@ async function openSession(browser, mode) {
   page.on('dialog', (dialog) => dialog.accept().catch(() => {}));
   context.on('page', (popup) => popup !== page && popup.close().catch(() => {}));
 
-  const settle = (grace = SETTLE_MS, snapshot) => waitForQuietRequests(traffic, {
-    wait: (duration) => page.waitForTimeout(duration),
-    graceMs: grace,
-    budgetMs: REQUEST_BUDGET_MS,
-    snapshot,
-  });
+  const settle = (grace = SETTLE_MS, snapshot) =>
+    waitForQuietRequests(traffic, {
+      wait: (duration) => page.waitForTimeout(duration),
+      graceMs: grace,
+      budgetMs: REQUEST_BUDGET_MS,
+      snapshot,
+    });
   /** Stop the mode on a stalled request, naming it, what started it and the backend's health. */
   const failStalled = async (stalled) => {
     if (!stalled) return;
@@ -256,30 +261,43 @@ async function openSession(browser, mode) {
     const problems = [];
     const failedWrite = Boolean(state.failedWrites) && mode !== 'fixture' && observation.settled;
     // One read gathers the evidence and proves the renderer still answers.
-    const evidence = !observation.unresponsive && await Promise.race([
-      page.evaluate(({ failedWrite, feedback }) => {
-        const result = { errors: window.__crawlErrors.splice(0), greyed: [], feedback: true };
-        if (!failedWrite) return result;
-        result.greyed = [...document.querySelectorAll('main [data-crawl-enabled]')]
-          .filter((element) => element.matches('[disabled], [aria-disabled="true"]'))
-          .map((element) =>
-            (element.textContent || element.getAttribute('aria-label') || '?').trim(),
-          );
-        result.feedback =
-          [...document.querySelectorAll(feedback)].some((node) => !node.dataset.crawlSeen) ||
-          (document.querySelector('main')?.innerText ?? '') !== window.__crawlText;
-        return result;
-      }, { failedWrite, feedback: FEEDBACK }),
-      new Promise((resolve) => setTimeout(() => resolve(false), 5_000)),
-    ]);
+    const evidence =
+      !observation.unresponsive &&
+      (await Promise.race([
+        page.evaluate(
+          ({ failedWrite, feedback }) => {
+            const result = { errors: window.__crawlErrors.splice(0), greyed: [], feedback: true };
+            if (!failedWrite) return result;
+            result.greyed = [...document.querySelectorAll('main [data-crawl-enabled]')]
+              .filter((element) => element.matches('[disabled], [aria-disabled="true"]'))
+              .map((element) =>
+                (element.textContent || element.getAttribute('aria-label') || '?').trim(),
+              );
+            result.feedback =
+              [...document.querySelectorAll(feedback)].some((node) => !node.dataset.crawlSeen) ||
+              (document.querySelector('main')?.innerText ?? '') !== window.__crawlText;
+            return result;
+          },
+          { failedWrite, feedback: FEEDBACK },
+        ),
+        new Promise((resolve) => setTimeout(() => resolve(false), 5_000)),
+      ]));
     if (!evidence) {
       await page.goto(`${BASE}/#${route}`);
-      return [{ kind: 'frozen', detail: observation.unresponsive
-        ? 'renderer did not answer before the request budget expired'
-        : 'renderer did not answer within 5s' }];
+      return [
+        {
+          kind: 'frozen',
+          detail: observation.unresponsive
+            ? 'renderer did not answer before the request budget expired'
+            : 'renderer did not answer within 5s',
+        },
+      ];
     }
     if (!observation.settled)
-      problems.push({ kind: 'unsettled', detail: `traffic did not stay quiet within ${REQUEST_BUDGET_MS}ms (${observation.pending} request(s) pending${describeTraffic()})` });
+      problems.push({
+        kind: 'unsettled',
+        detail: `traffic did not stay quiet within ${REQUEST_BUDGET_MS}ms (${observation.pending} request(s) pending${describeTraffic()})`,
+      });
     const after = observation.snapshot;
     if (observation.settled && after > before && new URL(page.url()).hash === `#${route}`)
       problems.push({
@@ -382,14 +400,19 @@ async function canary(browser) {
   const reloadError = new Error('Execution context was destroyed during reload');
   const locate = page.locator.bind(page);
   let busyReads = 0;
-  page.locator = (selector, ...args) => selector !== BUSY ? locate(selector, ...args) : {
-    filter: (options) => ({
-      count: async () => {
-        if (++busyReads === 2) throw reloadError;
-        return locate(selector, ...args).filter(options).count();
-      },
-    }),
-  };
+  page.locator = (selector, ...args) =>
+    selector !== BUSY
+      ? locate(selector, ...args)
+      : {
+          filter: (options) => ({
+            count: async () => {
+              if (++busyReads === 2) throw reloadError;
+              return locate(selector, ...args)
+                .filter(options)
+                .count();
+            },
+          }),
+        };
   try {
     await assert.rejects(
       clickAndCheck(page.getByRole('button', { name: 'canary-reload', exact: true }), route),
@@ -399,8 +422,8 @@ async function canary(browser) {
   } finally {
     page.locator = locate;
   }
-  const recoveryStatus = await page.evaluate(async () =>
-    (await fetch('/api/health', { method: 'POST' })).status,
+  const recoveryStatus = await page.evaluate(
+    async () => (await fetch('/api/health', { method: 'POST' })).status,
   );
   assert.equal(recoveryStatus, 200, 'snapshot failure leaked fault injection into recovery');
   await session.context.close();
@@ -480,7 +503,13 @@ async function crawlMode(browser, mode, routes) {
     // The click already started a reload; a goto that only changes the hash would never commit
     // while it is pending, so let it finish and route inside the fresh app instead.
     await page.waitForLoadState('domcontentloaded').catch(() => {});
-    if (!(await page.locator('main').first().isVisible().catch(() => false)))
+    if (
+      !(await page
+        .locator('main')
+        .first()
+        .isVisible()
+        .catch(() => false))
+    )
       await page.goto(`${BASE}/?recover=${Date.now()}#/settings/usage`, { waitUntil: 'commit' });
     await page.locator('main').first().waitFor({ timeout: 15_000 });
     await navigate(route);
@@ -655,8 +684,10 @@ try {
   const cost = (route) => Math.max(...results.map((result) => result.seconds?.[route] ?? 0));
   if (routes.some(cost))
     console.log(
-      `Route seconds: ${[...routes].sort((a, b) => cost(b) - cost(a))
-        .map((route) => `${route} ${cost(route).toFixed(1)}`).join(', ')}`,
+      `Route seconds: ${[...routes]
+        .sort((a, b) => cost(b) - cost(a))
+        .map((route) => `${route} ${cost(route).toFixed(1)}`)
+        .join(', ')}`,
     );
   process.exitCode = failed ? 1 : 0;
 } finally {

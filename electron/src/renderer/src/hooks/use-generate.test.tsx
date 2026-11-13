@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { GenerationProvider, useGenerateClone } from './use-generate';
-import { noteTranscriptSave } from '@/lib/store/transcript-saves';
+import { beginTranscriptSave, commitTranscriptSave } from '@/lib/store/transcript-saves';
 import { patchCloneSettings } from '@/lib/store/clone-settings';
 import { generateClone } from '@/lib/api/generate';
 import { setLatestOutput } from '@/lib/store/output';
@@ -688,11 +688,17 @@ it.each([
   },
 );
 
-it.each([['clone', false], ['design', false], ['clone', true], ['design', true]] as const)(
+it.each([
+  ['clone', false],
+  ['design', false],
+  ['clone', true],
+  ['design', true],
+] as const)(
   'clears the %s synthesis banner after acceptance (close while pending: %s)',
   async (mode, closeWhilePending) => {
     const { ApiError, apiJson } = await import('@/lib/api/client');
-    const { announceModelLicenceRequired } = await import('@/features/settings/model-license-contract');
+    const { announceModelLicenceRequired } =
+      await import('@/features/settings/model-license-contract');
     const { ModelLicenceGate } = await import('@/features/settings/model-licence-acceptance');
     const { default: en } = await import('@/i18n/locales/en.json');
     const { createInstance } = await import('i18next');
@@ -705,7 +711,9 @@ it.each([['clone', false], ['design', false], ['clone', true], ['design', true]]
     ];
     const accepted = new Set<string>();
     let releaseAcceptance!: () => void;
-    const acceptanceReady = new Promise<void>((resolve) => { releaseAcceptance = resolve; });
+    const acceptanceReady = new Promise<void>((resolve) => {
+      releaseAcceptance = resolve;
+    });
     if (!closeWhilePending) releaseAcceptance();
     vi.mocked(apiJson).mockImplementation(async (path, init) => {
       if (path === '/models/licenses/accept') {
@@ -718,7 +726,11 @@ it.each([['clone', false], ['design', false], ['clone', true], ['design', true]]
         const model = models.find((item) => path.endsWith(item.repo_id))!;
         return {
           repo_id: model.repo_id,
-          info: { license: 'Test licence', credit: 'Test holder', license_category: model.category },
+          info: {
+            license: 'Test licence',
+            credit: 'Test holder',
+            license_category: model.category,
+          },
           acceptance: { ...model, required: true, accepted: accepted.has(model.repo_id) },
           history: [],
         };
@@ -726,24 +738,37 @@ it.each([['clone', false], ['design', false], ['clone', true], ['design', true]]
       return modelStatus.value;
     });
     patchCloneSettings({ text: 'Hello', selectedProfileId: 'voice-1', autoPlay: false });
-    vi.mocked(generateClone).mockReset().mockImplementationOnce(async () => {
-      const payload = { detail: { code: 'model_licence_required', models } };
-      announceModelLicenceRequired(payload);
-      throw new ApiError(403, en.modelLicense.requiredError, payload);
-    });
+    vi.mocked(generateClone)
+      .mockReset()
+      .mockImplementationOnce(async () => {
+        const payload = { detail: { code: 'model_licence_required', models } };
+        announceModelLicenceRequired(payload);
+        throw new ApiError(403, en.modelLicense.requiredError, payload);
+      });
     function Synthesis() {
       const state = useGenerateClone();
-      return <>
-        <button onClick={() => void (mode === 'clone'
-          ? state.generate()
-          : state.generateDesign({ text: 'Hello', instruct: 'male' }))}>Synthesize test</button>
-        {state.error && <p role="alert">{state.error}</p>}
-      </>;
+      return (
+        <>
+          <button
+            onClick={() =>
+              void (mode === 'clone'
+                ? state.generate()
+                : state.generateDesign({ text: 'Hello', instruct: 'male' }))
+            }
+          >
+            Synthesize test
+          </button>
+          {state.error && <p role="alert">{state.error}</p>}
+        </>
+      );
     }
     const view = render(
       <QueryClientProvider client={new QueryClient()}>
         <I18nextProvider i18n={i18n}>
-          <GenerationProvider><Synthesis /><ModelLicenceGate /></GenerationProvider>
+          <GenerationProvider>
+            <Synthesis />
+            <ModelLicenceGate />
+          </GenerationProvider>
         </I18nextProvider>
       </QueryClientProvider>,
     );
@@ -753,7 +778,9 @@ it.each([['clone', false], ['design', false], ['clone', true], ['design', true]]
       const boxes = await screen.findAllByRole('checkbox');
       await waitFor(() => expect(boxes[0]).not.toBeDisabled());
       for (const box of boxes) fireEvent.click(box);
-      fireEvent.click(screen.getByRole('button', { name: en.modelLicense.acceptAll.replace('{{count}}', '2') }));
+      fireEvent.click(
+        screen.getByRole('button', { name: en.modelLicense.acceptAll.replace('{{count}}', '2') }),
+      );
       if (closeWhilePending) {
         fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape', code: 'Escape' });
         await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
@@ -761,8 +788,11 @@ it.each([['clone', false], ['design', false], ['clone', true], ['design', true]]
         releaseAcceptance();
       }
       await waitFor(() => expect(accepted.size).toBe(2));
-      await waitFor(() => expect(screen.queryByText(en.modelLicense.requiredError)).not.toBeInTheDocument());
-      if (!closeWhilePending) fireEvent.click(screen.getByRole('button', { name: en.common.close }));
+      await waitFor(() =>
+        expect(screen.queryByText(en.modelLicense.requiredError)).not.toBeInTheDocument(),
+      );
+      if (!closeWhilePending)
+        fireEvent.click(screen.getByRole('button', { name: en.common.close }));
       await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
       expect(generateClone).toHaveBeenCalledOnce();
@@ -776,57 +806,60 @@ it.each([['clone', false], ['design', false], ['clone', true], ['design', true]]
 it.each([
   ['records a warm take', { status: 'ready', loading: false }, 1],
   ['skips a take that waited for model loading', { status: 'loading', loading: true }, 0],
-] as const)('measures render speed locally per engine and device (%s)', async (_name, status, count) => {
-  modelStatus.value = { ...status };
-  localStorage.removeItem('voicestudio.render-speed.v1');
-  patchCloneSettings({
-    text: 'A cloned voice line long enough to measure.',
-    selectedProfileId: 'speaker-speed',
-    steps: null,
-    autoPlay: false,
-  });
-  vi.mocked(generateClone)
-    .mockReset()
-    .mockImplementation(
-      () =>
-        new Promise((resolve) =>
-          setTimeout(
-            () =>
-              resolve({
-                id: `take-speed-${count}`,
-                durationSeconds: 3,
-                genTimeSeconds: 9,
-              } as Awaited<ReturnType<typeof generateClone>>),
-            50,
-          ),
-        ),
-    );
-  const client = new QueryClient();
-  client.setQueryData(queryKeys.engines, { tts: { active: 'omnivoice', backends: [] } });
-  render(
-    <QueryClientProvider client={client}>
-      <GenerationProvider>
-        <Consumer name={`speed-${count}`} />
-      </GenerationProvider>
-    </QueryClientProvider>,
-  );
-  fireEvent.click(screen.getByText(`speed-${count}:idle`));
-  await waitFor(() => {
-    const takes = JSON.parse(localStorage.getItem('voicestudio.take-settings.v1') ?? '{}');
-    // The take keeps the steps it rendered with, not "best for whatever engine is active".
-    expect(takes[`take-speed-${count}`]?.steps).toBe(32);
-  });
-  expect(vi.mocked(generateClone).mock.calls[0][0].steps).toBe(32);
-  const stored = JSON.parse(localStorage.getItem('voicestudio.render-speed.v1') ?? '{}');
-  expect(stored['omnivoice|cuda'] ?? []).toHaveLength(count);
-  if (count)
-    expect(stored['omnivoice|cuda'][0]).toMatchObject({
-      chars: 43,
-      audioSeconds: 3,
-      renderSeconds: 9,
-      steps: 32,
+] as const)(
+  'measures render speed locally per engine and device (%s)',
+  async (_name, status, count) => {
+    modelStatus.value = { ...status };
+    localStorage.removeItem('voicestudio.render-speed.v1');
+    patchCloneSettings({
+      text: 'A cloned voice line long enough to measure.',
+      selectedProfileId: 'speaker-speed',
+      steps: null,
+      autoPlay: false,
     });
-});
+    vi.mocked(generateClone)
+      .mockReset()
+      .mockImplementation(
+        () =>
+          new Promise((resolve) =>
+            setTimeout(
+              () =>
+                resolve({
+                  id: `take-speed-${count}`,
+                  durationSeconds: 3,
+                  genTimeSeconds: 9,
+                } as Awaited<ReturnType<typeof generateClone>>),
+              50,
+            ),
+          ),
+      );
+    const client = new QueryClient();
+    client.setQueryData(queryKeys.engines, { tts: { active: 'omnivoice', backends: [] } });
+    render(
+      <QueryClientProvider client={client}>
+        <GenerationProvider>
+          <Consumer name={`speed-${count}`} />
+        </GenerationProvider>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByText(`speed-${count}:idle`));
+    await waitFor(() => {
+      const takes = JSON.parse(localStorage.getItem('voicestudio.take-settings.v1') ?? '{}');
+      // The take keeps the steps it rendered with, not "best for whatever engine is active".
+      expect(takes[`take-speed-${count}`]?.steps).toBe(32);
+    });
+    expect(vi.mocked(generateClone).mock.calls[0][0].steps).toBe(32);
+    const stored = JSON.parse(localStorage.getItem('voicestudio.render-speed.v1') ?? '{}');
+    expect(stored['omnivoice|cuda'] ?? []).toHaveLength(count);
+    if (count)
+      expect(stored['omnivoice|cuda'][0]).toMatchObject({
+        chars: 43,
+        audioSeconds: 3,
+        renderSeconds: 9,
+        steps: 32,
+      });
+  },
+);
 
 describe('generation queue', () => {
   beforeEach(() => {
@@ -1061,7 +1094,7 @@ describe('generation queue', () => {
       // a saved voice sends no unchanged transcript (#3192), so /generate
       // would read the edit.
       act(() => {
-        noteTranscriptSave('voice-edit', saved);
+        commitTranscriptSave(beginTranscriptSave('voice-edit', saved));
         client.setQueryData(queryKeys.profiles, [{ ...voice, ref_text: saved }]);
       });
       await act(async () => renders[0]!.resolve(take('a')));

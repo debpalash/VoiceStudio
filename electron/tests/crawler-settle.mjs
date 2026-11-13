@@ -18,9 +18,14 @@ export async function waitForQuietRequests(
       let observation;
       try {
         observation = await Promise.race([
-          Promise.resolve().then(snapshot).then((value) => ({ value })),
+          Promise.resolve()
+            .then(snapshot)
+            .then((value) => ({ value })),
           new Promise((resolve) => {
-            timer = setTimeout(() => resolve({ unresponsive: true }), Math.max(0, deadline - now()));
+            timer = setTimeout(
+              () => resolve({ unresponsive: true }),
+              Math.max(0, deadline - now()),
+            );
           }),
         ]);
       } finally {
@@ -35,7 +40,9 @@ export async function waitForQuietRequests(
         return { settled: true, pending: 0, snapshot: value };
       continue;
     }
-    await wait(Math.min(50, deadline - time, quietSince === null ? 50 : graceMs - (time - quietSince)));
+    await wait(
+      Math.min(50, deadline - time, quietSince === null ? 50 : graceMs - (time - quietSince)),
+    );
   }
 }
 

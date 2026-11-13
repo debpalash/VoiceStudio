@@ -73,7 +73,8 @@ export function generateAbortMs(textLength = 0, reported: ReportedGenerateBudget
   // Mirrors client_execution_budget_s in backend/core/generate_budget.py: the
   // larger of the legacy length bonus and the default CPU budget's scaling.
   const chars = Math.max(0, textLength) * budget.textExpansionFactor;
-  const legacy = budget.executionBase + Math.max(0, chars - budget.freeChars) / budget.charsPerSecond;
+  const legacy =
+    budget.executionBase + Math.max(0, chars - budget.freeChars) / budget.charsPerSecond;
   const cpuAuto = Math.min(
     Math.max(legacy, budget.cpuSecondsPerChar * chars),
     Math.max(budget.cpuAutoCap, budget.executionBase),

@@ -166,25 +166,23 @@ export function parseWorkflowLibrary(raw: string | null, untitled: string): Work
                 ? (step.match as ConditionMatch)
                 : 'contains',
               media: Array.isArray(step.media)
-                ? step.media
-                    .slice(0, 50)
-                    .flatMap((entry) =>
-                      entry &&
-                      typeof entry.id === 'string' &&
-                      typeof entry.name === 'string' &&
-                      typeof entry.size === 'number' &&
-                      entry.size > 0 &&
-                      entry.size <= 64 * 1024 * 1024
-                        ? [
-                            {
-                              id: entry.id.slice(0, 80),
-                              name: entry.name.slice(0, 120),
-                              type: typeof entry.type === 'string' ? entry.type.slice(0, 80) : '',
-                              size: entry.size,
-                            },
-                          ]
-                        : [],
-                    )
+                ? step.media.slice(0, 50).flatMap((entry) =>
+                    entry &&
+                    typeof entry.id === 'string' &&
+                    typeof entry.name === 'string' &&
+                    typeof entry.size === 'number' &&
+                    entry.size > 0 &&
+                    entry.size <= 64 * 1024 * 1024
+                      ? [
+                          {
+                            id: entry.id.slice(0, 80),
+                            name: entry.name.slice(0, 120),
+                            type: typeof entry.type === 'string' ? entry.type.slice(0, 80) : '',
+                            size: entry.size,
+                          },
+                        ]
+                      : [],
+                  )
                 : [],
               targetDb:
                 typeof step.targetDb === 'number' && Number.isFinite(step.targetDb)

@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync, readFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+  readFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import test from 'node:test';
@@ -72,8 +80,12 @@ test('accepts canonical strict Snap metadata', () => {
 test('rejects weakened confinement, missing capabilities and broad removable access', () => {
   const expected = { ...metadata, version: '0.5.7' };
   assert.throws(() => verifySnapMetadata(snapYaml.replace('strict', 'classic'), expected));
-  assert.throws(() => verifySnapMetadata(snapYaml.replace('allow-sandbox: false', 'allow-sandbox: true'), expected));
-  assert.throws(() => verifySnapMetadata(snapYaml.replace('    allow-sandbox: false\n', ''), expected));
+  assert.throws(() =>
+    verifySnapMetadata(snapYaml.replace('allow-sandbox: false', 'allow-sandbox: true'), expected),
+  );
+  assert.throws(() =>
+    verifySnapMetadata(snapYaml.replace('    allow-sandbox: false\n', ''), expected),
+  );
   assert.throws(() => verifySnapMetadata(snapYaml.replace('      - audio-record\n', ''), expected));
   assert.throws(() => verifySnapMetadata(`${snapYaml}      - removable-media\n`, expected));
 });
@@ -114,51 +126,62 @@ const hasSquashfsTools =
   spawnSync('mksquashfs', ['-version']).error === undefined &&
   spawnSync('unsquashfs', ['-version']).error === undefined;
 
-for (const nested of [true, false]) test(
-  `configures strict-confinement startup for a ${nested ? 'nested' : 'expanded'} Snap payload`,
-  { skip: hasSquashfsTools ? false : 'squashfs-tools is not installed' },
-  () => {
-    const workDir = mkdtempSync(resolve(tmpdir(), 'voicestudio-snap-repair-test-'));
-    const source = resolve(workDir, 'source');
-    const template = resolve(workDir, 'template');
-    const artifact = resolve(workDir, 'VoiceStudio.snap');
-    const repaired = resolve(workDir, 'repaired');
-    try {
-      mkdirSync(source);
-      mkdirSync(template);
-      writeFileSync(resolve(source, 'command.sh'), '#!/bin/sh\nexec \"$SNAP/desktop-init.sh\" \"$SNAP/desktop-common.sh\" \"$SNAP/desktop-gnome-specific.sh\" \"$SNAP/voicestudio\" \"$@\"\n');
-      for (const script of ['desktop-init.sh', 'desktop-common.sh', 'desktop-gnome-specific.sh']) {
-        writeFileSync(resolve(template, script), '#!/bin/sh\n');
-      }
-      const runtimeLibrary = resolve(template, 'usr/lib/x86_64-linux-gnu/libnss3.so');
-      mkdirSync(resolve(runtimeLibrary, '..'), { recursive: true });
-      writeFileSync(runtimeLibrary, 'fixture');
-      const nestedArchive = resolve(source, 'snap-template-electron-4.0-2-amd64.tar');
-      if (nested) execFileSync('tar', ['-cf', nestedArchive, '-C', template, '.']);
-      else execFileSync('cp', ['-a', `${template}/.`, source]);
-      execFileSync('mksquashfs', [
-        source,
-        artifact,
-        '-noappend',
-        '-all-root',
-        '-processors',
-        '1',
-        '-quiet',
-      ]);
+for (const nested of [true, false])
+  test(
+    `configures strict-confinement startup for a ${nested ? 'nested' : 'expanded'} Snap payload`,
+    { skip: hasSquashfsTools ? false : 'squashfs-tools is not installed' },
+    () => {
+      const workDir = mkdtempSync(resolve(tmpdir(), 'voicestudio-snap-repair-test-'));
+      const source = resolve(workDir, 'source');
+      const template = resolve(workDir, 'template');
+      const artifact = resolve(workDir, 'VoiceStudio.snap');
+      const repaired = resolve(workDir, 'repaired');
+      try {
+        mkdirSync(source);
+        mkdirSync(template);
+        writeFileSync(
+          resolve(source, 'command.sh'),
+          '#!/bin/sh\nexec \"$SNAP/desktop-init.sh\" \"$SNAP/desktop-common.sh\" \"$SNAP/desktop-gnome-specific.sh\" \"$SNAP/voicestudio\" \"$@\"\n',
+        );
+        for (const script of [
+          'desktop-init.sh',
+          'desktop-common.sh',
+          'desktop-gnome-specific.sh',
+        ]) {
+          writeFileSync(resolve(template, script), '#!/bin/sh\n');
+        }
+        const runtimeLibrary = resolve(template, 'usr/lib/x86_64-linux-gnu/libnss3.so');
+        mkdirSync(resolve(runtimeLibrary, '..'), { recursive: true });
+        writeFileSync(runtimeLibrary, 'fixture');
+        const nestedArchive = resolve(source, 'snap-template-electron-4.0-2-amd64.tar');
+        if (nested) execFileSync('tar', ['-cf', nestedArchive, '-C', template, '.']);
+        else execFileSync('cp', ['-a', `${template}/.`, source]);
+        execFileSync('mksquashfs', [
+          source,
+          artifact,
+          '-noappend',
+          '-all-root',
+          '-processors',
+          '1',
+          '-quiet',
+        ]);
 
-      assert.equal(repairSnapTemplatePayload(artifact), true);
-      execFileSync('unsquashfs', ['-quiet', '-d', repaired, artifact]);
+        assert.equal(repairSnapTemplatePayload(artifact), true);
+        execFileSync('unsquashfs', ['-quiet', '-d', repaired, artifact]);
 
-      assert.equal(existsSync(resolve(repaired, 'snap-template-electron-4.0-2-amd64.tar')), false);
-      for (const path of ['desktop-init.sh', 'desktop-common.sh', 'desktop-gnome-specific.sh']) {
-        assert.equal(statSync(resolve(repaired, path)).mode & 0o111, 0o111);
+        assert.equal(
+          existsSync(resolve(repaired, 'snap-template-electron-4.0-2-amd64.tar')),
+          false,
+        );
+        for (const path of ['desktop-init.sh', 'desktop-common.sh', 'desktop-gnome-specific.sh']) {
+          assert.equal(statSync(resolve(repaired, path)).mode & 0o111, 0o111);
+        }
+        assert.equal(existsSync(resolve(repaired, 'usr/lib/x86_64-linux-gnu/libnss3.so')), true);
+        assert.match(readFileSync(resolve(repaired, 'command.sh'), 'utf8'), /--no-sandbox/);
+        assert.equal(statSync(resolve(repaired, 'command.sh')).mode & 0o111, 0o111);
+        assert.equal(repairSnapTemplatePayload(artifact), false);
+      } finally {
+        rmSync(workDir, { recursive: true, force: true });
       }
-      assert.equal(existsSync(resolve(repaired, 'usr/lib/x86_64-linux-gnu/libnss3.so')), true);
-      assert.match(readFileSync(resolve(repaired, 'command.sh'), 'utf8'), /--no-sandbox/);
-      assert.equal(statSync(resolve(repaired, 'command.sh')).mode & 0o111, 0o111);
-      assert.equal(repairSnapTemplatePayload(artifact), false);
-    } finally {
-      rmSync(workDir, { recursive: true, force: true });
-    }
-  },
-);
+    },
+  );

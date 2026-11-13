@@ -12,7 +12,8 @@ vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => k
 vi.mock('@/lib/api/client', () => ({
   apiJson: mocks.json,
   apiFetch: mocks.fetch,
-  describeError: (error: unknown) => (error as { message?: string } | null | undefined)?.message ?? '',
+  describeError: (error: unknown) =>
+    (error as { message?: string } | null | undefined)?.message ?? '',
 }));
 vi.mock('@/lib/local-export', () => ({ saveLocalFile: mocks.download }));
 vi.mock('../longform/project-library', () => ({

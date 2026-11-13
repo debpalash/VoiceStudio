@@ -107,7 +107,13 @@ function EmptyCall() {
   );
 }
 
-export function CallsPage({ onCanvas, initialDraft }: { onCanvas?: () => void; initialDraft?: Pick<CallDraft, 'to' | 'brief'> }) {
+export function CallsPage({
+  onCanvas,
+  initialDraft,
+}: {
+  onCanvas?: () => void;
+  initialDraft?: Pick<CallDraft, 'to' | 'brief'>;
+}) {
   const { t } = useTranslation();
   const layout = useCallsLayout();
   const queryClient = useQueryClient();
@@ -363,7 +369,12 @@ export function CallsPage({ onCanvas, initialDraft }: { onCanvas?: () => void; i
     <div className="flex h-full min-h-0 flex-col" data-layout={layout}>
       <WorkspaceHeader>
         <h1 className="text-sm font-medium">{t('calls.title')}</h1>
-        {onCanvas && <Button size="sm" variant="outline" onClick={onCanvas}><WorkflowIcon aria-hidden="true" />{t('workflows.canvas')}</Button>}
+        {onCanvas && (
+          <Button size="sm" variant="outline" onClick={onCanvas}>
+            <WorkflowIcon aria-hidden="true" />
+            {t('workflows.canvas')}
+          </Button>
+        )}
         <Button
           size="sm"
           variant="ghost"

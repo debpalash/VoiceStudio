@@ -15,7 +15,10 @@ it('registers every Python runtime IPC handler exactly once', () => {
     'backendPlanPythonRepair',
     'backendInstallPythonRepair',
   ]) {
-    expect(source.match(new RegExp(`ipcMain\\.handle\\(CHANNELS\\.${name}\\b`, 'g')) ?? [], name).toHaveLength(1);
+    expect(
+      source.match(new RegExp(`ipcMain\\.handle\\(CHANNELS\\.${name}\\b`, 'g')) ?? [],
+      name,
+    ).toHaveLength(1);
   }
 });
 
@@ -32,8 +35,12 @@ it('keeps confirmation and repair side effects behind trusted staged tokens', ()
 
   expect(confirm).toContain('assertTrustedMainFrame(event, owner)');
   expect(confirm).toContain('const staged = consumeStage(raw, event)');
-  expect(confirm.indexOf('const staged = consumeStage(raw, event)')).toBeLessThan(confirm.indexOf('savePythonRuntimeSelection'));
-  expect(confirm.indexOf('savePythonRuntimeSelection')).toBeLessThan(confirm.indexOf('await supervisor.restart()'));
+  expect(confirm.indexOf('const staged = consumeStage(raw, event)')).toBeLessThan(
+    confirm.indexOf('savePythonRuntimeSelection'),
+  );
+  expect(confirm.indexOf('savePythonRuntimeSelection')).toBeLessThan(
+    confirm.indexOf('await supervisor.restart()'),
+  );
 
   expect(repair).toContain('assertTrustedMainFrame(event, owner)');
   expect(repair).toContain('dialog.showMessageBox(owner');
