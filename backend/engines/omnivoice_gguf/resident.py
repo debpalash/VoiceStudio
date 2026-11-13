@@ -62,6 +62,11 @@ _POLL_S = 0.25
 _SPAWN_ONLY_CONTROLS = ("duration", "chunk_duration", "chunk_threshold")
 
 
+#: MaskGIT decode steps the runtime uses when none is given. The pinned
+#: ``tts-server`` ignores a ``steps`` field, so it always decodes this many.
+DEFAULT_DECODE_STEPS = 32
+
+
 class ResidentUnavailable(RuntimeError):
     """The resident server could not serve this request; use the spawn path."""
 
@@ -372,8 +377,11 @@ class ResidentServer:
         return body
 
 
+_STEPS_IGNORED_LOGGED = False
+
+
 def speech_payload(text: str, *, voice: Optional[str], language: Optional[str],
-                   instruct: Optional[str], seed) -> dict:
+                   instruct: Optional[str], seed, steps=None) -> dict:
     """The ``/v1/audio/speech`` body for one request (WAV, one shot)."""
     # The CLI trims trailing newlines from stdin; keep the same input.
     payload: dict = {"input": text.rstrip("\r\n"), "response_format": "wav"}
@@ -385,6 +393,20 @@ def speech_payload(text: str, *, voice: Optional[str], language: Optional[str],
         payload["instructions"] = instruct
     if seed is not None:
         payload["seed"] = int(seed)
+    if steps is not None:
+        # Sent for runtimes whose tts-server reads it; the pinned one ignores
+        # unknown fields and decodes DEFAULT_DECODE_STEPS. Not routed to the
+        # CLI: dubbing sends 8/16 per segment, and a cold spawn per segment
+        # would undo the warm server the user turned on for speed.
+        payload["steps"] = int(steps)
+        global _STEPS_IGNORED_LOGGED
+        if int(steps) != DEFAULT_DECODE_STEPS and not _STEPS_IGNORED_LOGGED:
+            _STEPS_IGNORED_LOGGED = True
+            logger.info(
+                "GGUF resident server: num_step=%d sent as 'steps'; the pinned tts-server "
+                "decodes %d. Turn resident mode off to apply step counts.",
+                int(steps), DEFAULT_DECODE_STEPS,
+            )
     return payload
 
 

@@ -67,6 +67,8 @@ import urllib.error
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
+from services.expression import OMNIVOICE_INLINE_TAGS
+
 from .compute import BACKEND_ENV as BACKEND_ENV, DEVICE_ENV as DEVICE_ENV
 from .quant_cache import resolve_installed_pair
 
@@ -910,11 +912,17 @@ def _make_backend_class():
         instruct_vocabulary = "tags"
         gpu_compat = ("cuda", "vulkan", "mps", "cpu")
 
-        supports_voice_design = False
-        # The bundled omnivoice-tts CLI has no num_step/guidance_scale
-        # flags (verified against the C++ usage text) — explicit values are
-        # rejected at the API boundary with a 400 (#3654).
-        supports_num_step = False
+        # omnivoice.cpp designs a voice from --instruct / ``instructions``
+        # when no reference is given, and tokenizes the same 13 inline tags
+        # as the PyTorch engine (#4080).
+        supports_voice_design = True
+        inline_tags = OMNIVOICE_INLINE_TAGS
+        # The CLI takes ``--steps`` (MaskGIT decode steps, default 32). The
+        # resident tts-server gets ``steps`` too; the pinned commit ignores it
+        # and decodes 32 (logged once, #4081). guidance_scale
+        # has no flag in either, so it is still rejected with a 400 (#3654).
+        supports_num_step = True
+        num_step_range = (1, 64)
         supports_guidance_scale = False
         # The seed reaches the binary as --seed; the parent's torch RNG never
         # does, so /generate must forward it (#3413).
@@ -1406,6 +1414,7 @@ def _make_backend_class():
                         language=kw.get("language"),
                         instruct=kw.get("instruct"),
                         duration=kw.get("duration"),
+                        num_step=kw.get("num_step"),
                         seed=kw.get("seed"),
                         denoise=kw.get("denoise", True),
                         preprocess_prompt=kw.get("preprocess_prompt", True),
@@ -1543,6 +1552,7 @@ def _make_backend_class():
                             language=_iso_to_omnivoice_lang(kw.get("language")),
                             instruct=kw.get("instruct"),
                             seed=kw.get("seed"),
+                            steps=kw.get("num_step"),
                         )
                         return server.speak(payload, timeout=timeout_s)
                     except resident.ResidentUnavailable as exc:
@@ -1593,6 +1603,7 @@ def _make_backend_class():
             language: Optional[str],
             instruct: Optional[str] = None,
             duration: Optional[float] = None,
+            num_step: Optional[int] = None,
             seed: Optional[int] = None,
             denoise: bool = True,
             preprocess_prompt: bool = True,
@@ -1618,6 +1629,8 @@ def _make_backend_class():
                 argv += ["--instruct", instruct]
             if duration is not None:
                 argv += ["--duration", str(float(duration))]
+            if num_step is not None:
+                argv += ["--steps", str(int(num_step))]
             if seed is not None:
                 argv += ["--seed", str(int(seed))]
             if chunk_duration is not None:

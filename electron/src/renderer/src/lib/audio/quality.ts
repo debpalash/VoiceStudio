@@ -19,6 +19,7 @@ interface SamplingSpec {
 const SAMPLING: Record<string, SamplingSpec> = {
   omnivoice: { range: [8, 64], best: 32, floor: 8 },
   'omnivoice-subprocess': { range: [8, 64], best: 32, floor: 8 },
+  'omnivoice-gguf': { range: [8, 64], best: 32, floor: 8 },
   voxcpm2: { range: [8, 64], best: 32, floor: 8 },
   'dots-tts': { range: [8, 64], best: 32, floor: 8 },
   supertonic3: { range: [5, 12], best: 12, floor: 5 },

@@ -400,8 +400,14 @@ log says why once.
 ## Behaviour notes
 
 - Output is 24 kHz mono — same model, same rate as in-process OmniVoice.
-- Cloning from a reference clip (with optional transcript) and style
-  instructions are supported; no voice design.
+- Cloning from a reference clip (with optional transcript), style
+  instructions, voice design (describe a voice with no reference clip) and
+  the non-verbal tags (`[laughter]`, `[sigh]`, ...) work as on the PyTorch
+  engine.
+- Decode steps (the "refine voice" slider) are supported and default to 32.
+  With resident mode on, the pinned `tts-server` always decodes 32 (the app
+  sends the step count anyway and logs once); turn resident mode off to apply
+  other step counts. Guidance scale is not supported.
 - The runtime reads WAV containers only, and inside a WAV it decodes
   PCM16, PCM24 and float32, so a reference clip saved in another format
   (MP3, FLAC, Ogg, ...) — or in a WAV sample format it cannot decode — is

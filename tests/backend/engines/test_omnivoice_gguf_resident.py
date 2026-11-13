@@ -351,6 +351,27 @@ def test_controls_the_server_lacks_take_the_cli(rig, controls):
     assert len(rig.cli_argvs) == 1 and rig.events("start") == []
 
 
+def test_step_counts_stay_on_the_warm_server_and_log_once(rig, caplog, monkeypatch):
+    """Dubbing sends 8/16 per segment: no cold CLI spawn per segment (#4081)."""
+    import logging
+
+    from engines.omnivoice_gguf import resident
+
+    monkeypatch.setattr(resident, "_STEPS_IGNORED_LOGGED", False)
+    with caplog.at_level(logging.INFO):
+        rig.instance.generate("hello", num_step=8)
+        rig.instance.generate("again", num_step=16)
+    assert rig.cli_argvs == [] and len(rig.events("start")) == 1
+    assert caplog.text.count("num_step=") == 1
+
+
+def test_speech_payload_forwards_steps():
+    from engines.omnivoice_gguf import resident
+
+    payload = resident.speech_payload("hi", voice=None, language=None, instruct=None, seed=None, steps=32)
+    assert payload["steps"] == 32
+
+
 def test_a_reference_without_a_transcript_takes_the_cli(rig, tmp_path):
     clip = tmp_path / "ref.wav"
     _write_wav(clip, 2400)
