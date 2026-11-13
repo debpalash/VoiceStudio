@@ -146,6 +146,9 @@ The desktop installers ship this native binary under `resources/bin/`
 Windows on ARM (the x64 binary, run under emulation like the rest of the local
 backend), macOS Apple Silicon and the Linux AppImage/deb. The Windows binary
 carries its own Visual C++ runtime, so no redistributable install is needed.
+The app passes that folder to the backend as `OMNIVOICE_GGUF_BIN_DIR`, so the
+engine finds it wherever the app environment lives
+([#4051](https://github.com/debpalash/VoiceStudio/issues/4051)).
 The Intel Mac download has no binary because Intel Macs cannot run the local
 backend at all ([macOS install](../install/macos.md)). Store builds (Microsoft
 Store, Mac App Store, Snap Store) and the Docker image do not include it yet;
@@ -394,6 +397,7 @@ log says why once.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
+| `OMNIVOICE_GGUF_BIN_DIR` | `bin/` at the repo root | Absolute folder holding `omnivoice-tts-<platform>` and `checksums.sha256`; the desktop app sets it to its `resources/bin/` |
 | `OMNIVOICE_GGUF_GENERATE_TIMEOUT_S` | (generous built-in) | Per-generation timeout for the spawned binary |
 | `OMNIVOICE_GGUF_QUANT` | `auto` | Pin a quant (`Q4_K_M`, `Q8_0`, `BF16`, `F32`); overrides Settings |
 | `OMNIVOICE_GGUF_RESIDENT` | `0` | `1` keeps a bundled `tts-server` loaded between requests (opt-in, see Resident server); overrides Settings |

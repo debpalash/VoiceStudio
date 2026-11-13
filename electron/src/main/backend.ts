@@ -540,6 +540,11 @@ export function bundledWebUiPath(): string {
   return join(backendRoot(), 'frontend', 'dist');
 }
 
+/** The OmniVoice GGUF runtime packaged with this app version (omnivoice-tts-bundle.mjs). */
+export function bundledGgufBinPath(): string {
+  return join(backendRoot(), 'bin');
+}
+
 function samePath(left: string, right: string): boolean {
   const normalizedLeft = resolve(left);
   const normalizedRight = resolve(right);
@@ -743,6 +748,12 @@ function childEnv(
   // runtime project (absent on updated installs, stale after an update).
   if (app.isPackaged && process.resourcesPath && !env.OMNIVOICE_FRONTEND_DIST?.trim()) {
     env.OMNIVOICE_FRONTEND_DIST = bundledWebUiPath();
+  }
+  // #4051: the managed runtime runs a copy of backend/ staged in the runtime
+  // folder, which has no bin/, so the GGUF engine's `<root>/bin` lookup found
+  // no runtime there. Point it at the one shipped in this version's resources.
+  if (app.isPackaged && process.resourcesPath && !env.OMNIVOICE_GGUF_BIN_DIR?.trim()) {
+    env.OMNIVOICE_GGUF_BIN_DIR = bundledGgufBinPath();
   }
   // Region defaults must leave HF_ENDPOINT unset so the backend can probe and
   // fail over. Only an explicit user endpoint may disable automatic selection.

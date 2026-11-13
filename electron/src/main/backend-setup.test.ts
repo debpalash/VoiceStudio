@@ -118,6 +118,7 @@ vi.mock('./setup-downloads', async (importOriginal) => ({
 }));
 import {
   BackendSupervisor,
+  bundledGgufBinPath,
   bundledUvPath,
   bundledWebUiPath,
   isExpectedPipeClose,
@@ -1040,6 +1041,24 @@ it('keeps a web UI directory the user pinned themselves', () => {
   stubResourcesPath(join('/opt', 'VoiceStudio', 'resources'));
 
   expect(managedBackendSpawnOptions(3900).env.OMNIVOICE_FRONTEND_DIST).toBe('/custom/web');
+});
+
+it('points the GGUF engine at the runtime packaged with this app version', () => {
+  // #4051: the backend runs from a staged copy of backend/ that has no bin/.
+  vi.stubEnv('OMNIVOICE_GGUF_BIN_DIR', '');
+  stubResourcesPath(join('/opt', 'VoiceStudio', 'resources'));
+
+  const { env } = managedBackendSpawnOptions(3900);
+
+  expect(env.OMNIVOICE_GGUF_BIN_DIR).toBe(join('/opt', 'VoiceStudio', 'resources', 'bin'));
+  expect(bundledGgufBinPath()).toBe(env.OMNIVOICE_GGUF_BIN_DIR);
+});
+
+it('keeps a GGUF runtime directory the user pinned themselves', () => {
+  vi.stubEnv('OMNIVOICE_GGUF_BIN_DIR', '/custom/bin');
+  stubResourcesPath(join('/opt', 'VoiceStudio', 'resources'));
+
+  expect(managedBackendSpawnOptions(3900).env.OMNIVOICE_GGUF_BIN_DIR).toBe('/custom/bin');
 });
 
 it('exposes the current process signal separately from the durable crash journal', async () => {
