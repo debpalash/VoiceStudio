@@ -351,27 +351,8 @@ def _weights_fingerprint(path: str | None) -> tuple:
     """Every file under the folder (relative path, size, mtime), so replacing any
     weight, nested tokenizer files included, makes a re-save reload while a plain
     re-save does not. A tree of more than _FINGERPRINT_MAX_FILES entries never matches."""
-    if not path:
-        return (path,)
-    files = []
-    visited = 0  # files and folders: a tree of empty folders is bounded too
-    try:
-        def _unreadable(error: OSError) -> None:
-            raise error
-
-        # An unreadable folder or file must never look unchanged: any error
-        # returns a fingerprint that matches nothing, so the engine reloads.
-        for root, dirs, names in os.walk(path, onerror=_unreadable):
-            visited += 1 + len(dirs) + len(names)
-            if visited > _FINGERPRINT_MAX_FILES:
-                return (path, object())
-            for name in names:
-                full = os.path.join(root, name)
-                st = os.stat(full)
-                files.append((os.path.relpath(full, path), st.st_size, st.st_mtime_ns))
-    except OSError:
-        return (path, object())
-    return (path, tuple(sorted(files)))
+    from core.model_fingerprint import tree_fingerprint
+    return tree_fingerprint(path, max_entries=_FINGERPRINT_MAX_FILES)
 
 
 def loading_fingerprint(path: str) -> tuple:

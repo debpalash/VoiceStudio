@@ -17,6 +17,7 @@ from services.reference_transcript import stored_reference_transcript
 from core.db import db_conn
 from core.config import DUB_DIR, VOICES_DIR, dub_seg_path
 from core.path_security import contained_join
+from core.logging_utils import log_safe
 from core.tasks import task_manager
 from schemas.requests import DubRequest
 from services.model_manager import _gpu_pool, await_free_engine, run_on_gpu_pool_guarded
@@ -26,7 +27,7 @@ from services.tts_backend import (
     seed_engine_call,
 )
 from services.dub_batching import batch_timeout_s, native_batch_width
-from services.audio_dsp import apply_mastering, normalize_audio, apply_effects_chain, get_effect_chain, trim_speech_padding
+from services.audio_dsp import MASTERING_CHAIN, apply_mastering, normalize_audio, apply_effects_chain, get_effect_chain, trim_speech_padding
 from services.audio_io import atomic_save_wav, audio_info, _safe_torchaudio_save
 from services.ffmpeg_utils import (
     find_ffmpeg,
@@ -40,7 +41,8 @@ from services.ffmpeg_utils import (
 from services.rvc import apply_rvc, is_enabled as rvc_is_enabled
 from services.incremental import segment_fingerprint, fit_fingerprint
 from services.fit_planner import FitParams, plan_fit
-from services.watermark import mark_synthetic
+from services.watermark import mark_synthetic, will_mark
+from services import dub_pipeline, dub_resume
 from services.speaker_clone import auto_profile_id
 from api.routers.dub_core import _get_job, _safe_lang_or_400, _save_job
 from services.dub_pipeline import (
@@ -483,6 +485,47 @@ def _render_staging(job_id: str):
         shutil.rmtree(stage_dir, ignore_errors=True)
 
 
+def _resume_journal_root(job_id: str, lang_code: str) -> str:
+    """Where this job's finished-segment recovery copies for one track live.
+
+    Inside the job's own directory, so deleting the job deletes them.
+    """
+    job_dir = os.path.dirname(dub_seg_path(job_id, "staging"))
+    return os.path.join(job_dir, dub_resume.JOURNAL_DIRNAME, lang_code)
+
+
+def _drop_resume_journal_if_withdrawn(job_id: str, lang_code: str) -> None:
+    """A job deleted mid-render must not leave recovery copies behind."""
+    try:
+        with _dub_jobs_lock:
+            withdrawn = job_id in dub_pipeline._withdrawn_jobs
+        if withdrawn:
+            shutil.rmtree(
+                os.path.dirname(_resume_journal_root(job_id, lang_code)),
+                ignore_errors=True,
+            )
+    except Exception as err:  # noqa: BLE001
+        logger.debug("dub resume cleanup skipped: %s", type(err).__name__)
+
+
+async def _run_journal_io(operation, *args):
+    """Keep disk work off the loop and finish it before staging cleanup."""
+    task = asyncio.create_task(asyncio.to_thread(operation, *args))
+    try:
+        return await asyncio.shield(task)
+    except asyncio.CancelledError:
+        # A cancelled await cannot stop its worker. Drain it before the render
+        # removes staging or withdraws the job, including repeated cancels.
+        while not task.done():
+            try:
+                await asyncio.wait({task})
+            except asyncio.CancelledError:
+                continue
+        if not task.cancelled():
+            task.exception()  # Consume a soft I/O failure without losing cancel.
+        raise
+
+
 @router.post("/dub/generate/{job_id}")
 @consumer_generation
 async def dub_generate(job_id: str, req: DubRequest):
@@ -533,10 +576,13 @@ async def dub_generate(job_id: str, req: DubRequest):
     async def _stream(task_id):
         # Every reference take the render resolves stays held until it ends,
         # so the retired-voice sweep never deletes one mid-dub (#2535).
-        with voice_leases.VoiceFileLease() as voice_lease, _render_staging(job_id) as stage_dir:
-            async with contextlib.aclosing(_render(task_id, voice_lease, stage_dir)) as events:
-                async for event in events:
-                    yield event
+        try:
+            with voice_leases.VoiceFileLease() as voice_lease, _render_staging(job_id) as stage_dir:
+                async with contextlib.aclosing(_render(task_id, voice_lease, stage_dir)) as events:
+                    async for event in events:
+                        yield event
+        finally:
+            await _run_journal_io(_drop_resume_journal_if_withdrawn, job_id, lang_code)
 
     async def _render(task_id, voice_lease, stage_dir):
         total = len(req.segments)
@@ -783,6 +829,126 @@ async def dub_generate(job_id: str, req: DubRequest):
         # Published with the track; a render that never commits leaves the
         # job's manifest describing the audio it actually has.
         seg_order = [seg_ids[k] if k < len(seg_ids) else f"seg_{k}" for k in range(len(req.segments))]
+
+        # Crash-resume (#3924). Recovery copies of finished segments, reused by
+        # the next render of this job only when every synthesis input matches
+        # (see services/dub_resume.py). Not the shared cache: nothing here is
+        # published, fingerprinted or visible to previews. Any failure falls
+        # back to rendering normally. Fast previews and RVC renders (which
+        # rewrite the audio after synthesis) do not take part.
+        journal = None
+        if not req.preview and req.regen_only is None and not rvc_is_enabled():
+            try:
+                journal = await _run_journal_io(
+                    dub_resume.DubResumeJournal, _resume_journal_root(job_id, lang_code),
+                )
+                await _run_journal_io(journal.prune, {str(sid) for sid in seg_order})
+            except Exception as err:  # noqa: BLE001
+                logger.info("dub resume unavailable, rendering normally: %s", type(err).__name__)
+                journal = None
+        _ref_hash_memo: dict = {}
+        _oom_degraded: set[str] = set()
+        _used_recovery = False
+
+        _model_fp_memo: list = []
+        _model_load_proof: list = []
+
+        def _model_folder_fingerprint():
+            """Checkpoint/file proof for engines with immutable load metadata.
+
+            A display name, engine ID or unacknowledged sidecar configuration
+            cannot prove which weights produced audio. Those render normally.
+            Recheck resident metadata even after memoizing the disk scan: a
+            model can first load while this render is synthesizing a segment.
+            """
+            try:
+                from core.model_fingerprint import tree_fingerprint
+
+                if engine_id not in ("omnivoice", "cosyvoice") or getattr(backend, "runs_out_of_process", False):
+                    return True, None, None
+                resident = getattr(backend, "_model", None)
+                loaded_checkpoint = getattr(resident, "_voicestudio_checkpoint", None)
+                if resident is not None and not loaded_checkpoint:
+                    return True, None, None
+                if not _model_fp_memo:
+                    if loaded_checkpoint:
+                        checkpoint = loaded_checkpoint
+                    elif engine_id == "omnivoice":
+                        from services.model_manager import resolve_omnivoice_checkpoint
+
+                        checkpoint = resolve_omnivoice_checkpoint()
+                    else:
+                        resolve_folder = getattr(backend, "_resolved_model_dir", None)
+                        checkpoint = resolve_folder() if callable(resolve_folder) else None
+                        if not checkpoint:
+                            raise ValueError("CosyVoice weights directory unavailable")
+                    folder = checkpoint if os.path.isabs(checkpoint) or os.path.isdir(checkpoint) else None
+                    if not folder:
+                        # A mutable Hub repo name does not identify its loaded
+                        # snapshot or tokenizer files across backend restarts.
+                        return True, None, None
+                    checkpoint = os.path.realpath(folder)
+                    fp = tree_fingerprint(checkpoint)
+                    files = fp[1] if len(fp) > 1 else None
+                    result = (True, repr(files) if isinstance(files, tuple) else None, checkpoint)
+                    _model_load_proof.append((checkpoint, fp))
+                    _model_fp_memo.append(result)
+                if resident is not None:
+                    checkpoint, fp = _model_load_proof[0]
+                    if os.path.realpath(loaded_checkpoint) != checkpoint or (
+                        getattr(resident, "_voicestudio_weights_fingerprint", None) != fp
+                    ):
+                        return True, None, None
+                return _model_fp_memo[0]
+            except Exception as err:  # noqa: BLE001
+                logger.debug("model folder fingerprint skipped: %s", type(err).__name__)
+                return True, None, None
+
+        def _resume_key_for(prepared: dict) -> str | None:
+            """Digest of everything that decides this segment's audio, or None."""
+            has_folder, folder_fp, checkpoint = _model_folder_fingerprint()
+            if has_folder and folder_fp is None:
+                return None
+            ref_audio = prepared.get("ref_audio")
+            ref_hash = dub_resume.hash_reference_file(ref_audio, _ref_hash_memo)
+            if ref_audio and ref_hash is None:
+                return None
+            identity = getattr(backend, "model_identity", None)
+            return dub_resume.build_key({
+                "engine": engine_id,
+                "backend": type(backend).__qualname__,
+                "model_identity": identity() if callable(identity) else None,
+                "checkpoint": checkpoint,
+                "sample_rate": backend.sample_rate,
+                "own_mastering": bool(getattr(backend, "applies_own_mastering", False)),
+                "track_lang": lang_code,
+                "voice_match": voice_match,
+                "ref_sha256": ref_hash,
+                # The saved audio carries (or lacks) the provenance mark and
+                # the mastering/effect chain it was rendered with (#1169).
+                "watermark": bool(will_mark()),
+                "mastering": [
+                    MASTERING_CHAIN,
+                    get_effect_chain(prepared.get("effect_preset") or "broadcast"),
+                ],
+                "model_folder": folder_fp,
+                **{
+                    field: prepared.get(field)
+                    for field in (
+                        "text", "language", "ref_text", "instruct", "duration",
+                        "num_step", "guidance_scale", "speed", "denoise",
+                        "postprocess_output", "effect_preset", "seed",
+                    )
+                },
+            })
+
+        def _recovered_intact(path: str) -> bool:
+            info = audio_info(path)
+            return (
+                info.sample_rate == backend.sample_rate
+                and info.num_frames > 0
+                and _cached_payload_intact(path, info)
+            )
 
         # Only metadata (fingerprints, step counts) waits for the post-loop
         # persist; segment audio goes to disk as soon as it is rendered and
@@ -1151,6 +1317,8 @@ async def dub_generate(job_id: str, req: DubRequest):
                         raise
 
                     retry_steps = min(nstep, 8)
+                    # Rendered below its keyed step count: never kept for resume.
+                    _oom_degraded.add(str(effective_seg_id))
                     logger.warning(
                         "OOM on segment (nstep=%d), retrying with %d steps after cache flush",
                         nstep, retry_steps,
@@ -1238,6 +1406,15 @@ async def dub_generate(job_id: str, req: DubRequest):
                         if candidate_index == first_index:
                             raise
                         break
+                    # A finished segment recovered from an earlier run is not
+                    # re-rendered; the main loop reuses it.
+                    if journal is not None:
+                        try:
+                            recoverable_key = await _run_journal_io(_resume_key_for, prepared)
+                            if recoverable_key and await _run_journal_io(journal.has, candidate_id, recoverable_key):
+                                continue
+                        except Exception as err:  # noqa: BLE001
+                            logger.debug("dub resume lookup skipped: %s", type(err).__name__)
                     # Fixed-seed profiles deliberately keep their established
                     # one-row deterministic RNG contract.
                     if prepared["seed"] is not None:
@@ -1387,9 +1564,49 @@ async def dub_generate(job_id: str, req: DubRequest):
                 # Budget from the shared length-scaled helper (#1190): a long
                 # dub segment used to die on the flat 300s even after v0.3.22.
                 from services.model_manager import generate_timeout_s
-                if i not in _batched_audio:
+
+                # Reuse this segment from an interrupted earlier render of the
+                # job when (and only when) every synthesis input is identical
+                # and the recovered audio verifies. Anything else, including
+                # any error here, renders it normally.
+                _resume_key = None
+                _recovered_wav = None
+                _recovered_audio = None
+                if journal is not None:
+                    try:
+                        _rargs = _segment_generation_args(i, seg)
+                        _prepared = _gen(
+                            _rargs["text"], _rargs["language"], _rargs["instruct"],
+                            _rargs["duration"], _rargs["num_step"], _rargs["guidance_scale"],
+                            _rargs["speed"], _rargs["profile_id"], _rargs["effect_preset"],
+                            prepare_only=True, current_seg_id=_rargs["seg_id"],
+                        )
+                        _resume_key = await _run_journal_io(_resume_key_for, _prepared)
+                        if _resume_key:
+                            _recovered_wav = await _run_journal_io(
+                                journal.recover_into, seg_id, _resume_key, backend.sample_rate,
+                                _recovered_intact, _staged_seg_path(seg_id),
+                            )
+                        if _recovered_wav:
+                            from services.audio_io import load_audio
+
+                            _recovered_audio, _rsr = await _run_journal_io(load_audio, _recovered_wav)
+                            if _rsr != backend.sample_rate or _speech_unusable(_recovered_audio):
+                                raise ValueError("recovered audio is empty or at another sample rate")
+                    except Exception as err:  # noqa: BLE001
+                        logger.info("dub resume: rendering %s normally: %s", log_safe(seg_id), type(err).__name__)
+                        if _recovered_wav:
+                            await _run_journal_io(journal.drop, seg_id)
+                        _recovered_wav = None
+                        _recovered_audio = None
+
+                if _recovered_audio is None and i not in _batched_audio:
                     await _prefetch_native_batch(i)
-                if i in _batched_audio:
+                if _recovered_audio is not None:
+                    audio_tensor = _recovered_audio
+                    _recovered_audio = None
+                    _used_recovery = True
+                elif i in _batched_audio:
                     audio_tensor = _batched_audio.pop(i)
                 else:
                     # A busy engine (a native stream holds it) waits inside the
@@ -1482,20 +1699,44 @@ async def dub_generate(job_id: str, req: DubRequest):
                 # downloadable segment and the assembly input, so the final
                 # track inherits the mark. Cached reuse is already marked and
                 # silence has nothing to mark, so nothing else marks again.
-                audio_tensor = mark_synthetic(audio_tensor, backend.sample_rate,
-                                              context="dub_generate.segment")
+                # Recovered audio was marked when it was first rendered.
+                if _recovered_wav is None:
+                    audio_tensor = mark_synthetic(audio_tensor, backend.sample_rate,
+                                                  context="dub_generate.segment")
+
+                if journal is not None and _used_recovery:
+                    _, _validated_model_fp, _ = await _run_journal_io(_model_folder_fingerprint)
+                    if _validated_model_fp is None:
+                        # A cold model can load after earlier segments were
+                        # recovered. Never publish those alongside audio from
+                        # different weights; a retry renders the new artifact.
+                        raise RuntimeError("Model artifact changed during dub recovery")
+                if journal is not None and _resume_key:
+                    _validated_key = await _run_journal_io(_resume_key_for, _prepared)
+                    if _validated_key != _resume_key:
+                        _resume_key = None
 
                 seg_wav_path = _staged_seg_path(seg_id)
                 try:
-                    atomic_save_wav(seg_wav_path, audio_tensor, backend.sample_rate)
+                    if _recovered_wav is None:
+                        atomic_save_wav(seg_wav_path, audio_tensor, backend.sample_rate)
                     _staged[seg_id] = (seg_wav_path, _seg_lang_path(seg_id))
+                    if (
+                        journal is not None
+                        and _recovered_wav is None
+                        and _resume_key
+                        and str(seg_id) not in _oom_degraded
+                    ):
+                        await _run_journal_io(
+                            journal.record, seg_id, _resume_key, seg_wav_path, backend.sample_rate,
+                        )
                     all_segment_wavs.append(
                         (seg.start, seg.end, seg_wav_path, backend.sample_rate)
                     )
                 except Exception as write_err:  # noqa: BLE001
                     # Nothing is registered for publication; the render goes on
                     # with a scratch copy so one failed write cannot abort it.
-                    logger.warning("could not stage speech for %s: %s", seg_id, write_err)
+                    logger.warning("could not stage speech for %s: %s", log_safe(seg_id), type(write_err).__name__)
                     all_segment_wavs.append(
                         _store_mix_wav(seg.start, seg.end, audio_tensor, backend.sample_rate, f"mix_{seg_id}")
                     )
@@ -1892,6 +2133,10 @@ async def dub_generate(job_id: str, req: DubRequest):
         if blocked is not None:
             yield blocked
             return
+        # Published: the shared cache now holds this speech, so the recovery
+        # copies have nothing left to recover.
+        if journal is not None:
+            await _run_journal_io(journal.discard)
 
         _t_total = time.perf_counter() - _t_start
         logger.info(
