@@ -98,6 +98,8 @@ interface PreparedTake {
   voice: string | null;
   /** The saved voice's conditioning when requested; null for a clip, preset or design take. */
   voiceFingerprint: string | null;
+  /** The saved voice's transcript when requested, for a take that sends no transcript of its own. */
+  voiceTranscript: string | null;
 }
 
 /**
@@ -106,9 +108,9 @@ interface PreparedTake {
  * A queued take compares this when it starts, because the backend resolves the
  * profile at render time, not at request time.
  *
- * The transcript is left out on purpose: it describes the same clip, and the
- * first render of a voice without one stores an automatic transcript, which
- * must not skip the takes queued behind it.
+ * The transcript is compared separately (`transcriptEditedSince`): the
+ * backend fills or repairs some transcripts on its own during a render, and
+ * those must not skip the takes queued behind it.
  */
 export function voiceFingerprint(profile: Profile | null | undefined): string | null {
   if (!profile) return null;
@@ -119,6 +121,25 @@ export function voiceFingerprint(profile: Profile | null | undefined): string | 
     profile.seed ?? null,
     profile.instruct ?? null,
   ]);
+}
+
+/** Transcript lengths the backend replaces on its own: legacy cut prefixes (#3062). */
+const AUTO_REPAIRED_TRANSCRIPT_LENGTHS = new Set([100, 200]);
+
+/**
+ * True when a saved voice's transcript was edited after a take was queued.
+ * The backend changes a transcript by itself only when it is empty (the first
+ * render stores an automatic one, #1032) or a legacy cut prefix (#3062); any
+ * other change came from the user, and the take would render with words it
+ * was never queued with, since a saved voice sends only manual edits (#3192).
+ */
+export function transcriptEditedSince(
+  queued: string | null | undefined,
+  current: string | null | undefined,
+): boolean {
+  const before = queued ?? '';
+  if (before === (current ?? '') || !before.trim()) return false;
+  return !AUTO_REPAIRED_TRANSCRIPT_LENGTHS.has(before.length);
 }
 
 function trimFinished(items: GenerationQueueItem[]): GenerationQueueItem[] {
@@ -532,6 +553,11 @@ function useGenerateController(): UseGenerateClone {
           !design && profileId
             ? voiceFingerprint(profiles?.find((profile) => profile.id === profileId))
             : null,
+        // A manual transcript travels with the request, so only the stored one can drift.
+        voiceTranscript:
+          !design && profileId && input.refText === undefined
+            ? (profiles?.find((profile) => profile.id === profileId)?.ref_text ?? null)
+            : null,
       };
     },
     [
@@ -576,12 +602,16 @@ function useGenerateController(): UseGenerateClone {
       abortRef.current = controller;
       try {
         if (take.voiceFingerprint) {
-          // A voice replaced, re-locked or restyled while the take waited
+          // A voice replaced, re-locked, restyled or re-transcribed while the take waited
           // would render a voice the user never queued: skip it and say why.
           const current = queryClient
             .getQueryData<Profile[]>(queryKeys.profiles)
             ?.find((profile) => profile.id === input.profileId);
-          if (current && voiceFingerprint(current) !== take.voiceFingerprint)
+          if (
+            current &&
+            (voiceFingerprint(current) !== take.voiceFingerprint ||
+              transcriptEditedSince(take.voiceTranscript, current.ref_text))
+          )
             throw new Error(tr('generationQueue.voice_changed'));
         }
         const result = await generateClone(input, {

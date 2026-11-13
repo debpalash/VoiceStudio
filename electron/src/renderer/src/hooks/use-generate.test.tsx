@@ -2,7 +2,7 @@ import { toast } from 'sonner';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { GenerationProvider, useGenerateClone } from './use-generate';
+import { GenerationProvider, transcriptEditedSince, useGenerateClone } from './use-generate';
 import { patchCloneSettings } from '@/lib/store/clone-settings';
 import { generateClone } from '@/lib/api/generate';
 import { setLatestOutput } from '@/lib/store/output';
@@ -1023,6 +1023,53 @@ describe('generation queue', () => {
     await waitFor(() => expect(generateClone).toHaveBeenCalledTimes(2));
     await act(async () => renders[1]!.resolve(take('b')));
     await waitFor(() => expect(statuses()).toEqual(['done', 'done']));
+  });
+
+  it('skips a waiting take when the saved transcript was edited after it was queued', async () => {
+    const renders = deferredRenders();
+    const client = new QueryClient();
+    const voice = {
+      id: 'voice-1',
+      name: 'Narrator',
+      ref_audio_path: 'voice-1-aaaa.wav',
+      ref_text: 'Hello there.',
+    } as Profile;
+    client.setQueryData(queryKeys.profiles, [voice]);
+    render(
+      <QueryClientProvider client={client}>
+        <GenerationProvider>
+          <QueueConsumer />
+        </GenerationProvider>
+      </QueryClientProvider>,
+    );
+    patchCloneSettings({
+      text: 'Line',
+      selectedProfileId: 'voice-1',
+      refText: 'Hello there.',
+      autoPlay: false,
+    });
+    fireEvent.click(screen.getByText('go'));
+    fireEvent.click(screen.getByText('go'));
+    // The user corrects the saved transcript while take 2 waits; a saved voice
+    // sends no unchanged transcript (#3192), so /generate would read the edit.
+    act(() => {
+      client.setQueryData(queryKeys.profiles, [{ ...voice, ref_text: 'Hello, friend.' }]);
+    });
+    await act(async () => renders[0]!.resolve(take('a')));
+    await waitFor(() => expect(statuses()).toEqual(['done', 'failed']));
+    expect(generateClone).toHaveBeenCalledTimes(1);
+  });
+
+  it('tells user transcript edits from the ones the backend makes itself', () => {
+    expect(transcriptEditedSince('Hello there.', 'Hello there.')).toBe(false);
+    // The first render stores an automatic transcript for a voice without one.
+    expect(transcriptEditedSince(null, 'Automatic words.')).toBe(false);
+    expect(transcriptEditedSince('  ', 'Automatic words.')).toBe(false);
+    // A legacy cut prefix (100 or 200 characters) is repaired once (#3062).
+    expect(transcriptEditedSince('a'.repeat(100), 'Full transcript.')).toBe(false);
+    expect(transcriptEditedSince('a'.repeat(200), 'Full transcript.')).toBe(false);
+    expect(transcriptEditedSince('Hello there.', 'Hello, friend.')).toBe(true);
+    expect(transcriptEditedSince('Hello there.', '')).toBe(true);
   });
 
   it('never lets Voice Design jump ahead of a waiting clone take', async () => {
