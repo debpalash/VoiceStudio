@@ -16,7 +16,7 @@ import threading
 import traceback
 from pathlib import Path
 from typing import Optional, Literal
-from fastapi import APIRouter, File, Form, UploadFile, HTTPException, Depends
+from fastapi import APIRouter, File, Form, UploadFile, HTTPException, Depends, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
@@ -96,6 +96,20 @@ def _binary_audio(media_type: str) -> dict:
     }
 
 
+async def _static_output_fallback(request: Request, name: str):
+    """Serve ``name`` from OUTPUTS_DIR exactly as the ``/audio`` mount would.
+
+    The encode routes below match every ``/audio/<anything>.mp3|ogg|opus`` and
+    so shadow the static mount; names that are not a generated 8-hex id (for
+    example ``audiobook_<job>.mp3``) are handed back to the same
+    traversal-safe, header-hardened StaticFiles implementation."""
+    from core.safe_static import SafeMediaFiles
+
+    scope = dict(request.scope)
+    scope["method"] = "HEAD" if request.method == "HEAD" else "GET"
+    return await SafeMediaFiles(directory=OUTPUTS_DIR).get_response(name, scope)
+
+
 @router.get(
     "/audio/{audio_id}.ogg",
     dependencies=[Depends(reject_cross_site_get)],
@@ -106,10 +120,11 @@ def _binary_audio(media_type: str) -> dict:
     dependencies=[Depends(reject_cross_site_get)],
     **_binary_audio("audio/ogg"),
 )
-async def generated_ogg_opus(audio_id: str):
+async def generated_ogg_opus(audio_id: str, request: Request):
     """Serve the same render as /audio/<id>.wav, encoded as Ogg/Opus."""
     if not re.fullmatch(r"[0-9a-f]{8}", audio_id):
-        raise HTTPException(status_code=404, detail="Audio file not found")
+        ext = request.url.path.rsplit(".", 1)[-1]
+        return await _static_output_fallback(request, f"{audio_id}.{ext}")
     path = _safe_output_path(f"{audio_id}.wav")
     if path is None:
         raise HTTPException(status_code=404, detail="Audio file not found")
@@ -129,7 +144,7 @@ async def generated_ogg_opus(audio_id: str):
     async with encode_lock:
         try:
             if _ogg_cache_key(path) != key:
-                return await generated_ogg_opus(audio_id)
+                return await generated_ogg_opus(audio_id, request)
         except FileNotFoundError:
             raise HTTPException(status_code=404, detail="Audio file not found") from None
         encoded = _cached_ogg(key)
@@ -161,12 +176,12 @@ async def generated_ogg_opus(audio_id: str):
     dependencies=[Depends(reject_cross_site_get)],
     **_binary_audio("audio/mpeg"),
 )
-async def generated_mp3(audio_id: str):
+async def generated_mp3(audio_id: str, request: Request):
     """Serve the same render as /audio/<id>.wav, encoded as MP3 for export.
 
     Unlike Ogg/Opus this is a one-shot download, so it is not cached."""
     if not re.fullmatch(r"[0-9a-f]{8}", audio_id):
-        raise HTTPException(status_code=404, detail="Audio file not found")
+        return await _static_output_fallback(request, f"{audio_id}.mp3")
     path = _safe_output_path(f"{audio_id}.wav")
     if path is None or not os.path.isfile(path):
         raise HTTPException(status_code=404, detail="Audio file not found")
