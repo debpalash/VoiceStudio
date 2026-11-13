@@ -1275,6 +1275,10 @@ def _make_backend_class():
             import soundfile as sf
             import torch
 
+            if kw.get("instruct"):
+                from services.instruct_safety import tag_safe_instruct
+
+                kw = {**kw, "instruct": tag_safe_instruct(kw["instruct"])}
             diagnostic = deadline is not None
             if diagnostic:
                 # A timed diagnostic never starts a multi-GB download it could not finish.

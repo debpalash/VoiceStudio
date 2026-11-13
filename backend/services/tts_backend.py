@@ -34,6 +34,7 @@ from typing import Literal, Optional
 
 import torch
 
+from services.instruct_safety import tag_safe_instruct
 from services.expression import COSYVOICE_INLINE_TAGS, OMNIVOICE_INLINE_TAGS, expression_caps
 
 logger = logging.getLogger("omnivoice.tts")
@@ -1958,7 +1959,7 @@ class OmniVoiceBackend(TTSBackend):
         gen_kw = dict(
             text=text,
             language=language if language and language != "Auto" else None,
-            instruct=kw.get("instruct"),
+            instruct=tag_safe_instruct(kw.get("instruct")),
             duration=kw.get("duration"),
             num_step=kw.get("num_step", 16),
             guidance_scale=kw.get("guidance_scale", 2.0),
@@ -2042,7 +2043,7 @@ class OmniVoiceBackend(TTSBackend):
 
         gen_kw = dict(
             language=kw.get("language"),
-            instruct=kw.get("instruct"),
+            instruct=tag_safe_instruct(kw.get("instruct")),
             duration=kw.get("duration"),
             speed=kw.get("speed", 1.0),
             denoise=kw.get("denoise", True),
