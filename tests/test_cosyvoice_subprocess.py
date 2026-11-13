@@ -95,7 +95,8 @@ def test_loads_the_installed_weights_with_matcha_on_the_path(monkeypatch, tmp_pa
     assert audio["op"] == "audio" and audio["sample_rate"] == 24000 and audio["n_samples"] == 2400
 
 
-def test_inprocess_recovery_identity_precedes_native_load(monkeypatch, tmp_path):
+@pytest.mark.parametrize("change_during_load", [False, True])
+def test_inprocess_recovery_identity_precedes_native_load(monkeypatch, tmp_path, change_during_load):
     from services import local_model_paths
     from services.tts_backend import CosyVoiceBackend
 
@@ -107,7 +108,8 @@ def test_inprocess_recovery_identity_precedes_native_load(monkeypatch, tmp_path)
     monkeypatch.setattr(backend, "is_available", lambda: (True, "ready"))
 
     def construct(**_kwargs):
-        weights.write_bytes(b"changed during native load")
+        if change_during_load:
+            weights.write_bytes(b"changed during native load")
         return types.SimpleNamespace(sample_rate=24000)
 
     cli = types.ModuleType("cosyvoice.cli.cosyvoice")
@@ -117,8 +119,7 @@ def test_inprocess_recovery_identity_precedes_native_load(monkeypatch, tmp_path)
     monkeypatch.setitem(sys.modules, "cosyvoice.cli.cosyvoice", cli)
     backend._ensure_loaded()
     assert backend._model._voicestudio_checkpoint == str(tmp_path)
-    assert backend._model._voicestudio_weights_fingerprint == expected
-    assert backend._model._voicestudio_weights_fingerprint != local_model_paths.loading_fingerprint(str(tmp_path))
+    assert backend._model._voicestudio_weights_fingerprint == (None if change_during_load else expected)
 
 
 def test_a_missing_model_folder_never_reaches_a_modelscope_download(monkeypatch, tmp_path):

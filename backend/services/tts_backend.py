@@ -3637,6 +3637,8 @@ class CosyVoiceBackend(TTSBackend):
         self._model = AutoModel(model_dir=model_dir)
         try:
             self._model._voicestudio_checkpoint = checkpoint
+            if fingerprint is not None and tree_fingerprint(checkpoint) != fingerprint:
+                fingerprint = None
             self._model._voicestudio_weights_fingerprint = fingerprint
         except Exception:  # noqa: BLE001 - optional recovery metadata
             logger.debug("Could not attach CosyVoice recovery identity", exc_info=True)

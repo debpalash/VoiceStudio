@@ -3025,6 +3025,11 @@ def _load_model_sync():
         # caller timed out. Instance metadata keeps /model/status honest.
         try:
             setattr(_model, "_voicestudio_checkpoint", checkpoint)
+            if resume_fingerprint is not None:
+                # Native loading can read many files. A tree that changed
+                # during that interval cannot certify the resident bytes.
+                if tree_fingerprint(os.path.realpath(checkpoint)) != resume_fingerprint:
+                    resume_fingerprint = None
             setattr(_model, "_voicestudio_weights_fingerprint", resume_fingerprint)
             setattr(
                 _model,
