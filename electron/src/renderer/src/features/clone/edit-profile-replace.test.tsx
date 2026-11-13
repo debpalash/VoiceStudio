@@ -51,6 +51,7 @@ vi.mock('./language-picker', () => ({ LanguagePicker: () => null }));
 vi.mock('./persona-export', () => ({ PersonaExport: () => null }));
 vi.mock('./profile-image-editor', () => ({ ProfileImageEditor: () => null }));
 import { EditProfile } from './edit-profile';
+import { transcriptSaveMarker, transcriptSavedSince } from '@/lib/store/transcript-saves';
 
 const base = {
   id: 'v1',
@@ -163,4 +164,15 @@ it('keeps the chosen clip and saves no edits when the upload fails', async () =>
 it('does not offer replacement for designed voices', () => {
   renderEditor({ ...base, kind: 'design' } as Profile);
   expect(screen.queryByRole('button', { name: /clone.replace_reference/ })).toBeNull();
+});
+
+it('records the saved transcript so waiting queued takes can tell a user edit', async () => {
+  mock.json.mockResolvedValue({ ...base, ref_text: 'new words' });
+  const marker = transcriptSaveMarker();
+  const onDone = renderEditor();
+
+  fireEvent.change(screen.getByLabelText('clone.transcript'), { target: { value: 'new words' } });
+  fireEvent.submit(screen.getByRole('button', { name: 'clone.save' }).closest('form')!);
+  await waitFor(() => expect(onDone).toHaveBeenCalledOnce());
+  expect(transcriptSavedSince('v1', marker, 'old words')).toBe(true);
 });

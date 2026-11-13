@@ -46,6 +46,7 @@ import { recordActionBreadcrumb } from '@/lib/report-breadcrumb';
 import { useResolvedLicenceError } from './use-resolved-licence-error';
 import { announceDroppedSpeech } from '@/lib/dropped-speech';
 import { recordTakeSpeed } from '@/lib/store/quality-offer';
+import { transcriptSaveMarker, transcriptSavedSince } from '@/lib/store/transcript-saves';
 
 const TIMER_TICK_MS = 100;
 const PROGRESS_THROTTLE_MS = 100;
@@ -98,8 +99,11 @@ interface PreparedTake {
   voice: string | null;
   /** The saved voice's conditioning when requested; null for a clip, preset or design take. */
   voiceFingerprint: string | null;
-  /** The saved voice's transcript when requested, for a take that sends no transcript of its own. */
-  voiceTranscript: string | null;
+  /**
+   * For a take that sends no transcript of its own: the saved transcript when
+   * it was requested and a marker for user saves after that point.
+   */
+  transcriptBaseline: { transcript: string | null; marker: number } | null;
 }
 
 /**
@@ -108,9 +112,9 @@ interface PreparedTake {
  * A queued take compares this when it starts, because the backend resolves the
  * profile at render time, not at request time.
  *
- * The transcript is compared separately (`transcriptEditedSince`): the
- * backend fills or repairs some transcripts on its own during a render, and
- * those must not skip the takes queued behind it.
+ * The transcript is checked separately (`transcriptSavedSince`): the backend
+ * fills or repairs some transcripts on its own during a render, and those must
+ * not skip the takes queued behind it; only a transcript the user saved does.
  */
 export function voiceFingerprint(profile: Profile | null | undefined): string | null {
   if (!profile) return null;
@@ -121,25 +125,6 @@ export function voiceFingerprint(profile: Profile | null | undefined): string | 
     profile.seed ?? null,
     profile.instruct ?? null,
   ]);
-}
-
-/** Transcript lengths the backend replaces on its own: legacy cut prefixes (#3062). */
-const AUTO_REPAIRED_TRANSCRIPT_LENGTHS = new Set([100, 200]);
-
-/**
- * True when a saved voice's transcript was edited after a take was queued.
- * The backend changes a transcript by itself only when it is empty (the first
- * render stores an automatic one, #1032) or a legacy cut prefix (#3062); any
- * other change came from the user, and the take would render with words it
- * was never queued with, since a saved voice sends only manual edits (#3192).
- */
-export function transcriptEditedSince(
-  queued: string | null | undefined,
-  current: string | null | undefined,
-): boolean {
-  const before = queued ?? '';
-  if (before === (current ?? '') || !before.trim()) return false;
-  return !AUTO_REPAIRED_TRANSCRIPT_LENGTHS.has(before.length);
 }
 
 function trimFinished(items: GenerationQueueItem[]): GenerationQueueItem[] {
@@ -554,9 +539,12 @@ function useGenerateController(): UseGenerateClone {
             ? voiceFingerprint(profiles?.find((profile) => profile.id === profileId))
             : null,
         // A manual transcript travels with the request, so only the stored one can drift.
-        voiceTranscript:
+        transcriptBaseline:
           !design && profileId && input.refText === undefined
-            ? (profiles?.find((profile) => profile.id === profileId)?.ref_text ?? null)
+            ? {
+                transcript: profiles?.find((profile) => profile.id === profileId)?.ref_text ?? null,
+                marker: transcriptSaveMarker(),
+              }
             : null,
       };
     },
@@ -610,7 +598,12 @@ function useGenerateController(): UseGenerateClone {
           if (
             current &&
             (voiceFingerprint(current) !== take.voiceFingerprint ||
-              transcriptEditedSince(take.voiceTranscript, current.ref_text))
+              (take.transcriptBaseline !== null &&
+                transcriptSavedSince(
+                  current.id,
+                  take.transcriptBaseline.marker,
+                  take.transcriptBaseline.transcript,
+                )))
           )
             throw new Error(tr('generationQueue.voice_changed'));
         }

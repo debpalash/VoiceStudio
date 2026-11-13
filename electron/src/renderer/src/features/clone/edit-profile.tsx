@@ -32,6 +32,7 @@ import { ReferenceSourcePicker, ReferenceUsageNote } from './reference-input';
 import { ProfileImageEditor } from './profile-image-editor';
 import { formatRelative } from './format';
 import { useTtsReadiness } from '@/hooks/use-tts-readiness';
+import { noteTranscriptSave } from '@/lib/store/transcript-saves';
 
 export function EditProfile({ profile, onDone }: { profile: Profile; onDone: () => void }) {
   const { t, i18n } = useTranslation();
@@ -100,6 +101,9 @@ export function EditProfile({ profile, onDone }: { profile: Profile; onDone: () 
           // audio request: the backend saves all of them or none, and the old
           // clip's text is never saved against the new reference.
           const { ref_text: refText, ...fields } = draft;
+          // Before the request: a queued take that starts while it is in
+          // flight must already see that the transcript is being changed.
+          noteTranscriptSave(profile.id, refText);
           const updated = replacement
             ? await replaceAudio.mutateAsync({
                 id: profile.id,
