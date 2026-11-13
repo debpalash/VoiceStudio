@@ -14,6 +14,7 @@ export function startVisibleInterval(
   doc: VisibilityDoc = document,
 ): () => void {
   let timer: ReturnType<typeof setInterval> | null = null;
+  let disposed = false;
   const stop = () => {
     if (timer !== null) clearInterval(timer);
     timer = null;
@@ -23,14 +24,16 @@ export function startVisibleInterval(
   };
   const onChange = () => {
     if (doc.visibilityState === 'hidden') stop();
-    else if (timer === null) {
+    else if (timer === null && !disposed) {
       callback();
-      start();
+      // The callback may dispose of this interval; do not restart it then.
+      if (!disposed) start();
     }
   };
   if (doc.visibilityState !== 'hidden') start();
   doc.addEventListener('visibilitychange', onChange);
   return () => {
+    disposed = true;
     stop();
     doc.removeEventListener('visibilitychange', onChange);
   };

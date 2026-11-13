@@ -51,3 +51,13 @@ it('hook honours active and cleans up', () => {
   unmount();
   expect(vi.getTimerCount()).toBe(0);
 });
+
+it('stays stopped when the catch-up callback disposes of it', () => {
+  let dispose = () => {};
+  const cb = vi.fn(() => dispose());
+  setVisibility('hidden');
+  dispose = startVisibleInterval(cb, 1000);
+  setVisibility('visible');
+  expect(cb).toHaveBeenCalledTimes(1);
+  expect(vi.getTimerCount()).toBe(0);
+});
