@@ -4360,6 +4360,7 @@
     "clear_finished": "清除已完成",
     "cancel_all": "全部取消",
     "position": "第 {{position}} 位",
+    "voice_changed": "此聲音在等待期間已變更，因此已略過此條。請重新加入佇列以使用更新後的聲音。",
     "status": {
       "queued": "等待中",
       "running": "生成中",

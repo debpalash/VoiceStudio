@@ -4360,6 +4360,7 @@
     "clear_finished": "Voltooide wissen",
     "cancel_all": "Alles annuleren",
     "position": "Plaats {{position}}",
+    "voice_changed": "Deze stem is gewijzigd terwijl de opname wachtte en is daarom overgeslagen. Zet hem opnieuw in de wachtrij om de bijgewerkte stem te gebruiken.",
     "status": {
       "queued": "Wachten",
       "running": "Bezig met genereren",

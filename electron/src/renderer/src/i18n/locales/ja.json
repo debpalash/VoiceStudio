@@ -4360,6 +4360,7 @@
     "clear_finished": "完了分をクリア",
     "cancel_all": "すべてキャンセル",
     "position": "{{position}} 番目",
+    "voice_changed": "テイクの待機中にこの音声が変更されたため、スキップしました。更新後の音声を使うには、もう一度キューに追加してください。",
     "status": {
       "queued": "待機中",
       "running": "生成中",

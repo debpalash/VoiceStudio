@@ -4360,6 +4360,7 @@
     "clear_finished": "완료 항목 지우기",
     "cancel_all": "모두 취소",
     "position": "{{position}}번째",
+    "voice_changed": "테이크가 대기하는 동안 이 음성이 바뀌어 건너뛰었습니다. 업데이트된 음성을 사용하려면 다시 대기열에 추가하세요.",
     "status": {
       "queued": "대기 중",
       "running": "생성 중",

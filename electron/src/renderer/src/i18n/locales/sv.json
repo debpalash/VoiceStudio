@@ -4360,6 +4360,7 @@
     "clear_finished": "Rensa klara",
     "cancel_all": "Avbryt alla",
     "position": "Plats {{position}}",
+    "voice_changed": "Den här rösten ändrades medan tagningen väntade, så den hoppades över. Köa den igen för att använda den uppdaterade rösten.",
     "status": {
       "queued": "Väntar",
       "running": "Genererar",

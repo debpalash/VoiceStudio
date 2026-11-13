@@ -4392,6 +4392,7 @@
     "clear_finished": "Wyczyść zakończone",
     "cancel_all": "Anuluj wszystko",
     "position": "Pozycja {{position}}",
+    "voice_changed": "Ten głos zmienił się, gdy nagranie czekało, więc zostało pominięte. Dodaj je ponownie do kolejki, aby użyć zaktualizowanego głosu.",
     "status": {
       "queued": "Oczekuje",
       "running": "Generowanie",

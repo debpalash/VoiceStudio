@@ -4362,6 +4362,7 @@
     "clear_finished": "Effacer les terminées",
     "cancel_all": "Tout annuler",
     "position": "Position {{position}}",
+    "voice_changed": "Cette voix a changé pendant que la prise attendait, elle a donc été ignorée. Remettez-la en file pour utiliser la voix mise à jour.",
     "status": {
       "queued": "En attente",
       "running": "Génération",

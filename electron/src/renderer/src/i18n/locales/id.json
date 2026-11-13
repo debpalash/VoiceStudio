@@ -4360,6 +4360,7 @@
     "clear_finished": "Hapus yang selesai",
     "cancel_all": "Batalkan semua",
     "position": "Urutan {{position}}",
+    "voice_changed": "Suara ini berubah saat take menunggu, jadi dilewati. Antrekan lagi untuk memakai suara yang diperbarui.",
     "status": {
       "queued": "Menunggu",
       "running": "Membuat",

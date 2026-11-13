@@ -4360,6 +4360,7 @@
     "clear_finished": "Clear finished",
     "cancel_all": "Cancel all",
     "position": "#{{position}} in line",
+    "voice_changed": "This voice changed while the take was waiting, so it was skipped. Queue it again to use the updated voice.",
     "status": {
       "queued": "Waiting",
       "running": "Generating",

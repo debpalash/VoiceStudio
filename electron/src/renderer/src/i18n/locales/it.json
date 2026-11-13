@@ -4362,6 +4362,7 @@
     "clear_finished": "Cancella completate",
     "cancel_all": "Annulla tutto",
     "position": "Posizione {{position}}",
+    "voice_changed": "Questa voce è cambiata mentre la ripresa era in attesa, quindi è stata saltata. Rimettila in coda per usare la voce aggiornata.",
     "status": {
       "queued": "In attesa",
       "running": "Generazione",

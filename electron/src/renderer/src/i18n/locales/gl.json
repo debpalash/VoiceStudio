@@ -4360,6 +4360,7 @@
     "clear_finished": "Borrar rematadas",
     "cancel_all": "Cancelar todo",
     "position": "Posto {{position}}",
+    "voice_changed": "Esta voz cambiou mentres a toma agardaba, así que se omitiu. Volve poñela na cola para usar a voz actualizada.",
     "status": {
       "queued": "Agardando",
       "running": "Xerando",

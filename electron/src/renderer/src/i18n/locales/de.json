@@ -4360,6 +4360,7 @@
     "clear_finished": "Fertige entfernen",
     "cancel_all": "Alle abbrechen",
     "position": "Platz {{position}}",
+    "voice_changed": "Diese Stimme wurde geändert, während die Aufnahme wartete, daher wurde sie übersprungen. Reihe sie erneut ein, um die aktualisierte Stimme zu verwenden.",
     "status": {
       "queued": "Wartet",
       "running": "Wird generiert",

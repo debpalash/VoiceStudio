@@ -4362,6 +4362,7 @@
     "clear_finished": "Borrar terminadas",
     "cancel_all": "Cancelar todo",
     "position": "Puesto {{position}}",
+    "voice_changed": "Esta voz cambió mientras la toma esperaba, así que se omitió. Vuelve a ponerla en cola para usar la voz actualizada.",
     "status": {
       "queued": "En espera",
       "running": "Generando",

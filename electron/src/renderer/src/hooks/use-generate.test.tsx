@@ -8,6 +8,7 @@ import { generateClone } from '@/lib/api/generate';
 import { setLatestOutput } from '@/lib/store/output';
 import { queryKeys } from '@/lib/query';
 import type { Profile } from '@/lib/api/types';
+import { tr } from '@/lib/i18n-text';
 const modelStatus = vi.hoisted(() => ({
   value: { status: 'loading', loading: true } as {
     status: string;
@@ -836,6 +837,9 @@ describe('generation queue', () => {
       <>
         <button onClick={() => void state.generate()}>go</button>
         <button onClick={() => state.cancelAll()}>cancel all</button>
+        <button onClick={() => void state.generateDesign({ text: 'Designed', instruct: '' })}>
+          design
+        </button>
         <span data-testid="waiting">{state.queuedCount}</span>
         <span data-testid="queue-stage">{state.stage}</span>
         <ul>
@@ -959,6 +963,52 @@ describe('generation queue', () => {
     // A's throttled trailing update fires after B has started.
     await act(() => new Promise((resolve) => setTimeout(resolve, 250)));
     expect(screen.getByTestId('queue-stage')).not.toHaveTextContent('receiving');
+  });
+
+  it('skips a waiting take whose saved voice changed before it started', async () => {
+    const renders = deferredRenders();
+    const client = new QueryClient();
+    const voice = {
+      id: 'voice-1',
+      name: 'Narrator',
+      ref_audio_path: 'voice-1-aaaa.wav',
+      ref_text: 'Hello there.',
+    } as Profile;
+    client.setQueryData(queryKeys.profiles, [voice]);
+    render(
+      <QueryClientProvider client={client}>
+        <GenerationProvider>
+          <QueueConsumer />
+        </GenerationProvider>
+      </QueryClientProvider>,
+    );
+    patchCloneSettings({ text: 'Line', selectedProfileId: 'voice-1', autoPlay: false });
+    fireEvent.click(screen.getByText('go'));
+    fireEvent.click(screen.getByText('go'));
+    // The reference clip is replaced (a new versioned file) while take 2 waits.
+    act(() => {
+      client.setQueryData(queryKeys.profiles, [{ ...voice, ref_audio_path: 'voice-1-bbbb.wav' }]);
+    });
+    await act(async () => renders[0]!.resolve(take('a')));
+    await waitFor(() => expect(statuses()).toEqual(['done', 'failed']));
+    expect(generateClone).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps Voice Design one at a time instead of queuing it out of sight', async () => {
+    const renders = deferredRenders();
+    mount();
+    patchCloneSettings({ text: 'Clone line', selectedProfileId: 'voice-1', autoPlay: false });
+    fireEvent.click(screen.getByText('go'));
+    fireEvent.click(screen.getByText('design'));
+    expect(toast.info).toHaveBeenCalledWith(tr('tts_errors.generation_in_progress'));
+    expect(statuses()).toEqual(['running']);
+
+    await act(async () => renders[0]!.resolve(take('a')));
+    await waitFor(() => expect(statuses()).toEqual(['done']));
+    // Idle again: a design take renders straight away.
+    fireEvent.click(screen.getByText('design'));
+    await waitFor(() => expect(generateClone).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(generateClone).mock.calls[1]![0].text).toBe('Designed');
   });
 
   it('cancel all stops the running take and drops the waiting ones', async () => {

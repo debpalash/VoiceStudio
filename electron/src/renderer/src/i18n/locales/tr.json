@@ -4360,6 +4360,7 @@
     "clear_finished": "Bitenleri temizle",
     "cancel_all": "Tümünü iptal et",
     "position": "Sıra {{position}}",
+    "voice_changed": "Kayıt beklerken bu ses değişti, bu yüzden atlandı. Güncellenen sesi kullanmak için yeniden kuyruğa ekleyin.",
     "status": {
       "queued": "Bekliyor",
       "running": "Oluşturuluyor",

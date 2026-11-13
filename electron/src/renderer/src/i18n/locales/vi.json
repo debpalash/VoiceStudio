@@ -4360,6 +4360,7 @@
     "clear_finished": "Xóa mục đã xong",
     "cancel_all": "Hủy tất cả",
     "position": "Vị trí {{position}}",
+    "voice_changed": "Giọng này đã thay đổi trong lúc bản ghi đang chờ nên đã bị bỏ qua. Hãy xếp lại vào hàng đợi để dùng giọng đã cập nhật.",
     "status": {
       "queued": "Đang chờ",
       "running": "Đang tạo",

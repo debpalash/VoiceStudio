@@ -96,6 +96,26 @@ interface PreparedTake {
   engine: { id: string; device: Parameters<typeof recordTakeSpeed>[1] } | null;
   label: string;
   voice: string | null;
+  /** The saved voice's conditioning when requested; null for a clip, preset or design take. */
+  voiceFingerprint: string | null;
+}
+
+/**
+ * What /generate reads from a saved voice when it renders: the reference clip
+ * (replacing it writes a new versioned file), the locked take, its transcript,
+ * seed and style. A queued take compares this when it starts, because the
+ * backend resolves the profile at render time, not at request time.
+ */
+export function voiceFingerprint(profile: Profile | null | undefined): string | null {
+  if (!profile) return null;
+  return JSON.stringify([
+    profile.ref_audio_path ?? null,
+    profile.locked_audio_path || null,
+    Boolean(profile.is_locked),
+    profile.ref_text ?? null,
+    profile.seed ?? null,
+    profile.instruct ?? null,
+  ]);
 }
 
 function trimFinished(items: GenerationQueueItem[]): GenerationQueueItem[] {
@@ -504,6 +524,11 @@ function useGenerateController(): UseGenerateClone {
           refAudio?.name ||
           presetVoice ||
           null,
+        // Only a clone take renders through its saved voice's stored conditioning.
+        voiceFingerprint:
+          !design && profileId
+            ? voiceFingerprint(profiles?.find((profile) => profile.id === profileId))
+            : null,
       };
     },
     [
@@ -547,6 +572,15 @@ function useGenerateController(): UseGenerateClone {
       const controller = new AbortController();
       abortRef.current = controller;
       try {
+        if (take.voiceFingerprint) {
+          // A voice replaced, re-locked or re-transcribed while the take waited
+          // would render a voice the user never queued: skip it and say why.
+          const current = queryClient
+            .getQueryData<Profile[]>(queryKeys.profiles)
+            ?.find((profile) => profile.id === input.profileId);
+          if (current && voiceFingerprint(current) !== take.voiceFingerprint)
+            throw new Error(tr('generationQueue.voice_changed'));
+        }
         const result = await generateClone(input, {
           signal: controller.signal,
           onProgress: (pct) => onProgress(take.id, pct),
@@ -659,6 +693,24 @@ function useGenerateController(): UseGenerateClone {
   /** Render a take now, or add it to the queue when one is already running. */
   const generate = useCallback(
     async (design?: DesignGenerateInput) => {
+      if (design) {
+        // Voice Design has no queue view to show, remove or cancel waiting
+        // takes, so it keeps one render at a time: start now or say it's busy.
+        if (activeRef.current) {
+          toast.info(tr('tts_errors.generation_in_progress'));
+          return;
+        }
+        const take = prepareTake(design);
+        if (!take) return;
+        const release = acquireSynthesis();
+        if (!release) {
+          toast.info(tr('tts_errors.generation_in_progress'));
+          return;
+        }
+        // Resolves when the take finishes, as callers such as first-sound onboarding expect.
+        await runTake(take, release);
+        return;
+      }
       if (pendingRef.current.length >= MAX_QUEUED) {
         toast.warning(tr('generationQueue.full', { count: MAX_QUEUED }));
         return;
@@ -675,7 +727,7 @@ function useGenerateController(): UseGenerateClone {
       if (pendingRef.current.includes(take))
         toast.info(tr('generationQueue.added', { count: pendingRef.current.length }));
     },
-    [prepareTake, drain],
+    [prepareTake, drain, runTake],
   );
 
   /** Drop a take that hasn't started yet. */
