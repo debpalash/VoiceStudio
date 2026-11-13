@@ -275,7 +275,7 @@ export function HomePage() {
                     <div className="home-hero-meta">
                       {version && (
                         <ExternalLink
-                          href={releaseNotesUrl(version, getBridge()?.app?.isDev ?? false)}
+                          href={releaseNotesUrl(version, getBridge()?.app?.isDev ?? true)}
                           variant="link"
                           showIcon={false}
                           className="home-whats-new"

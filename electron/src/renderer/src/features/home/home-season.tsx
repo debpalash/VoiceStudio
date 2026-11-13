@@ -54,7 +54,8 @@ export function PixelSnow() {
     }
     if (!canvas || !context) return;
     const ctx = context;
-    const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    const motion = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    let still = motion?.matches ?? false;
     const readColor = () => getComputedStyle(canvas).color || 'rgb(255 255 255)';
     let color = readColor();
     let width = 1;
@@ -118,6 +119,12 @@ export function PixelSnow() {
       draw();
     };
     const onVisibility = () => (document.hidden ? stop() : start());
+    // Follow the system motion setting while Home stays open.
+    const onMotion = (event: MediaQueryListEvent) => {
+      still = event.matches;
+      if (still) stop();
+      else start();
+    };
 
     resize();
     const resizer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(resize);
@@ -141,6 +148,7 @@ export function PixelSnow() {
           });
     theme?.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
     document.addEventListener('visibilitychange', onVisibility);
+    motion?.addEventListener?.('change', onMotion);
     start();
     return () => {
       stop();
@@ -148,6 +156,7 @@ export function PixelSnow() {
       viewport?.disconnect();
       theme?.disconnect();
       document.removeEventListener('visibilitychange', onVisibility);
+      motion?.removeEventListener?.('change', onMotion);
     };
   }, []);
   return <canvas ref={ref} className="home-snow" aria-hidden="true" data-testid="home-snow" />;

@@ -6,6 +6,7 @@ afterEach(() => {
   cleanup();
   localStorage.clear();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 it('marks winter from December to February and Christmas week inside it', () => {
@@ -52,6 +53,31 @@ it('repaints the snow in the new tint when the theme switches', async () => {
   await new Promise((resolve) => setTimeout(resolve, 0));
   document.documentElement.classList.toggle('dark');
   expect(fillRect.mock.calls.length).toBeGreaterThan(before);
+});
+
+it('stops and restarts the snow when the reduced-motion setting changes', () => {
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({
+    clearRect: vi.fn(),
+    fillRect: vi.fn(),
+    fillStyle: '',
+    globalAlpha: 1,
+  } as unknown as CanvasRenderingContext2D);
+  let listener: ((event: MediaQueryListEvent) => void) | undefined;
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false,
+    addEventListener: (_: string, next: (event: MediaQueryListEvent) => void) => {
+      listener = next;
+    },
+    removeEventListener: vi.fn(),
+  }));
+  const request = vi.spyOn(window, 'requestAnimationFrame');
+  const cancel = vi.spyOn(window, 'cancelAnimationFrame');
+  render(<PixelSnow />);
+  expect(request).toHaveBeenCalledTimes(1);
+  listener?.({ matches: true } as MediaQueryListEvent);
+  expect(cancel).toHaveBeenCalled();
+  listener?.({ matches: false } as MediaQueryListEvent);
+  expect(request).toHaveBeenCalledTimes(2);
 });
 
 it('keeps Home working where the canvas has no 2D context', () => {
