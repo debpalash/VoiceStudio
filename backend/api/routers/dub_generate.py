@@ -848,49 +848,61 @@ async def dub_generate(job_id: str, req: DubRequest):
                 journal = None
         _ref_hash_memo: dict = {}
         _oom_degraded: set[str] = set()
+        _used_recovery = False
 
         _model_fp_memo: list = []
+        _model_load_proof: list = []
 
         def _model_folder_fingerprint():
-            """Effective OmniVoice checkpoint and selected local model files.
+            """Checkpoint/file proof for engines with immutable load metadata.
 
-            A missing fingerprint for a configured folder, or a failed model
-            lookup, disables reuse rather than guessing at the checkpoint.
+            A display name, engine ID or unacknowledged sidecar configuration
+            cannot prove which weights produced audio. Those render normally.
+            Recheck resident metadata even after memoizing the disk scan: a
+            model can first load while this render is synthesizing a segment.
             """
-            if not _model_fp_memo:
-                try:
-                    from services import local_model_paths
+            try:
+                from services import local_model_paths
 
-                    identity = getattr(backend, "model_identity", None)
-                    selected = identity() if callable(identity) else None
-                    checkpoint = None
-                    if engine_id in ("omnivoice", "omnivoice-subprocess"):
+                if engine_id not in ("omnivoice", "cosyvoice") or getattr(backend, "runs_out_of_process", False):
+                    return True, None, None
+                resident = getattr(backend, "_model", None)
+                loaded_checkpoint = getattr(resident, "_voicestudio_checkpoint", None)
+                if resident is not None and not loaded_checkpoint:
+                    return True, None, None
+                if not _model_fp_memo:
+                    if loaded_checkpoint:
+                        checkpoint = loaded_checkpoint
+                    elif engine_id == "omnivoice":
                         from services.model_manager import resolve_omnivoice_checkpoint
 
                         checkpoint = resolve_omnivoice_checkpoint()
-                        selected = checkpoint
-                    if engine_id == "cosyvoice":
-                        # Its public identity is only a display basename.
-                        # Both loaders resolve the real weights separately.
-                        resolve_folder = getattr(backend, "_resolved_model_dir", None)
-                        folder = resolve_folder() if callable(resolve_folder) else None
-                        if not folder:
-                            raise ValueError("CosyVoice weights directory unavailable")
-                        checkpoint = os.path.realpath(folder)
-                    elif selected:
-                        folder = selected if os.path.isabs(selected) or os.path.isdir(selected) else None
                     else:
-                        folder = local_model_paths.get("tts", engine_id)
+                        resolve_folder = getattr(backend, "_resolved_model_dir", None)
+                        checkpoint = resolve_folder() if callable(resolve_folder) else None
+                        if not checkpoint:
+                            raise ValueError("CosyVoice weights directory unavailable")
+                    folder = checkpoint if os.path.isabs(checkpoint) or os.path.isdir(checkpoint) else None
+                    fp = None
                     result = (False, None, checkpoint)
                     if folder:
-                        fp = local_model_paths._weights_fingerprint(folder)
+                        checkpoint = os.path.realpath(folder)
+                        fp = local_model_paths._weights_fingerprint(checkpoint)
                         files = fp[1] if len(fp) > 1 else None
                         result = (True, repr(files) if isinstance(files, tuple) else None, checkpoint)
-                except Exception as err:  # noqa: BLE001
-                    result = (True, None, None)
-                    logger.debug("model folder fingerprint skipped: %s", type(err).__name__)
-                _model_fp_memo.append(result)
-            return _model_fp_memo[0]
+                    _model_load_proof.append((checkpoint, fp))
+                    _model_fp_memo.append(result)
+                if resident is not None:
+                    checkpoint, fp = _model_load_proof[0]
+                    loaded_folder = os.path.realpath(loaded_checkpoint) if fp is not None else loaded_checkpoint
+                    if loaded_folder != checkpoint or (
+                        fp is not None and getattr(resident, "_voicestudio_weights_fingerprint", None) != fp
+                    ):
+                        return True, None, None
+                return _model_fp_memo[0]
+            except Exception as err:  # noqa: BLE001
+                logger.debug("model folder fingerprint skipped: %s", type(err).__name__)
+                return True, None, None
 
         def _resume_key_for(prepared: dict) -> str | None:
             """Digest of everything that decides this segment's audio, or None."""
@@ -1593,6 +1605,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                 if _recovered_audio is not None:
                     audio_tensor = _recovered_audio
                     _recovered_audio = None
+                    _used_recovery = True
                 elif i in _batched_audio:
                     audio_tensor = _batched_audio.pop(i)
                 else:
@@ -1690,6 +1703,16 @@ async def dub_generate(job_id: str, req: DubRequest):
                 if _recovered_wav is None:
                     audio_tensor = mark_synthetic(audio_tensor, backend.sample_rate,
                                                   context="dub_generate.segment")
+
+                if journal is not None and (_resume_key or _used_recovery):
+                    _validated_key = await _run_journal_io(_resume_key_for, _prepared)
+                    if _used_recovery and (not _validated_key or _validated_key != _resume_key):
+                        # A cold model can load after earlier segments were
+                        # recovered. Never publish those alongside audio from
+                        # different weights; a retry renders the new artifact.
+                        raise RuntimeError("Model artifact changed during dub recovery")
+                    if _validated_key != _resume_key:
+                        _resume_key = None
 
                 seg_wav_path = _staged_seg_path(seg_id)
                 try:

@@ -464,4 +464,104 @@ def test_cosyvoice_actual_weights_change_rerenders(dub, monkeypatch, tmp_path, k
         replacement.write_bytes(b"v2")
         os.utime(replacement, ns=(previous.st_atime_ns, previous.st_mtime_ns))
     dub.run()
-    assert len(dub.generated) == (2 if change == "unchanged" else 4)
+    assert len(dub.generated) == (2 if change == "unchanged" and kind == "inprocess" else 4)
+
+
+@pytest.mark.parametrize("kind", ["voxcpm2", "voxcpm2-sidecar", "display-name"])
+def test_unproven_model_identity_never_records_reusable_speech(dub, monkeypatch, tmp_path, kind):
+    from services.tts_backend import VoxCPM2Backend, SherpaOnnxBackend
+    from engines.voxcpm2_subprocess import VoxCPM2SubprocessBackend
+
+    cls = {"voxcpm2": VoxCPM2Backend, "voxcpm2-sidecar": VoxCPM2SubprocessBackend,
+           "display-name": SherpaOnnxBackend}[kind]
+    identity_backend = cls()
+    _, backend = asyncio.run(dub.dg._resolve_dub_execution())
+    backend.model_identity = identity_backend.model_identity
+
+    async def resolve():
+        return identity_backend.id, backend
+
+    monkeypatch.setattr(dub.dg, "_resolve_dub_execution", resolve)
+    monkeypatch.setenv("OMNIVOICE_VOXCPM_MODEL", "first/checkpoint")
+    _crash_after(dub, 2)
+    assert not list(dub.journal.glob("*.json"))
+    monkeypatch.setenv("OMNIVOICE_VOXCPM_MODEL", "second/checkpoint")
+    dub.run()
+    assert len(dub.generated) == 4
+
+
+@pytest.mark.parametrize("change", [False, True])
+def test_resident_model_fingerprint_must_match_disk_before_journaling(dub, monkeypatch, tmp_path, change):
+    from services import local_model_paths
+
+    folder = tmp_path / "resident"
+    folder.mkdir()
+    weights = folder / "model.pt"
+    weights.write_bytes(b"loaded weights")
+    _, backend = asyncio.run(dub.dg._resolve_dub_execution())
+    backend._model = SimpleNamespace(
+        _voicestudio_checkpoint=str(folder),
+        _voicestudio_weights_fingerprint=local_model_paths._weights_fingerprint(str(folder)),
+    )
+    monkeypatch.setenv("OMNIVOICE_MODEL", str(folder))
+    if change:
+        weights.write_bytes(b"new on-disk weights; resident still old")
+    _crash_after(dub, 2)
+    assert bool(list(dub.journal.glob("*.json"))) is not change
+    dub.run()
+    assert len(dub.generated) == (4 if change else 2)
+
+
+def test_model_loaded_during_synthesis_must_match_recovery_key(dub, monkeypatch, tmp_path):
+    from services import local_model_paths
+
+    folder = tmp_path / "during-load"
+    folder.mkdir()
+    weights = folder / "model.pt"
+    weights.write_bytes(b"old weights")
+    monkeypatch.setenv("OMNIVOICE_MODEL", str(folder))
+    _, backend = asyncio.run(dub.dg._resolve_dub_execution())
+    original_generate = backend.generate
+
+    def generate(**kwargs):
+        if not getattr(backend, "_model", None):
+            weights.write_bytes(b"changed before native loader reads")
+            backend._model = SimpleNamespace(
+                _voicestudio_checkpoint=str(folder),
+                _voicestudio_weights_fingerprint=local_model_paths._weights_fingerprint(str(folder)),
+            )
+        return original_generate(**kwargs)
+
+    backend.generate = generate
+    _crash_after(dub, 2)
+    assert not list(dub.journal.glob("*.json"))
+
+
+def test_model_change_during_load_never_publishes_mixed_recovered_weights(dub, monkeypatch, tmp_path):
+    from services import local_model_paths
+
+    folder = tmp_path / "recovered-before-load"
+    folder.mkdir()
+    weights = folder / "model.pt"
+    weights.write_bytes(b"old weights")
+    monkeypatch.setenv("OMNIVOICE_MODEL", str(folder))
+    _crash_after(dub, 2)
+    _, backend = asyncio.run(dub.dg._resolve_dub_execution())
+    original_generate = backend.generate
+
+    def generate(**kwargs):
+        if not getattr(backend, "_model", None):
+            weights.write_bytes(b"new weights loaded after recovery")
+            backend._model = SimpleNamespace(
+                _voicestudio_checkpoint=str(folder),
+                _voicestudio_weights_fingerprint=local_model_paths._weights_fingerprint(str(folder)),
+            )
+        return original_generate(**kwargs)
+
+    backend.generate = generate
+    events = dub.run()
+    assert not any(event["type"] == "done" for event in events)
+    assert any(event["type"] == "error" for event in events)
+    assert not list(dub.path.glob("seg_en_*.wav"))
+    assert any(event["type"] == "done" for event in dub.run())
+    assert len(dub.generated) == 4

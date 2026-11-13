@@ -86,6 +86,26 @@ def test_opt_in_loads_asr_after_tts(manager, monkeypatch):
     loaded.load_asr_model.assert_called_once_with()
 
 
+def test_local_recovery_identity_is_captured_before_native_load(manager, monkeypatch, tmp_path):
+    from services import local_model_paths
+
+    weights = tmp_path / "model.safetensors"
+    weights.write_bytes(b"before load")
+    monkeypatch.setenv("OMNIVOICE_MODEL", str(tmp_path))
+    loaded, _ = _configure_sync_load(manager, monkeypatch)
+    expected = local_model_paths.loading_fingerprint(str(tmp_path))
+
+    def construct(*_args, **_kwargs):
+        weights.write_bytes(b"changed during native load")
+        return loaded
+
+    monkeypatch.setattr(manager, "_lazy_omnivoice", lambda: types.SimpleNamespace(from_pretrained=construct))
+    assert manager._load_model_sync() is loaded
+    assert loaded._voicestudio_checkpoint == str(tmp_path)
+    assert loaded._voicestudio_weights_fingerprint == expected
+    assert loaded._voicestudio_weights_fingerprint != local_model_paths.loading_fingerprint(str(tmp_path))
+
+
 def test_checkpoint_resolution_preserves_test_sentinel_and_repairs_engine_id(
     manager, monkeypatch
 ):

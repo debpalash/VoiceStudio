@@ -108,7 +108,12 @@ environment overrides, CosyVoice's actual weights directory and local model file
 effect preset are all identical, and only after the audio verifies; anything else, or any problem
 reading the copies, renders the segment normally without an error. Recovery copies never count as
 cached speech: previews and partial regeneration still see a segment only after its track is
-published. Subtitles imported, or a dub published, during transcription replace its result, and
+published. Recovery currently supports in-process OmniVoice and CosyVoice when their
+load-time checkpoint and local-file snapshot can be verified. Sidecars and engines without
+that proof render normally; a display name or configured folder alone is insufficient.
+If different weights load after recovery has begun, the render stops before publication;
+retrying renders the new checkpoint without mixing old speech into the track.
+Subtitles imported, or a dub published, during transcription replace its result, and
 imported cues keep their matched voice references: each transcription writes its references to
 its own folder.
 Interrupted preparation/generation offers Resume, which reads the existing task
