@@ -1068,6 +1068,32 @@ describe('generation queue', () => {
     expect(generateClone).toHaveBeenCalledTimes(1);
   });
 
+  it('lets Cancel all stop a take that waits for an in-flight voice change', async () => {
+    const renders = deferredRenders();
+    const client = new QueryClient();
+    const voice = { id: 'voice-1', name: 'Narrator', ref_audio_path: 'a.wav' } as Profile;
+    client.setQueryData(queryKeys.profiles, [voice]);
+    render(
+      <QueryClientProvider client={client}>
+        <GenerationProvider>
+          <QueueConsumer />
+        </GenerationProvider>
+      </QueryClientProvider>,
+    );
+    patchCloneSettings({ text: 'Line', selectedProfileId: 'voice-1', autoPlay: false });
+    fireEvent.click(screen.getByText('go'));
+    fireEvent.click(screen.getByText('go'));
+    const settled = beginVoiceChange('voice-1');
+    await act(async () => renders[0]!.resolve(take('a')));
+    await waitFor(() => expect(statuses()).toEqual(['done', 'running']));
+    fireEvent.click(screen.getByText('cancel all'));
+    await waitFor(() => expect(statuses()).toEqual(['done', 'cancelled']));
+    // The shared synthesis slot is free again: a new take runs once the change settles.
+    fireEvent.click(screen.getByText('go'));
+    act(() => settled());
+    await waitFor(() => expect(generateClone).toHaveBeenCalledTimes(2));
+  });
+
   it('keeps waiting takes when the first render stores an automatic transcript', async () => {
     const renders = deferredRenders();
     const client = new QueryClient();

@@ -87,16 +87,29 @@ export function voiceChangePending(profileId: string): boolean {
   return [...voiceChanges.values()].includes(profileId);
 }
 
-/** Resolves once no change to this voice is in flight. */
-export function voiceChangesSettled(profileId: string): Promise<void> {
+/**
+ * Resolves once no change to this voice is in flight. Rejects with an
+ * AbortError when `signal` aborts first, so a cancelled take stops waiting.
+ */
+export function voiceChangesSettled(profileId: string, signal?: AbortSignal): Promise<void> {
   const busy = () => voiceChangePending(profileId);
   if (!busy()) return Promise.resolve();
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
+    const done = () => {
+      settledListeners.delete(check);
+      signal?.removeEventListener('abort', onAbort);
+    };
     const check = () => {
       if (busy()) return;
-      settledListeners.delete(check);
+      done();
       resolve();
     };
+    const onAbort = () => {
+      done();
+      reject(new DOMException('Stopped waiting for the voice change', 'AbortError'));
+    };
+    if (signal?.aborted) return onAbort();
     settledListeners.add(check);
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
 }

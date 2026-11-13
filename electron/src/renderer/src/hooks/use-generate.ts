@@ -598,7 +598,7 @@ function useGenerateController(): UseGenerateClone {
           // An edit, lock or unlock still in flight has reached (or may reach) the
           // backend before the cache: wait for it to settle and refresh first.
           if (input.profileId && voiceChangePending(input.profileId))
-            await voiceChangesSettled(input.profileId);
+            await voiceChangesSettled(input.profileId, controller.signal);
           // A voice replaced, re-locked, restyled or re-transcribed while the take waited
           // would render a voice the user never queued: skip it and say why.
           const current = queryClient
