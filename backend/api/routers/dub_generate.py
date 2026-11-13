@@ -26,7 +26,7 @@ from services.tts_backend import (
     seed_engine_call,
 )
 from services.dub_batching import batch_timeout_s, native_batch_width
-from services.audio_dsp import apply_mastering, normalize_audio, apply_effects_chain, get_effect_chain, trim_speech_padding
+from services.audio_dsp import MASTERING_CHAIN, apply_mastering, normalize_audio, apply_effects_chain, get_effect_chain, trim_speech_padding
 from services.audio_io import atomic_save_wav, audio_info, _safe_torchaudio_save
 from services.ffmpeg_utils import (
     find_ffmpeg,
@@ -40,7 +40,7 @@ from services.ffmpeg_utils import (
 from services.rvc import apply_rvc, is_enabled as rvc_is_enabled
 from services.incremental import segment_fingerprint, fit_fingerprint
 from services.fit_planner import FitParams, plan_fit
-from services.watermark import mark_synthetic
+from services.watermark import mark_synthetic, will_mark
 from services import dub_pipeline, dub_resume
 from services.speaker_clone import auto_profile_id
 from api.routers.dub_core import _get_job, _safe_lang_or_400, _save_job
@@ -828,8 +828,35 @@ async def dub_generate(job_id: str, req: DubRequest):
         _ref_hash_memo: dict = {}
         _oom_degraded: set[str] = set()
 
+        _model_fp_memo: list = []
+
+        def _model_folder_fingerprint():
+            """Fingerprint of the engine's user-chosen local model folder.
+
+            ``(False, None)`` when the engine has no such folder (skipped
+            silently); ``(True, None)`` when it has one that cannot be
+            fingerprinted, which disables reuse rather than guess.
+            """
+            if not _model_fp_memo:
+                result = (False, None)
+                try:
+                    from services import local_model_paths
+
+                    folder = local_model_paths.get("tts", engine_id)
+                    if folder:
+                        fp = local_model_paths._weights_fingerprint(folder)
+                        files = fp[1] if len(fp) > 1 else None
+                        result = (True, repr(files) if isinstance(files, tuple) else None)
+                except Exception as err:  # noqa: BLE001
+                    logger.debug("model folder fingerprint skipped: %s", err)
+                _model_fp_memo.append(result)
+            return _model_fp_memo[0]
+
         def _resume_key_for(prepared: dict) -> str | None:
             """Digest of everything that decides this segment's audio, or None."""
+            has_folder, folder_fp = _model_folder_fingerprint()
+            if has_folder and folder_fp is None:
+                return None
             ref_audio = prepared.get("ref_audio")
             ref_hash = dub_resume.hash_reference_file(ref_audio, _ref_hash_memo)
             if ref_audio and ref_hash is None:
@@ -842,6 +869,14 @@ async def dub_generate(job_id: str, req: DubRequest):
                 "track_lang": lang_code,
                 "voice_match": voice_match,
                 "ref_sha256": ref_hash,
+                # The saved audio carries (or lacks) the provenance mark and
+                # the mastering/effect chain it was rendered with (#1169).
+                "watermark": bool(will_mark()),
+                "mastering": [
+                    MASTERING_CHAIN,
+                    get_effect_chain(prepared.get("effect_preset") or "broadcast"),
+                ],
+                "model_folder": folder_fp,
                 **{
                     field: prepared.get(field)
                     for field in (

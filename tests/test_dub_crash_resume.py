@@ -222,3 +222,44 @@ def test_job_deleted_mid_render_leaves_no_recovery_copies(dub, monkeypatch):
     monkeypatch.setitem(dub_pipeline._withdrawn_jobs, "job", 0.0)
     dub.dg._drop_resume_journal_if_withdrawn("job", "en")
     assert not (dub.path / ".resume").exists()
+
+
+@pytest.mark.parametrize("marked_at_crash", [False, True])
+def test_watermark_state_change_rerenders(dub, monkeypatch, marked_at_crash):
+    monkeypatch.setattr(dub.dg, "will_mark", lambda: marked_at_crash)
+    _crash_after(dub, 2)
+    monkeypatch.setattr(dub.dg, "will_mark", lambda: not marked_at_crash)
+    dub.run()
+    assert len(dub.generated) == 4
+
+
+def test_same_watermark_state_still_resumes(dub, monkeypatch):
+    monkeypatch.setattr(dub.dg, "will_mark", lambda: True)
+    _crash_after(dub, 2)
+    dub.run()
+    assert len(dub.generated) == 2
+
+
+def test_mastering_or_effect_chain_change_rerenders(dub, monkeypatch):
+    _crash_after(dub, 2)
+    monkeypatch.setattr(dub.dg, "get_effect_chain", lambda _: [{"type": "reverb"}])
+    dub.run()
+    assert len(dub.generated) == 4
+
+
+def test_local_model_folder_change_rerenders(dub, monkeypatch, tmp_path):
+    from services import local_model_paths
+
+    folder = tmp_path / "weights"
+    folder.mkdir()
+    (folder / "model.safetensors").write_bytes(b"v1")
+    monkeypatch.setattr(local_model_paths, "get", lambda family, engine: str(folder))
+    _crash_after(dub, 2)
+    dub.run()
+    assert len(dub.generated) == 2  # unchanged folder resumes
+    dub.state["fail_on_call"] = 3
+    dub.run()
+    dub.state["fail_on_call"] = None
+    (folder / "model.safetensors").write_bytes(b"version two")
+    dub.run()
+    assert len(dub.generated) == 4
