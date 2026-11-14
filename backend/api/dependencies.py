@@ -64,12 +64,18 @@ def _delegated_presents_admin_credential(request) -> bool:
     :func:`_request_presents_admin_credential` reads the canonical principal,
     which resolves a loopback peer to ``LOOPBACK`` before any credential is
     looked at — so it can never approve the MCP bridge's forged 127.0.0.1 peer.
-    For a delegated request the credential itself has to be the test, which is
-    exactly what :func:`core.auth.presents_valid_credential` answers.
+    For a delegated request use the credential's own capability and transport,
+    including cookie CSRF for mutations, rather than the forged peer's trust.
     """
-    from core.auth import presents_valid_credential
+    from core.auth import credential_principal
 
-    return presents_valid_credential(request)
+    principal = credential_principal(request)
+    if principal is None:
+        return False
+    if (principal.transport in {CredentialTransport.COOKIE, CredentialTransport.LEGACY_COOKIE}
+            and str(getattr(request, "method", "GET")).upper() not in SAFE_HTTP_METHODS):
+        return cookie_csrf_allowed(request)
+    return True
 
 
 def _server_mode() -> bool:

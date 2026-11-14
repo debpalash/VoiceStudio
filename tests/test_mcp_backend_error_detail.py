@@ -149,6 +149,19 @@ def test_redirect_is_a_failure_not_empty_audio():
     assert raised.value.response is redirect
 
 
+@pytest.mark.parametrize('status', [302, 502])
+def test_plain_status_fallback_never_echoes_a_forwarded_query_credential(status):
+    import mcp_server
+    secret = 'QUERY_MASTER_MUST_NOT_REACH_AGENT_CONTEXT'
+    request = httpx.Request('GET', f'https://backend.example/profiles?api_key={secret}')
+    response = httpx.Response(status, content=b'proxy unavailable', request=request)
+    with pytest.raises(httpx.HTTPStatusError) as raised:
+        mcp_server._raise_for_backend_status(response)
+    assert secret not in str(raised.value)
+    assert str(status) in str(raised.value)
+    assert raised.value.response is response
+
+
 @pytest.mark.parametrize(
     ("detail", "expected"),
     [

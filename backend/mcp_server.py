@@ -177,10 +177,17 @@ def _raise_for_backend_status(response) -> None:
     not an empty success."""
     if response.is_success:
         return
+    import httpx
     detail = _backend_error_detail(response) if response.is_error else None
     if not detail:
-        response.raise_for_status()
-    import httpx
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as error:
+            # Legacy query authentication remains a URL channel. Never let a
+            # proxy/redirect error copy that credential into an agent result.
+            raise httpx.HTTPStatusError(
+                _public_error_text(str(error)), request=error.request, response=error.response,
+            ) from None
 
     raise httpx.HTTPStatusError(
         f"VoiceStudio returned HTTP {response.status_code} for "
@@ -632,7 +639,8 @@ def mcp_caller_is_privileged(request) -> bool:
     position. Anything else must prove the master API key or an admin session
     through a channel the backend itself honours (``Authorization: Bearer``,
     ``?api_key=``, the ``ov_session`` cookie, or the legacy ``ov_key`` cookie),
-    which is what :func:`core.auth.presents_valid_credential` decides. The share
+    which is what :func:`core.auth.credential_principal` decides. Cookie-based
+    tool calls also require the inbound Origin and CSRF proof. The share
     PIN does not count: it is a 6-digit consumption credential (#4128), so a
     PIN-holding LAN guest lands in the delegated tier below instead of
     inheriting the loopback tier.
@@ -647,9 +655,17 @@ def mcp_caller_is_privileged(request) -> bool:
     if request is _UNAVAILABLE_CALLER:
         return False
     try:
-        from core.auth import presents_valid_credential
+        from core.auth import CredentialTransport, credential_principal
+        from core.csrf import cookie_csrf_allowed
 
-        return presents_valid_credential(request)
+        principal = credential_principal(request)
+        if principal is None:
+            return False
+        if principal.transport in {CredentialTransport.COOKIE, CredentialTransport.LEGACY_COOKIE}:
+            # tools/call is an HTTP POST that can mutate the backend. Never
+            # turn an ambient cookie into the bridge's local operator tier.
+            return cookie_csrf_allowed(request)
+        return True
     except Exception:
         # Never let the privilege probe raise inside a tool call — and never
         # fail open: an unresolved caller is delegated, not privileged.
@@ -677,6 +693,18 @@ def _delegated_request_headers(request) -> dict[str, str]:
     except Exception:  # pragma: no cover — the constant is part of the module
         header_name = _DELEGATED_CALLER_HEADER
     return {header_name: "1"}
+
+
+def _http_backend_params(request) -> dict[str, str]:
+    """Keep the legacy query channel master-only; do not promote it to Bearer.
+
+    The caller already selected URL authentication. Native clients should use
+    Authorization instead, avoiding keys in request/access-log URLs.
+    """
+    if request is None or request is _UNAVAILABLE_CALLER:
+        return {}
+    key = request.query_params.get("api_key", "").strip()
+    return {"api_key": key} if key else {}
 
 
 def _http_backend_headers(request, base_url: str) -> dict[str, str]:
@@ -710,11 +738,6 @@ def _http_backend_headers(request, base_url: str) -> dict[str, str]:
             cookies[name] = value
     if authorization_credential_present(request):
         result["Authorization"] = authorization_header(request)
-    elif query.get("api_key", "").strip():
-        # Preserve the master-key-only query channel without putting the key
-        # into another request URL or allowing a lower-priority session cookie.
-        cookies.pop("ov_session", None)
-        cookies["ov_key"] = query["api_key"].strip()
     if cookies:
         result["Cookie"] = cookies.output(header="", sep=";").strip()
     pin = request.headers.get("x-omnivoice-pin", "").strip() or query.get("pin", "").strip()
@@ -723,7 +746,12 @@ def _http_backend_headers(request, base_url: str) -> dict[str, str]:
     csrf = request.headers.get("x-voicestudio-csrf")
     if csrf:
         result["X-VoiceStudio-CSRF"] = csrf
-    if any(name in result for name in ("Authorization", "Cookie", "X-OmniVoice-Pin")):
+    origin = request.headers.get("origin")
+    if origin:
+        # Preserve browser proof, without inventing an approved origin or a
+        # CSRF marker for a native caller. The destination validates both.
+        result["Origin"] = origin
+    if any(name in result for name in ("Authorization", "Cookie", "X-OmniVoice-Pin")) or _http_backend_params(request):
         target = urlsplit(base_url)
         host = (target.hostname or "").strip("[]")
         try:
@@ -806,7 +834,8 @@ def create_mcp_server(app=None):
             )
         base = _api_base()
         return httpx.AsyncClient(
-            base_url=base, timeout=timeout, headers=_http_backend_headers(request, base)
+            base_url=base, timeout=timeout, headers=_http_backend_headers(request, base),
+            params=_http_backend_params(request),
         )
 
     async def _api_get(path: str):

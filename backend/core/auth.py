@@ -522,27 +522,34 @@ def resolve_principal(
     )
 
 
-def presents_valid_credential(
+def credential_principal(
     connection,
     *,
     store: AdminSessionStore | None = None,
-) -> bool:
-    """Whether the request carries a valid API key or admin session.
+) -> AuthPrincipal | None:
+    """Validate the selected credential independently of peer/attached trust.
 
-    Independent of network position: a loopback peer is resolved as LOOPBACK
-    before credentials are looked at, but a reverse proxy on this machine
-    forwards remote clients that authenticate themselves. The share PIN does
-    not count: it is short enough to guess, and a loopback request keeps
-    loopback rights, so a page re-pointing its domain at 127.0.0.1 could
-    otherwise try PINs until one passes. A WebSocket ticket is consumed by
-    this check, so call it at most once per handshake.
+    Delegated loopback callers need both credential capability and transport
+    (for cookie CSRF checks), without inheriting a LOOPBACK principal. This
+    preserves canonical precedence and query-master-only semantics. A WebSocket
+    ticket is consumed here, so call at most once per handshake.
     """
     if store is None:
         store = _active_admin_session_store()
     candidate = _credential_candidate(connection)
     if candidate is not None:
-        return _candidate_principal(connection, candidate, remote_api_key(), store) is not None
-    return False
+        return _candidate_principal(connection, candidate, remote_api_key(), store)
+    return None
+
+
+def presents_valid_credential(connection, *, store: AdminSessionStore | None = None) -> bool:
+    """Whether an explicit API key/session/ticket proves authority, not a PIN.
+
+    Independent of network position. Callers authorizing cookie-authenticated
+    mutations must also check CSRF; credential_principal exposes the selected
+    transport without changing or reusing an attached loopback principal.
+    """
+    return credential_principal(connection, store=store) is not None
 
 
 def principal_for(

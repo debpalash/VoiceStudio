@@ -79,7 +79,7 @@ http://localhost:3900/mcp/
 
 This local HTTP connection supports consumption tools without an administrator
 key. Creating or changing saved profiles requires an API key or administrator
-session; use the stdio configuration below for implicit local operator access.
+session, including when you connect through the stdio shim below.
 
 Keep the trailing slash: `/mcp/` works on every VoiceStudio version. Current
 backends also answer bare `/mcp` directly (every Streamable HTTP method —
@@ -196,6 +196,12 @@ so the per-agent voice binding works the same as the HTTP path. It waits for
 the backend to be up, relays JSON-RPC, and exits cleanly when the client
 closes.
 
+The direct local stdio server is `uv run python -m backend.mcp_server`. Its MCP
+configuration uses `backend.mcp_server` in `args` and speaks stdio directly;
+confirmed stdio sessions retain local operator access and may use the configured
+backend key. The `backend.mcp_shim` configuration above forwards to HTTP and
+retains HTTP authentication requirements.
+
 ## Per-agent voices
 
 Each agent identifies itself with a **client id**. Bind a client id to a voice
@@ -237,6 +243,14 @@ the MCP process's configured operator key. Only a confirmed local stdio session
 may use that configured key. Credentials are forwarded only to HTTPS or
 loopback HTTP destinations; redirects are not followed. Unrelated cookies and
 headers are not forwarded.
+
+Native MCP clients should send `Authorization: Bearer <credential>` for an API
+key or administrator session. Legacy `?api_key=` remains a master-key-only query
+credential, with the original precedence over cookies; URL credentials can
+appear in proxy/access logs, so prefer the header. Browser cookie calls must
+carry their existing allowed `Origin` and `X-VoiceStudio-CSRF: 1` proof. The
+bridge forwards that proof for the destination to verify; it does not invent
+proof or turn an ambient cookie into local administrator access.
 
 ## Disabling
 

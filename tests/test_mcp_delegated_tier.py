@@ -26,6 +26,8 @@ import pytest
 from fastapi import HTTPException
 from starlette.requests import Request
 
+CSRF_PROOF = {'origin': 'http://127.0.0.1:3900', 'x-voicestudio-csrf': '1'}
+
 
 def _dependencies():
     # Resolve at call time: other suites intentionally swap ``api.*`` modules
@@ -153,7 +155,7 @@ def test_delegated_loopback_passes_with_the_legacy_master_cookie(monkeypatch):
     monkeypatch.setenv("OMNIVOICE_SERVER_MODE", "1")
     monkeypatch.setenv("OMNIVOICE_API_KEY", "s3cret")
     _dependencies().check_admin(
-        _request(headers=_admin_marker(), cookies={"ov_key": "s3cret"})
+        _request(headers={**_admin_marker(), **CSRF_PROOF}, cookies={"ov_key": "s3cret"})
     )  # must not raise
 
 
@@ -177,7 +179,7 @@ def test_delegated_loopback_passes_with_a_valid_admin_session_cookie(monkeypatch
     try:
         issued = admin_session_store.issue("s3cret")
         _dependencies().check_admin(
-            _request(headers=_admin_marker(), cookies={"ov_session": issued.token})
+            _request(headers={**_admin_marker(), **CSRF_PROOF}, cookies={"ov_session": issued.token})
         )  # must not raise
     finally:
         admin_session_store.clear()
@@ -226,7 +228,7 @@ def test_caller_with_a_bearer_admin_key_is_privileged(monkeypatch):
 def test_caller_with_the_legacy_master_cookie_is_privileged(monkeypatch):
     """``ov_key`` is the legacy master-key cookie the backend still honours."""
     monkeypatch.setenv("OMNIVOICE_API_KEY", "s3cret")
-    assert _caller_is_privileged({"cookie": "ov_key=s3cret"}) is True
+    assert _caller_is_privileged({"cookie": "ov_key=s3cret", **CSRF_PROOF}) is True
 
 
 def test_caller_with_a_valid_admin_session_cookie_is_privileged(monkeypatch):
@@ -237,7 +239,7 @@ def test_caller_with_a_valid_admin_session_cookie_is_privileged(monkeypatch):
     try:
         issued = admin_session_store.issue("s3cret")
         assert (
-            _caller_is_privileged({"cookie": f"ov_session={issued.token}"}) is True
+            _caller_is_privileged({"cookie": f"ov_session={issued.token}", **CSRF_PROOF}) is True
         )
     finally:
         admin_session_store.clear()
