@@ -6,6 +6,7 @@ import {
   modelInstallPollInterval,
   type ModelInstallJobsResponse,
 } from './use-model-install-sync';
+import { useDownloadActivity } from '@/components/app-shell/download-activity';
 
 const mock = vi.hoisted(() => ({
   api: vi.fn(),
@@ -98,4 +99,57 @@ it('does not report an install completed because an invalid response arrived', a
     await client.refetchQueries({ queryKey: ['model-install-jobs'] });
   });
   await waitFor(() => expect(client.getQueryState(['engines'])?.isInvalidated).toBe(true));
+});
+
+it.each([
+  { error: { message: 'failed' } },
+  { docs_topic: {} },
+  { phase: [] },
+  { bytes_done: 'many' },
+  { rate: Number.POSITIVE_INFINITY },
+])('protects a real download consumer from malformed job fields %j', async (fields) => {
+  const body = { jobs: [{ repo_id: 'model', state: 'failed', ...fields }] };
+  mock.api.mockResolvedValue(body);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(['model-install-jobs'], body);
+  function Downloads() {
+    const activity = useDownloadActivity();
+    return <span>{activity.items.length}</span>;
+  }
+  expect(() =>
+    render(
+      <QueryClientProvider client={client}>
+        <Downloads />
+      </QueryClientProvider>,
+    ),
+  ).not.toThrow();
+  await waitFor(() => expect(client.getQueryState(['model-install-jobs'])?.status).toBe('error'));
+});
+
+it('accepts nullable optional fields emitted by the Python backend', async () => {
+  const body = {
+    jobs: [
+      {
+        repo_id: 'model',
+        state: 'failed',
+        error: null,
+        docs_topic: null,
+        eta_seconds: null,
+        total_bytes: null,
+        bytes_done: 0,
+      },
+    ],
+  };
+  mock.api.mockResolvedValue(body);
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  function Downloads() {
+    return <span>{useDownloadActivity().items.length}</span>;
+  }
+  const screen = render(
+    <QueryClientProvider client={client}>
+      <Downloads />
+    </QueryClientProvider>,
+  );
+  await waitFor(() => expect(screen.getByText('1')).toBeTruthy());
+  expect(client.getQueryState(['model-install-jobs'])?.status).toBe('success');
 });
