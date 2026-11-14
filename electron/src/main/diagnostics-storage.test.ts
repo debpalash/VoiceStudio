@@ -84,7 +84,7 @@ vi.mock('node:fs/promises', async (original) => {
   };
 });
 import { DiagnosticReports, diagnosticDestination } from './diagnostics';
-import { MAX_RECORDS } from './diagnostics-schema';
+import { MAX_RECORDS, TTL_MS } from './diagnostics-schema';
 let root: string | undefined;
 let reports: DiagnosticReports | undefined;
 afterEach(async () => {
@@ -139,6 +139,17 @@ it('recovers a recent crash after more than a week of active opted-in runtime', 
   const started = now;
   now += 8 * 24 * 60 * 60 * 1000;
   await reports.flush();
+  await writeFile(
+    join(initial.root, 'main-process-errors.json'),
+    JSON.stringify([
+      {
+        at: new Date(started + 1000).toISOString(),
+        version: '1.0.0',
+        origin: 'uncaughtException',
+        detail: 'TypeError: expired journal detail',
+      },
+    ]),
+  );
   const marker = await readFile(join(options.directory, 'session.json'));
   await reports.close();
   await writeFile(join(options.directory, 'session.json'), marker);
@@ -156,6 +167,7 @@ it('recovers a recent crash after more than a week of active opted-in runtime', 
     app_version: '1.0.0',
   });
   const saved = JSON.parse(marker.toString('utf8'));
+  expect(JSON.parse(String(initial.send.mock.calls[0][1]?.body)).ts).toBe(saved.timestamp_ms);
   expect(saved.started_at_ms).toBe(started);
   expect(saved.timestamp_ms).toBe(now - 1);
 });
@@ -191,8 +203,49 @@ it('keeps the session start for journal correlation while refreshing its livenes
   expect(initial.send).toHaveBeenCalledOnce();
   const body = JSON.parse(String(initial.send.mock.calls[0][1]?.body));
   expect(body.props).toMatchObject({ reason: 'unhandled_exception', error_type: 'TypeError' });
+  expect(body.ts).toBe(now - 59_001);
   expect(JSON.stringify(body)).not.toContain('private words');
 });
+
+it.each([false, true])(
+  'expires recovered evidence at its original time (journal=%s)',
+  async (journal) => {
+    const initial = await create(false);
+    let now = 1_794_640_000_000;
+    await initial.reports.close();
+    const options = { ...initial.options, now: () => now };
+    reports = new DiagnosticReports(options);
+    await reports.initialize();
+    await reports.setConsent(true);
+    const journalAt = now + 1000;
+    if (journal)
+      await writeFile(
+        join(initial.root, 'main-process-errors.json'),
+        JSON.stringify([
+          {
+            at: new Date(journalAt).toISOString(),
+            version: '1.0.0',
+            origin: 'uncaughtException',
+            detail: 'TypeError: private words',
+          },
+        ]),
+      );
+    now += 60_000;
+    await reports.flush();
+    const heartbeatAt = now;
+    const marker = await readFile(join(options.directory, 'session.json'));
+    await reports.close();
+    await writeFile(join(options.directory, 'session.json'), marker);
+    now += 2 * 24 * 60 * 60 * 1000;
+    reports = new DiagnosticReports(options);
+    await reports.initialize();
+    expect(reports.status().pending_count).toBe(1);
+    now = (journal ? journalAt : heartbeatAt) + TTL_MS + 1;
+    await reports.flush();
+    expect(initial.send).not.toHaveBeenCalled();
+    expect(reports.status().pending_count).toBe(0);
+  },
+);
 
 it('never refreshes a withdrawn grant or recovers a genuinely stale liveness marker', async () => {
   const initial = await create(false);

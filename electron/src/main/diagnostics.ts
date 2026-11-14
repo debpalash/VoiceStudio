@@ -807,6 +807,7 @@ export class DiagnosticReports {
         stage: 'startup',
         reason: 'unclean_exit',
       };
+      let evidenceAt = marker.timestamp_ms as number;
       const previousVersion =
         typeof marker.app_version === 'string'
           ? marker.app_version
@@ -839,11 +840,13 @@ export class DiagnosticReports {
                 r.version === previousVersion &&
                 typeof r.detail === 'string' &&
                 at >= (startedAt as number) &&
+                at >= this.now() - TTL_MS &&
                 at <= this.now() &&
                 r.origin === 'uncaughtException'
               );
             }) as Record<string, unknown> | undefined;
           if (recent) {
+            evidenceAt = Date.parse(recent.at as string);
             const error = new Error();
             error.name = /^([A-Za-z]+Error):/.exec(String(recent.detail))?.[1] ?? 'OtherError';
             error.stack = String(recent.detail).slice(0, 32_768);
@@ -869,7 +872,8 @@ export class DiagnosticReports {
         this.add({
           version: 1,
           id: id(),
-          timestamp_ms: this.now(),
+          // Recovery must not renew the retention window of prior evidence.
+          timestamp_ms: evidenceAt,
           epoch,
           props,
         });

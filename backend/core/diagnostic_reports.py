@@ -255,6 +255,11 @@ class Reporter:
         self.intake = _CaptureQueue(maxsize=64)
         self.acks = _CaptureQueue(maxsize=64)
         self.ack_lock = threading.Lock()
+        # This gate protects only cached authority, never filesystem work.
+        self.consent_revision = 0
+        self.pending_withdrawal = None
+        self.consent_retry_at = 0
+        self.available = bool(self.managed)
         self.stop = threading.Event()
         self.enabled = False
         self.consent_failed = False
@@ -341,6 +346,8 @@ class Reporter:
             except queue.Full:
                 self.dropped += 1
         except Exception:
+            # An uninspectable failure is dropped; never fall back to its raw
+            # message or let optional diagnostic projection interrupt the app.
             pass
         return False
 
@@ -378,6 +385,8 @@ class Reporter:
 
     def refresh(self):
         with self.lock:
+            with self.ack_lock:
+                revision = self.consent_revision
             hard_killed = self._hard_killed()
             data = self._consent()
             if hard_killed and not self.managed and data.get('enabled') is True:
@@ -388,6 +397,9 @@ class Reporter:
                 except OSError:
                     pass
                 data = self._consent()
+            with self.ack_lock:
+                if revision != self.consent_revision:
+                    return
             epoch, profile = data.get('epoch'), data.get('profile_id')
             valid = data.get('enabled') is True and isinstance(epoch,str) and _HEX.fullmatch(epoch) and isinstance(profile,str) and _PROFILE.fullmatch(profile)
             enabled = bool(valid and not hard_killed and not self.consent_failed)
@@ -412,8 +424,13 @@ class Reporter:
                     while not self.acks.empty():
                         try:self.acks.get_nowait()
                         except queue.Empty:break
-                    self.epoch, self.profile = epoch if valid else None, profile if valid else None
-            self.enabled = enabled and self.schema is not None
+                    if revision == self.consent_revision:
+                        self.epoch, self.profile = epoch if valid else None, profile if valid else None
+            with self.ack_lock:
+                # A read begun before OFF cannot publish its old grant after
+                # withdrawal has closed the independent memory-only gate.
+                if revision == self.consent_revision and not self.consent_failed:
+                    self.enabled = enabled and self.schema is not None
 
     def _files(self):
         records = []
@@ -556,7 +573,7 @@ class Reporter:
                 # storage retry can establish its age, owner and consent epoch.
                 raise
             except (ValueError, TypeError, AttributeError, OverflowError):
-                pass
+                pass  # Proven malformed evidence can be replaced; unread IO cannot.
         _atomic(path, {'version':1,'epoch':self.epoch,'pid':os.getpid(),'started_at':self.started,'last_active_at':now,'app_version':self.app_version})
         self.marker_owned = True
         self.marker_active_at = now
@@ -581,6 +598,12 @@ class Reporter:
             self.marker_owned = False
 
     def _tick(self):
+        pending = self.pending_withdrawal
+        if pending is not None and time.monotonic() >= self.consent_retry_at:
+            try:
+                self._commit_consent(False, pending)
+            except OSError:
+                self.consent_retry_at = time.monotonic()+60
         self.refresh()
         if not self.enabled:
             self._purge()
@@ -607,22 +630,32 @@ class Reporter:
         records = self._persist_intake()
         if records is None:
             return
-        if self.managed:
+        if self.managed or not self.enabled:
             return
         self.pending = len(records)
         if not self.transport:
             destination = _diagnostic_destination()
             if destination:
                 from core.analytics_transport import SupermetryTransport
-                epoch = self.epoch
-                self.transport = SupermetryTransport(destination,lambda:self.enabled and self.epoch == epoch and not self.stop.is_set() and not self._hard_killed(),on_result=lambda identity,status:self._delivery_result(epoch,identity,status))
-        if self.transport:
+                with self.ack_lock:
+                    if self.enabled and self.epoch:
+                        epoch = self.epoch
+                        self.transport = SupermetryTransport(destination,lambda:self.enabled and self.epoch == epoch and not self.stop.is_set() and not self._hard_killed(),on_result=lambda identity,status:self._delivery_result(epoch,identity,status))
+        with self.ack_lock:
+            transport, epoch, profile = self.transport, self.epoch, self.profile
+        if transport:
             for record in records:
                 identity = record['id']
                 if identity in self.inflight or self.retry_at.get(identity,0) > time.monotonic():
                     continue
-                safe = validate_record(record,self.epoch,self.schema)
-                if self.transport.capture('diagnostic_report',safe['props'],self.profile,path='/diagnostics',event_id=identity,timestamp_ms=safe['timestamp_ms']):
+                if not self.enabled or self.epoch != epoch or self.transport is not transport:
+                    return
+                safe = validate_record(record,epoch,self.schema)
+                if not self.enabled or self.epoch != epoch or self.transport is not transport:
+                    return
+                # A withdrawal after this check stops the detached transport;
+                # its own cached authority check also refuses queued sends.
+                if transport.capture('diagnostic_report',safe['props'],profile,path='/diagnostics',event_id=identity,timestamp_ms=safe['timestamp_ms']):
                     self.inflight[identity] = True
 
     def _delivery_result(self, epoch, identity, status):
@@ -656,32 +689,63 @@ class Reporter:
 
     def status(self):
         with self.lock:
-            hard_killed = self._hard_killed()
             # Availability describes configuration, independently of consent or
             # transport creation. Resolve only local configuration here so the
             # first source/Docker settings response can offer an explicit choice.
             available = bool(self.managed)
             if not self.managed:
                 available = bool(_diagnostic_destination())
-            return {'enabled':self.enabled and not hard_killed,'opted_in':self.enabled and not hard_killed,'available':available and not _killed(),'prompted':self.prompted,'externally_managed':bool(self.managed),'pending_count':self.pending,'dropped_count':self.dropped,'grant_epoch':self.epoch if self.enabled and not hard_killed else None}
+            self.available = available
+            return self._cached_status()
+
+    def _cached_status(self):
+        hard_killed = self._hard_killed()
+        return {'enabled':self.enabled and not hard_killed,'opted_in':self.enabled and not hard_killed,'available':self.available and not _killed(),'prompted':self.prompted,'externally_managed':bool(self.managed),'pending_count':self.pending,'dropped_count':self.dropped,'grant_epoch':self.epoch if self.enabled and not hard_killed else None}
 
     def consent(self, enabled):
         if self.managed:
             raise PermissionError('Desktop controls diagnostic consent')
-        from core import prefs
-        with self.lock:
-            if enabled and _killed():
+        if enabled and _killed():
+            with self.lock:
                 self.refresh()
                 return self.status()
-            if enabled and self.enabled and not self.kill_observed:
-                return self.status()
-            # A persistence failure must leave this process closed, rather
-            # than letting the worker restore an older enabled preference.
+        with self.ack_lock:
+            if enabled and self.enabled and not self.kill_observed and not _killed():
+                return self._cached_status()
+            self.consent_revision += 1
+            revision = self.consent_revision
             self.enabled = False
+            self.epoch = self.profile = None
             self.consent_failed = True
-            if self.transport:
-                self.transport.shutdown()
-                self.transport = None
+            self.prompted = True
+            self.pending_withdrawal = revision if not enabled else None
+            self.consent_retry_at = 0
+            transport, self.transport = self.transport, None
+            while not self.acks.empty():
+                try:self.acks.get_nowait()
+                except queue.Empty:break
+        if transport:
+            transport.shutdown()
+        # OFF never waits behind worker-owned reads/writes. The existing worker
+        # durably retries the same choice; cached authority stays closed meanwhile.
+        if not enabled and not self.lock.acquire(blocking=False):
+            return self._cached_status()
+        if not enabled:
+            try:
+                return self._commit_consent(False, revision)
+            finally:
+                self.lock.release()
+        with self.lock:
+            return self._commit_consent(True, revision)
+
+    def _commit_consent(self, enabled, revision):
+        from core import prefs
+        with self.lock:
+            if revision != self.consent_revision:
+                return self._cached_status()
+            if enabled and _killed():
+                self.pending_withdrawal = revision
+                enabled = False
             if not enabled:
                 # Keep withdrawal durable even if replacing the shared prefs
                 # fails. This private tombstone contains no old grant or ID.
@@ -693,12 +757,20 @@ class Reporter:
                 data = prefs._load()
                 data.update(diagnostics_enabled=enabled,diagnostics_prompted=True,diagnostics_epoch=uuid.uuid4().hex,diagnostics_profile_id='install_'+uuid.uuid4().hex)
                 prefs._save(data)
+            with self.ack_lock:
+                if revision != self.consent_revision:
+                    return self._cached_status()
             if enabled:
                 # Removing a durable revocation is allowed only after a new
                 # explicit grant has been saved. Failure stays closed.
                 (self.root / 'revoked.json').unlink(missing_ok=True)
                 self.kill_observed = False
-            self.consent_failed = False
+            with self.ack_lock:
+                if revision != self.consent_revision:
+                    return self._cached_status()
+                self.consent_failed = False
+                self.pending_withdrawal = None
+                self.consent_retry_at = 0
             try:
                 self._purge()
             except OSError:

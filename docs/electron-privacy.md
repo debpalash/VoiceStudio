@@ -59,8 +59,10 @@ network delivery or flush a crash dump.
 The durable queue is limited to 64 records and 512 KiB per installation, expires
 after seven days, coalesces repeated failures and uses bounded retries with
 stable report IDs. Desktop allocates that total between main and the Python
-inbox. Turning reports off stops delivery immediately, cancels active transport,
-invalidates the consent epoch and purges queued reports. A new opt-in creates a
+inbox. Recovered crashes retain the original journal or heartbeat timestamp;
+restarting does not extend their retention. Turning reports off stops delivery
+immediately, cancels active transport, invalidates the consent epoch and purges
+queued reports. A new opt-in creates a
 new identity; old queues and pre-consent crash history do not become eligible.
 Reopening a saved failed job only displays its old error; it does not create a
 new report under a later consent choice. Resumed operations report only failures
@@ -71,6 +73,11 @@ A failed consent write is shown with Retry and leaves the current process off;
 revocation also removes the previous grant or writes a private revocation marker
 where storage permits, so a failed replacement does not restore an old opt-in
 after restart. Persistent storage failures remain visible until retried.
+In source/Docker builds, switching off closes in-memory permission before waiting
+on storage. If the storage worker is busy, it persists the disabled choice and
+cleans old files when storage resumes; failed persistence retries every minute.
+An interrupted filesystem operation cannot guarantee durable withdrawal before
+that write completes, but it cannot reopen permission in the running process.
 
 `OMNIVOICE_DIAGNOSTICS_DISABLED` or `OMNIVOICE_ANALYTICS_DISABLED` set to
 `1`, `true`, `yes` or `on` disables automatic reports.
