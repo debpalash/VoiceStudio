@@ -588,11 +588,11 @@ async def convert_speech(
             if not source_duration_s and segments:
                 source_duration_s = max((s.get("end", 0) or 0) for s in segments) or None
 
-        # ── Same text choke point as /generate: engine-agnostic normalization
-        # (numbers→words, junk strip) on the fully resolved language.
-        from services.text_normalization import normalize_for_tts
+        # Use the shared speech-text ordering after ASR cleanup and language
+        # resolution, scoped to the target saved voice.
+        from services.pronunciation import prepare_speech_text
         language = cond["language"]
-        text = normalize_for_tts(text, language)
+        text = prepare_speech_text(text, language, profile_id=profile_id)
 
         used_seed = cond["seed"]
         if used_seed is None:

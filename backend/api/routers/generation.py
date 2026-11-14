@@ -2354,39 +2354,14 @@ async def generate_speech(
     if isinstance(language, str) and language.strip().lower() == "auto":
         language = None
 
-    # Engine-agnostic text normalization (junk strip, numbers→words,
-    # abbreviations) — AFTER `language` is fully resolved, and BEFORE the
-    # pronunciation dictionary so user dictionary entries operate on
-    # normalized text and respellings are never re-mangled (ordering rationale
-    # in services/text_normalization.py). Pref-gated (default ON), idempotent,
-    # never raises; applied exactly once per request, at this choke point.
-    from services.text_normalization import normalize_for_tts
-    text = normalize_for_tts(text, language)
-
-    # Expressive-TTS Spec 01: apply the user pronunciation dictionary + inline
-    # [[…]] one-off overrides to the text, here — AFTER `language` is fully
-    # resolved (a profile may fill it above) so per-language entries match the
-    # real render language, and BEFORE the text reaches either inference path
-    # (native VoiceStudio or a pluggable backend) and the chunk splitter. This is
-    # the single point user text → normalized text → model, so the transform
-    # covers generate for every engine. Pure text substitution → identical on
-    # mac/Win/Linux. A disabled pref or empty dictionary is a pass-through, so
-    # plain text stays byte-identical (#G5 backward-compat).
-    if pronounce and pronunciation_enabled():
-        from services.pronunciation import apply_pronunciation, load_entries_from_db
-        try:
-            _pron_rows = load_entries_from_db()
-        except Exception:  # noqa: BLE001 — table missing / DB locked → no-op
-            _pron_rows = []
-        text = apply_pronunciation(
-            text, _pron_rows, language, profile_id=resolved_profile_id,
-        )
-    else:
-        # Even with the dictionary off, inline [[…]] overrides are an explicit,
-        # in-text authoring choice → always honored (and never left as literal
-        # double-bracket text the model would mispronounce).
-        from services.pronunciation import apply_inline_overrides
-        text = apply_inline_overrides(text)
+    # Resolve the final language and voice first; prepare spoken text once
+    # before native/streaming inference and chunking. Inline choices remain
+    # active even when the request disables saved dictionary entries.
+    from services.pronunciation import prepare_speech_text
+    text = prepare_speech_text(
+        text, language, profile_id=resolved_profile_id,
+        dictionary=pronounce and pronunciation_enabled(),
+    )
 
     start_time = time.time()
 
@@ -2970,8 +2945,8 @@ def pronunciation_enabled() -> bool:
     """The pronunciation dictionary is on unless OMNIVOICE_PRONUNCIATION is
     "0"/"false"/"no"/"off". Env only: a prefs key was once read here too, but
     no Settings surface ever wrote it."""
-    value = os.environ.get("OMNIVOICE_PRONUNCIATION")
-    return value is None or value.strip().lower() not in ("0", "false", "no", "off", "")
+    from services.pronunciation import dictionary_enabled
+    return dictionary_enabled()
 
 
 HISTORY_CAP_PREF_KEY = "generation_history_cap"

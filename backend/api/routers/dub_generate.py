@@ -586,6 +586,9 @@ async def dub_generate(job_id: str, req: DubRequest):
 
     async def _render(task_id, voice_lease, stage_dir):
         total = len(req.segments)
+        from services.pronunciation import speech_text_preparer
+
+        prepare_text = await asyncio.to_thread(speech_text_preparer)
         all_segment_wavs = []
         sync_scores = []
 
@@ -1112,11 +1115,10 @@ async def dub_generate(job_id: str, req: DubRequest):
 
             def _gen(text, lang, instruct_str, dur_s, nstep, cfg, spd, profile_id, effect_preset,
                      *, prepare_only=False, current_seg_id=None):
-                # Normalize once at the segment's text→engine choke point
-                # (covers the OOM-retry generate below too, which reuses this
-                # closure's `text`). Pref-gated, idempotent, never raises.
-                from services.text_normalization import normalize_for_tts
-                text = normalize_for_tts(text, lang)
+                # Prepare original segment text with this render's saved-row
+                # snapshot, before keys/batches/inference. OOM retries reuse
+                # the result; prepared respellings must not be applied twice.
+                text = prepare_text(text, lang, profile_id=profile_id)
 
                 effective_seg_id = seg_id if current_seg_id is None else current_seg_id
                 ref_audio = None
@@ -2241,11 +2243,11 @@ async def preview_segment(job_id: str, req: SegmentPreviewRequest):
             seg_id=req.segment_id or "preview", where="dub preview",
         )
         lang = req.language if req.language != "Auto" else None
-        # Same normalization as the full dub render above, so a preview
-        # sounds exactly like the final segment. Pref-gated, never raises.
-        from services.text_normalization import normalize_for_tts
+        # Apply the same normalization/dictionary/inline ordering as a full
+        # render, with the preview's selected language and saved voice.
+        from services.pronunciation import prepare_speech_text
         audio_out = backend.generate(
-            text=normalize_for_tts(req.text, lang),
+            text=prepare_speech_text(req.text, lang, profile_id=pid),
             language=lang,
             ref_audio=ref_audio,
             ref_text=ref_text,

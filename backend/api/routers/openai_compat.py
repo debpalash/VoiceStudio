@@ -930,9 +930,11 @@ async def create_speech(req: SpeechRequest):
     # (#2617), resolves the reference clip; anything else is forwarded as an
     # engine preset (e.g. KittenTTS).
     voice = req.voice
+    pronunciation_profile_id = None
     if not _name_is_reserved(voice):
         row = _resolve_voice_profile(voice)
         if row:
+            pronunciation_profile_id = row["id"]
             from core.config import VOICES_DIR
             if row["is_locked"] and row["locked_audio_path"]:
                 kw["ref_audio"] = contained_join(VOICES_DIR, row["locked_audio_path"])
@@ -952,13 +954,11 @@ async def create_speech(req: SpeechRequest):
             # Not a profile — forward as an engine preset name.
             kw["voice"] = voice
 
-    # Engine-agnostic text normalization (junk strip, numbers→words,
-    # abbreviations) at this route's text→engine choke point — the same
-    # pre-pass as /generate, applied exactly once per request. `req.language`
-    # is everything this route knows about the language (None → universal
-    # safety filters only). Pref-gated (default ON), idempotent, never raises.
-    from services.text_normalization import normalize_for_tts
-    text = normalize_for_tts(req.input, req.language)
+    # Normalize, then resolve saved/inline pronunciation before either native
+    # streaming or sentence dispatch. Use the resolved profile ID, even when
+    # the caller selected that profile by name.
+    from services.pronunciation import prepare_speech_text
+    text = prepare_speech_text(req.input, req.language, profile_id=pronunciation_profile_id)
 
     can_stream = getattr(backend, "can_stream", None)
     native = (

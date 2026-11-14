@@ -396,6 +396,9 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
     # propagates to _worker()'s existing except-Exception handling, which
     # already records a structured job failure via core.failure.build_failure.
     voice = _batch_voice(job.get("voice_id"))
+    from services.pronunciation import speech_text_preparer
+
+    prepare_text = await asyncio.to_thread(speech_text_preparer)
     lease.hold(voice.get("ref_audio"))
     engine_id, backend = await _resolve_batch_execution(voice)
     sr = backend.sample_rate if backend is not None else 0
@@ -518,8 +521,6 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
             and type(backend).generate_batch is not TTSBackend.generate_batch
         )
         if has_native_batch:
-            from services.text_normalization import normalize_for_tts
-
             batch_ref_audio = voice["ref_audio"]
             batch_ref_text = voice["ref_text"]
 
@@ -549,7 +550,7 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
                     return  # nothing to amortize — the per-segment path is equal
                 batch_indices = [index for index, _ in batch_rows]
                 batch_texts = [
-                    normalize_for_tts(row.get("text", "").strip(), target_lang)
+                    prepare_text(row.get("text", "").strip(), target_lang, profile_id=job.get("voice_id"))
                     for _, row in batch_rows
                 ]
                 batch_durations = [
@@ -629,12 +630,9 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
                 continue
 
             def _gen(text=seg_text, lang=target_lang, dur=seg_duration):
-                # Normalize once at the segment's text→engine choke point —
-                # the same pre-pass as /generate and dub_generate's _gen.
-                # `lang` is the job's target language code. Pref-gated,
-                # idempotent, never raises.
-                from services.text_normalization import normalize_for_tts
-                text = normalize_for_tts(text, lang)
+                # Prepare original text with the same saved-row snapshot as
+                # native batching; fallback must not pick up mid-job edits.
+                text = prepare_text(text, lang, profile_id=job.get("voice_id"))
 
                 try:
                     if backend is None:
