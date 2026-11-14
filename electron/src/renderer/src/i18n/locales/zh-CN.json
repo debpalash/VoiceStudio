@@ -393,7 +393,6 @@
     "unavailable": "无法播放",
     "play": "播放",
     "pause": "暂停",
-    "missing": "音频文件缺失。",
     "now_playing": "正在播放",
     "kind_convert": "语音转换",
     "generated_audio": "生成的音频"

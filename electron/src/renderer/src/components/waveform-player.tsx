@@ -232,7 +232,7 @@ function WaveformControls({
       </Button>
       {error ? (
         <p role="status" className="flex-1 text-xs text-muted-foreground">
-          {t('player.missing')}
+          {t('player.unavailable')}
         </p>
       ) : (
         <div className="relative min-w-0 flex-1" style={{ height }}>
