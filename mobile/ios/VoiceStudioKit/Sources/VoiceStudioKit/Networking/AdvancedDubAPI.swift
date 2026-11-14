@@ -36,7 +36,7 @@ public struct ComputerDubAnalysis: Sendable {
     }
 }
 public struct ComputerDubExport: Sendable {
-    public enum Kind: String, CaseIterable, Sendable { case media,srt,vtt,ass,clips,stems }
+    public enum Kind: String, CaseIterable, Sendable { case media,txt,srt,vtt,ass,clips,stems }
     public var kind: Kind = .media
     public var language = ""
     public var tracks: [String] = []
@@ -51,7 +51,7 @@ public struct ComputerDubExport: Sendable {
         let id = try APIClient.component(job)
         guard !language.isEmpty, Self.safe(language), tracks.allSatisfy(Self.safe), ["wav","m4a","mp3","flac"].contains(audioFormat), !(dual && karaoke) else { throw ClientError("mobile.dub_advanced.invalid_export") }
         let endpoint: String
-        switch kind { case .media: endpoint = "download"; case .srt: endpoint = "srt"; case .vtt: endpoint = "vtt"; case .ass: endpoint = "ass"; case .clips: endpoint = "export-segments"; case .stems: endpoint = "export-stems" }
+        switch kind { case .media: endpoint = "download"; case .txt: endpoint = "txt"; case .srt: endpoint = "srt"; case .vtt: endpoint = "vtt"; case .ass: endpoint = "ass"; case .clips: endpoint = "export-segments"; case .stems: endpoint = "export-stems" }
         var query = [URLQueryItem(name: "lang",value: language)]
         if kind == .media {
             guard tracks.contains(language), !tracks.isEmpty else { throw ClientError("mobile.dub_advanced.invalid_export") }

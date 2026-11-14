@@ -99,3 +99,10 @@ it('sends the edited transcript lines, keeping the source under an unspoken tran
     ],
   });
 });
+
+it('exports timestamp-free TXT without subtitle-only options and restores the saved format', () => {
+  const result = dubExportRequest({ ...options, format: 'txt', tracks: [], track: 'original' });
+  expect(result.path).toBe('/dub/txt/job?lang=original');
+  expect(result.name).toBe('voicestudio-job-original-txt.txt');
+  expect(restoreExportPreferences({ format: 'txt' }).format).toBe('txt');
+});

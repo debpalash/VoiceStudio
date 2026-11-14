@@ -92,7 +92,7 @@ struct ComputerDubAdvancedView: View {
         }.disabled(busy)
     }
     private func kindKey(_ kind: ComputerDubExport.Kind) -> String {
-        switch kind { case .media: "mobile.dub_advanced.multi_audio"; case .srt: "mobile.editing.export_srt"; case .vtt: "mobile.editing.export_vtt"; case .ass: "mobile.dub_advanced.ass"; case .clips: "mobile.dub_advanced.clips"; case .stems: "mobile.dub_advanced.stems" }
+        switch kind { case .media: "mobile.dub_advanced.multi_audio"; case .txt: "transcriptions.export_plain"; case .srt: "mobile.editing.export_srt"; case .vtt: "mobile.editing.export_vtt"; case .ass: "mobile.dub_advanced.ass"; case .clips: "mobile.dub_advanced.clips"; case .stems: "mobile.dub_advanced.stems" }
     }
     private func perform(_ action: @escaping @MainActor () async throws -> Void) {
         guard !busy else { return }; busy = true
@@ -134,7 +134,7 @@ struct ComputerDubAdvancedView: View {
         perform {
             let reply = try await api.download(api.request(snapshot.path(job: jobID))); defer { try? FileManager.default.removeItem(at: reply.file) }
             let ext: String
-            switch snapshot.kind { case .srt: ext = "srt"; case .vtt: ext = "vtt"; case .ass: ext = "ass"; case .clips,.stems: ext = "zip"; case .media:
+            switch snapshot.kind { case .txt: ext = "txt"; case .srt: ext = "srt"; case .vtt: ext = "vtt"; case .ass: ext = "ass"; case .clips,.stems: ext = "zip"; case .media:
                 let type = reply.headers["content-type"] ?? ""
                 ext = type.contains("matroska") ? "mkv" : type.contains("video/") ? "mp4" : type.contains("mpeg") ? "mp3" : type.contains("wav") ? "wav" : type.contains("flac") ? "flac" : "m4a"
             }

@@ -58,16 +58,18 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
   const burnAllowed = session.generatedTiming !== 'stretch_video';
   const locked = disabled || saving;
   const subtitles = ['srt', 'vtt', 'ass'].includes(format);
+  const transcript = subtitles || format === 'txt';
   const ready =
     !!session.jobId &&
     !!track &&
-    (subtitles || (format === 'mp4' && undubbed)
+    (transcript || (format === 'mp4' && undubbed)
       ? session.segments.length > 0
       : session.tracks.length > 0);
   const labels: Record<DubExportFormat, string> = {
     mp4: t('exportModal.mp4_h264'),
     wav: t('exportModal.wav_lossless'),
     mp3: t('exportModal.mp3_compressed'),
+    txt: t('transcriptions.export_plain'),
     srt: 'SRT',
     vtt: 'VTT',
     ass: t('exportModal.subs_style_karaoke'),
@@ -80,7 +82,7 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
     setSaving(true);
     setError(null);
     try {
-      if (undubbed && (subtitles || format === 'mp4'))
+      if (undubbed && (transcript || format === 'mp4'))
         await syncDubTranscript(session.jobId!, session.segments);
       const request = dubExportRequest({
         jobId: session.jobId!,

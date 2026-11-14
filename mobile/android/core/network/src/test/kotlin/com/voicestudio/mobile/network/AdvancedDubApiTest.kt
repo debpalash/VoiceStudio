@@ -89,6 +89,11 @@ class AdvancedDubApiTest {
             }
         } finally {server.shutdown()}
     }
+    @Test fun plainTextExportKeepsSelectedLanguageWithoutSubtitleFormatting() {
+        val options=ComputerDubExport(kind="txt",language="fr",dual=true)
+        assertEquals("/dub/txt/job-1?lang=fr",options.path("job-1"))
+        assertEquals("/dub/txt/job-1?lang=original",options.copy(language="original").path("job-1"))
+    }
     @Test fun exportOptionsExplicitlySelectTracksBackgroundAndRealBurnWithoutPathInjection() {
         val options=ComputerDubExport(language="fr",tracks=listOf("fr","de"),original=true,preserveBackground=true,burn=true,karaoke=true)
         val url=okhttp3.HttpUrl.Builder().scheme("http").host("localhost").build().resolve(options.path("job-1"))!!

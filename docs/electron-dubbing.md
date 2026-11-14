@@ -204,6 +204,16 @@ Export options expand inside the existing sidebar. Users can select included vid
 tracks and the default track, background mixing, burned subtitles, dual layout and
 karaoke (disabled with dual layout). Audio supports WAV or MP3 with bitrate choice;
 SRT/VTT/ASS sidecars and per-language stem/segment ZIPs use the existing backend.
+**Save plain text** exports the selected transcript as UTF-8 TXT: the complete
+ordered nonempty cue text, with line breaks between cues and no timestamps, cue numbers,
+headers or subtitle markup added. Before any dub exists, it saves the current
+edited transcript; after generation, the selected language uses that track's
+stored text just like SRT. No new transcription or speech generation is needed.
+Desktop uses native Save As, and the web app downloads the same bytes; canceling
+the save leaves the transcript and export choices available for retry.
+Paired iOS and Android exports offer the same TXT format for generated tracks.
+The archived v0.3.8 Tauri SRT405 report is separate; this does not establish a
+legacy fix or a reporter migration retest (#4127).
 The backend compresses ZIP exports into a temporary file and sends the download
 in chunks, so a long project does not require holding its entire archive in memory.
 Each ZIP is built from a snapshot of the files taken when the download starts, so
@@ -217,7 +227,7 @@ and retries the export with libx264 (logging why) if the hardware encode fails. 
 resolution" (Original, 2160p, 1440p, 1080p, 720p) only ever scales a video down, keeps its
 aspect ratio and even dimensions, and re-encodes instead of stream-copying when it applies.
 Live previews always use software encoding.
-Browser fixtures verify MP3/SRT downloads, query options and failed-export retry;
+Browser fixtures verify MP3/SRT/TXT downloads, UTF-8 transcript bytes, query options and failed-export retry;
 unit tests cover video/package parameters. Real rendered exports, batch presets
 and native save dialogs remain unverified or incomplete.
 

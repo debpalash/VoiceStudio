@@ -43,7 +43,7 @@ data class ComputerDubExport(val kind: String="media",val language: String="",va
     fun path(job: String): String {
         fun safe(value: String)=value.matches(Regex("[A-Za-z0-9_-]{1,80}"))
         require(safe(job)&&safe(language)&&tracks.all(::safe)&&audioFormat in listOf("wav","m4a","mp3","flac")&&!(dual&&karaoke))
-        val endpoint=mapOf("media" to "download","srt" to "srt","vtt" to "vtt","ass" to "ass","clips" to "export-segments","stems" to "export-stems")[kind] ?: throw IllegalArgumentException()
+        val endpoint=mapOf("media" to "download","txt" to "txt","srt" to "srt","vtt" to "vtt","ass" to "ass","clips" to "export-segments","stems" to "export-stems")[kind] ?: throw IllegalArgumentException()
         val query=linkedMapOf("lang" to language)
         if(kind=="media") {
             require(tracks.isNotEmpty()&&language in tracks)
