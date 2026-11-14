@@ -3613,7 +3613,7 @@
       "notifications": "Notificações",
       "notifications_help": "Notificar quando uma dublagem terminar. As notificações são criadas neste telefone; nada passa por um serviço na nuvem.",
       "privacy": "Privacidade",
-      "privacy_help": "Este app só se comunica com o servidor VoiceStudio que você pareou. Sem contas, sem processamento na nuvem.",
+      "privacy_help": "As tarefas locais ficam neste telefone. Downloads de modelos, relatórios que você decide enviar e o computador pareado usam a rede. Os metadados de diagnóstico automático só usam a rede após uma autorização separada.",
       "about": "Sobre",
       "version": "Versão {{version}}",
       "licenses": "Licenças de código aberto"
@@ -3666,7 +3666,7 @@
       "dictation_setup": "O ditado não está disponível. No host, instale e aceite um modelo ASR. Para acesso remoto, reconecte com uma chave de API ou uma rede confiável; um PIN de compartilhamento sozinho não autoriza o ditado.",
       "host_label": "Nome do servidor",
       "theme_preview": "Pré-visualização da aparência",
-      "analytics_local": "Este app complementar guarda a sua escolha neste telefone. Não envia dados de análise.",
+      "analytics_local": "Este telefone não envia estatísticas de uso; sua escolha fica salva localmente. Os relatórios de diagnóstico automático exigem uma autorização separada.",
       "model_licenses": "Rever as licenças dos modelos no seu host",
       "stage_upload": "Enviando mídia",
       "stage_prepare": "Preparando a mídia no host",
@@ -3719,7 +3719,7 @@
       "upload_pending": "O envio continua em segundo plano. Mantenha o VoiceStudio em execução no seu computador.",
       "upload_resume": "Retomar acompanhamento",
       "upload_failed": "Falha no envio. Reconecte ao mesmo host e selecione a mídia novamente.",
-      "privacy_local": "A preferência de análise é guardada neste dispositivo. Esta versão nunca envia dados de análise.",
+      "privacy_local": "Este telefone não envia estatísticas de uso; sua escolha fica salva localmente. Os relatórios de diagnóstico automático exigem uma autorização separada.",
       "transcript": "Transcrição",
       "qr_unavailable": "A câmera não está disponível. Insira o endereço do host manualmente.",
       "language_system": "Idioma do sistema",
@@ -3772,7 +3772,7 @@
       "capture_slow": "Este celular não conseguiu processar o áudio do microfone rápido o bastante. Feche outros apps ou use seu computador.",
       "preset_voice": "Voz {{number}}",
       "transfer": "{{received}} de {{total}}",
-      "privacy": "As tarefas no dispositivo ficam neste celular. Apenas downloads de modelos, denúncias que você escolher enviar e seu computador pareado usam a rede.",
+      "privacy": "As tarefas locais ficam neste telefone. Downloads de modelos, relatórios que você decide enviar e o computador pareado usam a rede. Os metadados de diagnóstico automático só usam a rede após uma autorização separada.",
       "computer_feature": "Este recurso roda atualmente no seu computador. Você pode usar Fala e Ditado neste celular sem parear.",
       "accepted": "Licença aceita",
       "not_accepted": "Licença não aceita",
@@ -3836,7 +3836,7 @@
       "download_one": "{{name}} · download de {{size}}"
     },
     "consent": {
-      "phone_note": "Salvo neste celular. Nada é enviado."
+      "phone_note": "Sua escolha sobre estatísticas fica salva neste telefone. Os relatórios de diagnóstico automático exigem um consentimento separado."
     },
     "report": {
       "action": "Denunciar",
@@ -4319,5 +4319,14 @@
       "failed": "Falhou",
       "cancelled": "Cancelado"
     }
+  },
+  "diagnostics": {
+    "title": "Relatórios automáticos de erros",
+    "body": "Envie ao Supermetry relatórios técnicos sobre falhas, instalações e gerações malsucedidas, com detalhes do aplicativo e do dispositivo, códigos de erro, locais no código e um identificador aleatório da instalação. Nunca envia seu áudio, texto, arquivos, nomes, credenciais ou registros. É independente das estatísticas de uso e vem desativado. Desative quando quiser em Privacidade.",
+    "allow": "Permitir relatórios de erros",
+    "keep_off": "Manter relatórios desativados",
+    "unavailable": "Os relatórios automáticos estão indisponíveis ou desativados neste aplicativo.",
+    "managed": "Gerencie esta opção no aplicativo de computador conectado a este navegador.",
+    "save_failed": "Não foi possível salvar esta opção. Tente novamente."
   }
 }

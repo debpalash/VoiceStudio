@@ -3611,7 +3611,7 @@
       "notifications": "Benachrichtigungen",
       "notifications_help": "Benachrichtigen, wenn eine Synchronisation fertig ist. Benachrichtigungen werden auf diesem Telefon erzeugt; nichts läuft über einen Cloud-Dienst.",
       "privacy": "Datenschutz",
-      "privacy_help": "Diese App kommuniziert nur mit dem gekoppelten VoiceStudio-Server. Keine Konten, keine Cloud-Verarbeitung.",
+      "privacy_help": "Aufgaben auf dem Gerät bleiben auf diesem Telefon. Modelldownloads, von dir gesendete Berichte und dein gekoppelter Computer nutzen das Netzwerk. Automatische Diagnosemetadaten werden erst nach einer gesonderten Zustimmung über das Netzwerk gesendet.",
       "about": "Über",
       "version": "Version {{version}}",
       "licenses": "Open-Source-Lizenzen"
@@ -3664,7 +3664,7 @@
       "dictation_setup": "Diktat ist nicht verfügbar. Installiere auf dem Host ein ASR-Modell und akzeptiere es. Verbinde dich für Fernzugriff mit einem API-Schlüssel oder über ein vertrauenswürdiges Netzwerk; eine Freigabe-PIN allein kann Diktat nicht autorisieren.",
       "host_label": "Servername",
       "theme_preview": "Vorschau des Aussehens",
-      "analytics_local": "Diese Begleit-App speichert deine Auswahl auf diesem Telefon. Sie sendet keine Analysedaten.",
+      "analytics_local": "Dieses Telefon sendet keine Nutzungsanalysen; deine Auswahl wird lokal gespeichert. Automatische Diagnoseberichte erfordern eine gesonderte Zustimmung.",
       "model_licenses": "Modelllizenzen auf deinem Host prüfen",
       "stage_upload": "Medien werden hochgeladen",
       "stage_prepare": "Medien werden auf dem Host vorbereitet",
@@ -3717,7 +3717,7 @@
       "upload_pending": "Der Upload läuft im Hintergrund weiter. Lass VoiceStudio auf deinem Computer geöffnet.",
       "upload_resume": "Überwachung fortsetzen",
       "upload_failed": "Upload fehlgeschlagen. Verbinde dich erneut mit demselben Host und wähle die Medien noch einmal aus.",
-      "privacy_local": "Die Analyse-Einstellung wird auf diesem Gerät gespeichert. Diese Version sendet nie Analysedaten.",
+      "privacy_local": "Dieses Telefon sendet keine Nutzungsanalysen; deine Auswahl wird lokal gespeichert. Automatische Diagnoseberichte erfordern eine gesonderte Zustimmung.",
       "transcript": "Transkript",
       "qr_unavailable": "Kamera nicht verfügbar. Gib die Host-Adresse manuell ein.",
       "language_system": "Systemsprache",
@@ -3770,7 +3770,7 @@
       "capture_slow": "Dieses Telefon konnte das Mikrofonaudio nicht schnell genug verarbeiten. Beende andere Apps oder nutze deinen Computer.",
       "preset_voice": "Stimme {{number}}",
       "transfer": "{{received}} von {{total}}",
-      "privacy": "Aufgaben auf dem Gerät bleiben auf diesem Telefon. Nur Modell-Downloads, Meldungen, die du sendest, und dein gekoppelter Computer nutzen das Netzwerk.",
+      "privacy": "Aufgaben auf dem Gerät bleiben auf diesem Telefon. Modelldownloads, von dir gesendete Berichte und dein gekoppelter Computer nutzen das Netzwerk. Automatische Diagnosemetadaten werden erst nach einer gesonderten Zustimmung über das Netzwerk gesendet.",
       "computer_feature": "Diese Funktion läuft derzeit auf deinem Computer. Sprachausgabe und Diktat funktionieren auf diesem Telefon ohne Kopplung.",
       "accepted": "Lizenz akzeptiert",
       "not_accepted": "Lizenz nicht akzeptiert",
@@ -3834,7 +3834,7 @@
       "download_one": "{{name}} · {{size}} Download"
     },
     "consent": {
-      "phone_note": "Gespeichert auf diesem Telefon. Es wird nichts gesendet."
+      "phone_note": "Deine Auswahl zur Nutzungsanalyse wird auf diesem Telefon gespeichert. Automatische Diagnoseberichte erfordern eine gesonderte Zustimmung."
     },
     "report": {
       "action": "Melden",
@@ -4317,5 +4317,14 @@
       "failed": "Fehlgeschlagen",
       "cancelled": "Abgebrochen"
     }
+  },
+  "diagnostics": {
+    "title": "Automatische Fehlerberichte",
+    "body": "Sende technische Berichte zu Abstürzen sowie Installations- und Generierungsfehlern an Supermetry. Sie enthalten App- und Gerätedaten, Fehlercodes, Stellen im App-Code und eine zufällige Installations-ID. Audio, Texte, Dateien, Namen, Zugangsdaten und Protokolle werden niemals gesendet. Unabhängig von der Nutzungsanalyse und standardmäßig aus. Du kannst dies jederzeit unter Datenschutz ausschalten.",
+    "allow": "Fehlerberichte erlauben",
+    "keep_off": "Berichte ausgeschaltet lassen",
+    "unavailable": "Automatische Berichte sind für diese App nicht verfügbar oder deaktiviert.",
+    "managed": "Verwalte diese Auswahl in der Desktop-App, die mit diesem Browser verbunden ist.",
+    "save_failed": "Diese Auswahl konnte nicht gespeichert werden. Bitte versuche es erneut."
   }
 }

@@ -3611,7 +3611,7 @@
       "notifications": "Notificacións",
       "notifications_help": "Notificar cando remate unha duplicación. As notificacións créanse neste teléfono; nada pasa por un servizo na nube.",
       "privacy": "Privacidade",
-      "privacy_help": "Esta aplicación só fala co servidor de VoiceStudio que vinculaches. Sen contas, sen procesamento na nube.",
+      "privacy_help": "As tarefas locais quedan neste teléfono. As descargas de modelos, os informes que decides enviar e o ordenador vinculado usan a rede. Os metadatos de diagnóstico automático só usan a rede tras un consentimento independente.",
       "about": "Sobre",
       "version": "Versión {{version}}",
       "licenses": "Licenzas de código aberto"
@@ -3664,7 +3664,7 @@
       "dictation_setup": "O ditado non está dispoñible. No host, instala e acepta un modelo ASR. Para o acceso remoto, volve conectarse mediante unha clave API ou unha rede de confianza; un PIN para compartir só non pode autorizar o ditado.",
       "host_label": "Etiqueta do servidor",
       "theme_preview": "Vista previa da aparencia",
-      "analytics_local": "Esta aplicación complementaria rexistra a túa elección neste teléfono. Non envía ningunha análise.",
+      "analytics_local": "Este teléfono non envía estatísticas de uso; a túa elección gárdase localmente. Os informes de diagnóstico automático requiren un consentimento independente.",
       "model_licenses": "Revisa as licenzas modelo do teu servidor",
       "stage_upload": "Cargando medios",
       "stage_prepare": "Preparando medios no host",
@@ -3717,7 +3717,7 @@
       "upload_pending": "A carga continúa en segundo plano. Mantén VoiceStudio no teu ordenador funcionando.",
       "upload_resume": "Retomar o seguimento",
       "upload_failed": "Produciuse un erro na carga. Conéctate de novo ao mesmo servidor e selecciona de novo o multimedia.",
-      "privacy_local": "A preferencia de Analytics gárdase neste dispositivo. Esta versión nunca envía análises.",
+      "privacy_local": "Este teléfono non envía estatísticas de uso; a túa elección gárdase localmente. Os informes de diagnóstico automático requiren un consentimento independente.",
       "transcript": "Transcrición",
       "qr_unavailable": "A cámara non está dispoñible. Introduza o enderezo do host manualmente.",
       "language_system": "Linguaxe do sistema",
@@ -3770,7 +3770,7 @@
       "capture_slow": "Este teléfono non puido procesar o audio do micrófono con suficiente rapidez. Detén outras aplicacións ou usa o teu ordenador.",
       "preset_voice": "Voz {{number}}",
       "transfer": "{{received}} de {{total}}",
-      "privacy": "As tarefas do dispositivo permanecen neste teléfono. Só as descargas de modelos, os informes que escollas enviar e o teu ordenador asociado usan a rede.",
+      "privacy": "As tarefas locais quedan neste teléfono. As descargas de modelos, os informes que decides enviar e o ordenador vinculado usan a rede. Os metadatos de diagnóstico automático só usan a rede tras un consentimento independente.",
       "computer_feature": "Esta función execútase actualmente no teu ordenador. Podes usar Fala e Ditado neste teléfono sen vincular.",
       "accepted": "Licenza aceptada",
       "not_accepted": "Non se acepta licenza",
@@ -3834,7 +3834,7 @@
       "download_one": "{{name}} · {{size}} descargar"
     },
     "consent": {
-      "phone_note": "Gardado neste teléfono. Non se envía nada."
+      "phone_note": "A túa elección sobre estatísticas gárdase neste teléfono. Os informes de diagnóstico automático requiren un consentimento independente."
     },
     "report": {
       "action": "Informe",
@@ -4317,5 +4317,14 @@
       "failed": "Fallou",
       "cancelled": "Cancelado"
     }
+  },
+  "diagnostics": {
+    "title": "Informes automáticos de erros",
+    "body": "Envía a Supermetry informes técnicos sobre peches inesperados e fallos de instalación ou xeración, con datos da aplicación e do dispositivo, códigos de erro, localizacións do código e un identificador de instalación aleatorio. Nunca envía o teu audio, texto, ficheiros, nomes, credenciais nin rexistros. É independente da análise de uso e está desactivado por defecto. Podes desactivalo cando queiras en Privacidade.",
+    "allow": "Permitir informes de erros",
+    "keep_off": "Manter os informes desactivados",
+    "unavailable": "Os informes automáticos non están dispoñibles ou están desactivados nesta aplicación.",
+    "managed": "Xestiona esta opción na aplicación de escritorio conectada a este navegador.",
+    "save_failed": "Non se puido gardar esta opción. Téntao de novo."
   }
 }

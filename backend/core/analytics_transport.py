@@ -37,12 +37,13 @@ def user_agent() -> str:
 
 class _CancellationMixin:
     """Check cancellation both before reconnecting and before writing bytes."""
-    def __init__(self, *args, cancelled: threading.Event, **kwargs):
+    def __init__(self, *args, cancelled: threading.Event, allowed=None, **kwargs):
         self._cancelled = cancelled
+        self._allowed = allowed
         super().__init__(*args, **kwargs)
 
     def _check_cancelled(self) -> None:
-        if self._cancelled.is_set():
+        if self._cancelled.is_set() or self._allowed is not None and not self._allowed():
             self.close()
             raise OSError("analytics delivery cancelled")
 
@@ -71,9 +72,10 @@ class SupermetryTransport:
     Shutdown discards work and closes the active socket. Requests already sent
     cannot be recalled, but no queued event or retry survives withdrawal.
     """
-    def __init__(self, destination: dict, should_send: Callable[[], bool]):
+    def __init__(self, destination: dict, should_send: Callable[[], bool], *, on_result=None):
         self.destination = destination
         self.should_send = should_send
+        self.on_result = on_result
         self._queue: queue.Queue = queue.Queue(maxsize=64)
         self._stopped = threading.Event()
         self._lock = threading.Lock()
@@ -82,14 +84,20 @@ class SupermetryTransport:
         self._thread.start()
 
     def capture(self, event: str, properties: dict, profile_id: str | None = None, traits: dict | None = None,
-                path: str = "/backend") -> bool:
+                path: str = "/backend", *, event_id: str | None = None,
+                timestamp_ms: int | None = None) -> bool:
         if (not isinstance(event, str) or not event or len(event.encode()) > 300
                 or self._stopped.is_set() or not self.should_send()):
             return False
         if not isinstance(path, str) or not re.fullmatch(r"/[a-z0-9_/-]{0,80}", path):
             return False
+        if event_id is not None and (not isinstance(event_id, str) or not re.fullmatch(r"[a-f0-9]{32}", event_id)):
+            return False
+        if timestamp_ms is not None and (type(timestamp_ms) is not int or not 0 < timestamp_ms < 2**53):
+            return False
         payload = {
-            "v": 1, "id": uuid.uuid4().hex, "ts": int(time.time() * 1000),
+            "v": 1, "id": event_id or uuid.uuid4().hex,
+            "ts": timestamp_ms if timestamp_ms is not None else int(time.time() * 1000),
             "site": self.destination["site"], "name": event,
             "url": self.destination["appUrl"].rstrip("/") + path,
             "props": properties,
@@ -121,7 +129,7 @@ class SupermetryTransport:
     def _send(self, body: bytes) -> int:
         parsed = urlsplit(self.destination["host"])
         factory = _HTTPSConnection if parsed.scheme == "https" else _HTTPConnection
-        connection = factory(parsed.hostname, parsed.port, timeout=2, cancelled=self._stopped)
+        connection = factory(parsed.hostname, parsed.port, timeout=2, cancelled=self._stopped, allowed=self.should_send)
         with self._lock:
             if self._stopped.is_set() or not self.should_send():
                 return 0
@@ -145,6 +153,7 @@ class SupermetryTransport:
             except queue.Empty:
                 continue
             try:
+                status = None
                 for attempt in range(3):
                     if self._stopped.is_set() or not self.should_send():
                         break
@@ -153,10 +162,15 @@ class SupermetryTransport:
                         if status != 429 and status < 500:
                             break  # Includes 4xx and redirects; never follow them.
                     except Exception:
-                        pass  # Telemetry must never interrupt a feature.
+                        status = None  # Telemetry must never interrupt a feature.
                     if attempt == 2 or self._stopped.wait(0.5 * (2 ** attempt)):
                         break
             finally:
+                if self.on_result is not None:
+                    try:
+                        self.on_result(json.loads(body)["id"], status)
+                    except Exception:
+                        pass
                 self._queue.task_done()
 
     def shutdown(self) -> None:

@@ -76,7 +76,14 @@ class StudioViewModel @JvmOverloads constructor(application: Application, val st
     fun clearError() { retryAction=null;mutable.update { it.copy(error = null,canRetry=false) } }
     fun retryError() {val retry=retryAction;clearError();retry?.invoke()}
     fun fail(error: Throwable) = fail(error,null)
+    /** Restored durable failures are UI history, not failures observed under current consent. */
+    fun restoreFailure(error: Throwable) = displayFailure(error,null)
     fun fail(error: Throwable,retry: (() ->Unit)?) {
+        if(error is CancellationException) return
+        AutomaticDiagnostics.captureFailure(error)
+        displayFailure(error,retry)
+    }
+    private fun displayFailure(error: Throwable,retry: (() ->Unit)?) {
         if(error is CancellationException) return
         retryAction=retry
         mutable.update {it.copy(error=error as? ClientFailure ?: ClientFailure("mobile.android.operation_failed"),canRetry=retry!=null)}

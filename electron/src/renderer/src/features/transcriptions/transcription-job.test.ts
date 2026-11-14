@@ -3,6 +3,11 @@ import { loadTranscriptions } from '@shared/utils/transcriptionsStore';
 
 const apiJson = vi.fn();
 const toast = { success: vi.fn(), error: vi.fn(), warning: vi.fn() };
+const diagnosticCapture = vi.fn();
+vi.mock('@/lib/diagnostic-reports', () => ({
+  captureDiagnosticException: diagnosticCapture,
+  initializeDiagnosticReporting: vi.fn(),
+}));
 vi.mock('@/lib/api/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/api/client')>()),
   apiJson: (...args: unknown[]) => apiJson(...args),
@@ -63,6 +68,7 @@ it('cancel aborts the request and saves nothing', async () => {
   expect(await run).toBe('cancelled');
   expect(loadTranscriptions()).toEqual([]);
   expect(job.transcriptionJob.state.error).toBeNull();
+  expect(diagnosticCapture).not.toHaveBeenCalled();
 });
 
 it('reports a failure while away and keeps it for the page', async () => {
@@ -70,6 +76,11 @@ it('reports a failure while away and keeps it for the page', async () => {
   expect(await job.startTranscription(audio, 'fast')).toBe('failed');
   expect(job.transcriptionJob.state.error?.detail).toBe('boom');
   expect(toast.error).toHaveBeenCalledOnce();
+  expect(diagnosticCapture).toHaveBeenCalledWith(
+    expect.any(Error),
+    'operation_failed',
+    'transcription',
+  );
 });
 
 it('refuses a second job while one is running', async () => {

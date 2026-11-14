@@ -147,15 +147,25 @@ class TaskManager:
             # by the next run. Task TYPE only — never user content. The touch
             # is throttled + exception-safe by contract (core.run_sentinel).
             run_sentinel.touch_activity("task", t.get("type"))
+            from core import diagnostic_reports
+            diagnostic_epoch = diagnostic_reports.observe_grant()
             try:
                 import inspect
-                res = func(*args, **kwargs)
+                with diagnostic_reports.grant_scope(diagnostic_epoch):
+                    res = func(*args, **kwargs)
                 if inspect.isasyncgen(res):
                     # Close the stream however the task ends (done, cancelled,
                     # failed or raised) so a render releases what it holds, such
                     # as voice-file leases, instead of staying suspended (#2535).
                     async with contextlib.aclosing(res):
-                        async for update in res:
+                        while True:
+                            # Each awaited unit owns its observed grant. A
+                            # later iteration may use a newly explicit choice.
+                            diagnostic_epoch = diagnostic_reports.observe_grant()
+                            try:
+                                update = await diagnostic_reports.await_owned(anext(res), diagnostic_epoch)
+                            except StopAsyncIteration:
+                                break
                             # A `done` update means the work is already
                             # committed; a cancel that arrived meanwhile must
                             # not report it as cancelled, or the client would
@@ -169,6 +179,8 @@ class TaskManager:
                             await self._push_event(task_id, update)
                             stream_error = _stream_failure(update)
                             if stream_error is not None:
+                                if diagnostic_epoch is not None:
+                                    diagnostic_reports.capture_failure(diagnostic_reports.route_stage(t.get("type", "")), expected_epoch=diagnostic_epoch)
                                 t["status"] = "failed"
                                 t["error"] = stream_error
                                 try:
@@ -177,12 +189,14 @@ class TaskManager:
                                     logger.exception("job_store.mark_failed failed")
                                 break
                 elif inspect.iscoroutine(res):
-                    await res
+                    await diagnostic_reports.await_owned(res, diagnostic_epoch)
                 if t["status"] not in {"cancelled", "failed"}:
                     t["status"] = "done"
                     try: job_store.mark_done(task_id)
                     except Exception: logger.exception("job_store.mark_done failed")
             except Exception as e:
+                if diagnostic_epoch is not None:
+                    diagnostic_reports.capture_failure(diagnostic_reports.route_stage(t.get("type", "")), error=e, expected_epoch=diagnostic_epoch)
                 logger.exception("Task %s failed", task_id)
                 t["status"] = "failed"
                 # plan-04 (#131): structured, non-empty failure event instead of

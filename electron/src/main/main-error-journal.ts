@@ -27,12 +27,18 @@ export interface MainProcessErrorSource {
 }
 
 function errorDetail(error: unknown): string {
-  if (error instanceof Error)
-    return scrubText(error.stack || `${error.name}: ${error.message}`).slice(0, MAX_DETAIL);
   try {
-    return scrubText(JSON.stringify(error)).slice(0, MAX_DETAIL);
+    if (error instanceof Error)
+      return scrubText(error.stack || `${error.name}: ${error.message}`).slice(0, MAX_DETAIL);
+    let detail: string;
+    try {
+      detail = JSON.stringify(error) ?? String(error);
+    } catch {
+      detail = String(error);
+    }
+    return scrubText(detail).slice(0, MAX_DETAIL);
   } catch {
-    return scrubText(String(error)).slice(0, MAX_DETAIL);
+    return '[unavailable error details]';
   }
 }
 

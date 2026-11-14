@@ -52,9 +52,16 @@ public struct DubUpload: Codable, Sendable {
 public struct TaskReference: Codable, Sendable { public let task_id: String }
 public struct Job: Codable, Sendable {
     public let id: String; public let status: String; public let error: String?
+    public let created_at: Double?; public let updated_at: Double?
+    public init(id: String,status: String,error: String? = nil,created_at: Double? = nil,updated_at: Double? = nil) {
+        self.id=id;self.status=status;self.error=error;self.created_at=created_at;self.updated_at=updated_at
+    }
     public var terminal: Bool { ["done", "failed", "cancelled"].contains(status) }
 }
-public struct JobEvent: Codable, Sendable { public let seq: Int; public let payload: String }
+public struct JobEvent: Codable, Sendable {
+    public let seq: Int; public let payload: String; public let created_at: Double?
+    public init(seq: Int,payload: String,created_at: Double? = nil) {self.seq=seq;self.payload=payload;self.created_at=created_at}
+}
 public struct JobEvents: Codable, Sendable { public let job: Job; public let events: [JobEvent] }
 public struct Segment: Codable, Sendable {
     public let id: String

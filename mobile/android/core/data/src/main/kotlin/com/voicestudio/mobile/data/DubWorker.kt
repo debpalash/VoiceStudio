@@ -23,6 +23,10 @@ import java.util.concurrent.TimeUnit
 /** Durable host-side pipeline. Checkpoints never contain credentials or API keys.
  * Re-entering after process death resumes polling an existing host task. */
 class DubWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    /** Keep the existing displayed failure key without reporting expected host cancellation. */
+    private class HostTaskCancelled : Exception()
+    private class HostTaskFailed(val observation: CompanionDiagnosticObservation?) : Exception()
+    private val submittedTasks=mutableMapOf<String,CompanionDiagnosticObservation>()
     private val store = SessionStore(context)
     private var stage = "mobile.android.stage_upload"
     private var percent = 0
@@ -58,8 +62,11 @@ class DubWorker(context: Context, params: WorkerParameters) : CoroutineWorker(co
     }
     private suspend fun awaitTask(api: VoiceStudioApi, id: String) {
         var seq = 0
+        val diagnosticGate=CompanionTaskFailureGate()
         while(currentCoroutineContext().isActive) {
+            val observation=AutomaticDiagnostics.observeConsent()
             val events = api.jobEvents(id, seq)
+            val reportable=diagnosticGate.observe(id,events,observation,AutomaticDiagnostics.observeConsent(),submittedTasks[id])
             for(event in events.events) {
                 seq = maxOf(seq, event.seq)
                 val json = runCatching { api.json.parseToJsonElement(event.payload.removePrefix("data: ").trim()).jsonObject }.getOrNull()
@@ -68,11 +75,15 @@ class DubWorker(context: Context, params: WorkerParameters) : CoroutineWorker(co
                 val p = json?.get("percent")?.jsonPrimitive?.doubleOrNull ?: if(total!=null&&total>0&&current!=null) current/total else null
                 if(p != null) report(stage, (if(p <= 1.0) p * 100 else p).toInt().coerceIn(0, 100))
                 // A failed event can coexist with a task manager "done" row.
-                if(json?.get("type")?.jsonPrimitive?.content in setOf("error", "cancelled")) throw ClientFailure("mobile.android.job_failed")
+                when(json?.get("type")?.jsonPrimitive?.content) {
+                    "cancelled" -> throw HostTaskCancelled()
+                    "error" -> throw HostTaskFailed(reportable)
+                }
             }
             when(events.job.status) {
                 "done" -> return
-                "failed", "cancelled" -> throw ClientFailure("mobile.android.job_failed")
+                "cancelled" -> throw HostTaskCancelled()
+                "failed" -> throw HostTaskFailed(reportable)
             }
             delay(2000)
         }
@@ -94,8 +105,11 @@ class DubWorker(context: Context, params: WorkerParameters) : CoroutineWorker(co
             }
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (error: Exception) {
-            val failure = error as? ClientFailure
-            return if(isRetryable(error)) Result.retry() else Result.failure(failureData(failure ?: ClientFailure("mobile.android.dub_restart"),job))
+            if(isRetryable(error)) return Result.retry()
+            if(error is HostTaskFailed) AutomaticDiagnostics.captureObservedFailure(error,error.observation)
+            else if(error !is HostTaskCancelled) AutomaticDiagnostics.captureFailure(error,stage="dub")
+            val failure = if(error is HostTaskCancelled || error is HostTaskFailed) ClientFailure("mobile.android.job_failed") else error as? ClientFailure
+            return Result.failure(failureData(failure ?: ClientFailure("mobile.android.dub_restart"),job))
         }
     }
     private suspend fun runPipeline(host: String, job: String): Result {
@@ -109,10 +123,12 @@ class DubWorker(context: Context, params: WorkerParameters) : CoroutineWorker(co
         if(!checkpoint.uploaded) {
             report("mobile.android.stage_upload")
             val source = inputData.getString("file")
+            val submission=AutomaticDiagnostics.observeConsent()
             val result = if(source != null) api.upload(File(source), inputData.getString("type") ?: "video", job, uploadName(inputData.getString("source_name"), File(source))) { p ->
                 // Progress is throttled to integer percentages by the request body.
                 setProgressAsync(workDataOf("stage" to stage, "percent" to p, "job" to job))
             } else api.ingest(inputData.getString("link") ?: throw ClientFailure("mobile.android.dub_restart"), job)
+            submission?.let {submittedTasks[result.taskId]=it}
             checkpoint = checkpoint.copy(uploaded = true, prepTask = result.taskId)
             store.checkpoint(host, job, checkpoint)
             source?.let { File(it).delete() }
@@ -140,7 +156,9 @@ class DubWorker(context: Context, params: WorkerParameters) : CoroutineWorker(co
                     s.copy(text = textById[s.id?.jsonPrimitive?.content ?: i.toString()] ?: throw ClientFailure("mobile.android.translation_failed"))
                 }
                 report("mobile.android.stage_render")
+                val submission=AutomaticDiagnostics.observeConsent()
                 val task = api.startDub(job, codes[index], names[index], inputData.getString("voice").orEmpty(), segments)
+                submission?.let {submittedTasks[task.taskId]=it}
                 checkpoint = checkpoint.copy(renderTask = task.taskId)
                 store.checkpoint(host, job, checkpoint)
             }

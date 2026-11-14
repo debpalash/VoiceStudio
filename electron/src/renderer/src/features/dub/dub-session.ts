@@ -20,6 +20,16 @@ import { tr } from '@/lib/i18n-text';
 import { describeDubTranslationError } from './translation-error';
 import { beginAppActivity } from '@/lib/app-activity';
 import { recordActionBreadcrumb } from '@/lib/report-breadcrumb';
+import {
+  captureDiagnosticException,
+  prepareDiagnosticException,
+  capturePreparedDiagnostic,
+  observeDiagnosticConsent,
+  diagnosticConsentStillCurrent,
+  type DiagnosticConsentObservation,
+} from '@/lib/diagnostic-reports';
+import { parseSSELine } from '@shared/utils/sseParse';
+import diagnosticPolicy from '../../../../../../config/diagnostics.json';
 import { dialectWasIgnored } from '@shared/api/dialects';
 import { consumeTaskStream, type TaskEvent } from '@/lib/api/event-stream';
 import { publicFailureFromEvent, type PublicFailure } from '@/lib/api/failure';
@@ -946,6 +956,156 @@ export function applyDubQc(
     }),
   });
 }
+interface TaskDiagnosticProof {
+  consent: DiagnosticConsentObservation;
+  taskId: string;
+  baseline?: Promise<{ sequence: number; timestamp: number } | null>;
+}
+class DubTaskEventError extends Error {
+  readonly observed = observeDiagnosticConsent();
+  constructor(
+    message: string,
+    readonly proof: TaskDiagnosticProof | null,
+    readonly eventKey: string,
+    readonly error_code: string,
+  ) {
+    super(message);
+  }
+}
+function taskFailureCode(event: TaskEvent): string {
+  const code = typeof event.error_code === 'string' ? event.error_code.toUpperCase() : '';
+  return diagnosticPolicy.error_codes.includes(code) ? code : 'UNKNOWN';
+}
+function taskFailureKey(event: TaskEvent): string {
+  // A closed technical key only: never retain event messages or raw payloads
+  // while waiting for persisted evidence. Ambiguous matches fail closed below.
+  return JSON.stringify([
+    event.type,
+    taskFailureCode(event),
+    typeof event.error_class === 'string' &&
+    diagnosticPolicy.error_types.includes(event.error_class)
+      ? event.error_class
+      : 'OtherError',
+    typeof event.stage === 'string' && diagnosticPolicy.stages.includes(event.stage)
+      ? event.stage
+      : 'other',
+  ]);
+}
+interface PersistedTaskEvents {
+  job: { id: string; status: string; created_at: number; updated_at: number };
+  events: { seq: number; created_at: number; payload: string }[];
+}
+function taskDiagnosticProof(
+  taskId: string,
+  consent: DiagnosticConsentObservation | null,
+): TaskDiagnosticProof | null {
+  return consent ? { taskId, consent } : null;
+}
+function resumedTaskDiagnosticProof(
+  taskId: string,
+  signal: AbortSignal,
+): TaskDiagnosticProof | null {
+  const consent = observeDiagnosticConsent();
+  if (!consent) return null;
+  // This is concurrent with the stream, never a prerequisite for showing its
+  // result. Sequence evidence avoids trusting synchronized client/server clocks.
+  const baseline = apiJson<PersistedTaskEvents>(
+    '/jobs/' + encodeURIComponent(taskId) + '/events?limit=2000',
+    { signal: AbortSignal.any([signal, AbortSignal.timeout(2000)]) },
+  )
+    .then((saved) => {
+      if (
+        !diagnosticConsentStillCurrent(consent) ||
+        saved.job?.id !== taskId ||
+        !['pending', 'running'].includes(saved.job.status) ||
+        !Array.isArray(saved.events)
+      )
+        return null;
+      const sequence = Math.max(0, ...saved.events.map((event) => event.seq));
+      const timestamp = Math.max(
+        saved.job.created_at,
+        saved.job.updated_at,
+        ...saved.events.map((event) => event.created_at),
+      );
+      return Number.isSafeInteger(sequence) && Number.isFinite(timestamp)
+        ? { sequence, timestamp }
+        : null;
+    })
+    .catch(() => null);
+  return { taskId, consent, baseline };
+}
+function reportTaskDiagnostic(
+  error: DubTaskEventError,
+  signal: AbortSignal,
+  category: 'generation_failed' | 'operation_failed',
+  stage: 'transcription' | 'translation' | 'dub',
+) {
+  // Copy only local provenance; do not retain the exception across metadata IO.
+  const { proof, observed, eventKey } = error;
+  if (!proof || !diagnosticConsentStillCurrent(proof.consent)) return;
+  const prepared = prepareDiagnosticException(error, category, stage);
+  if (
+    !prepared ||
+    !observed ||
+    observed.revision !== proof.consent.revision ||
+    observed.grantEpoch !== proof.consent.grantEpoch ||
+    !diagnosticConsentStillCurrent(observed)
+  )
+    return;
+  const verify = async () => {
+    if (proof.baseline) {
+      const baseline = await proof.baseline;
+      if (
+        !baseline ||
+        !diagnosticConsentStillCurrent(proof.consent) ||
+        !diagnosticConsentStillCurrent(observed)
+      )
+        return false;
+      const saved = await apiJson<PersistedTaskEvents>(
+        '/jobs/' + encodeURIComponent(proof.taskId) + '/events?limit=2000',
+        { signal: AbortSignal.any([signal, AbortSignal.timeout(2000)]) },
+      );
+      if (saved.job?.id !== proof.taskId || !Array.isArray(saved.events)) return false;
+      const matching = saved.events.filter((record) => {
+        const payload = parseSSELine(
+          'data:' +
+            record.payload
+              .split('\n')
+              .filter((line) => line.startsWith('data:'))
+              .map((line) => line.slice(5).trimStart())
+              .join('\n'),
+        );
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return false;
+        const name = record.payload
+          .split('\n')
+          .find((line) => line.startsWith('event:'))
+          ?.slice(6)
+          .trim();
+        const object = payload as TaskEvent;
+        return taskFailureKey({ ...object, type: name || object.type || 'message' }) === eventKey;
+      });
+      // Ambiguous repeated errors are not evidence that the observed one is new.
+      if (
+        matching.length !== 1 ||
+        !Number.isSafeInteger(matching[0].seq) ||
+        matching[0].seq <= baseline.sequence ||
+        !Number.isFinite(matching[0].created_at) ||
+        matching[0].created_at < baseline.timestamp
+      )
+        return false;
+    }
+    return (
+      !signal.aborted &&
+      diagnosticConsentStillCurrent(proof.consent) &&
+      diagnosticConsentStillCurrent(observed)
+    );
+  };
+  void verify()
+    .then((fresh) => {
+      if (fresh) capturePreparedDiagnostic(prepared);
+    })
+    .catch(() => {});
+}
 async function run(
   phase: DubSession['phase'],
   work: (signal: AbortSignal) => Promise<void>,
@@ -981,6 +1141,23 @@ async function run(
       !active.signal.aborted && (phase === 'preparing' || phase === 'transcribing')
         ? dubInputIssue(error, dubSession.state.failure)
         : null;
+    if (
+      !active.signal.aborted &&
+      !inputIssue &&
+      !(error instanceof DubAsrModelMissingError) &&
+      !(error instanceof Error && error.name === 'AbortError')
+    ) {
+      const category = phase === 'generating' ? 'generation_failed' : 'operation_failed';
+      const stage =
+        phase === 'transcribing'
+          ? 'transcription'
+          : phase === 'translating'
+            ? 'translation'
+            : 'dub';
+      if (error instanceof DubTaskEventError)
+        reportTaskDiagnostic(error, active.signal, category, stage);
+      else captureDiagnosticException(error, category, stage);
+    }
     if (inputIssue) {
       // The same file fails the same way on every retry: show it on the file
       // row as a choose-another-file prompt, not as a recoverable failure.
@@ -1009,7 +1186,11 @@ async function run(
     if (controller === active) controller = null;
   }
 }
-function taskEvent(event: TaskEvent, terminal: string) {
+function taskEvent(
+  event: TaskEvent,
+  terminal: string,
+  task?: { proof: TaskDiagnosticProof | null },
+) {
   patch({ event });
   if (event.type === 'error' || event.type === 'cancelled') {
     patch({ taskId: null, recovery: null });
@@ -1018,7 +1199,10 @@ function taskEvent(event: TaskEvent, terminal: string) {
       throw new DubAsrModelMissingError(event as unknown as AsrModelMissing);
     const failure = publicFailureFromEvent(event, 'Task failed');
     patch({ failure });
-    throw new Error(`${failure.stage ? failure.stage + ': ' : ''}${failure.reason}`);
+    const message = `${failure.stage ? failure.stage + ': ' : ''}${failure.reason}`;
+    if (task)
+      throw new DubTaskEventError(message, task.proof, taskFailureKey(event), taskFailureCode(event));
+    throw new Error(message);
   }
   return event.type === terminal;
 }
@@ -1110,7 +1294,12 @@ async function useDownloadedCaptions(jobId: string, signal: AbortSignal) {
   });
 }
 
-async function finishPreparation(jobId: string, taskId: string, signal: AbortSignal) {
+async function finishPreparation(
+  jobId: string,
+  taskId: string,
+  signal: AbortSignal,
+  proof: TaskDiagnosticProof | null = null,
+) {
   let hasDownloadedCaptions = false;
   await consumeTaskStream(
     '/tasks/stream/' + encodeURIComponent(taskId),
@@ -1122,7 +1311,7 @@ async function finishPreparation(jobId: string, taskId: string, signal: AbortSig
       // Tell the user now, not at export, that the dub will be speech only.
       if ((event.type === 'demucs_done' || event.type === 'cached') && event.has_bg === false)
         toast.warning(tr('dub.bg_separation_failed'));
-      return taskEvent(event, 'ready');
+      return taskEvent(event, 'ready', { proof });
     },
     signal,
   );
@@ -1181,17 +1370,27 @@ export async function uploadDub(file: File) {
     body.set('job_id', jobId);
     body.set('input_type', inputType);
     if (dubSession.state.sourceLanguage) body.set('source_lang', dubSession.state.sourceLanguage);
+    const consent = observeDiagnosticConsent();
     const upload = await apiJson<{ job_id: string; task_id: string }>('/dub/upload', {
       method: 'POST',
       body,
       signal,
     });
-    await prepareAndTranscribe(upload, signal);
+    await prepareAndTranscribe(upload, signal, consent);
   });
 }
-async function prepareAndTranscribe(job: { job_id: string; task_id: string }, signal: AbortSignal) {
+async function prepareAndTranscribe(
+  job: { job_id: string; task_id: string },
+  signal: AbortSignal,
+  consent: DiagnosticConsentObservation | null,
+) {
   patch({ jobId: job.job_id, taskId: job.task_id });
-  await finishPreparation(job.job_id, job.task_id, signal);
+  await finishPreparation(
+    job.job_id,
+    job.task_id,
+    signal,
+    taskDiagnosticProof(job.task_id, consent),
+  );
 }
 export function isDubUrl(value: string) {
   try {
@@ -1240,6 +1439,7 @@ export async function ingestDubUrl(value: string, cookieFile?: File, fetchSubs =
     if (cookieFile && cookieFile.size > MAX_COOKIE_EXPORT_BYTES)
       throw new Error('DUB_COOKIE_TOO_LARGE');
     const cookieText = cookieFile ? await cookieFile.text() : undefined;
+    const consent = observeDiagnosticConsent();
     const job = await apiJson<{ job_id: string; task_id: string }>('/dub/ingest-url', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1252,7 +1452,7 @@ export async function ingestDubUrl(value: string, cookieFile?: File, fetchSubs =
         fetch_subs: fetchSubs,
       }),
     });
-    await prepareAndTranscribe(job, signal);
+    await prepareAndTranscribe(job, signal, consent);
   });
 }
 
@@ -1565,6 +1765,7 @@ async function watchGeneration(
   taskId: string,
   signal: AbortSignal,
   segmentIds = dubSession.state.segments.map((segment) => segment.id),
+  proof: TaskDiagnosticProof | null = null,
 ) {
   let result: { syncScores: number[] } = { syncScores: [] };
   await consumeTaskStream(
@@ -1625,9 +1826,9 @@ async function watchGeneration(
         Number.isInteger(event.segment)
       ) {
         const id = segmentIds[event.segment];
-        if (id !== undefined) return taskEvent({ ...event, segment_id: id }, 'done');
+        if (id !== undefined) return taskEvent({ ...event, segment_id: id }, 'done', { proof });
       }
-      return taskEvent(event, 'done');
+      return taskEvent(event, 'done', { proof });
     },
     signal,
   );
@@ -1675,6 +1876,7 @@ export async function generateDub(
             : undefined,
         });
         const segmentIds = current.segments.map((segment) => segment.id);
+        const consent = observeDiagnosticConsent();
         const job = await apiJson<{ task_id: string }>(
           '/dub/generate/' + encodeURIComponent(current.jobId!),
           {
@@ -1712,7 +1914,12 @@ export async function generateDub(
           taskId: job.task_id,
           pendingTiming: current.timingStrategy || 'strict_slot',
         });
-        const measured = await watchGeneration(job.task_id, signal, segmentIds);
+        const measured = await watchGeneration(
+          job.task_id,
+          signal,
+          segmentIds,
+          taskDiagnosticProof(job.task_id, consent),
+        );
         if (!agentEnabled || agentPass >= maxAgentPasses) break;
 
         const afterRender = dubSession.state;
@@ -2147,10 +2354,11 @@ export async function resumeDub() {
         patch({ recovery: null, taskId: null });
       throw error;
     }
+    const proof = resumedTaskDiagnosticProof(taskId, signal);
     if (recovery === 'generating') {
-      await watchGeneration(taskId, signal);
+      await watchGeneration(taskId, signal, undefined, proof);
       patch({ phase: 'done' });
-    } else await finishPreparation(jobId, taskId, signal);
+    } else await finishPreparation(jobId, taskId, signal, proof);
     patch({ recovery: null });
   });
 }

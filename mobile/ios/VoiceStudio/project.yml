@@ -107,12 +107,14 @@ targets:
     platform: iOS
     sources:
       - path: ../VoiceStudioKit/Tests/VoiceStudioKitTests
+      - path: Platform/AppDiagnostics.swift
+      - path: Platform/AppDiagnosticPolicy.swift
     dependencies:
       - target: VoiceStudio
     settings:
       base:
         GENERATE_INFOPLIST_FILE: 'YES'
-        OTHER_SWIFT_FLAGS: $(inherited) -Xcc -fmodule-map-file=$(SRCROOT)/../VoiceStudioKit/Sources/VSNative/include/module.modulemap
+        OTHER_SWIFT_FLAGS: $(inherited) -DVS_DIAGNOSTICS_APP_TESTS -Xcc -fmodule-map-file=$(SRCROOT)/../VoiceStudioKit/Sources/VSNative/include/module.modulemap
   VoiceStudioUITests:
     type: bundle.ui-testing
     platform: iOS

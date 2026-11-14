@@ -3613,7 +3613,7 @@
       "notifications": "Notifications",
       "notifications_help": "Notifier lorsqu'un doublage est terminé. Les notifications sont créées sur ce téléphone ; rien ne passe par un service cloud.",
       "privacy": "Confidentialité",
-      "privacy_help": "Cette application ne communique qu'avec le serveur VoiceStudio que vous avez associé. Aucun compte, aucun traitement dans le cloud.",
+      "privacy_help": "Les tâches locales restent sur ce téléphone. Les téléchargements de modèles, les rapports que vous choisissez d’envoyer et votre ordinateur associé utilisent le réseau. Les métadonnées de diagnostic automatique ne sont envoyées qu’après un consentement distinct.",
       "about": "À propos",
       "version": "Version {{version}}",
       "licenses": "Licences open source"
@@ -3666,7 +3666,7 @@
       "dictation_setup": "La dictée n'est pas disponible. Sur l'hôte, installez et acceptez un modèle ASR. Pour un accès distant, reconnectez-vous avec une clé API ou via un réseau de confiance ; un PIN de partage seul ne peut pas autoriser la dictée.",
       "host_label": "Nom du serveur",
       "theme_preview": "Aperçu de l'apparence",
-      "analytics_local": "Cette application compagnon enregistre votre choix sur ce téléphone. Elle n'envoie aucune donnée d'analyse.",
+      "analytics_local": "Aucune statistique d’utilisation n’est envoyée depuis ce téléphone ; votre choix est enregistré localement. Les rapports de diagnostic automatique nécessitent un consentement distinct.",
       "model_licenses": "Consulter les licences des modèles sur votre hôte",
       "stage_upload": "Téléversement du média",
       "stage_prepare": "Préparation du média sur l'hôte",
@@ -3719,7 +3719,7 @@
       "upload_pending": "Le téléversement se poursuit en arrière-plan. Gardez VoiceStudio en marche sur votre ordinateur.",
       "upload_resume": "Reprendre le suivi",
       "upload_failed": "Échec du téléversement. Reconnectez-vous au même hôte et sélectionnez à nouveau le média.",
-      "privacy_local": "La préférence d'analyse est enregistrée sur cet appareil. Cette version n'envoie jamais de données d'analyse.",
+      "privacy_local": "Aucune statistique d’utilisation n’est envoyée depuis ce téléphone ; votre choix est enregistré localement. Les rapports de diagnostic automatique nécessitent un consentement distinct.",
       "transcript": "Transcription",
       "qr_unavailable": "La caméra n'est pas disponible. Saisissez l'adresse de l'hôte manuellement.",
       "language_system": "Langue du système",
@@ -3772,7 +3772,7 @@
       "capture_slow": "Ce téléphone n'a pas pu traiter l'audio du micro assez vite. Fermez d'autres applications ou utilisez votre ordinateur.",
       "preset_voice": "Voix {{number}}",
       "transfer": "{{received}} sur {{total}}",
-      "privacy": "Les tâches sur l'appareil restent sur ce téléphone. Seuls les téléchargements de modèles, les signalements que vous choisissez d'envoyer et votre ordinateur associé utilisent le réseau.",
+      "privacy": "Les tâches locales restent sur ce téléphone. Les téléchargements de modèles, les rapports que vous choisissez d’envoyer et votre ordinateur associé utilisent le réseau. Les métadonnées de diagnostic automatique ne sont envoyées qu’après un consentement distinct.",
       "computer_feature": "Cette fonction s'exécute actuellement sur votre ordinateur. Parole et Dictée fonctionnent sur ce téléphone sans association.",
       "accepted": "Licence acceptée",
       "not_accepted": "Licence non acceptée",
@@ -3836,7 +3836,7 @@
       "download_one": "{{name}} · {{size}} à télécharger"
     },
     "consent": {
-      "phone_note": "Enregistré sur ce téléphone. Rien n'est envoyé."
+      "phone_note": "Votre choix concernant les statistiques est enregistré sur ce téléphone. Les rapports de diagnostic automatique nécessitent un consentement distinct."
     },
     "report": {
       "action": "Signaler",
@@ -4319,5 +4319,14 @@
       "failed": "Échec",
       "cancelled": "Annulé"
     }
+  },
+  "diagnostics": {
+    "title": "Rapports d’erreurs automatiques",
+    "body": "Envoyez à Supermetry des rapports techniques sur les plantages et les échecs d’installation ou de génération, avec des informations sur l’application et l’appareil, des codes d’erreur, des emplacements du code et un identifiant d’installation aléatoire. Aucun audio, texte, fichier, nom, identifiant de connexion ni journal n’est envoyé. Cette option est indépendante des statistiques d’utilisation et désactivée par défaut. Désactivez-la à tout moment dans Confidentialité.",
+    "allow": "Autoriser les rapports d’erreurs",
+    "keep_off": "Laisser les rapports désactivés",
+    "unavailable": "Les rapports automatiques sont indisponibles ou désactivés pour cette application.",
+    "managed": "Gérez ce choix dans l’application de bureau connectée à ce navigateur.",
+    "save_failed": "Impossible d’enregistrer ce choix. Veuillez réessayer."
   }
 }

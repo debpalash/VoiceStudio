@@ -307,8 +307,43 @@ All tabs work without pairing once on-device models are installed (see M2); the 
   Android's ongoing notification displays transfer status and offers Pause.
   Terminal failure reasons persist with paused intents and appear on both Models
   and feature download cards; retry clears the old reason.
-  Local diagnostic records are bounded status/host metadata only: no signed URLs,
-  credentials, user content or automatic diagnostic uploads.
+  Local download diagnostics are bounded status metadata only: no signed URLs,
+  credentials or user content. Separately opted-in automatic failure reports
+  follow the automatic diagnostics contract below.
+
+- **Automatic diagnostics (separate explicit opt-in, off by default):** iOS and
+  Android ask independently of analytics and expose the same Privacy control.
+  Existing analytics consent never enables reporting. Decline preserves all
+  offline/paired functionality. The application owns consent and delivery, not
+  a screen or ViewModel; OS-owned download jobs can report terminal failures.
+  Failures are projected immediately to `config/diagnostics.json`'s closed
+  technical metadata and sent as `diagnostic_report` to the public Supermetry
+  destination bundled from `config/analytics.json`. HTTPS is required except
+  literal localhost/127.0.0.1/::1 HTTP test collectors. No audio, text, filenames,
+  URLs, user/account names, credentials, logs, exception messages, raw stacks or
+  manual content-report bodies are included. Only known app source locations
+  may appear. Do not retain Error objects or their payloads for later delivery.
+  The private durable outbox is bounded to 64 records/512 KiB, expires after
+  seven days and reuses the original report ID/time across retries and relaunch.
+  Withdrawal closes the in-memory gate immediately, cancels delivery, removes
+  queued reports and invalidates their epoch; a new grant creates a new identity.
+  Displaying a saved worker error never reports it under a later consent grant;
+  fresh terminal failures are captured by their operation owner. Resumed server
+  tasks require a newer persisted event than the consent-bound observation
+  baseline; archived events alone stay display-only. Grant tokens and sequence/
+  timestamp evidence remain local and never enter report properties.
+  A failed write remains off in memory and offers Retry for that same choice.
+  Crash recovery accepts only evidence from the current enabled epoch, within
+  its opt-in window and TTL, and retains the diagnosed build's version instead
+  of substituting the currently installed version. OS-provided crash/hang
+  summaries are reduced to fixed categories; raw diagnostic payloads are never
+  persisted or uploaded. Normal cancel, pause, network waiting and backoff are
+  excluded. Observed active-download stalls do not abort the download.
+  OS availability/scheduling and sudden process termination limit reporting;
+  delivery is best effort. Loading a hard-disable environment switch revokes the
+  prior grant and queue, independently of destination or taxonomy availability;
+  removing it requires a fresh Settings opt-in. Result Report sheets remain a
+  separate explicit submission.
 - **Licence acceptance matches the desktop:** a model whose licence category is
   not commercial-OK must be accepted on the phone before it is downloaded or
   loaded. Acceptance is recorded locally per model with the fingerprint of the
@@ -347,7 +382,8 @@ progress visible and resumes from a saved checkpoint after interruption).
 
 On-device tasks send nothing anywhere. The only network requests are the model
 downloads the user starts, content reports the user sends (see Reporting
-generated content) and, when paired, requests to their own computer.
+generated content), automatic failure diagnostics only after a separate explicit
+opt-in (see Automatic diagnostics above), and, when paired, requests to their own computer.
 Settings → Privacy states this.
 
 ### Tests (in addition to M1)

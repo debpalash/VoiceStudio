@@ -4,6 +4,15 @@ import { expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { apiJson } from '@/lib/api/client';
 import { consumeTaskStream, IncompleteTaskStreamError } from '@/lib/api/event-stream';
+const diagnosticCapture = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/diagnostic-reports', () => ({
+  captureDiagnosticException: diagnosticCapture,
+  prepareDiagnosticException: () => null,
+  capturePreparedDiagnostic: vi.fn(),
+  initializeDiagnosticReporting: vi.fn(),
+  observeDiagnosticConsent: () => null,
+  diagnosticConsentStillCurrent: () => false,
+}));
 import {
   applyDubTranslationRows,
   replaceDubSegmentTexts,
@@ -683,6 +692,15 @@ it('preserves a disconnected generation and blocks edits and duplicate generatio
   expect(apiJson).toHaveBeenCalledTimes(1);
 });
 it('a terminal backend failure releases recovery instead of trapping the draft', async () => {
+  diagnosticCapture.mockClear();
+  dubSession.setState((current) => ({
+    ...current,
+    jobId: 'diagnostic-job',
+    taskId: 'diagnostic-task',
+    recovery: 'generating',
+    phase: 'editing',
+    segments: [{ id: '1', start: 0, end: 2, text: 'Hello', text_original: 'Hello' }],
+  }));
   vi.mocked(apiJson).mockResolvedValueOnce({ status: 'error' });
   vi.mocked(consumeTaskStream).mockImplementationOnce(async (_path, emit) => {
     emit({ type: 'error', reason: 'fixture failure' });
@@ -694,6 +712,24 @@ it('a terminal backend failure releases recovery instead of trapping the draft',
     phase: 'editing',
     error: 'fixture failure',
   });
+  expect(diagnosticCapture).not.toHaveBeenCalled();
+});
+
+it('does not capture a backend-cancelled dub task as a diagnostic failure', async () => {
+  diagnosticCapture.mockClear();
+  dubSession.setState((current) => ({
+    ...current,
+    jobId: 'cancelled-job',
+    taskId: 'cancelled-task',
+    recovery: 'generating',
+    phase: 'editing',
+  }));
+  vi.mocked(apiJson).mockResolvedValueOnce({ status: 'cancelled' });
+  vi.mocked(consumeTaskStream).mockImplementationOnce(async (_path, emit) => {
+    emit({ type: 'cancelled' });
+  });
+  await resumeDub();
+  expect(diagnosticCapture).not.toHaveBeenCalled();
 });
 
 it('imports SRT using server-matched voice references and invalidates stale tracks', async () => {

@@ -65,6 +65,7 @@ val bundleCatalogs by tasks.registering {
     inputs.file(contracts.resolve("support.json"))
     inputs.dir(contracts.resolve("support-artwork"))
     inputs.dir(catalogs)
+    inputs.files(repository.resolve("config/diagnostics.json"), repository.resolve("config/analytics.json"))
     inputs.file(repository.resolve("electron/public/signal-field.webp"))
     inputs.file(repository.resolve("electron/src/shared/languages.json"))
     inputs.file(repository.resolve("LICENSE"))
@@ -76,6 +77,8 @@ val bundleCatalogs by tasks.registering {
         val assets = layout.buildDirectory.dir("generated/catalogs").get().asFile
         assets.deleteRecursively()
         assets.mkdirs()
+        repository.resolve("config/diagnostics.json").copyTo(assets.resolve("diagnostics.json"), overwrite=true)
+        repository.resolve("config/analytics.json").copyTo(assets.resolve("diagnostics-destination.json"), overwrite=true)
         repository.resolve("electron/public/signal-field.webp").copyTo(assets.resolve("signal-field.webp"), overwrite=true)
         repository.resolve("electron/src/shared/languages.json").copyTo(assets.resolve("languages.json"), overwrite=true)
         val avatars = repository.resolve("electron/src/renderer/src/features/home/contributors")

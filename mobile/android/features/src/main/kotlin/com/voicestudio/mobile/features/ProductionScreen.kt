@@ -99,7 +99,7 @@ import java.io.File
             if(output!=null) chapters=vm.phone.production.chapterOutputs(project,configuration)
             refreshLibrary()
         }
-        jobs.firstOrNull {it.state==WorkInfo.State.FAILED}?.outputData?.getString("error")?.let {vm.fail(com.voicestudio.mobile.network.ClientFailure(it))}
+        jobs.firstOrNull {it.state==WorkInfo.State.FAILED}?.outputData?.getString("error")?.let {vm.restoreFailure(com.voicestudio.mobile.network.ClientFailure(it))}
     }
     Screen {
         ScreenTitle(titleKey)

@@ -1304,11 +1304,56 @@ async def _wait_for_analytics_thread(app: FastAPI) -> None:
         await asyncio.wait({worker}, timeout=20.0)
 
 
+async def _finalize_diagnostics(callback, timeout=2.5):
+    """Bound private diagnostic IO independently of saturated inference executors."""
+    loop = asyncio.get_running_loop()
+    finished = loop.create_future()
+    def complete():
+        if not finished.done():
+            finished.set_result(None)
+    def run():
+        try:
+            callback()
+        except Exception:
+            pass  # Optional diagnostics must never prevent application teardown.
+        finally:
+            try:
+                loop.call_soon_threadsafe(complete)
+            except RuntimeError:
+                pass  # A timed-out daemon may finish after its loop closes.
+    try:
+        threading.Thread(target=run, name='diagnostic-finalize', daemon=True).start()
+    except RuntimeError:
+        return  # Thread exhaustion must not turn optional cleanup into a hang.
+    try:
+        await asyncio.wait_for(finished, timeout=timeout)
+    except asyncio.TimeoutError:
+        pass
+
+
+@asynccontextmanager
+async def _diagnostic_lifespan():
+    from core import diagnostic_reports
+    _diagnostic_loop = asyncio.get_running_loop()
+    _previous_loop_handler = _diagnostic_loop.get_exception_handler()
+    def _diagnostic_loop_error(loop, context):
+        diagnostic_reports.capture("operation_failed", stage="other", error=context.get("exception"), reason="unhandled_rejection")
+        if _previous_loop_handler is not None:
+            _previous_loop_handler(loop, context)
+        else:
+            loop.default_exception_handler(context)
+    try:
+        diagnostic_reports.initialize()
+        _diagnostic_loop.set_exception_handler(_diagnostic_loop_error)
+        yield
+    finally:
+        if _diagnostic_loop.get_exception_handler() is _diagnostic_loop_error:
+            _diagnostic_loop.set_exception_handler(_previous_loop_handler)
+        await _finalize_diagnostics(diagnostic_reports.shutdown)
+
+
 @asynccontextmanager
 async def _application_lifespan(app: FastAPI):
-    from api.dependencies import validate_server_admin_key
-
-    validate_server_admin_key()
     # Startup watchdog (#632): a silent hang during startup (e.g. a model-load /
     # MCP deadlock on some platforms) means "Application startup complete" never
     # logs and the app sits forever with no error. If startup hasn't finished
@@ -1535,8 +1580,26 @@ async def lifespan(app: FastAPI):
     # recovery and model files. Held through teardown, where workers can still
     # write. The short wait covers a restart whose predecessor is still exiting.
     with DataDirectoryLease(DATA_DIR, timeout=15):
-        async with _application_lifespan(app):
-            yield
+        from api.dependencies import validate_server_admin_key
+
+        validate_server_admin_key()
+        async with _diagnostic_lifespan():
+            application_started = False
+            try:
+                async with _application_lifespan(app):
+                    application_started = True
+                    try:
+                        yield
+                    finally:
+                        # Retire before application teardown can block. The outer
+                        # reporter remains active for errors during that teardown.
+                        from core import diagnostic_reports
+                        await _finalize_diagnostics(diagnostic_reports.prepare_shutdown)
+            except Exception as error:
+                if not application_started:
+                    from core import diagnostic_reports
+                    diagnostic_reports.capture("backend_crash", stage="startup", error=error, reason="launch_failed")
+                raise
 
 
 app = FastAPI(
@@ -1559,9 +1622,10 @@ def prepare_deliberate_shutdown_during_startup(request: Request):
     from socket bind; its authorization remains identical to the system router.
     """
     from api.dependencies import check_admin
-    from core import run_sentinel
+    from core import diagnostic_reports, run_sentinel
 
     check_admin(request)
+    diagnostic_reports.prepare_shutdown()
     return {"prepared": run_sentinel.clear_sentinel()}
 
 

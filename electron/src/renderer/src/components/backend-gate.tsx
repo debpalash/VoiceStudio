@@ -3,6 +3,7 @@ import { SetupGate } from './setup-gate';
 import { SetupProgressCard } from './setup-progress-card';
 import { ReportBug } from './report-bug';
 import { SetupAnalyticsConsent } from './analytics-consent';
+import { DiagnosticConsent } from './diagnostic-consent';
 import {
   SetupConnectionCheck,
   SetupCpuFallback,
@@ -464,6 +465,7 @@ export function BackendGate({ children, repairDock }: BackendGateProps) {
 
           {/* 2. Anything that must be answered or fixed right here. */}
           {setup ? <SetupUpdateNotice /> : null}
+          {setup || installing || failed ? <DiagnosticConsent /> : null}
           {setup ? <SetupAnalyticsConsent analyticsDisabled={status.analyticsDisabled} /> : null}
           {setupBlocked || (failed && status.diagnosis === 'auth_required') ? (
             // Intel Macs only have a remote backend; an expired remote session is

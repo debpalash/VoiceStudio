@@ -34,18 +34,26 @@ public struct DubCheckpoint: Codable, Sendable {
     public private(set) var error: ClientError?
     public private(set) var monitoring = false
     public private(set) var pendingTranslation: TranslationEngine?
+    public private(set) var failureWasRemoteTask = false
+    public private(set) var failureDiagnosticObservation: CompanionDiagnosticObservation?
+    @ObservationIgnored public var diagnosticObservation: (@MainActor () -> CompanionDiagnosticObservation?)?
+    @ObservationIgnored private var submittedTasks: [String:CompanionDiagnosticObservation]=[:]
     @ObservationIgnored private var revision = UUID()
     @ObservationIgnored private let defaults: UserDefaults
     public init(defaults: UserDefaults = .standard) { self.defaults = defaults; checkpoint = defaults.data(forKey: "dubCheckpoint").flatMap { try? JSONDecoder().decode(DubCheckpoint.self, from: $0) } }
-    public func begin(_ upload: DubUpload, api: APIClient, languages: [DubLanguage], profile: String) throws {
+    public func begin(_ upload: DubUpload, api: APIClient, languages: [DubLanguage], profile: String,diagnosticSubmission: CompanionDiagnosticObservation? = nil) throws {
         try DubVoiceChoice.validate(profile)
         guard !languages.isEmpty else { throw ClientError("mobile.errors.choose_language") }
         revision = UUID(); pendingTranslation = nil; monitoring = false
+        submittedTasks.removeAll()
+        if let diagnosticSubmission {submittedTasks[upload.task_id]=diagnosticSubmission}
         checkpoint = DubCheckpoint(host: api.address.baseURL.absoluteString, upload: upload, languages: languages, profileID: profile)
         error = nil; progress = 0; save()
     }
     public func monitor(api: APIClient, pollInterval: Duration = .seconds(2)) async throws {
         guard !monitoring, checkpoint?.host == api.address.baseURL.absoluteString else { return }
+        failureWasRemoteTask = false; failureDiagnosticObservation = nil
+        var diagnosticGate=CompanionTaskFailureGate()
         let revision = self.revision
         monitoring = true
         defer { if revision == self.revision { monitoring = false } }
@@ -55,16 +63,18 @@ public struct DubCheckpoint: Codable, Sendable {
                 switch cp.stage {
                 case .preparing, .rendering:
                     guard let task = cp.taskID else { throw ClientError("mobile.errors.invalid_response") }
+                    let observation=diagnosticObservation?()
                     let page = try await api.events(task, after: cp.afterSequence)
                     try validate(revision)
+                    let reportable=diagnosticGate.observe(taskID:task,page:page,before:observation,after:diagnosticObservation?(),submitted:submittedTasks[task])
                     for event in page.events {
                         cp.afterSequence = max(cp.afterSequence, event.seq)
                         if let eventProgress = DubProgress.parse(event) {
-                            if ["error", "failed"].contains(eventProgress.stage) { cp.stage = .failed; checkpoint = cp; save(); throw ClientError("mobile.errors.dub_failed") }
+                            if ["error", "failed"].contains(eventProgress.stage) { failureWasRemoteTask = true; failureDiagnosticObservation=reportable; cp.stage = .failed; checkpoint = cp; save(); throw ClientError("mobile.errors.dub_failed") }
                             progress = eventProgress.fraction
                         }
                     }
-                    if page.job.status == "failed" { cp.stage = .failed; checkpoint = cp; save(); throw ClientError("mobile.errors.dub_failed") }
+                    if page.job.status == "failed" { failureWasRemoteTask = true; failureDiagnosticObservation=reportable; cp.stage = .failed; checkpoint = cp; save(); throw ClientError("mobile.errors.dub_failed") }
                     if page.job.status == "cancelled" { cp.stage = .cancelled }
                     if page.job.status == "done" {
                         progress = 0
@@ -96,8 +106,10 @@ public struct DubCheckpoint: Codable, Sendable {
                         cue.text = text; cue.profile_id = cp.profileID; cue.target_lang = language.code; cue.cue_source_id = segment.id
                         return cue
                     }
+                    let submission=diagnosticObservation?()
                     let task = try await api.render(cp.jobID, segments: segments, language: language.code, languageName: language.name)
                     try validate(revision)
+                    if let submission {submittedTasks[task.task_id]=submission}
                     cp.taskID = task.task_id; cp.stage = .rendering; cp.afterSequence = 0
                     checkpoint = cp; save()
                 case .done, .failed, .cancelled: break
@@ -122,6 +134,7 @@ public struct DubCheckpoint: Codable, Sendable {
         else { checkpoint?.stage = .cancelled; save() }
     }
     public func clear() {
+        submittedTasks.removeAll()
         revision = UUID(); checkpoint = nil; progress = 0; error = nil
         pendingTranslation = nil; monitoring = false
         defaults.removeObject(forKey: "dubCheckpoint")

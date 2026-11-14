@@ -1,10 +1,8 @@
 import { isBenignWindowError } from '@shared/utils/foreignErrors';
 import { scrubText } from '@shared/utils/scrub';
 import { openRepairAgent } from '@/lib/repair-agent-events';
-import {
-  captureException,
-  type AnalyticsExceptionStage,
-} from '@shared/utils/analytics';
+import { captureDiagnosticException, initializeDiagnosticReporting } from './diagnostic-reports';
+import { captureException, type AnalyticsExceptionStage } from '@shared/utils/analytics';
 
 const THROTTLE_MS = 30_000;
 const lastOpened = new Map<string, number>();
@@ -36,7 +34,15 @@ function repair(
   error: unknown,
   filename = '',
   stage: AnalyticsExceptionStage = 'renderer:task',
+  reportDiagnostics = true,
 ): void {
+  if (isBenignWindowError(message, error, filename)) return;
+  if (reportDiagnostics)
+    captureDiagnosticException(
+      error,
+      stage === 'renderer:task' ? 'operation_failed' : 'renderer_crash',
+      stage === 'renderer:task' ? 'other' : 'render',
+    );
   if (!shouldRepair(message, error, filename)) return;
   captureException(error, stage);
   const detail = error instanceof Error ? error.stack || error.message : String(error ?? message);
@@ -70,6 +76,10 @@ export function installGlobalErrorRecovery(): void {
   installed = true;
   const target = window as EarlyErrorWindow;
   const earlyFaults = target.__voicestudioEarlyFaults?.splice(0) ?? [];
+  // The bootstrap queue predates any observed grant. A later ON response may
+  // reflect another client's new choice, so it cannot authorize this history.
+  // Initialize for subsequent live faults without retaining early Error objects.
+  void initializeDiagnosticReporting();
   target.__voicestudioStopEarlyErrorCapture?.();
   delete target.__voicestudioEarlyFaults;
   window.addEventListener('error', (event) => {
@@ -93,5 +103,6 @@ export function installGlobalErrorRecovery(): void {
       fault.error,
       fault.filename,
       fault.kind === 'rejection' ? 'renderer:rejection' : 'renderer:uncaught',
+      false,
     );
 }

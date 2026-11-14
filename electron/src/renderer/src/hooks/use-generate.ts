@@ -43,6 +43,7 @@ import { isPresetOnly, useTtsReadiness } from './use-tts-readiness';
 import { useEngines } from './use-engines';
 import { expressionCaps } from '@/lib/expression';
 import { recordActionBreadcrumb } from '@/lib/report-breadcrumb';
+import { captureDiagnosticException } from '@/lib/diagnostic-reports';
 import { useResolvedLicenceError } from './use-resolved-licence-error';
 import { announceDroppedSpeech } from '@/lib/dropped-speech';
 import { recordTakeSpeed } from '@/lib/store/quality-offer';
@@ -56,6 +57,8 @@ import {
 const TIMER_TICK_MS = 100;
 const PROGRESS_THROTTLE_MS = 100;
 const MODEL_NOT_DOWNLOADED = 'model_not_downloaded';
+/** A deliberate queue validation outcome, rather than an engine failure. */
+class QueuedVoiceChangedError extends Error {}
 
 // One synthesis at a time across every mounted hook instance: the backend
 // serialises on the GPU anyway. Takes requested while one renders wait in a
@@ -614,7 +617,7 @@ function useGenerateController(): UseGenerateClone {
                   take.transcriptBaseline.transcript,
                 )))
           )
-            throw new Error(tr('generationQueue.voice_changed'));
+            throw new QueuedVoiceChangedError(tr('generationQueue.voice_changed'));
         }
         const result = await generateClone(input, {
           signal: controller.signal,
@@ -664,10 +667,12 @@ function useGenerateController(): UseGenerateClone {
           queryClient.invalidateQueries({ queryKey: queryKeys.engines }),
         ]).catch(() => {});
       } catch (err) {
-        if (cancelledRef.current) {
+        if (cancelledRef.current || controller.signal.aborted) {
           patchQueueItem(take.id, { status: 'cancelled' });
         } else {
           recordActionBreadcrumb(`generate:${reportMode}:error`);
+          if (!isModelNotDownloaded(err) && !(err instanceof QueuedVoiceChangedError))
+            captureDiagnosticException(err, 'generation_failed', 'generation');
           const message = isAbortError(err)
             ? tr('tts_errors.timeout')
             : isModelNotDownloaded(err)

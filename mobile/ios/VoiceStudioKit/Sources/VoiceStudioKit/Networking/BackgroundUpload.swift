@@ -8,6 +8,31 @@ private final class UploadBuffer: @unchecked Sendable {
     func take(task: URLSessionTask) -> Data { lock.withLock { data.removeValue(forKey: ObjectIdentifier(task)) ?? Data() } }
 }
 
+/// Only live completion observations reach this optional sink. Stored receipts
+/// remain local UI state and are never replayed into automatic diagnostics.
+private struct UploadDiagnosticSnapshot: Sendable {
+    let handler: @Sendable (DiagnosticInput, Int64) -> Void
+    let observedAtMs: Int64
+    func prepare(_ failure: ClientError) -> (@Sendable () -> Void)? {
+        if let status=failure.status,status<500 { return nil }
+        let keys: Set<String>=["mobile.ios.upload_failed","mobile.errors.backend","mobile.errors.server","mobile.errors.timeout","mobile.connect.error_unreachable","mobile.errors.invalid_response"]
+        guard keys.contains(failure.key) || (failure.status ?? 0)>=500 else { return nil }
+        let network=["mobile.errors.timeout","mobile.connect.error_unreachable"].contains(failure.key)
+        let input=DiagnosticInput(category:"operation_failed",stage:"dub",errorCode:network ? "NETWORK_ERROR" : "UNKNOWN",errorType:failure.key=="mobile.errors.timeout" ? "TimeoutError" : "OtherError",frames:[DiagnosticFrame(path:"mobile/ios/VoiceStudioKit/Sources/VoiceStudioKit/Networking/BackgroundUpload.swift",line:#line)])
+        // Only this bounded DTO, timestamp and epoch-bound callback survive IO.
+        return { handler(input,observedAtMs) }
+    }
+}
+private final class UploadDiagnosticObserver: @unchecked Sendable {
+    private let lock=NSLock()
+    private var handler: (@Sendable (DiagnosticInput, Int64) -> Void)?
+    func set(_ value: (@Sendable (DiagnosticInput, Int64) -> Void)?) { lock.withLock { handler=value } }
+    func snapshot() -> UploadDiagnosticSnapshot? {
+        guard let handler=lock.withLock({ self.handler }) else { return nil }
+        return UploadDiagnosticSnapshot(handler:handler,observedAtMs:Int64(Date().timeIntervalSince1970*1000))
+    }
+}
+
 @MainActor @Observable public final class BackgroundUpload: NSObject, URLSessionDataDelegate, URLSessionTaskDelegate {
     public static let shared = BackgroundUpload()
     public private(set) var fraction: Double = 0
@@ -16,6 +41,7 @@ private final class UploadBuffer: @unchecked Sendable {
     public var eventsCompletion: (() -> Void)?
     public var onReceipt: (() -> Void)?
     @ObservationIgnored private nonisolated let buffer = UploadBuffer()
+    @ObservationIgnored private nonisolated let diagnosticObserver=UploadDiagnosticObserver()
     @ObservationIgnored private nonisolated let persistence: DubUploadLedger
     @ObservationIgnored private let stagingDirectory: URL?
     @ObservationIgnored private var session: URLSession!
@@ -91,6 +117,8 @@ private final class UploadBuffer: @unchecked Sendable {
             }
         }
     }
+    /// The app attaches this only while explicit diagnostic consent is active.
+    public func setDiagnosticFailureHandler(_ handler: (@Sendable (DiagnosticInput, Int64) -> Void)?) { diagnosticObserver.set(handler) }
     public func clearReceipt() { receipt = nil; persistence.clearReceipt() }
     public func takeReceipt(host: String) -> UploadReceipt? {
         guard let receipt = persistence.takeReceipt(host: host) else { return nil }
@@ -105,6 +133,7 @@ private final class UploadBuffer: @unchecked Sendable {
     }
     nonisolated public func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) { completionHandler(nil) }
     nonisolated public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?) {
+        let diagnostic=diagnosticObserver.snapshot()
         let body = buffer.take(task: task)
         guard let description = task.taskDescription, let data = description.data(using: .utf8), let meta = try? JSONDecoder().decode(PendingUpload.self, from: data) else { return }
         let status = (task.response as? HTTPURLResponse)?.statusCode ?? 0
@@ -133,12 +162,14 @@ private final class UploadBuffer: @unchecked Sendable {
             return
         case .finished(let completion): receipt = completion
         }
+        let report=receipt.failure.flatMap { diagnostic?.prepare($0) }
         // A canceled upload must never replace a newer host's pending upload.
         // Persist before iOS's background-session completion handler is called.
         guard persistence.complete(receipt) else {
             try? FileManager.default.removeItem(at: meta.file)
             return
         }
+        report?()
         try? FileManager.default.removeItem(at: meta.file)
         Task { @MainActor in
             guard self.pending?.jobID == meta.jobID, self.pending?.host == meta.host else { return }

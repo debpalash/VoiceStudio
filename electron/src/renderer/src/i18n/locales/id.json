@@ -3611,7 +3611,7 @@
       "notifications": "Notifikasi",
       "notifications_help": "Beri tahu saat sulih suara selesai. Notifikasi dibuat di ponsel ini; tidak ada yang melewati layanan cloud.",
       "privacy": "Privasi",
-      "privacy_help": "Aplikasi ini hanya berkomunikasi dengan server VoiceStudio yang Anda pasangkan. Tanpa akun, tanpa pemrosesan cloud.",
+      "privacy_help": "Tugas di perangkat diproses di ponsel ini. Unduhan model, laporan yang Anda pilih untuk dikirim, dan komputer yang dipasangkan menggunakan jaringan. Metadata diagnostik otomatis hanya dikirim melalui jaringan setelah persetujuan terpisah.",
       "about": "Tentang",
       "version": "Versi {{version}}",
       "licenses": "Lisensi sumber terbuka"
@@ -3664,7 +3664,7 @@
       "dictation_setup": "Dikte tidak tersedia. Di host, instal dan terima model ASR. Untuk akses jarak jauh, hubungkan kembali dengan kunci API atau jaringan tepercaya; PIN berbagi saja tidak dapat mengotorisasi dikte.",
       "host_label": "Label server",
       "theme_preview": "Pratinjau tampilan",
-      "analytics_local": "Aplikasi pendamping ini mencatat pilihan Anda di ponsel ini. Aplikasi tidak mengirim analitik.",
+      "analytics_local": "Ponsel ini tidak mengirim analitik penggunaan; pilihan Anda disimpan secara lokal. Laporan diagnostik otomatis memerlukan persetujuan terpisah.",
       "model_licenses": "Tinjau lisensi model di host Anda",
       "stage_upload": "Mengunggah media",
       "stage_prepare": "Menyiapkan media di host",
@@ -3717,7 +3717,7 @@
       "upload_pending": "Unggahan berlanjut di latar belakang. Biarkan VoiceStudio di komputer Anda tetap berjalan.",
       "upload_resume": "Lanjutkan pemantauan",
       "upload_failed": "Unggahan gagal. Hubungkan kembali ke host yang sama dan pilih media lagi.",
-      "privacy_local": "Preferensi analitik disimpan di perangkat ini. Versi ini tidak pernah mengirim analitik.",
+      "privacy_local": "Ponsel ini tidak mengirim analitik penggunaan; pilihan Anda disimpan secara lokal. Laporan diagnostik otomatis memerlukan persetujuan terpisah.",
       "transcript": "Transkrip",
       "qr_unavailable": "Kamera tidak tersedia. Masukkan alamat host secara manual.",
       "language_system": "Bahasa sistem",
@@ -3770,7 +3770,7 @@
       "capture_slow": "Ponsel ini tidak dapat memproses audio mikrofon cukup cepat. Tutup aplikasi lain atau gunakan komputer Anda.",
       "preset_voice": "Suara {{number}}",
       "transfer": "{{received}} dari {{total}}",
-      "privacy": "Tugas di perangkat tetap di ponsel ini. Hanya unduhan model, laporan yang Anda pilih untuk dikirim, dan komputer yang dipasangkan yang memakai jaringan.",
+      "privacy": "Tugas di perangkat diproses di ponsel ini. Unduhan model, laporan yang Anda pilih untuk dikirim, dan komputer yang dipasangkan menggunakan jaringan. Metadata diagnostik otomatis hanya dikirim melalui jaringan setelah persetujuan terpisah.",
       "computer_feature": "Fitur ini saat ini berjalan di komputer Anda. Anda dapat memakai Ucapan dan Dikte di ponsel ini tanpa memasangkan.",
       "accepted": "Lisensi diterima",
       "not_accepted": "Lisensi belum diterima",
@@ -3834,7 +3834,7 @@
       "download_one": "{{name}} · unduhan {{size}}"
     },
     "consent": {
-      "phone_note": "Disimpan di ponsel ini. Tidak ada yang dikirim."
+      "phone_note": "Pilihan analitik Anda disimpan di ponsel ini. Laporan diagnostik otomatis memerlukan persetujuan terpisah."
     },
     "report": {
       "action": "Laporkan",
@@ -4317,5 +4317,14 @@
       "failed": "Gagal",
       "cancelled": "Dibatalkan"
     }
+  },
+  "diagnostics": {
+    "title": "Laporan kesalahan otomatis",
+    "body": "Kirim laporan teknis tentang aplikasi yang berhenti, kegagalan instalasi dan pembuatan ke Supermetry, termasuk detail aplikasi dan perangkat, kode kesalahan, lokasi kode aplikasi, serta ID instalasi acak. Audio, teks, berkas, nama, kredensial, atau log Anda tidak pernah dikirim. Terpisah dari analitik penggunaan dan dinonaktifkan secara bawaan. Anda dapat mematikannya kapan saja di Privasi.",
+    "allow": "Izinkan laporan kesalahan",
+    "keep_off": "Tetap nonaktifkan laporan",
+    "unavailable": "Laporan otomatis tidak tersedia atau dinonaktifkan untuk aplikasi ini.",
+    "managed": "Kelola pilihan ini di aplikasi desktop yang terhubung ke browser ini.",
+    "save_failed": "Pilihan ini tidak dapat disimpan. Silakan coba lagi."
   }
 }

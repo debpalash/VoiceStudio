@@ -298,6 +298,8 @@ class _ResilientGpuPool(Executor):
         # so wrapping the callable is the one place that sees queue→run→done
         # for the whole pool.
         token = {"counted": False}
+        from core import diagnostic_reports
+        fn = diagnostic_reports.bind_callable(fn)
 
         def _tracked(*a, **kw):
             with self._stats_lock:
@@ -843,6 +845,8 @@ async def run_on_gpu_pool_guarded(fn, *, what: str = "GPU job",
     finalizer. Normal completion never calls it. This lets request-owned temp
     files outlive abandoned workers without delaying ordinary requests (#1668).
     """
+    from core import diagnostic_reports
+    diagnostic_epoch = diagnostic_reports.inherited_grant()
     from services.inference_cancellation import InferenceCancellation
     cancellation = InferenceCancellation()
     loop = asyncio.get_running_loop()
@@ -900,7 +904,7 @@ async def run_on_gpu_pool_guarded(fn, *, what: str = "GPU job",
                 _fire_abandon_callback()
 
     from core.render_trace import bind as bind_render_trace
-    concurrent_fut = ex.submit(bind_render_trace(_job))
+    concurrent_fut = ex.submit(bind_render_trace(diagnostic_reports.bind_callable(_job, diagnostic_epoch)))
     fut = asyncio.wrap_future(concurrent_fut, loop=loop)
 
     def _abandon() -> None:
@@ -3072,6 +3076,8 @@ def _load_model_sync():
                 "Model load aborted: shutdown during load — benign, not a failure."
             )
             raise ModelLoadInterruptedByShutdown("shutdown during load") from exc
+        from core import diagnostic_reports
+        diagnostic_reports.capture_failure("model_load", error=exc, engine_id="omnivoice")
         # Surface an ACTIONABLE, sanitized error in /model/status (it's shown in
         # the first-run System Check). build_failure classifies the cause and
         # attaches a fix hint — e.g. a corrupted transformers install
@@ -3617,6 +3623,8 @@ async def preload_model():
         # (#1000 class) — the full chain, not just str(e), is what actually
         # distinguishes a real dependency problem from a shutdown-interrupted
         # import.
+        from core import diagnostic_reports
+        diagnostic_reports.capture_failure("model_load", error=e, engine_id="omnivoice")
         logger.warning("Model preload failed (non-fatal): %s", e, exc_info=e)
         # Non-fatal must not mean invisible (#1415). A broken dependency in the
         # model's import chain fails here and nowhere else until the user tries

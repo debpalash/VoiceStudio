@@ -1005,6 +1005,8 @@ async def install_model(req: InstallModelRequest):
                 "phase": "install_cancelled",
             })
         except Exception as e:
+            from core import diagnostic_reports
+            diagnostic_reports.capture_failure("download", error=e)
             _resolving.set()
             logger.info("model install failed for %s: %s", req.repo_id, e)
             import time as _time_fail

@@ -128,6 +128,9 @@ def prepare(output, info):
     copy_native_notices(legal, notices, output / "NativeLicences")
     catalogs = output / "Catalogs"
     catalogs.mkdir(exist_ok=True)
+    # Generated from the same reviewed destination/taxonomy as desktop/backend.
+    shutil.copy2(ROOT / "config/diagnostics.json", catalogs / "diagnostics.json")
+    shutil.copy2(ROOT / "config/analytics.json", catalogs / "diagnostics-destination.json")
     source = ROOT / "electron/src/renderer/src/i18n/locales"
     shutil.copy2(ROOT / "electron/src/shared/languages.json", catalogs / "languages.json")
     code_source = (ROOT / "electron/src/shared/utils/languages.js").read_text(encoding="utf-8")
@@ -144,11 +147,14 @@ def prepare(output, info):
     shutil.copy2(ROOT / "mobile/contract/community-gallery.json", catalogs / "community-gallery.json")
     shutil.copy2(ROOT / "mobile/contract/maintainer-cards.json", catalogs / "maintainer-cards.json")
     shutil.copy2(ROOT / "mobile/contract/support.json", catalogs / "support.json")
-    english = json.loads((source / "en.json").read_text(encoding="utf-8"))
+    english = {}
     additions = sorted((ROOT / "mobile/contract").glob("strings*.en.json"))
     for path in additions:
         merge(english, json.loads(path.read_text(encoding="utf-8")))
         shutil.copy2(path, catalogs / path.name)
+    # Legacy mobile additions fill missing keys; the loaded renderer catalog
+    # owns current text, including privacy disclosures in OS permission prompts.
+    merge(english, json.loads((source / "en.json").read_text(encoding="utf-8")))
     permissions = {
         "CFBundleDisplayName": ("mobile.ios.app_name",),
         "NSCameraUsageDescription": ("mobile.permissions.camera",),

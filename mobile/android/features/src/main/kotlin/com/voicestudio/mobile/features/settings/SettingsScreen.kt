@@ -14,10 +14,12 @@ import androidx.compose.foundation.verticalScroll
 import com.voicestudio.mobile.features.*
 import com.voicestudio.mobile.designsystem.*
 import com.voicestudio.mobile.l10n.L10n
+import com.voicestudio.mobile.data.AutomaticDiagnostics
 
 @Composable fun SettingsScreen(vm:StudioViewModel,version:String,onConnect:()->Unit = {},onModels:()->Unit = {},onSupport:(String)->Unit = {}) {
     val prefs by vm.preferences.collectAsState()
     val state by vm.state.collectAsState()
+    val diagnostics by AutomaticDiagnostics.state.collectAsState()
     val context=LocalContext.current
     val l=LocalL10n.current
     var editUrl by remember {mutableStateOf<String?>(null)}
@@ -61,6 +63,15 @@ import com.voicestudio.mobile.l10n.L10n
             Info("mobile.simple.privacy","mobile.local.privacy",row=true)
             HorizontalDivider(color=role("border"))
             Toggle("mobile.simple.analytics",prefs.consent==true) {vm.consent(it)}
+            HorizontalDivider(color=role("border"))
+            if(diagnostics.ready && diagnostics.status.available) {
+                Toggle("diagnostics.title",diagnostics.status.enabled) {AutomaticDiagnostics.setConsent(it)}
+                Text(tr("diagnostics.body"),style=MaterialTheme.typography.bodySmall)
+            } else Text(tr(if(diagnostics.ready) "diagnostics.unavailable" else "common.loading"))
+            if(diagnostics.saveFailed) {
+                Text(tr("diagnostics.save_failed"),color=MaterialTheme.colorScheme.error)
+                TextButton(enabled=!diagnostics.saving,onClick=AutomaticDiagnostics::retryConsent) {Text(tr("common.retry"))}
+            }
         }
         Heading("mobile.settings.about")
         SupportSettingsLinks(onSupport)

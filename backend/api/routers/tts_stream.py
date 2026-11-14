@@ -377,6 +377,8 @@ async def ws_tts(websocket: WebSocket):
 
             t0 = _perf_counter()
             text = data["text"]
+            from core import diagnostic_reports
+            diagnostic_epoch = diagnostic_reports.observe_grant()
 
             # Per-request lease on the engine, released on every exit path below.
             lease = ExitStack()
@@ -399,7 +401,7 @@ async def ws_tts(websocket: WebSocket):
                     pass
                 from services.tts_backend import engine_in_use
 
-                backend = await _resolve_stream_backend(engine_id)
+                backend = await diagnostic_reports.await_owned(_resolve_stream_backend(engine_id), diagnostic_epoch)
                 lease.enter_context(engine_in_use(backend, yield_to_native=True))
 
                 # ── Routing gate (#21 — no silent CPU fallback). WebSockets have
@@ -464,7 +466,12 @@ async def ws_tts(websocket: WebSocket):
                 async with aclosing(_ws_pcm_chunks(
                     backend, kw, text, data.get("language"), native=native, profile_id=data.get("voice"),
                 )) as chunks:
-                    async for pcm_bytes, sr, chunk_synth_s in chunks:
+                    while True:
+                        diagnostic_epoch = diagnostic_reports.observe_grant()
+                        try:
+                            pcm_bytes, sr, chunk_synth_s = await diagnostic_reports.await_owned(anext(chunks), diagnostic_epoch)
+                        except StopAsyncIteration:
+                            break
                         synth_time += chunk_synth_s
                         if not started:
                             # The rate is known only after lazy generation.
@@ -534,6 +541,8 @@ async def ws_tts(websocket: WebSocket):
 
                 licence = licence_required_detail(e)
                 if licence is None:
+                    if diagnostic_epoch is not None:
+                        diagnostic_reports.capture_failure("generation", error=e, expected_epoch=diagnostic_epoch)
                     logger.exception("TTS streaming failed: %s", e)
                 else:
                     logger.info("TTS stream refused: model licence not accepted")

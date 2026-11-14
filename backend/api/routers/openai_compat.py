@@ -659,10 +659,14 @@ async def _stream_speech_pcm(first: bytes, sentences: list[str], render, *, sse:
     """Render on demand so a disconnected client does not queue more speech."""
     for chunk in _audio_chunks(first):
         yield _speech_delta(chunk) if sse else chunk
+    from core import diagnostic_reports
     for sentence in sentences:
+        diagnostic_epoch = diagnostic_reports.observe_grant()
         try:
-            audio = await render(sentence)
-        except Exception:
+            audio = await diagnostic_reports.await_owned(render(sentence), diagnostic_epoch)
+        except Exception as exc:
+            if diagnostic_epoch is not None:
+                diagnostic_reports.capture_failure("generation", error=exc, expected_epoch=diagnostic_epoch)
             if not sse:
                 raise
             logger.warning("Progressive OpenAI TTS failed after the first segment")
@@ -697,6 +701,8 @@ async def _native_pcm_stream(backend, text, kw, *, sse, timed=False):
     from services.tts_backend import EngineBusyError, MLXAudioBackend, engine_in_use
     from services.watermark import mark_synthetic
 
+    from core import diagnostic_reports
+    diagnostic_epoch = diagnostic_reports.inherited_grant()
     closed = False
 
     def encode_next():
@@ -761,17 +767,23 @@ async def _native_pcm_stream(backend, text, kw, *, sse, timed=False):
             raise _native_pcm_busy() from None
         entered = True
         iterator = backend.stream_audio(text, **kw)
-        while (chunk := await run_on_gpu_pool_guarded(
-            encode_mlx_next if mlx else encode_next,
-            what="Native TTS generate" if timed else "Native OpenAI TTS generate",
-            executor=None if mlx else _native_pcm_worker,
-            timeout=generate_timeout_s(text, engine=backend),
-        )) is not None:
+        while True:
+            diagnostic_epoch = diagnostic_reports.observe_grant()
+            chunk = await diagnostic_reports.await_owned(run_on_gpu_pool_guarded(
+                encode_mlx_next if mlx else encode_next,
+                what="Native TTS generate" if timed else "Native OpenAI TTS generate",
+                executor=None if mlx else _native_pcm_worker,
+                timeout=generate_timeout_s(text, engine=backend),
+            ), diagnostic_epoch)
+            if chunk is None:
+                break
             emitted = True
             yield _speech_delta(chunk) if sse else chunk
         if not emitted:
             raise RuntimeError("Native speech generation produced no audio.")
-    except Exception:
+    except Exception as exc:
+        if diagnostic_epoch is not None:
+            diagnostic_reports.capture_failure("generation", error=exc, engine_id=backend.id, expected_epoch=diagnostic_epoch)
         if not emitted or not sse:
             raise
         logger.exception("Native OpenAI TTS failed after the first chunk")
@@ -993,12 +1005,14 @@ async def create_speech(req: SpeechRequest):
     # loading gets OMNIVOICE_MODEL_LOAD_TIMEOUT (default 1200s); once warm
     # this is a per-request no-op.
     from services.model_manager import _model_load_timeout
+    from core import diagnostic_reports
+    diagnostic_epoch = diagnostic_reports.observe_grant()
     try:
-        await run_on_gpu_pool_guarded(
+        await diagnostic_reports.await_owned(run_on_gpu_pool_guarded(
             backend.ensure_ready,
             what=f"TTS engine '{backend.id}' model load",
             timeout=_model_load_timeout(),
-        )
+        ), diagnostic_epoch)
     # Catch the BUILTIN TimeoutError base, not GpuJobTimeoutError by name:
     # several tests reload services.model_manager mid-suite, so a class
     # imported at call time can differ in identity from the one the guard
@@ -1021,6 +1035,8 @@ async def create_speech(req: SpeechRequest):
     except Exception as e:
         if type(e).__name__ == "ModelLoadInterruptedByShutdown":
             raise
+        if diagnostic_epoch is not None:
+            diagnostic_reports.capture_failure("model_load", error=e, engine_id=backend.id, expected_epoch=diagnostic_epoch)
         # A sidecar engine's load can also hit the #1172 class (broken venv
         # interpreter / placeholder binary) — surface the typed 503 here too.
         http = _typed_speech_http_error(e)
@@ -1085,14 +1101,15 @@ async def create_speech(req: SpeechRequest):
 
     # Finish the first segment before sending headers so validation and
     # first-render errors retain their normal HTTP status.
+    diagnostic_epoch = diagnostic_reports.observe_grant()
     try:
         if native:
             sse = req.stream_format == "sse"
             stream = _native_pcm_stream(backend, text, kw, sse=sse)
-            first = await anext(stream)
+            first = await diagnostic_reports.await_owned(anext(stream), diagnostic_epoch)
             mime_type, ext = ("text/event-stream" if sse else "audio/pcm"), "pcm"
         else:
-            audio_bytes, mime_type, ext = await render(sentences[0])
+            audio_bytes, mime_type, ext = await diagnostic_reports.await_owned(render(sentences[0]), diagnostic_epoch)
     except HTTPException:
         raise
     except Exception as e:
@@ -1100,6 +1117,8 @@ async def create_speech(req: SpeechRequest):
         if http is not None:
             logger.warning("OpenAI TTS failed (typed): %s", e)
             raise http from e
+        if diagnostic_epoch is not None:
+            diagnostic_reports.capture_failure("generation", error=e, engine_id=backend.id, expected_epoch=diagnostic_epoch)
         logger.exception("OpenAI TTS failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1313,6 +1332,8 @@ async def _transcribe_request(
     except Exception as e:
         raise OpenAIError(400, f"Could not read audio file: {e}", param="file")
 
+    from core import diagnostic_reports
+    diagnostic_epoch = diagnostic_reports.observe_grant()
     options = {
         "language": language or None,
         "initial_prompt": prompt or None,
@@ -1354,7 +1375,8 @@ async def _transcribe_request(
                 raise _TaskUnsupported(backend.id)
             return backend.transcribe(tmp_path, word_timestamps=word_ts, **extra)
 
-        result = await run_transcribe_guarded(_gpu_pool, _run, what="OpenAI", audio_path=tmp_path)
+        result = await diagnostic_reports.await_owned(
+            run_transcribe_guarded(_gpu_pool, _run, what="OpenAI", audio_path=tmp_path), diagnostic_epoch)
 
         segments = _result_segments(result)
         full_text = (result.get("text") or "").strip() if not segments else " ".join(
@@ -1444,15 +1466,20 @@ async def _transcribe_request(
         raise OpenAIError(403, e.detail(), param="model", code=e.detail()["code"]) from e
     except TimeoutError as e:
         # ASRTimeoutError (subclass): backend alive, ASR too heavy for compute.
+        if diagnostic_epoch is not None:
+            diagnostic_reports.capture_failure("transcription", error=e, expected_epoch=diagnostic_epoch)
         logger.warning("OpenAI transcription timed out: %s", e)
         raise HTTPException(status_code=504, detail=str(e))
     except Exception as e:
         from core.failure import NO_AUDIO_TRACK_MESSAGE, NoAudioTrackError
         from services.ffmpeg_utils import raise_for_audio_extract_failure
         try:
-            await asyncio.to_thread(raise_for_audio_extract_failure, str(e), tmp_path)
+            await diagnostic_reports.await_owned(
+                asyncio.to_thread(raise_for_audio_extract_failure, str(e), tmp_path), diagnostic_epoch)
         except NoAudioTrackError:
             raise OpenAIError(400, NO_AUDIO_TRACK_MESSAGE, param="file", code="no_audio_track")
+        if diagnostic_epoch is not None:
+            diagnostic_reports.capture_failure("transcription", error=e, expected_epoch=diagnostic_epoch)
         logger.exception("OpenAI transcription failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
     finally:

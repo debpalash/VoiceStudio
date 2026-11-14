@@ -7,7 +7,7 @@ public enum UploadCompletion: Sendable {
     case finished(UploadReceipt)
 
     public static func resolve(pending: PendingUpload, reply: HTTPReply, error: (any Error)?, authenticated: Bool, background: Bool) -> Self {
-        if error is CancellationError || (error as? URLError)?.code == .cancelled { return .cancelled }
+        if error is CancellationError || (error as? URLError)?.code == .cancelled || (error as? CocoaError)?.code == .userCancelled { return .cancelled }
         if background, let code = (error as? URLError)?.code,
            [URLError.backgroundSessionInUseByAnotherProcess, .backgroundSessionWasDisconnected, .backgroundSessionRequiresSharedContainer].contains(code) {
             return .retryInForeground

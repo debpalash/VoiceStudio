@@ -1586,6 +1586,8 @@ def _run_install(spec: SidecarSpec, job: dict) -> None:
         job["state"] = "succeeded"
         _log(job, f"{spec.display_name} installed successfully.")
     except _StepError as exc:
+        from core import diagnostic_reports
+        diagnostic_reports.capture_failure("install", error=exc, engine_id=spec.engine_id)
         job["state"] = "failed"
         job["error"] = str(exc)
         job["remediation"] = exc.remediation

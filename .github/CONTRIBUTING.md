@@ -673,6 +673,14 @@ test-only PR. Docker Hub overview edits still publish through the small
   - Supermetry analytics only after a yes at the first-run consent prompt, asked before
     runtime setup on a fresh install so setup stage and failure code can be counted
     (`backend/core/analytics.py`, allowlisted content-free metadata).
+  - Automatic failure reports to the same Supermetry public events endpoint,
+    only after the separate **Automatic error reports** opt-in (owner-approved
+    2026-11-14). Off by default, including for existing analytics users; metadata
+    follows `config/diagnostics.json`. Electron main owns desktop uploads even
+    when setup/backend fails; source/Docker and both native phones own their
+    respective consent. Withdrawal stops delivery and invalidates queued reports.
+    No audio, text, exception messages, logs, user paths, credentials, screenshots
+    or crash dumps are uploaded; see `docs/electron-privacy.md`.
   - The GitHub star count (no credentials or referrer, refreshed every 20
     minutes while shown).
 

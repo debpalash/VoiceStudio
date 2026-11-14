@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import { DIAGNOSTIC_CHANNELS } from './diagnostics';
 import type {
   BackendStatus,
   DataRelocationStage,
@@ -21,6 +22,12 @@ function subscribe<T>(channel: string, cb: (payload: T) => void): () => void {
 }
 
 const bridge: VoiceStudioBridge = {
+  diagnostics: {
+    getStatus: () => ipcRenderer.invoke(DIAGNOSTIC_CHANNELS.getStatus),
+    setConsent: (enabled) => ipcRenderer.invoke(DIAGNOSTIC_CHANNELS.setConsent, enabled),
+    capture: (event, expectedEpoch) =>
+      ipcRenderer.invoke(DIAGNOSTIC_CHANNELS.capture, event, expectedEpoch),
+  },
   browser: {
     open: (url) => ipcRenderer.invoke('site-browser:open', url),
     close: () => ipcRenderer.invoke('site-browser:close'),
@@ -114,17 +121,19 @@ const bridge: VoiceStudioBridge = {
     setRuntimeRegion: (region) => ipcRenderer.invoke('backend:setRuntimeRegion', region),
     chooseRuntimeLocation: (title) => ipcRenderer.invoke('backend:chooseRuntimeLocation', title),
     useDefaultRuntimeLocation: () => ipcRenderer.invoke('backend:useDefaultRuntimeLocation'),
-    getPythonRuntime: () => ipcRenderer.invoke('backend:getPythonRuntime') as Promise<{
-      selection: { pythonPath: string } | null;
-      overrideActive: boolean;
-    }>,
+    getPythonRuntime: () =>
+      ipcRenderer.invoke('backend:getPythonRuntime') as Promise<{
+        selection: { pythonPath: string } | null;
+        overrideActive: boolean;
+      }>,
     choosePythonRuntime: (title) => ipcRenderer.invoke('backend:choosePythonRuntime', title),
     confirmPythonRuntime: (token) => ipcRenderer.invoke('backend:confirmPythonRuntime', token),
     planPythonRepair: (pythonPath) => ipcRenderer.invoke('backend:planPythonRepair', pythonPath),
     installPythonRepair: (request) => ipcRenderer.invoke('backend:installPythonRepair', request),
     onPythonRepairProgress: (callback) => subscribe('backend:pythonRepairProgress', callback),
     useManagedPython: () => ipcRenderer.invoke('backend:useManagedPython'),
-    discoverPythonRuntimes: () => ipcRenderer.invoke('backend:discoverPythonRuntimes') as Promise<PythonDiscoveryResult>,
+    discoverPythonRuntimes: () =>
+      ipcRenderer.invoke('backend:discoverPythonRuntimes') as Promise<PythonDiscoveryResult>,
     useDiscoveredPythonRuntime: (pythonPath) =>
       ipcRenderer.invoke('backend:useDiscoveredPythonRuntime', pythonPath),
     restart: () => ipcRenderer.invoke('backend:restart') as Promise<void>,

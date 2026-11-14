@@ -3637,7 +3637,7 @@
       "notifications": "Powiadomienia",
       "notifications_help": "Powiadom, gdy dubbing się zakończy. Powiadomienia są tworzone na tym telefonie; nic nie przechodzi przez usługę w chmurze.",
       "privacy": "Prywatność",
-      "privacy_help": "Ta aplikacja komunikuje się tylko z sparowanym serwerem VoiceStudio. Bez kont, bez przetwarzania w chmurze.",
+      "privacy_help": "Zadania wykonywane na urządzeniu pozostają na tym telefonie. Pobieranie modeli, raporty wysyłane z Twojej woli i sparowany komputer korzystają z sieci. Automatyczne metadane diagnostyczne korzystają z sieci dopiero po osobnej zgodzie.",
       "about": "Informacje",
       "version": "Wersja {{version}}",
       "licenses": "Licencje open source"
@@ -3690,7 +3690,7 @@
       "dictation_setup": "Dyktowanie jest niedostępne. Na hoście zainstaluj i zaakceptuj model ASR. W przypadku dostępu zdalnego połącz się ponownie, używając klucza API lub zaufanej sieci; sam PIN udostępniania nie może autoryzować dyktowania.",
       "host_label": "Nazwa serwera",
       "theme_preview": "Podgląd wyglądu",
-      "analytics_local": "Ta aplikacja towarzysząca zapisuje Twój wybór na tym telefonie. Nie wysyła żadnych danych analitycznych.",
+      "analytics_local": "Ten telefon nie wysyła analityki użycia; Twój wybór jest zapisywany lokalnie. Automatyczne raporty diagnostyczne wymagają osobnej zgody.",
       "model_licenses": "Zobacz licencje modeli na hoście",
       "stage_upload": "Przesyłanie multimediów",
       "stage_prepare": "Przygotowywanie multimediów na hoście",
@@ -3743,7 +3743,7 @@
       "upload_pending": "Przesyłanie trwa w tle. Pozostaw uruchomiony VoiceStudio na komputerze.",
       "upload_resume": "Wznów monitorowanie",
       "upload_failed": "Przesyłanie nie powiodło się. Połącz się ponownie z tym samym hostem i wybierz multimedia jeszcze raz.",
-      "privacy_local": "Preferencja dotycząca analityki jest zapisana na tym urządzeniu. Ta wersja nigdy nie wysyła danych analitycznych.",
+      "privacy_local": "Ten telefon nie wysyła analityki użycia; Twój wybór jest zapisywany lokalnie. Automatyczne raporty diagnostyczne wymagają osobnej zgody.",
       "transcript": "Transkrypcja",
       "qr_unavailable": "Aparat jest niedostępny. Wpisz adres hosta ręcznie.",
       "language_system": "Język systemu",
@@ -3796,7 +3796,7 @@
       "capture_slow": "Telefon nie nadążył z przetwarzaniem dźwięku z mikrofonu. Zamknij inne aplikacje lub użyj komputera.",
       "preset_voice": "Głos {{number}}",
       "transfer": "{{received}} z {{total}}",
-      "privacy": "Zadania na urządzeniu zostają na tym telefonie. Z sieci korzystają tylko pobieranie modeli, zgłoszenia, które zdecydujesz się wysłać, oraz sparowany komputer.",
+      "privacy": "Zadania wykonywane na urządzeniu pozostają na tym telefonie. Pobieranie modeli, raporty wysyłane z Twojej woli i sparowany komputer korzystają z sieci. Automatyczne metadane diagnostyczne korzystają z sieci dopiero po osobnej zgodzie.",
       "computer_feature": "Ta funkcja działa obecnie na Twoim komputerze. Możesz używać funkcji „Mowa” i „Dyktowanie” na tym telefonie bez parowania.",
       "accepted": "Licencja zaakceptowana",
       "not_accepted": "Licencja niezaakceptowana",
@@ -3862,7 +3862,7 @@
       "downloads_many": "{{feature}} wymaga {{count}} pobrań · {{size}}"
     },
     "consent": {
-      "phone_note": "Zapisano na tym telefonie. Nic nie jest wysyłane."
+      "phone_note": "Twój wybór dotyczący analityki jest zapisywany na tym telefonie. Automatyczne raporty diagnostyczne wymagają osobnej zgody."
     },
     "report": {
       "action": "Zgłoś",
@@ -4349,5 +4349,14 @@
       "failed": "Niepowodzenie",
       "cancelled": "Anulowano"
     }
+  },
+  "diagnostics": {
+    "title": "Automatyczne raporty błędów",
+    "body": "Wysyłaj do Supermetry raporty techniczne o awariach oraz nieudanych instalacjach i generowaniu. Zawierają dane aplikacji i urządzenia, kody błędów, lokalizacje w kodzie oraz losowy identyfikator instalacji. Nigdy nie wysyłają Twojego dźwięku, tekstu, plików, nazw, danych logowania ani dzienników. Ta opcja jest niezależna od analityki użycia i domyślnie wyłączona. Możesz ją wyłączyć w dowolnej chwili w ustawieniach prywatności.",
+    "allow": "Zezwól na raporty błędów",
+    "keep_off": "Pozostaw raporty wyłączone",
+    "unavailable": "Automatyczne raporty są niedostępne lub wyłączone dla tej aplikacji.",
+    "managed": "Zarządzaj tym wyborem w aplikacji komputerowej połączonej z tą przeglądarką.",
+    "save_failed": "Nie udało się zapisać wyboru. Spróbuj ponownie."
   }
 }
