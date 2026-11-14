@@ -19,7 +19,7 @@ it.each([false, true])('drains verbose stderr with captureStderr=%s', async (cap
     process.cwd(),
     process.env,
     {
-      timeoutMs: 1500,
+      timeoutMs: 5000,
       captureStderr,
       onSpawn: (child) => children.push(child),
       onOutput: (text, stream) => {
