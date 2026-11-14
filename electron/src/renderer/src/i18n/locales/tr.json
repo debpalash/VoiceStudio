@@ -972,7 +972,6 @@
     "play": "Oynat",
     "pause": "Duraklat",
     "seek": "Oynatma konumu",
-    "missing": "Ses dosyası bulunamadı.",
     "now_playing": "Şimdi çalıyor",
     "kind_convert": "Ses dönüştürme"
   },

@@ -23,6 +23,10 @@ from services.admin_sessions import (
 _AUTH_STATE_KEY = "auth_principal"
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
 
+# Remote MCP callers must not borrow a separate HTTP backend's socket peer.
+# This marker only removes implicit network consumption, never grants trust.
+DELEGATED_CONSUMER_HEADER = "x-omnivoice-delegated-consumer"
+
 CONSUME_CAPABILITIES = frozenset({"consume"})
 ADMIN_CAPABILITIES = frozenset({"consume", "admin"})
 LOOPBACK_CAPABILITIES = frozenset({"consume", "admin", "native"})
@@ -461,6 +465,12 @@ def _candidate_principal(
     return principal
 
 
+def is_delegated_consumer(connection) -> bool:
+    """Whether network trust belongs to an MCP bridge, not its caller."""
+    headers = getattr(connection, "headers", None) or {}
+    return _mapping_get(headers, DELEGATED_CONSUMER_HEADER).strip().lower() in _TRUTHY
+
+
 def resolve_principal(
     connection,
     *,
@@ -474,7 +484,8 @@ def resolve_principal(
         store = _active_admin_session_store()
 
     host = _client_host(connection)
-    if is_loopback(host):
+    delegated_consumer = is_delegated_consumer(connection)
+    if is_loopback(host) and not delegated_consumer:
         return _attach_principal(
             connection,
             AuthPrincipal(PrincipalKind.LOOPBACK, LOOPBACK_CAPABILITIES),
@@ -498,13 +509,14 @@ def resolve_principal(
             ),
         )
 
-    if is_local_host(host):
+    if is_local_host(host) and not delegated_consumer:
         return _attach_principal(
             connection,
             AuthPrincipal(PrincipalKind.TRUSTED_NETWORK, CONSUME_CAPABILITIES),
         )
     if _valid_pin(connection) or (
-        _configured_pin(connection) and is_trusted_host_loopback(connection)
+        not delegated_consumer
+        and _configured_pin(connection) and is_trusted_host_loopback(connection)
     ):
         # The host opt-in stands in for the PIN only: it grants the PIN's
         # consumption rights, never the API-key or admin tier.
@@ -522,27 +534,34 @@ def resolve_principal(
     )
 
 
-def presents_valid_credential(
+def credential_principal(
     connection,
     *,
     store: AdminSessionStore | None = None,
-) -> bool:
-    """Whether the request carries a valid API key or admin session.
+) -> AuthPrincipal | None:
+    """Validate the selected credential independently of peer/attached trust.
 
-    Independent of network position: a loopback peer is resolved as LOOPBACK
-    before credentials are looked at, but a reverse proxy on this machine
-    forwards remote clients that authenticate themselves. The share PIN does
-    not count: it is short enough to guess, and a loopback request keeps
-    loopback rights, so a page re-pointing its domain at 127.0.0.1 could
-    otherwise try PINs until one passes. A WebSocket ticket is consumed by
-    this check, so call it at most once per handshake.
+    Delegated loopback callers need both credential capability and transport
+    (for cookie CSRF checks), without inheriting a LOOPBACK principal. This
+    preserves canonical precedence and query-master-only semantics. A WebSocket
+    ticket is consumed here, so call at most once per handshake.
     """
     if store is None:
         store = _active_admin_session_store()
     candidate = _credential_candidate(connection)
     if candidate is not None:
-        return _candidate_principal(connection, candidate, remote_api_key(), store) is not None
-    return False
+        return _candidate_principal(connection, candidate, remote_api_key(), store)
+    return None
+
+
+def presents_valid_credential(connection, *, store: AdminSessionStore | None = None) -> bool:
+    """Whether an explicit API key/session/ticket proves authority, not a PIN.
+
+    Independent of network position. Callers authorizing cookie-authenticated
+    mutations must also check CSRF; credential_principal exposes the selected
+    transport without changing or reusing an attached loopback principal.
+    """
+    return credential_principal(connection, store=store) is not None
 
 
 def principal_for(

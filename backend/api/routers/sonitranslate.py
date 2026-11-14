@@ -9,7 +9,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from api.dependencies import require_native_access
+from api.dependencies import require_admin, require_desktop, require_native_access
 from services import sonitranslate as soni
 
 router = APIRouter(prefix="/engines/sonitranslate", tags=["SoniTranslate"])
@@ -27,8 +27,17 @@ def sonitranslate_status():
 
 # ── Install ─────────────────────────────────────────────────────────────
 
+# install/start/stop are managed-sidecar operations and carry the same
+# admin + desktop gate as POST /engines/sidecar/{engine_id}/install: install
+# clones mutable upstream source and pip-installs it, and start() spawns that
+# checkout with HF_TOKEN in the child env.  An API key does not make that
+# supply-chain path safe to trigger remotely (docs/api-auth.md).
 
-@router.post("/install")
+
+@router.post(
+    "/install",
+    dependencies=[Depends(require_admin), Depends(require_desktop)],
+)
 async def sonitranslate_install():
     """Clone and set up SoniTranslate (heavy — ~15GB with models)."""
     try:
@@ -42,7 +51,10 @@ async def sonitranslate_install():
 # ── Start / Stop ────────────────────────────────────────────────────────
 
 
-@router.post("/start")
+@router.post(
+    "/start",
+    dependencies=[Depends(require_admin), Depends(require_desktop)],
+)
 async def sonitranslate_start():
     """Start the SoniTranslate Gradio server."""
     try:
@@ -53,7 +65,10 @@ async def sonitranslate_start():
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/stop")
+@router.post(
+    "/stop",
+    dependencies=[Depends(require_admin), Depends(require_desktop)],
+)
 async def sonitranslate_stop():
     """Stop the SoniTranslate Gradio server."""
     result = await soni.stop()

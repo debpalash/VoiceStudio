@@ -177,10 +177,27 @@ def _raise_for_backend_status(response) -> None:
     not an empty success."""
     if response.is_success:
         return
+    import httpx
     detail = _backend_error_detail(response) if response.is_error else None
     if not detail:
-        response.raise_for_status()
-    import httpx
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as error:
+            # Legacy query authentication remains a URL channel. Never let a
+            # proxy/redirect error copy that credential into an agent result.
+            # Build the status text without request queries or Location, so
+            # even short or encoded keys never depend on scrubber heuristics.
+            from http import HTTPStatus
+            try:
+                phrase = HTTPStatus(response.status_code).phrase
+            except ValueError:
+                phrase = ""
+            raise httpx.HTTPStatusError(
+                _public_error_text(
+                    f"VoiceStudio returned HTTP {response.status_code} {phrase} for "
+                    f"{response.request.method} {response.request.url.path}"
+                ), request=error.request, response=error.response,
+            ) from None
 
     raise httpx.HTTPStatusError(
         f"VoiceStudio returned HTTP {response.status_code} for "
@@ -598,14 +615,178 @@ def _ensure_mcp():
         raise ImportError(msg) from e
 
 
+_DELEGATED_CALLER_HEADER = "X-OmniVoice-Delegated"
+_UNAVAILABLE_CALLER = object()
+
+
+def _current_http_request(server):
+    """The live MCP HTTP request for ``server``, or None on the stdio transport.
+
+    ``server`` is the FastMCP instance the caller was built from, passed in
+    rather than read from a module global: this accessor runs outside
+    ``create_mcp_server``, where the instance only exists as a local name, so a
+    global lookup would raise, get swallowed below, and silently report "no HTTP
+    request" for every HTTP caller. That would drop the delegated marker and
+    hand the caller the loopback tier, which is the bug this whole check exists
+    to prevent, so the binding is pinned by a test.
+
+    Only a successfully read context whose request is None proves the local
+    stdio transport. Missing/broken SDK context is an unresolved caller, never
+    evidence of local privilege.
+    """
+    try:
+        return server.get_context().request_context.request
+    except Exception:
+        logger.debug("MCP request context unavailable", exc_info=True)
+        return _UNAVAILABLE_CALLER
+
+
+def mcp_caller_is_privileged(request) -> bool:
+    """Whether the caller behind ``request`` proved an admin credential.
+
+    ``request is None`` means there is no HTTP request at all — the stdio
+    transport, i.e. a local MCP client — and keeps its existing privileged
+    position. Anything else must prove the master API key or an admin session
+    through a channel the backend itself honours (``Authorization: Bearer``,
+    ``?api_key=``, the ``ov_session`` cookie, or the legacy ``ov_key`` cookie),
+    which is what :func:`core.auth.credential_principal` decides. Cookie-based
+    tool calls also require the inbound Origin and CSRF proof. The share
+    PIN does not count: it is a 6-digit consumption credential (#4128), so a
+    PIN-holding LAN guest lands in the delegated tier below instead of
+    inheriting the loopback tier.
+
+    Never invent a credential channel here. A caller this function wrongly
+    calls privileged is not marked, so an HTTP loopback caller could gain
+    local administrator access. A wrong "yes" escalates privilege; a wrong
+    "no" only refuses.
+    """
+    if request is None:
+        return True
+    if request is _UNAVAILABLE_CALLER:
+        return False
+    try:
+        from core.auth import CredentialTransport, credential_principal
+        from core.csrf import cookie_csrf_allowed
+
+        principal = credential_principal(request)
+        if principal is None:
+            return False
+        if principal.transport in {CredentialTransport.COOKIE, CredentialTransport.LEGACY_COOKIE}:
+            # tools/call is an HTTP POST that can mutate the backend. Never
+            # turn an ambient cookie into the bridge's local operator tier.
+            return cookie_csrf_allowed(request)
+        return True
+    except Exception:
+        # Never let the privilege probe raise inside a tool call — and never
+        # fail open: an unresolved caller is delegated, not privileged.
+        logger.debug("MCP caller privilege probe failed", exc_info=True)
+        return False
+
+
+def _delegated_request_headers(request) -> dict[str, str]:
+    """Extra headers for the in-process backend request behind one tool call.
+
+    Only a caller that could NOT prove an admin credential is marked: the
+    backend then stops treating an HTTP loopback caller as the local operator
+    and asks for a credential like any other remote client. A caller that did
+    prove one retains its actual peer and forwarded credential; the backend's
+    desktop/server-mode rules still apply. The stdio
+    transport has no HTTP request at all and is a local client, so it is never
+    marked.
+    """
+    if mcp_caller_is_privileged(request):
+        return {}
+    try:
+        from api.dependencies import DELEGATED_CALLER_HEADER
+
+        header_name = DELEGATED_CALLER_HEADER
+    except Exception:  # pragma: no cover — the constant is part of the module
+        header_name = _DELEGATED_CALLER_HEADER
+    return {header_name: "1"}
+
+
+def _http_backend_params(request) -> dict[str, str]:
+    """Keep the legacy query channel master-only; do not promote it to Bearer.
+
+    The caller already selected URL authentication. Native clients should use
+    Authorization instead, avoiding keys in request/access-log URLs.
+    """
+    if request is None or request is _UNAVAILABLE_CALLER:
+        return {}
+    key = request.query_params.get("api_key", "").strip()
+    return {"api_key": key} if key else {}
+
+
+def _http_backend_headers(request, base_url: str) -> dict[str, str]:
+    """Forward an HTTP caller's own auth, never the MCP process's operator key.
+
+    A confirmed stdio session is the only caller allowed to use the configured
+    backend key. The marker follows every HTTP caller to a loopback
+    backend, where losing it would turn the bridge back into an administrator.
+    Only recognized credential channels are forwarded; unrelated cookies and
+    headers belong to the inbound request and must not leak to another backend.
+    """
+    from http.cookies import SimpleCookie
+    import ipaddress
+    from urllib.parse import urlsplit
+    from core.auth import (
+        DELEGATED_CONSUMER_HEADER, authorization_credential_present,
+        authorization_header, is_loopback,
+    )
+
+    if request is None:
+        from services.network_share import backend_auth_headers
+        return backend_auth_headers(base_url)
+    # An explicit HTTP backend can be a different installation, even when it
+    # is reached through loopback. Its own credential check is authoritative;
+    # proving this MCP host's key must never borrow that backend's local tier.
+    result = {_DELEGATED_CALLER_HEADER: "1"}
+    if (request is _UNAVAILABLE_CALLER or request.client is None
+            or not is_loopback(request.client.host)):
+        result[DELEGATED_CONSUMER_HEADER] = "1"
+    if request is _UNAVAILABLE_CALLER:
+        return result
+    query = request.query_params
+    cookies = SimpleCookie()
+    for name in ("ov_session", "ov_key", "ov_pin"):
+        value = request.cookies.get(name)
+        if value:
+            cookies[name] = value
+    if authorization_credential_present(request):
+        result["Authorization"] = authorization_header(request)
+    if cookies:
+        result["Cookie"] = cookies.output(header="", sep=";").strip()
+    pin = request.headers.get("x-omnivoice-pin", "").strip() or query.get("pin", "").strip()
+    if pin:
+        result["X-OmniVoice-Pin"] = pin
+    csrf = request.headers.get("x-voicestudio-csrf")
+    if csrf:
+        result["X-VoiceStudio-CSRF"] = csrf
+    origin = request.headers.get("origin")
+    if origin:
+        # Preserve browser proof, without inventing an approved origin or a
+        # CSRF marker for a native caller. The destination validates both.
+        result["Origin"] = origin
+    if any(name in result for name in ("Authorization", "Cookie", "X-OmniVoice-Pin")) or _http_backend_params(request):
+        target = urlsplit(base_url)
+        host = (target.hostname or "").strip("[]")
+        try:
+            loopback = host == "localhost" or ipaddress.ip_address(host).is_loopback
+        except ValueError:
+            loopback = False
+        if target.scheme != "https" and not (target.scheme == "http" and loopback):
+            raise ValueError("Remote MCP backend credentials require HTTPS")
+    return result
+
+
 def create_mcp_server(app=None):
     """Build and return the FastMCP server instance.
 
     ``app`` is the backend ASGI app this server is mounted on. When given,
-    tool calls reach the API in-process as a loopback caller — independent of
-    the bind host/port and never challenged by the share-PIN / API-key gates
-    (which a concrete LAN ``OMNIVOICE_BIND_HOST`` would otherwise trigger).
-    Standalone runs (no app) call the backend over HTTP.
+    tool calls reach the API in-process, preserving the caller's tier rather
+    than borrowing the transport's loopback privilege. Standalone runs (no
+    app), and explicit API URL overrides, reach the backend over HTTP with the
+    caller's own credentials. Confirmed stdio sessions remain local operators.
     """
     FastMCP = _ensure_mcp()
     mcp = FastMCP(
@@ -652,19 +833,49 @@ def create_mcp_server(app=None):
         from services.network_share import backend_self_url
         return backend_self_url()
 
-    def _client(timeout: float):
+    def _client(timeout: float) -> "httpx.AsyncClient":
         import httpx
+        request = _current_http_request(mcp)
         # OMNIVOICE_API_URL is an explicit "send tool calls there" override.
         if app is not None and not os.environ.get("OMNIVOICE_API_URL", "").strip():
-            return httpx.AsyncClient(
-                transport=httpx.ASGITransport(app=app, client=("127.0.0.1", 0)),
-                base_url="http://127.0.0.1",
-                timeout=timeout,
+            # HTTP re-entry must preserve the real peer and credentials for
+            # consumer gates too; an admin-only marker cannot stop a forged
+            # loopback peer from bypassing require_consumer. Only confirmed
+            # stdio is a local process. Missing SDK context has no trusted peer.
+            peer = None
+            base = "http://127.0.0.1"
+            if request is None:
+                peer = ("127.0.0.1", 0)
+            elif request is not _UNAVAILABLE_CALLER and request.client is not None:
+                peer = (request.client.host, request.client.port)
+            if request is not None and request is not _UNAVAILABLE_CALLER:
+                # Origin/CSRF checks must see the original destination too,
+                # including a nondefault port. No network uses this URL.
+                from core.csrf import effective_scheme
+                base = str(request.url.replace(
+                    scheme=effective_scheme(request), path="/", query="", fragment="",
+                ))
+            from core.auth import DELEGATED_CONSUMER_HEADER
+
+            headers = (
+                _http_backend_headers(request, "http://127.0.0.1")
+                if request is not None else {}
             )
-        from services.network_share import backend_auth_headers
+            # Here the socket peer already represents the original caller.
+            headers.pop(DELEGATED_CONSUMER_HEADER, None)
+            headers.pop(_DELEGATED_CALLER_HEADER, None)
+            headers.update(_delegated_request_headers(request))
+            return httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=app, client=peer),
+                base_url=base,
+                timeout=timeout,
+                headers=headers,
+                params=_http_backend_params(request),
+            )
         base = _api_base()
         return httpx.AsyncClient(
-            base_url=base, timeout=timeout, headers=backend_auth_headers(base)
+            base_url=base, timeout=timeout, headers=_http_backend_headers(request, base),
+            params=_http_backend_params(request),
         )
 
     async def _api_get(path: str):
@@ -702,12 +913,12 @@ def create_mcp_server(app=None):
         Streamable-HTTP transport; stdio clients (and any version where the
         accessor differs) simply resolve to None and use the backend's
         default voice."""
-        try:
-            req = mcp.get_context().request_context.request
-            if req is not None:
-                return req.headers.get("x-omnivoice-client-id")
-        except Exception:
-            pass
+        request = _current_http_request(mcp)
+        if request is not None:
+            try:
+                return request.headers.get("x-omnivoice-client-id")
+            except Exception:
+                pass
         return None
 
     @mcp.tool()

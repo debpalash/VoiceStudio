@@ -972,7 +972,6 @@
     "play": "再生",
     "pause": "一時停止",
     "seek": "再生位置",
-    "missing": "音声ファイルが見つかりません。",
     "now_playing": "再生中",
     "kind_convert": "音声変換"
   },
