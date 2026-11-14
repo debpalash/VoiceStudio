@@ -14,6 +14,8 @@ import socket
 import httpcore
 import httpx
 
+from services import _download_policy
+
 from core.url_safety import (
     PRIVATE_DESTINATION_DETAIL,
     UnsafeURLError,
@@ -30,19 +32,13 @@ async def _addresses(url: httpx.URL, timeout: float | None) -> list[str]:
         ipaddress.ip_address(host)
         addresses = [host]
     except ValueError:
-        try:
-            answers = await asyncio.wait_for(
-                asyncio.get_running_loop().getaddrinfo(
-                    host, url.port or (443 if url.scheme == 'https' else 80), type=socket.SOCK_STREAM,
-                ), timeout=timeout,
-            )
-        except TimeoutError as error:
-            raise httpx.ConnectTimeout('Model download DNS lookup timed out') from error
-        except OSError as error:
-            raise httpx.ConnectError('Model download hostname could not be resolved') from error
+        answers = await _download_policy.run_check(
+            socket.getaddrinfo, host, url.port or (443 if url.scheme == 'https' else 80),
+            type=socket.SOCK_STREAM, timeout=timeout,
+        )
         addresses = list(dict.fromkeys(answer[4][0] for answer in answers))
     if not addresses:
-        raise httpx.ConnectError('Model download hostname has no addresses')
+        raise UnsafeURLError('Model download hostname has no validated addresses')
     if not private_url_imports_allowed() and any(not is_public_address(ip) for ip in addresses):
         raise UnsafeURLError(PRIVATE_DESTINATION_DETAIL)
     return addresses

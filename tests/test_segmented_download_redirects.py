@@ -215,3 +215,80 @@ async def test_concurrent_terminal_errors_take_precedence_after_siblings_are_dra
         await sd._gather_or_cancel([fail(first), fail(second), sibling()])
     assert raised.value is expected
     assert state == {'started': True, 'drained': True}
+
+
+@pytest.mark.parametrize('redirect_phase',['head','get'])
+@pytest.mark.parametrize('ranged',[False,True],ids=['single','range'])
+@pytest.mark.parametrize('credential',['header','auth','auth_and_header','cookie_header','cookie_jar'])
+async def test_injected_credentials_are_scoped_to_original_download_origin(tmp_path,redirect_phase,ranged,credential):
+    import base64
+    from services import segmented_download as sd
+    seen=[]
+    async def response(request):
+        seen.append(request)
+        if request.url.host=='origin.example' and request.url.path=='/model' and request.method==redirect_phase.upper():
+            return httpx.Response(302,headers={'Location':'https://cdn.example/final'})
+        return httpx.Response(206 if ranged and request.method=='GET' else 200,
+                              headers={'Content-Length':'4','Accept-Ranges':'bytes' if ranged else 'none','Content-Range':'bytes 0-3/4'},
+                              content=b'' if request.method=='HEAD' else b'data')
+    kwargs={'headers':{'X-Download-Test':'preserved'}}
+    expected=None
+    if credential in {'header','auth_and_header'}:
+        kwargs['headers']['Authorization']='Bearer injected-private-header'
+        expected='Bearer injected-private-header'
+    if credential in {'auth','auth_and_header'}:
+        kwargs['auth']=httpx.BasicAuth('download-user','download-password')
+        expected='Basic '+base64.b64encode(b'download-user:download-password').decode()
+    if credential=='cookie_header':kwargs['headers']['Cookie']='session=private-cookie'
+    if credential=='cookie_jar':kwargs['cookies']={'session':'private-cookie'}
+    async with httpx.AsyncClient(transport=httpx.MockTransport(response),**kwargs) as client:
+        await sd.segmented_download('https://origin.example/model',str(tmp_path/'model'),client=client)
+        # The shared client remains usable with its original credential configuration.
+        await client.get('https://origin.example/control')
+    origin=[r for r in seen if r.url.host=='origin.example']
+    redirected=[r for r in seen if r.url.host=='cdn.example']
+    assert origin and redirected
+    for request in origin:
+        if expected:assert request.headers.get('Authorization')==expected
+        else:assert 'private-cookie' in request.headers.get('Cookie','')
+    for request in redirected:
+        assert 'Authorization' not in request.headers, 'Client authentication leaked across a redirect'
+        assert 'Cookie' not in request.headers, 'Client cookies leaked across a redirect'
+        assert request.headers['X-Download-Test']=='preserved'
+    assert (tmp_path/'model').read_bytes()==b'data'
+
+
+@pytest.mark.parametrize('ranged',[False,True],ids=['single','range'])
+async def test_explicit_hf_token_is_not_replaced_by_injected_default_auth(tmp_path,ranged):
+    from services import segmented_download as sd
+    seen=[]
+    def response(request):
+        seen.append(request)
+        return httpx.Response(206 if ranged and request.method=='GET' else 200,
+                              headers={'Content-Length':'4','Accept-Ranges':'bytes' if ranged else 'none','Content-Range':'bytes 0-3/4'},
+                              content=b'' if request.method=='HEAD' else b'data')
+    async with httpx.AsyncClient(transport=httpx.MockTransport(response),auth=('injected-user','injected-password')) as client:
+        await sd.segmented_download('https://huggingface.co/model',str(tmp_path/'model'),
+                                    token='hf_explicit_test_token',client=client)
+    assert all(r.headers.get('Authorization')=='Bearer hf_explicit_test_token' for r in seen)
+
+
+@pytest.mark.parametrize(('origin','target','credentials_allowed'),[
+    ('https://origin.example/model','https://origin.example/next',True),
+    ('http://origin.example/model','https://origin.example/next',True),
+    ('https://origin.example/model','http://origin.example/next',False),
+    ('https://origin.example/model','https://origin.example:8443/next',False),
+])
+async def test_injected_credential_origin_rules_preserve_relative_hops_and_secure_upgrade(tmp_path,origin,target,credentials_allowed):
+    from services import segmented_download as sd
+    seen=[]
+    def response(request):
+        seen.append(request)
+        if request.method=='HEAD':return httpx.Response(200,headers={'Content-Length':'4'})
+        if request.url.path=='/model':return httpx.Response(302,headers={'Location':target})
+        return httpx.Response(200,content=b'data')
+    async with httpx.AsyncClient(transport=httpx.MockTransport(response),auth=('user','password'),headers={'Cookie':'session=private'}) as client:
+        await sd.segmented_download(origin,str(tmp_path/'model'),client=client)
+    assert ('Authorization' in seen[-1].headers) is credentials_allowed
+    assert ('Cookie' in seen[-1].headers) is credentials_allowed
+    assert (tmp_path/'model').read_bytes()==b'data'

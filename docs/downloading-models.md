@@ -49,7 +49,15 @@ the original hostname for certificate verification and SNI, and requests keep
 their original Host header. System HTTP/HTTPS/SOCKS proxies and `NO_PROXY`
 continue to apply to the original hostname; a configured local proxy remains
 usable. Hugging Face redirects to public CDNs remain supported, without
-forwarding the Hub token to those CDNs.
+forwarding the Hub token to those CDNs. Injected HTTP clients also keep their
+default authentication and cookies on the original origin (including a secure
+HTTP-to-HTTPS upgrade on default ports); an explicit Hub token remains authoritative on trusted Hugging Face HTTPS hosts.
+
+DNS validation uses a finite connection-timeout budget (30 seconds by default),
+including waiting for bounded resolver capacity. Cancellation does not wait for
+a stalled operating-system resolver. An interrupted, timed-out or unavailable
+destination check stops the install, including when another range fails first;
+its unresolved result cannot enable a plain-transfer fallback.
 
 A destination-policy refusal stops the install instead of switching to a
 plain transfer. For an intentionally private model mirror, the existing
@@ -59,7 +67,8 @@ off for public model hosts. This policy is scoped to the segmented downloader
 and does not block the app's unrelated local backend connections.
 Hub metadata and plain Hugging Face transfers use the Hub client's transport;
 the address-pinning guarantee applies to accelerated transfers. Ordinary
-connectivity failures retain the documented plain-transfer fallback. Within an
+transfer failures after destination validation retain the documented plain-transfer
+fallback. Within an
 accelerated transfer, a working address is preferred only while fresh validated
 DNS answers still contain it, avoiding repeated dead-family timeouts per range.
 
