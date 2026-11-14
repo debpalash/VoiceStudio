@@ -178,6 +178,29 @@ def _unrouted_media_commands(tree):
             yield node.lineno, getattr(scope, "name", "<module>")
 
 
+def _local_input_guard_call_without_argv(tree):
+    """Yield (lineno, function) for ``local_inputs_only`` calls with no argv.
+
+    The guard is a function of the argv: ``local_inputs_only()`` returns an
+    empty list (``cmd`` being falsy) and expands to nothing, so the call site
+    silently runs its command with no ``-protocol_whitelist`` at all. Passing
+    only ``tool=`` is the same mistake spelled differently.
+    """
+    parents = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parents[child] = parent
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or node.args:
+            continue
+        if _names(node.func) != {"local_inputs_only"}:
+            continue
+        scope = parents.get(node)
+        while scope is not None and not isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            scope = parents.get(scope)
+        yield node.lineno, getattr(scope, "name", "<module>")
+
+
 def test_no_ffmpeg_or_ffprobe_call_bypasses_the_local_input_wrapper():
     offenders = []
     for path in sorted(BACKEND.rglob("*.py")):
@@ -189,6 +212,21 @@ def test_no_ffmpeg_or_ffprobe_call_bypasses_the_local_input_wrapper():
     assert not offenders, (
         "ffmpeg/ffprobe argv built without local_inputs_only()/run_ffmpeg()/"
         "spawn_subprocess(); wrap it so inputs stay local-only:\n" + "\n".join(offenders)
+    )
+
+
+def test_every_local_input_guard_call_passes_its_argv():
+    offenders = []
+    for path in sorted(BACKEND.rglob("*.py")):
+        rel = path.relative_to(BACKEND)
+        if rel.parts[0] == "tests" or ".venv" in rel.parts:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        offenders += [f"{rel}:{line} ({func})" for line, func in _local_input_guard_call_without_argv(tree)]
+    assert not offenders, (
+        "local_inputs_only() adjusts an argv, so calling it with none returns an empty "
+        "list and applies no -protocol_whitelist; pass the argv list (and tool=... when "
+        "the binary is not name-detectable):\n" + "\n".join(offenders)
     )
 
 
