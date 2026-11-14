@@ -2662,6 +2662,17 @@
       ],
       "title": "Lang"
      },
+     "language": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Language"
+     },
      "segments": {
       "items": {
        "additionalProperties": true,

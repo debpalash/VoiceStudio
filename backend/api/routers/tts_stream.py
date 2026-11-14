@@ -201,23 +201,21 @@ def build_stream_kwargs(data: dict) -> dict:
     return kw
 
 
-def split_stream_sentences(text: str, language: str | None) -> list[str]:
-    """Normalize once, then split into sentences for progressive delivery.
+def split_stream_sentences(text: str, language: str | None, profile_id: str | None = None) -> list[str]:
+    """Prepare spoken text once, then split for progressive delivery.
 
-    Engine-agnostic text normalization (junk strip, numbers→words,
-    abbreviations) — the same pre-pass as /generate, applied exactly ONCE per
-    request, on the whole text BEFORE the sentence chunker fans it out (so
-    per-sentence generates never re-normalize, and expanded abbreviations
-    can't confuse the sentence splitter). Pref-gated (default ON), idempotent,
-    never raises.
+    Normalization, saved dictionary entries and inline overrides apply to the
+    whole input before sentence splitting. Never prepare each chunk again:
+    respellings can contain other dictionary terms, and abbreviations must be
+    resolved before the splitter interprets punctuation.
 
     Wave 1.4: the first sentence's audio streams while later sentences are
     still synthesizing — the time-to-first-audio win. The chunker handles
     abbreviations/acronyms/decimals and CJK / non-Latin terminators; a
     single-sentence request behaves exactly like a single-shot render.
     """
-    from services.text_normalization import normalize_for_tts
-    return split_normalized_sentences(normalize_for_tts(text, language), language)
+    from services.pronunciation import prepare_speech_text
+    return split_normalized_sentences(prepare_speech_text(text, language, profile_id=profile_id), language)
 
 
 def split_normalized_sentences(text: str, language: str | None) -> list[str]:
@@ -269,12 +267,13 @@ async def synthesize_stream(
     voice: str | None = None,
     engine: str | None = None,
     language: str | None = None,
+    _prepared_text: str | None = None,
 ):
     """Yield ``(wav_tensor, sample_rate)`` per sentence as each finishes.
 
     The non-WebSocket entry to the pipeline ``/ws/tts`` runs: engine
     resolution, the no-silent-CPU-fallback routing gate, profile kwargs,
-    normalization + sentence chunking, and the guarded GPU-pool dispatch with
+    speech-text preparation + sentence chunking, and guarded GPU dispatch with
     a length-scaled timeout. Raises :class:`StreamUnavailableError` when the
     engine cannot run on this host.
     """
@@ -299,7 +298,14 @@ async def synthesize_stream(
             )
         from services.engine_memory import evict_other_tts_engines
         await evict_other_tts_engines(backend.id)
-        for sentence in split_stream_sentences(text, language):
+        # Internal cache callers can supply the exact speech used by their key;
+        # saved substitutions must never run again on that prepared string.
+        sentences = (
+            split_normalized_sentences(_prepared_text, language)
+            if _prepared_text is not None
+            else await asyncio.to_thread(split_stream_sentences, text, language, voice)
+        )
+        for sentence in sentences:
             wav, sr, _synth_s = await run_on_gpu_pool_guarded(
                 functools.partial(render_stream_sentence, backend, kw, sentence),
                 what="TTS generate",
@@ -308,12 +314,14 @@ async def synthesize_stream(
             yield wav, sr
 
 
-async def _ws_pcm_chunks(backend, kw, text, language, *, native):
+async def _ws_pcm_chunks(backend, kw, text, language, *, native, profile_id=None):
     if native:
         from api.routers.openai_compat import PCM_SAMPLE_RATE, _native_pcm_stream
-        from services.text_normalization import normalize_for_tts
+        from services.pronunciation import prepare_speech_text
 
-        normalized = normalize_for_tts(text, language)
+        normalized = await asyncio.to_thread(
+            prepare_speech_text, text, language, profile_id=profile_id,
+        )
         async with aclosing(_native_pcm_stream(backend, normalized, kw, sse=False, timed=True)) as stream:
             async for pcm, synth_seconds in stream:
                 yield pcm, PCM_SAMPLE_RATE, synth_seconds
@@ -324,7 +332,8 @@ async def _ws_pcm_chunks(backend, kw, text, language, *, native):
     from services.audio_io import pcm16_mono
     from services.model_manager import generate_timeout_s, run_on_gpu_pool_guarded
 
-    for sentence in split_stream_sentences(text, language):
+    sentences = await asyncio.to_thread(split_stream_sentences, text, language, profile_id)
+    for sentence in sentences:
         wav, rate, synth_seconds = await run_on_gpu_pool_guarded(
             partial(render_stream_sentence, backend, kw, sentence),
             what="TTS generate",
@@ -449,7 +458,7 @@ async def ws_tts(websocket: WebSocket):
                 synth_time = 0.0
 
                 async with aclosing(_ws_pcm_chunks(
-                    backend, kw, text, data.get("language"), native=native,
+                    backend, kw, text, data.get("language"), native=native, profile_id=data.get("voice"),
                 )) as chunks:
                     async for pcm_bytes, sr, chunk_synth_s in chunks:
                         synth_time += chunk_synth_s
