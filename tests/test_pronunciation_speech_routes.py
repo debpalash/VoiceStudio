@@ -372,8 +372,7 @@ def test_openai_dictionary_read_keeps_the_request_loop_responsive(
 
     async def render():
         async def observe():
-            while not started.is_set():
-                await asyncio.sleep(0)
+            assert await asyncio.to_thread(started.wait, 3), "request never reached dictionary loading"
             release.set()  # unrelated event-loop work can run during the read
 
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),

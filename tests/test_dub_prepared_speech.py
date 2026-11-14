@@ -121,3 +121,24 @@ def test_dub_preview_whole_line_deletion_skips_inference(
     })
     assert response.status_code == 200, response.text
     assert not fake_engine.calls
+
+
+def test_intentional_silence_staging_warning_redacts_error_paths(
+    spoken_dub, saved_pronunciations, monkeypatch, caplog,
+):
+    dub, _backend = spoken_dub
+    save = dub.dg.atomic_save_wav
+    private_path = "/private-reference/staging/deleted-line.wav"
+
+    def fail_staging(path, *args, **kwargs):
+        if str(path).endswith("seg_en_delete.wav"):
+            raise OSError(f"could not write {private_path}")
+        return save(path, *args, **kwargs)
+
+    monkeypatch.setattr(dub.dg, "atomic_save_wav", fail_staging)
+    events = dub.run(segments=[dict(start=0, end=1, text="[[label|]]")],
+                     segment_ids=["delete"], language="English")
+    assert any(event["type"] == "done" for event in events), events
+    assert "intentional silence for delete" in caplog.text
+    assert private_path not in caplog.text
+    assert "OSError" in caplog.text

@@ -1075,7 +1075,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                         ))
                         _natural_dur_records[str(seg_id)] = {"chars": 0, "dur": 0.0}
                     except Exception as error:
-                        logger.warning("could not stage intentional silence for %s: %s", log_safe(seg_id), error)
+                        logger.warning("could not stage intentional silence for %s: %s", log_safe(seg_id), type(error).__name__)
                 try:
                     del silence
                 except Exception:  # noqa: BLE001

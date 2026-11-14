@@ -2357,11 +2357,18 @@ async def generate_speech(
     # Resolve the final language and voice first; prepare spoken text once
     # before native/streaming inference and chunking. Inline choices remain
     # active even when the request disables saved dictionary entries.
-    from services.pronunciation import prepare_speech_text
-    text = await asyncio.to_thread(
-        prepare_speech_text, text, language, profile_id=resolved_profile_id,
-        dictionary=pronounce and pronunciation_enabled(),
-    )
+    try:
+        from services.pronunciation import prepare_speech_text
+        text = await asyncio.to_thread(
+            prepare_speech_text, text, language, profile_id=resolved_profile_id,
+            dictionary=pronounce and pronunciation_enabled(),
+        )
+    except BaseException:
+        # Preparation precedes the classic/streaming cleanup scopes. It never
+        # reads the uploaded reference, so cancellation can release it now.
+        if cleanup_ref and ref_lease is not None:
+            ref_lease.finish_request()
+        raise
 
     start_time = time.time()
 
