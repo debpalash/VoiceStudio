@@ -967,17 +967,21 @@ class DubTaskEventError extends Error {
     message: string,
     readonly proof: TaskDiagnosticProof | null,
     readonly eventKey: string,
+    readonly error_code: string,
   ) {
     super(message);
   }
 }
+function taskFailureCode(event: TaskEvent): string {
+  const code = typeof event.error_code === 'string' ? event.error_code.toUpperCase() : '';
+  return diagnosticPolicy.error_codes.includes(code) ? code : 'UNKNOWN';
+}
 function taskFailureKey(event: TaskEvent): string {
   // A closed technical key only: never retain event messages or raw payloads
   // while waiting for persisted evidence. Ambiguous matches fail closed below.
-  const code = typeof event.error_code === 'string' ? event.error_code.toUpperCase() : '';
   return JSON.stringify([
     event.type,
-    diagnosticPolicy.error_codes.includes(code) ? code : 'UNKNOWN',
+    taskFailureCode(event),
     typeof event.error_class === 'string' &&
     diagnosticPolicy.error_types.includes(event.error_class)
       ? event.error_class
@@ -1196,7 +1200,8 @@ function taskEvent(
     const failure = publicFailureFromEvent(event, 'Task failed');
     patch({ failure });
     const message = `${failure.stage ? failure.stage + ': ' : ''}${failure.reason}`;
-    if (task) throw new DubTaskEventError(message, task.proof, taskFailureKey(event));
+    if (task)
+      throw new DubTaskEventError(message, task.proof, taskFailureKey(event), taskFailureCode(event));
     throw new Error(message);
   }
   return event.type === terminal;

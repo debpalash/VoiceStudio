@@ -115,6 +115,8 @@ async def _worker():
         job["started_at"] = time.time()
         _processing_job_ids.add(job_id)
         logger.info("Batch job %s starting: %s", job_id, job["filename"])
+        from core import diagnostic_reports
+        diagnostic_epoch = diagnostic_reports.observe_grant()
 
         try:
             await _run_batch_pipeline(job_id, job)
@@ -139,8 +141,8 @@ async def _worker():
         except Exception as e:
             if job["status"] == "cancelled":
                 continue
-            from core import diagnostic_reports
-            diagnostic_reports.capture_failure("batch", error=e)
+            if diagnostic_epoch is not None:
+                diagnostic_reports.capture_failure("batch", error=e, expected_epoch=diagnostic_epoch)
             job["status"] = "failed"
             # plan-04 (#131): guaranteed non-empty, structured reason.
             failed = failure.build_failure(e, stage="batch", include_diagnostic=False)
@@ -370,9 +372,11 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
     # Bound the request (#730); an unkillable native transcribe keeps its worker
     # accounted for until it exits, so a retry cannot overlap it (#1669).
     from services.asr_backend import run_transcribe_guarded
-    segments, source_lang = await run_transcribe_guarded(
+    from core import diagnostic_reports
+    diagnostic_epoch = diagnostic_reports.observe_grant()
+    segments, source_lang = await diagnostic_reports.await_owned(run_transcribe_guarded(
         _gpu_pool, _transcribe, what="Batch", duration_s=duration,
-    )
+    ), diagnostic_epoch)
     from services.dub_language import detected_source_language
     source_lang = detected_source_language(source_lang)
     job["segments"] = segments
@@ -382,8 +386,8 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
     if job["status"] == "cancelled":
         return
     if not segments:
-        from core import diagnostic_reports
-        diagnostic_reports.capture_failure("transcription")
+        if diagnostic_epoch is not None:
+            diagnostic_reports.capture_failure("transcription", expected_epoch=diagnostic_epoch)
         job["error"] = "Transcription produced no segments"
         job["status"] = "failed"
         return

@@ -412,6 +412,56 @@ class DiagnosticReportsTest {
         }finally{store.blockedRemoves.clear();reporter.close()}
     }
 
+    private class FileCommitProbe(private val directory:File) : DiagnosticFileSynchronizer {
+        val commits=mutableListOf<String>()
+        var failing:String?=null
+        override fun synchronize(path:java.nio.file.Path) {
+            commits.add(path.fileName.toString())
+            if(failing==path.fileName.toString())throw IOException("Commit barrier failed")
+            NioDiagnosticFileSynchronizer.synchronize(path)
+        }
+    }
+    @Test fun fileStorageChecksPublishedFileAndParentBeforeAcknowledgingWrite() {
+        val directory=java.nio.file.Files.createTempDirectory("diagnostic-commit-").toFile()
+        try {
+            val probe=FileCommitProbe(directory);val storage=FileDiagnosticStorage(directory,probe)
+            val marker="{\"version\":1}".toByteArray()
+            storage.write("revoked.json",marker)
+            assertEquals(listOf("revoked.json",directory.name),probe.commits)
+            assertArrayEquals(marker,storage.read("revoked.json",4096))
+        }finally{directory.deleteRecursively()}
+    }
+    private fun fileStoreBarrierFailureCannotEnableAFormerlyWithdrawnGrant(directoryFailure:Boolean)=runTest {
+        val directory=java.nio.file.Files.createTempDirectory("diagnostic-commit-").toFile()
+        val probe=FileCommitProbe(directory);val storage=FileDiagnosticStorage(directory,probe)
+        val transport=Transport();val reporter=makeReporter(storage,transport,Clock(),StandardTestDispatcher(testScheduler))
+        try {
+            reporter.setConsent(false)
+            probe.failing=if(directoryFailure)directory.name else "consent.json"
+            try{reporter.setConsent(true);fail("Uncommitted opt-in must fail")}catch(_:IOException){}
+            assertFalse(reporter.status.enabled);assertTrue(reporter.status.consentSaveFailed)
+            assertFalse(reporter.capture(event()));assertNotNull(storage.read("revoked.json",4096))
+            probe.failing=null;reporter.close()
+            val next=makeReporter(FileDiagnosticStorage(directory),transport,Clock(),StandardTestDispatcher(testScheduler))
+            try{next.load();next.flush();assertFalse(next.status.enabled);assertTrue(transport.bodies.isEmpty())}finally{next.close()}
+        }finally{probe.failing=null;reporter.close();directory.deleteRecursively()}
+    }
+    @Test fun fileStoreFileBarrierFailureCannotEnableAFormerlyWithdrawnGrant()=fileStoreBarrierFailureCannotEnableAFormerlyWithdrawnGrant(false)
+    @Test fun fileStoreDirectoryBarrierFailureCannotEnableAFormerlyWithdrawnGrant()=fileStoreBarrierFailureCannotEnableAFormerlyWithdrawnGrant(true)
+    @Test fun failedOffDirectoryBarrierRemainsClosedAndOffOnRestart()=runTest {
+        val directory=java.nio.file.Files.createTempDirectory("diagnostic-commit-").toFile()
+        val probe=FileCommitProbe(directory);val storage=FileDiagnosticStorage(directory,probe)
+        val transport=Transport();val reporter=makeReporter(storage,transport,Clock(),StandardTestDispatcher(testScheduler))
+        try {
+            reporter.setConsent(true);probe.failing=directory.name
+            try{reporter.setConsent(false);fail("Uncommitted OFF must expose the storage failure")}catch(_:IOException){}
+            assertFalse(reporter.status.enabled);assertFalse(reporter.capture(event()))
+            probe.failing=null;reporter.close()
+            val next=makeReporter(FileDiagnosticStorage(directory),transport,Clock(),StandardTestDispatcher(testScheduler))
+            try{next.load();next.flush();assertFalse(next.status.enabled);assertTrue(transport.bodies.isEmpty())}finally{next.close()}
+        }finally{probe.failing=null;reporter.close();directory.deleteRecursively()}
+    }
+
     @Test fun fileStorageAllowsThePrivateAnonymousRevocationMarker() {
         val directory=java.nio.file.Files.createTempDirectory("voice-revocation-test").toFile()
         try {

@@ -1,4 +1,9 @@
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#elseif canImport(Glibc)
+import Glibc
+#endif
 #if canImport(FoundationNetworking)
 import FoundationNetworking
 #endif
@@ -17,9 +22,24 @@ public protocol DiagnosticStorage: Sendable {
     func write(_ name: String, data: Data) throws
     func remove(_ name: String) throws
 }
+protocol DiagnosticFileSynchronizing: Sendable {
+    func synchronize(_ url: URL) throws
+}
+struct SystemDiagnosticFileSynchronizer: DiagnosticFileSynchronizing {
+    func synchronize(_ url: URL) throws {
+        let descriptor = open(url.path, O_RDONLY | O_CLOEXEC)
+        guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        defer { _ = close(descriptor) }
+        guard fsync(descriptor) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+    }
+}
 public struct FileDiagnosticStorage: DiagnosticStorage {
     public let directory: URL
-    public init(directory: URL) { self.directory = directory }
+    private let synchronizer: any DiagnosticFileSynchronizing
+    public init(directory: URL) { self.init(directory: directory, synchronizer: SystemDiagnosticFileSynchronizer()) }
+    init(directory: URL, synchronizer: any DiagnosticFileSynchronizing) {
+        self.directory = directory; self.synchronizer = synchronizer
+    }
     private func target(_ name: String) throws -> URL {
         guard directory.isFileURL, ["consent.json", "outbox.json", "revoked.json"].contains(name) else { throw DiagnosticFailure.storageUnavailable }
         return directory.appendingPathComponent(name)
@@ -43,6 +63,10 @@ public struct FileDiagnosticStorage: DiagnosticStorage {
         let url = try target(name)
         try data.write(to: url, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+        // Atomic replacement prevents torn files; checked file and directory
+        // barriers also commit the publication before consent can be enabled.
+        try synchronizer.synchronize(url)
+        try synchronizer.synchronize(directory)
     }
     public func remove(_ name: String) throws {
         let url = try target(name)

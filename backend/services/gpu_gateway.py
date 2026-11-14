@@ -51,21 +51,23 @@ async def prewarm(
         what=f"TTS engine '{engine or getattr(backend, 'engine_id', '') or 'model'}' model load",
         timeout=timeout if timeout is not None else _model_load_timeout(),
     )
+    from core import diagnostic_reports
+    diagnostic_epoch = diagnostic_reports.inherited_grant()
     try:
-        await _run_local(call, executor=executor)
+        await diagnostic_reports.await_owned(_run_local(call, executor=executor), diagnostic_epoch)
     except TimeoutError as exc:
         if hasattr(exc, "retry_after"):
             raise
-        from core import diagnostic_reports
-        diagnostic_reports.capture_failure("model_load", error=exc, engine_id=engine)
+        if diagnostic_epoch is not None:
+            diagnostic_reports.capture_failure("model_load", error=exc, engine_id=engine, expected_epoch=diagnostic_epoch)
         raise ModelLoadTimeout(
             f"{call.what} did not finish within its budget. The first load of an "
             "engine can include a multi-GB download; check the connection or set "
             "a Hugging Face mirror in Settings, then retry."
         ) from exc
     except Exception as exc:
-        from core import diagnostic_reports
-        diagnostic_reports.capture_failure("model_load", error=exc, engine_id=engine)
+        if diagnostic_epoch is not None:
+            diagnostic_reports.capture_failure("model_load", error=exc, engine_id=engine, expected_epoch=diagnostic_epoch)
         raise
 
 
@@ -76,12 +78,13 @@ async def run(
     executor=None,
 ) -> Any:
     """Run one unit of accelerator work on this machine."""
+    from core import diagnostic_reports
+    diagnostic_epoch = diagnostic_reports.inherited_grant()
     try:
-        return await _run_local(local, admit=admit, executor=executor)
+        return await diagnostic_reports.await_owned(_run_local(local, admit=admit, executor=executor), diagnostic_epoch)
     except Exception as exc:
-        if not hasattr(exc, "retry_after"):
-            from core import diagnostic_reports
-            diagnostic_reports.capture_failure("engine", error=exc)
+        if not hasattr(exc, "retry_after") and diagnostic_epoch is not None:
+            diagnostic_reports.capture_failure("engine", error=exc, expected_epoch=diagnostic_epoch)
         raise
 
 

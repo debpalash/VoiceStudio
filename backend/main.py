@@ -1304,6 +1304,33 @@ async def _wait_for_analytics_thread(app: FastAPI) -> None:
         await asyncio.wait({worker}, timeout=20.0)
 
 
+async def _finalize_diagnostics(callback, timeout=2.5):
+    """Bound private diagnostic IO independently of saturated inference executors."""
+    loop = asyncio.get_running_loop()
+    finished = loop.create_future()
+    def complete():
+        if not finished.done():
+            finished.set_result(None)
+    def run():
+        try:
+            callback()
+        except Exception:
+            pass  # Optional diagnostics must never prevent application teardown.
+        finally:
+            try:
+                loop.call_soon_threadsafe(complete)
+            except RuntimeError:
+                pass  # A timed-out daemon may finish after its loop closes.
+    try:
+        threading.Thread(target=run, name='diagnostic-finalize', daemon=True).start()
+    except RuntimeError:
+        return  # Thread exhaustion must not turn optional cleanup into a hang.
+    try:
+        await asyncio.wait_for(finished, timeout=timeout)
+    except asyncio.TimeoutError:
+        pass
+
+
 @asynccontextmanager
 async def _diagnostic_lifespan():
     from core import diagnostic_reports
@@ -1322,7 +1349,7 @@ async def _diagnostic_lifespan():
     finally:
         if _diagnostic_loop.get_exception_handler() is _diagnostic_loop_error:
             _diagnostic_loop.set_exception_handler(_previous_loop_handler)
-        await asyncio.to_thread(diagnostic_reports.shutdown)
+        await _finalize_diagnostics(diagnostic_reports.shutdown)
 
 
 @asynccontextmanager
@@ -1567,7 +1594,7 @@ async def lifespan(app: FastAPI):
                         # Retire before application teardown can block. The outer
                         # reporter remains active for errors during that teardown.
                         from core import diagnostic_reports
-                        await asyncio.to_thread(diagnostic_reports.prepare_shutdown)
+                        await _finalize_diagnostics(diagnostic_reports.prepare_shutdown)
             except Exception as error:
                 if not application_started:
                     from core import diagnostic_reports

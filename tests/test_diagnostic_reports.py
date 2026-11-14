@@ -194,7 +194,7 @@ def test_unclean_marker_requires_same_consent_and_dead_owner(reporter,monkeypatc
     monkeypatch.setattr(run_sentinel,'_previous_run_alive',lambda *args:False)
     reporter.root.mkdir(exist_ok=True)
     marker=reporter.root/'session.json'
-    marker.write_text(json.dumps({'pid':42,'started_at':1,'epoch':reporter.epoch}), encoding='utf-8')
+    marker.write_text(json.dumps({'pid':42,'started_at':time.time(),'epoch':reporter.epoch}), encoding='utf-8')
     saved=records(reporter)
     assert len(saved)==1 and saved[0]['props']['category']=='backend_crash'
     reporter.shutdown()

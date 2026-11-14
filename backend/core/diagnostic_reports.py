@@ -6,10 +6,13 @@ private persistence and delivery. Desktop Python only writes the Electron inbox.
 from __future__ import annotations
 
 import builtins
+from contextlib import contextmanager
+from contextvars import ContextVar
 import errno
 import hashlib
 import itertools
 import json
+import math
 import os
 from pathlib import Path
 import platform
@@ -30,6 +33,39 @@ _KEYS = {'category','source','stage','error_code','error_type','engine_id','app_
 _ENUMS = {'category':'categories','source':'sources','stage':'stages','error_code':'error_codes','error_type':'error_types','engine_id':'engine_ids','platform':'platforms','arch':'arches','device_family':'device_families','signal':'signals','reason':'reasons'}
 _FALLBACKS = {'category':'operation_failed','source':'backend','stage':'other','error_code':'UNKNOWN','error_type':'OtherError','engine_id':'unknown','platform':'unknown','arch':'unknown','device_family':'unknown','reason':'unknown','signal':'unknown'}
 _CURRENT_APP_VERSION = object()
+_GRANT_UNSET = object()
+_grant_authority = ContextVar('diagnostic_grant_authority', default=_GRANT_UNSET)
+
+
+@contextmanager
+def grant_scope(epoch):
+    """Bind only a local observed grant; None means known OFF, not unknown."""
+    token = _grant_authority.set(epoch)
+    try:
+        yield
+    finally:
+        _grant_authority.reset(token)
+
+
+def inherited_grant():
+    """Nested work inherits its owner; an unbound root observes cached consent."""
+    bound = _grant_authority.get()
+    return observe_grant() if bound is _GRANT_UNSET else bound
+
+
+async def await_owned(awaitable, epoch):
+    with grant_scope(epoch):
+        return await awaitable
+
+
+def bind_callable(function, epoch=_GRANT_UNSET):
+    """Carry only authority across an owned executor boundary, not request data."""
+    if epoch is _GRANT_UNSET:
+        epoch = inherited_grant()
+    def run(*args, **kwargs):
+        with grant_scope(epoch):
+            return function(*args, **kwargs)
+    return run
 
 
 def _app_version(value):
@@ -180,7 +216,15 @@ def _atomic(path, value):
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as stream:
             json.dump(value, stream, allow_nan=False, separators=(',', ':'))
+            stream.flush()
+            os.fsync(stream.fileno())
         os.replace(temporary, path)
+        if os.name != 'nt':
+            directory = os.open(path.parent, os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0))
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
     finally:
         try:
             os.unlink(temporary)
@@ -209,7 +253,7 @@ class Reporter:
         self.directory = self.root / ('inbox' if self.managed else 'outbox')
         self.lock = threading.RLock()
         self.intake = _CaptureQueue(maxsize=64)
-        self.acks = queue.Queue(maxsize=64)
+        self.acks = _CaptureQueue(maxsize=64)
         self.ack_lock = threading.Lock()
         self.stop = threading.Event()
         self.enabled = False
@@ -224,8 +268,11 @@ class Reporter:
         self.inflight = {}
         self.retry_at = {}
         self.storage_retry_at = 0
+        self.publication = None
         self.schema = None
         self.marker_owned = False
+        self.marker_active_at = None
+        self.recovered_marker = None
         self.session_retired = False
         self.seen_errors = []
         self.started = time.time()
@@ -250,7 +297,7 @@ class Reporter:
             self.kill_observed = True
         return current or self.kill_observed
 
-    def capture(self, category, *, stage='other', error=None, error_code=None, engine_id=None, _reported_app_version=_CURRENT_APP_VERSION, _expected_epoch=None, **metadata):
+    def capture(self, category, *, stage='other', error=None, error_code=None, engine_id=None, _reported_app_version=_CURRENT_APP_VERSION, _expected_epoch=None, _reported_timestamp_ms=None, **metadata):
         try:
             # Only bounded projection against cached policy here; no retained
             # exceptions, file reads or waits on the diagnostic worker.
@@ -258,10 +305,16 @@ class Reporter:
             epoch = self.epoch
             if not self.enabled or not epoch or hard_killed or self.stop.is_set():
                 return False
+            bound = _grant_authority.get()
+            if bound is not _GRANT_UNSET and (bound is None or bound != epoch):
+                return False
             if _expected_epoch is not None and (type(_expected_epoch) is not str or _expected_epoch != epoch):
                 return False
             schema = self.schema
             if schema is None:
+                return False
+            timestamp = int(time.time()*1000) if _reported_timestamp_ms is None else _reported_timestamp_ms
+            if type(timestamp) is not int or not self._recent(timestamp):
                 return False
             fields = _exception_fields(error,schema)
             fields.update({k:v for k,v in metadata.items() if k in _KEYS and (type(v) in (bool,int) or isinstance(v,str) and len(v.encode('utf-8')) <= 1800)})
@@ -281,7 +334,7 @@ class Reporter:
             # Only local session recovery can supply a prior runtime version.
             # Keep it separate from caller/UI metadata and from later spool IO.
             reported_version = self.app_version if _reported_app_version is _CURRENT_APP_VERSION else _app_version(_reported_app_version)
-            item = (epoch,sanitize_props(fields,schema),token,reported_version)
+            item = (epoch,sanitize_props(fields,schema),token,reported_version,timestamp)
             try:
                 self.intake.put_nowait(item)
                 return True
@@ -290,6 +343,10 @@ class Reporter:
         except Exception:
             pass
         return False
+
+    def _recent(self, timestamp):
+        now = time.time()*1000
+        return now-_limit(self.schema,'ttl_ms',604800000) <= timestamp <= now+60000
 
     def _consent(self):
         try:
@@ -345,6 +402,7 @@ class Reporter:
                 self.inflight.clear()
                 self.retry_at.clear()
                 self.storage_retry_at = 0
+                self.publication = None
                 if not enabled:
                     try:
                         self._purge()
@@ -376,6 +434,9 @@ class Reporter:
                     raise ValueError('diagnostic queue capacity')
                 total += size
                 records.append(record)
+            except FileNotFoundError:
+                # Electron normally consumes and unlinks immutable inbox IDs.
+                continue
             except OSError:
                 # An unread record is not corrupt. Preserve it and defer intake
                 # publication too, since its size/identity may still be unknown.
@@ -387,14 +448,22 @@ class Reporter:
         return records
 
     def _spool(self, item, records):
-        epoch, fields, token, reported_version = item
+        epoch, fields, token, reported_version, timestamp = item
         if epoch != self.epoch or not self.enabled:
+            return
+        if not self._recent(timestamp):
+            self.dropped += 1
             return
         if token is not None:
             now = time.monotonic()
             self.seen_errors = [(value,stamp) for value,stamp in self.seen_errors[-63:] if now-stamp < 60]
             if any(value == token for value,stamp in self.seen_errors):
                 return
+        if self.publication is not None and self.publication[0] is item:
+            self._publish(item, self.publication[1], records)
+            if token is not None:
+                self.seen_errors.append((token,now))
+            return
         fields = dict(fields)
         fields.pop('app_version', None)
         if reported_version is not None:
@@ -409,24 +478,35 @@ class Reporter:
             for existing in records:
                 if existing['props']['fingerprint'] == props['fingerprint'] and existing['id'] not in self.inflight:
                     updated = {**existing, 'props': {**existing['props'], 'occurrences': min(1000000,existing['props']['occurrences']+1)}}
-                    _atomic(self.directory / (existing['id']+'.json'), updated)
-                    existing.update(updated)
+                    self._publish(item, updated, records)
                     if token is not None:
                         self.seen_errors.append((token,now))
                     return
         if len(records) >= self._capacity('count'):
             self.dropped += 1
             return
-        record = {'version':1,'id':uuid.uuid4().hex,'timestamp_ms':int(time.time()*1000),'epoch':epoch,'props':props}
+        record = {'version':1,'id':uuid.uuid4().hex,'timestamp_ms':timestamp,'epoch':epoch,'props':props}
         size = len(json.dumps(record,allow_nan=False,separators=(',',':')).encode())
         existing_size = sum(len(json.dumps(r,allow_nan=False,separators=(',',':')).encode()) for r in records)
         if existing_size + size > self._capacity('bytes'):
             self.dropped += 1
             return
-        _atomic(self.directory / (record['id']+'.json'), record)
+        self._publish(item, record, records)
         if token is not None:
             self.seen_errors.append((token,now))
-        records.append(record)
+
+    def _publish(self, item, record, records):
+        # A rename may become visible before its directory fsync fails. Retain
+        # this exact intended ID/count until commit, rather than coalescing the
+        # same accepted capture again after rereading that visible file.
+        self.publication = (item, record)
+        _atomic(self.directory / (record['id']+'.json'), record)
+        existing = next((row for row in records if row['id'] == record['id']), None)
+        if existing is None:
+            records.append(record)
+        else:
+            existing.update(record)
+        self.publication = None
         self.pending = len(records)
 
     def _persist_intake(self):
@@ -440,6 +520,7 @@ class Reporter:
                 except queue.Empty:break
                 self._spool(item,records)
                 self.intake.get_nowait()
+                self.publication = None
         except OSError:
             # The worker still checks consent every tick. Retry durable IO at
             # a finite cadence without losing a slot or transmitting memory-only
@@ -450,22 +531,35 @@ class Reporter:
         return records
 
     def _session(self):
-        if self.managed or self.marker_owned or self.session_retired:
+        if self.managed or self.session_retired:
             return
         path = self.root / 'session.json'
-        if path.exists():
+        now = time.time()
+        if self.marker_owned and self.marker_active_at is not None and 0 <= now-self.marker_active_at < 60:
+            return
+        if not self.marker_owned and path.exists():
             try:
                 previous = json.loads(path.read_text(encoding='utf-8')) if path.stat().st_size <= 4096 and not path.is_symlink() else {}
                 from core.run_sentinel import _previous_run_alive
                 pid, started = previous.get('pid'), previous.get('started_at')
                 if type(pid) is int and _previous_run_alive(pid,started):
                     return  # A live concurrent process owns this marker.
-                if previous.get('epoch') == self.epoch and type(pid) is int and previous.get('clean') is not True:
-                    self.capture('backend_crash', stage='startup', reason='unclean_exit', _reported_app_version=previous.get('app_version'))
-            except Exception:
+                active = previous.get('last_active_at', started)
+                identity = (previous.get('epoch'), pid, started)
+                if previous.get('epoch') == self.epoch and type(pid) is int and previous.get('clean') is not True and identity != self.recovered_marker and type(active) in (int,float) and math.isfinite(active) and self._recent(active*1000):
+                    if self.capture('backend_crash', stage='startup', reason='unclean_exit', _reported_app_version=previous.get('app_version'), _reported_timestamp_ms=int(active*1000)):
+                        self.recovered_marker = identity
+            except FileNotFoundError:
+                pass  # A removed marker is normal absence, not a storage fault.
+            except OSError:
+                # Preserve unread evidence until the existing worker's bounded
+                # storage retry can establish its age, owner and consent epoch.
+                raise
+            except (ValueError, TypeError, AttributeError, OverflowError):
                 pass
-        _atomic(path, {'version':1,'epoch':self.epoch,'pid':os.getpid(),'started_at':self.started,'app_version':self.app_version})
+        _atomic(path, {'version':1,'epoch':self.epoch,'pid':os.getpid(),'started_at':self.started,'last_active_at':now,'app_version':self.app_version})
         self.marker_owned = True
+        self.marker_active_at = now
 
     def retire_session(self):
         """Intentional shutdown begins before service teardown; capture stays enabled."""
@@ -494,23 +588,27 @@ class Reporter:
                 try:self.intake.get_nowait()
                 except queue.Empty:break
             return
+        while True:
+            try:ack_epoch,identity,status = self.acks.peek_nowait()
+            except queue.Empty:break
+            if ack_epoch != self.epoch:
+                self.acks.get_nowait()
+                continue
+            if status is not None and 0 < status < 500 and status != 429:
+                (self.directory / (identity+'.json')).unlink(missing_ok=True)
+                self.retry_at.pop(identity,None)
+                # Delivery cleanup can release capacity while intake writes
+                # remain blocked by a full disk. Do not wait out that cooldown.
+                self.storage_retry_at = 0
+            else:
+                self.retry_at[identity] = time.monotonic()+60
+            self.inflight.pop(identity,None)
+            self.acks.get_nowait()
         records = self._persist_intake()
         if records is None:
             return
         if self.managed:
             return
-        while True:
-            try:ack_epoch,identity,status = self.acks.get_nowait()
-            except queue.Empty:break
-            if ack_epoch != self.epoch:
-                continue
-            self.inflight.pop(identity,None)
-            if status is not None and 0 < status < 500 and status != 429:
-                (self.directory / (identity+'.json')).unlink(missing_ok=True)
-                self.retry_at.pop(identity,None)
-                records = [r for r in records if r['id'] != identity]
-            else:
-                self.retry_at[identity] = time.monotonic()+60
         self.pending = len(records)
         if not self.transport:
             destination = _diagnostic_destination()
@@ -671,6 +769,15 @@ def capture(category, *, stage='other', error=None, error_code=None, engine_id=N
         return False
 
 
+def observe_grant():
+    """Snapshot cached authority before async work, without initialization or IO."""
+    instance = _reporter
+    if instance is None:
+        return None
+    epoch = instance.epoch
+    return epoch if epoch and instance.enabled and instance.epoch == epoch and not instance.stop.is_set() and not instance._hard_killed() else None
+
+
 def shutdown():
     global _reporter
     with _init_lock:
@@ -719,7 +826,7 @@ def capture_from_ui(body):
     return capture(_expected_epoch=expected, **fields)
 
 
-def capture_failure(stage, *, error=None, error_code=None, engine_id=None):
+def capture_failure(stage, *, error=None, error_code=None, engine_id=None, expected_epoch=None):
     """Terminal owners pass a coarse fixed stage, never their raw context."""
     # HTTP validation/auth/licence refusals and explicit user cancellation are
     # expected outcomes. Do not classify by arbitrary exception messages.
@@ -730,7 +837,7 @@ def capture_failure(stage, *, error=None, error_code=None, engine_id=None):
         if ('starlette.exceptions','HTTPException') in kinds and getattr(error,'status_code',500) < 500:
             return False
     category = {'generation':'generation_failed','dub':'generation_failed','batch':'generation_failed','transcription':'generation_failed','translation':'operation_failed','model_load':'model_load_failed','engine':'engine_failed','install':'install_failed','download':'download_failed'}.get(stage,'operation_failed')
-    return capture(category,stage=stage,error=error,error_code=error_code,engine_id=engine_id)
+    return capture(category,stage=stage,error=error,error_code=error_code,engine_id=engine_id,_expected_epoch=expected_epoch)
 
 
 def route_stage(route):

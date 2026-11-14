@@ -86,6 +86,16 @@ export function diagnosticDestination(env: NodeJS.ProcessEnv): Destination | nul
 
 class InvalidDiagnosticStore extends Error {}
 
+function discardableReadFailure(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException)?.code;
+  return (
+    error instanceof SyntaxError ||
+    error instanceof InvalidDiagnosticStore ||
+    code === 'ENOENT' ||
+    code === 'ELOOP'
+  );
+}
+
 /** Inspect and read the same bounded file, including a concurrent writer growing it. */
 async function readJson(path: string, limit: number): Promise<unknown> {
   const file = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
@@ -120,6 +130,16 @@ async function writePrivate(path: string, text: string): Promise<void> {
       await file.close();
     }
     await renameWithRetry(temporary, path, FILE_RENAME);
+    // POSIX file fsync does not commit the renamed directory entry. Windows
+    // does not support this directory-handle sync; keep its atomic file path.
+    if (process.platform !== 'win32') {
+      const directory = await open(dirname(path), 'r');
+      try {
+        await directory.sync();
+      } finally {
+        await directory.close();
+      }
+    }
   } finally {
     await rm(temporary, { force: true }).catch(() => {});
   }
@@ -159,9 +179,11 @@ export class DiagnosticReports {
   private sessionWriteAttemptAt: number | null = null;
   private outboxRestored = false;
   private outboxRestoreAt = 0;
+  private inboxReadRetryAt = new Map<string, number>();
   private outboxRestoreWork: Promise<boolean> | null = null;
   private sessionRecoveryPending = false;
-  private sessionRecoveryWork: Promise<void> | null = null;
+  private sessionRecoveryAt = 0;
+  private sessionRecoveryWork: Promise<boolean> | null = null;
   private wakeRetry: (() => void) | null = null;
   private readonly destination: Destination | null;
   private readonly env: NodeJS.ProcessEnv;
@@ -303,6 +325,7 @@ export class DiagnosticReports {
     this.records = [];
     this.outboxRestored = true;
     this.outboxRestoreAt = 0;
+    this.inboxReadRetryAt.clear();
     this.sessionRecoveryPending = false;
     this.dirty = false;
     this.retryAt = 0;
@@ -368,7 +391,9 @@ export class DiagnosticReports {
     if (this.timer) clearInterval(this.timer);
     this.abort();
     // Retire the crash marker before teardown can wait on a slow worker.
-    await rm(this.sessionPath, { force: true }).catch(() => {});
+    // An unread previous marker belongs to the earlier crashed session. An
+    // orderly exit of this process cannot retire evidence it has not recovered.
+    if (!this.sessionRecoveryPending) await rm(this.sessionPath, { force: true }).catch(() => {});
     if (killed(this.env)) this.killObserved = true;
     if (this.killObserved || this.revocationPending) {
       this.requestRevocation();
@@ -380,7 +405,7 @@ export class DiagnosticReports {
       else await this.persist();
     } finally {
       // An outbox failure must not turn an orderly exit into a crash report.
-      await rm(this.sessionPath, { force: true }).catch(() => {});
+      if (!this.sessionRecoveryPending) await rm(this.sessionPath, { force: true }).catch(() => {});
     }
   }
 
@@ -477,15 +502,9 @@ export class DiagnosticReports {
         stored = await readJson(this.outbox, MAX_QUEUE_BYTES);
       } catch (error) {
         if (!current()) return false;
-        const code = (error as NodeJS.ErrnoException).code;
         // Confirmed malformed/absent stores can be replaced. Access/IO errors
         // do not prove corruption and must never authorize a replacement.
-        if (
-          !(error instanceof SyntaxError) &&
-          !(error instanceof InvalidDiagnosticStore) &&
-          code !== 'ENOENT' &&
-          code !== 'ELOOP'
-        ) {
+        if (!discardableReadFailure(error)) {
           this.outboxRestoreAt = this.now() + 60_000;
           return false;
         }
@@ -513,14 +532,22 @@ export class DiagnosticReports {
     });
     return this.outboxRestoreWork;
   }
-  private async recoverPendingSession(): Promise<void> {
+  private async recoverPendingSession(): Promise<boolean> {
     if (this.sessionRecoveryWork) return this.sessionRecoveryWork;
-    if (!this.sessionRecoveryPending || !this.enabled) return;
-    this.sessionRecoveryPending = false;
+    if (!this.sessionRecoveryPending) return true;
+    if (!this.enabled || this.now() < this.sessionRecoveryAt) return false;
     const revision = this.revision;
     this.sessionRecoveryWork = (async () => {
-      await this.recoverSession();
-      if (revision === this.revision) await this.writeSession().catch(() => {});
+      const recovered = await this.recoverSession();
+      if (revision !== this.revision || !this.enabled) return false;
+      if (!recovered) {
+        this.sessionRecoveryAt = this.now() + 60_000;
+        return false;
+      }
+      this.sessionRecoveryPending = false;
+      this.sessionRecoveryAt = 0;
+      await this.writeSession().catch(() => {});
+      return true;
     })().finally(() => {
       this.sessionRecoveryWork = null;
     });
@@ -543,7 +570,9 @@ export class DiagnosticReports {
   private async purge(): Promise<void> {
     this.outboxRestored = true;
     this.outboxRestoreAt = 0;
+    this.inboxReadRetryAt.clear();
     this.sessionRecoveryPending = false;
+    this.sessionRecoveryAt = 0;
     await Promise.all(
       [this.outbox, this.inbox, this.sessionPath].map((path) =>
         rm(path, { recursive: path === this.inbox, force: true }).catch(() => {}),
@@ -598,15 +627,23 @@ export class DiagnosticReports {
   private async importInbox(): Promise<void> {
     if (!this.enabled || !this.consent) return;
     const epoch = this.consent.epoch;
+    const revision = this.revision;
+    const current = () =>
+      this.enabled && this.consent?.epoch === epoch && revision === this.revision;
     const directory = await opendir(this.inbox).catch(() => null);
     if (!directory) return;
+    const now = this.now();
+    for (const [name, retryAt] of this.inboxReadRetryAt)
+      if (retryAt <= now) this.inboxReadRetryAt.delete(name);
     let count = 0;
     for await (const entry of directory) {
       if (++count > MAX_RECORDS * 4) break;
       if (!entry.isFile() || !/^[a-f0-9]{32}\.json$/.test(entry.name)) continue;
+      if (now < (this.inboxReadRetryAt.get(entry.name) ?? 0)) continue;
       const path = join(this.inbox, entry.name);
       try {
         const parsed = await readJson(path, 8192);
+        if (!current()) return;
         const record = sanitizeRecord(parsed, epoch, this.now());
         if (record && this.enabled && this.consent?.epoch === epoch) {
           // Keep stable producer IDs. A crash between outbox commit and inbox
@@ -614,9 +651,20 @@ export class DiagnosticReports {
           this.add(record, false);
           if (this.records.some((r) => r.id === record.id) && !(await this.tryPersist())) continue;
         }
-      } catch {
-        /* Invalid inbox records are discarded, never forwarded. */
+      } catch (error) {
+        if (!current()) return;
+        if (!discardableReadFailure(error)) {
+          // One locked producer file must neither be lost nor block healthy
+          // intake. Bound retry bookkeeping to the existing scan budget.
+          if (this.inboxReadRetryAt.size >= MAX_RECORDS * 4)
+            this.inboxReadRetryAt.delete(this.inboxReadRetryAt.keys().next().value!);
+          this.inboxReadRetryAt.set(entry.name, this.now() + 60_000);
+          continue;
+        }
+        /* Confirmed invalid/consumed records cannot become an upload. */
       }
+      if (!current()) return;
+      this.inboxReadRetryAt.delete(entry.name);
       await rm(path, { force: true }).catch(() => {});
     }
   }
@@ -635,7 +683,7 @@ export class DiagnosticReports {
     const revision = this.revision;
     if (!(await this.granted(epoch, revision))) return;
     if (!(await this.restoreOutbox())) return;
-    await this.recoverPendingSession();
+    if (!(await this.recoverPendingSession())) return;
     if (!(await this.granted(epoch, revision))) return;
     // Refresh local liveness through the existing worker, at most once a
     // minute including failed writes. Capture/fatal paths remain IO-free.
@@ -730,12 +778,13 @@ export class DiagnosticReports {
       this.wakeRetry = finish;
     });
   }
-  private async recoverSession(): Promise<void> {
+  private async recoverSession(): Promise<boolean> {
     const epoch = this.consent?.epoch;
     const revision = this.revision;
-    if (!epoch) return;
+    if (!epoch) return true;
     try {
       const marker = (await readJson(this.sessionPath, 4096)) as Record<string, unknown>;
+      if (!marker || typeof marker !== 'object' || Array.isArray(marker)) return true;
       if (
         marker.version !== 1 ||
         marker.epoch !== epoch ||
@@ -744,13 +793,13 @@ export class DiagnosticReports {
         (marker.timestamp_ms as number) < this.now() - TTL_MS ||
         (marker.timestamp_ms as number) > this.now()
       )
-        return;
+        return true;
       const startedAt = marker.started_at_ms ?? marker.timestamp_ms;
       if (
         !Number.isSafeInteger(startedAt) ||
         (startedAt as number) > (marker.timestamp_ms as number)
       )
-        return;
+        return true;
       // The marker proves collection was enabled for THIS session. Earlier
       // manual journals are never replayed merely because somebody opts in.
       let projected: DiagnosticEvent = {
@@ -772,7 +821,7 @@ export class DiagnosticReports {
             record.props.app_version === previousVersion,
         )
       )
-        return;
+        return true;
       try {
         const local = await readJson(
           join(dirname(this.options.directory), 'main-process-errors.json'),
@@ -824,8 +873,11 @@ export class DiagnosticReports {
           epoch,
           props,
         });
-    } catch {
-      /* An absent/invalid marker is not evidence of a crash. */
+      return true;
+    } catch (error) {
+      // Only proven absent/invalid evidence can be replaced. Transient read
+      // errors retain the prior marker until the worker's bounded retry.
+      return discardableReadFailure(error);
     }
   }
   private async writeSession(): Promise<void> {

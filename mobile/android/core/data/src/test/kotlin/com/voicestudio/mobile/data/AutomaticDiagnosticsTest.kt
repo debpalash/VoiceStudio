@@ -1,6 +1,7 @@
 package com.voicestudio.mobile.data
 
 import com.voicestudio.mobile.network.*
+import com.voicestudio.mobile.local.DownloadProgress
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
@@ -251,6 +252,55 @@ class AutomaticDiagnosticsTest {
             requested.set(AutomaticDiagnostics, oldRequested); declined.set(AutomaticDiagnostics, oldDeclined)
             choices.set(oldChoice)
         }
+    }
+
+    private suspend fun stallCaptureAfter(scenario: String, dispatcher: CoroutineDispatcher): Int {
+        val transport = Transport(); val reports = reports(Store(), transport, dispatcher)
+        val reporter = AutomaticDiagnostics::class.java.getDeclaredField("reporter").apply { isAccessible = true }
+        val owner = AutomaticDiagnostics::class.java.getDeclaredField("initialization").apply { isAccessible = true }
+        val choices = AutomaticDiagnostics::class.java.getDeclaredField("choices").apply { isAccessible = true }
+            .get(AutomaticDiagnostics) as AtomicLong
+        val oldReporter = reporter.get(AutomaticDiagnostics); val oldOwner = owner.get(AutomaticDiagnostics)
+        val oldChoice = choices.get()
+        try {
+            reports.setConsent(true)
+            reporter.set(AutomaticDiagnostics, reports); owner.set(AutomaticDiagnostics, null)
+            val observation = AutomaticDiagnostics.observeConsent()!!
+            val stalls = DownloadStallObservation()
+            val progress = DownloadProgress(received = 10, total = 100, running = true)
+            assertFalse(stalls.observe(progress, 0))
+            assertTrue("The actual active-transfer gate detected a stall under grant A", stalls.observe(progress, 600_000))
+            when (scenario) {
+                "new-epoch" -> {
+                    reports.setConsent(false); reports.setConsent(true)
+                    assertNotEquals(observation.epoch, reports.recoveryContext!!.epoch)
+                    assertEquals("Exercise a core-owner change without an app revision change", observation.revision, AutomaticDiagnostics.observationRevision)
+                }
+                "new-revision" -> choices.incrementAndGet()
+                "off" -> reports.setConsent(false)
+            }
+            AutomaticDiagnostics.capture(DiagnosticInput("install_stalled", "download", reason = "no_progress"),
+                if (scenario == "unknown-observation") null else observation)
+            reports.flush()
+            return transport.sends
+        } finally {
+            reporter.set(AutomaticDiagnostics, oldReporter); owner.set(AutomaticDiagnostics, oldOwner)
+            choices.set(oldChoice); reports.close()
+        }
+    }
+
+    @Test fun detectedStallCannotBorrowANewCoreEpochAfterOffOn() = runTest {
+        assertEquals(0, stallCaptureAfter("new-epoch", StandardTestDispatcher(testScheduler)))
+    }
+    @Test fun detectedStallCannotBorrowANewerApplicationChoice() = runTest {
+        assertEquals(0, stallCaptureAfter("new-revision", StandardTestDispatcher(testScheduler)))
+    }
+    @Test fun detectedStallWithUnknownAuthorityCannotBorrowCurrentGrant() = runTest {
+        assertEquals(0, stallCaptureAfter("unknown-observation", StandardTestDispatcher(testScheduler)))
+    }
+    @Test fun currentGrantStillReportsStallsAndOffRejectsThem() = runTest {
+        assertEquals(1, stallCaptureAfter("same", StandardTestDispatcher(testScheduler)))
+        assertEquals(0, stallCaptureAfter("off", StandardTestDispatcher(testScheduler)))
     }
 
     @Test fun normalCancellationPromptsAndDeniedAuthenticationAreNotFailureReports() {

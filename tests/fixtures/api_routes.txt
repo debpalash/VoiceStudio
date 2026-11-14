@@ -38,6 +38,7 @@ GET /api/settings/changelog
 GET /api/settings/compute-device
 GET /api/settings/cuda-device
 GET /api/settings/db-backup
+GET /api/settings/diagnostics
 GET /api/settings/dictation-refinement
 GET /api/settings/engines/{family}/{engine_id}/local-model
 GET /api/settings/gpu-report
@@ -210,6 +211,7 @@ POST /api/cloud-sync/use-choices-of/{device_id}
 POST /api/integrations/twilio/test
 POST /api/settings/analytics/event
 POST /api/settings/asr-openai-compat/test
+POST /api/settings/diagnostics/event
 POST /api/settings/engines/{family}/{engine_id}/local-model/discover
 POST /api/settings/hf-mirror/test
 POST /api/settings/hf-token
@@ -351,6 +353,7 @@ PUT /api/settings/analytics
 PUT /api/settings/asr-openai-compat
 PUT /api/settings/compute-device
 PUT /api/settings/cuda-device
+PUT /api/settings/diagnostics
 PUT /api/settings/dictation-refinement
 PUT /api/settings/engines/{family}/{engine_id}/local-model
 PUT /api/settings/hf-mirror

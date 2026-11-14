@@ -405,9 +405,19 @@ private actor DiagnosticWorker {
         retryWake = nil
         await flush()
     }
-    func flush() async {
-        if sending { await withCheckedContinuation { waiters.append($0) }; return }
-        guard let (consent, generation) = gate.snapshot() else { return }
+    func flush(expected: (DiagnosticConsent, UInt64)? = nil, followUpPending: Bool = true) async {
+        guard let (consent, generation) = expected ?? gate.snapshot(), gate.allowed(consent.epoch, generation) else { return }
+        if sending {
+            let pendingAtJoin = gate.lock.withLock { gate.pending.contains { $0.epoch == consent.epoch } }
+            await withCheckedContinuation { waiters.append($0) }
+            // Joining a burst must also service intake accepted before this
+            // call. One follow-up covers that snapshot without chasing later
+            // captures, bypassing storage cooldown or borrowing another grant.
+            if followUpPending, pendingAtJoin, gate.allowed(consent.epoch, generation), (storageRetryAt ?? 0) <= clock.nowMs() {
+                await flush(expected: (consent, generation), followUpPending: false)
+            }
+            return
+        }
         sending = true
         defer {
             sending = false

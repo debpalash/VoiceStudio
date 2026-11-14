@@ -71,10 +71,12 @@ private final class DiagnosticTestTransport: DiagnosticTransport, @unchecked Sen
     private var code = 503
     private var hold = false
     private var cancellations = 0
+    private var ignoreCancellation = false
     var cancellationCount: Int { lock.withLock { cancellations } }
     private var continuation: CheckedContinuation<Int, any Error>?
     func set(code: Int) { lock.withLock { self.code = code } }
     func setHolding(_ hold: Bool) { lock.withLock { self.hold = hold } }
+    func setIgnoringCancellation(_ value: Bool) { lock.withLock { ignoreCancellation = value } }
     func bodies() -> [Data] { lock.withLock { sent } }
     func waitForEntry() async -> Bool {
         await withCheckedContinuation { continuation in
@@ -91,8 +93,12 @@ private final class DiagnosticTestTransport: DiagnosticTransport, @unchecked Sen
             }
         }
     }
+    func finishHolding(keepHolding: Bool = false) {
+        let result = lock.withLock { hold = keepHolding; let result = (continuation, code); continuation = nil; return result }
+        result.0?.resume(returning: result.1)
+    }
     func cancelAll() {
-        let pending = lock.withLock { cancellations += 1; let result = continuation; continuation = nil; return result }
+        let pending = lock.withLock { cancellations += 1; let result = ignoreCancellation ? nil : continuation; if !ignoreCancellation { continuation = nil }; return result }
         pending?.resume(throwing: DiagnosticFailure.cancelled)
     }
 }
@@ -120,6 +126,23 @@ private func diagnosticRecords(_ store: DiagnosticTestStore) throws -> [[String:
     return try #require(JSONSerialization.jsonObject(with: data) as? [[String: Any]])
 }
 private func diagnosticEvent() -> DiagnosticInput { DiagnosticInput(category: "generation_failed", stage: "generation", errorType: "TypeError") }
+
+private final class DiagnosticFileCommitProbe: DiagnosticFileSynchronizing, @unchecked Sendable {
+    let directory: URL
+    private let lock = NSLock()
+    private var paths: [String] = []
+    private var failure: String?
+    init(directory: URL) { self.directory = directory }
+    func fail(_ name: String?) { lock.withLock { failure = name } }
+    var commits: [String] { lock.withLock { paths } }
+    func synchronize(_ url: URL) throws {
+        try lock.withLock {
+            paths.append(url.lastPathComponent)
+            if failure == url.lastPathComponent { throw DiagnosticFailure.storageUnavailable }
+        }
+        try SystemDiagnosticFileSynchronizer().synchronize(url)
+    }
+}
 
 @Suite("DiagnosticReports") struct DiagnosticReportsTests {
     @Test func defaultOffIndependentAndNoPreConsentPersistence() async throws {
@@ -505,7 +528,7 @@ extension DiagnosticReportsTests {
         for (consent,status,expected) in [(true,500,1),(false,500,0),(true,401,0),(true,422,0)] {
             let script="""
 import http.server,socket,sys
-socket.getfqdn=lambda name='':name
+socket.getfqdn = lambda name='': name
 class Host(http.server.BaseHTTPRequestHandler):
  def do_POST(self):
   self.rfile.read(int(self.headers.get('Content-Length','0')))
@@ -560,7 +583,7 @@ extension DiagnosticReportsTests {
         for initiallyEnabled in [false,true] {
             let script="""
 import http.server,socket
-socket.getfqdn=lambda name='':name
+socket.getfqdn = lambda name='': name
 class Host(http.server.BaseHTTPRequestHandler):
  def do_POST(self):
   self.rfile.read(int(self.headers.get('Content-Length','0')));body=b'{"detail":"PRIVATE_BLOCKED_UPLOAD"}'
@@ -822,6 +845,96 @@ extension DiagnosticReportsTests {
 }
 
 extension DiagnosticReportsTests {
+    @Test func joiningFlushServicesIntakeAcceptedDuringTheHeldFirstSend() async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport()
+        transport.set(code: 201); transport.setHolding(true)
+        let reports = try diagnosticTestReporter(store, transport)
+        try await reports.setConsent(true)
+        let epoch = try #require(reports.recoveryContext?.epoch)
+        #expect(reports.capture(diagnosticEvent(), expectedEpoch: epoch))
+        try #require(await transport.waitForEntry())
+        #expect(reports.capture(DiagnosticInput(category: "install_failed"), expectedEpoch: epoch))
+        let joining = Task { await reports.flush(); return transport.bodies().count }
+        // Admit the queued caller, then use the worker's existing actor load
+        // entry as a scheduling barrier while the first transport is held.
+        await Task.yield()
+        await reports.load()
+        transport.finishHolding()
+        let deliveredAtReturn = await joining.value
+        #expect(deliveredAtReturn == 2)
+        await reports.close()
+    }
+    @Test func joiningFlushHonorsStorageCooldownWithoutWaitingForAnotherCapture() async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport(), clock = DiagnosticTestClock()
+        transport.set(code: 201); transport.setHolding(true)
+        let reports = try diagnosticTestReporter(store, transport, clock)
+        try await reports.setConsent(true)
+        reports.capture(diagnosticEvent()); try #require(await transport.waitForEntry())
+        store.failingOutboxWrites(true)
+        reports.capture(DiagnosticInput(category: "install_failed"))
+        let joining = Task { await reports.flush() }
+        await Task.yield(); await reports.load()
+        let attempts = store.outboxWriteAttempts
+        transport.finishHolding(); await joining.value
+        #expect(transport.bodies().count == 1)
+        #expect(store.outboxWriteAttempts == attempts + 1)
+        await reports.flush()
+        #expect(store.outboxWriteAttempts == attempts + 1)
+        store.failingOutboxWrites(false); clock.advance(60000)
+        await reports.flush(); #expect(transport.bodies().count == 2)
+        await reports.close()
+    }
+    @Test(arguments: ["off", "reenable", "close"]) func joiningFlushCannotOutliveItsObservedGrant(_ change: String) async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport()
+        transport.set(code: 201); transport.setHolding(true); transport.setIgnoringCancellation(true)
+        let reports = try diagnosticTestReporter(store, transport)
+        try await reports.setConsent(true)
+        let epoch = try #require(reports.recoveryContext?.epoch)
+        reports.capture(diagnosticEvent(), expectedEpoch: epoch); try #require(await transport.waitForEntry())
+        reports.capture(DiagnosticInput(category: "install_failed"), expectedEpoch: epoch)
+        let completed = DispatchSemaphore(value: 0)
+        let joining = Task { await reports.flush(); completed.signal() }
+        await Task.yield(); await reports.load()
+        if change == "close" { await reports.close() }
+        else {
+            try await reports.setConsent(false)
+            if change == "reenable" {
+                try await reports.setConsent(true)
+                let current = try #require(reports.recoveryContext?.epoch)
+                #expect(current != epoch)
+                reports.capture(DiagnosticInput(category: "backend_crash"), expectedEpoch: current)
+            }
+        }
+        transport.finishHolding(keepHolding: true)
+        let returned = await diagnosticWaitForEvent(completed)
+        #expect(returned)
+        transport.finishHolding(); await joining.value
+        if change == "reenable" { await reports.flush() }
+        let categories = try transport.bodies().map { try diagnosticObject($0)["props"] as? [String: Any] }.compactMap { $0?["category"] as? String }
+        #expect(!categories.contains("install_failed"))
+        if change == "reenable" { #expect(categories.contains("backend_crash")) }
+        await reports.close()
+    }
+    @Test func joiningFlushDoesNotWaitForIntakeAcceptedAfterItsFollowUpBegan() async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport()
+        transport.set(code: 201); transport.setHolding(true)
+        let reports = try diagnosticTestReporter(store, transport)
+        try await reports.setConsent(true)
+        reports.capture(diagnosticEvent()); try #require(await transport.waitForEntry())
+        reports.capture(DiagnosticInput(category: "install_failed"))
+        let completed = DispatchSemaphore(value: 0)
+        let joining = Task { await reports.flush(); completed.signal() }
+        await Task.yield(); await reports.load()
+        transport.finishHolding(keepHolding: true)
+        try #require(await transport.waitForEntry())
+        reports.capture(DiagnosticInput(category: "backend_crash"))
+        transport.finishHolding(keepHolding: true)
+        let returned = await diagnosticWaitForEvent(completed)
+        #expect(returned)
+        transport.finishHolding(); await joining.value
+        await reports.flush(); #expect(transport.bodies().count == 3)
+        await reports.close()
+    }
     @Test func revocationOwnerEpochRejectsEarlierLiveOperations() async throws {
         let store = DiagnosticTestStore(), transport = DiagnosticTestTransport()
         transport.set(code: 201)
@@ -902,6 +1015,54 @@ extension DiagnosticReportsTests {
         await reports.load(); await reports.flush()
         #expect(!reports.status.enabled); #expect(!reports.capture(diagnosticEvent()))
         #expect(transport.bodies().isEmpty); await reports.close()
+    }
+    @Test func fileStorageChecksPublishedFileAndParentBeforeAcknowledgingWrite() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("diagnostic-commit-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let probe = DiagnosticFileCommitProbe(directory: directory)
+        let storage = FileDiagnosticStorage(directory: directory, synchronizer: probe)
+        let marker = Data("{\"version\":1}".utf8)
+        try storage.write("revoked.json", data: marker)
+        #expect(probe.commits == ["revoked.json", directory.lastPathComponent])
+        #expect(try storage.read("revoked.json", maxBytes: 4096) == marker)
+    }
+    @Test(arguments: [false, true]) func fileStoreBarrierFailureCannotEnableAFormerlyWithdrawnGrant(directoryFailure: Bool) async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("diagnostic-commit-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let probe = DiagnosticFileCommitProbe(directory: directory)
+        let storage = FileDiagnosticStorage(directory: directory, synchronizer: probe)
+        let transport = DiagnosticTestTransport()
+        let reports = try diagnosticTestReporter(storage, transport)
+        try await reports.setConsent(false)
+        probe.fail(directoryFailure ? directory.lastPathComponent : "consent.json")
+        do { try await reports.setConsent(true); Issue.record("Uncommitted opt-in must fail") } catch {}
+        #expect(!reports.status.enabled); #expect(reports.status.consentSaveFailed)
+        let accepted = reports.capture(diagnosticEvent())
+        #expect(!accepted)
+        #expect(try storage.read("revoked.json", maxBytes: 4096) != nil)
+        probe.fail(nil); await reports.close()
+        let next = try diagnosticTestReporter(FileDiagnosticStorage(directory: directory), transport)
+        await next.load(); await next.flush()
+        #expect(!next.status.enabled); #expect(transport.bodies().isEmpty)
+        await next.close()
+    }
+    @Test func failedOffDirectoryBarrierRemainsClosedAndOffOnRestart() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("diagnostic-commit-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let probe = DiagnosticFileCommitProbe(directory: directory)
+        let storage = FileDiagnosticStorage(directory: directory, synchronizer: probe)
+        let transport = DiagnosticTestTransport(), reports = try diagnosticTestReporter(storage, transport)
+        try await reports.setConsent(true)
+        probe.fail(directory.lastPathComponent)
+        do { try await reports.setConsent(false); Issue.record("Uncommitted OFF must expose the storage failure") } catch {}
+        #expect(!reports.status.enabled)
+        let accepted = reports.capture(diagnosticEvent())
+        #expect(!accepted)
+        probe.fail(nil); await reports.close()
+        let next = try diagnosticTestReporter(FileDiagnosticStorage(directory: directory), transport)
+        await next.load(); await next.flush()
+        #expect(!next.status.enabled); #expect(transport.bodies().isEmpty)
+        await next.close()
     }
     @Test func revocationPrivateFileIsSupportedByProductionStorage() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("diagnostic-revocation-" + UUID().uuidString)

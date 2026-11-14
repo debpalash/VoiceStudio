@@ -151,16 +151,17 @@ object ModelDownloadJobs {
                 val downloads = PhoneRuntime.get(context).downloads
                 val stalls = DownloadStallObservation()
                 val observer = launch {
-                    var revision = AutomaticDiagnostics.observationRevision
+                    var previousConsent = AutomaticDiagnostics.observeConsent()
                     while(isActive) {
-                        if(revision != AutomaticDiagnostics.observationRevision) {
+                        val observation = AutomaticDiagnostics.observeConsent()
+                        if(observation != previousConsent) {
                             stalls.observe(null,android.os.SystemClock.elapsedRealtime())
-                            revision = AutomaticDiagnostics.observationRevision
+                            previousConsent = observation
                         }
                         val progress = downloads.progress.value[id]
-                        if(stalls.observe(progress.takeIf {AutomaticDiagnostics.state.value.status.enabled},android.os.SystemClock.elapsedRealtime()))
+                        if(stalls.observe(progress.takeIf {observation != null},android.os.SystemClock.elapsedRealtime()))
                             AutomaticDiagnostics.capture(DiagnosticInput(category="install_stalled",
-                                stage="download",reason="no_progress"))
+                                stage="download",reason="no_progress"), observation)
                         delay(30_000)
                     }
                 }

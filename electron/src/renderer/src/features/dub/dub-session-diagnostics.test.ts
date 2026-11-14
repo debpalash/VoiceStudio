@@ -53,7 +53,9 @@ vi.mock('@/lib/api/client', async (load) => ({
 import { dubSession, generateDub, resumeDub } from './dub-session';
 import { refreshDiagnosticState, setDiagnosticConsent } from '@/lib/diagnostic-reports';
 
-const failure = { type: 'error', reason: 'private archived story content', stage: 'generation' };
+const failure: { type: string; reason: string; stage: string; error_code?: string } = {
+  type: 'error', reason: 'private archived story content', stage: 'generation',
+};
 const payload = (event: object) => 'data: ' + JSON.stringify(event) + '\n\n';
 let mode: 'saved' | 'live' = 'saved';
 let eventReads = 0;
@@ -137,6 +139,7 @@ afterAll(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 beforeEach(async () => {
+  delete failure.error_code;
   releaseVerification?.();
   releaseNewGeneration?.();
   releaseNewGeneration = undefined;
@@ -269,4 +272,17 @@ it('keeps a newly submitted generation worker failure reportable', async () => {
     category: 'generation_failed',
     stage: 'dub',
   });
+});
+
+it.each([
+  ['gpu_arch_unsupported', 'GPU_ARCH_UNSUPPORTED'],
+  ['private-unrecognized-code', 'UNKNOWN'],
+])('projects the closed task failure code %s into its diagnostic report', async (code, expected) => {
+  failure.error_code = code;
+  await setDiagnosticConsent(true);
+  dubSession.setState((current) => ({ ...current, recovery: null, taskId: null }));
+  await generateDub('English', 'en');
+  await waitFor(() => expect(fixture.capture).toHaveBeenCalledOnce());
+  expect(fixture.capture.mock.calls[0][0]).toMatchObject({ error_code: expected });
+  expect(JSON.stringify(fixture.capture.mock.calls)).not.toContain('private-unrecognized-code');
 });

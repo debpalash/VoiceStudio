@@ -101,7 +101,19 @@ interface DiagnosticStorage {
     fun write(name: String, bytes: ByteArray)
     fun remove(name: String)
 }
-class FileDiagnosticStorage(private val directory: File) : DiagnosticStorage {
+internal fun interface DiagnosticFileSynchronizer {
+    fun synchronize(path: java.nio.file.Path)
+}
+internal object NioDiagnosticFileSynchronizer : DiagnosticFileSynchronizer {
+    override fun synchronize(path: java.nio.file.Path) {
+        java.nio.channels.FileChannel.open(path, java.nio.file.StandardOpenOption.READ).use { it.force(true) }
+    }
+}
+class FileDiagnosticStorage internal constructor(
+    private val directory: File,
+    private val synchronizer: DiagnosticFileSynchronizer,
+) : DiagnosticStorage {
+    constructor(directory: File) : this(directory, NioDiagnosticFileSynchronizer)
     private fun target(name: String): File {
         require(name in setOf("consent.json", "outbox.json", "revoked.json"))
         return File(directory, name)
@@ -132,6 +144,10 @@ class FileDiagnosticStorage(private val directory: File) : DiagnosticStorage {
             temporary.outputStream().use { it.write(bytes); it.fd.sync() }
             // Same-directory rename replaces atomically on Android/Linux.
             java.nio.file.Files.move(temporary.toPath(), file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+            // A renamed file needs a checked directory publication barrier too.
+            // Android's OpenJDK-based FileChannel.force(true) invokes fsync.
+            synchronizer.synchronize(file.toPath())
+            synchronizer.synchronize(directory.toPath())
         } finally { temporary.delete() }
     }
     override fun remove(name: String) {

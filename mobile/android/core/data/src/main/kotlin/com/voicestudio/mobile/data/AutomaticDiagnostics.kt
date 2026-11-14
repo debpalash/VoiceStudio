@@ -234,6 +234,11 @@ object AutomaticDiagnostics {
     }
 
     fun capture(input: DiagnosticInput) { captureReporter()?.capture(input) }
+    fun capture(input: DiagnosticInput, observation: CompanionDiagnosticObservation?) {
+        if (observation == null || observation != observeConsent()) return
+        captureReporter()?.capture(input, expectedEpoch = observation.epoch)
+    }
+
 
     private fun publishProcessConsent(app: Application, reports: DiagnosticReports) {
         if (Build.VERSION.SDK_INT < 30) return

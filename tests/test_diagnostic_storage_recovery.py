@@ -1,6 +1,8 @@
 """Transient storage faults preserve accepted diagnostics until durable publication."""
 import importlib
 import json
+import os
+import stat
 import threading
 from pathlib import Path
 
@@ -8,6 +10,73 @@ import pytest
 
 from test_diagnostic_managed_handoff import managed_reporter  # noqa: F401
 from test_diagnostic_reports import reporter  # noqa: F401
+
+
+def test_atomic_publication_syncs_file_before_rename_and_parent_after(tmp_path, monkeypatch):
+    reports = importlib.import_module("core.diagnostic_reports")
+    events = []
+    sync, replace = os.fsync, os.replace
+    def tracked_sync(fd):
+        events.append("directory" if stat.S_ISDIR(os.fstat(fd).st_mode) else "file")
+        return sync(fd)
+    def tracked_replace(source, target):
+        events.append("rename")
+        return replace(source, target)
+    monkeypatch.setattr(os, "fsync", tracked_sync)
+    monkeypatch.setattr(os, "replace", tracked_replace)
+    reports._atomic(tmp_path / "revoked.json", {"version": 1})
+    assert events == ["file", "rename"] + (["directory"] if os.name != "nt" else [])
+
+
+@pytest.mark.parametrize("fail_directory", [False, True])
+def test_atomic_sync_failure_propagates_and_closes_owned_descriptors(tmp_path, monkeypatch, fail_directory):
+    if fail_directory and os.name == "nt":
+        pytest.skip("Windows has no supported directory fsync")
+    reports = importlib.import_module("core.diagnostic_reports")
+    sync = os.fsync
+    failed_fds = []
+    def fail_sync(fd):
+        if stat.S_ISDIR(os.fstat(fd).st_mode) == fail_directory:
+            failed_fds.append(fd)
+            raise OSError("controlled durability failure")
+        return sync(fd)
+    monkeypatch.setattr(os, "fsync", fail_sync)
+    with pytest.raises(OSError, match="controlled durability failure"):
+        reports._atomic(tmp_path / "revoked.json", {"version": 1})
+    assert len(failed_fds) == 1
+    with pytest.raises(OSError):
+        os.fstat(failed_fds[0])
+    assert (tmp_path / "revoked.json").exists() == fail_directory
+    assert not list(tmp_path.glob(".diagnostic-*"))
+
+
+@pytest.mark.parametrize("coalesce", [False, True])
+def test_post_rename_sync_failure_does_not_count_a_retained_capture_twice(reporter, monkeypatch, coalesce):
+    if os.name == "nt":
+        pytest.skip("Directory sync is POSIX-only")
+    reports = importlib.import_module("core.diagnostic_reports")
+    reporter.consent(True); reporter._tick()
+    if coalesce:
+        assert reporter.capture("engine_failed", stage="engine")
+        reporter._tick()
+    sync = os.fsync
+    blocked = True
+    def fail_directory_sync(fd):
+        if blocked and stat.S_ISDIR(os.fstat(fd).st_mode):
+            raise OSError("rename visible but directory publication not synced")
+        return sync(fd)
+    monkeypatch.setattr(os, "fsync", fail_directory_sync)
+    assert reporter.capture("engine_failed", stage="engine")
+    reporter._tick()
+    assert reporter.intake.qsize() == 1
+    visible = reporter._files()
+    assert sum(record["props"]["occurrences"] for record in visible) == 1 + int(coalesce)
+    blocked = False
+    reporter.storage_retry_at = 0
+    reporter._tick()
+    saved = reporter._files()
+    assert sum(record["props"]["occurrences"] for record in saved) == 1 + int(coalesce)
+    assert reporter.intake.empty()
 
 
 @pytest.fixture(params=[False, True], ids=["standalone", "managed"])
@@ -25,6 +94,54 @@ def worker_tick(instance):
         instance._tick()
     except OSError:
         pass
+
+
+def test_consumed_managed_file_disappearing_does_not_pause_fresh_intake(managed_reporter, monkeypatch):
+    instance = managed_reporter
+    assert instance.capture("engine_failed", stage="engine")
+    instance._tick()
+    consumed, = instance.directory.glob("*.json")
+    read_text = Path.read_text
+
+    def consume_before_read(path, *args, **kwargs):
+        if path == consumed:
+            path.unlink()
+        return read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", consume_before_read)
+    assert instance.capture("download_failed", stage="download")
+    instance._tick()
+    assert instance.storage_retry_at == 0
+    fresh, = instance._files()
+    assert fresh["props"]["category"] == "download_failed"
+    assert instance.intake.empty() and instance.dropped == 0
+
+
+def test_successful_ack_frees_space_before_retained_write_retry(reporter, monkeypatch):
+    reports = importlib.import_module("core.diagnostic_reports")
+    reporter.consent(True)
+    assert reporter.capture("engine_failed", stage="engine")
+    reporter._tick()
+    delivered, = reporter.directory.glob("*.json")
+    reporter.inflight[delivered.stem] = True
+    atomic = reports._atomic
+
+    def full_until_delivered_removed(path, value):
+        if path.parent == reporter.directory and delivered.exists():
+            raise OSError("no space until delivered report is removed")
+        return atomic(path, value)
+
+    monkeypatch.setattr(reports, "_atomic", full_until_delivered_removed)
+    assert reporter.capture("download_failed", stage="download")
+    reporter._tick()
+    assert reporter.intake.qsize() == 1
+    reporter._delivery_result(reporter.epoch, delivered.stem, 204)
+    reporter._tick()
+    assert not delivered.exists(), "retained writes blocked successful delivery cleanup"
+    reporter._tick()
+    fresh, = reporter._files()
+    assert fresh["props"]["category"] == "download_failed"
+    assert reporter.intake.empty() and reporter.acks.empty()
 
 
 def test_unread_report_survives_transient_io_and_reloads(storage_reporter, monkeypatch):
@@ -178,7 +295,7 @@ def test_worker_retries_without_new_capture_and_sends_only_committed_bytes(repor
 
     class Transport:
         def capture(self, event, props, profile, **options):
-            saved = json.loads((reporter.directory / (options["event_id"] + ".json")).read_text())
+            saved = json.loads((reporter.directory / (options["event_id"] + ".json")).read_text(encoding='utf-8'))
             assert saved["props"] == props
             sent.append(saved)
             delivered.set()

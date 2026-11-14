@@ -298,6 +298,8 @@ class _ResilientGpuPool(Executor):
         # so wrapping the callable is the one place that sees queue→run→done
         # for the whole pool.
         token = {"counted": False}
+        from core import diagnostic_reports
+        fn = diagnostic_reports.bind_callable(fn)
 
         def _tracked(*a, **kw):
             with self._stats_lock:
@@ -843,6 +845,8 @@ async def run_on_gpu_pool_guarded(fn, *, what: str = "GPU job",
     finalizer. Normal completion never calls it. This lets request-owned temp
     files outlive abandoned workers without delaying ordinary requests (#1668).
     """
+    from core import diagnostic_reports
+    diagnostic_epoch = diagnostic_reports.inherited_grant()
     from services.inference_cancellation import InferenceCancellation
     cancellation = InferenceCancellation()
     loop = asyncio.get_running_loop()
@@ -900,7 +904,7 @@ async def run_on_gpu_pool_guarded(fn, *, what: str = "GPU job",
                 _fire_abandon_callback()
 
     from core.render_trace import bind as bind_render_trace
-    concurrent_fut = ex.submit(bind_render_trace(_job))
+    concurrent_fut = ex.submit(bind_render_trace(diagnostic_reports.bind_callable(_job, diagnostic_epoch)))
     fut = asyncio.wrap_future(concurrent_fut, loop=loop)
 
     def _abandon() -> None:

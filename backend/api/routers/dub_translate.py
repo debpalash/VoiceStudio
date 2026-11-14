@@ -969,7 +969,8 @@ async def dub_translate(req: TranslateRequest):
                 return results
 
             try:
-                translated = await loop.run_in_executor(_cpu_pool, _translate_argos)
+                from core import diagnostic_reports
+                translated = await loop.run_in_executor(_cpu_pool, diagnostic_reports.bind_callable(_translate_argos))
             except asyncio.CancelledError:
                 argos_cancelled.set()
                 raise
