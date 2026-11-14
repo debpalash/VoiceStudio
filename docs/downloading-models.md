@@ -30,7 +30,9 @@ leaves any previously installed destination untouched and invalidates the
 completed-range manifest, so a later retry fetches all ranges again rather than
 trusting the rejected bytes. Ordinary connection failures and cancellation keep
 valid completed ranges for resume; cancellation is checked during verification
-and before publication too. A non-transient failure or the final attempt disables acceleration
+and before publication too. A checksum mismatch stops the install with a failure
+instead of switching to an unverified plain transfer; retrying the install can
+fetch the rejected ranges again. Other non-transient failures or the final attempt disable acceleration
 for the rest of that install and lets plain `snapshot_download` take over. Adding a
 free Hugging Face token (first-run setup, or Settings → Credentials) makes this
 faster still — authenticated downloads get higher rate limits and fewer stalls.

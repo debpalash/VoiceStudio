@@ -248,6 +248,8 @@ def test_cancel_at_publication_preserves_valid_checkpoint(origin, tmp_path, monk
 def test_checkpoint_cleanup_failure_preserves_partial_and_destination(
     origin, tmp_path, monkeypatch, ranged,
 ):
+    from services import segmented_download as sd
+
     destination = tmp_path / "config.json"
     destination.write_bytes(b"previous installed file")
     part = str(destination) + ".part"
@@ -265,8 +267,14 @@ def test_checkpoint_cleanup_failure_preserves_partial_and_destination(
 
     with monkeypatch.context() as patch:
         patch.setattr(os, "remove", cannot_invalidate)
-        with pytest.raises(PermissionError, match="controlled checkpoint cleanup"):
+        expected = sd.DownloadIntegrityError if ranged else PermissionError
+        with pytest.raises(expected) as error:
             _download(origin, destination, "sha256")
+        if ranged:
+            assert isinstance(error.value.__cause__, PermissionError)
+            assert "mismatch" in str(error.value)
+        else:
+            assert "controlled checkpoint cleanup" in str(error.value)
     assert destination.read_bytes() == b"previous installed file"
     assert os.path.exists(checkpoint)
     # Ranges have received rejected bytes; a single-stream fallback must not

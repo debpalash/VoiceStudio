@@ -38,6 +38,10 @@ class DownloadCancelled(Exception):
     """Raised when ``cancel_check()`` returns True mid-download."""
 
 
+class DownloadIntegrityError(ValueError):
+    """Verified bytes were corrupt; never install them through a fallback."""
+
+
 def _auth_headers(url: str, token: Optional[str]) -> dict:
     if token and _host_gets_auth(url):
         return {"Authorization": f"Bearer {token}"}
@@ -209,9 +213,15 @@ async def segmented_download(
                 if _content_hash(part, git_blob=len(tag) == 40, cancel_check=_cancelled) != tag:
                     # Completed ranges only certify transferred bytes, not
                     # integrity. Retrying must not trust rejected bytes again.
-                    _invalidate_done(part)
                     algorithm = "git blob sha1" if len(tag) == 40 else "sha256"
-                    raise ValueError(f"{algorithm} mismatch — download corrupt")
+                    message = f"{algorithm} mismatch — download corrupt"
+                    try:
+                        _invalidate_done(part)
+                    except OSError as error:
+                        raise DownloadIntegrityError(
+                            f"{message}; completed-range checkpoint could not be cleared"
+                        ) from error
+                    raise DownloadIntegrityError(message)
 
         os.makedirs(os.path.dirname(dest) or ".", exist_ok=True)
         if _cancelled():
