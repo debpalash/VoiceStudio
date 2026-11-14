@@ -972,7 +972,6 @@
     "play": "Putar",
     "pause": "Jeda",
     "seek": "Cari posisi",
-    "missing": "File audio tidak ditemukan.",
     "now_playing": "Sedang diputar",
     "kind_convert": "Konversi suara"
   },
