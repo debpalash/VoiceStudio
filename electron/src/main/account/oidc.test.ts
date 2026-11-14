@@ -41,6 +41,49 @@ it('refuses a discovery document for another issuer', async () => {
   await expect(c.discover()).rejects.toThrow(/issuer/);
 });
 
+it('refuses a token endpoint on another origin than the issuer', async () => {
+  const c = client(
+    vi.fn(async () =>
+      json({ ...discovery, token_endpoint: 'https://evil.example/oauth/v2/token' }),
+    ),
+  );
+  await expect(c.discover()).rejects.toThrow(/token_endpoint/);
+});
+
+it('refuses a revocation endpoint on another origin than the issuer', async () => {
+  const c = client(
+    vi.fn(async () =>
+      json({ ...discovery, revocation_endpoint: 'https://evil.example/oauth/v2/revoke' }),
+    ),
+  );
+  await expect(c.discover()).rejects.toThrow(/revocation_endpoint/);
+});
+
+it('refuses a discovery document that omits the token endpoint', async () => {
+  const { token_endpoint: _omitted, ...withoutToken } = discovery;
+  const c = client(vi.fn(async () => json(withoutToken)));
+  await expect(c.discover()).rejects.toThrow(/token_endpoint/);
+});
+
+it('refuses a non-HTTP scheme that merely embeds the issuer origin', async () => {
+  // `new URL('blob:https://id.example/...').origin` is the issuer origin, so an
+  // origin-only comparison would accept this and post the code to it.
+  const c = client(
+    vi.fn(async () =>
+      json({ ...discovery, token_endpoint: `blob:${env.issuer}/oauth/v2/token` }),
+    ),
+  );
+  await expect(c.discover()).rejects.toThrow(/token_endpoint/);
+});
+
+it('accepts endpoints that live on the issuer origin', async () => {
+  const c = client(vi.fn(async () => json(discovery)));
+  await expect(c.discover()).resolves.toMatchObject({
+    token_endpoint: discovery.token_endpoint,
+    revocation_endpoint: discovery.revocation_endpoint,
+  });
+});
+
 it('requires a successful revocation response and accepts an empty success body', async () => {
   const fetcher = vi
     .fn()
