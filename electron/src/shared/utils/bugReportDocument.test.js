@@ -1,4 +1,7 @@
 import { describe, expect, test } from 'vitest';
+import { execFileSync } from 'node:child_process';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { MAX_MSG_CHARS, composeBugReportUrl } from './bugReportDocument';
 
 function issueParams(opts) {
@@ -85,18 +88,25 @@ test('opens a report when a truncated message ends in half an emoji', () => {
 });
 
 describe('credential query privacy in the live report builder', () => {
-  test.each(['pin', '%70in', 'p%69%6e', 'api%5Fkey', '%74oken', 'pass%77ord', 'auth%2Dtoken'])(
-    'redacts %s from both error titles and crash-log bodies', (name) => {
-      const raw = `Request: http://192.0.2.1:3901/?view=models&${name}=481516&page=2`;
-      const params = issueParams({ error: { message: raw }, crashSection: [raw] });
-      for (const field of ['title', 'body']) {
-        expect(params.get(field)).not.toContain('481516');
-        expect(params.get(field)).toContain(`${name}=***REDACTED***`);
-      }
-      expect(params.get('body')).toContain('view=models');
-      expect(params.get('body')).toContain('page=2');
-    },
-  );
+  test.each([
+    'pin',
+    '%70in',
+    'p%69%6e',
+    'api%5Fkey',
+    '%74oken',
+    'pass%77ord',
+    'auth%2Dtoken',
+    '%61%63%63%65%73%73%5F%74%6F%6B%65%6E',
+  ])('redacts %s from both error titles and crash-log bodies', (name) => {
+    const raw = `Request: http://h/?${name}=481516&view=models&page=2`;
+    const params = issueParams({ error: { message: raw }, crashSection: [raw] });
+    for (const field of ['title', 'body']) {
+      expect(params.get(field)).not.toContain('481516');
+      expect(params.get(field)).toContain(`${name}=***REDACTED***`);
+    }
+    expect(params.get('body')).toContain('view=models');
+    expect(params.get('body')).toContain('page=2');
+  });
 
   test('keeps ordinary parameters and does not decode names twice', () => {
     const raw = 'http://192.0.2.1/?spin=481516&pin_code=481516&key=short&%2570in=481516&x=%GG';
@@ -109,4 +119,49 @@ describe('credential query privacy in the live report builder', () => {
     for (const secret of ['481516', '151623', 'short']) expect(body).not.toContain(secret);
     expect(body).toContain('view=models');
   });
+
+  test.each([
+    "pass%77ord='orchid-river-72'",
+    'pass%77ord="orchid-river-72"',
+    "password='orchid-river-72'",
+    "pass%77ord='orchid-river-72",
+    "pass%77ord='prefix\\'orchid-river-72'",
+  ])('redacts the entire quoted credential %s', (query) => {
+    const raw = `Request: http://192.0.2.1/?${query}&view=models`;
+    const params = issueParams({ error: { message: raw }, crashSection: [raw] });
+    expect(params.get('title')).not.toContain('orchid-river-72');
+    expect(params.get('body')).not.toContain('orchid-river-72');
+    expect(params.get('body')).toContain('***REDACTED***');
+  });
+
+  test('keeps quotes surrounding an unquoted URL credential', () => {
+    expect(issueBody({ crashSection: ["Request: 'http://h/?pin=1234' next"] })).toContain(
+      "Request: 'http://h/?pin=***REDACTED***' next",
+    );
+  });
+
+  test.each(
+    [
+      ['password', 'PRIVATE_FIXTURE', '"'],
+      ['%70in', '482916', '"'],
+      ['password', 'PRIVATE_FIXTURE', "'"],
+      ['%70in', '482916', "'"],
+    ].flatMap((row) => [1, 3, 7].map((depth) => [...row, depth])),
+  )('redacts log-escaped %s (%s, quote %s, depth %s)', (name, secret, quote, depth) => {
+    const marker = '\\'.repeat(depth) + quote;
+    const raw = `https://h/?${name}=${marker}${secret}${marker}&x=1`;
+    const params = issueParams({ error: { message: raw }, crashSection: [raw] });
+    expect(params.get('title')).not.toContain(secret);
+    expect(params.get('body')).not.toContain(secret);
+    expect(params.get('body')).toContain(`${name}=***REDACTED***&x=1`);
+  });
+
+  test('finishes malformed-query scrubbing within a process bound', () => {
+    const source = pathToFileURL(resolve('src/shared/utils/scrub.js')).href;
+    const script = `import {scrubText} from ${JSON.stringify(source)};
+      for (const value of ['?'.repeat(100000),'&'+'?!'.repeat(50000)]) {
+        if (scrubText(value)!==value) throw new Error('benign input changed');
+      }`;
+    execFileSync(process.execPath, ['--input-type=module', '-e', script], { timeout: 5000 });
+  }, 10000);
 });

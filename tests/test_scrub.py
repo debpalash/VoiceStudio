@@ -154,6 +154,7 @@ def test_share_pin_in_a_request_url_is_redacted():
 @pytest.mark.parametrize('name,decoded',[
     ('%70in','pin'),('p%69%6e','pin'),('api%5Fkey','api_key'),
     ('%74oken','token'),('pass%77ord','password'),('auth%2Dtoken','auth-token'),
+    ('%61%63%63%65%73%73%5F%74%6F%6B%65%6E','access_token'),
 ])
 @pytest.mark.parametrize('secret',['481516','short'])
 def test_encoded_credential_query_names_match_http_parsing(name,decoded,secret):
@@ -177,6 +178,50 @@ def test_duplicate_literal_and_encoded_pin_values_are_all_redacted():
     out=scrub_text('http://192.0.2.1/?pin=481516&%70in=151623&api_key=short&view=models')
     assert all(secret not in out for secret in ('481516','151623','short'))
     assert 'view=models' in out
+
+
+@pytest.mark.parametrize('query',[
+    "pass%77ord='orchid-river-72'", 'pass%77ord="orchid-river-72"',
+    "password='orchid-river-72'", "pass%77ord='orchid-river-72",
+    "pass%77ord='prefix\\'orchid-river-72'",
+])
+def test_quoted_credential_query_values_are_fully_redacted(query):
+    from starlette.requests import Request
+    request=Request({'type':'http','scheme':'http','server':('192.0.2.1',3901),
+                     'path':'/','headers':[],
+                     'query_string':f'{query}&view=models'.encode()})
+    assert 'orchid-river-72' in request.query_params['password']
+    out=scrub_text(f'Request: {request.url}')
+    assert 'orchid-river-72' not in out
+    assert REDACTED in out
+
+
+def test_unquoted_credential_keeps_the_surrounding_log_quote():
+    assert scrub_text("Request: 'http://h/?pin=1234' next") == f"Request: 'http://h/?pin={REDACTED}' next"
+
+
+@pytest.mark.parametrize('name,secret',[('password','PRIVATE_FIXTURE'),('%70in','482916')])
+@pytest.mark.parametrize('quote',['"',"'"])
+@pytest.mark.parametrize('escape_depth',[1,3,7])
+def test_log_escaped_quoted_credential_is_removed_in_full(name,secret,quote,escape_depth):
+    marker='\\'*escape_depth+quote
+    raw=f'https://h/?{name}={marker}{secret}{marker}&x=1'
+    out=scrub_text(raw)
+    assert secret not in out
+    assert f'{name}={REDACTED}&x=1' in out
+
+
+def test_malformed_query_stress_finishes_within_a_process_bound():
+    import subprocess
+    import sys
+    from pathlib import Path
+    # A stalled diagnostic scrub must not stall the test process. The old
+    # overlapping suffix regex exceeds this generous bound on either input.
+    script=('from core.scrub import scrub_text; '
+            'cases=("?"*100000,"&"+"?!"*50000); '
+            'assert all(scrub_text(value)==value for value in cases)')
+    subprocess.run([sys.executable,'-c',script],check=True,timeout=5,
+                   cwd=Path(scrub_module.__file__).resolve().parents[1],capture_output=True)
 
 
 def test_home_superstring_not_corrupted(monkeypatch):

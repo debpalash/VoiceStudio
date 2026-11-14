@@ -53,22 +53,76 @@ _TOKEN_PATTERNS = (
 # are already caught above and named env vars by the sweep below. `pin` is the
 # share PIN: the backend accepts it as `?pin=` and it authenticates paired
 # clients, so a crash-logged request URL must not carry it into a bundle.
-_URL_SECRET_NAME = r"(?:access[_-]?token|api[_-]?key|apikey|auth[_-]?token|token|secret|password|passwd|pwd|pin)"
-_URL_SECRET_NAME_RE = re.compile(_URL_SECRET_NAME, re.IGNORECASE)
+_URL_SECRET_NAMES = frozenset((
+    "access_token", "access-token", "accesstoken", "api_key", "api-key", "apikey",
+    "auth_token", "auth-token", "authtoken", "token", "secret", "password", "passwd", "pwd", "pin",
+))
+_URL_SECRET_NAME = "(?:" + "|".join(sorted(_URL_SECRET_NAMES)) + ")"
 _URL_SECRET_RE = re.compile(
     r"(?<![\w%+.-])(" + _URL_SECRET_NAME + r"=)"
     r"([^&\s\"'#]{6,})",
     re.IGNORECASE,
 )
-# Request URLs retain encoded names even though HTTP credential parsing decodes
-# them. Decode each query name once, preserving unrelated parameters verbatim.
-_URL_QUERY_RE = re.compile(r"([?&])([^=&\s\"'#]+)=([^&\s\"'#]*)")
+# A known ASCII name uses at most three source characters per encoded byte.
+# Bounding name probes by this finite vocabulary prevents overlapping suffix
+# scans on malformed query text; matched values are consumed only once.
+_MAX_QUERY_NAME_CHARS = 3 * max(map(len, _URL_SECRET_NAMES))
 
 
-def _scrub_query_parameter(match: re.Match) -> str:
-    if _URL_SECRET_NAME_RE.fullmatch(unquote_plus(match.group(2))):
-        return match.group(1) + match.group(2) + "=" + REDACTED
-    return match.group(0)
+def _scrub_url_queries(text: str) -> str:
+    parts = []
+    copied = position = 0
+    length = len(text)
+    while position < length:
+        if text[position] not in "?&":
+            position += 1
+            continue
+        name_start = position + 1
+        name_end = name_start
+        limit = min(length, name_start + _MAX_QUERY_NAME_CHARS)
+        while name_end < limit and text[name_end] not in "=?&#\"'" and not text[name_end].isspace():
+            name_end += 1
+        if (name_end == length or text[name_end] != "="
+                or unquote_plus(text[name_start:name_end]).lower() not in _URL_SECRET_NAMES):
+            position += 1
+            continue
+        value_start = name_end + 1
+        end = value_start
+        quote_start = end
+        while quote_start < length and text[quote_start] == "\\":
+            quote_start += 1
+        if quote_start > end and quote_start < length and text[quote_start] in "\"'":
+            # JSON/log repr can escape the enclosing quotes. Match that
+            # same delimiter depth; more deeply escaped quotes are content.
+            escape_depth = quote_start - end
+            quote = text[quote_start]
+            end = quote_start + 1
+            while end < length:
+                slash_start = end
+                while end < length and text[end] == "\\":
+                    end += 1
+                closes = end - slash_start == escape_depth and end < length and text[end] == quote
+                if end < length:
+                    end += 1
+                if closes:
+                    break
+        elif end < length and text[end] in "\"'":
+            quote = text[end]
+            end += 1
+            while end < length:
+                char = text[end]
+                end += 1
+                if char == "\\" and end < length:
+                    end += 1
+                elif char == quote:
+                    break
+        else:
+            while end < length and text[end] not in "&\"'#" and not text[end].isspace():
+                end += 1
+        parts.extend((text[copied:value_start], REDACTED))
+        copied = position = end
+    parts.append(text[copied:])
+    return "".join(parts)
 
 # Home-directory shapes for all three supported platforms. Matched
 # pattern-wise (not just this machine's $HOME) so paths quoted from a
@@ -132,8 +186,10 @@ def scrub_text(text: str | None) -> str:
         except Exception:
             return REDACTED
     try:
+        # Preserve quote delimiters for the scanner before free-text matching
+        # can replace a long escaped prefix while leaving its value visible.
+        s = _scrub_url_queries(s)
         s = _URL_SECRET_RE.sub(lambda m: m.group(1) + REDACTED, s)
-        s = _URL_QUERY_RE.sub(_scrub_query_parameter, s)
     except Exception:
         return REDACTED
 

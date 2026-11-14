@@ -32,21 +32,89 @@ const TOKEN_PATTERNS = [
 ];
 
 // Secrets in a URL query string — redact the value, keep the param name.
-const URL_SECRET_NAME = '(?:access[_-]?token|api[_-]?key|apikey|auth[_-]?token|token|secret|password|passwd|pwd|pin)';
-const URL_SECRET_NAME_RE = new RegExp(`^${URL_SECRET_NAME}$`, 'i');
+const URL_SECRET_NAMES = new Set([
+  'access_token',
+  'access-token',
+  'accesstoken',
+  'api_key',
+  'api-key',
+  'apikey',
+  'auth_token',
+  'auth-token',
+  'authtoken',
+  'token',
+  'secret',
+  'password',
+  'passwd',
+  'pwd',
+  'pin',
+]);
+const URL_SECRET_NAME = `(?:${[...URL_SECRET_NAMES].join('|')})`;
 const URL_SECRET_RE = new RegExp(`(?<![\\w%+.-])(${URL_SECRET_NAME}=)([^&\\s"'#]{6,})`, 'gi');
-const URL_QUERY_RE = /([?&])([^=&\s"'#]+)=([^&\s"'#]*)/g;
+// Each known ASCII name needs at most three source characters per encoded
+// byte. Name probes have this fixed bound, and matched values are scanned once.
+const MAX_QUERY_NAME_CHARS = 3 * Math.max(...[...URL_SECRET_NAMES].map((name) => name.length));
 
-function scrubQueryParameter(match, separator, name) {
-  // Match HTTP parsing, without decoding the whole log or interpreting a
-  // second encoding layer as a credential name. Invalid names stay unchanged.
-  try {
-    const decoded = decodeURIComponent(name.replace(/\+/g, ' '));
-    if (URL_SECRET_NAME_RE.test(decoded)) return `${separator}${name}=${REDACTED}`;
-  } catch {
-    // A malformed encoded name cannot be an accepted credential parameter.
+function scrubUrlQueries(text) {
+  const parts = [];
+  let copied = 0;
+  let position = 0;
+  while (position < text.length) {
+    if (text[position] !== '?' && text[position] !== '&') {
+      position++;
+      continue;
+    }
+    const nameStart = position + 1;
+    let nameEnd = nameStart;
+    const limit = Math.min(text.length, nameStart + MAX_QUERY_NAME_CHARS);
+    while (nameEnd < limit && !'=?&#"\''.includes(text[nameEnd]) && !/\s/.test(text[nameEnd]))
+      nameEnd++;
+    let known = false;
+    if (text[nameEnd] === '=') {
+      try {
+        known = URL_SECRET_NAMES.has(
+          decodeURIComponent(text.slice(nameStart, nameEnd).replace(/\+/g, ' ')).toLowerCase(),
+        );
+      } catch {
+        // A malformed encoded name cannot be an accepted credential parameter.
+      }
+    }
+    if (!known) {
+      position++;
+      continue;
+    }
+    const valueStart = nameEnd + 1;
+    let end = valueStart;
+    let quoteStart = end;
+    while (quoteStart < text.length && text[quoteStart] === '\\') quoteStart++;
+    if (quoteStart > end && (text[quoteStart] === '"' || text[quoteStart] === "'")) {
+      // Match the enclosing JSON/log quote depth. More deeply escaped
+      // quotes belong to the credential, rather than ending its value.
+      const escapeDepth = quoteStart - end;
+      const quote = text[quoteStart];
+      end = quoteStart + 1;
+      while (end < text.length) {
+        const slashStart = end;
+        while (end < text.length && text[end] === '\\') end++;
+        const closes = end - slashStart === escapeDepth && text[end] === quote;
+        if (end < text.length) end++;
+        if (closes) break;
+      }
+    } else if (text[end] === '"' || text[end] === "'") {
+      const quote = text[end++];
+      while (end < text.length) {
+        const char = text[end++];
+        if (char === '\\' && end < text.length) end++;
+        else if (char === quote) break;
+      }
+    } else {
+      while (end < text.length && !'&"\'#'.includes(text[end]) && !/\s/.test(text[end])) end++;
+    }
+    parts.push(text.slice(copied, valueStart), REDACTED);
+    copied = position = end;
   }
-  return match;
+  parts.push(text.slice(copied));
+  return parts.join('');
 }
 
 // A home folder name can contain spaces ("Alice Smith"). Where the path goes on
@@ -91,8 +159,9 @@ export function scrubText(text) {
   if (text == null) return '';
   let s = String(text);
   for (const pat of TOKEN_PATTERNS) s = s.replace(pat, REDACTED);
+  // Preserve escaped quote delimiters before the free-text fallback runs.
+  s = scrubUrlQueries(s);
   s = s.replace(URL_SECRET_RE, (_m, name) => `${name}${REDACTED}`);
-  s = s.replace(URL_QUERY_RE, scrubQueryParameter);
   for (const pat of [...realHomePatterns(), ...HOME_PATTERNS]) s = s.replace(pat, '~');
   return s;
 }
