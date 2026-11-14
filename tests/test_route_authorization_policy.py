@@ -36,7 +36,7 @@ _DUMP = _REPO / "scripts" / "dump_route_auth.py"
 # dictation sockets persist transcripts) and a new one can be written to do so,
 # so the guard cannot tell "read-only" from "state-changing" by the transport.
 # Each WS route therefore needs a dependency the dump can see or an allowlist
-# entry that states its in-body authorization decision.
+# entry that states its inline or application-middleware authorization decision.
 _MUTATING_METHODS = ("POST", "PUT", "PATCH", "DELETE")
 
 # Every mutating route that carries no authorization dependency AT THIS COMMIT,
@@ -60,23 +60,22 @@ ALLOWLIST: dict[str, str] = {
         "Issues a one-shot WebSocket ticket; the in-body principal_for check requires an "
         "admin session plus cookie CSRF before minting it."
     ),
-    # ── Mutating WebSockets (inline guard: a handshake closes, not 403s) ──
+    # ── WebSockets (inline guards or the application's API-key middleware) ──
     "WS /ws/transcribe": (
-        "Saves dictation history; guarded in-body by require_ws_access (is_local_host + "
-        "ws_remote_authorized, API key or one-shot ws_ticket) because a WS handshake closes "
-        "1008, not 403. A router-level dependency cannot express that."
+        "Saves dictation history; inline Origin check plus is_local_host or "
+        "ws_remote_authorized rejects unauthorized handshakes with 1008 before accept()."
     ),
     "WS /v1/audio/transcriptions/stream": (
-        "Same ws_transcribe handler as /ws/transcribe (platform path), so it awaits the same "
-        "in-body require_ws_access dictation guard."
+        "Same ws_transcribe handler as /ws/transcribe; its inline Origin and local-host or "
+        "remote-admin principal checks run before accepting this platform path too."
     ),
     "WS /ws/tts": (
-        "Streams synthesized audio; awaits the shared in-body require_ws_access guard, so a "
-        "non-loopback client without the API key is closed with 1008 before accept()."
+        "Streams audio; no inline guard. Application BearerKeyMiddleware checks configured "
+        "API-key access; no-key bootstrap stays open. The HTTP-only PIN gate does not apply."
     ),
     "WS /ws/events": (
-        "Internal event feed for the sidebar; awaits the shared in-body require_ws_access guard "
-        "like every other WebSocket, because the PIN gate never covers WebSockets."
+        "Read-only event feed; no inline guard. Application BearerKeyMiddleware checks "
+        "configured API-key access; no-key bootstrap stays open. The PIN gate is HTTP-only."
     ),
     # ── Consumption generation surface (PIN / trusted-network reachable) ──
     # docs/api-auth.md states these run a generation and stay open to consumers;
@@ -99,27 +98,27 @@ ALLOWLIST: dict[str, str] = {
         "still missing the consumer reads/admin writes router guard."
     ),
     "POST /dub/parse-subtitle-text": (
-        "Dub consumption: parses caller-supplied subtitle text into job segments; stateless "
-        "parse plus job state, still missing the consumer reads/admin writes router guard."
+        "Stateless subtitle parser: returns cues from caller-supplied text without writing "
+        "a job or reading host files; no separate route authorization dependency."
     ),
     "POST /dub/import-srt/{job_id}": (
-        "Dub consumption: imports an SRT into an existing job; open to consumers by design, "
-        "still missing the consumer reads/admin writes router guard."
+        "KNOWN GAP: replaces an existing job's stored segments from an SRT; importing "
+        "stored content is documented admin-only but this route has no dependency yet."
     ),
     "POST /dub/use-downloaded-captions/{job_id}": (
-        "Dub consumption: switches a job to its downloaded captions; open to consumers by "
-        "design, still missing the consumer reads/admin writes router guard."
+        "KNOWN GAP: replaces a stored job's segments with its downloaded captions; editing "
+        "stored content is documented admin-only but this route has no dependency yet."
     ),
     "POST /dub/cleanup-segments/{job_id}": (
-        "Dub consumption: clears a job's generated segment state so it can re-render; open to "
-        "consumers by design, still missing the consumer reads/admin writes router guard."
+        "KNOWN GAP: merges and rewrites stored job segments; editing stored content is "
+        "documented admin-only but this route has no dependency yet."
     ),
     "POST /dub/sync-transcript/{job_id}": (
-        "Dub consumption: re-syncs a job's transcript onto its segments; open to consumers by "
-        "design, still missing the consumer reads/admin writes router guard."
+        "KNOWN GAP: rewrites a stored job's transcript and segments; editing stored content "
+        "is documented admin-only but this route has no dependency yet."
     ),
     "POST /dub/abort/{job_id}": (
-        "Dub consumption: aborts the caller's own running dub job; open to consumers by design, "
+        "Dub consumption: aborts a running job by ID with no per-caller ownership check; "
         "still missing the consumer reads/admin writes router guard."
     ),
     "POST /dub/prosody-mirror/{job_id}": (
@@ -135,7 +134,7 @@ ALLOWLIST: dict[str, str] = {
         "consumers by design, still missing the consumer reads/admin writes router guard."
     ),
     "POST /tasks/cancel/{task_id}": (
-        "Dub consumption: cancels a task the caller started; open to consumers by design, still "
+        "Task consumption: cancels a task by ID with no per-caller ownership check; still "
         "missing the consumer reads/admin writes router guard."
     ),
     # ── Stored-content edit/delete — known gaps, documented as admin-only ──
@@ -164,7 +163,7 @@ ALLOWLIST: dict[str, str] = {
     # ── First-run setup: must work before any admin credential exists ─────
     "POST /models/install": (
         "First-run setup downloads a catalogue model before any admin credential exists; "
-        "server mode already refuses credential-less mutations."
+        "this route has no dependency yet, including in bare-server mode."
     ),
     "POST /models/install/cancel": (
         "Cancels the in-flight first-run model download; setup-time surface, same pre-credential "
@@ -213,37 +212,37 @@ ALLOWLIST: dict[str, str] = {
     ),
     # ── Catalog browsing side effects (profile creation / consent) ────────
     "PUT /archetypes/previews": (
-        "Toggles the pre-rendered preview gallery; turning it on IS the user's explicit "
-        "consent to the outbound featured-set fetch it then makes."
+        "KNOWN GAP: changes gallery consent and can enable outbound fetching; this "
+        "settings mutation has no authorization dependency yet."
     ),
     "POST /archetypes/previews/check": (
-        "Forces a signature-verified preview catalog check, bypassing only the 24 h throttle; "
-        "read-only against the network, harmless to repeat."
+        "KNOWN GAP: forces an outbound preview-catalog check when the gallery is enabled; "
+        "this host-side action has no authorization dependency yet."
     ),
     "POST /archetypes/{archetype_id}/use": (
-        "Saves a bundled archetype recipe as a local design profile without rendering; "
-        "profile creation is consumer-reachable per docs/api-auth.md."
+        "KNOWN GAP: saves an archetype recipe as a stored profile; importing stored "
+        "content is documented admin-only but this route has no dependency yet."
     ),
     "POST /community/items/{item_id}/use": (
-        "Materializes a community item into a profile (preset recipe, or a host-allow-listed "
-        "SHA-256-verified clip); profile creation is consumer-reachable by design."
+        "KNOWN GAP: imports a community recipe or verified clip into a stored profile; "
+        "importing stored content is documented admin-only but has no dependency here yet."
     ),
-    # ── Stateless computation on caller-supplied input ───────────────────
+    # ── Computation on caller input and host-side tools ──────────────────
     "POST /tools/incremental": (
         "Pure function: plans which dub segments need regenerating from caller-supplied "
         "text/hashes; touches no stored state or path."
     ),
     "POST /tools/direction": (
-        "Pure function: parses natural-language direction text into TTS instruct tokens; no "
-        "I/O and no stored state."
+        "KNOWN GAP: direction parsing can call the configured LLM provider; no authorization "
+        "dependency yet. The privileged tool gate is handled by the route-hardening PR."
     ),
     "POST /tools/rate-fit": (
-        "Pure function: fits caller-supplied text into a slot duration; no I/O and no stored "
-        "state."
+        "KNOWN GAP: slot fitting can call the configured LLM provider; no authorization "
+        "dependency yet. The privileged tool gate is handled by the route-hardening PR."
     ),
     "POST /tools/video-context/{job_id}": (
-        "Read-only analysis of an existing dub job's source video (path re-validated with "
-        "resolve_within); returns cues and writes nothing."
+        "KNOWN GAP: runs FFmpeg analysis on a stored job's validated source path; this "
+        "host-side media tool has no authorization dependency yet."
     ),
     "POST /tools/normalize-speech": (
         "Bounded in-memory peak-normalise of a caller-supplied WAV, re-marked synthetic via "
@@ -375,3 +374,110 @@ def test_route_counts_are_sane(live_auth_routes):
         f"Only {len(mutating)} mutating routes registered — the dump or a router "
         "mount is broken. Expected 190+."
     )
+
+
+def test_root_routes_keep_mutations_and_websockets_visible():
+    from fastapi import FastAPI
+    from starlette.routing import WebSocketRoute
+
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("route_auth_dump", _DUMP)
+    dump = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(dump)
+    app = FastAPI(openapi_url=None, docs_url=None, redoc_url=None)
+
+    async def endpoint(connection):
+        pass
+
+    app.add_api_route("/", endpoint, methods=["GET"])
+    app.add_api_route("/", endpoint, methods=["POST", "DELETE"])
+    app.router.routes.append(WebSocketRoute("/", endpoint))
+    records = dump.route_records(app)
+    assert {key for route in records for key in _route_keys(route)} == {
+        "POST /", "DELETE /", "WS /",
+    }
+    # These unguarded routes must reach the actual invariant, rather than pass
+    # vacuously because the census silently dropped them.
+    with pytest.raises(AssertionError, match="WS /"):
+        test_every_mutating_route_has_an_authorization_decision({"routes": records})
+
+
+@pytest.mark.parametrize("path", ["/ws/tts", "/ws/events"])
+@pytest.mark.parametrize(
+    "configured,host,credential,accepted",
+    [
+        (False, "10.0.0.5", None, True),
+        (True, "10.0.0.5", None, False),
+        (True, "10.0.0.5", "wrong", False),
+        (True, "10.0.0.5", "route-policy-test-key", True),
+        (True, "127.0.0.1", None, True),
+    ],
+)
+def test_middleware_only_websocket_authorization(
+    middleware_websocket_policy, path, configured, host, credential, accepted,
+):
+    """Prove the actual middleware policy behind these bounded exceptions.
+
+    The census sees Depends, not application middleware. These two handlers do
+    not have the dictation handler's stricter inline guard: pin-only/no-key
+    bootstrap remains unchanged, whereas a configured API key rejects remote
+    anonymous handshakes. No generation or event listener is started here.
+    """
+    result = next(row for row in middleware_websocket_policy if (
+        row["path"], row["configured"], row["host"], row["credential"]
+    ) == (path, configured, host, credential))
+    assert result["messages"] == ([{"type": "websocket.accept"}] if accepted else [
+        {"type": "websocket.close", "code": 1008},
+    ])
+
+
+@pytest.fixture(scope="module")
+def middleware_websocket_policy():
+    """Exercise the production middleware once, without importing the app here."""
+    code = """
+import asyncio
+import json
+import os
+from scripts.dump_route_auth import load_app
+app = load_app()
+from main import BearerKeyMiddleware
+assert any(m.cls is BearerKeyMiddleware for m in app.user_middleware)
+os.environ.pop("OMNIVOICE_TRUSTED_NETWORKS", None)
+results = []
+for path in ("/ws/tts", "/ws/events"):
+    for configured, host, credential in (
+        (False, "10.0.0.5", None),
+        (True, "10.0.0.5", None),
+        (True, "10.0.0.5", "wrong"),
+        (True, "10.0.0.5", "route-policy-test-key"),
+        (True, "127.0.0.1", None),
+    ):
+        if configured:
+            os.environ["OMNIVOICE_API_KEY"] = "route-policy-test-key"
+        else:
+            os.environ.pop("OMNIVOICE_API_KEY", None)
+        messages = []
+        async def handler(scope, receive, send):
+            await send({"type": "websocket.accept"})
+        async def receive():
+            return {"type": "websocket.connect"}
+        async def send(message):
+            messages.append(message)
+        scope = {
+            "type": "websocket", "path": path, "scheme": "ws", "query_string": b"",
+            "headers": [(b"authorization", f"Bearer {credential}".encode())] if credential else [],
+            "client": (host, 50000), "server": ("voice.test", 80), "app": app,
+        }
+        asyncio.run(BearerKeyMiddleware(handler)(scope, receive, send))
+        results.append(dict(path=path, configured=configured, host=host,
+                            credential=credential, messages=messages))
+print(json.dumps(results))
+"""
+    env = dict(os.environ, OMNIVOICE_MODEL="test", OMNIVOICE_DISABLE_FILE_LOG="1")
+    proc = subprocess.run(
+        [sys.executable, "-c", code], cwd=_REPO, env=env,
+        capture_output=True, text=True, timeout=180,
+    )
+    assert proc.returncode == 0, proc.stderr
+    return json.loads(proc.stdout)

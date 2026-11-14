@@ -99,7 +99,7 @@ def route_records(app) -> list[dict]:
         # part of the API contract. Only the read-only form is dropped: a
         # mutating route at ``/`` is a real surface and must stay visible to the
         # policy test.
-        if path == "/" and not set(methods) & {"POST", "PUT", "PATCH", "DELETE"}:
+        if path == "/" and not websocket and methods == ["GET"]:
             continue
         endpoint = getattr(r, "endpoint", None)
         records.append(
