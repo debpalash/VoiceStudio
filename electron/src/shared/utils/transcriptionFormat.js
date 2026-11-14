@@ -32,6 +32,7 @@ export function speakerTranscript(entry) {
 }
 
 function timedCues(entry) {
+  if (entry?.timestamps_available !== true) return null;
   if (!Array.isArray(entry?.segments)) return null;
   const cues = [];
   for (const segment of entry.segments) {

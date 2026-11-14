@@ -58,6 +58,7 @@ afterEach(cleanup);
 
 it('saves the full displayed plain text and timed SRT through native Save As', async () => {
   addTranscription({
+    timestamps_available: true,
     text: 'Original words',
     refined_text: 'Cleaned full text.',
     language: 'en',
@@ -90,6 +91,26 @@ it('explains unavailable timings and still saves plain text when captions are im
   fireEvent.click(screen.getByRole('button', { name: 'transcriptions.export_plain' }));
   await waitFor(() => expect(mocks.save).toHaveBeenCalledOnce());
 });
+
+it.each([false, undefined])(
+  'disables SRT for synthetic or legacy clip spans: %s',
+  async (available) => {
+    addTranscription({
+      text: 'Long clip',
+      timestamps_available: available,
+      segments: [{ start: 0, end: 600, text: 'Long clip' }],
+    });
+    render(<TranscriptionsPage />);
+    const srt = await screen.findByRole('button', { name: 'transcriptions.export_srt' });
+    expect(srt).toBeDisabled();
+    expect(srt).toHaveAccessibleDescription('transcriptions.timestamps_unavailable');
+    fireEvent.click(srt);
+    expect(mocks.save).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'transcriptions.export_plain' }));
+    await waitFor(() => expect(mocks.save).toHaveBeenCalledOnce());
+    expect(new TextDecoder().decode(mocks.save.mock.calls[0][0].data)).toBe('Long clip\n');
+  },
+);
 
 it('keeps cancellation quiet and reports actual save failures without losing the transcript', async () => {
   addTranscription({ text: 'Keep me' });
