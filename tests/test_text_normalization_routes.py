@@ -128,6 +128,102 @@ def test_openai_speech_toggle_off_sends_raw_text(client, fake_engine, monkeypatc
     assert fake_engine.calls[-1][0] == "Dr. Smith has 2 cats"
 
 
+@pytest.fixture()
+def saved_pronunciations(monkeypatch, tmp_path):
+    """Real saved rows; do not replace the pronunciation implementation."""
+    db = importlib.import_module("core.db")
+    monkeypatch.setattr(db, "DB_PATH", str(tmp_path / "pronunciation.db"))
+    with db.db_conn() as conn:
+        conn.executescript(db._BASE_SCHEMA)
+        conn.execute("INSERT INTO voice_profiles (id, name) VALUES (?, ?)",
+                     ("pron-voice", "Pronunciation Voice"))
+        for index, (term, replacement, profile) in enumerate([
+            ("Doctor", "Professor", ""),
+            ("cats", "kittens", ""),
+            ("kittens", "should not be applied twice", ""),
+            ("cats", "felines", "pron-voice"),
+        ]):
+            conn.execute(
+                "INSERT INTO pronunciation_entries "
+                "(id,term,replacement,type,language,enabled,created_at,profile_id) "
+                "VALUES (?,?,?,'respelling','en',1,?,?)",
+                (str(index), term, replacement, index, profile),
+            )
+    monkeypatch.delenv("OMNIVOICE_PRONUNCIATION", raising=False)
+    monkeypatch.delenv(text_normalization.ENV_VAR, raising=False)
+
+
+@pytest.mark.parametrize("voice,spoken", [
+    ("alloy", "kittens"),
+    ("pron-voice", "felines"),
+    ("Pronunciation Voice", "felines"),
+])
+def test_openai_uses_saved_pronunciations_and_inline_choice(
+    client, fake_engine, saved_pronunciations, voice, spoken,
+):
+    res = client.post("/v1/audio/speech", json={
+        "model": "fake-norm-route", "voice": voice,
+        "input": "Dr. Smith has 2 cats. [[cats|cats]]",
+        "language": "en", "response_format": "wav",
+    })
+    assert res.status_code == 200, res.text
+    assert fake_engine.calls[-1][0] == f"Professor Smith has two {spoken}. cats"
+
+
+def test_ws_uses_saved_voice_pronunciations_before_sentence_split(
+    client, fake_engine, saved_pronunciations,
+):
+    frames = _run_ws_request(client, {
+        "text": "Dr. Smith has 2 cats. [[cats|cats]]",
+        "language": "en", "voice": "pron-voice", "engine": "fake-norm-route",
+    })
+    assert frames[-1]["type"] == "done", frames
+    spoken = " ".join(text.strip() for text, _ in fake_engine.calls)
+    assert spoken == "Professor Smith has two felines. cats"
+
+
+def test_batch_uses_saved_pronunciations_once(
+    batch_env, fake_engine, saved_pronunciations, monkeypatch,
+):
+    batch, make_job = batch_env
+    monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", "fake-norm-route")
+    job = make_job("pronunciation-batch")
+    asyncio.run(batch._run_batch_pipeline(job["id"], job))
+    assert "en" in job.get("outputs", {}), job
+    assert fake_engine.calls[-1][0] == "Professor Smith has two kittens"
+
+
+def test_batch_fallback_keeps_the_dictionary_snapshot_for_this_render(
+    batch_env, fake_engine, saved_pronunciations, monkeypatch,
+):
+    batch, make_job = batch_env
+    monkeypatch.setenv("OMNIVOICE_TTS_BACKEND", "fake-norm-route")
+    monkeypatch.setenv(batch.BATCH_WIDTH_ENV, "8")
+
+    async def transcript(*_args, **_kwargs):
+        return ([{"id": str(i), "start": float(i), "end": float(i + 1),
+                  "text": "Dr. Smith has 2 cats", "text_original": "Dr. Smith has 2 cats"}
+                 for i in range(2)], "en")
+
+    monkeypatch.setattr("services.asr_backend.run_transcribe_guarded", transcript)
+
+    native_calls = []
+
+    def native_batch(_self, texts, **_kwargs):
+        native_calls.append(list(texts))
+        db = importlib.import_module("core.db")
+        with db.db_conn() as conn:
+            conn.execute("UPDATE pronunciation_entries SET replacement='puppies' WHERE id='1'")
+        raise RuntimeError("controlled native-batch fallback")
+
+    monkeypatch.setattr(fake_engine, "generate_batch", native_batch)
+    job = make_job("pronunciation-snapshot")
+    asyncio.run(batch._run_batch_pipeline(job["id"], job))
+    assert "en" in job.get("outputs", {}), job
+    assert native_calls == [["Professor Smith has two kittens"] * 2]
+    assert [text for text, _ in fake_engine.calls] == ["Professor Smith has two kittens"] * 2
+
+
 # ── WS /ws/tts (streaming TTS) ───────────────────────────────────────────────
 
 
