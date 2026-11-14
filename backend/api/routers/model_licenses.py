@@ -127,7 +127,7 @@ def export_model_receipt(plan_digest: str, response: Response) -> dict:
         raise _fail(exc) from exc
 
 
-@router.delete("/models/licenses/receipts/{plan_digest}")
+@router.delete("/models/licenses/receipts/{plan_digest}", dependencies=[Depends(require_admin)])
 def remove_model_receipt(plan_digest: str) -> dict:
     """Remove local acknowledgement only; keep files and historical evidence."""
     try:
@@ -137,7 +137,7 @@ def remove_model_receipt(plan_digest: str) -> dict:
         raise _fail(exc) from exc
 
 
-@router.post("/models/licenses/verify/{plan_digest}")
+@router.post("/models/licenses/verify/{plan_digest}", dependencies=[Depends(require_admin)])
 def verify_model_install(plan_digest: str) -> dict:
     """Explicit verification helper; legacy first-use/SDKs do not yet call it."""
     try:

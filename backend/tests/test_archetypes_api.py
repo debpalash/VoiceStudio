@@ -46,7 +46,10 @@ def _write_wav(path: Path) -> bytes:
 def client():
     app = FastAPI()
     app.include_router(arch_router.router)
-    return TestClient(app)
+    # The mutating archetype routes are admin-gated, and the desktop UI reaches
+    # them from loopback; the default TestClient peer ("testclient") is a
+    # non-loopback LAN guest and would be refused.
+    return TestClient(app, client=("127.0.0.1", 50000))
 
 
 # ── Categories ────────────────────────────────────────────────────────────────

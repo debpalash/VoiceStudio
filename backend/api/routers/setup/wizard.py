@@ -18,6 +18,7 @@ import sys
 
 from fastapi import APIRouter, Depends
 
+from api.dependencies import require_consumer
 from api.schemas import SetupStatusResponse, PreflightResponse
 from core.device_caps import KERNEL_RISK_MARKER, is_windows_on_arm
 # MIN_FREE_GB + disk_free_bytes are single-sourced in ``.models`` (the lowest
@@ -856,7 +857,7 @@ def preflight():
 
 # ── Warmup ─────────────────────────────────────────────────────────────────
 
-@router.post("/setup/warmup")
+@router.post("/setup/warmup", dependencies=[Depends(require_consumer)])
 async def setup_warmup():
     """Trigger a model load in the background so the first dub doesn't pay
     the cold-start tax."""
