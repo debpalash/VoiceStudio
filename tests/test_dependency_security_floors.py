@@ -71,6 +71,8 @@ def test_python_security_floors_are_locked():
 DAGGER_FLOORS = {
     # Memory leak in aborted validation (denial of service), fixed in 3.3.1.
     "graphql-core": "3.3.1",
+    # GHSA-mf5v-w3w3-f6cg: quadratic-time traceparent parsing, fixed in 1.45.2.
+    "opentelemetry-api": "1.45.2",
 }
 
 
