@@ -12,6 +12,11 @@ Opening a project asks before replacing the current draft. Active dubbing work a
 
 Segment edits, selected language, source job, and available tracks are restored. Unexposed legacy options and per-segment metadata are retained when saving. Renderer reload preserves the active project identity. This does not recreate missing source media or imply an interrupted backend job is running.
 
+Imported project bundles decode bundled media using local input protocols only.
+A playlist or manifest disguised as a media file cannot make the importer's
+FFmpeg conversion fetch a remote URL. Include the source media itself in the
+bundle; importing a bundle does not authorize network-linked media downloads.
+
 The library combines backend dubbing projects, local IndexedDB Stories and Audiobooks, saved
 voice profiles, transcription history, generated takes, export history and completed longform
 renders. **All projects** lists the work you open and keep editing (Dubbing, Stories and Audiobooks);
