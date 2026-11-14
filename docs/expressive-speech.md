@@ -87,7 +87,29 @@ lists the reaction tags its tokenizer renders.
   inside its brackets, in Generate and in audiobook chapters alike. Not
   expression, but often what a "it says this weirdly" problem actually needs.
 
-**Per-voice dictionaries.** In **Settings → Pronunciation dictionary**, the scope switch (**Language** | **This voice**) picks which dictionary you edit, export or import. A voice's own entries apply in Generate only when that voice speaks, and win over the language dictionary: global, then language, then the voice, then the voice for one language, with the most specific entry winning. Voices never see each other's entries, existing dictionaries stay as they were, and deleting a voice deletes its dictionary. Over the API, `profile_id` on `GET /pronunciation`, `/pronunciation/export`, `/pronunciation/import` and `/pronunciation/test` selects a voice (without it they act on the language dictionary only, and `replace: true` clears only that scope). Audiobook chapters still use the project lexicon only.
+**Per-voice dictionaries.** In **Settings → Pronunciation dictionary**, the scope switch (**Language** | **This voice**) picks which dictionary you edit, export or import. A voice's own entries apply only when that saved voice speaks, and win over the language dictionary: global, then language, then the voice, then the voice for one language, with the most specific entry winning. Saved dictionaries apply in Generate, OpenAI-compatible speech, streaming TTS, Dub renders and previews, batch dubbing, and transcript-based voice conversion. OpenAI-compatible requests can select a saved voice by ID or name. Voices never see each other's entries, existing dictionaries stay as they were, and deleting a voice deletes its dictionary. Over the API, `profile_id` on `GET /pronunciation`, `/pronunciation/export`, `/pronunciation/import` and `/pronunciation/test` selects a voice (without it they act on the language dictionary only, and `replace: true` clears only that scope). Audiobook chapters still use the project lexicon only.
+
+Spoken text is normalized first, then saved respellings and explicit inline
+overrides are resolved before sentence splitting or synthesis. Respellings are
+not processed a second time. Async speech requests read the current saved
+entries off the event loop, so a slow dictionary read does not stall other
+requests. Dub and batch dubbing keep one snapshot throughout a render, including native-batch
+fallbacks and retries, so editing the dictionary affects the next render.
+Dub's **Regen changed** compares the effective spoken text: an edited saved
+respelling regenerates only lines whose speech changes, while unrelated
+voices, terms and explicit inline overrides retain their cached audio.
+Phone greeting caches use that same prepared speech, so a changed respelling
+refreshes the affected greeting without reapplying substitutions during synthesis.
+Removing a whole line with an inline or saved respelling keeps its Dub slot
+silent and replaces its older cached speech without invoking TTS. Long
+respellings receive the same synthesis time budget as equivalent typed speech.
+API clients using `/tools/incremental` pass the same `language` as the Dub
+request when it differs from the track's `lang` code (for example, `Auto`
+speech in an `en` track); per-segment `target_lang` still takes precedence.
+`OMNIVOICE_PRONUNCIATION=0` disables saved entries across these routes while
+keeping inline overrides active. Generate's `pronounce=false` disables saved
+entries for that request only. An unavailable dictionary falls back to normal
+text preparation and inline overrides.
 
 Pronunciation dictionary matching uses Unicode case-insensitive literal matches. Each matched term uses its own respelling; distinct terms such as Straße and STRASSE can have different respellings. Longer terms win overlaps, and later equal-length case variants retain precedence. Because that precedence follows entry order, reordering such variants re-renders cached longform chapters; reordering unrelated entries does not.
 
