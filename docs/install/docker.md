@@ -373,6 +373,85 @@ on the host. The backend inside the container binds to `0.0.0.0` so the
 host port mapping can forward — the host-side `127.0.0.1` binding is what
 enforces loopback-only.
 
+## Private remote access with Tailscale
+
+Run Tailscale on the **Docker host**, and let its Serve proxy reach the
+loopback-published container port. Keep `127.0.0.1:3900:3900` and the long random
+`OMNIVOICE_API_KEY` from the examples above. The container needs neither the host's
+Tailscale executable nor its daemon socket for this setup.
+
+1. Install and sign in to Tailscale on the host and the remote device. Restrict
+   access to the intended users/devices in your tailnet policy. Use a current
+   Docker Engine: [releases before 28.0.0 have a localhost-publishing caveat](https://docs.docker.com/engine/network/port-publishing/).
+2. From the **host**, open `http://127.0.0.1:3900` and check that VoiceStudio loads.
+   On Docker Desktop for macOS or Windows, run the commands below in the host's
+   terminal, not in the Linux container or Docker Desktop VM. Use the Tailscale
+   CLI supplied by that host installation.
+3. Inspect existing Serve listeners before choosing a port. The example uses
+   HTTPS port `8443`; if another app uses it, choose an unused port instead.
+   Enable MagicDNS and HTTPS certificates when Tailscale requests consent.
+
+   ```bash
+   tailscale serve status
+   tailscale serve --bg --https=8443 http://127.0.0.1:3900
+   tailscale serve status
+   ```
+
+4. On the remote device, open the **exact HTTPS URL printed by Serve**, including
+   its port. Confirm that the browser accepts its certificate without an override,
+   then sign in with the VoiceStudio API key. Keep UI and API on this same origin;
+   no separate `OMNIVOICE_PUBLIC_API_BASE` is needed. Test an authenticated action
+   as well as loading the page. A successful `/health` response alone proves
+   neither authentication nor TLS.
+
+Serve is private to the tailnet; [Funnel publishes to the internet](https://tailscale.com/docs/features/tailscale-serve).
+Do not enable Funnel for this setup. The tailnet controls reachability, while the
+VoiceStudio key still controls administrator access. Leave
+`OMNIVOICE_TRUST_HOST_LOOPBACK` and `OMNIVOICE_TRUSTED_NETWORKS` unset: a host proxy
+must not turn remote clients into credential-free administrators. See
+[API authentication and proxy handling](../api-auth.md#browsers-from-another-origin-cors).
+
+To remove this listener, first confirm that the selected port still proxies to
+VoiceStudio at `127.0.0.1:3900`, then turn off only that port:
+
+```bash
+tailscale serve status
+tailscale serve --bg --https=8443 off
+tailscale serve status
+```
+
+Avoid `tailscale serve reset`, which removes other applications' Serve settings
+too. See the official [Serve command reference](https://tailscale.com/docs/reference/tailscale-cli/serve)
+for flags and per-listener cleanup.
+
+### In-app sharing, HTTP fallback, and host-daemon access
+
+The in-app Tailscale control invokes a CLI **inside the backend's environment**.
+A Tailscale installation on the Docker host is not automatically available there;
+use the host-managed commands above instead of making the control appear installed.
+
+The existing helper attempts HTTPS only when the daemon reports certificate
+domains, and falls back to HTTP if HTTPS setup fails. Its success response can
+therefore contain an `http://` URL. HTTP between Tailscale peers still travels
+through an encrypted WireGuard tunnel, but a remote HTTP page has no browser TLS
+certificate and normally is not a [secure context](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Secure_Contexts).
+Microphone and other secure-context APIs may be unavailable. Neither the helper's
+reported scheme nor an accepted forwarded-protocol header verifies a working
+certificate at the public endpoint; check the actual browser URL and certificate.
+
+Do not bind-mount the host's `tailscaled` socket merely to enable this button.
+An authorized client of that socket controls the **host's Tailscale daemon**,
+including shared Serve/Funnel configuration and other node settings, rather than
+just VoiceStudio's listener. A read-only bind mount does not turn the socket API
+into a read-only API. Such access requires trusting all code in the container
+with the daemon's granted privileges. Unix socket paths such as
+`/var/run/tailscale/tailscaled.sock` are Linux installation details, not portable
+Docker Desktop paths. A host binary also has to match the container's OS,
+architecture and dynamic loader/libc; a macOS or Windows executable cannot be
+used as a Linux container's CLI. This guide deliberately grants no host-daemon
+access. Tailscale's [LocalAPI permission model](https://github.com/tailscale/tailscale/blob/main/ipn/localapi/localapi.go)
+describes the read/write authority involved.
+
 ## LAN access
 
 <a id="lan-access"></a>

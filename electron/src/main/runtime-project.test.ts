@@ -1804,6 +1804,41 @@ describe('retryTransientDownload (#3882)', () => {
   const noWait = async () => {};
   const signal = () => new AbortController().signal;
 
+  it('settles cancellation during backoff before its timer and starts no second sync', async () => {
+    const { retryTransientDownload } = await import('./runtime-project');
+    const controller = new AbortController();
+    const reason = new Error('setup cancelled');
+    const sync = vi.fn().mockRejectedValue(gateway);
+    let settled = false;
+    const work = retryTransientDownload(
+      sync,
+      controller.signal,
+      () => queueMicrotask(() => controller.abort(reason)),
+      [200],
+    ).catch((error) => {
+      settled = true;
+      return error;
+    });
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(settled).toBe(true);
+      expect(await work).toBe(reason);
+      expect(sync).toHaveBeenCalledTimes(1);
+    } finally {
+      controller.abort(reason);
+      await work;
+    }
+  });
+
+  it('does not start a sync when cancellation already won', async () => {
+    const { retryTransientDownload } = await import('./runtime-project');
+    const controller = new AbortController();
+    controller.abort();
+    const sync = vi.fn().mockResolvedValue(undefined);
+    await expect(retryTransientDownload(sync, controller.signal)).rejects.toBe(controller.signal.reason);
+    expect(sync).not.toHaveBeenCalled();
+  });
+
   it('repeats the sync after a 5xx and succeeds', async () => {
     const sync = vi.fn().mockRejectedValueOnce(gateway).mockResolvedValue(undefined);
     const { retryTransientDownload } = await import('./runtime-project');

@@ -250,7 +250,6 @@ def check_downloaded_media(path: str) -> None:
 
 _real_getaddrinfo = socket.getaddrinfo
 _install_lock = threading.Lock()
-_installed = threading.Event()
 _process_wide = False
 _thread_state = threading.local()
 
@@ -299,9 +298,11 @@ def _guarded_getaddrinfo(host, port, *args, **kwargs):
 
 def _install() -> None:
     with _install_lock:
-        if not _installed.is_set():
+        # A scoped resolver replacement can undo a previous installation.
+        # Verify the live hook on every guard entry; reuse the
+        # original resolver instead of wrapping a replacement or another hook.
+        if socket.getaddrinfo is not _guarded_getaddrinfo:
             socket.getaddrinfo = _guarded_getaddrinfo
-            _installed.set()
 
 
 @contextlib.contextmanager
