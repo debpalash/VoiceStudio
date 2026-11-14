@@ -309,6 +309,8 @@ _REMAINING_MUTATING_ROUTE_TIERS = [
     ("dub_core.py", "dub_sync_transcript", "require_admin"),
     ("dub_core.py", "dub_cleanup_segments", "require_admin"),
     ("dub_core.py", "dub_use_downloaded_captions", "require_admin"),
+    ("model_licenses.py", "prepare_model_install", "require_consumer"),
+    ("model_licenses.py", "commit_model_install", "require_consumer"),
     ("model_licenses.py", "verify_model_install", "require_admin"),
     ("model_licenses.py", "remove_model_receipt", "require_admin"),
     ("archetypes.py", "set_preview_gallery", "require_admin"),

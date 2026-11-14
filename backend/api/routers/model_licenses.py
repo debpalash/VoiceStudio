@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from api.dependencies import require_admin
+from api.dependencies import require_admin, require_consumer
 from core.browser_guard import reject_cross_site_get
 from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
@@ -84,7 +84,7 @@ def _fetch_file(repo_id: str, revision: str, filename: str,
                            cache_dir=cache_dir)
 
 
-@router.post("/models/install/prepare")
+@router.post("/models/install/prepare", dependencies=[Depends(require_consumer)])
 def prepare_model_install(req: PrepareRequest) -> dict:
     """Read bundled evidence only; never resolve/download model weights."""
     try:
@@ -93,7 +93,7 @@ def prepare_model_install(req: PrepareRequest) -> dict:
         raise _fail(exc) from exc
 
 
-@router.post("/models/install/commit")
+@router.post("/models/install/commit", dependencies=[Depends(require_consumer)])
 def commit_model_install(req: CommitRequest) -> dict:
     """Persist acknowledgement before a bounded exact-file reviewed transfer.
 
