@@ -8,6 +8,7 @@ import importlib
 import sqlite3
 import threading
 
+import httpx
 import pytest
 import torch
 
@@ -15,6 +16,25 @@ from test_dub_crash_resume import dub  # noqa: F401
 from test_text_normalization_routes import (  # noqa: F401
     client, fake_engine, saved_pronunciations, batch_env, _run_ws_request,
 )
+
+
+@pytest.fixture
+def dictionary_read_threads(saved_pronunciations, monkeypatch):
+    pronunciation = importlib.import_module("services.pronunciation")
+    load = pronunciation.load_entries_from_db
+    reads_on_event_loop = []
+
+    def load_rows():
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            reads_on_event_loop.append(False)
+        else:
+            reads_on_event_loop.append(True)
+        return load()
+
+    monkeypatch.setattr(pronunciation, "load_entries_from_db", load_rows)
+    return reads_on_event_loop
 
 
 @pytest.fixture
@@ -109,7 +129,7 @@ def test_full_dub_uses_one_saved_dictionary_snapshot_for_keys_and_inference(
 
 
 def test_dub_preview_uses_saved_voice_entries_and_inline_precedence(
-    spoken_dub, client, fake_engine, saved_pronunciations,
+    spoken_dub, client, fake_engine, saved_pronunciations, dictionary_read_threads,
 ):
     response = client.post("/dub/preview-segment/job", json={
         "text": "Dr. Smith has 2 cats. [[cats|cats]]", "language": "English",
@@ -118,6 +138,7 @@ def test_dub_preview_uses_saved_voice_entries_and_inline_precedence(
     assert response.status_code == 200, response.text
     assert response.headers["content-type"].startswith("audio/")
     assert fake_engine.calls[-1][0] == "Professor Smith has two felines. cats"
+    assert dictionary_read_threads == [False]
 
 
 def test_incremental_dub_detects_only_changed_effective_saved_pronunciations(
@@ -199,7 +220,7 @@ def test_incremental_spoken_language_can_differ_from_track_code(
 
 @pytest.mark.parametrize("route", ["openai", "websocket"])
 def test_native_streams_prepare_the_whole_saved_voice_text_once(
-    client, fake_engine, saved_pronunciations, monkeypatch, route,
+    client, fake_engine, saved_pronunciations, monkeypatch, dictionary_read_threads, route,
 ):
     streamed = []
 
@@ -225,10 +246,11 @@ def test_native_streams_prepare_the_whole_saved_voice_text_once(
     assert len(streamed) == 1
     assert streamed[0][0] == "Professor Smith has two felines. cats"
     assert not fake_engine.calls
+    assert dictionary_read_threads == [False]
 
 
 def test_voice_conversion_uses_saved_voice_entries_after_asr(
-    client, fake_engine, saved_pronunciations, monkeypatch, tmp_path,
+    client, fake_engine, saved_pronunciations, monkeypatch, tmp_path, dictionary_read_threads,
 ):
     from test_voice_convert import _wire_stubs, _FakeASR, _post_convert
 
@@ -245,6 +267,7 @@ def test_voice_conversion_uses_saved_voice_entries_after_asr(
     response = _post_convert(client, "pron-voice", match_duration="0")
     assert response.status_code == 200, response.text
     assert fake_engine.calls[-1][0] == "Professor Smith has two felines. cats."
+    assert dictionary_read_threads == [False]
 
 
 @pytest.mark.parametrize("route", ["openai", "websocket"])
@@ -279,7 +302,8 @@ def test_unavailable_saved_dictionary_still_normalizes_and_honors_inline(
 
 @pytest.mark.parametrize("pronounce,spoken", [("0", "cats"), ("1", "felines")])
 def test_generate_request_switch_keeps_inline_choices(
-    client, fake_engine, saved_pronunciations, monkeypatch, tmp_path, pronounce, spoken,
+    client, fake_engine, saved_pronunciations, monkeypatch, tmp_path, dictionary_read_threads,
+    pronounce, spoken,
 ):
     generated = tmp_path / "generated"
     generated.mkdir()
@@ -291,6 +315,77 @@ def test_generate_request_switch_keeps_inline_choices(
     assert response.status_code == 200, response.text
     title = "Doctor" if pronounce == "0" else "Professor"
     assert fake_engine.calls[-1][0] == f"{title} Smith has two {spoken}. cats"
+    assert dictionary_read_threads == ([False] if pronounce == "1" else [])
+
+
+@pytest.mark.parametrize("route", ["openai", "websocket"])
+def test_sentence_stream_dictionary_reads_run_off_the_event_loop(
+    client, fake_engine, saved_pronunciations, dictionary_read_threads, route,
+):
+    payload = dict(text="Dr. Smith has 2 cats. [[cats|cats]]", language="en",
+                   voice="pron-voice", engine="fake-norm-route")
+    if route == "websocket":
+        frames = _run_ws_request(client, payload)
+        assert frames[-1]["type"] == "done", frames
+    else:
+        response = client.post("/v1/audio/speech", json={
+            "model": payload["engine"], "input": payload["text"],
+            "voice": payload["voice"], "language": "en", "response_format": "pcm",
+            "stream_format": "audio",
+        })
+        assert response.status_code == 200 and response.content, response.text
+    assert dictionary_read_threads == [False]
+    assert " ".join(text.strip() for text, _kw in fake_engine.calls) == "Professor Smith has two felines. cats"
+
+
+def test_public_sentence_stream_reads_one_dictionary_snapshot_off_loop(
+    fake_engine, saved_pronunciations, dictionary_read_threads,
+):
+    from api.routers.tts_stream import synthesize_stream
+
+    async def render():
+        return [chunk async for chunk in synthesize_stream(
+            "Dr. Smith has 2 cats. [[cats|cats]]", language="en",
+            voice="pron-voice", engine="fake-norm-route",
+        )]
+
+    assert asyncio.run(render())
+    assert dictionary_read_threads == [False]
+    assert " ".join(text.strip() for text, _kw in fake_engine.calls) == "Professor Smith has two felines. cats"
+
+
+def test_openai_dictionary_read_keeps_the_request_loop_responsive(
+    fake_engine, saved_pronunciations, monkeypatch,
+):
+    from main import app
+    pronunciation = importlib.import_module("services.pronunciation")
+    load = pronunciation.load_entries_from_db
+    started, release = threading.Event(), threading.Event()
+    released_while_reading = []
+
+    def load_rows():
+        started.set()
+        released_while_reading.append(release.wait(timeout=3))
+        return load()
+
+    monkeypatch.setattr(pronunciation, "load_entries_from_db", load_rows)
+
+    async def render():
+        async def observe():
+            while not started.is_set():
+                await asyncio.sleep(0)
+            release.set()  # unrelated event-loop work can run during the read
+
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app),
+                                     base_url="http://localhost") as api:
+            response, _ = await asyncio.gather(api.post("/v1/audio/speech", json={
+                "model": "fake-norm-route", "input": "cats", "voice": "pron-voice",
+                "language": "en", "response_format": "wav",
+            }), observe())
+            assert response.status_code == 200, response.text
+
+    asyncio.run(render())
+    assert released_while_reading == [True]
 
 
 def test_queue_native_batch_uses_the_saved_voice_dictionary_without_fallback(

@@ -592,7 +592,9 @@ async def convert_speech(
         # resolution, scoped to the target saved voice.
         from services.pronunciation import prepare_speech_text
         language = cond["language"]
-        text = prepare_speech_text(text, language, profile_id=profile_id)
+        text = await asyncio.to_thread(
+            prepare_speech_text, text, language, profile_id=profile_id,
+        )
 
         used_seed = cond["seed"]
         if used_seed is None:

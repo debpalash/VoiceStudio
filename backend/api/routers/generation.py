@@ -2358,8 +2358,8 @@ async def generate_speech(
     # before native/streaming inference and chunking. Inline choices remain
     # active even when the request disables saved dictionary entries.
     from services.pronunciation import prepare_speech_text
-    text = prepare_speech_text(
-        text, language, profile_id=resolved_profile_id,
+    text = await asyncio.to_thread(
+        prepare_speech_text, text, language, profile_id=resolved_profile_id,
         dictionary=pronounce and pronunciation_enabled(),
     )
 

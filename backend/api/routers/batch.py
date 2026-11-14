@@ -499,12 +499,13 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
         from services.audio_io import atomic_save_wav
         import torch
 
-        valid_rows = [
-            (i, segment)
-            for i, segment in enumerate(translated_segments)
-            if segment.get("end", 0) - segment.get("start", 0) > 0.05
-            and segment.get("text", "").strip()
-        ]
+        # One prepared string per row, shared by native batches, fallbacks and
+        # their timeout budgets. Never apply saved respellings to it again.
+        spoken_texts = await asyncio.to_thread(lambda: [
+            prepare_text(segment.get("text", "").strip(), target_lang,
+                         profile_id=job.get("voice_id"))
+            for segment in translated_segments
+        ])
         sr = sr or 24_000
         total_samples = int(duration * sr)
         full_audio = torch.zeros(1, total_samples)
@@ -543,16 +544,13 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
                 while index < total_segs and len(batch_rows) < batch_width:
                     seg = translated_segments[index]
                     if (seg.get("end", 0) - seg.get("start", 0) > 0.05
-                            and seg.get("text", "").strip()):
+                            and spoken_texts[index].strip()):
                         batch_rows.append((index, seg))
                     index += 1
                 if len(batch_rows) < 2:
                     return  # nothing to amortize — the per-segment path is equal
                 batch_indices = [index for index, _ in batch_rows]
-                batch_texts = [
-                    prepare_text(row.get("text", "").strip(), target_lang, profile_id=job.get("voice_id"))
-                    for _, row in batch_rows
-                ]
+                batch_texts = [spoken_texts[index] for index in batch_indices]
                 batch_durations = [
                     row.get("end", 0) - row.get("start", 0)
                     for _, row in batch_rows
@@ -624,16 +622,12 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
             seg_start = seg.get("start", 0)
             seg_end = seg.get("end", 0)
             seg_duration = seg_end - seg_start
-            seg_text = seg.get("text", "").strip()
+            seg_text = spoken_texts[i]
 
-            if seg_duration <= 0.05 or not seg_text:
+            if seg_duration <= 0.05 or not seg_text.strip():
                 continue
 
             def _gen(text=seg_text, lang=target_lang, dur=seg_duration):
-                # Prepare original text with the same saved-row snapshot as
-                # native batching; fallback must not pick up mid-job edits.
-                text = prepare_text(text, lang, profile_id=job.get("voice_id"))
-
                 try:
                     if backend is None:
                         raise RuntimeError("the local TTS fallback was not prepared")

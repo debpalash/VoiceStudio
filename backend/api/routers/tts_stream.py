@@ -267,6 +267,7 @@ async def synthesize_stream(
     voice: str | None = None,
     engine: str | None = None,
     language: str | None = None,
+    _prepared_text: str | None = None,
 ):
     """Yield ``(wav_tensor, sample_rate)`` per sentence as each finishes.
 
@@ -297,7 +298,14 @@ async def synthesize_stream(
             )
         from services.engine_memory import evict_other_tts_engines
         await evict_other_tts_engines(backend.id)
-        for sentence in split_stream_sentences(text, language, voice):
+        # Internal cache callers can supply the exact speech used by their key;
+        # saved substitutions must never run again on that prepared string.
+        sentences = (
+            split_normalized_sentences(_prepared_text, language)
+            if _prepared_text is not None
+            else await asyncio.to_thread(split_stream_sentences, text, language, voice)
+        )
+        for sentence in sentences:
             wav, sr, _synth_s = await run_on_gpu_pool_guarded(
                 functools.partial(render_stream_sentence, backend, kw, sentence),
                 what="TTS generate",
@@ -311,7 +319,9 @@ async def _ws_pcm_chunks(backend, kw, text, language, *, native, profile_id=None
         from api.routers.openai_compat import PCM_SAMPLE_RATE, _native_pcm_stream
         from services.pronunciation import prepare_speech_text
 
-        normalized = prepare_speech_text(text, language, profile_id=profile_id)
+        normalized = await asyncio.to_thread(
+            prepare_speech_text, text, language, profile_id=profile_id,
+        )
         async with aclosing(_native_pcm_stream(backend, normalized, kw, sse=False, timed=True)) as stream:
             async for pcm, synth_seconds in stream:
                 yield pcm, PCM_SAMPLE_RATE, synth_seconds
@@ -322,7 +332,8 @@ async def _ws_pcm_chunks(backend, kw, text, language, *, native, profile_id=None
     from services.audio_io import pcm16_mono
     from services.model_manager import generate_timeout_s, run_on_gpu_pool_guarded
 
-    for sentence in split_stream_sentences(text, language, profile_id):
+    sentences = await asyncio.to_thread(split_stream_sentences, text, language, profile_id)
+    for sentence in sentences:
         wav, rate, synth_seconds = await run_on_gpu_pool_guarded(
             partial(render_stream_sentence, backend, kw, sentence),
             what="TTS generate",

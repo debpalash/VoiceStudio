@@ -958,7 +958,9 @@ async def create_speech(req: SpeechRequest):
     # streaming or sentence dispatch. Use the resolved profile ID, even when
     # the caller selected that profile by name.
     from services.pronunciation import prepare_speech_text
-    text = prepare_speech_text(req.input, req.language, profile_id=pronunciation_profile_id)
+    text = await asyncio.to_thread(
+        prepare_speech_text, req.input, req.language, profile_id=pronunciation_profile_id,
+    )
 
     can_stream = getattr(backend, "can_stream", None)
     native = (
