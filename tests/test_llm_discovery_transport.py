@@ -1,4 +1,4 @@
-"""Model discovery honours the credential-transport gate (#4121).
+"""Model discovery honours the credential-transport gate (#4131).
 
 ``discover_model`` used to reach LM Studio's native probe without the
 ``credential_transport_error`` check that guards every inference call, so a

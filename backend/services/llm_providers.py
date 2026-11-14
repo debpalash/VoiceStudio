@@ -350,7 +350,7 @@ def _probe_lmstudio_loaded_model(
 ) -> Optional[str]:
     """Return a typed, resident LM Studio chat model without following redirects.
 
-    Defence in depth for #4121: this is the one place a stored key becomes an
+    Defence in depth for #4131: this is the one place a stored key becomes an
     ``Authorization`` header, so the transport gate is re-checked here rather
     than trusted to the caller — a future call site must not be able to leak it.
     LM Studio is the only provider with a native probe, so its per-provider
@@ -412,7 +412,7 @@ def discover_model(p: Provider) -> Optional[str]:
     base_url = resolve_base_url(p)
     if not base_url:
         return None
-    # The transport gate refuses a credential over remote plaintext (#4121);
+    # The transport gate refuses a credential over remote plaintext (#4131);
     # discovery must not be the way around it — the LM Studio probe attaches
     # the stored key as a Bearer header. This is a configuration refusal, not a
     # probe failure: like the missing-base_url return above it writes NO
@@ -564,7 +564,7 @@ def is_private_ip_literal(host: str) -> bool:
 def _plaintext_url_carries_credentials(base_url: str, *, allow_private_lan: bool) -> bool:
     """True when ``base_url`` is unencrypted remote HTTP and would leak a key.
 
-    Split out of ``credential_transport_error`` (#4121) so the LM Studio probe
+    Split out of ``credential_transport_error`` (#4131) so the LM Studio probe
     can apply the same URL rule to the exact URL it is about to call instead of
     re-resolving a provider's own base_url.
     """
