@@ -1871,7 +1871,8 @@ class StartupGateMiddleware:
 class NetworkAccessMiddleware:
     """When a share PIN is set, require it for non-loopback clients on API
     routes. Inert when no PIN (default + docker deploys). Loopback (incl.
-    Tailscale-proxied) always bypasses; the SPA shell is always served so the
+    Tailscale-proxied) bypasses unless marked as a remote MCP caller's delegated
+    request; the SPA shell is always served so the
     PIN gate UI can load.
 
     Pure ASGI (not BaseHTTPMiddleware) so it never buffers the response body.
@@ -1895,7 +1896,11 @@ class NetworkAccessMiddleware:
         if not pin:
             return await self.app(scope, receive, send)
         client = scope["client"][0] if scope.get("client") else None
-        if is_local_host(client) or is_trusted_host_loopback(request):
+        from core.auth import is_delegated_consumer
+
+        if not is_delegated_consumer(request) and (
+            is_local_host(client) or is_trusted_host_loopback(request)
+        ):
             return await self.app(scope, receive, send)
         if _is_public_path(scope["path"]):
             return await self.app(scope, receive, send)
