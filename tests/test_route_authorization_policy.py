@@ -178,14 +178,6 @@ ALLOWLIST: dict[str, str] = {
         "setup-time surface before any credential exists."
     ),
     # ── Model licence review flow (local evidence only, no weights) ───────
-    "POST /models/install/prepare": (
-        "Reads bundled licence evidence only and never resolves or downloads weights; part of "
-        "the reviewed-install flow, still missing the admin gate."
-    ),
-    "POST /models/install/commit": (
-        "Persists the licence acknowledgement then runs the reviewed exact-file transfer; "
-        "download-adjacent, still missing the admin gate."
-    ),
     "POST /models/licenses/verify/{plan_digest}": (
         "Verifies already-installed files against a local receipt; no install or delete, still "
         "missing the admin gate."
