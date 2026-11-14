@@ -23,6 +23,7 @@ Release preparation targets v0.5.9-beta.3. The included fixes below remain `Fixe
 | Fixed on main | The latest fix merged after v0.5.8 and ships in the next release |
 | Fixed in release | Every linked fix shipped in v0.5.8 or earlier |
 | Declined | We chose not to fix it; the Next step column gives the reason |
+| Closed, answered | The owner answered the question; this does not claim a runtime repair or commercial-use certification |
 | Closed, cause unknown | Closed without a confirmed cause, usually because the report had no log |
 
 ## Categories
@@ -52,11 +53,12 @@ Each category has a GitHub label, and every report below carries it.
 
 | Status | Unique issues |
 |---|---|
-| Open | 6 |
+| Open | 5 |
 | Partly fixed | 12 |
 | Fixed on main | 2 |
 | Fixed in release | 36 |
 | Declined | 1 |
+| Closed, answered | 1 |
 | Closed, cause unknown | 2 |
 
 ## Ranked list
@@ -71,7 +73,7 @@ Each category has a GitHub label, and every report below carries it.
 | 6 | `INST-AMD-001` | P1 | System check reports `ROCm not configured`, or Linux ROCm setup fails | Partly fixed | [#3553](https://github.com/debpalash/VoiceStudio/pull/3553), [#3602](https://github.com/debpalash/VoiceStudio/pull/3602) | Setup still asks for an environment variable on AMD. Offer ROCm in setup. | [`ROCM_NOT_CONFIGURED`](troubleshooting.md#rocm_not_configured) | 7 |
 | 7 | `INST-BOOT-002` | P1 | Backend gives no answer on port 3900 within the startup limit | Partly fixed | [#1232](https://github.com/debpalash/VoiceStudio/pull/1232), [#2283](https://github.com/debpalash/VoiceStudio/pull/2283), [#2461](https://github.com/debpalash/VoiceStudio/pull/2461) | Find the root cause on macOS using fresh main/backend logs. Merged [#3724](https://github.com/debpalash/VoiceStudio/pull/3724) improves diagnosis; it does not establish the cause. | [`STARTUP_TIMEOUT_SILENT`](troubleshooting.md#startup_timeout_silent) | 7 |
 | 8 | `INST-AMD-002` | P1 | Linux gfx103x: the HSA override is applied too late and the ROCm choice is not kept | Fixed in release | [#1666](https://github.com/debpalash/VoiceStudio/pull/1666), [#2424](https://github.com/debpalash/VoiceStudio/pull/2424), [#2501](https://github.com/debpalash/VoiceStudio/pull/2501), [#3843](https://github.com/debpalash/VoiceStudio/pull/3843) | The early override and saved ROCm choice ship in v0.5.8. Real ROCm-wheel initialization and affected AMD hardware still need validation; mocked KFD/torch tests do not qualify every GPU. | [`ROCM_NOT_CONFIGURED`](troubleshooting.md#rocm_not_configured) | 3 |
-| 9 | `INST-NET-002` | P1 | Setup stops at the proxy instructions or misreports a proxy problem as DNS | Partly fixed | [#2245](https://github.com/debpalash/VoiceStudio/pull/2245) | Fix the setup flow so it continues after the proxy steps. | [`RUNTIME_DOWNLOAD_INTERRUPTED`](troubleshooting.md#runtime_download_interrupted) | 3 |
+| 9 | `INST-NET-002` | P1 | Setup stops at the proxy instructions or misreports a proxy problem as DNS | Partly fixed | [#2245](https://github.com/debpalash/VoiceStudio/pull/2245), [#3957](https://github.com/debpalash/VoiceStudio/pull/3957) | The owner closed [#3741](https://github.com/debpalash/VoiceStudio/issues/3741#issuecomment-6781655903) as fixed by the transient-error and no-progress retry repair in v0.5.8-beta.4; it also ships in stable v0.5.8. Current setup normalizes Windows proxy settings and exposes the Hub mirror choice. The unlogged startup timeout in #33 has no confirmed cause; those software fixes do not establish it. | [`RUNTIME_DOWNLOAD_INTERRUPTED`](troubleshooting.md#runtime_download_interrupted) | 3 |
 | 10 | `INST-AMD-003` | P1 | Linux AMD engines need the matching ROCm torch and honest routing | Fixed in release | [#2501](https://github.com/debpalash/VoiceStudio/pull/2501), [#3787](https://github.com/debpalash/VoiceStudio/pull/3787) | Matching Linux sidecar Torch selection and interpreter-bound routing ship in v0.5.8. Actual CosyVoice and VoxCPM2 generation on the requested AMD GPU remains unqualified; CPU fallback stays available. | [`ROCM_NOT_CONFIGURED`](troubleshooting.md#rocm_not_configured) | 3 |
 | 11 | `INST-NATIVE-002` | P1 | Backend exits with heap corruption on Windows | Open |  | Find the root cause. | [`NATIVE_CRASH`](troubleshooting.md#native_crash) | 1 |
 | 12 | `INST-BOOT-003` | P1 | Backend exits on the idle setup screen after about two minutes | Open |  | Obtain fresh main/backend logs and evidence of the terminating process. The [#3727](https://github.com/debpalash/VoiceStudio/pull/3727) exit-code explanation was absorbed through the merge train and ships in v0.5.8; it aids diagnosis but does not establish the idle-exit cause. | [`BACKEND_STARTUP_FAILED`](troubleshooting.md#backend_startup_failed) | 1 |
@@ -116,7 +118,7 @@ Each category has a GitHub label, and every report below carries it.
 | 51 | `INST-DOCK-004` | P2 | Docker: no ARM64 image for the host | Partly fixed | [#1988](https://github.com/debpalash/VoiceStudio/pull/1988), [#3402](https://github.com/debpalash/VoiceStudio/pull/3402) | The standard image still has no native ARM64 build: #1988 documents emulation and #3402 adds an NVIDIA image. | [docker.md](docker.md) | 2 |
 | 52 | `INST-ENG-004` | P2 | MOSS-TTS engines cannot install or have no audio backend | Fixed in release | [#2016](https://github.com/debpalash/VoiceStudio/pull/2016), [#2182](https://github.com/debpalash/VoiceStudio/pull/2182) |  |  | 2 |
 | 53 | `INST-BOOT-008` | P2 | Older backend startup reports with no recorded cause (before failure codes) | Closed, cause unknown |  | Root causes are in [#602](https://github.com/debpalash/VoiceStudio/issues/602). | [`BACKEND_STARTUP_FAILED`](troubleshooting.md#backend_startup_failed) | 153 |
-| 54 | `INST-UX-002` | P3 | Setup does not make clear which models allow commercial use | Open |  | Answer the question and decide whether setup should show this. |  | 1 |
+| 54 | `INST-UX-002` | P3 | Which speech models declare commercial use | Closed, answered |  | The owner [answered and closed #3745](https://github.com/debpalash/VoiceStudio/issues/3745#issuecomment-6759962772): inspect each model's Licence dialog in Model Manager. Declared permissions and review state are separate; this is not commercial-use certification or a verified repair for the reporter's unnamed failing engine. | [Model licence disclosures](../licensing/model-review-workflow.md#in-model-manager) | 1 |
 | 55 | `INST-SRC-002` | P3 | Google Colab notebook install breaks | Fixed in release | [#1923](https://github.com/debpalash/VoiceStudio/pull/1923) |  |  | 4 |
 | 56 | `INST-SRC-003` | P3 | Source setup commands fail (`bun run`, Python version, wheels) | Fixed in release | [#1444](https://github.com/debpalash/VoiceStudio/pull/1444), [#2080](https://github.com/debpalash/VoiceStudio/pull/2080) |  |  | 4 |
 | 57 | `INST-DOCK-005` | P3 | Docker: image tags lag behind releases or confuse users | Fixed in release | [#252](https://github.com/debpalash/VoiceStudio/pull/252) |  | [docker.md](docker.md) | 2 |

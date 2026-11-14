@@ -14,6 +14,7 @@ STATUSES = {
     "Fixed on main",
     "Fixed in release",
     "Declined",
+    "Closed, answered",
     "Closed, cause unknown",
 }
 NEEDS_FIX_LINK = {"Partly fixed", "Fixed on main", "Fixed in release"}
