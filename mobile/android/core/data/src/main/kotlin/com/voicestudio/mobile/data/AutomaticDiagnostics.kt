@@ -19,6 +19,107 @@ data class AutomaticDiagnosticState(
     val saveFailed: Boolean = false,
 )
 
+/** Retains a failed load for withdrawal and one bounded, owned retry timer. */
+internal class AutomaticDiagnosticInitialization(
+    private val scope: CoroutineScope,
+    private val create: () -> DiagnosticReports,
+    private val retain: (DiagnosticReports) -> Unit,
+    private val onLoaded: (DiagnosticReports) -> Unit,
+    private val publish: (AutomaticDiagnosticState) -> Unit,
+    private val revision: () -> Long,
+    private val requested: () -> Boolean?,
+) {
+    private val lock = Any()
+    private var reports: DiagnosticReports? = null
+    private var attempt: kotlinx.coroutines.Job? = null
+    private var generation = 0L
+    private var state = AutomaticDiagnosticState()
+    @Volatile var failed = false
+        private set
+    @Volatile var blocksCapture = true
+        private set
+
+    fun start() = synchronized(lock) {
+        if (attempt?.isActive == true) return@synchronized
+        launchLocked()
+    }
+
+    fun retry() = synchronized(lock) {
+        attempt?.cancel()
+        launchLocked()
+    }
+
+    /** OFF and newer choices retire pending loads as well as delayed retries. */
+    fun cancel() = synchronized(lock) {
+        generation++
+        attempt?.cancel()
+        attempt = null
+        failed = false
+        blocksCapture = false
+    }
+
+    private fun launchLocked() {
+        blocksCapture = true
+        val token = ++generation
+        val choice = revision()
+        fun current() = token == generation && choice == revision()
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            while (true) {
+                try {
+                    synchronized(lock) {
+                        if (!current()) return@launch
+                        if (state.ready) {
+                            state = state.copy(saving = true)
+                            publish(state)
+                        }
+                    }
+                    val currentReports = synchronized(lock) { reports } ?: create().also {
+                        synchronized(lock) {
+                            if (!current()) return@launch
+                            reports = it
+                            retain(it)
+                        }
+                    }
+                    // An OFF made before resources loaded must never restore a
+                    // prior grant, even briefly, during initialization retry.
+                    if (requested() == false) currentReports.setConsent(false) else currentReports.load()
+                    currentCoroutineContext().ensureActive()
+                    synchronized(lock) { if (!current()) return@launch }
+                    // Android binder calls and recovery callbacks must never
+                    // hold the lock needed to retire this load during OFF.
+                    onLoaded(currentReports)
+                    currentCoroutineContext().ensureActive()
+                    synchronized(lock) {
+                        if (!current()) return@launch
+                        failed = false
+                        blocksCapture = false
+                        state = AutomaticDiagnosticState(ready = true, status = currentReports.status,
+                            saveFailed = currentReports.status.consentSaveFailed)
+                        publish(state)
+                    }
+                    return@launch
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    synchronized(lock) {
+                        if (!current()) return@launch
+                        failed = true
+                        state = AutomaticDiagnosticState(ready = true,
+                            status = DiagnosticStatus(available = false), saveFailed = true)
+                        publish(state)
+                        // Missing/invalid packaged policy or destination is not
+                        // transient storage failure. Only explicit Retry rebuilds it.
+                        if (reports == null) return@launch
+                    }
+                }
+                delay(60_000)
+            }
+        }
+        attempt = job
+        job.start()
+    }
+}
+
 /** The application owns consent and delivery, including OS-owned download jobs. */
 object AutomaticDiagnostics {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -27,6 +128,7 @@ object AutomaticDiagnostics {
     @Volatile private var reporter: DiagnosticReports? = null
     private var application: Application? = null
     private var initialized = false
+    @Volatile private var initialization: AutomaticDiagnosticInitialization? = null
     private val choices = AtomicLong()
     @Volatile private var requestedConsent: Boolean? = null
     @Volatile private var declinedThisRun = false
@@ -48,20 +150,22 @@ object AutomaticDiagnostics {
                         status = DiagnosticStatus(available = false, consentSaveFailed = !saved), saveFailed = !saved)
                     return@launch
                 }
-                fun asset(name: String) = app.assets.open(name).bufferedReader(Charsets.UTF_8).use { it.readText() }
-                val config = Json.parseToJsonElement(asset("diagnostics-destination.json")).jsonObject
-                val destination = DiagnosticDestination(System.getenv("SUPERMETRY_SITE_ID") ?: config.getValue("site").jsonPrimitive.content,
-                    System.getenv("SUPERMETRY_HOST") ?: config.getValue("host").jsonPrimitive.content,
-                    System.getenv("SUPERMETRY_APP_URL") ?: config.getValue("appUrl").jsonPrimitive.content)
-                val reports = DiagnosticReports(File(app.noBackupFilesDir, "diagnostics"),
-                    DiagnosticPolicy(asset("diagnostics.json")), destination, version,
-                    arch = when (Build.SUPPORTED_ABIS.firstOrNull()) { "arm64-v8a" -> "arm64"; "x86_64" -> "x64"; else -> "unknown" })
-                reports.load()
-                reporter = reports
-                recoverExits(app, reports)
-                publishProcessConsent(app, reports)
-                if(reports.status.consentSaveFailed) requestedConsent = false
-                mutable.value = AutomaticDiagnosticState(ready = true, status = reports.status, saveFailed = reports.status.consentSaveFailed)
+                val owner = AutomaticDiagnosticInitialization(scope, create = {
+                    fun asset(name: String) = app.assets.open(name).bufferedReader(Charsets.UTF_8).use { it.readText() }
+                    val config = Json.parseToJsonElement(asset("diagnostics-destination.json")).jsonObject
+                    val destination = DiagnosticDestination(System.getenv("SUPERMETRY_SITE_ID") ?: config.getValue("site").jsonPrimitive.content,
+                        System.getenv("SUPERMETRY_HOST") ?: config.getValue("host").jsonPrimitive.content,
+                        System.getenv("SUPERMETRY_APP_URL") ?: config.getValue("appUrl").jsonPrimitive.content)
+                    DiagnosticReports(File(app.noBackupFilesDir, "diagnostics"),
+                        DiagnosticPolicy(asset("diagnostics.json")), destination, version,
+                        arch = when (Build.SUPPORTED_ABIS.firstOrNull()) { "arm64-v8a" -> "arm64"; "x86_64" -> "x64"; else -> "unknown" })
+                }, retain = { reporter = it }, onLoaded = { reports ->
+                    recoverExits(app, reports)
+                    publishProcessConsent(app, reports)
+                    if(reports.status.consentSaveFailed) requestedConsent = false
+                }, publish = { mutable.value = it }, revision = choices::get, requested = { requestedConsent })
+                initialization = owner
+                owner.start()
             } catch (_: Exception) {
                 // Missing resources or unavailable storage never prevent offline use.
                 mutable.value = AutomaticDiagnosticState(ready = true, status = DiagnosticStatus(available = false))
@@ -70,18 +174,20 @@ object AutomaticDiagnostics {
     }
 
     fun setConsent(enabled: Boolean) {
-        val reports = reporter
-        if(reports == null) {
-            if(!enabled) application?.let {app -> scope.launch {
-                mutable.update {it.copy(saving = true)}
-                val saved = DiagnosticReports.revokeStoredConsent(File(app.noBackupFilesDir, "diagnostics"))
-                mutable.update {it.copy(saving = false, saveFailed = !saved, status = it.status.copy(consentSaveFailed = !saved))}
-            }}
-            return
-        }
         val choice = choices.incrementAndGet()
         requestedConsent = enabled
         if (!enabled) declinedThisRun = true
+        initialization?.cancel()
+        val reports = reporter
+        if(reports == null) {
+            if(!enabled) application?.let {app -> scope.launch {
+                if (choice != choices.get()) return@launch
+                mutable.update {it.copy(saving = true, status = it.status.copy(enabled = false, optedIn = false, prompted = true))}
+                val saved = DiagnosticReports.revokeStoredConsent(File(app.noBackupFilesDir, "diagnostics"))
+                if (choice == choices.get()) mutable.update {it.copy(saving = false, saveFailed = !saved, status = it.status.copy(consentSaveFailed = !saved))}
+            }}
+            return
+        }
         // UNDISPATCHED enters the core's synchronous invalidation before returning
         // to the UI; a withdrawal cannot wait behind a busy IO dispatcher.
         scope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -90,35 +196,44 @@ object AutomaticDiagnostics {
             try {
                 reports.setConsent(enabled)
                 withContext(Dispatchers.IO) { application?.let { publishProcessConsent(it, reports) } }
-                if(choice == choices.get()) mutable.update { it.copy(status = reports.status.copy(prompted = reports.status.prompted || declinedThisRun), saving = false) }
+                if(choice == choices.get()) mutable.update { it.copy(ready = true, status = reports.status.copy(prompted = reports.status.prompted || declinedThisRun), saving = false) }
             } catch (_: Exception) {
                 withContext(Dispatchers.IO) { application?.let { publishProcessConsent(it, reports) } }
-                if(choice == choices.get()) mutable.update { it.copy(status = reports.status.copy(prompted = reports.status.prompted || declinedThisRun), saving = false, saveFailed = true) }
+                if(choice == choices.get()) mutable.update { it.copy(ready = true, status = reports.status.copy(prompted = reports.status.prompted || declinedThisRun), saving = false, saveFailed = true) }
             }
         }
     }
 
-    fun retryConsent() { requestedConsent?.let(::setConsent) }
+    fun retryConsent() {
+        val owner = initialization
+        if (owner != null && (owner.failed || reporter == null)) owner.retry()
+        else requestedConsent?.let(::setConsent)
+    }
+
+    // Retention permits OFF during IO, but a partially loaded grant cannot
+    // authorize intake or a new task's observation before load succeeds.
+    private fun captureReporter(): DiagnosticReports? = reporter?.takeUnless { initialization?.blocksCapture == true }
 
     /** A failure is projected immediately; no Error, message or params are retained. */
     fun captureFailure(error: Throwable, stage: String = "other", engineID: String? = null) {
+        val reports = captureReporter() ?: return
         val input = automaticDiagnosticInput(error, stage, engineID) ?: return
-        reporter?.capture(input, error)
+        reports.capture(input, error)
     }
 
     fun observeConsent(): CompanionDiagnosticObservation? {
         val revision=choices.get()
-        val context=reporter?.recoveryContext ?: return null
+        val context=captureReporter()?.recoveryContext ?: return null
         if(choices.get()!=revision) return null
         return CompanionDiagnosticObservation(revision,context.epoch)
     }
     fun captureObservedFailure(error: Throwable, observation: CompanionDiagnosticObservation?, stage: String = "dub") {
         if(observation == null || observation != observeConsent()) return
         val input=automaticDiagnosticInput(error,stage) ?: return
-        reporter?.capture(input,error,expectedEpoch=observation.epoch)
+        captureReporter()?.capture(input,error,expectedEpoch=observation.epoch)
     }
 
-    fun capture(input: DiagnosticInput) { reporter?.capture(input) }
+    fun capture(input: DiagnosticInput) { captureReporter()?.capture(input) }
 
     private fun publishProcessConsent(app: Application, reports: DiagnosticReports) {
         if (Build.VERSION.SDK_INT < 30) return

@@ -11,6 +11,9 @@ const gate = vi.hoisted(() => ({
   failRenameTarget: '',
   failRemoveTarget: '',
   sessionWrites: 0,
+  failReadTarget: '',
+  outboxReads: 0,
+  blockedRead: null as null | { entered: () => void; wait: Promise<void> },
 }));
 vi.mock('node:fs/promises', async (original) => {
   const fs = await original<typeof import('node:fs/promises')>();
@@ -28,7 +31,16 @@ vi.mock('node:fs/promises', async (original) => {
       return fs.rename(...args);
     },
     open: async (...args: Parameters<typeof fs.open>) => {
+      if (String(args[0]).endsWith('outbox.json')) gate.outboxReads++;
+      if (gate.failReadTarget && String(args[0]).endsWith(gate.failReadTarget))
+        throw Object.assign(new Error('Temporary read lock'), { code: 'EACCES' });
       const handle = await fs.open(...args);
+      if (String(args[0]).endsWith('outbox.json') && gate.blockedRead) {
+        const blocked = gate.blockedRead;
+        gate.blockedRead = null;
+        blocked.entered();
+        await blocked.wait;
+      }
       const write = handle.writeFile.bind(handle);
       handle.writeFile = (async (...values: Parameters<typeof write>) => {
         if (gate.failWrites) throw Object.assign(new Error('ENOSPC'), { code: 'ENOSPC' });
@@ -48,6 +60,7 @@ vi.mock('node:fs/promises', async (original) => {
   };
 });
 import { DiagnosticReports, diagnosticDestination } from './diagnostics';
+import { MAX_RECORDS } from './diagnostics-schema';
 let root: string | undefined;
 let reports: DiagnosticReports | undefined;
 afterEach(async () => {
@@ -56,6 +69,9 @@ afterEach(async () => {
   gate.failRenameTarget = '';
   gate.failRemoveTarget = '';
   gate.sessionWrites = 0;
+  gate.failReadTarget = '';
+  gate.outboxReads = 0;
+  gate.blockedRead = null;
   await reports?.close();
   if (root) await rm(root, { recursive: true, force: true });
 });
@@ -239,6 +255,158 @@ it('a superseded ON write cannot remove the previous OFF tombstone before a fail
   } finally {
     release();
   }
+});
+
+it.each(['capture', 'close'] as const)(
+  'preserves a valid unread outbox before later %s can replace it',
+  async (action) => {
+    const initial = await create();
+    initial.reports.capture({ category: 'engine_failed' });
+    await initial.reports.close();
+    const original = await readFile(join(initial.options.directory, 'outbox.json'), 'utf8');
+    gate.failReadTarget = 'outbox.json';
+    reports = new DiagnosticReports(initial.options);
+    await reports.initialize();
+    reports.capture({ category: 'generation_failed' });
+    if (action === 'capture') await reports.flush();
+    else await reports.close();
+    expect(await readFile(join(initial.options.directory, 'outbox.json'), 'utf8')).toBe(original);
+  },
+);
+
+it('retries a temporarily unread outbox with a cooldown and merges bounded new intake before publication', async () => {
+  const initial = await create();
+  initial.reports.capture({ category: 'engine_failed' });
+  await initial.reports.close();
+  const original = JSON.parse(
+    await readFile(join(initial.options.directory, 'outbox.json'), 'utf8'),
+  ).records[0];
+  let now = Date.now();
+  gate.failReadTarget = 'outbox.json';
+  reports = new DiagnosticReports({ ...initial.options, now: () => now });
+  await reports.initialize();
+  reports.capture({ category: 'generation_failed' });
+  await reports.flush();
+  const attempts = gate.outboxReads;
+  now += 59_999;
+  await reports.flush();
+  expect(gate.outboxReads).toBe(attempts);
+  gate.failReadTarget = '';
+  now += 1;
+  await reports.flush();
+  const bodies = initial.send.mock.calls.map((call) => JSON.parse(String(call[1]?.body)));
+  expect(bodies.map((body) => body.props.category).sort()).toEqual([
+    'engine_failed',
+    'generation_failed',
+  ]);
+  expect(bodies.find((body) => body.props.category === 'engine_failed')).toMatchObject({
+    id: original.id,
+    ts: original.timestamp_ms,
+  });
+});
+
+it('keeps combined saved and deferred intake within the existing queue bound', async () => {
+  const initial = await create();
+  initial.reports.capture({ category: 'engine_failed' });
+  await initial.reports.close();
+  let now = Date.now();
+  gate.failReadTarget = 'outbox.json';
+  reports = new DiagnosticReports({ ...initial.options, now: () => now });
+  await reports.initialize();
+  for (let index = 0; index < MAX_RECORDS + 4; index++) {
+    now += 60_001;
+    reports.capture({ category: 'generation_failed' });
+  }
+  expect(reports.status().pending_count).toBe(MAX_RECORDS);
+  gate.failReadTarget = '';
+  await reports.flush();
+  expect(initial.send).toHaveBeenCalledTimes(MAX_RECORDS);
+  expect(
+    initial.send.mock.calls.every(
+      (call) => JSON.parse(String(call[1]?.body)).props.category === 'generation_failed',
+    ),
+  ).toBe(true);
+  expect(reports.status().dropped_count).toBe(5);
+});
+
+it.each([false, true])(
+  'never restores an unread old queue across withdrawal (new grant: %s)',
+  async (reenable) => {
+    const initial = await create();
+    initial.reports.capture({ category: 'engine_failed' });
+    await initial.reports.close();
+    let release!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      gate.blockedRead = {
+        entered: resolve,
+        wait: new Promise<void>((done) => {
+          release = done;
+        }),
+      };
+    });
+    reports = new DiagnosticReports(initial.options);
+    const initializing = reports.initialize();
+    try {
+      await entered;
+      await reports.setConsent(false);
+      if (reenable) await reports.setConsent(true);
+    } finally {
+      release();
+      await initializing;
+    }
+    await reports.flush();
+    expect(initial.send).not.toHaveBeenCalled();
+    if (reenable) {
+      reports.capture({ category: 'generation_failed' });
+      await reports.flush();
+      expect(initial.send).toHaveBeenCalledOnce();
+      expect(JSON.parse(String(initial.send.mock.calls[0][1]?.body)).props.category).toBe(
+        'generation_failed',
+      );
+    } else expect(reports.status().enabled).toBe(false);
+  },
+);
+
+it.each([false, true])(
+  'defers recovery until the saved outbox can deduplicate a prior fatal report (%s)',
+  async (priorFatal) => {
+    const initial = await create();
+    if (priorFatal)
+      initial.reports.capture({ category: 'app_crash', reason: 'unhandled_exception' });
+    const marker = await readFile(join(initial.options.directory, 'session.json'));
+    await initial.reports.close();
+    await writeFile(join(initial.options.directory, 'session.json'), marker);
+    let now = Date.now();
+    gate.failReadTarget = 'outbox.json';
+    reports = new DiagnosticReports({ ...initial.options, now: () => now });
+    await reports.initialize();
+    await reports.flush();
+    expect(await readFile(join(initial.options.directory, 'session.json'))).toEqual(marker);
+    expect(initial.send).not.toHaveBeenCalled();
+    gate.failReadTarget = '';
+    now += 60_000;
+    await reports.flush();
+    expect(initial.send).toHaveBeenCalledOnce();
+    expect(JSON.parse(String(initial.send.mock.calls[0][1]?.body)).props.reason).toBe(
+      priorFatal ? 'unhandled_exception' : 'unclean_exit',
+    );
+    await reports.flush();
+    expect(initial.send).toHaveBeenCalledOnce();
+  },
+);
+
+it('replaces a confirmed malformed outbox without suppressing fresh opted-in delivery', async () => {
+  const initial = await create();
+  await initial.reports.close();
+  await writeFile(join(initial.options.directory, 'outbox.json'), '{broken');
+  reports = new DiagnosticReports(initial.options);
+  await reports.initialize();
+  reports.capture({ category: 'generation_failed' });
+  await reports.flush();
+  expect(initial.send).toHaveBeenCalledOnce();
+  expect(
+    JSON.parse(await readFile(join(initial.options.directory, 'outbox.json'), 'utf8')).records,
+  ).toEqual([]);
 });
 
 it('requires HTTPS diagnostic URLs except exact literal loopback HTTP', () => {

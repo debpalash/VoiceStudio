@@ -189,6 +189,16 @@ def _atomic(path, value):
             pass
 
 
+class _CaptureQueue(queue.Queue):
+    def peek_nowait(self):
+        # Retain the slot while the sole worker publishes. Producers only append,
+        # so a failed write needs neither a second queue nor a racy re-insertion.
+        with self.mutex:
+            if not self._qsize():
+                raise queue.Empty
+            return self.queue[0]
+
+
 class Reporter:
     def __init__(self):
         from core.version import APP_VERSION
@@ -198,7 +208,7 @@ class Reporter:
         self.root = Path(self.managed) if self.managed else Path(DATA_DIR) / 'diagnostics'
         self.directory = self.root / ('inbox' if self.managed else 'outbox')
         self.lock = threading.RLock()
-        self.intake = queue.Queue(maxsize=64)
+        self.intake = _CaptureQueue(maxsize=64)
         self.acks = queue.Queue(maxsize=64)
         self.ack_lock = threading.Lock()
         self.stop = threading.Event()
@@ -213,6 +223,7 @@ class Reporter:
         self.transport = None
         self.inflight = {}
         self.retry_at = {}
+        self.storage_retry_at = 0
         self.schema = None
         self.marker_owned = False
         self.session_retired = False
@@ -333,6 +344,7 @@ class Reporter:
                 self.seen_errors.clear()
                 self.inflight.clear()
                 self.retry_at.clear()
+                self.storage_retry_at = 0
                 if not enabled:
                     try:
                         self._purge()
@@ -364,7 +376,11 @@ class Reporter:
                     raise ValueError('diagnostic queue capacity')
                 total += size
                 records.append(record)
-            except (OSError, ValueError, TypeError, KeyError):
+            except OSError:
+                # An unread record is not corrupt. Preserve it and defer intake
+                # publication too, since its size/identity may still be unknown.
+                raise
+            except (ValueError, TypeError, KeyError):
                 path.unlink(missing_ok=True)
                 self.dropped += 1
         self.pending = len(records)
@@ -379,7 +395,7 @@ class Reporter:
             self.seen_errors = [(value,stamp) for value,stamp in self.seen_errors[-63:] if now-stamp < 60]
             if any(value == token for value,stamp in self.seen_errors):
                 return
-            self.seen_errors.append((token,now))
+        fields = dict(fields)
         fields.pop('app_version', None)
         if reported_version is not None:
             fields['app_version'] = reported_version
@@ -392,8 +408,11 @@ class Reporter:
         if not self.managed:
             for existing in records:
                 if existing['props']['fingerprint'] == props['fingerprint'] and existing['id'] not in self.inflight:
-                    existing['props']['occurrences'] = min(1000000,existing['props']['occurrences']+1)
-                    _atomic(self.directory / (existing['id']+'.json'), existing)
+                    updated = {**existing, 'props': {**existing['props'], 'occurrences': min(1000000,existing['props']['occurrences']+1)}}
+                    _atomic(self.directory / (existing['id']+'.json'), updated)
+                    existing.update(updated)
+                    if token is not None:
+                        self.seen_errors.append((token,now))
                     return
         if len(records) >= self._capacity('count'):
             self.dropped += 1
@@ -405,8 +424,30 @@ class Reporter:
             self.dropped += 1
             return
         _atomic(self.directory / (record['id']+'.json'), record)
+        if token is not None:
+            self.seen_errors.append((token,now))
         records.append(record)
         self.pending = len(records)
+
+    def _persist_intake(self):
+        if self.storage_retry_at > time.monotonic():
+            return None
+        try:
+            records = self._files()
+            self._session()
+            for _ in range(64):
+                try:item = self.intake.peek_nowait()
+                except queue.Empty:break
+                self._spool(item,records)
+                self.intake.get_nowait()
+        except OSError:
+            # The worker still checks consent every tick. Retry durable IO at
+            # a finite cadence without losing a slot or transmitting memory-only
+            # reports; fresh events are not required to wake recovery.
+            self.storage_retry_at = time.monotonic()+60
+            return None
+        self.storage_retry_at = 0
+        return records
 
     def _session(self):
         if self.managed or self.marker_owned or self.session_retired:
@@ -453,12 +494,9 @@ class Reporter:
                 try:self.intake.get_nowait()
                 except queue.Empty:break
             return
-        records = self._files()
-        self._session()
-        for _ in range(64):
-            try:item = self.intake.get_nowait()
-            except queue.Empty:break
-            self._spool(item,records)
+        records = self._persist_intake()
+        if records is None:
+            return
         if self.managed:
             return
         while True:
@@ -580,11 +618,9 @@ class Reporter:
             try:
                 self.refresh()
                 if self.enabled:
-                    records = self._files()
-                    for _ in range(64):
-                        try:item = self.intake.get_nowait()
-                        except queue.Empty:break
-                        self._spool(item,records)
+                    # Make one final bounded publication attempt before exit.
+                    self.storage_retry_at = 0
+                    self._persist_intake()
             except Exception:
                 pass
             self.stop.set()

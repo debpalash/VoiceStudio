@@ -84,12 +84,15 @@ export function diagnosticDestination(env: NodeJS.ProcessEnv): Destination | nul
     : null;
 }
 
+class InvalidDiagnosticStore extends Error {}
+
 /** Inspect and read the same bounded file, including a concurrent writer growing it. */
 async function readJson(path: string, limit: number): Promise<unknown> {
   const file = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
   try {
     const info = await file.stat();
-    if (!info.isFile() || info.size > limit) throw new Error('Invalid diagnostics file');
+    if (!info.isFile() || info.size > limit)
+      throw new InvalidDiagnosticStore('Invalid diagnostics file');
     const buffer = Buffer.alloc(limit + 1);
     let length = 0;
     while (length < buffer.length) {
@@ -97,7 +100,7 @@ async function readJson(path: string, limit: number): Promise<unknown> {
       if (!bytesRead) break;
       length += bytesRead;
     }
-    if (length > limit) throw new Error('Invalid diagnostics file');
+    if (length > limit) throw new InvalidDiagnosticStore('Invalid diagnostics file');
     return JSON.parse(buffer.toString('utf8', 0, length));
   } finally {
     await file.close();
@@ -154,6 +157,11 @@ export class DiagnosticReports {
   private retryAt = 0;
   private sessionStartedAt: number | null = null;
   private sessionWriteAttemptAt: number | null = null;
+  private outboxRestored = false;
+  private outboxRestoreAt = 0;
+  private outboxRestoreWork: Promise<boolean> | null = null;
+  private sessionRecoveryPending = false;
+  private sessionRecoveryWork: Promise<void> | null = null;
   private wakeRetry: (() => void) | null = null;
   private readonly destination: Destination | null;
   private readonly env: NodeJS.ProcessEnv;
@@ -222,24 +230,8 @@ export class DiagnosticReports {
       this.requestRevocation();
       await this.control.catch(() => {});
     } else if (this.enabled) {
-      try {
-        const stored = await readJson(this.outbox, MAX_QUEUE_BYTES);
-        if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
-          const data = stored as { records?: unknown; dropped?: unknown };
-          if (Array.isArray(data.records)) {
-            for (const value of data.records.slice(-MAX_RECORDS)) {
-              const record = sanitizeRecord(value, this.consent!.epoch, this.now());
-              if (record) this.add(record, false);
-            }
-          }
-          if (Number.isSafeInteger(data.dropped))
-            this.dropped = Math.max(0, Math.min(1_000_000, data.dropped as number));
-        }
-      } catch {
-        /* A corrupt queue cannot become an upload. */
-      }
-      await this.recoverSession();
-      await this.writeSession().catch(() => {});
+      this.sessionRecoveryPending = true;
+      if (await this.restoreOutbox()) await this.recoverPendingSession();
     } else {
       await this.purge();
     }
@@ -309,6 +301,9 @@ export class DiagnosticReports {
     const choice = this.consent;
     this.revocationPending = !enabled;
     this.records = [];
+    this.outboxRestored = true;
+    this.outboxRestoreAt = 0;
+    this.sessionRecoveryPending = false;
     this.dirty = false;
     this.retryAt = 0;
     this.initialized = false;
@@ -467,10 +462,75 @@ export class DiagnosticReports {
     }
     this.dirty = true;
   }
+  /** A transient read failure leaves the saved queue authoritative until a bounded retry. */
+  private restoreOutbox(force = false): Promise<boolean> {
+    if (this.outboxRestored) return Promise.resolve(true);
+    if (this.outboxRestoreWork) return this.outboxRestoreWork;
+    if (!force && this.now() < this.outboxRestoreAt) return Promise.resolve(false);
+    const epoch = this.consent?.epoch;
+    const revision = this.revision;
+    if (!epoch || !this.consent?.enabled || killed(this.env)) return Promise.resolve(false);
+    const current = () => revision === this.revision && this.consent?.epoch === epoch;
+    this.outboxRestoreWork = (async () => {
+      let stored: unknown;
+      try {
+        stored = await readJson(this.outbox, MAX_QUEUE_BYTES);
+      } catch (error) {
+        if (!current()) return false;
+        const code = (error as NodeJS.ErrnoException).code;
+        // Confirmed malformed/absent stores can be replaced. Access/IO errors
+        // do not prove corruption and must never authorize a replacement.
+        if (
+          !(error instanceof SyntaxError) &&
+          !(error instanceof InvalidDiagnosticStore) &&
+          code !== 'ENOENT' &&
+          code !== 'ELOOP'
+        ) {
+          this.outboxRestoreAt = this.now() + 60_000;
+          return false;
+        }
+      }
+      if (!current()) return false;
+      const pending = this.records;
+      this.records = [];
+      if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
+        const data = stored as { records?: unknown; dropped?: unknown };
+        if (Number.isSafeInteger(data.dropped))
+          this.dropped = Math.min(1_000_000, this.dropped + Math.max(0, data.dropped as number));
+        if (Array.isArray(data.records)) {
+          for (const value of data.records.slice(-MAX_RECORDS)) {
+            const record = sanitizeRecord(value, epoch, this.now());
+            if (record) this.add(record, false);
+          }
+        }
+      }
+      for (const record of pending) this.add(record, false);
+      this.outboxRestored = true;
+      this.outboxRestoreAt = 0;
+      return true;
+    })().finally(() => {
+      this.outboxRestoreWork = null;
+    });
+    return this.outboxRestoreWork;
+  }
+  private async recoverPendingSession(): Promise<void> {
+    if (this.sessionRecoveryWork) return this.sessionRecoveryWork;
+    if (!this.sessionRecoveryPending || !this.enabled) return;
+    this.sessionRecoveryPending = false;
+    const revision = this.revision;
+    this.sessionRecoveryWork = (async () => {
+      await this.recoverSession();
+      if (revision === this.revision) await this.writeSession().catch(() => {});
+    })().finally(() => {
+      this.sessionRecoveryWork = null;
+    });
+    return this.sessionRecoveryWork;
+  }
   private async persist(): Promise<void> {
     const epoch = this.consent?.epoch;
     if (!epoch || !this.consent?.enabled || killed(this.env)) return;
     const revision = this.revision;
+    if (!(await this.restoreOutbox(this.stopped)) || revision !== this.revision) return;
     this.records = this.records
       .map((r) => sanitizeRecord(r, epoch, this.now()))
       .filter((r): r is DiagnosticRecord => r !== null);
@@ -481,6 +541,9 @@ export class DiagnosticReports {
     if (revision !== this.revision) await rm(this.outbox, { force: true }).catch(() => {});
   }
   private async purge(): Promise<void> {
+    this.outboxRestored = true;
+    this.outboxRestoreAt = 0;
+    this.sessionRecoveryPending = false;
     await Promise.all(
       [this.outbox, this.inbox, this.sessionPath].map((path) =>
         rm(path, { recursive: path === this.inbox, force: true }).catch(() => {}),
@@ -570,6 +633,9 @@ export class DiagnosticReports {
     if (!this.enabled || !this.consent || !this.destination) return;
     const epoch = this.consent.epoch;
     const revision = this.revision;
+    if (!(await this.granted(epoch, revision))) return;
+    if (!(await this.restoreOutbox())) return;
+    await this.recoverPendingSession();
     if (!(await this.granted(epoch, revision))) return;
     // Refresh local liveness through the existing worker, at most once a
     // minute including failed writes. Capture/fatal paths remain IO-free.
@@ -665,11 +731,14 @@ export class DiagnosticReports {
     });
   }
   private async recoverSession(): Promise<void> {
+    const epoch = this.consent?.epoch;
+    const revision = this.revision;
+    if (!epoch) return;
     try {
       const marker = (await readJson(this.sessionPath, 4096)) as Record<string, unknown>;
       if (
         marker.version !== 1 ||
-        marker.epoch !== this.consent?.epoch ||
+        marker.epoch !== epoch ||
         marker.active !== true ||
         !Number.isSafeInteger(marker.timestamp_ms) ||
         (marker.timestamp_ms as number) < this.now() - TTL_MS ||
@@ -747,12 +816,12 @@ export class DiagnosticReports {
         ...previousIdentity,
         source: 'electron_main',
       });
-      if (props && this.enabled && this.consent)
+      if (props && this.enabled && this.consent?.epoch === epoch && revision === this.revision)
         this.add({
           version: 1,
           id: id(),
           timestamp_ms: this.now(),
-          epoch: this.consent.epoch,
+          epoch,
           props,
         });
     } catch {

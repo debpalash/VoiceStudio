@@ -1042,7 +1042,6 @@ function reportTaskDiagnostic(
   const prepared = prepareDiagnosticException(error, category, stage);
   if (
     !prepared ||
-    !proof ||
     !observed ||
     observed.revision !== proof.consent.revision ||
     observed.grantEpoch !== proof.consent.grantEpoch ||
