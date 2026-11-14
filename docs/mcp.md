@@ -77,6 +77,10 @@ Point your client at the mounted endpoint:
 http://localhost:3900/mcp/
 ```
 
+This local HTTP connection supports consumption tools without an administrator
+key. Creating or changing saved profiles requires an API key or administrator
+session; use the stdio configuration below for implicit local operator access.
+
 Keep the trailing slash: `/mcp/` works on every VoiceStudio version. Current
 backends also answer bare `/mcp` directly (every Streamable HTTP method —
 `POST`, `GET` for the event stream, `DELETE` — with no redirect, whether or not
