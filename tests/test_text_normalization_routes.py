@@ -207,8 +207,10 @@ def test_batch_fallback_keeps_the_dictionary_snapshot_for_this_render(
 
     monkeypatch.setattr("services.asr_backend.run_transcribe_guarded", transcript)
 
+    native_calls = []
+
     def native_batch(_self, texts, **_kwargs):
-        assert texts == ["Professor Smith has two kittens"] * 2
+        native_calls.append(list(texts))
         db = importlib.import_module("core.db")
         with db.db_conn() as conn:
             conn.execute("UPDATE pronunciation_entries SET replacement='puppies' WHERE id='1'")
@@ -218,6 +220,7 @@ def test_batch_fallback_keeps_the_dictionary_snapshot_for_this_render(
     job = make_job("pronunciation-snapshot")
     asyncio.run(batch._run_batch_pipeline(job["id"], job))
     assert "en" in job.get("outputs", {}), job
+    assert native_calls == [["Professor Smith has two kittens"] * 2]
     assert [text for text, _ in fake_engine.calls] == ["Professor Smith has two kittens"] * 2
 
 

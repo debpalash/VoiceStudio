@@ -589,6 +589,7 @@ async def dub_generate(job_id: str, req: DubRequest):
         from services.pronunciation import speech_text_preparer
 
         prepare_text = await asyncio.to_thread(speech_text_preparer)
+        spoken_text_by_seg: dict[str, str] = {}
         all_segment_wavs = []
         sync_scores = []
 
@@ -1121,6 +1122,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                 text = prepare_text(text, lang, profile_id=profile_id)
 
                 effective_seg_id = seg_id if current_seg_id is None else current_seg_id
+                spoken_text_by_seg[str(effective_seg_id)] = text
                 ref_audio = None
                 ref_text = None
                 used_seed = None
@@ -1668,7 +1670,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                     # client-side recompute (/tools/incremental) sends the
                     # same code, so parity (#281 class) holds per language.
                     _seg_fp = segment_fingerprint({
-                        "text": seg.text,
+                        "text": spoken_text_by_seg[str(seg_id)],
                         "target_lang": getattr(seg, "target_lang", None),
                         "profile_id": getattr(seg, "profile_id", None),
                         "instruct": getattr(seg, "instruct", None),

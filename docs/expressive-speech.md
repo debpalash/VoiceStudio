@@ -94,6 +94,12 @@ overrides are resolved before sentence splitting or synthesis. Respellings are
 not processed a second time. Each request reads the current saved entries; Dub
 and batch dubbing keep one snapshot throughout a render, including native-batch
 fallbacks and retries, so editing the dictionary affects the next render.
+Dub's **Regen changed** compares the effective spoken text: an edited saved
+respelling regenerates only lines whose speech changes, while unrelated
+voices, terms and explicit inline overrides retain their cached audio.
+API clients using `/tools/incremental` pass the same `language` as the Dub
+request when it differs from the track's `lang` code (for example, `Auto`
+speech in an `en` track); per-segment `target_lang` still takes precedence.
 `OMNIVOICE_PRONUNCIATION=0` disables saved entries across these routes while
 keeping inline overrides active. Generate's `pronounce=false` disables saved
 entries for that request only. An unavailable dictionary falls back to normal

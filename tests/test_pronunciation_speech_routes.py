@@ -120,6 +120,83 @@ def test_dub_preview_uses_saved_voice_entries_and_inline_precedence(
     assert fake_engine.calls[-1][0] == "Professor Smith has two felines. cats"
 
 
+def test_incremental_dub_detects_only_changed_effective_saved_pronunciations(
+    spoken_dub, client, fake_engine, saved_pronunciations,
+):
+    dub, _backend = spoken_dub
+    segments = [
+        dict(start=i, end=i + 1, text=text, profile_id=voice)
+        for i, (text, voice) in enumerate([
+            ("cats", "pron-voice"), ("cats", ""),
+            ("dogs", "pron-voice"), ("[[cats|cats]]", "pron-voice"),
+        ])
+    ]
+    ids = ["voice", "global", "unrelated", "inline"]
+    events = dub.run(segments=segments, segment_ids=ids, language="English")
+    assert any(event["type"] == "done" for event in events), events
+    stored = dict(dub.job["seg_hashes_by_lang"]["en"])
+
+    def plan():
+        response = client.post("/tools/incremental", json={
+            "segments": [dict(segment, id=sid) for sid, segment in zip(ids, segments)],
+            "stored_hashes": stored, "lang": "en",
+        })
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    assert plan()["fresh"] == ids
+    db = importlib.import_module("core.db")
+    with db.db_conn() as conn:
+        conn.execute("UPDATE pronunciation_entries SET replacement='puppies' "
+                     "WHERE term='cats' AND profile_id='pron-voice'")
+    changed = plan()
+    assert changed["stale"] == ["voice"]
+    assert changed["fresh"] == ids[1:]
+    unchanged_audio = {sid: (dub.path / f"seg_en_{sid}.wav").read_bytes() for sid in ids[1:]}
+    fake_engine.calls.clear()
+    events = dub.run(segments=segments, segment_ids=ids, language="English",
+                     regen_only=changed["stale"])
+    assert any(event["type"] == "done" for event in events), events
+    assert [text for text, _kwargs in fake_engine.calls] == ["puppies"]
+    assert all((dub.path / f"seg_en_{sid}.wav").read_bytes() == audio
+               for sid, audio in unchanged_audio.items())
+
+    # Fit-only assembly continues to reuse the now-current speech cache.
+    fake_engine.calls.clear()
+    events = dub.run(segments=segments, segment_ids=ids, language="English",
+                     regen_only=[], timing_strategy="strict_slot")
+    assert any(event["type"] == "done" for event in events), events
+    assert not fake_engine.calls
+
+
+def test_incremental_spoken_language_can_differ_from_track_code(
+    spoken_dub, client, saved_pronunciations,
+):
+    dub, _backend = spoken_dub
+    segments = [
+        dict(start=0, end=1, text="cats", profile_id="pron-voice"),
+        dict(start=1, end=2, text="cats", profile_id="pron-voice", target_lang="en"),
+    ]
+    events = dub.run(segments=segments, segment_ids=["auto", "english"], language="Auto")
+    assert any(event["type"] == "done" for event in events), events
+    body = {
+        "segments": [dict(segment, id=sid)
+                     for sid, segment in zip(["auto", "english"], segments)],
+        "stored_hashes": dub.job["seg_hashes_by_lang"]["en"],
+        "lang": "en", "language": "Auto",
+    }
+    response = client.post("/tools/incremental", json=body)
+    assert response.status_code == 200, response.text
+    assert response.json()["fresh"] == ["auto", "english"]
+    db = importlib.import_module("core.db")
+    with db.db_conn() as conn:
+        conn.execute("UPDATE pronunciation_entries SET replacement='puppies' "
+                     "WHERE term='cats' AND profile_id='pron-voice'")
+    response = client.post("/tools/incremental", json=body)
+    assert response.status_code == 200, response.text
+    assert response.json()["stale"] == ["english"]
+
+
 @pytest.mark.parametrize("route", ["openai", "websocket"])
 def test_native_streams_prepare_the_whole_saved_voice_text_once(
     client, fake_engine, saved_pronunciations, monkeypatch, route,
