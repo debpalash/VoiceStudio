@@ -523,6 +523,165 @@ def test_successful_ack_frees_space_before_retained_write_retry(reporter, monkey
     assert reporter.intake.empty() and reporter.acks.empty()
 
 
+@pytest.mark.parametrize("status", [202, 400])
+def test_locked_terminal_ack_preserves_slot_without_starving_healthy_work(reporter, monkeypatch, status):
+    reports = importlib.import_module("core.diagnostic_reports")
+    clock, wall = [100.0], [reports.time.time()]
+    monkeypatch.setattr(reports.time, "monotonic", lambda: clock[0])
+    monkeypatch.setattr(reports.time, "time", lambda: wall[0])
+    reporter.consent(True)
+    # This accepted evidence expires during the ACK cleanup cooldown; normal
+    # pruning must not bypass the same file's deletion deadline.
+    stamp = int(wall[0] * 1000) - reporter.schema["limits"]["ttl_ms"] + 1000
+    assert reporter.capture("engine_failed", stage="engine", _reported_timestamp_ms=stamp)
+    assert reporter.capture("download_failed", stage="download")
+    reporter._tick()
+    records = reporter._files()
+    blocked = next(row for row in records if row["props"]["category"] == "engine_failed")
+    healthy = next(row for row in records if row["props"]["category"] == "download_failed")
+    blocked_path = reporter.directory / (blocked["id"] + ".json")
+    healthy_path = reporter.directory / (healthy["id"] + ".json")
+    sent, deletes = [], []
+    unlocked = False
+    unlink = Path.unlink
+
+    class Transport:
+        def capture(self, *args, **options):
+            sent.append(options["event_id"])
+            return True
+
+        def shutdown(self):
+            pass
+
+    def controlled_unlink(path, *args, **kwargs):
+        if path == blocked_path:
+            deletes.append(clock[0])
+            if not unlocked:
+                raise PermissionError("controlled terminal ACK deletion lock")
+        return unlink(path, *args, **kwargs)
+
+    reporter.transport = Transport()
+    reporter._tick()
+    assert len(sent) == 2
+    reporter._delivery_result(reporter.epoch, blocked["id"], status)
+    # Fill the bounded ACK queue behind the locked item. Missing files are
+    # already cleaned, and the last real ACK must still make progress.
+    for index in range(reporter.acks.maxsize - 2):
+        reporter._delivery_result(reporter.epoch, f"{index:032x}", 202)
+    reporter._delivery_result(reporter.epoch, healthy["id"], 202)
+    assert reporter.acks.full()
+    assert reporter.capture("operation_failed", stage="other")
+    monkeypatch.setattr(Path, "unlink", controlled_unlink)
+    worker_tick(reporter)
+    assert not healthy_path.exists(), "a later healthy ACK was starved by the first locked file"
+    assert len(sent) == 3 and sent.count(blocked["id"]) == 1
+    assert reporter.intake.empty() and reporter.acks.qsize() == 1
+    assert reporter.acks.peek_nowait() == (reporter.epoch, blocked["id"], status)
+    assert blocked["id"] in reporter.inflight
+    wall[0] += 2  # The blocked evidence is now beyond TTL.
+    for value in (100.0, 101.0, 159.9):
+        clock[0] = value
+        reporter._tick()
+    assert deletes == [100.0], "ACK/prune paths hammered a file during its cleanup cooldown"
+    unlocked = True
+    reporter._tick()
+    assert blocked_path.exists() and deletes == [100.0]
+    clock[0] = 160.0
+    reporter._tick()
+    assert deletes == [100.0, 160.0] and not blocked_path.exists()
+    assert reporter.acks.empty() and blocked["id"] not in reporter.inflight
+    assert sent.count(blocked["id"]) == 1
+
+
+def test_locked_ack_deadline_cleanup_frees_full_disk_without_a_new_capture(reporter, monkeypatch):
+    reports = importlib.import_module("core.diagnostic_reports")
+    clock = [100.0]
+    monkeypatch.setattr(reports.time, "monotonic", lambda: clock[0])
+    reporter.consent(True)
+    assert reporter.capture("engine_failed", stage="engine")
+    reporter._tick()
+    delivered, = reporter.directory.glob("*.json")
+    reporter.inflight[delivered.stem] = True
+    atomic, unlink = reports._atomic, Path.unlink
+    writable = False
+    deletes = []
+
+    def full_until_ack_removed(path, value):
+        if path.parent == reporter.directory and delivered.exists():
+            raise OSError("controlled full volume until ACK cleanup")
+        return atomic(path, value)
+
+    def blocked_unlink(path, *args, **kwargs):
+        if path == delivered:
+            deletes.append(clock[0])
+            if not writable:
+                raise PermissionError("controlled ACK cleanup lock")
+        return unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(reports, "_atomic", full_until_ack_removed)
+    monkeypatch.setattr(Path, "unlink", blocked_unlink)
+    assert reporter.capture("download_failed", stage="download")
+    reporter._tick()
+    assert reporter.intake.qsize() == 1
+    reporter._delivery_result(reporter.epoch, delivered.stem, 202)
+    worker_tick(reporter)
+    worker_tick(reporter)
+    assert deletes == [100.0]
+    assert reporter.intake.qsize() == 1 and reporter.acks.qsize() == 1
+    # Freeing an ACK must override even a later publication retry deadline.
+    reporter.storage_retry_at = 500.0
+    writable = True
+    clock[0] = 160.0
+    reporter._tick()
+    assert deletes == [100.0, 160.0]
+    assert reporter.acks.empty() and reporter.intake.empty()
+    fresh, = reporter._files()
+    assert fresh["props"]["category"] == "download_failed"
+
+
+@pytest.mark.parametrize("budget", ["count", "bytes"])
+def test_pending_ack_reserves_disk_capacity_until_off_clears_its_epoch(reporter, monkeypatch, budget):
+    reports = importlib.import_module("core.diagnostic_reports")
+    reporter.consent(True)
+    if budget == "count":
+        reporter.schema["limits"]["queue_count"] = 1
+    assert reporter.capture("engine_failed", stage="engine")
+    reporter._tick()
+    blocked, = reporter.directory.glob("*.json")
+    if budget == "bytes":
+        # Either ordinary record fits alone; both together exceed the actual
+        # occupied-byte budget even though the terminal one is not sendable.
+        reporter.schema["limits"]["queue_bytes"] = blocked.stat().st_size + 64
+    reporter.inflight[blocked.stem] = True
+    reporter._delivery_result(reporter.epoch, blocked.stem, 202)
+    unlink = Path.unlink
+
+    def denied(path, *args, **kwargs):
+        if path == blocked:
+            raise PermissionError("controlled retained ACK file")
+        return unlink(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", denied)
+    worker_tick(reporter)
+    assert reporter.capture("download_failed", stage="download")
+    worker_tick(reporter)
+    assert reporter.intake.empty(), "known occupied capacity should be accounted, not indefinitely stall intake"
+    assert len(list(reporter.directory.glob("*.json"))) == 1
+    assert reporter.dropped == 1
+    old = reporter.epoch
+    reporter.consent(False)
+    assert reporter.acks.empty() and not reporter.capture("generation_failed")
+    assert not reporter.ack_cleanup_at
+    assert reporter.ack_cleanup_count == reporter.ack_cleanup_bytes == 0
+    monkeypatch.setattr(Path, "unlink", unlink)
+    reporter.consent(True)
+    assert reporter.epoch != old
+    assert reporter.capture("generation_failed")
+    reporter._tick()
+    fresh, = reporter._files()
+    assert fresh["epoch"] == reporter.epoch and fresh["props"]["category"] == "generation_failed"
+
+
 def test_unread_report_survives_transient_io_and_reloads(storage_reporter, monkeypatch):
     instance = storage_reporter
     reports = importlib.import_module("core.diagnostic_reports")

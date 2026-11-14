@@ -11,6 +11,7 @@ const gate = vi.hoisted(() => ({
   failRenameTarget: '',
   failRemoveTarget: '',
   removeCalls: new Map<string, number>(),
+  removeBlocker: null as null | ((path: string) => Promise<void>),
   sessionWrites: 0,
   sessionReads: 0,
   failReadTarget: '',
@@ -18,6 +19,7 @@ const gate = vi.hoisted(() => ({
   removeOnReadTarget: '',
   recordReads: new Map<string, number>(),
   outboxReads: 0,
+  outboxWriteAttempts: 0,
   publications: [] as string[],
   failDirectorySync: false,
   blockedRead: null as null | { entered: () => void; wait: Promise<void> },
@@ -31,9 +33,11 @@ vi.mock('node:fs/promises', async (original) => {
       gate.removeCalls.set(name, (gate.removeCalls.get(name) ?? 0) + 1);
       if (gate.failRemoveTarget && String(args[0]).endsWith(gate.failRemoveTarget))
         throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
+      if (gate.removeBlocker) await gate.removeBlocker(String(args[0]));
       return fs.rm(...args);
     },
     rename: async (...args: Parameters<typeof fs.rename>) => {
+      if (String(args[1]).endsWith('outbox.json')) gate.outboxWriteAttempts++;
       if (String(args[1]).endsWith('session.json')) gate.sessionWrites++;
       if (gate.failRenameTarget && String(args[1]).endsWith(gate.failRenameTarget))
         throw Object.assign(new Error('ENOSPC'), { code: 'ENOSPC' });
@@ -87,7 +91,7 @@ vi.mock('node:fs/promises', async (original) => {
   };
 });
 import { DiagnosticReports, diagnosticDestination } from './diagnostics';
-import { MAX_RECORDS, TTL_MS } from './diagnostics-schema';
+import { MAX_RECORDS, MAX_QUEUE_BYTES, TTL_MS, sanitizeProperties } from './diagnostics-schema';
 let root: string | undefined;
 let reports: DiagnosticReports | undefined;
 afterEach(async () => {
@@ -96,6 +100,7 @@ afterEach(async () => {
   gate.failRenameTarget = '';
   gate.failRemoveTarget = '';
   gate.removeCalls.clear();
+  gate.removeBlocker = null;
   gate.sessionWrites = 0;
   gate.sessionReads = 0;
   gate.failReadTarget = '';
@@ -103,6 +108,7 @@ afterEach(async () => {
   gate.removeOnReadTarget = '';
   gate.recordReads.clear();
   gate.outboxReads = 0;
+  gate.outboxWriteAttempts = 0;
   gate.publications = [];
   gate.failDirectorySync = false;
   gate.blockedRead = null;
@@ -188,6 +194,71 @@ it('never lets a pending old purge delete a newly enabled report', async () => {
   expect(JSON.parse(String(initial.send.mock.calls[0][1]?.body)).props.category).toBe(
     'generation_failed',
   );
+});
+
+it('joins competing cleanup before a new grant accepts managed reports', async () => {
+  const initial = await create(false);
+  await initial.reports.close();
+  let now = Date.now();
+  reports = new DiagnosticReports({ ...initial.options, now: () => now });
+  await reports.initialize();
+  await reports.setConsent(true);
+  const inbox = join(initial.options.directory, 'inbox');
+  await mkdir(inbox, { recursive: true });
+  await writeFile(join(inbox, 'a'.repeat(32) + '.json'), '{}');
+  gate.failRemoveTarget = 'inbox';
+  await reports.setConsent(false);
+  gate.failRemoveTarget = '';
+  now += 60_000;
+  let entered!: () => void;
+  let releaseFirst!: () => void;
+  let releaseSecond!: () => void;
+  const firstEntered = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const first = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
+  const second = new Promise<void>((resolve) => {
+    releaseSecond = resolve;
+  });
+  let removals = 0;
+  gate.removeBlocker = async (path) => {
+    if (path !== inbox) return;
+    if (++removals === 1) {
+      entered();
+      await first;
+    } else if (removals === 2) await second;
+  };
+  const grant = reports.setConsent(true);
+  await firstEntered;
+  const worker = reports.flush();
+  try {
+    releaseFirst();
+    await grant;
+    const record = {
+      version: 1,
+      id: 'c'.repeat(32),
+      timestamp_ms: now,
+      epoch: reports.status().grant_epoch,
+      props: sanitizeProperties({
+        ...initial.options.identity,
+        category: 'generation_failed',
+        source: 'backend',
+      }),
+    };
+    await mkdir(inbox, { recursive: true });
+    await writeFile(join(inbox, `${record.id}.json`), JSON.stringify(record));
+    releaseSecond();
+    await worker;
+    await reports.flush();
+    expect(initial.send).toHaveBeenCalledOnce();
+    expect(JSON.parse(String(initial.send.mock.calls[0][1]?.body)).id).toBe(record.id);
+  } finally {
+    releaseFirst();
+    releaseSecond();
+    await Promise.allSettled([grant, worker]);
+  }
 });
 
 it('recovers a recent crash after more than a week of active opted-in runtime', async () => {
@@ -767,6 +838,175 @@ async function managedInbox() {
   await writeFile(file, text);
   return { ...initial, inbox, record, file, text };
 }
+
+it.each([202, 400])(
+  'never resends terminal managed ID after %s when cleanup is locked',
+  async (status) => {
+    const initial = await managedInbox();
+    let now = Date.now();
+    initial.send.mockImplementation(async () => new Response('', { status }));
+    gate.failRemoveTarget = basename(initial.file);
+    reports = new DiagnosticReports({ ...initial.options, now: () => now });
+    await reports.initialize();
+    await reports.flush();
+    await reports.flush();
+    expect(initial.send).toHaveBeenCalledOnce();
+    expect(reports.status().pending_count).toBe(0);
+    const body = JSON.parse(String(initial.send.mock.calls[0][1]?.body));
+    expect(body).not.toHaveProperty('completed');
+    expect(body.props).not.toHaveProperty('completed');
+    const saved = JSON.parse(
+      await readFile(join(initial.options.directory, 'outbox.json'), 'utf8'),
+    );
+    expect(saved.records).toEqual([
+      expect.objectContaining({
+        id: initial.record.id,
+        completed: true,
+        timestamp_ms: initial.record.timestamp_ms,
+      }),
+    ]);
+    await reports.close();
+    reports = new DiagnosticReports({ ...initial.options, now: () => now });
+    await reports.initialize();
+    await reports.flush();
+    expect(initial.send).toHaveBeenCalledOnce();
+    const attempts = gate.removeCalls.get(basename(initial.file));
+    now += 59_999;
+    // A producer cannot forge a completion flag, and one locked terminal ID
+    // cannot starve a healthy report while its cleanup is cooling down.
+    const healthy = { ...initial.record, id: 'b'.repeat(32), completed: true };
+    await writeFile(join(initial.inbox, `${healthy.id}.json`), JSON.stringify(healthy));
+    await reports.flush();
+    expect(initial.send).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(String(initial.send.mock.calls[1][1]?.body)).id).toBe(healthy.id);
+    expect(gate.removeCalls.get(basename(initial.file))).toBe(attempts);
+    expect(reports.status().pending_count).toBe(0);
+    gate.failRemoveTarget = '';
+    now += 1;
+    await reports.flush();
+    expect(initial.send).toHaveBeenCalledTimes(2);
+    await expect(readFile(initial.file)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(
+      JSON.parse(await readFile(join(initial.options.directory, 'outbox.json'), 'utf8')).records,
+    ).toEqual([]);
+  },
+);
+
+it('retains bounded completed markers over excess capture and expires them at their original TTL', async () => {
+  const initial = await managedInbox();
+  let now = Date.now();
+  const completed = Array.from({ length: MAX_RECORDS }, (_, index) => ({
+    ...initial.record,
+    id: index.toString(16).padStart(32, '0'),
+    completed: true,
+  }));
+  await rm(initial.file);
+  await writeFile(
+    join(initial.options.directory, 'outbox.json'),
+    JSON.stringify({ version: 1, records: completed }),
+  );
+  for (const record of completed)
+    await writeFile(join(initial.inbox, `${record.id}.json`), JSON.stringify(record));
+  gate.failRemoveTarget = '.json';
+  reports = new DiagnosticReports({ ...initial.options, now: () => now });
+  await reports.initialize();
+  for (let index = 0; index < MAX_RECORDS + 4; index++)
+    reports.capture({ category: 'operation_failed', frames: `renderer:${index + 1}:1` });
+  await reports.flush();
+  expect(initial.send.mock.calls.length).toBe(0);
+  expect(reports.status().pending_count).toBe(0);
+  const saved = await readFile(join(initial.options.directory, 'outbox.json'), 'utf8');
+  expect(Buffer.byteLength(saved)).toBeLessThanOrEqual(MAX_QUEUE_BYTES);
+  expect(JSON.parse(saved).records).toHaveLength(MAX_RECORDS);
+  expect(
+    JSON.parse(saved).records.every((record: { completed?: boolean }) => record.completed),
+  ).toBe(true);
+  now = initial.record.timestamp_ms + TTL_MS + 1;
+  await reports.flush();
+  expect(initial.send).not.toHaveBeenCalled();
+  expect(
+    JSON.parse(await readFile(join(initial.options.directory, 'outbox.json'), 'utf8')).records,
+  ).toEqual([]);
+  reports.capture({ category: 'generation_failed' });
+  await reports.flush();
+  expect(initial.send).toHaveBeenCalledOnce();
+});
+
+it('invalidates completed IDs on OFF and never lends them to another grant', async () => {
+  const initial = await managedInbox();
+  gate.failRemoveTarget = basename(initial.file);
+  reports = new DiagnosticReports(initial.options);
+  await reports.initialize();
+  await reports.flush();
+  expect(initial.send).toHaveBeenCalledOnce();
+  await reports.setConsent(false);
+  expect(reports.status().pending_count).toBe(0);
+  await reports.setConsent(true);
+  await mkdir(initial.inbox, { recursive: true });
+  await writeFile(initial.file, JSON.stringify(initial.record));
+  await reports.flush();
+  expect(initial.send).toHaveBeenCalledOnce();
+  const consent = JSON.parse(
+    await readFile(join(initial.options.directory, 'consent.json'), 'utf8'),
+  );
+  await writeFile(initial.file, JSON.stringify({ ...initial.record, epoch: consent.epoch }));
+  await reports.flush();
+  expect(initial.send).toHaveBeenCalledTimes(2);
+});
+
+it('does not resend a terminal ID in memory when its completion publication fails', async () => {
+  const initial = await managedInbox();
+  let now = Date.now();
+  gate.failRemoveTarget = basename(initial.file);
+  initial.send.mockImplementation(async () => {
+    gate.failRenameTarget = 'outbox.json';
+    return new Response('', { status: 202 });
+  });
+  reports = new DiagnosticReports({ ...initial.options, now: () => now });
+  await reports.initialize();
+  await reports.flush();
+  const attempts = gate.outboxWriteAttempts;
+  await reports.flush();
+  now += 59_999;
+  await reports.flush();
+  expect(initial.send).toHaveBeenCalledOnce();
+  expect(gate.outboxWriteAttempts).toBe(attempts);
+  expect(reports.status().pending_count).toBe(0);
+  gate.failRenameTarget = '';
+  now += 1;
+  await reports.flush();
+  await reports.close();
+  reports = new DiagnosticReports(initial.options);
+  await reports.initialize();
+  await reports.flush();
+  expect(initial.send).toHaveBeenCalledOnce();
+});
+
+it('reserves completion capacity for an in-flight managed ID during excess capture', async () => {
+  const initial = await managedInbox();
+  gate.failRemoveTarget = basename(initial.file);
+  let first = true;
+  initial.send.mockImplementation(async () => {
+    if (first) {
+      first = false;
+      for (let index = 0; index < MAX_RECORDS + 4; index++)
+        reports!.capture({ category: 'generation_failed', frames: `renderer:${index + 1}:1` });
+    }
+    return new Response('', { status: 202 });
+  });
+  reports = new DiagnosticReports(initial.options);
+  await reports.initialize();
+  await reports.flush();
+  await reports.flush();
+  const sent = initial.send.mock.calls.map((call) => JSON.parse(String(call[1]?.body)).id);
+  expect(sent.filter((id) => id === initial.record.id).length).toBe(1);
+  const saved = JSON.parse(await readFile(join(initial.options.directory, 'outbox.json'), 'utf8'));
+  expect(saved.records).toContainEqual(
+    expect.objectContaining({ id: initial.record.id, completed: true }),
+  );
+  expect(saved.records.length).toBeLessThanOrEqual(MAX_RECORDS);
+  expect(reports.status().pending_count).toBe(0);
+});
 
 it.each(['EACCES', 'EIO'])(
   'retains an unread 8KiB managed record after %s and retries without starving healthy intake',

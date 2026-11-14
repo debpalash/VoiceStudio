@@ -242,6 +242,13 @@ class _CaptureQueue(queue.Queue):
                 raise queue.Empty
             return self.queue[0]
 
+    def defer_nowait(self, expected):
+        # Rotation preserves the occupied slot atomically: a producer cannot
+        # take a temporary vacancy between a failed cleanup's get and put.
+        with self.mutex:
+            if self._qsize() and self.queue[0] is expected:
+                self.queue.rotate(-1)
+
 
 class ConsentExternallyManaged(PermissionError):
     """The desktop authority, rather than Python, owns diagnostic consent."""
@@ -274,6 +281,9 @@ class Reporter:
         self.transport = None
         self.inflight = {}
         self.retry_at = {}
+        self.ack_cleanup_at = {}
+        self.ack_cleanup_count = 0
+        self.ack_cleanup_bytes = 0
         self.storage_retry_at = 0
         self.publication = None
         self.schema = None
@@ -375,6 +385,8 @@ class Reporter:
             return {}
 
     def _purge(self):
+        self.ack_cleanup_at.clear()
+        self.ack_cleanup_count = self.ack_cleanup_bytes = 0
         for folder in (self.root / 'outbox', self.root / 'inbox') if not self.managed else (self.directory,):
             if folder.is_dir() and not folder.is_symlink():
                 for path in folder.iterdir():
@@ -415,6 +427,8 @@ class Reporter:
                 self.seen_errors.clear()
                 self.inflight.clear()
                 self.retry_at.clear()
+                self.ack_cleanup_at.clear()
+                self.ack_cleanup_count = self.ack_cleanup_bytes = 0
                 self.storage_retry_at = 0
                 self.publication = None
                 if not enabled:
@@ -436,6 +450,7 @@ class Reporter:
 
     def _files(self):
         records = []
+        self.ack_cleanup_count = self.ack_cleanup_bytes = 0
         if not self.directory.exists() or self.directory.is_symlink():
             return records
         total = 0
@@ -444,12 +459,20 @@ class Reporter:
                 if path.is_symlink() or not re.fullmatch(r'[a-f0-9]{32}\.json',path.name):
                     continue
                 size = path.stat().st_size
+                if path.stem in self.ack_cleanup_at:
+                    # Terminal evidence is never eligible for another send.
+                    # Reserve its actual occupied space without letting expiry
+                    # or malformed-file pruning bypass the cleanup deadline.
+                    self.ack_cleanup_count += 1
+                    self.ack_cleanup_bytes += size
+                    total += size
+                    continue
                 if size > _limit(self.schema,'body_bytes',8192):
                     path.unlink()
                     self.dropped += 1
                     continue
                 record = validate_record(json.loads(path.read_text(encoding='utf-8')), self.epoch, self.schema)
-                if path.stem != record['id'] or len(records) >= self._capacity('count') or total+size > self._capacity('bytes'):
+                if path.stem != record['id'] or len(records)+self.ack_cleanup_count >= self._capacity('count') or total+size > self._capacity('bytes'):
                     raise ValueError('diagnostic queue capacity')
                 total += size
                 records.append(record)
@@ -501,12 +524,12 @@ class Reporter:
                     if token is not None:
                         self.seen_errors.append((token,now))
                     return
-        if len(records) >= self._capacity('count'):
+        if len(records)+self.ack_cleanup_count >= self._capacity('count'):
             self.dropped += 1
             return
         record = {'version':1,'id':uuid.uuid4().hex,'timestamp_ms':timestamp,'epoch':epoch,'props':props}
         size = len(json.dumps(record,allow_nan=False,separators=(',',':')).encode())
-        existing_size = sum(len(json.dumps(r,allow_nan=False,separators=(',',':')).encode()) for r in records)
+        existing_size = self.ack_cleanup_bytes+sum(len(json.dumps(r,allow_nan=False,separators=(',',':')).encode()) for r in records)
         if existing_size + size > self._capacity('bytes'):
             self.dropped += 1
             return
@@ -607,14 +630,29 @@ class Reporter:
                 try:self.intake.get_nowait()
                 except queue.Empty:break
             return
-        while True:
-            try:ack_epoch,identity,status = self.acks.peek_nowait()
+        # Each starting slot gets one turn. Failed cleanups remain in that
+        # bounded queue while later ACKs and healthy intake can progress.
+        for _ in range(self.acks.qsize()):
+            try:ack = self.acks.peek_nowait()
             except queue.Empty:break
+            ack_epoch,identity,status = ack
             if ack_epoch != self.epoch:
+                self.ack_cleanup_at.pop(identity,None)
                 self.acks.get_nowait()
                 continue
             if status is not None and 0 < status < 500 and status != 429:
-                (self.directory / (identity+'.json')).unlink(missing_ok=True)
+                if time.monotonic() < self.ack_cleanup_at.get(identity,0):
+                    self.acks.defer_nowait(ack)
+                    continue
+                try:
+                    (self.directory / (identity+'.json')).unlink(missing_ok=True)
+                except OSError:
+                    if self.enabled and self.epoch == ack_epoch:
+                        self.ack_cleanup_at[identity] = time.monotonic()+60
+                        self.inflight[identity] = True
+                        self.acks.defer_nowait(ack)
+                    continue
+                self.ack_cleanup_at.pop(identity,None)
                 self.retry_at.pop(identity,None)
                 # Delivery cleanup can release capacity while intake writes
                 # remain blocked by a full disk. Do not wait out that cooldown.
@@ -623,6 +661,8 @@ class Reporter:
                 self.retry_at[identity] = time.monotonic()+60
             self.inflight.pop(identity,None)
             self.acks.get_nowait()
+        if not self.enabled:
+            return
         records = self._persist_intake()
         if records is None:
             return

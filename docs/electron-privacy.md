@@ -66,6 +66,9 @@ queued reports. A new opt-in creates a
 new identity; old queues and pre-consent crash history do not become eligible.
 Locked retired files are retried every minute. Collection under a new opt-in
 waits for that cleanup, so a delayed purge cannot delete new reports.
+Completed-delivery bookkeeping stays local and prevents repeated uploads while
+producer files are locked. If completion cannot be saved before an abrupt exit,
+a restart may retry the same stable report ID; exactly-once delivery is not promised.
 Reopening a saved failed job only displays its old error; it does not create a
 new report under a later consent choice. Resumed operations report only failures
 proved fresh under the same grant. Changing consent in another window invalidates

@@ -171,11 +171,13 @@ export class DiagnosticReports {
   private revocationPending = false;
   private cleanupPending = false;
   private cleanupRetryAt = 0;
+  private cleanupWork: Promise<void> | null = null;
   private revocationQueued = false;
   private work: Promise<void> | null = null;
   private control: Promise<unknown> = Promise.resolve();
   private active: AbortController | null = null;
   private activeId: string | null = null;
+  private completionRetryAt = new Map<string, number>();
   private timer?: NodeJS.Timeout;
   private retryAt = 0;
   private sessionStartedAt: number | null = null;
@@ -235,7 +237,7 @@ export class DiagnosticReports {
       opted_in: this.initialized && this.consent?.enabled === true && !this.killObserved,
       grant_epoch: this.enabled ? this.consent!.epoch : null,
       prompted: this.consent !== null,
-      pending_count: this.records.length,
+      pending_count: this.records.filter((record) => !record.completed).length,
       dropped_count: this.dropped,
     };
   }
@@ -329,6 +331,7 @@ export class DiagnosticReports {
     const choice = this.consent;
     this.revocationPending = !enabled;
     this.records = [];
+    this.completionRetryAt.clear();
     this.outboxRestored = true;
     this.outboxRestoreAt = 0;
     this.inboxReadRetryAt.clear();
@@ -479,12 +482,14 @@ export class DiagnosticReports {
     });
   }
   private add(record: DiagnosticRecord, coalesce = true): void {
+    this.expireRecords();
     if (this.records.some((old) => old.id === record.id)) return;
     const duplicate =
       coalesce &&
       this.records.find(
         (old) =>
           old.id !== this.activeId &&
+          !old.completed &&
           old.props.fingerprint === record.props.fingerprint &&
           old.session_id === record.session_id &&
           Math.abs(old.timestamp_ms - record.timestamp_ms) <= diagnosticLimit('dedupe_ms', 60_000),
@@ -497,12 +502,31 @@ export class DiagnosticReports {
     } else this.records.push(record);
     while (
       this.records.length > MAX_RECORDS ||
-      Buffer.byteLength(JSON.stringify({ records: this.records, dropped: this.dropped })) >
-        MAX_QUEUE_BYTES
+      // Reserve the terminal flag and maximum counter width before admission,
+      // so acknowledging an accepted record cannot exceed the disk budget.
+      Buffer.byteLength(
+        JSON.stringify({
+          version: 1,
+          records: this.records.map((record) => ({ ...record, completed: true })),
+          dropped: 1_000_000,
+        }),
+      ) > MAX_QUEUE_BYTES
     ) {
-      this.records.shift();
+      const discard = this.records.findIndex(
+        (record) => !record.completed && record.id !== this.activeId,
+      );
+      if (discard < 0) break;
+      this.records.splice(discard, 1);
       this.dropped = Math.min(1_000_000, this.dropped + 1);
     }
+    this.dirty = true;
+  }
+  private expireRecords(): void {
+    const cutoff = this.now() - TTL_MS;
+    const expired = this.records.filter((record) => record.timestamp_ms < cutoff);
+    if (!expired.length) return;
+    this.records = this.records.filter((record) => record.timestamp_ms >= cutoff);
+    for (const record of expired) this.completionRetryAt.delete(record.id);
     this.dirty = true;
   }
   /** A transient read failure leaves the saved queue authoritative until a bounded retry. */
@@ -536,7 +560,7 @@ export class DiagnosticReports {
           this.dropped = Math.min(1_000_000, this.dropped + Math.max(0, data.dropped as number));
         if (Array.isArray(data.records)) {
           for (const value of data.records.slice(-MAX_RECORDS)) {
-            const record = sanitizeRecord(value, epoch, this.now());
+            const record = sanitizeRecord(value, epoch, this.now(), true);
             if (record) this.add(record, false);
           }
         }
@@ -584,33 +608,53 @@ export class DiagnosticReports {
     const revision = this.revision;
     if (!(await this.restoreOutbox(this.stopped)) || revision !== this.revision) return;
     this.records = this.records
-      .map((r) => sanitizeRecord(r, epoch, this.now()))
+      .map((r) => sanitizeRecord(r, epoch, this.now(), true))
       .filter((r): r is DiagnosticRecord => r !== null);
     const text = JSON.stringify({ version: 1, dropped: this.dropped, records: this.records });
+    if (Buffer.byteLength(text) > MAX_QUEUE_BYTES)
+      throw new Error('Diagnostic queue exceeded its bound');
     this.dirty = false;
     await mkdir(this.options.directory, { recursive: true });
     await writePrivate(this.outbox, text);
     if (revision !== this.revision) await rm(this.outbox, { force: true }).catch(() => {});
   }
-  private async purge(): Promise<void> {
-    this.outboxRestored = true;
-    this.outboxRestoreAt = 0;
-    this.inboxReadRetryAt.clear();
-    this.sessionRecoveryPending = false;
-    this.sessionEvidenceRecovered = false;
-    this.sessionRecoveryAt = 0;
-    const removed = await Promise.all(
-      [this.outbox, this.inbox, this.sessionPath].map((path) =>
-        rm(path, { recursive: path === this.inbox, force: true }).then(
-          () => true,
-          () => false,
-        ),
-      ),
-    );
-    this.cleanupPending = removed.some((done) => !done);
-    this.cleanupRetryAt = this.cleanupPending ? this.now() + 60_000 : 0;
+  private purge(): Promise<void> {
+    if (this.cleanupWork) return this.cleanupWork;
+    this.cleanupWork = Promise.resolve()
+      .then(async () => {
+        this.outboxRestored = true;
+        this.outboxRestoreAt = 0;
+        this.inboxReadRetryAt.clear();
+        this.completionRetryAt.clear();
+        this.sessionRecoveryPending = false;
+        this.sessionEvidenceRecovered = false;
+        this.sessionRecoveryAt = 0;
+        const removed = await Promise.all(
+          [this.outbox, this.inbox, this.sessionPath].map((path) =>
+            rm(path, { recursive: path === this.inbox, force: true }).then(
+              () => true,
+              () => false,
+            ),
+          ),
+        );
+        this.cleanupPending = removed.some((done) => !done);
+        this.cleanupRetryAt = this.cleanupPending ? this.now() + 60_000 : 0;
+      })
+      .finally(() => {
+        this.cleanupWork = null;
+      });
+    return this.cleanupWork;
   }
   private async tryPersist(): Promise<boolean> {
+    // With no new report to publish, a failed completion commit shares the
+    // cleanup cooldown instead of retrying disk IO on every timer tick.
+    if (
+      this.records.length &&
+      this.records.every(
+        (record) => record.completed && this.now() < (this.completionRetryAt.get(record.id) ?? 0),
+      )
+    )
+      return false;
     try {
       await this.persist();
       return true;
@@ -670,6 +714,10 @@ export class DiagnosticReports {
     for await (const entry of directory) {
       if (++count > MAX_RECORDS * 4) break;
       if (!entry.isFile() || !/^[a-f0-9]{32}\.json$/.test(entry.name)) continue;
+      // Only this reporter's committed outbox can acknowledge a producer ID.
+      // Its cleanup is owned below, with a bounded per-record cooldown.
+      if (this.records.some((record) => record.id === entry.name.slice(0, -5) && record.completed))
+        continue;
       if (now < (this.inboxReadRetryAt.get(entry.name) ?? 0)) continue;
       const path = join(this.inbox, entry.name);
       try {
@@ -719,6 +767,7 @@ export class DiagnosticReports {
     const revision = this.revision;
     if (!(await this.granted(epoch, revision))) return;
     if (!(await this.restoreOutbox())) return;
+    this.expireRecords();
     if (!(await this.recoverPendingSession())) return;
     if (!(await this.granted(epoch, revision))) return;
     // Refresh local liveness through the existing worker, at most once a
@@ -727,11 +776,14 @@ export class DiagnosticReports {
       await this.writeSession().catch(() => {});
     await this.importInbox();
     if (this.dirty) await this.tryPersist();
+    await this.cleanupCompleted(epoch, revision);
     if (this.now() < this.retryAt) return;
-    while (this.records.length && (await this.granted(epoch, revision))) {
-      const record = sanitizeRecord(this.records[0], epoch, this.now());
+    while (await this.granted(epoch, revision)) {
+      const next = this.records.findIndex((record) => !record.completed);
+      if (next < 0) break;
+      const record = sanitizeRecord(this.records[next], epoch, this.now(), true);
       if (!record) {
-        this.records.shift();
+        this.records.splice(next, 1);
         this.dirty = true;
         continue;
       }
@@ -746,7 +798,7 @@ export class DiagnosticReports {
         props: record.props,
       });
       if (Buffer.byteLength(body) > diagnosticLimit('body_bytes', 8192)) {
-        this.records.shift();
+        this.records.splice(next, 1);
         this.dropped++;
         this.dirty = true;
         continue;
@@ -794,12 +846,50 @@ export class DiagnosticReports {
         this.retryAt = this.now() + (this.options.retryMs ?? 60_000);
         break;
       }
-      this.records = this.records.filter((r) => r.id !== record.id);
-      await rm(join(this.inbox, `${record.id}.json`), { force: true }).catch(() => {});
+      // Keep terminal IDs until producer cleanup succeeds. In-memory authority
+      // closes before IO, and durable acknowledgement precedes inbox deletion.
+      const accepted = this.records.find((item) => item.id === record.id);
+      if (accepted) accepted.completed = true;
       this.dirty = true;
-      await this.tryPersist();
+      await this.cleanupCompleted(epoch, revision);
     }
     if (this.dirty && revision === this.revision) await this.tryPersist();
+  }
+  private async cleanupCompleted(epoch: string, revision: number): Promise<void> {
+    const current = () =>
+      this.enabled && revision === this.revision && this.consent?.epoch === epoch;
+    const retained = new Set(
+      this.records.filter((record) => record.completed).map((record) => record.id),
+    );
+    for (const identity of this.completionRetryAt.keys())
+      if (!retained.has(identity)) this.completionRetryAt.delete(identity);
+    const due = this.records.filter(
+      (record) => record.completed && this.now() >= (this.completionRetryAt.get(record.id) ?? 0),
+    );
+    if (!due.length || !current()) return;
+    // If completion cannot be committed, retain the memory marker and do not
+    // treat an undeleted producer as a fresh event on the next flush.
+    if (this.dirty && !(await this.tryPersist())) {
+      if (current())
+        for (const record of due) this.completionRetryAt.set(record.id, this.now() + 60_000);
+      return;
+    }
+    if (!current()) return;
+    for (const record of due) {
+      if (!current()) return;
+      try {
+        await rm(join(this.inbox, `${record.id}.json`), { force: true });
+      } catch {
+        if (!current()) return;
+        this.completionRetryAt.set(record.id, this.now() + 60_000);
+        continue;
+      }
+      if (!current()) return;
+      this.records = this.records.filter((item) => item.id !== record.id);
+      this.completionRetryAt.delete(record.id);
+      this.dirty = true;
+    }
+    if (this.dirty && current()) await this.tryPersist();
   }
   private backoff(ms: number): Promise<void> {
     return new Promise((resolve) => {

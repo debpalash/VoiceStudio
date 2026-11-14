@@ -79,6 +79,41 @@ class WorkerDiagnosticConsentTest {
         return StudioViewModel(app, store)
     }
 
+    private suspend fun expectedPowerPause(kind:String) {
+        reports {reporter,collector->
+            reporter.setConsent(true)
+            val power=app.getSystemService(android.os.PowerManager::class.java)
+            val original=power.currentThermalStatus
+            val shadow=org.robolectric.Shadows.shadowOf(power)
+            var jobDirectory:File?=null
+            try {
+                val worker=if(kind=="dub") {
+                    val catalog=app.assets.open("models.json").bufferedReader(Charsets.UTF_8).use {ModelCatalog.decode(it.readText())}
+                    val models=listOf("asr","translate","clone").map {capability->catalog.models.first {it.capability==capability}}
+                    val source=Files.createTempFile("power-pause-source",".wav").toFile().apply {writeBytes(byteArrayOf(1))}
+                    val store=PhoneDubStore(File(app.noBackupFilesDir,"dubs"))
+                    val request=try {store.create(source,"Fixture",listOf(DubTarget("fr","French")),models,true)}finally{source.delete()}
+                    jobDirectory=store.directory(request.id)
+                    TestListenableWorkerBuilder<PhoneDubWorker>(app).setInputData(workDataOf("job" to request.id)).setForegroundUpdater(foreground()).build()
+                } else localWorker(kind)
+                // Drive the real requirePhonePower gate before model/decoder execution.
+                shadow.setCurrentThermalStatus(android.os.PowerManager.THERMAL_STATUS_CRITICAL)
+                val result=worker.doWork() as ListenableWorker.Result.Failure
+                assertEquals("mobile.jobs.power_paused",result.outputData.getString("error"))
+                reporter.flush()
+                assertEquals("Expected thermal pause from $kind was reported as a failure",0,collector.bodies.size)
+                shadow.setCurrentThermalStatus(original)
+                localWorker(kind,ClientFailure("mobile.local.inference_failed")).doWork()
+                reporter.flush()
+                assertEquals("A genuine $kind failure must remain reportable",1,collector.bodies.size)
+            }finally{shadow.setCurrentThermalStatus(original);jobDirectory?.deleteRecursively()}
+        }
+    }
+    @Test fun productionPowerPauseIsNotADiagnosticFailure()=runBlocking {expectedPowerPause("production")}
+    @Test fun transcriptionPowerPauseIsNotADiagnosticFailure()=runBlocking {expectedPowerPause("transcription")}
+    @Test fun workflowPowerPauseIsNotADiagnosticFailure()=runBlocking {expectedPowerPause("workflow")}
+    @Test fun localDubPowerPauseIsNotADiagnosticFailure()=runBlocking {expectedPowerPause("dub")}
+
     private suspend fun heldDubPromotion(kind:String,startEnabled:Boolean,replaceGrant:Boolean,expected:Int,cancel:Boolean=false)=coroutineScope {
         reports { reporter,collector ->
             if(startEnabled)reporter.setConsent(true)

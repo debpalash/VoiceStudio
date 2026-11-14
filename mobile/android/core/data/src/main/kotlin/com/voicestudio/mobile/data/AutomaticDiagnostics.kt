@@ -288,7 +288,7 @@ internal fun automaticDiagnosticInput(error: Throwable, stage: String = "other",
     if (failure?.status?.let { it in 400..499 } == true) return null
     val key = failure?.key
     if (key in setOf("mobile.local.licence_required", "mobile.local.model_required", "mobile.local.wifi_required",
-            "mobile.android.operation_busy", "mobile.permissions.denied", "mobile.errors.file") || key?.startsWith("mobile.connect.") == true) return null
+            "mobile.jobs.power_paused", "mobile.android.operation_busy", "mobile.permissions.denied", "mobile.errors.file") || key?.startsWith("mobile.connect.") == true) return null
     val (category, effectiveStage, code) = when (key) {
         "mobile.local.model_incompatible" -> Triple("incompatibility", "model_load", "UNSUPPORTED_PLATFORM")
         "mobile.local.runtime_failed" -> Triple("engine_failed", "engine", "ENGINE_DEPENDENCY_MISSING")

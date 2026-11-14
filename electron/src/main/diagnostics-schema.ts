@@ -10,6 +10,8 @@ export interface DiagnosticRecord {
   epoch: string;
   /** Local-only crash-session correlation; never an event property. */
   session_id?: string;
+  /** Trusted local outbox acknowledgement; never accepted from a producer or sent remotely. */
+  completed?: true;
   props: DiagnosticProps;
 }
 export interface DiagnosticConsent {
@@ -223,6 +225,7 @@ export function sanitizeRecord(
   value: unknown,
   epoch: string,
   now: number,
+  trustedOutbox = false,
 ): DiagnosticRecord | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   const r = value as DiagnosticRecord;
@@ -244,6 +247,7 @@ export function sanitizeRecord(
         timestamp_ms: r.timestamp_ms,
         epoch,
         props,
+        ...(trustedOutbox && r.completed === true ? { completed: true as const } : {}),
         ...(typeof r.session_id === 'string' && HEX_ID.test(r.session_id)
           ? { session_id: r.session_id }
           : {}),
