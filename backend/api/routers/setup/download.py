@@ -27,6 +27,7 @@ from core.path_security import UnsafePath, contained_child, safe_relative_path
 from services.hf_auth import token_for_endpoint
 from services.hf_revisions import revision_for
 from services.segmented_download import DownloadIntegrityError
+from core.url_safety import UnsafeURLError
 from utils import hf_progress
 from utils import download_aggregator
 # Weight floors and package files live in ``services/model_catalogue.py`` (via
@@ -184,8 +185,8 @@ def _segmented_enabled() -> bool:
     """IDM-style multi-connection accelerator (FDL-09), default **ON**. The app
     forces the legacy-LFS path (HF_HUB_DISABLE_XET=1) for clear progress, but that
     path is single-stream and slow — this restores parallel byte-range speed AND
-    real live progress, and falls back to snapshot_download on any error so it
-    can never compromise a correct install. Default-on so first-run downloads are
+    real live progress. Unsupported transfers can fall back to snapshot_download;
+    integrity and destination-policy refusals stop the install. Default-on so first-run downloads are
     fast out of the box (pairs with an HF token for higher rate limits); set
     OMNIVOICE_SEGMENTED_DOWNLOAD=0 to force the single-stream path."""
     return _truthy(prefs.resolve(
@@ -549,7 +550,7 @@ def _is_retryable_download_error(exc: BaseException) -> bool:
     # huggingface_hub is heavy and this module is on the setup import path.
     from huggingface_hub.utils import HfHubHTTPError, LocalEntryNotFoundError
 
-    if isinstance(exc, (_InstallCancelled, DownloadIntegrityError)):
+    if isinstance(exc, (_InstallCancelled, DownloadIntegrityError, UnsafeURLError)):
         return False
     if is_disk_full_error(exc):
         # A full volume does not heal between backoff sleeps; five retries only
@@ -852,7 +853,7 @@ async def install_model(req: InstallModelRequest):
                                 endpoint=_endpoint,
                                 revision=dl_kwargs["revision"],
                             )
-                        except (_InstallCancelled, DownloadIntegrityError):
+                        except (_InstallCancelled, DownloadIntegrityError, UnsafeURLError):
                             raise
                         except Exception as _seg_err:
                             if req.repo_id in _cancelled:

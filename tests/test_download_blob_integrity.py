@@ -19,6 +19,7 @@ GIT_BLOB_OID = "0c71b8b8fcde9e02c1553af9cc390d565997fcfe"
 @pytest.fixture
 def origin(monkeypatch):
     from services import segmented_download as sd
+    monkeypatch.setenv('OMNIVOICE_ALLOW_PRIVATE_URL_IMPORTS', '1')
 
     monkeypatch.setattr(sd, "_MIN_SEGMENT_BYTES", 16)
     monkeypatch.setattr(sd, "_MAX_SEGMENT_BYTES", 16)

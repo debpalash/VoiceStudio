@@ -156,3 +156,17 @@ def test_install_keeps_plain_fallback_for_unsupported_ranges(install_origin):
     assert (state.snapshot / "config.json").read_bytes() == CONTENT
     assert (state.repo_dir / "voicestudio-revision").read_text(encoding="utf-8").strip() == state.revision
     assert "install_done" in [event["phase"] for event in state.events]
+
+
+def test_install_never_bypasses_a_destination_refusal_through_plain_fallback(install_origin, monkeypatch):
+    from core.url_safety import UnsafeURLError
+    state = install_origin
+    state.good = True
+    def refused(*_args, **_kwargs):
+        raise UnsafeURLError('private destination refused')
+    monkeypatch.setattr(state.download, '_segmented_snapshot', refused)
+    _install(state)
+    assert state.fallback_calls == []
+    assert state.download._is_retryable_download_error(UnsafeURLError('private destination refused')) is False
+    assert 'install_error' in [event['phase'] for event in state.events]
+    assert 'install_done' not in [event['phase'] for event in state.events]

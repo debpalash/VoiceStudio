@@ -28,6 +28,7 @@ import httpx
 
 from services.hf_auth import host_gets_auth as _host_gets_auth
 from core.url_safety import check_public_url
+from services.public_download_transport import PublicDownloadTransport
 
 _DEFAULT_CONNECTIONS = 8
 _MIN_SEGMENT_BYTES = 4 * 1024 * 1024   # don't split below this — overhead > gain
@@ -52,29 +53,17 @@ def _auth_headers(url: str, token: Optional[str]) -> dict:
 async def _resolve(client: httpx.AsyncClient, url: str, token: Optional[str], max_hops: int = 10):
     """Follow redirects manually, dropping the auth header on any cross-host hop.
 
-    Each redirect *target* is validated against the public-destination policy
-    (:func:`core.url_safety.check_public_url`) before it is requested, so a
-    remote response cannot point the download at a loopback, link-local or
-    private address and have the body written into the model cache. The URL the
-    caller supplied is the model catalogue's own entry and is left to the
-    caller's existing validation, which also keeps local/private mirrors
-    (``OMNIVOICE_ALLOW_PRIVATE_URL_IMPORTS``, self-hosted endpoints) working.
-    The check resolves DNS, so it runs in a worker thread.
-
-    Residual risk, stated rather than hidden: the policy check resolves the
-    target once, and the transfer resolves it again, so a hostname whose answer
-    changes between the two (DNS rebinding) can still reach a private address.
-    Closing that needs connect-time enforcement on the address actually dialled.
-    The project's connect-time control, :func:`core.url_safety.guard_outbound_connections`,
-    is thread-local state that httpx's resolver thread never sees, which is why
-    the yt-dlp path runs it in a subprocess instead; making it visible to this
-    async downloader is its own change to ``core/url_safety``.
+    Redirect targets receive an early public-destination check. The guarded
+    transport also resolves and pins every HEAD/body/range request to validated
+    addresses, including proxy targets and requests that might reuse a pool.
+    Private mirrors require the existing explicit private-URL opt-in.
 
     Returns (final_url, size_or_None, accepts_ranges_bool).
     """
     cur = url
     for _ in range(max_hops):
-        r = await client.head(cur, headers=_auth_headers(cur, token))
+        _require_safe_client(client, cur)
+        r = await client.head(cur, headers=_auth_headers(cur, token), follow_redirects=False)
         if r.status_code in (301, 302, 303, 307, 308) and "location" in r.headers:
             target = str(httpx.URL(cur).join(r.headers["location"]))
             await asyncio.to_thread(check_public_url, target)
@@ -86,6 +75,21 @@ async def _resolve(client: httpx.AsyncClient, url: str, token: Optional[str], ma
         accepts = r.headers.get("accept-ranges", "").lower() == "bytes"
         return cur, size, accepts
     raise httpx.TooManyRedirects(f"exceeded {max_hops} redirects for {url}")
+
+
+def _require_safe_client(client, url):
+    """Network clients must not silently bypass the download-only transport.
+
+    The injected client seam remains available for network-free MockTransport
+    fixtures and explicitly opted-in private mirrors. An ordinary shared client
+    must be given PublicDownloadTransport rather than weakening another user's
+    pool or mutating a process-wide resolver.
+    """
+    from core.url_safety import UnsafeURLError, private_url_imports_allowed
+    if isinstance(client, httpx.AsyncClient) and not private_url_imports_allowed():
+        transport = client._transport_for_url(httpx.URL(url))
+        if not isinstance(transport, (PublicDownloadTransport, httpx.MockTransport)):
+            raise UnsafeURLError('Model download client must use the address-pinned transport')
 
 
 def _plan_segments(size: int, num_connections: int) -> list[tuple[int, int]]:
@@ -162,7 +166,9 @@ async def segmented_download(
       ``.part`` is atomically renamed to ``dest``.
     """
     own_client = client is None
-    client = client or httpx.AsyncClient(follow_redirects=False, timeout=timeout)
+    client = client or httpx.AsyncClient(
+        transport=PublicDownloadTransport(), follow_redirects=False, timeout=timeout,
+    )
     part = dest + ".part"
 
     def _cancelled() -> bool:
@@ -170,6 +176,7 @@ async def segmented_download(
 
     try:
         final_url, probed_size, accepts_ranges = await _resolve(client, url, token)
+        _require_safe_client(client, final_url)
         size = expected_size or probed_size
 
         # Single-stream fallback: server won't range, or we don't know the size.
@@ -186,7 +193,7 @@ async def segmented_download(
                 start, end = seg
                 want = end - start + 1
                 headers = {**_auth_headers(final_url, token), "Range": f"bytes={start}-{end}"}
-                async with client.stream("GET", final_url, headers=headers) as r:
+                async with client.stream("GET", final_url, headers=headers, follow_redirects=False) as r:
                     r.raise_for_status()
                     match = re.fullmatch(r"bytes\s+([0-9]+)-([0-9]+)/([0-9]+|\*)",
                                          r.headers.get("content-range", "").strip(), re.IGNORECASE)
@@ -278,7 +285,7 @@ async def _gather_or_cancel(coros) -> None:
 
 
 async def _stream_single(client, url, token, part, on_bytes, cancelled) -> None:
-    async with client.stream("GET", url, headers=_auth_headers(url, token)) as r:
+    async with client.stream("GET", url, headers=_auth_headers(url, token), follow_redirects=False) as r:
         r.raise_for_status()
         if cancelled():
             raise DownloadCancelled()

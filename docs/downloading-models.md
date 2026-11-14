@@ -38,6 +38,28 @@ free Hugging Face token (first-run setup, or Settings → Credentials) makes thi
 faster still — authenticated downloads get higher rate limits and fewer stalls.
 To force the old single-stream path, set `OMNIVOICE_SEGMENTED_DOWNLOAD=0`.
 
+The segmented downloader checks the initial destination and every redirect,
+then pins each HEAD, body and range request to a validated public address.
+Changed DNS answers cannot turn a previously checked hostname into a private
+network fetch, including when a connection pool or proxy is used. HTTPS keeps
+the original hostname for certificate verification and SNI, and requests keep
+their original Host header. System HTTP/HTTPS/SOCKS proxies and `NO_PROXY`
+continue to apply to the original hostname; a configured local proxy remains
+usable. Hugging Face redirects to public CDNs remain supported, without
+forwarding the Hub token to those CDNs.
+
+A destination-policy refusal stops the install instead of switching to a
+plain transfer. For an intentionally private model mirror, the existing
+`OMNIVOICE_ALLOW_PRIVATE_URL_IMPORTS=1` opt-in permits private destinations;
+that setting also permits private URL imports elsewhere in the app. Leave it
+off for public model hosts. This policy is scoped to the segmented downloader
+and does not block the app's unrelated local backend connections.
+Hub metadata and plain Hugging Face transfers use the Hub client's transport;
+the address-pinning guarantee applies to accelerated transfers. Ordinary
+connectivity failures retain the documented plain-transfer fallback. Within an
+accelerated transfer, a working address is preferred only while fresh validated
+DNS answers still contain it, avoiding repeated dead-family timeouts per range.
+
 State is reported at **Settings → About** / `GET /system/info`:
 
 - `fast_download.xet_installed` — `hf_xet` present (true)

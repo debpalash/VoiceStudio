@@ -19,7 +19,7 @@ class _FakeClient:
         self._responses = list(responses)
         self.requested: list[str] = []
 
-    async def head(self, url, headers=None):  # noqa: ARG002 — signature parity
+    async def head(self, url, headers=None, follow_redirects=False):  # noqa: ARG002 — signature parity
         self.requested.append(url)
         return self._responses.pop(0)
 
@@ -70,3 +70,37 @@ async def test_resolve_still_follows_a_public_redirect():
         "https://cdn.example/model.bin",
         "https://cdn2.example/model.bin",
     ]
+
+
+async def test_injected_clients_cannot_follow_private_redirects_implicitly(tmp_path):
+    seen = []
+    def response(request):
+        seen.append(str(request.url))
+        return httpx.Response(302, headers={'Location': 'http://127.0.0.1:9/private'})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(response), follow_redirects=True) as client:
+        with pytest.raises(UnsafeURLError):
+            await sd.segmented_download('https://huggingface.co/model', str(tmp_path / 'model'), client=client)
+    assert seen == ['https://huggingface.co/model']
+    assert not (tmp_path / 'model').exists()
+
+
+async def test_hugging_face_redirect_keeps_public_cdn_download_and_drops_token(tmp_path):
+    seen = []
+    def response(request):
+        seen.append(request)
+        if request.url.host == 'huggingface.co':
+            return httpx.Response(302, headers={'Location': 'https://cdn.example/model'})
+        return httpx.Response(200, headers={'Content-Length': '4'}, content=b'' if request.method == 'HEAD' else b'data')
+    async with httpx.AsyncClient(transport=httpx.MockTransport(response)) as client:
+        await sd.segmented_download('https://huggingface.co/model', str(tmp_path / 'model'),
+                                    client=client, token='hf_test_token')
+    assert seen[0].headers['Authorization'] == 'Bearer hf_test_token'
+    assert all('Authorization' not in request.headers for request in seen[1:])
+    assert (tmp_path / 'model').read_bytes() == b'data'
+
+
+async def test_shared_unprotected_network_client_is_rejected_before_any_request(tmp_path):
+    async with httpx.AsyncClient(trust_env=False) as client:
+        with pytest.raises(UnsafeURLError, match='address-pinned'):
+            await sd.segmented_download('https://model.example/file', str(tmp_path / 'model'), client=client)
+    assert not (tmp_path / 'model').exists()
