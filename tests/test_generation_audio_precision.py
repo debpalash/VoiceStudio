@@ -50,7 +50,7 @@ def test_invalid_api_precision_rejected_without_model_work():
     from api.routers.generation import router
     app = FastAPI()
     app.include_router(router)
-    client = TestClient(app)
+    client = TestClient(app, client=("127.0.0.1", 50000))
     assert client.post('/generate', data={'text': 'hello', 'wav_bits': '8'}).status_code == 422
 
 
