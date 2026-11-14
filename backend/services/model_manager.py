@@ -3444,7 +3444,7 @@ def _release_idle_tts_memory(stage):
             release_transcription_backend(0.0)
         except Exception:  # noqa: BLE001 -- best-effort, never blocks the caller
             logger.debug("capture-ASR pre-%s release failed", stage, exc_info=True)
-        release_tts_side_caches()
+        release_tts_side_caches(keep_passage_choices=stage == "generate")
         if stage == "generate":
             # Warm generates can overlap inference on other GPU-pool workers,
             # so skip free_vram()'s cuBLAS workspace clear: it belongs on
@@ -3817,7 +3817,7 @@ async def idle_worker():
                 await run_release(_release_idle_model)
         await run_release(_release_idle_side_models, idle_timeout)
 
-def release_tts_side_caches():
+def release_tts_side_caches(*, keep_passage_choices=False):
     """Drop caches keyed to the TTS model, for when the model itself is released.
 
     The voice-clone prompt cache (services.tts_backend) holds encoded reference
@@ -3844,7 +3844,7 @@ def release_tts_side_caches():
     if mod is None:
         return
     try:
-        mod.clear_clone_prompt_cache()
+        mod.clear_clone_prompt_cache(keep_passage_choices=keep_passage_choices)
     except Exception:  # noqa: BLE001
         logger.debug("clone-prompt cache clear failed during unload", exc_info=True)
 

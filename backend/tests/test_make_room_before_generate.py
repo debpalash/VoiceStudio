@@ -25,7 +25,10 @@ def _count(monkeypatch):
     )
     monkeypatch.setattr(
         mm, "release_tts_side_caches",
-        lambda: calls.__setitem__("side_caches", calls["side_caches"] + 1),
+        lambda **kw: (
+            calls.__setitem__("side_caches", calls["side_caches"] + 1),
+            calls.__setitem__("kept_passages", kw.get("keep_passage_choices", False)),
+        ),
     )
     import services.asr_backend as ab
     monkeypatch.setattr(
@@ -125,6 +128,7 @@ def test_generate_never_clears_cublas_workspaces(monkeypatch):
     calls = _count(monkeypatch)
     make_room_before_generate()
     assert calls["free_vram"] == 0 and calls["device_cache"] == 1
+    assert calls["kept_passages"] is True
 
 
 def test_load_path_still_uses_the_full_flush(monkeypatch):
@@ -132,3 +136,21 @@ def test_load_path_still_uses_the_full_flush(monkeypatch):
     calls = _count(monkeypatch)
     mm._make_room_before_tts_load()
     assert calls["free_vram"] == 1 and calls["device_cache"] == 0
+    assert calls["kept_passages"] is False
+
+
+def test_warm_cleanup_keeps_passage_choices_but_drops_prompts():
+    # Remembered reference windows are an index and a transcript, not tensors;
+    # dropping them before every generate would rerun reference ASR.
+    import services.tts_backend as tb
+    with tb._prompt_cache_lock:
+        tb._prompt_cache["k"] = object()
+        tb._passage_choices[("ref",)] = (0, "text")
+    try:
+        tb.clear_clone_prompt_cache(keep_passage_choices=True)
+        assert "k" not in tb._prompt_cache
+        assert tb._passage_choices[("ref",)] == (0, "text")
+        tb.clear_clone_prompt_cache()
+        assert ("ref",) not in tb._passage_choices
+    finally:
+        tb.clear_clone_prompt_cache()
