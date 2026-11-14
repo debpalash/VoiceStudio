@@ -12,6 +12,13 @@ Watermark controls appear when the backend reports AudioSeal available and affec
 
 The analytics destination is the public Supermetry site id in `config/analytics.json` (host `https://app.supermetry.com`); every build uses it, and `SUPERMETRY_SITE_ID` / `SUPERMETRY_HOST` override it for developers. Nothing is baked in at build time.
 
+Optional VoiceStudio Cloud sign-in validates the discovery issuer and binds its
+token and revocation endpoints to that issuer's origin and HTTP(S) protocol.
+Missing endpoints, different hosts or ports, and embedded-origin schemes such as
+`blob:` are refused before credentials are sent. HTTPS is required outside the
+explicit local development configuration; redirects remain disabled. Account
+features stay off until enabled, independently of analytics consent.
+
 ## Automatic error reports
 
 Automatic reports have their own explicit consent, separate from usage analytics
