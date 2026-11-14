@@ -321,6 +321,37 @@ def require_admin_media_action(request: Request) -> None:
     _admin_gate_403()
 
 
+async def require_admin_diagnostics(request: Request) -> None:
+    """Admin gate for the runtime-log and crash-diagnostic family.
+
+    :func:`check_admin` deliberately keeps *read-only* requests open in server
+    mode while no credential is configured, so an operator can finish the bare
+    Docker bootstrap. That exemption is about discovery, not about the runtime
+    log: these routes return host paths, log contents, recent errors and crash
+    records, and ``docs/install/docker.md`` already tells users that
+    diagnostics require the administrator API key. This gate therefore keeps no
+    bare-server read exemption.
+
+    Shaped like :func:`require_admin_media_action` on purpose:
+    ``/system/logs/stream`` is consumed by an ``EventSource``, which cannot
+    attach the CSRF marker header, so genuine loopback passes and every other
+    peer must present a valid credential (API key or admin session). A share PIN
+    is a consumption credential and does not satisfy this.
+
+    ``async`` for the same reason as :func:`require_admin`: the work is pure
+    in-memory checks, and a sync dependency would be dispatched through the
+    shared worker pool, where a saturated pool delays the log stream behind
+    whatever blocked sync route filled it (#2594 class).
+    """
+    reject_cross_site_get(request)
+    host = request.client.host if request.client else None
+    if is_loopback(host):
+        return
+    if _server_mode() and presents_valid_credential(request):
+        return
+    _admin_gate_403()
+
+
 def require_desktop(request: Request) -> None:
     """Gate capabilities that may select or execute host filesystem paths.
 

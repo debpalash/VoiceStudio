@@ -292,3 +292,17 @@ def test_calls_pairing_exception_does_not_expose_settings():
     assert "require_call_control" in _dependency_names(_router_assignment(tree))
     for function in ("get_settings", "put_settings"):
         assert "require_admin" in _dependency_names(_route_decorators(tree, function))
+
+
+def test_model_lifecycle_routes_are_gated():
+    """Model deletion irreversibly drops cached revisions, so it needs the admin
+    gate; installing and cancelling an install stay consumption so a bare Docker
+    first-run and PIN-paired clients keep working."""
+    tree = _tree(Path("setup") / "download.py")
+    delete = _dependency_names(_route_decorators(tree, "delete_model"))
+    assert "require_admin" in delete, delete
+    assert "require_loopback" not in delete, delete
+    for function in ("install_model", "cancel_install"):
+        dependencies = _dependency_names(_route_decorators(tree, function))
+        assert "require_consumer" in dependencies, (function, dependencies)
+        assert "require_admin" not in dependencies, (function, dependencies)

@@ -526,7 +526,10 @@
     "speakers_unavailable": "話者の識別は利用できません。文字起こしは話者ラベルなしで保存されました。",
     "missing_model": "音声認識モデルがインストールされていません — この機能で文字起こしを行うにはモデルが必要です。",
     "original_transcript": "元の文字起こし",
-    "active_model": "モデル: {{model}}"
+    "active_model": "モデル: {{model}}",
+    "export_plain": "プレーンテキストを保存",
+    "export_srt": "SRTを保存",
+    "timestamps_unavailable": "この文字起こしには字幕のタイミングがありません。タイムスタンプを出力する音声認識モデルを使用してください。"
   },
   "engineRuntime": {
     "ready": "準備完了",

@@ -27,6 +27,7 @@ import asyncio
 import inspect
 import ipaddress
 import logging
+import math
 import os
 import re
 import contextlib
@@ -506,6 +507,36 @@ def whisper_checkpoint_translates(model_name: str | None) -> bool:
     """
     name = (model_name or "").lower()
     return not ("turbo" in name or name.endswith(".en") or "distil" in name)
+
+
+def has_recognition_timestamps(result: dict, *, segments=None) -> bool:
+    """Whether every spoken cue has ASR timing, rather than a guessed clip span.
+
+    Text-only adapters must opt out even when they retain rough numeric bounds
+    for dubbing compatibility. Validate both raw and rendered segments so a
+    missing bound or rounding cannot manufacture a usable subtitle interval.
+    """
+    if "timestamps_available" in result and result["timestamps_available"] is not True:
+        return False
+
+    def valid(items):
+        if not isinstance(items, (list, tuple)):
+            return False
+        spoken = False
+        for segment in items:
+            if not isinstance(segment, dict) or not isinstance(segment.get("text"), str):
+                return False
+            if not segment["text"].strip():
+                continue
+            start, end = segment.get("start"), segment.get("end")
+            if not all(type(value) in (int, float) and math.isfinite(value) for value in (start, end)):
+                return False
+            if start < 0 or end <= start:
+                return False
+            spoken = True
+        return spoken
+
+    return valid(result.get("segments")) and (segments is None or valid(segments))
 
 
 class ASRBackend(ABC):
@@ -2228,6 +2259,7 @@ class MoonshineASRBackend(ASRBackend):
             "chunks": chunks,
             "segments": segments_out,
             "language": "en",
+            "timestamps_available": False,
         }
 
     def unload(self) -> None:
@@ -2389,7 +2421,8 @@ def _sherpa_result(text: str, samples, sr) -> dict:
     if text:
         segments.append({"text": text, "start": 0.0, "end": duration, "words": []})
     chunks = [{"text": s["text"], "timestamp": (s["start"], s["end"])} for s in segments]
-    return {"chunks": chunks, "segments": segments, "language": "auto", "text": text}
+    return {"chunks": chunks, "segments": segments, "language": "auto", "text": text,
+            "timestamps_available": False}
 
 
 # ── Registry ────────────────────────────────────────────────────────────────
