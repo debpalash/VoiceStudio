@@ -27,6 +27,10 @@ class DiagnosticReportsTest {
         override fun nowMs()=now
         override suspend fun sleep(ms:Long) { yield() }
     }
+    private class ScheduledClock(private val scheduler:TestCoroutineScheduler) : DiagnosticClock {
+        override fun nowMs()=1_794_640_000_000L+scheduler.currentTime
+        override suspend fun sleep(ms:Long) { delay(ms) }
+    }
     private class Transport : DiagnosticTransport {
         val bodies=mutableListOf<JsonObject>();var code=503;var cancelled=0
         var hold=false;var continuation:CancellableContinuation<Int>?=null
@@ -46,7 +50,7 @@ class DiagnosticReportsTest {
         }
         error("Canonical diagnostic policy missing")
     }
-    private fun makeReporter(store:DiagnosticStorage,transport:DiagnosticTransport,clock:Clock,dispatcher:CoroutineDispatcher,appVersion:String="0.5.9-beta.2",buildCommit:String="a".repeat(40),disabled:()->Boolean={false})=DiagnosticReports(
+    private fun makeReporter(store:DiagnosticStorage,transport:DiagnosticTransport,clock:DiagnosticClock,dispatcher:CoroutineDispatcher,appVersion:String="0.5.9-beta.2",buildCommit:String="a".repeat(40),disabled:()->Boolean={false})=DiagnosticReports(
         File("unused-test-store"),policy(),DiagnosticDestination("localtest123","http://127.0.0.1:1","https://app.test.invalid"),appVersion,
         buildCommit=buildCommit,transport=transport,clock=clock,storage=store,dispatcher=dispatcher,disabled=disabled)
     private fun event(errorType:String="TypeError")=DiagnosticInput("generation_failed","generation",errorType=errorType)
@@ -58,7 +62,7 @@ class DiagnosticReportsTest {
         reporter.load();assertFalse(reporter.status.enabled);assertTrue(store.files.isEmpty());assertTrue(transport.bodies.isEmpty())
         reporter.setConsent(true);val reads=store.reads;val writes=store.writes
         assertTrue(reporter.capture(event()));assertEquals(reads,store.reads);assertEquals(writes,store.writes)
-        advanceUntilIdle();assertTrue(transport.bodies.isNotEmpty());reporter.close()
+        runCurrent();assertTrue(transport.bodies.isNotEmpty());reporter.close()
     }
     @Test fun projectsOnlyClosedMetadataAndNeverReadsOrRetainsThrowable()=runTest {
         val store=Store();val transport=Transport();val reporter=makeReporter(store,transport,Clock(),StandardTestDispatcher(testScheduler));reporter.setConsent(true)
@@ -73,7 +77,7 @@ class DiagnosticReportsTest {
         }
         val ref=fail();repeat(10) { System.gc();if(ref.get()==null)return@repeat }
         assertNull(ref.get())
-        advanceUntilIdle()
+        runCurrent()
         val body=store.json("outbox.json").jsonArray.single().jsonObject
         val props=body["props"]!!.jsonObject
         assertEquals("operation_failed",props["category"]!!.jsonPrimitive.content)
@@ -83,10 +87,10 @@ class DiagnosticReportsTest {
     }
     @Test fun offlineReplayUsesStableIdentityTimestampAndSanitizesAgain()=runTest {
         val store=Store();val first=Transport();val clock=Clock();val dispatcher=StandardTestDispatcher(testScheduler)
-        val reporter=makeReporter(store,first,clock,dispatcher);reporter.setConsent(true);reporter.capture(event());advanceUntilIdle()
+        val reporter=makeReporter(store,first,clock,dispatcher);reporter.setConsent(true);reporter.capture(event());runCurrent()
         val saved=store.json("outbox.json").jsonArray.single().jsonObject;reporter.close()
         val nextTransport=Transport().also { it.code=201 };val next=makeReporter(store,nextTransport,clock,dispatcher)
-        next.load();advanceUntilIdle()
+        next.load();runCurrent()
         assertEquals(saved["id"],nextTransport.bodies.single()["id"]);assertEquals(saved["timestamp_ms"],nextTransport.bodies.single()["ts"])
         assertFalse(store.files.containsKey("outbox.json"));next.close()
     }
@@ -94,7 +98,7 @@ class DiagnosticReportsTest {
         val store=Store();val transport=Transport().also { it.hold=true };val reporter=makeReporter(store,transport,Clock(),StandardTestDispatcher(testScheduler))
         reporter.setConsent(true);val old=reporter.recoveryContext!!.epoch
         reporter.capture(event());runCurrent();assertEquals(1,transport.bodies.size)
-        reporter.setConsent(false);advanceUntilIdle()
+        reporter.setConsent(false);runCurrent()
         assertFalse(reporter.status.enabled);assertFalse(store.files.containsKey("outbox.json"));assertNull(reporter.recoveryContext)
         assertFalse(reporter.capture(event()));assertEquals(1,transport.bodies.size)
         reporter.setConsent(true);assertNotEquals(old,reporter.recoveryContext!!.epoch);reporter.close()
@@ -106,22 +110,22 @@ class DiagnosticReportsTest {
         assertFalse(reporter.captureRecovered(input,context.enabledAtMs-1,context.epoch,"android:${context.enabledAtMs-1}:crashed","0.5.8-beta.1"))
         assertFalse(reporter.captureRecovered(input,clock.now,"f".repeat(32),key,"0.5.8-beta.1"))
         assertFalse(reporter.captureRecovered(input,clock.now,context.epoch,key,"0.5.8-secret-token"))
-        repeat(2) { assertTrue(reporter.captureRecovered(input,clock.now,context.epoch,key,"0.5.8-beta.1"));advanceUntilIdle() }
+        repeat(2) { assertTrue(reporter.captureRecovered(input,clock.now,context.epoch,key,"0.5.8-beta.1"));runCurrent() }
         assertEquals(1,transport.bodies.map { it["id"] }.toSet().size)
         assertEquals("0.5.8-beta.1",transport.bodies.first()["props"]!!.jsonObject["app_version"]!!.jsonPrimitive.content)
         assertFalse(transport.bodies.first()["props"]!!.jsonObject.containsKey("build_commit"))
-        assertTrue(reporter.captureRecovered(input.copy(reason="killed"),clock.now,context.epoch,"android:${clock.now}:killed","0.5.8b1"));advanceUntilIdle()
+        assertTrue(reporter.captureRecovered(input.copy(reason="killed"),clock.now,context.epoch,"android:${clock.now}:killed","0.5.8b1"));runCurrent()
         assertEquals("0.5.8b1",transport.bodies.last()["props"]!!.jsonObject["app_version"]!!.jsonPrimitive.content)
-        assertTrue(reporter.captureRecovered(input,clock.now,context.epoch,"android:${clock.now}:oom"));advanceUntilIdle()
+        assertTrue(reporter.captureRecovered(input,clock.now,context.epoch,"android:${clock.now}:oom"));runCurrent()
         assertFalse(transport.bodies.last()["props"]!!.jsonObject.containsKey("app_version"));reporter.close()
     }
     @Test fun corruptExpiredAndLegacyConsentFailClosedForHistory()=runTest {
         val store=Store();val transport=Transport();val clock=Clock();val dispatcher=StandardTestDispatcher(testScheduler)
-        val reporter=makeReporter(store,transport,clock,dispatcher);reporter.setConsent(true);reporter.capture(event());advanceUntilIdle();reporter.close()
+        val reporter=makeReporter(store,transport,clock,dispatcher);reporter.setConsent(true);reporter.capture(event());runCurrent();reporter.close()
         val consent=store.json("consent.json").jsonObject;store.files["consent.json"]=JsonObject(consent-"enabled_at_ms").toString().toByteArray()
         val legacy=makeReporter(store,Transport(),clock,dispatcher);legacy.load();assertNull(legacy.recoveryContext);legacy.close()
         clock.now+=604800001L
-        val expired=makeReporter(store,Transport(),clock,dispatcher);expired.load();advanceUntilIdle();assertFalse(store.files.containsKey("outbox.json"));expired.close()
+        val expired=makeReporter(store,Transport(),clock,dispatcher);expired.load();runCurrent();assertFalse(store.files.containsKey("outbox.json"));expired.close()
         store.files["consent.json"]="{broken".toByteArray();store.files["outbox.json"]="[]".toByteArray()
         val broken=makeReporter(store,Transport(),clock,dispatcher);broken.load();assertFalse(broken.status.enabled);assertFalse(store.files.containsKey("outbox.json"));broken.close()
     }
@@ -129,13 +133,13 @@ class DiagnosticReportsTest {
         val store=Store();val transport=Transport();val reporter=makeReporter(store,transport,Clock(),StandardTestDispatcher(testScheduler));reporter.setConsent(true)
         assertFalse(reporter.capture(event(),CancellationException("private")))
         repeat(100) { reporter.capture(DiagnosticInput("generation_failed",frames=listOf(DiagnosticFrame("backend/core/tasks.py",it+1)))) }
-        assertEquals(36,reporter.status.droppedCount);advanceUntilIdle()
+        assertEquals(36,reporter.status.droppedCount);runCurrent()
         val records=store.json("outbox.json").jsonArray;assertEquals(64,records.size);assertTrue(store.files.getValue("outbox.json").size<=524288)
         reporter.close()
     }
     @Test fun writeFailureAndLockedOutboxCannotRestoreOldConsent()=runTest {
         val store=Store();val transport=Transport();val reporter=makeReporter(store,transport,Clock(),StandardTestDispatcher(testScheduler))
-        reporter.setConsent(true);reporter.capture(event());advanceUntilIdle()
+        reporter.setConsent(true);reporter.capture(event());runCurrent()
         store.failRemove=true;reporter.setConsent(false);assertFalse(reporter.status.enabled)
         assertFalse(store.json("consent.json").jsonObject["enabled"]!!.jsonPrimitive.boolean)
         store.failRemove=false;reporter.setConsent(true);store.failWrite=true
@@ -175,7 +179,7 @@ class DiagnosticReportsTest {
         for(value in variants) {
             store.files["consent.json"]=JsonObject(value).toString().toByteArray()
             val transport=Transport();val next=makeReporter(store,transport,clock,dispatcher)
-            next.load();advanceUntilIdle();assertFalse(next.status.enabled);assertFalse(next.capture(event()));assertTrue(transport.bodies.isEmpty());next.close()
+            next.load();runCurrent();assertFalse(next.status.enabled);assertFalse(next.capture(event()));assertTrue(transport.bodies.isEmpty());next.close()
         }
     }
     @Test fun invalidRecoveryEnableTimeDoesNotInventHistory()=runTest {
@@ -190,12 +194,12 @@ class DiagnosticReportsTest {
     }
     @Test fun malformedRecordScalarTypesAreDiscardedBeforeNetwork()=runTest {
         val store=Store();val clock=Clock();val dispatcher=StandardTestDispatcher(testScheduler)
-        val first=makeReporter(store,Transport(),clock,dispatcher);first.setConsent(true);first.capture(event());advanceUntilIdle();first.close()
+        val first=makeReporter(store,Transport(),clock,dispatcher);first.setConsent(true);first.capture(event());runCurrent();first.close()
         val saved=store.json("outbox.json").jsonArray.single().jsonObject
         val variants=listOf(saved+("version" to JsonPrimitive("1")),saved+("timestamp_ms" to JsonPrimitive(clock.now.toString())),saved+("id" to JsonPrimitive(java.math.BigInteger("1".repeat(32)))))
         for(record in variants) {
             store.files["outbox.json"]=JsonArray(listOf(JsonObject(record))).toString().toByteArray()
-            val transport=Transport();val next=makeReporter(store,transport,clock,dispatcher);next.load();advanceUntilIdle()
+            val transport=Transport();val next=makeReporter(store,transport,clock,dispatcher);next.load();runCurrent()
             assertTrue(transport.bodies.isEmpty());assertFalse(store.files.containsKey("outbox.json"));next.close()
         }
     }
@@ -231,9 +235,9 @@ class DiagnosticReportsTest {
     }
     @Test fun failedRecordHasBoundedRetryEligibilityAcrossNewFailures()=runTest {
         val store=Store();val transport=Transport();val clock=Clock();val reporter=makeReporter(store,transport,clock,StandardTestDispatcher(testScheduler))
-        reporter.setConsent(true);reporter.capture(event());advanceUntilIdle()
+        reporter.setConsent(true);reporter.capture(event());runCurrent()
         val firstID=transport.bodies.first()["id"];assertEquals(3,transport.bodies.count{it["id"]==firstID})
-        reporter.capture(DiagnosticInput("model_load_failed","model_load"));advanceUntilIdle()
+        reporter.capture(DiagnosticInput("model_load_failed","model_load"));runCurrent()
         assertEquals(3,transport.bodies.count{it["id"]==firstID});reporter.close()
     }
 
@@ -252,10 +256,10 @@ class DiagnosticReportsTest {
         val first=makeReporter(store,Transport(),clock,dispatcher);first.setConsent(true)
         val context=first.recoveryContext!!;clock.now+=1000;val key="android:${clock.now}:crashed"
         val input=DiagnosticInput("app_crash",reason="crashed",signal="SIGSEGV")
-        assertTrue(first.captureRecovered(input,clock.now,context.epoch,key,"0.5.9-beta.2",3));advanceUntilIdle();first.close()
+        assertTrue(first.captureRecovered(input,clock.now,context.epoch,key,"0.5.9-beta.2",3));runCurrent();first.close()
         val saved=store.json("outbox.json").jsonArray.single().jsonObject
-        val next=makeReporter(store,Transport(),clock,dispatcher,"0.5.10-beta.1","b".repeat(40));next.load();advanceUntilIdle()
-        assertTrue(next.captureRecovered(input,clock.now,context.epoch,key,"0.5.9-beta.2",3));advanceUntilIdle();next.close()
+        val next=makeReporter(store,Transport(),clock,dispatcher,"0.5.10-beta.1","b".repeat(40));next.load();runCurrent()
+        assertTrue(next.captureRecovered(input,clock.now,context.epoch,key,"0.5.9-beta.2",3));runCurrent();next.close()
         val replayed=store.json("outbox.json").jsonArray.single().jsonObject
         assertEquals(saved["id"],replayed["id"]);assertEquals(saved["timestamp_ms"],replayed["timestamp_ms"])
         assertEquals(3,replayed["props"]!!.jsonObject["occurrences"]!!.jsonPrimitive.int)
@@ -269,7 +273,7 @@ class DiagnosticReportsTest {
         assertTrue(reporter.captureRecovered(input,clock.now,epoch,key,"0.5.8-beta.1",2))
         assertTrue(reporter.captureRecovered(input.copy(signal="SIGILL"),clock.now,epoch,key,"0.5.8-beta.1"))
         assertTrue(reporter.captureRecovered(input,clock.now,epoch,key,"0.5.9-beta.2"))
-        advanceUntilIdle();val records=store.json("outbox.json").jsonArray
+        runCurrent();val records=store.json("outbox.json").jsonArray
         assertEquals(3,records.map { it.jsonObject["id"] }.toSet().size)
         assertEquals(listOf(1,1,2),records.map { it.jsonObject["props"]!!.jsonObject["occurrences"]!!.jsonPrimitive.int }.sorted());reporter.close()
     }
@@ -279,12 +283,12 @@ class DiagnosticReportsTest {
         val kill=java.util.concurrent.atomic.AtomicBoolean(false)
         val first=makeReporter(store,Transport(),clock,dispatcher,disabled={kill.get()})
         first.setConsent(true);val oldEpoch=first.recoveryContext!!.epoch
-        first.capture(event());advanceUntilIdle();first.close()
+        first.capture(event());runCurrent();first.close()
         kill.set(true)
         val killed=makeReporter(store,Transport(),clock,dispatcher,disabled={kill.get()});killed.load();assertFalse(killed.status.available)
         try { killed.setConsent(true) }catch(_:Exception){}
         killed.close();kill.set(false)
-        val transport=Transport();val next=makeReporter(store,transport,clock,dispatcher,disabled={kill.get()});next.load();advanceUntilIdle()
+        val transport=Transport();val next=makeReporter(store,transport,clock,dispatcher,disabled={kill.get()});next.load();runCurrent()
         assertFalse(next.status.enabled);assertFalse(next.capture(event()));assertNull(next.recoveryContext);assertTrue(transport.bodies.isEmpty())
         next.setConsent(true);assertNotEquals(oldEpoch,next.recoveryContext!!.epoch);next.close()
     }
@@ -311,11 +315,54 @@ class DiagnosticReportsTest {
 
     @Test fun bootstrapRevocationNeedsNoPolicyOrDestination()=runTest {
         val store=Store();val clock=Clock();val dispatcher=StandardTestDispatcher(testScheduler)
-        val first=makeReporter(store,Transport(),clock,dispatcher);first.setConsent(true);first.capture(event());advanceUntilIdle();first.close()
+        val first=makeReporter(store,Transport(),clock,dispatcher);first.setConsent(true);first.capture(event());runCurrent();first.close()
         assertTrue(DiagnosticReports.revokeStoredConsent(File("unused-test-store"),store))
         assertFalse(store.json("consent.json").jsonObject["enabled"]!!.jsonPrimitive.boolean);assertFalse(store.files.containsKey("outbox.json"))
         val next=makeReporter(store,Transport(),clock,dispatcher);next.load();assertFalse(next.status.enabled);assertNull(next.recoveryContext);next.close()
         val empty=Store();assertTrue(DiagnosticReports.revokeStoredConsent(File("unused-test-store"),empty));assertTrue(empty.files.isEmpty())
+    }
+
+    @Test fun scheduledRetryRecoversWithoutAnotherFailureAndCoalescesNewIntake()=runTest {
+        val store=Store();val transport=Transport();val clock=ScheduledClock(testScheduler)
+        val reporter=makeReporter(store,transport,clock,StandardTestDispatcher(testScheduler))
+        try {
+            reporter.setConsent(true);reporter.capture(event());runCurrent()
+            assertEquals(1,transport.bodies.size)
+            advanceTimeBy(500);runCurrent();assertEquals(2,transport.bodies.size)
+            advanceTimeBy(1000);runCurrent();assertEquals(3,transport.bodies.size)
+            val first=transport.bodies.first()["id"]
+            reporter.capture(DiagnosticInput("model_load_failed","model_load"));runCurrent()
+            advanceTimeBy(1500);runCurrent()
+            assertEquals(3,transport.bodies.count{it["id"]==first})
+            assertEquals(6,transport.bodies.size)
+            transport.code=201
+            advanceTimeBy(58499);runCurrent();assertEquals(6,transport.bodies.size)
+            advanceTimeBy(1);runCurrent()
+            assertEquals(7,transport.bodies.size);assertEquals(first,transport.bodies.last()["id"])
+            advanceTimeBy(1500);runCurrent();assertEquals(8,transport.bodies.size)
+            assertEquals(0,reporter.status.pendingCount);assertFalse(store.files.containsKey("outbox.json"))
+            advanceTimeBy(180000);runCurrent();assertEquals(8,transport.bodies.size)
+        }finally{reporter.close()}
+    }
+
+    @Test fun scheduledRetryCannotSurviveOffCloseOrConsentEpochReplacement()=runTest {
+        for(action in listOf("off","close","epoch")) {
+            val store=Store();val transport=Transport();val clock=ScheduledClock(testScheduler)
+            val reporter=makeReporter(store,transport,clock,StandardTestDispatcher(testScheduler))
+            try {
+                reporter.setConsent(true);val epoch=reporter.recoveryContext!!.epoch
+                reporter.capture(event());runCurrent();advanceTimeBy(1500);runCurrent()
+                assertEquals(3,transport.bodies.size)
+                when(action){
+                    "close"->reporter.close()
+                    "off"->reporter.setConsent(false)
+                    else->{reporter.setConsent(false);reporter.setConsent(true);assertNotEquals(epoch,reporter.recoveryContext!!.epoch)}
+                }
+                transport.code=201;advanceTimeBy(180000);runCurrent()
+                assertEquals(3,transport.bodies.size)
+                if(action!="close")assertFalse(store.files.containsKey("outbox.json"))
+            }finally{reporter.close()}
+        }
     }
 
 }

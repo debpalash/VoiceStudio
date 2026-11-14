@@ -302,6 +302,73 @@ def test_diagnostics_routes_strict_and_admin_guarded(reporter):
     assert records(reporter)[0]['props']['source']=='renderer'
 
 
+def test_standalone_consent_routes_are_available_before_opt_in_and_after_withdrawal(reporter,monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from api.routers.settings import router
+    from api.dependencies import require_admin,require_admin_action
+    from core import analytics,analytics_transport,prefs
+
+    monkeypatch.setattr(analytics,'_destination',lambda:{
+        'site':'localtest123','host':'https://collector.invalid','appUrl':'https://app.invalid',
+    })
+    def no_transport(*args,**kwargs):
+        pytest.fail('Availability/consent queries must not start delivery')
+    monkeypatch.setattr(analytics_transport,'SupermetryTransport',no_transport)
+    app=FastAPI();app.include_router(router)
+    app.dependency_overrides[require_admin]=lambda:None
+    app.dependency_overrides[require_admin_action]=lambda:None
+    with TestClient(app) as client:
+        # Check the first response without waiting for a background worker tick.
+        response=client.get('/api/settings/diagnostics')
+        assert response.status_code==200
+        first=response.json()
+        assert first['available'] is True
+        assert first['enabled'] is False and first['opted_in'] is False
+        assert first['prompted'] is False and first['externally_managed'] is False
+        assert 'diagnostics_epoch' not in prefs._load()
+        reporter._tick()
+        assert reporter.transport is None and not reporter.root.exists()
+
+        allowed=client.put('/api/settings/diagnostics',json={'enabled':True})
+        assert allowed.status_code==200
+        assert allowed.json()['available'] is True and allowed.json()['opted_in'] is True
+        assert client.put('/api/settings/diagnostics',json={'enabled':False}).status_code==200
+        reporter._tick()
+        withdrawn=client.get('/api/settings/diagnostics').json()
+        assert withdrawn['available'] is True and withdrawn['prompted'] is True
+        assert withdrawn['enabled'] is False and withdrawn['opted_in'] is False
+        assert reporter.transport is None
+
+
+@pytest.mark.parametrize('kill',[None,'OMNIVOICE_DIAGNOSTICS_DISABLED','OMNIVOICE_ANALYTICS_DISABLED'])
+def test_standalone_availability_still_requires_destination_and_no_hard_kill(reporter,monkeypatch,kill):
+    from core import analytics
+    assert reporter.status()['available'] is False  # No destination in this fixture.
+    monkeypatch.setattr(analytics,'_destination',lambda:{'site':'localtest123'})
+    if kill:
+        monkeypatch.setenv(kill,'1')
+        assert reporter.status()['available'] is False
+        assert reporter.consent(True)['enabled'] is False
+        assert not reporter.root.exists()
+    else:
+        assert reporter.status()['available'] is True
+    assert reporter.transport is None
+
+
+def test_managed_availability_uses_desktop_authority_without_local_destination(reporter,monkeypatch,tmp_path):
+    from core import analytics
+    monkeypatch.setenv('OMNIVOICE_DIAGNOSTICS_DIR',str(tmp_path/'managed'))
+    def no_destination():
+        pytest.fail('Managed Python must not resolve a direct transport destination')
+    monkeypatch.setattr(analytics,'_destination',no_destination)
+    managed=reports.Reporter();managed.schema=reports._schema()
+    assert managed.status()['available'] is True
+    assert managed.status()['enabled'] is False
+    assert managed.transport is None
+    with pytest.raises(PermissionError):managed.consent(True)
+
+
 def test_capture_releases_exception_frames_and_large_inputs(reporter):
     import gc
     import weakref

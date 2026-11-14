@@ -214,6 +214,8 @@ class DiagnosticReports(
     private val intake = ArrayDeque<Pending>()
     private val records = mutableListOf<JsonObject>()
     private var autoJob: CoroutineJob? = null
+    private var retryJob: CoroutineJob? = null
+    private var retryWakeAt: Long? = null
     private val retryAt = mutableMapOf<String,Long>()
     val status: DiagnosticStatus get() = synchronized(stateLock) {
         val killed=disabled()
@@ -300,6 +302,31 @@ class DiagnosticReports(
             }
         }
     }
+    private fun cancelRetryLocked() {
+        retryJob?.cancel();retryJob=null;retryWakeAt=null
+    }
+    /** One owned wake for durable work, not a polling service or a new report. */
+    private fun scheduleRetry(epoch:String,generation:Long) {
+        // Called under worker: retryAt and records belong to that worker.
+        val next=retryAt.values.minOrNull()
+        synchronized(stateLock) {
+            if(next==null || !allowed(epoch,generation)) { cancelRetryLocked();return }
+            if(retryJob?.isActive==true && retryWakeAt==next)return
+            cancelRetryLocked()
+            val job=scope.launch(start=CoroutineStart.LAZY) {
+                delay((next-clock.nowMs()).coerceAtLeast(1))
+                val running=currentCoroutineContext()[CoroutineJob]
+                val owned=synchronized(stateLock) {
+                    if(retryJob!==running)false
+                    else { retryJob=null;retryWakeAt=null;true }
+                }
+                if(owned && allowed(epoch,generation)) {
+                    try { flush() }catch(_:Exception){ /* Durable work remains for the next explicit intake/load. */ }
+                }
+            }
+            retryJob=job;retryWakeAt=next;job.start()
+        }
+    }
     private fun consentJson(c: Consent) = buildJsonObject {
         put("version", 1); put("enabled", c.enabled); put("epoch", c.epoch); put("profile_id", c.profile)
         c.enabledAt?.let { put("enabled_at_ms", it) }
@@ -319,7 +346,7 @@ class DiagnosticReports(
     } catch (_: Exception) { null }
     suspend fun load(): DiagnosticStatus {
         if (disabled()) {
-            synchronized(stateLock) { sequence++; state=state.copy(enabled=false,optedIn=false);intake.clear() }
+            synchronized(stateLock) { sequence++; state=state.copy(enabled=false,optedIn=false);intake.clear();cancelRetryLocked() }
             transport.cancelAll()
         }
         return withContext(scope.coroutineContext) {
@@ -367,7 +394,7 @@ class DiagnosticReports(
     suspend fun setConsent(enabled: Boolean): DiagnosticStatus {
         if (enabled && disabled()) { setConsent(false);throw IllegalStateException("Diagnostic reports are disabled") }
         if (enabled && status.enabled) return status
-        val generation = synchronized(stateLock) { sequence++; state = state.copy(enabled = false, optedIn = false); intake.clear(); sequence }
+        val generation = synchronized(stateLock) { sequence++; state = state.copy(enabled = false, optedIn = false); intake.clear();cancelRetryLocked(); sequence }
         transport.cancelAll()
         return withContext(scope.coroutineContext) {
             worker.withLock {
@@ -472,10 +499,11 @@ class DiagnosticReports(
                     else retryAt[identity]=clock.nowMs()+60000
                 }
             }
+            scheduleRetry(current.epoch,generation)
         }
     }
     suspend fun close() {
-        synchronized(stateLock) { closed = true; sequence++; state = state.copy(enabled = false, optedIn = false) }
+        synchronized(stateLock) { closed = true; sequence++; state = state.copy(enabled = false, optedIn = false);cancelRetryLocked() }
         transport.cancelAll()
         withContext(Dispatchers.IO) { worker.withLock { consent?.let { drain(it.epoch) } } }
         scope.cancel()

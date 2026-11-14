@@ -179,7 +179,6 @@ class Reporter:
         self.prompted = False
         self.epoch = None
         self.profile = None
-        self.available = False
         self.dropped = 0
         self.pending = 0
         self.transport = None
@@ -417,7 +416,6 @@ class Reporter:
         if not self.transport:
             from core.analytics import _destination
             destination = _destination()
-            self.available = bool(destination)
             if destination:
                 from core.analytics_transport import SupermetryTransport
                 epoch = self.epoch
@@ -463,7 +461,14 @@ class Reporter:
     def status(self):
         with self.lock:
             hard_killed = self._hard_killed()
-            return {'enabled':self.enabled and not hard_killed,'opted_in':self.enabled and not hard_killed,'available':(bool(self.managed) or self.available) and not _killed(),'prompted':self.prompted,'externally_managed':bool(self.managed),'pending_count':self.pending,'dropped_count':self.dropped}
+            # Availability describes configuration, independently of consent or
+            # transport creation. Resolve only local configuration here so the
+            # first source/Docker settings response can offer an explicit choice.
+            available = bool(self.managed)
+            if not self.managed:
+                from core.analytics import _destination
+                available = bool(_destination())
+            return {'enabled':self.enabled and not hard_killed,'opted_in':self.enabled and not hard_killed,'available':available and not _killed(),'prompted':self.prompted,'externally_managed':bool(self.managed),'pending_count':self.pending,'dropped_count':self.dropped}
 
     def consent(self, enabled):
         if self.managed:
