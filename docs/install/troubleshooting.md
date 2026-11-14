@@ -83,6 +83,11 @@ The runtime folder is on a drive mounted with `noexec`. Choose a folder on anoth
 
 A runtime download received no data for a long time. Setup stops a download that gets no data for 2 minutes, and repeats the install up to twice by itself after a stall or a temporary server error (such as 504 Gateway Timeout) before it shows this. Retry keeps finished packages and resumes large multi-connection downloads, but other partial downloads start again. Try another network, turn off your VPN or choose another download region.
 
+Cancel and Restart on CPU interrupt the automatic retry countdown immediately;
+finished downloads remain cached. Runtime probes also drain verbose diagnostic
+output even when it is not being captured, so a full output pipe cannot block
+an otherwise successful check.
+
 ### `RUNTIME_DOWNLOAD_INTERRUPTED`
 
 The connection dropped during a runtime download, as in `peer closed connection without sending TLS close_notify`. Retry keeps finished packages and resumes large multi-connection downloads, but other partial downloads start again. The same advice as `RUNTIME_DOWNLOAD_STALLED` applies if it repeats.

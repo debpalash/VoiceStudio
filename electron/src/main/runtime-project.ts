@@ -3,6 +3,7 @@ import {
   cudaOnlyPackages,
   windowsRocmSyncArgs,
 } from '../../scripts/torch-variant.mjs';
+import { setTimeout as delay } from 'node:timers/promises';
 export { nvidiaDriverPresent, cudaOnlyPackages } from '../../scripts/torch-variant.mjs';
 import { inspectRuntimeInterpreter } from './runtime-interpreter';
 import { RuntimeLaunchRefusedError, runtimeLaunchRefusal } from './runtime-launch-refusal';
@@ -1174,9 +1175,10 @@ export async function retryTransientDownload(
   signal: AbortSignal,
   log: (line: string) => void = () => {},
   delays: readonly number[] = TRANSIENT_SYNC_DELAYS_MS,
-  sleep: (ms: number) => Promise<void> = (ms) => new Promise((r) => setTimeout(r, ms)),
+  sleep: (ms: number) => Promise<void> = (ms) => delay(ms, undefined, { signal }),
 ): Promise<void> {
   for (let attempt = 0; ; attempt++) {
+    signal.throwIfAborted();
     try {
       await sync();
       return;
@@ -1200,8 +1202,13 @@ export async function retryTransientDownload(
         `Download failed on a temporary server error; retrying in ${Math.round(delays[attempt]! / 1000)}s ` +
           `(attempt ${attempt + 2} of ${delays.length + 1}). Finished downloads are kept.`,
       );
-      await sleep(delays[attempt]!);
-      signal.throwIfAborted();
+      try {
+        await sleep(delays[attempt]!);
+      } finally {
+        // timers/promises rejects with its own AbortError; preserve the
+        // caller's reason and never advance to another download after Cancel.
+        signal.throwIfAborted();
+      }
     }
   }
 }
