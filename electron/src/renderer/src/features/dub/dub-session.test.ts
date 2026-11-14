@@ -12,6 +12,7 @@ import {
   setDubFitOptions,
   dubSession,
   generateDub,
+  planDubIncremental,
   resumeDub,
   editDubSegment,
   clearDubEditHistory,
@@ -46,6 +47,46 @@ vi.mock('@/lib/api/event-stream', async (load) => ({
   ...(await load<typeof import('@/lib/api/event-stream')>()),
   consumeTaskStream: vi.fn(),
 }));
+
+it.each(['Auto', 'English'])(
+  'plans incremental speech with its %s generation language',
+  async (language) => {
+    const previous = dubSession.state;
+    try {
+      dubSession.setState((current) => ({
+        ...current,
+        fingerprintsByLang: { en: { a: 'stored' } },
+        segments: [
+          {
+            id: 'a',
+            start: 0,
+            end: 1,
+            text: 'cats',
+            text_original: 'cats',
+            profile_id: 'pron-voice',
+          },
+        ],
+      }));
+      vi.mocked(apiJson)
+        .mockReset()
+        .mockResolvedValueOnce({ stale: [], fresh: ['a'] });
+      await expect(planDubIncremental('en', undefined, language)).resolves.toEqual({
+        stale: [],
+        fresh: ['a'],
+      });
+      expect(apiJson).toHaveBeenCalledOnce();
+      const [path, request] = vi.mocked(apiJson).mock.calls[0];
+      expect(path).toBe('/tools/incremental');
+      expect(JSON.parse(request!.body as string)).toMatchObject({
+        lang: 'en',
+        language,
+        stored_hashes: { a: 'stored' },
+      });
+    } finally {
+      dubSession.setState(() => previous);
+    }
+  },
+);
 
 it('translates the current dubbing segments with an installed local CLI agent', async () => {
   let logListener: ((event: { requestId: string; text: string }) => void) | undefined;
