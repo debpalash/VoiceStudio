@@ -49,9 +49,11 @@ _TOKEN_PATTERNS = (
 # Secrets carried in a URL query string (`?token=…`, `&api_key=…`). Redact the
 # VALUE while keeping the param name + separator so the URL stays legible. Bare
 # `key=` is intentionally excluded — too common in non-secret text; shaped keys
-# are already caught above and named env vars by the sweep below.
+# are already caught above and named env vars by the sweep below. `pin` is the
+# share PIN: the backend accepts it as `?pin=` and it authenticates paired
+# clients, so a crash-logged request URL must not carry it into a bundle.
 _URL_SECRET_RE = re.compile(
-    r"((?:access[_-]?token|api[_-]?key|apikey|auth[_-]?token|token|secret|password|passwd|pwd)=)"
+    r"((?:access[_-]?token|api[_-]?key|apikey|auth[_-]?token|token|secret|password|passwd|pwd|pin)=)"
     r"([^&\s\"'#]{6,})",
     re.IGNORECASE,
 )

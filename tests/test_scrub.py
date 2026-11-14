@@ -141,6 +141,16 @@ def test_url_query_secret_value_redacted_name_kept():
     assert "x=1" in out             # non-secret params untouched
 
 
+def test_share_pin_in_a_request_url_is_redacted():
+    # The desktop share link is http://<lan-host>:<port>/?pin=<digits>, the
+    # backend accepts that parameter as a consumption credential, and crash
+    # requests are written to the crash log verbatim — so the PIN must not
+    # survive into a diagnostic bundle a user pastes into a public report.
+    out = scrub_text("Request: http://192.168.1.20:3901/?pin=481516")
+    assert "481516" not in out
+    assert "pin=" in out            # param name preserved, like token=
+
+
 def test_home_superstring_not_corrupted(monkeypatch):
     # A home of /Users/john must not rewrite /Users/johnny to '~ny'.
     monkeypatch.setenv("HOME", "/Users/john")
