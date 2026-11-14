@@ -88,6 +88,13 @@ finished downloads remain cached. Runtime probes also drain verbose diagnostic
 output even when it is not being captured, so a full output pipe cannot block
 an otherwise successful check.
 
+Retry reuses completed, hash-verified prefetched wheels before budgeting space
+for new downloads. Already downloaded wheels are not counted a second time;
+new transfers still leave the required installation-space reserve available.
+Wheel-size probes also handle a connection reset or timeout after response
+headers arrive. Download consumers still receive stream errors, and an
+interrupted wheel is kept incomplete rather than published as a finished file.
+
 ### `RUNTIME_DOWNLOAD_INTERRUPTED`
 
 The connection dropped during a runtime download, as in `peer closed connection without sending TLS close_notify`. Retry keeps finished packages and resumes large multi-connection downloads, but other partial downloads start again. The same advice as `RUNTIME_DOWNLOAD_STALLED` applies if it repeats.
