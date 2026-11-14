@@ -66,9 +66,9 @@ HTTP/1.1 401 Unauthorized
 
 Notes on the PIN gate (`NetworkAccessMiddleware`, `backend/main.py`):
 
-- It covers **HTTP only** — it does **not** gate WebSockets. The dictation
-  WebSocket has its own guard (see below), and the PIN does **not** authorize
-  it; use the API key or a trusted network for remote dictation.
+- It covers **HTTP only** — it does **not** gate WebSockets. All WebSocket
+  routes have their own shared guard (see below), and the PIN does **not**
+  authorize them; use an administrator credential or a trusted network.
 - The SPA shell (`/`, `/index.html`, `/favicon*`, `/assets/*`, `/health`) is
   always served un-PIN'd so the PIN-prompt UI can load.
 - It is a **consumption** credential: a valid PIN never unlocks the admin surface
@@ -207,15 +207,23 @@ to the ambient-cookie CSRF check.
 
 ---
 
-## Dictation WebSocket
+## WebSocket access
 
-The live-dictation stream at **`ws://<host>:3900/ws/transcribe`** carries its
-own inline guard (`backend/api/routers/capture_ws.py`) *in addition to* the
-API-key middleware. A non-loopback client reaches it only if it is **either**:
+The live-dictation stream at **`ws://<host>:3900/ws/transcribe`**, its
+`/v1/audio/transcriptions/stream` alias, streaming TTS at `/ws/tts`, and sidebar
+events at `/ws/events` all await `require_ws_access` before accepting a socket,
+in addition to the API-key middleware. This guard also applies when no API key
+is configured. A non-loopback client reaches these routes only if it is either:
 
 - on a [trusted network](#trusted-networks) (`is_local_host` passes), **or**
 - presenting a direct-client **API key** in `Authorization`, or through a
-  legacy `ov_key`/`?api_key=` transport.
+  legacy `ov_key`/`?api_key=` transport, or a valid administrator session or
+  path-bound one-shot ticket as described below.
+
+A browser's supplied `Origin` is validated before any local/trusted-network or
+credential admission. A foreign origin is refused even on loopback or with a
+valid key. Native clients without an `Origin` keep their credential and trusted
+network paths; browser session cookies still require an allowed origin.
 
 ```
 ws://gpu-box:3900/ws/transcribe?api_key=<key>
@@ -231,10 +239,11 @@ atomically at most once. Same-origin UI WebSockets use the
 HttpOnly session cookie and must pass exact `Origin` validation; `null`, missing,
 and lookalike origins are rejected.
 
-The **share PIN does not authorize dictation** — the PIN gate is HTTP-only, and
-the dictation guard checks only the API key (or trusted-network membership). A
-LAN guest who has only entered a PIN can use the HTTP API but **not** live
-dictation. When neither the API key nor a trusted network applies, the handshake
+The **share PIN does not authorize WebSockets** — the PIN gate is HTTP-only.
+A LAN guest who has only entered a PIN can use the HTTP consumption API but
+cannot use live dictation, streaming TTS or sidebar event updates. Configure an
+administrator API key/session or an explicitly trusted network for those
+streams. When neither a permitted credential nor a trusted network applies, the handshake
 is closed with code **1008** and reason `loopback origin required`.
 
 ---

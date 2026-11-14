@@ -150,3 +150,53 @@ def test_trusted_network_client_is_accepted(bare_app, monkeypatch, path):
 
     with _connect(bare_app, path, ("10.0.0.5", 40000)) as ws:
         ws.close()
+
+
+@pytest.fixture
+def middleware_app(bare_app):
+    """Real routers under the same key middleware that precedes their guard."""
+    from fastapi import FastAPI
+    from main import BearerKeyMiddleware
+
+    app = FastAPI()
+    app.router.routes.extend(bare_app.router.routes)
+    app.add_middleware(BearerKeyMiddleware)
+    return app
+
+
+@pytest.mark.parametrize("path", ["/ws/tts", "/ws/events", "/ws/transcribe"])
+def test_ticket_survives_middleware_and_inline_guard_but_cannot_replay(
+    middleware_app, monkeypatch, path,
+):
+    from services.admin_sessions import admin_session_store
+
+    monkeypatch.setenv("OMNIVOICE_API_KEY", API_KEY)
+    session = admin_session_store.issue(API_KEY)
+    ticket = admin_session_store.issue_ws_ticket(session.token, path, API_KEY)
+    address = f"{path}?ws_ticket={ticket.token}"
+    with _connect(
+        middleware_app, address, NON_LOOPBACK, headers={"Origin": "http://testserver"},
+    ) as ws:
+        ws.close()
+    _assert_rejected_with_policy_violation(
+        middleware_app, address, NON_LOOPBACK, headers={"Origin": "http://testserver"},
+    )
+
+
+@pytest.mark.parametrize("path", ["/ws/tts", "/ws/events", "/ws/transcribe"])
+@pytest.mark.parametrize("origin", [None, "http://evil.test", "http://testserver"])
+def test_session_cookie_keeps_its_origin_boundary_through_both_guards(
+    middleware_app, monkeypatch, path, origin,
+):
+    from services.admin_sessions import admin_session_store
+
+    monkeypatch.setenv("OMNIVOICE_API_KEY", API_KEY)
+    session = admin_session_store.issue(API_KEY)
+    headers = {"Cookie": f"ov_session={session.token}"}
+    if origin is not None:
+        headers["Origin"] = origin
+    if origin == "http://testserver":
+        with _connect(middleware_app, path, NON_LOOPBACK, headers=headers) as ws:
+            ws.close()
+    else:
+        _assert_rejected_with_policy_violation(middleware_app, path, NON_LOOPBACK, headers=headers)
