@@ -328,3 +328,17 @@ def test_remaining_mutating_routes_are_tiered(filename, function_name, dependenc
     dependencies = _dependency_names(_route_decorators(_tree(filename), function_name))
     assert dependency in dependencies, f"{filename}:{function_name}"
     assert "require_loopback" not in dependencies, f"{filename}:{function_name}"
+
+
+def test_model_lifecycle_routes_are_gated():
+    """Model deletion irreversibly drops cached revisions, so it needs the admin
+    gate; installing and cancelling an install stay consumption so a bare Docker
+    first-run and PIN-paired clients keep working."""
+    tree = _tree(Path("setup") / "download.py")
+    delete = _dependency_names(_route_decorators(tree, "delete_model"))
+    assert "require_admin" in delete, delete
+    assert "require_loopback" not in delete, delete
+    for function in ("install_model", "cancel_install"):
+        dependencies = _dependency_names(_route_decorators(tree, function))
+        assert "require_consumer" in dependencies, (function, dependencies)
+        assert "require_admin" not in dependencies, (function, dependencies)

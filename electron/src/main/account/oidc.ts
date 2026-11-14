@@ -50,6 +50,32 @@ export function createPkce(): {
 
 const DISCOVERY_TTL_MS = 24 * 3600_000;
 
+/**
+ * A discovery document is only trusted for endpoints that live on the issuer's
+ * own origin. `doc.issuer` matching is not enough on its own: the token and
+ * revocation endpoints are where the refresh token and the auth code are
+ * POSTed, so a document that names a different host for them would hand the
+ * session to that host. The issuer itself is validated as https (or loopback
+ * http) by `config/account-config.mjs`, so binding to its origin inherits that.
+ */
+function endpointOnIssuerOrigin(value: unknown, issuerOrigin: string, field: string): string {
+  const text = typeof value === 'string' ? value.trim() : '';
+  let parsed: URL | null = null;
+  try {
+    parsed = text ? new URL(text) : null;
+  } catch {
+    parsed = null;
+  }
+  // The scheme is checked as well as the origin: `new URL('blob:https://id.example/x').origin`
+  // is `https://id.example`, so an origin comparison alone would accept a
+  // `blob:`/`filesystem:` URL built around the issuer and hand it the token.
+  const issuer = new URL(issuerOrigin);
+  if (!parsed || parsed.origin !== issuer.origin || parsed.protocol !== issuer.protocol) {
+    throw new Error(`Discovery ${field} does not belong to the issuer origin`);
+  }
+  return parsed.toString();
+}
+
 export class OidcClient {
   private cached: { at: number; endpoints: OidcEndpoints } | null = null;
 
@@ -67,10 +93,15 @@ export class OidcClient {
       issuer?: string;
     };
     if (doc.issuer !== this.env.issuer) throw new Error('Discovery issuer does not match');
+    const issuerOrigin = new URL(this.env.issuer).origin;
     const endpoints = {
       authorization_endpoint: String(doc.authorization_endpoint),
-      token_endpoint: String(doc.token_endpoint),
-      revocation_endpoint: String(doc.revocation_endpoint),
+      token_endpoint: endpointOnIssuerOrigin(doc.token_endpoint, issuerOrigin, 'token_endpoint'),
+      revocation_endpoint: endpointOnIssuerOrigin(
+        doc.revocation_endpoint,
+        issuerOrigin,
+        'revocation_endpoint',
+      ),
     };
     this.cached = { at: this.now(), endpoints };
     return endpoints;
