@@ -139,6 +139,8 @@ async def _worker():
         except Exception as e:
             if job["status"] == "cancelled":
                 continue
+            from core import diagnostic_reports
+            diagnostic_reports.capture_failure("batch", error=e)
             job["status"] = "failed"
             # plan-04 (#131): guaranteed non-empty, structured reason.
             failed = failure.build_failure(e, stage="batch", include_diagnostic=False)
@@ -379,6 +381,8 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
 
     if job["status"] == "cancelled" or not segments:
         if not segments:
+            from core import diagnostic_reports
+            diagnostic_reports.capture_failure("transcription")
             job["error"] = "Transcription produced no segments"
             job["status"] = "failed"
         return

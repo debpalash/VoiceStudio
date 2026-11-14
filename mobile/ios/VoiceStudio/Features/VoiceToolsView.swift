@@ -115,7 +115,7 @@ struct VoiceToolsView: View {
         running = true; progress = 0; results = []; transcript = ""; player.clear()
         work = Task {
             defer { running = false; work = nil }
-            await model.performPhone {
+            await model.performPhone(diagnosticStage: "generation") {
                 try PrivateFiles.directory(directory)
                 if mode == "convert", let source, let asr, let clone, let target = model.phone.voices.first(where: { $0.id.uuidString == voice }) {
                     let result = try await VoiceConversion.run(source: source.url,workspace: directory,voice: target,voices: voices,asr: asr,clone: clone,engine: engine,decoder: AVPhoneAudioDecoder(),matchDuration: matchDuration,progress: { value in await MainActor.run { progress = value.fraction } })

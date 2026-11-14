@@ -3612,7 +3612,7 @@
       "notifications": "Meldingen",
       "notifications_help": "Geef een melding wanneer een nasynchronisatie klaar is. Meldingen worden op deze telefoon aangemaakt; er gaat niets via een clouddienst.",
       "privacy": "Privacy",
-      "privacy_help": "Deze app praat alleen met de VoiceStudio-server die je hebt gekoppeld. Geen accounts, geen verwerking in de cloud.",
+      "privacy_help": "Taken op het apparaat blijven op deze telefoon. Modeldownloads, rapporten die je zelf verstuurt en je gekoppelde computer gebruiken het netwerk. Automatische diagnostische metadata worden pas via het netwerk verstuurd na afzonderlijke toestemming.",
       "about": "Over",
       "version": "Versie {{version}}",
       "licenses": "Open-sourcelicenties"
@@ -3665,7 +3665,7 @@
       "dictation_setup": "Dicteren is niet beschikbaar. Installeer en accepteer op de host een ASR-model. Verbind voor toegang op afstand opnieuw met een API-sleutel of via een vertrouwd netwerk; een deel-PIN alleen kan dicteren niet autoriseren.",
       "host_label": "Serverlabel",
       "theme_preview": "Voorbeeld van uiterlijk",
-      "analytics_local": "Deze companion-app slaat je keuze op deze telefoon op. Er worden geen analysegegevens verzonden.",
+      "analytics_local": "Deze telefoon verstuurt geen gebruiksanalyses; je keuze wordt lokaal opgeslagen. Automatische diagnostische rapporten vereisen afzonderlijke toestemming.",
       "model_licenses": "Modellicenties op je host bekijken",
       "stage_upload": "Media uploaden",
       "stage_prepare": "Media voorbereiden op host",
@@ -3718,7 +3718,7 @@
       "upload_pending": "De upload gaat op de achtergrond door. Laat VoiceStudio op je computer draaien.",
       "upload_resume": "Bewaking hervatten",
       "upload_failed": "Upload mislukt. Verbind opnieuw met dezelfde host en selecteer de media opnieuw.",
-      "privacy_local": "De voorkeur voor analyse wordt op dit apparaat opgeslagen. Deze versie verzendt nooit analysegegevens.",
+      "privacy_local": "Deze telefoon verstuurt geen gebruiksanalyses; je keuze wordt lokaal opgeslagen. Automatische diagnostische rapporten vereisen afzonderlijke toestemming.",
       "transcript": "Transcript",
       "qr_unavailable": "Camera is niet beschikbaar. Voer het hostadres handmatig in.",
       "language_system": "Systeemtaal",
@@ -3771,7 +3771,7 @@
       "capture_slow": "Deze telefoon kon microfoonaudio niet snel genoeg verwerken. Sluit andere apps of gebruik je computer.",
       "preset_voice": "Stem {{number}}",
       "transfer": "{{received}} van {{total}}",
-      "privacy": "Taken op het apparaat blijven op deze telefoon. Alleen modeldownloads, meldingen die je zelf verstuurt en je gekoppelde computer gebruiken het netwerk.",
+      "privacy": "Taken op het apparaat blijven op deze telefoon. Modeldownloads, rapporten die je zelf verstuurt en je gekoppelde computer gebruiken het netwerk. Automatische diagnostische metadata worden pas via het netwerk verstuurd na afzonderlijke toestemming.",
       "computer_feature": "Deze functie draait momenteel op je computer. Je kunt Spraak en Dicteren op deze telefoon gebruiken zonder te koppelen.",
       "accepted": "Licentie geaccepteerd",
       "not_accepted": "Licentie niet geaccepteerd",
@@ -3835,7 +3835,7 @@
       "download_one": "{{name}} · download van {{size}}"
     },
     "consent": {
-      "phone_note": "Opgeslagen op deze telefoon. Er wordt niets verzonden."
+      "phone_note": "Je keuze voor gebruiksanalyses wordt op deze telefoon opgeslagen. Automatische diagnostische rapporten vereisen afzonderlijke toestemming."
     },
     "report": {
       "action": "Melden",
@@ -4318,5 +4318,14 @@
       "failed": "Mislukt",
       "cancelled": "Geannuleerd"
     }
+  },
+  "diagnostics": {
+    "title": "Automatische foutrapporten",
+    "body": "Stuur technische rapporten over crashes en mislukte installaties of generaties naar Supermetry, met app- en apparaatgegevens, foutcodes, locaties in de appcode en een willekeurige installatie-ID. Je audio, tekst, bestanden, namen, inloggegevens en logboeken worden nooit verstuurd. Dit staat los van gebruiksanalyses en is standaard uitgeschakeld. Je kunt het altijd uitschakelen bij Privacy.",
+    "allow": "Foutrapporten toestaan",
+    "keep_off": "Rapporten uitgeschakeld houden",
+    "unavailable": "Automatische rapporten zijn niet beschikbaar of uitgeschakeld voor deze app.",
+    "managed": "Beheer deze keuze in de desktopapp die met deze browser is verbonden.",
+    "save_failed": "Deze keuze kon niet worden opgeslagen. Probeer het opnieuw."
   }
 }

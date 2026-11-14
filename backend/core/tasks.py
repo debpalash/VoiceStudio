@@ -169,6 +169,8 @@ class TaskManager:
                             await self._push_event(task_id, update)
                             stream_error = _stream_failure(update)
                             if stream_error is not None:
+                                from core import diagnostic_reports
+                                diagnostic_reports.capture_failure(diagnostic_reports.route_stage(t.get("type", "")))
                                 t["status"] = "failed"
                                 t["error"] = stream_error
                                 try:
@@ -183,6 +185,8 @@ class TaskManager:
                     try: job_store.mark_done(task_id)
                     except Exception: logger.exception("job_store.mark_done failed")
             except Exception as e:
+                from core import diagnostic_reports
+                diagnostic_reports.capture_failure(diagnostic_reports.route_stage(t.get("type", "")), error=e)
                 logger.exception("Task %s failed", task_id)
                 t["status"] = "failed"
                 # plan-04 (#131): structured, non-empty failure event instead of

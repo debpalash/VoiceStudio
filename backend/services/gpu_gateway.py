@@ -56,11 +56,17 @@ async def prewarm(
     except TimeoutError as exc:
         if hasattr(exc, "retry_after"):
             raise
+        from core import diagnostic_reports
+        diagnostic_reports.capture_failure("model_load", error=exc, engine_id=engine)
         raise ModelLoadTimeout(
             f"{call.what} did not finish within its budget. The first load of an "
             "engine can include a multi-GB download; check the connection or set "
             "a Hugging Face mirror in Settings, then retry."
         ) from exc
+    except Exception as exc:
+        from core import diagnostic_reports
+        diagnostic_reports.capture_failure("model_load", error=exc, engine_id=engine)
+        raise
 
 
 async def run(
@@ -70,7 +76,13 @@ async def run(
     executor=None,
 ) -> Any:
     """Run one unit of accelerator work on this machine."""
-    return await _run_local(local, admit=admit, executor=executor)
+    try:
+        return await _run_local(local, admit=admit, executor=executor)
+    except Exception as exc:
+        if not hasattr(exc, "retry_after"):
+            from core import diagnostic_reports
+            diagnostic_reports.capture_failure("engine", error=exc)
+        raise
 
 
 async def _run_local(call: LocalCall, *, admit: bool = False, executor=None) -> Any:

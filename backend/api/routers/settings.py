@@ -1707,3 +1707,43 @@ def set_analytics(body: _AnalyticsBody):
 
     analytics.set_opted_in(body.enabled)
     return get_analytics()
+
+
+class _DiagnosticsBody(BaseModel):
+    model_config = {"extra": "forbid", "strict": True}
+    enabled: bool = Field(..., description="Separate explicit diagnostic consent; default OFF.")
+
+
+class _DiagnosticInput(BaseModel):
+    model_config = {"extra": "forbid", "strict": True}
+    category: str = Field(..., max_length=64)
+    source: Literal["renderer"]
+    stage: str = Field(default="other", max_length=64)
+    error_type: str = Field(default="OtherError", max_length=64)
+    error_code: str | None = Field(default=None, max_length=64)
+    engine_id: str | None = Field(default=None, max_length=64)
+    frames: str | None = Field(default=None, max_length=1800)
+
+
+@router.get("/diagnostics")
+def get_diagnostics():
+    from core import diagnostic_reports
+    return diagnostic_reports.status()
+
+
+@router.put("/diagnostics", dependencies=[Depends(require_admin_action)])
+def set_diagnostics(body: _DiagnosticsBody):
+    from core import diagnostic_reports
+    try:
+        return diagnostic_reports.set_opted_in(body.enabled)
+    except PermissionError:
+        raise HTTPException(status_code=409, detail="Desktop controls diagnostic consent") from None
+
+
+@router.post("/diagnostics/event", dependencies=[Depends(require_admin_action)])
+def post_diagnostic_event(body: _DiagnosticInput):
+    from core import diagnostic_reports
+    try:
+        return {"sent": diagnostic_reports.capture_from_ui(body.model_dump(exclude_none=True))}
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Unsupported diagnostic metadata") from None

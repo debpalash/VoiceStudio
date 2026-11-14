@@ -662,7 +662,9 @@ async def _stream_speech_pcm(first: bytes, sentences: list[str], render, *, sse:
     for sentence in sentences:
         try:
             audio = await render(sentence)
-        except Exception:
+        except Exception as exc:
+            from core import diagnostic_reports
+            diagnostic_reports.capture_failure("generation", error=exc)
             if not sse:
                 raise
             logger.warning("Progressive OpenAI TTS failed after the first segment")
@@ -771,7 +773,9 @@ async def _native_pcm_stream(backend, text, kw, *, sse, timed=False):
             yield _speech_delta(chunk) if sse else chunk
         if not emitted:
             raise RuntimeError("Native speech generation produced no audio.")
-    except Exception:
+    except Exception as exc:
+        from core import diagnostic_reports
+        diagnostic_reports.capture_failure("generation", error=exc, engine_id=backend.id)
         if not emitted or not sse:
             raise
         logger.exception("Native OpenAI TTS failed after the first chunk")
@@ -1019,6 +1023,8 @@ async def create_speech(req: SpeechRequest):
     except Exception as e:
         if type(e).__name__ == "ModelLoadInterruptedByShutdown":
             raise
+        from core import diagnostic_reports
+        diagnostic_reports.capture_failure("model_load", error=e, engine_id=backend.id)
         # A sidecar engine's load can also hit the #1172 class (broken venv
         # interpreter / placeholder binary) — surface the typed 503 here too.
         http = _typed_speech_http_error(e)
@@ -1098,6 +1104,8 @@ async def create_speech(req: SpeechRequest):
         if http is not None:
             logger.warning("OpenAI TTS failed (typed): %s", e)
             raise http from e
+        from core import diagnostic_reports
+        diagnostic_reports.capture_failure("generation", error=e, engine_id=backend.id)
         logger.exception("OpenAI TTS failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1442,6 +1450,8 @@ async def _transcribe_request(
         raise OpenAIError(403, e.detail(), param="model", code=e.detail()["code"]) from e
     except TimeoutError as e:
         # ASRTimeoutError (subclass): backend alive, ASR too heavy for compute.
+        from core import diagnostic_reports
+        diagnostic_reports.capture_failure("transcription", error=e)
         logger.warning("OpenAI transcription timed out: %s", e)
         raise HTTPException(status_code=504, detail=str(e))
     except Exception as e:
@@ -1451,6 +1461,8 @@ async def _transcribe_request(
             await asyncio.to_thread(raise_for_audio_extract_failure, str(e), tmp_path)
         except NoAudioTrackError:
             raise OpenAIError(400, NO_AUDIO_TRACK_MESSAGE, param="file", code="no_audio_track")
+        from core import diagnostic_reports
+        diagnostic_reports.capture_failure("transcription", error=e)
         logger.exception("OpenAI transcription failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
     finally:

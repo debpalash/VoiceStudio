@@ -14,6 +14,17 @@ function journalPath(): string {
 }
 
 describe('MainErrorJournal', () => {
+  it('does not throw from a fatal observer when an exception detail getter fails', () => {
+    const journal = new MainErrorJournal(journalPath(), '1.2.3');
+    const error = new Error();
+    Object.defineProperty(error, 'stack', {
+      get() {
+        throw new Error('unavailable');
+      },
+    });
+    expect(() => journal.record(error, 'uncaughtException')).not.toThrow();
+    expect(journal.recent()).toContain('unavailable error details');
+  });
   it('persists a bounded fatal-error history that survives restart', () => {
     const path = journalPath();
     const journal = new MainErrorJournal(path, '1.2.3');
@@ -81,7 +92,12 @@ describe('MainErrorJournal', () => {
     const journal = new MainErrorJournal(journalPath(), '1.2.3');
     const report = vi.fn();
 
-    observeMainProcessTask(Promise.reject(new Error('pipe closed')), journal, 'Backend startup', report);
+    observeMainProcessTask(
+      Promise.reject(new Error('pipe closed')),
+      journal,
+      'Backend startup',
+      report,
+    );
     await Promise.resolve();
 
     expect(journal.recent()).toContain('Backend startup: pipe closed');

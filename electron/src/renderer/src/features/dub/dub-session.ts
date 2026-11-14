@@ -20,6 +20,7 @@ import { tr } from '@/lib/i18n-text';
 import { describeDubTranslationError } from './translation-error';
 import { beginAppActivity } from '@/lib/app-activity';
 import { recordActionBreadcrumb } from '@/lib/report-breadcrumb';
+import { captureDiagnosticException } from '@/lib/diagnostic-reports';
 import { dialectWasIgnored } from '@shared/api/dialects';
 import { consumeTaskStream, type TaskEvent } from '@/lib/api/event-stream';
 import { publicFailureFromEvent, type PublicFailure } from '@/lib/api/failure';
@@ -981,6 +982,21 @@ async function run(
       !active.signal.aborted && (phase === 'preparing' || phase === 'transcribing')
         ? dubInputIssue(error, dubSession.state.failure)
         : null;
+    if (
+      !active.signal.aborted &&
+      !inputIssue &&
+      !(error instanceof DubAsrModelMissingError) &&
+      !(error instanceof Error && error.name === 'AbortError')
+    )
+      captureDiagnosticException(
+        error,
+        phase === 'generating' ? 'generation_failed' : 'operation_failed',
+        phase === 'transcribing'
+          ? 'transcription'
+          : phase === 'translating'
+            ? 'translation'
+            : 'dub',
+      );
     if (inputIssue) {
       // The same file fails the same way on every retry: show it on the file
       // row as a choose-another-file prompt, not as a recoverable failure.

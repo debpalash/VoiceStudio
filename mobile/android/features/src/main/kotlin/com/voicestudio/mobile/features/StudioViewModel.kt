@@ -78,6 +78,7 @@ class StudioViewModel @JvmOverloads constructor(application: Application, val st
     fun fail(error: Throwable) = fail(error,null)
     fun fail(error: Throwable,retry: (() ->Unit)?) {
         if(error is CancellationException) return
+        AutomaticDiagnostics.captureFailure(error)
         retryAction=retry
         mutable.update {it.copy(error=error as? ClientFailure ?: ClientFailure("mobile.android.operation_failed"),canRetry=retry!=null)}
     }

@@ -3614,7 +3614,7 @@
       "notifications": "Notifiche",
       "notifications_help": "Avvisa quando un doppiaggio è completato. Le notifiche vengono create su questo telefono; nulla passa da un servizio cloud.",
       "privacy": "Privacy",
-      "privacy_help": "Questa app comunica solo con il server VoiceStudio che hai associato. Nessun account, nessuna elaborazione nel cloud.",
+      "privacy_help": "Le attività locali restano su questo telefono. I download dei modelli, le segnalazioni che scegli di inviare e il computer associato usano la rete. I metadati diagnostici automatici usano la rete solo dopo un consenso separato.",
       "about": "Informazioni",
       "version": "Versione {{version}}",
       "licenses": "Licenze open source"
@@ -3667,7 +3667,7 @@
       "dictation_setup": "La dettatura non è disponibile. Sull'host installa e accetta un modello ASR. Per l'accesso remoto, riconnettiti con una chiave API o una rete attendibile; un PIN di condivisione da solo non può autorizzare la dettatura.",
       "host_label": "Nome del server",
       "theme_preview": "Anteprima dell'aspetto",
-      "analytics_local": "Questa app companion salva la tua scelta su questo telefono. Non invia dati analitici.",
+      "analytics_local": "Questo telefono non invia statistiche di utilizzo; la tua scelta viene salvata localmente. Le segnalazioni diagnostiche automatiche richiedono un consenso separato.",
       "model_licenses": "Consulta le licenze dei modelli sull'host",
       "stage_upload": "Caricamento dei contenuti",
       "stage_prepare": "Preparazione dei contenuti sull'host",
@@ -3720,7 +3720,7 @@
       "upload_pending": "Il caricamento continua in background. Lascia VoiceStudio in esecuzione sul computer.",
       "upload_resume": "Riprendi monitoraggio",
       "upload_failed": "Caricamento non riuscito. Riconnettiti allo stesso host e seleziona di nuovo i contenuti.",
-      "privacy_local": "La preferenza sui dati analitici è salvata su questo dispositivo. Questa versione non invia mai dati analitici.",
+      "privacy_local": "Questo telefono non invia statistiche di utilizzo; la tua scelta viene salvata localmente. Le segnalazioni diagnostiche automatiche richiedono un consenso separato.",
       "transcript": "Trascrizione",
       "qr_unavailable": "La fotocamera non è disponibile. Inserisci manualmente l'indirizzo dell'host.",
       "language_system": "Lingua di sistema",
@@ -3773,7 +3773,7 @@
       "capture_slow": "Questo telefono non ha elaborato l'audio del microfono abbastanza in fretta. Chiudi altre app o usa il computer.",
       "preset_voice": "Voce {{number}}",
       "transfer": "{{received}} di {{total}}",
-      "privacy": "Le attività sul dispositivo restano su questo telefono. Solo i download dei modelli, le segnalazioni che scegli di inviare e il computer associato usano la rete.",
+      "privacy": "Le attività locali restano su questo telefono. I download dei modelli, le segnalazioni che scegli di inviare e il computer associato usano la rete. I metadati diagnostici automatici usano la rete solo dopo un consenso separato.",
       "computer_feature": "Questa funzione al momento viene eseguita sul computer. Voce sintetica e Dettatura funzionano su questo telefono senza associazione.",
       "accepted": "Licenza accettata",
       "not_accepted": "Licenza non accettata",
@@ -3837,7 +3837,7 @@
       "download_one": "{{name}} · download di {{size}}"
     },
     "consent": {
-      "phone_note": "Salvato su questo telefono. Non viene inviato nulla."
+      "phone_note": "La tua scelta sulle statistiche viene salvata su questo telefono. Le segnalazioni diagnostiche automatiche richiedono un consenso separato."
     },
     "report": {
       "action": "Segnala",
@@ -4320,5 +4320,14 @@
       "failed": "Non riuscito",
       "cancelled": "Annullato"
     }
+  },
+  "diagnostics": {
+    "title": "Segnalazioni automatiche degli errori",
+    "body": "Invia a Supermetry segnalazioni tecniche su arresti anomali ed errori di installazione o generazione, con informazioni su app e dispositivo, codici di errore, posizioni nel codice e un identificativo di installazione casuale. Non invia mai audio, testo, file, nomi, credenziali o registri. È separato dalle statistiche di utilizzo e disattivato per impostazione predefinita. Puoi disattivarlo in qualsiasi momento in Privacy.",
+    "allow": "Consenti le segnalazioni degli errori",
+    "keep_off": "Mantieni le segnalazioni disattivate",
+    "unavailable": "Le segnalazioni automatiche non sono disponibili o sono disattivate per questa app.",
+    "managed": "Gestisci questa scelta nell’app desktop collegata a questo browser.",
+    "save_failed": "Impossibile salvare questa scelta. Riprova."
   }
 }

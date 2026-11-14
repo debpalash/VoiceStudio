@@ -1758,6 +1758,8 @@ async def dub_generate(job_id: str, req: DubRequest):
                 # classes using VoiceStudio-owned constants only.
                 from core.public_errors import stream_generation_failure
 
+                from core import diagnostic_reports
+                diagnostic_reports.capture_failure("dub", error=e)
                 error_detail = stream_generation_failure(e)["detail"]
                 logger.exception("Dub generation failed for segment %s", seg_id)
                 yield f"data: {json.dumps({'type': 'error', 'segment': i, 'segment_id': seg_id, 'error': error_detail})}\n\n"

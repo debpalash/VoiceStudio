@@ -43,6 +43,7 @@ import { isPresetOnly, useTtsReadiness } from './use-tts-readiness';
 import { useEngines } from './use-engines';
 import { expressionCaps } from '@/lib/expression';
 import { recordActionBreadcrumb } from '@/lib/report-breadcrumb';
+import { captureDiagnosticException } from '@/lib/diagnostic-reports';
 import { useResolvedLicenceError } from './use-resolved-licence-error';
 import { announceDroppedSpeech } from '@/lib/dropped-speech';
 import { recordTakeSpeed } from '@/lib/store/quality-offer';
@@ -668,6 +669,8 @@ function useGenerateController(): UseGenerateClone {
           patchQueueItem(take.id, { status: 'cancelled' });
         } else {
           recordActionBreadcrumb(`generate:${reportMode}:error`);
+          if (!isModelNotDownloaded(err))
+            captureDiagnosticException(err, 'generation_failed', 'generation');
           const message = isAbortError(err)
             ? tr('tts_errors.timeout')
             : isModelNotDownloaded(err)

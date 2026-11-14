@@ -15,6 +15,11 @@ import { queryKeys } from '@/lib/query';
 import type { Profile } from '@/lib/api/types';
 import { tr } from '@/lib/i18n-text';
 import { acquireSynthesis } from '@/lib/synthesis-lock';
+const diagnosticCapture = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/diagnostic-reports', () => ({
+  captureDiagnosticException: diagnosticCapture,
+  initializeDiagnosticReporting: vi.fn(),
+}));
 const modelStatus = vi.hoisted(() => ({
   value: { status: 'loading', loading: true } as {
     status: string;
@@ -101,6 +106,11 @@ describe('shared generation lifecycle', () => {
     );
     fireEvent.click(screen.getByText('retry test'));
     await screen.findByText('write failed');
+    expect(diagnosticCapture).toHaveBeenCalledWith(
+      expect.any(Error),
+      'generation_failed',
+      'generation',
+    );
     expect(toast.error).not.toHaveBeenCalled();
     vi.mocked(generateClone).mockClear();
   });

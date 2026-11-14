@@ -10,6 +10,7 @@ import { apiJson } from '@/lib/api/client';
 import { SettingsSection, SettingsRow } from './settings-layout';
 import { useSettingsAction } from './use-settings-action';
 import { translatorPrivacy } from '@shared/utils/translatorPrivacy';
+import { DiagnosticPrivacySetting } from '@/components/diagnostic-consent';
 export function PrivacySettings({ showAnalytics = true }: { showAnalytics?: boolean } = {}) {
   const { t } = useTranslation();
   const info = useQuery({
@@ -37,6 +38,7 @@ export function PrivacySettings({ showAnalytics = true }: { showAnalytics?: bool
         </SettingsRow>
         <PrivacyToggle kind="watermark" />
         {showAnalytics && <PrivacyToggle kind="analytics" />}
+        <DiagnosticPrivacySetting />
       </SettingsSection>
       <HistoryRetention />
     </>

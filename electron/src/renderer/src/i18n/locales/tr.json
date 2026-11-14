@@ -3612,7 +3612,7 @@
       "notifications": "Bildirimler",
       "notifications_help": "Bir dublaj bittiğinde bildir. Bildirimler bu telefonda oluşturulur; hiçbir şey bulut hizmetinden geçmez.",
       "privacy": "Gizlilik",
-      "privacy_help": "Bu uygulama yalnızca eşleştirdiğiniz VoiceStudio sunucusuyla konuşur. Hesap yok, bulut işleme yok.",
+      "privacy_help": "Cihaz üzerinde yapılan işlemler bu telefonda kalır. Model indirmeleri, göndermeyi seçtiğiniz raporlar ve eşleştirilmiş bilgisayarınız ağı kullanır. Otomatik tanılama meta verileri, yalnızca ayrı bir onaydan sonra ağı kullanır.",
       "about": "Hakkında",
       "version": "Sürüm {{version}}",
       "licenses": "Açık kaynak lisansları"
@@ -3665,7 +3665,7 @@
       "dictation_setup": "Dikte kullanılamıyor. Ana makinede bir ASR modeli kurup kabul edin. Uzaktan erişim için API anahtarı veya güvenilir bir ağ ile yeniden bağlanın; yalnızca paylaşım PIN'i dikteyi yetkilendiremez.",
       "host_label": "Sunucu etiketi",
       "theme_preview": "Görünüm önizlemesi",
-      "analytics_local": "Bu yardımcı uygulama seçiminizi bu telefonda kaydeder. Hiçbir analiz verisi göndermez.",
+      "analytics_local": "Bu telefondan kullanım analizi gönderilmez; seçiminiz yerel olarak saklanır. Otomatik tanılama raporları için ayrı onay gerekir.",
       "model_licenses": "Model lisanslarını ana makinenizde inceleyin",
       "stage_upload": "Medya yükleniyor",
       "stage_prepare": "Medya ana makinede hazırlanıyor",
@@ -3718,7 +3718,7 @@
       "upload_pending": "Yükleme arka planda devam ediyor. Bilgisayarınızdaki VoiceStudio'yu çalışır durumda tutun.",
       "upload_resume": "İzlemeyi sürdür",
       "upload_failed": "Yükleme başarısız. Aynı ana makineye yeniden bağlanıp medyayı tekrar seçin.",
-      "privacy_local": "Analiz tercihi bu cihazda saklanır. Bu sürüm hiçbir zaman analiz verisi göndermez.",
+      "privacy_local": "Bu telefondan kullanım analizi gönderilmez; seçiminiz yerel olarak saklanır. Otomatik tanılama raporları için ayrı onay gerekir.",
       "transcript": "Transkript",
       "qr_unavailable": "Kamera kullanılamıyor. Ana makine adresini elle girin.",
       "language_system": "Sistem dili",
@@ -3771,7 +3771,7 @@
       "capture_slow": "Bu telefon mikrofon sesini yeterince hızlı işleyemedi. Diğer uygulamaları kapatın veya bilgisayarınızı kullanın.",
       "preset_voice": "Ses {{number}}",
       "transfer": "{{received}} / toplam {{total}}",
-      "privacy": "Cihaz içi görevler bu telefonda kalır. Yalnızca model indirmeleri, göndermeyi seçtiğiniz bildirimler ve eşleştirilmiş bilgisayarınız ağı kullanır.",
+      "privacy": "Cihaz üzerinde yapılan işlemler bu telefonda kalır. Model indirmeleri, göndermeyi seçtiğiniz raporlar ve eşleştirilmiş bilgisayarınız ağı kullanır. Otomatik tanılama meta verileri, yalnızca ayrı bir onaydan sonra ağı kullanır.",
       "computer_feature": "Bu özellik şu anda bilgisayarınızda çalışır. Konuşma ve Dikte'yi eşleştirmeden bu telefonda kullanabilirsiniz.",
       "accepted": "Lisans kabul edildi",
       "not_accepted": "Lisans kabul edilmedi",
@@ -3835,7 +3835,7 @@
       "download_one": "{{name}} · {{size}} indirme"
     },
     "consent": {
-      "phone_note": "Bu telefonda saklanır. Hiçbir şey gönderilmez."
+      "phone_note": "Analiz tercihiniz bu telefonda kaydedilir. Otomatik tanılama raporları için ayrı onay gerekir."
     },
     "report": {
       "action": "Bildir",
@@ -4318,5 +4318,14 @@
       "failed": "Başarısız",
       "cancelled": "İptal edildi"
     }
+  },
+  "diagnostics": {
+    "title": "Otomatik hata raporları",
+    "body": "Çökmeler, başarısız kurulumlar ve üretim hataları hakkında Supermetry’ye teknik raporlar gönderin. Raporlar uygulama ve cihaz bilgilerini, hata kodlarını, uygulama kodu konumlarını ve rastgele bir kurulum kimliğini içerir. Sesiniz, metniniz, dosyalarınız, adlarınız, kimlik bilgileriniz veya günlükleriniz asla gönderilmez. Kullanım analizinden bağımsızdır ve varsayılan olarak kapalıdır. Gizlilik bölümünden istediğiniz zaman kapatabilirsiniz.",
+    "allow": "Hata raporlarına izin ver",
+    "keep_off": "Raporları kapalı tut",
+    "unavailable": "Otomatik raporlar bu uygulama için kullanılamıyor veya devre dışı.",
+    "managed": "Bu seçimi tarayıcıya bağlı masaüstü uygulamasından yönetin.",
+    "save_failed": "Bu seçim kaydedilemedi. Lütfen tekrar deneyin."
   }
 }

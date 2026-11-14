@@ -1,6 +1,13 @@
 import type { CrashContext } from '../shared/utils/crashContext';
 import type { HostSnapshotLike } from '../shared/utils/hostSnapshot';
 import type { InstallFailure } from '../shared/utils/installFailure';
+import type { DiagnosticInput, DiagnosticState } from './diagnostics';
+export type {
+  DiagnosticInput,
+  DiagnosticState,
+  DiagnosticCategory,
+  DiagnosticStage,
+} from './diagnostics';
 /**
  * The contextBridge surface exposed to the renderer as `window.voicestudio`.
  *
@@ -148,7 +155,10 @@ export interface PythonDiscoveryResult {
   partial: boolean;
   scannedRoots: string[];
 }
-export interface PythonRepairPlan { interpreter: string; packages: string[]; }
+export interface PythonRepairPlan {
+  interpreter: string;
+  packages: string[];
+}
 
 export interface BackendConnection {
   remote: boolean;
@@ -424,6 +434,11 @@ export interface SetupConnectionCheck {
 }
 
 export interface VoiceStudioBridge {
+  diagnostics: {
+    getStatus(): Promise<DiagnosticState>;
+    setConsent(enabled: boolean): Promise<DiagnosticState>;
+    capture(event: DiagnosticInput): Promise<void>;
+  };
   /** VoiceStudio Cloud account; never carries a token. */
   account: {
     get(): Promise<AccountPublicState>;
@@ -565,7 +580,9 @@ export interface VoiceStudioBridge {
       repairPlan?: PythonRepairPlan;
       outputTail?: string;
     }>;
-    onPythonRepairProgress(callback: (event: { text: string; stream: 'stdout' | 'stderr' }) => void): () => void;
+    onPythonRepairProgress(
+      callback: (event: { text: string; stream: 'stdout' | 'stderr' }) => void,
+    ): () => void;
     useManagedPython(): Promise<{ ok: boolean }>;
     discoverPythonRuntimes(): Promise<PythonDiscoveryResult>;
     useDiscoveredPythonRuntime(pythonPath: string): Promise<{
@@ -626,7 +643,9 @@ export interface VoiceStudioBridge {
     authorizeMediaTool(kind: 'ffmpeg' | 'ffprobe'): Promise<AuthorizedPathSelection | null>;
     /** Authorize a chosen model cache directory, or the platform default when reset is true. */
     authorizeModelsDirectory(reset?: boolean): Promise<AuthorizedPathSelection | null>;
-    chooseEngineModelDirectory(engineId: 'omnivoice' | 'mlx-audio'): Promise<AuthorizedPathSelection | null>;
+    chooseEngineModelDirectory(
+      engineId: 'omnivoice' | 'mlx-audio',
+    ): Promise<AuthorizedPathSelection | null>;
     extractScript(input: { name: string; data: Uint8Array }): Promise<string>;
     /** Native "Save as…" for a generated take: main fetches the URL and writes the file. */
     saveAudio(req: SaveAudioRequest): Promise<SaveAudioResult>;

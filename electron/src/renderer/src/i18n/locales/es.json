@@ -3614,7 +3614,7 @@
       "notifications": "Notificaciones",
       "notifications_help": "Notificar cuando termine un doblaje. Las notificaciones se crean en este teléfono; nada pasa por un servicio en la nube.",
       "privacy": "Privacidad",
-      "privacy_help": "Esta app solo se comunica con el servidor de VoiceStudio que has emparejado. Sin cuentas ni procesamiento en la nube.",
+      "privacy_help": "Las tareas locales permanecen en este teléfono. Las descargas de modelos, los informes que decides enviar y tu ordenador vinculado usan la red. Los metadatos de diagnóstico automático solo usan la red tras una autorización independiente.",
       "about": "Acerca de",
       "version": "Versión {{version}}",
       "licenses": "Licencias de código abierto"
@@ -3667,7 +3667,7 @@
       "dictation_setup": "El dictado no está disponible. En el host, instala y acepta un modelo ASR. Para el acceso remoto, vuelve a conectar con una clave de API o una red de confianza; un PIN para compartir por sí solo no puede autorizar el dictado.",
       "host_label": "Nombre del servidor",
       "theme_preview": "Vista previa de la apariencia",
-      "analytics_local": "Esta app complementaria guarda tu elección en este teléfono. No envía analíticas.",
+      "analytics_local": "Este teléfono no envía estadísticas de uso; tu elección se guarda localmente. Los informes de diagnóstico automático requieren una autorización independiente.",
       "model_licenses": "Revisar las licencias de modelos en tu host",
       "stage_upload": "Subiendo medios",
       "stage_prepare": "Preparando medios en el host",
@@ -3720,7 +3720,7 @@
       "upload_pending": "La subida continúa en segundo plano. Mantén VoiceStudio en ejecución en tu ordenador.",
       "upload_resume": "Reanudar seguimiento",
       "upload_failed": "Falló la subida. Vuelve a conectar con el mismo host y selecciona de nuevo los medios.",
-      "privacy_local": "La preferencia de analíticas se guarda en este dispositivo. Esta versión nunca envía analíticas.",
+      "privacy_local": "Este teléfono no envía estadísticas de uso; tu elección se guarda localmente. Los informes de diagnóstico automático requieren una autorización independiente.",
       "transcript": "Transcripción",
       "qr_unavailable": "La cámara no está disponible. Introduce la dirección del host manualmente.",
       "language_system": "Idioma del sistema",
@@ -3773,7 +3773,7 @@
       "capture_slow": "Este teléfono no pudo procesar el audio del micrófono con la rapidez necesaria. Cierra otras apps o usa tu ordenador.",
       "preset_voice": "Voz {{number}}",
       "transfer": "{{received}} de {{total}}",
-      "privacy": "Las tareas en el dispositivo se quedan en este teléfono. Solo las descargas de modelos, las denuncias que decidas enviar y tu ordenador emparejado usan la red.",
+      "privacy": "Las tareas locales permanecen en este teléfono. Las descargas de modelos, los informes que decides enviar y tu ordenador vinculado usan la red. Los metadatos de diagnóstico automático solo usan la red tras una autorización independiente.",
       "computer_feature": "Esta función se ejecuta ahora en tu ordenador. Voz sintética y Dictado funcionan en este teléfono sin emparejar.",
       "accepted": "Licencia aceptada",
       "not_accepted": "Licencia no aceptada",
@@ -3837,7 +3837,7 @@
       "download_one": "{{name}} · descarga de {{size}}"
     },
     "consent": {
-      "phone_note": "Guardado en este teléfono. No se envía nada."
+      "phone_note": "Tu elección sobre estadísticas se guarda en este teléfono. Los informes de diagnóstico automático requieren un consentimiento independiente."
     },
     "report": {
       "action": "Denunciar",
@@ -4320,5 +4320,14 @@
       "failed": "Error",
       "cancelled": "Cancelado"
     }
+  },
+  "diagnostics": {
+    "title": "Informes automáticos de errores",
+    "body": "Envía a Supermetry informes técnicos sobre fallos, instalaciones y generaciones fallidas, con datos de la aplicación y el dispositivo, códigos de error, ubicaciones del código y un identificador de instalación aleatorio. Nunca envía tu audio, texto, archivos, nombres, credenciales ni registros. Es independiente del análisis de uso y está desactivado por defecto. Puedes desactivarlo cuando quieras en Privacidad.",
+    "allow": "Permitir informes de errores",
+    "keep_off": "Mantener los informes desactivados",
+    "unavailable": "Los informes automáticos no están disponibles o están desactivados en esta aplicación.",
+    "managed": "Gestiona esta opción en la aplicación de escritorio conectada a este navegador.",
+    "save_failed": "No se pudo guardar esta opción. Inténtalo de nuevo."
   }
 }

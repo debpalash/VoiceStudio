@@ -1309,6 +1309,17 @@ async def _application_lifespan(app: FastAPI):
     from api.dependencies import validate_server_admin_key
 
     validate_server_admin_key()
+    from core import diagnostic_reports
+    diagnostic_reports.initialize()
+    _diagnostic_loop = asyncio.get_running_loop()
+    _previous_loop_handler = _diagnostic_loop.get_exception_handler()
+    def _diagnostic_loop_error(loop, context):
+        diagnostic_reports.capture("operation_failed", stage="other", error=context.get("exception"), reason="unhandled_rejection")
+        if _previous_loop_handler is not None:
+            _previous_loop_handler(loop, context)
+        else:
+            loop.default_exception_handler(context)
+    _diagnostic_loop.set_exception_handler(_diagnostic_loop_error)
     # Startup watchdog (#632): a silent hang during startup (e.g. a model-load /
     # MCP deadlock on some platforms) means "Application startup complete" never
     # logs and the app sits forever with no error. If startup hasn't finished
@@ -1417,6 +1428,9 @@ async def _application_lifespan(app: FastAPI):
         await asyncio.to_thread(_phase_a_finished.wait, 20.0)
     await _wait_for_profile_reconcile_thread(app)
     await _wait_for_analytics_thread(app)
+    if _diagnostic_loop.get_exception_handler() is _diagnostic_loop_error:
+        _diagnostic_loop.set_exception_handler(_previous_loop_handler)
+    await asyncio.to_thread(diagnostic_reports.shutdown)
     try:
         from services.telephony import gateway as telephony_gateway
         await telephony_gateway.stop()

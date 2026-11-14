@@ -6,6 +6,7 @@ import { apiJson } from '@/lib/api/client';
 import { beginAppActivity } from '@/lib/app-activity';
 import { recordActionBreadcrumb } from '@/lib/report-breadcrumb';
 import { runRendererTask } from '@/lib/global-error-recovery';
+import { captureDiagnosticException } from '@/lib/diagnostic-reports';
 import { addTranscription, type TranscriptEntry } from '@shared/utils/transcriptionsStore';
 import { transcriptionFailureFrom, type TranscriptionFailureState } from './transcription-failure';
 
@@ -112,6 +113,7 @@ export async function startTranscription(
     return outcome;
   } catch (error) {
     if (ctl.signal.aborted) return (outcome = 'cancelled');
+    captureDiagnosticException(error, 'operation_failed', 'transcription');
     const failure = transcriptionFailureFrom(error);
     transcriptionJob.setState((state) => ({ ...state, error: failure }));
     if (!viewing) {

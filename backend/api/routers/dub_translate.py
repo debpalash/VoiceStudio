@@ -1058,6 +1058,8 @@ async def dub_translate(req: TranslateRequest):
     except ModelLicenceNotAccepted:
         raise
     except Exception as e:
+        from core import diagnostic_reports
+        diagnostic_reports.capture_failure("translation", error=e)
         from core.public_errors import public_failure
 
         error = public_failure(

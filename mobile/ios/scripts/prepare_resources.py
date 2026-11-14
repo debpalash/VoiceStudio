@@ -128,6 +128,9 @@ def prepare(output, info):
     copy_native_notices(legal, notices, output / "NativeLicences")
     catalogs = output / "Catalogs"
     catalogs.mkdir(exist_ok=True)
+    # Generated from the same reviewed destination/taxonomy as desktop/backend.
+    shutil.copy2(ROOT / "config/diagnostics.json", catalogs / "diagnostics.json")
+    shutil.copy2(ROOT / "config/analytics.json", catalogs / "diagnostics-destination.json")
     source = ROOT / "electron/src/renderer/src/i18n/locales"
     shutil.copy2(ROOT / "electron/src/shared/languages.json", catalogs / "languages.json")
     code_source = (ROOT / "electron/src/shared/utils/languages.js").read_text(encoding="utf-8")

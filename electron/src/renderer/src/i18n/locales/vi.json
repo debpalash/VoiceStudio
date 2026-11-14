@@ -3612,7 +3612,7 @@
       "notifications": "Thông báo",
       "notifications_help": "Thông báo khi lồng tiếng xong. Thông báo được tạo trên điện thoại này; không có gì đi qua dịch vụ đám mây.",
       "privacy": "Quyền riêng tư",
-      "privacy_help": "Ứng dụng này chỉ giao tiếp với máy chủ VoiceStudio bạn đã ghép nối. Không tài khoản, không xử lý trên đám mây.",
+      "privacy_help": "Các tác vụ trên thiết bị được xử lý ngay trên điện thoại này. Việc tải mô hình, báo cáo bạn chọn gửi và kết nối với máy tính đã ghép đôi sử dụng mạng. Siêu dữ liệu chẩn đoán tự động chỉ được gửi qua mạng sau khi bạn đồng ý riêng.",
       "about": "Giới thiệu",
       "version": "Phiên bản {{version}}",
       "licenses": "Giấy phép mã nguồn mở"
@@ -3665,7 +3665,7 @@
       "dictation_setup": "Đọc chính tả không khả dụng. Trên máy chủ, hãy cài và chấp nhận một mô hình ASR. Để truy cập từ xa, hãy kết nối lại bằng khóa API hoặc mạng tin cậy; chỉ riêng PIN chia sẻ không thể cấp quyền cho đọc chính tả.",
       "host_label": "Nhãn máy chủ",
       "theme_preview": "Xem trước giao diện",
-      "analytics_local": "Ứng dụng đồng hành này ghi lại lựa chọn của bạn trên điện thoại. Nó không gửi dữ liệu phân tích.",
+      "analytics_local": "Điện thoại này không gửi dữ liệu phân tích sử dụng; lựa chọn của bạn được lưu cục bộ. Báo cáo chẩn đoán tự động cần có sự đồng ý riêng.",
       "model_licenses": "Xem giấy phép mô hình trên máy chủ",
       "stage_upload": "Đang tải phương tiện lên",
       "stage_prepare": "Đang chuẩn bị phương tiện trên máy chủ",
@@ -3718,7 +3718,7 @@
       "upload_pending": "Việc tải lên tiếp tục ở nền. Hãy giữ VoiceStudio trên máy tính luôn chạy.",
       "upload_resume": "Tiếp tục theo dõi",
       "upload_failed": "Tải lên thất bại. Hãy kết nối lại với cùng máy chủ và chọn lại phương tiện.",
-      "privacy_local": "Tùy chọn phân tích được lưu trên thiết bị này. Phiên bản này không bao giờ gửi dữ liệu phân tích.",
+      "privacy_local": "Điện thoại này không gửi dữ liệu phân tích sử dụng; lựa chọn của bạn được lưu cục bộ. Báo cáo chẩn đoán tự động cần có sự đồng ý riêng.",
       "transcript": "Bản chép lời",
       "qr_unavailable": "Camera không khả dụng. Hãy nhập địa chỉ máy chủ thủ công.",
       "language_system": "Ngôn ngữ hệ thống",
@@ -3771,7 +3771,7 @@
       "capture_slow": "Điện thoại này không xử lý âm thanh micrô đủ nhanh. Hãy đóng các ứng dụng khác hoặc dùng máy tính của bạn.",
       "preset_voice": "Giọng {{number}}",
       "transfer": "{{received}} trên {{total}}",
-      "privacy": "Tác vụ trên thiết bị ở lại điện thoại này. Chỉ việc tải mô hình, báo cáo bạn chọn gửi và máy tính đã ghép nối dùng mạng.",
+      "privacy": "Các tác vụ trên thiết bị được xử lý ngay trên điện thoại này. Việc tải mô hình, báo cáo bạn chọn gửi và kết nối với máy tính đã ghép đôi sử dụng mạng. Siêu dữ liệu chẩn đoán tự động chỉ được gửi qua mạng sau khi bạn đồng ý riêng.",
       "computer_feature": "Tính năng này hiện chạy trên máy tính của bạn. Bạn có thể dùng Giọng nói và Đọc chính tả trên điện thoại này mà không cần ghép nối.",
       "accepted": "Đã chấp nhận giấy phép",
       "not_accepted": "Chưa chấp nhận giấy phép",
@@ -3835,7 +3835,7 @@
       "download_one": "{{name}} · tải xuống {{size}}"
     },
     "consent": {
-      "phone_note": "Lưu trên điện thoại này. Không gửi gì cả."
+      "phone_note": "Lựa chọn phân tích của bạn được lưu trên điện thoại này. Báo cáo chẩn đoán tự động cần có sự đồng ý riêng."
     },
     "report": {
       "action": "Báo cáo",
@@ -4318,5 +4318,14 @@
       "failed": "Thất bại",
       "cancelled": "Đã hủy"
     }
+  },
+  "diagnostics": {
+    "title": "Báo cáo lỗi tự động",
+    "body": "Gửi báo cáo kỹ thuật về sự cố, lỗi cài đặt và tạo nội dung đến Supermetry, gồm thông tin ứng dụng và thiết bị, mã lỗi, vị trí trong mã ứng dụng và mã định danh cài đặt ngẫu nhiên. Không bao giờ gửi âm thanh, văn bản, tệp, tên, thông tin đăng nhập hoặc nhật ký của bạn. Tách biệt với phân tích sử dụng và mặc định tắt. Bạn có thể tắt bất cứ lúc nào trong Quyền riêng tư.",
+    "allow": "Cho phép báo cáo lỗi",
+    "keep_off": "Giữ báo cáo ở trạng thái tắt",
+    "unavailable": "Báo cáo tự động không khả dụng hoặc đã bị tắt cho ứng dụng này.",
+    "managed": "Quản lý lựa chọn này trong ứng dụng máy tính kết nối với trình duyệt này.",
+    "save_failed": "Không thể lưu lựa chọn này. Vui lòng thử lại."
   }
 }

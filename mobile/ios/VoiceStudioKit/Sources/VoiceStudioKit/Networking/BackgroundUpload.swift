@@ -8,6 +8,22 @@ private final class UploadBuffer: @unchecked Sendable {
     func take(task: URLSessionTask) -> Data { lock.withLock { data.removeValue(forKey: ObjectIdentifier(task)) ?? Data() } }
 }
 
+/// Only live completion observations reach this optional sink. Stored receipts
+/// remain local UI state and are never replayed into automatic diagnostics.
+private final class UploadDiagnosticObserver: @unchecked Sendable {
+    private let lock=NSLock()
+    private var handler: (@Sendable (DiagnosticInput) -> Void)?
+    func set(_ value: (@Sendable (DiagnosticInput) -> Void)?) { lock.withLock { handler=value } }
+    func completed(_ failure: ClientError) {
+        guard let handler=lock.withLock({ self.handler }) else { return }
+        if let status=failure.status,status<500 { return }
+        let keys: Set<String>=["mobile.ios.upload_failed","mobile.errors.backend","mobile.errors.server","mobile.errors.timeout","mobile.connect.error_unreachable","mobile.errors.invalid_response"]
+        guard keys.contains(failure.key) || (failure.status ?? 0)>=500 else { return }
+        let network=["mobile.errors.timeout","mobile.connect.error_unreachable"].contains(failure.key)
+        handler(DiagnosticInput(category:"operation_failed",stage:"dub",errorCode:network ? "NETWORK_ERROR" : "UNKNOWN",errorType:failure.key=="mobile.errors.timeout" ? "TimeoutError" : "OtherError",frames:[DiagnosticFrame(path:"mobile/ios/VoiceStudioKit/Sources/VoiceStudioKit/Networking/BackgroundUpload.swift",line:#line)]))
+    }
+}
+
 @MainActor @Observable public final class BackgroundUpload: NSObject, URLSessionDataDelegate, URLSessionTaskDelegate {
     public static let shared = BackgroundUpload()
     public private(set) var fraction: Double = 0
@@ -16,6 +32,7 @@ private final class UploadBuffer: @unchecked Sendable {
     public var eventsCompletion: (() -> Void)?
     public var onReceipt: (() -> Void)?
     @ObservationIgnored private nonisolated let buffer = UploadBuffer()
+    @ObservationIgnored private nonisolated let diagnosticObserver=UploadDiagnosticObserver()
     @ObservationIgnored private nonisolated let persistence: DubUploadLedger
     @ObservationIgnored private let stagingDirectory: URL?
     @ObservationIgnored private var session: URLSession!
@@ -91,6 +108,8 @@ private final class UploadBuffer: @unchecked Sendable {
             }
         }
     }
+    /// The app attaches this only while explicit diagnostic consent is active.
+    public func setDiagnosticFailureHandler(_ handler: (@Sendable (DiagnosticInput) -> Void)?) { diagnosticObserver.set(handler) }
     public func clearReceipt() { receipt = nil; persistence.clearReceipt() }
     public func takeReceipt(host: String) -> UploadReceipt? {
         guard let receipt = persistence.takeReceipt(host: host) else { return nil }
@@ -139,6 +158,7 @@ private final class UploadBuffer: @unchecked Sendable {
             try? FileManager.default.removeItem(at: meta.file)
             return
         }
+        if let failure=receipt.failure { diagnosticObserver.completed(failure) }
         try? FileManager.default.removeItem(at: meta.file)
         Task { @MainActor in
             guard self.pending?.jobID == meta.jobID, self.pending?.host == meta.host else { return }

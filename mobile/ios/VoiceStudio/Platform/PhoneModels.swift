@@ -32,6 +32,12 @@ final class WifiState: @unchecked Sendable {
     private(set) var modelBytes: [String: Int64] = [:]
     var error: ClientError?
     var allowMobileData: Bool { didSet { UserDefaults.standard.set(allowMobileData, forKey: "models.mobile-data") } }
+    @ObservationIgnored var diagnosticObservation: (@MainActor () -> (enabled: Bool, revision: Int64, thresholdMs: Int64))?
+    @ObservationIgnored var onDiagnosticStall: (@MainActor () -> Void)?
+    @ObservationIgnored private var diagnosticForeground = true
+    @ObservationIgnored private var diagnosticActivityRevision: Int64 = 0
+    func diagnosticsActivityChanged(active: Bool) { diagnosticForeground = active; diagnosticActivityRevision += 1 }
+    @ObservationIgnored var onFailure: (@MainActor (String, any Error) -> Void)?
     @ObservationIgnored private var downloads: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var downloadTokens: [String: UUID] = [:]
     @ObservationIgnored private let wifi = WifiState()
@@ -181,11 +187,22 @@ final class WifiState: @unchecked Sendable {
         let policy = DownloadPolicy(allowMobileData: mobile); let wifi = wifi
         downloads[model.id] = Task {
             let monitor = Task {
+                var stall = AppDiagnosticDownloadStall()
+                var consentRevision: Int64 = -1
+                var activityRevision: Int64 = -1
                 while !Task.isCancelled {
                     if !wifi.connected || (!mobile && !wifi.wifi),var value = downloadDetails[model.id] {
                         value.stage = mobile ? "waiting_network" : "waiting"; value.bytesPerSecond = 0; value.etaSeconds = nil
                         downloadDetails[model.id] = value
                     }
+                    let observation = diagnosticObservation?() ?? (enabled: false, revision: 0, thresholdMs: 600_000)
+                    if observation.revision != consentRevision || diagnosticActivityRevision != activityRevision {
+                        stall.reset(); consentRevision = observation.revision; activityRevision = diagnosticActivityRevision
+                    }
+                    if let value = downloadDetails[model.id] {
+                        let active = observation.enabled && diagnosticForeground && downloadTokens[model.id] == token && !paused.contains(model.id) && value.total > 0 && value.received < value.total
+                        if stall.observe(received: value.received, stage: value.stage, active: active, waiting: !wifi.connected || (!mobile && !wifi.wifi) || value.retrySeconds > 0, nowMs: Int64(ProcessInfo.processInfo.systemUptime * 1000), thresholdMs: observation.thresholdMs) { onDiagnosticStall?() }
+                    } else { stall.reset() }
                     do { try await Task.sleep(for: .seconds(1)) } catch { return }
                 }
             }
@@ -215,6 +232,7 @@ final class WifiState: @unchecked Sendable {
                 }
             } catch is CancellationError {} catch {
                 if !Task.isCancelled {
+                    onFailure?("download", error)
                     let failure = error as? ClientError ?? ClientError("mobile.local.download_failed")
                     self.error = failure; downloadFailures[model.id] = failure
                     for index in intents.indices where intents[index].id == model.id {

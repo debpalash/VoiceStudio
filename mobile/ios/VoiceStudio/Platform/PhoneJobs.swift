@@ -19,6 +19,7 @@ struct PhoneJobState: Sendable {
     var error: ClientError?
     var paused = false
     var phase: PhoneJobPhase = .foreground
+    var engineStage: EngineProgress.Stage = .loading
 }
 /// Owns user-started inference independently of screens. Saved steps, rather than an OS grant, provide durability.
 @MainActor @Observable final class PhoneJobs {
@@ -36,6 +37,7 @@ struct PhoneJobState: Sendable {
     var allowCPUFallback = UserDefaults.standard.bool(forKey: "jobs.cpu-fallback") {
         didSet { UserDefaults.standard.set(allowCPUFallback,forKey: "jobs.cpu-fallback") }
     }
+    @ObservationIgnored var onFailure: (@MainActor (String, any Error) -> Void)?
     @ObservationIgnored private var tasks: [String:Task<Void,Never>] = [:]
     @ObservationIgnored private var recipes: [String:Recipe] = [:]
     @ObservationIgnored private var modes: [String:NativeComputeMode] = [:]
@@ -98,12 +100,17 @@ struct PhoneJobState: Sendable {
             var cancelled = false
             do {
                 let result = try await NativeExecutionContext.$compute.withValue(mode) {
-                    try await recipe.operation { value in await self.report(id: id,fraction: value.fraction) }
+                    try await recipe.operation { value in await self.report(id: id,fraction: value.fraction,stage: value.stage) }
                 }
                 try Task.checkCancellation()
                 states[id]?.result = result; states[id]?.progress = 1; states[id]?.phase = .completed
             } catch is CancellationError { cancelled = true }
-            catch { states[id]?.error = error as? ClientError ?? ClientError("mobile.errors.file") }
+            catch {
+                let head = id.split(separator: ":", maxSplits: 1).first
+                let stage = states[id]?.engineStage == .loading ? "model_load" : (head == "dub" ? "dub" : (head == "transcript" ? "transcription" : (head == "production" ? "batch" : "generation")))
+                onFailure?(stage, error)
+                states[id]?.error = error as? ClientError ?? ClientError("mobile.errors.file")
+            }
             // NativeLocalEngine waits for the detached worker and its leases to be
             // released before returning cancellation. Only then can a fresh task run.
             let restart = stops[id]?.workerFinished() == true
@@ -156,7 +163,8 @@ struct PhoneJobState: Sendable {
         states[id]?.phase = .foreground
         if gpu,let recipe = recipes[id],recipe.allowCPU,recipe.cpuAvailable { requestContinuation(id: id,gpu: false) }
     }
-    private func report(id: String,fraction: Double) {
+    private func report(id: String,fraction: Double,stage: EngineProgress.Stage) {
+        states[id]?.engineStage = stage
         guard fraction.isFinite else { return }
         states[id]?.progress = min(1,max(states[id]?.progress ?? 0,fraction))
         #if compiler(>=6.2)

@@ -5456,6 +5456,90 @@
     "title": "_CudaDeviceBody",
     "type": "object"
    },
+   "_DiagnosticInput": {
+    "additionalProperties": false,
+    "properties": {
+     "category": {
+      "maxLength": 64,
+      "title": "Category",
+      "type": "string"
+     },
+     "engine_id": {
+      "anyOf": [
+       {
+        "maxLength": 64,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Engine Id"
+     },
+     "error_code": {
+      "anyOf": [
+       {
+        "maxLength": 64,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Error Code"
+     },
+     "error_type": {
+      "default": "OtherError",
+      "maxLength": 64,
+      "title": "Error Type",
+      "type": "string"
+     },
+     "frames": {
+      "anyOf": [
+       {
+        "maxLength": 1800,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Frames"
+     },
+     "source": {
+      "const": "renderer",
+      "title": "Source",
+      "type": "string"
+     },
+     "stage": {
+      "default": "other",
+      "maxLength": 64,
+      "title": "Stage",
+      "type": "string"
+     }
+    },
+    "required": [
+     "category",
+     "source"
+    ],
+    "title": "_DiagnosticInput",
+    "type": "object"
+   },
+   "_DiagnosticsBody": {
+    "additionalProperties": false,
+    "properties": {
+     "enabled": {
+      "description": "Separate explicit diagnostic consent; default OFF.",
+      "title": "Enabled",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "enabled"
+    ],
+    "title": "_DiagnosticsBody",
+    "type": "object"
+   },
    "_GgufResidentBody": {
     "properties": {
      "enabled": {
@@ -7449,6 +7533,101 @@
      }
     },
     "summary": "Get Db Backup State",
+    "tags": [
+     "settings"
+    ]
+   }
+  },
+  "/api/settings/diagnostics": {
+   "get": {
+    "operationId": "get_diagnostics_api_settings_diagnostics_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Get Diagnostics",
+    "tags": [
+     "settings"
+    ]
+   },
+   "put": {
+    "operationId": "set_diagnostics_api_settings_diagnostics_put",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/_DiagnosticsBody"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Set Diagnostics",
+    "tags": [
+     "settings"
+    ]
+   }
+  },
+  "/api/settings/diagnostics/event": {
+   "post": {
+    "operationId": "post_diagnostic_event_api_settings_diagnostics_event_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/_DiagnosticInput"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Post Diagnostic Event",
     "tags": [
      "settings"
     ]

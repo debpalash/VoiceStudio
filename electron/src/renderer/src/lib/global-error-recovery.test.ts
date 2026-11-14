@@ -2,11 +2,21 @@ import { describe, expect, it, vi } from 'vitest';
 
 const openRepairAgent = vi.fn();
 const captureException = vi.fn();
+const diagnosticCapture = vi.fn(async () => {});
+const diagnosticStatus = vi.fn(async () => ({
+  enabled: true,
+  opted_in: true,
+  available: true,
+  prompted: true,
+}));
 vi.mock('@/lib/repair-agent-events', () => ({ openRepairAgent }));
 vi.mock('@shared/utils/analytics', () => ({ captureException }));
 
 describe('global renderer error recovery', () => {
   it('hands uncaught faults to repair once while ignoring cancellation and foreign noise', async () => {
+    Object.assign(window, {
+      voicestudio: { diagnostics: { getStatus: diagnosticStatus, capture: diagnosticCapture } },
+    });
     const earlyCleanup = vi.fn();
     Object.assign(window, {
       __voicestudioEarlyFaults: [
@@ -21,6 +31,12 @@ describe('global renderer error recovery', () => {
     });
     const { installGlobalErrorRecovery, runRendererTask } = await import('./global-error-recovery');
     installGlobalErrorRecovery();
+    await vi.waitFor(() => {
+      expect(diagnosticStatus).toHaveBeenCalledOnce();
+      expect(diagnosticCapture).toHaveBeenCalledWith(
+        expect.objectContaining({ category: 'renderer_crash', stage: 'startup' }),
+      );
+    });
     expect(earlyCleanup).toHaveBeenCalledOnce();
     expect(openRepairAgent).toHaveBeenCalledWith(
       expect.stringContaining('startup module failed'),
@@ -54,6 +70,19 @@ describe('global renderer error recovery', () => {
     expect(openRepairAgent.mock.calls[1][0]).not.toContain('C:\\Users\\pal');
     expect(repeatedFailure.defaultPrevented).toBe(true);
     expect(captureException).toHaveBeenCalledWith(failure, 'renderer:uncaught');
+    expect(diagnosticCapture).toHaveBeenCalledTimes(2);
+    // A second causal error is still counted while the repair panel is throttled.
+    window.dispatchEvent(
+      new ErrorEvent('error', {
+        message: failure.message,
+        error: new Error(failure.message),
+        filename: privatePath,
+        cancelable: true,
+      }),
+    );
+    expect(openRepairAgent).toHaveBeenCalledTimes(2);
+    expect(diagnosticCapture).toHaveBeenCalledTimes(3);
+    expect(JSON.stringify(diagnosticCapture.mock.calls)).not.toContain(privatePath);
 
     const cancelled = new Event('unhandledrejection');
     Object.defineProperty(cancelled, 'reason', {
@@ -69,6 +98,7 @@ describe('global renderer error recovery', () => {
     );
     expect(openRepairAgent).toHaveBeenCalledTimes(2);
     expect(cancelled.defaultPrevented).toBe(false);
+    expect(diagnosticCapture).toHaveBeenCalledTimes(3);
 
     const ownFailure = new Error('own async failure');
     ownFailure.stack =

@@ -320,7 +320,14 @@ async def run_transcribe_guarded(executor, fn, *, what: str = "ASR",
         hint = _isolated_engine_hint(streak)
         if hint:
             msg += " " + hint
-        raise ASRTimeoutError(msg)
+        failure = ASRTimeoutError(msg)
+        from core import diagnostic_reports
+        diagnostic_reports.capture_failure("transcription", error=failure)
+        raise failure
+    except Exception as exc:
+        from core import diagnostic_reports
+        diagnostic_reports.capture_failure("transcription", error=exc)
+        raise
     # A completed transcribe (even a failed-but-returned one) proves the pool
     # isn't hung — only genuine timeouts count toward the consecutive streak.
     _note_transcribe_success()

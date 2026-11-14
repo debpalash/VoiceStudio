@@ -3612,7 +3612,7 @@
       "notifications": "Notifications",
       "notifications_help": "Notify when a dub finishes. Notifications are created on this phone; nothing goes through a cloud service.",
       "privacy": "Privacy",
-      "privacy_help": "This app only talks to the VoiceStudio server you paired. No accounts, no cloud processing.",
+      "privacy_help": "On-device tasks stay on this phone. Model downloads, reports you choose to send and your paired computer use the network. Automatic diagnostic metadata uses the network only after its separate opt-in.",
       "about": "About",
       "version": "Version {{version}}",
       "licenses": "Open-source licenses"
@@ -3665,7 +3665,7 @@
       "dictation_setup": "Dictation is unavailable. On the host, install and accept an ASR model. For remote access, reconnect using an API key or a trusted network; a sharing PIN alone cannot authorize dictation.",
       "host_label": "Server label",
       "theme_preview": "Appearance preview",
-      "analytics_local": "This companion app records your choice on this phone. It sends no analytics.",
+      "analytics_local": "Usage analytics are not sent from this phone; your choice is stored locally. Automatic diagnostic reports have a separate opt-in.",
       "model_licenses": "Review model licenses on your host",
       "stage_upload": "Uploading media",
       "stage_prepare": "Preparing media on host",
@@ -3718,7 +3718,7 @@
       "upload_pending": "Upload continues in the background. Keep VoiceStudio on your computer running.",
       "upload_resume": "Resume monitoring",
       "upload_failed": "Upload failed. Reconnect to the same host and select the media again.",
-      "privacy_local": "Analytics preference is saved on this device. This version never sends analytics.",
+      "privacy_local": "Usage analytics are not sent from this phone; your choice is stored locally. Automatic diagnostic reports have a separate opt-in.",
       "transcript": "Transcript",
       "qr_unavailable": "Camera is unavailable. Enter the host address manually.",
       "language_system": "System language",
@@ -3771,7 +3771,7 @@
       "capture_slow": "This phone could not process microphone audio fast enough. Stop other apps or use your computer.",
       "preset_voice": "Voice {{number}}",
       "transfer": "{{received}} of {{total}}",
-      "privacy": "On-device tasks stay on this phone. Only model downloads, reports you choose to send and your paired computer use the network.",
+      "privacy": "On-device tasks stay on this phone. Model downloads, reports you choose to send and your paired computer use the network. Automatic diagnostic metadata uses the network only after its separate opt-in.",
       "computer_feature": "This feature currently runs on your computer. You can use Speech and Dictate on this phone without pairing.",
       "accepted": "Licence accepted",
       "not_accepted": "Licence not accepted",
@@ -3835,7 +3835,7 @@
       "download_one": "{{name}} · {{size}} download"
     },
     "consent": {
-      "phone_note": "Saved on this phone. Nothing is sent."
+      "phone_note": "Your analytics choice is saved on this phone. Automatic diagnostic reports require separate consent."
     },
     "report": {
       "action": "Report",
@@ -4318,5 +4318,14 @@
       "failed": "Failed",
       "cancelled": "Cancelled"
     }
+  },
+  "diagnostics": {
+    "title": "Automatic error reports",
+    "body": "Send technical crash, install and generation failure reports to Supermetry, including app/device details, error codes, app code locations and a random installation ID. Never sends your audio, text, files, names, credentials or logs. Separate from usage analytics; off by default. Turn it off anytime in Privacy.",
+    "allow": "Allow error reports",
+    "keep_off": "Keep reports off",
+    "unavailable": "Automatic reports are unavailable or disabled for this app.",
+    "managed": "Manage this choice in the desktop app connected to this browser.",
+    "save_failed": "Could not save this choice. Please try again."
   }
 }

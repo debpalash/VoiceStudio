@@ -592,6 +592,8 @@ async def ws_transcribe(websocket: WebSocket):
                 # Accepted at session start, revoked since: keep it typed.
                 await _safe_send({"type": "error", "kind": e.detail()["code"], **e.detail()})
             else:
+                from core import diagnostic_reports
+                diagnostic_reports.capture_failure("transcription", error=e)
                 logger.exception("Final transcription failed")
                 await _safe_send({"type": "error", "message": str(e),
                                   "kind": "transcribe", "detail": str(e)})
@@ -853,6 +855,8 @@ async def _sherpa_load_with_status(websocket: WebSocket, backend, spec) -> bool:
     try:
         await asyncio.to_thread(backend.ensure_loaded)
     except Exception as e:
+        from core import diagnostic_reports
+        diagnostic_reports.capture_failure("model_load", error=e, engine_id="sherpa-onnx-asr")
         logger.exception("sherpa dictation load failed (%s)", spec.id)
         try:
             await websocket.send_json({"type": "error", "message": str(e),

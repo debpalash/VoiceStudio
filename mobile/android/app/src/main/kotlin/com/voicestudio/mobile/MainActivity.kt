@@ -41,12 +41,18 @@ import com.voicestudio.mobile.features.dub.DubScreen
 import com.voicestudio.mobile.features.dictate.DictateScreen
 import com.voicestudio.mobile.features.settings.SettingsScreen
 import com.voicestudio.mobile.network.ContentReportClient
+import com.voicestudio.mobile.data.AutomaticDiagnostics
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.util.Locale
 
-class VoiceStudioApplication:Application()
+class VoiceStudioApplication:Application() {
+    override fun onCreate() {
+        super.onCreate()
+        AutomaticDiagnostics.initialize(this, BuildConfig.VERSION_NAME)
+    }
+}
 class MainActivity:ComponentActivity() {
     private var incoming by mutableStateOf<Intent?>(null)
     override fun onNewIntent(intent: Intent) {super.onNewIntent(intent);incoming=intent}
@@ -73,6 +79,7 @@ fun contentReportClient()=ContentReportClient(BuildConfig.CONTENT_REPORTS_URL,Bu
 @Composable fun StudioApp(vm:StudioViewModel = viewModel(), reportClient:ContentReportClient? = remember {contentReportClient()},incomingIntent: Intent?=null,onIncomingConsumed: ()->Unit={}) {
     val prefs by vm.preferences.collectAsStateWithLifecycle()
     val state by vm.state.collectAsStateWithLifecycle()
+    val diagnostics by AutomaticDiagnostics.state.collectAsStateWithLifecycle()
     val context=LocalContext.current
     val configuration=LocalConfiguration.current
     val locale=if(prefs.locale=="system") configuration.locales[0].toLanguageTag() else prefs.locale
@@ -186,6 +193,15 @@ fun contentReportClient()=ContentReportClient(BuildConfig.CONTENT_REPORTS_URL,Bu
                 text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(VSTheme.gap)) {Text(tr("consent.body"));Text(tr("mobile.consent.phone_note"))}},
                 confirmButton={TextButton(shape=MaterialTheme.shapes.small,onClick={vm.consent(true)}) {Text(tr("consent.yes"))}},
                 dismissButton={TextButton(shape=MaterialTheme.shapes.small,onClick={vm.consent(false)}) {Text(tr("consent.no"))}})
+            else if(!state.loading && diagnostics.ready && diagnostics.status.available && !diagnostics.status.prompted)
+                AlertDialog(shape=MaterialTheme.shapes.large,onDismissRequest={AutomaticDiagnostics.setConsent(false)},
+                    title={Text(tr("diagnostics.title"))},
+                    text={Column(Modifier.verticalScroll(rememberScrollState())) {
+                        Text(tr("diagnostics.body"))
+                        if(diagnostics.saveFailed) Text(tr("diagnostics.save_failed"),color=MaterialTheme.colorScheme.error)
+                    }},
+                    confirmButton={TextButton(enabled=!diagnostics.saving,onClick={AutomaticDiagnostics.setConsent(true)}) {Text(tr("diagnostics.allow"))}},
+                    dismissButton={TextButton(enabled=!diagnostics.saving,onClick={AutomaticDiagnostics.setConsent(false)}) {Text(tr("diagnostics.keep_off"))}})
             ContentReportHost(vm,snackbars)
         }
     }

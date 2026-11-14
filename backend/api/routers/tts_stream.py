@@ -521,6 +521,8 @@ async def ws_tts(websocket: WebSocket):
 
                 licence = licence_required_detail(e)
                 if licence is None:
+                    from core import diagnostic_reports
+                    diagnostic_reports.capture_failure("generation", error=e)
                     logger.exception("TTS streaming failed: %s", e)
                 else:
                     logger.info("TTS stream refused: model licence not accepted")

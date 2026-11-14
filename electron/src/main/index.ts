@@ -8,7 +8,14 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow, ipcMain, Menu, nativeImage, session, shell, Tray } from 'electron';
 import { electronApp, is, optimizer } from '@electron-toolkit/utils';
-import { BackendSupervisor, backendRoot } from './backend';
+import { BackendSupervisor, backendRoot, setBackendOnlyEnv } from './backend';
+import { DiagnosticReports } from './diagnostics';
+import {
+  DiagnosticStatusObserver,
+  installDiagnosticProcessCapture,
+  captureProcessGone,
+} from './diagnostics-capture';
+import { registerDiagnosticIpc } from './diagnostics-ipc';
 import { applySavedTorchVariant } from './torch-choice';
 import { assertTrustedMainFrame, registerIpc, wireWindowMaximizeEvents } from './ipc';
 import { APP_ORIGIN, installAppProtocol, registerAppScheme } from './protocol';
@@ -84,6 +91,7 @@ let closeRepairAgents: (() => void) | null = null;
 let closeAccount: (() => void) | null = null;
 let closeDirectoryScopes: (() => void) | null = null;
 let quitPreparation: Promise<void> | null = null;
+let diagnostics: DiagnosticReports | null = null;
 // False for quits that must not install a downloaded update: a relaunch, or
 // the uninstall exit. Read when the updater is torn down.
 let installUpdateOnQuit = true;
@@ -188,6 +196,7 @@ function terminalCommandOptions(): TerminalCommandOptions {
 }
 
 async function tearDownNativeResources(): Promise<void> {
+  const diagnosticTeardown = diagnostics?.close() ?? Promise.resolve();
   idleShutdown?.stop();
   idleShutdown = null;
   publishedDiscovery = '';
@@ -210,7 +219,11 @@ async function tearDownNativeResources(): Promise<void> {
   tray = null;
   const proxyTeardown = closeDevProxy?.() ?? Promise.resolve();
   closeDevProxy = null;
-  await Promise.allSettled([supervisor?.shutdown() ?? Promise.resolve(), proxyTeardown]);
+  await Promise.allSettled([
+    supervisor?.shutdown() ?? Promise.resolve(),
+    proxyTeardown,
+    diagnosticTeardown,
+  ]);
   closeDirectoryScopes?.();
   closeDirectoryScopes = null;
 }
@@ -419,6 +432,47 @@ if (singleInstance && !app.requestSingleInstanceLock()) {
   app.exit(0);
 } else {
   if (devInstance) recordDevInstance(devInstance);
+  const reports = new DiagnosticReports({
+    directory: join(app.getPath('userData'), 'diagnostics'),
+    identity: {
+      app_version: __APP_VERSION__,
+      build_commit: __BUILD_COMMIT__,
+      platform:
+        ({ win32: 'windows', darwin: 'macos', linux: 'linux' } as Record<string, string>)[
+          process.platform
+        ] ?? 'unknown',
+      arch: process.arch === 'ia32' ? 'x86' : process.arch,
+    },
+  });
+  diagnostics = reports;
+  setBackendOnlyEnv({ OMNIVOICE_DIAGNOSTICS_DIR: reports.directory });
+  const diagnosticReady = reports.initialize();
+  installDiagnosticProcessCapture(reports);
+  registerDiagnosticIpc(
+    reports,
+    (event) => assertTrustedMainFrame(event, mainWindow),
+    diagnosticReady,
+  );
+  const diagnosticStatus = new DiagnosticStatusObserver(reports);
+  app.on('render-process-gone', (_event, contents, details) => {
+    if (!isLiveWindow(mainWindow) || contents !== mainWindow.webContents) return;
+    captureProcessGone(
+      reports,
+      true,
+      details.reason,
+      details.exitCode,
+      quitting || Boolean(quitPreparation),
+    );
+  });
+  app.on('child-process-gone', (_event, details) => {
+    captureProcessGone(
+      reports,
+      false,
+      details.reason,
+      details.exitCode,
+      quitting || Boolean(quitPreparation),
+    );
+  });
   let initialized: Promise<void> = Promise.resolve();
   app.on('second-instance', (_event, argv) => {
     const intent = parseLaunchIntent(argv);
@@ -454,6 +508,7 @@ if (singleInstance && !app.requestSingleInstanceLock()) {
       supervisor = backend;
       console.log(`[supervisor] backend root: ${backendRoot()} (packaged=${app.isPackaged})`);
       backend.subscribe((s) => {
+        diagnosticStatus.observe(s);
         const detail = s.message ? ` — ${s.message}` : '';
         console.log(`[supervisor] stage=${s.stage} managed=${s.managed} port=${s.port}${detail}`);
         publishDiscovery();
