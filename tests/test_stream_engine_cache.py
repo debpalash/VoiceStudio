@@ -1,6 +1,7 @@
 """Live-stream engine resolution (_resolve_stream_backend) and the per-request lease."""
 import asyncio
 import os
+from types import SimpleNamespace
 
 import pytest
 
@@ -148,6 +149,11 @@ class _FakeSocket:
     def __init__(self, request):
         self._requests = [request]
         self.sent = []
+        # The admission guard reads the handshake metadata before accept():
+        # these doubles stand in for the desktop UI, which connects from
+        # loopback and sends no Origin.
+        self.headers = {}
+        self.client = SimpleNamespace(host="127.0.0.1")
 
     async def accept(self):
         pass

@@ -25,7 +25,10 @@ def client(monkeypatch):
     monkeypatch.setattr(watermark, "mark_synthetic_async", marker)
     app = FastAPI()
     app.include_router(tools.router)
-    with TestClient(app) as client:
+    # Normalising workflow audio is admin-gated, and the UI reaches it from
+    # loopback; the default TestClient peer ("testclient") is a non-loopback LAN
+    # guest and would be refused.
+    with TestClient(app, client=("127.0.0.1", 50000)) as client:
         yield client, marker
 
 

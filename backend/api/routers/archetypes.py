@@ -38,6 +38,7 @@ from typing import Any, Awaitable, Callable, Optional
 from fastapi import APIRouter, Body, HTTPException, Query, Depends
 from fastapi.responses import FileResponse
 
+from api.dependencies import require_admin
 from core import archetypes
 from core.audio_validation import is_playable_wav, resolve_regular_file
 from core.config import OUTPUTS_DIR, VOICES_DIR
@@ -455,7 +456,7 @@ def preview_gallery_status():
     return gallery.status()
 
 
-@router.put("/archetypes/previews")
+@router.put("/archetypes/previews", dependencies=[Depends(require_admin)])
 async def set_preview_gallery(enabled: bool = Body(..., embed=True)):
     """Turn pre-rendered previews on or off.
 
@@ -471,7 +472,7 @@ async def set_preview_gallery(enabled: bool = Body(..., embed=True)):
     return state
 
 
-@router.post("/archetypes/previews/check")
+@router.post("/archetypes/previews/check", dependencies=[Depends(require_admin)])
 async def check_preview_gallery():
     """Manual "check now" — bypasses the 24 h throttle, never the signature."""
     return await gallery.check_for_updates(force=True)
@@ -596,7 +597,7 @@ async def preview_archetype(
     )
 
 
-@router.post("/archetypes/{archetype_id}/use")
+@router.post("/archetypes/{archetype_id}/use", dependencies=[Depends(require_admin)])
 def use_archetype(archetype_id: str, name: Optional[str] = Query(None)):
     """Save an archetype recipe as a reusable design profile without rendering."""
     a = archetypes.get_archetype(archetype_id)

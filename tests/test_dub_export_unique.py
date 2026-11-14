@@ -48,7 +48,8 @@ def app_client(tmp_path, monkeypatch):
     monkeypatch.setattr(background, "surgical_background", fake_background)
 
     from fastapi.testclient import TestClient
-    with TestClient(_main.app) as client:
+    # Mutations in this export/editor workflow represent the loopback operator.
+    with TestClient(_main.app, client=("127.0.0.1", 50000)) as client:
         yield client, _dc, _dx, tmp_path
 
 
@@ -569,6 +570,18 @@ class TestExportBeforeDub:
     def test_sync_transcript_stores_editor_lines_until_a_dub_exists(self, app_client):
         client, dc, _dx, tmp = app_client
         job_id, job = self._seed_transcribed(dc, tmp)
+        from fastapi.testclient import TestClient
+        # Reuse the fixture's running lifespan; only the request peer changes.
+        remote = TestClient(client.app, client=("198.51.100.4", 50001))
+        try:
+            denied = remote.post(
+                f"/dub/sync-transcript/{job_id}",
+                json={"segments": [{"id": "0", "start": 0.2, "end": 0.9, "text": "remote edit"}]},
+            )
+        finally:
+            remote.close()
+        assert denied.status_code == 403
+        assert job["segments"][0]["text"] == "hello"
         response = client.post(
             f"/dub/sync-transcript/{job_id}",
             json={"segments": [{"id": "0", "start": 0.2, "end": 0.9, "text": "hello there"}]},

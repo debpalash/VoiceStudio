@@ -16,6 +16,7 @@ from fastapi import Request, Depends
 from fastapi import APIRouter, File, Form, UploadFile, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
 
+from api.dependencies import require_admin
 from core.db import db_conn
 from core.config import PREVIEW_DIR
 from core.tasks import task_manager
@@ -293,7 +294,7 @@ def dub_parse_subtitle_text(req: ParseSubtitleTextRequest):
     }
 
 
-@router.post("/dub/import-srt/{job_id}")
+@router.post("/dub/import-srt/{job_id}", dependencies=[Depends(require_admin)])
 async def dub_import_srt(job_id: str, file: UploadFile = File(...)):
     """Replace `job["segments"]` with timestamps + text parsed from an SRT
     file. Used as a fallback when Whisper mis-transcribes — the user can
@@ -501,7 +502,7 @@ def _prepare_downloaded_caption_segments(cues: list[dict], duration: float) -> l
     ]
 
 
-@router.post("/dub/use-downloaded-captions/{job_id}")
+@router.post("/dub/use-downloaded-captions/{job_id}", dependencies=[Depends(require_admin)])
 def dub_use_downloaded_captions(job_id: str):
     """Seed a prepared Dub job from its downloaded caption track."""
     job = _get_job(job_id)
@@ -548,7 +549,7 @@ def dub_use_downloaded_captions(job_id: str):
     }
 
 
-@router.post("/dub/cleanup-segments/{job_id}")
+@router.post("/dub/cleanup-segments/{job_id}", dependencies=[Depends(require_admin)])
 def dub_cleanup_segments(job_id: str, req: Optional[CleanupSegmentsRequest] = None):
     """Merge fragments and stitch split sentences in a job's segments.
 
@@ -570,7 +571,7 @@ def dub_cleanup_segments(job_id: str, req: Optional[CleanupSegmentsRequest] = No
     return {"segments": cleaned, "before": len(stored), "after": len(cleaned)}
 
 
-@router.post("/dub/sync-transcript/{job_id}")
+@router.post("/dub/sync-transcript/{job_id}", dependencies=[Depends(require_admin)])
 def dub_sync_transcript(job_id: str, req: TranscriptSyncRequest):
     """Store the editor's transcript while the job has no dub yet (#3393).
 
@@ -654,7 +655,7 @@ def list_dub_history():
         rows = conn.execute("SELECT * FROM dub_history ORDER BY created_at DESC LIMIT 30").fetchall()
     return [dict(r) for r in rows]
 
-@router.delete("/dub/history")
+@router.delete("/dub/history", dependencies=[Depends(require_admin)])
 def clear_dub_history():
     """Delete persisted dub rows and their on-disk dirs (scoped to known IDs)."""
     with db_conn() as conn:
@@ -676,7 +677,7 @@ def clear_dub_history():
     event_bus.emit("dub_history")
     return {"cleared": True, "count": len(ids)}
 
-@router.delete("/dub/history/{history_id}")
+@router.delete("/dub/history/{history_id}", dependencies=[Depends(require_admin)])
 def delete_single_dub_history(history_id: str):
     def _delete_row():
         with db_conn() as conn:

@@ -136,6 +136,13 @@ VoiceStudio/
 └── .git/
 ```
 
+The shared-code retirement tracked in #2603 removes the unused legacy update
+toast and its check/install/version helpers. `shared/utils/updater.js` retains
+the release-list adapter used by the shared releases store. Electron's updater
+remains in `src/main/updater.ts`, with its title-bar control and Settings screen
+under `src/renderer/src/`. Each remaining shared module needs a fresh consumer
+audit before retirement; the original cleanup inventory is historical.
+
 ## Rules of the root
 
 1. **Nothing at the root is a runtime artifact.** Outputs, temp files, local DBs, crash logs — all go to `~/Library/Application Support/OmniVoice/` (or the OS equivalent), *never* into the repo. The one exception is `omnivoice_data/`, which exists as a bind-mount anchor for Docker.
