@@ -424,6 +424,12 @@ The first run downloads container images and dependencies (as CI does); after
 that your code and results stay on your machine. CI is unchanged: `ci.yml`
 stays the gate.
 
+The module has its own dependency lockfile, `.dagger/uv.lock`; the root Python
+lockfile does not update it. When refreshing module dependencies, use the SDK
+matching `dagger.json`'s engine version and keep the generated `.dagger/sdk/`
+directory untracked. `tests/test_dependency_security_floors.py` checks both
+lockfiles against reviewed security fixes.
+
 ```bash
 dagger call check             # all of the above, in parallel
 dagger call check --git=.git  # also run tests that read real git history
