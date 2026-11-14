@@ -322,7 +322,8 @@ async def run_transcribe_guarded(executor, fn, *, what: str = "ASR",
             msg += " " + hint
         failure = ASRTimeoutError(msg)
         from core import diagnostic_reports
-        diagnostic_reports.capture_failure("transcription", error=failure)
+        # This is a local compute deadline, not a transport timeout.
+        diagnostic_reports.capture_failure("transcription", error=failure, error_code="UNKNOWN")
         raise failure
     except Exception as exc:
         from core import diagnostic_reports

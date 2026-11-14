@@ -1,5 +1,6 @@
 """Actual failure-owner diagnostics, independent consent and strict persisted data."""
 import asyncio
+import importlib
 import json
 import threading
 import time
@@ -7,11 +8,11 @@ from pathlib import Path
 
 import pytest
 
-from core import diagnostic_reports as reports
 
 
 @pytest.fixture
 def reporter(monkeypatch,tmp_path):
+    reports = importlib.import_module("core.diagnostic_reports")
     from core import prefs,config,analytics
     monkeypatch.delenv('OMNIVOICE_DIAGNOSTICS_DIR',raising=False)
     monkeypatch.delenv('OMNIVOICE_DIAGNOSTICS_DISABLED',raising=False)
@@ -70,6 +71,7 @@ def test_private_metadata_only_and_coalescing(reporter):
 
 
 def test_same_causal_exception_reported_once(reporter):
+    reports = importlib.import_module("core.diagnostic_reports")
     reporter.consent(True)
     error=RuntimeError('secret')
     reports.capture_failure('model_load',error=error)
@@ -97,6 +99,7 @@ def test_kill_and_withdrawal_purge_and_new_epoch(reporter,monkeypatch,kill,kill_
 
 @pytest.mark.parametrize('kill',['OMNIVOICE_DIAGNOSTICS_DISABLED','OMNIVOICE_ANALYTICS_DISABLED'])
 def test_killed_launch_revokes_saved_grant_and_cannot_replay_after_unkill(reporter,monkeypatch,kill):
+    reports = importlib.import_module("core.diagnostic_reports")
     from core import prefs,run_sentinel
     monkeypatch.setattr(run_sentinel,'_previous_run_alive',lambda *args:False)
     prefs.set_('analytics_enabled',True)
@@ -145,6 +148,7 @@ def test_capture_observed_kill_cannot_resume_old_epoch_before_worker_refresh(rep
 
 
 def test_managed_only_spools_same_enabled_epoch(reporter,monkeypatch,tmp_path):
+    reports = importlib.import_module("core.diagnostic_reports")
     root=tmp_path/'managed';root.mkdir()
     monkeypatch.setenv('OMNIVOICE_DIAGNOSTICS_DIR',str(root))
     managed=reports.Reporter();managed.schema=reports._schema()
@@ -167,6 +171,7 @@ def test_managed_only_spools_same_enabled_epoch(reporter,monkeypatch,tmp_path):
 
 
 def test_offline_queue_survives_restart_and_revalidates(reporter):
+    reports = importlib.import_module("core.diagnostic_reports")
     reporter.consent(True)
     reporter.capture('download_failed',stage='download')
     saved=records(reporter)[0]
@@ -183,6 +188,7 @@ def test_offline_queue_survives_restart_and_revalidates(reporter):
 
 
 def test_unclean_marker_requires_same_consent_and_dead_owner(reporter,monkeypatch):
+    reports = importlib.import_module("core.diagnostic_reports")
     reporter.consent(True)
     from core import run_sentinel
     monkeypatch.setattr(run_sentinel,'_previous_run_alive',lambda *args:False)
@@ -208,6 +214,7 @@ def test_corrupt_consent_fails_closed_and_purges(reporter):
 
 
 def test_queue_bound_and_invalid_frame_controls(reporter):
+    reports = importlib.import_module("core.diagnostic_reports")
     reporter.consent(True)
     for _ in range(100):reporter.capture('generation_failed')
     assert reporter.intake.qsize()==64 and reporter.dropped==36
@@ -357,6 +364,7 @@ def test_standalone_availability_still_requires_destination_and_no_hard_kill(rep
 
 
 def test_managed_availability_uses_desktop_authority_without_local_destination(reporter,monkeypatch,tmp_path):
+    reports = importlib.import_module("core.diagnostic_reports")
     from core import analytics
     monkeypatch.setenv('OMNIVOICE_DIAGNOSTICS_DIR',str(tmp_path/'managed'))
     def no_destination():
@@ -441,6 +449,7 @@ def test_actual_asr_guard_failure_and_cancel_control(reporter):
 
 @pytest.mark.parametrize('clean',[False,True])
 def test_real_process_exit_marker_is_consent_stamped(reporter,clean):
+    reports = importlib.import_module("core.diagnostic_reports")
     import os
     import subprocess
     import sys
@@ -478,6 +487,7 @@ def test_withdrawal_cleanup_denial_never_reenables_old_prefs(reporter,monkeypatc
 
 
 def test_withdrawal_prefs_write_failure_latches_closed(reporter,monkeypatch):
+    reports = importlib.import_module("core.diagnostic_reports")
     from core import prefs
     reporter.consent(True)
     original=prefs._save
@@ -536,6 +546,7 @@ def test_stale_transport_callback_cannot_fill_new_epoch_ack_queue(reporter,monke
 
 
 def test_canonical_frame_and_queue_limits_can_tighten(reporter):
+    reports = importlib.import_module("core.diagnostic_reports")
     reporter.consent(True)
     reporter.schema['limits']={**reporter.schema['limits'],'queue_count':2,'frame_bytes':25,'queue_bytes':1024}
     assert reports._frames('backend/core/tasks.py:10000001',reporter.schema)==''
@@ -549,6 +560,7 @@ def test_canonical_frame_and_queue_limits_can_tighten(reporter):
 
 
 def test_clean_shutdown_locked_marker_does_not_become_crash(reporter,monkeypatch):
+    reports = importlib.import_module("core.diagnostic_reports")
     reporter.consent(True);reporter._tick()
     marker=reporter.root/'session.json'
     original=Path.unlink
@@ -568,6 +580,7 @@ def test_clean_shutdown_locked_marker_does_not_become_crash(reporter,monkeypatch
 
 @pytest.mark.parametrize('kill',['OMNIVOICE_DIAGNOSTICS_DISABLED','OMNIVOICE_ANALYTICS_DISABLED'])
 def test_killed_launch_retains_revocation_tombstone_when_shared_prefs_cannot_write(reporter,monkeypatch,kill):
+    reports = importlib.import_module("core.diagnostic_reports")
     from core import prefs
     reporter.consent(True);old=reporter.epoch
     original=prefs._save
@@ -600,6 +613,7 @@ def test_enable_while_killed_creates_no_new_grant_profile_or_directory(reporter,
 
 @pytest.mark.parametrize('kill',['OMNIVOICE_DIAGNOSTICS_DISABLED','OMNIVOICE_ANALYTICS_DISABLED'])
 def test_killed_startup_revokes_before_a_missing_policy_stops_the_worker(reporter,monkeypatch,kill):
+    reports = importlib.import_module("core.diagnostic_reports")
     from core import prefs
     reporter.consent(True)
     monkeypatch.setenv(kill,'1')
@@ -608,3 +622,170 @@ def test_killed_startup_revokes_before_a_missing_policy_stops_the_worker(reporte
     restarted._run()
     assert (restarted.root/'revoked.json').exists() or prefs._load()['diagnostics_enabled'] is False
     assert not restarted.capture('backend_crash')
+
+
+@pytest.mark.parametrize('cancelled',[False,True])
+def test_batch_empty_transcript_keeps_cancellation_out_of_diagnostics(reporter,monkeypatch,tmp_path,cancelled):
+    from types import SimpleNamespace
+    from api.routers import batch
+    from services import asr_backend,ffmpeg_utils
+    import subprocess
+    reporter.consent(True)
+    monkeypatch.setattr(batch,'DATA_DIR',str(tmp_path))
+    monkeypatch.setattr(subprocess,'run',lambda *a,**kw:SimpleNamespace(stderr=b'Duration: 00:00:02.00',stdout=b''))
+    monkeypatch.setattr(ffmpeg_utils,'find_ffmpeg',lambda:'ffmpeg')
+    monkeypatch.setattr(ffmpeg_utils,'validate_media_source',lambda *_:None)
+    monkeypatch.setattr(ffmpeg_utils,'require_audio_stream',lambda *_:None)
+    job={'status':'running','video_path':str(tmp_path/'input.mp4'),'langs':['en']}
+    async def transcribe(*a,**kw):
+        if cancelled:job['status']='cancelled'
+        return [],'en'
+    monkeypatch.setattr(asr_backend,'run_transcribe_guarded',transcribe)
+    asyncio.run(batch._run_batch_pipeline('diagnostic-empty',job))
+    assert job['status']==('cancelled' if cancelled else 'failed')
+    assert len(records(reporter))==(0 if cancelled else 1)
+
+
+def test_argos_terminal_error_row_is_reported_without_losing_partial_results(reporter,monkeypatch):
+    from test_dub_translate import _install_fake_argos
+    from api.routers.dub_translate import dub_translate,TranslateRequest
+    import importlib
+    _install_fake_argos(monkeypatch)
+    def translate(text,*_):
+        if text=='private failure':raise RuntimeError('private provider response')
+        return '[es]'+text
+    monkeypatch.setattr(importlib.import_module('argostranslate.translate'),'translate',translate)
+    reporter.consent(True)
+    result=asyncio.run(dub_translate(TranslateRequest(
+        provider='argos',source_lang='en',target_lang='es',quality='fast',
+        segments=[{'id':'bad','text':'private failure'},{'id':'good','text':'Hello'}],
+    )))
+    rows=result['translated']
+    assert len(rows)==2 and rows[0]['error'] and rows[1]['text']=='[es]Hello'
+    saved=records(reporter)
+    assert len(saved)==1 and saved[0]['props']['stage']=='translation'
+    assert saved[0]['props']['error_type']=='RuntimeError'
+    assert 'private' not in json.dumps(saved)
+
+
+def test_asr_compute_deadline_is_not_saved_as_network_error(reporter,monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from services import asr_backend
+    entered=threading.Event();release=threading.Event()
+    reporter.consent(True)
+    def blocked():
+        entered.set()
+        assert release.wait(2)
+    class ObservedAsyncio:
+        def __getattr__(self,name):return getattr(asyncio,name)
+        async def wait_for(self,future,timeout):
+            # Start the real wait_for deadline only after native compute began.
+            # Scheduler load must not turn this into a queued-work timeout.
+            assert await asyncio.to_thread(entered.wait,1)
+            return await asyncio.wait_for(future,timeout=.01)
+    monkeypatch.setattr(asr_backend,'asyncio',ObservedAsyncio())
+    async def run():
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            try:
+                with pytest.raises(asr_backend.ASRTimeoutError):
+                    await asr_backend.run_transcribe_guarded(pool,blocked,timeout=60)
+            finally:release.set()
+    asyncio.run(run())
+    assert entered.is_set()
+    props=records(reporter)[0]['props']
+    assert props['stage']=='transcription' and props['error_type']=='TimeoutError'
+    assert props['error_code']=='UNKNOWN'
+
+
+@pytest.mark.parametrize('failure_stage',['eager','diagnostic_initialization'])
+def test_startup_failure_restores_loop_handler_and_stops_reporter(reporter,monkeypatch,failure_stage):
+    reports = importlib.import_module("core.diagnostic_reports")
+    from types import SimpleNamespace
+    import main
+    from core import run_sentinel
+    monkeypatch.setenv('OMNIVOICE_STARTUP_WATCHDOG_S','0')
+    monkeypatch.setattr(main,'_EAGER',True)
+    monkeypatch.setattr(main,'_phase_a_build',lambda:None)
+    monkeypatch.setattr(main,'_phase_a_finalize',lambda:None)
+    monkeypatch.setattr(main,'_start_analytics_lifecycle',lambda *_:None)
+    monkeypatch.setattr(run_sentinel,'detect_unclean_shutdown',lambda:None)
+    monkeypatch.setattr(run_sentinel,'write_sentinel',lambda:None)
+    async def fail(_):raise RuntimeError('controlled startup failure')
+    monkeypatch.setattr(main,'_phase_b',fail)
+    if failure_stage=='diagnostic_initialization':
+        initialize=reports.initialize
+        def fail_initialize():
+            initialize()
+            raise RuntimeError('controlled startup failure')
+        monkeypatch.setattr(reports,'initialize',fail_initialize)
+    captures=[]
+    monkeypatch.setattr(reports,'capture',lambda *a,**kw:captures.append(a))
+    async def run():
+        loop=asyncio.get_running_loop()
+        previous=lambda *_:None
+        loop.set_exception_handler(previous)
+        for _ in range(2):
+            with pytest.raises(RuntimeError,match='controlled startup'):
+                async with main.lifespan(SimpleNamespace(state=SimpleNamespace())):
+                    pytest.fail('failed startup must not yield')
+            assert loop.get_exception_handler() is previous
+            assert reports._reporter is None
+            loop.call_exception_handler({'message':'controlled loop error','exception':RuntimeError('private')})
+        assert captures==[]
+    asyncio.run(run())
+
+
+def test_reporter_fixture_tracks_runtime_module_replacement(monkeypatch,tmp_path):
+    import importlib.util
+    import sys
+    import core
+    current=__import__('importlib').import_module('core.diagnostic_reports')
+    spec=importlib.util.spec_from_file_location('core.diagnostic_reports',current.__file__)
+    fresh=importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules,'core.diagnostic_reports',fresh)
+    monkeypatch.setattr(core,'diagnostic_reports',fresh)
+    spec.loader.exec_module(fresh)
+    fixture=globals()['reporter'].__wrapped__(monkeypatch,tmp_path)
+    instance=next(fixture)
+    try:
+        assert type(instance) is fresh.Reporter
+        instance.consent(True)
+        assert fresh.capture_failure('translation',error=RuntimeError('private'))
+        assert len(records(instance))==1
+    finally:fixture.close()
+
+
+def test_cancelled_argos_request_does_not_report_late_worker_failure(reporter,monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from test_dub_translate import _install_fake_argos
+    from api.routers import dub_translate
+    _install_fake_argos(monkeypatch)
+    entered=threading.Event();release=threading.Event()
+    def translate(*_):
+        entered.set()
+        assert release.wait(2)
+        raise RuntimeError('private provider response')
+    monkeypatch.setattr(importlib.import_module('argostranslate.translate'),'translate',translate)
+    reporter.consent(True)
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        monkeypatch.setattr(dub_translate,'_cpu_pool',pool)
+        async def run():
+            task=asyncio.create_task(dub_translate.dub_translate(dub_translate.TranslateRequest(
+                provider='argos',source_lang='en',target_lang='es',quality='fast',
+                segments=[{'id':'bad','text':'private recording'}],
+            )))
+            try:
+                assert await asyncio.to_thread(entered.wait,1)
+                task.cancel()
+                with pytest.raises(asyncio.CancelledError):await task
+            finally:release.set()
+        asyncio.run(run())
+    assert records(reporter)==[]
+
+
+
+def test_network_delivery_timeout_retains_network_classification(reporter):
+    reporter.consent(True)
+    reporter.capture('download_failed',stage='download',error=TimeoutError('private endpoint'))
+    props=records(reporter)[0]['props']
+    assert props['error_type']=='TimeoutError' and props['error_code']=='NETWORK_ERROR'

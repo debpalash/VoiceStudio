@@ -1305,12 +1305,8 @@ async def _wait_for_analytics_thread(app: FastAPI) -> None:
 
 
 @asynccontextmanager
-async def _application_lifespan(app: FastAPI):
-    from api.dependencies import validate_server_admin_key
-
-    validate_server_admin_key()
+async def _diagnostic_lifespan():
     from core import diagnostic_reports
-    diagnostic_reports.initialize()
     _diagnostic_loop = asyncio.get_running_loop()
     _previous_loop_handler = _diagnostic_loop.get_exception_handler()
     def _diagnostic_loop_error(loop, context):
@@ -1319,7 +1315,18 @@ async def _application_lifespan(app: FastAPI):
             _previous_loop_handler(loop, context)
         else:
             loop.default_exception_handler(context)
-    _diagnostic_loop.set_exception_handler(_diagnostic_loop_error)
+    try:
+        diagnostic_reports.initialize()
+        _diagnostic_loop.set_exception_handler(_diagnostic_loop_error)
+        yield
+    finally:
+        if _diagnostic_loop.get_exception_handler() is _diagnostic_loop_error:
+            _diagnostic_loop.set_exception_handler(_previous_loop_handler)
+        await asyncio.to_thread(diagnostic_reports.shutdown)
+
+
+@asynccontextmanager
+async def _application_lifespan(app: FastAPI):
     # Startup watchdog (#632): a silent hang during startup (e.g. a model-load /
     # MCP deadlock on some platforms) means "Application startup complete" never
     # logs and the app sits forever with no error. If startup hasn't finished
@@ -1428,9 +1435,6 @@ async def _application_lifespan(app: FastAPI):
         await asyncio.to_thread(_phase_a_finished.wait, 20.0)
     await _wait_for_profile_reconcile_thread(app)
     await _wait_for_analytics_thread(app)
-    if _diagnostic_loop.get_exception_handler() is _diagnostic_loop_error:
-        _diagnostic_loop.set_exception_handler(_previous_loop_handler)
-    await asyncio.to_thread(diagnostic_reports.shutdown)
     try:
         from services.telephony import gateway as telephony_gateway
         await telephony_gateway.stop()
@@ -1549,8 +1553,12 @@ async def lifespan(app: FastAPI):
     # recovery and model files. Held through teardown, where workers can still
     # write. The short wait covers a restart whose predecessor is still exiting.
     with DataDirectoryLease(DATA_DIR, timeout=15):
-        async with _application_lifespan(app):
-            yield
+        from api.dependencies import validate_server_admin_key
+
+        validate_server_admin_key()
+        async with _diagnostic_lifespan():
+            async with _application_lifespan(app):
+                yield
 
 
 app = FastAPI(

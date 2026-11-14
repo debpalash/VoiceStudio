@@ -939,6 +939,9 @@ async def dub_translate(req: TranslateRequest):
                     },
                 )
 
+            import threading
+            argos_cancelled = threading.Event()
+
             def _translate_argos():
                 import argostranslate.translate
 
@@ -959,10 +962,17 @@ async def dub_translate(req: TranslateRequest):
                         )
                         results.append({"id": seg.id, "text": translated_text})
                     except Exception as e:
+                        if not argos_cancelled.is_set():
+                            from core import diagnostic_reports
+                            diagnostic_reports.capture_failure("translation", error=e)
                         results.append({"id": seg.id, "text": seg.text, "error": str(e)})
                 return results
 
-            translated = await loop.run_in_executor(_cpu_pool, _translate_argos)
+            try:
+                translated = await loop.run_in_executor(_cpu_pool, _translate_argos)
+            except asyncio.CancelledError:
+                argos_cancelled.set()
+                raise
             # Argos is the DEFAULT engine — routing it through _maybe_cinematic is
             # the headline fix: a user who picks Cinematic/Autofit on Argos now
             # gets the LLM refine + fit pass (and rate-ratio badges in Fast mode)

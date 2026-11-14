@@ -1,9 +1,9 @@
 """Desktop's two durable stages share the same total storage budget."""
 import json
+import importlib
 
 import pytest
 
-from core import diagnostic_reports as reports
 from test_diagnostic_reports import reporter, records  # noqa: F401
 
 
@@ -11,6 +11,7 @@ from test_diagnostic_reports import reporter, records  # noqa: F401
 def test_managed_inbox_reserves_half_the_desktop_budget(
     reporter, monkeypatch, tmp_path, managed, expected,
 ):
+    reports = importlib.import_module("core.diagnostic_reports")
     instance = reporter
     if managed:
         root = tmp_path / "managed"

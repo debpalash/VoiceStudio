@@ -15,11 +15,13 @@ public struct L10n: Sendable {
             if let url = bundle.url(forResource: code, withExtension: "json", subdirectory: "Catalogs"), let data = try? Data(contentsOf: url),
                let json = try? JSONSerialization.jsonObject(with: data) { loaded[code] = Self.flatten(json) }
         }
-        // English mobile additions deliberately fall back until translations are merged upstream.
+        // Legacy English additions only fill gaps in the renderer catalog.
+        var englishFallback: [String: String] = [:]
         for name in ["strings.mobile.en", "strings.ios-additions.en"] {
             if let url = bundle.url(forResource: name, withExtension: "json", subdirectory: "Catalogs"), let data = try? Data(contentsOf: url),
-               let json = try? JSONSerialization.jsonObject(with: data) { loaded["en", default: [:]].merge(Self.flatten(json)) { _, new in new } }
+               let json = try? JSONSerialization.jsonObject(with: data) { englishFallback.merge(Self.flatten(json)) { _, new in new } }
         }
+        loaded["en"] = englishFallback.merging(loaded["en"] ?? [:]) { _, renderer in renderer }
         catalogs = loaded
     }
     public static func flatten(_ object: Any, prefix: String = "") -> [String: String] {

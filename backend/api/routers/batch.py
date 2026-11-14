@@ -379,12 +379,13 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
     job["source_lang"] = source_lang
     _set_progress(job, "transcribe", 100, segments_count=len(segments))
 
-    if job["status"] == "cancelled" or not segments:
-        if not segments:
-            from core import diagnostic_reports
-            diagnostic_reports.capture_failure("transcription")
-            job["error"] = "Transcription produced no segments"
-            job["status"] = "failed"
+    if job["status"] == "cancelled":
+        return
+    if not segments:
+        from core import diagnostic_reports
+        diagnostic_reports.capture_failure("transcription")
+        job["error"] = "Transcription produced no segments"
+        job["status"] = "failed"
         return
 
     if not source_lang:
