@@ -20,6 +20,7 @@ import json
 import os
 import sys
 import types
+import threading
 
 os.environ.setdefault("OMNIVOICE_MODEL", "test")
 os.environ.setdefault("OMNIVOICE_DISABLE_FILE_LOG", "1")
@@ -75,6 +76,84 @@ def _consent(monkeypatch, *, install_already_recorded=True):
 
 def _names(sent):
     return [e for e, _ in sent]
+
+
+def test_opt_out_during_uninstall_metadata_write_cannot_restore_file(sent, monkeypatch, tmp_path):
+    _consent(monkeypatch)
+    entered, release = threading.Event(), threading.Event()
+    original_dump = json.dump
+
+    def blocked_dump(*args, **kwargs):
+        if threading.current_thread().name == "analytics-metadata":
+            entered.set()
+            assert release.wait(5)
+        return original_dump(*args, **kwargs)
+
+    monkeypatch.setattr(json, "dump", blocked_dump)
+    worker = threading.Thread(target=analytics.sync_uninstall_ping_info,
+                              name="analytics-metadata")
+    worker.start()
+    try:
+        assert entered.wait(2)
+        analytics.set_opted_in(False)
+        assert not (tmp_path / analytics.UNINSTALL_PING_INFO_BASENAME).exists()
+    finally:
+        release.set()
+        worker.join(5)
+    assert not worker.is_alive()
+    assert not (tmp_path / analytics.UNINSTALL_PING_INFO_BASENAME).exists()
+    assert not list(tmp_path.glob("analytics_info.json*.tmp"))
+
+
+def test_queued_startup_after_consent_change_does_not_replay_history(sent, monkeypatch):
+    from core import prefs
+
+    prefs.set_("analytics_last_version", "old-version")
+    revision = analytics.startup_consent_revision()
+    analytics.set_opted_in(True)
+    assert _names(sent) == ["app_installed"]
+    analytics.record_startup_lifecycle(
+        {"last_activity": {"kind": "idle"}, "uptime_hint_s": 30},
+        consent_revision=revision,
+    )
+    assert _names(sent) == ["app_installed"]
+    assert prefs.get("analytics_last_version") == analytics._app_version()
+
+
+def test_consent_during_startup_gate_read_does_not_replay_history(sent, monkeypatch):
+    from core import prefs
+
+    prefs.set_("analytics_last_version", "old-version")
+    prefs.set_("analytics_install_recorded", True)
+    revision = analytics.startup_consent_revision()
+    entered, release = threading.Event(), threading.Event()
+    original_enabled = analytics.enabled
+    calls = 0
+
+    def blocked_enabled():
+        nonlocal calls
+        if threading.current_thread().name == "analytics-lifecycle":
+            calls += 1
+            if calls == 2:
+                entered.set()
+                assert release.wait(5)
+        return original_enabled()
+
+    monkeypatch.setattr(analytics, "enabled", blocked_enabled)
+    worker = threading.Thread(
+        target=lambda: analytics.record_startup_lifecycle(consent_revision=revision),
+        name="analytics-lifecycle",
+    )
+    worker.start()
+    try:
+        assert entered.wait(2)
+        analytics.set_opted_in(True)
+    finally:
+        release.set()
+        worker.join(5)
+    assert not worker.is_alive()
+    assert sent == []
+    assert prefs.get("analytics_last_version") == analytics._app_version()
 
 
 # ── app_installed ────────────────────────────────────────────────────────────

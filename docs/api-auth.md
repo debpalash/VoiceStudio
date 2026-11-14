@@ -382,13 +382,18 @@ answered before PIN/API-key enforcement, and gate-generated `401` responses
 retain CORS headers so the UI can read the actual failure and prompt for the
 right credential.
 
-TLS-terminating proxies must establish the effective scheme at the ASGI server
-boundary. Uvicorn's proxy-header handling trusts loopback by default, which
-covers Tailscale Serve; a custom proxy on another address must be listed with
-`--forwarded-allow-ips=<proxy-ip>` (and proxy headers must remain enabled).
-VoiceStudio deliberately does not trust a raw `X-Forwarded-Proto` header inside
-the application: once Uvicorn accepts a trusted proxy, the resolved ASGI scheme
-drives exact-Origin checks and the session cookie's `Secure` attribute.
+Uvicorn applies proxy-header rewrites only for peers in its
+`--forwarded-allow-ips` list (loopback by default), which covers bare-metal
+Tailscale Serve. Docker can present the proxy as a bridge gateway instead.
+VoiceStudio's effective-scheme helper also permits a one-way upgrade to HTTPS
+from `X-Forwarded-Proto`; it never uses that header to downgrade HTTPS. This
+supports exact-Origin checks and adds the session cookie's `Secure` attribute
+without trusting the proxy's claimed client address. The header does not prove
+that TLS or certificate validation succeeded: verify the client-facing HTTPS URL
+in the browser. Do not set `FORWARDED_ALLOW_IPS=*` or trust a shared Docker gateway
+merely to make sharing work. If original client-address forwarding is needed,
+trust only a controlled proxy that sanitizes those headers and cannot be
+bypassed. See [Docker with Tailscale](install/docker.md#private-remote-access-with-tailscale).
 For a public path prefix such as `/studio`, either strip that prefix before
 forwarding or configure the ASGI `root_path` to the same value. WebSocket ticket
 validation removes only that trusted, configured prefix; it never accepts an

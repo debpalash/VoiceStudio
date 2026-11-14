@@ -27,6 +27,12 @@ Pending analytics initialization is invalidated when consent is withdrawn,
 including a consent lookup or SDK import already in flight. Renderer reports
 retain only validated stack frames; multiline error messages are discarded.
 
+Backend lifecycle analytics runs in a background worker, so analytics file I/O
+does not delay listening or backend readiness. Crash detection still records its
+run sentinel before initialization, and version bookkeeping and uninstall-info
+cleanup still run with consent off. A later consent choice invalidates queued
+startup events and metadata writes prepared under the previous choice.
+
 If the AudioSeal generator fails to load, generation continues without an
 invisible watermark. Further load attempts wait ten minutes, avoiding repeated
 network timeouts on each render; a later render retries automatically. This
