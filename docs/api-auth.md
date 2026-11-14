@@ -327,6 +327,13 @@ Managed sidecar installation remains true-loopback-only even with an API key.
 Its installer fetches mutable source and creates an editable environment, so it
 must be run directly on that machine until the source supply chain is pinned.
 
+Runtime logs, the log stream, recent errors and the last-run crash report do
+not use the bare-server discovery exemption. They can contain host paths and
+diagnostic details, so remote server-mode reads require the administrator API
+key or a valid administrator session. A share PIN or trusted network alone does
+not authorize them. Genuine loopback reads remain available without a key;
+cross-site browser reads are refused.
+
 Host paths are never selected through HTTP. The Electron main process validates
 model-cache and export destinations (chosen in a native save/open dialog) plus
 custom FFmpeg/FFprobe binaries, writes a private one-shot capability, and only

@@ -13,9 +13,9 @@ paths, log contents and crash records. These tests pin the rule:
 * a share PIN never satisfies it.
 
 ``/system/logs/stream`` is Server-Sent Events and stays open by design, so its
-*positive* cases are asserted against the dependency directly instead of by
-opening the stream (reading it end-to-end is a hang, not a test). Its refusal
-cases are ordinary 403s and are exercised end-to-end like the others.
+admission and refusal are checked against the dependency directly, alongside
+an assertion that the real route declares that dependency. The complete-body
+diagnostic routes are exercised end-to-end.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ DIAGNOSTIC_JSON_ROUTES = [
     "/system/last-run-crash",
 ]
 
-# The Server-Sent Events stream: refusals only, end-to-end.
+# The Server-Sent Events stream: dependency admission/refusal plus route wiring.
 DIAGNOSTIC_STREAM_ROUTE = "/system/logs/stream"
 
 # Bootstrap discovery that must STAY available with no credential configured.
@@ -53,12 +53,7 @@ def _client(host: str, *, headers: dict[str, str] | None = None):
 
 
 def _refusal(client, path: str) -> tuple[int, str]:
-    """(status, detail) for a route that should refuse, without hanging.
-
-    Streaming the request keeps a *wrongly admitted* SSE stream from blocking:
-    the body is only read when the status is not 200, i.e. when the response is
-    the short JSON refusal this helper is asking about.
-    """
+    """(status, detail) for one of the complete-body diagnostic routes."""
     with client.stream("GET", path) as response:
         status = response.status_code
         detail = response.read().decode() if status != 200 else ""
@@ -110,6 +105,51 @@ def test_bare_server_mode_still_refuses_a_share_pin(path, monkeypatch):
     status, _ = _refusal(_client("172.17.0.1", headers={"X-OmniVoice-Pin": "123456"}), path)
 
     assert status == 403, path
+
+
+@pytest.mark.parametrize("path", DIAGNOSTIC_JSON_ROUTES)
+def test_a_valid_consumption_pin_cannot_read_diagnostics(path, monkeypatch):
+    from main import app
+    from core.db import ensure_schema
+    from services.network_share import ShareState
+
+    ensure_schema()
+    monkeypatch.setenv("OMNIVOICE_SERVER_MODE", "1")
+    monkeypatch.setattr(app.state, "network_share", ShareState(
+        enabled=True, share_port=3901, pin="123456", lan_addresses=["10.0.0.9"],
+    ), raising=False)
+    client = _client("172.17.0.1")
+    assert client.get("/profiles").status_code == 401
+    headers = {"X-OmniVoice-Pin": "123456"}
+    consumption = client.get("/profiles", headers=headers)
+    assert consumption.status_code == 200, consumption.text
+    assert client.get(path, headers=headers).status_code == 403
+
+
+@pytest.mark.parametrize("path", DIAGNOSTIC_JSON_ROUTES)
+def test_trusted_network_is_consumption_only_for_diagnostics(path, monkeypatch):
+    monkeypatch.setenv("OMNIVOICE_SERVER_MODE", "1")
+    monkeypatch.setenv("OMNIVOICE_TRUSTED_NETWORKS", "172.17.0.0/16")
+    client = _client("172.17.0.1")
+    assert client.get("/stats/usage").status_code == 200
+    assert client.get(path).status_code == 403
+
+
+@pytest.mark.parametrize("path", DIAGNOSTIC_JSON_ROUTES)
+def test_admin_session_reads_diagnostics_without_csrf_header_but_not_cross_site(path, monkeypatch):
+    monkeypatch.setenv("OMNIVOICE_SERVER_MODE", "1")
+    monkeypatch.setenv("OMNIVOICE_API_KEY", MASTER)
+    client = _client("172.17.0.1")
+    from services.admin_sessions import admin_session_store
+
+    session = admin_session_store.issue(MASTER)
+    try:
+        headers = {"Cookie": f"ov_session={session.token}", "Origin": "http://testserver"}
+        assert client.get(path, headers=headers).status_code == 200
+        headers["Origin"] = "http://evil.test"
+        assert client.get(path, headers=headers).status_code == 403
+    finally:
+        admin_session_store.clear()
 
 
 # ── the SSE stream: the gate itself ─────────────────────────────────────────
