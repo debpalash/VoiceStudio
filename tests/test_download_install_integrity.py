@@ -141,7 +141,7 @@ def test_install_rejects_corrupt_digest_without_plain_fallback_and_retry_heals(
     assert sorted(state.gets) == [(0, 15), (16, 31), (32, 47), (48, 49)]
     assert state.fallback_calls == []
     assert (state.snapshot / "config.json").read_bytes() == CONTENT
-    assert (state.repo_dir / "voicestudio-revision").read_text().strip() == state.revision
+    assert (state.repo_dir / "voicestudio-revision").read_text(encoding="utf-8").strip() == state.revision
     assert state.repo not in state.download._install_failures
     assert "install_done" in [event["phase"] for event in state.events]
 
@@ -154,5 +154,5 @@ def test_install_keeps_plain_fallback_for_unsupported_ranges(install_origin):
     _install(state)
     assert len(state.fallback_calls) == 1
     assert (state.snapshot / "config.json").read_bytes() == CONTENT
-    assert (state.repo_dir / "voicestudio-revision").read_text().strip() == state.revision
+    assert (state.repo_dir / "voicestudio-revision").read_text(encoding="utf-8").strip() == state.revision
     assert "install_done" in [event["phase"] for event in state.events]
