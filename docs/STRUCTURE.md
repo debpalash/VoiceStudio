@@ -137,11 +137,14 @@ VoiceStudio/
 ```
 
 The shared-code retirement tracked in #2603 removes the unused legacy update
-toast and its check/install/version helpers. `shared/utils/updater.js` retains
+toast, its check/install/version helpers, and the unused legacy update-busy
+helper with its exclusive test. `shared/utils/updater.js` retains
 the release-list adapter used by the shared releases store. Electron's updater
 remains in `src/main/updater.ts`, with its title-bar control and Settings screen
-under `src/renderer/src/`. Each remaining shared module needs a fresh consumer
-audit before retirement; the original cleanup inventory is historical.
+under `src/renderer/src/`. Restart protection uses the renderer's
+`lib/update-actions.ts`, app activity, and backend job status. Each remaining
+shared module needs a fresh consumer audit before retirement; the original
+cleanup inventory is historical.
 
 ## Rules of the root
 
