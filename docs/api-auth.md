@@ -18,6 +18,17 @@ env var that exempts trusted callers:
 | **API key** | `OMNIVOICE_API_KEY` env var on the backend | direct clients and first-party session bootstrap | non-loopback **HTTP + WebSocket** |
 | **Trusted networks** | `OMNIVOICE_TRUSTED_NETWORKS` env var | *exempts* the two gates above | non-loopback **consumption** routes only |
 
+The route authorization census (`scripts/dump_route_auth.py`) records effective
+FastAPI dependencies, including nested dependencies. Its policy test requires
+every mutating HTTP route and every WebSocket to carry a recognized gate or an
+explicit, documented exception. Only the read-only `GET /` frontend fallback is
+excluded; mutations and WebSockets at `/` remain visible. Exceptions record the
+current policy, including known gaps; they do not add authorization themselves.
+In particular, `/ws/tts` and `/ws/events` rely on the application API-key
+middleware and have no inline dictation guard: with no API key configured they
+retain the existing bootstrap behavior, and the HTTP-only share PIN does not
+protect them. The dictation paths perform additional inline checks.
+
 Loopback traffic (`127.0.0.1`, `::1`, `localhost`) is **never** gated — local
 tools keep working unchanged whichever gate is set.
 
