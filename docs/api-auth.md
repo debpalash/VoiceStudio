@@ -159,8 +159,9 @@ HTTP/1.1 401 Unauthorized
 {"detail": "API key required"}
 ```
 
-On a **WebSocket**, a missing or wrong key rejects the handshake with close
-code **1008** (policy violation) instead of a JSON body.
+On a **WebSocket**, a missing or wrong key rejects the handshake before
+acceptance with HTTP **403**, without a JSON body or a WebSocket close frame.
+The guard's internal ASGI policy code is `1008`.
 
 Notes on the API-key gate (`BearerKeyMiddleware`, `backend/main.py`):
 
@@ -232,9 +233,12 @@ is configured. A non-loopback client reaches these routes only if it is either:
   path-bound one-shot ticket as described below.
 
 A browser's supplied `Origin` is validated before any local/trusted-network or
-credential admission. A foreign origin is refused even on loopback or with a
-valid key. Native clients without an `Origin` keep their credential and trusted
-network paths; browser session cookies still require an allowed origin.
+credential admission. It must match the backend's origin or an entry in
+`OMNIVOICE_ALLOWED_ORIGINS`; the default entries include `app://voicestudio`
+and the localhost/127.0.0.1 UI origins. An origin outside these allowed values
+is refused even on loopback or with a valid key. Native clients without an
+`Origin` keep their credential and trusted network paths; browser session cookies
+still require an allowed origin.
 
 ```
 ws://gpu-box:3900/ws/transcribe?api_key=<key>
@@ -254,8 +258,10 @@ The **share PIN does not authorize WebSockets** — the PIN gate is HTTP-only.
 A LAN guest who has only entered a PIN can use the HTTP consumption API but
 cannot use live dictation, streaming TTS or sidebar event updates. Configure an
 administrator API key/session or an explicitly trusted network for those
-streams. When neither a permitted credential nor a trusted network applies, the handshake
-is closed with code **1008** and reason `loopback origin required`.
+streams. When neither a permitted credential nor a trusted network applies, the
+guard refuses the handshake before accepting it. The ASGI refusal uses code
+`1008` internally, but the server returns **HTTP 403**, without a WebSocket close
+frame or reason. Browsers may expose only a generic connection failure (`1006`).
 
 ---
 
@@ -427,7 +433,7 @@ traffic in **every** configuration, loopback included:
 
 - **Requests another website sends.** A state-changing request (`POST`, `PUT`,
   `PATCH`, `DELETE`) or WebSocket handshake whose `Origin` is not allowed is
-  refused with `403` (WebSocket close `1008`), as is one whose
+  refused with HTTP `403` (including a WebSocket handshake before acceptance), as is one whose
   `Sec-Fetch-Site` is `cross-site` or `same-site` without an allowed `Origin`.
   Browsers send no `Origin` on media and download `GET`s (`<video src>`,
   download links); those pass when their `Referer` is an allowed origin, and a
@@ -484,7 +490,7 @@ call the API directly need their origin in `OMNIVOICE_ALLOWED_ORIGINS`.
 
 | Code | Meaning | What to do |
 |---|---|---|
-| **401** | Consumption auth failed — `{"detail": "PIN required"}` or `{"detail": "API key required"}`. | Supply the PIN / key (header, cookie, or query param above). A WebSocket surfaces this as close code **1008**. |
+| **401** | Consumption auth failed — `{"detail": "PIN required"}` or `{"detail": "API key required"}`. | Supply the PIN / key (header, cookie, or query param above). A refused WebSocket handshake returns HTTP **403**; browsers may expose a generic connection failure. |
 | **403** | Authorization failed: the request came from another website or used an unrecognized host name ([details](#requests-from-other-websites-and-host-names)), loopback/native access was required, cookie Origin/CSRF validation failed, a server-mode mutation lacked an admin credential, or a native path capability was invalid/expired. | A PIN cannot grant admin or filesystem access. Re-authenticate the UI; scripts should use the API-key header; run native operations from the desktop app. The admin gate names the key only when one can satisfy it: server mode with `OMNIVOICE_API_KEY` configured answers `{"detail": "loopback origin or admin API key required"}` (the bundled UI routes it to the API-key login form); PIN-only/no-key server mode and the desktop build answer `{"detail": "loopback origin required"}` (only loopback can satisfy the gate). |
 | **429** | A failed administrator-session exchange exceeded its per-client limit, the GPU pool is saturated, or a model download is rate-limited. Ships with `Retry-After`; workload throttles also carry `X-VoiceStudio-Retryable: true`. | Back off for `Retry-After` seconds. For authentication, verify the master before retrying; a correct master is never locked out. |
 
