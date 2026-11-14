@@ -81,8 +81,10 @@ import VoiceStudioKit
     }
     private func updateSubscription() {
         if !injectedFixture {
-            if enabled, let reporter {
-                BackgroundUpload.shared.setDiagnosticFailureHandler { [weak reporter] input in _ = reporter?.capture(input) }
+            if enabled, let reporter, let context=reporter.recoveryContext {
+                BackgroundUpload.shared.setDiagnosticFailureHandler { [weak reporter] input, stamp in
+                    _ = reporter?.captureRecovered(input, occurredAtMs:stamp, consentEpoch:context.epoch, recoveryKey:"ios:\(stamp):unknown", reportedAppVersion:context.appVersion)
+                }
             } else { BackgroundUpload.shared.setDiagnosticFailureHandler(nil) }
         }
         // Explicit DI fixtures never subscribe to OS payloads; their core gate

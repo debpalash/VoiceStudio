@@ -452,7 +452,7 @@ extension DiagnosticReportsTests {
         let uploader=BackgroundUpload(configuration:.ephemeral,defaults:defaults)
         let store=DiagnosticTestStore(),transport=DiagnosticTestTransport();transport.set(code:201)
         let reports=try diagnosticTestReporter(store,transport);try await reports.setConsent(true)
-        uploader.setDiagnosticFailureHandler { input in _ = reports.capture(input) }
+        uploader.setDiagnosticFailureHandler { input, _ in _ = reports.capture(input) }
         #expect(uploader.takeReceipt(host:pending.host)?.failure != nil)
         await reports.flush()
         #expect(transport.bodies().isEmpty)
@@ -482,7 +482,7 @@ host=http.server.HTTPServer(('127.0.0.1',0),Host);print(host.server_port,flush=T
             let store=DiagnosticTestStore(),transport=DiagnosticTestTransport();transport.set(code:201)
             let reports=try diagnosticTestReporter(store,transport);await reports.load()
             if consent {try await reports.setConsent(true)}
-            uploader.setDiagnosticFailureHandler { input in _ = reports.capture(input) }
+            uploader.setDiagnosticFailureHandler { input, _ in _ = reports.capture(input) }
             let source=directory.appendingPathComponent("test.wav");try Data("RIFF-test-upload".utf8).write(to:source)
             let api=APIClient(address:try PairingAddress("http://127.0.0.1:\(port)/"))
             try await uploader.start(source:source,api:api,languages:[DubLanguage(code:"es",name:"Spanish")],profile:"",audioOnly:true)
@@ -504,3 +504,58 @@ extension DiagnosticReportsTests {
         if case .cancelled=result {} else { Issue.record("User cancellation must not become a failure observation") }
     }
 }
+
+#if os(macOS)
+private final class DiagnosticBlockedUploadDefaults: UserDefaults, @unchecked Sendable {
+    let receiptEntered=DispatchSemaphore(value:0),releaseReceipt=DispatchSemaphore(value:0)
+    override func set(_ value: Any?,forKey key: String) {
+        if key=="uploadReceipt",value != nil { receiptEntered.signal();_ = releaseReceipt.wait(timeout:.now()+5) }
+        super.set(value,forKey:key)
+    }
+}
+extension DiagnosticReportsTests {
+    @Test @MainActor func blockedUploadLedgerCannotRetroactivelyUseLaterConsent() async throws {
+        for initiallyEnabled in [false,true] {
+            let script="""
+import http.server,socket
+socket.getfqdn=lambda name='':name
+class Host(http.server.BaseHTTPRequestHandler):
+ def do_POST(self):
+  self.rfile.read(int(self.headers.get('Content-Length','0')));body=b'{"detail":"PRIVATE_BLOCKED_UPLOAD"}'
+  self.send_response(500);self.send_header('Content-Length',str(len(body)));self.end_headers();self.wfile.write(body)
+ def log_message(self,*args):pass
+host=http.server.HTTPServer(('127.0.0.1',0),Host);print(host.server_port,flush=True);host.serve_forever()
+"""
+            let host=try TestProcess(["python3","-u","-c",script]);defer{host.stop()}
+            let port=try host.port(within:5)
+            let directory=FileManager.default.temporaryDirectory.appendingPathComponent("blocked-diagnostic-upload-"+UUID().uuidString)
+            try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true);defer{try? FileManager.default.removeItem(at:directory)}
+            let suite="blocked-diagnostic-upload-"+UUID().uuidString
+            let defaults=try #require(DiagnosticBlockedUploadDefaults(suiteName:suite));defer{defaults.removePersistentDomain(forName:suite)}
+            let uploader=BackgroundUpload(configuration:.ephemeral,defaults:defaults,stagingDirectory:directory)
+            let store=DiagnosticTestStore(),transport=DiagnosticTestTransport(),clock=DiagnosticTestClock();transport.set(code:201)
+            clock.advance(SystemDiagnosticClock().nowMs()-clock.nowMs())
+            let reports=try diagnosticTestReporter(store,transport,clock);await reports.load()
+            if initiallyEnabled {
+                try await reports.setConsent(true)
+                let context=try #require(reports.recoveryContext)
+                uploader.setDiagnosticFailureHandler{ input,stamp in _ = reports.captureRecovered(input,occurredAtMs:stamp,consentEpoch:context.epoch,recoveryKey:"ios:\(stamp):unknown",reportedAppVersion:context.appVersion) }
+            }
+            let source=directory.appendingPathComponent("test.wav");try Data("RIFF-test-upload".utf8).write(to:source)
+            let api=APIClient(address:try PairingAddress("http://127.0.0.1:\(port)/"))
+            try await uploader.start(source:source,api:api,languages:[DubLanguage(code:"es",name:"Spanish")],profile:"",audioOnly:true)
+            #expect(await diagnosticWaitForEvent(defaults.receiptEntered))
+            if initiallyEnabled {uploader.setDiagnosticFailureHandler(nil);try await reports.setConsent(false)}
+            clock.advance(SystemDiagnosticClock().nowMs()-clock.nowMs());try await reports.setConsent(true)
+            let current=try #require(reports.recoveryContext)
+            uploader.setDiagnosticFailureHandler{ input,stamp in _ = reports.captureRecovered(input,occurredAtMs:stamp,consentEpoch:current.epoch,recoveryKey:"ios:\(stamp):unknown",reportedAppVersion:current.appVersion) }
+            defaults.releaseReceipt.signal()
+            for _ in 0..<250 where uploader.receipt==nil {try await Task.sleep(for:.milliseconds(20))}
+            #expect(uploader.receipt?.failure != nil)
+            await reports.flush()
+            #expect(transport.bodies().isEmpty)
+            uploader.setDiagnosticFailureHandler(nil);await reports.close()
+        }
+    }
+}
+#endif
