@@ -505,6 +505,17 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(self.client.delete(f"/models/licenses/receipts/{p['plan_digest']}").status_code, 200)
         self.assertEqual(self.client.post(f"/models/licenses/verify/{p['plan_digest']}").status_code, 409)
 
+    def test_api_remote_client_cannot_prepare_or_commit(self):
+        p = self.prepare()
+        from fastapi.testclient import TestClient
+        remote = TestClient(self.app, base_url="http://127.0.0.1", client=("198.51.100.4", 50001))
+        self.addCleanup(remote.close)
+        self.assertEqual(
+            remote.post("/models/install/prepare", json={"repo_id": "fixture/model"}).status_code, 403)
+        self.assertEqual(
+            remote.post("/models/install/commit", json=self.request_body(p)).status_code, 403)
+        self.assertEqual(self.calls, [])  # no reviewed transfer started
+
     def test_api_boolean_not_coerced_and_unissued_plan_denied(self):
         p = self.prepare(); body = self.request_body(p)
         body["acknowledged"] = "true"
