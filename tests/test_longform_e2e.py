@@ -167,6 +167,48 @@ def test_mp3_format_produces_mp3_container(tmp_path, monkeypatch):
         assert "mp3" in _ffprobe(str(out_path))["format"]["format_name"]
 
 
+@pytest.mark.parametrize("fmt", ["m4b", "mp3"])
+def test_completed_story_is_served_at_its_output_url_with_byte_ranges(tmp_path, monkeypatch, fmt):
+    """A real Story mux stays accessible after completion/manifest cleanup.
+
+    Exercise both the static M4B mount and the generated-audio router's MP3
+    fallback, in the same registration order as the backend.
+    """
+    from urllib.parse import quote
+
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from api.routers import generation
+    from core.safe_static import SafeMediaFiles
+
+    out = tmp_path / "outputs"
+    out.mkdir()
+    events = _collect_events(
+        _plan(("One", "Hello world.")), monkeypatch, out, fmt=fmt, job_type="story",
+    )
+    done = events[-1]
+    assert done["type"] == "done", events
+    filename = done["output"]
+    expected = (out / filename).read_bytes()
+    assert filename.startswith("story_") and expected
+
+    monkeypatch.setattr(generation, "OUTPUTS_DIR", str(out))
+    app = FastAPI()
+    app.include_router(generation.router)
+    app.mount("/audio", SafeMediaFiles(directory=out), name="audio")
+    with TestClient(app) as client:
+        url = "/audio/" + quote(filename, safe="")
+        response = client.get(url)
+        assert response.status_code == 200, response.text
+        assert response.content == expected
+        partial = client.get(url, headers={"Range": "bytes=0-63"})
+        assert partial.status_code == 206, partial.text
+        assert partial.content == expected[:64]
+        assert partial.headers["content-range"] == f"bytes 0-63/{len(expected)}"
+        assert partial.headers["content-length"] == "64"
+
+
 def test_resume_larger_than_cache_budget_reuses_finished_chapters(tmp_path, monkeypatch):
     from api.routers import audiobook
     from services.longform_render import prune_cache_dir

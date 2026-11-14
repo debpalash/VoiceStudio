@@ -5,6 +5,12 @@ Vidstack through `components/media-player.tsx`. Generation stores the result and
 its autoplay intent; only the visible output player starts playback. The shared
 playback owner pauses another preview before taking ownership.
 
+Waveform audio players show **Playback unavailable** for media loading, network,
+decoding and unsupported-source errors. A native media error alone cannot confirm
+that a file is missing. Stories and Audiobook keep their Download action available
+when playback fails, so the completed output can still be saved if it is reachable.
+Changing the output source clears the previous player's error state.
+
 WaveSurfer uses the Vidstack-owned audio element for waveform visualization.
 It does not own a second player. Blob and extensionless API sources explicitly
 use native MIME sniffing through `audioSource`; otherwise Vidstack infers blobs
