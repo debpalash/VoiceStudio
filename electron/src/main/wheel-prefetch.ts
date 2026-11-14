@@ -243,6 +243,9 @@ export function httpsRangeTransport(
             headers: { Range: `bytes=${start}-${end}`, 'User-Agent': 'VoiceStudio-setup' },
           },
           (response) => {
+            // A size probe and the handoff to an async iterator both leave a
+            // gap before a consumer can observe a reset/timeout on this stream.
+            response.on('error', reject);
             const status = response.statusCode ?? 0;
             if ([301, 302, 303, 307, 308].includes(status) && response.headers.location) {
               response.resume();

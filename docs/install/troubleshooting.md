@@ -86,6 +86,9 @@ A runtime download received no data for a long time. Setup stops a download that
 Retry reuses completed, hash-verified prefetched wheels before budgeting space
 for new downloads. Already downloaded wheels are not counted a second time;
 new transfers still leave the required installation-space reserve available.
+Wheel-size probes also handle a connection reset or timeout after response
+headers arrive. Download consumers still receive stream errors, and an
+interrupted wheel is kept incomplete rather than published as a finished file.
 
 ### `RUNTIME_DOWNLOAD_INTERRUPTED`
 
