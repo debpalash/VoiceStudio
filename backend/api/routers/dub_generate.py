@@ -54,14 +54,14 @@ from omnivoice.utils.voice_design import heal_design_instruct
 
 logger = logging.getLogger("omnivoice.dub")
 
-def _validate_render_languages(backend, req, seg_ids, regen_only):
+def _validate_render_languages(backend, req, seg_ids, regen_only, spoken_texts):
     """Validate the final local render set, including repaired cache misses."""
     check = getattr(backend, "_check_language", None)
     if not callable(check):
         return
     for index, segment in enumerate(req.segments):
         sid = seg_ids[index] if index < len(seg_ids) else f"seg_{index}"
-        if segment.end - segment.start <= 0.05 or not segment.text.strip() or (regen_only is not None and sid not in regen_only):
+        if segment.end - segment.start <= 0.05 or not spoken_texts[index].strip() or (regen_only is not None and sid not in regen_only):
             continue
         check(segment.target_lang or req.language)
 
@@ -586,6 +586,19 @@ async def dub_generate(job_id: str, req: DubRequest):
 
     async def _render(task_id, voice_lease, stage_dir):
         total = len(req.segments)
+        from services.pronunciation import speech_text_preparer
+
+        def _prepare_segments():
+            prepare_text = speech_text_preparer()
+            return [
+                prepare_text(segment.text, segment.target_lang or req.language,
+                             profile_id=segment.profile_id or None)
+                for segment in req.segments
+            ]
+
+        # One saved-row snapshot and one preparation per original input. Keys,
+        # timeout budgets, batches, retries and silence checks share these bytes.
+        spoken_texts = await asyncio.to_thread(_prepare_segments)
         all_segment_wavs = []
         sync_scores = []
 
@@ -806,7 +819,7 @@ async def dub_generate(job_id: str, req: DubRequest):
         if regen_only is not None:
             for index, segment in enumerate(req.segments):
                 sid = seg_ids[index] if index < len(seg_ids) else f"seg_{index}"
-                if sid in regen_only or not segment.text.strip():
+                if sid in regen_only or not spoken_texts[index].strip():
                     continue
                 cache = _seg_lang_path(sid)
                 if not os.path.exists(cache) and _legacy_seg_cache_ok(job, lang_code):
@@ -822,7 +835,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                     intact = False
                 if not intact:
                     regen_only.add(sid)
-        _validate_render_languages(backend, req, seg_ids, regen_only)
+        _validate_render_languages(backend, req, seg_ids, regen_only, spoken_texts)
         # Manifest: stable segment id per current index. Per-segment WAVs are
         # named by stable id (dub_seg_path) so regen reuses the right audio after
         # reorder; index-keyed readers (preview/export) resolve via this manifest.
@@ -1003,7 +1016,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                     logger.debug("direction parse skipped for %s: %s", current_id, error)
             return {
                 "seg_id": current_id,
-                "text": segment.text,
+                "text": spoken_texts[index],
                 "language": language,
                 "instruct": instruct,
                 "duration": duration if strategy == "strict_slot" else None,
@@ -1013,6 +1026,17 @@ async def dub_generate(job_id: str, req: DubRequest):
                 "profile_id": profile_id,
                 "effect_preset": getattr(segment, "effect_preset", None) or "broadcast",
             }
+
+        def _fingerprint_for_segment(index, segment):
+            return segment_fingerprint({
+                "text": spoken_texts[index],
+                "target_lang": segment.target_lang,
+                "profile_id": segment.profile_id,
+                "instruct": segment.instruct,
+                "speed": segment.speed,
+                "direction": segment.direction,
+                "effect_preset": segment.effect_preset,
+            }, track_lang=lang_code, voice_match=voice_match)
 
         for i, seg in enumerate(req.segments):
             seg_id = seg_ids[i] if i < len(seg_ids) else f"seg_{i}"
@@ -1025,7 +1049,7 @@ async def dub_generate(job_id: str, req: DubRequest):
             yield f"data: {json.dumps({'type': 'progress', 'current': i, 'total': total, 'text': seg.text[:50]})}\n\n"
 
             seg_duration = seg.end - seg.start
-            if seg_duration <= 0.05 or not seg.text.strip():
+            if seg_duration <= 0.05 or not spoken_texts[i].strip():
                 silence = torch.zeros(
                     (1, max(0, int(seg_duration * backend.sample_rate)))
                 )
@@ -1038,6 +1062,20 @@ async def dub_generate(job_id: str, req: DubRequest):
                         f"mix_{seg_id}",
                     )
                 )
+                if seg_duration > 0.05 and seg.text.strip() and not spoken_texts[i].strip():
+                    # An explicit deletion replaces any older spoken cache at
+                    # the same guarded publication boundary as generated audio.
+                    try:
+                        staged = _staged_seg_path(seg_id)
+                        atomic_save_wav(staged, silence, backend.sample_rate)
+                        _staged[seg_id] = (staged, _seg_lang_path(seg_id))
+                        _pending_seg_writes.append((
+                            i, backend.sample_rate, seg_id, _fingerprint_for_segment(i, seg),
+                            8 if req.preview else _job_num_step,
+                        ))
+                        _natural_dur_records[str(seg_id)] = {"chars": 0, "dur": 0.0}
+                    except Exception as error:
+                        logger.warning("could not stage intentional silence for %s: %s", log_safe(seg_id), type(error).__name__)
                 try:
                     del silence
                 except Exception:  # noqa: BLE001
@@ -1112,12 +1150,8 @@ async def dub_generate(job_id: str, req: DubRequest):
 
             def _gen(text, lang, instruct_str, dur_s, nstep, cfg, spd, profile_id, effect_preset,
                      *, prepare_only=False, current_seg_id=None):
-                # Normalize once at the segment's text→engine choke point
-                # (covers the OOM-retry generate below too, which reuses this
-                # closure's `text`). Pref-gated, idempotent, never raises.
-                from services.text_normalization import normalize_for_tts
-                text = normalize_for_tts(text, lang)
-
+                # Callers pass this render's once-prepared speech, including
+                # native-batch preparation and OOM retries.
                 effective_seg_id = seg_id if current_seg_id is None else current_seg_id
                 ref_audio = None
                 ref_text = None
@@ -1380,7 +1414,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                     if (
                         candidate_index in _batched_audio
                         or candidate.end - candidate.start <= 0.05
-                        or not candidate.text.strip()
+                        or not spoken_texts[candidate_index].strip()
                         or (
                             regen_only is not None
                             and candidate_id not in regen_only
@@ -1612,11 +1646,11 @@ async def dub_generate(job_id: str, req: DubRequest):
                     # A busy engine (a native stream holds it) waits inside the
                     # segment's budget instead of ending the dub; past it the
                     # busy error fails the job, never a silent gap.
-                    _seg_budget = generate_timeout_s(seg.text, engine=backend)
+                    _seg_budget = generate_timeout_s(spoken_texts[i], engine=backend)
                     audio_tensor = await await_free_engine(
                         lambda: run_on_gpu_pool_guarded(
                             lambda: _gen(
-                                seg.text, seg_lang, seg_instruct, _dur_for_tts,
+                                spoken_texts[i], seg_lang, seg_instruct, _dur_for_tts,
                                 _num_step, req.guidance_scale, seg_speed, seg_profile, seg_effect_preset,
                             ),
                             what="Dub generate",
@@ -1652,9 +1686,9 @@ async def dub_generate(job_id: str, req: DubRequest):
                 # Duration-planner calibration sample: this text length spoke
                 # for this long at natural rate. Keyed by stable seg id and
                 # merged into the per-language job map after the loop.
-                if seg.text.strip() and generated_dur > 0:
+                if spoken_texts[i].strip() and generated_dur > 0:
                     _natural_dur_records[str(seg_id)] = {
-                        "chars": len(seg.text.strip()),
+                        "chars": len(spoken_texts[i].strip()),
                         "dur": round(generated_dur, 4),
                     }
 
@@ -1665,15 +1699,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                     # track_lang scopes the hash to THIS track (P1.3); the
                     # client-side recompute (/tools/incremental) sends the
                     # same code, so parity (#281 class) holds per language.
-                    _seg_fp = segment_fingerprint({
-                        "text": seg.text,
-                        "target_lang": getattr(seg, "target_lang", None),
-                        "profile_id": getattr(seg, "profile_id", None),
-                        "instruct": getattr(seg, "instruct", None),
-                        "speed": getattr(seg, "speed", None),
-                        "direction": getattr(seg, "direction", None),
-                        "effect_preset": getattr(seg, "effect_preset", None),
-                    }, track_lang=lang_code, voice_match=voice_match)
+                    _seg_fp = _fingerprint_for_segment(i, seg)
                 except Exception as e:
                     logger.debug("seg fingerprint skipped for %s: %s", seg_id, e)
 
@@ -1909,7 +1935,7 @@ async def dub_generate(job_id: str, req: DubRequest):
                     yield f"data: {json.dumps({'type': 'error', 'segment': i, 'error_code': 'dub_speech_missing', 'error': 'A speech segment could not be read. Regenerate it and try again.'})}\n\n"
                     return
 
-                if seg_req is not None and seg_req.text.strip():
+                if seg_req is not None and spoken_texts[i].strip():
                     if _speech_unusable(wav):
                         yield f"data: {json.dumps({'type': 'error', 'segment': i, 'error_code': 'dub_speech_missing', 'error': 'A speech segment is empty or silent. Regenerate it and try again.'})}\n\n"
                         return
@@ -2201,7 +2227,16 @@ async def preview_segment(job_id: str, req: SegmentPreviewRequest):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+    lang = req.language if req.language != "Auto" else None
+    from services.pronunciation import prepare_speech_text
+    spoken_text = await asyncio.to_thread(
+        prepare_speech_text, req.text, lang, profile_id=req.profile_id,
+    )
+
     def _gen():
+        if not spoken_text.strip():
+            # A deleted preview has no speech; one silent frame is a valid WAV.
+            return torch.zeros((1, 1))
         ref_audio = None
         ref_text = None
 
@@ -2242,12 +2277,10 @@ async def preview_segment(job_id: str, req: SegmentPreviewRequest):
             ref_audio, job_id=job_id,
             seg_id=req.segment_id or "preview", where="dub preview",
         )
-        lang = req.language if req.language != "Auto" else None
-        # Same normalization as the full dub render above, so a preview
-        # sounds exactly like the final segment. Pref-gated, never raises.
-        from services.text_normalization import normalize_for_tts
+        # Apply the same normalization/dictionary/inline ordering as a full
+        # render, with the preview's selected language and saved voice.
         audio_out = backend.generate(
-            text=normalize_for_tts(req.text, lang),
+            text=spoken_text,
             language=lang,
             ref_audio=ref_audio,
             ref_text=ref_text,
@@ -2273,7 +2306,7 @@ async def preview_segment(job_id: str, req: SegmentPreviewRequest):
     from services.model_manager import generate_timeout_s
     audio_tensor = await run_on_gpu_pool_guarded(
         _gen, what="Dub preview generate",
-        timeout=generate_timeout_s(req.text, engine=backend),
+        timeout=generate_timeout_s(spoken_text, engine=backend),
     )
 
     sr = backend.sample_rate
