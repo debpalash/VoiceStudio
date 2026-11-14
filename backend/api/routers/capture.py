@@ -433,6 +433,8 @@ async def transcribe_audio(
             "transcription_time_s": elapsed,
             "engine": engine_id,
         }
+        from services.asr_backend import has_recognition_timestamps
+        response["timestamps_available"] = has_recognition_timestamps(result, segments=out_segments)
         try:
             # Which speech-to-text engine people use. Metadata only; the
             # allowlist drops anything that is not an engine key.

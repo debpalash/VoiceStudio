@@ -1290,7 +1290,8 @@ async def _transcribe_buffer_full(
     tmp = _pcm16_to_wav(b"".join(chunks), pcm_sr) if pcm_sr else _chunks_to_wav(chunks)
     if tmp is None:
         return {"text": "", "segments": [], "language": "unknown",
-                "duration_s": 0, "transcription_time_s": 0, "engine": "none"}
+                "duration_s": 0, "transcription_time_s": 0, "engine": "none",
+                "timestamps_available": False}
 
     try:
         from services.model_manager import _gpu_pool
@@ -1323,14 +1324,17 @@ async def _transcribe_buffer_full(
             ends = [e for e in (s.get("end") for s in segments) if isinstance(e, (int, float))]
             duration = max(ends) if ends else 0.0
 
+            out_segments = [
+                {"start": _timing(s.get("start", 0)),
+                 "end": _timing(s.get("end", 0)),
+                 "text": s.get("text", "").strip()}
+                for s in segments
+            ]
+            from services.asr_backend import has_recognition_timestamps
             return {
                 "text": full_text,
-                "segments": [
-                    {"start": _timing(s.get("start", 0)),
-                     "end": _timing(s.get("end", 0)),
-                     "text": s.get("text", "").strip()}
-                    for s in segments
-                ],
+                "segments": out_segments,
+                "timestamps_available": has_recognition_timestamps(result, segments=out_segments),
                 "language": result.get("language", "unknown"),
                 "duration_s": round(duration, 2),
                 "transcription_time_s": elapsed,
