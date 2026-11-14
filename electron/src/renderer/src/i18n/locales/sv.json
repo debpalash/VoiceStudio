@@ -526,7 +526,10 @@
     "speakers_unavailable": "Talaridentifiering är inte tillgänglig. Transkriptionen sparades utan talaretiketter.",
     "missing_model": "Ingen tal-till-text-modell är installerad — den här funktionen behöver en för att transkribera ljud.",
     "original_transcript": "Ursprunglig transkription",
-    "active_model": "Modell: {{model}}"
+    "active_model": "Modell: {{model}}",
+    "export_plain": "Spara ren text",
+    "export_srt": "Spara SRT",
+    "timestamps_unavailable": "Den här transkriptionen saknar tidsangivelser för undertexter. Använd en taligenkänningsmodell som ger tidsstämplar."
   },
   "engineRuntime": {
     "ready": "Klar",

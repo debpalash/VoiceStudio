@@ -528,7 +528,10 @@
     "speakers_unavailable": "A identificação de falantes não está disponível. A transcrição foi salva sem rótulos de falantes.",
     "missing_model": "Nenhum modelo de fala para texto está instalado — este recurso precisa de um para transcrever áudio.",
     "original_transcript": "Transcrição original",
-    "active_model": "Modelo: {{model}}"
+    "active_model": "Modelo: {{model}}",
+    "export_plain": "Salvar texto simples",
+    "export_srt": "Salvar SRT",
+    "timestamps_unavailable": "Esta transcrição não tem tempos de legendas. Use um modelo de reconhecimento de fala que forneça marcações de tempo."
   },
   "engineRuntime": {
     "ready": "Pronto",
