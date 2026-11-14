@@ -17,8 +17,13 @@ class DiagnosticReportsTest {
     private class Store : DiagnosticStorage {
         val files = mutableMapOf<String,ByteArray>()
         var reads=0;var writes=0;var failWrite=false;var failRemove=false
+        var failOutboxWrite=false;var outboxWriteAttempts=0
         override fun read(name:String,maxBytes:Int):ByteArray? { reads++;return files[name]?.clone()?.also { require(it.size<=maxBytes) } }
-        override fun write(name:String,bytes:ByteArray) { if(failWrite)throw IOException("private path");writes++;files[name]=bytes.clone() }
+        override fun write(name:String,bytes:ByteArray) {
+            if(name=="outbox.json")outboxWriteAttempts++
+            if(failWrite || name=="outbox.json" && failOutboxWrite)throw IOException("private path")
+            writes++;files[name]=bytes.clone()
+        }
         override fun remove(name:String) { if(failRemove)throw IOException("private path");files.remove(name) }
         fun json(name:String)=Json.parseToJsonElement(files.getValue(name).toString(Charsets.UTF_8))
     }
@@ -320,6 +325,86 @@ class DiagnosticReportsTest {
         assertFalse(store.json("consent.json").jsonObject["enabled"]!!.jsonPrimitive.boolean);assertFalse(store.files.containsKey("outbox.json"))
         val next=makeReporter(store,Transport(),clock,dispatcher);next.load();assertFalse(next.status.enabled);assertNull(next.recoveryContext);next.close()
         val empty=Store();assertTrue(DiagnosticReports.revokeStoredConsent(File("unused-test-store"),empty));assertTrue(empty.files.isEmpty())
+    }
+
+@Test fun publicPlaintextDestinationsAreRejectedWhileLoopbackAndHTTPSWork() {
+        for (host in listOf("http://collector.example", "http://8.8.8.8", "http://192.168.1.2", "http://127.23.4.5", "http://localhost.example")) {
+            try { DiagnosticDestination("localtest123", host, "https://app.test.invalid");fail("Public or LAN plaintext collector accepted: $host") } catch (_:IllegalArgumentException) {}
+            try { DiagnosticDestination("localtest123", "https://collector.example", host);fail("Public or LAN plaintext app URL accepted: $host") } catch (_:IllegalArgumentException) {}
+        }
+        for (host in listOf("http://localhost:3000", "http://127.0.0.1:3000", "http://[::1]:3000", "https://collector.example")) {
+            assertNotNull(DiagnosticDestination("localtest123", host, host).endpoint)
+        }
+    }
+
+    @Test fun normalizedHTTPAliasesNeverBecomeLoopbackExceptions() {
+        for (alias in listOf("http://%6cocalhost", "http://127.1", "http://2130706433", "http://[0:0:0:0:0:0:0:1]")) {
+            try { DiagnosticDestination("localtest123", alias, "https://app.test.invalid");fail("Normalized collector alias accepted: $alias") } catch (_:IllegalArgumentException) {}
+            try { DiagnosticDestination("localtest123", "https://collector.example", alias);fail("Normalized app URL alias accepted: $alias") } catch (_:IllegalArgumentException) {}
+        }
+    }
+
+    @Test fun validLoadedOutboxSurvivesRewriteFailureAndRetriesBeforeNetwork()=runTest {
+        val store=Store();val clock=ScheduledClock(testScheduler);val dispatcher=StandardTestDispatcher(testScheduler)
+        val first=makeReporter(store,Transport(),clock,dispatcher)
+        first.setConsent(true);first.capture(event());runCurrent();advanceTimeBy(1500);runCurrent();first.close()
+        val original=store.files.getValue("outbox.json").clone()
+        store.failOutboxWrite=true
+        val transport=Transport().also { it.code=201 };val reporter=makeReporter(store,transport,clock,dispatcher)
+        try {
+            reporter.load();runCurrent()
+            assertTrue("A valid outbox was deleted after a replacement write failure",store.files.containsKey("outbox.json"))
+            assertArrayEquals(original,store.files.getValue("outbox.json"))
+            assertEquals(1,reporter.status.pendingCount);assertTrue(transport.bodies.isEmpty())
+            val attempts=store.outboxWriteAttempts
+            advanceTimeBy(59999);runCurrent();assertEquals(attempts,store.outboxWriteAttempts);assertTrue(transport.bodies.isEmpty())
+            store.failOutboxWrite=false
+            advanceTimeBy(1);runCurrent()
+            assertEquals(1,transport.bodies.size)
+            val saved=Json.parseToJsonElement(original.toString(Charsets.UTF_8)).jsonArray.single().jsonObject
+            assertEquals(saved["id"],transport.bodies.single()["id"])
+            assertEquals(0,reporter.status.pendingCount);assertFalse(store.files.containsKey("outbox.json"))
+        } finally { store.failOutboxWrite=false;reporter.close() }
+    }
+
+    @Test fun failedNewOutboxWriteRetriesWithoutNewCaptureOrBusyLoop()=runTest {
+        val store=Store();val clock=ScheduledClock(testScheduler);val transport=Transport().also { it.code=201 }
+        val reporter=makeReporter(store,transport,clock,StandardTestDispatcher(testScheduler))
+        try {
+            reporter.setConsent(true);store.failOutboxWrite=true
+            assertTrue(reporter.capture(event()));runCurrent()
+            assertTrue("Uncommitted records must not reach the transport",transport.bodies.isEmpty())
+            assertEquals(1,reporter.status.pendingCount)
+            val attempts=store.outboxWriteAttempts
+            advanceTimeBy(59999);runCurrent();assertEquals(attempts,store.outboxWriteAttempts)
+            assertTrue(transport.bodies.isEmpty())
+            store.failOutboxWrite=false;advanceTimeBy(1);runCurrent()
+            assertEquals("Storage recovery must wake without another capture",1,transport.bodies.size)
+            assertEquals(0,reporter.status.pendingCount)
+            advanceTimeBy(180000);runCurrent();assertEquals(1,transport.bodies.size)
+        } finally { store.failOutboxWrite=false;reporter.close() }
+    }
+
+    @Test fun storageRetryCannotSurviveOffCloseOrConsentEpochReplacement()=runTest {
+        for(action in listOf("off","close","epoch")) {
+            val store=Store();val clock=ScheduledClock(testScheduler);val transport=Transport().also { it.code=201 }
+            val reporter=makeReporter(store,transport,clock,StandardTestDispatcher(testScheduler))
+            try {
+                reporter.setConsent(true);store.failOutboxWrite=true
+                reporter.capture(event());runCurrent();assertTrue(transport.bodies.isEmpty())
+                if(action=="close") reporter.close()
+                else {
+                    store.failOutboxWrite=false
+                    reporter.setConsent(false)
+                    if(action=="epoch") reporter.setConsent(true)
+                }
+                store.failOutboxWrite=false;advanceTimeBy(180000);runCurrent()
+                assertTrue("A retired consent epoch delivered old pending work",transport.bodies.isEmpty())
+                if(action=="epoch") {
+                    assertTrue(reporter.capture(event()));runCurrent();assertEquals(1,transport.bodies.size)
+                } else assertFalse(reporter.capture(event()))
+            } finally { store.failOutboxWrite=false;reporter.close() }
+        }
     }
 
     @Test fun scheduledRetryRecoversWithoutAnotherFailureAndCoalescesNewIntake()=runTest {

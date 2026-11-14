@@ -23,6 +23,8 @@ import java.util.concurrent.TimeUnit
 /** Durable host-side pipeline. Checkpoints never contain credentials or API keys.
  * Re-entering after process death resumes polling an existing host task. */
 class DubWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    /** Keep the existing displayed failure key without reporting expected host cancellation. */
+    private class HostTaskCancelled : Exception()
     private val store = SessionStore(context)
     private var stage = "mobile.android.stage_upload"
     private var percent = 0
@@ -68,11 +70,15 @@ class DubWorker(context: Context, params: WorkerParameters) : CoroutineWorker(co
                 val p = json?.get("percent")?.jsonPrimitive?.doubleOrNull ?: if(total!=null&&total>0&&current!=null) current/total else null
                 if(p != null) report(stage, (if(p <= 1.0) p * 100 else p).toInt().coerceIn(0, 100))
                 // A failed event can coexist with a task manager "done" row.
-                if(json?.get("type")?.jsonPrimitive?.content in setOf("error", "cancelled")) throw ClientFailure("mobile.android.job_failed")
+                when(json?.get("type")?.jsonPrimitive?.content) {
+                    "cancelled" -> throw HostTaskCancelled()
+                    "error" -> throw ClientFailure("mobile.android.job_failed")
+                }
             }
             when(events.job.status) {
                 "done" -> return
-                "failed", "cancelled" -> throw ClientFailure("mobile.android.job_failed")
+                "cancelled" -> throw HostTaskCancelled()
+                "failed" -> throw ClientFailure("mobile.android.job_failed")
             }
             delay(2000)
         }
@@ -94,8 +100,10 @@ class DubWorker(context: Context, params: WorkerParameters) : CoroutineWorker(co
             }
         } catch (cancelled: CancellationException) { throw cancelled }
         catch (error: Exception) {
-            val failure = error as? ClientFailure
-            return if(isRetryable(error)) Result.retry() else Result.failure(failureData(failure ?: ClientFailure("mobile.android.dub_restart"),job))
+            if(isRetryable(error)) return Result.retry()
+            if(error !is HostTaskCancelled) AutomaticDiagnostics.captureFailure(error,stage="dub")
+            val failure = if(error is HostTaskCancelled) ClientFailure("mobile.android.job_failed") else error as? ClientFailure
+            return Result.failure(failureData(failure ?: ClientFailure("mobile.android.dub_restart"),job))
         }
     }
     private suspend fun runPipeline(host: String, job: String): Result {

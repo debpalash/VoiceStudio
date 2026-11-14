@@ -27,6 +27,16 @@ private fun diagnosticInteger(value: JsonElement?): Long? = (value as? JsonPrimi
 
 internal fun diagnosticKillSwitch(value: String?): Boolean = value?.trim()?.lowercase(java.util.Locale.ROOT) in setOf("1", "true", "yes", "on")
 
+private fun diagnosticDestinationURL(value:String):HttpUrl {
+    val authority=requireNotNull(Regex("^([a-z][a-z0-9+.-]*)://([^/?#]*)",RegexOption.IGNORE_CASE).find(value))
+    if(authority.groupValues[1].equals("http",ignoreCase=true)) {
+        // Check the spelling before OkHttp percent-decodes hostnames or
+        // canonicalizes IPv6. Only these explicit local exceptions are allowed.
+        require(Regex("(?:localhost|127\\.0\\.0\\.1|\\[::1\\])(?::[0-9]+)?",RegexOption.IGNORE_CASE).matches(authority.groupValues[2]))
+    }
+    return value.toHttpUrl()
+}
+
 /** The canonical config/diagnostics.json, supplied by the host app's generated resources. */
 class DiagnosticPolicy(json: String) {
     private val value = Json.parseToJsonElement(json).jsonObject
@@ -71,8 +81,13 @@ data class DiagnosticDestination(val site: String, val host: String, val appUrl:
     internal val eventUrl: String
     init {
         require(Regex("[a-z0-9]{6,32}").matches(site))
-        val server = host.toHttpUrl(); val app = appUrl.toHttpUrl()
-        for (url in listOf(server, app)) require(url.username.isEmpty() && url.password.isEmpty() && url.query == null && url.fragment == null)
+        val server = diagnosticDestinationURL(host); val app = diagnosticDestinationURL(appUrl)
+        for (url in listOf(server, app)) {
+            require(url.username.isEmpty() && url.password.isEmpty() && url.query == null && url.fragment == null)
+            // Literal loopback exceptions need no DNS and cannot expose metadata
+            // to a LAN/public collector over an unencrypted connection.
+            require(url.isHttps || url.host in setOf("localhost", "127.0.0.1", "::1"))
+        }
         require(server.encodedPath == "/")
         endpoint = server.newBuilder().encodedPath("/api/public/v1/events").build()
         origin = "${app.scheme}://${app.host.let { if (':' in it) "[$it]" else it }}" + if (app.port == if (app.isHttps) 443 else 80) "" else ":${app.port}"
@@ -216,6 +231,7 @@ class DiagnosticReports(
     private var autoJob: CoroutineJob? = null
     private var retryJob: CoroutineJob? = null
     private var retryWakeAt: Long? = null
+    private var storageRetryAt: Long? = null
     private val retryAt = mutableMapOf<String,Long>()
     val status: DiagnosticStatus get() = synchronized(stateLock) {
         val killed=disabled()
@@ -308,7 +324,9 @@ class DiagnosticReports(
     /** One owned wake for durable work, not a polling service or a new report. */
     private fun scheduleRetry(epoch:String,generation:Long) {
         // Called under worker: retryAt and records belong to that worker.
-        val next=retryAt.values.minOrNull()
+        // Storage publication blocks all delivery, including already-due
+        // network retries. An old network deadline must not cause a busy loop.
+        val next=storageRetryAt ?: retryAt.values.minOrNull()
         synchronized(stateLock) {
             if(next==null || !allowed(epoch,generation)) { cancelRetryLocked();return }
             if(retryJob?.isActive==true && retryWakeAt==next)return
@@ -361,7 +379,7 @@ class DiagnosticReports(
                     else { loaded=true;state=state.copy(enabled=false,optedIn=false,prompted=hadGrant,pendingCount=0);intake.clear();true }
                 }
                 if (!current) return@withLock status
-                records.clear();retryAt.clear()
+                records.clear();retryAt.clear();storageRetryAt=null
                 val revoked=revokeGrant(storage,hadGrant)
                 synchronized(stateLock) { if(generation==sequence && !closed){ consent=revoked.first;state=state.copy(consentSaveFailed=revoked.second) } }
                 return@withLock status
@@ -377,13 +395,19 @@ class DiagnosticReports(
             if (!applied) return@withLock status
             records.clear()
             if (status.enabled) {
+                val data = try { storage.read("outbox.json", policy.limit("queue_bytes", 524288)) }
+                catch (error:Exception) {
+                    // An unreadable file is not proven corrupt. Preserve it and
+                    // permit a later explicit load without collecting meanwhile.
+                    synchronized(stateLock) { loaded=false;state=state.copy(enabled=false) }
+                    throw error
+                }
                 try {
-                    val data = storage.read("outbox.json", policy.limit("queue_bytes", 524288))
                     data?.let { Json.parseToJsonElement(diagnosticUTF8(it)).jsonArray }?.take(policy.limit("queue_count", 64))?.forEach { element ->
                         sanitizeRecord(element as? JsonObject, saved!!.epoch)?.let(records::add)
                     }
-                    persist()
                 } catch (_: Exception) { records.clear(); try { storage.remove("outbox.json") } catch (_: Exception) {} }
+                persistOrRetry(saved!!.epoch,generation)
             } else { try { storage.remove("outbox.json") } catch (_: Exception) {} }
             updateCount()
             if (status.enabled && records.isNotEmpty()) schedule()
@@ -400,7 +424,7 @@ class DiagnosticReports(
             worker.withLock {
                 if (generation != synchronized(stateLock) { sequence } || closed) return@withLock status
                 val fresh = Consent(enabled, id(), "install_${id()}", if (enabled) clock.nowMs() else null)
-                records.clear(); retryAt.clear()
+                records.clear(); retryAt.clear();storageRetryAt=null
                 try { storage.remove("outbox.json") } catch (_: Exception) {}
                 // A failed OFF replacement must not resurrect an older grant
                 // after relaunch when deleting that old grant still works.
@@ -440,6 +464,19 @@ class DiagnosticReports(
         if (records.isEmpty()) storage.remove("outbox.json") else storage.write("outbox.json", bytes)
         updateCount()
     }
+    private fun persistOrRetry(epoch:String,generation:Long):Boolean {
+        try {
+            persist();storageRetryAt=null
+            return true
+        } catch (_:Exception) {
+            // Retain both the valid original file and the bounded in-memory
+            // update. Never send new records before their durable publication.
+            updateCount()
+            storageRetryAt=clock.nowMs()+60000
+            scheduleRetry(epoch,generation)
+            return false
+        }
+    }
     private fun drain(epoch: String) {
         val pending = synchronized(stateLock) { intake.toList().also { intake.clear() } }
         pending.filter { it.epoch == epoch }.forEach { item ->
@@ -464,7 +501,7 @@ class DiagnosticReports(
                 else synchronized(stateLock) { state = state.copy(droppedCount = state.droppedCount + 1) }
             } else synchronized(stateLock) { state = state.copy(droppedCount = state.droppedCount + 1) }
         }
-        persist()
+        updateCount()
     }
     suspend fun flush() = withContext(scope.coroutineContext) {
         worker.withLock {
@@ -474,6 +511,11 @@ class DiagnosticReports(
             records.replaceAll { sanitizeRecord(it, current.epoch) ?: buildJsonObject {} }
             records.removeAll { it.isEmpty() }
             drain(current.epoch)
+            if((storageRetryAt ?: 0)>clock.nowMs()) {
+                scheduleRetry(current.epoch,generation)
+                return@withLock
+            }
+            if(!persistOrRetry(current.epoch,generation))return@withLock
             retryAt.keys.retainAll(records.map { it["id"]!!.jsonPrimitive.content }.toSet())
             for (record in records.toList()) {
                 val identity=record["id"]!!.jsonPrimitive.content
@@ -483,7 +525,11 @@ class DiagnosticReports(
                     put("v", 1); put("id", record["id"]!!); put("ts", record["timestamp_ms"]!!); put("site", destination.site)
                     put("name", "diagnostic_report"); put("url", destination.eventUrl); put("profile_id", current.profile); put("props", record["props"]!!)
                 }.toString().toByteArray()
-                if (body.size > policy.limit("body_bytes", 8192)) { records.remove(record); persist(); continue }
+                if (body.size > policy.limit("body_bytes", 8192)) {
+                    records.remove(record)
+                    if(!persistOrRetry(current.epoch,generation))return@withLock
+                    continue
+                }
                 var terminal = false
                 repeat(policy.limit("max_attempts", 3)) { attempt ->
                     if (terminal || !allowed(current.epoch, generation)) return@repeat
@@ -495,7 +541,10 @@ class DiagnosticReports(
                     }
                 }
                 if (allowed(current.epoch,generation)) {
-                    if (terminal) { records.remove(record);retryAt.remove(identity);persist() }
+                    if (terminal) {
+                        records.remove(record);retryAt.remove(identity)
+                        if(!persistOrRetry(current.epoch,generation))return@withLock
+                    }
                     else retryAt[identity]=clock.nowMs()+60000
                 }
             }
@@ -505,7 +554,9 @@ class DiagnosticReports(
     suspend fun close() {
         synchronized(stateLock) { closed = true; sequence++; state = state.copy(enabled = false, optedIn = false);cancelRetryLocked() }
         transport.cancelAll()
-        withContext(Dispatchers.IO) { worker.withLock { consent?.let { drain(it.epoch) } } }
-        scope.cancel()
+        try {
+            withContext(Dispatchers.IO) { worker.withLock { consent?.let { drain(it.epoch);persist() } } }
+        } catch (_:Exception) { /* A final best-effort write must not leave the owned scope alive. */ }
+        finally { scope.cancel() }
     }
 }

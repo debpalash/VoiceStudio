@@ -172,12 +172,14 @@ private actor DiagnosticWorker {
     var records: [DiagnosticRecord] = []
     var sending = false
     var retryAt: [String: Int64] = [:]
+    var retryWake: (id: UUID, task: Task<Void, Never>)?
     var waiters: [CheckedContinuation<Void, Never>] = []
     init(gate: DiagnosticGate, projector: DiagnosticProjector, destination: DiagnosticDestination, transport: any DiagnosticTransport, clock: any DiagnosticClock, storage: any DiagnosticStorage) {
         self.gate = gate; self.projector = projector; self.destination = destination; self.transport = transport; self.clock = clock; self.storage = storage
     }
     func load() {
         guard !gate.lock.withLock({ gate.closed || gate.loaded && !gate.disabled() }) else { return }
+        cancelRetryWake()
         let generation = gate.lock.withLock { gate.generation }
         var hadGrant = gate.lock.withLock { gate.consent != nil }
         var consent: DiagnosticConsent?
@@ -227,6 +229,7 @@ private actor DiagnosticWorker {
     }
     func setConsent(_ enabled: Bool, generation: UInt64) throws {
         guard gate.lock.withLock({ !gate.closed && gate.generation == generation }) else { return }
+        cancelRetryWake()
         gate.lock.withLock { gate.pending.removeAll() }; records.removeAll(); retryAt.removeAll()
         try? storage.remove("outbox.json")
         // Removing the previous grant first keeps a failed OFF write closed
@@ -267,11 +270,37 @@ private actor DiagnosticWorker {
         }
         try persist()
     }
+    private func cancelRetryWake() {
+        retryWake?.task.cancel()
+        retryWake = nil
+    }
+    private func scheduleRetryWake(epoch: String, generation: UInt64) {
+        guard gate.allowed(epoch, generation) else { return }
+        cancelRetryWake()
+        guard let deadline = records.compactMap({ retryAt[$0.id] }).min() else { return }
+        let id = UUID(), clock = self.clock, gate = self.gate
+        let delay = Int(max(1, deadline - clock.nowMs()))
+        let task = Task { [weak self] in
+            do { try await clock.sleep(milliseconds: delay) } catch { return }
+            guard !Task.isCancelled, gate.allowed(epoch, generation) else { return }
+            await self?.retryWakeFired(id)
+        }
+        retryWake = (id, task)
+    }
+    private func retryWakeFired(_ id: UUID) async {
+        guard retryWake?.id == id else { return }
+        retryWake = nil
+        await flush()
+    }
     func flush() async {
         if sending { await withCheckedContinuation { waiters.append($0) }; return }
         guard let (consent, generation) = gate.snapshot() else { return }
         sending = true
-        defer { sending = false; let finished = waiters; waiters.removeAll(); for waiter in finished { waiter.resume() } }
+        defer {
+            sending = false
+            scheduleRetryWake(epoch: consent.epoch, generation: generation)
+            let finished = waiters; waiters.removeAll(); for waiter in finished { waiter.resume() }
+        }
         do {
             records = records.compactMap { sanitized($0, epoch: consent.epoch) }
             try drain(consent.epoch)
@@ -306,6 +335,7 @@ private actor DiagnosticWorker {
         } catch { /* Consent and durable data fail closed; feature results never change. */ }
     }
     func close() {
+        cancelRetryWake()
         if let consent = gate.lock.withLock({ gate.consent }) { try? drain(consent.epoch) }
     }
 }

@@ -9,11 +9,17 @@ const gate = vi.hoisted(() => ({
   wait: Promise.resolve() as Promise<void>,
   failWrites: false,
   failRenameTarget: '',
+  failRemoveTarget: '',
 }));
 vi.mock('node:fs/promises', async (original) => {
   const fs = await original<typeof import('node:fs/promises')>();
   return {
     ...fs,
+    rm: async (...args: Parameters<typeof fs.rm>) => {
+      if (gate.failRemoveTarget && String(args[0]).endsWith(gate.failRemoveTarget))
+        throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
+      return fs.rm(...args);
+    },
     rename: async (...args: Parameters<typeof fs.rename>) => {
       if (gate.failRenameTarget && String(args[1]).endsWith(gate.failRenameTarget))
         throw Object.assign(new Error('ENOSPC'), { code: 'ENOSPC' });
@@ -39,13 +45,14 @@ vi.mock('node:fs/promises', async (original) => {
     },
   };
 });
-import { DiagnosticReports } from './diagnostics';
+import { DiagnosticReports, diagnosticDestination } from './diagnostics';
 let root: string | undefined;
 let reports: DiagnosticReports | undefined;
 afterEach(async () => {
   gate.enabled = false;
   gate.failWrites = false;
   gate.failRenameTarget = '';
+  gate.failRemoveTarget = '';
   await reports?.close();
   if (root) await rm(root, { recursive: true, force: true });
 });
@@ -69,6 +76,42 @@ async function create(optIn = true) {
   if (optIn) await reports.setConsent(true);
   return { reports, send, root, options };
 }
+
+it('requires HTTPS diagnostic URLs except exact literal loopback HTTP', () => {
+  const destination = (host: string, appUrl = 'https://app.invalid') =>
+    diagnosticDestination({
+      SUPERMETRY_SITE_ID: 'fixture',
+      SUPERMETRY_HOST: host,
+      SUPERMETRY_APP_URL: appUrl,
+    });
+  for (const url of [
+    'https://collector.invalid',
+    'https://localhost:9443',
+    'http://localhost:3900',
+    'http://127.0.0.1:3900',
+    'http://[::1]:3900',
+  ]) {
+    expect(destination(url)).not.toBeNull();
+    expect(destination('https://collector.invalid', url + '/app')).not.toBeNull();
+  }
+  for (const url of [
+    'http://collector.invalid',
+    'http://192.168.1.4',
+    'http://localhost.example.invalid',
+    'http://127.0.0.1.example.invalid',
+    'http://127.0.0.2',
+    'http://127.1',
+    'http://2130706433',
+    'http://[0:0:0:0:0:0:0:1]',
+    'http://%6cocalhost',
+    'https://user:secret@collector.invalid',
+    'https://collector.invalid/#fragment',
+    'https://collector.invalid/?secret',
+  ]) {
+    expect(destination(url)).toBeNull();
+    expect(destination('https://collector.invalid', url)).toBeNull();
+  }
+});
 
 it('acknowledges saved opt-in even if its best-effort session marker cannot be published', async () => {
   const initial = await create(false);
@@ -118,6 +161,120 @@ it('removes the orderly-exit marker even when outbox publication fails', async (
   await reports.flush();
   expect(reports.status()).toMatchObject({ enabled: true, pending_count: 0 });
   expect(initial.send).not.toHaveBeenCalled();
+});
+
+it('keeps withdrawal durable when both replacing and removing the old grant fail', async () => {
+  const initial = await create();
+  const old = JSON.parse(await readFile(join(initial.options.directory, 'consent.json'), 'utf8'));
+  initial.reports.capture({ category: 'generation_failed' });
+  await initial.reports.close();
+  reports = new DiagnosticReports(initial.options);
+  await reports.initialize();
+  expect(reports.status().pending_count).toBe(1);
+  gate.failRenameTarget = 'consent.json';
+  gate.failRemoveTarget = 'consent.json';
+  await expect(reports.setConsent(false)).rejects.toThrow('Could not save');
+  expect(reports.status()).toMatchObject({ enabled: false, opted_in: false, prompted: true });
+  expect(
+    JSON.parse(await readFile(join(initial.options.directory, 'revoked.json'), 'utf8')),
+  ).toEqual({ version: 1 });
+  expect(
+    JSON.parse(await readFile(join(initial.options.directory, 'consent.json'), 'utf8')).enabled,
+  ).toBe(true);
+  await expect(readFile(join(initial.options.directory, 'outbox.json'))).rejects.toMatchObject({
+    code: 'ENOENT',
+  });
+  await reports.close();
+
+  reports = new DiagnosticReports(initial.options);
+  await reports.initialize();
+  await reports.flush();
+  expect(reports.status()).toMatchObject({
+    enabled: false,
+    opted_in: false,
+    prompted: true,
+    pending_count: 0,
+  });
+  expect(initial.send).not.toHaveBeenCalled();
+  gate.failRenameTarget = '';
+  gate.failRemoveTarget = '';
+  await reports.flush();
+  await reports.setConsent(true);
+  const current = JSON.parse(
+    await readFile(join(initial.options.directory, 'consent.json'), 'utf8'),
+  );
+  expect(current.epoch).not.toBe(old.epoch);
+  expect(current.profile_id).not.toBe(old.profile_id);
+});
+
+it('requires a fresh saved grant and removal of its revocation marker before enabling again', async () => {
+  const initial = await create();
+  await initial.reports.setConsent(false);
+  gate.failRemoveTarget = 'revoked.json';
+  await expect(initial.reports.setConsent(true)).rejects.toThrow('Could not save');
+  expect(initial.reports.status()).toMatchObject({ enabled: false, opted_in: false });
+  initial.reports.capture({ category: 'generation_failed' });
+  await initial.reports.flush();
+  expect(initial.send).not.toHaveBeenCalled();
+  await initial.reports.close();
+  reports = new DiagnosticReports(initial.options);
+  await reports.initialize();
+  expect(reports.status()).toMatchObject({ enabled: false, opted_in: false });
+  gate.failRemoveTarget = '';
+  await reports.setConsent(true);
+  expect(reports.status()).toMatchObject({ enabled: true, opted_in: true });
+  reports.capture({ category: 'generation_failed' });
+  await reports.flush();
+  expect(initial.send).toHaveBeenCalledOnce();
+});
+
+it('retries durable hard-kill revocation after storage becomes writable without reviving the grant', async () => {
+  const initial = await create();
+  await initial.reports.close();
+  gate.failWrites = true;
+  gate.failRemoveTarget = 'consent.json';
+  reports = new DiagnosticReports({
+    ...initial.options,
+    env: { OMNIVOICE_DIAGNOSTICS_DISABLED: '1' },
+  });
+  await reports.initialize();
+  expect(reports.status()).toMatchObject({ enabled: false, opted_in: false });
+  gate.failWrites = false;
+  // The old grant remains locked, but a separate private marker can now be saved.
+  gate.failRenameTarget = 'consent.json';
+  await reports.flush();
+  await reports.close();
+  reports = new DiagnosticReports(initial.options);
+  await reports.initialize();
+  await reports.flush();
+  expect(reports.status()).toMatchObject({ enabled: false, opted_in: false, prompted: true });
+  expect(initial.send).not.toHaveBeenCalled();
+});
+
+it('retires the session marker before waiting for an active worker during intentional close', async () => {
+  const initial = await create();
+  let release!: (response: Response) => void;
+  initial.send.mockImplementationOnce(
+    () =>
+      new Promise<Response>((resolve) => {
+        release = resolve;
+      }),
+  );
+  initial.reports.capture({ category: 'operation_failed' });
+  const flushing = initial.reports.flush();
+  await vi.waitFor(() => expect(initial.send).toHaveBeenCalledOnce());
+  const closing = initial.reports.close();
+  try {
+    await vi.waitFor(async () => {
+      await expect(readFile(join(initial.options.directory, 'session.json'))).rejects.toMatchObject(
+        { code: 'ENOENT' },
+      );
+    });
+  } finally {
+    release(new Response('', { status: 202 }));
+    await flushing;
+    await closing;
+  }
 });
 
 it('does not resurrect an outbox whose fsync completes after revocation', async () => {

@@ -81,7 +81,10 @@ class PhoneWorkflowWorker(context: Context,params: WorkerParameters): CoroutineW
             withContext(Dispatchers.IO) {result.writeText(finished.text)}
             val producer=if(workflow.graph!=null) null else model(if(selection.startsWith("phone:")) "clone" else "tts")
             return Result.success(workDataOf("file" to finished.audio?.absolutePath,"text_file" to result.absolutePath,"percent" to 100,"repo" to producer?.repo,"revision" to producer?.revision))
-        } catch(e:CancellationException) {throw e} catch(e:Exception) {return Result.failure(workDataOf("error" to ((e as? ClientFailure)?.key ?: "mobile.errors.file")))}
+        } catch(e:CancellationException) {throw e} catch(e:Exception) {
+            AutomaticDiagnostics.captureFailure(e,stage="generation")
+            return Result.failure(workDataOf("error" to ((e as? ClientFailure)?.key ?: "mobile.errors.file")))
+        }
     }
     companion object {
         suspend fun enqueue(context: Context,workflow: PhoneWorkflow,models: List<PhoneModel>,voices: List<PhoneVoice>): UUID=withContext(Dispatchers.IO) {

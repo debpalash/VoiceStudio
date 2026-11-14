@@ -33,7 +33,10 @@ private final class DiagnosticTestClock: DiagnosticClock, @unchecked Sendable {
     private var time: Int64 = 1_794_640_000_000
     func nowMs() -> Int64 { lock.withLock { time } }
     func advance(_ ms: Int64) { lock.withLock { time += ms } }
-    func sleep(milliseconds: Int) async throws { await Task.yield() }
+    func sleep(milliseconds: Int) async throws {
+        if milliseconds >= 1000 { try await Task.sleep(for: .milliseconds(milliseconds)) }
+        else { await Task.yield() }
+    }
 }
 private final class DiagnosticTestTransport: DiagnosticTransport, @unchecked Sendable {
     let lock = NSLock()
@@ -566,3 +569,118 @@ host=http.server.HTTPServer(('127.0.0.1',0),Host);print(host.server_port,flush=T
     }
 }
 #endif
+
+private final class DiagnosticRetryClock: DiagnosticClock, @unchecked Sendable {
+    private let lock = NSLock()
+    private var time: Int64 = 1_794_640_000_000
+    private var sleepers: [UUID: (Int64, CheckedContinuation<Void, any Error>)] = [:]
+    private let scheduled = DispatchSemaphore(value: 0)
+    private let cancelled = DispatchSemaphore(value: 0)
+    func nowMs() -> Int64 { lock.withLock { time } }
+    func sleep(milliseconds: Int) async throws {
+        if milliseconds < 1000 {
+            try Task.checkCancellation()
+            lock.withLock { time += Int64(milliseconds) }
+            return
+        }
+        let id = UUID()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+                lock.withLock {
+                    guard !Task.isCancelled else { continuation.resume(throwing: CancellationError()); return }
+                    sleepers[id] = (time + Int64(milliseconds), continuation)
+                    scheduled.signal()
+                }
+            }
+        } onCancel: {
+            let sleeper = self.lock.withLock { self.sleepers.removeValue(forKey: id) }
+            sleeper?.1.resume(throwing: CancellationError())
+            self.cancelled.signal()
+        }
+    }
+    func advance(_ milliseconds: Int64) {
+        let ready = lock.withLock {
+            time += milliseconds
+            let ready = sleepers.filter { $0.value.0 <= time }
+            for id in ready.keys { sleepers.removeValue(forKey: id) }
+            return Array(ready.values)
+        }
+        for sleeper in ready { sleeper.1.resume() }
+    }
+    func waitForSchedule() async -> Bool { await diagnosticWaitForEvent(scheduled) }
+    func waitForCancellation() async -> Bool { await diagnosticWaitForEvent(cancelled) }
+}
+
+extension DiagnosticReportsTests {
+    @Test func scheduledRetryDeliversWithoutAnotherCaptureOrLifecycleEvent() async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport(), clock = DiagnosticRetryClock()
+        let reports = try diagnosticRetryReporter(store, transport, clock)
+        try await reports.setConsent(true)
+        reports.capture(diagnosticEvent()); await reports.flush()
+        #expect(transport.bodies().count == 3)
+        for _ in 0..<3 { #expect(await transport.waitForEntry()) }
+        try #require(await clock.waitForSchedule())
+        let original = try diagnosticObject(#require(transport.bodies().first))
+        transport.set(code: 201)
+        clock.advance(59999)
+        #expect(transport.bodies().count == 3)
+        clock.advance(1)
+        #expect(await transport.waitForEntry())
+        await reports.flush()
+        #expect(transport.bodies().count == 4)
+        let delivered = try diagnosticObject(#require(transport.bodies().last))
+        #expect(delivered["id"] as? String == original["id"] as? String)
+        #expect(delivered["ts"] as? Int64 == original["ts"] as? Int64)
+        #expect(!store.has("outbox.json")); #expect(reports.status.pendingCount == 0)
+        await reports.close()
+    }
+    @Test func scheduledRetryCancelsOnWithdrawalAndCloseAndCannotCrossConsentEpochs() async throws {
+        for closing in [false, true] {
+            let store = DiagnosticTestStore(), transport = DiagnosticTestTransport(), clock = DiagnosticRetryClock()
+            let reports = try diagnosticRetryReporter(store, transport, clock)
+            try await reports.setConsent(true)
+            let oldEpoch = try #require(reports.recoveryContext?.epoch)
+            reports.capture(diagnosticEvent()); await reports.flush()
+            #expect(transport.bodies().count == 3)
+            try #require(await clock.waitForSchedule())
+            if closing { await reports.close() } else { try await reports.setConsent(false) }
+            try #require(await clock.waitForCancellation())
+            clock.advance(60000)
+            #expect(transport.bodies().count == 3)
+            #expect(!reports.capture(diagnosticEvent()))
+            if !closing {
+                transport.set(code: 201)
+                try await reports.setConsent(true)
+                #expect(reports.recoveryContext?.epoch != oldEpoch)
+                await reports.flush()
+                #expect(transport.bodies().count == 3)
+                reports.capture(diagnosticEvent()); await reports.flush()
+                #expect(transport.bodies().count == 4)
+                clock.advance(60000); await reports.flush()
+                #expect(transport.bodies().count == 4)
+                #expect(!store.has("outbox.json"))
+                await reports.close()
+            }
+        }
+    }
+}
+private func diagnosticRetryReporter(_ store: DiagnosticTestStore, _ transport: DiagnosticTestTransport, _ clock: DiagnosticRetryClock) throws -> DiagnosticReports {
+    try DiagnosticReports(directory: URL(fileURLWithPath: "/unused-test-diagnostics"), policy: diagnosticTestPolicy(), destination: DiagnosticDestination(site: "localtest123", host: "http://127.0.0.1:1", appUrl: "https://app.test.invalid"), appVersion: "0.5.9-beta.2", transport: transport, clock: clock, storage: store)
+}
+
+extension DiagnosticReportsTests {
+    @Test func diagnosticDestinationsRequireHTTPSExceptLiteralLoopback() throws {
+        for value in ["https://collector.invalid", "https://localhost:9443", "http://127.0.0.1:3900", "http://[::1]:3900", "http://localhost:3900"] {
+            _ = try DiagnosticDestination(site: "localtest123", host: value, appUrl: "https://app.test.invalid")
+            _ = try DiagnosticDestination(site: "localtest123", host: "https://collector.invalid", appUrl: value + "/app")
+        }
+        for value in ["http://collector.invalid", "http://192.168.1.4", "http://localhost.example.invalid", "http://127.0.0.1.example.invalid", "http://127.0.0.2", "http://127.1", "http://2130706433", "http://[0:0:0:0:0:0:0:1]", "http://%6cocalhost", "https://user:secret@collector.invalid", "https://collector.invalid/#fragment", "https://collector.invalid/?secret"] {
+            #expect(throws: DiagnosticFailure.self) {
+                try DiagnosticDestination(site: "localtest123", host: value, appUrl: "https://app.test.invalid")
+            }
+            #expect(throws: DiagnosticFailure.self) {
+                try DiagnosticDestination(site: "localtest123", host: "https://collector.invalid", appUrl: value)
+            }
+        }
+    }
+}

@@ -352,7 +352,7 @@ def test_standalone_consent_routes_are_available_before_opt_in_and_after_withdra
 def test_standalone_availability_still_requires_destination_and_no_hard_kill(reporter,monkeypatch,kill):
     from core import analytics
     assert reporter.status()['available'] is False  # No destination in this fixture.
-    monkeypatch.setattr(analytics,'_destination',lambda:{'site':'localtest123'})
+    monkeypatch.setattr(analytics,'_destination',lambda:{'site':'localtest123','host':'https://collector.example','appUrl':'https://app.example'})
     if kill:
         monkeypatch.setenv(kill,'1')
         assert reporter.status()['available'] is False
@@ -533,7 +533,7 @@ def test_stale_transport_callback_cannot_fill_new_epoch_ack_queue(reporter,monke
     class Transport:
         def __init__(self,destination,should_send,*,on_result):callbacks.append(on_result)
         def shutdown(self):pass
-    monkeypatch.setattr(analytics,'_destination',lambda:{'site':'testdestination'})
+    monkeypatch.setattr(analytics,'_destination',lambda:{'site':'testdestination','host':'https://collector.example','appUrl':'https://app.example'})
     monkeypatch.setattr(analytics_transport,'SupermetryTransport',Transport)
     reporter.consent(True);reporter._tick();old_callback=callbacks[-1]
     reporter.consent(False);reporter.consent(True);reporter._tick()

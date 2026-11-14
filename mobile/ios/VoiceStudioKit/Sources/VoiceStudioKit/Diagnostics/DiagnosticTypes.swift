@@ -87,7 +87,11 @@ public struct DiagnosticDestination: Sendable {
     public init(site: String, host: String, appUrl: String) throws {
         guard diagnosticMatches(site, "[a-z0-9]{6,32}"), let server = URLComponents(string: host), let app = URLComponents(string: appUrl) else { throw DiagnosticFailure.invalidDestination }
         for item in [server, app] {
-            guard ["https", "http"].contains(item.scheme), item.host?.isEmpty == false, item.user == nil, item.password == nil, item.query == nil, item.fragment == nil else { throw DiagnosticFailure.invalidDestination }
+            // HTTP is only for literal loopback fixtures. Inspect the encoded
+            // host so escaped names and lookalikes cannot become an exception.
+            let scheme = item.scheme?.lowercased()
+            let loopback = ["localhost", "127.0.0.1", "::1", "[::1]"].contains(item.percentEncodedHost?.lowercased() ?? "")
+            guard scheme == "https" || (scheme == "http" && loopback), item.host?.isEmpty == false, item.user == nil, item.password == nil, item.query == nil, item.fragment == nil else { throw DiagnosticFailure.invalidDestination }
         }
         guard server.path.isEmpty || server.path == "/" else { throw DiagnosticFailure.invalidDestination }
         var endpoint = server; endpoint.path = "/api/public/v1/events"

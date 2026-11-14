@@ -46,8 +46,16 @@ const killed = (env: NodeJS.ProcessEnv) =>
 function safeUrl(value: string, origin = false): boolean {
   try {
     const url = new URL(value);
+    // Inspect the literal authority too: WHATWG URL normalizes aliases such
+    // as 127.1 and integer IPv4 into 127.0.0.1. No DNS or network check occurs.
+    const literalHost = /^http:\/\/(\[[^\]]+\]|[^:/?#]+)(?::[0-9]+)?(?:\/|$)/i
+      .exec(value)?.[1]
+      ?.toLowerCase();
+    const secure =
+      url.protocol === 'https:' ||
+      (url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(literalHost ?? ''));
     return (
-      ['http:', 'https:'].includes(url.protocol) &&
+      secure &&
       Boolean(url.hostname) &&
       !url.username &&
       !url.password &&
@@ -136,6 +144,8 @@ export class DiagnosticReports {
   private scheduled = false;
   private killPurged = false;
   private killObserved = false;
+  private revocationPending = false;
+  private revocationQueued = false;
   private work: Promise<void> | null = null;
   private control: Promise<unknown> = Promise.resolve();
   private active: AbortController | null = null;
@@ -150,6 +160,7 @@ export class DiagnosticReports {
   private readonly outbox: string;
   private readonly inbox: string;
   private readonly consentPath: string;
+  private readonly revocationPath: string;
   private readonly sessionPath: string;
 
   constructor(private readonly options: DiagnosticsOptions) {
@@ -161,6 +172,7 @@ export class DiagnosticReports {
     this.outbox = join(options.directory, 'outbox.json');
     this.inbox = join(options.directory, 'inbox');
     this.consentPath = join(options.directory, 'consent.json');
+    this.revocationPath = join(options.directory, 'revoked.json');
     this.sessionPath = join(options.directory, 'session.json');
   }
 
@@ -183,7 +195,7 @@ export class DiagnosticReports {
     return {
       available: Boolean(this.destination) && !killed(this.env),
       enabled: this.enabled,
-      opted_in: this.consent?.enabled === true && !this.killObserved,
+      opted_in: this.initialized && this.consent?.enabled === true && !this.killObserved,
       prompted: this.consent !== null,
       pending_count: this.records.length,
       dropped_count: this.dropped,
@@ -197,10 +209,14 @@ export class DiagnosticReports {
     } catch {
       /* Missing or unreadable consent never grants collection. */
     }
+    if (await this.revoked()) {
+      if (this.consent) this.consent = { ...this.consent, enabled: false };
+      this.revocationPending = true;
+    }
     this.initialized = true;
     if (killed(this.env)) this.killObserved = true;
-    if (this.killObserved) {
-      this.requestKillRevocation();
+    if (this.killObserved || this.revocationPending) {
+      this.requestRevocation();
       await this.control.catch(() => {});
     } else if (this.enabled) {
       try {
@@ -258,7 +274,7 @@ export class DiagnosticReports {
     if (typeof enabled !== 'boolean') throw new Error('Invalid diagnostic consent');
     if (enabled && killed(this.env)) {
       this.killObserved = true;
-      this.requestKillRevocation();
+      this.requestRevocation();
       await this.control.catch(() => {});
       return this.status();
     }
@@ -281,6 +297,7 @@ export class DiagnosticReports {
             profile_id: `install_${id()}`,
           };
     const choice = this.consent;
+    this.revocationPending = !enabled;
     this.records = [];
     this.dirty = false;
     this.retryAt = 0;
@@ -288,17 +305,30 @@ export class DiagnosticReports {
     this.control = this.control
       .catch(() => {})
       .then(async () => {
-        await mkdir(this.options.directory, { recursive: true });
+        let saved = false;
         try {
+          // A separate private tombstone can survive a locked old grant. Its
+          // presence blocks startup and delivery until a fresh opt-in clears it.
+          if (!enabled) await writePrivate(this.revocationPath, '{"version":1}').catch(() => {});
           await writePrivate(this.consentPath, JSON.stringify(choice));
+          if (enabled) await rm(this.revocationPath, { force: true });
+          saved = true;
         } catch {
           // Removing an old grant is a fail-closed fallback when replacement fails.
-          if (!enabled) await rm(this.consentPath, { force: true }).catch(() => {});
-          throw new Error('Could not save diagnostic consent');
+          if (!enabled) {
+            try {
+              await rm(this.consentPath, { force: true });
+              if (revision === this.revision) this.revocationPending = false;
+            } catch {
+              /* The worker retries durable revocation while memory stays OFF. */
+            }
+          }
         }
         await this.work?.catch(() => {});
         await this.purge();
+        if (!saved) throw new Error('Could not save diagnostic consent');
         if (revision !== this.revision) return;
+        this.revocationPending = false;
         this.initialized = true;
         // Consent is already durable. Optional crash-recovery bookkeeping must
         // not reject the choice while collection remains enabled.
@@ -316,7 +346,7 @@ export class DiagnosticReports {
         .catch(() => {})
         .finally(() => {
           this.work = null;
-          if (this.killObserved) this.requestKillRevocation();
+          if (this.killObserved || this.revocationPending) this.requestRevocation();
         });
     await this.work;
     // The worker may request revocation, whose control operation joins the
@@ -325,15 +355,17 @@ export class DiagnosticReports {
   }
 
   async close(): Promise<void> {
-    if (killed(this.env)) this.killObserved = true;
-    if (this.killObserved) {
-      this.requestKillRevocation();
-      await this.control.catch(() => {});
-    }
     this.stopped = true;
     this.revision++;
     if (this.timer) clearInterval(this.timer);
     this.abort();
+    // Retire the crash marker before teardown can wait on a slow worker.
+    await rm(this.sessionPath, { force: true }).catch(() => {});
+    if (killed(this.env)) this.killObserved = true;
+    if (this.killObserved || this.revocationPending) {
+      this.requestRevocation();
+      await this.control.catch(() => {});
+    }
     try {
       await this.work?.catch(() => {});
       if (this.killObserved) await this.purge();
@@ -349,21 +381,42 @@ export class DiagnosticReports {
     this.wakeRetry?.();
     this.wakeRetry = null;
   }
-  private requestKillRevocation(): void {
-    if (this.killPurged) return;
-    this.killPurged = true;
+  private requestRevocation(): void {
+    if (this.revocationQueued || (this.killPurged && !this.revocationPending)) return;
+    this.revocationQueued = true;
     this.abort();
     this.records = [];
     this.dirty = false;
-    if (this.consent?.enabled) {
+    let operation: Promise<unknown>;
+    if (this.consent?.enabled || this.revocationPending) {
       // Reuse the private OFF write and old-grant removal fallback. Do not
       // await from run(): setConsent itself waits for the current worker.
-      void this.setConsent(false).catch(() => {
-        this.killPurged = false;
-      });
+      operation = this.setConsent(false);
     } else {
       // A killed launch without a prior choice must create no profile/grant.
       this.control = this.control.catch(() => {}).then(() => this.purge());
+      operation = this.control;
+    }
+    void operation
+      .then(
+        () => {
+          this.killPurged = true;
+        },
+        () => {
+          this.killPurged = false;
+        },
+      )
+      .finally(() => {
+        this.revocationQueued = false;
+      });
+  }
+  private async revoked(): Promise<boolean> {
+    try {
+      await readJson(this.revocationPath, 4096);
+      return true;
+    } catch (error) {
+      // Corrupt, symlinked or unreadable revocation state also stays closed.
+      return (error as NodeJS.ErrnoException).code !== 'ENOENT';
     }
   }
   private schedule(): void {
@@ -432,6 +485,17 @@ export class DiagnosticReports {
   }
   private async granted(epoch: string, revision: number): Promise<boolean> {
     if (!this.enabled || revision !== this.revision || this.consent?.epoch !== epoch) return false;
+    if (await this.revoked()) {
+      if (revision === this.revision) {
+        this.revocationPending = true;
+        this.initialized = false;
+        this.abort();
+        this.records = [];
+        this.dirty = false;
+        this.requestRevocation();
+      }
+      return false;
+    }
     let current: unknown;
     try {
       current = await readJson(this.consentPath, 4096);
@@ -483,7 +547,11 @@ export class DiagnosticReports {
   private async run(): Promise<void> {
     if (killed(this.env)) this.killObserved = true;
     if (this.killObserved) {
-      this.requestKillRevocation();
+      this.requestRevocation();
+      return;
+    }
+    if (this.revocationPending) {
+      this.requestRevocation();
       return;
     }
     if (!this.enabled || !this.consent || !this.destination) return;

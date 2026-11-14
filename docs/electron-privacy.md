@@ -44,7 +44,9 @@ random installation ID. They never contain audio, text/transcripts, user names,
 filenames or home paths, credentials, URLs, logs, exception messages, source
 lines, local variables, memory dumps, screenshots or manual report bodies.
 Fingerprints use sanitized technical fields only. No cookies, credentials or
-referrer accompany the public request, and redirects are refused.
+referrer accompany the public request, and redirects are refused. Diagnostic
+destinations require HTTPS; HTTP is allowed only for literal localhost,
+127.0.0.1 or ::1 test collectors.
 
 Electron main owns consent and transmission independently of Python. Its private
 diagnostics directory contains consent and sanitized queued records. Managed
@@ -60,6 +62,8 @@ stable report IDs. Desktop allocates that total between main and the Python
 inbox. Turning reports off stops delivery immediately, cancels active transport,
 invalidates the consent epoch and purges queued reports. A new opt-in creates a
 new identity; old queues and pre-consent crash history do not become eligible.
+Reopening a saved failed job only displays its error; it does not create a new
+report under a later consent choice.
 A failed consent write is shown with Retry and leaves the current process off;
 revocation also removes the previous grant or writes a private revocation marker
 where storage permits, so a failed replacement does not restore an old opt-in

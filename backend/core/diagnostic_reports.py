@@ -20,6 +20,7 @@ import tempfile
 import threading
 import time
 import uuid
+from urllib.parse import urlsplit
 
 _ROOT = Path(__file__).resolve().parents[2]
 _CONFIG = _ROOT / 'config' / 'diagnostics.json'
@@ -28,6 +29,30 @@ _PROFILE = re.compile(r'install_[a-f0-9]{32}')
 _KEYS = {'category','source','stage','error_code','error_type','engine_id','app_version','build_commit','platform','arch','device_family','exit_code','signal','reason','frames','fingerprint','uptime_bucket','elapsed_bucket','memory_bucket','disk_bucket','occurrences','schema_version'}
 _ENUMS = {'category':'categories','source':'sources','stage':'stages','error_code':'error_codes','error_type':'error_types','engine_id':'engine_ids','platform':'platforms','arch':'arches','device_family':'device_families','signal':'signals','reason':'reasons'}
 _FALLBACKS = {'category':'operation_failed','source':'backend','stage':'other','error_code':'UNKNOWN','error_type':'OtherError','engine_id':'unknown','platform':'unknown','arch':'unknown','device_family':'unknown','reason':'unknown','signal':'unknown'}
+_CURRENT_APP_VERSION = object()
+
+
+def _app_version(value):
+    if isinstance(value, str) and len(value) <= 64 and re.fullmatch(r'\d{1,4}\.\d{1,4}\.\d{1,4}(?:-[a-z0-9]+(?:[.-][a-z0-9]+)*|(?:a|b|rc|dev)\d{1,6})?', value):
+        return value
+    return None
+
+
+def _diagnostic_destination():
+    """Diagnostic transport requires TLS, except exact loopback development URLs."""
+    from core.analytics import _destination
+    from core.analytics_transport import valid_url
+    destination = _destination()
+    if not isinstance(destination, dict) or not isinstance(destination.get('site'), str) or not re.fullmatch(r'[a-z0-9]{6,32}', destination['site']):
+        return {}
+    for key in ('host', 'appUrl'):
+        value = destination.get(key)
+        if not valid_url(value, origin=key == 'host'):
+            return {}
+        parsed = urlsplit(value)
+        if parsed.scheme != 'https' and parsed.hostname not in {'localhost', '127.0.0.1', '::1'}:
+            return {}
+    return destination
 
 
 def _schema():
@@ -76,8 +101,9 @@ def sanitize_props(raw, schema=None):
             result[key] = raw[key] if raw[key] in values else 'unknown'
     for key in ('app_version','build_commit'):
         value = raw.get(key)
-        pattern = r'\d{1,4}\.\d{1,4}\.\d{1,4}(?:-[a-z0-9]+(?:[.-][a-z0-9]+)*)?' if key == 'app_version' else r'[a-f0-9]{7,40}'
-        if isinstance(value, str) and len(value) <= 64 and re.fullmatch(pattern, value):
+        if key == 'app_version' and _app_version(value) is not None:
+            result[key] = value
+        elif key == 'build_commit' and isinstance(value, str) and re.fullmatch(r'[a-f0-9]{7,40}', value):
             result[key] = value
     exit_code = raw.get('exit_code')
     if type(exit_code) is int and -(2**31) <= exit_code <= 2**32-1:
@@ -164,6 +190,8 @@ def _atomic(path, value):
 
 class Reporter:
     def __init__(self):
+        from core.version import APP_VERSION
+        self.app_version = _app_version(APP_VERSION)
         self.managed = os.environ.get('OMNIVOICE_DIAGNOSTICS_DIR')
         from core.config import DATA_DIR
         self.root = Path(self.managed) if self.managed else Path(DATA_DIR) / 'diagnostics'
@@ -186,6 +214,7 @@ class Reporter:
         self.retry_at = {}
         self.schema = None
         self.marker_owned = False
+        self.session_retired = False
         self.seen_errors = []
         self.started = time.time()
         self.thread = threading.Thread(target=self._run, name='diagnostic-reports', daemon=True)
@@ -209,7 +238,7 @@ class Reporter:
             self.kill_observed = True
         return current or self.kill_observed
 
-    def capture(self, category, *, stage='other', error=None, error_code=None, engine_id=None, **metadata):
+    def capture(self, category, *, stage='other', error=None, error_code=None, engine_id=None, _reported_app_version=_CURRENT_APP_VERSION, **metadata):
         try:
             # Only bounded projection against cached policy here; no retained
             # exceptions, file reads or waits on the diagnostic worker.
@@ -235,7 +264,10 @@ class Reporter:
                     marker = (epoch,next(_causal_counter))
                     state['_voicestudio_diagnostic_token'] = marker
                 token = marker[1]
-            item = (epoch,sanitize_props(fields,schema),token)
+            # Only local session recovery can supply a prior runtime version.
+            # Keep it separate from caller/UI metadata and from later spool IO.
+            reported_version = self.app_version if _reported_app_version is _CURRENT_APP_VERSION else _app_version(_reported_app_version)
+            item = (epoch,sanitize_props(fields,schema),token,reported_version)
             try:
                 self.intake.put_nowait(item)
                 return True
@@ -336,7 +368,7 @@ class Reporter:
         return records
 
     def _spool(self, item, records):
-        epoch, fields, token = item
+        epoch, fields, token, reported_version = item
         if epoch != self.epoch or not self.enabled:
             return
         if token is not None:
@@ -345,14 +377,21 @@ class Reporter:
             if any(value == token for value,stamp in self.seen_errors):
                 return
             self.seen_errors.append((token,now))
-        from core.version import APP_VERSION
-        fields.update(app_version=APP_VERSION,platform={'Darwin':'macos','Windows':'windows','Linux':'linux'}.get(platform.system(),'unknown'),arch={'AMD64':'x64','x86_64':'x64','aarch64':'arm64','arm64':'arm64','i386':'x86','i686':'x86'}.get(platform.machine(),'unknown'))
+        fields.pop('app_version', None)
+        if reported_version is not None:
+            fields['app_version'] = reported_version
+        fields.update(platform={'Darwin':'macos','Windows':'windows','Linux':'linux'}.get(platform.system(),'unknown'),arch={'AMD64':'x64','x86_64':'x64','aarch64':'arm64','arm64':'arm64','i386':'x86','i686':'x86'}.get(platform.machine(),'unknown'))
         props = sanitize_props(fields,self.schema)
-        for existing in records:
-            if existing['props']['fingerprint'] == props['fingerprint'] and existing['id'] not in self.inflight:
-                existing['props']['occurrences'] = min(1000000,existing['props']['occurrences']+1)
-                _atomic(self.directory / (existing['id']+'.json'), existing)
-                return
+        # Desktop can already have read a published inbox file before it
+        # commits and removes that ID. Rewriting it here would lose the new
+        # occurrence at that unlink, so managed records stay immutable. The
+        # standalone worker owns its outbox and can safely coalesce there.
+        if not self.managed:
+            for existing in records:
+                if existing['props']['fingerprint'] == props['fingerprint'] and existing['id'] not in self.inflight:
+                    existing['props']['occurrences'] = min(1000000,existing['props']['occurrences']+1)
+                    _atomic(self.directory / (existing['id']+'.json'), existing)
+                    return
         if len(records) >= self._capacity('count'):
             self.dropped += 1
             return
@@ -367,7 +406,7 @@ class Reporter:
         self.pending = len(records)
 
     def _session(self):
-        if self.managed or self.marker_owned:
+        if self.managed or self.marker_owned or self.session_retired:
             return
         path = self.root / 'session.json'
         if path.exists():
@@ -378,11 +417,29 @@ class Reporter:
                 if type(pid) is int and _previous_run_alive(pid,started):
                     return  # A live concurrent process owns this marker.
                 if previous.get('epoch') == self.epoch and type(pid) is int and previous.get('clean') is not True:
-                    self.capture('backend_crash', stage='startup', reason='unclean_exit')
+                    self.capture('backend_crash', stage='startup', reason='unclean_exit', _reported_app_version=previous.get('app_version'))
             except Exception:
                 pass
-        _atomic(path, {'version':1,'epoch':self.epoch,'pid':os.getpid(),'started_at':self.started})
+        _atomic(path, {'version':1,'epoch':self.epoch,'pid':os.getpid(),'started_at':self.started,'app_version':self.app_version})
         self.marker_owned = True
+
+    def retire_session(self):
+        """Intentional shutdown begins before service teardown; capture stays enabled."""
+        with self.lock:
+            self.session_retired = True
+            if not self.marker_owned:
+                return
+            marker = self.root / 'session.json'
+            try:
+                # A locked delete must still describe an intentional exit.
+                _atomic(marker, {'version':1,'epoch':self.epoch,'pid':os.getpid(),'started_at':self.started,'app_version':self.app_version,'clean':True})
+            except OSError:
+                pass
+            try:
+                marker.unlink(missing_ok=True)
+            except OSError:
+                self.dropped += 1
+            self.marker_owned = False
 
     def _tick(self):
         self.refresh()
@@ -414,8 +471,7 @@ class Reporter:
                 self.retry_at[identity] = time.monotonic()+60
         self.pending = len(records)
         if not self.transport:
-            from core.analytics import _destination
-            destination = _destination()
+            destination = _diagnostic_destination()
             if destination:
                 from core.analytics_transport import SupermetryTransport
                 epoch = self.epoch
@@ -466,8 +522,7 @@ class Reporter:
             # first source/Docker settings response can offer an explicit choice.
             available = bool(self.managed)
             if not self.managed:
-                from core.analytics import _destination
-                available = bool(_destination())
+                available = bool(_diagnostic_destination())
             return {'enabled':self.enabled and not hard_killed,'opted_in':self.enabled and not hard_killed,'available':available and not _killed(),'prompted':self.prompted,'externally_managed':bool(self.managed),'pending_count':self.pending,'dropped_count':self.dropped}
 
     def consent(self, enabled):
@@ -517,6 +572,7 @@ class Reporter:
 
     def shutdown(self):
         with self.lock:
+            self.retire_session()
             try:
                 self.refresh()
                 if self.enabled:
@@ -531,18 +587,6 @@ class Reporter:
             self.enabled = False
             if self.transport:
                 self.transport.shutdown()
-            if self.marker_owned:
-                marker = self.root / 'session.json'
-                try:
-                    # A failed delete must not turn a clean exit into a crash.
-                    _atomic(marker,{'version':1,'epoch':self.epoch,'pid':os.getpid(),'started_at':self.started,'clean':True})
-                except OSError:
-                    pass
-                try:
-                    marker.unlink(missing_ok=True)
-                except OSError:
-                    self.dropped += 1
-                self.marker_owned = False
         if self.thread.is_alive() and self.thread is not threading.current_thread():
             self.thread.join(timeout=2.5)
 
@@ -593,6 +637,13 @@ def shutdown():
         if _reporter:
             _reporter.shutdown()
             _reporter = None
+
+
+def prepare_shutdown():
+    """Retire an existing session only; never initialize consent or a reporter."""
+    instance = _reporter
+    if instance is not None:
+        instance.retire_session()
 
 
 def status():

@@ -1558,7 +1558,13 @@ async def lifespan(app: FastAPI):
         validate_server_admin_key()
         async with _diagnostic_lifespan():
             async with _application_lifespan(app):
-                yield
+                try:
+                    yield
+                finally:
+                    # Retire before application teardown can block. The outer
+                    # reporter remains active for errors during that teardown.
+                    from core import diagnostic_reports
+                    await asyncio.to_thread(diagnostic_reports.prepare_shutdown)
 
 
 app = FastAPI(
@@ -1581,9 +1587,10 @@ def prepare_deliberate_shutdown_during_startup(request: Request):
     from socket bind; its authorization remains identical to the system router.
     """
     from api.dependencies import check_admin
-    from core import run_sentinel
+    from core import diagnostic_reports, run_sentinel
 
     check_admin(request)
+    diagnostic_reports.prepare_shutdown()
     return {"prepared": run_sentinel.clear_sentinel()}
 
 

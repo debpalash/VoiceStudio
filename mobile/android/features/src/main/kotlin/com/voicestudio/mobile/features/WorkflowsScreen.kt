@@ -71,7 +71,7 @@ private fun workflowStepKey(kind: String)=if(kind=="normalize") "mobile.producti
                 runs=vm.phone.workflows.graphRuns(workflow)
                 result?.audio?.let {subject=ReportSubject("speak:phone:"+it.absolutePath,"speak","phone",latest.outputData.getString("repo") ?: "unknown",latest.outputData.getString("revision"))}
             }
-            latest?.outputData?.getString("error")?.let {vm.fail(com.voicestudio.mobile.network.ClientFailure(it))}
+            latest?.outputData?.getString("error")?.let {vm.restoreFailure(com.voicestudio.mobile.network.ClientFailure(it))}
         }
     }
     val importer=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {uri ->

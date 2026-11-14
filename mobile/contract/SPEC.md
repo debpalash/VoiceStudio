@@ -318,7 +318,8 @@ All tabs work without pairing once on-device models are installed (see M2); the 
   a screen or ViewModel; OS-owned download jobs can report terminal failures.
   Failures are projected immediately to `config/diagnostics.json`'s closed
   technical metadata and sent as `diagnostic_report` to the public Supermetry
-  destination bundled from `config/analytics.json`. No audio, text, filenames,
+  destination bundled from `config/analytics.json`. HTTPS is required except
+  literal localhost/127.0.0.1/::1 HTTP test collectors. No audio, text, filenames,
   URLs, user/account names, credentials, logs, exception messages, raw stacks or
   manual content-report bodies are included. Only known app source locations
   may appear. Do not retain Error objects or their payloads for later delivery.
@@ -326,6 +327,8 @@ All tabs work without pairing once on-device models are installed (see M2); the 
   seven days and reuses the original report ID/time across retries and relaunch.
   Withdrawal closes the in-memory gate immediately, cancels delivery, removes
   queued reports and invalidates their epoch; a new grant creates a new identity.
+  Displaying a saved worker error never reports it under a later consent grant;
+  fresh terminal failures are captured by their operation owner.
   A failed write remains off in memory and offers Retry for that same choice.
   Crash recovery accepts only evidence from the current enabled epoch, within
   its opt-in window and TTL, and retains the diagnosed build's version instead
