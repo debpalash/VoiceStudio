@@ -212,8 +212,10 @@ an unapproved voice or open a file/URL. Keep VoiceStudio active on this screen.
 Open **Models** and download what you need. Nothing downloads until you tap
 it; model files come from pinned Hugging Face revisions or an explicitly listed
 GitHub release component and are checked before use. Wi-Fi only unless
-you allow mobile data. Downloads keep using your active VPN; VoiceStudio does
-not switch traffic to a physical network outside the tunnel. Android's Wi-Fi-only
+you allow mobile data. Downloads follow VoiceStudio’s default network route and
+use an active VPN when its configuration includes VoiceStudio. A per-app VPN
+that excludes VoiceStudio does not carry its downloads; the app does not change
+network bindings to bypass a tunnel. Android's Wi-Fi-only
 policy requires an unmetered Wi-Fi or Ethernet route, including the VPN's own
 underlying route. A metered tunnel or one whose underlying route is unknown
 remains waiting unless you allow mobile data. Network changes and restored

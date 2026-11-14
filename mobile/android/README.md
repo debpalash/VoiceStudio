@@ -299,8 +299,10 @@ Wi-Fi/mobile-data policy and pause state. Android 14+ uses user-initiated transf
 jobs; older supported versions use foreground WorkManager jobs, independently of
 ViewModel lifetime. An ongoing notification shows progress and offers Pause.
 Reopening restores eligible queued work; paused/cancelled work remains stopped.
-VPNs remain on the default route. The runtime observes default-network callbacks
-and admits Wi-Fi-only transfers only with unmetered Wi-Fi/Ethernet evidence for
+Downloads follow the app’s default route, using a VPN when its configuration
+includes VoiceStudio; per-app VPN exclusions remain in effect. The runtime
+observes default-network callbacks and admits Wi-Fi-only transfers only with
+unmetered Wi-Fi/Ethernet evidence for
 that route; unrelated connected networks never grant permission. User-initiated
 job constraints allow VPNs, and restoration replaces obsolete network constraints
 without deleting partials. Older WorkManager jobs keep their current worker when
