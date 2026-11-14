@@ -1678,7 +1678,12 @@ async def dub_transcribe_stream(
             asr_audio_target = job.get("vocals_path")
             if not asr_audio_target or not os.path.exists(asr_audio_target):
                 asr_audio_target = job.get("audio_path")
-            asr_deadline = await probe_transcribe_deadline(asr_audio_target or "")
+            try:
+                asr_deadline = await probe_transcribe_deadline(asr_audio_target or "")
+            except ASRTimeoutError:
+                from core.public_errors import stream_failure
+                preflight_payload = stream_failure("transcription_timeout")
+                preflight_error = preflight_payload["detail"]
             # The TTS core model is loaded here for exactly one reason: to harvest a
             # preloaded `_asr_pipe` off it (passed to get_active_asr_backend below).
             # That attribute is only ever set by VoiceStudio.from_pretrained under
@@ -1751,6 +1756,7 @@ async def dub_transcribe_stream(
                         asr_model_missing_detail,
                         asr_model_missing_error,
                         load_active_asr_backend,
+                        run_transcribe_guarded as guard_asr_stage,
                     )
                     # TTS-only install: no ASR model on disk. Bail BEFORE any
                     # backend is constructed/loaded — the whisper backends would
@@ -1766,16 +1772,25 @@ async def dub_transcribe_stream(
                         and active_backend_id() == "pytorch-whisper"
                     )
                     if not _skip_preflight:
-                        _missing = await asyncio.get_running_loop().run_in_executor(
-                            None, asr_model_missing_error
-                        )
+                        try:
+                            preflight = asyncio.ensure_future(guard_asr_stage(
+                                _cpu_pool, asr_model_missing_error,
+                                what="Dub ASR model preflight", deadline=asr_deadline,
+                            ))
+                            _load_tasks.append(preflight)
+                            async for ping in _ping_while(preflight):
+                                yield ping
+                            _missing = preflight.result()
+                        except ASRTimeoutError:
+                            from core.public_errors import stream_failure
+                            preflight_payload = stream_failure("transcription_timeout")
+                            preflight_error = preflight_payload["detail"]
                     if _missing is not None:
                         preflight_error = asr_model_missing_detail(_missing)
                         preflight_payload = _missing
-                    if _missing is None:
+                    if _missing is None and preflight_error is None:
                         try:
                             loop = asyncio.get_running_loop()
-                            from services.asr_backend import run_transcribe_guarded as guard_asr_stage
 
                             def prepare_asr():
                                 try:
@@ -2739,7 +2754,7 @@ async def dub_transcribe_stream(
                 # (CodeRabbit review, #1198).
                 try:
                     _fut = asyncio.get_running_loop().run_in_executor(
-                        _gpu_pool, lambda: _asr_work.cleanup(unload_loaded_asr)
+                        _gpu_pool, _asr_work.cleanup, unload_loaded_asr
                     )
                     # Restore the TTS model only AFTER the ASR weights are
                     # freed — the same ordering the success path enforces, so

@@ -290,6 +290,53 @@ def test_probe_queue_cannot_wait_past_the_finite_unknown_duration_floor(monkeypa
 
 
 @pytest.mark.usefixtures("asr_model_installed")
+def test_stream_model_preflight_spends_the_file_deadline(tmp_path, monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from api.routers import dub_core as dub
+    from services import asr_backend as asr
+
+    path = tmp_path / "meeting.wav"
+    path.write_bytes(_recording(1500))
+    monkeypatch.setitem(dub._dub_jobs, "slow-preflight", {"audio_path": str(path), "segments": None})
+    monkeypatch.setenv("OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S", "0.1")
+    monkeypatch.setenv("OMNIVOICE_ASR_TIMEOUT_REALTIME_FACTOR", "0")
+    monkeypatch.setattr("services.ffmpeg_utils.probe_audio_duration", lambda path: 1500)
+    monkeypatch.setattr(dub, "should_preload_tts_asr", lambda: False)
+    entered, finish = threading.Event(), threading.Event()
+
+    def preflight():
+        entered.set()
+        assert finish.wait(5)
+        return None
+
+    monkeypatch.setattr(asr, "asr_model_missing_error", preflight)
+    monkeypatch.setattr(asr, "load_active_asr_backend", lambda **kwargs: pytest.fail("expired load must not start"))
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        monkeypatch.setattr(dub, "_cpu_pool", pool)
+
+        async def scenario():
+            response = await dub.dub_transcribe_stream("slow-preflight", per_segment_refs=False)
+
+            async def collect():
+                parts = []
+                async for part in response.body_iterator:
+                    parts.append(part.decode() if isinstance(part, bytes) else part)
+                return "".join(parts)
+
+            body = await asyncio.wait_for(collect(), timeout=1)
+            assert entered.is_set()
+            assert "transcription_timeout" in body
+            assert "event: done" in body
+
+        try:
+            asyncio.run(scenario())
+        finally:
+            finish.set()
+
+
+@pytest.mark.usefixtures("asr_model_installed")
 def test_stream_model_loading_spends_the_file_deadline_and_drains_before_restore(tmp_path, monkeypatch):
     import threading
     from concurrent.futures import ThreadPoolExecutor
