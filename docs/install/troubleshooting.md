@@ -1426,7 +1426,14 @@ uses the mirror only when it answers and is clearly faster. Any doubt keeps
 `files.pythonhosted.org`; the setup log line `PyPI speed check: ...` shows the
 result. **Global** never runs the check; **China** always uses the mirror. If the
 mirror fails, setup retries once from `files.pythonhosted.org` and keeps every
-file that finished. The PyTorch wheels on `download-r2.pytorch.org` have no
+file that finished. In **Auto-detect**, a later DNS, connection or temporary server
+failure for a pinned PyPI file also tries the Aliyun mirror once. This covers
+small source archives as well as wheels; their locked hashes are unchanged.
+The fallback only applies when the failed URL identifies PyPI, and does not
+change an explicit **Global** choice or retry authentication/integrity errors
+through another host. If both hosts fail, fix the network/DNS problem and press
+**Retry**. Failure reports name the URL's failed host instead of a previously
+active large download. The PyTorch wheels on `download-r2.pytorch.org` have no
 mirror and download from there in every region. PyPI mirror variables
 (`UV_DEFAULT_INDEX`, `UV_INDEX_URL`) do not redirect the locked wheels
 ([#3444](https://github.com/debpalash/VoiceStudio/issues/3444)).
