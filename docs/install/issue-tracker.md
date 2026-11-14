@@ -51,9 +51,9 @@ Each category has a GitHub label, and every report below carries it.
 | Status | Unique issues |
 |---|---|
 | Open | 5 |
-| Partly fixed | 11 |
+| Partly fixed | 12 |
 | Fixed on main | 1 |
-| Fixed in release | 37 |
+| Fixed in release | 36 |
 | Declined | 1 |
 | Closed, cause unknown | 2 |
 
@@ -109,7 +109,7 @@ Each category has a GitHub label, and every report below carries it.
 | 46 | `INST-ENG-003` | P2 | IndexTTS: one-click install builds the wrong environment or weights config | Fixed in release | [#2205](https://github.com/debpalash/VoiceStudio/pull/2205), [#2207](https://github.com/debpalash/VoiceStudio/pull/2207), [#2240](https://github.com/debpalash/VoiceStudio/pull/2240) |  | [Section 11](troubleshooting.md#11-indextts--cosyvoice--chatterboxtts-clash) | 3 |
 | 47 | `INST-MAC-003` | P2 | Backend hangs or fails on Apple Silicon during first model load | Fixed in release | [#645](https://github.com/debpalash/VoiceStudio/pull/645), [#1310](https://github.com/debpalash/VoiceStudio/pull/1310), [#1657](https://github.com/debpalash/VoiceStudio/pull/1657) |  |  | 3 |
 | 48 | `INST-DOCK-003` | P2 | Docker: AMD GPU is not detected or has no image | Fixed in release | [#1166](https://github.com/debpalash/VoiceStudio/pull/1166), [#1673](https://github.com/debpalash/VoiceStudio/pull/1673) |  | [docker.md](docker.md) | 2 |
-| 49 | `INST-DOCK-004` | P2 | Docker: no ARM64 image for the host | Fixed in release | [#1988](https://github.com/debpalash/VoiceStudio/pull/1988), [#3402](https://github.com/debpalash/VoiceStudio/pull/3402) | The standard image still has no native ARM64 build: #1988 documents emulation and #3402 adds an NVIDIA image. | [docker.md](docker.md) | 2 |
+| 49 | `INST-DOCK-004` | P2 | Docker: no ARM64 image for the host | Partly fixed | [#1988](https://github.com/debpalash/VoiceStudio/pull/1988), [#3402](https://github.com/debpalash/VoiceStudio/pull/3402) | The standard image still has no native ARM64 build: #1988 documents emulation and #3402 adds an NVIDIA image. | [docker.md](docker.md) | 2 |
 | 50 | `INST-ENG-004` | P2 | MOSS-TTS engines cannot install or have no audio backend | Fixed in release | [#2016](https://github.com/debpalash/VoiceStudio/pull/2016), [#2182](https://github.com/debpalash/VoiceStudio/pull/2182) |  |  | 2 |
 | 51 | `INST-BOOT-008` | P2 | Older backend startup reports with no recorded cause (before failure codes) | Closed, cause unknown |  | Root causes are in [#602](https://github.com/debpalash/VoiceStudio/issues/602). | [`BACKEND_STARTUP_FAILED`](troubleshooting.md#backend_startup_failed) | 153 |
 | 52 | `INST-UX-002` | P3 | Setup does not make clear which models allow commercial use | Open |  | Answer the question and decide whether setup should show this. |  | 1 |
