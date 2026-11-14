@@ -71,8 +71,12 @@ with `no matching manifest for linux/arm64/v8`.
 
 Docker's NAT prevents the backend from proving that a browser is on the host,
 so server-mode settings and diagnostics require an administrator API key even
-when the published port is loopback-only. Generate one before using any Studio
-profile or `docker run` command below:
+when the published port is loopback-only. That includes the runtime log
+(`GET /system/logs`), the log stream (`/system/logs/stream`), recent errors and
+the last-run crash report: they are readable only from loopback or with the
+key, because they contain host paths and crash records. Bare-server bootstrap
+discovery stays open without a key (`GET /system/info`, `GET /stats/usage`).
+Generate a key before using any Studio profile or `docker run` command below:
 
 ```bash
 export OMNIVOICE_API_KEY="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
@@ -580,7 +584,9 @@ as root, so files it adds there are root-owned on the host.
   origin, but Docker's NAT makes every request look non-loopback, so the gate
   used to 403 the whole admin UI (issue #261). The image now ships with
   `OMNIVOICE_SERVER_MODE=1`, which relaxes that gate for the headless
-  deployment. Admin mutations still require `OMNIVOICE_API_KEY`; all commands
+  deployment. Admin mutations still require `OMNIVOICE_API_KEY`, and so do the
+  runtime log, log stream, recent errors and last-run crash report (they carry
+  host paths and crash records); all commands
   above pass it into the container, and the UI prompts for it on first use.
   Exposure is governed by your `-p` port mapping (keep the `127.0.0.1:` prefix
   to stay local) plus authentication. If you front
