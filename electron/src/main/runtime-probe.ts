@@ -112,13 +112,16 @@ export function runRuntimeProbe(
       options.onOutput?.(text, 'stdout');
     });
     let stderr = '';
-    if (options.captureStderr)
-      child.stderr?.on('data', (chunk: Buffer | string) => {
-        const text = chunk.toString();
+    // Always drain the pipe: native imports may log more than its capacity,
+    // even when the caller only wants stdout and attaches no line reader.
+    child.stderr?.on('data', (chunk: Buffer | string) => {
+      const text = chunk.toString();
+      if (options.captureStderr) {
         // A verbose uv dry run lists hundreds of packages; keep enough for all of them.
         stderr = (stderr + text).slice(-4_194_304);
-        options.onOutput?.(text, 'stderr');
-      });
+      }
+      options.onOutput?.(text, 'stderr');
+    });
     child.once('error', (error) => {
       failure ??= error;
     });

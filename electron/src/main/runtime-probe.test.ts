@@ -11,6 +11,52 @@ afterEach(() => {
   }
 });
 
+it.each([false, true])('drains verbose stderr with captureStderr=%s', async (captureStderr) => {
+  let stderrBytes = 0;
+  const output = await runRuntimeProbe(
+    process.execPath,
+    ['-e', "process.stderr.write('x'.repeat(1024 * 1024), () => console.log('probe-ready'))"],
+    process.cwd(),
+    process.env,
+    {
+      timeoutMs: 5000,
+      captureStderr,
+      onSpawn: (child) => children.push(child),
+      onOutput: (text, stream) => {
+        if (stream === 'stderr') stderrBytes += text.length;
+      },
+    },
+  );
+  expect(output).toContain('probe-ready');
+  expect(stderrBytes).toBe(1024 * 1024);
+  if (!captureStderr) expect(output).toBe('probe-ready\n');
+});
+
+it('cancels a verbose probe and waits for its close event', async () => {
+  const controller = new AbortController();
+  let closed = false;
+  const result = runRuntimeProbe(
+    process.execPath,
+    ['-e', "setInterval(() => process.stderr.write('x'.repeat(65536)), 1)"],
+    process.cwd(),
+    process.env,
+    {
+      timeoutMs: 5000,
+      signal: controller.signal,
+      onSpawn: (child) => {
+        children.push(child);
+        child.once('close', () => { closed = true; });
+      },
+      onOutput: (_text, stream) => {
+        if (stream === 'stderr') controller.abort();
+      },
+    },
+  );
+  const failure = await result.catch((error: unknown) => error);
+  expect(failure).toBe(controller.signal.reason);
+  expect(closed).toBe(true);
+});
+
 it('terminates a non-terminating native-probe stand-in and awaits close before retry', async () => {
   let closed = false;
   let child: ChildProcess | undefined;
