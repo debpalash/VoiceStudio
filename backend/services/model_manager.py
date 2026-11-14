@@ -3445,7 +3445,15 @@ def _release_idle_tts_memory(stage):
         except Exception:  # noqa: BLE001 -- best-effort, never blocks the caller
             logger.debug("capture-ASR pre-%s release failed", stage, exc_info=True)
         release_tts_side_caches()
-        free_vram()
+        if stage == "generate":
+            # Warm generates can overlap inference on other GPU-pool workers,
+            # so skip free_vram()'s cuBLAS workspace clear: it belongs on
+            # unload paths only and is not thread-safe on older torch builds.
+            import gc
+            gc.collect()
+            release_device_cache()
+        else:
+            free_vram()
     except Exception:  # noqa: BLE001 -- a cleanup failure must never break the caller
         logger.debug("pre-%s memory reclaim skipped", stage, exc_info=True)
 

@@ -15,10 +15,14 @@ from services.model_manager import make_room_before_generate
 
 
 def _count(monkeypatch):
-    """Patch the three eviction primitives and count how often each runs."""
-    calls = {"free_vram": 0, "side_caches": 0, "capture_asr": 0}
+    """Patch the eviction primitives and count how often each runs."""
+    calls = {"free_vram": 0, "device_cache": 0, "side_caches": 0, "capture_asr": 0}
 
     monkeypatch.setattr(mm, "free_vram", lambda: calls.__setitem__("free_vram", calls["free_vram"] + 1))
+    monkeypatch.setattr(
+        mm, "release_device_cache",
+        lambda **_kw: calls.__setitem__("device_cache", calls["device_cache"] + 1),
+    )
     monkeypatch.setattr(
         mm, "release_tts_side_caches",
         lambda: calls.__setitem__("side_caches", calls["side_caches"] + 1),
@@ -40,14 +44,14 @@ def test_never_mode_frees_nothing(monkeypatch):
     monkeypatch.setenv("OMNIVOICE_FREE_VRAM_BEFORE_GENERATE", "never")
     calls = _count(monkeypatch)
     make_room_before_generate()
-    assert calls == {"free_vram": 0, "side_caches": 0, "capture_asr": 0}
+    assert calls == {"free_vram": 0, "device_cache": 0, "side_caches": 0, "capture_asr": 0}
 
 
 def test_always_mode_frees_all(monkeypatch):
     monkeypatch.setenv("OMNIVOICE_FREE_VRAM_BEFORE_GENERATE", "always")
     calls = _count(monkeypatch)
     make_room_before_generate()
-    assert calls["free_vram"] == 1 and calls["side_caches"] == 1 and calls["capture_asr"] == 1
+    assert calls["device_cache"] == 1 and calls["side_caches"] == 1 and calls["capture_asr"] == 1
 
 
 def test_auto_skips_on_roomy_machine(monkeypatch):
@@ -55,7 +59,7 @@ def test_auto_skips_on_roomy_machine(monkeypatch):
     _ram(monkeypatch, 999.0)  # ample RAM -> a roomy machine pays nothing
     calls = _count(monkeypatch)
     make_room_before_generate()
-    assert calls == {"free_vram": 0, "side_caches": 0, "capture_asr": 0}
+    assert calls == {"free_vram": 0, "device_cache": 0, "side_caches": 0, "capture_asr": 0}
 
 
 def test_auto_frees_on_tight_ram(monkeypatch):
@@ -63,7 +67,7 @@ def test_auto_frees_on_tight_ram(monkeypatch):
     _ram(monkeypatch, 0.5)  # below the 6.0 GB unified headroom
     calls = _count(monkeypatch)
     make_room_before_generate()
-    assert calls["free_vram"] == 1 and calls["side_caches"] == 1
+    assert calls["device_cache"] == 1 and calls["side_caches"] == 1
 
 
 def test_default_mode_is_auto(monkeypatch):
@@ -72,7 +76,7 @@ def test_default_mode_is_auto(monkeypatch):
     _ram(monkeypatch, 0.5)
     calls = _count(monkeypatch)
     make_room_before_generate()
-    assert calls["free_vram"] == 1
+    assert calls["device_cache"] == 1
 
 
 def _mem(monkeypatch, ram_gb, vram_gb):
@@ -91,7 +95,7 @@ def test_auto_frees_on_tight_vram_with_roomy_ram(monkeypatch):
     _mem(monkeypatch, ram_gb=999.0, vram_gb=0.5)
     calls = _count(monkeypatch)
     make_room_before_generate()
-    assert calls["free_vram"] == 1 and calls["side_caches"] == 1
+    assert calls["device_cache"] == 1 and calls["side_caches"] == 1
 
 
 def test_auto_skips_on_roomy_vram_and_ram(monkeypatch):
@@ -99,7 +103,7 @@ def test_auto_skips_on_roomy_vram_and_ram(monkeypatch):
     _mem(monkeypatch, ram_gb=999.0, vram_gb=20.0)
     calls = _count(monkeypatch)
     make_room_before_generate()
-    assert calls == {"free_vram": 0, "side_caches": 0, "capture_asr": 0}
+    assert calls == {"free_vram": 0, "device_cache": 0, "side_caches": 0, "capture_asr": 0}
 
 
 def test_auto_vram_threshold_follows_the_low_gpu_memory_warning(monkeypatch):
@@ -111,4 +115,20 @@ def test_auto_vram_threshold_follows_the_low_gpu_memory_warning(monkeypatch):
     _mem(monkeypatch, ram_gb=999.0, vram_gb=2.5)
     calls = _count(monkeypatch)
     make_room_before_generate()
-    assert calls["free_vram"] == 1
+    assert calls["device_cache"] == 1
+
+
+def test_generate_never_clears_cublas_workspaces(monkeypatch):
+    # Warm generates can overlap inference on other GPU-pool workers, and
+    # free_vram()'s cuBLAS workspace clear is only safe on unload paths.
+    monkeypatch.setenv("OMNIVOICE_FREE_VRAM_BEFORE_GENERATE", "always")
+    calls = _count(monkeypatch)
+    make_room_before_generate()
+    assert calls["free_vram"] == 0 and calls["device_cache"] == 1
+
+
+def test_load_path_still_uses_the_full_flush(monkeypatch):
+    _ram(monkeypatch, 0.5)
+    calls = _count(monkeypatch)
+    mm._make_room_before_tts_load()
+    assert calls["free_vram"] == 1 and calls["device_cache"] == 0
