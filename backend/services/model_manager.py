@@ -3470,13 +3470,13 @@ def _should_make_room_for_generate():
     if mode == "always":
         return True
     try:
-        import services.memory_budget as memory_budget
-        mem = memory_budget.available_memory() or {}
+        from services.memory_budget import _LOW_RAM_HEADROOM_GB, available_memory
+        mem = available_memory() or {}
         free_gb = mem.get("ram_available_gb")
         if free_gb is not None and free_gb < _UNIFIED_OFFLOAD_HEADROOM_GB:
             return True
         vram_free_gb = mem.get("vram_free_gb")
-        if vram_free_gb is not None and vram_free_gb < memory_budget._LOW_RAM_HEADROOM_GB:
+        if vram_free_gb is not None and vram_free_gb < _LOW_RAM_HEADROOM_GB:
             return True
     except Exception:  # noqa: BLE001 -- a probe failure must never block a generate
         logger.debug("make_room memory probe failed", exc_info=True)
