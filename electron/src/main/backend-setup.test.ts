@@ -1309,9 +1309,7 @@ describe('falling back to the CPU build', () => {
       }),
     );
     let finish = () => {};
-    mocks.install.mockImplementation(
-      () => new Promise<void>((resolve) => (finish = resolve)),
-    );
+    mocks.install.mockImplementation(() => new Promise<void>((resolve) => (finish = resolve)));
     const supervisor = new BackendSupervisor();
     onTestFinished(() => supervisor.shutdown());
     await supervisor.start();
@@ -1467,6 +1465,78 @@ describe('falling back to the CPU build', () => {
     expect(process.env.OMNIVOICE_TORCH_VARIANT).toBeUndefined();
     expect(mocks.saveTorchVariant).not.toHaveBeenCalled();
   });
+});
+
+it('reports the failed dependency host instead of the earlier large Torch download', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('no backend')));
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
+  vi.stubEnv('VOICESTUDIO_SKIP_BACKEND', '');
+  mocks.hosts.mockResolvedValue(new Map([['torch', 'download-r2.pytorch.org']]));
+  let supervisor: BackendSupervisor;
+  mocks.install.mockImplementation(async () => {
+    const internal = supervisor as unknown as {
+      pushLog(stream: 'out' | 'err', line: string, fromChild?: boolean): void;
+    };
+    internal.pushLog('err', 'Downloading torch (3.2 GiB)', true);
+    internal.pushLog('err', 'torch 3.0 GiB/3.2 GiB', true);
+    internal.pushLog('err', 'Failed to fetch:', true);
+    internal.pushLog(
+      'err',
+      '  `https://files.pythonhosted.org/packages/hash/antlr4-python3-runtime-4.9.3.tar.gz`',
+      true,
+    );
+    internal.pushLog(
+      'err',
+      'error sending request for url (https://files.pythonhosted.org/packages/hash/antlr4-python3-runtime-4.9.3.tar.gz)',
+      true,
+    );
+    internal.pushLog('err', 'dns error: No such host is known. (os error 11001)', true);
+    throw new Error(
+      'A download server returned a temporary error (Runtime setup exited with code 1).',
+      {
+        cause: Object.assign(new Error('Runtime setup exited with code 1'), {
+          stderr:
+            'error sending request for url (https://files.pythonhosted.org/packages/hash/antlr4-python3-runtime-4.9.3.tar.gz)\ndns error',
+        }),
+      },
+    );
+  });
+  supervisor = new BackendSupervisor();
+  onTestFinished(() => supervisor.shutdown());
+  await supervisor.start();
+  await supervisor.setupRuntime();
+  expect(supervisor.status.failure?.downloadHost).toBe('files.pythonhosted.org');
+  expect(supervisor.status.failure?.downloadedBytes).toBeUndefined();
+});
+
+it('reports a later mirror stall using its current host rather than an earlier failure', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('no backend')));
+  vi.stubEnv('OMNIVOICE_BACKEND_CMD', '');
+  vi.stubEnv('VOICESTUDIO_SKIP_BACKEND', '');
+  mocks.hosts.mockResolvedValue(new Map([['scipy', 'mirrors.aliyun.com']]));
+  let supervisor: BackendSupervisor;
+  mocks.install.mockImplementation(async () => {
+    const internal = supervisor as unknown as {
+      pushLog(stream: 'out' | 'err', line: string, fromChild?: boolean): void;
+    };
+    internal.pushLog(
+      'err',
+      'error sending request for url (https://files.pythonhosted.org/packages/first.whl)',
+      true,
+    );
+    internal.pushLog('err', 'Downloading scipy (10 MiB)', true);
+    internal.pushLog('err', 'scipy 5 MiB/10 MiB', true);
+    throw Object.assign(
+      new Error('Download timed out: no data for 120 s from mirrors.aliyun.com'),
+      { code: 'DOWNLOAD_STALLED' },
+    );
+  });
+  supervisor = new BackendSupervisor();
+  onTestFinished(() => supervisor.shutdown());
+  await supervisor.start();
+  await supervisor.setupRuntime();
+  expect(supervisor.status.failure?.downloadHost).toBe('mirrors.aliyun.com');
+  expect(supervisor.status.failure?.downloadedBytes).toBe(5 * 1024 ** 2);
 });
 
 it('does not take crash context from a backend process that was replaced', async () => {
