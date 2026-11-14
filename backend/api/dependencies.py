@@ -13,8 +13,10 @@ Currently exposed:
 - `require_native_access`: true-loopback-only access to the host filesystem;
   unlike `require_loopback`, it is never bypassed by server mode.
 - `ws_remote_authorized`: whether a WebSocket handshake from a non-loopback
-  client carries the remote API key (Wave 2.3) — used by WS endpoints that
-  keep their own inline loopback guards.
+  client carries the remote API key (Wave 2.3).
+- `require_ws_access`: the shared WebSocket admission gate every WS endpoint
+  awaits before `accept()` — cross-site origin rejection, then the
+  loopback/trusted-network/remote-credential check.
 """
 
 import os
@@ -31,7 +33,7 @@ from core.auth import (
     remote_api_key,
 )
 from core.browser_guard import reject_cross_site_get
-from core.csrf import SAFE_HTTP_METHODS, cookie_csrf_allowed
+from core.csrf import SAFE_HTTP_METHODS, cookie_csrf_allowed, origin_allowed
 
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
@@ -451,3 +453,42 @@ def ws_remote_authorized(websocket) -> bool:
         PrincipalKind.API_KEY,
         PrincipalKind.ADMIN_SESSION,
     }
+
+
+async def require_ws_access(websocket) -> bool:
+    """The shared admission check every WebSocket endpoint awaits before accept().
+
+    Returns True when the handshake may be accepted; on refusal the socket is
+    already closed with code 1008 (policy violation) and the caller returns.
+
+    The share PIN never covers WebSockets (its gate is HTTP-only) and the API-key
+    middleware is inert without ``OMNIVOICE_API_KEY``, so this protocol-level
+    guard is what actually protects a stream — a browser on any page can reach
+    loopback regardless of that page's own origin.
+
+    Order matters, and neither step may be reordered:
+
+    1. Cross-site rejection. If the handshake carries an ``Origin`` it must be
+       this backend's own origin, the desktop renderer, or an entry in
+       ``OMNIVOICE_ALLOWED_ORIGINS``. Native clients (no ``Origin``) and
+       configured/same-origin browser UIs keep working (``core.csrf``).
+    2. Loopback/trusted/credential check. Refuse anything not from
+       127.0.0.1/::1/localhost or a configured trusted network, unless the
+       handshake proves a remote credential. Wave 2.3 (remote backend): a
+       non-loopback client presenting ``OMNIVOICE_API_KEY`` (bearer, session, or
+       legacy query/cookie) is the thin-client dictation case — the mic lives on
+       the user's machine, the GPU here — and is allowed through.
+
+    Deliberately a plain function, not a ``Depends(...)``: FastAPI's WebSocket
+    dependency injection differs across versions, and the check must run before
+    ``accept()`` so a refusal is a close frame rather than an accepted socket.
+    """
+    origin = websocket.headers.get("origin")
+    if origin and not origin_allowed(websocket):
+        await websocket.close(code=1008, reason="browser origin not allowed")
+        return False
+    host = websocket.client.host if websocket.client else None
+    if not is_local_host(host) and not ws_remote_authorized(websocket):
+        await websocket.close(code=1008, reason="loopback origin required")
+        return False
+    return True

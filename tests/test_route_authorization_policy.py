@@ -60,7 +60,7 @@ ALLOWLIST: dict[str, str] = {
         "Issues a one-shot WebSocket ticket; the in-body principal_for check requires an "
         "admin session plus cookie CSRF before minting it."
     ),
-    # ── WebSockets (inline guards or the application's API-key middleware) ──
+    # ── WebSockets (shared inline authorization before accept) ──
     "WS /ws/transcribe": (
         "Saves dictation history; inline Origin check plus is_local_host or "
         "ws_remote_authorized rejects unauthorized handshakes with 1008 before accept()."
@@ -70,12 +70,12 @@ ALLOWLIST: dict[str, str] = {
         "remote-admin principal checks run before accepting this platform path too."
     ),
     "WS /ws/tts": (
-        "Streams audio; no inline guard. Application BearerKeyMiddleware checks configured "
-        "API-key access; no-key bootstrap stays open. The HTTP-only PIN gate does not apply."
+        "Streams audio; inline require_ws_access checks Origin and the local, trusted-network "
+        "or remote-admin principal before accept. The HTTP-only PIN does not authorize a socket."
     ),
     "WS /ws/events": (
-        "Read-only event feed; no inline guard. Application BearerKeyMiddleware checks "
-        "configured API-key access; no-key bootstrap stays open. The PIN gate is HTTP-only."
+        "Read-only event feed; inline require_ws_access checks Origin and the local, trusted-network "
+        "or remote-admin principal before accept. The HTTP-only PIN does not authorize a socket."
     ),
     # ── Consumption generation surface (PIN / trusted-network reachable) ──
     # docs/api-auth.md states these run a generation and stay open to consumers;
@@ -414,15 +414,15 @@ def test_root_routes_keep_mutations_and_websockets_visible():
         (True, "127.0.0.1", None, True),
     ],
 )
-def test_middleware_only_websocket_authorization(
+def test_application_middleware_websocket_authorization(
     middleware_websocket_policy, path, configured, host, credential, accepted,
 ):
-    """Prove the actual middleware policy behind these bounded exceptions.
+    """Prove the application middleware's additional credential boundary.
 
-    The census sees Depends, not application middleware. These two handlers do
-    not have the dictation handler's stricter inline guard: pin-only/no-key
-    bootstrap remains unchanged, whereas a configured API key rejects remote
-    anonymous handshakes. No generation or event listener is started here.
+    This isolates production middleware, not the handlers' shared inline guard.
+    The full handshakes, including no-key remote denials, one-shot tickets and
+    cookie Origin checks, are exercised in test_ws_authorization.py. No generation
+    or event listener is started by this middleware control.
     """
     result = next(row for row in middleware_websocket_policy if (
         row["path"], row["configured"], row["host"], row["credential"]

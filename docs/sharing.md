@@ -89,6 +89,11 @@ to `localhost`, because on that device it is not VoiceStudio.
 - The control surface and all `/system/*` endpoints are **loopback-only** — a device on the LAN cannot enable sharing, read the PIN, or change settings, even while sharing is on. (A Docker deployment is the one exception: server mode there admits an administrator API key on those routes, because NAT cannot show a request as loopback — see [Docker install](install/docker.md).)
 - The LAN path is plain **HTTP**. For encryption / access from outside your LAN, use Tailscale (below).
 
+The share PIN authorizes HTTP consumption only. Live dictation, streaming TTS
+and sidebar live updates use WebSockets and additionally require loopback,
+an explicitly trusted network, or an administrator API key/session. Browser
+WebSockets also validate their origin. See [WebSocket access](api-auth.md#websocket-access).
+
 ## Tailscale (private remote access, from anywhere)
 
 If you have [Tailscale](https://tailscale.com/download) installed and signed in, you can reach VoiceStudio from any of your devices over your private tailnet — identity-gated, with **no open ports and no PIN** (Tailscale handles identity, and the WireGuard tunnel encrypts the transport).
