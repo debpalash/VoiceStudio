@@ -526,7 +526,10 @@
     "empty_search_title": "일치하는 전사문 없음",
     "empty_title": "저장된 전사문이 아직 없습니다",
     "export": "내보내기",
-    "search_placeholder": "전사문 검색…"
+    "search_placeholder": "전사문 검색…",
+    "export_plain": "일반 텍스트 저장",
+    "export_srt": "SRT 저장",
+    "timestamps_unavailable": "이 전사에는 자막 타이밍이 없습니다. 타임스탬프를 제공하는 음성 인식 모델을 사용하세요."
   },
   "engineRuntime": {
     "ready": "준비",
@@ -967,7 +970,6 @@
     "unavailable": "재생할 수 없습니다",
     "play": "재생",
     "seek": "탐색",
-    "missing": "오디오 파일이 없습니다.",
     "kind_convert": "음성 변환",
     "generated_audio": "생성된 오디오",
     "now_playing": "현재 재생 중",

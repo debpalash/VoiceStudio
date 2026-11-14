@@ -35,6 +35,48 @@ from core.csrf import SAFE_HTTP_METHODS, cookie_csrf_allowed
 
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
+#: Header the MCP server stamps on the in-process requests it makes on behalf
+#: of an HTTP MCP caller (``mcp_server.py``) without proven admin credentials.
+#: The caller or a separate HTTP backend may itself use loopback; that address
+#: alone must not make the delegated request an administrator. It only *reduces*
+#: privilege — it makes this gate skip its loopback short-circuit — so a client
+#: that sends it by hand gains nothing (#4128).
+DELEGATED_CALLER_HEADER = "x-omnivoice-delegated"
+
+
+def _is_delegated_caller(request) -> bool:
+    """Whether the MCP server marked this request as a remote caller's errand.
+
+    Read through ``headers`` so the gate keeps working with the minimal request
+    stubs the tests use; a missing or blank header is the privileged default.
+    """
+    headers = getattr(request, "headers", None) or {}
+    getter = getattr(headers, "get", None)
+    if not callable(getter):
+        return False
+    value = getter(DELEGATED_CALLER_HEADER, "")
+    return str(value or "").strip().lower() in _TRUTHY
+
+
+def _delegated_presents_admin_credential(request) -> bool:
+    """Credential check for a delegated request, ignoring its peer address.
+
+    :func:`_request_presents_admin_credential` reads the canonical principal,
+    which resolves a loopback peer to ``LOOPBACK`` before any credential is
+    looked at — so it can never approve the MCP bridge's forged 127.0.0.1 peer.
+    For a delegated request use the credential's own capability and transport,
+    including cookie CSRF for mutations, rather than the forged peer's trust.
+    """
+    from core.auth import credential_principal
+
+    principal = credential_principal(request)
+    if principal is None:
+        return False
+    if (principal.transport in {CredentialTransport.COOKIE, CredentialTransport.LEGACY_COOKIE}
+            and str(getattr(request, "method", "GET")).upper() not in SAFE_HTTP_METHODS):
+        return cookie_csrf_allowed(request)
+    return True
+
 
 def _server_mode() -> bool:
     """Whether this process is a headless server deployment (Docker image).
@@ -266,16 +308,26 @@ def check_admin(request: Request) -> None:
     Read-only requests retain the bare-Docker bootstrap behaviour until an API
     key is configured. Share PINs and trusted CIDRs are consumption credentials;
     neither authorizes this gate.
+
+    MCP re-entry preserves the original HTTP peer in-process, but HTTP callers
+    or a separate HTTP backend can themselves use loopback. Requests without
+    proven administrator credentials carry :data:`DELEGATED_CALLER_HEADER`
+    so that address cannot confer implicit administrator rights (#4128).
     """
     host = request.client.host if request.client else None
-    if is_loopback(host):
+    delegated = _is_delegated_caller(request)
+    if is_loopback(host) and not delegated:
         return
     if _server_mode():
         method = str(getattr(request, "method", "GET")).upper()
         read_only = method in SAFE_HTTP_METHODS
         if read_only and not _admin_credential_configured(request):
             return
-        if _request_presents_admin_credential(request):
+        if (
+            _delegated_presents_admin_credential(request)
+            if delegated
+            else _request_presents_admin_credential(request)
+        ):
             return
     _admin_gate_403()
 
@@ -309,6 +361,37 @@ def require_admin_media_action(request: Request) -> None:
     rejection and still requires a real admin credential from remote callers —
     a bare-server anonymous GET is refused exactly as before — while letting
     header API keys and same-origin admin sessions through.
+    """
+    reject_cross_site_get(request)
+    host = request.client.host if request.client else None
+    if is_loopback(host):
+        return
+    if _server_mode() and presents_valid_credential(request):
+        return
+    _admin_gate_403()
+
+
+async def require_admin_diagnostics(request: Request) -> None:
+    """Admin gate for the runtime-log and crash-diagnostic family.
+
+    :func:`check_admin` deliberately keeps *read-only* requests open in server
+    mode while no credential is configured, so an operator can finish the bare
+    Docker bootstrap. That exemption is about discovery, not about the runtime
+    log: these routes return host paths, log contents, recent errors and crash
+    records, and ``docs/install/docker.md`` already tells users that
+    diagnostics require the administrator API key. This gate therefore keeps no
+    bare-server read exemption.
+
+    Shaped like :func:`require_admin_media_action` on purpose:
+    ``/system/logs/stream`` is consumed by an ``EventSource``, which cannot
+    attach the CSRF marker header, so genuine loopback passes and every other
+    peer must present a valid credential (API key or admin session). A share PIN
+    is a consumption credential and does not satisfy this.
+
+    ``async`` for the same reason as :func:`require_admin`: the work is pure
+    in-memory checks, and a sync dependency would be dispatched through the
+    shared worker pool, where a saturated pool delays the log stream behind
+    whatever blocked sync route filled it (#2594 class).
     """
     reject_cross_site_get(request)
     host = request.client.host if request.client else None

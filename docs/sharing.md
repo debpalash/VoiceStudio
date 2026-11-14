@@ -86,7 +86,7 @@ to `localhost`, because on that device it is not VoiceStudio.
 ### Security model
 - **Loopback-only is the default on every launch** — you must explicitly enable sharing each session; it never auto-exposes.
 - When sharing is off, **nothing is bound** to the network interface (the port is closed, not merely firewalled).
-- The control surface and all `/system/*` endpoints are **loopback-only** — a device on the LAN cannot enable sharing, read the PIN, or change settings, even while sharing is on.
+- The control surface and all `/system/*` endpoints are **loopback-only** — a device on the LAN cannot enable sharing, read the PIN, or change settings, even while sharing is on. (A Docker deployment is the one exception: server mode there admits an administrator API key on those routes, because NAT cannot show a request as loopback — see [Docker install](install/docker.md).)
 - The LAN path is plain **HTTP**. For encryption / access from outside your LAN, use Tailscale (below).
 
 ## Tailscale (private remote access, from anywhere)

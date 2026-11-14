@@ -13,7 +13,12 @@ from core.prefs import delete as prefs_delete, set_ as prefs_set
 from services import network_share
 from services import tailscale as _tailscale
 from api.schemas import SysinfoResponse, SystemInfoResponse, ModelStatusResponse
-from api.dependencies import is_loopback, require_admin, require_admin_action
+from api.dependencies import (
+    is_loopback,
+    require_admin,
+    require_admin_action,
+    require_admin_diagnostics,
+)
 from fastapi.responses import FileResponse, StreamingResponse
 import torch
 import shutil
@@ -662,7 +667,7 @@ def _tauri_log_candidates():
     return _tauri_plugin_log_candidates() + _backend_redirect_log_candidates()
 
 
-@router.get("/system/logs")
+@router.get("/system/logs", dependencies=[Depends(require_admin_diagnostics)])
 async def system_logs(tail: int = 200):
     """Tail the rolling runtime log — everything Python logged since last rotation.
 
@@ -699,7 +704,7 @@ async def system_logs(tail: int = 200):
         )
 
 
-@router.get("/system/logs/tauri")
+@router.get("/system/logs/tauri", dependencies=[Depends(require_admin_diagnostics)])
 async def system_logs_tauri(tail: int = 200):
     """Tail the Tauri plugin log (or backend stdout redirect, whichever exists)."""
     try:
@@ -724,7 +729,7 @@ async def system_logs_tauri(tail: int = 200):
     return {"lines": [], "path": None, "exists": False, "candidates": candidates}
 
 
-@router.get("/system/logs/stream")
+@router.get("/system/logs/stream", dependencies=[Depends(require_admin_diagnostics)])
 async def stream_logs(
     source: str = Query("backend", description="'backend' or 'tauri'"),
     interval: float = Query(1.0, ge=0.3, le=10.0, description="Poll interval in seconds"),
@@ -1205,7 +1210,7 @@ def _crashed_last_session() -> bool:
     return mtime < _PROCESS_START_TS
 
 
-@router.get("/system/last-run-crash")
+@router.get("/system/last-run-crash", dependencies=[Depends(require_admin_diagnostics)])
 async def get_last_run_crash():
     """Newest unclean-shutdown record from the previous backend run (#1164)
     — the deployment-agnostic twin of the desktop shell's crash marker
@@ -1541,7 +1546,7 @@ def hf_token_state():
 # ── Error journal ─────────────────────────────────────────────────────────
 
 
-@router.get("/system/errors/recent")
+@router.get("/system/errors/recent", dependencies=[Depends(require_admin_diagnostics)])
 def recent_errors(limit: int = Query(20, ge=1, le=50)):
     """Recent unhandled backend errors, newest first — structured, deduped
     (count per fingerprint), classified (error_class), pre-scrubbed. The

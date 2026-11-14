@@ -526,7 +526,10 @@
     "speakers_unavailable": "說話者辨識無法使用。逐字稿已儲存，但沒有說話者標籤。",
     "missing_model": "尚未安裝語音轉文字模型 — 此功能需要一個模型來轉錄音訊。",
     "original_transcript": "原始轉錄",
-    "active_model": "模型：{{model}}"
+    "active_model": "模型：{{model}}",
+    "export_plain": "儲存純文字",
+    "export_srt": "儲存 SRT",
+    "timestamps_unavailable": "此逐字稿沒有字幕時間資訊。請使用能提供時間戳記的語音辨識模型。"
   },
   "engineRuntime": {
     "ready": "準備好",
@@ -969,7 +972,6 @@
     "play": "播放",
     "pause": "暫停",
     "seek": "跳轉",
-    "missing": "音訊檔案遺失。",
     "now_playing": "正在播放",
     "kind_convert": "語音轉換"
   },

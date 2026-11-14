@@ -528,7 +528,10 @@
     "speakers_unavailable": "L'identification des locuteurs n'est pas disponible. La transcription a été enregistrée sans étiquettes de locuteur.",
     "missing_model": "Aucun modèle de reconnaissance vocale n'est installé — cette fonction en a besoin pour transcrire l'audio.",
     "original_transcript": "Transcription originale",
-    "active_model": "Modèle : {{model}}"
+    "active_model": "Modèle : {{model}}",
+    "export_plain": "Enregistrer en texte brut",
+    "export_srt": "Enregistrer en SRT",
+    "timestamps_unavailable": "Cette transcription ne contient aucun minutage de sous-titres. Utilisez un modèle de reconnaissance vocale qui fournit des horodatages."
   },
   "engineRuntime": {
     "ready": "Prêt",
@@ -971,7 +974,6 @@
     "play": "Lire",
     "pause": "Mettre en pause",
     "seek": "Position de lecture",
-    "missing": "Le fichier audio est introuvable.",
     "now_playing": "En cours de lecture",
     "kind_convert": "Conversion de voix"
   },

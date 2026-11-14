@@ -526,7 +526,10 @@
     "speakers_unavailable": "Konuşmacı belirleme kullanılamıyor. Transkript konuşmacı etiketleri olmadan kaydedildi.",
     "missing_model": "Yüklü bir konuşmadan metne modeli yok — bu özellik sesi yazıya dökmek için bir model gerektirir.",
     "original_transcript": "Orijinal transkript",
-    "active_model": "Model: {{model}}"
+    "active_model": "Model: {{model}}",
+    "export_plain": "Düz metin kaydet",
+    "export_srt": "SRT kaydet",
+    "timestamps_unavailable": "Bu döküm altyazı zamanlamaları içermiyor. Zaman damgaları sağlayan bir konuşma tanıma modeli kullanın."
   },
   "engineRuntime": {
     "ready": "Hazır",
@@ -969,7 +972,6 @@
     "play": "Oynat",
     "pause": "Duraklat",
     "seek": "Oynatma konumu",
-    "missing": "Ses dosyası bulunamadı.",
     "now_playing": "Şimdi çalıyor",
     "kind_convert": "Ses dönüştürme"
   },
