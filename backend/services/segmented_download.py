@@ -1,4 +1,4 @@
-"""Opt-in multi-connection segmented downloader (FDL-08).
+"""Resumable multi-connection segmented downloader (FDL-08).
 
 An IDM/uGet-style downloader for a single file: it fetches many byte-ranges in
 parallel over HTTP, resumes a partial download, verifies the result, and can be
@@ -13,8 +13,8 @@ to ``huggingface.co``/``hf.co`` hosts. When a resolve URL redirects to a CDN
 **never** forwarded to the CDN host. Redirects are followed manually to enforce
 this per-hop.
 
-This module is deliberately framework-free and unit-tested with
-``httpx.MockTransport``; the HF-cache integration lives in the setup router.
+This module is framework-free, with real loopback HTTP and MockTransport tests;
+the HF-cache integration lives in the setup router.
 """
 from __future__ import annotations
 
@@ -36,6 +36,10 @@ _READ_CHUNK = 1024 * 1024
 
 class DownloadCancelled(Exception):
     """Raised when ``cancel_check()`` returns True mid-download."""
+
+
+class DownloadIntegrityError(ValueError):
+    """Verified bytes were corrupt; never install them through a fallback."""
 
 
 def _auth_headers(url: str, token: Optional[str]) -> dict:
@@ -130,7 +134,8 @@ async def segmented_download(
     """Download ``url`` to ``dest`` using parallel byte-ranges with resume.
 
     - ``on_bytes(delta)`` is called as bytes land (feeds the aggregator).
-    - ``cancel_check()`` is polled between chunks; returning True raises
+    - ``cancel_check()`` is polled between transfer/hash chunks and before
+      publication; returning True raises
       :class:`DownloadCancelled` and leaves the ``.part`` for a later resume.
     - On success the size (and ``expected_etag`` if given) is verified, then the
       ``.part`` is atomically renamed to ``dest``.
@@ -195,17 +200,32 @@ async def segmented_download(
                 await _gather_or_cancel([_limited_fetch(s) for s in segments])
 
         # ── verify ──────────────────────────────────────────────────────
+        if _cancelled():
+            raise DownloadCancelled()
         actual = os.path.getsize(part)
         if size and actual != size:
             raise ValueError(f"size mismatch: got {actual}, expected {size}")
-        # etag is typically the sha256 (LFS) — verify when it looks like a hash
+        # Hub metadata uses a Git blob object ID for regular files and a
+        # SHA-256 digest for LFS files. Neither is just a size check.
         if expected_etag:
-            tag = expected_etag.strip('"')
-            if len(tag) == 64 and all(c in "0123456789abcdef" for c in tag.lower()):
-                if _sha256(part) != tag.lower():
-                    raise ValueError("sha256 mismatch — download corrupt")
+            tag = expected_etag.strip('"').lower()
+            if len(tag) in (40, 64) and all(c in "0123456789abcdef" for c in tag):
+                if _content_hash(part, git_blob=len(tag) == 40, cancel_check=_cancelled) != tag:
+                    # Completed ranges only certify transferred bytes, not
+                    # integrity. Retrying must not trust rejected bytes again.
+                    algorithm = "git blob sha1" if len(tag) == 40 else "sha256"
+                    message = f"{algorithm} mismatch — download corrupt"
+                    try:
+                        _invalidate_done(part)
+                    except OSError as error:
+                        raise DownloadIntegrityError(
+                            f"{message}; completed-range checkpoint could not be cleared"
+                        ) from error
+                    raise DownloadIntegrityError(message)
 
         os.makedirs(os.path.dirname(dest) or ".", exist_ok=True)
+        if _cancelled():
+            raise DownloadCancelled()
         os.replace(part, dest)
         try:
             os.remove(_manifest_path(part))
@@ -239,6 +259,11 @@ async def _gather_or_cancel(coros) -> None:
 async def _stream_single(client, url, token, part, on_bytes, cancelled) -> None:
     async with client.stream("GET", url, headers=_auth_headers(url, token)) as r:
         r.raise_for_status()
+        if cancelled():
+            raise DownloadCancelled()
+        # A fallback replaces the partial's bytes; invalidate their old proof
+        # before truncation, so cleanup failure preserves the resumable file.
+        _invalidate_done(part)
         with open(part, "wb") as fh:
             async for chunk in r.aiter_bytes(_READ_CHUNK):
                 if cancelled():
@@ -271,10 +296,17 @@ def _preallocate(part: str, size: int) -> None:
             fh.truncate(size)
 
 
-def _sha256(path: str) -> str:
+def _content_hash(
+    path: str, *, git_blob: bool = False,
+    cancel_check: Optional[Callable[[], bool]] = None,
+) -> str:
     import hashlib
-    h = hashlib.sha256()
+    h = hashlib.sha1(usedforsecurity=False) if git_blob else hashlib.sha256()
+    if git_blob:
+        h.update(f"blob {os.path.getsize(path)}\0".encode("ascii"))
     with open(path, "rb") as f:
         for block in iter(lambda: f.read(1024 * 1024), b""):
+            if cancel_check and cancel_check():
+                raise DownloadCancelled()
             h.update(block)
     return h.hexdigest()
