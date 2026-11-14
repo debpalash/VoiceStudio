@@ -185,3 +185,33 @@ async def test_cancelled_get_redirect_does_not_start_another_request(tmp_path, r
                                         client=client, cancel_check=lambda: cancelled)
     assert len(seen) == 2
     assert not (tmp_path / 'model').exists()
+
+
+@pytest.mark.parametrize(('first', 'second'), [
+    ('ordinary', 'unsafe'), ('unsafe', 'ordinary'),
+    ('ordinary', 'cancel'), ('cancel', 'ordinary'),
+    ('cancel', 'unsafe'), ('unsafe', 'cancel'),
+])
+async def test_concurrent_terminal_errors_take_precedence_after_siblings_are_drained(first, second):
+    import asyncio
+    from core.url_safety import UnsafeURLError
+    from services import segmented_download as sd
+    failures = {
+        'ordinary': ValueError('bad range'),
+        'unsafe': UnsafeURLError('private destination refused'),
+        'cancel': sd.DownloadCancelled(),
+    }
+    state = {'started': False, 'drained': False}
+    async def fail(kind):
+        raise failures[kind]
+    async def sibling():
+        state['started'] = True
+        try:
+            await asyncio.Event().wait()
+        finally:
+            state['drained'] = True
+    expected = failures['unsafe'] if 'unsafe' in (first, second) else failures['cancel']
+    with pytest.raises(type(expected)) as raised:
+        await sd._gather_or_cancel([fail(first), fail(second), sibling()])
+    assert raised.value is expected
+    assert state == {'started': True, 'drained': True}

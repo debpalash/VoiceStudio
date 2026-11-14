@@ -28,7 +28,7 @@ from typing import Callable, Optional
 import httpx
 
 from services.hf_auth import host_gets_auth as _host_gets_auth
-from core.url_safety import check_public_url
+from core.url_safety import UnsafeURLError, check_public_url
 from services.public_download_transport import PublicDownloadTransport
 
 _DEFAULT_CONNECTIONS = 8
@@ -86,7 +86,7 @@ def _require_safe_client(client, url):
     must be given PublicDownloadTransport rather than weakening another user's
     pool or mutating a process-wide resolver.
     """
-    from core.url_safety import UnsafeURLError, private_url_imports_allowed
+    from core.url_safety import private_url_imports_allowed
     if isinstance(client, httpx.AsyncClient) and not private_url_imports_allowed():
         transport = client._transport_for_url(httpx.URL(url))
         if not isinstance(transport, (PublicDownloadTransport, httpx.MockTransport)):
@@ -307,9 +307,15 @@ async def _gather_or_cancel(coros) -> None:
             if not t.done():
                 t.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
-    for t in tasks:
-        if not t.cancelled() and t.exception() is not None:
-            raise t.exception()
+    failures = [t.exception() for t in tasks if not t.cancelled() and t.exception() is not None]
+    # Known policy refusals and user cancellation must not become an ordinary
+    # range error that permits the installer's legacy-transfer fallback.
+    for terminal in (UnsafeURLError, DownloadCancelled):
+        for error in failures:
+            if isinstance(error, terminal):
+                raise error
+    if failures:
+        raise failures[0]
 
 
 async def _stream_single(client, url, token, part, on_bytes, cancelled) -> None:

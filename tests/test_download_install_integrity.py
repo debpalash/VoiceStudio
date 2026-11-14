@@ -29,6 +29,7 @@ def install_origin(monkeypatch, tmp_path):
         download=download, repo=repo, revision=revision, repo_dir=repo_dir,
         snapshot=snapshot, good=False, unsupported=False, etag="", gets=[],
         fallback_calls=[], events=[], redirect_to=None, accepts_ranges=True,
+        requested=[], range_errors={}, raised_ranges=[], connections=1,
     )
     monkeypatch.setattr(constants, "HF_HUB_CACHE", str(cache))
     monkeypatch.setattr(download, "KNOWN_MODELS", [{
@@ -69,6 +70,7 @@ def install_origin(monkeypatch, tmp_path):
         return str(snapshot)
 
     def response(request):
+        state.requested.append(str(request.url))
         if request.method == "HEAD":
             return httpx.Response(200, headers={
                 "Content-Length": str(len(CONTENT)),
@@ -81,6 +83,9 @@ def install_origin(monkeypatch, tmp_path):
             return httpx.Response(200, content=CONTENT)
         bounds = tuple(map(int, re.fullmatch(r"bytes=(\d+)-(\d+)", request.headers["Range"]).groups()))
         state.gets.append(bounds)
+        if bounds[0] in state.range_errors:
+            state.raised_ranges.append(bounds[0])
+            raise state.range_errors[bounds[0]]
         if state.unsupported:
             return httpx.Response(200, content=CONTENT)  # ignores the range
         body = CONTENT if state.good else b"!" + CONTENT[1:]
@@ -93,7 +98,7 @@ def install_origin(monkeypatch, tmp_path):
 
     async def download_with_transport(*args, **kwargs):
         async with httpx.AsyncClient(transport=httpx.MockTransport(response), trust_env=False) as client:
-            return await transfer(*args, **kwargs, client=client, num_connections=1)
+            return await transfer(*args, **kwargs, client=client, num_connections=state.connections)
 
     monkeypatch.setattr(huggingface_hub, "HfApi", Hub)
     monkeypatch.setattr(huggingface_hub, "snapshot_download", plain_snapshot)
@@ -188,6 +193,28 @@ def test_get_only_private_redirect_never_reaches_legacy_install_fallback(install
     state.redirect_to = 'http://169.254.169.254/latest/meta-data/'
     _install(state)
     assert state.fallback_calls == [], 'GET policy refusal reached the legacy Hub downloader'
+    assert all(httpx.URL(url).host != '169.254.169.254' for url in state.requested)
+    assert not (state.snapshot / 'config.json').exists()
+    phases = [event['phase'] for event in state.events]
+    assert 'install_error' in phases and 'install_done' not in phases
+
+
+@pytest.mark.parametrize('unsafe_first', [False, True], ids=['ordinary-first', 'unsafe-first'])
+def test_concurrent_range_refusal_cannot_be_masked_into_legacy_fallback(install_origin, unsafe_first):
+    from core.url_safety import UnsafeURLError
+    state = install_origin
+    state.good = True
+    state.etag = hashlib.sha256(CONTENT).hexdigest()
+    state.connections = 2
+    refusal = UnsafeURLError('private destination refused')
+    ordinary = ValueError('invalid range response')
+    state.range_errors = {
+        0: refusal if unsafe_first else ordinary,
+        16: ordinary if unsafe_first else refusal,
+    }
+    _install(state)
+    assert {0, 16}.issubset(state.raised_ranges), 'Both real range tasks must reach their errors'
+    assert state.fallback_calls == [], 'A known concurrent refusal reached the legacy Hub downloader'
     assert not (state.snapshot / 'config.json').exists()
     phases = [event['phase'] for event in state.events]
     assert 'install_error' in phases and 'install_done' not in phases
