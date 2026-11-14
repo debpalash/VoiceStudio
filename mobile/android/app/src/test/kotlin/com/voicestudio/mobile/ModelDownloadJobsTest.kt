@@ -2,6 +2,8 @@ package com.voicestudio.mobile
 
 import android.app.Application
 import android.app.job.JobScheduler
+import android.app.job.JobInfo
+import android.net.NetworkRequest
 import android.net.NetworkCapabilities
 import androidx.test.core.app.ApplicationProvider
 import androidx.work.testing.WorkManagerTestInitHelper
@@ -29,6 +31,85 @@ class ModelDownloadJobsTest {
         model=app.assets.open("models.json").bufferedReader().use {ModelCatalog.decode(it.readText()).models.first {!it.gated}}
     }
     @After fun clean() {ModelDownloadJobs.cancel(app,model.id);scheduler.cancelAll()}
+    private fun vpnCapabilities(unmetered: Boolean=false): NetworkCapabilities {
+        val defaults=NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build()
+        val vpn=NetworkCapabilities()
+        org.robolectric.Shadows.shadowOf(vpn).apply {
+            // Include SDK-owned defaults (e.g. VCN policy) without hidden constants.
+            defaults.capabilities.forEach {addCapability(it)}
+            addTransportType(NetworkCapabilities.TRANSPORT_VPN)
+            removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            if(unmetered)addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+        }
+        return vpn
+    }
+    @Test fun mobileAllowedDownloadCanMatchTheDefaultVpnNetwork() {
+        ModelDownloadJobs.enqueue(app,model,true)
+        val vpn=vpnCapabilities()
+        val defaults=NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build()
+        assertTrue(defaults.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN))
+        assertFalse(defaults.canBeSatisfiedBy(vpn))
+        val allowed=NetworkRequest.Builder(defaults).removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN).build()
+        assertTrue("SDK control: request=$allowed, VPN=$vpn",allowed.canBeSatisfiedBy(vpn))
+        val queued=scheduler.allPendingJobs.single().requiredNetwork!!
+        assertTrue("The queued download must not require bypassing the user's VPN: request=$queued, VPN=$vpn",queued.canBeSatisfiedBy(vpn))
+    }
+    @Test fun wifiOnlyDownloadCanMatchAnUnmeteredVpnAndStillRejectsMeteredNetworks() {
+        ModelDownloadJobs.enqueue(app,model,false)
+        val vpn=vpnCapabilities(unmetered=true)
+        val request=scheduler.allPendingJobs.single().requiredNetwork!!
+        assertTrue("Wi-Fi policy must allow an unmetered tunnel: request=$request, VPN=$vpn",request.canBeSatisfiedBy(vpn))
+        val metered=NetworkCapabilities(vpn)
+        org.robolectric.Shadows.shadowOf(metered).removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+        assertFalse(request.canBeSatisfiedBy(metered))
+    }
+    @Test fun restoreMigratesLegacyVpnExclusionWithoutDiscardingPartialsOrPause() {
+        ModelDownloadJobs.enqueue(app,model,false)
+        val current=scheduler.allPendingJobs.single()
+        val legacy=NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+            .addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build()
+        scheduler.schedule(JobInfo.Builder(current.id,current.service).setUserInitiated(true)
+            .setRequiredNetwork(legacy).setExtras(current.extras).build())
+        val partial=java.io.File(app.noBackupFilesDir,"models/${model.id}/${model.files.first().path}.part")
+        partial.parentFile!!.mkdirs();partial.writeText("saved range prefix")
+        ModelDownloadJobs.restore(app,listOf(model))
+        val restored=scheduler.allPendingJobs.single()
+        assertEquals(current.id,restored.id)
+        assertFalse(restored.requiredNetwork!!.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN))
+        assertTrue(restored.requiredNetwork!!.hasTransport(NetworkCapabilities.TRANSPORT_VPN))
+        assertEquals("saved range prefix",partial.readText())
+        ModelDownloadJobs.pause(app,model.id);ModelDownloadJobs.restore(app,listOf(model))
+        assertTrue(scheduler.allPendingJobs.isEmpty());assertEquals("saved range prefix",partial.readText())
+    }
+    @Test @Config(sdk=[33]) fun changingMobilePolicyReplacesTheLegacyWorkerConstraints() {
+        ModelDownloadJobs.enqueue(app,model,false)
+        val manager=androidx.work.WorkManager.getInstance(app)
+        fun unfinished()=manager.getWorkInfosForUniqueWork("model:${model.id}").get(5,java.util.concurrent.TimeUnit.SECONDS)
+            .filter {!it.state.isFinished}.single()
+        val before=unfinished()
+        assertEquals(androidx.work.NetworkType.UNMETERED,before.constraints.requiredNetworkType)
+        ModelDownloadJobs.enqueue(app,model,true)
+        val after=unfinished()
+        assertEquals(androidx.work.NetworkType.CONNECTED,after.constraints.requiredNetworkType)
+        assertNotEquals(before.id,after.id)
+        ModelDownloadJobs.pause(app,model.id);ModelDownloadJobs.restore(app,listOf(model))
+        assertTrue(manager.getWorkInfosForUniqueWork("model:${model.id}").get(5,java.util.concurrent.TimeUnit.SECONDS).all {it.state.isFinished})
+    }
+    @Test @Config(sdk=[33]) fun restoreMigratesAPersistedWorkerPolicyWithoutDeletingPartialBytes() {
+        ModelDownloadJobs.enqueue(app,model,false)
+        val preferences=app.getSharedPreferences("model-downloads",0)
+        val saved=preferences.getString("queue","")!!
+        assertTrue(saved.contains("\"mobile\":false"))
+        preferences.edit().putString("queue",saved.replace("\"mobile\":false","\"mobile\":true")).commit()
+        val partial=java.io.File(app.noBackupFilesDir,"models/${model.id}/${model.files.first().path}.part")
+        partial.parentFile!!.mkdirs();partial.writeText("durable prefix")
+        ModelDownloadJobs.restore(app,listOf(model))
+        val jobs=androidx.work.WorkManager.getInstance(app).getWorkInfosForUniqueWork("model:${model.id}")
+            .get(5,java.util.concurrent.TimeUnit.SECONDS).filter {!it.state.isFinished}
+        assertEquals(androidx.work.NetworkType.CONNECTED,jobs.single().constraints.requiredNetworkType)
+        assertEquals("durable prefix",partial.readText())
+    }
     @Test fun explicitDownloadSchedulesPersistentUserInitiatedWifiWork() {
         ModelDownloadJobs.enqueue(app,model,false)
         val job=scheduler.allPendingJobs.single()
