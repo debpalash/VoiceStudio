@@ -83,6 +83,11 @@ The runtime folder is on a drive mounted with `noexec`. Choose a folder on anoth
 
 A runtime download received no data for a long time. Setup stops a download that gets no data for 2 minutes, and repeats the install up to twice by itself after a stall or a temporary server error (such as 504 Gateway Timeout) before it shows this. Retry keeps finished packages and resumes large multi-connection downloads, but other partial downloads start again. Try another network, turn off your VPN or choose another download region.
 
+Cancel and Restart on CPU interrupt the automatic retry countdown immediately;
+finished downloads remain cached. Runtime probes also drain verbose diagnostic
+output even when it is not being captured, so a full output pipe cannot block
+an otherwise successful check.
+
 ### `RUNTIME_DOWNLOAD_INTERRUPTED`
 
 The connection dropped during a runtime download, as in `peer closed connection without sending TLS close_notify`. Retry keeps finished packages and resumes large multi-connection downloads, but other partial downloads start again. The same advice as `RUNTIME_DOWNLOAD_STALLED` applies if it repeats.
@@ -1853,3 +1858,9 @@ Self-update needs the `app-update.yml` file that release installers ship in the 
 ## Backend exits with an illegal instruction on an older CPU
 
 The effects library `pedalboard` can crash on CPUs without AVX2. VoiceStudio now loads it once in a separate process first; if that fails, effects stages that depend on it (filters, compressor, reverb, gate, EQ) are skipped and the audio is left unmodified, while the leveler and limiter keep working.
+
+## Browser crashes with "Cannot read properties of undefined (reading 'filter')"
+
+If the stack names `useModelInstallCompletionRefresh`, the model-install status response is incomplete. VoiceStudio now rejects malformed status responses while keeping the last valid download state, so the listener and other model-install screens remain mounted. A failed response does not mark a download complete.
+
+For a custom browser deployment, check that its API points to the VoiceStudio Python backend from the same release. `/models/install/status` returns an object with a `jobs` array; a placeholder API or mismatched backend can return a different body. Include the endpoint's response shape (without private data) when reporting a persistent mismatch.
