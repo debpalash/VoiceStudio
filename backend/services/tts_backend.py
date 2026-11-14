@@ -3626,8 +3626,22 @@ class CosyVoiceBackend(TTSBackend):
             raise RuntimeError(f"CosyVoice unavailable: {msg}")
         from cosyvoice.cli.cosyvoice import AutoModel  # type: ignore[import-not-found]
         model_dir = self._resolved_model_dir()
+        checkpoint = os.path.realpath(model_dir)
+        fingerprint = None
+        try:
+            from core.model_fingerprint import tree_fingerprint
+            fingerprint = tree_fingerprint(checkpoint)
+        except Exception as err:  # noqa: BLE001 - optional recovery proof
+            logger.debug("CosyVoice recovery fingerprint unavailable: %s", type(err).__name__)
         logger.info("Loading CosyVoice from %s", model_dir)
         self._model = AutoModel(model_dir=model_dir)
+        try:
+            self._model._voicestudio_checkpoint = checkpoint
+            if fingerprint is not None and tree_fingerprint(checkpoint) != fingerprint:
+                fingerprint = None
+            self._model._voicestudio_weights_fingerprint = fingerprint
+        except Exception:  # noqa: BLE001 - optional recovery metadata
+            logger.debug("Could not attach CosyVoice recovery identity", exc_info=True)
 
     def generate(self, text: str, **kw) -> torch.Tensor:
         language = self._check_language(kw.get("language"))
