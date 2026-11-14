@@ -23,7 +23,16 @@ byte ranges in flight, caps each range at 16 MB, and records every completed
 range in a resume manifest. After a dropped connection, only unfinished ranges
 are fetched again: the install retries the accelerator and resumes that
 manifest. An origin without range support remains a single stream within the
-accelerator. A non-transient failure or the final attempt disables acceleration
+accelerator. Before publishing the file, the accelerator checks its size and
+supported content digest: Git blob SHA-1 for 40-character ETags (including the
+Git object header), or SHA-256 for 64-character LFS ETags. A checksum mismatch
+leaves any previously installed destination untouched and invalidates the
+completed-range manifest, so a later retry fetches all ranges again rather than
+trusting the rejected bytes. Ordinary connection failures and cancellation keep
+valid completed ranges for resume; cancellation is checked during verification
+and before publication too. A checksum mismatch stops the install with a failure
+instead of switching to an unverified plain transfer; retrying the install can
+fetch the rejected ranges again. Other non-transient failures or the final attempt disable acceleration
 for the rest of that install and lets plain `snapshot_download` take over. Adding a
 free Hugging Face token (first-run setup, or Settings → Credentials) makes this
 faster still — authenticated downloads get higher rate limits and fewer stalls.
@@ -91,9 +100,10 @@ official endpoint unless the mirror is decisively faster, and remembers the
 winner. The decision is re-tested only on the first-run system check, after a
 network-classified download failure (the failed download retries once on the
 new winner), when it's more than 7 days old, or when you press **Test again**
-in **Settings → Models → Hugging Face mirror**. Mirror integrity is a
-non-issue: `huggingface_hub` verifies every download by checksum regardless
-of endpoint. Opt out with `OMNIVOICE_HF_ENDPOINT_MODE=manual`.
+in **Settings → Models → Hugging Face mirror**. Use an endpoint you trust:
+size and digest checks detect damaged transfers against the metadata supplied
+by that endpoint; they do not independently authenticate its publisher or make
+an untrusted mirror safe. Opt out with `OMNIVOICE_HF_ENDPOINT_MODE=manual`.
 
 This retry also applies to the model weights fetched by one-click engine
 installation. It retries once only when a network failure selects a different

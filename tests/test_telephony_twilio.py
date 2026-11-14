@@ -471,8 +471,26 @@ def test_render_is_cancelled_when_every_caller_leaves(store, fake_engine, monkey
     """Last caller hangs up mid-greeting: synthesis stops, nothing partial is
     cached, and the next call renders afresh."""
     import threading
+    from contextlib import aclosing
 
     release = threading.Event()  # holds sentence 2+ in the GPU worker
+    second_key_started = threading.Event()
+    allow_second_key = threading.Event()
+    key_lock = threading.Lock()
+    key_calls = 0
+    speech_key = session._speech_key
+
+    def delayed_second_key(*args, **kwargs):
+        nonlocal key_calls
+        with key_lock:
+            key_calls += 1
+            number = key_calls
+        if number == 2:
+            second_key_started.set()
+            assert allow_second_key.wait(timeout=10), "second caller's key was not released"
+        return speech_key(*args, **kwargs)
+
+    monkeypatch.setattr(session, "_speech_key", delayed_second_key)
     real = fake_engine.generate
 
     def gated(self, text, **kw):
@@ -488,27 +506,45 @@ def test_render_is_cancelled_when_every_caller_leaves(store, fake_engine, monkey
     )
 
     async def scenario():
-        first_audio = asyncio.Event()
+        first_audio = [asyncio.Event(), asyncio.Event()]
 
-        async def caller():
-            async for _chunk in session.render_ulaw(text, engine="fake-phone"):
-                first_audio.set()
-                await asyncio.sleep(3600)  # still on the line
+        async def caller(ready):
+            async with aclosing(session.render_ulaw(text, engine="fake-phone")) as stream:
+                async for _chunk in stream:
+                    ready.set()
+                    await asyncio.sleep(3600)  # still on the line
 
-        a = asyncio.create_task(caller())
-        b = asyncio.create_task(caller())
-        await first_audio.wait()
-        render = next(iter(session._inflight.values()))
-        a.cancel()  # one caller leaves: the other still shares the render
-        await asyncio.gather(a, return_exceptions=True)
-        assert not render.task.done() and render.consumers == 1
-        b.cancel()  # last caller leaves
-        await asyncio.gather(b, return_exceptions=True)
-        await asyncio.gather(render.task, return_exceptions=True)
-        assert render.task.cancelled()
-        assert session._inflight == {}
-        release.set()
-        return session._speech_key(text, "", "fake-phone", "")
+        callers = []
+        render = None
+        try:
+            a = asyncio.create_task(caller(first_audio[0]))
+            callers.append(a)
+            await asyncio.wait_for(first_audio[0].wait(), timeout=10)
+            b = asyncio.create_task(caller(first_audio[1]))
+            callers.append(b)
+            assert await asyncio.to_thread(second_key_started.wait, 10)
+            render = next(iter(session._inflight.values()))
+            assert render.consumers == 1  # second caller is still resolving its key
+            allow_second_key.set()
+            await asyncio.wait_for(first_audio[1].wait(), timeout=10)
+            assert render.consumers == 2  # both callers now own this render
+            a.cancel()  # one caller leaves: the other still shares the render
+            await asyncio.gather(a, return_exceptions=True)
+            assert not render.task.done() and render.consumers == 1
+            b.cancel()  # last caller leaves
+            await asyncio.gather(b, return_exceptions=True)
+            await asyncio.gather(render.task, return_exceptions=True)
+            assert render.task.cancelled()
+            assert session._inflight == {}
+            return await asyncio.to_thread(speech_key, text, "", "fake-phone", "")
+        finally:
+            allow_second_key.set()
+            release.set()
+            for task in callers:
+                task.cancel()
+            await asyncio.gather(*callers, return_exceptions=True)
+            if render is not None:
+                await asyncio.gather(render.task, return_exceptions=True)
 
     key = asyncio.run(scenario())
     assert session.ulaw_cache.get(key) is None  # partial render never cached
