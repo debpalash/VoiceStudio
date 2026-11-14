@@ -56,7 +56,8 @@ def test_malformed_checkpoint_restarts_download(tmp_path, record):
     assert destination.read_bytes() == b'newbytes'
 
 
-def test_oversized_partial_restarts_from_real_http_ranges(tmp_path):
+def test_oversized_partial_restarts_from_real_http_ranges(tmp_path, monkeypatch):
+    monkeypatch.setenv('OMNIVOICE_ALLOW_PRIVATE_URL_IMPORTS', '1')
     from services.segmented_download import segmented_download
 
     content = b'abcdefgh'
@@ -112,7 +113,8 @@ def test_oversized_partial_restarts_from_real_http_ranges(tmp_path):
 
 
 @pytest.fixture
-def retry_range_origin():
+def retry_range_origin(monkeypatch):
+    monkeypatch.setenv('OMNIVOICE_ALLOW_PRIVATE_URL_IMPORTS', '1')
     content = b'newbytes'
     fetched = []
 

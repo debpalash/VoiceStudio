@@ -17,10 +17,14 @@ model needs one acceptance. Accepting confirms that you have the rights the
 model's licence requires for your use, for example non-commercial use only or a
 separate licence from the rights holder for commercial use.
 
-- Until accepted, the model card shows **Accept licence to use** and every
-  feature that would load the model (generation, transcription, dictation,
-  dubbing, translation, batch, workflows, API) stops with an acceptance dialog
-  instead of loading it. Nothing is reinstalled.
+- Until accepted, the model card shows **Accept licence to use**. Click it,
+  or focus it and press Enter or Space, to open the full terms and confirmation
+  dialog for the model and its required dependencies. Every feature that would
+  load the model (generation, transcription, dictation, dubbing, translation,
+  batch, workflows, API) also stops with an acceptance dialog instead of loading
+  it. Nothing is reinstalled. Licence acceptance does not install a missing
+  engine runtime; a downloaded Sortformer bundle still needs the separate
+  audio.cpp runtime shown in Settings → Models → Diarisation.
 - Acceptance is recorded locally and separately for each model: when you
   accepted or withdrew, the fingerprint of the exact terms you were shown, and
   the app version. The last 20 actions are kept as history, shown under

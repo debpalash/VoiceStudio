@@ -19,6 +19,7 @@ the HF-cache integration lives in the setup router.
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 import json
 import os
 import re
@@ -27,6 +28,9 @@ from typing import Callable, Optional
 import httpx
 
 from services.hf_auth import host_gets_auth as _host_gets_auth
+from core.url_safety import UnsafeURLError, check_public_url
+from services.public_download_transport import PublicDownloadTransport
+from services import _download_policy
 
 _DEFAULT_CONNECTIONS = 8
 _MIN_SEGMENT_BYTES = 4 * 1024 * 1024   # don't split below this — overhead > gain
@@ -48,16 +52,66 @@ def _auth_headers(url: str, token: Optional[str]) -> dict:
     return {}
 
 
+def _hop_request(client, method, url, token, origin_url, *, headers=None):
+    """Build once, then bound client credentials to the initial logical origin."""
+    request = client.build_request(method, url, headers=headers)
+    origin, target = httpx.URL(origin_url), httpx.URL(url)
+    def identity(value):
+        return value.scheme, value.raw_host, value.port or (443 if value.scheme == "https" else 80)
+    same_origin = identity(origin) == identity(target)
+    secure_upgrade = (
+        origin.scheme == "http" and target.scheme == "https"
+        and origin.raw_host == target.raw_host
+        and origin.port in (None, 80) and target.port in (None, 443)
+    )
+    auth = httpx.USE_CLIENT_DEFAULT
+    if not (same_origin or secure_upgrade):
+        request.headers.pop("Authorization", None)
+        request.headers.pop("Cookie", None)
+        auth = None
+    explicit = _auth_headers(url, token)
+    if explicit:
+        # An explicit HF token is authoritative; client.auth must not replace it.
+        request.headers.update(explicit)
+        auth = None
+    return request, auth
+
+
+@asynccontextmanager
+async def _hop_stream(client, url, token, origin_url, *, headers=None):
+    request, auth = _hop_request(client, "GET", url, token, origin_url, headers=headers)
+    response = await client.send(request, auth=auth, stream=True, follow_redirects=False)
+    try:
+        yield response
+    finally:
+        await response.aclose()
+
+
 async def _resolve(client: httpx.AsyncClient, url: str, token: Optional[str], max_hops: int = 10):
     """Follow redirects manually, dropping the auth header on any cross-host hop.
+
+    Redirect targets receive an early public-destination check. The guarded
+    transport also resolves and pins every HEAD/body/range request to validated
+    addresses, including proxy targets and requests that might reuse a pool.
+    Private mirrors require the existing explicit private-URL opt-in.
 
     Returns (final_url, size_or_None, accepts_ranges_bool).
     """
     cur = url
     for _ in range(max_hops):
-        r = await client.head(cur, headers=_auth_headers(cur, token))
+        _require_safe_client(client, cur)
+        if isinstance(client, httpx.AsyncClient):
+            request, auth = _hop_request(client, "HEAD", cur, token, url)
+            r = await client.send(request, auth=auth, follow_redirects=False)
+        else:
+            r = await client.head(cur, headers=_auth_headers(cur, token), follow_redirects=False)
         if r.status_code in (301, 302, 303, 307, 308) and "location" in r.headers:
-            cur = str(httpx.URL(cur).join(r.headers["location"]))
+            target = str(httpx.URL(cur).join(r.headers["location"]))
+            await _download_policy.run_check(
+                check_public_url, target,
+                timeout=getattr(getattr(client, "timeout", None), "connect", None),
+            )
+            cur = target
             continue
         r.raise_for_status()
         size = r.headers.get("content-length")
@@ -65,6 +119,51 @@ async def _resolve(client: httpx.AsyncClient, url: str, token: Optional[str], ma
         accepts = r.headers.get("accept-ranges", "").lower() == "bytes"
         return cur, size, accepts
     raise httpx.TooManyRedirects(f"exceeded {max_hops} redirects for {url}")
+
+
+def _require_safe_client(client, url):
+    """Network clients must not silently bypass the download-only transport.
+
+    The injected client seam remains available for network-free MockTransport
+    fixtures and explicitly opted-in private mirrors. An ordinary shared client
+    must be given PublicDownloadTransport rather than weakening another user's
+    pool or mutating a process-wide resolver.
+    """
+    from core.url_safety import private_url_imports_allowed
+    if isinstance(client, httpx.AsyncClient) and not private_url_imports_allowed():
+        transport = client._transport_for_url(httpx.URL(url))
+        if not isinstance(transport, (PublicDownloadTransport, httpx.MockTransport)):
+            raise UnsafeURLError('Model download client must use the address-pinned transport')
+
+
+@asynccontextmanager
+async def _stream_get(client, url, token, cancelled, *, headers=None, max_hops=10, origin_url=None):
+    """Keep GET-only redirects inside the pinned transfer and policy boundary.
+
+    Some CDNs answer HEAD directly but redirect the body or a range request.
+    A refused Location must remain UnsafeURLError, rather than a generic HTTP
+    failure that the installer may retry through the legacy Hub transfer.
+    """
+    cur = url
+    for _ in range(max_hops):
+        if cancelled():
+            raise DownloadCancelled()
+        _require_safe_client(client, cur)
+        async with _hop_stream(client, cur, token, origin_url or url, headers=headers) as response:
+            if response.status_code in (301, 302, 303, 307, 308) and 'location' in response.headers:
+                if cancelled():
+                    raise DownloadCancelled()
+                target = str(httpx.URL(cur).join(response.headers['location']))
+                await _download_policy.run_check(
+                    check_public_url, target,
+                    timeout=getattr(getattr(client, "timeout", None), "connect", None),
+                )
+                cur = target
+                continue
+            response.raise_for_status()
+            yield response
+            return
+    raise httpx.TooManyRedirects(f'exceeded {max_hops} redirects for {url}')
 
 
 def _plan_segments(size: int, num_connections: int) -> list[tuple[int, int]]:
@@ -141,19 +240,28 @@ async def segmented_download(
       ``.part`` is atomically renamed to ``dest``.
     """
     own_client = client is None
-    client = client or httpx.AsyncClient(follow_redirects=False, timeout=timeout)
+    client = client or httpx.AsyncClient(
+        transport=PublicDownloadTransport(), follow_redirects=False, timeout=timeout,
+    )
     part = dest + ".part"
 
     def _cancelled() -> bool:
         return bool(cancel_check and cancel_check())
 
+    def _check_cancelled():
+        if _cancelled():
+            raise DownloadCancelled()
+
+    policy_token = _download_policy.set_cancellation_check(_check_cancelled)
     try:
+        _check_cancelled()
         final_url, probed_size, accepts_ranges = await _resolve(client, url, token)
+        _require_safe_client(client, final_url)
         size = expected_size or probed_size
 
         # Single-stream fallback: server won't range, or we don't know the size.
         if not accepts_ranges or not size:
-            await _stream_single(client, final_url, token, part, on_bytes, _cancelled)
+            await _stream_single(client, final_url, token, part, on_bytes, _cancelled, origin_url=url)
         else:
             done = _load_done(part, size)
             _preallocate(part, size)
@@ -164,9 +272,8 @@ async def segmented_download(
             async def _fetch(seg: tuple[int, int]):
                 start, end = seg
                 want = end - start + 1
-                headers = {**_auth_headers(final_url, token), "Range": f"bytes={start}-{end}"}
-                async with client.stream("GET", final_url, headers=headers) as r:
-                    r.raise_for_status()
+                headers = {"Range": f"bytes={start}-{end}"}
+                async with _stream_get(client, final_url, token, _cancelled, headers=headers, origin_url=url) as r:
                     match = re.fullmatch(r"bytes\s+([0-9]+)-([0-9]+)/([0-9]+|\*)",
                                          r.headers.get("content-range", "").strip(), re.IGNORECASE)
                     if (r.status_code != 206 or match is None
@@ -233,6 +340,7 @@ async def segmented_download(
             pass
         return dest
     finally:
+        _download_policy.reset_cancellation_check(policy_token)
         if own_client:
             await client.aclose()
 
@@ -243,22 +351,38 @@ async def _gather_or_cancel(coros) -> None:
     ``.part`` file once this returns or raises. ``asyncio.gather`` alone
     re-raises immediately and leaves the siblings running.
     """
-    tasks = [asyncio.ensure_future(c) for c in coros]
-    try:
-        await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
-    finally:
-        for t in tasks:
-            if not t.done():
-                t.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-    for t in tasks:
-        if not t.cancelled() and t.exception() is not None:
-            raise t.exception()
+    with _download_policy.range_policy_scope() as policy:
+        tasks = [asyncio.ensure_future(c) for c in coros]
+        cancelled_during_cleanup = False
+        try:
+            await asyncio.wait(tasks, return_when=asyncio.FIRST_EXCEPTION)
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            drained = asyncio.gather(*tasks, return_exceptions=True)
+            while not drained.done():
+                try:
+                    await asyncio.shield(drained)
+                except asyncio.CancelledError:
+                    cancelled_during_cleanup = True
+            if cancelled_during_cleanup:
+                raise asyncio.CancelledError()
+        failures = [task.exception() for task in tasks if not task.cancelled() and task.exception() is not None]
+        # Known refusals beat cancellation; an interrupted check cannot become
+        # an ordinary range error eligible for the unpinned legacy fallback.
+        for terminal in (UnsafeURLError, DownloadCancelled):
+            for error in failures:
+                if isinstance(error, terminal):
+                    raise error
+        if policy.interrupted:
+            raise UnsafeURLError("Model download destination validation was interrupted")
+        if failures:
+            raise failures[0]
 
 
-async def _stream_single(client, url, token, part, on_bytes, cancelled) -> None:
-    async with client.stream("GET", url, headers=_auth_headers(url, token)) as r:
-        r.raise_for_status()
+async def _stream_single(client, url, token, part, on_bytes, cancelled, *, origin_url=None) -> None:
+    async with _stream_get(client, url, token, cancelled, origin_url=origin_url) as r:
         if cancelled():
             raise DownloadCancelled()
         # A fallback replaces the partial's bytes; invalidate their old proof

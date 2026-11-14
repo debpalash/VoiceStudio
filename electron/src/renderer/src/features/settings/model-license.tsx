@@ -66,6 +66,7 @@ export function ModelLicense({
   info,
   acceptance,
   dependencies,
+  triggerLabel,
 }: {
   repoId: string;
   label: string;
@@ -73,6 +74,8 @@ export function ModelLicense({
   acceptance?: ModelLicenceAcceptance;
   /** Other gated repos the row's engines need, offered in the same dialog (#3855). */
   dependencies?: ModelLicenceAcceptance[];
+  /** Localized action text; category-chip callers keep their existing trigger. */
+  triggerLabel?: string;
 }) {
   const { t } = useTranslation();
   const acknowledgementId = useId();
@@ -323,13 +326,15 @@ export function ModelLicense({
         ref={trigger}
         size="sm"
         variant="outline"
-        className="gap-1.5"
+        className={cn('gap-1.5', triggerLabel && 'text-warning')}
         onClick={() => setOpen(true)}
         title={summary}
-        aria-label={`${t('modelLicense.label')}: ${summary}; ${label}`}
+        aria-label={triggerLabel ?? `${t('modelLicense.label')}: ${summary}; ${label}`}
       >
         <ModelLicenseIcon category={modelLicenseCategory(currentInfo?.license_category)} />
-        <span aria-hidden="true">{t(modelLicenseShortKey(currentInfo?.license_category))}</span>
+        <span aria-hidden="true">
+          {triggerLabel ?? t(modelLicenseShortKey(currentInfo?.license_category))}
+        </span>
       </Button>
       <Dialog open={open} onOpenChange={(next) => (next ? setOpen(true) : close())}>
         <DialogContent
@@ -371,7 +376,11 @@ export function ModelLicense({
               )}
               {/* Every licence the engine needs is inspectable, not just listed (#3855). */}
               {(dependencies ?? []).map((dependency) => (
-                <DependencyLicenceView key={dependency.repo_id} repoId={dependency.repo_id} open={open} />
+                <DependencyLicenceView
+                  key={dependency.repo_id}
+                  repoId={dependency.repo_id}
+                  open={open}
+                />
               ))}
             </div>
           </LicenceAcceptanceFooter>
