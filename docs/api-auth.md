@@ -24,10 +24,10 @@ every mutating HTTP route and every WebSocket to carry a recognized gate or an
 explicit, documented exception. Only the read-only `GET /` frontend fallback is
 excluded; mutations and WebSockets at `/` remain visible. Exceptions record the
 current policy, including known gaps; they do not add authorization themselves.
-In particular, `/ws/tts` and `/ws/events` rely on the application API-key
-middleware and have no inline dictation guard: with no API key configured they
-retain the existing bootstrap behavior, and the HTTP-only share PIN does not
-protect them. The dictation paths perform additional inline checks.
+All four WebSocket paths additionally await the shared inline `require_ws_access`
+guard before accepting a connection. The census lists this in-body authorization
+explicitly because it cannot infer it from FastAPI dependencies. The HTTP-only
+share PIN does not authorize a socket; the WebSocket policy is detailed below.
 
 Loopback traffic (`127.0.0.1`, `::1`, `localhost`) is **never** gated — local
 tools keep working unchanged whichever gate is set.
