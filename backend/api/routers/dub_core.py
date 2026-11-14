@@ -33,7 +33,7 @@ from services.dub_language import (
 )
 from services.model_manager import get_model, _gpu_pool, _cpu_pool, get_diarization_pipeline, offload_tts_for_asr, restore_tts_after_asr, should_preload_tts_asr, release_device_cache
 from services.asr_backend import (
-    ASR_TRANSCRIBE_TIMEOUT_S,
+    transcribe_budget_s,
     ASRTimeoutError,
     reset_pool_after_wedge,
     run_transcribe_guarded,
@@ -1843,7 +1843,7 @@ async def dub_transcribe_stream(
         else:
             chunk_len = TRANSCRIBE_CHUNK_S
         if whole_file_mode:
-            chunk_timeout = ASR_TRANSCRIBE_TIMEOUT_S
+            chunk_timeout = transcribe_budget_s(total)
             chunk_timeout_env = "OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S"
         else:
             chunk_timeout = TRANSCRIBE_CHUNK_TIMEOUT_S
@@ -2886,7 +2886,9 @@ async def dub_transcribe(job_id: str, num_speakers: Optional[int] = None):
             # every other request into a "can't reach backend". run_transcribe_guarded
             # leaves an unkillable native worker accounted for on timeout so a
             # retry cannot overlap it (#1669).
-            segments_result = await run_transcribe_guarded(_gpu_pool, _transcribe, what="Dub")
+            segments_result = await run_transcribe_guarded(
+                _gpu_pool, _transcribe, what="Dub", audio_path=job.get("audio_path"),
+            )
         except asyncio.CancelledError:
             job["aborted"] = True
             raise

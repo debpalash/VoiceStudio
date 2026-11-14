@@ -37,6 +37,7 @@ import weakref
 from urllib.parse import urlsplit
 from core import import_probe
 from utils.containment import contain_system_exit
+from core.asr_budget import transcribe_budget_s
 
 from abc import ABC, abstractmethod
 from collections import OrderedDict
@@ -51,13 +52,13 @@ logger = logging.getLogger("omnivoice.asr")
 # where the resident TTS model contends for memory — hung the request *and* tied
 # up a GPU-pool worker, surfacing in the UI as the misleading "can't reach the
 # local backend" (TamKieu / Vietnam report). Bound them so a hang becomes a fast,
-# actionable error instead. Generous default (whole-file large-v3 on CPU is slow
-# but valid); override with the env var for very long single files.
-ASR_TRANSCRIBE_TIMEOUT_S = float(os.environ.get("OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S", "300.0"))
+# actionable error instead. Whole-file callers supply local duration or a path;
+# the shared budget grows with recording length while this remains its floor.
+ASR_TRANSCRIBE_TIMEOUT_S = transcribe_budget_s()
 
 
 class ASRTimeoutError(TimeoutError):
-    """Raised when a whole-file transcribe exceeds ASR_TRANSCRIBE_TIMEOUT_S.
+    """Raised when a transcription exhausts its finite execution deadline.
 
     Carries a user-actionable message: the backend is alive (this is not a
     connection failure) — the ASR model is too heavy for the available compute.
@@ -150,13 +151,20 @@ def _isolated_engine_hint(streak: int) -> str:
 
 
 async def run_transcribe_guarded(executor, fn, *, what: str = "ASR",
-                                 timeout: float = ASR_TRANSCRIBE_TIMEOUT_S,
+                                 timeout: float | None = None,
+                                 audio_path: str | None = None,
+                                 duration_s: float | None = None,
+                                 deadline: float | None = None,
                                  timeout_env: str = "OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S",
                                  reset_on_timeout: bool = False,
                                  on_abandon=None):
     """Run a blocking transcribe ``fn`` in ``executor`` with a hard wall-clock
     bound. On timeout, raise :class:`ASRTimeoutError` with guidance instead of
     letting the request hang forever.
+
+    Whole-file paths/durations scale the default floor with recording length.
+    Explicit chunk timeouts stay fixed. The deadline starts before submission,
+    so queueing and the engine's own child-process wait cannot renew it.
 
     A future cannot cancel the underlying thread, so a timed-out
     in-process CTranslate2/whisperx call still owns its model and device. The
@@ -171,7 +179,19 @@ async def run_transcribe_guarded(executor, fn, *, what: str = "ASR",
     completion leaves cleanup with the caller.
     """
     from services.inference_cancellation import InferenceCancellation
-    cancellation = InferenceCancellation()
+    from services.asr_timing import transcribe_deadline, remaining_s
+
+    if deadline is not None and timeout is not None:
+        deadline = min(deadline, time.monotonic() + timeout)
+    if deadline is None:
+        if timeout is None and audio_path:
+            deadline = await asyncio.to_thread(transcribe_deadline, audio_path)
+        else:
+            if timeout is None:
+                timeout = transcribe_budget_s(duration_s)
+            deadline = time.monotonic() + timeout
+    timeout = remaining_s(deadline)
+    cancellation = InferenceCancellation(deadline=deadline)
     loop = asyncio.get_running_loop()
     # Same SystemExit containment as the TTS pool (#1133 class): an ASR
     # dependency written as a CLI must not be able to shut the backend down.
@@ -198,6 +218,8 @@ async def run_transcribe_guarded(executor, fn, *, what: str = "ASR",
     def _job():
         try:
             with cancellation.activate():
+                if remaining_s(deadline) <= 0:
+                    raise ASRTimeoutError("ASR deadline expired before execution")
                 return inner()
         finally:
             with abandon_lock:
@@ -222,7 +244,7 @@ async def run_transcribe_guarded(executor, fn, *, what: str = "ASR",
     try:
         # Shield the wrapper so timeout does not discard our ability to tell a
         # queued cancellation from a native thread that is still running.
-        result = await asyncio.wait_for(asyncio.shield(fut), timeout=timeout)
+        result = await asyncio.wait_for(asyncio.shield(fut), timeout=remaining_s(deadline))
     except asyncio.CancelledError:
         _abandon()
         raise
@@ -2718,6 +2740,8 @@ class OpenAICompatASRBackend(ASRBackend):
                    language: str | None = None, initial_prompt: str | None = None,
                    temperature: float | None = None,
                    task: str = "transcribe") -> dict:
+        from services.asr_timing import transcribe_deadline, remaining_s
+        deadline = transcribe_deadline(audio_path)
         logger.info(
             "OpenAI-compat ASR transcribing %s (base_url=%s, model=%s)",
             audio_path, self._base_url, self._model,
@@ -2739,6 +2763,7 @@ class OpenAICompatASRBackend(ASRBackend):
                 try:
                     resp = endpoint.create(
                         file=f, model=self._model, response_format="verbose_json",
+                        timeout=remaining_s(deadline),
                         **extra,
                     )
                 except Exception:
@@ -2747,9 +2772,14 @@ class OpenAICompatASRBackend(ASRBackend):
                     # failure. Re-open: the SDK may have partially consumed
                     # the file handle on the first attempt.
                     f.seek(0)
+                    if remaining_s(deadline) <= 0:
+                        raise ASRTimeoutError("Remote ASR transcription deadline expired") from None
                     resp = endpoint.create(
-                        file=f, model=self._model, response_format="json", **extra,
+                        file=f, model=self._model, response_format="json",
+                        timeout=remaining_s(deadline), **extra,
                     )
+        except ASRTimeoutError:
+            raise
         except Exception as exc:
             # Never leak a raw SDK/httpx exception object (auth headers,
             # connection internals) straight into a user-facing message —
