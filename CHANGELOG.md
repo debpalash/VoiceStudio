@@ -10,6 +10,7 @@ metadata and the backend fallback mirror it.
 
 ### Changed
 
+- Retired an unused legacy update toast while preserving the active Electron update controls (#4141) — thanks @themrbeasley!
 - Retired the unreachable legacy shared UI and the guard tests that held it, repointing the live-behaviour guards to the renderer, and dropped 12 unused npm packages (#4095)
 - Smaller install: removed unused leftover images and old helper code from the app source (#4087)
 - Projects grid view stays smooth with thousands of items by drawing only the cards in view (#4079)
@@ -33,8 +34,41 @@ metadata and the backend fallback mirror it.
 - Voice Cloning has a generation queue: takes started while one is rendering wait their turn and run one after another — thanks @ItzSudhan! (#4064)
 - Audiobooks and Stories have a New project button that starts an empty draft without touching saved projects (#4055)
 
+### Docs
+
+- Track the unresolved Windows model-loading crash and distinguish merged installer repairs from released fixes (#4146) — thanks @renaldyramadani123-code!
+- Installation tracking separates shipped fixes, pending repairs and unresolved report evidence (#4121)
+- Document host-managed Tailscale access for Docker without sharing the host daemon socket (#4111) — thanks @MaverickKB!
+
 ### Fixed
 
+- Make the installed-model licence action open its terms and acknowledgement dialog — thanks [hugotriunfa18 on Discord](https://discord.com/users/1571221621316784260)! (#4147)
+- Android model downloads resume through VPNs while preserving Wi-Fi policy and saved ranges (#4140) — thanks @JerryTimi!
+- Stopped playback errors from incorrectly claiming that generated audio files are missing (#4138) — thanks @AAYUSH-CODER1904!
+- Transcriptions can save clean plain text and timed SRT captions, with an explanation when subtitle timings are unavailable (#4135)
+- Cloud sign-in now rejects a discovery document whose token or revocation endpoint is not on the issuer's own origin (#4133) — thanks @DeryFerd!
+- Segmented model downloads pin public destinations with bounded DNS checks across redirects, ranges and proxies, preventing private-network fallback and CDN credential leaks (#4132) — thanks @DeryFerd!
+- The LM Studio model probe no longer sends the stored API key in clear text to a remote host unless plaintext LAN is allowed (#4131) — thanks @DeryFerd!
+- A deterministic test now fails when a new mutating API route ships without an authorization decision (#4130) — thanks @DeryFerd!
+- Docker deployments now require the administrator API key for the runtime log, log stream, recent errors and crash report, as the install docs already said (#4129) — thanks @DeryFerd!
+- MCP tools preserve remote caller permissions across local and HTTP backends, including failed transport lookups (#4128) — thanks @DeryFerd!
+- TTS and event WebSockets now enforce the same loopback/credential rule as dictation, closing a share-PIN bypass (#4126) — thanks @DeryFerd!
+- Imported project bundles can no longer make ffmpeg fetch remote URLs through a playlist-shaped media file (#4125) — thanks @DeryFerd!
+- Deleting history, rewriting dub scripts and clearing model-licence receipts now require an administrator, as the API docs already promised (#4124) — thanks @DeryFerd!
+- SoniTranslate installation and start/stop now require a local administrator, like every other engine installer (#4123) — thanks @DeryFerd!
+- Model deletion over the API now requires administrator rights (#4122) — thanks @DeryFerd!
+- Crash recurrence reports recognize current Electron version fields and distinguish beta releases (#4120)
+- Reclaim idle GPU models before generation when VRAM or RAM is low (#4117) — thanks @vandyahmad24!
+- Model downloads reject damaged files and retry without reusing corrupt ranges, while cancellation preserves verified work (#4116)
+- Reuse verified setup wheels on low-space retries and handle interrupted size probes without an uncaught error. (#4115)
+- Saved and inline pronunciation choices apply consistently across speech, dubbing, batch and voice-conversion routes (#4114) — thanks @nntloc!
+- Stop cancelled setup retries promptly and keep verbose runtime probes from blocking on their diagnostic output. (#4113)
+- Long recordings use duration-scaled transcription limits across uploads, dubbing, child engines and MCP tools (#4112) — thanks @xabiherdz-svg!
+- URL imports restore their connection guard after temporary DNS resolver changes (#4110)
+- Update the optional Dagger pipeline's OpenTelemetry dependencies to fix excessive CPU use when parsing malformed trace context. (#4109)
+- Optional analytics no longer delays backend readiness, and consent changes invalidate queued startup work (#4108) — thanks @cf3901646!
+- Auto setup can retry PyPI failures through the regional mirror and report the actual failed host (#4107) — thanks @mrkeshi!
+- Malformed model-install status responses keep the interface open and preserve the last valid download state (#4106) — thanks @ftlcustomerservice73-ui!
 - Windows installer process checks skip custom PowerShell profiles, and source installs use shorter build paths to avoid MSVC linker failures (#4099)
 - Restarting to install an update keeps update status available while the local engine shuts down, avoiding missing-handler errors (#4098)
 - Automatic blank-renderer recovery keeps the open workspace instead of returning Stories or Audiobook to Home (#4097)
@@ -61,6 +95,72 @@ metadata and the backend fallback mirror it.
 - Docker's web build no longer fails the unused-key check when only `electron/` is copied, and the iPhone CI job allows for a native-runtime cache miss (#4052)
 - Removed unused scripts, the old Tauri MSI tooling and leftover Turborepo ignore lines (#4046)
 - Accessibility smoke timeouts now name the requests still pending, so a flaky CI failure points at its cause (#4036)
+
+## [0.5.9-beta.3] — 2026-11-15
+
+Setup and model downloads recover more reliably after interrupted transfers, low-space retries and transient connection failures. This beta also improves low-VRAM generation, pronunciation, long-recording transcription, text/subtitle export and Android downloads.
+
+**Highlights**
+
+- Setup reuses verified wheels and retries transient connection failures; model downloads reject corrupt ranges while preserving valid work
+- Low-VRAM GPUs release idle models before generation
+- Saved pronunciation entries and inline overrides work across speech, Dub, batch and voice conversion
+- Long recordings use duration-scaled transcription limits; Transcriptions can save plain text and SRT with genuine cue timings
+- Android downloads work through eligible VPN routes, and installed gated models open their licence review dialog
+
+**Testing wanted:** small-GPU generation under memory pressure; pronunciation in Dub, batch and voice conversion; long-file transcription and text/SRT export; low-space or restricted-network setup; interrupted model downloads followed by Retry; and Android downloads with a VPN and cellular opt-in.
+
+**Known scope:** the low-memory Mac Stories performance report [#4090](https://github.com/debpalash/VoiceStudio/issues/4090), Stories playback report [#4136](https://github.com/debpalash/VoiceStudio/issues/4136), legacy Dubbing Method Not Allowed report [#4127](https://github.com/debpalash/VoiceStudio/issues/4127) and Windows native model-loading crash [#4142](https://github.com/debpalash/VoiceStudio/issues/4142) remain unresolved. The playback wording and Transcriptions exports do not claim to fix those underlying failures. Download transport pinning applies to accelerated transfers, rather than all Hub metadata or plain Hugging Face fallback traffic.
+
+**Upgrading:** install over the existing app or use Settings → Updates → Beta. Voices, projects, settings and installed models stay in place. The release workflow adds the download table from actual desktop and phone artifacts, including measured signing results.
+
+### Changed
+
+- Retired an unused legacy update toast while preserving the active Electron update controls (#4141) — thanks @themrbeasley!
+
+### Docs
+
+- Document host-managed Tailscale access for Docker without sharing the host daemon socket (#4111) — thanks @MaverickKB!
+- Installation tracking separates shipped fixes, pending repairs and unresolved report evidence (#4121)
+- Track the unresolved Windows model-loading crash and distinguish merged installer repairs from released fixes (#4146) — thanks @renaldyramadani123-code!
+
+### Fixed
+
+- Malformed model-install status responses keep the interface open and preserve the last valid download state (#4106) — thanks @ftlcustomerservice73-ui!
+- Auto setup can retry PyPI failures through the regional mirror and report the actual failed host (#4107) — thanks @mrkeshi!
+- Optional analytics no longer delays backend readiness, and consent changes invalidate queued startup work (#4108) — thanks @cf3901646!
+- Update the optional Dagger pipeline's OpenTelemetry dependencies to fix excessive CPU use when parsing malformed trace context. (#4109)
+- URL imports restore their connection guard after temporary DNS resolver changes (#4110)
+- Long recordings use duration-scaled transcription limits across uploads, dubbing, child engines and MCP tools (#4112) — thanks @xabiherdz-svg!
+- Stop cancelled setup retries promptly and keep verbose runtime probes from blocking on their diagnostic output. (#4113)
+- Saved and inline pronunciation choices apply consistently across speech, dubbing, batch and voice-conversion routes (#4114) — thanks @nntloc!
+- Reuse verified setup wheels on low-space retries and handle interrupted size probes without an uncaught error. (#4115)
+- Model downloads reject damaged files and retry without reusing corrupt ranges, while cancellation preserves verified work (#4116)
+- Reclaim idle GPU models before generation when VRAM or RAM is low (#4117) — thanks @vandyahmad24!
+- Crash recurrence reports recognize current Electron version fields and distinguish beta releases (#4120)
+- Model deletion over the API now requires administrator rights (#4122) — thanks @DeryFerd!
+- SoniTranslate installation and start/stop now require a local administrator, like every other engine installer (#4123) — thanks @DeryFerd!
+- Deleting history, rewriting dub scripts and clearing model-licence receipts now require an administrator, as the API docs already promised (#4124) — thanks @DeryFerd!
+- Imported project bundles can no longer make ffmpeg fetch remote URLs through a playlist-shaped media file (#4125) — thanks @DeryFerd!
+- TTS and event WebSockets now enforce the same loopback/credential rule as dictation, closing a share-PIN bypass (#4126) — thanks @DeryFerd!
+- MCP tools preserve remote caller permissions across local and HTTP backends, including failed transport lookups (#4128) — thanks @DeryFerd!
+- Docker deployments now require the administrator API key for the runtime log, log stream, recent errors and crash report, as the install docs already said (#4129) — thanks @DeryFerd!
+- A deterministic test now fails when a new mutating API route ships without an authorization decision (#4130) — thanks @DeryFerd!
+- The LM Studio model probe no longer sends the stored API key in clear text to a remote host unless plaintext LAN is allowed (#4131) — thanks @DeryFerd!
+- Segmented model downloads pin public destinations with bounded DNS checks across redirects, ranges and proxies, preventing private-network fallback and CDN credential leaks (#4132) — thanks @DeryFerd!
+- Cloud sign-in now rejects a discovery document whose token or revocation endpoint is not on the issuer's own origin (#4133) — thanks @DeryFerd!
+- Transcriptions can save clean plain text and timed SRT captions, with an explanation when subtitle timings are unavailable (#4135)
+- Stopped playback errors from incorrectly claiming that generated audio files are missing (#4138) — thanks @AAYUSH-CODER1904!
+- Android model downloads resume through VPNs while preserving Wi-Fi policy and saved ranges (#4140) — thanks @JerryTimi!
+- Make the installed-model licence action open its terms and acknowledgement dialog — thanks [hugotriunfa18 on Discord](https://discord.com/users/1571221621316784260)! (#4147)
+
+### Contributors
+
+- Code since v0.5.9-beta.2: @debpalash, @DeryFerd, @vandyahmad24.
+- Code since v0.5.8: @debpalash, @DeryFerd, @ItzSudhan, @velixio, @b84330808, @blutuxyz, @kevin9327, @RerankerGuo, @hkarmoush, @vandyahmad24.
+- Reports, requests and performance feedback: @ftlcustomerservice73-ui, @mrkeshi, @cf3901646, @MaverickKB, @xabiherdz-svg, @nntloc, @AAYUSH-CODER1904 and @velixio.
+- Transcriptions export feedback: @shivamdhiman999111-source; Android VPN report: @JerryTimi; cleanup proposal: @themrbeasley; Windows crash report: @renaldyramadani123-code.
+- Installed-model licence-action report: [hugotriunfa18 on Discord](https://discord.com/users/1571221621316784260), from the [original complaint](https://discord.com/channels/1497926884707799144/1571229026138325102/1571229026138325102); no GitHub identity is attributed.
 
 ## [0.5.9-beta.2] — 2026-11-14
 
