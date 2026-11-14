@@ -310,6 +310,54 @@ def test_guard_is_scoped_to_the_guarded_thread():
     assert socket.getaddrinfo("127.0.0.1", 80)
 
 
+def test_guard_recovers_after_a_predecessor_restores_the_resolver():
+    """A fresh interpreter reproduces first use inside a DNS test double.
+
+    The dub download test can install the hook while monkeypatch owns the
+    global resolver; its teardown then restores that resolver independently.
+    """
+    script = """
+import socket
+from unittest.mock import patch
+from core import url_safety
+
+def require_refusal():
+    with url_safety.guard_outbound_connections():
+        try:
+            socket.getaddrinfo('127.0.0.1', 80)
+        except socket.gaierror:
+            return
+        raise AssertionError('the guarded resolver allowed loopback')
+
+with patch.object(socket, 'getaddrinfo', socket.getaddrinfo):
+    require_refusal()
+require_refusal()
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", script],
+        env={**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)},
+        capture_output=True, text=True, timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_reinstall_keeps_nested_guards_idempotent_and_other_threads_unrestricted(monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+
+    monkeypatch.setattr(socket, "getaddrinfo", url_safety._real_getaddrinfo)
+    with ThreadPoolExecutor(max_workers=1) as worker:
+        with url_safety.guard_outbound_connections():
+            installed = socket.getaddrinfo
+            with url_safety.guard_outbound_connections():
+                assert socket.getaddrinfo is installed
+                with pytest.raises(socket.gaierror):
+                    socket.getaddrinfo("127.0.0.1", 80)
+            with pytest.raises(socket.gaierror):
+                socket.getaddrinfo("127.0.0.1", 80)
+            assert worker.submit(socket.getaddrinfo, "127.0.0.1", 80).result(timeout=5)
+    assert socket.getaddrinfo("127.0.0.1", 80)
+
+
 def test_in_process_ytdlp_cannot_follow_a_redirect_to_a_private_host(monkeypatch):
     import yt_dlp
 
