@@ -16,14 +16,13 @@ import threading
 import httpx
 import pytest
 
-from core.url_safety import UnsafeURLError
-
 ORIGIN_IP = '1.1.1.1'
 TARGET_IP = '93.184.216.34'
 
 
-@pytest.mark.parametrize('phase', ['redirect_head', 'body', 'range'])
+@pytest.mark.parametrize('phase', ['redirect_head', 'body', 'range', 'get_redirect_body', 'get_redirect_range'])
 def test_dns_rebinding_never_dials_or_publishes_a_private_response(monkeypatch, tmp_path, phase):
+    from core.url_safety import UnsafeURLError
     from services.segmented_download import segmented_download
 
     state = {'lookups': 0, 'head_seen': False, 'private_body_requests': 0, 'private_dials': 0}
@@ -34,7 +33,7 @@ def test_dns_rebinding_never_dials_or_publishes_a_private_response(monkeypatch, 
             pass
 
         def do_HEAD(self):
-            if self.path == '/entry':
+            if self.path == '/entry' and not phase.startswith('get_redirect_'):
                 self.send_response(302)
                 self.send_header('Location', f'http://rebind.test:{self.server.server_port}/model')
                 self.send_header('Content-Length', '0')
@@ -42,11 +41,17 @@ def test_dns_rebinding_never_dials_or_publishes_a_private_response(monkeypatch, 
                 state['head_seen'] = True
                 self.send_response(200)
                 self.send_header('Content-Length', str(len(content)))
-                if phase == 'range':
+                if phase in {'range', 'get_redirect_range'}:
                     self.send_header('Accept-Ranges', 'bytes')
             self.end_headers()
 
         def do_GET(self):
+            if phase.startswith('get_redirect_') and self.path == '/entry':
+                self.send_response(302)
+                self.send_header('Location', f'http://127.0.0.1:{self.server.server_port}/private')
+                self.send_header('Content-Length', '0')
+                self.end_headers()
+                return
             state['private_body_requests'] += 1
             self.send_response(206 if phase == 'range' else 200)
             if phase == 'range':
@@ -96,8 +101,10 @@ def test_dns_rebinding_never_dials_or_publishes_a_private_response(monkeypatch, 
     monkeypatch.delenv('OMNIVOICE_ALLOW_PRIVATE_URL_IMPORTS', raising=False)
     destination = tmp_path / 'model.bin'
     try:
-        with pytest.raises((UnsafeURLError, httpx.ConnectError)):
-            asyncio.run(segmented_download(f'http://origin.test:{server.server_port}/entry', str(destination), timeout=2))
+        expected = UnsafeURLError if phase.startswith('get_redirect_') else (UnsafeURLError, httpx.ConnectError)
+        with pytest.raises(expected):
+            with asyncio.Runner(loop_factory=asyncio.SelectorEventLoop) as runner:
+                runner.run(segmented_download(f'http://origin.test:{server.server_port}/entry', str(destination), timeout=2))
         assert not destination.exists()
         assert state['private_dials'] == 0, state
         assert state['private_body_requests'] == 0, state
@@ -107,8 +114,12 @@ def test_dns_rebinding_never_dials_or_publishes_a_private_response(monkeypatch, 
         worker.join(timeout=5)
 
 
-@pytest.mark.parametrize('certificate_host', ['xn--mnich-kva.example', 'other.test'])
-def test_pinned_public_https_retains_sni_and_verifies_the_original_hostname(monkeypatch, tmp_path, certificate_host):
+@pytest.mark.parametrize(('certificate_host', 'phase'), [
+    ('xn--mnich-kva.example', 'direct'), ('other.test', 'direct'),
+    ('xn--mnich-kva.example', 'body_redirect'), ('xn--mnich-kva.example', 'range_redirect'),
+])
+def test_pinned_public_https_retains_sni_and_verifies_the_original_hostname(monkeypatch, tmp_path, certificate_host, phase):
+    import hashlib
     from cryptography import x509
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import ec
@@ -137,10 +148,21 @@ def test_pinned_public_https_retains_sni_and_verifies_the_original_hostname(monk
             seen_hosts.append(self.headers['Host'])
             self.send_response(200)
             self.send_header('Content-Length', '4')
+            if phase == 'range_redirect':
+                self.send_header('Accept-Ranges', 'bytes')
             self.end_headers()
         def do_GET(self):
             seen_hosts.append(self.headers['Host'])
-            self.send_response(200)
+            if phase != 'direct' and self.path == '/model':
+                self.send_response(302)
+                self.send_header('Location', '/final')
+                self.send_header('Content-Length', '0')
+                self.end_headers()
+                return
+            self.send_response(206 if phase == 'range_redirect' else 200)
+            if phase == 'range_redirect':
+                assert self.headers['Range'] == 'bytes=0-3'
+                self.send_header('Content-Range', 'bytes 0-3/4')
             self.send_header('Content-Length', '4')
             self.end_headers()
             self.wfile.write(b'data')
@@ -176,16 +198,18 @@ def test_pinned_public_https_retains_sni_and_verifies_the_original_hostname(monk
     monkeypatch.delenv('OMNIVOICE_ALLOW_PRIVATE_URL_IMPORTS', raising=False)
     destination = tmp_path / 'model.bin'
     try:
-        operation = segmented_download(f'https://münich.example:{server.server_port}/model', str(destination), timeout=2)
-        if certificate_host == 'other.test':
-            with pytest.raises(httpx.ConnectError):
-                asyncio.run(operation)
-            assert not destination.exists()
-            assert seen_hosts == []
-        else:
-            asyncio.run(operation)
-            assert destination.read_bytes() == b'data'
-            assert seen_hosts == [f'xn--mnich-kva.example:{server.server_port}'] * 2
+        operation = segmented_download(f'https://münich.example:{server.server_port}/model', str(destination),
+                                       timeout=2, expected_etag=hashlib.sha256(b'data').hexdigest())
+        with asyncio.Runner(loop_factory=asyncio.SelectorEventLoop) as runner:
+            if certificate_host == 'other.test':
+                with pytest.raises(httpx.ConnectError):
+                    runner.run(operation)
+                assert not destination.exists()
+                assert seen_hosts == []
+            else:
+                runner.run(operation)
+                assert destination.read_bytes() == b'data'
+                assert seen_hosts == [f'xn--mnich-kva.example:{server.server_port}'] * (2 if phase == 'direct' else 3)
         assert dials and set(dials) == {TARGET_IP}
         assert seen_sni and set(seen_sni) == {'xn--mnich-kva.example'}
     finally:

@@ -19,6 +19,7 @@ the HF-cache integration lives in the setup router.
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 import json
 import os
 import re
@@ -90,6 +91,34 @@ def _require_safe_client(client, url):
         transport = client._transport_for_url(httpx.URL(url))
         if not isinstance(transport, (PublicDownloadTransport, httpx.MockTransport)):
             raise UnsafeURLError('Model download client must use the address-pinned transport')
+
+
+@asynccontextmanager
+async def _stream_get(client, url, token, cancelled, *, headers=None, max_hops=10):
+    """Keep GET-only redirects inside the pinned transfer and policy boundary.
+
+    Some CDNs answer HEAD directly but redirect the body or a range request.
+    A refused Location must remain UnsafeURLError, rather than a generic HTTP
+    failure that the installer may retry through the legacy Hub transfer.
+    """
+    cur = url
+    for _ in range(max_hops):
+        if cancelled():
+            raise DownloadCancelled()
+        _require_safe_client(client, cur)
+        request_headers = {**(headers or {}), **_auth_headers(cur, token)}
+        async with client.stream('GET', cur, headers=request_headers, follow_redirects=False) as response:
+            if response.status_code in (301, 302, 303, 307, 308) and 'location' in response.headers:
+                if cancelled():
+                    raise DownloadCancelled()
+                target = str(httpx.URL(cur).join(response.headers['location']))
+                await asyncio.to_thread(check_public_url, target)
+                cur = target
+                continue
+            response.raise_for_status()
+            yield response
+            return
+    raise httpx.TooManyRedirects(f'exceeded {max_hops} redirects for {url}')
 
 
 def _plan_segments(size: int, num_connections: int) -> list[tuple[int, int]]:
@@ -192,9 +221,8 @@ async def segmented_download(
             async def _fetch(seg: tuple[int, int]):
                 start, end = seg
                 want = end - start + 1
-                headers = {**_auth_headers(final_url, token), "Range": f"bytes={start}-{end}"}
-                async with client.stream("GET", final_url, headers=headers, follow_redirects=False) as r:
-                    r.raise_for_status()
+                headers = {"Range": f"bytes={start}-{end}"}
+                async with _stream_get(client, final_url, token, _cancelled, headers=headers) as r:
                     match = re.fullmatch(r"bytes\s+([0-9]+)-([0-9]+)/([0-9]+|\*)",
                                          r.headers.get("content-range", "").strip(), re.IGNORECASE)
                     if (r.status_code != 206 or match is None
@@ -285,8 +313,7 @@ async def _gather_or_cancel(coros) -> None:
 
 
 async def _stream_single(client, url, token, part, on_bytes, cancelled) -> None:
-    async with client.stream("GET", url, headers=_auth_headers(url, token), follow_redirects=False) as r:
-        r.raise_for_status()
+    async with _stream_get(client, url, token, cancelled) as r:
         if cancelled():
             raise DownloadCancelled()
         # A fallback replaces the partial's bytes; invalidate their old proof

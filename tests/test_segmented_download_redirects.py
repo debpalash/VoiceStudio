@@ -8,9 +8,6 @@ be fetched and its body written into the model staging tree.
 import httpx
 import pytest
 
-from core.url_safety import UnsafeURLError
-from services import segmented_download as sd
-
 pytestmark = pytest.mark.asyncio
 
 
@@ -34,6 +31,8 @@ def _response(status: int, location: str | None = None) -> httpx.Response:
 @pytest.fixture(autouse=True)
 def _hermetic_destination_policy(monkeypatch):
     """Stand in for check_public_url so the test never resolves real DNS."""
+    from core.url_safety import UnsafeURLError
+    from services import segmented_download as sd
     def policy(url: str) -> str:
         host = httpx.URL(url).host or ""
         if host in {"127.0.0.1", "localhost", "169.254.169.254", "10.0.0.5"}:
@@ -44,6 +43,8 @@ def _hermetic_destination_policy(monkeypatch):
 
 
 async def test_resolve_refuses_a_redirect_into_a_private_address():
+    from core.url_safety import UnsafeURLError
+    from services import segmented_download as sd
     client = _FakeClient([_response(302, "http://127.0.0.1:9/secret")])
     with pytest.raises(UnsafeURLError):
         await sd._resolve(client, "https://cdn.example/model.bin", None)
@@ -52,6 +53,8 @@ async def test_resolve_refuses_a_redirect_into_a_private_address():
 
 
 async def test_resolve_refuses_a_cloud_metadata_redirect():
+    from core.url_safety import UnsafeURLError
+    from services import segmented_download as sd
     client = _FakeClient([_response(307, "http://169.254.169.254/latest/meta-data/")])
     with pytest.raises(UnsafeURLError):
         await sd._resolve(client, "https://cdn.example/model.bin", None)
@@ -59,6 +62,7 @@ async def test_resolve_refuses_a_cloud_metadata_redirect():
 
 
 async def test_resolve_still_follows_a_public_redirect():
+    from services import segmented_download as sd
     client = _FakeClient([
         _response(302, "https://cdn2.example/model.bin"),
         _response(200),
@@ -73,6 +77,8 @@ async def test_resolve_still_follows_a_public_redirect():
 
 
 async def test_injected_clients_cannot_follow_private_redirects_implicitly(tmp_path):
+    from core.url_safety import UnsafeURLError
+    from services import segmented_download as sd
     seen = []
     def response(request):
         seen.append(str(request.url))
@@ -85,6 +91,7 @@ async def test_injected_clients_cannot_follow_private_redirects_implicitly(tmp_p
 
 
 async def test_hugging_face_redirect_keeps_public_cdn_download_and_drops_token(tmp_path):
+    from services import segmented_download as sd
     seen = []
     def response(request):
         seen.append(request)
@@ -100,7 +107,81 @@ async def test_hugging_face_redirect_keeps_public_cdn_download_and_drops_token(t
 
 
 async def test_shared_unprotected_network_client_is_rejected_before_any_request(tmp_path):
+    from core.url_safety import UnsafeURLError
+    from services import segmented_download as sd
     async with httpx.AsyncClient(trust_env=False) as client:
         with pytest.raises(UnsafeURLError, match='address-pinned'):
             await sd.segmented_download('https://model.example/file', str(tmp_path / 'model'), client=client)
+    assert not (tmp_path / 'model').exists()
+
+
+@pytest.mark.parametrize('ranged', [False, True], ids=['single-stream', 'range'])
+async def test_get_only_private_redirect_is_a_terminal_destination_refusal(tmp_path, ranged):
+    from core.url_safety import UnsafeURLError
+    from services import segmented_download as sd
+    seen = []
+    def response(request):
+        seen.append(request)
+        if request.method == 'HEAD':
+            return httpx.Response(200, headers={'Content-Length': '4', 'Accept-Ranges': 'bytes' if ranged else 'none'})
+        return httpx.Response(307, headers={'Location': 'http://169.254.169.254/latest/meta-data/'})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(response), follow_redirects=True) as client:
+        with pytest.raises(UnsafeURLError):
+            await sd.segmented_download('https://huggingface.co/model', str(tmp_path / 'model'), client=client)
+    assert [str(r.url) for r in seen] == ['https://huggingface.co/model'] * 2
+    assert not (tmp_path / 'model').exists()
+
+
+@pytest.mark.parametrize('ranged', [False, True], ids=['single-stream', 'range'])
+@pytest.mark.parametrize('valid_digest', [False, True], ids=['bad-digest', 'verified'])
+async def test_get_only_public_redirects_preserve_ranges_auth_and_integrity(tmp_path, ranged, valid_digest):
+    import hashlib
+    from services import segmented_download as sd
+    seen = []
+    def response(request):
+        seen.append(request)
+        if request.method == 'HEAD':
+            return httpx.Response(200, headers={'Content-Length': '4', 'Accept-Ranges': 'bytes' if ranged else 'none'})
+        if request.url.path == '/model':
+            return httpx.Response(302, headers={'Location': '/next'})
+        if request.url.host == 'huggingface.co':
+            return httpx.Response(308, headers={'Location': 'https://cdn.example/final'})
+        return httpx.Response(206 if ranged else 200, headers={'Content-Range': 'bytes 0-3/4'}, content=b'data')
+    destination = tmp_path / 'model'
+    async with httpx.AsyncClient(transport=httpx.MockTransport(response), follow_redirects=True) as client:
+        operation = sd.segmented_download('https://huggingface.co/model', str(destination), client=client,
+                                          token='hf_test_token', expected_size=4,
+                                          expected_etag=hashlib.sha256(b'data' if valid_digest else b'evil').hexdigest())
+        if valid_digest:
+            await operation
+            assert destination.read_bytes() == b'data'
+        else:
+            with pytest.raises(sd.DownloadIntegrityError):
+                await operation
+            assert not destination.exists()
+    assert [str(r.url) for r in seen] == [
+        'https://huggingface.co/model', 'https://huggingface.co/model',
+        'https://huggingface.co/next', 'https://cdn.example/final',
+    ]
+    assert all(r.headers['Authorization'] == 'Bearer hf_test_token' for r in seen[:-1])
+    assert 'Authorization' not in seen[-1].headers
+    assert all(r.headers.get('Range') == ('bytes=0-3' if ranged else None) for r in seen[1:])
+
+
+@pytest.mark.parametrize('ranged', [False, True], ids=['single-stream', 'range'])
+async def test_cancelled_get_redirect_does_not_start_another_request(tmp_path, ranged):
+    from services import segmented_download as sd
+    seen, cancelled = [], False
+    def response(request):
+        nonlocal cancelled
+        seen.append(request)
+        if request.method == 'HEAD':
+            return httpx.Response(200, headers={'Content-Length': '4', 'Accept-Ranges': 'bytes' if ranged else 'none'})
+        cancelled = True
+        return httpx.Response(302, headers={'Location': 'https://cdn.example/final'})
+    async with httpx.AsyncClient(transport=httpx.MockTransport(response)) as client:
+        with pytest.raises(sd.DownloadCancelled):
+            await sd.segmented_download('https://huggingface.co/model', str(tmp_path / 'model'),
+                                        client=client, cancel_check=lambda: cancelled)
+    assert len(seen) == 2
     assert not (tmp_path / 'model').exists()

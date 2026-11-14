@@ -7,9 +7,6 @@ import httpcore
 import httpx
 import pytest
 
-from core.url_safety import UnsafeURLError
-from services import public_download_transport as transport_module
-
 PUBLIC_IP = '93.184.216.34'
 
 
@@ -77,6 +74,7 @@ def _factory(journal):
 
 @pytest.mark.parametrize('proxy', [None, 'http', 'https', 'socks5'])
 def test_numeric_wire_target_retains_host_tls_and_proxy_identity(monkeypatch, proxy):
+    from services import public_download_transport as transport_module
     if proxy:
         monkeypatch.setenv('NO_PROXY', '')
         for name in ('HTTP_PROXY', 'HTTPS_PROXY'):
@@ -110,6 +108,7 @@ def test_numeric_wire_target_retains_host_tls_and_proxy_identity(monkeypatch, pr
 
 
 def test_no_proxy_matches_original_hostname_and_pools_never_cross_logical_origins(monkeypatch):
+    from services import public_download_transport as transport_module
     monkeypatch.setenv('HTTPS_PROXY', 'http://proxy.test:8080')
     monkeypatch.setenv('NO_PROXY', 'a.test,b.test')
     journal = []
@@ -132,6 +131,7 @@ def test_no_proxy_matches_original_hostname_and_pools_never_cross_logical_origin
 
 @pytest.mark.parametrize('connection_error', [httpcore.ConnectTimeout, httpcore.ProxyError])
 def test_a_healthy_address_is_reused_only_while_fresh_dns_still_validates_it(monkeypatch, connection_error):
+    from services import public_download_transport as transport_module
     dead = '2606:4700:4700::1111'
     changed = '1.1.1.1'
     journal = []
@@ -163,6 +163,7 @@ def test_a_healthy_address_is_reused_only_while_fresh_dns_still_validates_it(mon
 
 
 def test_plain_http_proxy_receives_a_numeric_absolute_target_and_original_host(monkeypatch):
+    from services import public_download_transport as transport_module
     monkeypatch.setenv('HTTP_PROXY', 'http://proxy.test:8080')
     monkeypatch.setenv('NO_PROXY', '')
     journal = []
@@ -181,6 +182,8 @@ def test_plain_http_proxy_receives_a_numeric_absolute_target_and_original_host(m
 
 
 def test_private_answers_and_unpinned_backend_dials_fail_closed(monkeypatch):
+    from core.url_safety import UnsafeURLError
+    from services import public_download_transport as transport_module
     def resolve(*args, **kwargs):
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, '', ('127.0.0.1', 443))]
     monkeypatch.setattr(socket, 'getaddrinfo', resolve)
@@ -197,6 +200,8 @@ def test_private_answers_and_unpinned_backend_dials_fail_closed(monkeypatch):
 
 
 def test_private_mirror_requires_and_honours_explicit_opt_in(monkeypatch):
+    from core.url_safety import UnsafeURLError
+    from services import public_download_transport as transport_module
     async def run():
         url = httpx.URL('http://127.0.0.1:3900/model')
         with pytest.raises(UnsafeURLError):

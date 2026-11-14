@@ -40,6 +40,9 @@ To force the old single-stream path, set `OMNIVOICE_SEGMENTED_DOWNLOAD=0`.
 
 The segmented downloader checks the initial destination and every redirect,
 then pins each HEAD, body and range request to a validated public address.
+Redirects returned only by GET or range requests use the same checks and
+pinned transport; public hops retain range validation and content verification,
+while a refused hop stops the install before any legacy-transfer fallback.
 Changed DNS answers cannot turn a previously checked hostname into a private
 network fetch, including when a connection pool or proxy is used. HTTPS keeps
 the original hostname for certificate verification and SNI, and requests keep

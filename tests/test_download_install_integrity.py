@@ -28,7 +28,7 @@ def install_origin(monkeypatch, tmp_path):
     state = SimpleNamespace(
         download=download, repo=repo, revision=revision, repo_dir=repo_dir,
         snapshot=snapshot, good=False, unsupported=False, etag="", gets=[],
-        fallback_calls=[], events=[],
+        fallback_calls=[], events=[], redirect_to=None, accepts_ranges=True,
     )
     monkeypatch.setattr(constants, "HF_HUB_CACHE", str(cache))
     monkeypatch.setattr(download, "KNOWN_MODELS", [{
@@ -71,8 +71,14 @@ def install_origin(monkeypatch, tmp_path):
     def response(request):
         if request.method == "HEAD":
             return httpx.Response(200, headers={
-                "Content-Length": str(len(CONTENT)), "Accept-Ranges": "bytes",
+                "Content-Length": str(len(CONTENT)),
+                "Accept-Ranges": "bytes" if state.accepts_ranges else "none",
             })
+        if state.redirect_to:
+            return httpx.Response(302, headers={"Location": state.redirect_to})
+        if not state.accepts_ranges:
+            state.gets.append(None)
+            return httpx.Response(200, content=CONTENT)
         bounds = tuple(map(int, re.fullmatch(r"bytes=(\d+)-(\d+)", request.headers["Range"]).groups()))
         state.gets.append(bounds)
         if state.unsupported:
@@ -170,3 +176,18 @@ def test_install_never_bypasses_a_destination_refusal_through_plain_fallback(ins
     assert state.download._is_retryable_download_error(UnsafeURLError('private destination refused')) is False
     assert 'install_error' in [event['phase'] for event in state.events]
     assert 'install_done' not in [event['phase'] for event in state.events]
+
+
+@pytest.mark.parametrize('accepts_ranges', [False, True], ids=['single-stream', 'range'])
+def test_get_only_private_redirect_never_reaches_legacy_install_fallback(install_origin, accepts_ranges):
+    """Run the real installer and downloader: HEAD succeeds, only GET redirects."""
+    state = install_origin
+    state.good = True
+    state.etag = hashlib.sha256(CONTENT).hexdigest()
+    state.accepts_ranges = accepts_ranges
+    state.redirect_to = 'http://169.254.169.254/latest/meta-data/'
+    _install(state)
+    assert state.fallback_calls == [], 'GET policy refusal reached the legacy Hub downloader'
+    assert not (state.snapshot / 'config.json').exists()
+    phases = [event['phase'] for event in state.events]
+    assert 'install_error' in phases and 'install_done' not in phases
