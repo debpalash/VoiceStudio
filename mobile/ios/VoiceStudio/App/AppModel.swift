@@ -68,6 +68,7 @@ import BackgroundTasks
         }
         phone.onDiagnosticStall = { [weak self] in self?.diagnostics.captureStall() }
         phone.onFailure = { [weak self] stage, error in self?.diagnostics.captureFailure(error, stage: stage) }
+        dub.diagnosticObservation = { [weak self] in self?.diagnostics.failureObservation }
         PhoneJobs.shared.onFailure = { [weak self] stage, error in self?.diagnostics.captureFailure(error, stage: stage) }
         phone.onDubFinished = { [weak self] request in await self?.notifyPhone(request) }
 
@@ -78,14 +79,18 @@ import BackgroundTasks
     var privacyChoicesAnswered: Bool { consentAnswered && diagnostics.ready && !diagnostics.needsChoice }
     func chooseConsent(_ choice: Bool) { analytics = choice; consentAnswered = true; UserDefaults.standard.set(true, forKey: "consentAnswered") }
     func api() throws -> APIClient { guard let api = connection.client else { throw ClientError("mobile.errors.offline") }; return api }
-    func perform(connectionChange: Bool = false, diagnosticStage: String = "other", _ work: @escaping @MainActor () async throws -> Void) async {
+    func perform(connectionChange: Bool = false, diagnosticStage: String = "other", companionFailure: (() -> (remoteTask: Bool, observation: CompanionDiagnosticObservation?))? = nil, _ work: @escaping @MainActor () async throws -> Void) async {
         let scope = hostState.scopeID
         activityCount += 1; busy = true
         defer { activityCount -= 1; busy = activityCount > 0 }
         do { if connectionChange { try await work() } else { try await hostState.run(work) } }
         catch is CancellationError {}
-        catch let failure as ClientError { guard scope == hostState.scopeID || connectionChange else { return }; diagnostics.captureFailure(failure, stage: diagnosticStage); error = failure; await connection.handle(failure, connectionChange: connectionChange) }
-        catch { if scope == hostState.scopeID { diagnostics.captureFailure(error, stage: diagnosticStage); self.error = ClientError("mobile.errors.file") } }
+        catch let failure as ClientError { guard scope == hostState.scopeID || connectionChange else { return }; captureOperationFailure(failure,stage:diagnosticStage,companion:companionFailure?()); error = failure; await connection.handle(failure, connectionChange: connectionChange) }
+        catch { if scope == hostState.scopeID { captureOperationFailure(error,stage:diagnosticStage,companion:companionFailure?()); self.error = ClientError("mobile.errors.file") } }
+    }
+    private func captureOperationFailure(_ error: any Error,stage: String,companion: (remoteTask: Bool,observation: CompanionDiagnosticObservation?)?) {
+        if let companion,companion.remoteTask {diagnostics.captureCompanionFailure(error,observation:companion.observation,remoteTask:true)}
+        else {diagnostics.captureFailure(error,stage:stage)}
     }
     func perform(onPhone: Bool, diagnosticStage: String = "other",_ work: @escaping @MainActor () async throws -> Void) async {
         if onPhone { await performPhone(diagnosticStage: diagnosticStage, work) } else { await perform(diagnosticStage: diagnosticStage, work) }
@@ -127,10 +132,10 @@ import BackgroundTasks
             } catch is CancellationError {
             } catch let failure as ClientError {
                 guard scope == self.hostState.scopeID else { return }
-                self.diagnostics.captureFailure(failure, stage: "dub")
+                self.diagnostics.captureCompanionFailure(failure, observation: self.dub.failureDiagnosticObservation, remoteTask: self.dub.failureWasRemoteTask)
                 self.error = failure; await self.connection.handle(failure)
                 if let cp = self.dub.checkpoint, failure.key == "mobile.errors.dub_failed" { await self.notify(cp, failed: true) }
-            } catch { if scope == self.hostState.scopeID { self.diagnostics.captureFailure(error, stage: "dub"); self.error = ClientError("mobile.errors.dub_failed") } }
+            } catch { if scope == self.hostState.scopeID { self.diagnostics.captureCompanionFailure(error, observation: self.dub.failureDiagnosticObservation, remoteTask: self.dub.failureWasRemoteTask); self.error = ClientError("mobile.errors.dub_failed") } }
         }
     }
     func pauseMonitor() { monitorID = UUID(); monitorTask?.cancel(); monitorTask = nil }

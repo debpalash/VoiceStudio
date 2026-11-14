@@ -437,7 +437,7 @@ export interface VoiceStudioBridge {
   diagnostics: {
     getStatus(): Promise<DiagnosticState>;
     setConsent(enabled: boolean): Promise<DiagnosticState>;
-    capture(event: DiagnosticInput): Promise<void>;
+    capture(event: DiagnosticInput, expectedEpoch: string): Promise<void>;
   };
   /** VoiceStudio Cloud account; never carries a token. */
   account: {

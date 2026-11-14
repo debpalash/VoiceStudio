@@ -106,6 +106,18 @@ object AutomaticDiagnostics {
         reporter?.capture(input, error)
     }
 
+    fun observeConsent(): CompanionDiagnosticObservation? {
+        val revision=choices.get()
+        val context=reporter?.recoveryContext ?: return null
+        if(choices.get()!=revision) return null
+        return CompanionDiagnosticObservation(revision,context.epoch)
+    }
+    fun captureObservedFailure(error: Throwable, observation: CompanionDiagnosticObservation?, stage: String = "dub") {
+        if(observation == null || observation != observeConsent()) return
+        val input=automaticDiagnosticInput(error,stage) ?: return
+        reporter?.capture(input,error,expectedEpoch=observation.epoch)
+    }
+
     fun capture(input: DiagnosticInput) { reporter?.capture(input) }
 
     private fun publishProcessConsent(app: Application, reports: DiagnosticReports) {

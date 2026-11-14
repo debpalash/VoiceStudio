@@ -10,9 +10,14 @@ private struct DiagnosticConsent: Codable, Sendable {
 private struct DiagnosticRevocation {
     let consent: DiagnosticConsent?
     let failed: Bool
+    let prompted: Bool
+}
+private func diagnosticRevocationPresent(_ storage: any DiagnosticStorage) -> Bool {
+    do { return try storage.read("revoked.json", maxBytes: 4096) != nil }
+    catch { return true }
 }
 // Runs only on the owned worker or detached bootstrap task, never capture.
-private func diagnosticRevokeGrant(_ storage: any DiagnosticStorage, hadGrant hint: Bool? = nil) -> DiagnosticRevocation {
+private func diagnosticRevokeGrant(_ storage: any DiagnosticStorage, hadGrant hint: Bool? = nil, recordChoice: Bool = false) -> DiagnosticRevocation {
     let hadGrant: Bool
     if let hint { hadGrant = hint }
     else {
@@ -20,6 +25,11 @@ private func diagnosticRevokeGrant(_ storage: any DiagnosticStorage, hadGrant hi
         catch { hadGrant = true }
     }
     var failed = false
+    let prompted = hadGrant || recordChoice || diagnosticRevocationPresent(storage)
+    if prompted {
+        // This independent anonymous file still revokes a locked old grant.
+        do { try storage.write("revoked.json", data: Data("{\"version\":1}".utf8)) } catch { failed = true }
+    }
     do { try storage.remove("outbox.json") } catch { failed = true }
     var revoked: DiagnosticConsent?
     if hadGrant {
@@ -27,7 +37,7 @@ private func diagnosticRevokeGrant(_ storage: any DiagnosticStorage, hadGrant hi
         try? storage.remove("consent.json")
         do { try storage.write("consent.json", data: diagnosticEncode(revoked!)) } catch { failed = true }
     }
-    return DiagnosticRevocation(consent: revoked, failed: failed)
+    return DiagnosticRevocation(consent: revoked, failed: failed, prompted: prompted)
 }
 private struct DiagnosticRecord: Codable, Sendable, Equatable {
     let version: Int
@@ -54,8 +64,8 @@ private final class DiagnosticGate: @unchecked Sendable {
     var pending: [DiagnosticPending] = []
     let disabled: @Sendable () -> Bool
     init(disabled: @escaping @Sendable () -> Bool) { self.disabled = disabled }
-    func snapshot() -> (DiagnosticConsent, UInt64)? { lock.withLock {
-        guard loaded, !closed, state.enabled, !disabled(), let consent else { return nil }
+    func snapshot(expectedEpoch: String? = nil) -> (DiagnosticConsent, UInt64)? { lock.withLock {
+        guard loaded, !closed, state.enabled, !disabled(), let consent, expectedEpoch == nil || expectedEpoch == consent.epoch else { return nil }
         return (consent, generation)
     } }
     func allowed(_ epoch: String, _ generation: UInt64) -> Bool { lock.withLock { loaded && !closed && state.enabled && !disabled() && consent?.epoch == epoch && self.generation == generation } }
@@ -65,6 +75,12 @@ private final class DiagnosticGate: @unchecked Sendable {
     } }
     func invalidate(closing: Bool = false) -> UInt64 { lock.withLock {
         generation &+= 1; state.enabled = false; state.optedIn = false; closed = closed || closing; return generation
+    } }
+    func controlCurrent(_ generation: UInt64) -> Bool { lock.withLock { !closed && self.generation == generation } }
+    func revokeIfCurrent(_ epoch: String, _ generation: UInt64) -> UInt64? { lock.withLock {
+        guard !closed, state.enabled, consent?.epoch == epoch, self.generation == generation else { return nil }
+        self.generation &+= 1; state.enabled = false; state.optedIn = false
+        return self.generation
     } }
     func count(_ records: Int) { lock.withLock { state.pendingCount = records + pending.count } }
     func drop() { lock.withLock { state.droppedCount += 1 } }
@@ -95,8 +111,8 @@ public final class DiagnosticReports: @unchecked Sendable {
         return DiagnosticRecoveryContext(epoch: consent.epoch, enabledAtMs: enabled, appVersion: projector.appVersion)
     }
     /// No retained Error, stack, localizedDescription, model/user content or IO.
-    @discardableResult public func capture(_ input: DiagnosticInput, error: (any Error)? = nil) -> Bool {
-        guard let (consent, generation) = gate.snapshot() else { return false }
+    @discardableResult public func capture(_ input: DiagnosticInput, error: (any Error)? = nil, expectedEpoch: String? = nil) -> Bool {
+        guard let (consent, generation) = gate.snapshot(expectedEpoch: expectedEpoch) else { return false }
         var input = input
         if let error {
             if error is CancellationError || (error as? CocoaError)?.code == .userCancelled { return false }
@@ -138,8 +154,10 @@ public final class DiagnosticReports: @unchecked Sendable {
         }
         if start { Task { [weak self] in
             guard let self else { return }
+            let generation = self.gate.lock.withLock { self.gate.generation }
             await self.worker.flush()
-            let again = self.gate.lock.withLock { self.gate.wakeScheduled = false; return !self.gate.pending.isEmpty && !self.gate.closed && self.gate.state.enabled }
+            let storageDeferred = await self.worker.storageDeferred
+            let again = self.gate.lock.withLock { self.gate.wakeScheduled = false; return (!storageDeferred || generation != self.gate.generation) && !self.gate.pending.isEmpty && !self.gate.closed && self.gate.state.enabled }
             if again { self.wake() }
         } }
     }
@@ -172,14 +190,25 @@ private actor DiagnosticWorker {
     var records: [DiagnosticRecord] = []
     var sending = false
     var retryAt: [String: Int64] = [:]
-    var retryWake: (id: UUID, task: Task<Void, Never>)?
+    var storageRetryAt: Int64?
+    var outboxLoaded = false
+    var storageDeferred: Bool { storageRetryAt != nil }
+    var retryWake: (id: UUID, epoch: String, generation: UInt64, deadline: Int64, task: Task<Void, Never>)?
+    var revocationPending = false
+    var revocationWake: (id: UUID, generation: UInt64, deadline: Int64, task: Task<Void, Never>)?
     var waiters: [CheckedContinuation<Void, Never>] = []
     init(gate: DiagnosticGate, projector: DiagnosticProjector, destination: DiagnosticDestination, transport: any DiagnosticTransport, clock: any DiagnosticClock, storage: any DiagnosticStorage) {
         self.gate = gate; self.projector = projector; self.destination = destination; self.transport = transport; self.clock = clock; self.storage = storage
     }
     func load() {
-        guard !gate.lock.withLock({ gate.closed || gate.loaded && !gate.disabled() }) else { return }
+        let state = gate.lock.withLock { (gate.closed, gate.loaded) }
+        guard !state.0 else { return }
+        let revoked = diagnosticRevocationPresent(storage)
+        guard !state.1 || gate.disabled() || revoked else { return }
         cancelRetryWake()
+        cancelRevocationWake()
+        storageRetryAt = nil
+        outboxLoaded = false
         let generation = gate.lock.withLock { gate.generation }
         var hadGrant = gate.lock.withLock { gate.consent != nil }
         var consent: DiagnosticConsent?
@@ -193,20 +222,16 @@ private actor DiagnosticWorker {
                 }
             }
         } catch { consent = nil; hadGrant = true }
-        if gate.disabled() {
+        if gate.disabled() || revoked {
             let current = gate.lock.withLock {
                 guard gate.generation == generation, !gate.closed else { return false }
                 gate.loaded = true; gate.state.enabled = false; gate.state.optedIn = false
-                gate.pending.removeAll(); gate.state.pendingCount = 0; gate.state.prompted = hadGrant
+                gate.pending.removeAll(); gate.state.pendingCount = 0; gate.state.prompted = hadGrant || revoked
                 return true
             }
             guard current else { return }
-            records.removeAll(); retryAt.removeAll()
-            let revoked = diagnosticRevokeGrant(storage, hadGrant: hadGrant)
-            gate.lock.withLock {
-                guard gate.generation == generation, !gate.closed else { return }
-                gate.consent = revoked.consent; gate.state.consentSaveFailed = revoked.failed
-            }
+            transport.cancelAll()
+            _ = performRevocation(generation: generation, recordChoice: revoked, hadGrant: hadGrant)
             return
         }
         let applied = gate.lock.withLock {
@@ -219,33 +244,117 @@ private actor DiagnosticWorker {
         records.removeAll()
         if let consent, consent.enabled, !gate.disabled() {
             do {
-                if let data = try storage.read("outbox.json", maxBytes: projector.policy.limit("queue_bytes", 524288)) {
-                    records = try JSONDecoder().decode([DiagnosticRecord].self, from: data).prefix(projector.policy.limit("queue_count", 64)).compactMap { sanitized($0, epoch: consent.epoch) }
-                }
+                try restoreOutbox(epoch: consent.epoch)
                 try persist()
-            } catch { records.removeAll(); try? storage.remove("outbox.json") }
-        } else { try? storage.remove("outbox.json") }
+            } catch { deferStorageRetry() }
+            scheduleRetryWake(epoch: consent.epoch, generation: generation)
+        } else { outboxLoaded = true; try? storage.remove("outbox.json") }
         gate.count(records.count)
     }
     func setConsent(_ enabled: Bool, generation: UInt64) throws {
         guard gate.lock.withLock({ !gate.closed && gate.generation == generation }) else { return }
         cancelRetryWake()
+        cancelRevocationWake()
+        revocationPending = false
+        storageRetryAt = nil; outboxLoaded = true
         gate.lock.withLock { gate.pending.removeAll() }; records.removeAll(); retryAt.removeAll()
         try? storage.remove("outbox.json")
-        // Removing the previous grant first keeps a failed OFF write closed
-        // on the next launch whenever cleanup remains possible.
-        if !enabled { try? storage.remove("consent.json") }
-        let consent = DiagnosticConsent(version: 1, enabled: enabled, epoch: diagnosticID(), profile_id: "install_" + diagnosticID(), enabled_at_ms: enabled ? clock.nowMs() : nil)
-        try storage.write("consent.json", data: diagnosticEncode(consent))
+        if !enabled {
+            if performRevocation(generation: generation, recordChoice: true) { throw DiagnosticFailure.storageUnavailable }
+            return
+        }
+        let consent = DiagnosticConsent(version: 1, enabled: true, epoch: diagnosticID(), profile_id: "install_" + diagnosticID(), enabled_at_ms: clock.nowMs())
+        do {
+            try storage.write("consent.json", data: diagnosticEncode(consent))
+            guard gate.controlCurrent(generation) else { return }
+            try storage.remove("revoked.json")
+        } catch {
+            _ = performRevocation(generation: generation, recordChoice: true)
+            throw error
+        }
         gate.lock.withLock {
             guard gate.generation == generation, !gate.closed else { return }
             gate.consent = consent; gate.loaded = true; gate.state.prompted = true; gate.state.pendingCount = 0; gate.state.consentSaveFailed = false
             gate.state.enabled = enabled && !gate.disabled(); gate.state.optedIn = gate.state.enabled
         }
     }
+    @discardableResult private func performRevocation(generation: UInt64, recordChoice: Bool, hadGrant: Bool? = nil) -> Bool {
+        guard gate.controlCurrent(generation) else { return false }
+        cancelRetryWake(); storageRetryAt = nil; outboxLoaded = true
+        records.removeAll(); retryAt.removeAll()
+        gate.lock.withLock { gate.pending.removeAll() }
+        let hint: Bool?
+        if let hadGrant { hint = hadGrant }
+        else { hint = gate.lock.withLock { gate.consent != nil } ? true : nil }
+        let result = diagnosticRevokeGrant(storage, hadGrant: hint, recordChoice: recordChoice)
+        revocationPending = result.failed
+        gate.lock.withLock {
+            guard gate.generation == generation, !gate.closed else { return }
+            gate.consent = result.consent; gate.loaded = true
+            gate.state.enabled = false; gate.state.optedIn = false
+            gate.state.prompted = result.prompted; gate.state.pendingCount = 0
+            gate.state.consentSaveFailed = result.failed
+        }
+        if result.failed { scheduleRevocationWake(generation: generation) }
+        else { cancelRevocationWake() }
+        return result.failed
+    }
+    private func cancelRevocationWake() {
+        revocationWake?.task.cancel(); revocationWake = nil
+    }
+    private func scheduleRevocationWake(generation: UInt64) {
+        guard revocationPending, gate.controlCurrent(generation) else { return }
+        let deadline = clock.nowMs() + 60000
+        cancelRevocationWake()
+        let id = UUID(), clock = self.clock, gate = self.gate
+        let task = Task { [weak self] in
+            let delay = Int(max(0, deadline - clock.nowMs()))
+            if delay > 0 {
+                do { try await clock.sleep(milliseconds: delay) } catch { return }
+            }
+            guard !Task.isCancelled, gate.controlCurrent(generation) else { return }
+            await self?.revocationWakeFired(id, generation: generation)
+        }
+        revocationWake = (id, generation, deadline, task)
+    }
+    private func revocationWakeFired(_ id: UUID, generation: UInt64) {
+        guard revocationWake?.id == id, gate.controlCurrent(generation) else { return }
+        revocationWake = nil
+        _ = performRevocation(generation: generation, recordChoice: gate.lock.withLock { gate.state.prompted })
+    }
+    private func deliveryAllowed(_ consent: DiagnosticConsent, generation: UInt64) -> Bool {
+        guard gate.allowed(consent.epoch, generation) else { return false }
+        if diagnosticRevocationPresent(storage) {
+            if let next = gate.revokeIfCurrent(consent.epoch, generation) {
+                transport.cancelAll()
+                _ = performRevocation(generation: next, recordChoice: true, hadGrant: true)
+            }
+            return false
+        }
+        return gate.allowed(consent.epoch, generation)
+    }
     private func sanitized(_ record: DiagnosticRecord, epoch: String) -> DiagnosticRecord? {
         guard record.version == 1, record.epoch == epoch, diagnosticMatches(record.id, "[a-f0-9]{32}"), record.timestamp_ms >= clock.nowMs() - Int64(projector.policy.limit("ttl_ms", 604800000)), record.timestamp_ms <= clock.nowMs() + 60000 else { return nil }
         return DiagnosticRecord(version: 1, id: record.id, timestamp_ms: record.timestamp_ms, epoch: epoch, props: projector.sanitize(record.props))
+    }
+    private func restoreOutbox(epoch: String) throws {
+        let data: Data?
+        do { data = try storage.read("outbox.json", maxBytes: projector.policy.limit("queue_bytes", 524288)) }
+        catch DiagnosticFailure.corruptStore {
+            records.removeAll(); outboxLoaded = true; return
+        }
+        // An IO read failure above leaves the existing file untouched and keeps
+        // intake bounded in memory until it can be merged with saved records.
+        if let data {
+            do {
+                records = try JSONDecoder().decode([DiagnosticRecord].self, from: data).prefix(projector.policy.limit("queue_count", 64)).compactMap { sanitized($0, epoch: epoch) }
+            } catch is DecodingError { records.removeAll() }
+        } else { records.removeAll() }
+        outboxLoaded = true
+    }
+    private func deferStorageRetry() {
+        gate.count(records.count)
+        storageRetryAt = clock.nowMs() + 60000
     }
     private func persist() throws {
         let data = try diagnosticEncode(records)
@@ -268,7 +377,7 @@ private actor DiagnosticWorker {
             } else { gate.drop(); continue }
             if try diagnosticEncode(candidate).count <= projector.policy.limit("queue_bytes", 524288) { records = candidate } else { gate.drop() }
         }
-        try persist()
+        gate.count(records.count)
     }
     private func cancelRetryWake() {
         retryWake?.task.cancel()
@@ -276,16 +385,20 @@ private actor DiagnosticWorker {
     }
     private func scheduleRetryWake(epoch: String, generation: UInt64) {
         guard gate.allowed(epoch, generation) else { return }
+        guard let deadline = storageRetryAt ?? records.compactMap({ retryAt[$0.id] }).min() else { cancelRetryWake(); return }
+        if let wake = retryWake, wake.epoch == epoch, wake.generation == generation, wake.deadline == deadline { return }
         cancelRetryWake()
-        guard let deadline = records.compactMap({ retryAt[$0.id] }).min() else { return }
         let id = UUID(), clock = self.clock, gate = self.gate
-        let delay = Int(max(1, deadline - clock.nowMs()))
         let task = Task { [weak self] in
-            do { try await clock.sleep(milliseconds: delay) } catch { return }
+            guard !Task.isCancelled, gate.allowed(epoch, generation) else { return }
+            let delay = Int(max(0, deadline - clock.nowMs()))
+            if delay > 0 {
+                do { try await clock.sleep(milliseconds: delay) } catch { return }
+            }
             guard !Task.isCancelled, gate.allowed(epoch, generation) else { return }
             await self?.retryWakeFired(id)
         }
-        retryWake = (id, task)
+        retryWake = (id, epoch, generation, deadline, task)
     }
     private func retryWakeFired(_ id: UUID) async {
         guard retryWake?.id == id else { return }
@@ -302,19 +415,29 @@ private actor DiagnosticWorker {
             let finished = waiters; waiters.removeAll(); for waiter in finished { waiter.resume() }
         }
         do {
+            guard deliveryAllowed(consent, generation: generation) else { return }
+            if !outboxLoaded {
+                if (storageRetryAt ?? 0) > clock.nowMs() { gate.count(records.count); return }
+                try restoreOutbox(epoch: consent.epoch)
+            }
             records = records.compactMap { sanitized($0, epoch: consent.epoch) }
             try drain(consent.epoch)
+            if (storageRetryAt ?? 0) > clock.nowMs() { return }
+            // Publication is required before delivery, including retries of
+            // reports retained only in memory while the filesystem was full.
+            try persist()
+            storageRetryAt = nil
             let remainingIDs = Set(records.map(\.id))
             retryAt = retryAt.filter { remainingIDs.contains($0.key) }
             for record in records {
                 if (retryAt[record.id] ?? 0) > clock.nowMs() { continue }
-                guard gate.allowed(consent.epoch, generation) else { break }
+                guard deliveryAllowed(consent, generation: generation) else { break }
                 struct Envelope: Encodable { let v: Int; let id: String; let ts: Int64; let site: String; let name: String; let url: String; let profile_id: String; let props: [String: DiagnosticValue] }
                 let body = try diagnosticEncode(Envelope(v: 1, id: record.id, ts: record.timestamp_ms, site: destination.site, name: "diagnostic_report", url: destination.eventURL, profile_id: consent.profile_id, props: projector.sanitize(record.props)))
                 guard body.count <= projector.policy.limit("body_bytes", 8192) else { records.removeAll { $0.id == record.id }; try persist(); continue }
                 var terminal = false
                 for attempt in 0..<projector.policy.limit("max_attempts", 3) {
-                    guard gate.allowed(consent.epoch, generation) else { break }
+                    guard deliveryAllowed(consent, generation: generation) else { break }
                     do {
                         let status = try await transport.send(destination: destination, body: body, allowed: { [gate] in gate.allowed(consent.epoch, generation) })
                         terminal = (200...499).contains(status) && status != 429
@@ -332,10 +455,24 @@ private actor DiagnosticWorker {
                     else { retryAt[record.id] = clock.nowMs() + 60000 }
                 }
             }
-        } catch { /* Consent and durable data fail closed; feature results never change. */ }
+        } catch {
+            if gate.allowed(consent.epoch, generation) { deferStorageRetry() }
+        }
     }
     func close() {
         cancelRetryWake()
-        if let consent = gate.lock.withLock({ gate.consent }) { try? drain(consent.epoch) }
+        cancelRevocationWake()
+        storageRetryAt = nil
+        if revocationPending || gate.disabled() {
+            _ = diagnosticRevokeGrant(storage, recordChoice: gate.lock.withLock { gate.state.prompted })
+            return
+        }
+        if let consent = gate.lock.withLock({ gate.consent }) {
+            do {
+                if !outboxLoaded { try restoreOutbox(epoch: consent.epoch) }
+                try drain(consent.epoch)
+                try persist()
+            } catch { /* Retain the last durable file when orderly persistence fails. */ }
+        }
     }
 }

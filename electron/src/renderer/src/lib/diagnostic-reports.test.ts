@@ -3,8 +3,14 @@ import { beforeEach, expect, it, vi } from 'vitest';
 const mock = vi.hoisted(() => ({ bridge: null as any, api: vi.fn() }));
 vi.mock('@/components/bridge', () => ({ getBridge: () => mock.bridge }));
 vi.mock('@/lib/api/client', () => ({ apiJson: mock.api }));
-const on = { enabled: true, opted_in: true, available: true, prompted: true };
-const off = { ...on, enabled: false, opted_in: false };
+const on = {
+  enabled: true,
+  opted_in: true,
+  available: true,
+  prompted: true,
+  grant_epoch: 'a'.repeat(32),
+};
+const off = { ...on, enabled: false, opted_in: false, grant_epoch: null };
 
 beforeEach(() => {
   vi.resetModules();
@@ -36,15 +42,88 @@ it('uses desktop consent/capture without requiring a working backend', async () 
   client.captureDiagnosticException(error, 'generation_failed', 'generation');
   client.captureDiagnosticException(error, 'renderer_crash', 'render');
   expect(capture).toHaveBeenCalledOnce();
-  expect(capture).toHaveBeenCalledWith({
-    category: 'generation_failed',
-    source: 'renderer',
-    stage: 'generation',
-    error_type: 'TypeError',
-    frames: 'electron/src/renderer/src/hooks/use-generate.ts:12:9',
-  });
+  expect(capture).toHaveBeenCalledWith(
+    {
+      category: 'generation_failed',
+      source: 'renderer',
+      stage: 'generation',
+      error_type: 'TypeError',
+      frames: 'electron/src/renderer/src/hooks/use-generate.ts:12:9',
+    },
+    on.grant_epoch,
+  );
   expect(JSON.stringify(capture.mock.calls)).not.toMatch(/secret|private|customer|token/);
   expect(mock.api).not.toHaveBeenCalled();
+});
+
+it('observations require current consent and cannot cross OFF then fresh ON', async () => {
+  mock.bridge = {
+    diagnostics: {
+      getStatus: vi.fn(async () => on),
+      setConsent: vi.fn(async (enabled: boolean) => (enabled ? on : off)),
+    },
+  };
+  const client = await import('./diagnostic-reports');
+  expect(client.observeDiagnosticConsent()).toBeNull();
+  await client.refreshDiagnosticState();
+  const prior = client.observeDiagnosticConsent();
+  expect(prior?.observedAtMs).toBeGreaterThan(0);
+  expect(client.diagnosticConsentStillCurrent(prior)).toBe(true);
+  await client.refreshDiagnosticState();
+  expect(client.diagnosticConsentStillCurrent(prior)).toBe(true);
+  await client.setDiagnosticConsent(false);
+  expect(client.observeDiagnosticConsent()).toBeNull();
+  await client.setDiagnosticConsent(true);
+  expect(client.diagnosticConsentStillCurrent(prior)).toBe(false);
+  expect(client.diagnosticConsentStillCurrent(client.observeDiagnosticConsent())).toBe(true);
+});
+
+it('does not project UI reports without a valid owner grant context', async () => {
+  const capture = vi.fn(async () => {});
+  mock.bridge = {
+    diagnostics: { getStatus: vi.fn(async () => ({ ...on, grant_epoch: undefined })), capture },
+  };
+  const client = await import('./diagnostic-reports');
+  await client.refreshDiagnosticState();
+  expect(
+    client.prepareDiagnosticException(new Error('private'), 'renderer_crash', 'render'),
+  ).toBeNull();
+  client.captureDiagnosticException(new Error('private'), 'renderer_crash', 'render');
+  expect(capture).not.toHaveBeenCalled();
+});
+
+it('prepares only closed metadata before asynchronous proof and preserves filters and causal dedupe', async () => {
+  const capture = vi.fn(async () => {});
+  mock.bridge = {
+    diagnostics: {
+      getStatus: vi.fn(async () => on),
+      setConsent: vi.fn(async (enabled: boolean) => (enabled ? on : off)),
+      capture,
+    },
+  };
+  const client = await import('./diagnostic-reports');
+  await client.refreshDiagnosticState();
+  const error = new TypeError('private user words /home/private');
+  error.stack = 'TypeError: private user words\n at fn (https://app.test/assets/private.js:2:8)';
+  const prepared = client.prepareDiagnosticException(error, 'generation_failed', 'dub');
+  expect(prepared?.input).toMatchObject({ error_type: 'TypeError', category: 'generation_failed' });
+  expect(JSON.stringify(prepared)).not.toMatch(/private|message|stack|taskId|created_at/);
+  expect(client.prepareDiagnosticException(error, 'generation_failed', 'dub')).toBeNull();
+  expect(
+    client.prepareDiagnosticException({ status: 401 }, 'operation_failed', 'other'),
+  ).toBeNull();
+  client.capturePreparedDiagnostic(prepared);
+  client.capturePreparedDiagnostic(prepared);
+  expect(capture).toHaveBeenCalledOnce();
+  const retired = client.prepareDiagnosticException(
+    new Error('older epoch'),
+    'generation_failed',
+    'dub',
+  );
+  await client.setDiagnosticConsent(false);
+  await client.setDiagnosticConsent(true);
+  client.capturePreparedDiagnostic(retired);
+  expect(capture).toHaveBeenCalledOnce();
 });
 
 it('coarsens unknown app asset names and excludes remote or personal locations', async () => {
@@ -132,6 +211,7 @@ it('browser fallback uses only the diagnostic endpoint and aborts delivery on of
       source: 'renderer',
       stage: 'other',
       error_type: 'Error',
+      expected_epoch: on.grant_epoch,
     }),
   );
 });
@@ -231,13 +311,16 @@ it('keeps a classified incompatibility code while rejecting validation/auth bodi
     'operation_failed',
     'other',
   );
-  expect(capture).toHaveBeenCalledExactlyOnceWith({
-    category: 'generation_failed',
-    source: 'renderer',
-    stage: 'generation',
-    error_type: 'Error',
-    error_code: 'GPU_ARCH_UNSUPPORTED',
-  });
+  expect(capture).toHaveBeenCalledExactlyOnceWith(
+    {
+      category: 'generation_failed',
+      source: 'renderer',
+      stage: 'generation',
+      error_type: 'Error',
+      error_code: 'GPU_ARCH_UNSUPPORTED',
+    },
+    on.grant_epoch,
+  );
   expect(JSON.stringify(capture.mock.calls)).not.toContain('private');
 });
 

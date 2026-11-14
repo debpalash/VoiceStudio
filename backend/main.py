@@ -1557,14 +1557,22 @@ async def lifespan(app: FastAPI):
 
         validate_server_admin_key()
         async with _diagnostic_lifespan():
-            async with _application_lifespan(app):
-                try:
-                    yield
-                finally:
-                    # Retire before application teardown can block. The outer
-                    # reporter remains active for errors during that teardown.
+            application_started = False
+            try:
+                async with _application_lifespan(app):
+                    application_started = True
+                    try:
+                        yield
+                    finally:
+                        # Retire before application teardown can block. The outer
+                        # reporter remains active for errors during that teardown.
+                        from core import diagnostic_reports
+                        await asyncio.to_thread(diagnostic_reports.prepare_shutdown)
+            except Exception as error:
+                if not application_started:
                     from core import diagnostic_reports
-                    await asyncio.to_thread(diagnostic_reports.prepare_shutdown)
+                    diagnostic_reports.capture("backend_crash", stage="startup", error=error, reason="launch_failed")
+                raise
 
 
 app = FastAPI(

@@ -1716,6 +1716,7 @@ class _DiagnosticsBody(BaseModel):
 
 class _DiagnosticInput(BaseModel):
     model_config = {"extra": "forbid", "strict": True}
+    expected_epoch: str | None = Field(default=None, pattern=r"^[a-f0-9]{32}$", max_length=32)
     category: str = Field(..., max_length=64)
     source: Literal["renderer"]
     stage: str = Field(default="other", max_length=64)

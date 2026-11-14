@@ -185,6 +185,7 @@ def _atomic(path, value):
         try:
             os.unlink(temporary)
         except FileNotFoundError:
+            # A successful replacement has already consumed the temporary file.
             pass
 
 
@@ -238,13 +239,15 @@ class Reporter:
             self.kill_observed = True
         return current or self.kill_observed
 
-    def capture(self, category, *, stage='other', error=None, error_code=None, engine_id=None, _reported_app_version=_CURRENT_APP_VERSION, **metadata):
+    def capture(self, category, *, stage='other', error=None, error_code=None, engine_id=None, _reported_app_version=_CURRENT_APP_VERSION, _expected_epoch=None, **metadata):
         try:
             # Only bounded projection against cached policy here; no retained
             # exceptions, file reads or waits on the diagnostic worker.
             hard_killed = self._hard_killed()
             epoch = self.epoch
             if not self.enabled or not epoch or hard_killed or self.stop.is_set():
+                return False
+            if _expected_epoch is not None and (type(_expected_epoch) is not str or _expected_epoch != epoch):
                 return False
             schema = self.schema
             if schema is None:
@@ -434,6 +437,7 @@ class Reporter:
                 # A locked delete must still describe an intentional exit.
                 _atomic(marker, {'version':1,'epoch':self.epoch,'pid':os.getpid(),'started_at':self.started,'app_version':self.app_version,'clean':True})
             except OSError:
+                # Deletion below can still retire a marker whose rewrite failed.
                 pass
             try:
                 marker.unlink(missing_ok=True)
@@ -523,7 +527,7 @@ class Reporter:
             available = bool(self.managed)
             if not self.managed:
                 available = bool(_diagnostic_destination())
-            return {'enabled':self.enabled and not hard_killed,'opted_in':self.enabled and not hard_killed,'available':available and not _killed(),'prompted':self.prompted,'externally_managed':bool(self.managed),'pending_count':self.pending,'dropped_count':self.dropped}
+            return {'enabled':self.enabled and not hard_killed,'opted_in':self.enabled and not hard_killed,'available':available and not _killed(),'prompted':self.prompted,'externally_managed':bool(self.managed),'pending_count':self.pending,'dropped_count':self.dropped,'grant_epoch':self.epoch if self.enabled and not hard_killed else None}
 
     def consent(self, enabled):
         if self.managed:
@@ -659,7 +663,7 @@ def set_opted_in(enabled):
 
 
 def capture_from_ui(body):
-    if not isinstance(body,dict) or set(body)-{'category','source','stage','error_type','error_code','engine_id','frames'}:
+    if not isinstance(body,dict) or set(body)-{'category','source','stage','error_type','error_code','engine_id','frames','expected_epoch'}:
         raise ValueError('Unsupported diagnostic fields')
     schema = _schema()
     if body.get('source') != 'renderer':
@@ -669,7 +673,14 @@ def capture_from_ui(body):
             raise ValueError('Unsupported diagnostic value')
     if 'frames' in body and _frames(body['frames'],schema) != body['frames']:
         raise ValueError('Unsupported diagnostic frames')
-    return capture(**body)
+    expected = body.get('expected_epoch')
+    if expected is not None and (type(expected) is not str or not _HEX.fullmatch(expected)):
+        raise ValueError('Unsupported diagnostic grant')
+    if expected is None:
+        return False
+    # The grant is a local control value, never part of event properties.
+    fields = {key:value for key,value in body.items() if key != 'expected_epoch'}
+    return capture(_expected_epoch=expected, **fields)
 
 
 def capture_failure(stage, *, error=None, error_code=None, engine_id=None):

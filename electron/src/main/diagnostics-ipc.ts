@@ -20,10 +20,11 @@ export function registerDiagnosticIpc(
     await ready;
     return reports.setConsent(enabled);
   });
-  ipc.handle(DIAGNOSTIC_CHANNELS.capture, (event, input: unknown) => {
+  ipc.handle(DIAGNOSTIC_CHANNELS.capture, (event, input: unknown, expectedEpoch: unknown) => {
     assertTrusted(event);
     if (!validUiInput(input)) throw new Error('Invalid diagnostic report');
-    reports.capture({ ...input, source: 'renderer' });
+    if (typeof expectedEpoch !== 'string' || !/^[a-f0-9]{32}$/.test(expectedEpoch)) return;
+    reports.capture({ ...input, source: 'renderer' }, expectedEpoch);
   });
   return () => Object.values(DIAGNOSTIC_CHANNELS).forEach((channel) => ipc.removeHandler(channel));
 }

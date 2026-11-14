@@ -29,7 +29,8 @@ data class Generation(val id: String, val audioPath: String, val duration: Doubl
 @Serializable data class UploadResult(@SerialName("job_id") val jobId: String, @SerialName("task_id") val taskId: String, val filename: String = "")
 @Serializable data class TaskResult(@SerialName("task_id") val taskId: String)
 @Serializable data class Job(val id: String = "", val status: String, val error: String? = null,
-    @SerialName("last_event") val lastEvent: JsonObject? = null)
+    @SerialName("last_event") val lastEvent: JsonObject? = null,
+    @SerialName("created_at") val createdAt: Double? = null, @SerialName("updated_at") val updatedAt: Double? = null)
 @Serializable data class Segment(val id: JsonElement? = null, val start: Double, val end: Double, val text: String, @SerialName("speaker_id") val speakerId: String? = null,@SerialName("text_original") val textOriginal: String? = null, val gain: Double? = null, val speed: Double? = null, val direction: String? = null, @SerialName("effect_preset") val effectPreset: String? = null, val instruct: String? = null)
 /** Keep saved rendering overrides while callers choose new words, voice and language. */
 internal fun JsonObjectBuilder.putRenderSettings(segment: Segment) {
@@ -52,5 +53,5 @@ internal fun JsonObjectBuilder.putRenderSettings(segment: Segment) {
     @SerialName("final_kind") val finalKind: String? = null,
     @SerialName("refined_text") val refinedText: String? = null)
 
-@Serializable data class JobEvent(val seq: Int, val payload: String)
+@Serializable data class JobEvent(val seq: Int, val payload: String, @SerialName("created_at") val createdAt: Double? = null)
 @Serializable data class JobEvents(val job: Job, val events: List<JobEvent>)

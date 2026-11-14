@@ -299,7 +299,7 @@ def test_diagnostics_routes_strict_and_admin_guarded(reporter):
     client=TestClient(app)
     assert client.put('/api/settings/diagnostics',json={'enabled':'true'}).status_code==422
     assert client.put('/api/settings/diagnostics',json={'enabled':True}).status_code==200
-    good={'category':'generation_failed','source':'renderer','stage':'generation','error_type':'TypeError'}
+    good={'category':'generation_failed','source':'renderer','stage':'generation','error_type':'TypeError','expected_epoch':reporter.epoch}
     assert client.post('/api/settings/diagnostics/event',json=good).status_code==200
     for bad in [{**good,'message':'secret'},{**good,'error_type':'secret'},{**good,'frames':'/home/private.py:2'},{**good,'source':'backend'}]:
         assert client.post('/api/settings/diagnostics/event',json=bad).status_code==422
@@ -731,7 +731,7 @@ def test_startup_failure_restores_loop_handler_and_stops_reporter(reporter,monke
             assert loop.get_exception_handler() is previous
             assert reports._reporter is None
             loop.call_exception_handler({'message':'controlled loop error','exception':RuntimeError('private')})
-        assert captures==[]
+        assert captures==([('backend_crash',)] * 2 if failure_stage=='eager' else [])
     asyncio.run(run())
 
 

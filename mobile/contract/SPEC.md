@@ -328,7 +328,10 @@ All tabs work without pairing once on-device models are installed (see M2); the 
   Withdrawal closes the in-memory gate immediately, cancels delivery, removes
   queued reports and invalidates their epoch; a new grant creates a new identity.
   Displaying a saved worker error never reports it under a later consent grant;
-  fresh terminal failures are captured by their operation owner.
+  fresh terminal failures are captured by their operation owner. Resumed server
+  tasks require a newer persisted event than the consent-bound observation
+  baseline; archived events alone stay display-only. Grant tokens and sequence/
+  timestamp evidence remain local and never enter report properties.
   A failed write remains off in memory and offers Retry for that same choice.
   Crash recovery accepts only evidence from the current enabled epoch, within
   its opt-in window and TTL, and retains the diagnosed build's version instead

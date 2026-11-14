@@ -10,6 +10,7 @@ const gate = vi.hoisted(() => ({
   failWrites: false,
   failRenameTarget: '',
   failRemoveTarget: '',
+  sessionWrites: 0,
 }));
 vi.mock('node:fs/promises', async (original) => {
   const fs = await original<typeof import('node:fs/promises')>();
@@ -21,6 +22,7 @@ vi.mock('node:fs/promises', async (original) => {
       return fs.rm(...args);
     },
     rename: async (...args: Parameters<typeof fs.rename>) => {
+      if (String(args[1]).endsWith('session.json')) gate.sessionWrites++;
       if (gate.failRenameTarget && String(args[1]).endsWith(gate.failRenameTarget))
         throw Object.assign(new Error('ENOSPC'), { code: 'ENOSPC' });
       return fs.rename(...args);
@@ -53,12 +55,15 @@ afterEach(async () => {
   gate.failWrites = false;
   gate.failRenameTarget = '';
   gate.failRemoveTarget = '';
+  gate.sessionWrites = 0;
   await reports?.close();
   if (root) await rm(root, { recursive: true, force: true });
 });
 async function create(optIn = true) {
   root = await mkdtemp(join(tmpdir(), 'voice-diagnostic-disk-'));
-  const send = vi.fn(async () => new Response('', { status: 202 }));
+  const send = vi.fn(
+    async (_url: unknown, _request?: RequestInit) => new Response('', { status: 202 }),
+  );
   const options = {
     directory: join(root, 'diagnostics'),
     identity: { app_version: '1.0.0', build_commit: '0000000', platform: 'linux', arch: 'x64' },
@@ -76,6 +81,165 @@ async function create(optIn = true) {
   if (optIn) await reports.setConsent(true);
   return { reports, send, root, options };
 }
+
+it('recovers a recent crash after more than a week of active opted-in runtime', async () => {
+  const initial = await create(false);
+  let now = 1_794_640_000_000;
+  await initial.reports.close();
+  const options = { ...initial.options, now: () => now };
+  reports = new DiagnosticReports(options);
+  await reports.initialize();
+  await reports.setConsent(true);
+  const started = now;
+  now += 8 * 24 * 60 * 60 * 1000;
+  await reports.flush();
+  const marker = await readFile(join(options.directory, 'session.json'));
+  await reports.close();
+  await writeFile(join(options.directory, 'session.json'), marker);
+  now += 1;
+  reports = new DiagnosticReports({
+    ...options,
+    identity: { ...options.identity, app_version: '1.1.0' },
+  });
+  await reports.initialize();
+  await reports.flush();
+  expect(initial.send).toHaveBeenCalledOnce();
+  expect(JSON.parse(String(initial.send.mock.calls[0][1]?.body)).props).toMatchObject({
+    category: 'app_crash',
+    reason: 'unclean_exit',
+    app_version: '1.0.0',
+  });
+  const saved = JSON.parse(marker.toString('utf8'));
+  expect(saved.started_at_ms).toBe(started);
+  expect(saved.timestamp_ms).toBe(now - 1);
+});
+
+it('keeps the session start for journal correlation while refreshing its liveness marker', async () => {
+  const initial = await create(false);
+  let now = 1_794_640_000_000;
+  await initial.reports.close();
+  const options = { ...initial.options, now: () => now };
+  reports = new DiagnosticReports(options);
+  await reports.initialize();
+  await reports.setConsent(true);
+  await writeFile(
+    join(initial.root, 'main-process-errors.json'),
+    JSON.stringify([
+      {
+        at: new Date(now + 1000).toISOString(),
+        version: '1.0.0',
+        origin: 'uncaughtException',
+        detail: 'TypeError: private words',
+      },
+    ]),
+  );
+  now += 60_000;
+  await reports.flush();
+  const marker = await readFile(join(options.directory, 'session.json'));
+  await reports.close();
+  await writeFile(join(options.directory, 'session.json'), marker);
+  now += 1;
+  reports = new DiagnosticReports(options);
+  await reports.initialize();
+  await reports.flush();
+  expect(initial.send).toHaveBeenCalledOnce();
+  const body = JSON.parse(String(initial.send.mock.calls[0][1]?.body));
+  expect(body.props).toMatchObject({ reason: 'unhandled_exception', error_type: 'TypeError' });
+  expect(JSON.stringify(body)).not.toContain('private words');
+});
+
+it('never refreshes a withdrawn grant or recovers a genuinely stale liveness marker', async () => {
+  const initial = await create(false);
+  let now = 1_794_640_000_000;
+  await initial.reports.close();
+  const options = { ...initial.options, now: () => now };
+  reports = new DiagnosticReports(options);
+  await reports.initialize();
+  await reports.setConsent(true);
+  const stale = await readFile(join(options.directory, 'session.json'));
+  await reports.close();
+  await writeFile(join(options.directory, 'session.json'), stale);
+  now += 8 * 24 * 60 * 60 * 1000;
+  reports = new DiagnosticReports(options);
+  await reports.initialize();
+  await reports.flush();
+  expect(initial.send).not.toHaveBeenCalled();
+  await reports.setConsent(false);
+  now += 60_000;
+  await reports.flush();
+  await expect(readFile(join(options.directory, 'session.json'))).rejects.toMatchObject({
+    code: 'ENOENT',
+  });
+});
+
+it('bounds failed heartbeat writes and retries only while the same consent remains enabled', async () => {
+  const initial = await create(false);
+  let now = 1_794_640_000_000;
+  await initial.reports.close();
+  const options = { ...initial.options, now: () => now };
+  reports = new DiagnosticReports(options);
+  await reports.initialize();
+  await reports.setConsent(true);
+  gate.failRenameTarget = 'session.json';
+  now += 60_000;
+  await reports.flush();
+  const attempted = gate.sessionWrites;
+  now += 59_999;
+  await reports.flush();
+  await reports.flush();
+  expect(gate.sessionWrites).toBe(attempted);
+  gate.failRenameTarget = '';
+  now += 1;
+  await reports.flush();
+  expect(gate.sessionWrites).toBe(attempted + 1);
+  expect(
+    JSON.parse(await readFile(join(options.directory, 'session.json'), 'utf8')).timestamp_ms,
+  ).toBe(now);
+  await reports.setConsent(false);
+  const withdrawnWrites = gate.sessionWrites;
+  now += 60_000;
+  await reports.flush();
+  expect(gate.sessionWrites).toBe(withdrawnWrites);
+  await expect(readFile(join(options.directory, 'session.json'))).rejects.toMatchObject({
+    code: 'ENOENT',
+  });
+});
+
+it('a superseded ON write cannot remove the previous OFF tombstone before a failing newer OFF', async () => {
+  const initial = await create(false);
+  await initial.reports.setConsent(false);
+  let release!: () => void;
+  const entered = new Promise<void>((resolve) => {
+    gate.entered = resolve;
+  });
+  gate.wait = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  gate.enabled = true;
+  gate.claimed = false;
+  const on = initial.reports.setConsent(true);
+  try {
+    await entered;
+    gate.failWrites = true;
+    gate.failRemoveTarget = 'consent.json';
+    const off = initial.reports.setConsent(false).catch((error) => error);
+    release();
+    await on;
+    await off;
+    await initial.reports.close();
+    gate.failWrites = false;
+    gate.failRemoveTarget = '';
+    gate.enabled = false;
+    reports = new DiagnosticReports(initial.options);
+    await reports.initialize();
+    expect(reports.status()).toMatchObject({ enabled: false, opted_in: false });
+    expect(
+      JSON.parse(await readFile(join(initial.options.directory, 'revoked.json'), 'utf8')),
+    ).toEqual({ version: 1 });
+  } finally {
+    release();
+  }
+});
 
 it('requires HTTPS diagnostic URLs except exact literal loopback HTTP', () => {
   const destination = (host: string, appUrl = 'https://app.invalid') =>

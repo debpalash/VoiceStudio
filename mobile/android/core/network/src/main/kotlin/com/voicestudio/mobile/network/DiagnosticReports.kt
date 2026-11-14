@@ -103,7 +103,7 @@ interface DiagnosticStorage {
 }
 class FileDiagnosticStorage(private val directory: File) : DiagnosticStorage {
     private fun target(name: String): File {
-        require(name in setOf("consent.json", "outbox.json"))
+        require(name in setOf("consent.json", "outbox.json", "revoked.json"))
         return File(directory, name)
     }
     override fun read(name: String, maxBytes: Int): ByteArray? {
@@ -199,22 +199,27 @@ class DiagnosticReports(
     private val disabled: () -> Boolean = { diagnosticKillSwitch(System.getenv("OMNIVOICE_DIAGNOSTICS_DISABLED")) || diagnosticKillSwitch(System.getenv("OMNIVOICE_ANALYTICS_DISABLED")) },
 ) {
     private data class Consent(val enabled: Boolean, val epoch: String, val profile: String, val enabledAt: Long?)
+    private data class Revocation(val consent:Consent?,val failed:Boolean,val saveFailed:Boolean)
     companion object {
         /** Bootstrap cleanup, independent of resources/config. Invalidate live reporters first. */
         suspend fun revokeStoredConsent(directory: File, storage: DiagnosticStorage = FileDiagnosticStorage(directory)): Boolean =
-            withContext(Dispatchers.IO) { !revokeGrant(storage).second }
-        private fun revokeGrant(storage: DiagnosticStorage, hint: Boolean? = null): Pair<Consent?,Boolean> {
-            val hadGrant=hint ?: try { storage.read("consent.json",4096)!=null }catch(_:Exception){ true }
+            withContext(Dispatchers.IO) { !revokeGrant(storage).failed }
+        private fun revokeGrant(storage: DiagnosticStorage, hint: Boolean? = null, explicit: Boolean = false): Revocation {
+            val hadGrant=hint==true || try { storage.read("consent.json",4096)!=null }catch(_:Exception){ hint!=false }
             var failed=false
+            var saveFailed=false
+            if(hadGrant || explicit) {
+                try { storage.write("revoked.json","{\"version\":1}".toByteArray()) }catch(_:Exception){ failed=true;saveFailed=true }
+            }
             try { storage.remove("outbox.json") }catch(_:Exception){ failed=true }
             fun uuid()=UUID.randomUUID().toString().replace("-","")
             val revoked=if(hadGrant) Consent(false,uuid(),"install_${uuid()}",null) else null
             if(revoked!=null) {
                 try { storage.remove("consent.json") }catch(_:Exception){}
                 val record=buildJsonObject { put("version",1);put("enabled",false);put("epoch",revoked.epoch);put("profile_id",revoked.profile) }
-                try { storage.write("consent.json",record.toString().toByteArray()) }catch(_:Exception){ failed=true }
+                try { storage.write("consent.json",record.toString().toByteArray()) }catch(_:Exception){ failed=true;saveFailed=true }
             }
-            return revoked to failed
+            return Revocation(revoked,failed,saveFailed)
         }
     }
     private data class Pending(val epoch: String, val props: JsonObject, val id: String?, val timestamp: Long)
@@ -232,6 +237,8 @@ class DiagnosticReports(
     private var retryJob: CoroutineJob? = null
     private var retryWakeAt: Long? = null
     private var storageRetryAt: Long? = null
+    private var revocationPending = false
+    private var revocationRetryAt: Long? = null
     private val retryAt = mutableMapOf<String,Long>()
     val status: DiagnosticStatus get() = synchronized(stateLock) {
         val killed=disabled()
@@ -281,12 +288,12 @@ class DiagnosticReports(
         is StackOverflowError -> "RecursionError"
         else -> "OtherError"
     }
-    fun capture(input: DiagnosticInput, error: Throwable? = null): Boolean {
-        val current = synchronized(stateLock) { if (closed || !state.enabled || disabled()) null else consent } ?: return false
+    fun capture(input: DiagnosticInput, error: Throwable? = null, expectedEpoch: String? = null): Boolean {
+        val current = synchronized(stateLock) { if (closed || !state.enabled || disabled() || expectedEpoch != null && consent?.epoch != expectedEpoch) null else consent } ?: return false
         if (error is CancellationException || error is InterruptedException) return false
         val projected = props(if (error != null) input.copy(errorType = normalized(error)) else input)
         synchronized(stateLock) {
-            if (closed || !state.enabled || disabled() || consent?.epoch != current.epoch) return false
+            if (closed || !state.enabled || disabled() || consent?.epoch != current.epoch || expectedEpoch != null && consent?.epoch != expectedEpoch) return false
             if (intake.size >= policy.limit("queue_count", 64)) { state = state.copy(droppedCount = state.droppedCount + 1); return false }
             intake.add(Pending(current.epoch, projected, null, clock.nowMs()))
         }
@@ -321,14 +328,38 @@ class DiagnosticReports(
     private fun cancelRetryLocked() {
         retryJob?.cancel();retryJob=null;retryWakeAt=null
     }
+    private fun revoked():Boolean = try { storage.read("revoked.json",4096)!=null }catch(_:Exception){ true }
+    private fun retryAllowed(epoch:String?,generation:Long):Boolean = synchronized(stateLock) {
+        !closed && sequence==generation && (revocationPending || epoch!=null && allowed(epoch,generation))
+    }
+    private fun invalidateGrant():Long {
+        val generation=synchronized(stateLock) {
+            sequence++;state=state.copy(enabled=false,optedIn=false);intake.clear();revocationPending=true;cancelRetryLocked();sequence
+        }
+        transport.cancelAll()
+        return generation
+    }
+    /** Worker-owned durable OFF, with one bounded wake even while collection is disabled. */
+    private fun persistRevocation(generation:Long,hadGrant:Boolean,explicit:Boolean):Boolean {
+        records.clear();retryAt.clear();storageRetryAt=null
+        val result=revokeGrant(storage,hadGrant,explicit)
+        synchronized(stateLock) {
+            if(generation!=sequence || closed)return false
+            consent=result.consent;loaded=true;revocationPending=result.failed
+            state=state.copy(enabled=false,optedIn=false,prompted=state.prompted || hadGrant || explicit,pendingCount=0,consentSaveFailed=result.failed)
+        }
+        revocationRetryAt=if(result.failed)clock.nowMs()+60000 else null
+        if(result.failed)scheduleRetry(null,generation) else synchronized(stateLock){cancelRetryLocked()}
+        return result.saveFailed
+    }
     /** One owned wake for durable work, not a polling service or a new report. */
-    private fun scheduleRetry(epoch:String,generation:Long) {
+    private fun scheduleRetry(epoch:String?,generation:Long) {
         // Called under worker: retryAt and records belong to that worker.
         // Storage publication blocks all delivery, including already-due
         // network retries. An old network deadline must not cause a busy loop.
-        val next=storageRetryAt ?: retryAt.values.minOrNull()
+        val next=if(revocationPending)revocationRetryAt else storageRetryAt ?: retryAt.values.minOrNull()
         synchronized(stateLock) {
-            if(next==null || !allowed(epoch,generation)) { cancelRetryLocked();return }
+            if(next==null || !retryAllowed(epoch,generation)) { cancelRetryLocked();return }
             if(retryJob?.isActive==true && retryWakeAt==next)return
             cancelRetryLocked()
             val job=scope.launch(start=CoroutineStart.LAZY) {
@@ -338,7 +369,7 @@ class DiagnosticReports(
                     if(retryJob!==running)false
                     else { retryJob=null;retryWakeAt=null;true }
                 }
-                if(owned && allowed(epoch,generation)) {
+                if(owned && retryAllowed(epoch,generation)) {
                     try { flush() }catch(_:Exception){ /* Durable work remains for the next explicit intake/load. */ }
                 }
             }
@@ -369,19 +400,19 @@ class DiagnosticReports(
         }
         return withContext(scope.coroutineContext) {
         worker.withLock {
-            if (closed || loaded && !disabled()) return@withLock status
+            if (closed) return@withLock status
+            val blocked=revoked()
+            if(loaded && !disabled() && !blocked && !revocationPending)return@withLock status
             val generation = synchronized(stateLock) { sequence }
             var hadGrant=synchronized(stateLock) { consent!=null }
             val saved = try { storage.read("consent.json",4096).let { hadGrant=hadGrant || it!=null;parseConsent(it) } } catch (_: Exception) { hadGrant=true;null }
-            if (disabled()) {
+            if (disabled() || blocked || revocationPending) {
                 val current=synchronized(stateLock) {
                     if (generation!=sequence || closed) false
-                    else { loaded=true;state=state.copy(enabled=false,optedIn=false,prompted=hadGrant,pendingCount=0);intake.clear();true }
+                    else { loaded=true;revocationPending=true;state=state.copy(enabled=false,optedIn=false,prompted=hadGrant || blocked,pendingCount=0);intake.clear();true }
                 }
                 if (!current) return@withLock status
-                records.clear();retryAt.clear();storageRetryAt=null
-                val revoked=revokeGrant(storage,hadGrant)
-                synchronized(stateLock) { if(generation==sequence && !closed){ consent=revoked.first;state=state.copy(consentSaveFailed=revoked.second) } }
+                persistRevocation(generation,hadGrant,blocked)
                 return@withLock status
             }
             val applied = synchronized(stateLock) {
@@ -417,24 +448,35 @@ class DiagnosticReports(
     }
     suspend fun setConsent(enabled: Boolean): DiagnosticStatus {
         if (enabled && disabled()) { setConsent(false);throw IllegalStateException("Diagnostic reports are disabled") }
-        if (enabled && status.enabled) return status
-        val generation = synchronized(stateLock) { sequence++; state = state.copy(enabled = false, optedIn = false); intake.clear();cancelRetryLocked(); sequence }
-        transport.cancelAll()
+        if (enabled && status.enabled && !revoked()) return status
+        val generation=invalidateGrant()
         return withContext(scope.coroutineContext) {
             worker.withLock {
-                if (generation != synchronized(stateLock) { sequence } || closed) return@withLock status
-                val fresh = Consent(enabled, id(), "install_${id()}", if (enabled) clock.nowMs() else null)
-                records.clear(); retryAt.clear();storageRetryAt=null
-                try { storage.remove("outbox.json") } catch (_: Exception) {}
-                // A failed OFF replacement must not resurrect an older grant
-                // after relaunch when deleting that old grant still works.
-                if (!enabled) try { storage.remove("consent.json") } catch (_: Exception) {}
-                try { storage.write("consent.json", consentJson(fresh).toString().toByteArray()) }
-                catch(error:Exception){ synchronized(stateLock){ state=state.copy(consentSaveFailed=true) };throw error }
+                if(generation!=synchronized(stateLock){sequence} || closed)return@withLock status
+                if(!enabled) {
+                    val failed=persistRevocation(generation,consent!=null,explicit=true)
+                    if(failed)throw IOException("Could not save diagnostic consent")
+                    return@withLock status
+                }
+                val fresh=Consent(true,id(),"install_${id()}",clock.nowMs())
+                records.clear();retryAt.clear();storageRetryAt=null
+                try {
+                    storage.remove("outbox.json")
+                    storage.write("consent.json",consentJson(fresh).toString().toByteArray())
+                    // A later OFF can invalidate this grant while publication
+                    // blocks. Never let that stale ON erase its prior fence.
+                    if(generation!=synchronized(stateLock){sequence} || closed)return@withLock status
+                    storage.remove("revoked.json")
+                    if(disabled() || revoked())throw IOException("Diagnostic permission unavailable")
+                }catch(error:Exception) {
+                    synchronized(stateLock){if(generation==sequence){revocationPending=true;state=state.copy(enabled=false,optedIn=false,consentSaveFailed=true)}}
+                    revocationRetryAt=clock.nowMs()+60000;scheduleRetry(null,generation)
+                    throw error
+                }
                 synchronized(stateLock) {
-                    if (generation == sequence && !closed) {
-                        consent = fresh; loaded = true
-                        state = state.copy(enabled = enabled && !disabled(), optedIn = enabled && !disabled(), prompted = true, pendingCount = 0, consentSaveFailed = false)
+                    if(generation==sequence && !closed) {
+                        consent=fresh;loaded=true;revocationPending=false;revocationRetryAt=null
+                        state=state.copy(enabled=true,optedIn=true,prompted=true,pendingCount=0,consentSaveFailed=false)
                     }
                 }
                 status
@@ -505,6 +547,17 @@ class DiagnosticReports(
     }
     suspend fun flush() = withContext(scope.coroutineContext) {
         worker.withLock {
+            if(revocationPending) {
+                val generation=synchronized(stateLock){sequence}
+                if((revocationRetryAt ?: 0)<=clock.nowMs())persistRevocation(generation,consent!=null,explicit=true)
+                else scheduleRetry(null,generation)
+                return@withLock
+            }
+            if(disabled() || revoked()) {
+                val generation=invalidateGrant()
+                persistRevocation(generation,consent!=null,explicit=revoked())
+                return@withLock
+            }
             val snapshot = synchronized(stateLock) { consent?.let { it to sequence } } ?: return@withLock
             val (current, generation) = snapshot
             if (!allowed(current.epoch, generation)) return@withLock
@@ -533,6 +586,10 @@ class DiagnosticReports(
                 var terminal = false
                 repeat(policy.limit("max_attempts", 3)) { attempt ->
                     if (terminal || !allowed(current.epoch, generation)) return@repeat
+                    if(revoked()) {
+                        val changed=invalidateGrant();persistRevocation(changed,consent!=null,explicit=true)
+                        return@withLock
+                    }
                     val code = try { transport.send(destination, body) { allowed(current.epoch, generation) } } catch (_: Exception) { null }
                     terminal = code != null && code in 200..499 && code != 429
                     if (!terminal && attempt < policy.limit("max_attempts", 3) - 1) {

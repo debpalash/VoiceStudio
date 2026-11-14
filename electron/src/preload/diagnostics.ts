@@ -46,6 +46,8 @@ export interface DiagnosticState {
   opted_in: boolean;
   available: boolean;
   prompted: boolean;
+  /** Local consent control only; never part of report properties. */
+  grant_epoch?: string | null;
   externally_managed?: boolean;
   pending_count?: number;
   dropped_count?: number;

@@ -126,9 +126,12 @@ test('diagnostic consent is returning-off, persists per server, and is independe
     assert.equal(first.enabled, false);
     const analytics = await (await get(backend, '/api/settings/analytics')).json();
     for (const enabled of [true, false]) {
-      const saved = await (await get(backend, '/api/settings/diagnostics', {
-        method: 'PUT', body: JSON.stringify({ enabled }),
-      })).json();
+      const saved = await (
+        await get(backend, '/api/settings/diagnostics', {
+          method: 'PUT',
+          body: JSON.stringify({ enabled }),
+        })
+      ).json();
       assert.equal(saved.enabled, enabled);
       assert.equal(saved.opted_in, enabled);
       assert.equal(saved.prompted, true);
@@ -137,11 +140,24 @@ test('diagnostic consent is returning-off, persists per server, and is independe
       if (enabled) {
         const other = await startHealthBackend();
         try {
-          assert.equal((await (await get(other, '/api/settings/diagnostics')).json()).enabled, false);
-        } finally { await other.close(); }
+          assert.equal(
+            (await (await get(other, '/api/settings/diagnostics')).json()).enabled,
+            false,
+          );
+        } finally {
+          await other.close();
+        }
       }
     }
-    for (const body of ['{', 'null', '[]', '{}', '{"enabled":"true"}', '{"enabled":1}', '{"enabled":true,"analytics":true}']) {
+    for (const body of [
+      '{',
+      'null',
+      '[]',
+      '{}',
+      '{"enabled":"true"}',
+      '{"enabled":1}',
+      '{"enabled":true,"analytics":true}',
+    ]) {
       const rejected = await get(backend, '/api/settings/diagnostics', { method: 'PUT', body });
       assert.equal(rejected.status, 422);
       const unchanged = await (await get(backend, '/api/settings/diagnostics')).json();
@@ -154,8 +170,63 @@ test('diagnostic consent is returning-off, persists per server, and is independe
   }
 });
 
+test('diagnostic events require the exact owner grant and keep controls out of metadata', async () => {
+  const backend = await startHealthBackend();
+  const input = {
+    category: 'operation_failed',
+    source: 'renderer',
+    stage: 'other',
+    error_type: 'Error',
+  };
+  const post = (body) =>
+    get(backend, '/api/settings/diagnostics/event', { method: 'POST', body: JSON.stringify(body) });
+  const consent = async (enabled) =>
+    (
+      await get(backend, '/api/settings/diagnostics', {
+        method: 'PUT',
+        body: JSON.stringify({ enabled }),
+      })
+    ).json();
+  try {
+    assert.equal(
+      (await (await get(backend, '/api/settings/diagnostics')).json()).grant_epoch,
+      null,
+    );
+    assert.deepEqual(await (await post(input)).json(), { sent: false });
+    const first = await consent(true);
+    assert.match(first.grant_epoch, /^[a-f0-9]{32}$/);
+    assert.equal((await consent(true)).grant_epoch, first.grant_epoch);
+    assert.deepEqual(await (await post({ ...input, expected_epoch: first.grant_epoch })).json(), {
+      sent: true,
+    });
+    assert.deepEqual(backend.diagnosticEvents, [input]);
+    await consent(false);
+    const fresh = await consent(true);
+    assert.notEqual(fresh.grant_epoch, first.grant_epoch);
+    assert.deepEqual(await (await post({ ...input, expected_epoch: first.grant_epoch })).json(), {
+      sent: false,
+    });
+    for (const rejected of [
+      { ...input, message: 'private' },
+      { ...input, expected_epoch: 'invalid' },
+      { ...input, category: 'private' },
+      { ...input, frames: '/home/private:1' },
+    ])
+      assert.equal((await post(rejected)).status, 422);
+    assert.deepEqual(backend.diagnosticEvents, [input]);
+  } finally {
+    await backend.close();
+  }
+});
+
 test('a fresh diagnostic choice can override the returning-user fixture', async () => {
-  const fresh = { available: true, prompted: false, opted_in: false, enabled: false };
+  const fresh = {
+    available: true,
+    prompted: false,
+    opted_in: false,
+    enabled: false,
+    grant_epoch: null,
+  };
   const backend = await startHealthBackend({ fixtures: { '/api/settings/diagnostics': fresh } });
   try {
     assert.deepEqual(await (await get(backend, '/api/settings/diagnostics')).json(), fresh);

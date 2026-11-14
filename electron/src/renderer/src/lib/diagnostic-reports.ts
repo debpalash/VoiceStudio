@@ -25,6 +25,7 @@ let failedChoice: boolean | null = null;
 let acknowledgedChoice = false;
 let reading: Promise<boolean> | null = null;
 let seenErrors = new WeakSet<object>();
+const dispatchedProjections = new WeakSet<object>();
 const listeners = new Set<() => void>();
 const deliveries = new Map<AbortController, ReturnType<typeof setTimeout>>();
 const framePaths = new Set(schema.frame_paths);
@@ -82,6 +83,28 @@ export function diagnosticsAllowed(): boolean {
   return (
     !locallyDisabled &&
     Boolean(current.status?.enabled && current.status.opted_in && current.status.available)
+  );
+}
+/** Local observation only: never persist or send this consent revision. */
+export interface DiagnosticConsentObservation {
+  readonly revision: number;
+  readonly observedAtMs: number;
+  readonly grantEpoch: string;
+}
+export function observeDiagnosticConsent(): DiagnosticConsentObservation | null {
+  const epoch = current.status?.grant_epoch;
+  return diagnosticsAllowed() && typeof epoch === 'string' && /^[a-f0-9]{32}$/.test(epoch)
+    ? { revision, observedAtMs: Date.now(), grantEpoch: epoch }
+    : null;
+}
+export function diagnosticConsentStillCurrent(
+  observation: DiagnosticConsentObservation | null,
+): boolean {
+  return (
+    observation !== null &&
+    observation.revision === revision &&
+    observation.grantEpoch === current.status?.grant_epoch &&
+    diagnosticsAllowed()
   );
 }
 function stateFrom(value: unknown): DiagnosticState {
@@ -226,18 +249,18 @@ export function diagnosticFrames(error: unknown): string {
 }
 
 /** Typed technical fields only; failure reporting never affects the original operation. */
-export function captureDiagnosticException(
+export function prepareDiagnosticException(
   error: unknown,
   category: DiagnosticCategory,
   stage: DiagnosticStage,
-): void {
+): PreparedDiagnostic | null {
   try {
     if (
       !diagnosticsAllowed() ||
       !schema.categories.includes(category) ||
       !schema.stages.includes(stage)
     )
-      return;
+      return null;
     const code = errorCodeOf(error);
     // A classified compatibility failure may use HTTP 400; routine 4xx stays local.
     if (
@@ -249,9 +272,9 @@ export function captureDiagnosticException(
       error.status < 500 &&
       (error.status === 401 || error.status === 403 || !code || expectedCodes.has(code))
     )
-      return;
+      return null;
     if (error && typeof error === 'object') {
-      if (seenErrors.has(error)) return;
+      if (seenErrors.has(error)) return null;
       seenErrors.add(error);
     }
     const observedName = error instanceof Error ? error.name : 'OtherError';
@@ -268,9 +291,31 @@ export function captureDiagnosticException(
       ...(code ? { error_code: code } : {}),
       ...(frames ? { frames } : {}),
     };
+    const observation = observeDiagnosticConsent();
+    return observation ? Object.freeze({ observation, input: Object.freeze(input) }) : null;
+  } catch {
+    return null;
+  }
+}
+
+export interface PreparedDiagnostic {
+  readonly observation: DiagnosticConsentObservation;
+  readonly input: Readonly<DiagnosticInput>;
+}
+/** Dispatch only a closed projection observed under this still-current choice. */
+export function capturePreparedDiagnostic(prepared: PreparedDiagnostic | null): void {
+  try {
+    if (
+      !prepared ||
+      !diagnosticConsentStillCurrent(prepared.observation) ||
+      dispatchedProjections.has(prepared)
+    )
+      return;
+    dispatchedProjections.add(prepared);
+    const input = prepared.input;
     const bridge = getBridge()?.diagnostics;
     if (bridge) {
-      void bridge.capture(input).catch(() => {});
+      void bridge.capture(input, prepared.observation.grantEpoch).catch(() => {});
       return;
     }
     if (deliveries.size >= schema.limits.queue_count) return;
@@ -279,7 +324,7 @@ export function captureDiagnosticException(
     deliveries.set(controller, timer);
     void apiJson('/api/settings/diagnostics/event', {
       method: 'POST',
-      body: JSON.stringify(input),
+      body: JSON.stringify({ ...input, expected_epoch: prepared.observation.grantEpoch }),
       signal: controller.signal,
     })
       .catch(() => {})
@@ -290,4 +335,12 @@ export function captureDiagnosticException(
   } catch {
     /* Never create a recursive renderer failure. */
   }
+}
+
+export function captureDiagnosticException(
+  error: unknown,
+  category: DiagnosticCategory,
+  stage: DiagnosticStage,
+): void {
+  capturePreparedDiagnostic(prepareDiagnosticException(error, category, stage));
 }

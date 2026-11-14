@@ -21,6 +21,8 @@ struct ComputerDubAdvancedView: View {
     @State private var shared: SharedFile?
     @State private var workspace = FileManager.default.temporaryDirectory.appendingPathComponent("computer-dub-"+UUID().uuidString)
     @State private var leaving = false
+    @State private var failureWasRemoteTask = false
+    @State private var failureDiagnosticObservation: CompanionDiagnosticObservation?
     private var receipt: String { "advancedDubTask:"+(api?.address.baseURL.absoluteString ?? "")+":"+jobID }
     private var groups: [String] { Array(Set(analysis?.segments.compactMap(\.speaker_id) ?? [])).sorted() }
     var body: some View {
@@ -96,7 +98,8 @@ struct ComputerDubAdvancedView: View {
     }
     private func perform(_ action: @escaping @MainActor () async throws -> Void) {
         guard !busy else { return }; busy = true
-        work = Task { defer { busy = false; work = nil; if leaving { try? FileManager.default.removeItem(at: workspace) } }; await model.perform { try await action() } }
+        failureWasRemoteTask=false;failureDiagnosticObservation=nil
+        work = Task { defer { busy = false; work = nil; if leaving { try? FileManager.default.removeItem(at: workspace) } }; await model.perform(diagnosticStage:"dub",companionFailure:{(remoteTask:failureWasRemoteTask,observation:failureDiagnosticObservation)}) { try await action() } }
     }
     private func detect() { guard let api else { return }; perform { analysis = try await api.computerDubAnalysis(jobID,speakers: speakers); reviewed = false; cast = [:] } }
     private func authorizeRender() {
@@ -109,16 +112,28 @@ struct ComputerDubAdvancedView: View {
     private func startRender(_ api: APIClient,provider: TranslationEngine,confirmed: Bool) async throws {
         guard let analysis else { throw ClientError("mobile.dub_advanced.invalid_cast") }
         let target = options.language, voices = cast, strategy = timing
+        let submission=model.diagnostics.failureObservation
         let task = try await api.computerDubCast(jobID,analysis: analysis,language: target,name: model.languages.language(target)?.name ?? target,voices: voices,provider: provider,onlineConfirmed: confirmed,timing: strategy)
-        taskID = task.task_id; UserDefaults.standard.set(task.task_id,forKey: receipt); try await monitor(api,task.task_id)
+        taskID = task.task_id; UserDefaults.standard.set(task.task_id,forKey: receipt); try await monitor(api,task.task_id,submitted:submission)
     }
-    private func monitor(_ api: APIClient,_ task: String) async throws {
+    private func monitor(_ api: APIClient,_ task: String,submitted: CompanionDiagnosticObservation? = nil) async throws {
         var sequence = 0
+        var diagnosticGate=CompanionTaskFailureGate()
         while !Task.isCancelled {
+            let observation=model.diagnostics.failureObservation
             let page = try await api.events(task,after: sequence)
+            let reportable=diagnosticGate.observe(taskID:task,page:page,before:observation,after:model.diagnostics.failureObservation,submitted:submitted)
             var failed = ["failed","cancelled"].contains(page.job.status)
-            for event in page.events { sequence = max(sequence,event.seq); if let data = event.payload.replacingOccurrences(of: "data: ",with: "").trimmingCharacters(in: .whitespacesAndNewlines).data(using: .utf8), let object = (try? JSONSerialization.jsonObject(with: data)) as? [String:Any], ["error","failed","cancelled"].contains(object["type"] as? String ?? "") { failed = true } }
-            if failed { taskID = nil; UserDefaults.standard.removeObject(forKey: receipt); throw ClientError("mobile.errors.dub_failed") }
+            var cancelled=page.job.status=="cancelled"
+            for event in page.events {
+                sequence = max(sequence,event.seq)
+                if let data = event.payload.replacingOccurrences(of: "data: ",with: "").trimmingCharacters(in: .whitespacesAndNewlines).data(using: .utf8),
+                   let object = (try? JSONSerialization.jsonObject(with: data)) as? [String:Any],
+                   let type=object["type"] as? String,["error","failed","cancelled"].contains(type) {
+                    failed=true;cancelled=cancelled || type=="cancelled"
+                }
+            }
+            if failed { failureWasRemoteTask=true;failureDiagnosticObservation=cancelled ? nil : reportable;taskID = nil; UserDefaults.standard.removeObject(forKey: receipt); throw ClientError("mobile.errors.dub_failed") }
             if page.job.status == "done" { taskID = nil; UserDefaults.standard.removeObject(forKey: receipt); tracks = try await api.computerDubTracks(jobID).tracks; return }
             try await Task.sleep(for: .seconds(2))
         }

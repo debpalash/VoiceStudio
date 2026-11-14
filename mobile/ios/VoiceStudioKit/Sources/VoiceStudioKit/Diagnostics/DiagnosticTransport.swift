@@ -21,11 +21,17 @@ public struct FileDiagnosticStorage: DiagnosticStorage {
     public let directory: URL
     public init(directory: URL) { self.directory = directory }
     private func target(_ name: String) throws -> URL {
-        guard directory.isFileURL, ["consent.json", "outbox.json"].contains(name) else { throw DiagnosticFailure.storageUnavailable }
+        guard directory.isFileURL, ["consent.json", "outbox.json", "revoked.json"].contains(name) else { throw DiagnosticFailure.storageUnavailable }
         return directory.appendingPathComponent(name)
     }
     public func read(_ name: String, maxBytes: Int) throws -> Data? {
         let url = try target(name)
+        if name == "revoked.json" {
+            do {
+                let info = try FileManager.default.attributesOfItem(atPath: url.path)
+                guard info[.type] as? FileAttributeType == .typeRegular else { throw DiagnosticFailure.corruptStore }
+            } catch let error as CocoaError where error.code == .fileReadNoSuchFile || error.code == .fileNoSuchFile { return nil }
+        }
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         let handle = try FileHandle(forReadingFrom: url); defer { try? handle.close() }
         let data = try handle.read(upToCount: maxBytes + 1) ?? Data()
@@ -40,6 +46,11 @@ public struct FileDiagnosticStorage: DiagnosticStorage {
     }
     public func remove(_ name: String) throws {
         let url = try target(name)
+        if name == "revoked.json" {
+            do { try FileManager.default.removeItem(at: url) }
+            catch let error as CocoaError where error.code == .fileNoSuchFile || error.code == .fileReadNoSuchFile { return }
+            return
+        }
         if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
     }
 }

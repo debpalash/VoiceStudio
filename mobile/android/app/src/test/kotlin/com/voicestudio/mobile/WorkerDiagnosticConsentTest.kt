@@ -215,4 +215,81 @@ class WorkerDiagnosticConsentTest {
             } finally { server.shutdown() }
         }
     }
+
+    @Test fun restoredRunningTaskCannotReportItsOffPeriodFailureAfterOptIn() = runBlocking {
+        for (kind in listOf("failed-row", "error-event")) reports { reporter, collector ->
+            val server = MockWebServer().apply { start() }
+            try {
+                val host = server.url("/").toString()
+                val job = UUID.randomUUID().toString()
+                val store = SessionStore(app)
+                store.update { Preferences(activeUrl = host) }
+                // Real checkpoint saved while OFF, before the server failed offline.
+                store.checkpoint(host, job, DubCheckpoint(uploaded = true, prepTask = "old-prep"))
+                reporter.setConsent(true)
+                server.enqueue(MockResponse().setBody("""{"active":"argos","engines":[{"id":"argos","category":"offline","installed":true,"ready":true}]}"""))
+                val page = if (kind == "failed-row")
+                    """{"job":{"status":"failed","created_at":100,"updated_at":101},"events":[]}"""
+                else """{"job":{"status":"done","created_at":100,"updated_at":101},"events":[{"seq":1,"created_at":101,"payload":"{\"type\":\"error\"}"}]}"""
+                server.enqueue(MockResponse().setBody(page))
+                val worker = TestListenableWorkerBuilder<DubWorker>(app).setInputData(workDataOf(
+                    "host" to host, "job" to job, "languages" to emptyArray<String>(), "names" to emptyArray<String>(),
+                    "translation_provider" to "argos", "translation_category" to "offline"))
+                    .setForegroundUpdater(foreground()).build()
+                val result = worker.doWork() as ListenableWorker.Result.Failure
+                assertEquals("mobile.android.job_failed", result.outputData.getString("error"))
+                reporter.flush()
+                assertEquals("restored $kind was retroactively reported", 0, collector.bodies.size)
+            } finally { server.shutdown() }
+        }
+    }
+
+    @Test fun restoredTaskReportsOnlyNewServerFailureUnderItsUnchangedObservedEpoch() = runBlocking {
+        for (scenario in listOf("fresh", "old-sequence", "old-time", "missing-time", "new-epoch")) reports { reporter, collector ->
+            val server = MockWebServer()
+            val secondPage = java.util.concurrent.CountDownLatch(1)
+            val release = java.util.concurrent.CountDownLatch(1)
+            val polls = java.util.concurrent.atomic.AtomicInteger()
+            val running = """{"job":{"status":"running","created_at":100,"updated_at":100},"events":[{"seq":7,"created_at":100,"payload":"data: {\"type\":\"progress\",\"percent\":50}"}]}"""
+            var failed = """{"job":{"status":"failed","created_at":100,"updated_at":101},"events":[{"seq":8,"created_at":101,"payload":"data: {\"type\":\"error\"}"}]}"""
+            if (scenario == "old-sequence") failed = failed.replace("\"seq\":8", "\"seq\":7")
+            if (scenario == "old-time") failed = failed.replace("\"created_at\":101", "\"created_at\":99")
+            if (scenario == "missing-time") failed = failed.replace(",\"created_at\":101", "")
+            server.dispatcher = object : okhttp3.mockwebserver.Dispatcher() {
+                override fun dispatch(request: okhttp3.mockwebserver.RecordedRequest): MockResponse {
+                    if (request.path == "/engines/translation") return MockResponse().setBody("""{"active":"argos","engines":[{"id":"argos","category":"offline","installed":true,"ready":true}]}""")
+                    if (request.path?.startsWith("/jobs/old-prep/events?") != true) return MockResponse().setResponseCode(404)
+                    if (polls.getAndIncrement() == 0) return MockResponse().setBody(running)
+                    secondPage.countDown()
+                    if (scenario == "new-epoch") check(release.await(5, java.util.concurrent.TimeUnit.SECONDS))
+                    return MockResponse().setBody(failed)
+                }
+            }
+            server.start()
+            try {
+                val host = server.url("/").toString()
+                val job = UUID.randomUUID().toString()
+                val store = SessionStore(app)
+                store.update { Preferences(activeUrl = host) }
+                store.checkpoint(host, job, DubCheckpoint(uploaded = true, prepTask = "old-prep"))
+                reporter.setConsent(true)
+                val worker = TestListenableWorkerBuilder<DubWorker>(app).setInputData(workDataOf(
+                    "host" to host, "job" to job, "languages" to emptyArray<String>(), "names" to emptyArray<String>(),
+                    "translation_provider" to "argos", "translation_category" to "offline"))
+                    .setForegroundUpdater(foreground()).build()
+                val attempt = async(Dispatchers.Default) { worker.doWork() }
+                try {
+                    if (scenario == "new-epoch") {
+                        assertTrue(withContext(Dispatchers.IO) {secondPage.await(5, java.util.concurrent.TimeUnit.SECONDS)})
+                        reporter.setConsent(false); reporter.setConsent(true)
+                        release.countDown()
+                    }
+                    val result = withTimeout(12_000) {attempt.await()} as ListenableWorker.Result.Failure
+                    assertEquals("mobile.android.job_failed", result.outputData.getString("error"))
+                } finally { release.countDown(); attempt.cancelAndJoin() }
+                reporter.flush()
+                assertEquals("$scenario diagnostic count", if (scenario == "fresh") 1 else 0, collector.bodies.size)
+            } finally {release.countDown();server.shutdown()}
+        }
+    }
 }

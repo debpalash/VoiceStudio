@@ -5505,6 +5505,19 @@
       "title": "Error Type",
       "type": "string"
      },
+     "expected_epoch": {
+      "anyOf": [
+       {
+        "maxLength": 32,
+        "pattern": "^[a-f0-9]{32}$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Expected Epoch"
+     },
      "frames": {
       "anyOf": [
        {

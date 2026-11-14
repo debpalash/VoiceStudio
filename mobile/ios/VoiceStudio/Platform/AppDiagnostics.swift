@@ -97,7 +97,17 @@ import VoiceStudioKit
         }
     }
     /// Keys/status are projected, never ClientError.params, localized messages or host URLs.
-    func captureFailure(_ error: any Error, stage: String = "other", engineID: String? = nil, file: String = #filePath, line: Int = #line) {
+    var failureObservation: CompanionDiagnosticObservation? {
+        guard collecting,let context=reporter?.recoveryContext else {return nil}
+        return CompanionDiagnosticObservation(revision:observationRevision,epoch:context.epoch)
+    }
+    func captureCompanionFailure(_ error: any Error, observation: CompanionDiagnosticObservation?, remoteTask: Bool) {
+        if remoteTask {
+            guard let observation,observation==failureObservation else {return}
+            captureFailure(error,stage:"dub",expectedEpoch:observation.epoch)
+        } else {captureFailure(error,stage:"dub")}
+    }
+    func captureFailure(_ error: any Error, stage: String = "other", engineID: String? = nil, file: String = #filePath, line: Int = #line,expectedEpoch: String? = nil) {
         guard let reporter, collecting else { return }
         if error is CancellationError || (error as? URLError)?.code == .cancelled || (error as? CocoaError)?.code == .userCancelled { return }
         let failure = error as? ClientError
@@ -106,7 +116,7 @@ import VoiceStudioKit
         if let marker = file.range(of: "mobile/ios/VoiceStudio/", options: .backwards) {
             frames = [DiagnosticFrame(path: String(file[marker.lowerBound...]), line: line)]
         }
-        reporter.capture(DiagnosticInput(category: projected.category, stage: stage, errorCode: projected.code, engineID: engineID, frames: frames), error: error)
+        reporter.capture(DiagnosticInput(category: projected.category, stage: stage, errorCode: projected.code, engineID: engineID, frames: frames), error: error,expectedEpoch:expectedEpoch)
     }
     nonisolated private static func environmentDisabled() -> Bool {
         ["OMNIVOICE_DIAGNOSTICS_DISABLED", "OMNIVOICE_ANALYTICS_DISABLED"].contains { key in

@@ -25,7 +25,8 @@ const bridge: VoiceStudioBridge = {
   diagnostics: {
     getStatus: () => ipcRenderer.invoke(DIAGNOSTIC_CHANNELS.getStatus),
     setConsent: (enabled) => ipcRenderer.invoke(DIAGNOSTIC_CHANNELS.setConsent, enabled),
-    capture: (event) => ipcRenderer.invoke(DIAGNOSTIC_CHANNELS.capture, event),
+    capture: (event, expectedEpoch) =>
+      ipcRenderer.invoke(DIAGNOSTIC_CHANNELS.capture, event, expectedEpoch),
   },
   browser: {
     open: (url) => ipcRenderer.invoke('site-browser:open', url),

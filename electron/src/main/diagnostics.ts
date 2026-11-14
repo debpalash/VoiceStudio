@@ -152,6 +152,8 @@ export class DiagnosticReports {
   private activeId: string | null = null;
   private timer?: NodeJS.Timeout;
   private retryAt = 0;
+  private sessionStartedAt: number | null = null;
+  private sessionWriteAttemptAt: number | null = null;
   private wakeRetry: (() => void) | null = null;
   private readonly destination: Destination | null;
   private readonly env: NodeJS.ProcessEnv;
@@ -196,6 +198,7 @@ export class DiagnosticReports {
       available: Boolean(this.destination) && !killed(this.env),
       enabled: this.enabled,
       opted_in: this.initialized && this.consent?.enabled === true && !this.killObserved,
+      grant_epoch: this.enabled ? this.consent!.epoch : null,
       prompted: this.consent !== null,
       pending_count: this.records.length,
       dropped_count: this.dropped,
@@ -248,9 +251,14 @@ export class DiagnosticReports {
   }
 
   /** No disk, configuration reads, networking or waiting on fatal/error paths. */
-  capture(event: DiagnosticEvent): void {
+  capture(event: DiagnosticEvent, expectedEpoch?: string): void {
     try {
-      if (!this.enabled || !this.consent) return;
+      if (
+        !this.enabled ||
+        !this.consent ||
+        (expectedEpoch !== undefined && expectedEpoch !== this.consent.epoch)
+      )
+        return;
       const props = sanitizeProperties({
         ...event,
         ...this.options.identity,
@@ -287,6 +295,8 @@ export class DiagnosticReports {
     // Revoke immediately, before any pending write, connection or backoff can progress.
     const revision = ++this.revision;
     this.abort();
+    this.sessionStartedAt = null;
+    this.sessionWriteAttemptAt = null;
     this.consent =
       this.consent && this.consent.enabled === enabled && !freshGrant
         ? this.consent
@@ -311,6 +321,9 @@ export class DiagnosticReports {
           // presence blocks startup and delivery until a fresh opt-in clears it.
           if (!enabled) await writePrivate(this.revocationPath, '{"version":1}').catch(() => {});
           await writePrivate(this.consentPath, JSON.stringify(choice));
+          // A newer OFF may already have closed memory while this ON write
+          // waited for storage. It must keep the previous durable OFF fence.
+          if (enabled && (revision !== this.revision || this.stopped)) return;
           if (enabled) await rm(this.revocationPath, { force: true });
           saved = true;
         } catch {
@@ -558,6 +571,10 @@ export class DiagnosticReports {
     const epoch = this.consent.epoch;
     const revision = this.revision;
     if (!(await this.granted(epoch, revision))) return;
+    // Refresh local liveness through the existing worker, at most once a
+    // minute including failed writes. Capture/fatal paths remain IO-free.
+    if (this.sessionWriteAttemptAt === null || this.now() - this.sessionWriteAttemptAt >= 60_000)
+      await this.writeSession().catch(() => {});
     await this.importInbox();
     if (this.dirty) await this.tryPersist();
     if (this.now() < this.retryAt) return;
@@ -659,6 +676,12 @@ export class DiagnosticReports {
         (marker.timestamp_ms as number) > this.now()
       )
         return;
+      const startedAt = marker.started_at_ms ?? marker.timestamp_ms;
+      if (
+        !Number.isSafeInteger(startedAt) ||
+        (startedAt as number) > (marker.timestamp_ms as number)
+      )
+        return;
       // The marker proves collection was enabled for THIS session. Earlier
       // manual journals are never replayed merely because somebody opts in.
       let projected: DiagnosticEvent = {
@@ -673,7 +696,7 @@ export class DiagnosticReports {
       if (
         this.records.some(
           (record) =>
-            record.timestamp_ms >= (marker.timestamp_ms as number) &&
+            record.timestamp_ms >= (startedAt as number) &&
             record.props.category === 'app_crash' &&
             record.props.source === 'electron_main' &&
             record.props.reason === 'unhandled_exception' &&
@@ -697,7 +720,7 @@ export class DiagnosticReports {
               return (
                 r.version === previousVersion &&
                 typeof r.detail === 'string' &&
-                at >= (marker.timestamp_ms as number) &&
+                at >= (startedAt as number) &&
                 at <= this.now() &&
                 r.origin === 'uncaughtException'
               );
@@ -739,6 +762,9 @@ export class DiagnosticReports {
   private async writeSession(): Promise<void> {
     if (!this.enabled || !this.consent) return;
     const revision = this.revision;
+    const now = this.now();
+    this.sessionWriteAttemptAt = now;
+    this.sessionStartedAt ??= now;
     await mkdir(this.options.directory, { recursive: true });
     await writePrivate(
       this.sessionPath,
@@ -747,7 +773,8 @@ export class DiagnosticReports {
         ...this.options.identity,
         epoch: this.consent.epoch,
         active: true,
-        timestamp_ms: this.now(),
+        timestamp_ms: now,
+        started_at_ms: this.sessionStartedAt,
       }),
     );
     if (revision !== this.revision) await rm(this.sessionPath, { force: true }).catch(() => {});

@@ -1,6 +1,67 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import assert from 'node:assert/strict';
+const diagnosticPolicy = JSON.parse(
+  readFileSync(new URL('../../config/diagnostics.json', import.meta.url), 'utf8'),
+);
+const diagnosticKeys = new Set([
+  'category',
+  'source',
+  'stage',
+  'error_type',
+  'error_code',
+  'engine_id',
+  'frames',
+  'expected_epoch',
+]);
+function validDiagnosticEvent(value) {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    Object.keys(value).some((key) => !diagnosticKeys.has(key)) ||
+    value.source !== 'renderer'
+  )
+    return false;
+  for (const [key, values] of Object.entries({
+    category: 'categories',
+    stage: 'stages',
+    error_type: 'error_types',
+    error_code: 'error_codes',
+    engine_id: 'engine_ids',
+  })) {
+    if (
+      (key === 'category' || value[key] !== undefined) &&
+      !diagnosticPolicy[values].includes(value[key])
+    )
+      return false;
+  }
+  if (
+    value.expected_epoch !== undefined &&
+    value.expected_epoch !== null &&
+    (typeof value.expected_epoch !== 'string' || !/^[a-f0-9]{32}$/.test(value.expected_epoch))
+  )
+    return false;
+  if (value.frames !== undefined) {
+    if (typeof value.frames !== 'string' || Buffer.byteLength(value.frames) > 1800) return false;
+    if (
+      value.frames &&
+      value.frames.split('\n').some((line) => {
+        const match = /^([^:]+):(\d{1,8})(?::(\d{1,8}))?$/.exec(line);
+        return (
+          !match ||
+          !diagnosticPolicy.frame_paths.includes(match[1]) ||
+          +match[2] < 1 ||
+          +match[2] > 10000000 ||
+          (match[3] !== undefined && (+match[3] < 1 || +match[3] > 10000000))
+        );
+      })
+    )
+      return false;
+  }
+  return true;
+}
 
 export const DEFAULT_FIXTURES = {
   '/health': { status: 'ok', version: 'native-smoke' },
@@ -9,9 +70,16 @@ export const DEFAULT_FIXTURES = {
   // Route/layout smokes model a returning user who separately kept diagnostics OFF.
   // Fresh-choice tests override this state rather than disabling the consent UI.
   '/api/settings/diagnostics': {
-    available: true, prompted: true, opted_in: false, enabled: false,
-    externally_managed: false, pending_count: 0, dropped_count: 0,
+    available: true,
+    prompted: true,
+    opted_in: false,
+    enabled: false,
+    externally_managed: false,
+    pending_count: 0,
+    dropped_count: 0,
+    grant_epoch: null,
   },
+  '/api/settings/diagnostics/event': { sent: false },
   // The real backend always reports every family; the UI reads `.asr` / `.tts` unguarded.
   '/engines': {
     tts: { active: '', backends: [] },
@@ -270,6 +338,13 @@ const readBody = (request) =>
  */
 export async function startHealthBackend({ fixtures = {}, port = 0 } = {}) {
   const served = { ...DEFAULT_FIXTURES, ...fixtures };
+  const diagnosticEvents = [];
+  const initial = served['/api/settings/diagnostics'];
+  if (initial && typeof initial === 'object')
+    served['/api/settings/diagnostics'] = {
+      ...initial,
+      grant_epoch: initial.enabled ? randomUUID().replaceAll('-', '') : null,
+    };
   const requests = [];
   const sockets = new Set(); // upgraded sockets are invisible to closeAllConnections()
   const server = createServer(async (request, response) => {
@@ -280,18 +355,64 @@ export async function startHealthBackend({ fixtures = {}, port = 0 } = {}) {
     requests.push(entry);
     if (known) {
       let fixture = served[path];
-      if (path === '/api/settings/diagnostics' && request.method === 'PUT' && typeof fixture !== 'function') {
+      if (
+        path === '/api/settings/diagnostics' &&
+        request.method === 'PUT' &&
+        typeof fixture !== 'function'
+      ) {
         let choice;
-        try { choice = JSON.parse(body); } catch { /* Invalid JSON is refused below. */ }
-        if (!choice || typeof choice !== 'object' || Array.isArray(choice)
-            || Object.keys(choice).length !== 1 || typeof choice.enabled !== 'boolean') {
+        try {
+          choice = JSON.parse(body);
+        } catch {
+          /* Invalid JSON is refused below. */
+        }
+        if (
+          !choice ||
+          typeof choice !== 'object' ||
+          Array.isArray(choice) ||
+          Object.keys(choice).length !== 1 ||
+          typeof choice.enabled !== 'boolean'
+        ) {
           entry.status = 422;
           fixture = { detail: 'Expected only a boolean diagnostic consent choice' };
         } else {
           // Replace only this server's state; never mutate the shared defaults or analytics.
           fixture = served[path] = {
-            ...fixture, enabled: choice.enabled, opted_in: choice.enabled, prompted: true,
+            ...fixture,
+            enabled: choice.enabled,
+            opted_in: choice.enabled,
+            prompted: true,
+            grant_epoch: choice.enabled
+              ? (fixture.enabled && fixture.grant_epoch) || randomUUID().replaceAll('-', '')
+              : null,
           };
+        }
+      }
+      if (path === '/api/settings/diagnostics/event' && request.method === 'POST') {
+        let input;
+        try {
+          input = JSON.parse(body);
+        } catch {
+          /* Refused below. */
+        }
+        if (!validDiagnosticEvent(input)) {
+          entry.status = 422;
+          fixture = { detail: 'Unsupported diagnostic metadata' };
+        } else {
+          const state = served['/api/settings/diagnostics'];
+          const sent = Boolean(
+            state.enabled &&
+            state.opted_in &&
+            state.available &&
+            input.expected_epoch &&
+            input.expected_epoch === state.grant_epoch,
+          );
+          if (sent) {
+            const metadata = { ...input };
+            delete metadata.expected_epoch;
+            diagnosticEvents.push(metadata);
+          }
+          fixture = { sent };
         }
       }
       response.writeHead(entry.status, {
@@ -333,6 +454,7 @@ export async function startHealthBackend({ fixtures = {}, port = 0 } = {}) {
   return {
     port: address.port,
     requests,
+    diagnosticEvents,
     close: () => {
       server.closeAllConnections();
       for (const socket of sockets) socket.destroy();

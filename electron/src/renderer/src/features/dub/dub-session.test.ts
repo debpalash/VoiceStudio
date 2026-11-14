@@ -7,7 +7,11 @@ import { consumeTaskStream, IncompleteTaskStreamError } from '@/lib/api/event-st
 const diagnosticCapture = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/diagnostic-reports', () => ({
   captureDiagnosticException: diagnosticCapture,
+  prepareDiagnosticException: () => null,
+  capturePreparedDiagnostic: vi.fn(),
   initializeDiagnosticReporting: vi.fn(),
+  observeDiagnosticConsent: () => null,
+  diagnosticConsentStillCurrent: () => false,
 }));
 import {
   applyDubTranslationRows,
@@ -708,11 +712,7 @@ it('a terminal backend failure releases recovery instead of trapping the draft',
     phase: 'editing',
     error: 'fixture failure',
   });
-  expect(diagnosticCapture).toHaveBeenCalledExactlyOnceWith(
-    expect.any(Error),
-    'generation_failed',
-    'dub',
-  );
+  expect(diagnosticCapture).not.toHaveBeenCalled();
 });
 
 it('does not capture a backend-cancelled dub task as a diagnostic failure', async () => {
