@@ -17,10 +17,11 @@ import sys
 import threading
 import time
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from api.dependencies import require_admin, require_consumer
 from core import prefs
 from core.failure import is_disk_full_error, is_hf_connectivity_error
 from core.path_security import UnsafePath, contained_child, safe_relative_path
@@ -593,7 +594,7 @@ def _segmented_retry_log_phrase(disable: bool, retry: bool) -> str:
     return "accelerator disabled; falling back to the plain downloader now"
 
 
-@router.post("/models/install")
+@router.post("/models/install", dependencies=[Depends(require_consumer)])
 async def install_model(req: InstallModelRequest):
     """Download one HF repo snapshot; progress goes through the shared
     ``/setup/download-stream`` SSE feed."""
@@ -1139,7 +1140,7 @@ async def cancel_install_and_wait(repo_id: str) -> None:
                 _cancelled.discard(repo_id)
 
 
-@router.post("/models/install/cancel")
+@router.post("/models/install/cancel", dependencies=[Depends(require_consumer)])
 async def cancel_install(req: InstallModelRequest):
     """Request cancellation of an in-flight install (FDL-11).
 
@@ -1162,7 +1163,7 @@ async def cancel_install(req: InstallModelRequest):
 
 # ── Delete ─────────────────────────────────────────────────────────────────
 
-@router.delete("/models/{repo_id:path}")
+@router.delete("/models/{repo_id:path}", dependencies=[Depends(require_admin)])
 def delete_model(repo_id: str):
     """Remove an installed model from the HF cache.
 

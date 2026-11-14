@@ -348,8 +348,26 @@ class _RejectRedirects(urllib.request.HTTPRedirectHandler):
 def _probe_lmstudio_loaded_model(
     base_url: str, api_key: str = "local"
 ) -> Optional[str]:
-    """Return a typed, resident LM Studio chat model without following redirects."""
+    """Return a typed, resident LM Studio chat model without following redirects.
+
+    Defence in depth for #4131: this is the one place a stored key becomes an
+    ``Authorization`` header, so the transport gate is re-checked here rather
+    than trusted to the caller — a future call site must not be able to leak it.
+    LM Studio is the only provider with a native probe, so its per-provider
+    plaintext-LAN opt-in is the one that applies; absent it, a non-loopback
+    plaintext URL fails closed. Costs no network work, and only runs when a real
+    key would actually be sent.
+    """
     if not base_url:
+        return None
+    provider = get_provider("lmstudio")
+    allow_lan = provider is not None and plain_http_lan_allowed(provider)
+    if api_key and api_key != "local" and _plaintext_url_carries_credentials(
+        base_url, allow_private_lan=allow_lan
+    ):
+        logger.debug(
+            "LM Studio probe refused: a stored key would cross plaintext to a remote host"
+        )
         return None
     try:
         parsed = urlsplit(base_url)
@@ -393,6 +411,14 @@ def discover_model(p: Provider) -> Optional[str]:
         return cached
     base_url = resolve_base_url(p)
     if not base_url:
+        return None
+    # The transport gate refuses a credential over remote plaintext (#4131);
+    # discovery must not be the way around it — the LM Studio probe attaches
+    # the stored key as a Bearer header. This is a configuration refusal, not a
+    # probe failure: like the missing-base_url return above it writes NO
+    # negative-cache entry, so fixing the URL or switching the plaintext-LAN
+    # opt-in on takes effect on the next call, not after DISCOVERY_FAILURE_TTL_S.
+    if credential_transport_error(p):
         return None
 
     if p.id == "lmstudio":
@@ -535,21 +561,20 @@ def is_private_ip_literal(host: str) -> bool:
     return ip.is_loopback or ip.is_link_local or ip.is_private
 
 
-def credential_transport_error(p: Provider) -> Optional[str]:
-    """Never send provider credentials over remote plaintext transport."""
+def _plaintext_url_carries_credentials(base_url: str, *, allow_private_lan: bool) -> bool:
+    """True when ``base_url`` is unencrypted remote HTTP and would leak a key.
+
+    Split out of ``credential_transport_error`` (#4131) so the LM Studio probe
+    can apply the same URL rule to the exact URL it is about to call instead of
+    re-resolving a provider's own base_url.
+    """
     from ipaddress import ip_address
     from urllib.parse import urlsplit
 
-    base = resolve_base_url(p)
-    if not base or p.transport == "cli":
-        return None
-    key = resolve_api_key(p)
-    if p.transport != "sdk" and (not key or key == "local"):
-        return None
     try:
-        url = urlsplit(base)
+        url = urlsplit(base_url)
         if url.scheme == "https" and url.hostname:
-            return None
+            return False
         host = (url.hostname or "").lower()
         loopback = host == "localhost"
         if not loopback:
@@ -558,11 +583,26 @@ def credential_transport_error(p: Provider) -> Optional[str]:
             except ValueError:
                 pass
         if url.scheme == "http" and loopback:
-            return None
-        if url.scheme == "http" and plain_http_lan_allowed(p) and is_private_ip_literal(host):
-            return None
+            return False
+        if url.scheme == "http" and allow_private_lan and is_private_ip_literal(host):
+            return False
     except ValueError:
         pass
+    return True
+
+
+def credential_transport_error(p: Provider) -> Optional[str]:
+    """Never send provider credentials over remote plaintext transport."""
+    base = resolve_base_url(p)
+    if not base or p.transport == "cli":
+        return None
+    key = resolve_api_key(p)
+    if p.transport != "sdk" and (not key or key == "local"):
+        return None
+    if not _plaintext_url_carries_credentials(
+        base, allow_private_lan=plain_http_lan_allowed(p)
+    ):
+        return None
     return "Use HTTPS for a credentialed provider, or HTTP on localhost."
 
 

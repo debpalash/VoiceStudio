@@ -12,6 +12,13 @@ Watermark controls appear when the backend reports AudioSeal available and affec
 
 The analytics destination is the public Supermetry site id in `config/analytics.json` (host `https://app.supermetry.com`); every build uses it, and `SUPERMETRY_SITE_ID` / `SUPERMETRY_HOST` override it for developers. Nothing is baked in at build time.
 
+Optional VoiceStudio Cloud sign-in validates the discovery issuer and binds its
+token and revocation endpoints to that issuer's origin and HTTP(S) protocol.
+Missing endpoints, different hosts or ports, and embedded-origin schemes such as
+`blob:` are refused before credentials are sent. HTTPS is required outside the
+explicit local development configuration; redirects remain disabled. Account
+features stay off until enabled, independently of analytics consent.
+
 Translation privacy classification is shared with Tauri. Unknown or unavailable backend data does not claim offline operation. The existing `libretranslate` identifier is an alias for the backend's local Argos branch, not an assumption about an external LibreTranslate service. The Translation link opens engine settings.
 
 Retention supports 0 (unlimited), validates whole-number limits up to 100000 and explains that cleanup removes old unstarred takes and their audio after generation. A more restrictive cap requires inline confirmation. Raising the cap or disabling cleanup saves directly. No records or files are deleted by simply opening settings or editing the input.
