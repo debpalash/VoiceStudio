@@ -1822,6 +1822,7 @@ export async function generateDub(
 export async function planDubIncremental(
   languageCode: string,
   signal?: AbortSignal,
+  language: string = languageCode,
 ): Promise<{ stale: string[]; fresh: string[] } | null> {
   const snapshot = dubSession.state;
   const stored = snapshot.fingerprintsByLang?.[languageCode];
@@ -1837,6 +1838,7 @@ export async function planDubIncremental(
       })),
       stored_hashes: stored,
       lang: languageCode,
+      language,
       voice_match: snapshot.voiceMatch || 'per_line',
     }),
   });

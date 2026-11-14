@@ -22,16 +22,18 @@ ReDoS safety: the matcher is a single anchored-alternation regex built from
 (``\\b(?:k1|k2|…)\\b``). No nested/overlapping quantifiers, no user-controlled
 quantifier — the keys are literals, so there is no catastrophic backtracking
 (CodeQL py/polynomial-redos clean). Matching is done in one ``re.sub`` pass with
-a callback, so a respelling that happens to contain another key is never
-re-scanned (idempotent against its own output).
+a callback, so a respelling containing another key is not re-scanned within
+that pass. Do not apply the prepared output again: a second pass can rewrite
+the first pass's respellings.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from core.language_variants import VARIANT_CODES as _VARIANT_CODES
 from services.dub_qc import _NO_SPACE_SCRIPT
@@ -536,7 +538,8 @@ def apply_pronunciation(
          language/global ones, #3873) + an optional
          per-project ``lexicon`` JSON overlay (project wins on term conflict,
          matching the audiobook layering). Both go through one ``apply_lexicon``
-         pass (longest-term-first, word-boundary aware, idempotent).
+         pass (longest-term-first and word-boundary aware, without rescanning
+         replacements within that pass).
       2. Inline ``[[…]]`` one-off overrides resolved last, so an inline override
          always wins over any dictionary entry for that occurrence — the
          dictionary never rewrites inside the brackets (#3561).
@@ -591,3 +594,48 @@ def load_dict_for_request(
         return entries_for_language(load_entries_from_db(), language, profile_id)
     except Exception:  # noqa: BLE001 — table missing / DB locked → no-op
         return {}
+
+
+def dictionary_enabled() -> bool:
+    """The shared dictionary switch; explicit inline choices always apply."""
+    value = os.environ.get("OMNIVOICE_PRONUNCIATION")
+    return value is None or value.strip().lower() not in ("0", "false", "no", "off", "")
+
+
+def prepare_speech_text(
+    text: str,
+    language: Optional[str] = None,
+    *,
+    profile_id: Optional[str] = None,
+    dictionary: Optional[bool] = None,
+) -> str:
+    """Resolve spoken text once, before chunking or building synthesis keys.
+
+    Normalization precedes saved respellings, so a respelling is never expanded
+    again. Voice/language scope and inline precedence use the same dictionary
+    machinery as the editor. Audiobooks retain their project-lexicon path.
+    """
+    return speech_text_preparer(dictionary=dictionary)(text, language, profile_id=profile_id)
+
+
+def speech_text_preparer(*, dictionary: Optional[bool] = None) -> Callable[..., str]:
+    """Snapshot saved entries for one render, including batch/retry attempts.
+
+    Prepared cache inputs and actual inference must use the same respellings
+    even when another request edits the dictionary while a render is running.
+    Each new render reads fresh entries; no process-wide cache can go stale.
+    """
+    enabled = dictionary_enabled() if dictionary is None else dictionary
+    try:
+        rows = load_entries_from_db() if enabled else []
+    except Exception:  # noqa: BLE001 — same missing/locked-DB fallback as Generate
+        rows = []
+
+    def prepare(text: str, language: Optional[str] = None, *, profile_id: Optional[str] = None) -> str:
+        from services.text_normalization import normalize_for_tts
+
+        return apply_pronunciation(
+            normalize_for_tts(text, language), rows, language, profile_id=profile_id,
+        )
+
+    return prepare
