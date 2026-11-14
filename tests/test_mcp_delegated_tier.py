@@ -1,23 +1,11 @@
 """The delegated-caller tier for MCP tool calls (#4128).
 
-The MCP server is mounted on the backend's own app and re-enters it over
-``httpx.ASGITransport(app=app, client=("127.0.0.1", 0))``, so every tool call
-looks like a trusted local process. A share-PIN LAN guest satisfies
-``NetworkAccessMiddleware`` for ``/mcp`` (the PIN is accepted for any
-non-public path), so a 6-digit consumption credential used to reach
-admin-tier tools: ``clone_voice`` creates persistent profiles and
-``generate_speech`` runs unbounded GPU work.
-
-Two halves hold the tier together:
-
-* the MCP server marks a re-entrant request that is NOT on behalf of an admin
-  credential (``X-OmniVoice-Delegated: 1``), and
-* the admin gate treats that marker as "not loopback" and asks for a real
-  credential.
-
-The marker can only ever *reduce* privilege, so forging it by hand gains
-nothing. Tests run without importing ``main`` (no torch, no MCP session
-manager) and exercise the real gate logic.
+The mounted server preserves the HTTP peer and credentials for consumer
+routes, while HTTP re-entry without proven admin credentials carries an
+admin-reducing marker. Confirmed stdio stays local. Clone/design creation is intentionally consumer-accessible;
+editing/deleting/importing content remains administrator-only. These tests pin
+the marker's admin behavior independently from actual SDK/router controls in
+``test_mcp_transport_identity.py``.
 """
 import asyncio
 from types import SimpleNamespace
@@ -306,7 +294,7 @@ def test_an_unavailable_request_context_is_never_the_local_case():
     assert _delegated_request_headers(caller) == _admin_marker()
 
 
-# ── MCP side: the re-entrant request carries the marker only when needed ───
+# ── MCP side: HTTP re-entry carries the marker and original credential ───
 
 
 def _headers_seen_by_the_backend(monkeypatch, *, privileged):
@@ -344,6 +332,7 @@ def test_reentrant_request_carries_the_marker_for_an_unprivileged_caller(monkeyp
 def test_reentrant_request_for_a_privileged_caller_keeps_its_standalone_ability(
     monkeypatch,
 ):
-    """A privileged caller needs no marker, so the backend sees plain loopback."""
+    """The backend verifies the forwarded key instead of borrowed loopback."""
     seen = _headers_seen_by_the_backend(monkeypatch, privileged=True)
     assert _dependencies().DELEGATED_CALLER_HEADER.lower() not in seen
+    assert seen["authorization"] == "Bearer s3cret"

@@ -23,6 +23,10 @@ from services.admin_sessions import (
 _AUTH_STATE_KEY = "auth_principal"
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
 
+# Remote MCP callers must not borrow a separate HTTP backend's socket peer.
+# This marker only removes implicit network consumption, never grants trust.
+DELEGATED_CONSUMER_HEADER = "x-omnivoice-delegated-consumer"
+
 CONSUME_CAPABILITIES = frozenset({"consume"})
 ADMIN_CAPABILITIES = frozenset({"consume", "admin"})
 LOOPBACK_CAPABILITIES = frozenset({"consume", "admin", "native"})
@@ -461,6 +465,12 @@ def _candidate_principal(
     return principal
 
 
+def is_delegated_consumer(connection) -> bool:
+    """Whether network trust belongs to an MCP bridge, not its caller."""
+    headers = getattr(connection, "headers", None) or {}
+    return _mapping_get(headers, DELEGATED_CONSUMER_HEADER).strip().lower() in _TRUTHY
+
+
 def resolve_principal(
     connection,
     *,
@@ -474,7 +484,8 @@ def resolve_principal(
         store = _active_admin_session_store()
 
     host = _client_host(connection)
-    if is_loopback(host):
+    delegated_consumer = is_delegated_consumer(connection)
+    if is_loopback(host) and not delegated_consumer:
         return _attach_principal(
             connection,
             AuthPrincipal(PrincipalKind.LOOPBACK, LOOPBACK_CAPABILITIES),
@@ -498,13 +509,14 @@ def resolve_principal(
             ),
         )
 
-    if is_local_host(host):
+    if is_local_host(host) and not delegated_consumer:
         return _attach_principal(
             connection,
             AuthPrincipal(PrincipalKind.TRUSTED_NETWORK, CONSUME_CAPABILITIES),
         )
     if _valid_pin(connection) or (
-        _configured_pin(connection) and is_trusted_host_loopback(connection)
+        not delegated_consumer
+        and _configured_pin(connection) and is_trusted_host_loopback(connection)
     ):
         # The host opt-in stands in for the PIN only: it grants the PIN's
         # consumption rights, never the API-key or admin tier.

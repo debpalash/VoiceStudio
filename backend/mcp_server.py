@@ -185,8 +185,18 @@ def _raise_for_backend_status(response) -> None:
         except httpx.HTTPStatusError as error:
             # Legacy query authentication remains a URL channel. Never let a
             # proxy/redirect error copy that credential into an agent result.
+            # Build the status text without request queries or Location, so
+            # even short or encoded keys never depend on scrubber heuristics.
+            from http import HTTPStatus
+            try:
+                phrase = HTTPStatus(response.status_code).phrase
+            except ValueError:
+                phrase = ""
             raise httpx.HTTPStatusError(
-                _public_error_text(str(error)), request=error.request, response=error.response,
+                _public_error_text(
+                    f"VoiceStudio returned HTTP {response.status_code} {phrase} for "
+                    f"{response.request.method} {response.request.url.path}"
+                ), request=error.request, response=error.response,
             ) from None
 
     raise httpx.HTTPStatusError(
@@ -646,9 +656,9 @@ def mcp_caller_is_privileged(request) -> bool:
     inheriting the loopback tier.
 
     Never invent a credential channel here. A caller this function wrongly
-    calls privileged is not marked, and the backend then treats the bridge's
-    forged loopback peer as the local operator — i.e. a wrong "yes" is a
-    privilege escalation, while a wrong "no" only refuses.
+    calls privileged is not marked, so an HTTP loopback caller could gain
+    local administrator access. A wrong "yes" escalates privilege; a wrong
+    "no" only refuses.
     """
     if request is None:
         return True
@@ -677,10 +687,10 @@ def _delegated_request_headers(request) -> dict[str, str]:
     """Extra headers for the in-process backend request behind one tool call.
 
     Only a caller that could NOT prove an admin credential is marked: the
-    backend then stops treating the forged loopback peer as the local operator
+    backend then stops treating an HTTP loopback caller as the local operator
     and asks for a credential like any other remote client. A caller that did
-    prove one keeps today's behaviour (a plain loopback re-entry), because its
-    own credential is what the backend would have checked anyway. The stdio
+    prove one retains its actual peer and forwarded credential; the backend's
+    desktop/server-mode rules still apply. The stdio
     transport has no HTTP request at all and is a local client, so it is never
     marked.
     """
@@ -719,7 +729,10 @@ def _http_backend_headers(request, base_url: str) -> dict[str, str]:
     from http.cookies import SimpleCookie
     import ipaddress
     from urllib.parse import urlsplit
-    from core.auth import authorization_credential_present, authorization_header
+    from core.auth import (
+        DELEGATED_CONSUMER_HEADER, authorization_credential_present,
+        authorization_header, is_loopback,
+    )
 
     if request is None:
         from services.network_share import backend_auth_headers
@@ -728,6 +741,9 @@ def _http_backend_headers(request, base_url: str) -> dict[str, str]:
     # is reached through loopback. Its own credential check is authoritative;
     # proving this MCP host's key must never borrow that backend's local tier.
     result = {_DELEGATED_CALLER_HEADER: "1"}
+    if (request is _UNAVAILABLE_CALLER or request.client is None
+            or not is_loopback(request.client.host)):
+        result[DELEGATED_CONSUMER_HEADER] = "1"
     if request is _UNAVAILABLE_CALLER:
         return result
     query = request.query_params
@@ -822,15 +838,39 @@ def create_mcp_server(app=None):
         request = _current_http_request(mcp)
         # OMNIVOICE_API_URL is an explicit "send tool calls there" override.
         if app is not None and not os.environ.get("OMNIVOICE_API_URL", "").strip():
-            # This forged loopback peer is on the caller's behalf, not the
-            # local operator's. The delegated marker keeps the backend's admin
-            # gate honest about that. Only a credential validated against this
-            # backend (or a confirmed stdio context) can retain local privilege.
+            # HTTP re-entry must preserve the real peer and credentials for
+            # consumer gates too; an admin-only marker cannot stop a forged
+            # loopback peer from bypassing require_consumer. Only confirmed
+            # stdio is a local process. Missing SDK context has no trusted peer.
+            peer = None
+            base = "http://127.0.0.1"
+            if request is None:
+                peer = ("127.0.0.1", 0)
+            elif request is not _UNAVAILABLE_CALLER and request.client is not None:
+                peer = (request.client.host, request.client.port)
+            if request is not None and request is not _UNAVAILABLE_CALLER:
+                # Origin/CSRF checks must see the original destination too,
+                # including a nondefault port. No network uses this URL.
+                from core.csrf import effective_scheme
+                base = str(request.url.replace(
+                    scheme=effective_scheme(request), path="/", query="", fragment="",
+                ))
+            from core.auth import DELEGATED_CONSUMER_HEADER
+
+            headers = (
+                _http_backend_headers(request, "http://127.0.0.1")
+                if request is not None else {}
+            )
+            # Here the socket peer already represents the original caller.
+            headers.pop(DELEGATED_CONSUMER_HEADER, None)
+            headers.pop(_DELEGATED_CALLER_HEADER, None)
+            headers.update(_delegated_request_headers(request))
             return httpx.AsyncClient(
-                transport=httpx.ASGITransport(app=app, client=("127.0.0.1", 0)),
-                base_url="http://127.0.0.1",
+                transport=httpx.ASGITransport(app=app, client=peer),
+                base_url=base,
                 timeout=timeout,
-                headers=_delegated_request_headers(request),
+                headers=headers,
+                params=_http_backend_params(request),
             )
         base = _api_base()
         return httpx.AsyncClient(

@@ -36,9 +36,9 @@ from core.csrf import SAFE_HTTP_METHODS, cookie_csrf_allowed
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
 #: Header the MCP server stamps on the in-process requests it makes on behalf
-#: of a remote MCP caller (``mcp_server.py``). Such a request arrives over
-#: ``httpx.ASGITransport`` with a forged loopback peer, so it would otherwise be
-#: indistinguishable from a local process. The marker only ever *reduces*
+#: of an HTTP MCP caller (``mcp_server.py``) without proven admin credentials.
+#: The caller or a separate HTTP backend may itself use loopback; that address
+#: alone must not make the delegated request an administrator. It only *reduces*
 #: privilege — it makes this gate skip its loopback short-circuit — so a client
 #: that sends it by hand gains nothing (#4128).
 DELEGATED_CALLER_HEADER = "x-omnivoice-delegated"
@@ -309,12 +309,10 @@ def check_admin(request: Request) -> None:
     key is configured. Share PINs and trusted CIDRs are consumption credentials;
     neither authorizes this gate.
 
-    The MCP server re-enters the backend over an in-process ASGI transport with
-    a forged loopback peer, so it marks the requests it makes for a remote
-    non-privileged MCP caller (:data:`DELEGATED_CALLER_HEADER`). That marker
-    stands in for what the peer address would have said — "this is not the
-    local operator" — and the caller then has to present a real admin
-    credential like any other remote client (#4128).
+    MCP re-entry preserves the original HTTP peer in-process, but HTTP callers
+    or a separate HTTP backend can themselves use loopback. Requests without
+    proven administrator credentials carry :data:`DELEGATED_CALLER_HEADER`
+    so that address cannot confer implicit administrator rights (#4128).
     """
     host = request.client.host if request.client else None
     delegated = _is_delegated_caller(request)

@@ -78,8 +78,10 @@ http://localhost:3900/mcp/
 ```
 
 This local HTTP connection supports consumption tools without an administrator
-key. Creating or changing saved profiles requires an API key or administrator
-session, including when you connect through the stdio shim below.
+key, including clone and design profile creation. Editing, deleting or importing
+saved content requires administrator access. An HTTP connection, including one
+through the stdio shim below, does not inherit the bridge's local operator rights;
+see [API authorization](api-auth.md#admin-routes-and-server-mode).
 
 Keep the trailing slash: `/mcp/` works on every VoiceStudio version. Current
 backends also answer bare `/mcp` directly (every Streamable HTTP method —
@@ -149,12 +151,15 @@ Overlapping enable/disable requests are serialized so a listener or temporary
 MCP allowlist cannot be left behind by competing lifecycle changes.
 The same PIN protects both ordinary API requests and MCP sessions.
 
-The PIN grants consumption access, not administration. Tools that create or
-change saved profiles require the operator's API key or administrator session;
-send `Authorization: Bearer <credential>` over HTTPS or an encrypted tunnel.
-The bridge checks that credential without treating its own loopback connection
-as the remote caller's authority. A missing or broken transport context never
-counts as a local stdio session.
+The PIN grants consumption access, including clone and design profile creation,
+as ordinary API clients can do. Editing, deleting or importing saved content
+remains administrator-only. For administrator access, send
+`Authorization: Bearer <credential>` over HTTPS or an encrypted tunnel, subject
+to the backend's desktop/server-mode policy. The bridge preserves the HTTP
+caller's actual peer and credentials for consumer checks, and HTTP loopback
+re-entry still requires administrator proof for admin operations. Forwarded
+address headers cannot substitute for the real peer. A missing or broken
+transport context never counts as a local stdio session.
 
 **Docker, a hostname, or a manually bound server:** the MCP SDK rejects
 non-localhost Host headers by default (DNS-rebinding guard). Set
@@ -231,9 +236,13 @@ any agent that speaks as you.
 ## How tools reach the backend
 
 The mounted `/mcp` tools call VoiceStudio's API in-process, independently of
-its bind host and port. An HTTP caller keeps its own credential tier; the
-bridge does not grant the caller local administrator rights. A confirmed stdio
-session remains a local operator.
+its bind host and port. An HTTP caller keeps its actual peer, destination origin
+and recognized credentials, so consumer authentication, trusted-network rules
+and cookie CSRF checks apply to the delegated call too. The bridge does not grant
+HTTP callers local administrator rights. A confirmed stdio session remains a
+local operator. An unconfigured server retains its documented anonymous
+consumption policy; an unconfigured desktop does not grant remote consumers
+implicit loopback access.
 
 A standalone `python -m backend.mcp_server` calls the backend over HTTP at
 `OMNIVOICE_BIND_HOST` and `OMNIVOICE_PORT`. Set `OMNIVOICE_API_URL` only to send
@@ -242,7 +251,14 @@ their own recognized API-key, administrator-session and PIN credentials, never
 the MCP process's configured operator key. Only a confirmed local stdio session
 may use that configured key. Credentials are forwarded only to HTTPS or
 loopback HTTP destinations; redirects are not followed. Unrelated cookies and
-headers are not forwarded.
+headers are not forwarded. A remote or unresolved MCP caller also carries a
+reducing-only consumer marker: a separate backend must validate that caller's
+credentials rather than lend it the bridge's loopback, trusted-network or Docker
+host-loopback identity. If the backend configures both an API key and a share
+PIN, delegated requests need both; the API key does not replace the separate
+PIN gate. Direct trusted clients and in-process callers whose real
+peer is trusted keep their normal access. An explicitly unconfigured server keeps
+its normal consumption policy.
 
 Native MCP clients should send `Authorization: Bearer <credential>` for an API
 key or administrator session. Legacy `?api_key=` remains a master-key-only query
