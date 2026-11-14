@@ -426,6 +426,26 @@ breaks them).
 > do not expose it directly to the public internet. See [API
 > authentication](../api-auth.md) for the complete access model.
 
+
+## Tailscale from Docker
+
+<a id="tailscale"></a>
+
+Settings, Sharing, Tailscale looks for the `tailscale` CLI on the backend process `PATH` and talks to the local daemon. The image does not ship that CLI. A container therefore reports Tailscale as not installed even when the host is already on a tailnet and port 3900 is published on the host's Tailscale address.
+
+Mount the host CLI and the daemon socket. Detection then uses the same CLI the desktop build uses, and **Enable Tailscale serve** can add a tailnet handler without installing Tailscale inside the image:
+
+```yaml
+volumes:
+  - /usr/bin/tailscale:/usr/bin/tailscale:ro
+  - /var/run/tailscale:/var/run/tailscale
+```
+
+`tailscale serve` proxies to `127.0.0.1:3900` on the machine that owns the daemon. Keep the host port mapping on `127.0.0.1:3900` so that handler reaches the container. Do not use `tailscale funnel`.
+
+If `/usr/bin/tailscale` is a symlink, mount the real binary at that path. A binary built for another libc will not run in this image. In that case install a matching `tailscale` package in a derived image and still mount the socket.
+
+
 ### Share PIN for the host's own browser (opt-in)
 
 <a id="trust-host-loopback"></a>

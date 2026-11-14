@@ -37,6 +37,10 @@ services:
       - "127.0.0.1:3900:3900"
     volumes:
       - omnivoice-data:/app/omnivoice_data
+      # Host Tailscale CLI and daemon socket. Uncomment so Sharing can detect
+      # the host install. See docs/install/docker.md#tailscale.
+      # - /usr/bin/tailscale:/usr/bin/tailscale:ro
+      # - /var/run/tailscale:/var/run/tailscale
     environment:
       - HF_HOME=/app/omnivoice_data/huggingface
       - HF_TOKEN=${HF_TOKEN:-}
@@ -77,6 +81,10 @@ services:
       - "127.0.0.1:3900:3900"
     volumes:
       - omnivoice-data:/app/omnivoice_data
+      # Host Tailscale CLI and daemon socket. Uncomment so Sharing can detect
+      # the host install. See docs/install/docker.md#tailscale.
+      # - /usr/bin/tailscale:/usr/bin/tailscale:ro
+      # - /var/run/tailscale:/var/run/tailscale
     environment:
       - HF_HOME=/app/omnivoice_data/huggingface
       - HF_TOKEN=${HF_TOKEN:-}
@@ -130,6 +138,10 @@ services:
       - /dev/dri
     volumes:
       - omnivoice-data:/app/omnivoice_data
+      # Host Tailscale CLI and daemon socket. Uncomment so Sharing can detect
+      # the host install. See docs/install/docker.md#tailscale.
+      # - /usr/bin/tailscale:/usr/bin/tailscale:ro
+      # - /var/run/tailscale:/var/run/tailscale
     environment:
       - HF_HOME=/app/omnivoice_data/huggingface
       - HF_TOKEN=${HF_TOKEN:-}

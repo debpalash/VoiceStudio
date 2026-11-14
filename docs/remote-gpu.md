@@ -43,6 +43,8 @@ uv run uvicorn backend.main:app --host 0.0.0.0 --port 3900
 
 The Docker image is the same idea — pass `-e OMNIVOICE_API_KEY=…`.
 
+The image does not include the Tailscale CLI. Mount the host CLI and `/var/run/tailscale` so Sharing can see the host install. See [Tailscale from Docker](install/docker.md#tailscale).
+
 If a **browser** will load the UI from a different origin than the backend
 (e.g. a Vite dev server on `:3901` opened via the box's LAN IP), you also need
 the backend's CORS allow-list to include that origin — see
