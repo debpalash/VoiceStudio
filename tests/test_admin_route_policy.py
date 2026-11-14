@@ -292,3 +292,23 @@ def test_calls_pairing_exception_does_not_expose_settings():
     assert "require_call_control" in _dependency_names(_router_assignment(tree))
     for function in ("get_settings", "put_settings"):
         assert "require_admin" in _dependency_names(_route_decorators(tree, function))
+
+
+def test_sonitranslate_install_routes_stay_desktop_only():
+    """SoniTranslate's install/start/stop are managed-sidecar operations: the
+    installer clones mutable upstream source and pip-installs it, and start()
+    spawns that checkout with HF_TOKEN in the child env.  They carry the same
+    admin + desktop gate as /engines/sidecar/{engine_id}/install; the dub route
+    stays a plain native-access consumer route."""
+    tree = _tree("sonitranslate.py")
+    for function_name in (
+        "sonitranslate_install",
+        "sonitranslate_start",
+        "sonitranslate_stop",
+    ):
+        dependencies = _dependency_names(_route_decorators(tree, function_name))
+        assert {"require_admin", "require_desktop"} <= dependencies, function_name
+        assert "require_loopback" not in dependencies, function_name
+    assert "require_native_access" in _dependency_names(
+        _route_decorators(tree, "sonitranslate_dub")
+    )
