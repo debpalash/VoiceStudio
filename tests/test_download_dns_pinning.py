@@ -20,6 +20,25 @@ ORIGIN_IP = '1.1.1.1'
 TARGET_IP = '93.184.216.34'
 
 
+def _tls_server_context():
+    # main injects truststore for outbound clients. Its retained stdlib class
+    # must serve the fixture's inbound TLS; never disable client verification.
+    from truststore._ssl_constants import _original_SSLContext
+    return _original_SSLContext(ssl.PROTOCOL_TLS_SERVER)
+
+
+def test_tls_fixture_retains_stdlib_server_context_after_client_truststore_injection(monkeypatch):
+    import truststore
+    monkeypatch.setattr(ssl, 'SSLContext', truststore.SSLContext)
+    context = _tls_server_context()
+    # Real server-side wrapping without a bind/handshake: the client-only
+    # truststore wrapper wrongly asks this unconnected socket for peer certs.
+    with socket.socket() as listener:
+        with context.wrap_socket(listener, server_side=True, do_handshake_on_connect=False) as wrapped:
+            assert wrapped.server_side is True
+    assert ssl.SSLContext is truststore.SSLContext  # Client TLS policy stays active.
+
+
 @pytest.mark.parametrize('phase', ['redirect_head', 'body', 'range', 'get_redirect_body', 'get_redirect_range'])
 def test_dns_rebinding_never_dials_or_publishes_a_private_response(monkeypatch, tmp_path, phase):
     from core.url_safety import UnsafeURLError
@@ -118,27 +137,53 @@ def test_dns_rebinding_never_dials_or_publishes_a_private_response(monkeypatch, 
     ('xn--mnich-kva.example', 'direct'), ('other.test', 'direct'),
     ('xn--mnich-kva.example', 'body_redirect'), ('xn--mnich-kva.example', 'range_redirect'),
 ])
-def test_pinned_public_https_retains_sni_and_verifies_the_original_hostname(monkeypatch, tmp_path, certificate_host, phase):
+@pytest.mark.parametrize('client_context', ['ambient', 'truststore'])
+def test_pinned_public_https_retains_sni_and_verifies_the_original_hostname(monkeypatch, tmp_path, certificate_host, phase, client_context):
     import hashlib
+    if client_context == 'truststore':
+        import truststore
+        monkeypatch.setattr(ssl, 'SSLContext', truststore.SSLContext)
     from cryptography import x509
     from cryptography.hazmat.primitives import hashes, serialization
     from cryptography.hazmat.primitives.asymmetric import ec
-    from cryptography.x509.oid import NameOID
+    from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
     from services.segmented_download import segmented_download
 
+    ca_key = ec.generate_private_key(ec.SECP256R1())
+    ca_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, 'Download fixture CA')])
+    now = datetime.now(timezone.utc)
+    ca_certificate = (
+        x509.CertificateBuilder().subject_name(ca_name).issuer_name(ca_name)
+        .public_key(ca_key.public_key()).serial_number(x509.random_serial_number())
+        .not_valid_before(now - timedelta(days=1)).not_valid_after(now + timedelta(days=1))
+        .add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
+        .add_extension(x509.KeyUsage(digital_signature=False, content_commitment=False,
+                                    key_encipherment=False, data_encipherment=False,
+                                    key_agreement=False, key_cert_sign=True, crl_sign=True,
+                                    encipher_only=False, decipher_only=False), critical=True)
+        .add_extension(x509.SubjectKeyIdentifier.from_public_key(ca_key.public_key()), critical=False)
+        .sign(ca_key, hashes.SHA256())
+    )
     key = ec.generate_private_key(ec.SECP256R1())
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, certificate_host)])
-    now = datetime.now(timezone.utc)
     certificate = (
-        x509.CertificateBuilder().subject_name(name).issuer_name(name)
+        x509.CertificateBuilder().subject_name(name).issuer_name(ca_name)
         .public_key(key.public_key()).serial_number(x509.random_serial_number())
         .not_valid_before(now - timedelta(days=1)).not_valid_after(now + timedelta(days=1))
         .add_extension(x509.SubjectAlternativeName([x509.DNSName(certificate_host)]), critical=False)
-        .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
-        .sign(key, hashes.SHA256())
+        .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+        .add_extension(x509.KeyUsage(digital_signature=True, content_commitment=False,
+                                    key_encipherment=False, data_encipherment=False,
+                                    key_agreement=False, key_cert_sign=False, crl_sign=False,
+                                    encipher_only=False, decipher_only=False), critical=True)
+        .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
+        .add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(ca_key.public_key()), critical=False)
+        .sign(ca_key, hashes.SHA256())
     )
-    cert_path, key_path = tmp_path / 'cert.pem', tmp_path / 'key.pem'
-    cert_path.write_bytes(certificate.public_bytes(serialization.Encoding.PEM))
+    cert_path, key_path, ca_path = tmp_path / 'cert.pem', tmp_path / 'key.pem', tmp_path / 'ca.pem'
+    ca_pem = ca_certificate.public_bytes(serialization.Encoding.PEM)
+    ca_path.write_bytes(ca_pem)
+    cert_path.write_bytes(certificate.public_bytes(serialization.Encoding.PEM) + ca_pem)
     key_path.write_bytes(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
     seen_hosts, seen_sni, dials = [], [], []
     class Handler(BaseHTTPRequestHandler):
@@ -172,7 +217,7 @@ def test_pinned_public_https_retains_sni_and_verifies_the_original_hostname(monk
             self.server_name = '127.0.0.1'
             self.server_port = self.server_address[1]
     server = Server(('127.0.0.1', 0), Handler)
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context = _tls_server_context()
     context.load_cert_chain(cert_path, key_path)
     context.set_servername_callback(lambda _socket, hostname, _context: seen_sni.append(hostname))
     server.socket = context.wrap_socket(server.socket, server_side=True)
@@ -194,7 +239,7 @@ def test_pinned_public_https_retains_sni_and_verifies_the_original_hostname(monk
     monkeypatch.setattr(socket, 'getaddrinfo', resolve)
     monkeypatch.setattr(socket.socket, 'connect', connect)
     monkeypatch.setenv('NO_PROXY', '*')
-    monkeypatch.setenv('SSL_CERT_FILE', str(cert_path))
+    monkeypatch.setenv('SSL_CERT_FILE', str(ca_path))
     monkeypatch.delenv('OMNIVOICE_ALLOW_PRIVATE_URL_IMPORTS', raising=False)
     destination = tmp_path / 'model.bin'
     try:
