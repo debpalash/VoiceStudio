@@ -35,6 +35,42 @@ from core.csrf import SAFE_HTTP_METHODS, cookie_csrf_allowed
 
 _TRUTHY = frozenset({"1", "true", "yes", "on"})
 
+#: Header the MCP server stamps on the in-process requests it makes on behalf
+#: of a remote MCP caller (``mcp_server.py``). Such a request arrives over
+#: ``httpx.ASGITransport`` with a forged loopback peer, so it would otherwise be
+#: indistinguishable from a local process. The marker only ever *reduces*
+#: privilege — it makes this gate skip its loopback short-circuit — so a client
+#: that sends it by hand gains nothing (#4118).
+DELEGATED_CALLER_HEADER = "x-omnivoice-delegated"
+
+
+def _is_delegated_caller(request) -> bool:
+    """Whether the MCP server marked this request as a remote caller's errand.
+
+    Read through ``headers`` so the gate keeps working with the minimal request
+    stubs the tests use; a missing or blank header is the privileged default.
+    """
+    headers = getattr(request, "headers", None) or {}
+    getter = getattr(headers, "get", None)
+    if not callable(getter):
+        return False
+    value = getter(DELEGATED_CALLER_HEADER, "")
+    return str(value or "").strip().lower() in _TRUTHY
+
+
+def _delegated_presents_admin_credential(request) -> bool:
+    """Credential check for a delegated request, ignoring its peer address.
+
+    :func:`_request_presents_admin_credential` reads the canonical principal,
+    which resolves a loopback peer to ``LOOPBACK`` before any credential is
+    looked at — so it can never approve the MCP bridge's forged 127.0.0.1 peer.
+    For a delegated request the credential itself has to be the test, which is
+    exactly what :func:`core.auth.presents_valid_credential` answers.
+    """
+    from core.auth import presents_valid_credential
+
+    return presents_valid_credential(request)
+
 
 def _server_mode() -> bool:
     """Whether this process is a headless server deployment (Docker image).
@@ -266,16 +302,28 @@ def check_admin(request: Request) -> None:
     Read-only requests retain the bare-Docker bootstrap behaviour until an API
     key is configured. Share PINs and trusted CIDRs are consumption credentials;
     neither authorizes this gate.
+
+    The MCP server re-enters the backend over an in-process ASGI transport with
+    a forged loopback peer, so it marks the requests it makes for a remote
+    non-privileged MCP caller (:data:`DELEGATED_CALLER_HEADER`). That marker
+    stands in for what the peer address would have said — "this is not the
+    local operator" — and the caller then has to present a real admin
+    credential like any other remote client (#4118).
     """
     host = request.client.host if request.client else None
-    if is_loopback(host):
+    delegated = _is_delegated_caller(request)
+    if is_loopback(host) and not delegated:
         return
     if _server_mode():
         method = str(getattr(request, "method", "GET")).upper()
         read_only = method in SAFE_HTTP_METHODS
         if read_only and not _admin_credential_configured(request):
             return
-        if _request_presents_admin_credential(request):
+        if (
+            _delegated_presents_admin_credential(request)
+            if delegated
+            else _request_presents_admin_credential(request)
+        ):
             return
     _admin_gate_403()
 

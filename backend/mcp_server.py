@@ -598,6 +598,84 @@ def _ensure_mcp():
         raise ImportError(msg) from e
 
 
+_DELEGATED_CALLER_HEADER = "X-OmniVoice-Delegated"
+
+
+def _current_http_request(server):
+    """The live MCP HTTP request for ``server``, or None on the stdio transport.
+
+    ``server`` is the FastMCP instance the caller was built from, passed in
+    rather than read from a module global: this accessor runs outside
+    ``create_mcp_server``, where the instance only exists as a local name, so a
+    global lookup would raise, get swallowed below, and silently report "no HTTP
+    request" for every HTTP caller. That would drop the delegated marker and
+    hand the caller the loopback tier, which is the bug this whole check exists
+    to prevent, so the binding is pinned by a test.
+
+    FastMCP exposes the transport's request through its request context; stdio
+    clients (and any SDK version where the accessor differs) resolve to None,
+    which is the local, privileged case.
+    """
+    try:
+        return server.get_context().request_context.request
+    except Exception:
+        logger.debug("MCP request context unavailable", exc_info=True)
+        return None
+
+
+def mcp_caller_is_privileged(request) -> bool:
+    """Whether the caller behind ``request`` proved an admin credential.
+
+    ``request is None`` means there is no HTTP request at all — the stdio
+    transport, i.e. a local MCP client — and keeps its existing privileged
+    position. Anything else must prove the master API key or an admin session
+    through a channel the backend itself honours (``Authorization: Bearer``,
+    ``?api_key=``, the ``ov_session`` cookie, or the legacy ``ov_key`` cookie),
+    which is what :func:`core.auth.presents_valid_credential` decides. The share
+    PIN does not count: it is a 6-digit consumption credential (#4118), so a
+    PIN-holding LAN guest lands in the delegated tier below instead of
+    inheriting the loopback tier.
+
+    Never invent a credential channel here. A caller this function wrongly
+    calls privileged is not marked, and the backend then treats the bridge's
+    forged loopback peer as the local operator — i.e. a wrong "yes" is a
+    privilege escalation, while a wrong "no" only refuses.
+    """
+    if request is None:
+        return True
+    try:
+        from core.auth import presents_valid_credential
+
+        return presents_valid_credential(request)
+    except Exception:
+        # Never let the privilege probe raise inside a tool call — and never
+        # fail open: an unresolved caller is delegated, not privileged.
+        logger.debug("MCP caller privilege probe failed", exc_info=True)
+        return False
+
+
+def _delegated_request_headers(request) -> dict[str, str]:
+    """Extra headers for the in-process backend request behind one tool call.
+
+    Only a caller that could NOT prove an admin credential is marked: the
+    backend then stops treating the forged loopback peer as the local operator
+    and asks for a credential like any other remote client. A caller that did
+    prove one keeps today's behaviour (a plain loopback re-entry), because its
+    own credential is what the backend would have checked anyway. The stdio
+    transport has no HTTP request at all and is a local client, so it is never
+    marked.
+    """
+    if mcp_caller_is_privileged(request):
+        return {}
+    try:
+        from api.dependencies import DELEGATED_CALLER_HEADER
+
+        header_name = DELEGATED_CALLER_HEADER
+    except Exception:  # pragma: no cover — the constant is part of the module
+        header_name = _DELEGATED_CALLER_HEADER
+    return {header_name: "1"}
+
+
 def create_mcp_server(app=None):
     """Build and return the FastMCP server instance.
 
@@ -652,14 +730,20 @@ def create_mcp_server(app=None):
         from services.network_share import backend_self_url
         return backend_self_url()
 
-    def _client(timeout: float):
+    def _client(timeout: float) -> "httpx.AsyncClient":
         import httpx
         # OMNIVOICE_API_URL is an explicit "send tool calls there" override.
         if app is not None and not os.environ.get("OMNIVOICE_API_URL", "").strip():
+            # This forged loopback peer is on the caller's behalf, not the
+            # local operator's. The delegated marker keeps the backend's admin
+            # gate honest about that; the caller's own admin credential (when
+            # it proved one) rides along so *its* privilege is what counts.
+            request = _current_http_request(mcp)
             return httpx.AsyncClient(
                 transport=httpx.ASGITransport(app=app, client=("127.0.0.1", 0)),
                 base_url="http://127.0.0.1",
                 timeout=timeout,
+                headers=_delegated_request_headers(request),
             )
         from services.network_share import backend_auth_headers
         base = _api_base()
@@ -702,12 +786,12 @@ def create_mcp_server(app=None):
         Streamable-HTTP transport; stdio clients (and any version where the
         accessor differs) simply resolve to None and use the backend's
         default voice."""
-        try:
-            req = mcp.get_context().request_context.request
-            if req is not None:
-                return req.headers.get("x-omnivoice-client-id")
-        except Exception:
-            pass
+        request = _current_http_request(mcp)
+        if request is not None:
+            try:
+                return request.headers.get("x-omnivoice-client-id")
+            except Exception:
+                pass
         return None
 
     @mcp.tool()
