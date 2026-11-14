@@ -29,6 +29,7 @@ from typing import Optional
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
+from api.dependencies import require_ws_access
 from services.reference_transcript import stored_reference_transcript
 
 router = APIRouter()
@@ -341,6 +342,9 @@ async def ws_tts(websocket: WebSocket):
     followed by a JSON completion message. The connection stays open for
     subsequent requests (conversational mode).
     """
+    if not await require_ws_access(websocket):
+        return
+
     await websocket.accept()
     logger.info("TTS streaming WebSocket connected")
 
