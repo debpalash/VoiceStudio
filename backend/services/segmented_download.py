@@ -27,6 +27,7 @@ from typing import Callable, Optional
 import httpx
 
 from services.hf_auth import host_gets_auth as _host_gets_auth
+from core.url_safety import check_public_url
 
 _DEFAULT_CONNECTIONS = 8
 _MIN_SEGMENT_BYTES = 4 * 1024 * 1024   # don't split below this — overhead > gain
@@ -47,13 +48,33 @@ def _auth_headers(url: str, token: Optional[str]) -> dict:
 async def _resolve(client: httpx.AsyncClient, url: str, token: Optional[str], max_hops: int = 10):
     """Follow redirects manually, dropping the auth header on any cross-host hop.
 
+    Each redirect *target* is validated against the public-destination policy
+    (:func:`core.url_safety.check_public_url`) before it is requested, so a
+    redirect that names a loopback, link-local or private address is refused and
+    its body never reaches the model cache. The URL the
+    caller supplied is the model catalogue's own entry and is left to the
+    caller's existing validation, which also keeps local/private mirrors
+    (``OMNIVOICE_ALLOW_PRIVATE_URL_IMPORTS``, self-hosted endpoints) working.
+    The check resolves DNS, so it runs in a worker thread.
+
+    Residual risk, stated rather than hidden: the policy check resolves the
+    target once, and the transfer resolves it again, so a hostname whose answer
+    changes between the two (DNS rebinding) can still reach a private address.
+    Closing that needs connect-time enforcement on the address actually dialled.
+    The project's connect-time control, :func:`core.url_safety.guard_outbound_connections`,
+    is thread-local state that httpx's resolver thread never sees, which is why
+    the yt-dlp path runs it in a subprocess instead; making it visible to this
+    async downloader is its own change to ``core/url_safety``.
+
     Returns (final_url, size_or_None, accepts_ranges_bool).
     """
     cur = url
     for _ in range(max_hops):
         r = await client.head(cur, headers=_auth_headers(cur, token))
         if r.status_code in (301, 302, 303, 307, 308) and "location" in r.headers:
-            cur = str(httpx.URL(cur).join(r.headers["location"]))
+            target = str(httpx.URL(cur).join(r.headers["location"]))
+            await asyncio.to_thread(check_public_url, target)
+            cur = target
             continue
         r.raise_for_status()
         size = r.headers.get("content-length")
