@@ -580,7 +580,8 @@ test-only PR. Docker Hub overview edits still publish through the small
     restricted networks, skipped when the user set an endpoint
     (`backend/services/endpoint_race.py`); the dependency install's download
     of the packages pinned in `uv.lock`, from their locked URLs or the
-    regional mirror the user chose or the Auto region selected, including the
+    regional mirror the user chose or the Auto region selected (including a
+    hash-preserving PyPI failover after a confirmed transient origin failure), including the
     parallel multi-connection wheel prefetch
     (`electron/src/main/wheel-prefetch.ts`; owner-approved 2026-10-27); the
     Auto region's speed check, which reads the start of one locked wheel from
