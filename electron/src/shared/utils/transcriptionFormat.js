@@ -31,8 +31,56 @@ export function speakerTranscript(entry) {
     .join('\n');
 }
 
-/** Keep language and recording date attached when exporting history. */
-export function formatTranscriptExport(entries) {
+function timedCues(entry) {
+  if (!Array.isArray(entry?.segments)) return null;
+  const cues = [];
+  for (const segment of entry.segments) {
+    if (typeof segment?.text !== 'string') return null;
+    const text = segment.text
+      .trim()
+      .replace(/\r\n?/g, '\n')
+      .replace(/\n\s*\n/g, '\n');
+    if (!text) continue;
+    const { start, end } = segment;
+    if (
+      typeof start !== 'number' ||
+      typeof end !== 'number' ||
+      !Number.isFinite(start) ||
+      !Number.isFinite(end) ||
+      start < 0 ||
+      end <= start
+    )
+      return null;
+    const from = Math.round(start * 1000),
+      to = Math.round(end * 1000);
+    if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || to <= from) return null;
+    cues.push({ from, to, text });
+  }
+  return cues.length ? cues : null;
+}
+
+export function canExportTranscriptSubtitles(entry) {
+  return timedCues(entry) !== null;
+}
+
+function subtitleTime(milliseconds) {
+  const pad = (value, width = 2) => String(value).padStart(width, '0');
+  return `${pad(Math.floor(milliseconds / 3600000))}:${pad(Math.floor(milliseconds / 60000) % 60)}:${pad(Math.floor(milliseconds / 1000) % 60)},${pad(milliseconds % 1000, 3)}`;
+}
+
+/** History retains metadata; plain text and SubRip are explicit export choices. */
+export function formatTranscriptExport(entries, { format = 'history' } = {}) {
+  if (format === 'text') return entries.map(preferredTranscript).join('\n\n') + '\n';
+  if (format === 'srt') {
+    const cues = entries.length === 1 ? timedCues(entries[0]) : null;
+    if (!cues) throw new Error('transcript_timings_unavailable');
+    return cues
+      .map(
+        (cue, index) =>
+          `${index + 1}\r\n${subtitleTime(cue.from)} --> ${subtitleTime(cue.to)}\r\n${cue.text.replaceAll('\n', '\r\n')}\r\n\r\n`,
+      )
+      .join('');
+  }
   return entries
     .map((entry) => {
       const date = new Date(entry.timestamp);
