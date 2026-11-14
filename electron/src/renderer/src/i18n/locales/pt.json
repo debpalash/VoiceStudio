@@ -971,7 +971,6 @@
     "play": "Reproduzir",
     "pause": "Pausar",
     "seek": "Posição de reprodução",
-    "missing": "O arquivo de áudio está ausente.",
     "now_playing": "Tocando agora",
     "kind_convert": "Conversão de voz"
   },

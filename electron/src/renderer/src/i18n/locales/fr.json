@@ -971,7 +971,6 @@
     "play": "Lire",
     "pause": "Mettre en pause",
     "seek": "Position de lecture",
-    "missing": "Le fichier audio est introuvable.",
     "now_playing": "En cours de lecture",
     "kind_convert": "Conversion de voix"
   },
