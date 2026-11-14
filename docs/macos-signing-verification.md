@@ -22,6 +22,11 @@ spctl --assess --type execute --verbose=2 "VoiceStudio.app"
 xcrun stapler validate "VoiceStudio.app"
 ```
 
+These publication checks still run for a configured macOS signing identity when
+`allow_unsigned=true` permits unsigned Windows installers. Only a macOS build
+without a configured Developer ID can use that explicit unsigned exception;
+artifact-only rehearsals retain their existing signature/report checks.
+
 Without credentials (artifact rehearsals, local `bun run dist`), packages keep
 electron-builder's unsigned/ad-hoc defaults; users then see the
 "unidentified developer" prompt described in the install guide.

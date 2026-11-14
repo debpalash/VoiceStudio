@@ -48,16 +48,9 @@ export interface GenerateSlice {
   /**
    * How many synth requests are in flight right now.
    *
-   * A COUNT, not a flag. Syntheses overlap — the Generate tab, voice previews,
-   * the compare modal, the stories editor and profile previews can all be
-   * running at once, and a boolean would be cleared by whichever finished
-   * first while the others were still going, letting the updater relaunch and
-   * discard them.
-   *
-   * Maintained by `api/generate.ts` around the single `/generate` call every
-   * one of those paths goes through, so a new caller is covered without having
-   * to remember this exists. Read via `utils/appBusy`. Transient: never
-   * persisted, since a synth cannot survive a reload.
+   * The shared `api/generate.ts` admission guard increments this while a
+   * synthesis owns the slot and rejects another request until it finishes.
+   * Transient: never persisted, since a synth cannot survive a reload.
    */
   ttsInflight: number;
 

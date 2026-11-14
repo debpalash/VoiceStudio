@@ -99,6 +99,58 @@ def test_every_package_leg_reports_and_mac_check_ignores_allow_unsigned():
     assert steps["Save the signing report"]["with"]["name"] == "electron-signing-${{ matrix.platform }}-${{ matrix.arch }}"
 
 
+def test_mac_publication_assessment_is_not_skipped_by_the_windows_unsigned_exception():
+    step = next(s for s in load_workflow()["jobs"]["package"]["steps"]
+                if s.get("name") == "Verify macOS signing and notarization before publication")
+    # Both Mac architectures must enter the shell gate on every publishing run.
+    # Only that gate can distinguish an unsigned Mac from the Windows exception.
+    assert step["if"] == "inputs.publish == true && matrix.platform == 'darwin'"
+    assert step["env"]["HAS_CREDENTIALS"] == "${{ secrets.ELECTRON_MACOS_CSC_LINK != '' }}"
+    assert step["env"]["ALLOW_UNSIGNED"] == "${{ inputs.allow_unsigned }}"
+
+
+@pytest.mark.parametrize("arch", ["arm64", "x64"])
+@pytest.mark.parametrize("allow_unsigned,credentials,codesign_rc,spctl_rc,staple_rc,expected,ok", [
+    # Global unsigned permission for Windows cannot hide a rejected signed Mac.
+    (True, True, 0, 1, 0, ["codesign", "spctl"], False),
+    (True, True, 0, 0, 0, ["codesign", "spctl", "stapler"], True),
+    # Retain the owner's explicit unsigned Mac exception with no Mac identity.
+    (True, False, 0, 1, 0, [], True),
+    (False, True, 0, 1, 0, ["codesign", "spctl"], False),
+    (False, True, 0, 0, 0, ["codesign", "spctl", "stapler"], True),
+    (True, True, 1, 0, 0, ["codesign"], False),
+    (True, True, 0, 0, 1, ["codesign", "spctl", "stapler"], False),
+])
+def test_actual_mac_publication_shell_enforces_trust_per_platform(
+    tmp_path, arch, allow_unsigned, credentials, codesign_rc, spctl_rc, staple_rc, expected, ok,
+):
+    import os
+    import subprocess
+    step = next(s for s in load_workflow()["jobs"]["package"]["steps"]
+                if s.get("name") == "Verify macOS signing and notarization before publication")
+    (tmp_path / "electron" / "release" / f"mac-{arch}" / "VoiceStudio.app").mkdir(parents=True)
+    fake = tmp_path / "bin"
+    fake.mkdir()
+    calls = tmp_path / "calls"
+    for command, label, rc in [("codesign", "codesign", codesign_rc), ("spctl", "spctl", spctl_rc),
+                               ("xcrun", "stapler", staple_rc)]:
+        shim = fake / command
+        shim.write_text(f'#!/bin/sh\nprintf "%s\\n" "{label}" >> "$CALL_LOG"\nexit {rc}\n', encoding="utf-8")
+        shim.chmod(0o755)
+    env = dict(os.environ, PATH=f"{fake}{os.pathsep}{os.environ['PATH']}", CALL_LOG=str(calls),
+               ALLOW_UNSIGNED=str(allow_unsigned).lower(), HAS_CREDENTIALS=str(credentials).lower(),
+               PUBLISH="true", PLATFORM="darwin")
+    # These context reads and ==/!=/&& predicates have the same semantics in
+    # [[ ... ]]; execute the checked-in workflow condition as well as its shell.
+    condition = step["if"].replace("inputs.publish", '"$PUBLISH"').replace(
+        "inputs.allow_unsigned", '"$ALLOW_UNSIGNED"').replace("matrix.platform", '"$PLATFORM"')
+    script = f"if [[ {condition} ]]; then\n{step['run']}\nfi"
+    result = subprocess.run(["bash", "-e", "-c", script], cwd=tmp_path, env=env,
+                            capture_output=True, text=True)
+    assert (result.returncode == 0) is ok, result.stdout + result.stderr
+    assert (calls.read_text(encoding="utf-8").splitlines() if calls.exists() else []) == expected
+
+
 def test_mac_package_discovers_the_imported_developer_id(tmp_path):
     import shutil
     shutil.copy(ROOT / "scripts/prepare-apple-notarization.sh", tmp_path)
