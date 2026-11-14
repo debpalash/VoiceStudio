@@ -11,9 +11,10 @@ const mock = vi.hoisted(() => ({
 vi.mock('@/lib/api/client', () => ({
   apiJson: mock.api,
   describeError: (error: unknown) => (error instanceof Error ? error.message : String(error)),
+  ApiError: class ApiError extends Error {},
 }));
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string) => key }),
+  useTranslation: () => ({ t: (key: string) => key, i18n: { language: 'en' } }),
 }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children: ReactNode }) => <a href="#">{children}</a>,
@@ -202,3 +203,105 @@ it('shows the licence chip on a diarisation option whose model needs acceptance 
     await within(row as HTMLElement).findByRole('button', { name: /^modelLicense\.label:/ }),
   ).toBeTruthy();
 });
+
+it.each(['model', 'dependency', 'incomplete-dependencies'] as const)(
+  'opens the installed Sortformer licence action for %s without reinstalling or granting acceptance',
+  async (pending) => {
+    const repo = 'audio-cpp/audio.cpp-gguf';
+    const dependency = 'fixture/required-tokenizer';
+    const acceptance = (repoId: string, accepted: boolean) => ({
+      repo_id: repoId,
+      required: true,
+      accepted,
+      category: 'noncommercial',
+      fingerprint: (repoId === repo ? 'a' : 'b').repeat(64),
+    });
+    const own = acceptance(repo, pending !== 'model');
+    const requiredDependency = acceptance(dependency, false);
+    const info = {
+      license: 'CC-BY-NC-4.0',
+      license_category: 'noncommercial',
+      review_status: 'unreviewed',
+      blockers: [],
+      variants: [],
+    };
+    mock.api.mockImplementation((path: string) => {
+      if (path === '/models')
+        return Promise.resolve({
+          models: [
+            {
+              repo_id: repo,
+              label: 'audio.cpp native bundle',
+              role: 'TTS',
+              engines: ['audiocpp'],
+              families: ['tts', 'diarisation'],
+              installed: true,
+              supported: true,
+              size_gb: 4.98,
+              license_info: info,
+              license_acceptance: own,
+              license_dependencies: pending === 'dependency' ? [requiredDependency] : [],
+              license_dependencies_complete: pending !== 'incomplete-dependencies',
+            },
+          ],
+        });
+      if (path === '/engines/diarisation')
+        return Promise.resolve({
+          active: 'pyannote',
+          options: [
+            {
+              id: 'audiocpp-sortformer',
+              label: 'Sortformer v1 (audio.cpp)',
+              model: repo,
+              model_installed: true,
+              runtime_installed: false,
+              installed: false,
+              reason: 'The Sortformer model is installed. Install the audio.cpp runtime to use it',
+            },
+          ],
+        });
+      if (path === '/engines/audiocpp/runtime/install/status')
+        return Promise.resolve({
+          installed: false,
+          supported: true,
+          job: { state: 'idle', progress: 0 },
+        });
+      if (path.startsWith('/models/licenses/details/')) {
+        const id = path.slice('/models/licenses/details/'.length);
+        return Promise.resolve({
+          repo_id: id,
+          info,
+          acceptance: id === repo ? own : requiredDependency,
+          history: [],
+        });
+      }
+      return Promise.resolve({ jobs: [] });
+    });
+    render(
+      <QueryClientProvider
+        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+      >
+        <DiarisationSettings />
+      </QueryClientProvider>,
+    );
+
+    const action = await screen.findByText('modelLicense.acceptNeeded');
+    const install = screen.getByRole('button', { name: 'modelMaintenance.install' });
+    fireEvent.click(action);
+    const dialog = await screen.findByRole('dialog');
+    expect(action.closest('button')).toHaveAccessibleName('modelLicense.acceptNeeded');
+    expect(action.closest('button')).toHaveAttribute('type', 'button');
+    expect(action.closest('button')).toHaveAttribute('tabindex', '0');
+    await waitFor(() => expect(mock.api).toHaveBeenCalledWith(`/models/licenses/details/${repo}`));
+    if (pending === 'dependency')
+      await waitFor(() =>
+        expect(mock.api).toHaveBeenCalledWith(`/models/licenses/details/${dependency}`),
+      );
+    if (pending !== 'incomplete-dependencies')
+      expect(within(dialog).getByText('modelLicense.acceptNotice')).toBeInTheDocument();
+    expect(mock.api.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+    // Licence review cannot install a missing executable or claim engine readiness.
+    expect(screen.getByText('modelSettings.unavailable')).toBeInTheDocument();
+    expect(install).toBeEnabled();
+  },
+);
