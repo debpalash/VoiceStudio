@@ -541,6 +541,7 @@ def sync_uninstall_ping_info() -> None:
                     try:
                         os.remove(path)
                     except FileNotFoundError:
+                        # Opt-out cleanup is already complete when the file is absent.
                         pass
             return
         payload = {
@@ -567,4 +568,5 @@ def sync_uninstall_ping_info() -> None:
             try:
                 os.remove(tmp)
             except OSError:
+                # Publication moves the temporary file; failed cleanup is non-fatal.
                 pass
