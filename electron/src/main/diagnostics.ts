@@ -169,6 +169,8 @@ export class DiagnosticReports {
   private killPurged = false;
   private killObserved = false;
   private revocationPending = false;
+  private cleanupPending = false;
+  private cleanupRetryAt = 0;
   private revocationQueued = false;
   private work: Promise<void> | null = null;
   private control: Promise<unknown> = Promise.resolve();
@@ -339,6 +341,13 @@ export class DiagnosticReports {
     this.control = this.control
       .catch(() => {})
       .then(async () => {
+        if (enabled) {
+          await this.work?.catch(() => {});
+          await this.purge();
+          // Keep the previous durable OFF choice while retired files are
+          // locked. No new session can race a later cleanup of those paths.
+          if (this.cleanupPending) throw new Error('Could not clear previous diagnostic reports');
+        }
         let saved = false;
         try {
           // A separate private tombstone can survive a locked old grant. Its
@@ -361,8 +370,10 @@ export class DiagnosticReports {
             }
           }
         }
-        await this.work?.catch(() => {});
-        await this.purge();
+        if (!enabled) {
+          await this.work?.catch(() => {});
+          await this.purge();
+        }
         if (!saved) throw new Error('Could not save diagnostic consent');
         if (revision !== this.revision) return;
         this.revocationPending = false;
@@ -407,7 +418,7 @@ export class DiagnosticReports {
     }
     try {
       await this.work?.catch(() => {});
-      if (this.killObserved) await this.purge();
+      if (this.killObserved || this.cleanupPending) await this.purge();
       else await this.persist();
     } finally {
       // An outbox failure must not turn an orderly exit into a crash report.
@@ -588,11 +599,16 @@ export class DiagnosticReports {
     this.sessionRecoveryPending = false;
     this.sessionEvidenceRecovered = false;
     this.sessionRecoveryAt = 0;
-    await Promise.all(
+    const removed = await Promise.all(
       [this.outbox, this.inbox, this.sessionPath].map((path) =>
-        rm(path, { recursive: path === this.inbox, force: true }).catch(() => {}),
+        rm(path, { recursive: path === this.inbox, force: true }).then(
+          () => true,
+          () => false,
+        ),
       ),
     );
+    this.cleanupPending = removed.some((done) => !done);
+    this.cleanupRetryAt = this.cleanupPending ? this.now() + 60_000 : 0;
   }
   private async tryPersist(): Promise<boolean> {
     try {
@@ -685,6 +701,11 @@ export class DiagnosticReports {
   }
   private async run(): Promise<void> {
     if (killed(this.env)) this.killObserved = true;
+    if (this.cleanupPending) {
+      if (this.now() < this.cleanupRetryAt) return;
+      await this.purge();
+      if (this.cleanupPending) return;
+    }
     if (this.killObserved) {
       this.requestRevocation();
       return;

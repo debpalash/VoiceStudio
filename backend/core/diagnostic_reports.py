@@ -787,7 +787,7 @@ class Reporter:
                     self.storage_retry_at = 0
                     self._persist_intake()
             except Exception:
-                pass
+                pass  # Final publication failure must still close intake and transport below.
             with self.ack_lock:
                 self.stop.set()
                 self.enabled = False

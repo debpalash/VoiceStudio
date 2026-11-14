@@ -10,6 +10,7 @@ const gate = vi.hoisted(() => ({
   failWrites: false,
   failRenameTarget: '',
   failRemoveTarget: '',
+  removeCalls: new Map<string, number>(),
   sessionWrites: 0,
   sessionReads: 0,
   failReadTarget: '',
@@ -26,6 +27,8 @@ vi.mock('node:fs/promises', async (original) => {
   return {
     ...fs,
     rm: async (...args: Parameters<typeof fs.rm>) => {
+      const name = basename(String(args[0]));
+      gate.removeCalls.set(name, (gate.removeCalls.get(name) ?? 0) + 1);
       if (gate.failRemoveTarget && String(args[0]).endsWith(gate.failRemoveTarget))
         throw Object.assign(new Error('EACCES'), { code: 'EACCES' });
       return fs.rm(...args);
@@ -92,6 +95,7 @@ afterEach(async () => {
   gate.failWrites = false;
   gate.failRenameTarget = '';
   gate.failRemoveTarget = '';
+  gate.removeCalls.clear();
   gate.sessionWrites = 0;
   gate.sessionReads = 0;
   gate.failReadTarget = '';
@@ -127,6 +131,64 @@ async function create(optIn = true) {
   if (optIn) await reports.setConsent(true);
   return { reports, send, root, options };
 }
+
+it.each(['outbox.json', 'inbox', 'session.json'])(
+  'retries withdrawn-file cleanup after a locked %s',
+  async (target) => {
+    const initial = await create();
+    let now = Date.now();
+    await initial.reports.close();
+    reports = new DiagnosticReports({ ...initial.options, now: () => now });
+    await reports.initialize();
+    const path = join(initial.options.directory, target);
+    if (target === 'inbox') {
+      await mkdir(path, { recursive: true });
+      await writeFile(join(path, 'a'.repeat(32) + '.json'), '{}');
+    } else if (target === 'outbox.json') {
+      reports.capture({ category: 'operation_failed' });
+      await reports.close();
+      reports = new DiagnosticReports({ ...initial.options, now: () => now });
+      await reports.initialize();
+    }
+    gate.failRemoveTarget = target;
+    expect((await reports.setConsent(false)).enabled).toBe(false);
+    const attempts = gate.removeCalls.get(target);
+    await reports.flush();
+    now += 59_999;
+    await reports.flush();
+    expect(gate.removeCalls.get(target)).toBe(attempts);
+    gate.failRemoveTarget = '';
+    now += 1;
+    await reports.flush();
+    await expect(
+      readFile(target === 'inbox' ? join(path, 'a'.repeat(32) + '.json') : path),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(initial.send).not.toHaveBeenCalled();
+  },
+);
+
+it('never lets a pending old purge delete a newly enabled report', async () => {
+  const initial = await create();
+  let now = Date.now();
+  await mkdir(join(initial.options.directory, 'inbox'), { recursive: true });
+  await writeFile(join(initial.options.directory, 'inbox', 'a'.repeat(32) + '.json'), '{}');
+  gate.failRemoveTarget = 'inbox';
+  await initial.reports.setConsent(false);
+  await expect(initial.reports.setConsent(true)).rejects.toThrow();
+  expect(initial.reports.enabled).toBe(false);
+  gate.failRemoveTarget = '';
+  await initial.reports.setConsent(true);
+  initial.reports.capture({ category: 'generation_failed' });
+  await initial.reports.close();
+  now += 60_000;
+  reports = new DiagnosticReports({ ...initial.options, now: () => now });
+  await reports.initialize();
+  await reports.flush();
+  expect(initial.send).toHaveBeenCalledOnce();
+  expect(JSON.parse(String(initial.send.mock.calls[0][1]?.body)).props.category).toBe(
+    'generation_failed',
+  );
+});
 
 it('recovers a recent crash after more than a week of active opted-in runtime', async () => {
   const initial = await create(false);
