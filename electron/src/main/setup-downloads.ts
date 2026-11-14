@@ -13,6 +13,33 @@ import { join } from 'node:path';
 
 const PYPI_FILES = 'files.pythonhosted.org';
 
+/** Only the URL adjacent to uv's failed-request marker, never a progress URL.
+ * Return host metadata only: credentials, paths and query tokens stay out of reports.
+ */
+export function failedDownloadSource(text: string): { host: string; pypiArchive: boolean } | null {
+  let source: { host: string; pypiArchive: boolean } | null = null;
+  for (const marker of text.matchAll(/Failed to fetch:|error sending request for url/gi)) {
+    source = null;
+    const following = text.slice(
+      marker.index! + marker[0].length,
+      marker.index! + marker[0].length + 1024,
+    );
+    const token = /^[\s\u2500-\u257f\u25b6`"'(>\-]*(https?:\/\/[^\s`"'<>]+)/i.exec(following)?.[1];
+    if (!token) continue;
+    try {
+      const url = new URL(token.replace(/\)+$/, ''));
+      source = {
+        host: url.host,
+        pypiArchive:
+          url.origin === 'https://files.pythonhosted.org' && url.pathname.startsWith('/packages/'),
+      };
+    } catch {
+      // An incomplete diagnostic is not proof of a failed download source.
+    }
+  }
+  return source;
+}
+
 function isUvTemp(name: string): boolean {
   return name.startsWith('.tmp');
 }

@@ -104,7 +104,11 @@ import {
 } from './remote-backend';
 import { toolSearchDirs, toolSearchDirsAsync } from './tool-path';
 import { SetupProgressTracker, cleanProcessLine, downloadStallExceeded } from './setup-progress';
-import { SetupDownloadReporter, inFlightDownloadBytes } from './setup-downloads';
+import {
+  SetupDownloadReporter,
+  failedDownloadSource,
+  inFlightDownloadBytes,
+} from './setup-downloads';
 import { scrubText } from '../shared/utils/scrub';
 import { SUPERVISE_ACTIVE_MS as SUPERVISE_POLL_MS, superviseDelayMs } from './supervise-cadence';
 import { DEFAULT_BACKEND_PORT } from '../../../config/app-config.mjs';
@@ -2225,6 +2229,11 @@ export class BackendSupervisor extends EventEmitter<{
       return;
     }
     const progress = this.setupProgress.snapshot();
+    const failedSource =
+      this.stage === 'setup_required'
+        ? failedDownloadSource([...this.childLog, ...this.childErrorLog].join('\n'))
+        : null;
+    const downloadHost = failedSource?.host ?? progress.downloadHost;
     // Quoted log lines are evidence, not the cause (#3724).
     const causeText = withoutBackendLogEvidence(this.message ?? '');
     const program = refusedProgram(causeText);
@@ -2260,8 +2269,11 @@ export class BackendSupervisor extends EventEmitter<{
       errorCode: /\b(UNKNOWN|EPERM|EACCES|ENOENT|ENOSPC)\b/.exec(this.message ?? '')?.[1],
       ...(typeof this.exitCode === 'number' ? { exitCode: this.exitCode } : {}),
       ...(this.exitSignal ? { signal: String(this.exitSignal) } : {}),
-      ...(progress.downloadHost ? { downloadHost: progress.downloadHost } : {}),
-      ...(progress.downloadedBytes ? { downloadedBytes: progress.downloadedBytes } : {}),
+      ...(downloadHost ? { downloadHost } : {}),
+      // The transfer total belongs to the progress source, not a different failed archive.
+      ...(progress.downloadedBytes && (!failedSource || failedSource.host === progress.downloadHost)
+        ? { downloadedBytes: progress.downloadedBytes }
+        : {}),
       ...(progress.stalledSeconds ? { stalledSeconds: progress.stalledSeconds } : {}),
       proxyConfigured: Boolean(
         process.env.HTTPS_PROXY || process.env.https_proxy || process.env.ALL_PROXY,

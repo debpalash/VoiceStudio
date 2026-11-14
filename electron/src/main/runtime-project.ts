@@ -30,7 +30,11 @@ import {
 } from './rename-retry';
 import { downloadRuntimeInstaller } from './runtime-download';
 import { asciiSafePthFiles } from './pth-ascii';
-import { pruneInterruptedUvDownloads, setupDownloadHosts } from './setup-downloads';
+import {
+  failedDownloadSource,
+  pruneInterruptedUvDownloads,
+  setupDownloadHosts,
+} from './setup-downloads';
 import {
   AUTO_PYPI_MIRROR,
   PYPI_FILES_ORIGIN,
@@ -991,6 +995,9 @@ export async function stageRuntimeSources(
  * one against the pinned hash. Every outcome restores the bundled lock, and a
  * failed mirrored sync is retried once from the original URLs: finished wheels
  * stay in uv's cache, so the retry only fetches what the mirror could not.
+ * Auto may also try the sanctioned mirror after an actual PyPI-origin network
+ * failure. Explicit regions, non-PyPI hosts and integrity/authentication failures
+ * do not enter that path; every outcome restores the bundled lock.
  */
 export interface MirrorReporter {
   /** A setup log line. */
@@ -999,6 +1006,8 @@ export interface MirrorReporter {
   pypiHost?: (host: string) => void;
   /** Byte progress of a wheel the shell downloads itself (#3411). */
   transfer?: (name: string, received: number, total: number) => void;
+  /** Auto may try the sanctioned mirror after a proven transient PyPI-origin failure. */
+  allowOriginMirrorFallback?: boolean;
 }
 
 export async function syncLockedWithMirror(
@@ -1006,19 +1015,19 @@ export async function syncLockedWithMirror(
   mirror: string | null,
   sync: () => Promise<unknown>,
   signal: AbortSignal,
-  { log = () => {}, pypiHost = () => {} }: MirrorReporter = {},
+  { log = () => {}, pypiHost = () => {}, allowOriginMirrorFallback = false }: MirrorReporter = {},
   /** Locked artifact URL to the `file://` copy already downloaded and verified (#3411). */
   localUrls: ReadonlyMap<string, string> = new Map(),
 ): Promise<void> {
   const lockPath = join(project, 'uv.lock');
-  if (!mirror && !localUrls.size) {
+  if (!mirror && !localUrls.size && !allowOriginMirrorFallback) {
     await sync();
     return;
   }
   const original = await readFile(lockPath, 'utf8');
   const local = localizeLockUrls(original, localUrls);
   const mirrored = mirror ? mirrorLockUrls(local, mirror) : local;
-  if (mirrored === original) {
+  if (mirrored === original && !allowOriginMirrorFallback) {
     await sync();
     return;
   }
@@ -1046,11 +1055,40 @@ export async function syncLockedWithMirror(
     } catch (error) {
       // uv could not use a prefetched copy (removed or locked by an antivirus
       // after it was verified): let uv download everything itself (#3411).
-      if (signal.aborted || !localUrls.size) throw error;
+      let failure = error;
+      if (signal.aborted) throw failure;
+      if (localUrls.size) {
+        log(
+          `Install from the pre-downloaded wheels failed (${errorSummary(error)}); letting uv download them.`,
+        );
+        await writeFile(lockPath, original);
+        try {
+          await sync();
+          return;
+        } catch (retryError) {
+          failure = retryError;
+        }
+      }
+      const detail = `${(failure as { stderr?: unknown } | null)?.stderr ?? ''}\n${failure instanceof Error ? failure.message : String(failure)}`;
+      if (
+        signal.aborted ||
+        mirror ||
+        !allowOriginMirrorFallback ||
+        !isTransientDownloadFailure(failure) ||
+        /\b(?:HTTP|status(?: code)?)\b[^\n]{0,40}\b(?:401|403)\b|hash mismatch|hashes (?:do|did) not match/i.test(
+          detail,
+        ) ||
+        !failedDownloadSource(detail)?.pypiArchive
+      )
+        throw failure;
+      const fallback = mirrorLockUrls(original, AUTO_PYPI_MIRROR);
+      if (fallback === original) throw failure;
       log(
-        `Install from the pre-downloaded wheels failed (${errorSummary(error)}); letting uv download them.`,
+        `PyPI download failed at ${origin}; retrying the same hash-pinned files from ${new URL(AUTO_PYPI_MIRROR).host}. Finished downloads are kept.`,
       );
-      await writeFile(lockPath, original);
+      pypiHost(new URL(AUTO_PYPI_MIRROR).host);
+      await writeFile(lockPath, fallback);
+      signal.throwIfAborted();
       await sync();
     }
   } finally {
@@ -1541,7 +1579,7 @@ export async function installRuntime(
         mirror,
         () => run(uv!, syncArgs, project, env),
         signal,
-        downloads,
+        { ...downloads, allowOriginMirrorFallback: region === 'auto' },
         localUrls,
       );
     },
