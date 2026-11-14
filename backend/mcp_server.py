@@ -36,6 +36,7 @@ import argparse
 import base64
 import json
 import logging
+import math
 import os
 import re
 import stat
@@ -448,10 +449,10 @@ def _env_seconds(name: str, default: float) -> float:
     except ValueError:
         logger.warning("%s=%r is not a number; using %g", name, raw, default)
         return default
-    return value if value > 0 else default
+    return value if math.isfinite(value) and value > 0 else default
 
 
-def _backend_budget_s(kind: str, text: str = "") -> float | None:
+def _backend_budget_s(kind: str, text: str = "", *, duration_s: float | None = None) -> float | None:
     """The backend's own execution budget for this kind of request, read from
     the environment variables and defaults the backend itself uses.
 
@@ -462,7 +463,8 @@ def _backend_budget_s(kind: str, text: str = "") -> float | None:
     if kind == "transcribe":
         # run_transcribe_guarded starts this clock when the job is submitted,
         # so time spent queued in the pool already counts against it.
-        return _env_seconds("OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S", 300.0)
+        from core.asr_budget import transcribe_budget_s
+        return transcribe_budget_s(duration_s)
     if kind == "generate":
         base = max(
             _env_seconds("OMNIVOICE_GENERATE_TIMEOUT_S", 300.0),
@@ -504,7 +506,7 @@ def _backend_budget_s(kind: str, text: str = "") -> float | None:
     return None
 
 
-def _post_timeout_s(kind: str = "", text: str = "") -> float:
+def _post_timeout_s(kind: str = "", text: str = "", *, duration_s: float | None = None) -> float:
     """Seconds a tool waits on a backend POST.
 
     An explicit OMNIVOICE_MCP_TIMEOUT_S wins. Otherwise the tool waits for the
@@ -514,8 +516,23 @@ def _post_timeout_s(kind: str = "", text: str = "") -> float:
     """
     if os.environ.get("OMNIVOICE_MCP_TIMEOUT_S", "").strip():
         return _env_seconds("OMNIVOICE_MCP_TIMEOUT_S", 120.0)
-    budget = _backend_budget_s(kind, text)
+    budget = _backend_budget_s(kind, text, duration_s=duration_s)
     return 120.0 if budget is None else max(120.0, budget + _BACKEND_GRACE_S)
+
+
+def _uploaded_audio_duration(raw: bytes) -> float | None:
+    """Probe the exact upload, including the base64 lane, outside the event loop."""
+    import tempfile
+    from services.ffmpeg_utils import probe_audio_duration
+
+    from pathlib import Path
+    try:
+        with tempfile.TemporaryDirectory(prefix="voice-mcp-asr-") as scratch:
+            path = Path(scratch) / ("audio" + _sniff_audio_ext(raw))
+            path.write_bytes(raw)
+            return probe_audio_duration(str(path))
+    except OSError:
+        return None
 
 
 def _maybe_number(value):
@@ -842,11 +859,15 @@ def create_mcp_server(app=None):
         data = {}
         if language:
             data["language"] = language
+        import asyncio
+        duration_s = None
+        if not os.environ.get("OMNIVOICE_MCP_TIMEOUT_S", "").strip():
+            duration_s = await asyncio.to_thread(_uploaded_audio_duration, raw)
         r = await _api_post_form(
             "/transcribe", data=data,
             files={"audio": (f"audio{_sniff_audio_ext(raw)}", raw,
                              "application/octet-stream")},
-            timeout=_post_timeout_s("transcribe"),
+            timeout=_post_timeout_s("transcribe", duration_s=duration_s),
         )
         return json.dumps(r.json())
 

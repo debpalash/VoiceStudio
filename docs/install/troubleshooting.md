@@ -957,11 +957,25 @@ did was `generate:start (audio)`, a dub, or a dictation.
 Newer builds **bound** every GPU job — whole-file transcription, **chunked dub
 transcription**, **and** TTS generation: instead of hanging forever and starving
 the backend, a wedged job fails after a timeout with this exact guidance. Tune
-the bounds with `OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S` (whole-file transcription)
-and `OMNIVOICE_GENERATE_TIMEOUT_S` (generation) — both in seconds, default 300
-— and `OMNIVOICE_TRANSCRIBE_CHUNK_TIMEOUT_S` (per-chunk dub transcription,
-default 120). **Raise** them for very long single files/generations, **lower**
-them to fail faster on a small machine.
+the bounds with `OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S` (whole-file transcription
+floor, default 300 seconds), `OMNIVOICE_GENERATE_TIMEOUT_S` (generation, default
+300 seconds), and `OMNIVOICE_TRANSCRIBE_CHUNK_TIMEOUT_S` (per-chunk dubbing,
+default 120 seconds).
+
+Whole-file ASR allows the larger of its floor and twice the audio duration: a
+25-minute recording gets 50 minutes. This covers file uploads, OpenAI-compatible
+transcription, batch dubbing, legacy dubbing and streams whose speaker engine
+requires the whole recording. Set `OMNIVOICE_ASR_TIMEOUT_REALTIME_FACTOR` to
+change the multiplier, or `0` to keep only the fixed floor. Invalid, negative
+or non-finite settings fall back to defaults. Duration comes from a local-only
+ffprobe check bounded to 10 seconds; unavailable duration uses the floor.
+
+Queueing, model loading and child inference share one deadline. Sidecars,
+including the Windows ROCm proxy, and whisper.cpp use its remaining time rather
+than a separate five- or ten-minute ceiling. Calls directly to an isolated
+engine without a route guard retain `OMNIVOICE_ASR_RECV_TIMEOUT_S` as their
+floor (default 600 seconds). Progress does not extend the deadline; timed-out
+in-process inference remains accounted for until its native worker exits.
 
 Saving a cloned voice without a transcript transcribes the reference with an
 installed speech-to-text model for at most 60 seconds

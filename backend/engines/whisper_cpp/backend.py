@@ -11,7 +11,8 @@ import os
 import tempfile
 from pathlib import Path
 
-from services.asr_backend import ASR_TRANSCRIBE_TIMEOUT_S, ASRBackend
+from services.asr_backend import ASRBackend, file_transcribe_deadline
+from services.asr_timing import remaining_s
 
 from engines.whisper_cpp.audio import _ensure_wav_16k
 from engines.whisper_cpp.bootstrap import (
@@ -95,6 +96,7 @@ class WhisperCppBackend(ASRBackend):
         if not os.path.isfile(audio_path):
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
 
+        deadline = file_transcribe_deadline(audio_path)
         binary = locate_binary()
         if not binary:
             raise RuntimeError("whisper.cpp binary is not available")
@@ -140,6 +142,6 @@ class WhisperCppBackend(ASRBackend):
                 cmd.extend(["-dev", device_override])
 
             logger.info("Executing local whisper.cpp transcription")
-            data = run_transcription(cmd, tmp_dir / "out.json", ASR_TRANSCRIBE_TIMEOUT_S)
+            data = run_transcription(cmd, tmp_dir / "out.json", remaining_s(deadline))
 
         return parse_transcript(data, word_timestamps)

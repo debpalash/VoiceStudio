@@ -115,6 +115,12 @@ class SubprocessASRBackend(SubprocessBackend):
         # hold a real slot for the whole transcription via _occupy. Mirrors
         # SubprocessBackend.generate()'s path-aware slot block.
         from services.model_manager import running_on_gpu_pool
+        from services.asr_timing import remaining_s
+        from services.asr_backend import ASRTimeoutError, file_transcribe_deadline
+        from services.inference_cancellation import current_cancellation
+
+        deadline = file_transcribe_deadline(audio_path, floor_s=self.recv_timeout_s)
+        cancellation = current_cancellation()
         _held = None
         slot_future = None
         if not running_on_gpu_pool():
@@ -130,12 +136,21 @@ class SubprocessASRBackend(SubprocessBackend):
             slot_future = pool.submit(_occupy)
 
         try:
-            if _held is not None and not _acquired.wait(timeout=10):
+            if _held is not None and not _acquired.wait(timeout=min(10, remaining_s(deadline))):
                 if slot_future is not None:
                     slot_future.cancel()
                 raise TimeoutError("timed out waiting for a free GPU worker")
-            timeout_s = self.recv_timeout_s
-            with self._lock:
+            # Short waits stay below threading.TIMEOUT_MAX even for a very
+            # large valid budget, and let abandoned queued work leave promptly.
+            while True:
+                remaining = remaining_s(deadline)
+                if remaining <= 0 or (cancellation and cancellation.cancelled.is_set()):
+                    raise ASRTimeoutError("ASR deadline expired or cancelled waiting for the engine")
+                if self._lock.acquire(timeout=min(remaining, 0.05)):
+                    break
+            try:
+                if remaining_s(deadline) <= 0 or (cancellation and cancellation.cancelled.is_set()):
+                    raise ASRTimeoutError("ASR deadline expired before transcription")
                 self._spawn()
                 from services.performance_profiles import asr_decode_defaults
                 from services.asr_backend import whisper_request_options
@@ -150,6 +165,7 @@ class SubprocessASRBackend(SubprocessBackend):
                     # byte-identical to before.
                     **({"request_options": request} if request else {}),
                 })
+                timeout_s = remaining_s(deadline)
                 reply = self._recv_with_timeout(timeout_s)
                 timed_out = self._last_recv_timed_out
                 if not reply:
@@ -169,6 +185,8 @@ class SubprocessASRBackend(SubprocessBackend):
                         f"(device={self._device()}); the job failed but the backend "
                         f"stayed up — retry to respawn a fresh sidecar."
                     )
+            finally:
+                self._lock.release()
             if reply.get("op") == "error":
                 raise RuntimeError(
                     f"{self.id} ASR sidecar error (device={self._device()}): "

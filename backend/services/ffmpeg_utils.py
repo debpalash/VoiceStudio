@@ -704,6 +704,43 @@ async def _pitch_preserving_stretch(wav, target_samples: int, sr: int):
     return torch.from_numpy(out_arr.copy()).unsqueeze(0).to(wav.device)
 
 
+def probe_audio_duration(path: str) -> float | None:
+    """Best-effort local audio length, without decoding or unbounded probing."""
+    import math
+
+    if not path or not os.path.isfile(path):
+        return None
+    try:
+        ffprobe = find_ffprobe()
+        if not ffprobe:
+            return None
+        result = subprocess.run(
+            local_inputs_only([
+                ffprobe, "-v", "error", "-select_streams", "a:0",
+                "-show_entries", "stream=duration:format=duration",
+                "-of", "json", os.path.abspath(path),
+            ], tool="ffprobe"),
+            capture_output=True, timeout=10, check=False,
+        )
+        if result.returncode != 0:
+            return None
+        import json
+        metadata = json.loads(result.stdout)
+        streams = metadata.get("streams") or []
+        if not streams:
+            return None
+        for raw in (streams[0].get("duration"), metadata.get("format", {}).get("duration")):
+            try:
+                value = float(raw)
+            except (TypeError, ValueError, OverflowError):
+                continue
+            if math.isfinite(value) and value > 0:
+                return value
+    except (OSError, subprocess.SubprocessError, ValueError, TypeError, AttributeError):
+        logger.debug("Audio duration unavailable for ASR budgeting")
+    return None
+
+
 async def probe_duration(path: str, *, allowed_root: str) -> float | None:
     """Return a media file's duration in seconds via ffprobe, or None.
 

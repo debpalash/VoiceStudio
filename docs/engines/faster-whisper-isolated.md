@@ -54,6 +54,10 @@ Weights download on first load — see
   [mlx-whisper](mlx-whisper.md).
 - If the sidecar dies mid-transcription the job fails with a clear
   "sidecar crashed" error and the backend stays up — retry to respawn.
+- Whole-file calls share the route's duration-based deadline, including the
+  Windows ROCm proxy; the child no longer stops long recordings at a separate
+  ten-minute ceiling. Direct engine calls use a 600-second floor. See
+  [timeout settings](../install/troubleshooting.md).
 - **cuDNN 8 is still required on CUDA** — same CTranslate2 requirement as the
   in-process engine. It's checked up front so a missing cuDNN 8 shows as
   "unavailable" in Model Catalogue instead of a sidecar that

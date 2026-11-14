@@ -74,7 +74,8 @@ def _run(monkeypatch, tmp_path, backend, seconds):
     monkeypatch.setattr(sc, "extract_speaker_clones", lambda *a, **k: {})
     monkeypatch.setattr(dc, "get_diarization_pipeline", _no_pyannote)
     monkeypatch.setattr(dc, "run_transcribe_guarded", _stub_guarded)
-    monkeypatch.setattr(dc, "ASR_TRANSCRIBE_TIMEOUT_S", 777.5)
+    monkeypatch.setenv("OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S", "777.5")
+    monkeypatch.setenv("OMNIVOICE_ASR_TIMEOUT_REALTIME_FACTOR", "2")
     monkeypatch.setattr(dc, "TRANSCRIBE_CHUNK_TIMEOUT_S", 44.25)
 
     async def _collect():
@@ -127,3 +128,10 @@ def test_regular_backend_still_sliced_into_windows(monkeypatch, tmp_path):
     ev = _start_payload(body)
     assert ev["chunks"] == 3
     assert ev["chunk_s"] == pytest.approx(30.0)
+
+
+def test_whole_recording_stream_scales_past_its_fixed_floor(monkeypatch, tmp_path):
+    rec = _Recorder(full_audio_needed=True)
+    _, guarded = _run(monkeypatch, tmp_path, rec, 400)
+    assert len(guarded) == 1
+    assert guarded[0]["timeout"] == 800

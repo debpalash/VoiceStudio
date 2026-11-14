@@ -6,10 +6,13 @@ import pytest
 
 
 @pytest.fixture
-def m(neutral_asr_host):
+def m(neutral_asr_host, monkeypatch):
     """Backend seams on a CPU-only host: a test opts in to its hardware (#3549)."""
     bootstrap = importlib.import_module('engines.whisper_cpp.bootstrap')
     backend = importlib.import_module('engines.whisper_cpp.backend')
+    # Most CLI fixtures use deliberately invalid audio and mock subprocess.run.
+    # Duration probing has its own real-media coverage and must not hit that mock.
+    monkeypatch.setattr('services.ffmpeg_utils.probe_audio_duration', lambda path: None)
     namespace = {
         'wc': backend,
         'WhisperCppBackend': backend.WhisperCppBackend,

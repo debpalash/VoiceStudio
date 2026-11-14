@@ -209,16 +209,30 @@ async def transcribe_audio(
             run_transcribe_guarded,
         )
         from services.model_acceptance import ModelLicenceNotAccepted
+        from services.asr_backend import probe_transcribe_deadline
+        try:
+            deadline = await probe_transcribe_deadline(tmp.name, on_abandon=_cleanup_tmp)
+        except asyncio.CancelledError:
+            defer_tmp_cleanup = True
+            raise
+        except ASRTimeoutError as exc:
+            defer_tmp_cleanup = True
+            raise HTTPException(status_code=504, detail=str(exc))
         t0 = time.perf_counter()
         try:
             result, engine_id, sherpa_model_id = await run_transcribe_guarded(
-                _gpu_pool, _run, what="Dictation",
+                _gpu_pool, _run, what="Dictation", deadline=deadline,
+                on_abandon=_cleanup_tmp,
             )
         except ASRTimeoutError as e:
+            defer_tmp_cleanup = True
             # Backend is alive — ASR couldn't finish. 504 with guidance, not a
             # silent hang the UI reads as "can't reach the local backend".
             logger.warning("Capture transcription timed out: %s", e)
             raise HTTPException(status_code=504, detail=str(e))
+        except asyncio.CancelledError:
+            defer_tmp_cleanup = True
+            raise
         except ASRModelMissingError as e:
             # Degraded past the broken engine onto one with no weights on
             # disk — same typed 409 (+ download CTA) as the preflight above,
@@ -276,6 +290,8 @@ async def transcribe_audio(
                         _gpu_pool,
                         _run_fallback,
                         what="Dictation fallback",
+                        deadline=deadline,
+                        on_abandon=_cleanup_tmp,
                     )
                     fallback_text = str(fallback_result.get("text") or "").strip()
                     if not fallback_text and fallback_result.get("segments"):
@@ -297,6 +313,12 @@ async def transcribe_audio(
                             sherpa_model_id,
                             fallback_engine_id,
                         )
+                except ASRTimeoutError as exc:
+                    defer_tmp_cleanup = True
+                    raise HTTPException(status_code=504, detail=str(exc))
+                except asyncio.CancelledError:
+                    defer_tmp_cleanup = True
+                    raise
                 except Exception:
                     logger.exception(
                         "Installed fallback failed after dictation model %s returned no text",
@@ -385,6 +407,7 @@ async def transcribe_audio(
                     _gpu_pool,
                     lambda: diarize_segments(tmp.name, out_segments, parse_speaker_hint(num_speakers)),
                     what="Speaker identification",
+                    deadline=deadline,
                     # A timed-out or cancelled worker may still be reading the
                     # upload: the guard deletes it once the worker has exited.
                     on_abandon=_cleanup_tmp,

@@ -646,8 +646,8 @@ def test_wedged_chunk_does_not_overlap_a_native_retry(tmp_path, monkeypatch, sta
                 return fn(*args, **kwargs)
             future = self._inner.submit(delayed)
             if self.wait_for_native:
-                # Start the guard's timeout only after the native call is
-                # genuinely running. Scheduler delay is not the wedge under test.
+                # This fixture must reach native work to test non-overlap;
+                # its explicit chunk budget includes the injected queue delay.
                 assert native_entered.wait(10), "mock ASR never started"
             return future
 
@@ -705,7 +705,7 @@ def test_wedged_chunk_does_not_overlap_a_native_retry(tmp_path, monkeypatch, sta
     monkeypatch.setattr(dc, "run_transcribe_guarded", guard_running_call)
     monkeypatch.setattr(dc, "get_model", _ok_model)
     monkeypatch.setattr(dc, "_gpu_pool", pool)
-    monkeypatch.setattr(dc, "TRANSCRIBE_CHUNK_TIMEOUT_S", 0.2)
+    monkeypatch.setattr(dc, "TRANSCRIBE_CHUNK_TIMEOUT_S", startup_delay + 0.2)
     monkeypatch.setattr(dc, "_CHUNK_TRANSCRIBE_ATTEMPTS", 2)
     monkeypatch.setattr(dc, "offload_tts_for_asr", lambda *a, **k: None)
     monkeypatch.setattr(

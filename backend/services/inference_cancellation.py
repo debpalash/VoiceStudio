@@ -10,8 +10,9 @@ _local = threading.local()
 
 
 class InferenceCancellation:
-    def __init__(self):
+    def __init__(self, *, deadline: float | None = None):
         self.cancelled = threading.Event()
+        self.deadline = deadline
 
     def cancel(self):
         self.cancelled.set()
