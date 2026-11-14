@@ -22,6 +22,19 @@ copy or export text, delete an entry, and send text to the cloning script.
 The secondary pane is labeled **History** so its saved-result list stays distinct
 from the Transcribe workspace and its recording actions.
 
+For a selected result, **Save plain text** saves the full displayed transcript
+without dates, language headers or timestamps. **Save SRT** saves UTF-8 SubRip
+captions from the original recognition segments, preserving their real timings.
+Cleaned text is not substituted into timed captions. If any spoken segment has
+missing or invalid timings, SRT is unavailable and the page explains why; plain
+text remains available. Desktop opens Save As; the web app downloads the file.
+The existing **Export** action keeps its dated history format and metadata.
+New REST and buffered-dictation results preserve an explicit recognition-timing
+flag in history. Sherpa and basic Moonshine clip-duration spans do not qualify
+as subtitle timings. Older saved results without that flag keep their text and
+history exports, but cannot export SRT; transcribe again with an engine that
+supplies real segment timings to create timed captions.
+
 The empty workspace now leads with Start dictation and Upload audio. History-only
 search/export/clear controls stay hidden until a transcription exists, and backend
 failures appear once with direct Retry and Dismiss actions.

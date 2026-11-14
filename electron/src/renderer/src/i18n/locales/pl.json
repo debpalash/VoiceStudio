@@ -536,7 +536,10 @@
     "speakers_unavailable": "Rozpoznawanie mówców jest niedostępne. Transkrypcję zapisano bez etykiet mówców.",
     "missing_model": "Nie zainstalowano modelu zamiany mowy na tekst — ta funkcja wymaga go do transkrypcji dźwięku.",
     "original_transcript": "Oryginalna transkrypcja",
-    "active_model": "Model: {{model}}"
+    "active_model": "Model: {{model}}",
+    "export_plain": "Zapisz zwykły tekst",
+    "export_srt": "Zapisz SRT",
+    "timestamps_unavailable": "Ta transkrypcja nie zawiera czasów napisów. Użyj modelu rozpoznawania mowy, który udostępnia znaczniki czasu."
   },
   "engineRuntime": {
     "ready": "Gotowy",
@@ -983,7 +986,6 @@
     "play": "Odtwórz",
     "pause": "Wstrzymaj",
     "seek": "Pozycja odtwarzania",
-    "missing": "Brak pliku audio.",
     "now_playing": "Teraz odtwarzane",
     "kind_convert": "Konwersja głosu"
   },

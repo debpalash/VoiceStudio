@@ -528,7 +528,10 @@
     "speakers_unavailable": "La identificación de hablantes no está disponible. La transcripción se guardó sin etiquetas de hablante.",
     "missing_model": "No hay ningún modelo de voz a texto instalado — esta función necesita uno para transcribir audio.",
     "original_transcript": "Transcripción original",
-    "active_model": "Modelo: {{model}}"
+    "active_model": "Modelo: {{model}}",
+    "export_plain": "Guardar texto sin formato",
+    "export_srt": "Guardar SRT",
+    "timestamps_unavailable": "Esta transcripción no tiene tiempos de subtítulos. Usa un modelo de reconocimiento de voz que proporcione marcas de tiempo."
   },
   "engineRuntime": {
     "ready": "Listo",
@@ -971,7 +974,6 @@
     "play": "Reproducir",
     "pause": "Pausar",
     "seek": "Buscar posición",
-    "missing": "Falta el archivo de audio.",
     "now_playing": "Reproduciendo",
     "kind_convert": "Conversión de voz"
   },

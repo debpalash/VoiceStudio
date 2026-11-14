@@ -393,7 +393,6 @@
     "unavailable": "无法播放",
     "play": "播放",
     "pause": "暂停",
-    "missing": "音频文件缺失。",
     "now_playing": "正在播放",
     "kind_convert": "语音转换",
     "generated_audio": "生成的音频"
@@ -541,7 +540,10 @@
     "export_title": "全部导出",
     "exported": "转写文本已导出。",
     "search_placeholder": "搜索转写文本…",
-    "title": "转写记录"
+    "title": "转写记录",
+    "export_plain": "保存纯文本",
+    "export_srt": "保存 SRT",
+    "timestamps_unavailable": "此转录没有字幕时间信息。请使用能提供时间戳的语音识别模型。"
   },
   "engineRuntime": {
     "ready": "准备好",

@@ -528,7 +528,10 @@
     "speakers_unavailable": "L'identificazione dei parlanti non è disponibile. La trascrizione è stata salvata senza etichette dei parlanti.",
     "missing_model": "Nessun modello di riconoscimento vocale è installato — questa funzione ne richiede uno per trascrivere l'audio.",
     "original_transcript": "Trascrizione originale",
-    "active_model": "Modello: {{model}}"
+    "active_model": "Modello: {{model}}",
+    "export_plain": "Salva testo semplice",
+    "export_srt": "Salva SRT",
+    "timestamps_unavailable": "Questa trascrizione non contiene i tempi dei sottotitoli. Usa un modello di riconoscimento vocale che fornisca marcature temporali."
   },
   "engineRuntime": {
     "ready": "Pronto",
@@ -971,7 +974,6 @@
     "play": "Riproduci",
     "pause": "Pausa",
     "seek": "Posizione di riproduzione",
-    "missing": "Il file audio è mancante.",
     "now_playing": "In riproduzione",
     "kind_convert": "Conversione vocale"
   },

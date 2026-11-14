@@ -526,7 +526,10 @@
     "speakers_unavailable": "Sprekerherkenning is niet beschikbaar. Het transcript is opgeslagen zonder sprekerlabels.",
     "missing_model": "Er is geen spraak-naar-tekstmodel geïnstalleerd — deze functie heeft er een nodig om audio te transcriberen.",
     "original_transcript": "Oorspronkelijk transcript",
-    "active_model": "Model: {{model}}"
+    "active_model": "Model: {{model}}",
+    "export_plain": "Opslaan als platte tekst",
+    "export_srt": "SRT opslaan",
+    "timestamps_unavailable": "Deze transcriptie heeft geen ondertiteltijden. Gebruik een spraakherkenningsmodel dat tijdstempels levert."
   },
   "engineRuntime": {
     "ready": "Klaar",
@@ -969,7 +972,6 @@
     "play": "Afspelen",
     "pause": "Pauzeren",
     "seek": "Afspeelpositie",
-    "missing": "Audiobestand ontbreekt.",
     "now_playing": "Nu aan het spelen",
     "kind_convert": "Stemconversie"
   },

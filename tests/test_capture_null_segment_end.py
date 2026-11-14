@@ -102,6 +102,64 @@ def test_duration_comes_from_the_timed_segments(monkeypatch):
     assert body["duration_s"] == 1.25
 
 
+@pytest.mark.parametrize("mode", ["fast", "accurate"])
+@pytest.mark.parametrize("engine", ["sherpa", "moonshine"])
+def test_clip_duration_segments_are_not_recognition_timestamps(monkeypatch, mode, engine):
+    import sys
+    from types import SimpleNamespace
+    from services import asr_backend as asr
+
+    if engine == "sherpa":
+        class Backend:
+            id = "sherpa"
+
+            def transcribe(self, _path, **_kwargs):
+                return asr._sherpa_result("the meeting is at three", [0] * 16000, 16000)
+    else:
+        monkeypatch.setitem(sys.modules, "moonshine_onnx", SimpleNamespace(
+            transcribe=lambda *_a, **_k: "the meeting is at three",
+        ))
+        import soundfile
+        monkeypatch.setattr(soundfile, "info", lambda _path: SimpleNamespace(duration=1.0))
+        Backend = asr.MoonshineASRBackend
+
+    response = _post(_client(monkeypatch, Backend), mode=mode)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    # Keep the segment shape used by dubbing; a clip's duration is not an ASR cue.
+    assert body["segments"] == [{"start": 0.0, "end": 1.0, "text": "the meeting is at three"}]
+    assert body["timestamps_available"] is False
+
+
+@pytest.mark.parametrize("mode", ["fast", "accurate"])
+@pytest.mark.parametrize(
+    "timing,provenance,expected",
+    [
+        ({"start": 0.25, "end": 1.25}, None, True),
+        ({"start": 0.25, "end": 1.25}, False, False),
+        ({"start": 0.25, "end": None}, None, False),
+        ({"end": 1.25}, None, False),
+        ({"start": True, "end": 1.25}, None, False),
+        ({"start": 0.001, "end": 0.002}, None, False),
+    ],
+)
+def test_api_preserves_only_valid_recognition_timing_provenance(
+    monkeypatch, mode, timing, provenance, expected,
+):
+    class Backend:
+        id = "faster-whisper"
+
+        def transcribe(self, _path, **_kwargs):
+            result = {"text": "speech", "segments": [{"text": "speech", **timing}]}
+            if provenance is not None:
+                result["timestamps_available"] = provenance
+            return result
+
+    response = _post(_client(monkeypatch, Backend), mode=mode)
+    assert response.status_code == 200, response.text
+    assert response.json()["timestamps_available"] is expected
+
+
 # ── The live-dictation socket's own final-result builder ────────────────────
 #
 # Every existing capture_ws test stubs `_transcribe_buffer_full` out, so its
@@ -129,3 +187,28 @@ def test_ws_full_result_passes_null_end_through(monkeypatch):
 
     assert [s["end"] for s in result["segments"]] == [1.25, None]
     assert result["duration_s"] == 1.25
+    assert result["timestamps_available"] is False
+
+
+@pytest.mark.parametrize("synthetic", [False, True])
+def test_ws_full_result_preserves_timing_provenance(monkeypatch, synthetic):
+    import asyncio
+    from api.routers import capture_ws as cw
+
+    class Backend:
+        id = "test-asr"
+
+        def transcribe(self, _path, **_kwargs):
+            result = {"text": "speech", "segments": [{"start": 0, "end": 1, "text": "speech"}]}
+            if synthetic:
+                result["timestamps_available"] = False
+            return result
+
+    monkeypatch.setattr("services.asr_backend.get_capture_asr_backend", lambda **_kw: Backend())
+
+    async def straight_through(_pool, run, **_kw):
+        return run()
+
+    monkeypatch.setattr("services.asr_backend.run_transcribe_guarded", straight_through)
+    result = asyncio.run(cw._transcribe_buffer_full([b"\x00" * 32000], pcm_sr=16000))
+    assert result["timestamps_available"] is (not synthetic)

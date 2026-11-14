@@ -706,7 +706,6 @@
     "play": "Play",
     "pause": "Pause",
     "seek": "Seek",
-    "missing": "Audio file is missing.",
     "fullscreen": "Full screen",
     "mute": "Mute",
     "unmute": "Unmute",
@@ -947,7 +946,10 @@
     "speakers_unavailable": "Speaker identification isn't available. The transcript was saved without speaker labels.",
     "missing_model": "No speech-to-text model is installed — this feature needs one to transcribe audio.",
     "original_transcript": "Original transcript",
-    "active_model": "Model: {{model}}"
+    "active_model": "Model: {{model}}",
+    "export_plain": "Save plain text",
+    "export_srt": "Save SRT",
+    "timestamps_unavailable": "This transcript has no subtitle timings. Use a speech recognition model that provides timestamps."
   },
   "engineRuntime": {
     "ready": "Ready",

@@ -6,6 +6,8 @@ import {
   segTimeRange,
   formatTranscriptExport,
   preferredTranscript,
+  canExportTranscriptSubtitles,
+  type TranscriptExportFormat,
 } from '@shared/utils/transcriptionFormat';
 import { RecordingInputs } from '@/components/recording-inputs';
 import { NotReadyNotice, SetUpLink } from '@/components/engine-notice';
@@ -184,6 +186,10 @@ export function TranscriptionsPage() {
     [entries, search],
   );
   const selected = visible.find((entry) => entry.id === selectedId);
+  const subtitlesAvailable = useMemo(
+    () => !!selected && canExportTranscriptSubtitles(selected),
+    [selected],
+  );
   useEffect(() => {
     const next = visible[0]?.id ?? null;
     if (!visible.some((entry) => entry.id === selectedId) && selectedId !== next) {
@@ -210,12 +216,20 @@ export function TranscriptionsPage() {
       toast.error(t('modelSettings.failed'));
     }
   };
-  const exportText = async (list: TranscriptEntry[]) => {
+  const exportText = async (
+    list: TranscriptEntry[],
+    format: TranscriptExportFormat = 'history',
+  ) => {
     try {
-      const text = formatTranscriptExport(list);
+      const text = formatTranscriptExport(list, { format });
       const result = await saveLocalFile(
-        new Blob([text], { type: 'text/plain;charset=utf-8' }),
-        `transcriptions_${new Date().toISOString().slice(0, 10)}.txt`,
+        new Blob([text], {
+          type:
+            format === 'srt' ? 'application/x-subrip;charset=utf-8' : 'text/plain;charset=utf-8',
+        }),
+        format === 'history'
+          ? `transcriptions_${new Date().toISOString().slice(0, 10)}.txt`
+          : `transcript.${format === 'srt' ? 'srt' : 'txt'}`,
       );
       if (!result.canceled) toast.success(t('transcriptions.exported'));
     } catch (cause) {
@@ -616,7 +630,7 @@ export function TranscriptionsPage() {
                       </span>
                     ) : null}
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex flex-wrap gap-1">
                     <Button
                       variant="ghost"
                       size="sm"
@@ -636,6 +650,27 @@ export function TranscriptionsPage() {
                     </Button>
                     <Button
                       variant="ghost"
+                      size="sm"
+                      onClick={() => void exportText([selected], 'text')}
+                    >
+                      <FileTextIcon />
+                      {t('transcriptions.export_plain')}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      disabled={!subtitlesAvailable}
+                      aria-describedby={
+                        !subtitlesAvailable ? 'transcript-subtitle-hint' : undefined
+                      }
+                      title={t('transcriptions.original_transcript')}
+                      onClick={() => void exportText([selected], 'srt')}
+                    >
+                      <DownloadIcon />
+                      {t('transcriptions.export_srt')}
+                    </Button>
+                    <Button
+                      variant="ghost"
                       size="icon-sm"
                       aria-label={t('transcriptions.delete')}
                       onClick={() => remove(selected.id)}
@@ -644,6 +679,11 @@ export function TranscriptionsPage() {
                     </Button>
                   </div>
                 </div>
+                {!subtitlesAvailable && (
+                  <p id="transcript-subtitle-hint" className="text-xs text-muted-foreground">
+                    {t('transcriptions.timestamps_unavailable')}
+                  </p>
+                )}
                 <p className="whitespace-pre-wrap text-base leading-7" dir="auto">
                   {preferredTranscript(selected)}
                 </p>

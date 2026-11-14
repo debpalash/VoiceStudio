@@ -706,7 +706,6 @@
     "play": "Reproducir",
     "pause": "Pausa",
     "seek": "Busca",
-    "missing": "Falta o ficheiro de audio.",
     "fullscreen": "Pantalla completa",
     "mute": "Silenciar",
     "unmute": "Activar o silencio",
@@ -947,7 +946,10 @@
     "speakers_unavailable": "A identificación do altofalante non está dispoñible. A transcrición gardouse sen etiquetas de altofalante.",
     "missing_model": "Non hai instalado ningún modelo de voz a texto; esta función necesita un para transcribir o audio.",
     "original_transcript": "Transcrición orixinal",
-    "active_model": "Modelo: {{model}}"
+    "active_model": "Modelo: {{model}}",
+    "export_plain": "Gardar texto sen formato",
+    "export_srt": "Gardar SRT",
+    "timestamps_unavailable": "Esta transcrición non ten tempos de subtítulos. Usa un modelo de recoñecemento de voz que proporcione marcas de tempo."
   },
   "engineRuntime": {
     "ready": "Listo",

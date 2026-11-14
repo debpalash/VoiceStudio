@@ -11,6 +11,8 @@ export interface TranscriptEntry {
   language: string;
   duration_s: number;
   segments: TranscriptSegment[];
+  /** Explicit recognition timing provenance; absent on ambiguous legacy history. */
+  timestamps_available?: boolean;
   speakers?: string[];
   timestamp: string;
 }

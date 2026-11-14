@@ -526,7 +526,10 @@
     "speakers_unavailable": "Pengenalan pembicara tidak tersedia. Transkrip disimpan tanpa label pembicara.",
     "missing_model": "Tidak ada model ucapan-ke-teks yang terpasang — fitur ini membutuhkannya untuk mentranskripsi audio.",
     "original_transcript": "Transkrip asli",
-    "active_model": "Model: {{model}}"
+    "active_model": "Model: {{model}}",
+    "export_plain": "Simpan teks biasa",
+    "export_srt": "Simpan SRT",
+    "timestamps_unavailable": "Transkrip ini tidak memiliki waktu subtitel. Gunakan model pengenalan ucapan yang menyediakan stempel waktu."
   },
   "engineRuntime": {
     "ready": "Siap",
@@ -969,7 +972,6 @@
     "play": "Putar",
     "pause": "Jeda",
     "seek": "Cari posisi",
-    "missing": "File audio tidak ditemukan.",
     "now_playing": "Sedang diputar",
     "kind_convert": "Konversi suara"
   },

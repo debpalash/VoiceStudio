@@ -45,6 +45,9 @@ export function addTranscription(entry) {
     language: entry.language || 'unknown',
     duration_s: entry.duration_s || 0,
     segments: entry.segments || [],
+    ...(typeof entry.timestamps_available === 'boolean'
+      ? { timestamps_available: entry.timestamps_available }
+      : {}),
     timestamp: new Date().toISOString(),
     ...(Array.isArray(entry.speakers) && entry.speakers.length ? { speakers: entry.speakers } : {}),
     ...(typeof entry.refined_text === 'string' && entry.refined_text

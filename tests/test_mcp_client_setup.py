@@ -7,6 +7,23 @@ import pytest
 pytest.importorskip('mcp')
 
 
+def _stdio_tool(server, name, arguments):
+    """Use the SDK's real non-HTTP session, including its request context."""
+    import asyncio
+    from datetime import timedelta
+    from mcp.shared.memory import create_connected_server_and_client_session
+    from mcp.server.fastmcp.exceptions import ToolError
+
+    async def call():
+        async with create_connected_server_and_client_session(server, read_timeout_seconds=timedelta(seconds=5)) as session:
+            result = await session.call_tool(name, arguments)
+        if result.isError:
+            raise ToolError(result.content[0].text)
+        return result.content, result.structuredContent
+
+    return asyncio.run(call())
+
+
 @pytest.mark.parametrize('client_id', ['claude-code', 'cursor'])
 def test_client_setup_initializes_lists_tools_and_preserves_voice_binding(monkeypatch, tmp_path, client_id):
     import httpx
@@ -82,7 +99,6 @@ def test_client_setup_initializes_lists_tools_and_preserves_voice_binding(monkey
 
 def test_standalone_server_calls_the_backend_on_its_real_port(monkeypatch):
     """Without a mounted app the tools go over HTTP to OMNIVOICE_PORT, not :3900."""
-    import asyncio
     import httpx
     import mcp_server
 
@@ -100,12 +116,11 @@ def test_standalone_server_calls_the_backend_on_its_real_port(monkeypatch):
     for name in ('OMNIVOICE_API_URL', 'OMNIVOICE_BIND_HOST'):
         monkeypatch.delenv(name, raising=False)
     server = mcp_server.create_mcp_server()
-    asyncio.run(server.call_tool('check_health', {}))
+    _stdio_tool(server, 'check_health', {})
     assert [(u.host, u.port, u.path) for u in seen] == [('127.0.0.1', 3912, '/health')]
 
 
 def test_standalone_server_authenticates_to_a_keyed_https_backend(monkeypatch):
-    import asyncio
     import httpx
     import mcp_server
 
@@ -122,7 +137,7 @@ def test_standalone_server_authenticates_to_a_keyed_https_backend(monkeypatch):
     monkeypatch.setenv('OMNIVOICE_API_URL', 'https://gpu.example/voicestudio')
     monkeypatch.setenv('OMNIVOICE_API_KEY', 'k' * 40)
     server = mcp_server.create_mcp_server()
-    asyncio.run(server.call_tool('check_health', {}))
+    _stdio_tool(server, 'check_health', {})
     assert seen == [('https://gpu.example/voicestudio/health', 'Bearer ' + 'k' * 40)]
 
 
@@ -130,7 +145,6 @@ def test_standalone_server_authenticates_to_a_keyed_https_backend(monkeypatch):
 def test_remote_compressed_speech_checks_backend_encoder_not_mcp_host(
     monkeypatch, backend_status
 ):
-    import asyncio
     import httpx
     import mcp_server
     from mcp.server.fastmcp.exceptions import ToolError
@@ -156,9 +170,9 @@ def test_remote_compressed_speech_checks_backend_encoder_not_mcp_host(
     server = mcp_server.create_mcp_server()
     if backend_status == 503:
         with pytest.raises(ToolError, match='503'):
-            asyncio.run(server.call_tool('generate_speech', {'text': 'Hello', 'format': 'opus'}))
+            _stdio_tool(server, 'generate_speech', {'text': 'Hello', 'format': 'opus'})
     else:
-        result = asyncio.run(server.call_tool('generate_speech', {'text': 'Hello', 'format': 'opus'}))
+        result = _stdio_tool(server, 'generate_speech', {'text': 'Hello', 'format': 'opus'})
         assert json.loads(result[0][0].text)['audio_url'] == (
             'https://gpu.example/voicestudio/audio/ab12cd34.opus'
         )
