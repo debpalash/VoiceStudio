@@ -469,7 +469,9 @@ class ApiTests(unittest.TestCase):
         self.app = FastAPI()
         self.app.include_router(routes.router)
         self.app.add_middleware(BrowserGuardMiddleware)
-        self.client = TestClient(self.app, base_url="http://127.0.0.1")
+        # The base URL controls Host, not the ASGI peer. These positive
+        # administrative requests represent the local desktop operator.
+        self.client = TestClient(self.app, base_url="http://127.0.0.1", client=("127.0.0.1", 50000))
         self.addCleanup(self.client.close)
         self.patcher = patch.object(routes, "reviewed_installs", return_value=self.service)
         self.patcher.start(); self.addCleanup(self.patcher.stop)
@@ -491,6 +493,12 @@ class ApiTests(unittest.TestCase):
         response = self.client.get(f"/models/licenses/receipts/{p['plan_digest']}")
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["cache-control"], "no-store")
+        from fastapi.testclient import TestClient
+        calls_before = list(self.calls)
+        with TestClient(self.app, base_url="http://127.0.0.1", client=("198.51.100.4", 50001)) as remote:
+            self.assertEqual(remote.post(f"/models/licenses/verify/{p['plan_digest']}").status_code, 403)
+            self.assertEqual(remote.delete(f"/models/licenses/receipts/{p['plan_digest']}").status_code, 403)
+        self.assertEqual(self.calls, calls_before)
         self.assertEqual(self.client.post(f"/models/licenses/verify/{p['plan_digest']}").status_code, 200)
         self.assertTrue(self.calls[-1][-1])
         self.assertEqual(self.client.delete(f"/models/licenses/receipts/{p['plan_digest']}").status_code, 200)
