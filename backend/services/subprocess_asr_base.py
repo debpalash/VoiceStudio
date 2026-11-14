@@ -115,10 +115,12 @@ class SubprocessASRBackend(SubprocessBackend):
         # hold a real slot for the whole transcription via _occupy. Mirrors
         # SubprocessBackend.generate()'s path-aware slot block.
         from services.model_manager import running_on_gpu_pool
-        from services.asr_timing import transcribe_deadline, remaining_s
-        from services.asr_backend import ASRTimeoutError
+        from services.asr_timing import remaining_s
+        from services.asr_backend import ASRTimeoutError, file_transcribe_deadline
+        from services.inference_cancellation import current_cancellation
 
-        deadline = transcribe_deadline(audio_path, floor_s=self.recv_timeout_s)
+        deadline = file_transcribe_deadline(audio_path, floor_s=self.recv_timeout_s)
+        cancellation = current_cancellation()
         _held = None
         slot_future = None
         if not running_on_gpu_pool():
@@ -138,10 +140,16 @@ class SubprocessASRBackend(SubprocessBackend):
                 if slot_future is not None:
                     slot_future.cancel()
                 raise TimeoutError("timed out waiting for a free GPU worker")
-            if not self._lock.acquire(timeout=remaining_s(deadline)):
-                raise ASRTimeoutError("ASR deadline expired waiting for the engine")
+            # Short waits stay below threading.TIMEOUT_MAX even for a very
+            # large valid budget, and let abandoned queued work leave promptly.
+            while True:
+                remaining = remaining_s(deadline)
+                if remaining <= 0 or (cancellation and cancellation.cancelled.is_set()):
+                    raise ASRTimeoutError("ASR deadline expired or cancelled waiting for the engine")
+                if self._lock.acquire(timeout=min(remaining, 0.05)):
+                    break
             try:
-                if remaining_s(deadline) <= 0:
+                if remaining_s(deadline) <= 0 or (cancellation and cancellation.cancelled.is_set()):
                     raise ASRTimeoutError("ASR deadline expired before transcription")
                 self._spawn()
                 from services.performance_profiles import asr_decode_defaults

@@ -526,10 +526,13 @@ def _uploaded_audio_duration(raw: bytes) -> float | None:
     from services.ffmpeg_utils import probe_audio_duration
 
     from pathlib import Path
-    with tempfile.TemporaryDirectory(prefix="voice-mcp-asr-") as scratch:
-        path = Path(scratch) / ("audio" + _sniff_audio_ext(raw))
-        path.write_bytes(raw)
-        return probe_audio_duration(str(path))
+    try:
+        with tempfile.TemporaryDirectory(prefix="voice-mcp-asr-") as scratch:
+            path = Path(scratch) / ("audio" + _sniff_audio_ext(raw))
+            path.write_bytes(raw)
+            return probe_audio_duration(str(path))
+    except OSError:
+        return None
 
 
 def _maybe_number(value):

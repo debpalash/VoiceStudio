@@ -58,7 +58,7 @@ def test_long_upload_reaches_the_guard_with_a_duration_budget(monkeypatch, endpo
     client = TestClient(app, client=("127.0.0.1", 50000))
     response = client.post(endpoint, files={field: ("meeting.wav", _recording(1500), "audio/wav")})
     assert response.status_code == 200, response.text
-    assert waits == [pytest.approx(3000, abs=1)]
+    assert waits[-1] == pytest.approx(3000, abs=1)
 
 
 def test_isolated_engine_does_not_keep_its_old_ten_minute_ceiling(tmp_path, monkeypatch):
@@ -80,6 +80,277 @@ def test_isolated_engine_does_not_keep_its_old_ten_minute_ceiling(tmp_path, monk
     monkeypatch.setattr(backend, "_recv_with_timeout", receive)
     backend.transcribe(str(path))
     assert waits == [pytest.approx(3000, abs=1)]
+
+
+def test_large_finite_request_budget_does_not_overflow_the_engine_lock(monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from services.asr_backend import run_transcribe_guarded
+    from services.subprocess_asr import IsolatedFasterWhisperBackend
+
+    budget = 2 * threading.TIMEOUT_MAX
+    monkeypatch.setenv("OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S", str(budget))
+    monkeypatch.setattr("services.model_manager.running_on_gpu_pool", lambda: True)
+    engine = IsolatedFasterWhisperBackend()
+    monkeypatch.setattr(engine, "_spawn", lambda: None)
+    monkeypatch.setattr(engine, "_send", lambda message: None)
+    waits = []
+    monkeypatch.setattr(engine, "_recv_with_timeout", lambda timeout: waits.append(timeout) or {"op": "segments"})
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        asyncio.run(run_transcribe_guarded(pool, lambda: engine.transcribe("audio.wav")))
+    assert waits == [pytest.approx(budget)]  # only the lock primitive is bounded
+
+
+def test_cancelled_lock_wait_does_not_start_a_late_transcription(monkeypatch):
+    import threading
+    from time import monotonic
+    from concurrent.futures import ThreadPoolExecutor
+    from services.inference_cancellation import InferenceCancellation
+    from services.asr_backend import ASRTimeoutError
+    from services.subprocess_asr import IsolatedFasterWhisperBackend
+
+    locked, attempted = threading.Lock(), threading.Event()
+    locked.acquire()
+
+    class Lock:
+        def acquire(self, *, timeout):
+            attempted.set()
+            return locked.acquire(timeout=timeout)
+
+        def release(self):
+            locked.release()
+
+    monkeypatch.setattr("services.model_manager.running_on_gpu_pool", lambda: True)
+    engine = IsolatedFasterWhisperBackend()
+    engine._lock = Lock()
+    monkeypatch.setattr(engine, "_spawn", lambda: pytest.fail("cancelled work must not start a child"))
+    cancellation = InferenceCancellation(deadline=monotonic() + 10)
+
+    def transcribe():
+        with cancellation.activate():
+            return engine.transcribe("audio.wav")
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(transcribe)
+        try:
+            assert attempted.wait(2)
+            cancellation.cancel()
+            with pytest.raises(ASRTimeoutError):
+                future.result(timeout=2)
+        finally:
+            locked.release()
+
+
+@pytest.mark.parametrize("queued", [False, True])
+def test_cancelled_conversion_probe_releases_upload_after_its_reader_exits(tmp_path, monkeypatch, queued):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from api.routers import voice_convert
+    from api.routers.generation import _TempReferenceLease
+    from services import asr_backend
+
+    path = tmp_path / "upload.wav"
+    path.write_bytes(_recording(1500))
+    lease = _TempReferenceLease(str(path))
+    started, finish, cleaned = threading.Event(), threading.Event(), threading.Event()
+    submitted, occupied = threading.Event(), threading.Event()
+    acquire = lease.acquire
+
+    def acquire_tracked():
+        release = acquire()
+
+        def done():
+            release()
+            cleaned.set()
+
+        return done
+
+    def probe(path):
+        started.set()
+        assert finish.wait(5)
+        assert not cleaned.is_set()
+        return 1500
+
+    monkeypatch.setattr(lease, "acquire", acquire_tracked)
+    monkeypatch.setattr(asr_backend, "asr_model_missing_error", lambda **kwargs: None)
+    monkeypatch.setattr("services.ffmpeg_utils.probe_audio_duration", probe)
+
+    class ProbePool(ThreadPoolExecutor):
+        def submit(self, fn, /, *args, **kwargs):
+            future = super().submit(fn, *args, **kwargs)
+            submitted.set()
+            return future
+
+    async def scenario():
+        work = asyncio.create_task(voice_convert._transcribe_source(str(path), source_lease=lease))
+        assert await asyncio.to_thread((submitted if queued else started).wait, 2)
+        work.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await work
+        lease.finish_request()
+        if queued:
+            assert cleaned.is_set()
+            assert not path.exists()
+            assert not started.is_set()
+            return
+        assert path.exists()
+        assert not cleaned.is_set()
+        finish.set()
+        assert await asyncio.to_thread(cleaned.wait, 2)
+        assert not path.exists()
+
+    with ProbePool(max_workers=1) as pool:
+        monkeypatch.setattr("services.model_manager._cpu_pool", pool)
+        if queued:
+            def occupy():
+                occupied.set()
+                finish.wait(5)
+
+            pool.submit(occupy)
+            assert occupied.wait(2)
+            submitted.clear()
+        try:
+            asyncio.run(scenario())
+        finally:
+            finish.set()
+
+
+def test_caller_owned_upload_drains_its_cancelled_probe_before_cleanup(tmp_path, monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from services.asr_backend import run_transcribe_guarded
+
+    path = tmp_path / "upload.wav"
+    path.write_bytes(_recording(1500))
+    started, finish = threading.Event(), threading.Event()
+
+    def probe(path):
+        started.set()
+        assert finish.wait(5)
+        assert tmp_path.joinpath("upload.wav").exists()
+        return 1500
+
+    monkeypatch.setattr("services.ffmpeg_utils.probe_audio_duration", probe)
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        async def request():
+            try:
+                await run_transcribe_guarded(pool, lambda: pytest.fail("abandoned ASR must not start"), audio_path=str(path))
+            finally:
+                path.unlink()
+
+        async def scenario():
+            work = asyncio.create_task(request())
+            assert await asyncio.to_thread(started.wait, 2)
+            work.cancel()
+            await asyncio.sleep(0)
+            assert not work.done()
+            assert path.exists()
+            finish.set()
+            with pytest.raises(asyncio.CancelledError):
+                await work
+            assert not path.exists()
+
+        try:
+            asyncio.run(scenario())
+        finally:
+            finish.set()
+
+
+def test_probe_queue_cannot_wait_past_the_finite_unknown_duration_floor(monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from services.asr_backend import ASRTimeoutError, run_transcribe_guarded
+
+    occupied, finish, cleaned = threading.Event(), threading.Event(), threading.Event()
+    monkeypatch.setenv("OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S", "0.05")
+    monkeypatch.setattr("services.ffmpeg_utils.probe_audio_duration", lambda path: pytest.fail("expired probe must not start"))
+
+    def occupy():
+        occupied.set()
+        finish.wait(5)
+
+    with ThreadPoolExecutor(max_workers=1) as cpu, ThreadPoolExecutor(max_workers=1) as gpu:
+        monkeypatch.setattr("services.model_manager._cpu_pool", cpu)
+        cpu.submit(occupy)
+        assert occupied.wait(2)
+
+        async def scenario():
+            with pytest.raises(ASRTimeoutError):
+                await asyncio.wait_for(run_transcribe_guarded(
+                    gpu, lambda: pytest.fail("expired ASR must not start"),
+                    audio_path="upload.wav", on_abandon=cleaned.set,
+                ), timeout=1)
+            assert cleaned.is_set()
+
+        try:
+            asyncio.run(scenario())
+        finally:
+            finish.set()
+
+
+@pytest.mark.usefixtures("asr_model_installed")
+def test_stream_model_loading_spends_the_file_deadline_and_drains_before_restore(tmp_path, monkeypatch):
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from api.routers import dub_core as dub
+    from services import asr_backend as asr
+
+    path = tmp_path / "meeting.wav"
+    path.write_bytes(_recording(1500))
+    monkeypatch.setitem(dub._dub_jobs, "slow-file-load", {"audio_path": str(path), "segments": None})
+    monkeypatch.setenv("OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S", "0.1")
+    monkeypatch.setenv("OMNIVOICE_ASR_TIMEOUT_REALTIME_FACTOR", "0")
+    monkeypatch.setattr("services.ffmpeg_utils.probe_audio_duration", lambda path: 1500)
+    monkeypatch.setattr(dub, "should_preload_tts_asr", lambda: False)
+    monkeypatch.setattr(dub, "offload_tts_for_asr", lambda: None)
+    monkeypatch.setattr(dub, "ASR_LOAD_KEEPALIVE_S", 0.01)
+    entered, finish, unloaded, restored = (threading.Event() for _ in range(4))
+
+    class Backend:
+        id = "whole-file"
+        requires_full_audio_for_speaker_consistency = True
+
+        def unload(self):
+            unloaded.set()
+
+    def load(**kwargs):
+        entered.set()
+        assert finish.wait(5)
+        return Backend()
+
+    def restore():
+        assert unloaded.is_set()
+        restored.set()
+
+    monkeypatch.setattr(asr, "load_active_asr_backend", load)
+    monkeypatch.setattr(dub, "restore_tts_after_asr", restore)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        monkeypatch.setattr(dub, "_gpu_pool", pool)
+
+        async def collect():
+            response = await dub.dub_transcribe_stream("slow-file-load", per_segment_refs=False)
+            parts = []
+            async for part in response.body_iterator:
+                parts.append(part.decode() if isinstance(part, bytes) else part)
+            return "".join(parts)
+
+        async def scenario():
+            body = await asyncio.wait_for(collect(), timeout=1)
+            assert entered.is_set()
+            assert "transcription_timeout" in body
+            assert "event: done" in body
+            assert not unloaded.is_set()
+            assert not restored.is_set()
+            finish.set()
+            assert await asyncio.to_thread(unloaded.wait, 2)
+            assert await asyncio.to_thread(restored.wait, 2)
+
+        try:
+            asyncio.run(scenario())
+        finally:
+            finish.set()
 
 
 @pytest.mark.usefixtures("neutral_asr_host")
@@ -214,6 +485,53 @@ def test_actual_mcp_upload_passes_the_duration_based_wait(monkeypatch, fixed_wai
     server = mcp_server.create_mcp_server(app=backend)
     asyncio.run(server.call_tool("transcribe", {"audio_base64": base64.b64encode(_recording(1500)).decode()}))
     assert waits == [fixed_wait or 3030]
+
+
+@pytest.mark.parametrize("failure", ["create", "write"])
+def test_mcp_duration_estimation_survives_scratch_storage_failure(monkeypatch, failure):
+    import tempfile
+    from pathlib import Path
+    from mcp_server import _uploaded_audio_duration
+
+    def unavailable(*args, **kwargs):
+        raise OSError("scratch storage unavailable")
+
+    if failure == "create":
+        monkeypatch.setattr(tempfile, "TemporaryDirectory", unavailable)
+    else:
+        monkeypatch.setattr(Path, "write_bytes", unavailable)
+    assert _uploaded_audio_duration(_recording(1500)) is None
+
+
+@pytest.mark.usefixtures("asr_model_installed")
+def test_installed_capture_fallback_reports_exhausted_deadline(monkeypatch):
+    from fastapi.testclient import TestClient
+    from services import asr_backend as asr
+
+    class SilentSherpa:
+        id = "sherpa-onnx"
+        spec = SimpleNamespace(id="silent-model")
+
+        def transcribe(self, path, **kwargs):
+            return {"text": "", "segments": [], "language": "en"}
+
+    real = asr.run_transcribe_guarded
+
+    async def guard(pool, fn, **kwargs):
+        if kwargs.get("what") == "Dictation fallback":
+            if kwargs.get("on_abandon"):
+                kwargs["on_abandon"]()
+            raise asr.ASRTimeoutError("installed fallback exceeded the deadline")
+        return await real(pool, fn, **kwargs)
+
+    monkeypatch.setattr(asr, "get_capture_asr_backend", lambda **kwargs: SilentSherpa())
+    monkeypatch.setattr(asr, "run_transcribe_guarded", guard)
+    from main import app
+    response = TestClient(app, client=("127.0.0.1", 50000)).post(
+        "/transcribe", files={"audio": ("voice.wav", _recording(2), "audio/wav")},
+    )
+    assert response.status_code == 504, response.text
+    assert "fallback exceeded the deadline" in response.json()["detail"]
 
 
 @pytest.mark.usefixtures("asr_model_installed")

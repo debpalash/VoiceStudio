@@ -1,24 +1,17 @@
-"""Local duration discovery and one deadline across ASR engine layers."""
+"""One execution clock shared by ASR guards and child engines."""
 from time import monotonic
-
-from core.asr_budget import transcribe_budget_s
-
-
-def file_transcribe_budget_s(path: str, *, floor_s: float | None = None) -> float:
-    from services.ffmpeg_utils import probe_audio_duration
-
-    return transcribe_budget_s(probe_audio_duration(path), floor_s=floor_s)
+from typing import Callable
 
 
-def transcribe_deadline(path: str, *, floor_s: float | None = None) -> float:
+def transcribe_deadline(budget_s: Callable[[], float], *, started_at: float | None = None) -> float:
     """Reuse the caller's guard deadline, including queue/load/conversion time."""
     from services.inference_cancellation import current_cancellation
 
     cancellation = current_cancellation()
     if cancellation is not None and cancellation.deadline is not None:
         return cancellation.deadline
-    started = monotonic()
-    return started + file_transcribe_budget_s(path, floor_s=floor_s)
+    started = monotonic() if started_at is None else started_at
+    return started + budget_s()
 
 
 def remaining_s(deadline: float) -> float:

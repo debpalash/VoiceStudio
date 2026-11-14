@@ -1264,9 +1264,8 @@ async def _transcribe_buffer(
             result = backend.transcribe(tmp, word_timestamps=False, **hint)
             return _result_text(result)
 
-        # Bound dictation transcribes (#730): a wedged whisperx/CTranslate2 call
-        # must not hold its GPU-pool worker forever and starve TTS / other ASR
-        # into a "can't reach backend"; on timeout the pool is reset to recover.
+        # Bound dictation requests (#730). Timed-out native work retains its
+        # worker accounting until it exits, preventing overlapping retries (#1669).
         text = await run_transcribe_guarded(
             _gpu_pool, _run, what="Dictation",
             **({"duration_s": sum(map(len, chunks)) / (pcm_sr * 2)} if pcm_sr else {"audio_path": tmp}),
@@ -1338,8 +1337,7 @@ async def _transcribe_buffer_full(
                 "engine": backend.id,
             }
 
-        # Bounded + pool-resetting on timeout (#730), same rationale as the
-        # partial path above.
+        # Same bounded request and native-worker accounting as the partial path.
         return await run_transcribe_guarded(
             _gpu_pool, _run, what="Dictation",
             **({"duration_s": sum(map(len, chunks)) / (pcm_sr * 2)} if pcm_sr else {"audio_path": tmp}),

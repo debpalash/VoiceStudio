@@ -75,6 +75,7 @@ def _run(monkeypatch, tmp_path, backend, seconds):
     monkeypatch.setattr(dc, "get_diarization_pipeline", _no_pyannote)
     monkeypatch.setattr(dc, "run_transcribe_guarded", _stub_guarded)
     monkeypatch.setenv("OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S", "777.5")
+    monkeypatch.setenv("OMNIVOICE_ASR_TIMEOUT_REALTIME_FACTOR", "2")
     monkeypatch.setattr(dc, "TRANSCRIBE_CHUNK_TIMEOUT_S", 44.25)
 
     async def _collect():

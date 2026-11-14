@@ -68,12 +68,9 @@ class ASRTimeoutError(TimeoutError):
 def reset_pool_after_wedge(executor, *, what: str = "ASR") -> bool:
     """Abandon a GPU pool whose worker is wedged on a timed-out transcribe (#730).
 
-    Python can't kill the stuck thread, but dropping the poisoned pool means the
-    next submit (a retry, the next chunk, or a concurrent TTS generate) gets a
-    fresh worker instead of queueing behind the wedged one. This is the ONE
-    recovery mechanism shared by every transcribe path — the whole-file guards
-    (via :func:`run_transcribe_guarded`) and the chunked dub stream both route
-    through it, so the semantics can't drift between them again.
+    This is opt-in recovery for a caller whose backing process can be safely
+    terminated. In-process inference keeps its worker accounted for until the
+    native call exits; whole-file and chunk guards retain that default (#1669).
 
     Best-effort: an executor without ``reset()`` (a plain ThreadPoolExecutor in
     tests) is a no-op, and a failing reset never raises — this runs on the very
@@ -150,6 +147,59 @@ def _isolated_engine_hint(streak: int) -> str:
     )
 
 
+def file_transcribe_deadline(path: str, *, floor_s: float | None = None,
+                             started_at: float | None = None) -> float:
+    from services.asr_timing import transcribe_deadline
+    from services.ffmpeg_utils import probe_audio_duration
+
+    return transcribe_deadline(
+        lambda: transcribe_budget_s(probe_audio_duration(path), floor_s=floor_s),
+        started_at=started_at,
+    )
+
+
+async def probe_transcribe_deadline(path: str, *, on_abandon=None) -> float:
+    """Keep the input owned until the physical metadata reader has stopped."""
+    from services.model_manager import _cpu_pool
+
+    concurrent_probe = _cpu_pool.submit(file_transcribe_deadline, path, started_at=time.monotonic())
+    probe = asyncio.wrap_future(concurrent_probe)
+    probe_budget = transcribe_budget_s()
+    try:
+        return await asyncio.wait_for(asyncio.shield(probe), timeout=probe_budget)
+    except (asyncio.CancelledError, asyncio.TimeoutError) as exc:
+        # cancel() succeeds only before the reader starts. A running reader's
+        # concurrent Future completes only after it has closed the input.
+        cancelled_before_start = concurrent_probe.cancel()
+
+        def consume_result(done):
+            if not done.cancelled():
+                done.exception()
+
+        probe.add_done_callback(consume_result)
+        if on_abandon is not None:
+            def release_input(_done):
+                try:
+                    on_abandon()
+                except Exception:
+                    logger.exception("ASR probe abandon cleanup failed")
+
+            concurrent_probe.add_done_callback(release_input)
+        elif not cancelled_before_start:
+            # A caller retaining cleanup needs us to drain before it deletes
+            # the file. Repeated cancellation must not cut that drain short.
+            while not concurrent_probe.done():
+                try:
+                    await asyncio.shield(probe)
+                except asyncio.CancelledError:
+                    continue
+                except Exception:
+                    break
+        if isinstance(exc, asyncio.CancelledError):
+            raise
+        raise ASRTimeoutError(f"ASR duration probe exceeded {probe_budget:g}s") from None
+
+
 async def run_transcribe_guarded(executor, fn, *, what: str = "ASR",
                                  timeout: float | None = None,
                                  audio_path: str | None = None,
@@ -179,23 +229,8 @@ async def run_transcribe_guarded(executor, fn, *, what: str = "ASR",
     completion leaves cleanup with the caller.
     """
     from services.inference_cancellation import InferenceCancellation
-    from services.asr_timing import transcribe_deadline, remaining_s
+    from services.asr_timing import remaining_s
 
-    if deadline is not None and timeout is not None:
-        deadline = min(deadline, time.monotonic() + timeout)
-    if deadline is None:
-        if timeout is None and audio_path:
-            deadline = await asyncio.to_thread(transcribe_deadline, audio_path)
-        else:
-            if timeout is None:
-                timeout = transcribe_budget_s(duration_s)
-            deadline = time.monotonic() + timeout
-    timeout = remaining_s(deadline)
-    cancellation = InferenceCancellation(deadline=deadline)
-    loop = asyncio.get_running_loop()
-    # Same SystemExit containment as the TTS pool (#1133 class): an ASR
-    # dependency written as a CLI must not be able to shut the backend down.
-    inner = contain_system_exit(fn, what)
     abandon_lock = threading.Lock()
     abandon_state = {
         "requested": False,
@@ -214,6 +249,24 @@ async def run_transcribe_guarded(executor, fn, *, what: str = "ASR",
             on_abandon()
         except Exception:  # noqa: BLE001 — cleanup cannot hide the ASR result
             logger.exception("%s abandon cleanup failed", what)
+
+    if deadline is not None and timeout is not None:
+        deadline = min(deadline, time.monotonic() + timeout)
+    if deadline is None:
+        if timeout is None and audio_path:
+            deadline = await probe_transcribe_deadline(
+                audio_path, on_abandon=_fire_abandon_callback if on_abandon is not None else None,
+            )
+        else:
+            if timeout is None:
+                timeout = transcribe_budget_s(duration_s)
+            deadline = time.monotonic() + timeout
+    timeout = remaining_s(deadline)
+    cancellation = InferenceCancellation(deadline=deadline)
+    loop = asyncio.get_running_loop()
+    # Same SystemExit containment as the TTS pool (#1133 class): an ASR
+    # dependency written as a CLI must not be able to shut the backend down.
+    inner = contain_system_exit(fn, what)
 
     def _job():
         try:
@@ -2740,8 +2793,8 @@ class OpenAICompatASRBackend(ASRBackend):
                    language: str | None = None, initial_prompt: str | None = None,
                    temperature: float | None = None,
                    task: str = "transcribe") -> dict:
-        from services.asr_timing import transcribe_deadline, remaining_s
-        deadline = transcribe_deadline(audio_path)
+        from services.asr_timing import remaining_s
+        deadline = file_transcribe_deadline(audio_path)
         logger.info(
             "OpenAI-compat ASR transcribing %s (base_url=%s, model=%s)",
             audio_path, self._base_url, self._model,
