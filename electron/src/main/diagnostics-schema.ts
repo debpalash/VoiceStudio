@@ -8,6 +8,8 @@ export interface DiagnosticRecord {
   id: string;
   timestamp_ms: number;
   epoch: string;
+  /** Local-only crash-session correlation; never an event property. */
+  session_id?: string;
   props: DiagnosticProps;
 }
 export interface DiagnosticConsent {
@@ -235,7 +237,18 @@ export function sanitizeRecord(
   )
     return null;
   const props = sanitizeProperties(r.props);
-  return props ? { version: 1, id: r.id, timestamp_ms: r.timestamp_ms, epoch, props } : null;
+  return props
+    ? {
+        version: 1,
+        id: r.id,
+        timestamp_ms: r.timestamp_ms,
+        epoch,
+        props,
+        ...(typeof r.session_id === 'string' && HEX_ID.test(r.session_id)
+          ? { session_id: r.session_id }
+          : {}),
+      }
+    : null;
 }
 
 /** Error messages and the first stack line are intentionally never inspected. */

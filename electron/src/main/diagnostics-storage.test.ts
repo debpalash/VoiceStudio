@@ -161,7 +161,8 @@ it('recovers a recent crash after more than a week of active opted-in runtime', 
   await reports.initialize();
   await reports.flush();
   expect(initial.send).toHaveBeenCalledOnce();
-  expect(JSON.parse(String(initial.send.mock.calls[0][1]?.body)).props).toMatchObject({
+  const body = JSON.parse(String(initial.send.mock.calls[0][1]?.body));
+  expect(body.props).toMatchObject({
     category: 'app_crash',
     reason: 'unclean_exit',
     app_version: '1.0.0',
@@ -205,6 +206,69 @@ it('keeps the session start for journal correlation while refreshing its livenes
   expect(body.props).toMatchObject({ reason: 'unhandled_exception', error_type: 'TypeError' });
   expect(body.ts).toBe(now - 59_001);
   expect(JSON.stringify(body)).not.toContain('private words');
+});
+
+it('keeps prior crash evidence until its recovered outbox has been published', async () => {
+  const initial = await create();
+  const session = join(initial.options.directory, 'session.json');
+  const marker = await readFile(session);
+  await initial.reports.close();
+  await writeFile(session, marker);
+  let now = Date.now();
+  const options = {
+    ...initial.options,
+    now: () => now,
+    identity: { ...initial.options.identity, app_version: '1.1.0' },
+  };
+  gate.failRenameTarget = 'outbox.json';
+  reports = new DiagnosticReports(options);
+  await reports.initialize();
+  expect(await readFile(session)).toEqual(marker);
+  expect(reports.status().pending_count).toBe(1);
+  await reports.flush();
+  expect(await readFile(session)).toEqual(marker);
+  gate.failRenameTarget = '';
+  now += 60_000;
+  await reports.flush();
+  expect(initial.send).toHaveBeenCalledOnce();
+  const body = JSON.parse(String(initial.send.mock.calls[0][1]?.body));
+  expect(body.props).toMatchObject({
+    category: 'app_crash',
+    app_version: '1.0.0',
+    occurrences: 1,
+  });
+  expect(JSON.stringify(body)).not.toContain(JSON.parse(marker.toString('utf8')).session_id);
+  expect(JSON.parse(await readFile(session, 'utf8')).app_version).toBe('1.1.0');
+});
+
+it('recovers two crashed sessions even when their clocks share one millisecond', async () => {
+  const initial = await create(false);
+  await initial.reports.close();
+  const now = Date.now();
+  const options = { ...initial.options, now: () => now };
+  reports = new DiagnosticReports(options);
+  await reports.initialize();
+  await reports.setConsent(true);
+  await writeFile(
+    join(initial.root, 'main-process-errors.json'),
+    JSON.stringify([
+      {
+        at: new Date(now).toISOString(),
+        version: '1.0.0',
+        origin: 'uncaughtException',
+        detail: 'TypeError: private words',
+      },
+    ]),
+  );
+  for (let crash = 0; crash < 2; crash++) {
+    const session = join(options.directory, 'session.json');
+    const marker = await readFile(session);
+    await reports.close();
+    await writeFile(session, marker);
+    reports = new DiagnosticReports(options);
+    await reports.initialize();
+  }
+  expect(reports.status().pending_count).toBe(2);
 });
 
 it.each([false, true])(

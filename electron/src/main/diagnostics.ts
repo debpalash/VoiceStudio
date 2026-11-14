@@ -7,6 +7,7 @@ import type { DiagnosticState } from '../preload/diagnostics';
 import { FILE_RENAME, renameWithRetry } from './rename-retry';
 import {
   diagnosticLimit,
+  HEX_ID,
   MAX_QUEUE_BYTES,
   MAX_RECORDS,
   sanitizeProperties,
@@ -184,6 +185,8 @@ export class DiagnosticReports {
   private sessionRecoveryPending = false;
   private sessionRecoveryAt = 0;
   private sessionRecoveryWork: Promise<boolean> | null = null;
+  private sessionEvidenceRecovered = false;
+  private sessionId = id();
   private wakeRetry: (() => void) | null = null;
   private readonly destination: Destination | null;
   private readonly env: NodeJS.ProcessEnv;
@@ -284,6 +287,7 @@ export class DiagnosticReports {
         id: id(),
         timestamp_ms: this.now(),
         epoch: this.consent.epoch,
+        session_id: this.sessionId,
         props,
       });
       this.schedule();
@@ -327,6 +331,8 @@ export class DiagnosticReports {
     this.outboxRestoreAt = 0;
     this.inboxReadRetryAt.clear();
     this.sessionRecoveryPending = false;
+    this.sessionEvidenceRecovered = false;
+    this.sessionId = id();
     this.dirty = false;
     this.retryAt = 0;
     this.initialized = false;
@@ -469,6 +475,7 @@ export class DiagnosticReports {
         (old) =>
           old.id !== this.activeId &&
           old.props.fingerprint === record.props.fingerprint &&
+          old.session_id === record.session_id &&
           Math.abs(old.timestamp_ms - record.timestamp_ms) <= diagnosticLimit('dedupe_ms', 60_000),
       );
     if (duplicate) {
@@ -538,13 +545,20 @@ export class DiagnosticReports {
     if (!this.enabled || this.now() < this.sessionRecoveryAt) return false;
     const revision = this.revision;
     this.sessionRecoveryWork = (async () => {
-      const recovered = await this.recoverSession();
+      const recovered = this.sessionEvidenceRecovered || (await this.recoverSession());
       if (revision !== this.revision || !this.enabled) return false;
       if (!recovered) {
         this.sessionRecoveryAt = this.now() + 60_000;
         return false;
       }
+      this.sessionEvidenceRecovered = true;
+      if (this.dirty && !(await this.tryPersist())) {
+        this.sessionRecoveryAt = this.now() + 60_000;
+        return false;
+      }
+      if (revision !== this.revision || !this.enabled) return false;
       this.sessionRecoveryPending = false;
+      this.sessionEvidenceRecovered = false;
       this.sessionRecoveryAt = 0;
       await this.writeSession().catch(() => {});
       return true;
@@ -572,6 +586,7 @@ export class DiagnosticReports {
     this.outboxRestoreAt = 0;
     this.inboxReadRetryAt.clear();
     this.sessionRecoveryPending = false;
+    this.sessionEvidenceRecovered = false;
     this.sessionRecoveryAt = 0;
     await Promise.all(
       [this.outbox, this.inbox, this.sessionPath].map((path) =>
@@ -812,10 +827,15 @@ export class DiagnosticReports {
         typeof marker.app_version === 'string'
           ? marker.app_version
           : this.options.identity.app_version;
+      const previousSession =
+        typeof marker.session_id === 'string' && HEX_ID.test(marker.session_id)
+          ? marker.session_id
+          : undefined;
       if (
+        previousSession &&
         this.records.some(
           (record) =>
-            record.timestamp_ms >= (startedAt as number) &&
+            record.session_id === previousSession &&
             record.props.category === 'app_crash' &&
             record.props.source === 'electron_main' &&
             record.props.reason === 'unhandled_exception' &&
@@ -875,6 +895,7 @@ export class DiagnosticReports {
           // Recovery must not renew the retention window of prior evidence.
           timestamp_ms: evidenceAt,
           epoch,
+          ...(previousSession ? { session_id: previousSession } : {}),
           props,
         });
       return true;
@@ -897,6 +918,7 @@ export class DiagnosticReports {
         version: 1,
         ...this.options.identity,
         epoch: this.consent.epoch,
+        session_id: this.sessionId,
         active: true,
         timestamp_ms: now,
         started_at_ms: this.sessionStartedAt,

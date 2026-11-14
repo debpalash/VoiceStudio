@@ -2,7 +2,6 @@ package com.voicestudio.mobile.network
 
 import java.io.File
 import java.io.IOException
-import java.lang.ref.WeakReference
 import java.util.concurrent.CancellationException
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
@@ -19,8 +18,8 @@ class DiagnosticReportsTest {
         var reads=0;var writes=0;var failWrite=false;var failRemove=false
         var failOutboxWrite=false;var outboxWriteAttempts=0
         val blockedWrites=mutableSetOf<String>();val blockedRemoves=mutableSetOf<String>()
-        var unreadableRevocation=false;var revocationWriteAttempts=0
-        override fun read(name:String,maxBytes:Int):ByteArray? { reads++;if(name=="revoked.json" && unreadableRevocation)throw IOException("private path");return files[name]?.clone()?.also { require(it.size<=maxBytes) } }
+        var unreadableRevocation=false;var revocationWriteAttempts=0;var unreadableOutbox=false
+        override fun read(name:String,maxBytes:Int):ByteArray? { reads++;if(name=="revoked.json" && unreadableRevocation || name=="outbox.json" && unreadableOutbox)throw IOException("private path");return files[name]?.clone()?.also { require(it.size<=maxBytes) } }
         override fun write(name:String,bytes:ByteArray) {
             if(name=="outbox.json")outboxWriteAttempts++
             if(name=="revoked.json")revocationWriteAttempts++
@@ -63,6 +62,41 @@ class DiagnosticReportsTest {
         buildCommit=buildCommit,transport=transport,clock=clock,storage=store,dispatcher=dispatcher,disabled=disabled)
     private fun event(errorType:String="TypeError")=DiagnosticInput("generation_failed","generation",errorType=errorType)
 
+    @Test fun closeRetainsUnreadOutboxWhenTheReadStillFails()=runTest {
+        val store=Store();val clock=Clock();val dispatcher=StandardTestDispatcher(testScheduler)
+        val first=makeReporter(store,Transport(),clock,dispatcher)
+        first.setConsent(true);first.capture(event());runCurrent();first.close()
+        val original=store.files.getValue("outbox.json").clone()
+        store.unreadableOutbox=true
+        val transport=Transport();val next=makeReporter(store,transport,clock,dispatcher)
+        try {next.load();fail("Expected the controlled outbox read failure")}catch(_:IOException){}
+        assertFalse(next.status.enabled)
+        next.close()
+        assertTrue("Closing must not delete an unread valid outbox",store.files.containsKey("outbox.json"))
+        assertArrayEquals(original,store.files.getValue("outbox.json"))
+        assertTrue(transport.bodies.isEmpty())
+    }
+
+    @Test fun closeRestoresUnreadOutboxBeforeFinalPublicationWhenStorageRecovers()=runTest {
+        val store=Store();val clock=Clock();val dispatcher=StandardTestDispatcher(testScheduler)
+        val first=makeReporter(store,Transport(),clock,dispatcher)
+        first.setConsent(true);first.capture(event());runCurrent();first.close()
+        val original=store.files.getValue("outbox.json").clone()
+        store.unreadableOutbox=true
+        val next=makeReporter(store,Transport(),clock,dispatcher)
+        try {next.load();fail("Expected the controlled outbox read failure")}catch(_:IOException){}
+        store.unreadableOutbox=false;next.close()
+        assertTrue("Closing must restore accepted records before publication",store.files.containsKey("outbox.json"))
+        assertArrayEquals(original,store.files.getValue("outbox.json"))
+        val transport=Transport().apply {code=201};val reopened=makeReporter(store,transport,clock,dispatcher)
+        try {
+            reopened.load();runCurrent()
+            assertEquals(1,transport.bodies.size)
+            assertEquals(Json.parseToJsonElement(original.toString(Charsets.UTF_8)).jsonArray.single().jsonObject["id"],transport.bodies.single()["id"])
+            assertFalse(store.files.containsKey("outbox.json"))
+        }finally{reopened.close()}
+    }
+
     @Test fun independentDefaultOffAndNoCaptureIO()=runTest {
         val store=Store();val transport=Transport();val clock=Clock();val reporter=makeReporter(store,transport,clock,StandardTestDispatcher(testScheduler))
         assertFalse(reporter.capture(event(),IllegalStateException("secret transcript")))
@@ -78,13 +112,15 @@ class DiagnosticReportsTest {
             override val message:String get()=error("Message read")
             override fun toString():String=error("Throwable rendered")
         }
-        fun fail():WeakReference<ByteArray> {
-            val payload=ByteArray(1024*1024);val ref=WeakReference(payload)
-            assertTrue(reporter.capture(DiagnosticInput("hf_secret","/home/private",errorType="user voice",engineID="secret model",frames=listOf(DiagnosticFrame("/home/secret.kt",1)),reason="private"),SecretError(payload)))
-            return ref
-        }
-        val ref=fail();repeat(10) { System.gc();if(ref.get()==null)return@repeat }
-        assertNull(ref.get())
+        val payload=ByteArray(1024*1024);val error=SecretError(payload)
+        assertTrue(reporter.capture(DiagnosticInput("hf_secret","/home/private",errorType="user voice",engineID="secret model",frames=listOf(DiagnosticFrame("/home/secret.kt",1)),reason="private"),error))
+        // Inspect retained work before the dispatcher runs, rather than asking
+        // the JVM to collect on demand. Pending work must contain closed values.
+        val queued=DiagnosticReports::class.java.getDeclaredField("intake").apply {isAccessible=true}.get(reporter) as ArrayDeque<*>
+        val pending=queued.single()!!
+        val retained=pending.javaClass.declaredFields.filterNot {java.lang.reflect.Modifier.isStatic(it.modifiers)}.map {it.isAccessible=true;it.get(pending)}
+        assertTrue(retained.none {it===error || it===payload || it is Throwable || it is DiagnosticInput})
+        assertTrue(retained.all {it==null || it is String || it is Long || it is JsonObject})
         runCurrent()
         val body=store.json("outbox.json").jsonArray.single().jsonObject
         val props=body["props"]!!.jsonObject

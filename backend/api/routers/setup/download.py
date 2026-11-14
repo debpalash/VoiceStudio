@@ -1094,7 +1094,10 @@ async def install_model(req: InstallModelRequest):
         _cancelled.discard(req.repo_id)
         _install_failures.pop(req.repo_id, None)
         try:
-            task = loop.create_task(asyncio.to_thread(_do))
+            from core import diagnostic_reports
+            # Bind before scheduling: a delayed worker must not borrow a
+            # replacement grant when its already-owned install fails.
+            task = loop.create_task(asyncio.to_thread(diagnostic_reports.bind_callable(_do)))
             _install_tasks.add(task)
             _install_tasks_by_repo[req.repo_id] = task
         except Exception:

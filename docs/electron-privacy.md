@@ -78,6 +78,13 @@ on storage. If the storage worker is busy, it persists the disabled choice and
 cleans old files when storage resumes; failed persistence retries every minute.
 An interrupted filesystem operation cannot guarantee durable withdrawal before
 that write completes, but it cannot reopen permission in the running process.
+Standalone grant publication retains an anonymous `revocation-pending.json`
+fence while replacing an earlier revocation marker. Shutdown attempts pending
+withdrawal even before its retry deadline. If withdrawal overlaps the last
+filesystem operation, the old grant remains closed in memory and restoration
+is attempted; a failed restoration cannot guarantee restart persistence.
+Desktop crash-session correlation uses random local IDs that never enter
+the Supermetry event properties or request body.
 
 `OMNIVOICE_DIAGNOSTICS_DISABLED` or `OMNIVOICE_ANALYTICS_DISABLED` set to
 `1`, `true`, `yes` or `on` disables automatic reports.

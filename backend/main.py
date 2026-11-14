@@ -1315,7 +1315,9 @@ async def _finalize_diagnostics(callback, timeout=2.5):
         try:
             callback()
         except Exception:
-            pass  # Optional diagnostics must never prevent application teardown.
+            # Keep filesystem details private while making failed withdrawal
+            # persistence visible in local logs without preventing teardown.
+            logger.warning('Automatic failure-report cleanup could not be saved during shutdown.')
         finally:
             try:
                 loop.call_soon_threadsafe(complete)
@@ -1328,7 +1330,7 @@ async def _finalize_diagnostics(callback, timeout=2.5):
     try:
         await asyncio.wait_for(finished, timeout=timeout)
     except asyncio.TimeoutError:
-        pass
+        pass  # The owned daemon may finish after the bounded shutdown deadline.
 
 
 @asynccontextmanager
@@ -1336,19 +1338,39 @@ async def _diagnostic_lifespan():
     from core import diagnostic_reports
     _diagnostic_loop = asyncio.get_running_loop()
     _previous_loop_handler = _diagnostic_loop.get_exception_handler()
+    _previous_task_factory = _diagnostic_loop.get_task_factory()
+    def _diagnostic_task_factory(loop, coro, **kwargs):
+        # Only cached grant control is attached; neither task results nor raw
+        # exceptions are retained by the reporter. Preserve framework factories.
+        authority_context = kwargs.get('context')
+        epoch = (authority_context.run(diagnostic_reports.inherited_grant) if authority_context
+                 is not None else diagnostic_reports.inherited_grant())
+        task = (_previous_task_factory(loop, coro, **kwargs) if _previous_task_factory
+                else asyncio.Task(coro, loop=loop, **kwargs))
+        try:
+            task._voicestudio_diagnostic_epoch = epoch
+        except (AttributeError, TypeError):
+            pass  # A foreign task without attributes remains local-only.
+        return task
     def _diagnostic_loop_error(loop, context):
-        diagnostic_reports.capture("operation_failed", stage="other", error=context.get("exception"), reason="unhandled_rejection")
+        task = context.get('task') or context.get('future')
+        epoch = getattr(task, '_voicestudio_diagnostic_epoch', None)
+        if epoch is not None:
+            diagnostic_reports.capture("operation_failed", stage="other", error=context.get("exception"), reason="unhandled_rejection", _expected_epoch=epoch)
         if _previous_loop_handler is not None:
             _previous_loop_handler(loop, context)
         else:
             loop.default_exception_handler(context)
     try:
         diagnostic_reports.initialize()
+        _diagnostic_loop.set_task_factory(_diagnostic_task_factory)
         _diagnostic_loop.set_exception_handler(_diagnostic_loop_error)
         yield
     finally:
         if _diagnostic_loop.get_exception_handler() is _diagnostic_loop_error:
             _diagnostic_loop.set_exception_handler(_previous_loop_handler)
+        if _diagnostic_loop.get_task_factory() is _diagnostic_task_factory:
+            _diagnostic_loop.set_task_factory(_previous_task_factory)
         await _finalize_diagnostics(diagnostic_reports.shutdown)
 
 

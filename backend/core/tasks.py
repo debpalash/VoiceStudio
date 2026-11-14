@@ -195,7 +195,7 @@ class TaskManager:
                     try: job_store.mark_done(task_id)
                     except Exception: logger.exception("job_store.mark_done failed")
             except Exception as e:
-                if diagnostic_epoch is not None:
+                if diagnostic_epoch is not None and not t.get("cancelled"):
                     diagnostic_reports.capture_failure(diagnostic_reports.route_stage(t.get("type", "")), error=e, expected_epoch=diagnostic_epoch)
                 logger.exception("Task %s failed", task_id)
                 t["status"] = "failed"

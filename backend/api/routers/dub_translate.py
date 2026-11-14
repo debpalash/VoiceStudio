@@ -463,6 +463,17 @@ def _should_unload_nllb() -> bool:
 @router.post("/dub/translate")
 @consumer_generation
 async def dub_translate(req: TranslateRequest):
+    from core import diagnostic_reports
+    diagnostic_epoch = diagnostic_reports.inherited_grant()
+
+    async def _await_unit(start):
+        # A new translation/refinement unit may observe a fresh choice, but
+        # its delayed failure still belongs to the grant seen before awaiting.
+        nonlocal diagnostic_epoch
+        diagnostic_epoch = diagnostic_reports.observe_grant()
+        with diagnostic_reports.grant_scope(diagnostic_epoch):
+            return await start()
+
     try:
         provider = (req.provider if req.provider else os.environ.get("TRANSLATE_PROVIDER", "google")).lower()
         from services import translation_engines
@@ -638,14 +649,14 @@ async def dub_translate(req: TranslateRequest):
 
                 return [results_by_index[index] for index in range(len(req.segments))]
 
-            translated = await loop.run_in_executor(_gpu_pool, _translate_nllb)
+            translated = await _await_unit(lambda: loop.run_in_executor(_gpu_pool, _translate_nllb))
             if _should_unload_nllb():
                 _unload_nllb()
             # Cinematic/Autofit refine + rate-ratio badges must run for NLLB too
             # (previously this returned before _maybe_cinematic, so a Cinematic
             # pick on NLLB silently produced plain Fast output). Unloading NLLB
             # first is fine — the refine LLM is a separate network provider.
-            return await _maybe_cinematic(translated, req, src_lang, loop)
+            return await _await_unit(lambda: _maybe_cinematic(translated, req, src_lang, loop))
 
         # LLM translation — resolves through the LLM Skills registry: per-skill
         # "Dub translation" override → global active provider (Settings → LLM
@@ -719,10 +730,10 @@ async def dub_translate(req: TranslateRequest):
             # the manual glossary still rides along — that costs no extra call.
             auto_ctx = None
             if auto_glossary_on:
-                auto_ctx = await loop.run_in_executor(
+                auto_ctx = await _await_unit(lambda: loop.run_in_executor(
                     _cpu_pool, _resolve_translation_context,
                     req, client, model_name, llm_timeout, src_lang,
-                )
+                ))
             merged_terms = tq.merge_glossary(req.glossary, (auto_ctx or {}).get("terms"))
             context_extra = tq.context_clause((auto_ctx or {}).get("theme", ""), merged_terms)
 
@@ -857,15 +868,16 @@ async def dub_translate(req: TranslateRequest):
                 return {"id": seg.id, "text": seg.text,
                         "error": scrub_provider_error(last_err, api_key) or "llm-failed"}
 
-            tasks = [loop.run_in_executor(_cpu_pool, _translate_llm, seg) for seg in req.segments]
-            translated = await asyncio.gather(*tasks)
+            translated = await _await_unit(lambda: asyncio.gather(*[
+                loop.run_in_executor(_cpu_pool, _translate_llm, seg) for seg in req.segments
+            ]))
             translated.sort(key=lambda x: str(x["id"]))
             # provider="openai" is already an LLM translation — _maybe_cinematic
             # skips the reflect/adapt re-refine (already_llm) but still stamps
             # rate-ratio badges and runs the bounded Autofit fit pass. Before
             # this it returned here, so Cinematic/Autofit on the LLM engine did
             # nothing.
-            return await _maybe_cinematic(translated, req, src_lang, loop, already_llm=True)
+            return await _await_unit(lambda: _maybe_cinematic(translated, req, src_lang, loop, already_llm=True))
 
         # Offline Argos Translate
         if provider == "argos" or provider == "libretranslate":
@@ -969,8 +981,8 @@ async def dub_translate(req: TranslateRequest):
                 return results
 
             try:
-                from core import diagnostic_reports
-                translated = await loop.run_in_executor(_cpu_pool, diagnostic_reports.bind_callable(_translate_argos))
+                translated = await _await_unit(lambda: loop.run_in_executor(
+                    _cpu_pool, diagnostic_reports.bind_callable(_translate_argos)))
             except asyncio.CancelledError:
                 argos_cancelled.set()
                 raise
@@ -978,7 +990,7 @@ async def dub_translate(req: TranslateRequest):
             # the headline fix: a user who picks Cinematic/Autofit on Argos now
             # gets the LLM refine + fit pass (and rate-ratio badges in Fast mode)
             # instead of silent plain-Fast output.
-            return await _maybe_cinematic(translated, req, src_lang, loop)
+            return await _await_unit(lambda: _maybe_cinematic(translated, req, src_lang, loop))
 
         # Legacy / API Deep_Translator logic.
         # Preflight the optional `deep_translator` dep once so we fail with a
@@ -1007,7 +1019,7 @@ async def dub_translate(req: TranslateRequest):
         if provider == "amazon":
             from services.translation_apis import AmazonConfigurationError, validate_amazon_configuration
             try:
-                await asyncio.to_thread(validate_amazon_configuration)
+                await _await_unit(lambda: asyncio.to_thread(validate_amazon_configuration))
             except AmazonConfigurationError as exc:
                 return JSONResponse(status_code=409, content={"error": exc.public_message})
 
@@ -1059,18 +1071,19 @@ async def dub_translate(req: TranslateRequest):
             return {"id": seg.id, "text": seg.text,
                     "error": scrub_provider_error(last_err, _deepl_key or _msft_key or api_key) or "unknown"}
 
-        tasks = [loop.run_in_executor(_cpu_pool, _translate_single, seg) for seg in req.segments]
-        translated = await asyncio.gather(*tasks)
+        translated = await _await_unit(lambda: asyncio.gather(*[
+            loop.run_in_executor(_cpu_pool, _translate_single, seg) for seg in req.segments
+        ]))
         translated.sort(key=lambda x: str(x["id"]))
 
-        return await _maybe_cinematic(
+        return await _await_unit(lambda: _maybe_cinematic(
             translated, req, src_lang, loop,
-        )
+        ))
     except ModelLicenceNotAccepted:
         raise
     except Exception as e:
-        from core import diagnostic_reports
-        diagnostic_reports.capture_failure("translation", error=e)
+        if diagnostic_epoch is not None:
+            diagnostic_reports.capture_failure("translation", error=e, expected_epoch=diagnostic_epoch)
         from core.public_errors import public_failure
 
         error = public_failure(

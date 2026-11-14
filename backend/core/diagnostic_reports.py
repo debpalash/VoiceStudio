@@ -364,7 +364,7 @@ class Reporter:
                 data = json.loads(path.read_text(encoding='utf-8'))
                 return data if isinstance(data, dict) and data.get('version') == 1 else {}
             from core import prefs
-            if (self.root / 'revoked.json').exists():
+            if any((self.root / name).exists() for name in ('revoked.json', 'revocation-pending.json')):
                 return {'version':1, 'enabled':False, 'prompted':True}
             data = prefs._load()
             return {'version':1,'enabled':data.get('diagnostics_enabled') is True,'prompted':data.get('diagnostics_prompted') is True,
@@ -458,7 +458,7 @@ class Reporter:
                 # An unread record is not corrupt. Preserve it and defer intake
                 # publication too, since its size/identity may still be unknown.
                 raise
-            except (ValueError, TypeError, KeyError):
+            except (ValueError, TypeError, KeyError, RecursionError):
                 path.unlink(missing_ok=True)
                 self.dropped += 1
         self.pending = len(records)
@@ -710,6 +710,8 @@ class Reporter:
                 self.refresh()
                 return self.status()
         with self.ack_lock:
+            if self.stop.is_set():
+                return self._cached_status()
             if enabled and self.enabled and not self.kill_observed and not _killed():
                 return self._cached_status()
             self.consent_revision += 1
@@ -746,6 +748,12 @@ class Reporter:
             if enabled and _killed():
                 self.pending_withdrawal = revision
                 enabled = False
+            pending_fence = self.root / 'revocation-pending.json'
+            if enabled:
+                # Keep anonymous OFF evidence throughout grant publication and
+                # original-marker retirement. A superseded ON must not consume
+                # the only fence when subsequent OFF preference writes fail.
+                _atomic(pending_fence, {'version':1})
             if not enabled:
                 # Keep withdrawal durable even if replacing the shared prefs
                 # fails. This private tombstone contains no old grant or ID.
@@ -764,13 +772,25 @@ class Reporter:
                 # Removing a durable revocation is allowed only after a new
                 # explicit grant has been saved. Failure stays closed.
                 (self.root / 'revoked.json').unlink(missing_ok=True)
-                self.kill_observed = False
+                with self.ack_lock:
+                    if revision != self.consent_revision:
+                        return self._cached_status()
+                pending_fence.unlink(missing_ok=True)
             with self.ack_lock:
-                if revision != self.consent_revision:
-                    return self._cached_status()
-                self.consent_failed = False
-                self.pending_withdrawal = None
-                self.consent_retry_at = 0
+                superseded = revision != self.consent_revision
+                if not superseded:
+                    if enabled:
+                        self.kill_observed = False
+                    self.consent_failed = False
+                    self.pending_withdrawal = None
+                    self.consent_retry_at = 0
+            if superseded:
+                if enabled:
+                    # No memory gate is held across IO. If OFF overlaps the
+                    # last filesystem operation, restore its fence immediately;
+                    # a failure is surfaced and its pending choice is retained.
+                    _atomic(self.root / 'revoked.json', {'version':1})
+                return self._cached_status()
             try:
                 self._purge()
             except OSError:
@@ -783,6 +803,7 @@ class Reporter:
             return self.status()
 
     def shutdown(self):
+        persistence_error = None
         with self.lock:
             self.retire_session()
             try:
@@ -793,12 +814,23 @@ class Reporter:
                     self._persist_intake()
             except Exception:
                 pass
-            self.stop.set()
-            self.enabled = False
+            with self.ack_lock:
+                self.stop.set()
+                self.enabled = False
+                pending = self.pending_withdrawal
+            if pending is not None:
+                try:
+                    # Include OFF received during finalization IO, even before
+                    # its retry deadline. No later choice is accepted once stopped.
+                    self._commit_consent(False, pending)
+                except Exception as error:
+                    persistence_error = error
             if self.transport:
                 self.transport.shutdown()
         if self.thread.is_alive() and self.thread is not threading.current_thread():
             self.thread.join(timeout=2.5)
+        if persistence_error is not None:
+            raise persistence_error
 
 
 _reporter = None

@@ -142,6 +142,7 @@ object ModelDownloadJobs {
     internal suspend fun run(context: Context,id: String) {
         val job=currentCoroutineContext().job
         active.putIfAbsent(id,job)?.let {previous -> previous.join();run(context,id);return}
+        val diagnosticConsent=AutomaticDiagnostics.observeConsent()
         try {
             val item=read(context).firstOrNull {it.model==id&&!it.paused} ?: return
             val model=withContext(Dispatchers.IO) {context.assets.open("models.json").bufferedReader().use {ModelCatalog.decode(it.readText()).models.firstOrNull {m->m.id==id&&modelPin(m).identity==item.pin}}}
@@ -170,7 +171,7 @@ object ModelDownloadJobs {
             }
         } catch(e:CancellationException) {throw e}
         catch(e:Exception) {
-            AutomaticDiagnostics.captureFailure(e,stage="download")
+            AutomaticDiagnostics.captureObservedFailure(e,diagnosticConsent,stage="download")
             throw e
         } finally {active.remove(id,job)}
     }

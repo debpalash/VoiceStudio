@@ -442,18 +442,13 @@ class DiagnosticReports(
             if (!applied) return@withLock status
             records.clear()
             if (status.enabled) {
-                val data = try { storage.read("outbox.json", policy.limit("queue_bytes", 524288)) }
+                try { restoreOutbox(saved!!.epoch) }
                 catch (error:Exception) {
                     // An unreadable file is not proven corrupt. Preserve it and
                     // permit a later explicit load without collecting meanwhile.
                     synchronized(stateLock) { loaded=false;state=state.copy(enabled=false) }
                     throw error
                 }
-                try {
-                    data?.let { Json.parseToJsonElement(diagnosticUTF8(it)).jsonArray }?.take(policy.limit("queue_count", 64))?.forEach { element ->
-                        sanitizeRecord(element as? JsonObject, saved!!.epoch)?.let(records::add)
-                    }
-                } catch (_: Exception) { records.clear(); try { storage.remove("outbox.json") } catch (_: Exception) {} }
                 persistOrRetry(saved!!.epoch,generation)
             } else { try { storage.remove("outbox.json") } catch (_: Exception) {} }
             updateCount()
@@ -516,6 +511,17 @@ class DiagnosticReports(
         }
     } catch (_: Exception) { null }
     private fun updateCount() = synchronized(stateLock) { state = state.copy(pendingCount = records.size + intake.size) }
+    private fun restoreOutbox(epoch:String) {
+        // A failed read is not an empty/corrupt queue. Do not mutate or publish
+        // the in-memory queue until the previous durable contents are known.
+        val data=storage.read("outbox.json",policy.limit("queue_bytes",524288))
+        records.clear()
+        try {
+            data?.let {Json.parseToJsonElement(diagnosticUTF8(it)).jsonArray}?.take(policy.limit("queue_count",64))?.forEach {element->
+                sanitizeRecord(element as? JsonObject,epoch)?.let(records::add)
+            }
+        }catch(_:Exception){records.clear();try{storage.remove("outbox.json")}catch(_:Exception){}}
+    }
     private fun persist() {
         val bytes = JsonArray(records).toString().toByteArray()
         require(bytes.size <= policy.limit("queue_bytes", 524288))
@@ -628,7 +634,10 @@ class DiagnosticReports(
         synchronized(stateLock) { closed = true; sequence++; state = state.copy(enabled = false, optedIn = false);cancelRetryLocked() }
         transport.cancelAll()
         try {
-            withContext(Dispatchers.IO) { worker.withLock { consent?.let { drain(it.epoch);persist() } } }
+            withContext(Dispatchers.IO) { worker.withLock { consent?.let {
+                if(!loaded) {restoreOutbox(it.epoch);loaded=true}
+                drain(it.epoch);persist()
+            } } }
         } catch (_:Exception) { /* A final best-effort write must not leave the owned scope alive. */ }
         finally { scope.cancel() }
     }

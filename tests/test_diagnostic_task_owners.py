@@ -3,6 +3,7 @@ import asyncio
 import importlib
 import pytest
 from test_diagnostic_reports import reporter  # noqa: F401
+from test_download_install_integrity import install_origin  # noqa: F401
 
 @pytest.mark.parametrize('choice',['unchanged','replacement','later_opt_in'])
 @pytest.mark.parametrize('mode',['raise','terminal_frame'])
@@ -361,3 +362,92 @@ def test_argos_worker_row_failure_keeps_submission_grant(reporter,monkeypatch,ch
         asyncio.run(run())
     reporter._tick()
     assert len(reporter._files())==int(choice=='unchanged')
+
+
+@pytest.mark.parametrize('choice',['unchanged','replacement','later_opt_in'])
+def test_install_background_failure_keeps_admitted_grant(reporter,install_origin,monkeypatch,choice):
+    import threading
+    from services import token_resolver
+    state=install_origin
+    reporter.consent(choice!='later_opt_in')
+    entered=threading.Event();release=threading.Event()
+    def failed_token_resolution():
+        try:raise RuntimeError('controlled install failure already observed')
+        except RuntimeError:
+            entered.set();assert release.wait(3);raise
+    monkeypatch.setattr(token_resolver,'resolve',failed_token_resolution)
+    async def run():
+        await state.download.install_model(state.download.InstallModelRequest(repo_id=state.repo))
+        task=state.download._install_tasks_by_repo[state.repo]
+        try:
+            assert await asyncio.to_thread(entered.wait,2)
+            if choice=='replacement':reporter.consent(False);reporter.consent(True)
+            elif choice=='later_opt_in':reporter.consent(True)
+            release.set();await asyncio.wait_for(task,2)
+            assert state.repo in state.download._install_failures
+        finally:
+            release.set()
+            if not task.done():await asyncio.wait_for(task,2)
+    asyncio.run(run());reporter._tick()
+    assert len(reporter._files())==int(choice=='unchanged')
+
+
+@pytest.mark.parametrize('cancelled',[False,True])
+def test_cancelled_task_late_exception_does_not_report_failure(reporter,monkeypatch,cancelled):
+    tasks=importlib.import_module('core.tasks')
+    for name in ('create','mark_running','mark_failed','mark_done','mark_cancelled'):
+        monkeypatch.setattr(tasks.job_store,name,lambda *args,**kwargs:None)
+    monkeypatch.setattr(tasks.job_store,'append_event',lambda *args,**kwargs:1)
+    monkeypatch.setattr(tasks.run_sentinel,'touch_activity',lambda *args,**kwargs:None)
+    reporter.consent(True)
+    async def run():
+        entered=asyncio.Event();events=asyncio.Queue();failure=asyncio.get_running_loop().create_future()
+        async def work():entered.set();await failure
+        manager=tasks.TaskManager()
+        await manager.add_task('cancelled-late-failure','batch',work)
+        await manager.add_listener('cancelled-late-failure',events)
+        worker=asyncio.create_task(manager.worker())
+        try:
+            await asyncio.wait_for(entered.wait(),2)
+            if cancelled:assert manager.cancel_task('cancelled-late-failure')
+            failure.set_exception(RuntimeError('transfer interrupted after user cancel'))
+            while await asyncio.wait_for(events.get(),2) is not None:pass
+        finally:
+            worker.cancel();await asyncio.gather(worker,return_exceptions=True)
+    asyncio.run(run());reporter._tick()
+    assert len(reporter._files())==int(not cancelled)
+
+
+@pytest.mark.parametrize('choice',['unchanged','replacement','later_opt_in','fresh_later_unit'])
+def test_translation_outer_failure_keeps_awaited_unit_grant(reporter,monkeypatch,choice):
+    from test_dub_translate import _install_fake_argos
+    translation=importlib.import_module('api.routers.dub_translate')
+    _install_fake_argos(monkeypatch)
+    reporter.consent(choice not in ('later_opt_in','fresh_later_unit'))
+    async def run():
+        entered=asyncio.Event();failure=asyncio.get_running_loop().create_future()
+        async def cinematic(*args,**kwargs):
+            entered.set();return await failure
+        monkeypatch.setattr(translation,'_maybe_cinematic',cinematic)
+        if choice=='fresh_later_unit':
+            # Translation was submitted while OFF; the distinct cinematic
+            # unit starts only after the user explicitly grants consent.
+            real_translate=importlib.import_module('argostranslate.translate').translate
+            def translate(*args):
+                reporter.consent(True)
+                return real_translate(*args)
+            monkeypatch.setattr(importlib.import_module('argostranslate.translate'),'translate',translate)
+        task=asyncio.create_task(translation.dub_translate(translation.TranslateRequest(
+            provider='argos',source_lang='en',target_lang='es',quality='fast',
+            segments=[{'id':'fixture','text':'synthetic fixture'}])))
+        try:
+            await asyncio.wait_for(entered.wait(),2)
+            failure.set_exception(RuntimeError('cinematic fault completed before consent transition'))
+            if choice=='replacement':reporter.consent(False);reporter.consent(True)
+            elif choice=='later_opt_in':reporter.consent(True)
+            response=await asyncio.wait_for(task,2)
+            assert response.status_code==500
+        finally:
+            if not task.done():task.cancel();await asyncio.gather(task,return_exceptions=True)
+    asyncio.run(run());reporter._tick()
+    assert len(reporter._files())==int(choice in ('unchanged','fresh_later_unit'))
