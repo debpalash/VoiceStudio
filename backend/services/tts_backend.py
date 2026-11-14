@@ -1840,11 +1840,17 @@ def clear_clone_prompt_cache(*, keep_passage_choices: bool = False) -> None:
 
     ``keep_passage_choices`` keeps the remembered reference windows: they hold
     only an index and transcript, no tensors, so a pre-generate cleanup keeps
-    them rather than rerunning reference ASR on the next request."""
+    them rather than rerunning reference ASR on the next request. Failed
+    rankings (``_NO_PASSAGE``) are still dropped, so a recognizer that has
+    recovered gets another try."""
     with _prompt_cache_lock:
         _prompt_cache.clear()
         if not keep_passage_choices:
             _passage_choices.clear()
+        else:
+            for key, (index, _text) in list(_passage_choices.items()):
+                if index == _NO_PASSAGE:
+                    del _passage_choices[key]
         _unresolved_prompt_recognizers.clear()
 
 

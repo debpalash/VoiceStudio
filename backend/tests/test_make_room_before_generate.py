@@ -146,10 +146,13 @@ def test_warm_cleanup_keeps_passage_choices_but_drops_prompts():
     with tb._prompt_cache_lock:
         tb._prompt_cache["k"] = object()
         tb._passage_choices[("ref",)] = (0, "text")
+        tb._passage_choices[("failed",)] = (tb._NO_PASSAGE, "")
     try:
         tb.clear_clone_prompt_cache(keep_passage_choices=True)
         assert "k" not in tb._prompt_cache
         assert tb._passage_choices[("ref",)] == (0, "text")
+        # A failed ranking is retried rather than remembered past the cleanup.
+        assert ("failed",) not in tb._passage_choices
         tb.clear_clone_prompt_cache()
         assert ("ref",) not in tb._passage_choices
     finally:
