@@ -3455,7 +3455,11 @@ def _should_make_room_for_generate():
 
     Modes (OMNIVOICE_FREE_VRAM_BEFORE_GENERATE):
       auto (default): free when free system RAM is below the unified headroom,
-        mirroring _make_room_before_tts_load. A roomy machine pays nothing.
+        mirroring _make_room_before_tts_load, or when a CUDA/ROCm GPU's free
+        VRAM is below the figure that logs "Low GPU memory". On a small
+        dedicated card a nearly full VRAM makes the driver spill the generate
+        into shared system memory, which runs several times slower even with
+        plenty of RAM. A roomy machine pays nothing.
       always: free before every generate (small per-call cost from gc.collect +
         cache drop).
       never: opt out.
@@ -3466,9 +3470,13 @@ def _should_make_room_for_generate():
     if mode == "always":
         return True
     try:
-        from services.memory_budget import available_memory
-        free_gb = (available_memory() or {}).get("ram_available_gb")
+        import services.memory_budget as memory_budget
+        mem = memory_budget.available_memory() or {}
+        free_gb = mem.get("ram_available_gb")
         if free_gb is not None and free_gb < _UNIFIED_OFFLOAD_HEADROOM_GB:
+            return True
+        vram_free_gb = mem.get("vram_free_gb")
+        if vram_free_gb is not None and vram_free_gb < memory_budget._LOW_RAM_HEADROOM_GB:
             return True
     except Exception:  # noqa: BLE001 -- a probe failure must never block a generate
         logger.debug("make_room memory probe failed", exc_info=True)

@@ -73,3 +73,42 @@ def test_default_mode_is_auto(monkeypatch):
     calls = _count(monkeypatch)
     make_room_before_generate()
     assert calls["free_vram"] == 1
+
+
+def _mem(monkeypatch, ram_gb, vram_gb):
+    import services.memory_budget as mb
+    monkeypatch.setattr(
+        mb, "available_memory",
+        lambda: {"ram_available_gb": ram_gb, "vram_free_gb": vram_gb},
+    )
+
+
+def test_auto_frees_on_tight_vram_with_roomy_ram(monkeypatch):
+    # A 4 GB CUDA card on a 16 GB laptop: RAM is fine, but VRAM is nearly full.
+    # Without a free, the Windows driver spills the generate into shared system
+    # memory and it runs several times slower.
+    monkeypatch.delenv("OMNIVOICE_FREE_VRAM_BEFORE_GENERATE", raising=False)
+    _mem(monkeypatch, ram_gb=999.0, vram_gb=0.5)
+    calls = _count(monkeypatch)
+    make_room_before_generate()
+    assert calls["free_vram"] == 1 and calls["side_caches"] == 1
+
+
+def test_auto_skips_on_roomy_vram_and_ram(monkeypatch):
+    monkeypatch.delenv("OMNIVOICE_FREE_VRAM_BEFORE_GENERATE", raising=False)
+    _mem(monkeypatch, ram_gb=999.0, vram_gb=20.0)
+    calls = _count(monkeypatch)
+    make_room_before_generate()
+    assert calls == {"free_vram": 0, "side_caches": 0, "capture_asr": 0}
+
+
+def test_auto_vram_threshold_follows_the_low_gpu_memory_warning(monkeypatch):
+    # The same figure that logs "Low GPU memory" decides the free, so the app
+    # never warns about VRAM without also acting on it.
+    import services.memory_budget as mb
+    monkeypatch.delenv("OMNIVOICE_FREE_VRAM_BEFORE_GENERATE", raising=False)
+    monkeypatch.setattr(mb, "_LOW_RAM_HEADROOM_GB", 3.0)
+    _mem(monkeypatch, ram_gb=999.0, vram_gb=2.5)
+    calls = _count(monkeypatch)
+    make_room_before_generate()
+    assert calls["free_vram"] == 1
