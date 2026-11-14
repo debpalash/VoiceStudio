@@ -203,6 +203,9 @@ unsigned or ad hoc, with what users will see). The changelog section follows
 it, starting with its **Highlights**, so it needs no download table of its own. A macOS bundle with an invalid signature always fails, and a platform
 whose signing credentials are configured fails if its installers are not signed
 with them, even with `allow_unsigned=true`.
+In particular, configured macOS releases still run the Gatekeeper assessment
+when the unsigned exception is needed for Windows; that exception does not
+skip macOS signature or notarization verification.
 The owner can delegate it: accounts listed in the `UNSIGNED_RELEASE_PUBLISHERS`
 Actions variable (comma-separated logins, Settings → Secrets and variables →
 Actions → Variables; only admins can edit it) may also dispatch or re-run an
