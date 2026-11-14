@@ -237,8 +237,9 @@ credential admission. It must match the backend's origin or an entry in
 `OMNIVOICE_ALLOWED_ORIGINS`; the default entries include `app://voicestudio`
 and the localhost/127.0.0.1 UI origins. An origin outside these allowed values
 is refused even on loopback or with a valid key. Native clients without an
-`Origin` keep their credential and trusted network paths; browser session cookies
-still require an allowed origin.
+`Origin` keep their credential and trusted network paths, except WebSocket
+tickets, which require an allowed origin; browser session cookies also require
+an allowed origin.
 
 ```
 ws://gpu-box:3900/ws/transcribe?api_key=<key>
