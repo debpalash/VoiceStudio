@@ -6,6 +6,12 @@ export const DEFAULT_FIXTURES = {
   '/health': { status: 'ok', version: 'native-smoke' },
   '/setup/status': { models_ready: true, missing: [] },
   '/api/settings/analytics': { available: false, prompted: true, opted_in: false },
+  // Route/layout smokes model a returning user who separately kept diagnostics OFF.
+  // Fresh-choice tests override this state rather than disabling the consent UI.
+  '/api/settings/diagnostics': {
+    available: true, prompted: true, opted_in: false, enabled: false,
+    externally_managed: false, pending_count: 0, dropped_count: 0,
+  },
   // The real backend always reports every family; the UI reads `.asr` / `.tts` unguarded.
   '/engines': {
     tts: { active: '', backends: [] },
@@ -270,10 +276,25 @@ export async function startHealthBackend({ fixtures = {}, port = 0 } = {}) {
     const path = new URL(request.url ?? '/', 'http://127.0.0.1').pathname;
     const body = await readBody(request);
     const known = Object.hasOwn(served, path);
-    requests.push({ method: request.method ?? 'GET', path, status: known ? 200 : 404, body });
+    const entry = { method: request.method ?? 'GET', path, status: known ? 200 : 404, body };
+    requests.push(entry);
     if (known) {
-      const fixture = served[path];
-      response.writeHead(200, {
+      let fixture = served[path];
+      if (path === '/api/settings/diagnostics' && request.method === 'PUT' && typeof fixture !== 'function') {
+        let choice;
+        try { choice = JSON.parse(body); } catch { /* Invalid JSON is refused below. */ }
+        if (!choice || typeof choice !== 'object' || Array.isArray(choice)
+            || Object.keys(choice).length !== 1 || typeof choice.enabled !== 'boolean') {
+          entry.status = 422;
+          fixture = { detail: 'Expected only a boolean diagnostic consent choice' };
+        } else {
+          // Replace only this server's state; never mutate the shared defaults or analytics.
+          fixture = served[path] = {
+            ...fixture, enabled: choice.enabled, opted_in: choice.enabled, prompted: true,
+          };
+        }
+      }
+      response.writeHead(entry.status, {
         'content-type': 'application/json',
         'x-omnivoice-backend': 'native-smoke',
       });

@@ -113,3 +113,53 @@ test('POST body is recorded', async () => {
     await backend.close();
   }
 });
+
+test('diagnostic consent is returning-off, persists per server, and is independent of analytics', async () => {
+  const backend = await startHealthBackend();
+  try {
+    const response = await get(backend, '/api/settings/diagnostics');
+    assert.equal(response.status, 200);
+    const first = await response.json();
+    assert.equal(first.available, true);
+    assert.equal(first.prompted, true);
+    assert.equal(first.opted_in, false);
+    assert.equal(first.enabled, false);
+    const analytics = await (await get(backend, '/api/settings/analytics')).json();
+    for (const enabled of [true, false]) {
+      const saved = await (await get(backend, '/api/settings/diagnostics', {
+        method: 'PUT', body: JSON.stringify({ enabled }),
+      })).json();
+      assert.equal(saved.enabled, enabled);
+      assert.equal(saved.opted_in, enabled);
+      assert.equal(saved.prompted, true);
+      assert.deepEqual(await (await get(backend, '/api/settings/diagnostics')).json(), saved);
+      assert.deepEqual(await (await get(backend, '/api/settings/analytics')).json(), analytics);
+      if (enabled) {
+        const other = await startHealthBackend();
+        try {
+          assert.equal((await (await get(other, '/api/settings/diagnostics')).json()).enabled, false);
+        } finally { await other.close(); }
+      }
+    }
+    for (const body of ['{', 'null', '[]', '{}', '{"enabled":"true"}', '{"enabled":1}', '{"enabled":true,"analytics":true}']) {
+      const rejected = await get(backend, '/api/settings/diagnostics', { method: 'PUT', body });
+      assert.equal(rejected.status, 422);
+      const unchanged = await (await get(backend, '/api/settings/diagnostics')).json();
+      assert.equal(unchanged.enabled, false);
+      assert.equal(unchanged.opted_in, false);
+      assert.equal(unchanged.prompted, true);
+    }
+  } finally {
+    await backend.close();
+  }
+});
+
+test('a fresh diagnostic choice can override the returning-user fixture', async () => {
+  const fresh = { available: true, prompted: false, opted_in: false, enabled: false };
+  const backend = await startHealthBackend({ fixtures: { '/api/settings/diagnostics': fresh } });
+  try {
+    assert.deepEqual(await (await get(backend, '/api/settings/diagnostics')).json(), fresh);
+  } finally {
+    await backend.close();
+  }
+});

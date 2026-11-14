@@ -38,7 +38,10 @@ class ContractTest {
         val pattern=Regex("[\\\"]((?:mobile|common|consent|player|projects)\\.[A-Za-z0-9_.]+)[\\\"]")
         val keys=root.walkTopDown().filter {it.extension=="kt"&&"/src/main/" in it.invariantSeparatorsPath}.flatMap {pattern.findAll(it.readText()).map {m->m.groupValues[1]}}.toSet()
         assertTrue(keys.size>60)
-        val missing=keys.filterNot(l::has)
+        // Durable consent store filename and a classification namespace prefix;
+        // neither is passed to the UI translator. Keep every other literal checked.
+        val nonLocalized=setOf("consent.json","mobile.connect.")
+        val missing=keys.filterNot { it in nonLocalized || l.has(it) }
         assertEquals(emptyList<String>(),missing)
         for(mode in listOf("light","dark","system")) assertTrue(l.has("mobile.settings.mode_$mode"))
         assertTrue(l.has("themeAppearance.default"))
