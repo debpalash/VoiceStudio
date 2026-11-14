@@ -151,6 +151,34 @@ def test_share_pin_in_a_request_url_is_redacted():
     assert "pin=" in out            # param name preserved, like token=
 
 
+@pytest.mark.parametrize('name,decoded',[
+    ('%70in','pin'),('p%69%6e','pin'),('api%5Fkey','api_key'),
+    ('%74oken','token'),('pass%77ord','password'),('auth%2Dtoken','auth-token'),
+])
+@pytest.mark.parametrize('secret',['481516','short'])
+def test_encoded_credential_query_names_match_http_parsing(name,decoded,secret):
+    from starlette.requests import Request
+    request=Request({'type':'http','scheme':'http','server':('192.0.2.1',3901),
+                     'path':'/','headers':[],
+                     'query_string':f'view=models&{name}={secret}&page=2'.encode()})
+    assert request.query_params[decoded]==secret
+    out=scrub_text(f'Request: {request.url}')
+    assert secret not in out
+    assert f'{name}={REDACTED}' in out
+    assert 'view=models' in out and 'page=2' in out
+
+
+def test_query_scrubbing_preserves_unrelated_names_and_one_decode_semantics():
+    raw='http://192.0.2.1/?spin=481516&pin_code=481516&key=short&%2570in=481516&x=%GG'
+    assert scrub_text(raw)==raw
+
+
+def test_duplicate_literal_and_encoded_pin_values_are_all_redacted():
+    out=scrub_text('http://192.0.2.1/?pin=481516&%70in=151623&api_key=short&view=models')
+    assert all(secret not in out for secret in ('481516','151623','short'))
+    assert 'view=models' in out
+
+
 def test_home_superstring_not_corrupted(monkeypatch):
     # A home of /Users/john must not rewrite /Users/johnny to '~ny'.
     monkeypatch.setenv("HOME", "/Users/john")

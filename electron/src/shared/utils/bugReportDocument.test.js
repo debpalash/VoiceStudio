@@ -83,3 +83,30 @@ test('opens a report when a truncated message ends in half an emoji', () => {
   expect(() => composeBugReportUrl({ error: new Error(message) })).not.toThrow();
   expect(() => composeBugReportUrl({ title: 'lone \uD83D' })).not.toThrow();
 });
+
+describe('credential query privacy in the live report builder', () => {
+  test.each(['pin', '%70in', 'p%69%6e', 'api%5Fkey', '%74oken', 'pass%77ord', 'auth%2Dtoken'])(
+    'redacts %s from both error titles and crash-log bodies', (name) => {
+      const raw = `Request: http://192.0.2.1:3901/?view=models&${name}=481516&page=2`;
+      const params = issueParams({ error: { message: raw }, crashSection: [raw] });
+      for (const field of ['title', 'body']) {
+        expect(params.get(field)).not.toContain('481516');
+        expect(params.get(field)).toContain(`${name}=***REDACTED***`);
+      }
+      expect(params.get('body')).toContain('view=models');
+      expect(params.get('body')).toContain('page=2');
+    },
+  );
+
+  test('keeps ordinary parameters and does not decode names twice', () => {
+    const raw = 'http://192.0.2.1/?spin=481516&pin_code=481516&key=short&%2570in=481516&x=%GG';
+    expect(issueBody({ crashSection: [raw] })).toContain(raw);
+  });
+
+  test('redacts every duplicate credential, including short named API keys', () => {
+    const raw = 'http://192.0.2.1/?pin=481516&%70in=151623&api_key=short&view=models';
+    const body = issueBody({ crashSection: [raw] });
+    for (const secret of ['481516', '151623', 'short']) expect(body).not.toContain(secret);
+    expect(body).toContain('view=models');
+  });
+});

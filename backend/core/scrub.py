@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import os
 import re
+from urllib.parse import unquote_plus
 
 REDACTED = "***REDACTED***"
 
@@ -52,11 +53,22 @@ _TOKEN_PATTERNS = (
 # are already caught above and named env vars by the sweep below. `pin` is the
 # share PIN: the backend accepts it as `?pin=` and it authenticates paired
 # clients, so a crash-logged request URL must not carry it into a bundle.
+_URL_SECRET_NAME = r"(?:access[_-]?token|api[_-]?key|apikey|auth[_-]?token|token|secret|password|passwd|pwd|pin)"
+_URL_SECRET_NAME_RE = re.compile(_URL_SECRET_NAME, re.IGNORECASE)
 _URL_SECRET_RE = re.compile(
-    r"((?:access[_-]?token|api[_-]?key|apikey|auth[_-]?token|token|secret|password|passwd|pwd|pin)=)"
+    r"(?<![\w%+.-])(" + _URL_SECRET_NAME + r"=)"
     r"([^&\s\"'#]{6,})",
     re.IGNORECASE,
 )
+# Request URLs retain encoded names even though HTTP credential parsing decodes
+# them. Decode each query name once, preserving unrelated parameters verbatim.
+_URL_QUERY_RE = re.compile(r"([?&])([^=&\s\"'#]+)=([^&\s\"'#]*)")
+
+
+def _scrub_query_parameter(match: re.Match) -> str:
+    if _URL_SECRET_NAME_RE.fullmatch(unquote_plus(match.group(2))):
+        return match.group(1) + match.group(2) + "=" + REDACTED
+    return match.group(0)
 
 # Home-directory shapes for all three supported platforms. Matched
 # pattern-wise (not just this machine's $HOME) so paths quoted from a
@@ -121,6 +133,7 @@ def scrub_text(text: str | None) -> str:
             return REDACTED
     try:
         s = _URL_SECRET_RE.sub(lambda m: m.group(1) + REDACTED, s)
+        s = _URL_QUERY_RE.sub(_scrub_query_parameter, s)
     except Exception:
         return REDACTED
 

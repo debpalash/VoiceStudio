@@ -32,8 +32,22 @@ const TOKEN_PATTERNS = [
 ];
 
 // Secrets in a URL query string — redact the value, keep the param name.
-const URL_SECRET_RE =
-  /((?:access[_-]?token|api[_-]?key|apikey|auth[_-]?token|token|secret|password|passwd|pwd)=)([^&\s"'#]{6,})/gi;
+const URL_SECRET_NAME = '(?:access[_-]?token|api[_-]?key|apikey|auth[_-]?token|token|secret|password|passwd|pwd|pin)';
+const URL_SECRET_NAME_RE = new RegExp(`^${URL_SECRET_NAME}$`, 'i');
+const URL_SECRET_RE = new RegExp(`(?<![\\w%+.-])(${URL_SECRET_NAME}=)([^&\\s"'#]{6,})`, 'gi');
+const URL_QUERY_RE = /([?&])([^=&\s"'#]+)=([^&\s"'#]*)/g;
+
+function scrubQueryParameter(match, separator, name) {
+  // Match HTTP parsing, without decoding the whole log or interpreting a
+  // second encoding layer as a credential name. Invalid names stay unchanged.
+  try {
+    const decoded = decodeURIComponent(name.replace(/\+/g, ' '));
+    if (URL_SECRET_NAME_RE.test(decoded)) return `${separator}${name}=${REDACTED}`;
+  } catch {
+    // A malformed encoded name cannot be an accepted credential parameter.
+  }
+  return match;
+}
 
 // A home folder name can contain spaces ("Alice Smith"). Where the path goes on
 // past the name, the name is everything up to that separator; the spaced form
@@ -78,6 +92,7 @@ export function scrubText(text) {
   let s = String(text);
   for (const pat of TOKEN_PATTERNS) s = s.replace(pat, REDACTED);
   s = s.replace(URL_SECRET_RE, (_m, name) => `${name}${REDACTED}`);
+  s = s.replace(URL_QUERY_RE, scrubQueryParameter);
   for (const pat of [...realHomePatterns(), ...HOME_PATTERNS]) s = s.replace(pat, '~');
   return s;
 }
