@@ -73,5 +73,8 @@ repository identity; their terms remain your responsibility.
 - Diagnostics use conservative CPU estimates because the CLI's GPU providers
   are not verified.
 - Older CLI builds without full JSON output can transcribe without word timings.
+- Whole-file recognition follows the shared duration-based deadline, including
+  time spent converting audio; an older CLI's JSON fallback spends the remaining
+  time. See [timeout settings](../install/troubleshooting.md).
 - Audio conversion permits local file and pipe inputs only. Remote URL entries
   in uploaded playlists are rejected.

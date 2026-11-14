@@ -227,6 +227,7 @@ async def _transcribe_source(
             _gpu_pool,
             _run,
             what="Voice convert",
+            audio_path=tmp_path,
             on_abandon=release,
         )
     except asyncio.CancelledError:

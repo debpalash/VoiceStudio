@@ -78,7 +78,7 @@ Two more fallback chains run at load time:
   PATH lookup ([#479](https://github.com/debpalash/VoiceStudio/issues/479)).
 - Transcribes are time-bounded: each dub chunk by
   `OMNIVOICE_TRANSCRIBE_CHUNK_TIMEOUT_S` (default 120 s), whole files by
-  `OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S` (default 300 s). Raise them for very
-  long files on slow hardware.
+  the larger of `OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S` (default 300 s) and twice
+  the audio duration. See [timeout settings](../install/troubleshooting.md).
 
 Speed comparisons across engines live in [performance](../performance.md).

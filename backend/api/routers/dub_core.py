@@ -33,13 +33,15 @@ from services.dub_language import (
 )
 from services.model_manager import get_model, _gpu_pool, _cpu_pool, get_diarization_pipeline, offload_tts_for_asr, restore_tts_after_asr, should_preload_tts_asr, release_device_cache
 from services.asr_backend import (
-    ASR_TRANSCRIBE_TIMEOUT_S,
+    transcribe_budget_s,
+    probe_transcribe_deadline,
     ASRTimeoutError,
     reset_pool_after_wedge,
     run_transcribe_guarded,
     transcribe_request_kwargs,
 )
 from services.audio_io import _safe_soundfile_write
+from services.asr_timing import remaining_s
 from services.diarization_runtime import ensure_selected_accepted as _ensure_diarisation_accepted
 from services.ffmpeg_utils import find_ffmpeg, local_inputs_only
 from services.model_acceptance import ModelLicenceNotAccepted
@@ -1552,6 +1554,8 @@ async def dub_transcribe_stream(
     # _gen_body parks the loaded backend here; the normal unload clears it;
     # gen()'s `finally` unloads whatever is still parked, on EVERY exit.
     _loaded_asr: dict = {"backend": None}
+    _asr_load_pending = {"v": False}
+    _load_tasks = []
     _asr_work = _ASRWorkLifetime()
     # Same shape, same reason, for the TTS offload (#1191): offload_tts_for_asr()
     # moves the TTS model to CPU, and only _gen_body's success path moved it
@@ -1666,10 +1670,20 @@ async def dub_transcribe_stream(
         # _gen_body (separated_vocals=), so a preflight that bails early would
         # otherwise leave it unbound and raise NameError instead of the real error.
         asr_on_vocals = False
+        asr_deadline = None
 
         if not job:
             preflight_error = "Job not found. It may have been cleaned up or was never created."
         else:
+            asr_audio_target = job.get("vocals_path")
+            if not asr_audio_target or not os.path.exists(asr_audio_target):
+                asr_audio_target = job.get("audio_path")
+            try:
+                asr_deadline = await probe_transcribe_deadline(asr_audio_target or "")
+            except ASRTimeoutError:
+                from core.public_errors import stream_failure
+                preflight_payload = stream_failure("transcription_timeout")
+                preflight_error = preflight_payload["detail"]
             # The TTS core model is loaded here for exactly one reason: to harvest a
             # preloaded `_asr_pipe` off it (passed to get_active_asr_backend below).
             # That attribute is only ever set by VoiceStudio.from_pretrained under
@@ -1680,7 +1694,7 @@ async def dub_transcribe_stream(
             # Every dub paid load → unload → reload for an attribute that was always
             # None. Load it only when there is actually something to harvest.
             _model = None
-            if should_preload_tts_asr():
+            if should_preload_tts_asr() and preflight_error is None:
                 # Guard the model load: if it raises, the SSE stream would otherwise die
                 # before emitting any event, and the UI shows a misleading generic
                 # "stream dropped" message instead of the real cause (issue #255).
@@ -1691,12 +1705,16 @@ async def dub_transcribe_stream(
                     # open comment stops the browser's no-response clock but
                     # does not reset a proxy's idle timer.
                     _model_task = asyncio.ensure_future(get_model())
+                    _load_tasks.append(_model_task)
                     _model_task.add_done_callback(
                         lambda f: f.cancelled() or f.exception()
                     )
                     while True:
+                        remaining = remaining_s(asr_deadline)
+                        if remaining <= 0:
+                            raise ASRTimeoutError("ASR model preload deadline expired")
                         _done, _ = await asyncio.wait(
-                            {_model_task}, timeout=ASR_LOAD_KEEPALIVE_S
+                            {_model_task}, timeout=min(ASR_LOAD_KEEPALIVE_S, remaining)
                         )
                         if _done:
                             break
@@ -1707,6 +1725,10 @@ async def dub_transcribe_stream(
                     # model's licence is asked for when it is actually used.
                     logger.info("transcribe preflight: TTS model licence not accepted; skipping preload")
                     _model = None
+                except ASRTimeoutError:
+                    from core.public_errors import stream_failure
+                    preflight_payload = stream_failure("transcription_timeout")
+                    preflight_error = preflight_payload["detail"]
                 except Exception as e:
                     logger.error(
                         "transcribe preflight: model load failed (job=%s): %s",
@@ -1734,6 +1756,7 @@ async def dub_transcribe_stream(
                         asr_model_missing_detail,
                         asr_model_missing_error,
                         load_active_asr_backend,
+                        run_transcribe_guarded as guard_asr_stage,
                     )
                     # TTS-only install: no ASR model on disk. Bail BEFORE any
                     # backend is constructed/loaded — the whisper backends would
@@ -1749,28 +1772,42 @@ async def dub_transcribe_stream(
                         and active_backend_id() == "pytorch-whisper"
                     )
                     if not _skip_preflight:
-                        _missing = await asyncio.get_running_loop().run_in_executor(
-                            None, asr_model_missing_error
-                        )
+                        try:
+                            preflight = asyncio.ensure_future(guard_asr_stage(
+                                _cpu_pool, asr_model_missing_error,
+                                what="Dub ASR model preflight", deadline=asr_deadline,
+                            ))
+                            _load_tasks.append(preflight)
+                            async for ping in _ping_while(preflight):
+                                yield ping
+                            _missing = preflight.result()
+                        except ASRTimeoutError:
+                            from core.public_errors import stream_failure
+                            preflight_payload = stream_failure("transcription_timeout")
+                            preflight_error = preflight_payload["detail"]
                     if _missing is not None:
                         preflight_error = asr_model_missing_detail(_missing)
                         preflight_payload = _missing
-                    if _missing is None:
+                    if _missing is None and preflight_error is None:
                         try:
                             loop = asyncio.get_running_loop()
-                            try:
-                                await loop.run_in_executor(_cpu_pool, offload_tts_for_asr)
-                                _tts_offloaded["v"] = True
-                            except Exception as exc:
-                                logger.warning("Could not free TTS memory before ASR load: %s", exc)
 
-                            fut = loop.run_in_executor(
-                                _gpu_pool,
-                                functools.partial(
-                                    load_active_asr_backend,
-                                    asr_pipe=getattr(_model, "_asr_pipe", None),
-                                ),
-                            )
+                            def prepare_asr():
+                                try:
+                                    offload_tts_for_asr()
+                                    _tts_offloaded["v"] = True
+                                except Exception as exc:
+                                    logger.warning("Could not free TTS memory before ASR load: %s", exc)
+                                backend = load_active_asr_backend(asr_pipe=getattr(_model, "_asr_pipe", None))
+                                _loaded_asr["backend"] = backend
+                                return backend
+
+                            _asr_load_pending["v"] = True
+                            fut = asyncio.ensure_future(guard_asr_stage(
+                                _gpu_pool, lambda: _asr_work.run(prepare_asr),
+                                what="Dub ASR load", deadline=asr_deadline,
+                            ))
+                            _load_tasks.append(fut)
                             fut.add_done_callback(
                                 lambda completed: completed.cancelled() or completed.exception()
                             )
@@ -1782,7 +1819,11 @@ async def dub_transcribe_stream(
                                     break
                                 yield b": asr-load keepalive\n\n"
                             _asr_backend = fut.result()
-                            _loaded_asr["backend"] = _asr_backend
+                            _asr_load_pending["v"] = False
+                        except ASRTimeoutError:
+                            from core.public_errors import stream_failure
+                            preflight_payload = stream_failure("transcription_timeout")
+                            preflight_error = preflight_payload["detail"]
                         except ASRModelMissingError as exc:
                             preflight_error = asr_model_missing_detail(exc.payload)
                             preflight_payload = exc.payload
@@ -1828,7 +1869,18 @@ async def dub_transcribe_stream(
             return audio_np, sr
 
         try:
-            audio_np, sr = await loop.run_in_executor(_cpu_pool, _load)
+            from services.asr_backend import run_transcribe_guarded as guard_asr_stage
+            audio_work = asyncio.ensure_future(guard_asr_stage(
+                _cpu_pool, _load, what="Dub audio decode", deadline=asr_deadline,
+            ))
+            async for ping in _ping_while(audio_work):
+                yield ping
+            audio_np, sr = audio_work.result()
+        except ASRTimeoutError:
+            from core.public_errors import stream_failure
+            yield _sse_event("error", stream_failure("transcription_timeout"))
+            yield _sse_event("done", {})
+            return
         except Exception:
             # Terminal error → always emit `done` (see preflight note, #578).
             from core.public_errors import stream_failure
@@ -1846,7 +1898,7 @@ async def dub_transcribe_stream(
         else:
             chunk_len = TRANSCRIBE_CHUNK_S
         if whole_file_mode:
-            chunk_timeout = ASR_TRANSCRIBE_TIMEOUT_S
+            chunk_timeout = transcribe_budget_s(total)
             chunk_timeout_env = "OMNIVOICE_ASR_TRANSCRIBE_TIMEOUT_S"
         else:
             chunk_timeout = TRANSCRIBE_CHUNK_TIMEOUT_S
@@ -1947,6 +1999,7 @@ async def dub_transcribe_stream(
                     what=f"Dub chunk {i + 1}/{chunks_n}",
                     timeout=chunk_timeout,
                     timeout_env=chunk_timeout_env,
+                    deadline=asr_deadline if whole_file_mode else None,
                 ))
                 while True:
                     done, _ = await asyncio.wait({task}, timeout=5.0)
@@ -1974,9 +2027,8 @@ async def dub_transcribe_stream(
                         "error": failure["detail"],
                         "error_code": failure["code"],
                     }
-                # Success → keep it. Failure/timeout → retry once on a fresh
-                # worker (the internal _transcribe_chunk except returns an
-                # error-part; the timeout path already reset the pool).
+                # Retry only a completed failure. A timed-out native call keeps
+                # its worker until it exits and cannot safely overlap a retry.
                 if part is not None and not part.get("error"):
                     break
                 if timed_out:
@@ -2663,26 +2715,38 @@ async def dub_transcribe_stream(
         finally:
             _speaker_cancelled.set()
             _asr_work.stop()
+            for load_task in _load_tasks:
+                if not load_task.done():
+                    load_task.cancel()
             if _ref_run["dir"] and not _ref_run["committed"]:
                 dub_pipeline.discard_reference_run(_ref_run["dir"], _get_job(job_id))
             # Last-resort VRAM release (see _loaded_asr above): covers crashes,
             # early terminal-error returns, and client disconnects
             # (GeneratorExit bypasses the except, never this finally).
             _b = _loaded_asr.get("backend")
-            _loaded_asr["backend"] = None
             # Pay the TTS-restore debt on every exit path (#1191). Leaving it
             # unpaid is what stranded the TTS model on CPU after an abort or a
             # disconnect, degrading every later generation by 10-50x.
             _restore_tts = _tts_offloaded["v"]
-            _tts_offloaded["v"] = False
 
             def _submit_tts_restore(_f=None):
                 if _f is not None:
                     _log_bg_failure(_f, "Unloading ASR backend")
-                if _restore_tts:
+                # A loader that finished after its waiter left can have paid
+                # the offload debt since this finalizer started.
+                restore = _restore_tts or _tts_offloaded["v"]
+                _tts_offloaded["v"] = False
+                if restore:
                     _restore_tts_bg()
 
-            if _b is not None:
+            def unload_loaded_asr():
+                # Read after the native load drains, including a late result.
+                backend = _loaded_asr.get("backend")
+                _loaded_asr["backend"] = None
+                if backend is not None:
+                    backend.unload()
+
+            if _b is not None or _asr_load_pending["v"]:
                 # unload() blocks (gc.collect + CUDA cache drop can take
                 # seconds) and this finally also runs under GeneratorExit,
                 # where awaiting is illegal — so hand it to the GPU pool
@@ -2690,7 +2754,7 @@ async def dub_transcribe_stream(
                 # (CodeRabbit review, #1198).
                 try:
                     _fut = asyncio.get_running_loop().run_in_executor(
-                        _gpu_pool, lambda: _asr_work.cleanup(_b.unload)
+                        _gpu_pool, _asr_work.cleanup, unload_loaded_asr
                     )
                     # Restore the TTS model only AFTER the ASR weights are
                     # freed — the same ordering the success path enforces, so
@@ -2699,7 +2763,7 @@ async def dub_transcribe_stream(
                 except RuntimeError:
                     # No running loop (interpreter teardown) — best effort.
                     try:
-                        _asr_work.cleanup(_b.unload)
+                        _asr_work.cleanup(unload_loaded_asr)
                     except Exception as e:
                         logger.warning("Failed to unload ASR backend: %s", e)
                     _submit_tts_restore()
@@ -2889,7 +2953,9 @@ async def dub_transcribe(job_id: str, num_speakers: Optional[int] = None):
             # every other request into a "can't reach backend". run_transcribe_guarded
             # leaves an unkillable native worker accounted for on timeout so a
             # retry cannot overlap it (#1669).
-            segments_result = await run_transcribe_guarded(_gpu_pool, _transcribe, what="Dub")
+            segments_result = await run_transcribe_guarded(
+                _gpu_pool, _transcribe, what="Dub", audio_path=job.get("audio_path"),
+            )
         except asyncio.CancelledError:
             job["aborted"] = True
             raise

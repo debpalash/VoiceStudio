@@ -37,8 +37,10 @@ VoiceStudio/
 │   ├── core/                    shared infrastructure: configuration, persistence, job/event plumbing,
 │   │                            auth and CSRF, safe paths, model artifact fingerprints, analytics consent,
 │   │                            version and diagnostics
-│   ├── services/                134 modules of business logic spanning speech, dubbing, DSP, GPU dispatch,
+│   │   └── asr_budget.py        duration-based transcription budget shared with MCP
+│   ├── services/                135 modules of business logic spanning speech, dubbing, DSP, GPU dispatch,
 │   │                            engine selection and loaded-model ownership
+│   │   └── asr_timing.py        inherited ASR execution clocks without media dependencies
 │   ├── engines/                 per-engine adapters: audiocpp, confucius4, cosyvoice_gguf,
 │   │                            cosyvoice_subprocess, dots_tts, indextts, ming_tts, moss_sfx,
 │   │                            moss_tts_nano_subprocess, moss_tts_v15, omnivoice_gguf, omnivoice_subprocess, pockettts,

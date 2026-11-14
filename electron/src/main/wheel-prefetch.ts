@@ -243,6 +243,9 @@ export function httpsRangeTransport(
             headers: { Range: `bytes=${start}-${end}`, 'User-Agent': 'VoiceStudio-setup' },
           },
           (response) => {
+            // A size probe and the handoff to an async iterator both leave a
+            // gap before a consumer can observe a reset/timeout on this stream.
+            response.on('error', reject);
             const status = response.statusCode ?? 0;
             if ([301, 302, 303, 307, 308].includes(status) && response.headers.location) {
               response.resume();
@@ -561,7 +564,24 @@ export async function prefetchWheels(
   for (const entry of await readdir(options.dir).catch(() => [] as string[])) {
     if (!keep.has(entry)) await rm(join(options.dir, entry), { recursive: true, force: true });
   }
-  const total = wheels.reduce((sum, wheel) => sum + wheel.size, 0);
+  // Finished wheels already occupy disk space. Verify and reuse them before
+  // budgeting new transfers, or a low-space retry downloads them again via uv.
+  const missing: LockedWheel[] = [];
+  for (const wheel of wheels) {
+    options.signal.throwIfAborted();
+    const target = join(options.dir, folder(wheel));
+    const dest = join(target, wheel.filename);
+    const ready = await stat(dest).then(
+      (info) => info.isFile() && info.size === wheel.size,
+      () => false,
+    );
+    if (ready && (await fileSha256(dest)) === wheel.sha256) {
+      log(`Reusing the ${wheel.name} wheel downloaded by an earlier attempt.`);
+      options.transfer?.(wheel.name, wheel.size, wheel.size);
+      local.set(wheel.url, `${pathToFileURL(target).href}/${encodeURIComponent(wheel.filename)}`);
+    } else missing.push(wheel);
+  }
+  const total = missing.reduce((sum, wheel) => sum + wheel.size, 0);
   const free = await (options.freeBytes ?? defaultFreeBytes)(options.dir).catch(() => Infinity);
   if (free < total + (options.reserveBytes ?? 0)) {
     log(
@@ -569,7 +589,7 @@ export async function prefetchWheels(
     );
     return local;
   }
-  for (const wheel of wheels) {
+  for (const wheel of missing) {
     options.signal.throwIfAborted();
     const target = join(options.dir, folder(wheel));
     await mkdir(target, { recursive: true });
@@ -579,16 +599,6 @@ export async function prefetchWheels(
         ? [options.mirror + wheel.url.slice(PYPI_FILES_ORIGIN.length), wheel.url]
         : [wheel.url];
     const fileUrl = `${pathToFileURL(target).href}/${encodeURIComponent(wheel.filename)}`;
-    const ready = await stat(dest).then(
-      (info) => info.isFile() && info.size === wheel.size,
-      () => false,
-    );
-    if (ready && (await fileSha256(dest)) === wheel.sha256) {
-      log(`Reusing the ${wheel.name} wheel downloaded by an earlier attempt.`);
-      options.transfer?.(wheel.name, wheel.size, wheel.size);
-      local.set(wheel.url, fileUrl);
-      continue;
-    }
     const host = new URL(urls[0]!).host;
     // Never start a line with uv's `Downloading`/`Downloaded`: the progress tracker parses those.
     log(
