@@ -211,6 +211,24 @@ def test_log_escaped_quoted_credential_is_removed_in_full(name,secret,quote,esca
     assert f'{name}={REDACTED}&x=1' in out
 
 
+@pytest.mark.parametrize('name',['api_key','api%5Fkey'])
+@pytest.mark.parametrize('quote',["'",'"'])
+@pytest.mark.parametrize('leading_quoted',[False,True])
+def test_internal_quote_in_parsed_http_credential_does_not_leak(name,quote,leading_quoted):
+    import httpx
+    from starlette.requests import Request
+    from core.auth import _credential_candidate
+    prefix=f'{quote}prefix{quote}' if leading_quoted else 'prefix'
+    secret=f'{prefix}{quote}PRIVATE_FIXTURE{quote}'
+    url=httpx.URL(f'https://h/?{name}={secret}&x=1')
+    request=Request({'type':'http','scheme':'https','server':('h',443),
+                     'path':'/','headers':[],'query_string':url.query})
+    assert _credential_candidate(request).value==secret
+    out=scrub_text(str(request.url))
+    assert 'PRIVATE_FIXTURE' not in out
+    assert '&x=1' in out
+
+
 def test_malformed_query_stress_finishes_within_a_process_bound():
     import subprocess
     import sys

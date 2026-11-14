@@ -69,6 +69,19 @@ _URL_SECRET_RE = re.compile(
 _MAX_QUERY_NAME_CHARS = 3 * max(map(len, _URL_SECRET_NAMES))
 
 
+def _raw_quote_end(text: str, start: int) -> int:
+    quote = text[start]
+    end = start + 1
+    while end < len(text):
+        char = text[end]
+        end += 1
+        if char == "\\" and end < len(text):
+            end += 1
+        elif char == quote:
+            break
+    return end
+
+
 def _scrub_url_queries(text: str) -> str:
     parts = []
     copied = position = 0
@@ -107,17 +120,17 @@ def _scrub_url_queries(text: str) -> str:
                 if closes:
                     break
         elif end < length and text[end] in "\"'":
-            quote = text[end]
-            end += 1
-            while end < length:
-                char = text[end]
-                end += 1
-                if char == "\\" and end < length:
-                    end += 1
-                elif char == quote:
+            end = _raw_quote_end(text, end)
+        # Quoted fragments may be adjacent parts of the same HTTP credential.
+        while end < length and text[end] not in "&#" and not text[end].isspace():
+            if text[end] in "\"'":
+                after = end + 1
+                # Preserve terminal log quotes; otherwise consume the entire
+                # fragment, failing closed if its closing quote is missing.
+                if after == length or text[after].isspace() or text[after] in "&#":
                     break
-        else:
-            while end < length and text[end] not in "&\"'#" and not text[end].isspace():
+                end = _raw_quote_end(text, end)
+            else:
                 end += 1
         parts.extend((text[copied:value_start], REDACTED))
         copied = position = end

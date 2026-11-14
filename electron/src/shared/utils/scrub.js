@@ -55,6 +55,17 @@ const URL_SECRET_RE = new RegExp(`(?<![\\w%+.-])(${URL_SECRET_NAME}=)([^&\\s"'#]
 // byte. Name probes have this fixed bound, and matched values are scanned once.
 const MAX_QUERY_NAME_CHARS = 3 * Math.max(...[...URL_SECRET_NAMES].map((name) => name.length));
 
+function rawQuoteEnd(text, start) {
+  const quote = text[start];
+  let end = start + 1;
+  while (end < text.length) {
+    const char = text[end++];
+    if (char === '\\' && end < text.length) end++;
+    else if (char === quote) break;
+  }
+  return end;
+}
+
 function scrubUrlQueries(text) {
   const parts = [];
   let copied = 0;
@@ -101,14 +112,17 @@ function scrubUrlQueries(text) {
         if (closes) break;
       }
     } else if (text[end] === '"' || text[end] === "'") {
-      const quote = text[end++];
-      while (end < text.length) {
-        const char = text[end++];
-        if (char === '\\' && end < text.length) end++;
-        else if (char === quote) break;
-      }
-    } else {
-      while (end < text.length && !'&"\'#'.includes(text[end]) && !/\s/.test(text[end])) end++;
+      end = rawQuoteEnd(text, end);
+    }
+    // Quoted fragments may be adjacent parts of the same HTTP credential.
+    while (end < text.length && !'&#'.includes(text[end]) && !/\s/.test(text[end])) {
+      if (text[end] === '"' || text[end] === "'") {
+        const after = end + 1;
+        // Preserve terminal log quotes; otherwise consume the entire
+        // fragment, failing closed if its closing quote is missing.
+        if (after === text.length || /\s/.test(text[after]) || '&#'.includes(text[after])) break;
+        end = rawQuoteEnd(text, end);
+      } else end++;
     }
     parts.push(text.slice(copied, valueStart), REDACTED);
     copied = position = end;

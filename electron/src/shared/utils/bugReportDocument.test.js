@@ -156,6 +156,25 @@ describe('credential query privacy in the live report builder', () => {
     expect(params.get('body')).toContain(`${name}=***REDACTED***&x=1`);
   });
 
+  test.each(
+    [
+      ['api_key', "'"],
+      ['api%5Fkey', "'"],
+      ['api_key', '"'],
+      ['api%5Fkey', '"'],
+    ].flatMap((row) => [false, true].map((leading) => [...row, leading])),
+  )(
+    'redacts a quote inside the raw URL credential %s (%s, leading quoted %s)',
+    (name, quote, leading) => {
+      const prefix = leading ? `${quote}prefix${quote}` : 'prefix';
+      const raw = `https://h/?${name}=${prefix}${quote}PRIVATE_FIXTURE${quote}&x=1`;
+      const params = issueParams({ error: { message: raw }, crashSection: [raw] });
+      expect(params.get('title')).not.toContain('PRIVATE_FIXTURE');
+      expect(params.get('body')).not.toContain('PRIVATE_FIXTURE');
+      expect(params.get('body')).toContain('&x=1');
+    },
+  );
+
   test('finishes malformed-query scrubbing within a process bound', () => {
     const source = pathToFileURL(resolve('src/shared/utils/scrub.js')).href;
     const script = `import {scrubText} from ${JSON.stringify(source)};
