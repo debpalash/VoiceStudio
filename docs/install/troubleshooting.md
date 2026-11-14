@@ -1853,3 +1853,9 @@ Self-update needs the `app-update.yml` file that release installers ship in the 
 ## Backend exits with an illegal instruction on an older CPU
 
 The effects library `pedalboard` can crash on CPUs without AVX2. VoiceStudio now loads it once in a separate process first; if that fails, effects stages that depend on it (filters, compressor, reverb, gate, EQ) are skipped and the audio is left unmodified, while the leveler and limiter keep working.
+
+## Browser crashes with "Cannot read properties of undefined (reading 'filter')"
+
+If the stack names `useModelInstallCompletionRefresh`, the model-install status response is incomplete. VoiceStudio now rejects malformed status responses while keeping the last valid download state, so the listener and other model-install screens remain mounted. A failed response does not mark a download complete.
+
+For a custom browser deployment, check that its API points to the VoiceStudio Python backend from the same release. `/models/install/status` returns an object with a `jobs` array; a placeholder API or mismatched backend can return a different body. Include the endpoint's response shape (without private data) when reporting a persistent mismatch.
