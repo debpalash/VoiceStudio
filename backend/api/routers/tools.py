@@ -86,6 +86,9 @@ class IncrementalReq(BaseModel):
     # scoped to that language (pass that language's stored hashes alongside);
     # omitted → legacy language-agnostic hashing, kept for old callers.
     lang: Optional[str] = None
+    # Match DubRequest.language when speech language differs from the track
+    # code (for example Auto speech stored in an en track).
+    language: Optional[str] = None
     # Voice-identity mode the client will generate with (DubRequest.voice_match).
     # Only "consistent" changes the hash (per_line/omitted == legacy), so
     # flipping the Voice-match toggle marks every segment stale — the audio
@@ -95,8 +98,18 @@ class IncrementalReq(BaseModel):
 
 @router.post("/tools/incremental")
 def plan_incremental(req: IncrementalReq):
+    from services.pronunciation import speech_text_preparer
+
+    prepare_text = speech_text_preparer()
+    segments = [
+        {**seg, "text": prepare_text(
+            seg.get("text") or "", seg.get("target_lang") or req.language or req.lang,
+            profile_id=seg.get("profile_id"),
+        )}
+        for seg in req.segments
+    ]
     return incremental.plan_incremental(
-        req.segments,
+        segments,
         stored_hashes=req.stored_hashes or {},
         track_lang=req.lang,
         voice_match=req.voice_match,
