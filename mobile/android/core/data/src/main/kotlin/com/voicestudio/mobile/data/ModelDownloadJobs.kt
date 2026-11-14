@@ -39,13 +39,23 @@ object ModelDownloadJobs {
         write(context,saved.filterNot {it.model==model.id}+item)
         schedule(context,item,model.totalBytes)
     }
+    private fun requiredNetwork(mobile: Boolean): NetworkRequest = NetworkRequest.Builder()
+        .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        // Builder defaults exclude VPNs even when mobile data is allowed.
+        .removeCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+        .apply {
+            if(!mobile) {
+                addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+                addTransportType(NetworkCapabilities.TRANSPORT_WIFI)
+                addTransportType(NetworkCapabilities.TRANSPORT_ETHERNET)
+                addTransportType(NetworkCapabilities.TRANSPORT_VPN)
+            }
+        }.build()
     private fun schedule(context: Context,item: IntentRecord,total: Long) {
         PhoneRuntime.get(context).downloads.scheduled(item.model,total,if(item.mobile) "waiting_network" else "waiting")
         if(Build.VERSION.SDK_INT>=34) {
             val extras=PersistableBundle().apply {putString("model",item.model)}
-            val network=NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).apply {
-                if(!item.mobile) {addTransportType(NetworkCapabilities.TRANSPORT_WIFI);addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)}
-            }.build()
+            val network=requiredNetwork(item.mobile)
             val info=JobInfo.Builder(item.jobID,ComponentName(context,ModelDownloadService::class.java))
                 .setUserInitiated(true).setRequiredNetwork(network).setEstimatedNetworkBytes(total,0).setExtras(extras).build()
             if(context.getSystemService(JobScheduler::class.java).schedule(info)!=JobScheduler.RESULT_SUCCESS) {
@@ -53,10 +63,33 @@ object ModelDownloadJobs {
                 throw ClientFailure("mobile.local.download_failed")
             }
         } else {
-            val request=OneTimeWorkRequestBuilder<ModelDownloadWorker>().setInputData(workDataOf("model" to item.model))
-                .setConstraints(Constraints.Builder().setRequiredNetworkType(if(item.mobile) NetworkType.CONNECTED else NetworkType.UNMETERED).build()).build()
-            WorkManager.getInstance(context).enqueueUniqueWork("model:${item.model}",ExistingWorkPolicy.KEEP,request)
+            scheduleWorker(context,item)
         }
+    }
+    private fun scheduleWorker(context: Context,item: IntentRecord) {
+            val manager=WorkManager.getInstance(context)
+            val networkType=if(item.mobile) NetworkType.CONNECTED else NetworkType.UNMETERED
+            val request=OneTimeWorkRequestBuilder<ModelDownloadWorker>().setInputData(workDataOf("model" to item.model))
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(networkType).build()).build()
+            val previous=manager.getWorkInfosForUniqueWork("model:${item.model}")
+            // Complete on WorkManager's query callback; never block the UI or
+            // introduce a separate transfer/network polling owner.
+            previous.addListener({
+                try {
+                    val infos=previous.get()
+                    synchronized(this) {
+                        if(read(context).firstOrNull {it.model==item.model}==item) {
+                            val stale=infos.any {!it.state.isFinished&&it.constraints.requiredNetworkType!=networkType}
+                            manager.enqueueUniqueWork("model:${item.model}",if(stale) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,request)
+                        }
+                    }
+                } catch(_:Exception) {
+                    synchronized(this) {
+                        if(read(context).firstOrNull {it.model==item.model}==item)
+                            pauseInBackground(context,item.model,"mobile.local.download_failed")
+                    }
+                }
+            },java.util.concurrent.Executor {it.run()})
     }
     /** Called only when the phone UI opens. Existing OS jobs retain ownership. */
     fun restore(context: Context,models: List<PhoneModel>,onFailure: (Throwable)->Unit = {}) {
@@ -71,7 +104,7 @@ object ModelDownloadJobs {
                 }
                 if(item.paused) {downloads.paused(item.model,model.totalBytes,item.error);continue}
                 if(PhoneRuntime.get(context).downloads.installed(model)) {finished(context,item.model);continue}
-                if(Build.VERSION.SDK_INT<34||scheduler.getPendingJob(item.jobID)==null) schedule(context,item,model.totalBytes)
+                if(Build.VERSION.SDK_INT<34||scheduler.getPendingJob(item.jobID)?.requiredNetwork!=requiredNetwork(item.mobile)) schedule(context,item,model.totalBytes)
                 else PhoneRuntime.get(context).downloads.scheduled(item.model,model.totalBytes,if(item.mobile) "waiting_network" else "waiting")
             } catch(e:CancellationException) {throw e}
             catch(e:Exception) {onFailure(e as? ClientFailure ?: ClientFailure("mobile.local.download_failed"))}
