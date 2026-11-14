@@ -52,7 +52,7 @@ from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
-from api.dependencies import is_local_host, ws_remote_authorized
+from api.dependencies import require_ws_access
 from services.dictation_cleanup import join_dictation_pieces, polish_dictation
 from services.text_polish import polish_text
 
@@ -307,28 +307,13 @@ async def ws_transcribe(websocket: WebSocket):
     is_platform_stream = websocket.url.path == PLATFORM_STREAM_PATH
     if is_platform_stream:
         websocket = _PlatformWebSocket(websocket)
-    # A browser can reach localhost regardless of the page's own origin.
-    # Reject ambient cross-site WebSocket handshakes before the loopback-host
-    # shortcut or accept(), while keeping native clients (no Origin header)
-    # and configured/same-origin browser UIs working (#1646 review).
-    origin = websocket.headers.get("origin")
-    if origin:
-        from core.csrf import origin_allowed
-
-        if not origin_allowed(websocket):
-            await websocket.close(code=1008, reason="browser origin not allowed")
-            return
-    # Loopback origin guard — refuse anything not from 127.0.0.1, ::1, or
-    # localhost. Privileged HTTP routers use Depends(require_admin) at router
-    # level; WebSocket dependency injection differs across FastAPI versions, so we
-    # inline the check before accept(). Without it, any local process could
-    # stream the user's microphone over this endpoint.
-    # Wave 2.3 (remote backend): a non-loopback client that presents the
-    # OMNIVOICE_API_KEY bearer is the thin-client dictation case — the mic
-    # lives on the user's machine, the GPU here — and is allowed through.
-    host = websocket.client.host if websocket.client else None
-    if not is_local_host(host) and not ws_remote_authorized(websocket):
-        await websocket.close(code=1008, reason="loopback origin required")
+    # Shared WS admission gate (cross-site Origin rejection, then the
+    # loopback/trusted-network/remote-credential check) before accept().
+    # Privileged HTTP routers use Depends(require_admin) at router level, but
+    # WebSocket dependency injection differs across FastAPI versions, so the
+    # guard is a plain function awaited here. Without it, any local process
+    # could stream the user's microphone over this endpoint.
+    if not await require_ws_access(websocket):
         return
 
     await websocket.accept()

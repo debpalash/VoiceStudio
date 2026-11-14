@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 import sqlite3
+from api.dependencies import require_admin, require_consumer
 from core.db import db_conn, ensure_schema
 from core.config import OUTPUTS_DIR, VOICES_DIR
 from core.path_security import contained_join
@@ -1898,7 +1899,7 @@ def _parse_emotion_vector(raw: Optional[str]) -> Optional[list[float]]:
     return [float(item) for item in value]
 
 
-@router.post("/generate")
+@router.post("/generate", dependencies=[Depends(require_consumer)])
 async def generate_speech(
     text: str = Form(...),
     language: Optional[str] = Form(None),
@@ -3053,7 +3054,7 @@ class _StarBody(BaseModel):
     starred: bool
 
 
-@router.put("/history/{history_id}/starred")
+@router.put("/history/{history_id}/starred", dependencies=[Depends(require_admin)])
 def set_history_starred(history_id: str, body: _StarBody):
     """Star/unstar a take. Starred takes survive the retention cap and always
     appear in GET /history regardless of the recency window."""
@@ -3081,7 +3082,7 @@ def set_history_starred(history_id: str, body: _StarBody):
     event_bus.emit("generation_history", {"action": "starred", "id": history_id})
     return {"id": history_id, "starred": body.starred}
 
-@router.delete("/history")
+@router.delete("/history", dependencies=[Depends(require_admin)])
 def clear_history():
     with db_conn() as conn:
         rows = conn.execute("SELECT audio_path FROM generation_history").fetchall()
@@ -3096,7 +3097,7 @@ def clear_history():
     event_bus.emit("generation_history")
     return {"cleared": True}
 
-@router.delete("/history/{history_id}")
+@router.delete("/history/{history_id}", dependencies=[Depends(require_admin)])
 def delete_single_history(history_id: str):
     doomed: list[str] = []
     with db_conn() as conn:

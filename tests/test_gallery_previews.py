@@ -502,7 +502,7 @@ def client(sandbox):
 
     app = FastAPI()
     app.include_router(router_mod.router)
-    return TestClient(app)
+    return TestClient(app, client=("127.0.0.1", 50000))
 
 
 def _first_archetype():

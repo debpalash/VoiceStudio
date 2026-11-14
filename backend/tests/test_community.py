@@ -73,7 +73,10 @@ def seed_cache():
 def client():
     app = FastAPI()
     app.include_router(community.router)
-    return TestClient(app)
+    # The item "use" route is admin-gated, and the desktop UI reaches it from
+    # loopback; the default TestClient peer ("testclient") is a non-loopback LAN
+    # guest and would be refused.
+    return TestClient(app, client=("127.0.0.1", 50000))
 
 
 # ── pure validation ───────────────────────────────────────────────────────────

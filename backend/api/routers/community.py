@@ -38,6 +38,7 @@ from urllib.parse import urljoin, urlparse
 from fastapi import APIRouter, HTTPException, Query, Depends
 from fastapi.responses import FileResponse
 
+from api.dependencies import require_admin
 from core import archetypes
 from core.audio_validation import is_playable_wav, resolve_regular_file
 from core.config import DATA_DIR, VOICES_DIR
@@ -922,7 +923,7 @@ def _save_community_preset(item: dict, name: Optional[str]) -> dict:
     return result
 
 
-@router.post("/community/items/{item_id}/use")
+@router.post("/community/items/{item_id}/use", dependencies=[Depends(require_admin)])
 async def community_use(item_id: str, name: Optional[str] = Query(None)):
     """Materialize a community item into a reusable voice profile.
 

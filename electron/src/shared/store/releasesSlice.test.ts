@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { createReleasesSlice } from './releasesSlice';
 
 function harness() {
@@ -33,4 +33,22 @@ describe('releasesSlice', () => {
     expect(get().releasesStatus).toBe('error');
     expect(get().releases).toEqual([]);
   });
+
+  it.each(['stable', 'preview', 'unknown'])(
+    'the retained default adapter loads %s releases',
+    async (channel) => {
+      const data = [{ version: '0.3.0', notes: 'release notes' }];
+      const listReleases = vi.fn(async () => data);
+      vi.stubGlobal('window', { voicestudio: { updates: { listReleases } } });
+      try {
+        const { get } = harness();
+        await get().loadReleases(channel);
+        expect(listReleases).toHaveBeenCalledWith(channel === 'preview' ? 'preview' : 'stable');
+        expect(get().releasesStatus).toBe('loaded');
+        expect(get().releases).toEqual(data);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
 });
