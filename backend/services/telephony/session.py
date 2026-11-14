@@ -317,8 +317,10 @@ def _speech_key(text: str, voice: str, engine: str, language: str) -> tuple:
     renders fresh instead of replaying the old voice.
     """
     from api.routers.tts_stream import build_stream_kwargs
+    from services.pronunciation import prepare_speech_text
     from services.tts_backend import active_backend_id
 
+    spoken_text = prepare_speech_text(text, language or None, profile_id=voice or None)
     kw = build_stream_kwargs({"voice": voice or None, "language": language or None})
     ref = kw.get("ref_audio")
     try:
@@ -327,7 +329,7 @@ def _speech_key(text: str, voice: str, engine: str, language: str) -> tuple:
     except OSError:
         clip = None
     return (
-        text,
+        spoken_text,
         engine or f"active:{active_backend_id()}",
         language or "",
         repr(sorted(kw.items())),
@@ -367,7 +369,8 @@ async def _produce(key: tuple, render: _Render, text: str, voice: str, engine: s
 
     try:
         async for wav, sr in synthesize_stream(
-            text, voice=voice or None, engine=engine or None, language=language or None
+            text, voice=voice or None, engine=engine or None, language=language or None,
+            _prepared_text=key[0],
         ):
             await render.publish(await asyncio.to_thread(to_phone_ulaw, wav, sr))
         ulaw_cache.put(key, b"".join(render.chunks))
@@ -396,7 +399,10 @@ async def render_ulaw(
     same greeting share one synthesis, and a complete render is cached, so
     later calls start immediately.
     """
-    key = _speech_key(text, voice, engine, language)
+    # Resolve blocking profile/dictionary reads off-loop. The key's spoken
+    # text is also the synthesis input, so later dictionary edits cannot
+    # publish new audio under an earlier pronunciation's cache key.
+    key = await asyncio.to_thread(_speech_key, text, voice, engine, language)
     cached = ulaw_cache.get(key)
     if cached is not None:
         yield cached

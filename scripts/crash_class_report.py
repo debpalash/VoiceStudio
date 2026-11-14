@@ -8,9 +8,11 @@ because 6 in 10 sampled reports historically came from builds that were
 already obsolete when filed, and counting those as recurrence would judge
 the work against noise it can't fix.
 
-Reports are bucketed by the `**Build status:**` line the bug reporter stamps
-into every body (fix/stale-build-report-deflection): `OUTDATED` vs `current
-at filing time` vs absent (pre-deflection builds / freshness unknown).
+With --version, reports are bucketed by the live reporter's `**App:**` field
+or the historical `**Version:**` field. Explicit beta versions match exactly;
+historical numeric previews can still match their base version. Without a
+target, only a `**Build status:**` stamp establishes freshness: absent stamps
+remain unknown, including reports from current Electron builds.
 
 Usage:
     uv run python scripts/crash_class_report.py            # since latest release
@@ -41,6 +43,7 @@ CRASH_CLASS = {
 OUTDATED = re.compile(r"\*\*Build status:\*\* OUTDATED")
 CURRENT = re.compile(r"\*\*Build status:\*\* current at filing time")
 VERSION_LINE = re.compile(r"\*\*Version:\*\* `([^`]+)`")
+APP_LINE = re.compile(r"^\*\*App:\*\* VoiceStudio ([^\s`]+)", re.M)
 
 
 def sh(*args: str) -> str:
@@ -77,15 +80,19 @@ def fetch_issues(since: str) -> list[dict]:
 def classify_build(body: str, version: "str | None") -> str:
     """'current' / 'outdated' / 'unknown' for one issue body.
 
-    With a target version, the Environment Version line is authoritative: a
+    With a target version, the App/Environment Version field is authoritative: a
     report stamped "current at filing time" during a DIFFERENT version's
     window must not count toward this version's recurrence. Without one, the
     reporter's Build-status stamp decides.
     """
-    ver = VERSION_LINE.search(body)
-    base = ver.group(1).split("-")[0] if ver else None
-    if version and base:
-        return "current" if base == version else "outdated"
+    ver = APP_LINE.search(body) or VERSION_LINE.search(body)
+    if version and ver:
+        reported = ver.group(1)
+        # Preserve the old numeric preview/base convention without folding a
+        # named prerelease (beta/RC) into its stable version or another beta.
+        legacy_preview = re.fullmatch(r"(\d+\.\d+\.\d+)-\d+", reported)
+        matches = reported == version or (legacy_preview is not None and legacy_preview[1] == version)
+        return "current" if matches else "outdated"
     if OUTDATED.search(body):
         return "outdated"
     if CURRENT.search(body):
@@ -96,7 +103,7 @@ def classify_build(body: str, version: "str | None") -> str:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--since", help="count issues created on/after this date (default: latest release)")
-    ap.add_argument("--version", help="also split by the Environment Version line matching this version")
+    ap.add_argument("--version", help="split by the reported App/Version field (beta versions match exactly)")
     args = ap.parse_args()
 
     since = args.since or latest_release_date()
@@ -123,7 +130,7 @@ def main() -> int:
     print(
         f"\nRecurrence metric (current-version crash-class reports): {current_total}"
         "\n  → this is the number the reliability work is judged on; 'outdated' is"
-        "\n    deflection-miss noise and 'unknown' is pre-deflection builds."
+        "\n    other-version reports; 'unknown' means freshness was not established."
     )
     if matched:
         print("\nMatched issues:")

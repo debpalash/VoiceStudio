@@ -650,7 +650,7 @@ export function DubPage() {
     }
     const controller = new AbortController();
     const timeout = window.setTimeout(() => {
-      void planDubIncremental(code, controller.signal)
+      void planDubIncremental(code, controller.signal, target)
         .then(setIncrementalPlan)
         .catch((error) => {
           if (!isAbortError(error)) console.warn('Could not plan incremental dub:', error);
@@ -660,7 +660,14 @@ export function DubPage() {
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [code, session.fingerprintsByLang, session.phase, session.segments, session.voiceMatch]);
+  }, [
+    code,
+    target,
+    session.fingerprintsByLang,
+    session.phase,
+    session.segments,
+    session.voiceMatch,
+  ]);
   useEffect(() => () => segmentPreviewAbort.current?.abort(), []);
   useEffect(() => () => revokeObjectUrl(segmentPreview?.url), [segmentPreview?.url]);
   useEffect(() => {
