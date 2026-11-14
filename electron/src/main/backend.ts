@@ -104,7 +104,11 @@ import {
 } from './remote-backend';
 import { toolSearchDirs, toolSearchDirsAsync } from './tool-path';
 import { SetupProgressTracker, cleanProcessLine, downloadStallExceeded } from './setup-progress';
-import { SetupDownloadReporter, inFlightDownloadBytes } from './setup-downloads';
+import {
+  SetupDownloadReporter,
+  runtimeFailureDownloadSource,
+  inFlightDownloadBytes,
+} from './setup-downloads';
 import { scrubText } from '../shared/utils/scrub';
 import { SUPERVISE_ACTIVE_MS as SUPERVISE_POLL_MS, superviseDelayMs } from './supervise-cadence';
 import { DEFAULT_BACKEND_PORT } from '../../../config/app-config.mjs';
@@ -1174,6 +1178,7 @@ export class BackendSupervisor extends EventEmitter<{
    * problem was a native extension that would not load (#3058).
    */
   private readonly childErrorLog: string[] = [];
+  private setupFailedDownloadSource: { host: string } | null = null;
   /** When the spawned process last printed a line (0 = nothing yet this launch). */
   private lastChildOutputAt = 0;
   /** When the running readiness wait's budget started; a launch retry moves it. */
@@ -1426,6 +1431,7 @@ export class BackendSupervisor extends EventEmitter<{
     // not quote the installer — setupRuntime's uv children share this ring.
     this.childLog.length = 0;
     this.childErrorLog.length = 0;
+    this.setupFailedDownloadSource = null;
     this.lastChildOutputAt = 0;
     this.setStage('attaching', { managed: false, message: undefined });
     try {
@@ -1613,6 +1619,7 @@ export class BackendSupervisor extends EventEmitter<{
     this.runtimeInterrupted = false;
     this.setupPhase = 'checking';
     this.setupProgress.reset();
+    this.setupFailedDownloadSource = null;
     this.setupLog.append(
       `Setup attempt: VoiceStudio ${__APP_VERSION__}; ${process.platform}/${process.arch}; region: ${this.runtimeRegion}`,
     );
@@ -1807,6 +1814,7 @@ export class BackendSupervisor extends EventEmitter<{
       }
     } catch (error) {
       if (gen === this.generation) {
+        this.setupFailedDownloadSource = runtimeFailureDownloadSource(error);
         const code = (error as NodeJS.ErrnoException)?.code;
         this.setupIssue =
           code === 'INTEL_MAC_UNSUPPORTED'
@@ -2225,6 +2233,8 @@ export class BackendSupervisor extends EventEmitter<{
       return;
     }
     const progress = this.setupProgress.snapshot();
+    const failedSource = this.stage === 'setup_required' ? this.setupFailedDownloadSource : null;
+    const downloadHost = failedSource?.host ?? progress.downloadHost;
     // Quoted log lines are evidence, not the cause (#3724).
     const causeText = withoutBackendLogEvidence(this.message ?? '');
     const program = refusedProgram(causeText);
@@ -2260,8 +2270,11 @@ export class BackendSupervisor extends EventEmitter<{
       errorCode: /\b(UNKNOWN|EPERM|EACCES|ENOENT|ENOSPC)\b/.exec(this.message ?? '')?.[1],
       ...(typeof this.exitCode === 'number' ? { exitCode: this.exitCode } : {}),
       ...(this.exitSignal ? { signal: String(this.exitSignal) } : {}),
-      ...(progress.downloadHost ? { downloadHost: progress.downloadHost } : {}),
-      ...(progress.downloadedBytes ? { downloadedBytes: progress.downloadedBytes } : {}),
+      ...(downloadHost ? { downloadHost } : {}),
+      // The transfer total belongs to the progress source, not a different failed archive.
+      ...(progress.downloadedBytes && (!failedSource || failedSource.host === progress.downloadHost)
+        ? { downloadedBytes: progress.downloadedBytes }
+        : {}),
       ...(progress.stalledSeconds ? { stalledSeconds: progress.stalledSeconds } : {}),
       proxyConfigured: Boolean(
         process.env.HTTPS_PROXY || process.env.https_proxy || process.env.ALL_PROXY,

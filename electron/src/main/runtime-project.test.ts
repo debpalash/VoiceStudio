@@ -1418,6 +1418,42 @@ describe('regional PyPI mirror for the frozen sync (#3444)', () => {
     expect(await runtimeCompatible(bundle, project)).toBe(true);
   });
 
+  it('Auto recovers a later source-archive DNS failure through the pinned mirror', async () => {
+    const { bundle, project } = await fixture();
+    const archive = 'packages/hash/antlr4-python3-runtime-4.9.3.tar.gz';
+    const lock = `${LOCK}\n[[package]]\nname = "antlr4-python3-runtime"\nsdist = { url = "https://files.pythonhosted.org/${archive}", hash = "sha256:archive" }\n`;
+    await writeFile(join(bundle, 'uv.lock'), lock);
+    const seen: string[] = [];
+    const run = vi.fn(async (_command: string, args: string[]) => {
+      if (args[0] !== 'sync' || args.includes('--dry-run')) return undefined;
+      seen.push(await readFile(join(project, 'uv.lock'), 'utf8'));
+      expect(args).toContain('--frozen');
+      if (seen.length === 1)
+        throw Object.assign(new Error('Runtime setup exited with code 1'), {
+          stderr: `error sending request for url (https://files.pythonhosted.org/${archive})\ndns error: No such host is known`,
+        });
+      await interpreter(project);
+      return undefined;
+    });
+    await installRuntime(
+      bundle,
+      project,
+      'uv',
+      run,
+      new AbortController().signal,
+      undefined,
+      'auto',
+    );
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).toBe(lock);
+    expect(seen[1]).toContain(
+      `https://mirrors.aliyun.com/pypi/${archive}", hash = "sha256:archive"`,
+    );
+    expect(seen[1]).toContain('https://download-r2.pytorch.org/whl/cu128/torch.whl');
+    expect(await readFile(join(project, 'uv.lock'), 'utf8')).toBe(lock);
+    expect(await runtimeReady(bundle, project)).toBe(true);
+  });
+
   it.each(['global', 'russia', 'restricted'] as const)(
     'leaves the lock byte-identical for the %s region',
     async (region) => {

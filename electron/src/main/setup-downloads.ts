@@ -13,6 +13,58 @@ import { join } from 'node:path';
 
 const PYPI_FILES = 'files.pythonhosted.org';
 
+/** Only the URL adjacent to uv's failed-request marker, never a progress URL.
+ * Return host metadata only: credentials, paths and query tokens stay out of reports.
+ */
+export function failedDownloadSource(text: string): { host: string; pypiArchive: boolean } | null {
+  let source: { host: string; pypiArchive: boolean } | null = null;
+  for (const marker of text.matchAll(/Failed to fetch:|error sending request for url/gi)) {
+    source = null;
+    const following = text.slice(
+      marker.index! + marker[0].length,
+      marker.index! + marker[0].length + 1024,
+    );
+    const token = /^[\s\u2500-\u257f\u25b6`"'(>\-]*(https?:\/\/[^\s`"'<>]+)/i.exec(following)?.[1];
+    if (!token) continue;
+    try {
+      const url = new URL(token.replace(/\)+$/, ''));
+      source = {
+        host: url.host,
+        pypiArchive:
+          url.origin === 'https://files.pythonhosted.org' && url.pathname.startsWith('/packages/'),
+      };
+    } catch {
+      // An incomplete diagnostic is not proof of a failed download source.
+    }
+  }
+  return source;
+}
+
+/** A final runtime error owns its source; prior attempts' logs are not evidence.
+ * The retry wrapper preserves that error as its cause. A stall instead uses
+ * the current progress source, since no failed request URL was reported.
+ */
+export function runtimeFailureDownloadSource(
+  error: unknown,
+): ReturnType<typeof failedDownloadSource> {
+  let current = error;
+  for (let depth = 0; depth < 6 && current && typeof current === 'object'; depth++) {
+    const record = current as {
+      code?: unknown;
+      stderr?: unknown;
+      message?: unknown;
+      cause?: unknown;
+    };
+    if (record.code === 'DOWNLOAD_STALLED') return null;
+    const source = failedDownloadSource(
+      `${typeof record.stderr === 'string' ? record.stderr : ''}\n${typeof record.message === 'string' ? record.message : ''}`,
+    );
+    if (source) return source;
+    current = record.cause;
+  }
+  return null;
+}
+
 function isUvTemp(name: string): boolean {
   return name.startsWith('.tmp');
 }

@@ -2,7 +2,7 @@
 
 Every known install problem, merged into unique issues and ranked by severity. For help with a failure, start with the [troubleshooting guide](troubleshooting.md). Live discussion is in [#3836](https://github.com/debpalash/VoiceStudio/issues/3836).
 
-This list covers 517 GitHub reports, merged into 56 unique issues. The base inventory was reviewed on 2026-11-06; Discord follow-up reports were added on 2026-11-14. The latest release is v0.5.8.
+This list covers 518 GitHub reports, merged into 56 unique issues. The base inventory was reviewed on 2026-11-06; Discord follow-up reports were added on 2026-11-14. The latest release is v0.5.8.
 
 ## How to read this list
 
@@ -51,9 +51,9 @@ Each category has a GitHub label, and every report below carries it.
 | Status | Unique issues |
 |---|---|
 | Open | 9 |
-| Partly fixed | 11 |
+| Partly fixed | 12 |
 | Fixed on main | 0 |
-| Fixed in release | 33 |
+| Fixed in release | 32 |
 | Declined | 1 |
 | Closed, cause unknown | 2 |
 
@@ -63,7 +63,7 @@ Each category has a GitHub label, and every report below carries it.
 |---|---|---|---|---|---|---|---|---|
 | 1 | `INST-WIN-001` | P0 | Windows Smart App Control or antivirus blocks the unsigned Python files (`spawn UNKNOWN`) | Partly fixed | [#3640](https://github.com/debpalash/VoiceStudio/pull/3640), [#3810](https://github.com/debpalash/VoiceStudio/pull/3810) | Needs signed Python files ([#1779](https://github.com/debpalash/VoiceStudio/issues/1779)). Turning off Smart App Control works today. The merged PRs only warn and name the block. | [`WINDOWS_APP_CONTROL_BLOCKED`](troubleshooting.md#windows_app_control_blocked) | 53 |
 | 2 | `INST-NATIVE-001` | P0 | Windows backend crashes with an access violation while loading torch or model data | Partly fixed | [#2467](https://github.com/debpalash/VoiceStudio/pull/2467), [#2499](https://github.com/debpalash/VoiceStudio/pull/2499), [#3385](https://github.com/debpalash/VoiceStudio/pull/3385) | Find the root cause in torch model loading. [#3507](https://github.com/debpalash/VoiceStudio/pull/3507) covers a different setup crash. | [`NATIVE_ACCESS_VIOLATION`](troubleshooting.md#native_access_violation) | 16 |
-| 3 | `INST-NET-001` | P0 | Torch or dependency download stalls, restarts or fails on slow or restricted networks | Fixed in release | [#3557](https://github.com/debpalash/VoiceStudio/pull/3557), [#3576](https://github.com/debpalash/VoiceStudio/pull/3576), [#3785](https://github.com/debpalash/VoiceStudio/pull/3785) | Retest on the next release, then close the open reports. | [`RUNTIME_DOWNLOAD_STALLED`](troubleshooting.md#runtime_download_stalled) | 12 |
+| 3 | `INST-NET-001` | P0 | Torch or dependency download stalls, restarts or fails on slow or restricted networks | Partly fixed | [#3557](https://github.com/debpalash/VoiceStudio/pull/3557), [#3576](https://github.com/debpalash/VoiceStudio/pull/3576), [#3785](https://github.com/debpalash/VoiceStudio/pull/3785) | Validate the Auto-region PyPI DNS failover and accurate failed-host report for #4105. | [`RUNTIME_DOWNLOAD_STALLED`](troubleshooting.md#runtime_download_stalled) | 13 |
 | 4 | `INST-MAC-001` | P0 | macOS says the app is damaged or will not open it after install | Fixed in release | [#3033](https://github.com/debpalash/VoiceStudio/pull/3033), [#3243](https://github.com/debpalash/VoiceStudio/pull/3243) |  | [`GATEKEEPER_QUARANTINE`](troubleshooting.md#gatekeeper_quarantine) | 9 |
 | 5 | `INST-BOOT-001` | P1 | Port 3900 is already in use or cannot be bound | Partly fixed | [#1982](https://github.com/debpalash/VoiceStudio/pull/1982), [#2362](https://github.com/debpalash/VoiceStudio/pull/2362), [#3025](https://github.com/debpalash/VoiceStudio/pull/3025) | Reserved ports now recover, but a port held by another app still stops startup. Pick a free port instead. | [`PORT_IN_USE`](troubleshooting.md#port_in_use) | 7 |
 | 6 | `INST-AMD-001` | P1 | System check reports `ROCm not configured`, or Linux ROCm setup fails | Partly fixed | [#3553](https://github.com/debpalash/VoiceStudio/pull/3553), [#3602](https://github.com/debpalash/VoiceStudio/pull/3602) | Setup still asks for an environment variable on AMD. Offer ROCm in setup. | [`ROCM_NOT_CONFIGURED`](troubleshooting.md#rocm_not_configured) | 7 |
@@ -126,7 +126,7 @@ Open reports are linked. Find a closed report with a search for its number.
 |---|---|
 | `INST-WIN-001` | #3801, #3789, #3788, #3783, #3779, #3778, #3756, #3739, #3714, #3698, #3697, #3696, #3686, [#3683](https://github.com/debpalash/VoiceStudio/issues/3683), [#3682](https://github.com/debpalash/VoiceStudio/issues/3682), [#3681](https://github.com/debpalash/VoiceStudio/issues/3681), #3672, #3668, #3650, [#3635](https://github.com/debpalash/VoiceStudio/issues/3635), #3633, #3632, #3506, #3371, #3351, #3337, #3329, #3326, #3322, #3272, #3224, #3209, #3204, #3201, #3200, #3196, #3169, #3163, #3156, #3146, #3106, #3103, #3084, #3081, #3077, #3063, #3061, #2981, #2959, #2949, #2839, #2440, #1712 |
 | `INST-NATIVE-001` | [#3772](https://github.com/debpalash/VoiceStudio/issues/3772), [#3767](https://github.com/debpalash/VoiceStudio/issues/3767), #3340, #3267, #3226, #3043, #2416, #2394, #2189, #1939, #1927, #1777, #1708, #1669, #1275, #1069 |
-| `INST-NET-001` | [#3820](https://github.com/debpalash/VoiceStudio/issues/3820), [#3748](https://github.com/debpalash/VoiceStudio/issues/3748), [#3720](https://github.com/debpalash/VoiceStudio/issues/3720), #3475, #3444, #3411, #3259, #3202, #3060, #2562, #569, #130 |
+| `INST-NET-001` | [#4105](https://github.com/debpalash/VoiceStudio/issues/4105), [#3820](https://github.com/debpalash/VoiceStudio/issues/3820), [#3748](https://github.com/debpalash/VoiceStudio/issues/3748), [#3720](https://github.com/debpalash/VoiceStudio/issues/3720), #3475, #3444, #3411, #3259, #3202, #3060, #2562, #569, #130 |
 | `INST-MAC-001` | #3264, #3240, #2951, #2829, #2763, #2681, #2360, #79, #54 |
 | `INST-BOOT-001` | [#3704](https://github.com/debpalash/VoiceStudio/issues/3704), #3020, #2358, #1974, #1637, #1635, #1364 |
 | `INST-AMD-001` | [#3780](https://github.com/debpalash/VoiceStudio/issues/3780), #3627, #3158, #1629, #1582, #972, #124 |
