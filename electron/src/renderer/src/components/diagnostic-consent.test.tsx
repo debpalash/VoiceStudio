@@ -5,6 +5,7 @@ const mock = vi.hoisted(() => ({
   state: { enabled: false, opted_in: false, available: true, prompted: false },
   capture: vi.fn(async () => {}),
   save: vi.fn(),
+  read: vi.fn(),
 }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock('@/hooks/use-backend-status', () => ({
@@ -14,7 +15,7 @@ vi.mock('@/hooks/use-backend-status', () => ({
 vi.mock('@/components/bridge', () => ({
   getBridge: () => ({
     diagnostics: {
-      getStatus: async () => mock.state,
+      getStatus: () => mock.read(),
       setConsent: (...args: unknown[]) => mock.save(...args),
       capture: mock.capture,
     },
@@ -29,6 +30,7 @@ beforeEach(async () => {
   vi.resetModules();
   vi.clearAllMocks();
   mock.state = { enabled: false, opted_in: false, available: true, prompted: false };
+  mock.read.mockImplementation(async () => mock.state);
   mock.save.mockImplementation(async (enabled: boolean) => {
     mock.state = { ...mock.state, enabled, opted_in: enabled, prompted: true };
     return mock.state;
@@ -37,6 +39,22 @@ beforeEach(async () => {
   ({ captureDiagnosticException, setDiagnosticConsent } = await import('@/lib/diagnostic-reports'));
 });
 afterEach(cleanup);
+
+it('shows a failed initial status read and retries without choosing consent', async () => {
+  mock.read.mockRejectedValueOnce(new Error('private startup detail'));
+  render(<DiagnosticConsent />);
+  expect(await screen.findByRole('alert')).toHaveTextContent('diagnostics.save_failed');
+  expect(screen.queryByText('private startup detail')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'diagnostics.allow' })).not.toBeInTheDocument();
+  captureDiagnosticException(new Error('private text'), 'renderer_crash', 'render');
+  expect(mock.capture).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'common.retry' }));
+  expect(await screen.findByRole('button', { name: 'diagnostics.allow' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'diagnostics.keep_off' })).toBeEnabled();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  expect(mock.read).toHaveBeenCalledTimes(2);
+  expect(mock.save).not.toHaveBeenCalled();
+});
 
 it('offers equal explicit choices with no backend and remembers No independently of analytics', async () => {
   localStorage.setItem('voicestudio.setup.analytics-consent.v1', JSON.stringify({ enabled: true }));

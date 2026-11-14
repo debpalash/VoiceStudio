@@ -300,7 +300,9 @@ export class DiagnosticReports {
         await this.purge();
         if (revision !== this.revision) return;
         this.initialized = true;
-        if (this.enabled) await this.writeSession();
+        // Consent is already durable. Optional crash-recovery bookkeeping must
+        // not reject the choice while collection remains enabled.
+        if (this.enabled) await this.writeSession().catch(() => {});
       });
     await this.control;
     if (revision === this.revision && this.enabled) this.schedule();
@@ -332,10 +334,14 @@ export class DiagnosticReports {
     this.revision++;
     if (this.timer) clearInterval(this.timer);
     this.abort();
-    await this.work?.catch(() => {});
-    if (this.killObserved) await this.purge();
-    else await this.persist();
-    await rm(this.sessionPath, { force: true }).catch(() => {});
+    try {
+      await this.work?.catch(() => {});
+      if (this.killObserved) await this.purge();
+      else await this.persist();
+    } finally {
+      // An outbox failure must not turn an orderly exit into a crash report.
+      await rm(this.sessionPath, { force: true }).catch(() => {});
+    }
   }
 
   private abort(): void {

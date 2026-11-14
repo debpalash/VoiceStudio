@@ -37,6 +37,7 @@ private final class DiagnosticTestClock: DiagnosticClock, @unchecked Sendable {
 }
 private final class DiagnosticTestTransport: DiagnosticTransport, @unchecked Sendable {
     let lock = NSLock()
+    private let entered = DispatchSemaphore(value: 0)
     private var sent: [Data] = []
     private var code = 503
     private var hold = false
@@ -46,11 +47,17 @@ private final class DiagnosticTestTransport: DiagnosticTransport, @unchecked Sen
     func set(code: Int) { lock.withLock { self.code = code } }
     func setHolding(_ hold: Bool) { lock.withLock { self.hold = hold } }
     func bodies() -> [Data] { lock.withLock { sent } }
+    func waitForEntry() async -> Bool {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global().async { continuation.resume(returning: self.entered.wait(timeout: .now() + 2) == .success) }
+        }
+    }
     func send(destination: DiagnosticDestination, body: Data, allowed: @escaping @Sendable () -> Bool) async throws -> Int {
         try await withCheckedThrowingContinuation { continuation in
             lock.withLock {
                 guard allowed() else { continuation.resume(throwing: DiagnosticFailure.cancelled); return }
                 sent.append(body)
+                entered.signal()
                 if hold { self.continuation = continuation } else { continuation.resume(returning: code) }
             }
         }
@@ -143,7 +150,7 @@ private func diagnosticEvent() -> DiagnosticInput { DiagnosticInput(category: "g
         let reports = try diagnosticTestReporter(store, transport); try await reports.setConsent(true)
         let old = try #require(reports.recoveryContext?.epoch)
         reports.capture(diagnosticEvent())
-        for _ in 0..<100 where transport.bodies().isEmpty { await Task.yield() }
+        #expect(await transport.waitForEntry())
         #expect(transport.bodies().count == 1)
         try await reports.setConsent(false); await reports.flush()
         #expect(!reports.status.enabled); #expect(reports.recoveryContext == nil); #expect(!store.has("outbox.json"))

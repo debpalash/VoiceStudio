@@ -17,7 +17,24 @@ function choose(enabled: boolean): void {
 
 export function DiagnosticConsent() {
   const { t } = useTranslation();
-  const { status, saving, error } = useDiagnostics();
+  const { status, loading, saving, error } = useDiagnostics();
+  if (!status && error)
+    return (
+      <section className="rounded-lg border border-border/60 bg-muted/20 p-3">
+        <p role="alert" className="text-xs text-destructive">
+          {t('diagnostics.save_failed')}{' '}
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={loading || saving}
+            onClick={() => void retryDiagnosticConsent().catch(() => {})}
+          >
+            {t('common.retry')}
+          </Button>
+        </p>
+      </section>
+    );
   if (status?.prompted || status?.opted_in)
     return (
       <section className="rounded-lg border border-border/60 bg-muted/20">

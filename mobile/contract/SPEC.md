@@ -376,7 +376,8 @@ progress visible and resumes from a saved checkpoint after interruption).
 
 On-device tasks send nothing anywhere. The only network requests are the model
 downloads the user starts, content reports the user sends (see Reporting
-generated content) and, when paired, requests to their own computer.
+generated content), automatic failure diagnostics only after a separate explicit
+opt-in (see Automatic diagnostics above), and, when paired, requests to their own computer.
 Settings → Privacy states this.
 
 ### Tests (in addition to M1)

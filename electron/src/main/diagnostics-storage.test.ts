@@ -8,11 +8,17 @@ const gate = vi.hoisted(() => ({
   entered: () => {},
   wait: Promise.resolve() as Promise<void>,
   failWrites: false,
+  failRenameTarget: '',
 }));
 vi.mock('node:fs/promises', async (original) => {
   const fs = await original<typeof import('node:fs/promises')>();
   return {
     ...fs,
+    rename: async (...args: Parameters<typeof fs.rename>) => {
+      if (gate.failRenameTarget && String(args[1]).endsWith(gate.failRenameTarget))
+        throw Object.assign(new Error('ENOSPC'), { code: 'ENOSPC' });
+      return fs.rename(...args);
+    },
     open: async (...args: Parameters<typeof fs.open>) => {
       const handle = await fs.open(...args);
       const write = handle.writeFile.bind(handle);
@@ -39,10 +45,11 @@ let reports: DiagnosticReports | undefined;
 afterEach(async () => {
   gate.enabled = false;
   gate.failWrites = false;
+  gate.failRenameTarget = '';
   await reports?.close();
   if (root) await rm(root, { recursive: true, force: true });
 });
-async function create() {
+async function create(optIn = true) {
   root = await mkdtemp(join(tmpdir(), 'voice-diagnostic-disk-'));
   const send = vi.fn(async () => new Response('', { status: 202 }));
   const options = {
@@ -59,9 +66,59 @@ async function create() {
   };
   reports = new DiagnosticReports(options);
   await reports.initialize();
-  await reports.setConsent(true);
+  if (optIn) await reports.setConsent(true);
   return { reports, send, root, options };
 }
+
+it('acknowledges saved opt-in even if its best-effort session marker cannot be published', async () => {
+  const initial = await create(false);
+  gate.failRenameTarget = 'session.json';
+  await expect(initial.reports.setConsent(true)).resolves.toMatchObject({
+    enabled: true,
+    opted_in: true,
+  });
+  expect(
+    JSON.parse(await readFile(join(initial.options.directory, 'consent.json'), 'utf8')).enabled,
+  ).toBe(true);
+  await expect(readFile(join(initial.options.directory, 'session.json'))).rejects.toMatchObject({
+    code: 'ENOENT',
+  });
+  initial.reports.capture({ category: 'operation_failed' });
+  await initial.reports.flush();
+  expect(initial.send).toHaveBeenCalledTimes(1);
+
+  await expect(initial.reports.setConsent(false)).resolves.toMatchObject({
+    enabled: false,
+    opted_in: false,
+  });
+  await initial.reports.close();
+  gate.failRenameTarget = '';
+  reports = new DiagnosticReports(initial.options);
+  await reports.initialize();
+  await reports.flush();
+  expect(reports.status()).toMatchObject({ enabled: false, opted_in: false, pending_count: 0 });
+  expect(initial.send).toHaveBeenCalledTimes(1);
+});
+
+it('removes the orderly-exit marker even when outbox publication fails', async () => {
+  const initial = await create();
+  expect(
+    JSON.parse(await readFile(join(initial.options.directory, 'session.json'), 'utf8')).active,
+  ).toBe(true);
+  initial.reports.capture({ category: 'generation_failed' });
+  gate.failRenameTarget = 'outbox.json';
+  await expect(initial.reports.close()).rejects.toMatchObject({ code: 'ENOSPC' });
+  await expect(readFile(join(initial.options.directory, 'session.json'))).rejects.toMatchObject({
+    code: 'ENOENT',
+  });
+
+  gate.failRenameTarget = '';
+  reports = new DiagnosticReports(initial.options);
+  await reports.initialize();
+  await reports.flush();
+  expect(reports.status()).toMatchObject({ enabled: true, pending_count: 0 });
+  expect(initial.send).not.toHaveBeenCalled();
+});
 
 it('does not resurrect an outbox whose fsync completes after revocation', async () => {
   const { reports, send, root } = await create();
