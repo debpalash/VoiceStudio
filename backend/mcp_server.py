@@ -599,6 +599,7 @@ def _ensure_mcp():
 
 
 _DELEGATED_CALLER_HEADER = "X-OmniVoice-Delegated"
+_UNAVAILABLE_CALLER = object()
 
 
 def _current_http_request(server):
@@ -612,15 +613,15 @@ def _current_http_request(server):
     hand the caller the loopback tier, which is the bug this whole check exists
     to prevent, so the binding is pinned by a test.
 
-    FastMCP exposes the transport's request through its request context; stdio
-    clients (and any SDK version where the accessor differs) resolve to None,
-    which is the local, privileged case.
+    Only a successfully read context whose request is None proves the local
+    stdio transport. Missing/broken SDK context is an unresolved caller, never
+    evidence of local privilege.
     """
     try:
         return server.get_context().request_context.request
     except Exception:
         logger.debug("MCP request context unavailable", exc_info=True)
-        return None
+        return _UNAVAILABLE_CALLER
 
 
 def mcp_caller_is_privileged(request) -> bool:
@@ -632,7 +633,7 @@ def mcp_caller_is_privileged(request) -> bool:
     through a channel the backend itself honours (``Authorization: Bearer``,
     ``?api_key=``, the ``ov_session`` cookie, or the legacy ``ov_key`` cookie),
     which is what :func:`core.auth.presents_valid_credential` decides. The share
-    PIN does not count: it is a 6-digit consumption credential (#4118), so a
+    PIN does not count: it is a 6-digit consumption credential (#4128), so a
     PIN-holding LAN guest lands in the delegated tier below instead of
     inheriting the loopback tier.
 
@@ -643,6 +644,8 @@ def mcp_caller_is_privileged(request) -> bool:
     """
     if request is None:
         return True
+    if request is _UNAVAILABLE_CALLER:
+        return False
     try:
         from core.auth import presents_valid_credential
 
@@ -676,14 +679,70 @@ def _delegated_request_headers(request) -> dict[str, str]:
     return {header_name: "1"}
 
 
+def _http_backend_headers(request, base_url: str) -> dict[str, str]:
+    """Forward an HTTP caller's own auth, never the MCP process's operator key.
+
+    A confirmed stdio session is the only caller allowed to use the configured
+    backend key. The marker follows every HTTP caller to a loopback
+    backend, where losing it would turn the bridge back into an administrator.
+    Only recognized credential channels are forwarded; unrelated cookies and
+    headers belong to the inbound request and must not leak to another backend.
+    """
+    from http.cookies import SimpleCookie
+    import ipaddress
+    from urllib.parse import urlsplit
+    from core.auth import authorization_credential_present, authorization_header
+
+    if request is None:
+        from services.network_share import backend_auth_headers
+        return backend_auth_headers(base_url)
+    # An explicit HTTP backend can be a different installation, even when it
+    # is reached through loopback. Its own credential check is authoritative;
+    # proving this MCP host's key must never borrow that backend's local tier.
+    result = {_DELEGATED_CALLER_HEADER: "1"}
+    if request is _UNAVAILABLE_CALLER:
+        return result
+    query = request.query_params
+    cookies = SimpleCookie()
+    for name in ("ov_session", "ov_key", "ov_pin"):
+        value = request.cookies.get(name)
+        if value:
+            cookies[name] = value
+    if authorization_credential_present(request):
+        result["Authorization"] = authorization_header(request)
+    elif query.get("api_key", "").strip():
+        # Preserve the master-key-only query channel without putting the key
+        # into another request URL or allowing a lower-priority session cookie.
+        cookies.pop("ov_session", None)
+        cookies["ov_key"] = query["api_key"].strip()
+    if cookies:
+        result["Cookie"] = cookies.output(header="", sep=";").strip()
+    pin = request.headers.get("x-omnivoice-pin", "").strip() or query.get("pin", "").strip()
+    if pin:
+        result["X-OmniVoice-Pin"] = pin
+    csrf = request.headers.get("x-voicestudio-csrf")
+    if csrf:
+        result["X-VoiceStudio-CSRF"] = csrf
+    if any(name in result for name in ("Authorization", "Cookie", "X-OmniVoice-Pin")):
+        target = urlsplit(base_url)
+        host = (target.hostname or "").strip("[]")
+        try:
+            loopback = host == "localhost" or ipaddress.ip_address(host).is_loopback
+        except ValueError:
+            loopback = False
+        if target.scheme != "https" and not (target.scheme == "http" and loopback):
+            raise ValueError("Remote MCP backend credentials require HTTPS")
+    return result
+
+
 def create_mcp_server(app=None):
     """Build and return the FastMCP server instance.
 
     ``app`` is the backend ASGI app this server is mounted on. When given,
-    tool calls reach the API in-process as a loopback caller — independent of
-    the bind host/port and never challenged by the share-PIN / API-key gates
-    (which a concrete LAN ``OMNIVOICE_BIND_HOST`` would otherwise trigger).
-    Standalone runs (no app) call the backend over HTTP.
+    tool calls reach the API in-process, preserving the caller's tier rather
+    than borrowing the transport's loopback privilege. Standalone runs (no
+    app), and explicit API URL overrides, reach the backend over HTTP with the
+    caller's own credentials. Confirmed stdio sessions remain local operators.
     """
     FastMCP = _ensure_mcp()
     mcp = FastMCP(
@@ -732,23 +791,22 @@ def create_mcp_server(app=None):
 
     def _client(timeout: float) -> "httpx.AsyncClient":
         import httpx
+        request = _current_http_request(mcp)
         # OMNIVOICE_API_URL is an explicit "send tool calls there" override.
         if app is not None and not os.environ.get("OMNIVOICE_API_URL", "").strip():
             # This forged loopback peer is on the caller's behalf, not the
             # local operator's. The delegated marker keeps the backend's admin
-            # gate honest about that; the caller's own admin credential (when
-            # it proved one) rides along so *its* privilege is what counts.
-            request = _current_http_request(mcp)
+            # gate honest about that. Only a credential validated against this
+            # backend (or a confirmed stdio context) can retain local privilege.
             return httpx.AsyncClient(
                 transport=httpx.ASGITransport(app=app, client=("127.0.0.1", 0)),
                 base_url="http://127.0.0.1",
                 timeout=timeout,
                 headers=_delegated_request_headers(request),
             )
-        from services.network_share import backend_auth_headers
         base = _api_base()
         return httpx.AsyncClient(
-            base_url=base, timeout=timeout, headers=backend_auth_headers(base)
+            base_url=base, timeout=timeout, headers=_http_backend_headers(request, base)
         )
 
     async def _api_get(path: str):

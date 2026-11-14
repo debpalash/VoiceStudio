@@ -145,6 +145,13 @@ Overlapping enable/disable requests are serialized so a listener or temporary
 MCP allowlist cannot be left behind by competing lifecycle changes.
 The same PIN protects both ordinary API requests and MCP sessions.
 
+The PIN grants consumption access, not administration. Tools that create or
+change saved profiles require the operator's API key or administrator session;
+send `Authorization: Bearer <credential>` over HTTPS or an encrypted tunnel.
+The bridge checks that credential without treating its own loopback connection
+as the remote caller's authority. A missing or broken transport context never
+counts as a local stdio session.
+
 **Docker, a hostname, or a manually bound server:** the MCP SDK rejects
 non-localhost Host headers by default (DNS-rebinding guard). Set
 `OMNIVOICE_MCP_ALLOWED_HOSTS` to a comma-separated list of host patterns the
@@ -213,12 +220,19 @@ any agent that speaks as you.
 
 ## How tools reach the backend
 
-The mounted `/mcp` tools call VoiceStudio's API in-process, as a local
-caller: they work whatever host and port the backend binds, and the share PIN
-and API key never block them. A standalone `python -m backend.mcp_server`
-calls the backend over HTTP at the address it binds (`OMNIVOICE_BIND_HOST`,
-`OMNIVOICE_PORT`). Set `OMNIVOICE_API_URL` only to send tool calls somewhere
-else, such as a reverse proxy.
+The mounted `/mcp` tools call VoiceStudio's API in-process, independently of
+its bind host and port. An HTTP caller keeps its own credential tier; the
+bridge does not grant the caller local administrator rights. A confirmed stdio
+session remains a local operator.
+
+A standalone `python -m backend.mcp_server` calls the backend over HTTP at
+`OMNIVOICE_BIND_HOST` and `OMNIVOICE_PORT`. Set `OMNIVOICE_API_URL` only to send
+tool calls somewhere else, such as a reverse proxy. HTTP/SSE callers forward
+their own recognized API-key, administrator-session and PIN credentials, never
+the MCP process's configured operator key. Only a confirmed local stdio session
+may use that configured key. Credentials are forwarded only to HTTPS or
+loopback HTTP destinations; redirects are not followed. Unrelated cookies and
+headers are not forwarded.
 
 ## Disabling
 

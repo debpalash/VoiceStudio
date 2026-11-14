@@ -1,4 +1,4 @@
-"""The delegated-caller tier for MCP tool calls (#4118).
+"""The delegated-caller tier for MCP tool calls (#4128).
 
 The MCP server is mounted on the backend's own app and re-enters it over
 ``httpx.ASGITransport(app=app, client=("127.0.0.1", 0))``, so every tool call
@@ -291,14 +291,17 @@ def test_the_request_accessor_takes_the_server_as_its_only_parameter():
     assert list(inspect.signature(_current_http_request).parameters) == ["server"]
 
 
-def test_an_unavailable_request_context_is_the_local_case():
-    from mcp_server import _current_http_request
+def test_an_unavailable_request_context_is_never_the_local_case():
+    from mcp_server import _current_http_request, _delegated_request_headers, mcp_caller_is_privileged
 
     class _StdioServer:
         def get_context(self):
             raise LookupError("no request context")
 
-    assert _current_http_request(_StdioServer()) is None
+    caller = _current_http_request(_StdioServer())
+    assert caller is not None
+    assert mcp_caller_is_privileged(caller) is False
+    assert _delegated_request_headers(caller) == _admin_marker()
 
 
 # ── MCP side: the re-entrant request carries the marker only when needed ───
@@ -320,10 +323,12 @@ def _headers_seen_by_the_backend(monkeypatch, *, privileged):
         return {"ready": True}
 
     server = create_mcp_server(app=app)
-    monkeypatch.setattr(
-        "mcp_server.mcp_caller_is_privileged",
-        lambda _request=None, _privileged=privileged: _privileged,
-    )
+    request = _request('192.0.2.4', headers=(
+        {'Authorization': 'Bearer s3cret'} if privileged else {'X-OmniVoice-Pin': '123456'}
+    ))
+    monkeypatch.setattr(server, 'get_context', lambda: SimpleNamespace(
+        request_context=SimpleNamespace(request=request)
+    ))
     asyncio.run(server.call_tool("check_health", {}))
     return seen
 

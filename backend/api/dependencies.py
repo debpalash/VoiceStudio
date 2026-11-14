@@ -40,7 +40,7 @@ _TRUTHY = frozenset({"1", "true", "yes", "on"})
 #: ``httpx.ASGITransport`` with a forged loopback peer, so it would otherwise be
 #: indistinguishable from a local process. The marker only ever *reduces*
 #: privilege — it makes this gate skip its loopback short-circuit — so a client
-#: that sends it by hand gains nothing (#4118).
+#: that sends it by hand gains nothing (#4128).
 DELEGATED_CALLER_HEADER = "x-omnivoice-delegated"
 
 
@@ -308,7 +308,7 @@ def check_admin(request: Request) -> None:
     non-privileged MCP caller (:data:`DELEGATED_CALLER_HEADER`). That marker
     stands in for what the peer address would have said — "this is not the
     local operator" — and the caller then has to present a real admin
-    credential like any other remote client (#4118).
+    credential like any other remote client (#4128).
     """
     host = request.client.host if request.client else None
     delegated = _is_delegated_caller(request)
