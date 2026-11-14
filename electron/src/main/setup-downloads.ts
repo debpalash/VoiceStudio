@@ -40,6 +40,31 @@ export function failedDownloadSource(text: string): { host: string; pypiArchive:
   return source;
 }
 
+/** A final runtime error owns its source; prior attempts' logs are not evidence.
+ * The retry wrapper preserves that error as its cause. A stall instead uses
+ * the current progress source, since no failed request URL was reported.
+ */
+export function runtimeFailureDownloadSource(
+  error: unknown,
+): ReturnType<typeof failedDownloadSource> {
+  let current = error;
+  for (let depth = 0; depth < 6 && current && typeof current === 'object'; depth++) {
+    const record = current as {
+      code?: unknown;
+      stderr?: unknown;
+      message?: unknown;
+      cause?: unknown;
+    };
+    if (record.code === 'DOWNLOAD_STALLED') return null;
+    const source = failedDownloadSource(
+      `${typeof record.stderr === 'string' ? record.stderr : ''}\n${typeof record.message === 'string' ? record.message : ''}`,
+    );
+    if (source) return source;
+    current = record.cause;
+  }
+  return null;
+}
+
 function isUvTemp(name: string): boolean {
   return name.startsWith('.tmp');
 }

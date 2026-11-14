@@ -70,6 +70,12 @@ it.each([
     }),
   ],
   ['integrity failure', new Error('Hash mismatch for antlr4-python3-runtime')],
+  [
+    'certificate failure',
+    Object.assign(new Error('error sending request'), {
+      stderr: `error sending request for url (${PYPI_FILES_ORIGIN}${artifact})\ninvalid peer certificate: UnknownIssuer`,
+    }),
+  ],
 ])('does not select a mirror for %s', async (_label, error) => {
   const root = await mkdtemp(join(tmpdir(), 'voice-runtime-fallback-'));
   roots.push(root);

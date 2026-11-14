@@ -1078,6 +1078,9 @@ export async function syncLockedWithMirror(
         /\b(?:HTTP|status(?: code)?)\b[^\n]{0,40}\b(?:401|403)\b|hash mismatch|hashes (?:do|did) not match/i.test(
           detail,
         ) ||
+        /invalid peer certificate|certificate[_ ]verify[_ ]failed|unknown ?issuer|unable to get local issuer|certificate (?:has expired|is not yet valid)|hostname mismatch/i.test(
+          detail,
+        ) ||
         !failedDownloadSource(detail)?.pypiArchive
       )
         throw failure;

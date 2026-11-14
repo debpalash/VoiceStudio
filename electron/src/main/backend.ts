@@ -106,7 +106,7 @@ import { toolSearchDirs, toolSearchDirsAsync } from './tool-path';
 import { SetupProgressTracker, cleanProcessLine, downloadStallExceeded } from './setup-progress';
 import {
   SetupDownloadReporter,
-  failedDownloadSource,
+  runtimeFailureDownloadSource,
   inFlightDownloadBytes,
 } from './setup-downloads';
 import { scrubText } from '../shared/utils/scrub';
@@ -1178,6 +1178,7 @@ export class BackendSupervisor extends EventEmitter<{
    * problem was a native extension that would not load (#3058).
    */
   private readonly childErrorLog: string[] = [];
+  private setupFailedDownloadSource: { host: string } | null = null;
   /** When the spawned process last printed a line (0 = nothing yet this launch). */
   private lastChildOutputAt = 0;
   /** When the running readiness wait's budget started; a launch retry moves it. */
@@ -1430,6 +1431,7 @@ export class BackendSupervisor extends EventEmitter<{
     // not quote the installer — setupRuntime's uv children share this ring.
     this.childLog.length = 0;
     this.childErrorLog.length = 0;
+    this.setupFailedDownloadSource = null;
     this.lastChildOutputAt = 0;
     this.setStage('attaching', { managed: false, message: undefined });
     try {
@@ -1617,6 +1619,7 @@ export class BackendSupervisor extends EventEmitter<{
     this.runtimeInterrupted = false;
     this.setupPhase = 'checking';
     this.setupProgress.reset();
+    this.setupFailedDownloadSource = null;
     this.setupLog.append(
       `Setup attempt: VoiceStudio ${__APP_VERSION__}; ${process.platform}/${process.arch}; region: ${this.runtimeRegion}`,
     );
@@ -1811,6 +1814,7 @@ export class BackendSupervisor extends EventEmitter<{
       }
     } catch (error) {
       if (gen === this.generation) {
+        this.setupFailedDownloadSource = runtimeFailureDownloadSource(error);
         const code = (error as NodeJS.ErrnoException)?.code;
         this.setupIssue =
           code === 'INTEL_MAC_UNSUPPORTED'
@@ -2229,10 +2233,7 @@ export class BackendSupervisor extends EventEmitter<{
       return;
     }
     const progress = this.setupProgress.snapshot();
-    const failedSource =
-      this.stage === 'setup_required'
-        ? failedDownloadSource([...this.childLog, ...this.childErrorLog].join('\n'))
-        : null;
+    const failedSource = this.stage === 'setup_required' ? this.setupFailedDownloadSource : null;
     const downloadHost = failedSource?.host ?? progress.downloadHost;
     // Quoted log lines are evidence, not the cause (#3724).
     const causeText = withoutBackendLogEvidence(this.message ?? '');
