@@ -69,20 +69,17 @@ new report under a later consent choice. Resumed operations report only failures
 proved fresh under the same grant. Changing consent in another window invalidates
 delayed captures. Uncaught startup errors whose reporting permission was unknown
 remain local; a later opt-in cannot authorize them retrospectively.
-A failed consent write is shown with Retry and leaves the current process off;
-revocation also removes the previous grant or writes a private revocation marker
-where storage permits, so a failed replacement does not restore an old opt-in
-after restart. Persistent storage failures remain visible until retried.
-In source/Docker builds, switching off closes in-memory permission before waiting
-on storage. If the storage worker is busy, it persists the disabled choice and
-cleans old files when storage resumes; failed persistence retries every minute.
-An interrupted filesystem operation cannot guarantee durable withdrawal before
-that write completes, but it cannot reopen permission in the running process.
-Standalone grant publication retains an anonymous `revocation-pending.json`
-fence while replacing an earlier revocation marker. Shutdown attempts pending
-withdrawal even before its retry deadline. If withdrawal overlaps the last
-filesystem operation, the old grant remains closed in memory and restoration
-is attempted; a failed restoration cannot guarantee restart persistence.
+A failed consent write is shown with Retry and leaves the current process off.
+Where storage permits, withdrawal replaces the previous grant or writes a
+private revocation marker so restart also remains off. If every write or
+restoration fails, durable withdrawal cannot be guaranteed; the save fails
+instead of acknowledging a persisted choice.
+
+In source/Docker builds, switching off closes cached permission and cancels the
+sender before waiting on storage. The Settings request completes only after
+saving that choice, or returns a retryable save error. Slow storage can keep the
+save pending without allowing collection or delivery to resume. Permission-denied
+storage errors are not confused with desktop-managed consent.
 Desktop crash-session correlation uses random local IDs that never enter
 the Supermetry event properties or request body.
 

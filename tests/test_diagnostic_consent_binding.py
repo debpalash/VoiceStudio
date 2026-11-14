@@ -9,6 +9,44 @@ from test_diagnostic_reports import reporter  # noqa: F401
 EVENT = {"source": "renderer", "category": "operation_failed", "stage": "other"}
 
 
+@pytest.mark.parametrize('failure', [PermissionError, OSError])
+def test_consent_write_failure_is_retryable_and_not_desktop_management(reporter, monkeypatch, failure):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from api.routers.settings import router
+    from core import prefs
+    monkeypatch.delenv('OMNIVOICE_API_KEY', raising=False)
+    reporter.consent(True)
+    app = FastAPI()
+    app.include_router(router)
+    def failed_save(data):
+        raise failure('PRIVATE_STORAGE_PATH')
+    with TestClient(app, base_url='http://127.0.0.1', client=('127.0.0.1', 50000),
+                    raise_server_exceptions=False) as client:
+        with monkeypatch.context() as fault:
+            fault.setattr(prefs, '_save', failed_save)
+            result = client.put('/api/settings/diagnostics', json={'enabled': False})
+            assert result.status_code == 503
+            assert result.json()['detail']['code'] == 'DIAGNOSTICS_SAVE_FAILED'
+            assert 'PRIVATE_STORAGE_PATH' not in result.text
+            assert not reporter.enabled and not reporter.capture('generation_failed')
+        assert client.put('/api/settings/diagnostics', json={'enabled': False}).status_code == 200
+
+
+def test_managed_desktop_consent_refusal_is_still_a_conflict(reporter, monkeypatch):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from api.routers.settings import router
+    monkeypatch.delenv('OMNIVOICE_API_KEY', raising=False)
+    reporter.managed = True
+    app = FastAPI()
+    app.include_router(router)
+    with TestClient(app, base_url='http://127.0.0.1', client=('127.0.0.1', 50000)) as client:
+        result = client.put('/api/settings/diagnostics', json={'enabled': True})
+        assert result.status_code == 409
+        assert result.json()['detail'] == 'Desktop controls diagnostic consent'
+
+
 def test_unbound_ui_failure_cannot_borrow_later_opt_in(reporter):
     reports = importlib.import_module("core.diagnostic_reports")
     reporter.consent(True)

@@ -79,6 +79,38 @@ def test_post_rename_sync_failure_does_not_count_a_retained_capture_twice(report
     assert reporter.intake.empty()
 
 
+@pytest.mark.parametrize("elapsed_ms,expected_records", [(500, 1), (2000, 2)])
+@pytest.mark.parametrize("same_error", [False, True])
+def test_coalescing_respects_configured_window_without_renewing_evidence(reporter, monkeypatch, elapsed_ms, expected_records, same_error):
+    reports = importlib.import_module("core.diagnostic_reports")
+    clock = [reports.time.time()]
+    monotonic = [100.0]
+    monkeypatch.setattr(reports.time, "time", lambda: clock[0])
+    monkeypatch.setattr(reports.time, "monotonic", lambda: monotonic[0])
+    reporter.consent(True)
+    reporter.schema["limits"]["dedupe_ms"] = 1000
+    error = RuntimeError() if same_error else None
+    assert reporter.capture("engine_failed", stage="engine", error=error)
+    reporter._tick()
+    old, = reporter._files()
+    clock[0] += elapsed_ms / 1000
+    monotonic[0] += elapsed_ms / 1000
+    assert reporter.capture("engine_failed", stage="engine", error=error)
+    reporter._tick()
+    saved = reporter._files()
+    assert len(saved) == expected_records
+    retained = next(row for row in saved if row["id"] == old["id"])
+    assert retained["timestamp_ms"] == old["timestamp_ms"]
+    assert retained["props"]["occurrences"] == (2 if expected_records == 1 and not same_error else 1)
+    if expected_records == 2:
+        fresh, = [row for row in saved if row["id"] != old["id"]]
+        clock[0] = (old["timestamp_ms"] + reporter.schema["limits"]["ttl_ms"] + 1) / 1000
+        reporter._tick()
+        remaining, = reporter._files()
+        assert remaining["id"] == fresh["id"]
+        assert remaining["timestamp_ms"] == fresh["timestamp_ms"]
+
+
 @pytest.fixture(params=[False, True], ids=["standalone", "managed"])
 def storage_reporter(request, reporter):
     if request.param:
@@ -96,7 +128,24 @@ def worker_tick(instance):
         pass
 
 
-def test_withdrawal_cancels_transport_and_returns_while_worker_storage_is_blocked(reporter, monkeypatch):
+def choice_thread(instance, enabled):
+    results, failures, completed = [], [], threading.Event()
+
+    def run():
+        try:
+            results.append(instance.consent(enabled))
+        except OSError as error:
+            failures.append(error)
+        finally:
+            completed.set()
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    return thread, results, failures, completed
+
+
+@pytest.mark.parametrize("save_fails", [False, True])
+def test_withdrawal_cancels_immediately_but_completes_only_after_persistence(reporter, monkeypatch, save_fails):
     reports = importlib.import_module("core.diagnostic_reports")
     from core import analytics_transport, prefs
     reporter.consent(True)
@@ -104,13 +153,20 @@ def test_withdrawal_cancels_transport_and_returns_while_worker_storage_is_blocke
     reporter._tick()
     entered, release = threading.Event(), threading.Event()
     sending, cancelled, withdrawn = threading.Event(), threading.Event(), threading.Event()
-    atomic = reports._atomic
+    atomic, save = reports._atomic, prefs._save
 
     def blocked_atomic(path, value):
         if path.parent == reporter.directory:
             entered.set()
             assert release.wait(5), "test did not release controlled outbox storage"
+        if save_fails and path.name == "revoked.json":
+            raise PermissionError("controlled revocation failure")
         return atomic(path, value)
+
+    def save_choice(data):
+        if save_fails and not data["diagnostics_enabled"]:
+            raise PermissionError("controlled OFF persistence failure")
+        return save(data)
 
     def blocked_send(transport, body):
         sending.set()
@@ -119,6 +175,7 @@ def test_withdrawal_cancels_transport_and_returns_while_worker_storage_is_blocke
         return 0
 
     monkeypatch.setattr(reports, "_atomic", blocked_atomic)
+    monkeypatch.setattr(prefs, "_save", save_choice)
     monkeypatch.setattr(analytics_transport.SupermetryTransport, "_send", blocked_send)
     transport = analytics_transport.SupermetryTransport(
         {"site": "testdestination", "host": "https://collector.example", "appUrl": "https://app.example"},
@@ -131,18 +188,21 @@ def test_withdrawal_cancels_transport_and_returns_while_worker_storage_is_blocke
     assert reporter.capture("engine_failed", stage="engine")
     reporter.start()
     assert entered.wait(5)
-    result = []
+    result, failures = [], []
 
     def withdraw():
-        result.append(reporter.consent(False))
-        withdrawn.set()
+        try:
+            result.append(reporter.consent(False))
+        except OSError as error:
+            failures.append(error)
+        finally:
+            withdrawn.set()
 
     choice = threading.Thread(target=withdraw, daemon=True)
     choice.start()
     try:
-        assert withdrawn.wait(.5), "OFF waited for the worker-held storage lock"
-        assert cancelled.wait(.5), "OFF left the independent sender active"
-        assert result[0]["enabled"] is False and result[0]["grant_epoch"] is None
+        assert cancelled.wait(5), "OFF left the independent sender active"
+        assert not withdrawn.is_set(), "OFF reported success before storage could persist it"
         assert not reporter.capture("generation_failed")
         assert not transport.capture("diagnostic_report", {}, reporter.profile)
         assert reporter.epoch != old_epoch
@@ -150,6 +210,16 @@ def test_withdrawal_cancels_transport_and_returns_while_worker_storage_is_blocke
         release.set()
         choice.join(5)
         transport.shutdown()
+        monkeypatch.setattr(prefs, "_save", save)
+        monkeypatch.setattr(reports, "_atomic", atomic)
+    assert withdrawn.is_set()
+    if save_fails:
+        assert not result and len(failures) == 1 and isinstance(failures[0], PermissionError)
+        assert not reporter.enabled and reporter.consent_failed
+        reporter.consent(False)  # Explicit retry after the reported failure.
+    else:
+        assert not failures and result[0]["enabled"] is False
+        assert result[0]["grant_epoch"] is None
     with reporter.lock:
         reporter._tick()
         assert not reporter.enabled and reporter.intake.empty() and reporter.acks.empty()
@@ -162,13 +232,22 @@ def test_withdrawal_cancels_transport_and_returns_while_worker_storage_is_blocke
         saved, = reporter._files()
         assert saved["epoch"] == reporter.epoch
         assert saved["props"]["category"] == "download_failed"
+    reporter.consent(False)
+    reporter.shutdown()
+    restarted = reports.Reporter()
+    restarted.schema = reports._schema()
+    try:
+        restarted.refresh()
+        assert not restarted.enabled, "an acknowledged OFF was lost across shutdown"
+    finally:
+        restarted.shutdown()
 
 
 def test_withdrawal_fences_a_worker_consent_read_already_in_progress(reporter, monkeypatch):
     from core import prefs
     reporter.consent(True)
     old_epoch = reporter.epoch
-    entered, release = threading.Event(), threading.Event()
+    entered, release, cancelled = threading.Event(), threading.Event(), threading.Event()
     load = prefs._load
     saved = load()
 
@@ -187,14 +266,24 @@ def test_withdrawal_fences_a_worker_consent_read_already_in_progress(reporter, m
     worker = threading.Thread(target=tick, name="blocked-diagnostic-read", daemon=True)
     worker.start()
     assert entered.wait(5)
+
+    class Transport:
+        def shutdown(self):
+            cancelled.set()
+
+    reporter.transport = Transport()
+    choice, results, failures, completed = choice_thread(reporter, False)
     try:
-        assert reporter.consent(False)["enabled"] is False
+        assert cancelled.wait(5)
+        assert not completed.is_set()
         assert reporter.epoch != old_epoch
         assert not reporter.capture("generation_failed")
     finally:
         release.set()
         worker.join(5)
+        choice.join(5)
     assert not worker.is_alive()
+    assert completed.is_set() and not failures and results[0]["enabled"] is False
     assert not reporter.enabled and reporter.epoch is None
     reporter._tick()
     assert prefs.get("diagnostics_enabled") is False
@@ -202,77 +291,132 @@ def test_withdrawal_fences_a_worker_consent_read_already_in_progress(reporter, m
     assert reporter.enabled and reporter.epoch != old_epoch
 
 
-def test_failed_withdrawal_persistence_retries_at_a_bounded_deadline(reporter, monkeypatch):
+@pytest.mark.parametrize("save_fails", [False, True])
+def test_withdrawal_during_enable_write_preserves_existing_revocation(reporter, monkeypatch, save_fails):
     reports = importlib.import_module("core.diagnostic_reports")
-    from core import prefs
-    reporter.consent(True)
-    save, atomic = prefs._save, reports._atomic
-    writable = False
-    attempts = []
-    clock = [100.0]
-    monkeypatch.setattr(reports.time, "monotonic", lambda: clock[0])
-
-    def save_when_healthy(data):
-        attempts.append(data["diagnostics_enabled"])
-        if not writable:
-            raise PermissionError("controlled preferences failure")
-        return save(data)
-
-    def atomic_when_healthy(path, value):
-        if not writable and path.name == "revoked.json":
-            raise PermissionError("controlled revocation failure")
-        return atomic(path, value)
-
-    monkeypatch.setattr(prefs, "_save", save_when_healthy)
-    monkeypatch.setattr(reports, "_atomic", atomic_when_healthy)
-    with pytest.raises(PermissionError):
-        reporter.consent(False)
-    reporter._tick()
-    assert reporter.consent_retry_at == 160 and len(attempts) == 2
-    assert not reporter.enabled and not reporter.capture("generation_failed")
-    writable = True
-    reporter._tick()
-    assert len(attempts) == 2 and prefs.get("diagnostics_enabled") is True
-    clock[0] = 160
-    reporter._tick()
-    assert attempts == [False, False, False]
-    assert prefs.get("diagnostics_enabled") is False
-    assert reporter.pending_withdrawal is None and not reporter.enabled
-    reporter.consent(True)
-    assert reporter.enabled and reporter.capture("download_failed", stage="download")
-
-
-def test_withdrawal_during_enable_write_preserves_existing_revocation(reporter, monkeypatch):
     from core import prefs
     reporter.consent(False)
     revoked = reporter.root / "revoked.json"
     original = revoked.read_bytes()
-    entered, release = threading.Event(), threading.Event()
-    save = prefs._save
+    entered, release, cancelled = threading.Event(), threading.Event(), threading.Event()
+    save, atomic = prefs._save, reports._atomic
     result = []
 
     def blocked_enable(data):
+        if save_fails and not data["diagnostics_enabled"]:
+            raise PermissionError("controlled OFF preferences failure")
         save(data)
         if data["diagnostics_enabled"]:
             entered.set()
             assert release.wait(5)
 
+    def fail_revocation(path, value):
+        if save_fails and path.name == "revoked.json":
+            raise PermissionError("controlled OFF marker failure")
+        return atomic(path, value)
+
+    class Transport:
+        def shutdown(self):
+            cancelled.set()
+
     monkeypatch.setattr(prefs, "_save", blocked_enable)
+    monkeypatch.setattr(reports, "_atomic", fail_revocation)
     worker = threading.Thread(target=lambda: result.append(reporter.consent(True)), daemon=True)
     worker.start()
     assert entered.wait(5)
+    reporter.transport = Transport()
+    choice, results, failures, completed = choice_thread(reporter, False)
     try:
-        assert reporter.consent(False)["enabled"] is False
+        assert cancelled.wait(5)
+        assert not completed.is_set()
         assert not reporter.capture("generation_failed")
     finally:
         release.set()
         worker.join(5)
+        choice.join(5)
     assert not worker.is_alive() and result[0]["enabled"] is False
     assert revoked.read_bytes() == original, "superseded ON removed the durable OFF marker"
-    assert reporter.pending_withdrawal is not None and not reporter.enabled
-    reporter._tick()
-    assert prefs.get("diagnostics_enabled") is False
-    assert reporter.pending_withdrawal is None
+    assert completed.is_set() and not reporter.enabled
+    if save_fails:
+        assert not results and len(failures) == 1
+        restarted = reports.Reporter()
+        restarted.schema = reports._schema()
+        try:
+            restarted.refresh()
+            assert not restarted.enabled
+        finally:
+            restarted.shutdown()
+    else:
+        assert not failures and results[0]["enabled"] is False
+        assert prefs.get("diagnostics_enabled") is False
+
+
+@pytest.mark.parametrize("save_fails", [False, True])
+def test_withdrawal_overlapping_on_unlink_completes_durably_or_reports_failure(reporter, monkeypatch, save_fails):
+    reports = importlib.import_module("core.diagnostic_reports")
+    from core import prefs
+    reporter.consent(False)
+    revoked = reporter.root / "revoked.json"
+    entered, release, cancelled = threading.Event(), threading.Event(), threading.Event()
+    unlink, atomic, save = Path.unlink, reports._atomic, prefs._save
+
+    def blocked_unlink(path, *args, **kwargs):
+        if path == revoked and not entered.is_set():
+            entered.set()
+            assert release.wait(5)
+        return unlink(path, *args, **kwargs)
+
+    def controlled_atomic(path, value):
+        if save_fails and cancelled.is_set():
+            raise PermissionError("controlled OFF marker restoration failure")
+        return atomic(path, value)
+
+    def controlled_save(data):
+        if save_fails and not data["diagnostics_enabled"]:
+            raise PermissionError("controlled OFF preference failure")
+        return save(data)
+
+    class Transport:
+        def shutdown(self):
+            cancelled.set()
+
+    monkeypatch.setattr(Path, "unlink", blocked_unlink)
+    monkeypatch.setattr(reports, "_atomic", controlled_atomic)
+    monkeypatch.setattr(prefs, "_save", controlled_save)
+    enable, enabled_results, enable_failures, enabled_done = choice_thread(reporter, True)
+    assert entered.wait(5)
+    reporter.transport = Transport()
+    disable, results, failures, disabled_done = choice_thread(reporter, False)
+    try:
+        assert cancelled.wait(5)
+        assert not disabled_done.is_set()
+        assert not reporter.enabled and not reporter.capture("generation_failed")
+    finally:
+        release.set()
+        enable.join(5)
+        disable.join(5)
+        monkeypatch.setattr(reports, "_atomic", atomic)
+        monkeypatch.setattr(prefs, "_save", save)
+    assert enabled_done.is_set() and disabled_done.is_set()
+    if save_fails:
+        # OFF never succeeded while every durable write failed after an
+        # already-started unlink. Both callers receive the storage failure.
+        assert not enabled_results and len(enable_failures) == 1
+        assert not results and len(failures) == 1
+        assert not reporter.enabled and reporter.consent_failed
+        reporter._tick()
+        assert not reporter.enabled
+        reporter.consent(False)  # A later explicit retry can now persist it.
+    else:
+        assert not enable_failures and enabled_results[0]["enabled"] is False
+        assert not failures and results[0]["enabled"] is False
+    restarted = reports.Reporter()
+    restarted.schema = reports._schema()
+    try:
+        restarted.refresh()
+        assert not restarted.enabled
+    finally:
+        restarted.shutdown()
 
 
 def test_withdrawal_during_record_validation_does_not_requeue_old_transport(reporter, monkeypatch):
@@ -315,226 +459,20 @@ def test_withdrawal_during_record_validation_does_not_requeue_old_transport(repo
     assert attempts == [] and reporter.inflight == {}
 
 
-@pytest.mark.parametrize("save_fails", [False, True])
-def test_shutdown_commits_deferred_withdrawal_before_worker_stops(reporter, monkeypatch, save_fails):
-    reports = importlib.import_module("core.diagnostic_reports")
-    from core import prefs
-    reporter.consent(True)
-    reporter._tick()
-    entered, release = threading.Event(), threading.Event()
-    atomic, save = reports._atomic, prefs._save
-
-    def blocked_atomic(path, value):
-        if path.parent == reporter.directory:
-            entered.set()
-            assert release.wait(5)
-        return atomic(path, value)
-
-    def tick():
-        with reporter.lock:
-            reporter._tick()
-
-    monkeypatch.setattr(reports, "_atomic", blocked_atomic)
-    assert reporter.capture("engine_failed", stage="engine")
-    worker = threading.Thread(target=tick, daemon=True)
-    worker.start()
-    assert entered.wait(5)
-    try:
-        assert reporter.consent(False)["enabled"] is False
-    finally:
-        release.set()
-        worker.join(5)
-    assert not worker.is_alive()
-    reporter.consent_retry_at = float("inf")  # Shutdown must not wait for a retry tick.
-    if save_fails:
-        monkeypatch.setattr(prefs, "_save", lambda _: (_ for _ in ()).throw(PermissionError("controlled OFF failure")))
-        with pytest.raises(PermissionError, match="controlled OFF failure"):
-            reporter.shutdown()
-        assert reporter.pending_withdrawal is not None
-        monkeypatch.setattr(prefs, "_save", save)
-    else:
-        reporter.shutdown()
-        assert reporter.pending_withdrawal is None
-    assert reporter.stop.is_set() and not reporter.enabled
-    restarted = reports.Reporter()
-    restarted.schema = reports._schema()
-    try:
-        restarted._tick()
-        assert not restarted.enabled, "shutdown lost the accepted withdrawal before restart"
-    finally:
-        restarted.shutdown()
-
-
-def test_withdrawal_overlapping_original_marker_unlink_keeps_durable_fence(reporter, monkeypatch):
-    reports = importlib.import_module("core.diagnostic_reports")
-    from core import prefs
-    reporter.consent(False)
-    revoked = reporter.root / "revoked.json"
-    entered, release = threading.Event(), threading.Event()
-    unlink, atomic, save = Path.unlink, reports._atomic, prefs._save
-    off_requested = False
-    results = []
-
-    def blocked_unlink(path, *args, **kwargs):
-        if path == revoked and threading.current_thread().name == "enable-withdrawal-race":
-            entered.set()
-            assert release.wait(5)
-        return unlink(path, *args, **kwargs)
-
-    def fail_later_atomic(path, value):
-        if off_requested:
-            raise PermissionError("controlled later durable write failure")
-        return atomic(path, value)
-
-    def fail_later_save(data):
-        if off_requested:
-            raise PermissionError("controlled later preferences failure")
-        return save(data)
-
-    monkeypatch.setattr(Path, "unlink", blocked_unlink)
-    monkeypatch.setattr(reports, "_atomic", fail_later_atomic)
-    monkeypatch.setattr(prefs, "_save", fail_later_save)
-    worker = threading.Thread(target=lambda: results.append(reporter.consent(True)), name="enable-withdrawal-race", daemon=True)
-    worker.start()
-    assert entered.wait(5)
-    try:
-        off_requested = True
-        assert reporter.consent(False)["enabled"] is False
-    finally:
-        release.set()
-        worker.join(5)
-    assert not worker.is_alive() and results[0]["enabled"] is False
-    reporter._tick()  # Both attempted durable OFF writes still fail.
-    restarted = reports.Reporter()
-    restarted.schema = reports._schema()
-    try:
-        restarted.refresh()
-        assert not restarted.enabled, "the stale ON removed the only durable revocation evidence"
-    finally:
-        off_requested = False
-        reporter._tick()
-        restarted.shutdown()
-
-
-def test_deeply_nested_record_is_rejected_without_blocking_fresh_publication(reporter):
+@pytest.mark.parametrize("location", ["outbox", "session"])
+def test_deeply_nested_record_is_rejected_without_blocking_fresh_publication(reporter, location):
     reporter.consent(True)
     reporter.directory.mkdir(parents=True, exist_ok=True)
-    malformed = reporter.directory / ("a" * 32 + ".json")
+    malformed = reporter.directory / ("a" * 32 + ".json") if location == "outbox" else reporter.root / "session.json"
     malformed.write_text("[" * 1500 + "]" * 1500, encoding="utf-8")
     assert reporter.capture("engine_failed", stage="engine")
     reporter._tick()
-    assert not malformed.exists()
+    if location == "outbox":
+        assert not malformed.exists()
+    else:
+        assert json.loads(malformed.read_text(encoding="utf-8"))["epoch"] == reporter.epoch
     saved, = reporter._files()
     assert saved["props"]["category"] == "engine_failed"
-
-
-@pytest.mark.parametrize("restore_fails", [False, True])
-def test_final_fence_retirement_overlap_restores_or_surfaces_uncommitted_off(reporter, monkeypatch, restore_fails):
-    reports = importlib.import_module("core.diagnostic_reports")
-    from core import prefs
-    reporter.consent(False)
-    pending_fence = reporter.root / "revocation-pending.json"
-    entered, release = threading.Event(), threading.Event()
-    unlink, atomic = Path.unlink, reports._atomic
-    off_requested = False
-    results, failures = [], []
-
-    def blocked_unlink(path, *args, **kwargs):
-        if path == pending_fence and threading.current_thread().name == "final-fence-race":
-            entered.set()
-            assert release.wait(5)
-        return unlink(path, *args, **kwargs)
-
-    def controlled_atomic(path, value):
-        if restore_fails and off_requested:
-            raise PermissionError("controlled final fence restoration failure")
-        return atomic(path, value)
-
-    def enable():
-        try:
-            results.append(reporter.consent(True))
-        except OSError as error:
-            failures.append(error)
-
-    monkeypatch.setattr(Path, "unlink", blocked_unlink)
-    monkeypatch.setattr(reports, "_atomic", controlled_atomic)
-    worker = threading.Thread(target=enable, name="final-fence-race", daemon=True)
-    worker.start()
-    assert entered.wait(5)
-    try:
-        off_requested = True
-        assert reporter.consent(False)["enabled"] is False
-    finally:
-        release.set()
-        worker.join(5)
-    assert not worker.is_alive()
-    assert not reporter.enabled and reporter.consent_failed
-    assert reporter.pending_withdrawal is not None
-    assert not reporter.capture("generation_failed")
-    if restore_fails:
-        assert len(failures) == 1 and isinstance(failures[0], PermissionError)
-        # OFF has had no successful durable operation after an already-started
-        # final unlink. Keep that limitation explicit; do not assert restart safety.
-        assert not (reporter.root / "revoked.json").exists()
-        assert prefs.get("diagnostics_enabled") is True
-    else:
-        assert not failures and results[0]["enabled"] is False
-        assert (reporter.root / "revoked.json").exists()
-        restarted = reports.Reporter()
-        restarted.schema = reports._schema()
-        try:
-            restarted.refresh()
-            assert not restarted.enabled
-        finally:
-            restarted.shutdown()
-    off_requested = False
-    reporter._tick()
-    assert reporter.pending_withdrawal is None
-    assert prefs.get("diagnostics_enabled") is False
-
-
-def test_successful_current_grant_retires_both_fences_and_survives_restart(reporter):
-    reports = importlib.import_module("core.diagnostic_reports")
-    reporter.consent(False)
-    reporter.consent(True)
-    assert reporter.enabled
-    assert not (reporter.root / "revoked.json").exists()
-    assert not (reporter.root / "revocation-pending.json").exists()
-    restarted = reports.Reporter()
-    restarted.schema = reports._schema()
-    try:
-        restarted.refresh()
-        assert restarted.enabled and restarted.epoch == reporter.epoch
-    finally:
-        restarted.shutdown()
-
-
-def test_withdrawal_arriving_during_shutdown_marker_io_is_also_persisted(reporter, monkeypatch):
-    reports = importlib.import_module("core.diagnostic_reports")
-    from core import prefs
-    reporter.consent(True)
-    reporter._tick()
-    entered, release = threading.Event(), threading.Event()
-    atomic = reports._atomic
-
-    def blocked_retirement(path, value):
-        if path.name == "session.json" and value.get("clean") is True:
-            entered.set()
-            assert release.wait(5)
-        return atomic(path, value)
-
-    monkeypatch.setattr(reports, "_atomic", blocked_retirement)
-    worker = threading.Thread(target=reporter.shutdown, daemon=True)
-    worker.start()
-    assert entered.wait(5)
-    try:
-        assert reporter.consent(False)["enabled"] is False
-    finally:
-        release.set()
-        worker.join(5)
-    assert not worker.is_alive()
-    assert reporter.stop.is_set() and reporter.pending_withdrawal is None
-    assert prefs.get("diagnostics_enabled") is False
 
 
 def test_consumed_managed_file_disappearing_does_not_pause_fresh_intake(managed_reporter, monkeypatch):

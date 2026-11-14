@@ -243,6 +243,10 @@ class _CaptureQueue(queue.Queue):
             return self.queue[0]
 
 
+class ConsentExternallyManaged(PermissionError):
+    """The desktop authority, rather than Python, owns diagnostic consent."""
+
+
 class Reporter:
     def __init__(self):
         from core.version import APP_VERSION
@@ -257,8 +261,6 @@ class Reporter:
         self.ack_lock = threading.Lock()
         # This gate protects only cached authority, never filesystem work.
         self.consent_revision = 0
-        self.pending_withdrawal = None
-        self.consent_retry_at = 0
         self.available = bool(self.managed)
         self.stop = threading.Event()
         self.enabled = False
@@ -364,7 +366,7 @@ class Reporter:
                 data = json.loads(path.read_text(encoding='utf-8'))
                 return data if isinstance(data, dict) and data.get('version') == 1 else {}
             from core import prefs
-            if any((self.root / name).exists() for name in ('revoked.json', 'revocation-pending.json')):
+            if (self.root / 'revoked.json').exists():
                 return {'version':1, 'enabled':False, 'prompted':True}
             data = prefs._load()
             return {'version':1,'enabled':data.get('diagnostics_enabled') is True,'prompted':data.get('diagnostics_prompted') is True,
@@ -473,7 +475,7 @@ class Reporter:
             return
         if token is not None:
             now = time.monotonic()
-            self.seen_errors = [(value,stamp) for value,stamp in self.seen_errors[-63:] if now-stamp < 60]
+            self.seen_errors = [(value,stamp) for value,stamp in self.seen_errors[-63:] if now-stamp < _limit(self.schema,'dedupe_ms',60000)/1000]
             if any(value == token for value,stamp in self.seen_errors):
                 return
         if self.publication is not None and self.publication[0] is item:
@@ -493,7 +495,7 @@ class Reporter:
         # standalone worker owns its outbox and can safely coalesce there.
         if not self.managed:
             for existing in records:
-                if existing['props']['fingerprint'] == props['fingerprint'] and existing['id'] not in self.inflight:
+                if existing['props']['fingerprint'] == props['fingerprint'] and existing['id'] not in self.inflight and abs(timestamp-existing['timestamp_ms']) <= _limit(self.schema,'dedupe_ms',60000):
                     updated = {**existing, 'props': {**existing['props'], 'occurrences': min(1000000,existing['props']['occurrences']+1)}}
                     self._publish(item, updated, records)
                     if token is not None:
@@ -572,7 +574,7 @@ class Reporter:
                 # Preserve unread evidence until the existing worker's bounded
                 # storage retry can establish its age, owner and consent epoch.
                 raise
-            except (ValueError, TypeError, AttributeError, OverflowError):
+            except (ValueError, TypeError, AttributeError, OverflowError, RecursionError):
                 pass  # Proven malformed evidence can be replaced; unread IO cannot.
         _atomic(path, {'version':1,'epoch':self.epoch,'pid':os.getpid(),'started_at':self.started,'last_active_at':now,'app_version':self.app_version})
         self.marker_owned = True
@@ -598,12 +600,6 @@ class Reporter:
             self.marker_owned = False
 
     def _tick(self):
-        pending = self.pending_withdrawal
-        if pending is not None and time.monotonic() >= self.consent_retry_at:
-            try:
-                self._commit_consent(False, pending)
-            except OSError:
-                self.consent_retry_at = time.monotonic()+60
         self.refresh()
         if not self.enabled:
             self._purge()
@@ -704,13 +700,13 @@ class Reporter:
 
     def consent(self, enabled):
         if self.managed:
-            raise PermissionError('Desktop controls diagnostic consent')
+            raise ConsentExternallyManaged('Desktop controls diagnostic consent')
         if enabled and _killed():
             with self.lock:
                 self.refresh()
                 return self.status()
         with self.ack_lock:
-            if self.stop.is_set():
+            if enabled and self.stop.is_set():
                 return self._cached_status()
             if enabled and self.enabled and not self.kill_observed and not _killed():
                 return self._cached_status()
@@ -720,25 +716,17 @@ class Reporter:
             self.epoch = self.profile = None
             self.consent_failed = True
             self.prompted = True
-            self.pending_withdrawal = revision if not enabled else None
-            self.consent_retry_at = 0
             transport, self.transport = self.transport, None
             while not self.acks.empty():
                 try:self.acks.get_nowait()
                 except queue.Empty:break
         if transport:
             transport.shutdown()
-        # OFF never waits behind worker-owned reads/writes. The existing worker
-        # durably retries the same choice; cached authority stays closed meanwhile.
-        if not enabled and not self.lock.acquire(blocking=False):
-            return self._cached_status()
-        if not enabled:
-            try:
-                return self._commit_consent(False, revision)
-            finally:
-                self.lock.release()
+        # The synchronous settings route runs in FastAPI's threadpool: close
+        # collection/delivery first, then wait for durable IO or report its error.
+        # Never acknowledge a successful OFF while its persistence is deferred.
         with self.lock:
-            return self._commit_consent(True, revision)
+            return self._commit_consent(enabled, revision)
 
     def _commit_consent(self, enabled, revision):
         from core import prefs
@@ -746,14 +734,7 @@ class Reporter:
             if revision != self.consent_revision:
                 return self._cached_status()
             if enabled and _killed():
-                self.pending_withdrawal = revision
                 enabled = False
-            pending_fence = self.root / 'revocation-pending.json'
-            if enabled:
-                # Keep anonymous OFF evidence throughout grant publication and
-                # original-marker retirement. A superseded ON must not consume
-                # the only fence when subsequent OFF preference writes fail.
-                _atomic(pending_fence, {'version':1})
             if not enabled:
                 # Keep withdrawal durable even if replacing the shared prefs
                 # fails. This private tombstone contains no old grant or ID.
@@ -772,23 +753,17 @@ class Reporter:
                 # Removing a durable revocation is allowed only after a new
                 # explicit grant has been saved. Failure stays closed.
                 (self.root / 'revoked.json').unlink(missing_ok=True)
-                with self.ack_lock:
-                    if revision != self.consent_revision:
-                        return self._cached_status()
-                pending_fence.unlink(missing_ok=True)
             with self.ack_lock:
                 superseded = revision != self.consent_revision
                 if not superseded:
                     if enabled:
                         self.kill_observed = False
                     self.consent_failed = False
-                    self.pending_withdrawal = None
-                    self.consent_retry_at = 0
             if superseded:
                 if enabled:
                     # No memory gate is held across IO. If OFF overlaps the
                     # last filesystem operation, restore its fence immediately;
-                    # a failure is surfaced and its pending choice is retained.
+                    # failures are surfaced while withdrawal remains closed.
                     _atomic(self.root / 'revoked.json', {'version':1})
                 return self._cached_status()
             try:
@@ -803,7 +778,6 @@ class Reporter:
             return self.status()
 
     def shutdown(self):
-        persistence_error = None
         with self.lock:
             self.retire_session()
             try:
@@ -817,20 +791,10 @@ class Reporter:
             with self.ack_lock:
                 self.stop.set()
                 self.enabled = False
-                pending = self.pending_withdrawal
-            if pending is not None:
-                try:
-                    # Include OFF received during finalization IO, even before
-                    # its retry deadline. No later choice is accepted once stopped.
-                    self._commit_consent(False, pending)
-                except Exception as error:
-                    persistence_error = error
             if self.transport:
                 self.transport.shutdown()
         if self.thread.is_alive() and self.thread is not threading.current_thread():
             self.thread.join(timeout=2.5)
-        if persistence_error is not None:
-            raise persistence_error
 
 
 _reporter = None

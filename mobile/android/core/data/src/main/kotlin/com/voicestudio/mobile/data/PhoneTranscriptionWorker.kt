@@ -12,6 +12,7 @@ import java.util.UUID
 class PhoneTranscriptionWorker(context: Context,params: WorkerParameters): CoroutineWorker(context,params) {
     override suspend fun getForegroundInfo()=phoneJobForeground(applicationContext,id,"transcriptions.title",0)
     override suspend fun doWork(): Result {
+        val diagnosticConsent=AutomaticDiagnostics.observeConsent()
         try {
             val recordID=requireNotNull(inputData.getString("record"));require(UUID.fromString(recordID).toString()==recordID)
             setForeground(getForegroundInfo());requirePhonePower(applicationContext)
@@ -28,7 +29,7 @@ class PhoneTranscriptionWorker(context: Context,params: WorkerParameters): Corou
             }
             return Result.success(workDataOf("percent" to 100))
         } catch(e:CancellationException) {throw e} catch(e:Exception) {
-            AutomaticDiagnostics.captureFailure(e,stage="transcription")
+            AutomaticDiagnostics.captureObservedFailure(e,diagnosticConsent,stage="transcription")
             return Result.failure(workDataOf("error" to ((e as? ClientFailure)?.key ?: "transcriptions.failed")))
         }
     }

@@ -90,6 +90,7 @@ class DubWorker(context: Context, params: WorkerParameters) : CoroutineWorker(co
         currentCoroutineContext().ensureActive()
     }
     override suspend fun doWork(): Result {
+        val diagnosticConsent=AutomaticDiagnostics.observeConsent()
         val job = inputData.getString("job").orEmpty()
         try {
             val host = inputData.getString("host") ?: throw ClientFailure("mobile.android.dub_restart")
@@ -107,7 +108,7 @@ class DubWorker(context: Context, params: WorkerParameters) : CoroutineWorker(co
         catch (error: Exception) {
             if(isRetryable(error)) return Result.retry()
             if(error is HostTaskFailed) AutomaticDiagnostics.captureObservedFailure(error,error.observation)
-            else if(error !is HostTaskCancelled) AutomaticDiagnostics.captureFailure(error,stage="dub")
+            else if(error !is HostTaskCancelled) AutomaticDiagnostics.captureObservedFailure(error,diagnosticConsent,stage="dub")
             val failure = if(error is HostTaskCancelled || error is HostTaskFailed) ClientFailure("mobile.android.job_failed") else error as? ClientFailure
             return Result.failure(failureData(failure ?: ClientFailure("mobile.android.dub_restart"),job))
         }

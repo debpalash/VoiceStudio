@@ -50,6 +50,7 @@ internal suspend fun phoneJobForeground(context: Context,id: UUID,titleKey: Stri
 class PhoneWorkflowWorker(context: Context,params: WorkerParameters): CoroutineWorker(context,params) {
     override suspend fun getForegroundInfo()=phoneJobForeground(applicationContext,id,"workflows.title",0)
     override suspend fun doWork(): Result {
+        val diagnosticConsent=AutomaticDiagnostics.observeConsent()
         val job=inputData.getString("job") ?: return Result.failure()
         try {
             require(UUID.fromString(job).toString()==job);setForeground(getForegroundInfo());requirePhonePower(applicationContext)
@@ -82,7 +83,7 @@ class PhoneWorkflowWorker(context: Context,params: WorkerParameters): CoroutineW
             val producer=if(workflow.graph!=null) null else model(if(selection.startsWith("phone:")) "clone" else "tts")
             return Result.success(workDataOf("file" to finished.audio?.absolutePath,"text_file" to result.absolutePath,"percent" to 100,"repo" to producer?.repo,"revision" to producer?.revision))
         } catch(e:CancellationException) {throw e} catch(e:Exception) {
-            AutomaticDiagnostics.captureFailure(e,stage="generation")
+            AutomaticDiagnostics.captureObservedFailure(e,diagnosticConsent,stage="generation")
             return Result.failure(workDataOf("error" to ((e as? ClientFailure)?.key ?: "mobile.errors.file")))
         }
     }

@@ -1737,8 +1737,10 @@ def set_diagnostics(body: _DiagnosticsBody):
     from core import diagnostic_reports
     try:
         return diagnostic_reports.set_opted_in(body.enabled)
-    except PermissionError:
+    except diagnostic_reports.ConsentExternallyManaged:
         raise HTTPException(status_code=409, detail="Desktop controls diagnostic consent") from None
+    except OSError:
+        raise HTTPException(status_code=503, detail={"code": "DIAGNOSTICS_SAVE_FAILED"}) from None
 
 
 @router.post("/diagnostics/event", dependencies=[Depends(require_admin_action)])

@@ -46,6 +46,7 @@ class PhoneDubWorker(context: Context,params: WorkerParameters): CoroutineWorker
         return if(runCatching {jobs.directory(job)}.isSuccess) jobs.exclusive(job) {execute(job)} else execute(job)
     }
     private suspend fun execute(job: String): Result {
+        val diagnosticConsent=AutomaticDiagnostics.observeConsent()
         try {
             setForeground(notification())
             val runtime=PhoneRuntime.get(applicationContext)
@@ -78,7 +79,7 @@ class PhoneDubWorker(context: Context,params: WorkerParameters): CoroutineWorker
             withContext(NonCancellable) {runCatching {val checkpoint=jobs.checkpoint(job);if(!checkpoint.done) jobs.save(job,checkpoint.copy(stage="mobile.simple.cancelled"))}}
             throw e
         } catch(e:Exception) {
-            AutomaticDiagnostics.captureFailure(e,stage="dub")
+            AutomaticDiagnostics.captureObservedFailure(e,diagnosticConsent,stage="dub")
             val key=(e as? ClientFailure)?.key ?: "mobile.simple.dub_failed"
             val params=(e as? ClientFailure)?.params.orEmpty().mapValues {it.value.toString()}
             withContext(NonCancellable) {runCatching {val checkpoint=jobs.checkpoint(job);jobs.save(job,checkpoint.copy(stage=key,errorParams=params))}}
