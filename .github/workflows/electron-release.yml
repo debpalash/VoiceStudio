@@ -363,8 +363,16 @@ jobs:
           node tests/update-package-contract.mjs --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
           node ../scripts/create_store_artifact_manifest.mjs --platform=${{ matrix.platform }} --arch=${{ matrix.arch }}
       - name: Verify macOS signing and notarization before publication
-        if: inputs.publish == true && inputs.allow_unsigned != true && matrix.platform == 'darwin'
+        if: inputs.publish == true && matrix.platform == 'darwin'
+        env:
+          HAS_CREDENTIALS: ${{ secrets.ELECTRON_MACOS_CSC_LINK != '' }}
+          ALLOW_UNSIGNED: ${{ inputs.allow_unsigned }}
         run: |
+          # A Windows unsigned exception must not bypass a signed Mac's assessment.
+          if [ "$ALLOW_UNSIGNED" = true ] && [ "$HAS_CREDENTIALS" != true ]; then
+            echo "Explicit unsigned macOS publication: no Developer ID is configured"
+            exit 0
+          fi
           APP=$(find electron/release -maxdepth 2 -name VoiceStudio.app -type d -print -quit)
           test -n "$APP"
           codesign --verify --deep --strict "$APP"
