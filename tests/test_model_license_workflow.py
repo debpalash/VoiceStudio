@@ -495,9 +495,10 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.headers["cache-control"], "no-store")
         from fastapi.testclient import TestClient
         calls_before = list(self.calls)
-        with TestClient(self.app, base_url="http://127.0.0.1", client=("198.51.100.4", 50001)) as remote:
-            self.assertEqual(remote.post(f"/models/licenses/verify/{p['plan_digest']}").status_code, 403)
-            self.assertEqual(remote.delete(f"/models/licenses/receipts/{p['plan_digest']}").status_code, 403)
+        remote = TestClient(self.app, base_url="http://127.0.0.1", client=("198.51.100.4", 50001))
+        self.addCleanup(remote.close)
+        self.assertEqual(remote.post(f"/models/licenses/verify/{p['plan_digest']}").status_code, 403)
+        self.assertEqual(remote.delete(f"/models/licenses/receipts/{p['plan_digest']}").status_code, 403)
         self.assertEqual(self.calls, calls_before)
         self.assertEqual(self.client.post(f"/models/licenses/verify/{p['plan_digest']}").status_code, 200)
         self.assertTrue(self.calls[-1][-1])
