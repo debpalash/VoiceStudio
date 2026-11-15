@@ -478,6 +478,35 @@ def _ensure_job_events_unique_seq(conn) -> None:
         logger.warning("job_events unique-seq repair failed: %s", exc)
 
 
+def _ensure_voice_sync_id_index(conn) -> None:
+    """Create the partial unique index on ``voice_profiles.sync_id``.
+
+    Alembic 0015 creates ``idx_voice_profiles_sync_id`` for the databases it can
+    reach. A bundled install whose interpreter cannot run alembic only ever gets
+    ``_BASE_SCHEMA`` plus this reconciler, and the index cannot live in
+    ``_BASE_SCHEMA``: ``CREATE TABLE IF NOT EXISTS`` never adds columns to a
+    pre-existing table, so an index over ``sync_id`` inside the same
+    ``executescript`` would abort on a legacy table that predates the column.
+    Create it here instead, after the additive reconcile guarantees the column,
+    so both paths converge on the same schema (the invariant above).
+
+    Duplicate non-null sync ids already on a database (a local merge from before
+    the index existed) must not brick startup: the index is skipped with a
+    warning and cloud sync reports the identity conflict instead.
+    """
+    try:
+        if "sync_id" not in {r[1] for r in conn.execute("PRAGMA table_info(voice_profiles)")}:
+            return
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_voice_profiles_sync_id "
+            "ON voice_profiles(sync_id) WHERE sync_id IS NOT NULL"
+        )
+        conn.commit()
+    except sqlite3.Error as exc:
+        conn.rollback()
+        logger.warning("voice_profiles sync-id index not created: %s", exc)
+
+
 def ensure_schema() -> None:
     """Idempotently ensure the base tables + additive columns exist.
 
@@ -494,6 +523,7 @@ def ensure_schema() -> None:
         conn.executescript(_BASE_SCHEMA)
         _reconcile_additive_columns(conn)
         _ensure_job_events_unique_seq(conn)
+        _ensure_voice_sync_id_index(conn)
         conn.commit()
     finally:
         conn.close()
@@ -513,6 +543,7 @@ def init_db():
         # below succeeds, so an unrunnable alembic can't leave a 500-ing schema.
         _reconcile_additive_columns(conn)
         _ensure_job_events_unique_seq(conn)
+        _ensure_voice_sync_id_index(conn)
         conn.commit()
     finally:
         conn.close()
