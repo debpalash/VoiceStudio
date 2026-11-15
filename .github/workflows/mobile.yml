@@ -41,7 +41,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: mobile-${{ github.ref }}
+  # Each main push/manual verification must finish, including pending runs.
+  # PR refs stay stable so newer commits cancel only that PR's older run.
+  group: mobile-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   # A newer push to main must not cancel a mobile verification that is still
   # running: these builds are the release gate for both native apps, and a
   # cancelled run leaves the app unverified with no failure to act on. Pull
