@@ -376,7 +376,7 @@ async def _run_batch_pipeline_leased(job_id: str, job: dict, lease: voice_leases
     # accounted for until it exits, so a retry cannot overlap it (#1669).
     from services.asr_backend import run_transcribe_guarded
     from core import diagnostic_reports
-    diagnostic_epoch = diagnostic_reports.observe_grant()
+    diagnostic_epoch = diagnostic_reports.inherited_grant()
     segments, source_lang = await diagnostic_reports.await_owned(run_transcribe_guarded(
         _gpu_pool, _transcribe, what="Batch", duration_s=duration,
     ), diagnostic_epoch)
