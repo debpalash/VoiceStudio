@@ -107,4 +107,3 @@ def test_withdrawal_drops_pending_old_epoch_before_fresh_opt_in(managed_reporter
     fresh, = instance._files()
     assert fresh["epoch"] == "d" * 32
     assert fresh["props"]["occurrences"] == 1
-
