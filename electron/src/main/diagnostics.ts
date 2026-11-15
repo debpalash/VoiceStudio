@@ -1,0 +1,1347 @@
+import { randomUUID } from 'node:crypto';
+import { constants } from 'node:fs';
+import { mkdir, open, opendir, rm } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import destinationConfig from '../../../config/analytics.json';
+import type { DiagnosticState } from '../preload/diagnostics';
+import { FILE_RENAME, renameWithRetry } from './rename-retry';
+import {
+  diagnosticAppDestination,
+  diagnosticAppFields,
+  diagnosticAppReply,
+  appPlatform,
+  appArch,
+  type DiagnosticAppDestination,
+} from './diagnostics-app';
+import {
+  diagnosticLimit,
+  HEX_ID,
+  MAX_QUEUE_BYTES,
+  MAX_RECORDS,
+  sanitizeProperties,
+  sanitizeRecord,
+  validConsent,
+  TTL_MS,
+  type DiagnosticConsent,
+  type DiagnosticEvent,
+  type DiagnosticIdentity,
+  type DiagnosticRecord,
+} from './diagnostics-schema';
+
+interface Destination {
+  site: string;
+  host: string;
+  appUrl: string;
+}
+export interface DiagnosticsOptions {
+  directory: string;
+  identity: DiagnosticIdentity;
+  env?: NodeJS.ProcessEnv;
+  destination?: Destination | null;
+  /** Generated app-intake configuration; omitted builds retain the legacy transport. */
+  appConfig?: unknown;
+  /** Local fixed outcomes only; never server text, credentials or event payloads. */
+  onDeliveryResult?: (result: { reason: string; count: number }) => void;
+  send?: typeof fetch;
+  now?: () => number;
+  /** Disable the periodic worker in deterministic tests; flush() runs the same worker. */
+  automatic?: boolean;
+  retryMs?: number;
+}
+
+const id = () => randomUUID().replaceAll('-', '');
+const killed = (env: NodeJS.ProcessEnv) =>
+  [env.OMNIVOICE_DIAGNOSTICS_DISABLED, env.OMNIVOICE_ANALYTICS_DISABLED].some((v) =>
+    /^(1|true|yes|on)$/i.test((v ?? '').trim()),
+  );
+
+function safeUrl(value: string, origin = false): boolean {
+  try {
+    const url = new URL(value);
+    // Inspect the literal authority too: WHATWG URL normalizes aliases such
+    // as 127.1 and integer IPv4 into 127.0.0.1. No DNS or network check occurs.
+    const literalHost = /^http:\/\/(\[[^\]]+\]|[^:/?#]+)(?::[0-9]+)?(?:\/|$)/i
+      .exec(value)?.[1]
+      ?.toLowerCase();
+    const secure =
+      url.protocol === 'https:' ||
+      (url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(literalHost ?? ''));
+    return (
+      secure &&
+      Boolean(url.hostname) &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash &&
+      (!origin || url.pathname === '/') &&
+      Buffer.byteLength(value) <= 1988 &&
+      !/[\x00-\x20]/.test(value)
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function diagnosticDestination(env: NodeJS.ProcessEnv): Destination | null {
+  const config = destinationConfig as Record<string, unknown>;
+  const site = (env.SUPERMETRY_SITE_ID ?? String(config.site ?? '')).trim();
+  const host = (env.SUPERMETRY_HOST ?? String(config.host ?? '')).trim().replace(/\/$/, '');
+  const appUrl = (env.SUPERMETRY_APP_URL ?? String(config.appUrl ?? '')).trim().replace(/\/$/, '');
+  return site &&
+    Buffer.byteLength(site) <= 300 &&
+    !/[\x00-\x20]/.test(site) &&
+    safeUrl(host, true) &&
+    safeUrl(appUrl)
+    ? { site, host, appUrl }
+    : null;
+}
+
+class InvalidDiagnosticStore extends Error {}
+
+function discardableReadFailure(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException)?.code;
+  return (
+    error instanceof SyntaxError ||
+    error instanceof InvalidDiagnosticStore ||
+    code === 'ENOENT' ||
+    code === 'ELOOP'
+  );
+}
+
+/** Inspect and read the same bounded file, including a concurrent writer growing it. */
+async function readJson(path: string, limit: number): Promise<unknown> {
+  // Inspect special files without waiting for a FIFO peer before fstat can reject them.
+  const file = await open(
+    path,
+    constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
+  );
+  try {
+    const info = await file.stat();
+    if (!info.isFile() || info.size > limit)
+      throw new InvalidDiagnosticStore('Invalid diagnostics file');
+    const buffer = Buffer.alloc(limit + 1);
+    let length = 0;
+    while (length < buffer.length) {
+      const { bytesRead } = await file.read(buffer, length, buffer.length - length, length);
+      if (!bytesRead) break;
+      length += bytesRead;
+    }
+    if (length > limit) throw new InvalidDiagnosticStore('Invalid diagnostics file');
+    return JSON.parse(buffer.toString('utf8', 0, length));
+  } finally {
+    await file.close();
+  }
+}
+
+/** Private state replaces a symlink itself; export-oriented replaceFile follows it. */
+async function writePrivate(path: string, text: string): Promise<void> {
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+  const temporary = join(dirname(path), `.diagnostic-${id()}.tmp`);
+  const file = await open(temporary, 'wx', 0o600);
+  try {
+    try {
+      await file.writeFile(text);
+      await file.sync();
+    } finally {
+      await file.close();
+    }
+    await renameWithRetry(temporary, path, FILE_RENAME);
+    // POSIX file fsync does not commit the renamed directory entry. Windows
+    // does not support this directory-handle sync; keep its atomic file path.
+    if (process.platform !== 'win32') {
+      const directory = await open(dirname(path), 'r');
+      try {
+        await directory.sync();
+      } finally {
+        await directory.close();
+      }
+    }
+  } finally {
+    await rm(temporary, { force: true }).catch(() => {});
+  }
+}
+
+function diagnosticUserAgent(platform: string): string {
+  const device =
+    platform === 'macos'
+      ? 'Macintosh; Intel Mac OS X 10_15_7'
+      : platform === 'windows'
+        ? 'Windows NT 10.0; Win64; x64'
+        : 'X11; Linux x86_64';
+  return `Mozilla/5.0 (${device}) AppleWebKit/537.36 (KHTML, like Gecko) VoiceStudio/1.0 Chrome/130.0.0.0 Safari/537.36`;
+}
+
+/** One desktop consent authority and bounded durable outbox, independent of Python. */
+export class DiagnosticReports {
+  private consent: DiagnosticConsent | null = null;
+  private records: DiagnosticRecord[] = [];
+  private dropped = 0;
+  private revision = 0;
+  private stopped = false;
+  private initialized = false;
+  private dirty = false;
+  private scheduled = false;
+  private killPurged = false;
+  private killObserved = false;
+  private revocationPending = false;
+  private cleanupPending = false;
+  private cleanupRetryAt = 0;
+  private cleanupWork: Promise<void> | null = null;
+  private consentReadPending = false;
+  private consentReadRetryAt = 0;
+  private revocationQueued = false;
+  private work: Promise<void> | null = null;
+  private control: Promise<unknown> = Promise.resolve();
+  private active: AbortController | null = null;
+  private activeId: string | null = null;
+  private activeIds = new Set<string>();
+  private appPaused = false;
+  private appSessionRevoked = false;
+  private appSessionSent = false;
+  private appSessionEpoch: string | null = null;
+  private appSessionEvent: { id: string; session_id: string; ts: number } | null = null;
+  private appRunRecordIds = new Set<string>();
+  private completionRetryAt = new Map<string, number>();
+  private timer?: NodeJS.Timeout;
+  private retryAt = 0;
+  private sessionStartedAt: number | null = null;
+  private sessionWriteAttemptAt: number | null = null;
+  private outboxRestored = false;
+  private outboxRestoreAt = 0;
+  private inboxReadRetryAt = new Map<string, number>();
+  private outboxRestoreWork: Promise<boolean> | null = null;
+  private sessionRecoveryPending = false;
+  private sessionRecoveryAt = 0;
+  private sessionRecoveryWork: Promise<boolean> | null = null;
+  private sessionEvidenceRecovered = false;
+  private sessionId = id();
+  private wakeRetry: (() => void) | null = null;
+  private readonly destination: Destination | null;
+  private readonly appDestination: DiagnosticAppDestination | null;
+  private readonly env: NodeJS.ProcessEnv;
+  private readonly now: () => number;
+  private readonly send: typeof fetch;
+  private readonly outbox: string;
+  private readonly inbox: string;
+  private readonly consentPath: string;
+  private readonly revocationPath: string;
+  private readonly sessionPath: string;
+
+  constructor(private readonly options: DiagnosticsOptions) {
+    this.env = options.env ?? process.env;
+    this.destination =
+      options.destination === undefined ? diagnosticDestination(this.env) : options.destination;
+    this.appDestination = diagnosticAppDestination(this.env, options.appConfig);
+    this.now = options.now ?? Date.now;
+    this.send = options.send ?? fetch;
+    this.outbox = join(options.directory, 'outbox.json');
+    this.inbox = join(options.directory, 'inbox');
+    this.consentPath = join(options.directory, 'consent.json');
+    this.revocationPath = join(options.directory, 'revoked.json');
+    this.sessionPath = join(options.directory, 'session.json');
+  }
+
+  get directory(): string {
+    return this.options.directory;
+  }
+  get enabled(): boolean {
+    // Pure memory barrier: even a brief kill observed on a fatal/capture path
+    // cannot restore the old grant before the background worker revokes it.
+    if (killed(this.env)) this.killObserved = true;
+    return (
+      !this.stopped &&
+      this.initialized &&
+      Boolean(this.consent?.enabled) &&
+      !this.consentReadPending &&
+      Boolean(this.appDestination || this.destination) &&
+      !this.killObserved
+    );
+  }
+  status(): DiagnosticState {
+    return {
+      available: Boolean(this.appDestination || this.destination) && !killed(this.env),
+      enabled: this.enabled,
+      opted_in:
+        this.initialized &&
+        this.consent?.enabled === true &&
+        !this.consentReadPending &&
+        !this.killObserved,
+      grant_epoch: this.enabled ? this.consent!.epoch : null,
+      prompted: this.consent !== null,
+      pending_count: this.records.filter((record) => !record.completed).length,
+      dropped_count: this.dropped,
+    };
+  }
+
+  async initialize(): Promise<void> {
+    await this.restoreConsent();
+    if (this.consentReadPending) this.sessionRecoveryPending = true;
+    if (await this.revoked()) {
+      if (this.consent) this.consent = { ...this.consent, enabled: false };
+      this.revocationPending = true;
+    }
+    this.initialized = true;
+    if (this.enabled) this.bindAppSession(this.consent!.epoch);
+    if (killed(this.env)) this.killObserved = true;
+    if (this.killObserved || this.revocationPending) {
+      this.requestRevocation();
+      await this.control.catch(() => {});
+    } else if (this.enabled) {
+      this.sessionRecoveryPending = true;
+      if (await this.restoreOutbox()) await this.recoverPendingSession();
+    } else if (!this.consentReadPending) {
+      await this.purge();
+    }
+    if (this.options.automatic !== false) {
+      this.timer = setInterval(() => this.schedule(), 1000);
+      this.timer.unref();
+      this.schedule();
+    }
+  }
+
+  private async restoreConsent(): Promise<boolean> {
+    const revision = this.revision;
+    try {
+      const consent = await readJson(this.consentPath, 4096);
+      if (revision !== this.revision || this.stopped) return false;
+      // A running authority cannot borrow a different saved ON grant. This
+      // matches granted(): retire old reports and require an explicit choice.
+      const changed =
+        this.consent?.enabled &&
+        validConsent(consent) &&
+        consent.enabled &&
+        (this.consent.epoch !== consent.epoch || this.consent.profile_id !== consent.profile_id);
+      const restored = validConsent(consent) && !changed ? consent : null;
+      if (
+        this.appSessionEpoch !== null &&
+        (!restored?.enabled || restored.epoch !== this.appSessionEpoch)
+      )
+        this.retireAppSession();
+      this.consent = restored;
+    } catch (error) {
+      if (revision !== this.revision || this.stopped) return false;
+      // Absence and proven invalid JSON are not an unread saved choice.
+      // IO failures close capture without destroying unexamined evidence.
+      if (!discardableReadFailure(error)) {
+        this.suspendConsentRead();
+        return false;
+      }
+      this.retireAppSession();
+      this.consent = null;
+    }
+    this.consentReadPending = false;
+    this.consentReadRetryAt = 0;
+    return true;
+  }
+
+  private suspendConsentRead(): void {
+    // Retain the cached identity and accepted records for same-grant recovery;
+    // this memory flag closes capture/status/send without destroying evidence.
+    this.consentReadPending = true;
+    this.consentReadRetryAt = this.now() + 60_000;
+    this.abort();
+  }
+
+  private bindAppSession(epoch: string): void {
+    if (!this.appDestination?.sessionPings || this.appSessionRevoked) return;
+    if (this.appSessionEpoch === null) this.appSessionEpoch = epoch;
+    else if (this.appSessionEpoch !== epoch) this.retireAppSession();
+  }
+  private retireAppSession(): void {
+    // Initial OFF/absence has no earlier run grant to retire. Temporary IO
+    // failures keep this authority until a successful read proves a change.
+    if (this.appSessionEpoch === null) return;
+    this.appSessionRevoked = true;
+    this.appSessionEvent = null;
+    this.appRunRecordIds.clear();
+  }
+
+  /** No disk, configuration reads, networking or waiting on fatal/error paths. */
+  capture(event: DiagnosticEvent, expectedEpoch?: string): void {
+    try {
+      if (
+        !this.enabled ||
+        !this.consent ||
+        (expectedEpoch !== undefined && expectedEpoch !== this.consent.epoch)
+      )
+        return;
+      const props = sanitizeProperties({
+        ...event,
+        ...this.options.identity,
+        source: event.source ?? 'electron_main',
+      });
+      if (!props) return;
+      const record: DiagnosticRecord = {
+        version: 1,
+        id: id(),
+        timestamp_ms: this.now(),
+        epoch: this.consent.epoch,
+        session_id: this.sessionId,
+        props,
+      };
+      this.bindAppSession(this.consent.epoch);
+      this.add(record);
+      if (this.appDestination?.sessionPings && !this.appSessionRevoked) {
+        this.appRunRecordIds.add(record.id);
+        const retained = new Set(this.records.map((item) => item.id));
+        for (const identity of this.appRunRecordIds)
+          if (!retained.has(identity)) this.appRunRecordIds.delete(identity);
+      }
+      this.schedule();
+    } catch {
+      /* Failure reporting must never alter the operation. */
+    }
+  }
+
+  async setConsent(enabled: boolean): Promise<DiagnosticState> {
+    if (typeof enabled !== 'boolean') throw new Error('Invalid diagnostic consent');
+    if (enabled && killed(this.env)) {
+      this.killObserved = true;
+      this.requestRevocation();
+      await this.control.catch(() => {});
+      return this.status();
+    }
+    if (enabled && this.enabled) return this.status();
+    const freshGrant = enabled && (this.killObserved || this.consentReadPending);
+    if (!enabled && this.consent?.enabled) {
+      this.retireAppSession();
+    }
+    if (enabled) {
+      this.killObserved = false;
+      this.killPurged = false;
+    }
+    // Revoke immediately, before any pending write, connection or backoff can progress.
+    const revision = ++this.revision;
+    this.consentReadPending = false;
+    this.consentReadRetryAt = 0;
+    this.abort();
+    this.sessionStartedAt = null;
+    this.sessionWriteAttemptAt = null;
+    this.consent =
+      this.consent && this.consent.enabled === enabled && !freshGrant
+        ? this.consent
+        : {
+            version: 1,
+            enabled,
+            epoch: id(),
+            profile_id: `install_${id()}`,
+          };
+    const choice = this.consent;
+    this.revocationPending = !enabled;
+    this.records = [];
+    this.completionRetryAt.clear();
+    this.outboxRestored = true;
+    this.outboxRestoreAt = 0;
+    this.inboxReadRetryAt.clear();
+    this.sessionRecoveryPending = false;
+    this.sessionEvidenceRecovered = false;
+    this.sessionId = id();
+    this.dirty = false;
+    this.retryAt = 0;
+    this.initialized = false;
+    this.control = this.control
+      .catch(() => {})
+      .then(async () => {
+        let saved = false;
+        try {
+          if (enabled) {
+            await this.work?.catch(() => {});
+            await this.purge();
+            // No new session can race a later cleanup of retired paths.
+            if (this.cleanupPending) throw new Error('Could not clear previous diagnostic reports');
+          }
+          // A separate private tombstone can survive a locked old grant. Its
+          // presence blocks startup and delivery until a fresh opt-in clears it.
+          if (!enabled) await writePrivate(this.revocationPath, '{"version":1}').catch(() => {});
+          await writePrivate(this.consentPath, JSON.stringify(choice));
+          // A newer OFF may already have closed memory while this ON write
+          // waited for storage. It must keep the previous durable OFF fence.
+          if (enabled && (revision !== this.revision || this.stopped)) return;
+          if (enabled) await rm(this.revocationPath, { force: true });
+          saved = true;
+        } catch {
+          let rolledBack = false;
+          if (enabled) {
+            // Rename can publish ON before its directory sync fails. A
+            // rejected first choice needs the same OFF barrier as revocation;
+            // an older unread grant must not become fallback authority either.
+            if (revision === this.revision) {
+              this.consent = { ...choice, enabled: false };
+              this.revocationPending = true;
+            }
+            await writePrivate(this.revocationPath, '{"version":1}').catch(() => {});
+            try {
+              await writePrivate(this.consentPath, JSON.stringify({ ...choice, enabled: false }));
+              rolledBack = true;
+              if (revision === this.revision) this.revocationPending = false;
+            } catch {
+              /* Removal below is the fallback if OFF replacement also fails. */
+            }
+          }
+          // Removing an old/partial grant is fail-closed when replacement
+          // fails. Serialized newer choices still publish after this rollback.
+          if (!rolledBack) {
+            try {
+              await rm(this.consentPath, { force: true });
+              if (revision === this.revision) this.revocationPending = false;
+            } catch {
+              /* The worker retries durable revocation while memory stays OFF. */
+            }
+          }
+        }
+        if (!enabled) {
+          await this.work?.catch(() => {});
+          await this.purge();
+        }
+        if (!saved) throw new Error('Could not save diagnostic consent');
+        if (revision !== this.revision) return;
+        this.revocationPending = false;
+        this.initialized = true;
+        // Consent is already durable. Optional crash-recovery bookkeeping must
+        // not reject the choice while collection remains enabled.
+        if (this.enabled) {
+          this.bindAppSession(this.consent!.epoch);
+          await this.writeSession().catch(() => {});
+        }
+      });
+    await this.control;
+    if (revision === this.revision && this.enabled) this.schedule();
+    return this.status();
+  }
+
+  /** Waits only when explicitly requested by startup/tests/orderly shutdown. */
+  async flush(): Promise<void> {
+    if (!this.work)
+      this.work = this.run()
+        .catch(() => {})
+        .finally(() => {
+          this.work = null;
+          if (this.killObserved || this.revocationPending) this.requestRevocation();
+        });
+    await this.work;
+    // The worker may request revocation, whose control operation joins the
+    // worker only after it returns. Joining here avoids a self-wait cycle.
+    await this.control.catch(() => {});
+  }
+
+  async close(): Promise<void> {
+    this.stopped = true;
+    this.revision++;
+    if (this.timer) clearInterval(this.timer);
+    this.abort();
+    // Retire the crash marker before teardown can wait on a slow worker.
+    // An unread previous marker belongs to the earlier crashed session. An
+    // orderly exit of this process cannot retire evidence it has not recovered.
+    if (!this.sessionRecoveryPending) await rm(this.sessionPath, { force: true }).catch(() => {});
+    if (killed(this.env)) this.killObserved = true;
+    if (this.killObserved || this.revocationPending) {
+      this.requestRevocation();
+      await this.control.catch(() => {});
+    }
+    try {
+      await this.work?.catch(() => {});
+      if (this.killObserved || this.cleanupPending) await this.purge();
+      else await this.persist();
+    } finally {
+      // An outbox failure must not turn an orderly exit into a crash report.
+      if (!this.sessionRecoveryPending) await rm(this.sessionPath, { force: true }).catch(() => {});
+    }
+  }
+
+  private abort(): void {
+    this.active?.abort();
+    this.wakeRetry?.();
+    this.wakeRetry = null;
+  }
+  private requestRevocation(): void {
+    if (this.revocationQueued || (this.killPurged && !this.revocationPending)) return;
+    this.revocationQueued = true;
+    this.abort();
+    this.records = [];
+    this.dirty = false;
+    let operation: Promise<unknown>;
+    if (this.consent?.enabled || this.revocationPending || this.consentReadPending) {
+      // Reuse the private OFF write and old-grant removal fallback. Do not
+      // await from run(): setConsent itself waits for the current worker.
+      operation = this.setConsent(false);
+    } else {
+      // A killed launch without a prior choice must create no profile/grant.
+      this.control = this.control.catch(() => {}).then(() => this.purge());
+      operation = this.control;
+    }
+    void operation
+      .then(
+        () => {
+          this.killPurged = true;
+        },
+        () => {
+          this.killPurged = false;
+        },
+      )
+      .finally(() => {
+        this.revocationQueued = false;
+      });
+  }
+  private async revoked(): Promise<boolean> {
+    try {
+      await readJson(this.revocationPath, 4096);
+      return true;
+    } catch (error) {
+      // Corrupt, symlinked or unreadable revocation state also stays closed.
+      return (error as NodeJS.ErrnoException).code !== 'ENOENT';
+    }
+  }
+  private schedule(): void {
+    if (this.scheduled || this.stopped || this.options.automatic === false) return;
+    if (killed(this.env)) this.abort();
+    this.scheduled = true;
+    queueMicrotask(() => {
+      this.scheduled = false;
+      void this.flush();
+    });
+  }
+  private add(record: DiagnosticRecord, coalesce = true): void {
+    this.expireRecords();
+    if (this.records.some((old) => old.id === record.id)) return;
+    const duplicate =
+      coalesce &&
+      this.records.find(
+        (old) =>
+          !this.activeIds.has(old.id) &&
+          old.id !== this.activeId &&
+          !old.completed &&
+          old.props.fingerprint === record.props.fingerprint &&
+          old.session_id === record.session_id &&
+          Math.abs(old.timestamp_ms - record.timestamp_ms) <= diagnosticLimit('dedupe_ms', 60_000),
+      );
+    if (duplicate) {
+      duplicate.props.occurrences = Math.min(
+        1_000_000,
+        Number(duplicate.props.occurrences) + Number(record.props.occurrences),
+      );
+    } else this.records.push(record);
+    while (
+      this.records.length > MAX_RECORDS ||
+      // Reserve the terminal flag and maximum counter width before admission,
+      // so acknowledging an accepted record cannot exceed the disk budget.
+      Buffer.byteLength(
+        JSON.stringify({
+          version: 1,
+          records: this.records.map((record) => ({ ...record, completed: true })),
+          dropped: 1_000_000,
+        }),
+      ) > MAX_QUEUE_BYTES
+    ) {
+      const discard = this.records.findIndex(
+        (record) =>
+          !record.completed && record.id !== this.activeId && !this.activeIds.has(record.id),
+      );
+      if (discard < 0) break;
+      this.records.splice(discard, 1);
+      this.dropped = Math.min(1_000_000, this.dropped + 1);
+    }
+    this.dirty = true;
+  }
+  private expireRecords(): void {
+    const cutoff = this.now() - TTL_MS;
+    const expired = this.records.filter((record) => record.timestamp_ms < cutoff);
+    if (!expired.length) return;
+    this.records = this.records.filter((record) => record.timestamp_ms >= cutoff);
+    for (const record of expired) this.completionRetryAt.delete(record.id);
+    this.dirty = true;
+  }
+  /** A transient read failure leaves the saved queue authoritative until a bounded retry. */
+  private restoreOutbox(force = false): Promise<boolean> {
+    if (this.outboxRestored) return Promise.resolve(true);
+    if (this.outboxRestoreWork) return this.outboxRestoreWork;
+    if (!force && this.now() < this.outboxRestoreAt) return Promise.resolve(false);
+    const epoch = this.consent?.epoch;
+    const revision = this.revision;
+    if (!epoch || !this.consent?.enabled || killed(this.env)) return Promise.resolve(false);
+    const current = () => revision === this.revision && this.consent?.epoch === epoch;
+    this.outboxRestoreWork = (async () => {
+      let stored: unknown;
+      try {
+        stored = await readJson(this.outbox, MAX_QUEUE_BYTES);
+      } catch (error) {
+        if (!current()) return false;
+        // Confirmed malformed/absent stores can be replaced. Access/IO errors
+        // do not prove corruption and must never authorize a replacement.
+        if (!discardableReadFailure(error)) {
+          this.outboxRestoreAt = this.now() + 60_000;
+          return false;
+        }
+      }
+      if (!current()) return false;
+      const pending = this.records;
+      this.records = [];
+      if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
+        const data = stored as { records?: unknown; dropped?: unknown };
+        if (Number.isSafeInteger(data.dropped))
+          this.dropped = Math.min(1_000_000, this.dropped + Math.max(0, data.dropped as number));
+        if (Array.isArray(data.records)) {
+          for (const value of data.records.slice(-MAX_RECORDS)) {
+            const record = sanitizeRecord(value, epoch, this.now(), true);
+            if (record) this.add(record, false);
+          }
+        }
+      }
+      for (const record of pending) this.add(record, false);
+      this.outboxRestored = true;
+      this.outboxRestoreAt = 0;
+      return true;
+    })().finally(() => {
+      this.outboxRestoreWork = null;
+    });
+    return this.outboxRestoreWork;
+  }
+  private async recoverPendingSession(): Promise<boolean> {
+    if (this.sessionRecoveryWork) return this.sessionRecoveryWork;
+    if (!this.sessionRecoveryPending) return true;
+    if (!this.enabled || this.now() < this.sessionRecoveryAt) return false;
+    const revision = this.revision;
+    this.sessionRecoveryWork = (async () => {
+      const recovered = this.sessionEvidenceRecovered || (await this.recoverSession());
+      if (revision !== this.revision || !this.enabled) return false;
+      if (!recovered) {
+        this.sessionRecoveryAt = this.now() + 60_000;
+        return false;
+      }
+      this.sessionEvidenceRecovered = true;
+      if (this.dirty && !(await this.tryPersist())) {
+        this.sessionRecoveryAt = this.now() + 60_000;
+        return false;
+      }
+      if (revision !== this.revision || !this.enabled) return false;
+      this.sessionRecoveryPending = false;
+      this.sessionEvidenceRecovered = false;
+      this.sessionRecoveryAt = 0;
+      await this.writeSession().catch(() => {});
+      return true;
+    })().finally(() => {
+      this.sessionRecoveryWork = null;
+    });
+    return this.sessionRecoveryWork;
+  }
+  private async persist(): Promise<void> {
+    const epoch = this.consent?.epoch;
+    if (!epoch || !this.consent?.enabled || killed(this.env)) return;
+    const revision = this.revision;
+    if (!(await this.restoreOutbox(this.stopped)) || revision !== this.revision) return;
+    this.records = this.records
+      .map((r) => sanitizeRecord(r, epoch, this.now(), true))
+      .filter((r): r is DiagnosticRecord => r !== null);
+    const text = JSON.stringify({ version: 1, dropped: this.dropped, records: this.records });
+    if (Buffer.byteLength(text) > MAX_QUEUE_BYTES)
+      throw new Error('Diagnostic queue exceeded its bound');
+    this.dirty = false;
+    await mkdir(this.options.directory, { recursive: true });
+    await writePrivate(this.outbox, text);
+    if (revision !== this.revision) await rm(this.outbox, { force: true }).catch(() => {});
+  }
+  private purge(): Promise<void> {
+    if (this.cleanupWork) return this.cleanupWork;
+    this.cleanupWork = Promise.resolve()
+      .then(async () => {
+        this.outboxRestored = true;
+        this.outboxRestoreAt = 0;
+        this.inboxReadRetryAt.clear();
+        this.completionRetryAt.clear();
+        this.sessionRecoveryPending = false;
+        this.sessionEvidenceRecovered = false;
+        this.sessionRecoveryAt = 0;
+        const removed = await Promise.all(
+          [this.outbox, this.inbox, this.sessionPath].map((path) =>
+            rm(path, { recursive: path === this.inbox, force: true }).then(
+              () => true,
+              () => false,
+            ),
+          ),
+        );
+        this.cleanupPending = removed.some((done) => !done);
+        this.cleanupRetryAt = this.cleanupPending ? this.now() + 60_000 : 0;
+      })
+      .finally(() => {
+        this.cleanupWork = null;
+      });
+    return this.cleanupWork;
+  }
+  private async tryPersist(): Promise<boolean> {
+    // With no new report to publish, a failed completion commit shares the
+    // cleanup cooldown instead of retrying disk IO on every timer tick.
+    if (
+      this.records.length &&
+      this.records.every(
+        (record) => record.completed && this.now() < (this.completionRetryAt.get(record.id) ?? 0),
+      )
+    )
+      return false;
+    try {
+      await this.persist();
+      return true;
+    } catch {
+      this.dirty = true;
+      return false;
+    }
+  }
+  private async granted(epoch: string, revision: number): Promise<boolean> {
+    if (!this.enabled || revision !== this.revision || this.consent?.epoch !== epoch) return false;
+    if (await this.revoked()) {
+      if (revision === this.revision) {
+        this.revocationPending = true;
+        this.initialized = false;
+        this.abort();
+        this.records = [];
+        this.dirty = false;
+        this.requestRevocation();
+      }
+      return false;
+    }
+    let current: unknown;
+    try {
+      current = await readJson(this.consentPath, 4096);
+    } catch (error) {
+      if (revision !== this.revision || this.stopped) return false;
+      if (!discardableReadFailure(error)) {
+        this.suspendConsentRead();
+        return false;
+      }
+      // Only proven absence/invalid authority is a confirmed loss of grant.
+    }
+    if (revision !== this.revision) return false;
+    if (
+      this.enabled &&
+      validConsent(current) &&
+      current.enabled &&
+      current.epoch === epoch &&
+      current.profile_id === this.consent?.profile_id
+    )
+      return true;
+    this.revision++;
+    this.retireAppSession();
+    this.abort();
+    this.records = [];
+    this.dirty = false;
+    this.consent = validConsent(current) && !current.enabled ? current : null;
+    await this.purge();
+    return false;
+  }
+  private async importInbox(): Promise<void> {
+    if (!this.enabled || !this.consent) return;
+    const epoch = this.consent.epoch;
+    const revision = this.revision;
+    const current = () =>
+      this.enabled && this.consent?.epoch === epoch && revision === this.revision;
+    const directory = await opendir(this.inbox).catch(() => null);
+    if (!directory) return;
+    const now = this.now();
+    for (const [name, retryAt] of this.inboxReadRetryAt)
+      if (retryAt <= now) this.inboxReadRetryAt.delete(name);
+    let count = 0;
+    for await (const entry of directory) {
+      if (++count > MAX_RECORDS * 4) break;
+      if (!entry.isFile() || !/^[a-f0-9]{32}\.json$/.test(entry.name)) continue;
+      // Only this reporter's committed outbox can acknowledge a producer ID.
+      // Its cleanup is owned below, with a bounded per-record cooldown.
+      if (this.records.some((record) => record.id === entry.name.slice(0, -5) && record.completed))
+        continue;
+      if (now < (this.inboxReadRetryAt.get(entry.name) ?? 0)) continue;
+      const path = join(this.inbox, entry.name);
+      try {
+        const parsed = await readJson(path, 8192);
+        if (!current()) return;
+        const record = sanitizeRecord(parsed, epoch, this.now());
+        if (record && this.enabled && this.consent?.epoch === epoch) {
+          // Keep stable producer IDs. A crash between outbox commit and inbox
+          // unlink must not count the same record again on the next launch.
+          this.add(record, false);
+          if (this.records.some((r) => r.id === record.id) && !(await this.tryPersist())) continue;
+        }
+      } catch (error) {
+        if (!current()) return;
+        if (!discardableReadFailure(error)) {
+          // One locked producer file must neither be lost nor block healthy
+          // intake. Bound retry bookkeeping to the existing scan budget.
+          if (this.inboxReadRetryAt.size >= MAX_RECORDS * 4)
+            this.inboxReadRetryAt.delete(this.inboxReadRetryAt.keys().next().value!);
+          this.inboxReadRetryAt.set(entry.name, this.now() + 60_000);
+          continue;
+        }
+        /* Confirmed invalid/consumed records cannot become an upload. */
+      }
+      if (!current()) return;
+      this.inboxReadRetryAt.delete(entry.name);
+      await rm(path, { force: true }).catch(() => {});
+    }
+  }
+  private async run(): Promise<void> {
+    if (killed(this.env)) this.killObserved = true;
+    if (this.cleanupPending) {
+      if (this.now() < this.cleanupRetryAt) return;
+      await this.purge();
+      if (this.cleanupPending) return;
+    }
+    if (this.killObserved) {
+      this.requestRevocation();
+      return;
+    }
+    if (this.revocationPending) {
+      this.requestRevocation();
+      return;
+    }
+    if (this.consentReadPending) {
+      if (this.now() < this.consentReadRetryAt || !(await this.restoreConsent())) return;
+      if (await this.revoked()) {
+        this.revocationPending = true;
+        this.requestRevocation();
+        return;
+      }
+      if (!this.enabled) {
+        this.records = [];
+        this.dirty = false;
+        await this.purge();
+        return;
+      }
+      // Preserve the existing recovery state. An active-read interruption
+      // must not reinterpret this process's live marker as a prior crash.
+    }
+    if (!this.enabled || !this.consent || (!this.destination && !this.appDestination)) return;
+    const epoch = this.consent.epoch;
+    const revision = this.revision;
+    if (!(await this.granted(epoch, revision))) return;
+    if (!(await this.restoreOutbox())) return;
+    this.expireRecords();
+    if (!(await this.recoverPendingSession())) return;
+    if (!(await this.granted(epoch, revision))) return;
+    // Refresh local liveness through the existing worker, at most once a
+    // minute including failed writes. Capture/fatal paths remain IO-free.
+    if (this.sessionWriteAttemptAt === null || this.now() - this.sessionWriteAttemptAt >= 60_000)
+      await this.writeSession().catch(() => {});
+    await this.importInbox();
+    if (this.dirty) await this.tryPersist();
+    await this.cleanupCompleted(epoch, revision);
+    if (this.now() < this.retryAt) return;
+    if (this.appDestination) {
+      await this.deliverAppEvents(epoch, revision);
+      return;
+    }
+    if (!this.destination) return;
+    while (await this.granted(epoch, revision)) {
+      const next = this.records.findIndex((record) => !record.completed);
+      if (next < 0) break;
+      const record = sanitizeRecord(this.records[next], epoch, this.now(), true);
+      if (!record) {
+        this.records.splice(next, 1);
+        this.dirty = true;
+        continue;
+      }
+      const body = JSON.stringify({
+        v: 1,
+        id: record.id,
+        ts: record.timestamp_ms,
+        site: this.destination.site,
+        name: 'diagnostic_report',
+        url: `${this.destination.appUrl}/diagnostics`,
+        profile_id: this.consent!.profile_id,
+        props: record.props,
+      });
+      if (Buffer.byteLength(body) > diagnosticLimit('body_bytes', 8192)) {
+        this.records.splice(next, 1);
+        this.dropped++;
+        this.dirty = true;
+        continue;
+      }
+      this.activeId = record.id;
+      let terminal = false;
+      for (let attempt = 0; attempt < diagnosticLimit('max_attempts', 3); attempt++) {
+        if (!(await this.granted(epoch, revision))) break;
+        // OFF can run after authorization resolves, before this continuation
+        // installs the controller that withdrawal would otherwise abort.
+        if (!this.enabled || revision !== this.revision || this.consent?.epoch !== epoch) break;
+        const controller = new AbortController();
+        this.active = controller;
+        const timer = setTimeout(
+          () => controller.abort(),
+          diagnosticLimit('request_timeout_ms', 2000),
+        );
+        timer.unref();
+        try {
+          const response = await this.send(`${this.destination.host}/api/public/v1/events`, {
+            method: 'POST',
+            body,
+            redirect: 'manual',
+            credentials: 'omit',
+            referrerPolicy: 'no-referrer',
+            headers: {
+              'Content-Type': 'application/json',
+              Origin: new URL(this.destination.appUrl).origin,
+              'User-Agent': diagnosticUserAgent(this.options.identity.platform),
+            },
+            signal: controller.signal,
+          });
+          terminal = response.status !== 429 && response.status < 500;
+          await response.body?.cancel().catch(() => {});
+        } catch {
+          /* Offline reports remain durable; a feature never waits on this. */
+        } finally {
+          clearTimeout(timer);
+          this.active = null;
+        }
+        if (terminal || revision !== this.revision || !this.enabled) break;
+        if (attempt + 1 < diagnosticLimit('max_attempts', 3))
+          await this.backoff(500 * 2 ** attempt);
+      }
+      this.activeId = null;
+      if (revision !== this.revision || !this.enabled) return;
+      if (!terminal) {
+        this.retryAt = this.now() + (this.options.retryMs ?? 60_000);
+        break;
+      }
+      // Keep terminal IDs until producer cleanup succeeds. In-memory authority
+      // closes before IO, and durable acknowledgement precedes inbox deletion.
+      const accepted = this.records.find((item) => item.id === record.id);
+      if (accepted) accepted.completed = true;
+      this.dirty = true;
+      await this.cleanupCompleted(epoch, revision);
+    }
+    if (this.dirty && revision === this.revision) await this.tryPersist();
+  }
+  private deliveryResult(reason: string, count: number): void {
+    try {
+      this.options.onDeliveryResult?.({ reason, count });
+    } catch {
+      /* Local observers cannot affect delivery. */
+    }
+  }
+
+  private async deliverAppEvents(epoch: string, revision: number): Promise<void> {
+    const destination = this.appDestination;
+    if (!destination || this.appPaused) return;
+    this.bindAppSession(epoch);
+    const current = () =>
+      this.enabled && this.revision === revision && this.consent?.epoch === epoch;
+    while (await this.granted(epoch, revision)) {
+      if (!current() || this.appPaused) return;
+      const pendingSession =
+        destination.sessionPings && !this.appSessionRevoked && !this.appSessionSent;
+      if (pendingSession) this.appSessionEvent ??= { id: id(), session_id: id(), ts: this.now() };
+      const events: Record<string, unknown>[] = [];
+      const identities: (string | null)[] = [];
+      if (pendingSession && this.appSessionEvent) {
+        const identity = sanitizeProperties({
+          ...this.options.identity,
+          category: 'operation_failed',
+          source: 'electron_main',
+        })!;
+        events.push({
+          ...this.appSessionEvent,
+          kind: 'session',
+          install_id: this.consent!.profile_id,
+          ...(identity.app_version ? { release: identity.app_version } : {}),
+          platform: appPlatform(identity.platform),
+          arch: appArch(identity.arch),
+          runtime: 'electron',
+        });
+        identities.push(null);
+      }
+      for (const value of this.records) {
+        if (value.completed) continue;
+        const record = sanitizeRecord(value, epoch, this.now(), true);
+        if (!record) continue;
+        const event = {
+          ...diagnosticAppFields(record.props),
+          id: record.id,
+          ts: record.timestamp_ms,
+          install_id: this.consent!.profile_id,
+          runtime: 'electron',
+          ...(destination.sessionPings &&
+          !this.appSessionRevoked &&
+          this.appRunRecordIds.has(record.id) &&
+          this.appSessionEvent
+            ? { session_id: this.appSessionEvent.session_id }
+            : {}),
+        };
+        if (
+          events.length >= 20 ||
+          Buffer.byteLength(
+            JSON.stringify({ site: destination.appId, events: [...events, event] }),
+          ) > 16_384
+        )
+          break;
+        events.push(event);
+        identities.push(record.id);
+      }
+      if (!events.length) break;
+      // Never deliver a newly accepted failure until its durable replay identity
+      // is committed; an app-session ping itself is intentionally run-local.
+      this.activeIds = new Set(identities.filter((value): value is string => value !== null));
+      this.activeId =
+        identities.find((value) => value !== null) ?? this.appSessionEvent?.id ?? null;
+      if (this.dirty && !(await this.tryPersist())) {
+        this.activeIds.clear();
+        this.activeId = null;
+        return;
+      }
+      let body = JSON.stringify({ site: destination.appId, events });
+      let terminal: number[] = [];
+      attempts: for (let attempt = 0; attempt < diagnosticLimit('max_attempts', 3); attempt++) {
+        // Every pass either prepares the send or removes at least one event.
+        // Reauthorize after persistence, then recheck TTL after that await;
+        // a long first request/backoff must not resend an expired snapshot.
+        while (true) {
+          if (!(await this.granted(epoch, revision)) || !current()) break attempts;
+          const cutoff = this.now() - TTL_MS;
+          const expired = identities.flatMap((identity, index) =>
+            identity !== null && Number(events[index].ts) < cutoff ? [index] : [],
+          );
+          if (!expired.length) break;
+          for (const index of expired.reverse()) {
+            const identity = identities[index]!;
+            this.appRunRecordIds.delete(identity);
+            identities.splice(index, 1);
+            events.splice(index, 1);
+          }
+          this.deliveryResult('too_old', expired.length);
+          this.expireRecords();
+          this.activeIds = new Set(identities.filter((value): value is string => value !== null));
+          this.activeId = identities.find((value) => value !== null) ?? null;
+          if (this.dirty && !(await this.tryPersist())) break attempts;
+          if (!events.length) break attempts;
+          body = JSON.stringify({ site: destination.appId, events });
+        }
+        const controller = new AbortController();
+        this.active = controller;
+        const timer = setTimeout(
+          () => controller.abort(),
+          diagnosticLimit('request_timeout_ms', 2000),
+        );
+        timer.unref();
+        try {
+          const response = await this.send(`${destination.host}/api/public/v1/app-events`, {
+            method: 'POST',
+            body,
+            redirect: 'manual',
+            credentials: 'omit',
+            referrerPolicy: 'no-referrer',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Supermetry-Key': destination.ingestKey,
+              'User-Agent': `VoiceStudio/${this.options.identity.app_version} (${appPlatform(this.options.identity.platform)}; ${appArch(this.options.identity.arch)})`,
+            },
+            signal: controller.signal,
+          });
+          if (response.status === 202) {
+            const reply = await diagnosticAppReply(response, events.length);
+            if (reply) {
+              terminal = reply.terminal;
+              this.deliveryResult(
+                'accepted',
+                terminal.length -
+                  reply.dropped.filter((drop) => drop.reason !== 'rate_limited').length,
+              );
+              for (const reason of ['too_old', 'invalid', 'duplicate', 'rate_limited'] as const) {
+                const count = reply.dropped.filter((drop) => drop.reason === reason).length;
+                if (count) this.deliveryResult(reason, count);
+              }
+              if (reply.warnings) this.deliveryResult('tag_not_allowed', reply.warnings);
+              break;
+            }
+            this.deliveryResult('invalid_response', events.length);
+          } else {
+            await response.body?.cancel().catch(() => {});
+            if (response.status === 401) {
+              this.appPaused = true;
+              this.deliveryResult('unauthorized', events.length);
+              break;
+            }
+            if (response.status === 400) {
+              terminal = events.map((_, index) => index);
+              this.deliveryResult('bad_request', events.length);
+              break;
+            }
+          }
+        } catch {
+          /* Offline or aborted requests preserve the exact batch IDs. */
+        } finally {
+          clearTimeout(timer);
+          this.active = null;
+        }
+        if (!current()) break;
+        if (attempt + 1 < diagnosticLimit('max_attempts', 3))
+          await this.backoff(500 * 2 ** attempt);
+      }
+      this.activeIds.clear();
+      this.activeId = null;
+      if (!current()) return;
+      for (const index of terminal) {
+        const identity = identities[index];
+        if (identity === null) this.appSessionSent = true;
+        else {
+          const record = this.records.find((item) => item.id === identity);
+          if (record) {
+            record.completed = true;
+            this.dirty = true;
+          }
+          this.appRunRecordIds.delete(identity!);
+        }
+      }
+      if (terminal.length) await this.cleanupCompleted(epoch, revision);
+      if (terminal.length !== events.length) {
+        this.retryAt = this.now() + (this.options.retryMs ?? 60_000);
+        break;
+      }
+    }
+    if (this.dirty && current()) await this.tryPersist();
+  }
+
+  private async cleanupCompleted(epoch: string, revision: number): Promise<void> {
+    const current = () =>
+      this.enabled && revision === this.revision && this.consent?.epoch === epoch;
+    const retained = new Set(
+      this.records.filter((record) => record.completed).map((record) => record.id),
+    );
+    for (const identity of this.completionRetryAt.keys())
+      if (!retained.has(identity)) this.completionRetryAt.delete(identity);
+    const due = this.records.filter(
+      (record) => record.completed && this.now() >= (this.completionRetryAt.get(record.id) ?? 0),
+    );
+    if (!due.length || !current()) return;
+    // If completion cannot be committed, retain the memory marker and do not
+    // treat an undeleted producer as a fresh event on the next flush.
+    if (this.dirty && !(await this.tryPersist())) {
+      if (current())
+        for (const record of due) this.completionRetryAt.set(record.id, this.now() + 60_000);
+      return;
+    }
+    if (!current()) return;
+    for (const record of due) {
+      if (!current()) return;
+      try {
+        await rm(join(this.inbox, `${record.id}.json`), { force: true });
+      } catch {
+        if (!current()) return;
+        this.completionRetryAt.set(record.id, this.now() + 60_000);
+        continue;
+      }
+      if (!current()) return;
+      this.records = this.records.filter((item) => item.id !== record.id);
+      this.completionRetryAt.delete(record.id);
+      this.dirty = true;
+    }
+    if (this.dirty && current()) await this.tryPersist();
+  }
+  private backoff(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(finish, ms);
+      timer.unref();
+      const self = this;
+      function finish() {
+        clearTimeout(timer);
+        self.wakeRetry = null;
+        resolve();
+      }
+      this.wakeRetry = finish;
+    });
+  }
+  private async recoverSession(): Promise<boolean> {
+    const epoch = this.consent?.epoch;
+    const revision = this.revision;
+    if (!epoch) return true;
+    try {
+      const marker = (await readJson(this.sessionPath, 4096)) as Record<string, unknown>;
+      if (!marker || typeof marker !== 'object' || Array.isArray(marker)) return true;
+      if (
+        marker.version !== 1 ||
+        marker.epoch !== epoch ||
+        marker.active !== true ||
+        !Number.isSafeInteger(marker.timestamp_ms) ||
+        (marker.timestamp_ms as number) < this.now() - TTL_MS ||
+        (marker.timestamp_ms as number) > this.now()
+      )
+        return true;
+      const startedAt = marker.started_at_ms ?? marker.timestamp_ms;
+      if (
+        !Number.isSafeInteger(startedAt) ||
+        (startedAt as number) > (marker.timestamp_ms as number)
+      )
+        return true;
+      // The marker proves collection was enabled for THIS session. Earlier
+      // manual journals are never replayed merely because somebody opts in.
+      const projected: DiagnosticEvent = {
+        category: 'app_crash',
+        stage: 'startup',
+        reason: 'unclean_exit',
+      };
+      const evidenceAt = marker.timestamp_ms as number;
+      const previousVersion =
+        typeof marker.app_version === 'string'
+          ? marker.app_version
+          : this.options.identity.app_version;
+      const previousSession =
+        typeof marker.session_id === 'string' && HEX_ID.test(marker.session_id)
+          ? marker.session_id
+          : undefined;
+      if (
+        previousSession &&
+        this.records.some(
+          (record) =>
+            record.session_id === previousSession &&
+            record.props.category === 'app_crash' &&
+            record.props.source === 'electron_main' &&
+            (record.props.reason === 'unhandled_exception' ||
+              record.props.reason === 'unclean_exit') &&
+            record.props.app_version === previousVersion,
+        )
+      )
+        return true;
+      // Raw journal rows have timestamps, not fault-time operation permission.
+      // They cannot upgrade this consent-stamped session marker into a specific
+      // exception report. Bound fatal reports retain their already-projected
+      // trusted outbox records and are deduplicated by session above.
+      const previousIdentity = Object.fromEntries(
+        Object.entries(this.options.identity).map(([key, value]) => [key, marker[key] ?? value]),
+      );
+      const props = sanitizeProperties({
+        ...projected,
+        ...previousIdentity,
+        source: 'electron_main',
+      });
+      if (props && this.enabled && this.consent?.epoch === epoch && revision === this.revision)
+        this.add({
+          version: 1,
+          id: id(),
+          // Recovery must not renew the retention window of prior evidence.
+          timestamp_ms: evidenceAt,
+          epoch,
+          ...(previousSession ? { session_id: previousSession } : {}),
+          props,
+        });
+      return true;
+    } catch (error) {
+      // Only proven absent/invalid evidence can be replaced. Transient read
+      // errors retain the prior marker until the worker's bounded retry.
+      return discardableReadFailure(error);
+    }
+  }
+  private async writeSession(): Promise<void> {
+    if (!this.enabled || !this.consent) return;
+    const revision = this.revision;
+    const now = this.now();
+    this.sessionWriteAttemptAt = now;
+    this.sessionStartedAt ??= now;
+    await mkdir(this.options.directory, { recursive: true });
+    await writePrivate(
+      this.sessionPath,
+      JSON.stringify({
+        version: 1,
+        ...this.options.identity,
+        epoch: this.consent.epoch,
+        session_id: this.sessionId,
+        active: true,
+        timestamp_ms: now,
+        started_at_ms: this.sessionStartedAt,
+      }),
+    );
+    if (revision !== this.revision) await rm(this.sessionPath, { force: true }).catch(() => {});
+  }
+}

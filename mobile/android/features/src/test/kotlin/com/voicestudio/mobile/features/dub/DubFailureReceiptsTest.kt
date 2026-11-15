@@ -24,7 +24,7 @@ class DubFailureReceiptsTest {
                 // DataStore can commit before its suspended caller resumes.
                 if (id == first && unseen) receiptReturn.await()
                 unseen
-            }, display = { visible += it }, report = { throw it })
+            }, display = { visible += it }, report = { {error -> throw error} })
         }
         failures.value = setOf(first)
         runCurrent()

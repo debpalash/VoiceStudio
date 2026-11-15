@@ -16,6 +16,7 @@ import java.util.UUID
 class PhoneProductionWorker(context: Context,params: WorkerParameters): CoroutineWorker(context,params) {
     override suspend fun getForegroundInfo()=phoneJobForeground(applicationContext,id,"mobile.jobs.title",0)
     override suspend fun doWork(): Result {
+        val diagnosticConsent=AutomaticDiagnostics.observeConsent()
         try {
             val job=requireNotNull(inputData.getString("job"));require(UUID.fromString(job).toString()==job)
             setForeground(getForegroundInfo());requirePhonePower(applicationContext)
@@ -32,7 +33,10 @@ class PhoneProductionWorker(context: Context,params: WorkerParameters): Coroutin
                 try {store.render(request.project,renderer.configuration,progress={updates.trySend(it)}) {segment,selection ->requirePhonePower(applicationContext);renderer.render(segment,selection)}} finally {updates.close();reporter.join()}
             }
             return Result.success(workDataOf("file" to file.absolutePath,"percent" to 100))
-        } catch(e:CancellationException) {throw e} catch(e:Exception) {return Result.failure(workDataOf("error" to ((e as? ClientFailure)?.key ?: "mobile.errors.file")))}
+        } catch(e:CancellationException) {throw e} catch(e:Exception) {
+            AutomaticDiagnostics.captureObservedFailure(e,diagnosticConsent,stage="generation")
+            return Result.failure(workDataOf("error" to ((e as? ClientFailure)?.key ?: "mobile.errors.file")))
+        }
     }
     companion object {
         suspend fun enqueue(context: Context,project: ProductionProject,tts: PhoneModel?,clone: PhoneModel?): UUID=withContext(Dispatchers.IO) {

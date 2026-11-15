@@ -6,6 +6,8 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import com.voicestudio.mobile.local.*
 import com.voicestudio.mobile.data.ModelDownloadJobs
+import com.voicestudio.mobile.data.AutomaticDiagnostics
+import com.voicestudio.mobile.data.CompanionDiagnosticObservation
 import com.voicestudio.mobile.network.ClientFailure
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
@@ -26,7 +28,7 @@ data class PhoneState(val models: List<PhoneModel> = emptyList(), val installed:
             ?: candidates.firstOrNull {canRun(it)} ?: candidates.firstOrNull {it.fits(ramBytes)} ?: candidates.firstOrNull()
     fun accepted(model: PhoneModel): Boolean = !model.gated || receipts[model.id]?.lastOrNull()?.let {it.accepted&&it.fingerprint==model.licence.termsFingerprint}==true
 }
-class PhoneStudio(context: Context, private val scope: CoroutineScope, private val failure: (Throwable)->Unit, private val retryFailure: (Throwable,()->Unit)->Unit = {error,_ ->failure(error)},
+class PhoneStudio(context: Context, private val scope: CoroutineScope, private val failure: (Throwable,CompanionDiagnosticObservation?)->Unit, private val retryFailure: (Throwable,()->Unit,CompanionDiagnosticObservation?)->Unit = {error,_,observation ->failure(error,observation)},
     engine: LocalEngine? = null, private val decoder: AudioDecoder = AndroidAudioDecoder()) {
     private val application=context.applicationContext
     private val runtime=PhoneRuntime.get(application)
@@ -46,18 +48,23 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
     private var inferenceIsClone=false
     /** Set once a clone's voice is saved: its cleanup still shows progress but can no longer be interrupted. */
     private var cloneSaved=false
+    private fun failed(error:Throwable,observation:CompanionDiagnosticObservation?,retry:(()->Unit)?=null) {
+        if(retry==null) failure(error,observation) else retryFailure(error,retry,observation)
+    }
     /** A cancelled job finishing late must not clear the progress of the job that replaced it. */
     private fun clearProgress(owner: Job?) {if(inference===owner||inference?.isActive!=true) mutable.update {it.copy(progress=null)}}
-    init {scope.launch {
+    init {
+        val observation=AutomaticDiagnostics.observeConsent()
+        scope.launch {
         try {
             val models=withContext(Dispatchers.IO) {application.assets.open("models.json").bufferedReader().use {ModelCatalog.decode(it.readText()).models}}
             mutable.update {it.copy(models=models,loading=false)}
-            try {ModelDownloadJobs.restore(application,models,failure)}
+            try {ModelDownloadJobs.restore(application,models) {failed(it,observation)}}
             catch(e:CancellationException) {throw e}
-            catch(e:Exception) {failure(e as? ClientFailure ?: ClientFailure("mobile.local.download_failed"))}
+            catch(e:Exception) {failed(e as? ClientFailure ?: ClientFailure("mobile.local.download_failed"),observation)}
             refresh()
             scope.launch {downloads.progress.map {it.mapValues {entry->entry.value.running to entry.value.stage}}.distinctUntilChanged().collect {refresh()}}
-        } catch(e:CancellationException) {throw e} catch(e:Exception) {mutable.update {it.copy(loading=false)};failure(ClientFailure("mobile.local.catalogue_failed"))}
+        } catch(e:CancellationException) {throw e} catch(e:Exception) {mutable.update {it.copy(loading=false)};failed(ClientFailure("mobile.local.catalogue_failed"),observation)}
     }}
     suspend fun refresh() = withContext(Dispatchers.IO) {
         val installed=mutable.value.models.filter(downloads::installed).map {it.id}.toSet()
@@ -72,26 +79,29 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
     }
     fun download(model: PhoneModel, allowMobile: Boolean) {
         if(downloads.progress.value[model.id]?.running==true) return
-        try {ModelDownloadJobs.enqueue(application,model,allowMobile)} catch(e:Exception) {retryFailure(e) {download(model,allowMobile)}}
+        val observation=AutomaticDiagnostics.observeConsent()
+        try {ModelDownloadJobs.enqueue(application,model,allowMobile)} catch(e:Exception) {failed(e,observation) {download(model,allowMobile)}}
     }
-    fun pauseDownload(model: PhoneModel) {try {ModelDownloadJobs.pause(application,model.id)} catch(e:Exception) {failure(e)}}
-    fun cancelDownload(model: PhoneModel) {try {ModelDownloadJobs.cancel(application,model.id)} catch(e:Exception) {failure(e)}}
-    fun delete(model: PhoneModel) {scope.launch {
+    fun pauseDownload(model: PhoneModel) {val observation=AutomaticDiagnostics.observeConsent();try {ModelDownloadJobs.pause(application,model.id)} catch(e:Exception) {failed(e,observation)}}
+    fun cancelDownload(model: PhoneModel) {val observation=AutomaticDiagnostics.observeConsent();try {ModelDownloadJobs.cancel(application,model.id)} catch(e:Exception) {failed(e,observation)}}
+    fun delete(model: PhoneModel) {val observation=AutomaticDiagnostics.observeConsent();scope.launch {
         try {ModelDownloadJobs.stop(application,model.id);cancelInference();downloads.delete(model);refresh()}
-        catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}
+        catch(e:CancellationException) {throw e} catch(e:Exception) {failed(e,observation)}
     }}
-    fun accept(model: PhoneModel, accepted: Boolean, fingerprint: String, completed: (Boolean)->Unit = {}) {scope.launch {
+    fun accept(model: PhoneModel, accepted: Boolean, fingerprint: String, completed: (Boolean)->Unit = {}) {val observation=AutomaticDiagnostics.observeConsent();scope.launch {
         try {
             if(!accepted) {ModelDownloadJobs.stop(application,model.id);cancelInference()}
             withContext(Dispatchers.IO) {licence.record(model,accepted,fingerprint)};refresh();completed(true)
-        } catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e);completed(false)}
+        } catch(e:CancellationException) {throw e} catch(e:Exception) {failed(e,observation);completed(false)}
     }}
     fun saveTranscript(text: String,modelID: String?=null) {
         if(text.isBlank()) return
-        scope.launch {try {transcripts.saveDictation(java.util.UUID.randomUUID().toString(),text.lineSequence().first().take(120),text,modelID)} catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}}
+        val observation=AutomaticDiagnostics.observeConsent()
+        scope.launch {try {transcripts.saveDictation(java.util.UUID.randomUUID().toString(),text.lineSequence().first().take(120),text,modelID)} catch(e:CancellationException) {throw e} catch(e:Exception) {failed(e,observation)}}
     }
     fun speak(model: PhoneModel, text: String, speaker: Int, voice: PhoneVoice? = null, language: String? = null) {
-        if(inference?.isActive==true) {failure(ClientFailure("mobile.android.operation_busy"));return}
+        val observation=AutomaticDiagnostics.observeConsent()
+        if(inference?.isActive==true) {failed(ClientFailure("mobile.android.operation_busy"),observation);return}
         inferenceIsClone=false
         inference=scope.launch {
             mutable.update {it.copy(progress=0f,interrupted=false)}
@@ -109,8 +119,8 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
                 }
                 val recent=withContext(Dispatchers.IO) {history()}
                 mutable.update {it.copy(audio=file,recent=recent)}
-            } catch(e:CancellationException) {throw e} catch(e:Exception) {retryFailure(e) {speak(model,text,speaker,voice,language)}}
-            catch(e:Throwable) {retryFailure(ClientFailure(if(e is LinkageError) "mobile.local.runtime_failed" else "mobile.local.inference_failed")) {speak(model,text,speaker,voice,language)}}
+            } catch(e:CancellationException) {throw e} catch(e:Exception) {ensureActive();failed(e,observation) {speak(model,text,speaker,voice,language)}}
+            catch(e:Throwable) {ensureActive();failed(ClientFailure(if(e is LinkageError) "mobile.local.runtime_failed" else "mobile.local.inference_failed"),observation) {speak(model,text,speaker,voice,language)}}
             finally {clearProgress(coroutineContext[Job])}
         }
     }
@@ -124,7 +134,8 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
         mutable.update {it.copy(recent=history(),audio=it.audio?.takeUnless {file -> file==generationFile(item)})}
     }}
     fun clone(name: String, file: File, model: PhoneModel, cloneModel: PhoneModel, consent: Boolean, created: ()->Unit = {}) {
-        if(inference?.isActive==true) {failure(ClientFailure("mobile.android.operation_busy"));return}
+        val observation=AutomaticDiagnostics.observeConsent()
+        if(inference?.isActive==true) {failed(ClientFailure("mobile.android.operation_busy"),observation);return}
         inferenceIsClone=true;cloneSaved=false
         inference=scope.launch {
             val job=coroutineContext[Job]
@@ -135,25 +146,25 @@ class PhoneStudio(context: Context, private val scope: CoroutineScope, private v
                 // clone (Retry would make a duplicate). Progress stays up so the editor remains busy until cleanup ends.
                 cloneSaved=true
                 withContext(NonCancellable) {
-                    try {refresh()} catch(e:Exception) {failure(e)}
+                    try {refresh()} catch(e:Exception) {failed(e,observation)}
                     withContext(Dispatchers.IO) {file.delete()}
                     mutable.update {it.copy(progress=null)}
                     // Saving and cleanup finish even after the screen is gone, but a screen that already cancelled must not navigate.
                     if(job?.isActive==true) created()
                 }
             }
-            catch(e:CancellationException) {throw e} catch(e:Exception) {retryFailure(e) {clone(name,file,model,cloneModel,consent,created)}}
-            catch(e:Throwable) {retryFailure(ClientFailure(if(e is LinkageError) "mobile.local.runtime_failed" else "mobile.local.inference_failed")) {clone(name,file,model,cloneModel,consent,created)}}
+            catch(e:CancellationException) {throw e} catch(e:Exception) {ensureActive();failed(e,observation) {clone(name,file,model,cloneModel,consent,created)}}
+            catch(e:Throwable) {ensureActive();failed(ClientFailure(if(e is LinkageError) "mobile.local.runtime_failed" else "mobile.local.inference_failed"),observation) {clone(name,file,model,cloneModel,consent,created)}}
             finally {clearProgress(coroutineContext[Job])}
         }
     }
-    fun renameVoice(voice: PhoneVoice, name: String) {scope.launch {try {voices.rename(voice,name);refresh()} catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}}}
-    fun deleteVoice(voice: PhoneVoice) {scope.launch {try {voices.delete(voice);refresh()} catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}}}
-    fun refreshDubs() {scope.launch {
+    fun renameVoice(voice: PhoneVoice, name: String) {val observation=AutomaticDiagnostics.observeConsent();scope.launch {try {voices.rename(voice,name);refresh()} catch(e:CancellationException) {throw e} catch(e:Exception) {failed(e,observation)}}}
+    fun deleteVoice(voice: PhoneVoice) {val observation=AutomaticDiagnostics.observeConsent();scope.launch {try {voices.delete(voice);refresh()} catch(e:CancellationException) {throw e} catch(e:Exception) {failed(e,observation)}}}
+    fun refreshDubs() {val observation=AutomaticDiagnostics.observeConsent();scope.launch {
         try {val records=dubs.list();mutable.update {it.copy(dubs=records)}}
-        catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}
+        catch(e:CancellationException) {throw e} catch(e:Exception) {failed(e,observation)}
     }}
-    fun saveProductionDraft(project: ProductionProject) {scope.launch {try {production.save(project)} catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}}}
+    fun saveProductionDraft(project: ProductionProject) {val observation=AutomaticDiagnostics.observeConsent();scope.launch {try {production.save(project)} catch(e:CancellationException) {throw e} catch(e:Exception) {failed(e,observation)}}}
     /** A user cancel: stops on-device work and clears any interrupted notice. */
     fun cancelInference() {inference?.cancel();mutable.update {it.copy(interrupted=false)}}
     /** Leaving the foreground or tearing the screen down stops on-device work; unlike a user cancel it never clears the

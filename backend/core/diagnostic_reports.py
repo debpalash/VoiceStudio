@@ -1,0 +1,1244 @@
+"""Explicit-consent, bounded technical diagnostics. Never serialize exception messages.
+
+Capture is a memory-only enqueue. One worker owns consent reads, sanitization,
+private persistence and delivery. Desktop Python only writes the Electron inbox.
+"""
+from __future__ import annotations
+
+import builtins
+from contextlib import contextmanager
+from contextvars import ContextVar
+import errno
+import hashlib
+import itertools
+import json
+import math
+import os
+from pathlib import Path
+import platform
+import queue
+import re
+import sys
+import tempfile
+import threading
+import time
+from types import ModuleType
+import uuid
+from urllib.parse import urlsplit
+
+_ROOT = Path(__file__).resolve().parents[2]
+_CONFIG = _ROOT / 'config' / 'diagnostics.json'
+_HEX = re.compile(r'[a-f0-9]{32}')
+_PROFILE = re.compile(r'install_[a-f0-9]{32}')
+_KEYS = {'category','source','stage','error_code','error_type','engine_id','app_version','build_commit','platform','arch','device_family','exit_code','signal','reason','frames','fingerprint','uptime_bucket','elapsed_bucket','memory_bucket','disk_bucket','occurrences','schema_version'}
+_ENUMS = {'category':'categories','source':'sources','stage':'stages','error_code':'error_codes','error_type':'error_types','engine_id':'engine_ids','platform':'platforms','arch':'arches','device_family':'device_families','signal':'signals','reason':'reasons'}
+_FALLBACKS = {'category':'operation_failed','source':'backend','stage':'other','error_code':'UNKNOWN','error_type':'OtherError','engine_id':'unknown','platform':'unknown','arch':'unknown','device_family':'unknown','reason':'unknown','signal':'unknown'}
+_CURRENT_APP_VERSION = object()
+_GRANT_UNSET = object()
+_grant_authority = ContextVar('diagnostic_grant_authority', default=_GRANT_UNSET)
+# Python exception hooks run after a bound callable's context has unwound.
+# Authority stays on that exception, without retaining it in thread-local state.
+_thread_fault_authority = threading.local()
+_FAULT_EPOCH_KEY = '_voicestudio_diagnostic_fault_epoch'
+_FAULT_EPOCH_MARKER = object()
+
+
+class _CapturedFailureEvent(str):
+    """Wire-identical SSE text with a memory-only captured-cause receipt."""
+    __slots__ = ('_diagnostic_cause',)
+
+
+def preserve_failure_identity(event, error, *, reported):
+    """Never retain an exception or add control fields to the public event."""
+    if reported is not True or not isinstance(event, str):
+        return event
+    try:
+        marker = BaseException.__getattribute__(error, '__dict__').get('_voicestudio_diagnostic_token')
+        if (isinstance(marker, tuple) and len(marker) == 2 and marker[0] == inherited_grant()
+                and isinstance(marker[0], str) and _HEX.fullmatch(marker[0])
+                and type(marker[1]) is int):
+            update = _CapturedFailureEvent(event)
+            update._diagnostic_cause = marker
+            return update
+    except Exception:
+        pass  # Missing evidence leaves the dispatcher's normal capture intact.
+    return event
+
+
+def failure_already_captured(event, epoch):
+    return type(event) is _CapturedFailureEvent and event._diagnostic_cause[0] == epoch
+
+
+@contextmanager
+def grant_scope(epoch):
+    """Bind only a local observed grant; None means known OFF, not unknown."""
+    token = _grant_authority.set(epoch)
+    try:
+        yield
+    finally:
+        _grant_authority.reset(token)
+
+
+def inherited_grant():
+    """Nested work inherits its owner; an unbound root observes cached consent."""
+    bound = _grant_authority.get()
+    return observe_grant() if bound is _GRANT_UNSET else bound
+
+
+async def await_owned(awaitable, epoch):
+    with grant_scope(epoch):
+        return await awaitable
+
+
+def bind_callable(function, epoch=_GRANT_UNSET):
+    """Carry only authority across an owned executor boundary, not request data."""
+    if epoch is _GRANT_UNSET:
+        epoch = inherited_grant()
+    def run(*args, **kwargs):
+        depth = getattr(_thread_fault_authority, 'depth', 0)
+        _thread_fault_authority.depth = depth + 1
+        try:
+            with grant_scope(epoch):
+                try:
+                    result = function(*args, **kwargs)
+                except BaseException as error:
+                    # A propagated inner fault keeps its more specific owner,
+                    # including across successful nested cleanup in a finally.
+                    try:
+                        state = BaseException.__getattribute__(error, '__dict__')
+                        marker = state.get(_FAULT_EPOCH_KEY)
+                        if not isinstance(marker, tuple) or len(marker) != 2 or marker[0] is not _FAULT_EPOCH_MARKER:
+                            state[_FAULT_EPOCH_KEY] = (_FAULT_EPOCH_MARKER, epoch)
+                    except Exception:
+                        pass  # Uninspectable exceptions keep unknown authority.
+                    raise
+                return result
+        finally:
+            _thread_fault_authority.depth = depth
+    return run
+
+
+def _consume_thread_fault_epoch(error):
+    try:
+        marker = BaseException.__getattribute__(error, '__dict__').pop(_FAULT_EPOCH_KEY, None)
+        if isinstance(marker, tuple) and len(marker) == 2 and marker[0] is _FAULT_EPOCH_MARKER:
+            return marker[1]
+    except Exception:
+        pass  # Never infer authority from an unrelated or uninspectable fault.
+    return _GRANT_UNSET
+
+
+def _app_version(value):
+    if isinstance(value, str) and len(value) <= 64 and re.fullmatch(r'\d{1,4}\.\d{1,4}\.\d{1,4}(?:-[a-z0-9]+(?:[.-][a-z0-9]+)*|(?:a|b|rc|dev)\d{1,6})?', value):
+        return value
+    return None
+
+
+def _diagnostic_destination():
+    """Diagnostic transport requires TLS, except exact loopback development URLs."""
+    from core.diagnostic_app_transport import app_destination
+    app = app_destination()
+    if app:
+        return app
+    from core.analytics import _destination
+    from core.analytics_transport import valid_url
+    destination = _destination()
+    if not isinstance(destination, dict) or not isinstance(destination.get('site'), str) or not re.fullmatch(r'[a-z0-9]{6,32}', destination['site']):
+        return {}
+    for key in ('host', 'appUrl'):
+        value = destination.get(key)
+        if not valid_url(value, origin=key == 'host'):
+            return {}
+        parsed = urlsplit(value)
+        if parsed.scheme != 'https' and parsed.hostname not in {'localhost', '127.0.0.1', '::1'}:
+            return {}
+    return destination
+
+
+def _schema():
+    value = json.loads(_CONFIG.read_text(encoding='utf-8'))
+    if not isinstance(value, dict) or value.get('schema_version') != 1:
+        raise ValueError('diagnostic schema unavailable')
+    value['_frame_paths'] = frozenset(value.get('frame_paths',[]))
+    return value
+
+
+def _limit(schema, key, ceiling):
+    value = schema.get('limits',{}).get(key,ceiling)
+    return min(value,ceiling) if type(value) is int and value > 0 else ceiling
+
+
+def _killed():
+    return any(os.environ.get(key, '').strip().lower() in {'1', 'true', 'yes', 'on'}
+               for key in ('OMNIVOICE_DIAGNOSTICS_DISABLED','OMNIVOICE_ANALYTICS_DISABLED'))
+
+
+def _frames(value, schema):
+    if not isinstance(value, str) or len(value.encode('utf-8')) > _limit(schema,'frame_bytes',1800):
+        return ''
+    known = schema.get('_frame_paths',frozenset(schema.get('frame_paths', [])))
+    result = []
+    for line in value.splitlines()[:24]:
+        match = re.fullmatch(r'([^:\\]+):(\d{1,8})(?::(\d{1,8}))?', line)
+        if match and match[1] in known and 0 < int(match[2]) <= 10000000 and (not match[3] or 0 < int(match[3]) <= 10000000):
+            result.append(line)
+    return '\n'.join(result)
+
+
+def sanitize_props(raw, schema=None):
+    """Closed values as well as keys; safe again at the persistence/send boundary."""
+    schema = schema or _schema()
+    if not isinstance(raw, dict):
+        raise ValueError('invalid diagnostic properties')
+    result = {}
+    for key, values in _ENUMS.items():
+        value = raw.get(key, _FALLBACKS.get(key))
+        if value is not None:
+            result[key] = value if isinstance(value, str) and value in schema.get(values, []) else _FALLBACKS.get(key, 'unknown')
+    for key in ('uptime_bucket','elapsed_bucket','memory_bucket','disk_bucket'):
+        if key in raw:
+            values = schema.get(key + 's', schema.get('buckets', []))
+            result[key] = raw[key] if raw[key] in values else 'unknown'
+    for key in ('app_version','build_commit'):
+        value = raw.get(key)
+        if key == 'app_version' and _app_version(value) is not None:
+            result[key] = value
+        elif key == 'build_commit' and isinstance(value, str) and re.fullmatch(r'[a-f0-9]{7,40}', value):
+            result[key] = value
+    exit_code = raw.get('exit_code')
+    if type(exit_code) is int and -(2**31) <= exit_code <= 2**32-1:
+        result['exit_code'] = exit_code
+    result['occurrences'] = min(1000000, max(1, raw.get('occurrences', 1))) if type(raw.get('occurrences', 1)) is int else 1
+    result['schema_version'] = 1
+    frames = _frames(raw.get('frames', ''), schema)
+    if frames:
+        result['frames'] = frames
+    # No caller-supplied hash, message or arbitrary identifier participates.
+    technical = {k:v for k,v in result.items() if k not in {'occurrences','schema_version'}}
+    result['fingerprint'] = hashlib.sha256(json.dumps(technical, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    return result
+
+
+def validate_record(value, epoch, schema=None):
+    if not isinstance(value, dict) or set(value) != {'version','id','timestamp_ms','epoch','props'}:
+        raise ValueError('invalid diagnostic record')
+    if value['version'] != 1 or not isinstance(value['id'], str) or not _HEX.fullmatch(value['id']) or value['epoch'] != epoch:
+        raise ValueError('invalid diagnostic identity')
+    stamp = value['timestamp_ms']
+    now = int(time.time()*1000)
+    if type(stamp) is not int or not now-_limit(schema or _schema(),'ttl_ms',604800000) <= stamp <= now+60000:
+        raise ValueError('expired diagnostic record')
+    return {**value, 'props':sanitize_props(value['props'], schema)}
+
+
+_causal_counter = itertools.count(1)
+
+
+def _exception_fields(error, schema):
+    """Bounded projection only: no __str__, filesystem access or retained frames."""
+    result = {}
+    if not isinstance(error, BaseException):
+        return result
+    kinds = type(error).__mro__
+    for cls in kinds:
+        if cls.__module__ == 'builtins' and cls.__name__ in schema.get('error_types', []) and getattr(builtins, cls.__name__, None) is cls:
+            result['error_type'] = cls.__name__
+            break
+    result.setdefault('error_type','OtherError')
+    # Capture must not import engine code. Match the actual already-loaded
+    # class by identity so lookalike module/name metadata cannot spoof it.
+    manager = sys.modules.get('services.model_manager')
+    compute_timeout = (
+        manager.__dict__.get('GpuJobTimeoutError') if type(manager) is ModuleType else None
+    )
+    if MemoryError in kinds:
+        result['error_code'] = 'HOST_MEMORY_EXHAUSTED'
+    elif any(cls is compute_timeout for cls in kinds):
+        result['error_code'] = 'UNKNOWN'
+    elif TimeoutError in kinds or ConnectionError in kinds:
+        result['error_code'] = 'NETWORK_ERROR'
+    elif OSError in kinds:
+        number = BaseException.__getattribute__(error,'errno')
+        if number in (errno.ENOSPC,errno.EDQUOT):
+            result['error_code'] = 'DISK_FULL'
+    lines = []
+    total = 0
+    tb = BaseException.__getattribute__(error,'__traceback__')
+    known = schema.get('_frame_paths',schema.get('frame_paths',[]))
+    for _ in range(24):
+        if tb is None:
+            break
+        filename = tb.tb_frame.f_code.co_filename
+        prefix = str(_ROOT) + os.sep
+        relative = filename[len(prefix):].replace(os.sep,'/') if filename.startswith(prefix) else filename.replace(os.sep,'/')
+        if relative in known:
+            line = f'{relative}:{tb.tb_lineno}'
+            if total + len(line.encode('utf-8')) + 1 <= 1800:
+                lines.append(line)
+                total += len(line.encode('utf-8')) + 1
+        tb = tb.tb_next
+    if lines:
+        result['frames'] = '\n'.join(lines)
+    return result
+
+
+def _atomic(path, value):
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix='.diagnostic-', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+            json.dump(value, stream, allow_nan=False, separators=(',', ':'))
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+        if os.name != 'nt':
+            directory = os.open(path.parent, os.O_RDONLY | getattr(os, 'O_DIRECTORY', 0))
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            # A successful replacement has already consumed the temporary file.
+            pass
+
+
+class _CaptureQueue(queue.Queue):
+    def peek_nowait(self):
+        # Retain the slot while the sole worker publishes. Producers only append,
+        # so a failed write needs neither a second queue nor a racy re-insertion.
+        with self.mutex:
+            if not self._qsize():
+                raise queue.Empty
+            return self.queue[0]
+
+    def defer_nowait(self, expected):
+        # Rotation preserves the occupied slot atomically: a producer cannot
+        # take a temporary vacancy between a failed cleanup's get and put.
+        with self.mutex:
+            if self._qsize() and self.queue[0] is expected:
+                self.queue.rotate(-1)
+
+
+class ConsentExternallyManaged(PermissionError):
+    """The desktop authority, rather than Python, owns diagnostic consent."""
+
+
+class Reporter:
+    def __init__(self):
+        from core.version import APP_VERSION
+        self.app_version = _app_version(APP_VERSION)
+        self.managed = os.environ.get('OMNIVOICE_DIAGNOSTICS_DIR')
+        from core.config import DATA_DIR
+        self.root = Path(self.managed) if self.managed else Path(DATA_DIR) / 'diagnostics'
+        self.directory = self.root / ('inbox' if self.managed else 'outbox')
+        self.lock = threading.RLock()
+        self.intake = _CaptureQueue(maxsize=64)
+        self.acks = _CaptureQueue(maxsize=64)
+        self.ack_lock = threading.Lock()
+        # This gate protects only cached authority, never filesystem work.
+        self.consent_revision = 0
+        self.available = bool(self.managed)
+        self.stop = threading.Event()
+        self.enabled = False
+        self.consent_failed = False
+        self.consent_read_failed = False
+        self.consent_read_retry_at = 0
+        self.revocation_retry_at = 0
+        self.kill_observed = False
+        self.prompted = False
+        self.epoch = None
+        self.profile = None
+        self.dropped = 0
+        self.pending = 0
+        self.transport = None
+        self.inflight = {}
+        self.retry_at = {}
+        self.ack_cleanup_at = {}
+        self.ack_cleanup_count = 0
+        self.ack_cleanup_bytes = 0
+        self.storage_retry_at = 0
+        self.purge_retry_at = 0
+        self.publication = None
+        self.schema = None
+        self.marker_owned = False
+        self.marker_active_at = None
+        self.recovered_marker = None
+        self.session_recovery = None
+        self.session_retired = False
+        self.seen_errors = []
+        self.started = time.time()
+        self.app_delivery_paused = False
+        self.last_delivery_reason = None
+        # Correlation is per run, in memory only, and never labels restored files.
+        self.current_run_records = set()
+        self.correlation_retired = False
+        self.run_session_id = None
+        self.run_session_event_id = None
+        self.run_session_epoch = None
+        self.run_session_profile = None
+        self.run_session_submitted = False
+        self.run_session_terminal = False
+        self.run_session_retry_at = 0
+        self.run_session_timestamp_ms = None
+        self.thread = threading.Thread(target=self._run, name='diagnostic-reports', daemon=True)
+
+    def start(self):
+        self.thread.start()
+
+    def _capacity(self, kind):
+        """Allocate desktop durable storage between main and Python stages."""
+        ceiling = 64 if kind == 'count' else 524288
+        limit = _limit(self.schema, 'queue_' + kind, ceiling)
+        if self.managed:
+            limit = min(limit, _limit(self.schema, 'managed_inbox_' + kind, ceiling // 2))
+        return limit
+
+    def _hard_killed(self):
+        current = _killed()
+        # Standalone consent belongs to this process. Managed consent remains
+        # desktop-owned; Python must not rewrite its authority's grant.
+        if current and not self.managed:
+            self.kill_observed = True
+        return current or self.kill_observed
+
+    def capture(self, category, *, stage='other', error=None, error_code=None, engine_id=None, _reported_app_version=_CURRENT_APP_VERSION, _expected_epoch=_GRANT_UNSET, _reported_timestamp_ms=None, **metadata):
+        try:
+            # Only bounded projection against cached policy here; no retained
+            # exceptions, file reads or waits on the diagnostic worker.
+            hard_killed = self._hard_killed()
+            epoch = self.epoch
+            if not self.enabled or not epoch or hard_killed or self.stop.is_set():
+                return False
+            bound = _grant_authority.get()
+            if bound is not _GRANT_UNSET and (bound is None or bound != epoch):
+                return False
+            if _expected_epoch is not _GRANT_UNSET and (type(_expected_epoch) is not str or _expected_epoch != epoch):
+                return False
+            schema = self.schema
+            if schema is None:
+                return False
+            timestamp = int(time.time()*1000) if _reported_timestamp_ms is None else _reported_timestamp_ms
+            if type(timestamp) is not int or not self._recent(timestamp):
+                return False
+            fields = _exception_fields(error,schema)
+            fields.update({k:v for k,v in metadata.items() if k in _KEYS and (type(v) in (bool,int) or isinstance(v,str) and len(v.encode('utf-8')) <= 1800)})
+            fields.update(category=category,stage=stage,source='renderer' if metadata.get('source') == 'renderer' else 'backend')
+            if error_code is not None:
+                fields['error_code'] = error_code
+            if engine_id is not None:
+                fields['engine_id'] = engine_id
+            token = None
+            if isinstance(error,BaseException):
+                state = BaseException.__getattribute__(error,'__dict__')
+                marker = state.get('_voicestudio_diagnostic_token')
+                if not isinstance(marker,tuple) or len(marker) != 2 or marker[0] != epoch or type(marker[1]) is not int:
+                    marker = (epoch,next(_causal_counter))
+                    state['_voicestudio_diagnostic_token'] = marker
+                token = marker[1]
+            # Only local session recovery can supply a prior runtime version.
+            # Keep it separate from caller/UI metadata and from later spool IO.
+            reported_version = self.app_version if _reported_app_version is _CURRENT_APP_VERSION else _app_version(_reported_app_version)
+            item = (epoch,sanitize_props(fields,schema),token,reported_version,timestamp,_reported_timestamp_ms is None)
+            try:
+                self.intake.put_nowait(item)
+                return True
+            except queue.Full:
+                self.dropped += 1
+        except Exception:
+            # An uninspectable failure is dropped; never fall back to its raw
+            # message or let optional diagnostic projection interrupt the app.
+            pass
+        return False
+
+    def _recent(self, timestamp):
+        now = time.time()*1000
+        return now-_limit(self.schema,'ttl_ms',604800000) <= timestamp <= now+60000
+
+    def _consent(self):
+        try:
+            if self.managed:
+                path = self.root / 'consent.json'
+                if path.is_symlink() or path.stat().st_size > 4096:
+                    return {}
+                data = json.loads(path.read_text(encoding='utf-8'))
+                return data if isinstance(data, dict) and data.get('version') == 1 else {}
+            from core import prefs
+            if (self.root / 'revoked.json').exists():
+                return {'version':1, 'enabled':False, 'prompted':True}
+            data = prefs._load(strict=True)
+            return {'version':1,'enabled':data.get('diagnostics_enabled') is True,'prompted':data.get('diagnostics_prompted') is True,
+                    'epoch':data.get('diagnostics_epoch'),'profile_id':data.get('diagnostics_profile_id')}
+        except FileNotFoundError:
+            return {}  # Normal absence is known OFF, not an unread grant.
+        except OSError:
+            raise
+        except (ValueError, TypeError, RecursionError):
+            return {}  # Proven invalid authority remains fail-closed.
+
+    def _purge(self, *, force=False):
+        self.session_recovery = None
+        self.current_run_records.clear()
+        self.ack_cleanup_at.clear()
+        self.ack_cleanup_count = self.ack_cleanup_bytes = 0
+        self.marker_owned = False
+        self.pending = 0
+        if not force and time.monotonic() < self.purge_retry_at:
+            return
+        failed = False
+        for folder in (self.root / 'outbox', self.root / 'inbox') if not self.managed else (self.directory,):
+            try:
+                if not folder.is_dir() or folder.is_symlink():
+                    continue
+                paths = list(folder.iterdir())
+            except OSError:
+                failed = True
+                continue
+            for path in paths:
+                try:
+                    if path.is_file() and (_HEX.fullmatch(path.stem) or path.name.startswith('.diagnostic-')):
+                        path.unlink(missing_ok=True)
+                except OSError:
+                    # One locked report must not protect later reports or the
+                    # crash marker from a successful withdrawal cleanup.
+                    failed = True
+        if not self.managed:
+            try:
+                (self.root / 'session.json').unlink(missing_ok=True)
+            except OSError:
+                failed = True
+        self.purge_retry_at = time.monotonic()+60 if failed else 0
+
+    def refresh(self):
+        with self.lock:
+            with self.ack_lock:
+                revision = self.consent_revision
+            hard_killed = self._hard_killed()
+            recovering = self.consent_read_failed
+            if recovering and time.monotonic() < self.consent_read_retry_at:
+                # A newly observed kill still attempts OFF immediately. Once
+                # that choice failed, retry its IO at the same bounded cadence.
+                if not hard_killed or self.managed or self.consent_failed:
+                    return
+            try:
+                data = self._consent()
+            except OSError:
+                with self.ack_lock:
+                    if revision != self.consent_revision:
+                        return
+                    self.enabled = False
+                    self.consent_read_failed = True
+                    self.consent_read_retry_at = time.monotonic()+60
+                    transport, self.transport = self.transport, None
+                    if self.run_session_epoch is not None and self.run_session_epoch == self.epoch and not self.run_session_terminal and not self.correlation_retired:
+                        self.run_session_submitted = False
+                        self.run_session_retry_at = self.consent_read_retry_at
+                # Cancel sending without erasing unread authority's evidence or
+                # an accepted publication/session recovery awaiting durable IO.
+                self.inflight = {key:value for key,value in self.inflight.items() if key in self.ack_cleanup_at}
+                if transport:
+                    transport.shutdown()
+                if hard_killed and not self.managed:
+                    with self.ack_lock:
+                        withdrawal_revision = self.consent_revision+1
+                    try:
+                        # Kill is withdrawal even when shared prefs are unread:
+                        # the existing OFF seam writes its fence before reading.
+                        self.consent(False)
+                    except OSError:
+                        with self.ack_lock:
+                            if self.consent_revision == withdrawal_revision:
+                                self.consent_read_failed = True
+                                self.consent_read_retry_at = time.monotonic()+60
+                return
+            with self.ack_lock:
+                if revision != self.consent_revision:
+                    return
+                self.consent_read_failed = False
+                self.consent_read_retry_at = 0
+            if hard_killed and not self.managed and data.get('enabled') is True and time.monotonic() >= self.revocation_retry_at:
+                with self.ack_lock:
+                    withdrawal_revision = self.consent_revision+1
+                try:
+                    # Preserve analytics/shared prefs, and retain the existing
+                    # private revocation tombstone if saving OFF fails.
+                    self.consent(False)
+                except OSError:
+                    # Cached delivery is already closed. Retry failed OFF
+                    # storage without hammering it or delaying a newer choice.
+                    with self.ack_lock:
+                        if self.consent_revision == withdrawal_revision:
+                            self.revocation_retry_at = time.monotonic()+60
+                data = self._consent()
+            with self.ack_lock:
+                if revision != self.consent_revision:
+                    return
+            epoch, profile = data.get('epoch'), data.get('profile_id')
+            valid = data.get('enabled') is True and isinstance(epoch,str) and _HEX.fullmatch(epoch) and isinstance(profile,str) and _PROFILE.fullmatch(profile)
+            enabled = bool(valid and not hard_killed and not self.consent_failed)
+            self.prompted = data.get('prompted', bool(data)) is True
+            resume_same_grant = recovering and enabled and self.epoch == epoch and self.profile == profile
+            if self.epoch != epoch or (not resume_same_grant and (self.enabled != enabled or recovering)):
+                if self.epoch and (not enabled or self.epoch != epoch):
+                    self._retire_correlation()
+                with self.ack_lock:
+                    self.enabled = False
+                if self.transport:
+                    self.transport.shutdown()
+                    self.transport = None
+                self.seen_errors.clear()
+                self.inflight.clear()
+                self.retry_at.clear()
+                self.ack_cleanup_at.clear()
+                self.ack_cleanup_count = self.ack_cleanup_bytes = 0
+                self.storage_retry_at = 0
+                self.publication = None
+                self.session_recovery = None
+                if not enabled:
+                    try:
+                        self._purge()
+                    except OSError:
+                        self.dropped += 1
+                with self.ack_lock:
+                    while not self.acks.empty():
+                        try:self.acks.get_nowait()
+                        except queue.Empty:break
+                    if revision == self.consent_revision:
+                        self.epoch, self.profile = epoch if valid else None, profile if valid else None
+            with self.ack_lock:
+                # A read begun before OFF cannot publish its old grant after
+                # withdrawal has closed the independent memory-only gate.
+                if revision == self.consent_revision and not self.consent_failed:
+                    self.enabled = enabled and self.schema is not None
+
+    def _files(self):
+        records = []
+        self.ack_cleanup_count = self.ack_cleanup_bytes = 0
+        if not self.directory.exists() or self.directory.is_symlink():
+            pending_id = {self.publication[1]['id']} if self.publication is not None else set()
+            self.current_run_records.intersection_update(pending_id)
+            return records
+        total = 0
+        for path in sorted(self.directory.iterdir())[:256]:
+            try:
+                if path.is_symlink() or not re.fullmatch(r'[a-f0-9]{32}\.json',path.name):
+                    continue
+                size = path.stat().st_size
+                if path.stem in self.ack_cleanup_at:
+                    # Terminal evidence is never eligible for another send.
+                    # Reserve its actual occupied space without letting expiry
+                    # or malformed-file pruning bypass the cleanup deadline.
+                    self.ack_cleanup_count += 1
+                    self.ack_cleanup_bytes += size
+                    total += size
+                    continue
+                if size > _limit(self.schema,'body_bytes',8192):
+                    path.unlink()
+                    self.dropped += 1
+                    continue
+                record = validate_record(json.loads(path.read_text(encoding='utf-8')), self.epoch, self.schema)
+                if path.stem != record['id'] or len(records)+self.ack_cleanup_count >= self._capacity('count') or total+size > self._capacity('bytes'):
+                    raise ValueError('diagnostic queue capacity')
+                total += size
+                records.append(record)
+            except FileNotFoundError:
+                # Electron normally consumes and unlinks immutable inbox IDs.
+                continue
+            except OSError:
+                # An unread record is not corrupt. Preserve it and defer intake
+                # publication too, since its size/identity may still be unknown.
+                raise
+            except (ValueError, TypeError, KeyError, RecursionError):
+                path.unlink(missing_ok=True)
+                self.current_run_records.discard(path.stem)
+                self.dropped += 1
+        # Keep correlation bounded by the existing durable capacity, including
+        # accepted ACKs and a rename awaiting commit. External removals cannot
+        # leave a growing history of this run's opaque IDs in memory.
+        current = {record['id'] for record in records} | self.ack_cleanup_at.keys()
+        if self.publication is not None:
+            current.add(self.publication[1]['id'])
+        self.current_run_records.intersection_update(current)
+        self.pending = len(records)
+        return records
+
+    def _spool(self, item, records, record_id=None):
+        epoch, fields, token, reported_version, timestamp = item[:5]
+        if epoch != self.epoch or not self.enabled:
+            return False
+        if not self._recent(timestamp):
+            self.dropped += 1
+            return False
+        if token is not None:
+            now = time.monotonic()
+            self.seen_errors = [(value,stamp) for value,stamp in self.seen_errors[-63:] if now-stamp < _limit(self.schema,'dedupe_ms',60000)/1000]
+            if any(value == token for value,stamp in self.seen_errors):
+                return True  # This causal failure was already durably spooled.
+        if self.publication is not None and self.publication[0] is item:
+            self._publish(item, self.publication[1], records)
+            if token is not None:
+                self.seen_errors.append((token,now))
+            return True
+        if record_id is not None:
+            existing = next((row for row in records if row['id'] == record_id), None)
+            if existing is not None:
+                # Recovery can restart after rename but before the marker is
+                # replaced. Commit the same ID without adding an occurrence.
+                self._publish(item, existing, records)
+                return True
+        fields = dict(fields)
+        fields.pop('app_version', None)
+        if reported_version is not None:
+            fields['app_version'] = reported_version
+        fields.update(platform={'Darwin':'macos','Windows':'windows','Linux':'linux'}.get(platform.system(),'unknown'),arch={'AMD64':'x64','x86_64':'x64','aarch64':'arm64','arm64':'arm64','i386':'x86','i686':'x86'}.get(platform.machine(),'unknown'))
+        props = sanitize_props(fields,self.schema)
+        # Desktop can already have read a published inbox file before it
+        # commits and removes that ID. Rewriting it here would lose the new
+        # occurrence at that unlink, so managed records stay immutable. The
+        # standalone worker owns its outbox and can safely coalesce there.
+        if not self.managed and record_id is None:
+            for existing in records:
+                if existing['props']['fingerprint'] == props['fingerprint'] and existing['id'] not in self.inflight and abs(timestamp-existing['timestamp_ms']) <= _limit(self.schema,'dedupe_ms',60000):
+                    updated = {**existing, 'props': {**existing['props'], 'occurrences': min(1000000,existing['props']['occurrences']+1)}}
+                    self._publish(item, updated, records)
+                    if token is not None:
+                        self.seen_errors.append((token,now))
+                    return True
+        if len(records)+self.ack_cleanup_count >= self._capacity('count'):
+            if record_id is None:
+                self.dropped += 1
+            return False
+        record = {'version':1,'id':record_id or uuid.uuid4().hex,'timestamp_ms':timestamp,'epoch':epoch,'props':props}
+        size = len(json.dumps(record,allow_nan=False,separators=(',',':')).encode())
+        existing_size = self.ack_cleanup_bytes+sum(len(json.dumps(r,allow_nan=False,separators=(',',':')).encode()) for r in records)
+        if existing_size + size > self._capacity('bytes'):
+            if record_id is None:
+                self.dropped += 1
+            return False
+        if record_id is None and len(item) > 5 and item[5] is True:
+            self.current_run_records.add(record['id'])
+        self._publish(item, record, records)
+        if token is not None:
+            self.seen_errors.append((token,now))
+        return True
+
+    def _publish(self, item, record, records):
+        # A rename may become visible before its directory fsync fails. Retain
+        # this exact intended ID/count until commit, rather than coalescing the
+        # same accepted capture again after rereading that visible file.
+        self.publication = (item, record)
+        _atomic(self.directory / (record['id']+'.json'), record)
+        existing = next((row for row in records if row['id'] == record['id']), None)
+        if existing is None:
+            records.append(record)
+        else:
+            existing.update(record)
+        self.publication = None
+        self.pending = len(records)
+
+    def _persist_intake(self):
+        if self.storage_retry_at > time.monotonic():
+            return None
+        try:
+            records = self._files()
+            self._session(records)
+            for _ in range(64):
+                try:item = self.intake.peek_nowait()
+                except queue.Empty:break
+                self._spool(item,records)
+                self.intake.get_nowait()
+                self.publication = None
+        except OSError:
+            # The worker still checks consent every tick. Retry durable IO at
+            # a finite cadence without losing a slot or transmitting memory-only
+            # reports; fresh events are not required to wake recovery.
+            self.storage_retry_at = time.monotonic()+60
+            return None
+        self.storage_retry_at = 0
+        return records
+
+    def _session(self, records):
+        if self.managed or self.session_retired:
+            return
+        path = self.root / 'session.json'
+        now = time.time()
+        if self.marker_owned and self.marker_active_at is not None and 0 <= now-self.marker_active_at < 60:
+            return
+        if not self.marker_owned and path.exists():
+            try:
+                previous = json.loads(path.read_text(encoding='utf-8')) if path.stat().st_size <= 4096 and not path.is_symlink() else {}
+                from core.run_sentinel import _previous_run_alive
+                pid, started = previous.get('pid'), previous.get('started_at')
+                if type(pid) is int and _previous_run_alive(pid,started):
+                    return  # A live concurrent process owns this marker.
+                active = previous.get('last_active_at', started)
+                identity = (previous.get('epoch'), pid, started)
+                if previous.get('epoch') == self.epoch and type(pid) is int and previous.get('clean') is not True and identity != self.recovered_marker and type(active) in (int,float) and math.isfinite(active) and self._recent(active*1000):
+                    if self.session_recovery is None or self.session_recovery[0] != identity:
+                        fields = sanitize_props({'category':'backend_crash','stage':'startup','reason':'unclean_exit','source':'backend'},self.schema)
+                        item = (self.epoch, fields, None, _app_version(previous.get('app_version')), int(active*1000))
+                        self.session_recovery = (identity, item)
+                    # The marker stays authoritative through capacity or disk
+                    # failure. Use one bounded recovery slot and a stable ID so
+                    # a restart after publication cannot count it twice.
+                    record_id = hashlib.sha256(json.dumps(identity,separators=(',',':')).encode()).hexdigest()[:32]
+                    if not self._spool(self.session_recovery[1], records, record_id):
+                        return
+                    self.recovered_marker = identity
+                    self.session_recovery = None
+            except FileNotFoundError:
+                pass  # A removed marker is normal absence, not a storage fault.
+            except OSError:
+                # Preserve unread evidence until the existing worker's bounded
+                # storage retry can establish its age, owner and consent epoch.
+                raise
+            except (ValueError, TypeError, AttributeError, OverflowError, RecursionError):
+                pass  # Proven malformed evidence can be replaced; unread IO cannot.
+        _atomic(path, {'version':1,'epoch':self.epoch,'pid':os.getpid(),'started_at':self.started,'last_active_at':now,'app_version':self.app_version})
+        self.session_recovery = None
+        self.marker_owned = True
+        self.marker_active_at = now
+
+    def retire_session(self):
+        """Intentional shutdown begins before service teardown; capture stays enabled."""
+        with self.lock:
+            self.session_retired = True
+            if not self.marker_owned:
+                return
+            marker = self.root / 'session.json'
+            try:
+                # A locked delete must still describe an intentional exit.
+                _atomic(marker, {'version':1,'epoch':self.epoch,'pid':os.getpid(),'started_at':self.started,'app_version':self.app_version,'clean':True})
+            except OSError:
+                # Deletion below can still retire a marker whose rewrite failed.
+                pass
+            try:
+                marker.unlink(missing_ok=True)
+            except OSError:
+                self.dropped += 1
+            self.marker_owned = False
+
+    def _tick(self):
+        self.refresh()
+        if self.consent_read_failed and not self._hard_killed():
+            return  # Unknown authority closes intake/delivery, not durable evidence.
+        if not self.enabled:
+            self._purge()
+            while not self.intake.empty():
+                try:self.intake.get_nowait()
+                except queue.Empty:break
+            return
+        # Each starting slot gets one turn. Failed cleanups remain in that
+        # bounded queue while later ACKs and healthy intake can progress.
+        for _ in range(self.acks.qsize()):
+            try:ack = self.acks.peek_nowait()
+            except queue.Empty:break
+            ack_epoch,identity,status = ack
+            if ack_epoch != self.epoch:
+                self.ack_cleanup_at.pop(identity,None)
+                self.acks.get_nowait()
+                continue
+            if status is not None and 0 < status < 500 and status != 429:
+                if time.monotonic() < self.ack_cleanup_at.get(identity,0):
+                    self.acks.defer_nowait(ack)
+                    continue
+                try:
+                    (self.directory / (identity+'.json')).unlink(missing_ok=True)
+                except OSError:
+                    if self.enabled and self.epoch == ack_epoch:
+                        self.ack_cleanup_at[identity] = time.monotonic()+60
+                        self.inflight[identity] = True
+                        self.acks.defer_nowait(ack)
+                    continue
+                self.ack_cleanup_at.pop(identity,None)
+                self.current_run_records.discard(identity)
+                self.retry_at.pop(identity,None)
+                # Delivery cleanup can release capacity while intake writes
+                # remain blocked by a full disk. Do not wait out that cooldown.
+                self.storage_retry_at = 0
+            else:
+                self.retry_at[identity] = time.monotonic()+60
+            self.inflight.pop(identity,None)
+            self.acks.get_nowait()
+        if not self.enabled:
+            return
+        records = self._persist_intake()
+        if records is None:
+            return
+        if self.managed or not self.enabled:
+            return
+        self.pending = len(records)
+        if not self.transport:
+            destination = _diagnostic_destination()
+            if destination:
+                from core.analytics_transport import SupermetryTransport
+                from core.diagnostic_app_transport import AppDiagnosticTransport
+                with self.ack_lock:
+                    if self.enabled and self.epoch and not self.app_delivery_paused:
+                        epoch = self.epoch
+                        allowed = lambda:self.enabled and self.epoch == epoch and not self.app_delivery_paused and not self.stop.is_set() and not self._hard_killed()
+                        if destination.get('app_id'):
+                            self.transport = AppDiagnosticTransport(destination, allowed, on_result=lambda identity,status,reason:self._app_delivery_result(epoch,identity,status,reason),ttl_ms=_limit(self.schema,'ttl_ms',604800000))
+                        else:
+                            self.transport = SupermetryTransport(destination,allowed,on_result=lambda identity,status:self._delivery_result(epoch,identity,status))
+        with self.ack_lock:
+            transport, epoch, profile = self.transport, self.epoch, self.profile
+        if transport:
+            from core.diagnostic_app_transport import AppDiagnosticTransport
+            app_transport = isinstance(transport, AppDiagnosticTransport)
+            if app_transport and transport.destination.get('sessionPings') and not self.correlation_retired:
+                if self.run_session_epoch is None:
+                    self.run_session_id, self.run_session_event_id = uuid.uuid4().hex, uuid.uuid4().hex
+                    self.run_session_epoch, self.run_session_profile = epoch, profile
+                    self.run_session_timestamp_ms = int(time.time()*1000)
+                if (self.run_session_epoch == epoch and not self.run_session_submitted and not self.run_session_terminal
+                        and self.run_session_retry_at <= time.monotonic()):
+                    # Reserve before enqueue: a fast result may arrive before
+                    # capture_session returns, and owns the retry/terminal flag.
+                    self.run_session_submitted = True
+                    if not transport.capture_session(profile,self.run_session_id,self.run_session_event_id,self.run_session_timestamp_ms,self.app_version):
+                        self.run_session_submitted = False
+            for record in records:
+                identity = record['id']
+                if identity in self.inflight or self.retry_at.get(identity,0) > time.monotonic():
+                    continue
+                if not self.enabled or self.epoch != epoch or self.transport is not transport or self.app_delivery_paused:
+                    return
+                safe = validate_record(record,epoch,self.schema)
+                if not self.enabled or self.epoch != epoch or self.transport is not transport or self.app_delivery_paused:
+                    return
+                # A withdrawal after this check stops the detached transport;
+                # its own cached authority check also refuses queued sends.
+                correlation = {}
+                if app_transport and not self.correlation_retired and self.run_session_epoch == epoch and identity in self.current_run_records:
+                    correlation['session_id'] = self.run_session_id
+                if transport.capture('diagnostic_report',safe['props'],profile,path='/diagnostics',event_id=identity,timestamp_ms=safe['timestamp_ms'],**correlation):
+                    self.inflight[identity] = True
+
+    def _retire_correlation(self):
+        self.correlation_retired = True
+        self.current_run_records.clear()
+
+    def _app_delivery_result(self, epoch, identity, status, reason):
+        # Never log collector response text or credentials. A 401 lasts until
+        # process restart, even if the user makes a later consent choice.
+        if status == 401:
+            self.app_delivery_paused = True
+        self.last_delivery_reason = reason
+        if identity == self.run_session_event_id:
+            with self.ack_lock:
+                if self.enabled and self.epoch == epoch and not self.correlation_retired:
+                    self.run_session_terminal = status is not None and 0 < status < 500 and status not in {401,429}
+                    if not self.run_session_terminal:
+                        self.run_session_submitted = False
+                        self.run_session_retry_at = time.monotonic()+60
+            return
+        self._delivery_result(epoch,identity,None if status == 401 else status)
+
+    def _delivery_result(self, epoch, identity, status):
+        # A late callback cannot consume the new epoch's bounded ack capacity.
+        with self.ack_lock:
+            if self.enabled and self.epoch == epoch and not self.stop.is_set():
+                self.acks.put_nowait((epoch,identity,status))
+
+    def _run(self):
+        if self._hard_killed():
+            # Revocation cannot depend on a valid reporting policy: a missing
+            # schema must not preserve a grant for the next un-killed launch.
+            try:
+                self.refresh()
+            except Exception:
+                # A bootstrap storage fault must not terminate the optional
+                # worker; its normal loop retries while the kill gate stays shut.
+                pass
+        try:
+            self.schema = _schema()
+            self.intake.maxsize = _limit(self.schema,'queue_count',64)
+        except Exception:
+            # Reporting stays unavailable, but withdrawal must outlive a
+            # transient storage failure even when policy cannot be loaded.
+            with self.ack_lock:
+                self.schema = None
+                self.enabled = False
+                transport, self.transport = self.transport, None
+            if transport:
+                transport.shutdown()
+        while not self.stop.is_set():
+            try:
+                with self.lock:
+                    if self.stop.is_set():
+                        break
+                    if self.schema is not None:
+                        self._tick()
+                    elif self._hard_killed():
+                        # refresh owns the bounded revocation retry. Without
+                        # policy, never parse, send or purge unknown evidence.
+                        self.refresh()
+            except Exception:
+                # Never log raw input, and never let diagnostics stop the app.
+                pass
+            self.stop.wait(.1)
+
+    def status(self):
+        with self.lock:
+            # Availability describes configuration, independently of consent or
+            # transport creation. Resolve only local configuration here so the
+            # first source/Docker settings response can offer an explicit choice.
+            available = bool(self.managed)
+            if not self.managed:
+                available = bool(_diagnostic_destination())
+            self.available = available
+            return self._cached_status()
+
+    def _cached_status(self):
+        hard_killed = self._hard_killed()
+        return {'enabled':self.enabled and not hard_killed,'opted_in':self.enabled and not hard_killed,'available':self.available and not _killed(),'prompted':self.prompted,'externally_managed':bool(self.managed),'pending_count':self.pending,'dropped_count':self.dropped,'grant_epoch':self.epoch if self.enabled and not hard_killed else None}
+
+    def consent(self, enabled):
+        if self.managed:
+            raise ConsentExternallyManaged('Desktop controls diagnostic consent')
+        if enabled and _killed():
+            with self.lock:
+                self.refresh()
+                return self.status()
+        with self.ack_lock:
+            if enabled and self.stop.is_set():
+                return self._cached_status()
+            if enabled and self.enabled and not self.kill_observed and not _killed():
+                return self._cached_status()
+            if not enabled and self.epoch:
+                self._retire_correlation()
+            self.consent_revision += 1
+            revision = self.consent_revision
+            self.enabled = False
+            self.epoch = self.profile = None
+            self.consent_failed = True
+            self.consent_read_failed = False
+            self.consent_read_retry_at = 0
+            self.revocation_retry_at = 0
+            self.prompted = True
+            transport, self.transport = self.transport, None
+            while not self.acks.empty():
+                try:self.acks.get_nowait()
+                except queue.Empty:break
+        if transport:
+            transport.shutdown()
+        # The synchronous settings route runs in FastAPI's threadpool: close
+        # collection/delivery first, then wait for durable IO or report its error.
+        # Never acknowledge a successful OFF while its persistence is deferred.
+        with self.lock:
+            return self._commit_consent(enabled, revision)
+
+    def _commit_consent(self, enabled, revision):
+        from core import prefs
+        with self.lock:
+            if revision != self.consent_revision:
+                return self._cached_status()
+            if enabled and _killed():
+                enabled = False
+            if not enabled:
+                # Keep withdrawal durable even if replacing the shared prefs
+                # fails. This private tombstone contains no old grant or ID.
+                try:
+                    _atomic(self.root / 'revoked.json', {'version':1})
+                except OSError:
+                    pass  # A successful prefs write below still persists OFF.
+            try:
+                with prefs._MUTATE_LOCK:
+                    data = prefs._load(strict=True)
+                    data.update(diagnostics_enabled=enabled,diagnostics_prompted=True,diagnostics_epoch=uuid.uuid4().hex,diagnostics_profile_id='install_'+uuid.uuid4().hex)
+                    prefs._save(data)
+                with self.ack_lock:
+                    if revision != self.consent_revision:
+                        return self._cached_status()
+                if enabled:
+                    # Removing a durable revocation is allowed only after a new
+                    # explicit grant has been saved. Failure stays closed.
+                    (self.root / 'revoked.json').unlink(missing_ok=True)
+            except OSError:
+                if enabled:
+                    # Saving can publish ON and then fail (for example chmod
+                    # after replace). Revoke that possible first grant before
+                    # returning the failed choice, without replacing other prefs.
+                    try:
+                        _atomic(self.root / 'revoked.json', {'version':1})
+                    except OSError:
+                        pass  # An independently saved OFF still blocks restart.
+                    try:
+                        with prefs._MUTATE_LOCK:
+                            data = prefs._load(strict=True)
+                            data.update(diagnostics_enabled=False,diagnostics_prompted=True)
+                            prefs._save(data)
+                    except OSError:
+                        pass  # A committed tombstone still blocks the old grant.
+                raise
+            with self.ack_lock:
+                superseded = revision != self.consent_revision
+                if not superseded:
+                    if enabled:
+                        self.kill_observed = False
+                    self.consent_failed = False
+            if superseded:
+                if enabled:
+                    # No memory gate is held across IO. If OFF overlaps the
+                    # last filesystem operation, restore its fence immediately;
+                    # failures are surfaced while withdrawal remains closed.
+                    _atomic(self.root / 'revoked.json', {'version':1})
+                return self._cached_status()
+            try:
+                self._purge(force=True)
+            except OSError:
+                # Disabled worker retries cleanup; persisted new epoch makes
+                # undeletable old reports ineligible even after a restart.
+                self.dropped += 1
+            self.schema = _schema()
+            self.intake.maxsize = _limit(self.schema,'queue_count',64)
+            self.refresh()
+            return self.status()
+
+    def shutdown(self):
+        with self.lock:
+            self.retire_session()
+            try:
+                self.refresh()
+                if self.enabled:
+                    # Make one final bounded publication attempt before exit.
+                    self.storage_retry_at = 0
+                    self._persist_intake()
+            except Exception:
+                pass  # Final publication failure must still close intake and transport below.
+            with self.ack_lock:
+                self.stop.set()
+                self.enabled = False
+            if self.transport:
+                self.transport.shutdown()
+        if self.thread.is_alive() and self.thread is not threading.current_thread():
+            self.thread.join(timeout=2.5)
+
+
+_reporter = None
+_init_lock = threading.Lock()
+_hooks_installed = False
+
+
+def _install_hooks():
+    global _hooks_installed
+    if _hooks_installed:
+        return
+    _hooks_installed = True
+    previous = sys.excepthook
+    def unhandled(kind, error, trace):
+        epoch = _consume_thread_fault_epoch(error)
+        # A global hook cannot infer when unbound work began. Unknown origin
+        # stays local rather than borrowing permission from the current choice.
+        if epoch is not _GRANT_UNSET and not issubclass(kind, (KeyboardInterrupt,SystemExit)):
+            with grant_scope(epoch):
+                capture('backend_crash',stage='other',error=error,reason='unhandled_exception')
+        previous(kind,error,trace)
+    sys.excepthook = unhandled
+    previous_thread = threading.excepthook
+    def thread_unhandled(args):
+        epoch = _consume_thread_fault_epoch(args.exc_value)
+        if epoch is not _GRANT_UNSET and not issubclass(args.exc_type,(KeyboardInterrupt,SystemExit)):
+            with grant_scope(epoch):
+                capture('operation_failed',stage='other',error=args.exc_value,reason='unhandled_exception')
+        previous_thread(args)
+    threading.excepthook = thread_unhandled
+
+
+def initialize():
+    global _reporter
+    with _init_lock:
+        if _reporter is None:
+            _reporter = Reporter()
+            _reporter.start()
+            _install_hooks()
+
+
+def capture(category, *, stage='other', error=None, error_code=None, engine_id=None, **typed_metadata):
+    try:
+        return bool(_reporter and _reporter.capture(category,stage=stage,error=error,error_code=error_code,engine_id=engine_id,**typed_metadata))
+    except Exception:
+        return False
+
+
+def observe_grant():
+    """Snapshot cached authority before async work, without initialization or IO."""
+    instance = _reporter
+    if instance is None:
+        return None
+    epoch = instance.epoch
+    return epoch if epoch and instance.enabled and instance.epoch == epoch and not instance.stop.is_set() and not instance._hard_killed() else None
+
+
+def shutdown():
+    global _reporter
+    with _init_lock:
+        if _reporter:
+            _reporter.shutdown()
+            _reporter = None
+
+
+def prepare_shutdown():
+    """Retire an existing session only; never initialize consent or a reporter."""
+    instance = _reporter
+    if instance is not None:
+        instance.retire_session()
+
+
+def status():
+    initialize()
+    return _reporter.status()
+
+
+def set_opted_in(enabled):
+    if type(enabled) is not bool:
+        raise ValueError('Diagnostic consent requires a boolean')
+    initialize()
+    return _reporter.consent(enabled)
+
+
+def capture_from_ui(body):
+    if not isinstance(body,dict) or set(body)-{'category','source','stage','error_type','error_code','engine_id','frames','expected_epoch'}:
+        raise ValueError('Unsupported diagnostic fields')
+    schema = _schema()
+    if body.get('source') != 'renderer':
+        raise ValueError('Unsupported diagnostic source')
+    for key in ('category','stage','error_type','error_code','engine_id'):
+        if key in body and body[key] not in schema.get(_ENUMS[key],[]):
+            raise ValueError('Unsupported diagnostic value')
+    if 'frames' in body and _frames(body['frames'],schema) != body['frames']:
+        raise ValueError('Unsupported diagnostic frames')
+    expected = body.get('expected_epoch')
+    if expected is not None and (type(expected) is not str or not _HEX.fullmatch(expected)):
+        raise ValueError('Unsupported diagnostic grant')
+    if expected is None:
+        return False
+    # The grant is a local control value, never part of event properties.
+    fields = {key:value for key,value in body.items() if key != 'expected_epoch'}
+    return capture(_expected_epoch=expected, **fields)
+
+
+def capture_failure(stage, *, error=None, error_code=None, engine_id=None, expected_epoch=_GRANT_UNSET):
+    """Terminal owners pass a coarse fixed stage, never their raw context."""
+    # HTTP validation/auth/licence refusals and explicit user cancellation are
+    # expected outcomes. Do not classify by arbitrary exception messages.
+    if error is not None:
+        kinds = {(cls.__module__,cls.__name__) for cls in type(error).__mro__}
+        if kinds & {('asyncio.exceptions','CancelledError'),('builtins','KeyboardInterrupt'),('builtins','SystemExit'),('services.model_manager','ModelLoadInterruptedByShutdown'),('services.model_acceptance','ModelLicenceNotAccepted')}:
+            return False
+        if ('starlette.exceptions','HTTPException') in kinds and getattr(error,'status_code',500) < 500:
+            return False
+    category = {'generation':'generation_failed','dub':'generation_failed','batch':'generation_failed','transcription':'generation_failed','translation':'operation_failed','model_load':'model_load_failed','engine':'engine_failed','install':'install_failed','download':'download_failed'}.get(stage,'operation_failed')
+    return capture(category,stage=stage,error=error,error_code=error_code,engine_id=engine_id,_expected_epoch=expected_epoch)
+
+
+def route_stage(route):
+    """Exact known route components only; request path text is never retained."""
+    components = set(str(route).split('/'))
+    for names,stage in [({'generate','speech','generation'},'generation'),({'dub','dub-generate','dub_generate'},'dub'),({'transcribe','transcriptions','dictate','capture','dub_transcribe'},'transcription'),({'batch'},'batch'),({'translate','translations','dub_translate'},'translation'),({'model','models'},'model_load')]:
+        if components & names:
+            return stage
+    return 'other'

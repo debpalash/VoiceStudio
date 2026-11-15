@@ -42,6 +42,7 @@ private data class DesignedTake(val audio: LocalAudio,val text: String,val instr
     val running=work?.isActive==true
     val item=phone.preferredModel(phone.models.filter {it.supportsDesign},vm.phone.ramBytes,prefs.phoneModels["design"])
     LaunchedEffect(Unit) {
+        val failure=vm.failureHandler()
         try {
             vm.phone.refresh()
             categories=withContext(Dispatchers.IO) {context.assets.open("design.json").bufferedReader().use {Json.decodeFromString<DesignCatalogue>(it.readText()).categories}}
@@ -50,7 +51,7 @@ private data class DesignedTake(val audio: LocalAudio,val text: String,val instr
                 traits=HashMap(categories.mapNotNull {category->category.options.firstOrNull {it.token in tokens}?.let {category.id to it.token}}.toMap())
                 val known=categories.flatMap {it.options}.map {it.token}.toSet();extraInstruction=tokens.filter {it !in known}.joinToString(", ")
             }
-        } catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)}
+        } catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}
     }
     Screen {
         ScreenTitle("nav.design")
@@ -83,6 +84,7 @@ private data class DesignedTake(val audio: LocalAudio,val text: String,val instr
             LinearProgressIndicator(progress={progress},modifier=Modifier.fillMaxWidth())
             Secondary("common.cancel") {work?.cancel()}
         } else Action("mobile.speak.generate",script.isNotBlank()&&script.length<=2000&&categories.isNotEmpty()&&item?.let {phone.canRun(it)}==true) {
+            val failure=vm.failureHandler()
             val text=script;val instruction=(categories.mapNotNull {traits[it.id]}.filter {it.isNotEmpty()}+listOf(extraInstruction).filter {it.isNotEmpty()}).joinToString(", ");val selectedSeed=seed
             val producer=requireNotNull(item)
             take=null;saved=false;progress=0f
@@ -92,12 +94,12 @@ private data class DesignedTake(val audio: LocalAudio,val text: String,val instr
                     val file=File(context.cacheDir,"voice-design/${UUID.randomUUID()}.wav")
                     withContext(Dispatchers.IO) {file.parentFile!!.mkdirs();markSynthetic(audio,file)}
                     take=DesignedTake(audio,text,instruction,selectedSeed,producer,file)
-                } catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)}
+                } catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}
             }
         }
         take?.let {result ->
-            LocalAudioPlayer(result.file,vm::fail)
-            Secondary("mobile.speak.share") {scope.launch {try {shareLocalFile(context,result.file,"audio/wav")} catch(e:Exception) {vm.fail(e)}}}
+            LocalAudioPlayer(result.file,vm::failureHandler)
+            Secondary("mobile.speak.share") {val failure=vm.failureHandler();scope.launch {try {shareLocalFile(context,result.file,"audio/wav")} catch(e:Exception) {failure(e)}}}
             ReportButton(vm) {ReportSubject("speak:phone:"+result.file.name,"speak","phone",result.model.repo,result.model.revision,result.text)}
             Field("mobile.voices.name_label",name,{name=it})
             Action(if(recipeID.isEmpty()) "clone.save_design_as_profile" else "mobile.books.save_recipe_copy",name.isNotBlank()&&!saved&&!running) {

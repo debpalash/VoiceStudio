@@ -9,12 +9,13 @@ internal suspend fun collectDubFailureReceipts(
     failures: Flow<Set<UUID>>,
     consume: suspend (UUID) -> Boolean,
     display: (UUID) -> Unit,
-    report: (Exception) -> Unit,
+    report: () -> (Exception) -> Unit,
 ) {
     val handled = mutableSetOf<UUID>()
     // Finish persisting and displaying each receipt before observing the next worker snapshot.
     failures.collect { ids ->
         for (id in ids) if (id !in handled) {
+            val failed=report()
             try {
                 if (consume(id)) display(id)
             } catch (cancelled: CancellationException) {
@@ -22,7 +23,7 @@ internal suspend fun collectDubFailureReceipts(
             } catch (error: Exception) {
                 // A failed receipt write must never hide the actual job error.
                 display(id)
-                report(error)
+                failed(error)
             }
             handled += id
         }

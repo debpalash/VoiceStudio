@@ -15,19 +15,26 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.voicestudio.mobile.network.ClientFailure
 
-@Composable fun permissionAction(permission:String,rationale:String,failure:(Throwable)->Unit,granted:()->Unit):()->Unit {
+@Composable fun permissionAction(permission:String,rationale:String,failure:()->(Throwable)->Unit,restoreFailure:(Throwable)->Unit,granted:()->Unit):()->Unit {
     val context=LocalContext.current
     var rationaleOpen by remember {mutableStateOf(false)}
     val latest by rememberUpdatedState(granted)
+    val observeFailure by rememberUpdatedState(failure)
+    val restoredFailure by rememberUpdatedState(restoreFailure)
+    var pendingFailure by remember {mutableStateOf<((Throwable)->Unit)?>(null)}
     val launcher=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {allowed ->
-        if(allowed) latest() else failure(ClientFailure("mobile.permissions.denied"))
+        // Activity-result delivery survives recreation, whereas its original
+        // consent observation does not. Restore feedback without a new grant.
+        val failed=pendingFailure ?: restoredFailure
+        pendingFailure=null
+        if(allowed) latest() else failed(ClientFailure("mobile.permissions.denied"))
     }
     if(rationaleOpen) AlertDialog(shape=MaterialTheme.shapes.large,onDismissRequest={rationaleOpen=false},text={
         // Match the iOS microphone purpose and routing explanation, using the same translated keys.
         val purpose=if(rationale=="mobile.permissions.microphone") tr("permissions.microphone_why")+"\n\n"+tr("mobile.local.privacy") else tr(rationale)
         Text(purpose,Modifier.verticalScroll(rememberScrollState()))
     },
-        confirmButton={TextButton(shape=MaterialTheme.shapes.small,onClick={rationaleOpen=false;launcher.launch(permission)}) {Text(tr("mobile.android.continue"))}},
+        confirmButton={TextButton(shape=MaterialTheme.shapes.small,onClick={rationaleOpen=false;pendingFailure=observeFailure();launcher.launch(permission)}) {Text(tr("mobile.android.continue"))}},
         dismissButton={TextButton(shape=MaterialTheme.shapes.small,onClick={rationaleOpen=false}) {Text(tr("common.cancel"))}})
     return { if(ContextCompat.checkSelfPermission(context,permission)==PackageManager.PERMISSION_GRANTED) latest() else rationaleOpen=true }
 }
