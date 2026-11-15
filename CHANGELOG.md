@@ -10,6 +10,7 @@ metadata and the backend fallback mirror it.
 
 ### Changed
 
+- Removed an unused legacy update-busy helper while retaining active restart protection (#4149) — thanks @themrbeasley!
 - Retired an unused legacy update toast while preserving the active Electron update controls (#4141) — thanks @themrbeasley!
 - Retired the unreachable legacy shared UI and the guard tests that held it, repointing the live-behaviour guards to the renderer, and dropped 12 unused npm packages (#4095)
 - Smaller install: removed unused leftover images and old helper code from the app source (#4087)
@@ -27,6 +28,7 @@ metadata and the backend fallback mirror it.
 
 ### Added
 
+- Dubbing exports the selected transcript as plain UTF-8 TXT, including edited text before generating a dub, with native Save As and paired phone sharing. (#4155) — thanks @shivamdhiman999111-source!
 - A dub interrupted by a crash or restart now picks up from its finished segments instead of starting over (#4088)
 - omnivoice-gguf now supports voice design, non-verbal tags and the decode-steps slider (#4084) — thanks @snazzybean!
 - Cebuano is now a dub translation target (#4058, #4072) — thanks @onparr-24!
@@ -36,12 +38,16 @@ metadata and the backend fallback mirror it.
 
 ### Docs
 
+- Track the unresolved VoxCPM2 installation report separately from GPU fallback fixes, reported by [vinhson](https://discord.com/users/1025270992882376704) (#4154)
 - Track the unresolved Windows model-loading crash and distinguish merged installer repairs from released fixes (#4146) — thanks @renaldyramadani123-code!
 - Installation tracking separates shipped fixes, pending repairs and unresolved report evidence (#4121)
 - Document host-managed Tailscale access for Docker without sharing the host daemon socket (#4111) — thanks @MaverickKB!
 
 ### Fixed
 
+- macOS publishing checks Gatekeeper even when Windows installers are explicitly unsigned (#4153)
+- The reviewed model-install steps now require the same authenticated consumer as the rest of the model manager (#4152) — thanks @DeryFerd!
+- Diagnostic bundles and Electron bug reports redact share PINs and encoded credential query parameters (#4151) — thanks @DeryFerd!
 - Make the installed-model licence action open its terms and acknowledgement dialog — thanks [hugotriunfa18 on Discord](https://discord.com/users/1571221621316784260)! (#4147)
 - Android model downloads resume through VPNs while preserving Wi-Fi policy and saved ranges (#4140) — thanks @JerryTimi!
 - Stopped playback errors from incorrectly claiming that generated audio files are missing (#4138) — thanks @AAYUSH-CODER1904!
@@ -98,34 +104,43 @@ metadata and the backend fallback mirror it.
 
 ## [0.5.9-beta.3] — 2026-11-15
 
-Setup and model downloads recover more reliably after interrupted transfers, low-space retries and transient connection failures. This beta also improves low-VRAM generation, pronunciation, long-recording transcription, text/subtitle export and Android downloads.
+Setup and model downloads recover more reliably after interrupted transfers, low-space retries and transient connection failures. This beta also improves low-VRAM generation, pronunciation, long-recording transcription, plain-text exports in Dubbing and Transcriptions, and Android downloads.
 
 **Highlights**
 
 - Setup reuses verified wheels and retries transient connection failures; model downloads reject corrupt ranges while preserving valid work
 - Low-VRAM GPUs release idle models before generation
 - Saved pronunciation entries and inline overrides work across speech, Dub, batch and voice conversion
-- Long recordings use duration-scaled transcription limits; Transcriptions can save plain text and SRT with genuine cue timings
+- Save plain transcripts from Dubbing before or after generation on desktop, or from generated paired-phone results; Transcriptions also exports SRT with genuine cue timings and handles long recordings with duration-scaled limits
 - Android downloads work through eligible VPN routes, and installed gated models open their licence review dialog
 
-**Testing wanted:** small-GPU generation under memory pressure; pronunciation in Dub, batch and voice conversion; long-file transcription and text/SRT export; low-space or restricted-network setup; interrupted model downloads followed by Retry; and Android downloads with a VPN and cellular opt-in.
+**Testing wanted:** small-GPU generation under memory pressure; pronunciation in Dub, batch and voice conversion; long-file transcription and text/SRT export; edited Dubbing transcripts before generation and paired-phone TXT sharing; low-space or restricted-network setup; interrupted model downloads followed by Retry; and Android downloads with a VPN and cellular opt-in.
 
-**Known scope:** the low-memory Mac Stories performance report [#4090](https://github.com/debpalash/VoiceStudio/issues/4090), Stories playback report [#4136](https://github.com/debpalash/VoiceStudio/issues/4136), legacy Dubbing Method Not Allowed report [#4127](https://github.com/debpalash/VoiceStudio/issues/4127) and Windows native model-loading crash [#4142](https://github.com/debpalash/VoiceStudio/issues/4142) remain unresolved. The playback wording and Transcriptions exports do not claim to fix those underlying failures. Download transport pinning applies to accelerated transfers, rather than all Hub metadata or plain Hugging Face fallback traffic.
+**Known scope:** the low-memory Mac Stories performance report [#4090](https://github.com/debpalash/VoiceStudio/issues/4090), Stories playback report [#4136](https://github.com/debpalash/VoiceStudio/issues/4136), legacy Dubbing Method Not Allowed report [#4127](https://github.com/debpalash/VoiceStudio/issues/4127) and Windows native model-loading crash [#4142](https://github.com/debpalash/VoiceStudio/issues/4142) remain unresolved. Dubbing TXT export answers the separate plain-transcript request in #4127; it does not repair or establish a retest of the archived v0.3.8 Tauri SRT/405 failure. VoxCPM2 installation report [#4150](https://github.com/debpalash/VoiceStudio/issues/4150) still needs the original failing step and logs. The playback wording does not fix the underlying Stories failure. Download transport pinning applies to accelerated transfers, rather than all Hub metadata or plain Hugging Face fallback traffic.
 
 **Upgrading:** install over the existing app or use Settings → Updates → Beta. Voices, projects, settings and installed models stay in place. The release workflow adds the download table from actual desktop and phone artifacts, including measured signing results.
 
 ### Changed
 
+- Removed an unused legacy update-busy helper while retaining active restart protection (#4149) — thanks @themrbeasley!
 - Retired an unused legacy update toast while preserving the active Electron update controls (#4141) — thanks @themrbeasley!
+
+### Added
+
+- Dubbing exports the selected transcript as plain UTF-8 TXT, including edited text before generating a dub, with native Save As and paired phone sharing. (#4155) — thanks @shivamdhiman999111-source!
 
 ### Docs
 
+- Track the unresolved VoxCPM2 installation report separately from GPU fallback fixes, reported by [vinhson](https://discord.com/users/1025270992882376704) (#4154)
 - Document host-managed Tailscale access for Docker without sharing the host daemon socket (#4111) — thanks @MaverickKB!
 - Installation tracking separates shipped fixes, pending repairs and unresolved report evidence (#4121)
 - Track the unresolved Windows model-loading crash and distinguish merged installer repairs from released fixes (#4146) — thanks @renaldyramadani123-code!
 
 ### Fixed
 
+- Diagnostic bundles and Electron bug reports redact share PINs and encoded credential query parameters (#4151) — thanks @DeryFerd!
+- The reviewed model-install steps now require the same authenticated consumer as the rest of the model manager (#4152) — thanks @DeryFerd!
+- macOS publishing checks Gatekeeper even when Windows installers are explicitly unsigned (#4153)
 - Malformed model-install status responses keep the interface open and preserve the last valid download state (#4106) — thanks @ftlcustomerservice73-ui!
 - Auto setup can retry PyPI failures through the regional mirror and report the actual failed host (#4107) — thanks @mrkeshi!
 - Optional analytics no longer delays backend readiness, and consent changes invalidate queued startup work (#4108) — thanks @cf3901646!
@@ -156,10 +171,12 @@ Setup and model downloads recover more reliably after interrupted transfers, low
 
 ### Contributors
 
+- New code contributors since v0.5.9-beta.2: @DeryFerd and @vandyahmad24.
 - Code since v0.5.9-beta.2: @debpalash, @DeryFerd, @vandyahmad24.
 - Code since v0.5.8: @debpalash, @DeryFerd, @ItzSudhan, @velixio, @b84330808, @blutuxyz, @kevin9327, @RerankerGuo, @hkarmoush, @vandyahmad24.
 - Reports, requests and performance feedback: @ftlcustomerservice73-ui, @mrkeshi, @cf3901646, @MaverickKB, @xabiherdz-svg, @nntloc, @AAYUSH-CODER1904 and @velixio.
-- Transcriptions export feedback: @shivamdhiman999111-source; Android VPN report: @JerryTimi; cleanup proposal: @themrbeasley; Windows crash report: @renaldyramadani123-code.
+- Transcriptions and Dubbing plain-transcript request: @shivamdhiman999111-source; Android VPN report: @JerryTimi; cleanup proposal: @themrbeasley; Windows crash report: @renaldyramadani123-code.
+- VoxCPM2 installation report: [vinhson on Discord](https://discord.com/users/1025270992882376704), from the [original complaint](https://discord.com/channels/1497926884707799144/1567177140007608350/1567177140007608350); unresolved, with no GitHub identity attributed.
 - Installed-model licence-action report: [hugotriunfa18 on Discord](https://discord.com/users/1571221621316784260), from the [original complaint](https://discord.com/channels/1497926884707799144/1571229026138325102/1571229026138325102); no GitHub identity is attributed.
 
 ## [0.5.9-beta.2] — 2026-11-14
