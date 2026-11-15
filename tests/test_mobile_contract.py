@@ -134,6 +134,72 @@ def _mobile_licenses():
     return mobile_models.read_json(ROOT / "docs/licensing/model-license-data.json")
 
 
+def _git_attr(path: Path, *attributes: str) -> dict[str, str]:
+    """`git check-attr` for one path, or {} when git cannot answer."""
+    try:
+        result = subprocess.run(
+            ["git", "check-attr", *attributes, "--", str(path.relative_to(ROOT))],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    if result.returncode != 0:
+        return {}
+    values: dict[str, str] = {}
+    for line in result.stdout.splitlines():
+        try:
+            _, attribute_name, value = line.rsplit(": ", 2)
+        except ValueError:
+            continue
+        values[attribute_name] = value
+    return values
+
+
+def test_mobile_contract_artifacts_are_pinned_to_lf():
+    """Contract artifacts whose bytes are compared must check out as LF everywhere.
+
+    `mobile/contract/tts/zipvoice-lexicon.txt` is pinned by SHA-256 over its raw
+    bytes (models.source.json → files[].bundled), and the generated catalogue,
+    token and design artifacts are compared byte-for-byte by this module and by
+    `scripts/export-mobile-tokens.ts --check`. Git's Windows default
+    (core.autocrlf=true) rewrites an unpinned text file to CRLF on checkout, so
+    identical content is reported stale and the bundled asset fails its pin —
+    on Windows only, which reads as drift when nothing drifted.
+    """
+    if shutil.which("git") is None:
+        pytest.skip("git is required to read .gitattributes")
+    pinned = {
+        CONTRACT / "openapi.json",
+        CONTRACT / "models.json",
+        CONTRACT / "design.json",
+        CONTRACT / "tokens.json",
+        ROOT / "mobile/ios/VoiceStudioKit/Sources/VoiceStudioKit/Theme/Tokens.generated.swift",
+        ROOT
+        / "mobile/android/core/designsystem/src/main/kotlin/com/voicestudio/mobile/designsystem"
+        / "Tokens.generated.kt",
+    }
+    for model in _mobile_models_source()["models"]:
+        for file in model["files"]:
+            if file.get("bundled"):
+                pinned.add(CONTRACT / file["bundled"])
+
+    unpinned = []
+    for path in sorted(pinned):
+        attributes = _git_attr(path, "text", "eol")
+        if attributes.get("eol") != "lf":
+            unpinned.append(f"{path.relative_to(ROOT)} (eol={attributes.get('eol')!r})")
+    assert not unpinned, (
+        "Hash- or byte-compared mobile contract artifacts need a `text eol=lf` rule in "
+        ".gitattributes, or Windows checkouts change their bytes:\n  " + "\n  ".join(unpinned)
+    )
+    # The bundled asset is present and is the LF blob the catalogue pins.
+    lexicon = CONTRACT / "tts" / "zipvoice-lexicon.txt"
+    assert lexicon.is_file(), "the pinned bundled lexicon is missing"
+
+
 def test_mobile_models_generated_catalogue_is_current(monkeypatch):
     def no_network(*args, **kwargs):
         pytest.fail("Default catalogue export must be entirely offline")
