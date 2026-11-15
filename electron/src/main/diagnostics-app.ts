@@ -16,29 +16,30 @@ function diagnosticBuildConfig(): unknown {
     typeof __SUPERMETRY_APP_CONFIG__ === 'undefined' ? undefined : __SUPERMETRY_APP_CONFIG__;
   if (typeof process.resourcesPath !== 'string' || !process.resourcesPath) return embedded;
   const file = join(process.resourcesPath, 'config', 'supermetry-app.generated.json');
-  let before: ReturnType<typeof lstatSync>;
-  try {
-    before = lstatSync(file);
-  } catch (error) {
-    // A missing package file retains old builds' embedded configuration. A
-    // present but unreadable file must never revive stale embedded credentials.
-    return (error as NodeJS.ErrnoException).code === 'ENOENT' ? embedded : {};
-  }
-  if (!before.isFile() || before.size > 4096) return {};
-  let fd: number | undefined;
+  let fd: number;
   try {
     fd = openSync(
       file,
       constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
     );
-    const opened = fstatSync(fd);
-    if (
-      !opened.isFile() ||
-      opened.size > 4096 ||
-      opened.dev !== before.dev ||
-      opened.ino !== before.ino
-    )
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') return {};
+    // ENOENT can also mean a dangling symlink where NOFOLLOW is unavailable.
+    // Only actual absence permits old builds' embedded configuration.
+    try {
+      lstatSync(file);
       return {};
+    } catch (missing) {
+      return (missing as NodeJS.ErrnoException).code === 'ENOENT' ? embedded : {};
+    }
+  }
+  try {
+    const opened = fstatSync(fd);
+    if (!opened.isFile() || opened.size > 4096) return {};
+    // Check the name only after opening; read exclusively from the validated
+    // descriptor. This also rejects links on platforms without NOFOLLOW.
+    const named = lstatSync(file);
+    if (!named.isFile() || opened.dev !== named.dev || opened.ino !== named.ino) return {};
     // The extra byte detects concurrent growth without reading an unbounded
     // file. NOFOLLOW plus the identity check also fails closed on replacement.
     const bytes = Buffer.alloc(4097);
@@ -53,12 +54,10 @@ function diagnosticBuildConfig(): unknown {
   } catch {
     return {};
   } finally {
-    if (fd !== undefined) {
-      try {
-        closeSync(fd);
-      } catch {
-        /* Configuration failures stay local and silent. */
-      }
+    try {
+      closeSync(fd);
+    } catch {
+      /* Configuration failures stay local and silent. */
     }
   }
 }

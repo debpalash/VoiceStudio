@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { chmod, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { fstatSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { DiagnosticReports, type DiagnosticsOptions } from './diagnostics';
@@ -10,7 +10,36 @@ import { diagnosticAppDestination, diagnosticAppFields } from './diagnostics-app
 import analyticsConfig from '../../../config/analytics.json';
 import { TTL_MS, type DiagnosticProps } from './diagnostics-schema';
 
-const storageGate = vi.hoisted(() => ({ unreadConsent: false }));
+const storageGate = vi.hoisted(() => ({
+  unreadConsent: false,
+  metadataOpenedFd: undefined as number | undefined,
+  withoutNoFollow: false,
+  afterMetadataOpen: undefined as ((file: string) => void) | undefined,
+}));
+vi.mock('node:fs', async (load) => {
+  const actual = await load<typeof import('node:fs')>();
+  return {
+    ...actual,
+    openSync: (...args: Parameters<typeof actual.openSync>) => {
+      const metadata = String(args[0]).endsWith('supermetry-app.generated.json');
+      const flags =
+        metadata && storageGate.withoutNoFollow && typeof args[1] === 'number'
+          ? args[1] & ~actual.constants.O_NOFOLLOW
+          : args[1];
+      const fd = actual.openSync(args[0], flags, args[2]);
+      if (metadata) {
+        storageGate.metadataOpenedFd = fd;
+        try {
+          storageGate.afterMetadataOpen?.(String(args[0]));
+        } catch (error) {
+          actual.closeSync(fd);
+          throw error;
+        }
+      }
+      return fd;
+    },
+  };
+});
 vi.mock('node:fs/promises', async (load) => {
   const actual = await load<typeof import('node:fs/promises')>();
   return {
@@ -44,11 +73,16 @@ let instances: DiagnosticReports[];
 const originalResourcesPath = Object.getOwnPropertyDescriptor(process, 'resourcesPath');
 beforeEach(async () => {
   storageGate.unreadConsent = false;
+  storageGate.metadataOpenedFd = undefined;
+  storageGate.withoutNoFollow = false;
+  storageGate.afterMetadataOpen = undefined;
   directory = await mkdtemp(join(tmpdir(), 'voice-app-intake-'));
   instances = [];
 });
 afterEach(async () => {
   storageGate.unreadConsent = false;
+  storageGate.afterMetadataOpen = undefined;
+  storageGate.withoutNoFollow = false;
   for (const instance of instances) await instance.close().catch(() => {});
   await rm(directory, { recursive: true, force: true });
   vi.useRealTimers();
@@ -799,5 +833,35 @@ it.runIf(process.platform !== 'win32' && process.getuid?.() !== 0)(
     } finally {
       await chmod(file, 0o600);
     }
+  },
+);
+
+it('rejects metadata replaced after opening and closes the original descriptor', async () => {
+  vi.stubGlobal('__SUPERMETRY_APP_CONFIG__', embeddedMetadata);
+  await packagedMetadata(JSON.stringify(packagedConfig));
+  storageGate.afterMetadataOpen = (file) => {
+    renameSync(file, file + '.previous');
+    writeFileSync(file, JSON.stringify(embeddedMetadata));
+  };
+  expect(diagnosticAppDestination({})).toBeNull();
+  expect(storageGate.metadataOpenedFd).toBeTypeOf('number');
+  expect(() => fstatSync(storageGate.metadataOpenedFd!)).toThrow();
+});
+
+it.runIf(process.platform !== 'win32')(
+  'rejects linked metadata without native NOFOLLOW support and still closes its descriptor',
+  async () => {
+    vi.stubGlobal('__SUPERMETRY_APP_CONFIG__', embeddedMetadata);
+    const file = await packagedMetadata();
+    const target = join(directory, 'actual-metadata.json');
+    await writeFile(target, JSON.stringify(packagedConfig));
+    await symlink(target, file);
+    // Exercise the real open/fstat/lstat path where this flag is unavailable.
+    storageGate.withoutNoFollow = true;
+    expect(diagnosticAppDestination({})).toBeNull();
+    expect(storageGate.metadataOpenedFd).toBeTypeOf('number');
+    expect(() => fstatSync(storageGate.metadataOpenedFd!)).toThrow();
+    await rm(target);
+    expect(diagnosticAppDestination({})).toBeNull();
   },
 );

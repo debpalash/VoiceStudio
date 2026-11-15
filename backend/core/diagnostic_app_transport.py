@@ -298,7 +298,7 @@ class AppDiagnosticTransport:
             try:
                 connection.close()
             except OSError:
-                pass
+                pass  # Shutdown remains best effort after the send gate is closed.
         while True:
             try:
                 self._queue.get_nowait()
