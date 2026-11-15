@@ -31,7 +31,7 @@ import {
   RotateCcwIcon,
   TriangleAlertIcon,
 } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AgentFixButton } from '@/components/agent-fix-button';
 import { Button } from '@/components/ui/button';
@@ -97,19 +97,13 @@ function PanelToggle({
 }
 
 function useElapsedSeconds(elapsedMs: number, running: boolean): number {
-  // The bridge only pushes a status on change; tick locally so the counter moves.
-  const [seconds, setSeconds] = useState(() => Math.floor(elapsedMs / 1000));
-  const startedAt = useRef(Date.now() - elapsedMs);
-  useEffect(() => {
-    startedAt.current = Date.now() - elapsedMs;
-    setSeconds(Math.floor(elapsedMs / 1000));
-  }, [elapsedMs, running]);
-  useVisibleInterval(
-    () => setSeconds(Math.floor((Date.now() - startedAt.current) / 1000)),
-    1000,
-    running,
-  );
-  return seconds;
+  // Native install logs can publish many synchronous external-store updates.
+  // Derive their elapsed value in that render instead of scheduling a passive
+  // state update per message; only the local one-second timer owns clock state.
+  const [now, setNow] = useState(Date.now);
+  const startedAt = useMemo(() => Date.now() - elapsedMs, [elapsedMs, running]);
+  useVisibleInterval(() => setNow(Date.now()), 1000, running);
+  return Math.floor((running ? Math.max(elapsedMs, now - startedAt) : elapsedMs) / 1000);
 }
 
 /** Backend output is attacker-influenced text: repair requests carry it only as
