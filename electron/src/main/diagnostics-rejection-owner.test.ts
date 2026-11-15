@@ -44,7 +44,7 @@ beforeAll(async () => {
     await reports.initialize();
     const stop = installDiagnosticProcessCapture(reports);
     const [control, mode] = process.argv[2].split(':');
-    if (control !== 'off-to-on') await reports.setConsent(true);
+    if (control !== 'off-to-on' && control !== 'unknown-off-to-on') await reports.setConsent(true);
     let release;
     const held = new Promise(resolve => { release = resolve; });
     const action = async () => {
@@ -56,10 +56,10 @@ beforeAll(async () => {
       if (mode === 'timer') { setTimeout(fail, 0); return; }
       fail();
     };
-    if (control === 'unknown') action();
+    if (control.startsWith('unknown')) action();
     else runDiagnosticOperation(reports, action);
-    if (control === 'off-to-on') await reports.setConsent(true);
-    if (control === 'a-to-b') { await reports.setConsent(false); await reports.setConsent(true); }
+    if (control === 'off-to-on' || control === 'unknown-off-to-on') await reports.setConsent(true);
+    if (control === 'a-to-b' || control === 'unknown-a-to-b') { await reports.setConsent(false); await reports.setConsent(true); }
     if (control === 'on-to-off') await reports.setConsent(false);
     // This fixture-only fatal listener lets the child inspect the monitor's
     // result. Production capture only observes and never changes fatal policy.
@@ -68,7 +68,7 @@ beforeAll(async () => {
     const pending = reports.status().pending_count;
     // A separate later action under the current grant is eligible.
     let freshPending = pending;
-    if (control === 'off-to-on' || control === 'a-to-b') {
+    if (['off-to-on', 'a-to-b', 'unknown-off-to-on', 'unknown-a-to-b'].includes(control)) {
       const next = new Promise(resolve => process.once('unhandledRejection', () => setImmediate(resolve)));
       runDiagnosticOperation(reports, async () => { throw new Error('PRIVATE_FRESH'); });
       await next; freshPending = reports.status().pending_count;
@@ -83,21 +83,21 @@ afterAll(async () => {
 });
 
 it.each(
-  ['off-to-on', 'a-to-b', 'same-grant', 'unknown', 'cancel', 'on-to-off'].flatMap((control) => [
+  ['off-to-on', 'a-to-b', 'same-grant', 'unknown', 'unknown-off-to-on', 'unknown-a-to-b', 'cancel', 'on-to-off'].flatMap((control) => [
     control,
     `${control}:detached`,
     `${control}:timer`,
   ]),
 )('uses the originating operation for actual Node rejection and timer failures: %s', (control) => {
   const kind = control.split(':')[0];
-  const captured = kind === 'same-grant' || control === 'unknown:timer';
+  const captured = kind === 'same-grant';
   const output = execFileSync(process.execPath, [join(directory, 'probe.mjs'), control], {
     encoding: 'utf8',
     timeout: 15_000,
   });
   expect(JSON.parse(output)).toEqual({
     pending: captured ? 1 : 0,
-    freshPending: captured || ['off-to-on', 'a-to-b'].includes(kind) ? 1 : 0,
+    freshPending: captured || ['off-to-on', 'a-to-b', 'unknown-off-to-on', 'unknown-a-to-b'].includes(kind) ? 1 : 0,
   });
   expect(output).not.toContain('PRIVATE_');
 });

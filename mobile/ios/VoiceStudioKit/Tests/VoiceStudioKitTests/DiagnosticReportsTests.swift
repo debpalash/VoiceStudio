@@ -1099,6 +1099,26 @@ extension DiagnosticReportsTests {
         #expect(!next.status.enabled); #expect(transport.bodies().isEmpty)
         await next.close()
     }
+    @Test(arguments: [false, true]) func firstOptInBarrierFailureStaysOffBeforeCloseOrRetry(directoryFailure: Bool) async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("diagnostic-first-commit-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let probe = DiagnosticFileCommitProbe(directory: directory)
+        let storage = FileDiagnosticStorage(directory: directory, synchronizer: probe)
+        let transport = DiagnosticTestTransport(), reports = try diagnosticTestReporter(storage, transport)
+        #expect(try storage.read("consent.json", maxBytes: 4096) == nil)
+        #expect(try storage.read("revoked.json", maxBytes: 4096) == nil)
+        probe.fail(directoryFailure ? directory.lastPathComponent : "consent.json")
+        do { try await reports.setConsent(true); Issue.record("Uncommitted first opt-in must fail") } catch {}
+        #expect(!reports.status.enabled); #expect(reports.status.consentSaveFailed)
+        probe.fail(nil)
+        // Inspect restart authority before closing the failed owner, so close's
+        // cleanup cannot accidentally supply the revocation being tested.
+        let next = try diagnosticTestReporter(FileDiagnosticStorage(directory: directory), transport)
+        await next.load(); await next.flush()
+        #expect(!next.status.enabled); #expect(!next.capture(diagnosticEvent()))
+        #expect(transport.bodies().isEmpty)
+        await next.close(); await reports.close()
+    }
     @Test func failedOffDirectoryBarrierRemainsClosedAndOffOnRestart() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("diagnostic-commit-" + UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }

@@ -102,9 +102,10 @@ original permission through interpreter/thread hooks after cleanup; delayed
 desktop setup/start attempts and child-exit recovery follow the same rule.
 Runtime/file IPC work observes permission at entry. Its asynchronous descendants
 retain that observation through Node's fatal-error and unhandled-rejection hooks.
-Rejections with unknown provenance remain in the local journal rather than
-borrowing permission at delivery time. Seeking an existing phone playback does
-not renew its grant.
+Uncaught faults with unknown provenance remain in the local journal rather than
+borrowing permission at delivery time. Confirmation actions retain the choice
+observed at the click; an unrelated or rewrapped promise cannot acquire a newer
+grant. Seeking an existing phone playback does not renew its grant.
 A failed consent write is shown with Retry and leaves the current process off.
 Where storage permits, withdrawal replaces the previous grant or writes a
 private revocation marker so restart also remains off. If every write or

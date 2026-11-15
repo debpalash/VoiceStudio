@@ -135,8 +135,8 @@ export function installDiagnosticProcessCapture(
     // journal still records it; this hook cannot manufacture its permission.
     if (origin === 'unhandledRejection') return;
     const owner = diagnosticOperationOwner(reports);
-    if (owner?.epoch === null) return;
-    capture(error, 'unhandled_exception', owner?.epoch);
+    if (!owner || owner.epoch === null) return;
+    capture(error, 'unhandled_exception', owner.epoch);
   };
   const rejected = (error: unknown, promise?: Promise<unknown>) => {
     const epoch = diagnosticRejectionEpoch(promise, reports);

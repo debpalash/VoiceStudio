@@ -523,8 +523,12 @@ class DiagnosticReports(
                     storage.remove("revoked.json")
                     if(disabled() || revoked())throw IOException("Diagnostic permission unavailable")
                 }catch(error:Exception) {
-                    synchronized(stateLock){if(generation==sequence){revocationPending=true;state=state.copy(enabled=false,optedIn=false,consentSaveFailed=true)}}
-                    revocationRetryAt=clock.nowMs()+60000;scheduleRetry(null,generation)
+                    // Atomic rename may publish ON before its checked barrier
+                    // fails. Revoke that possible grant before returning the
+                    // failed choice, even on the first opt-in without a fence.
+                    // Failed cleanup retains the existing bounded OFF retry.
+                    persistRevocation(generation,hadGrant=true,explicit=true)
+                    synchronized(stateLock){if(generation==sequence && !closed){state=state.copy(enabled=false,optedIn=false,consentSaveFailed=true)}}
                     throw error
                 }
                 synchronized(stateLock) {

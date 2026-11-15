@@ -12,6 +12,7 @@ import {
   captureProcessGone,
 } from './diagnostics-capture';
 import { sanitizeProperties, sanitizeFrames, validUiInput } from './diagnostics-schema';
+import { runDiagnosticOperation } from './diagnostic-operation';
 import type { BackendStatus } from '../preload/index.d';
 
 let root: string;
@@ -632,7 +633,9 @@ describe('strict data projection and durable recovery', () => {
     await reports.setConsent(true);
     const events = new EventEmitter();
     const stop = installDiagnosticProcessCapture(reports, events);
-    events.emit('uncaughtExceptionMonitor', new TypeError('PRIVATE_PROMPT'), 'uncaughtException');
+    runDiagnosticOperation(reports, () =>
+      events.emit('uncaughtExceptionMonitor', new TypeError('PRIVATE_PROMPT'), 'uncaughtException'),
+    );
     events.emit(
       'unhandledRejection',
       Object.assign(new Error('PRIVATE_CANCEL'), { name: 'AbortError' }),

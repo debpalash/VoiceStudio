@@ -385,15 +385,14 @@ export class DiagnosticReports {
     this.control = this.control
       .catch(() => {})
       .then(async () => {
-        if (enabled) {
-          await this.work?.catch(() => {});
-          await this.purge();
-          // Keep the previous durable OFF choice while retired files are
-          // locked. No new session can race a later cleanup of those paths.
-          if (this.cleanupPending) throw new Error('Could not clear previous diagnostic reports');
-        }
         let saved = false;
         try {
+          if (enabled) {
+            await this.work?.catch(() => {});
+            await this.purge();
+            // No new session can race a later cleanup of retired paths.
+            if (this.cleanupPending) throw new Error('Could not clear previous diagnostic reports');
+          }
           // A separate private tombstone can survive a locked old grant. Its
           // presence blocks startup and delivery until a fresh opt-in clears it.
           if (!enabled) await writePrivate(this.revocationPath, '{"version":1}').catch(() => {});
@@ -404,8 +403,27 @@ export class DiagnosticReports {
           if (enabled) await rm(this.revocationPath, { force: true });
           saved = true;
         } catch {
-          // Removing an old grant is a fail-closed fallback when replacement fails.
-          if (!enabled) {
+          let rolledBack = false;
+          if (enabled) {
+            // Rename can publish ON before its directory sync fails. A
+            // rejected first choice needs the same OFF barrier as revocation;
+            // an older unread grant must not become fallback authority either.
+            if (revision === this.revision) {
+              this.consent = { ...choice, enabled: false };
+              this.revocationPending = true;
+            }
+            await writePrivate(this.revocationPath, '{"version":1}').catch(() => {});
+            try {
+              await writePrivate(this.consentPath, JSON.stringify({ ...choice, enabled: false }));
+              rolledBack = true;
+              if (revision === this.revision) this.revocationPending = false;
+            } catch {
+              /* Removal below is the fallback if OFF replacement also fails. */
+            }
+          }
+          // Removing an old/partial grant is fail-closed when replacement
+          // fails. Serialized newer choices still publish after this rollback.
+          if (!rolledBack) {
             try {
               await rm(this.consentPath, { force: true });
               if (revision === this.revision) this.revocationPending = false;

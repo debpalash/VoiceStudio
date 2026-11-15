@@ -593,6 +593,51 @@ class DiagnosticReportsTest {
     }
     @Test fun fileStoreFileBarrierFailureCannotEnableAFormerlyWithdrawnGrant()=fileStoreBarrierFailureCannotEnableAFormerlyWithdrawnGrant(false)
     @Test fun fileStoreDirectoryBarrierFailureCannotEnableAFormerlyWithdrawnGrant()=fileStoreBarrierFailureCannotEnableAFormerlyWithdrawnGrant(true)
+    private fun firstOptInPublicationFailureIsOffBeforeRetryOrRestart(directoryFailure:Boolean)=runTest {
+        val directory=java.nio.file.Files.createTempDirectory("diagnostic-first-grant-").toFile()
+        var failOnce=true
+        var publishedEpoch:String?=null
+        val synchronizer=object:DiagnosticFileSynchronizer {
+            override fun synchronize(path:java.nio.file.Path) {
+                if(failOnce && path.fileName.toString()==(if(directoryFailure)directory.name else "consent.json")) {
+                    failOnce=false
+                    val published=Json.parseToJsonElement(File(directory,"consent.json").readText(Charsets.UTF_8)).jsonObject
+                    assertTrue(published["enabled"]!!.jsonPrimitive.boolean)
+                    publishedEpoch=published["epoch"]!!.jsonPrimitive.content
+                    throw IOException("Controlled post-publication consent barrier failure")
+                }
+                NioDiagnosticFileSynchronizer.synchronize(path)
+            }
+        }
+        val storage=FileDiagnosticStorage(directory,synchronizer)
+        val dispatcher=StandardTestDispatcher(testScheduler);val clock=ScheduledClock(testScheduler)
+        val transport=Transport().apply{code=201};val reporter=makeReporter(storage,transport,clock,dispatcher)
+        try {
+            assertNull(storage.read("consent.json",4096));assertNull(storage.read("revoked.json",4096))
+            try{reporter.setConsent(true);fail("Uncommitted first opt-in must fail")}catch(_:IOException){}
+            assertNotNull("The enabled grant was renamed before the checked failure",publishedEpoch)
+            assertFalse(reporter.status.enabled);assertTrue(reporter.status.consentSaveFailed)
+            assertFalse(reporter.capture(event()))
+            // Restart immediately, before any delayed revocation wake or orderly close.
+            val restarted=makeReporter(FileDiagnosticStorage(directory),transport,clock,dispatcher)
+            try {
+                restarted.load()
+                assertFalse("A failed first ON must not become an enabled grant on restart",restarted.status.enabled)
+                assertFalse(restarted.capture(event()));restarted.flush();assertTrue(transport.bodies.isEmpty())
+            }finally{restarted.close()}
+            assertTrue("Failure must leave a durable OFF or independent revocation",storage.read("revoked.json",4096)!=null ||
+                Json.parseToJsonElement(storage.read("consent.json",4096)!!.toString(Charsets.UTF_8)).jsonObject["enabled"]!!.jsonPrimitive.boolean==false)
+            // Retry preserves the desired ON choice, but creates a fresh grant.
+            reporter.setConsent(true)
+            assertTrue(reporter.status.enabled);assertFalse(reporter.status.consentSaveFailed)
+            assertNotEquals(publishedEpoch,reporter.recoveryContext!!.epoch)
+            assertFalse(reporter.capture(event(),expectedEpoch=publishedEpoch))
+            assertTrue(reporter.capture(event(),expectedEpoch=reporter.recoveryContext!!.epoch));runCurrent()
+            assertEquals(1,transport.bodies.size)
+        }finally{reporter.close();directory.deleteRecursively()}
+    }
+    @Test fun firstOptInFileBarrierFailureIsOffBeforeRetryOrRestart()=firstOptInPublicationFailureIsOffBeforeRetryOrRestart(false)
+    @Test fun firstOptInDirectoryBarrierFailureIsOffBeforeRetryOrRestart()=firstOptInPublicationFailureIsOffBeforeRetryOrRestart(true)
     @Test fun failedOffDirectoryBarrierRemainsClosedAndOffOnRestart()=runTest {
         val directory=java.nio.file.Files.createTempDirectory("diagnostic-commit-").toFile()
         val probe=FileCommitProbe(directory);val storage=FileDiagnosticStorage(directory,probe)

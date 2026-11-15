@@ -908,17 +908,35 @@ class Reporter:
                     _atomic(self.root / 'revoked.json', {'version':1})
                 except OSError:
                     pass  # A successful prefs write below still persists OFF.
-            with prefs._MUTATE_LOCK:
-                data = prefs._load(strict=True)
-                data.update(diagnostics_enabled=enabled,diagnostics_prompted=True,diagnostics_epoch=uuid.uuid4().hex,diagnostics_profile_id='install_'+uuid.uuid4().hex)
-                prefs._save(data)
-            with self.ack_lock:
-                if revision != self.consent_revision:
-                    return self._cached_status()
-            if enabled:
-                # Removing a durable revocation is allowed only after a new
-                # explicit grant has been saved. Failure stays closed.
-                (self.root / 'revoked.json').unlink(missing_ok=True)
+            try:
+                with prefs._MUTATE_LOCK:
+                    data = prefs._load(strict=True)
+                    data.update(diagnostics_enabled=enabled,diagnostics_prompted=True,diagnostics_epoch=uuid.uuid4().hex,diagnostics_profile_id='install_'+uuid.uuid4().hex)
+                    prefs._save(data)
+                with self.ack_lock:
+                    if revision != self.consent_revision:
+                        return self._cached_status()
+                if enabled:
+                    # Removing a durable revocation is allowed only after a new
+                    # explicit grant has been saved. Failure stays closed.
+                    (self.root / 'revoked.json').unlink(missing_ok=True)
+            except OSError:
+                if enabled:
+                    # Saving can publish ON and then fail (for example chmod
+                    # after replace). Revoke that possible first grant before
+                    # returning the failed choice, without replacing other prefs.
+                    try:
+                        _atomic(self.root / 'revoked.json', {'version':1})
+                    except OSError:
+                        pass  # An independently saved OFF still blocks restart.
+                    try:
+                        with prefs._MUTATE_LOCK:
+                            data = prefs._load(strict=True)
+                            data.update(diagnostics_enabled=False,diagnostics_prompted=True)
+                            prefs._save(data)
+                    except OSError:
+                        pass  # A committed tombstone still blocks the old grant.
+                raise
             with self.ack_lock:
                 superseded = revision != self.consent_revision
                 if not superseded:

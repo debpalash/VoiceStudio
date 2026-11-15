@@ -12,6 +12,7 @@ import { captureException, type AnalyticsExceptionStage } from '@shared/utils/an
 const THROTTLE_MS = 30_000;
 const lastOpened = new Map<string, number>();
 let installed = false;
+const taskObservations = new WeakMap<Promise<unknown>, DiagnosticConsentObservation | null>();
 
 interface EarlyRendererFault {
   kind: 'error' | 'rejection';
@@ -66,6 +67,25 @@ function repair(
   );
 }
 
+/**
+ * Start a new semantic action under its observed grant and bind its returned promise.
+ * The factory must start the work, not return unknown work already in flight.
+ * Known promises keep their first owner (including OFF); derived promises need
+ * their own producer-bound wrapper, never authority inferred from delivery time.
+ */
+export function rendererTask<T>(task: () => T | PromiseLike<T>): Promise<T> {
+  const observation = observeDiagnosticConsent();
+  let promise: Promise<T>;
+  try {
+    promise = Promise.resolve(task());
+  } catch (error) {
+    promise = Promise.reject(error);
+  }
+  // Weak keys retain no completed work, Error objects, or guessed temporal context.
+  if (!taskObservations.has(promise)) taskObservations.set(promise, observation);
+  return promise;
+}
+
 /** Run an event-triggered task without letting sync throws or promise rejections escape React. */
 export function runRendererTask(label: string, task: () => void | Promise<void>): void {
   const observation = observeDiagnosticConsent();
@@ -105,7 +125,16 @@ export function installGlobalErrorRecovery(): void {
     const message = reason?.message || String(reason);
     if (isBenignWindowError(message, reason)) return;
     event.preventDefault();
-    repair(message, reason, '', 'renderer:rejection');
+    // Rejection delivery can follow arbitrary asynchronous cleanup. Only this
+    // exact producer promise can authorize it; an unknown origin stays local.
+    repair(
+      message,
+      reason,
+      '',
+      'renderer:rejection',
+      true,
+      taskObservations.get(event.promise) ?? null,
+    );
   });
   for (const fault of earlyFaults)
     repair(

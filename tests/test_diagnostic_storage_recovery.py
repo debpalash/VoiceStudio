@@ -13,6 +13,110 @@ from test_diagnostic_managed_handoff import managed_reporter  # noqa: F401
 from test_diagnostic_reports import reporter  # noqa: F401
 
 
+@pytest.mark.parametrize("rollback_failure", [None, "tombstone", "preferences"])
+def test_failed_first_on_publication_cannot_enable_on_restart(reporter, monkeypatch, rollback_failure):
+    reports = importlib.import_module("core.diagnostic_reports")
+    from core import prefs
+    prefs._save({"analytics_enabled": True, "unrelated_setting": "preserved"})
+    assert not (reporter.root / "revoked.json").exists()
+    chmod, atomic, save = os.chmod, reports._atomic, prefs._save
+    failed_epoch = None
+
+    def fail_after_enabled_publication(path, *args, **kwargs):
+        nonlocal failed_epoch
+        if str(path) == prefs._PREFS_PATH and failed_epoch is None:
+            published = json.loads(Path(path).read_text(encoding="utf-8"))
+            assert published["diagnostics_enabled"] is True
+            failed_epoch = published["diagnostics_epoch"]
+            raise PermissionError("controlled one-shot post-replace chmod failure")
+        return chmod(path, *args, **kwargs)
+
+    def rollback_atomic(path, value):
+        if rollback_failure == "tombstone" and path.name == "revoked.json":
+            raise PermissionError("controlled independent revocation failure")
+        return atomic(path, value)
+
+    def rollback_preferences(value):
+        if rollback_failure == "preferences" and value.get("diagnostics_enabled") is False:
+            raise PermissionError("controlled OFF preferences failure")
+        return save(value)
+
+    monkeypatch.setattr(os, "chmod", fail_after_enabled_publication)
+    monkeypatch.setattr(reports, "_atomic", rollback_atomic)
+    monkeypatch.setattr(prefs, "_save", rollback_preferences)
+    with pytest.raises(PermissionError, match="post-replace chmod"):
+        reporter.consent(True)
+    assert failed_epoch is not None
+    assert not reporter.enabled and reporter.consent_failed
+    assert not reporter.capture("generation_failed")
+    assert prefs.get("analytics_enabled") is True
+    assert prefs.get("unrelated_setting") == "preserved"
+    # Load another owner immediately, before orderly shutdown or a worker tick.
+    restarted = reports.Reporter()
+    restarted.schema = reports._schema()
+    try:
+        restarted.refresh()
+        assert not restarted.enabled, "A failed first ON must not enable reporting on restart"
+        assert not restarted.capture("generation_failed")
+    finally:
+        restarted.shutdown()
+    # The failed desired ON remains retryable, with a new independently granted epoch.
+    reporter.consent(True)
+    assert reporter.enabled and not reporter.consent_failed
+    assert reporter.epoch != failed_epoch
+    assert not reporter.capture("generation_failed", _expected_epoch=failed_epoch)
+    assert reporter.capture("generation_failed", _expected_epoch=reporter.epoch)
+
+
+def test_failed_on_rollback_finishes_before_a_later_on_can_commit(reporter, monkeypatch):
+    reports = importlib.import_module("core.diagnostic_reports")
+    from core import prefs
+    chmod, atomic = os.chmod, reports._atomic
+    entered, release, newer_observed = threading.Event(), threading.Event(), threading.Event()
+    failed_epoch = None
+
+    def fail_after_enabled_publication(path, *args, **kwargs):
+        nonlocal failed_epoch
+        if str(path) == prefs._PREFS_PATH and failed_epoch is None:
+            failed_epoch = prefs._load(strict=True)["diagnostics_epoch"]
+            raise PermissionError("controlled post-publication failure")
+        return chmod(path, *args, **kwargs)
+
+    def held_rollback(path, value):
+        if path.name == "revoked.json" and not entered.is_set():
+            entered.set()
+            assert release.wait(5), "test did not release failed-ON rollback"
+        return atomic(path, value)
+
+    class Transport:
+        def shutdown(self):
+            newer_observed.set()  # Called after the later choice advances its revision.
+
+    monkeypatch.setattr(os, "chmod", fail_after_enabled_publication)
+    monkeypatch.setattr(reports, "_atomic", held_rollback)
+    first, first_results, first_failures, first_done = choice_thread(reporter, True)
+    later = None
+    try:
+        assert entered.wait(5)
+        reporter.transport = Transport()
+        later, results, failures, done = choice_thread(reporter, True)
+        assert newer_observed.wait(5)
+        assert not done.is_set() and not reporter.enabled
+    finally:
+        release.set()
+        first.join(5)
+        if later:
+            later.join(5)
+    assert first_done.is_set() and not first_results and len(first_failures) == 1
+    assert done.is_set() and not failures and results[0]["enabled"] is True
+    assert reporter.enabled and not reporter.consent_failed
+    assert prefs.get("diagnostics_enabled") is True
+    assert not (reporter.root / "revoked.json").exists()
+    assert reporter.epoch != failed_epoch
+    assert not reporter.capture("generation_failed", _expected_epoch=failed_epoch)
+    assert reporter.capture("generation_failed", _expected_epoch=reporter.epoch)
+
+
 def test_atomic_publication_syncs_file_before_rename_and_parent_after(tmp_path, monkeypatch):
     reports = importlib.import_module("core.diagnostic_reports")
     events = []

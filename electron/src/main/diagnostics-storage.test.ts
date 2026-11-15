@@ -23,6 +23,9 @@ const gate = vi.hoisted(() => ({
   outboxWriteAttempts: 0,
   publications: [] as string[],
   failDirectorySync: false,
+  failConsentDirectorySyncOnce: false,
+  failedOnEpoch: null as string | null,
+  afterConsentSyncFailure: null as null | (() => void),
   blockedRead: null as null | { entered: () => void; wait: Promise<void> },
   blockedConsentRead: null as null | { entered: () => void; wait: Promise<void> },
 }));
@@ -86,6 +89,14 @@ vi.mock('node:fs/promises', async (original) => {
       const sync = handle.sync.bind(handle);
       handle.sync = async () => {
         gate.publications.push(directory ? 'directory-sync' : 'file-sync');
+        if (directory && gate.failConsentDirectorySyncOnce && gate.publications.at(-2) === 'rename:consent.json') {
+          const published = JSON.parse(await fs.readFile(join(String(args[0]), 'consent.json'), 'utf8'));
+          if (published.enabled !== true) throw new Error('Fixture expected a published ON grant');
+          gate.failConsentDirectorySyncOnce = false;
+          gate.failedOnEpoch = published.epoch;
+          gate.afterConsentSyncFailure?.();
+          throw Object.assign(new Error('One-shot post-rename directory sync failed'), { code: 'EIO' });
+        }
         if (directory && gate.failDirectorySync)
           throw Object.assign(new Error('Directory sync failed'), { code: 'EIO' });
         if (gate.enabled && !gate.claimed) {
@@ -121,6 +132,9 @@ afterEach(async () => {
   gate.outboxWriteAttempts = 0;
   gate.publications = [];
   gate.failDirectorySync = false;
+  gate.failConsentDirectorySyncOnce = false;
+  gate.failedOnEpoch = null;
+  gate.afterConsentSyncFailure = null;
   gate.blockedRead = null;
   gate.blockedConsentRead = null;
   await reports?.close();
@@ -618,6 +632,74 @@ it.skipIf(process.platform === 'win32')(
     reports = new DiagnosticReports(initial.options);
     await reports.initialize();
     expect(reports.status()).toMatchObject({ enabled: false, opted_in: false });
+  },
+);
+
+it.skipIf(process.platform === 'win32').each(['first-choice', 'unread-old-grant'] as const)(
+  'does not revive a rejected post-rename ON after restart (%s)',
+  async (control) => {
+    const initial = await create(false);
+    let active = initial.reports;
+    let oldEpoch: string | undefined;
+    if (control === 'unread-old-grant') {
+      await active.setConsent(true);
+      oldEpoch = active.status().grant_epoch!;
+      await active.close();
+      gate.failReadTarget = 'consent.json';
+      reports = active = new DiagnosticReports(initial.options);
+      await active.initialize();
+      expect(active.status()).toMatchObject({ enabled: false, opted_in: false });
+      gate.failReadTarget = '';
+    }
+    gate.failConsentDirectorySyncOnce = true;
+    await expect(active.setConsent(true)).rejects.toThrow('Could not save diagnostic consent');
+    expect(gate.failedOnEpoch).toMatch(/^[a-f0-9]{32}$/);
+    if (oldEpoch) expect(gate.failedOnEpoch).not.toBe(oldEpoch);
+    expect(active.status()).toMatchObject({ enabled: false, opted_in: false });
+    active.capture({ category: 'generation_failed' });
+    // No close/flush can repair the first reporter before this real reload.
+    const restarted = new DiagnosticReports(initial.options);
+    await restarted.initialize();
+    const state = restarted.status();
+    await restarted.close();
+    expect(state).toMatchObject({ enabled: false, opted_in: false });
+    expect(initial.send).not.toHaveBeenCalled();
+    await expect(active.setConsent(true)).resolves.toMatchObject({ enabled: true, opted_in: true });
+    expect(active.status().grant_epoch).not.toBe(gate.failedOnEpoch);
+    active.capture({ category: 'generation_failed' });
+    await active.flush();
+    expect(initial.send).toHaveBeenCalledOnce();
+  },
+);
+
+it.skipIf(process.platform === 'win32')(
+  'keeps a failed ON closed and retries its rollback when every immediate storage path failed',
+  async () => {
+    const initial = await create(false);
+    gate.failConsentDirectorySyncOnce = true;
+    gate.afterConsentSyncFailure = () => {
+      gate.failWrites = true;
+      gate.failRemoveTarget = 'consent.json';
+    };
+    await expect(initial.reports.setConsent(true)).rejects.toThrow('Could not save diagnostic consent');
+    expect(gate.failedOnEpoch).toMatch(/^[a-f0-9]{32}$/);
+    expect(initial.reports.status()).toMatchObject({ enabled: false, opted_in: false });
+    initial.reports.capture({ category: 'generation_failed' });
+    await initial.reports.flush();
+    expect(initial.send).not.toHaveBeenCalled();
+    // No restart durability is claimed while all writes/removal fail. Once
+    // storage is healthy the existing worker must retire the partial grant.
+    gate.failWrites = false;
+    gate.failRemoveTarget = '';
+    await initial.reports.flush();
+    const restarted = new DiagnosticReports(initial.options);
+    await restarted.initialize();
+    const state = restarted.status();
+    await restarted.close();
+    expect(state).toMatchObject({ enabled: false, opted_in: false });
+    expect(initial.send).not.toHaveBeenCalled();
+    await expect(initial.reports.setConsent(true)).resolves.toMatchObject({ enabled: true });
+    expect(initial.reports.status().grant_epoch).not.toBe(gate.failedOnEpoch);
   },
 );
 
