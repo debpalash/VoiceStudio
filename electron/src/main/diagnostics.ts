@@ -869,6 +869,9 @@ export class DiagnosticReports {
       let terminal = false;
       for (let attempt = 0; attempt < diagnosticLimit('max_attempts', 3); attempt++) {
         if (!(await this.granted(epoch, revision))) break;
+        // OFF can run after authorization resolves, before this continuation
+        // installs the controller that withdrawal would otherwise abort.
+        if (!this.enabled || revision !== this.revision || this.consent?.epoch !== epoch) break;
         const controller = new AbortController();
         this.active = controller;
         const timer = setTimeout(
@@ -1011,7 +1014,7 @@ export class DiagnosticReports {
             record.session_id === previousSession &&
             record.props.category === 'app_crash' &&
             record.props.source === 'electron_main' &&
-            record.props.reason === 'unhandled_exception' &&
+            (record.props.reason === 'unhandled_exception' || record.props.reason === 'unclean_exit') &&
             record.props.app_version === previousVersion,
         )
       )

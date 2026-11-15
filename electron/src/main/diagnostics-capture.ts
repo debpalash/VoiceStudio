@@ -30,11 +30,19 @@ export class DiagnosticStatusObserver {
   private previousStage = '';
   private previousElapsed = 0;
   private reported = new Set<string>();
+  private attachingOwner: { epoch: string | null } | null = null;
 
-  constructor(private readonly reports: Pick<DiagnosticReports, 'capture'>) {}
+  constructor(private readonly reports: Pick<DiagnosticReports, 'capture' | 'status'>) {}
 
   observe(status: BackendStatus): void {
     if (status.remote) return;
+    if (status.stage === 'attaching' && this.previousStage !== 'attaching') {
+      // Child-exit recovery publishes this synchronously before its probe or
+      // grace awaits. Repeated status updates must not borrow a later choice.
+      this.attachingOwner = { epoch: this.reports.status().grant_epoch ?? null };
+    } else if (['idle', 'starting', 'installing', 'ready'].includes(status.stage)) {
+      this.attachingOwner = null;
+    }
     if (
       (['installing', 'starting'].includes(status.stage) && status.stage !== this.previousStage) ||
       status.elapsedMs < this.previousElapsed
@@ -84,6 +92,13 @@ export class DiagnosticStatusObserver {
   private once(key: string, event: DiagnosticEvent): void {
     if (this.reported.has(key)) return;
     this.reported.add(key);
+    if (this.attachingOwner) {
+      // An observed OFF is distinct from an immediate failure whose owner
+      // needed no asynchronous recovery observation.
+      if (this.attachingOwner.epoch !== null)
+        this.reports.capture(event, this.attachingOwner.epoch);
+      return;
+    }
     this.reports.capture(event);
   }
 }

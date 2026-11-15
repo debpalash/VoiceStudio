@@ -81,6 +81,49 @@ afterEach(async () => {
 });
 
 describe('independent desktop diagnostic permission', () => {
+  it.each([false, true])(
+    'rechecks the upload grant after authorization resolves (withdraw: %s)',
+    async (withdraw) => {
+      const send = success();
+      const reports = reporter({ send });
+      await reports.initialize();
+      await reports.setConsent(true);
+      reports.capture({ category: 'generation_failed', stage: 'generation' });
+      const dispatch = reports as unknown as {
+        granted: (epoch: string, revision: number) => Promise<boolean>;
+        activeId: string | null;
+      };
+      const granted = dispatch.granted.bind(reports);
+      let reached = false;
+      let withdrawal: Promise<unknown> | undefined;
+      const observation = vi.spyOn(dispatch, 'granted').mockImplementation(async (epoch, revision) => {
+        const allowed = await granted(epoch, revision);
+        if (allowed && dispatch.activeId && !reached) {
+          reached = true;
+          // Authorization was true; OFF runs before its caller can resume and
+          // register a controller for the actual upload.
+          if (withdraw) withdrawal = reports.setConsent(false);
+        }
+        return allowed;
+      });
+      try {
+        await reports.flush();
+        await withdrawal;
+        expect(reached).toBe(true);
+        expect(send).toHaveBeenCalledTimes(withdraw ? 0 : 1);
+      } finally {
+        observation.mockRestore();
+      }
+      if (withdraw) {
+        await reports.setConsent(true);
+        reports.capture({ category: 'operation_failed', stage: 'other' });
+        await reports.flush();
+        expect(send).toHaveBeenCalledOnce();
+        expect(JSON.parse(String(send.mock.calls[0][1]?.body)).props.category).toBe('operation_failed');
+      }
+    },
+  );
+
   it('collects nothing without explicit consent, even when product analytics was enabled', async () => {
     const send = success();
     const reports = reporter({

@@ -43,7 +43,7 @@ import java.io.File
             snapshotFlow { works.filter { it.state == WorkInfo.State.FAILED }.map { it.id }.toSet() },
             consume = { vm.store.consumeDubFailure(it) },
             display = { visibleFailures = visibleFailures + it },
-            report = vm::fail,
+            report = vm::failureHandler,
         )
     }
     var link by rememberSaveable {mutableStateOf("")}
@@ -57,8 +57,10 @@ import java.io.File
     var advancedTitle by remember {mutableStateOf("")}
     var copying by remember {mutableStateOf(false)}
     var savePath by rememberSaveable {mutableStateOf<String?>(null)}
+    var saveFailure by remember {mutableStateOf<(Throwable)->Unit>(vm::restoreFailure)}
     val save=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) {uri ->
         val path=savePath;savePath=null
+        val failure=saveFailure
         if(path!=null) scope.launch {
             val file=File(path)
             try {
@@ -66,14 +68,16 @@ import java.io.File
                     requireNotNull(context.contentResolver.openOutputStream(uri)).use {out -> file.inputStream().use {it.copyTo(out)}}
                 }
             } catch(cancelled:CancellationException) {throw cancelled}
-            catch(error:Exception) {vm.fail(error)}
+            catch(error:Exception) {failure(error)}
             finally {file.delete()}
         }
     }
-    val catalog=rememberLanguageCatalog(vm::fail)
+    val catalog=rememberLanguageCatalog(vm::failureHandler)
     val languages=catalog?.dubChoices().orEmpty()
+    var pickerFailure by remember {mutableStateOf<(Throwable)->Unit>(vm::restoreFailure)}
     LaunchedEffect(state.profiles) {if(voice.isNotEmpty() && state.profiles.none {it.id==voice}) voice=DubVoiceChoice.UNSELECTED}
     val picker=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {uri ->
+        val failure=pickerFailure
         if(uri!=null) scope.launch {
             copying=true
             try {
@@ -87,7 +91,7 @@ import java.io.File
                 inputType=selected.third
             }
             catch(cancelled:CancellationException) {throw cancelled}
-            catch(e:Exception) {vm.fail(e)} finally {copying=false}
+            catch(e:Exception) {failure(e)} finally {copying=false}
         }
     }
     fun enqueue(draft: PendingDub, confirmed: Boolean) {
@@ -102,13 +106,13 @@ import java.io.File
         AlertDialog(shape=MaterialTheme.shapes.large,containerColor=role("surfaceOverlay"),
             onDismissRequest={pending=null},title={Text(tr("mobile.dub.translation_online_title"))},
             text={Text(tr("mobile.dub.translation_online_body",mapOf("service" to draft.engine.consentName)))},
-            confirmButton={TextButton(shape=MaterialTheme.shapes.small,onClick={pending=null;try {enqueue(draft,true)} catch(e:Exception) {vm.fail(e)}}) {Text(tr("mobile.dub.translation_allow"))}},
+            confirmButton={TextButton(shape=MaterialTheme.shapes.small,onClick={val failure=vm.failureHandler();pending=null;try {enqueue(draft,true)} catch(e:Exception) {failure(e)}}) {Text(tr("mobile.dub.translation_allow"))}},
             dismissButton={TextButton(shape=MaterialTheme.shapes.small,onClick={pending=null}) {Text(tr("mobile.dub.translation_decline"))}})
     }
     Screen {
         ScreenTitle("mobile.tabs.dub")
         if(copying || catalog==null) InlineLoading()
-        DubSourceCard(!copying) {picker.launch(arrayOf("video/*","audio/*"))}
+        DubSourceCard(!copying) {pickerFailure=vm.failureHandler();picker.launch(arrayOf("video/*","audio/*"))}
         if(filePath!=null) {
             SelectedDubSource(sourceName ?: File(filePath!!).name) {File(filePath!!).delete();filePath=null;sourceName=null}
         }
@@ -174,9 +178,10 @@ import java.io.File
             state.dubHistory.forEachIndexed {index,item ->
                 val job=item.jobId.ifBlank {item.id}
                 DubHistoryRow(item,!state.busy,
-                    download={vm.run {
+                    download={val failure=vm.failureHandler();vm.run {
                         val file=sharedDownload(context,vm.api!!,dubDownloadPath(job),"mkv")
                         savePath=file.absolutePath
+                        saveFailure=failure
                         save.launch(item.filename.substringBeforeLast('.').ifBlank {item.id}+"."+file.extension)
                     }},
                     share={vm.run {shareFile(context,sharedDownload(context,vm.api!!,dubDownloadPath(job),"mkv"),"application/octet-stream")}},

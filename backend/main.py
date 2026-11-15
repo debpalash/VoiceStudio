@@ -1861,9 +1861,14 @@ async def global_exception_handler(request: Request, exc: Exception):
     # recent, the diagnostic bundle, and the bug-report pipeline. record()
     # never raises; a journal failure must not shadow the real error.
     from core import error_journal
-    _entry = error_journal.record(
-        exc, route=str(request.url.path), trace=traceback.format_exc()
-    )
+    from core import diagnostic_reports
+    # Starlette handles an unhandled exception outside user middleware, after
+    # its context scope has unwound. Only our private request observation may
+    # authorize this delayed capture; headers and the now-current grant cannot.
+    with diagnostic_reports.grant_scope(request.scope.get(_DIAGNOSTIC_REQUEST_EPOCH)):
+        _entry = error_journal.record(
+            exc, route=str(request.url.path), trace=traceback.format_exc()
+        )
     headers: dict[str, str] = _cors_headers_for(request)
     # #874: a model download that failed because the CONFIGURED Hugging Face
     # mirror (HF_ENDPOINT) is unreachable used to leak the raw transformers
@@ -1911,6 +1916,23 @@ def _is_public_path(path: str) -> bool:
 # signal must exist before the ordinary system router so a bounded Windows
 # process-tree stop cannot leave a false crash sentinel.
 _STARTUP_EXEMPT = {"/health", "/startup/progress", "/system/shutdown-intent"}
+_DIAGNOSTIC_REQUEST_EPOCH = '_voicestudio_diagnostic_request_epoch'
+
+
+class DiagnosticRequestAuthorityMiddleware:
+    """Keep local request ownership through awaits and outer error handling."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope['type'] != 'http':
+            return await self.app(scope, receive, send)
+        from core import diagnostic_reports
+        epoch = diagnostic_reports.inherited_grant()
+        scope[_DIAGNOSTIC_REQUEST_EPOCH] = epoch
+        with diagnostic_reports.grant_scope(epoch):
+            return await self.app(scope, receive, send)
 
 
 class StartupGateMiddleware:
@@ -2199,11 +2221,14 @@ app.add_middleware(
     expose_headers=[*CORS_EXPOSED_HEADERS, BACKEND_MARKER_HEADER],
 )
 
-# Registered LAST, which in Starlette means OUTERMOST — so the marker lands on
-# every response. CORS is immediately inside it and outside both auth gates, so
+# Outside the response-producing middleware, so the marker lands on every
+# response. CORS is immediately inside it and outside both auth gates, so
 # preflights and gate-generated 401s retain the browser contract. The marker's
 # absence lets a client conclude that the responder is not VoiceStudio (#1385).
 app.add_middleware(BackendMarkerMiddleware)
+# No responses or network work: snapshot before any request middleware awaits.
+# The private ASGI scope value also outlives this middleware's exception unwind.
+app.add_middleware(DiagnosticRequestAuthorityMiddleware)
 
 # Register canonical audio MIME types before any StaticFiles mount.
 # Python's `mimetypes.guess_type()` returns `audio/x-wav` for `.wav` and

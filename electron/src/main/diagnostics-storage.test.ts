@@ -149,6 +149,37 @@ async function create(optIn = true) {
   return { reports, send, root, options };
 }
 
+it('does not recover the same unclean session twice after marker replacement is interrupted', async () => {
+  const initial = await create();
+  const session = join(initial.options.directory, 'session.json');
+  const outbox = join(initial.options.directory, 'outbox.json');
+  const marker = await readFile(session);
+  await initial.reports.close();
+  await writeFile(session, marker);
+  gate.failRenameTarget = 'session.json';
+  reports = new DiagnosticReports(initial.options);
+  await reports.initialize();
+  const published = await readFile(outbox);
+  const original = JSON.parse(published.toString()).records[0];
+  expect(original.props).toMatchObject({ reason: 'unclean_exit', occurrences: 1 });
+  expect(await readFile(session)).toEqual(marker);
+  gate.failRenameTarget = '';
+  await reports.close();
+  // Recreate exactly the two durable files at the abrupt-exit boundary.
+  await writeFile(outbox, published);
+  await writeFile(session, marker);
+  reports = new DiagnosticReports(initial.options);
+  await reports.initialize();
+  const recovered = JSON.parse(await readFile(outbox, 'utf8')).records;
+  expect(recovered).toHaveLength(1);
+  expect(recovered[0]).toMatchObject({ id: original.id, props: { occurrences: 1 } });
+  await reports.flush();
+  expect(initial.send).toHaveBeenCalledOnce();
+  const body = JSON.parse(String(initial.send.mock.calls[0][1]?.body));
+  expect(body).toMatchObject({ id: original.id, ts: original.timestamp_ms, props: { occurrences: 1 } });
+  expect(JSON.stringify(body)).not.toContain(JSON.parse(marker.toString()).session_id);
+});
+
 it.each(['outbox.json', 'inbox', 'session.json'])(
   'retries withdrawn-file cleanup after a locked %s',
   async (target) => {

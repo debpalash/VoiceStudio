@@ -24,7 +24,7 @@ class DictationProtocolTest {
         val errors=java.util.concurrent.CopyOnWriteArrayList<Throwable>()
         val captureCycles=java.util.concurrent.atomic.AtomicInteger()
         val saved=java.util.concurrent.CopyOnWriteArrayList<String>()
-        val controller=DictationController(VoiceStudioApi(PairingAddress.parse(server.url("/").toString())),scope,{errors.add(it)},
+        val controller=DictationController(VoiceStudioApi(PairingAddress.parse(server.url("/").toString())),scope,{{error ->errors.add(error)}},
             DictationAudioSource {keepRecording,_ -> while(keepRecording()) {captureCycles.incrementAndGet();delay(5)}},completed={saved.add(it)})
         try {
             controller.start()
@@ -64,7 +64,7 @@ class DictationProtocolTest {
             }))
             server.start()
             val scope=CoroutineScope(SupervisorJob()+Dispatchers.Default)
-            val controller=DictationController(VoiceStudioApi(PairingAddress.parse(server.url("/").toString())),scope,{},
+            val controller=DictationController(VoiceStudioApi(PairingAddress.parse(server.url("/").toString())),scope,{{_ ->}},
                 DictationAudioSource {keepRecording,_ -> while(keepRecording()) delay(5)})
             try {
                 controller.start()
@@ -96,7 +96,7 @@ class DictationProtocolTest {
         val oldCaptureEnded=CompletableDeferred<Unit>()
         val captures=java.util.concurrent.atomic.AtomicInteger()
         val errors=java.util.concurrent.CopyOnWriteArrayList<Throwable>()
-        val controller=DictationController(VoiceStudioApi(PairingAddress.parse(server.url("/").toString())),scope,{errors.add(it)},
+        val controller=DictationController(VoiceStudioApi(PairingAddress.parse(server.url("/").toString())),scope,{{error ->errors.add(error)}},
             DictationAudioSource {keepRecording,_ ->
                 val first=captures.incrementAndGet()==1
                 try {while(keepRecording()) delay(5)}

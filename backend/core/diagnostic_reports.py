@@ -35,6 +35,9 @@ _FALLBACKS = {'category':'operation_failed','source':'backend','stage':'other','
 _CURRENT_APP_VERSION = object()
 _GRANT_UNSET = object()
 _grant_authority = ContextVar('diagnostic_grant_authority', default=_GRANT_UNSET)
+# Python exception hooks run after a bound callable's context has unwound.
+# Keep one identity/control tuple, never the exception or traceback itself.
+_thread_fault_authority = threading.local()
 
 
 @contextmanager
@@ -63,9 +66,36 @@ def bind_callable(function, epoch=_GRANT_UNSET):
     if epoch is _GRANT_UNSET:
         epoch = inherited_grant()
     def run(*args, **kwargs):
-        with grant_scope(epoch):
-            return function(*args, **kwargs)
+        depth = getattr(_thread_fault_authority, 'depth', 0)
+        if depth == 0:
+            _thread_fault_authority.pending = None
+        _thread_fault_authority.depth = depth + 1
+        succeeded = False
+        try:
+            with grant_scope(epoch):
+                try:
+                    result = function(*args, **kwargs)
+                except BaseException as error:
+                    pending = getattr(_thread_fault_authority, 'pending', None)
+                    # A propagated inner fault keeps its more specific owner,
+                    # including across successful nested cleanup in a finally.
+                    if pending is None or pending[0] != id(error):
+                        _thread_fault_authority.pending = (id(error), epoch)
+                    raise
+                succeeded = True
+                return result
+        finally:
+            _thread_fault_authority.depth = depth
+            if depth == 0 and succeeded:
+                # A caught executor/nested error cannot taint later work.
+                _thread_fault_authority.pending = None
     return run
+
+
+def _consume_thread_fault_epoch(error):
+    pending = getattr(_thread_fault_authority, 'pending', None)
+    _thread_fault_authority.pending = None
+    return pending[1] if pending is not None and pending[0] == id(error) else _GRANT_UNSET
 
 
 def _app_version(value):
@@ -945,14 +975,24 @@ def _install_hooks():
     _hooks_installed = True
     previous = sys.excepthook
     def unhandled(kind, error, trace):
+        epoch = _consume_thread_fault_epoch(error)
         if not issubclass(kind, (KeyboardInterrupt,SystemExit)):
-            capture('backend_crash',stage='other',error=error,reason='unhandled_exception')
+            if epoch is _GRANT_UNSET:
+                capture('backend_crash',stage='other',error=error,reason='unhandled_exception')
+            else:
+                with grant_scope(epoch):
+                    capture('backend_crash',stage='other',error=error,reason='unhandled_exception')
         previous(kind,error,trace)
     sys.excepthook = unhandled
     previous_thread = threading.excepthook
     def thread_unhandled(args):
+        epoch = _consume_thread_fault_epoch(args.exc_value)
         if not issubclass(args.exc_type,(KeyboardInterrupt,SystemExit)):
-            capture('operation_failed',stage='other',error=args.exc_value,reason='unhandled_exception')
+            if epoch is _GRANT_UNSET:
+                capture('operation_failed',stage='other',error=args.exc_value,reason='unhandled_exception')
+            else:
+                with grant_scope(epoch):
+                    capture('operation_failed',stage='other',error=args.exc_value,reason='unhandled_exception')
         previous_thread(args)
     threading.excepthook = thread_unhandled
 

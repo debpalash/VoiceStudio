@@ -28,9 +28,10 @@ import java.util.UUID
 class TranscriptImportSession(application: Application): AndroidViewModel(application) {
     var work by mutableStateOf<Job?>(null)
     var progress by mutableStateOf(0f)
-    fun start(fail: (Throwable)->Unit,action: suspend ()->Unit) {
+    fun start(failure: ()->(Throwable)->Unit,action: suspend ()->Unit) {
         if(work?.isActive==true) return
-        progress=0f;work=viewModelScope.launch {try {action()} catch(e:CancellationException) {throw e} catch(e:Exception) {fail(e)} finally {work=null}}
+        val fail=failure()
+        progress=0f;work=viewModelScope.launch {try {action()} catch(e:CancellationException) {throw e} catch(e:Exception) {ensureActive();fail(e)} finally {work=null}}
     }
 }
 @Composable fun TranscriptsScreen(vm: StudioViewModel,onDictate: ()->Unit) {
@@ -50,7 +51,7 @@ class TranscriptImportSession(application: Application): AndroidViewModel(applic
     var editText by rememberSaveable {mutableStateOf("")}
     var format by rememberSaveable {mutableStateOf("txt")}
     suspend fun refresh() {records=vm.phone.transcripts.list()}
-    fun action(block: suspend ()->Unit) {scope.launch {try {block()} catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)}}}
+    fun action(block: suspend ()->Unit) {val failure=vm.failureHandler();scope.launch {try {block()} catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}}}
     fun export(items: List<PhoneTranscript>,selectedFormat: String) {action {
         val file=withContext(Dispatchers.IO) {
             val text=when(selectedFormat) {
@@ -64,20 +65,21 @@ class TranscriptImportSession(application: Application): AndroidViewModel(applic
         }
         shareLocalFile(context,file,if(selectedFormat=="json") "application/json" else "text/plain")
     }}
-    val importer=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {uri ->if(uri!=null&&asr!=null&&ready) importerSession.start(vm::fail) {
+    var importFailure by remember {mutableStateOf<(Throwable)->Unit>(vm::restoreFailure)}
+    val importer=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {uri ->if(uri!=null&&asr!=null&&ready) importerSession.start({importFailure}) {
         val title=withContext(Dispatchers.IO) {mediaDisplayName(context,uri)} ?: java.util.UUID.randomUUID().toString()
         val source=copyMedia(context,uri,"audio",maxBytes=PhoneTranscriptStore.MAX_SOURCE_BYTES)
         try {val record=vm.phone.transcripts.prepare(source,title,asr,progress={importerSession.progress=it});PhoneTranscriptionWorker.enqueue(context,record);refresh()} finally {source.delete()}
     }}
-    LaunchedEffect(Unit) {try {vm.phone.refresh();refresh()} catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)}}
-    LaunchedEffect(jobs) {try {refresh()} catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)}}
+    LaunchedEffect(Unit) {val failure=vm.failureHandler();try {vm.phone.refresh();refresh()} catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}}
+    LaunchedEffect(jobs) {val failure=vm.failureHandler();try {refresh()} catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}}
     val visible=remember(records,query) {records.filter {query.isEmpty()||it.title.contains(query,true)||it.text.contains(query,true)}}
     Screen {
         ScreenTitle("transcriptions.title")
         Text(tr("mobile.transcripts.hint"))
         TaskModelPicker(vm,"file-transcribe",setOf("asr"),asr,key="mobile.simple.asr")
         if(!ready&&asr!=null) MissingModelsCard(vm,"transcriptions.title",listOf(asr))
-        Action("mobile.dub.pick_media",ready&&importerSession.work==null) {importer.launch(arrayOf("audio/*","video/*"))}
+        Action("mobile.dub.pick_media",ready&&importerSession.work==null) {importFailure=vm.failureHandler();importer.launch(arrayOf("audio/*","video/*"))}
         if(importerSession.work!=null) {LinearProgressIndicator(progress={importerSession.progress},modifier=Modifier.fillMaxWidth());Secondary("common.cancel") {importerSession.work?.cancel()}}
         Secondary("transcriptions.capture",onClick=onDictate)
         Field("transcriptions.search_placeholder",query,{query=it})

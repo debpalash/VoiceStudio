@@ -12,13 +12,13 @@ private final class UploadBuffer: @unchecked Sendable {
 /// remain local UI state and are never replayed into automatic diagnostics.
 private struct UploadDiagnosticSnapshot: Sendable {
     let handler: @Sendable (DiagnosticInput, Int64) -> Void
-    let observedAtMs: Int64
     func prepare(_ failure: ClientError) -> (@Sendable () -> Void)? {
         if let status=failure.status,status<500 { return nil }
         let keys: Set<String>=["mobile.ios.upload_failed","mobile.errors.backend","mobile.errors.server","mobile.errors.timeout","mobile.connect.error_unreachable","mobile.errors.invalid_response"]
         guard keys.contains(failure.key) || (failure.status ?? 0)>=500 else { return nil }
         let network=["mobile.errors.timeout","mobile.connect.error_unreachable"].contains(failure.key)
         let input=DiagnosticInput(category:"operation_failed",stage:"dub",errorCode:network ? "NETWORK_ERROR" : "UNKNOWN",errorType:failure.key=="mobile.errors.timeout" ? "TimeoutError" : "OtherError",frames:[DiagnosticFrame(path:"mobile/ios/VoiceStudioKit/Sources/VoiceStudioKit/Networking/BackgroundUpload.swift",line:#line)])
+        let observedAtMs=Int64(Date().timeIntervalSince1970*1000)
         // Only this bounded DTO, timestamp and epoch-bound callback survive IO.
         return { handler(input,observedAtMs) }
     }
@@ -26,10 +26,17 @@ private struct UploadDiagnosticSnapshot: Sendable {
 private final class UploadDiagnosticObserver: @unchecked Sendable {
     private let lock=NSLock()
     private var handler: (@Sendable (DiagnosticInput, Int64) -> Void)?
+    private var uploads: [ObjectIdentifier: UploadDiagnosticSnapshot] = [:]
     func set(_ value: (@Sendable (DiagnosticInput, Int64) -> Void)?) { lock.withLock { handler=value } }
     func snapshot() -> UploadDiagnosticSnapshot? {
         guard let handler=lock.withLock({ self.handler }) else { return nil }
-        return UploadDiagnosticSnapshot(handler:handler,observedAtMs:Int64(Date().timeIntervalSince1970*1000))
+        return UploadDiagnosticSnapshot(handler:handler)
+    }
+    func associate(_ observation: UploadDiagnosticSnapshot?, with task: URLSessionTask) {
+        lock.withLock { uploads[ObjectIdentifier(task)] = observation }
+    }
+    func take(task: URLSessionTask) -> UploadDiagnosticSnapshot? {
+        lock.withLock { uploads.removeValue(forKey: ObjectIdentifier(task)) }
     }
 }
 
@@ -69,6 +76,9 @@ private final class UploadDiagnosticObserver: @unchecked Sendable {
         try DubVoiceChoice.validate(profile)
         guard pending == nil else { throw ClientError("mobile.errors.upload_active") }
         guard !languages.isEmpty else { throw ClientError("mobile.errors.choose_language") }
+        // Each user-started upload retains the choice before asynchronous work.
+        // Restored tasks without this in-memory observation remain local.
+        let diagnostic=diagnosticObserver.snapshot()
         let id = UUID().uuidString
         let directory = try stagingDirectory ?? FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
         let output = directory.appendingPathComponent("upload-\(id).multipart")
@@ -85,6 +95,7 @@ private final class UploadDiagnosticObserver: @unchecked Sendable {
             task.taskDescription = String(data: try JSONEncoder().encode(meta), encoding: .utf8)
             try persistence.begin(meta)
             pending = meta; fraction = 0; receipt = nil
+            diagnosticObserver.associate(diagnostic, with: task)
             task.resume()
         } catch { try? FileManager.default.removeItem(at: output); throw error }
     }
@@ -133,7 +144,7 @@ private final class UploadDiagnosticObserver: @unchecked Sendable {
     }
     nonisolated public func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) { completionHandler(nil) }
     nonisolated public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?) {
-        let diagnostic=diagnosticObserver.snapshot()
+        let diagnostic=diagnosticObserver.take(task: task)
         let body = buffer.take(task: task)
         guard let description = task.taskDescription, let data = description.data(using: .utf8), let meta = try? JSONDecoder().decode(PendingUpload.self, from: data) else { return }
         let status = (task.response as? HTTPURLResponse)?.statusCode ?? 0
@@ -148,6 +159,7 @@ private final class UploadDiagnosticObserver: @unchecked Sendable {
                     guard self.pending?.jobID == meta.jobID, self.persistence.pending()?.jobID == meta.jobID else { return }
                     let retry = self.foregroundSession.uploadTask(with: request, fromFile: meta.file)
                     retry.taskDescription = description
+                    self.diagnosticObserver.associate(diagnostic, with: retry)
                     retry.resume()
                 }
                 return

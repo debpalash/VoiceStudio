@@ -104,10 +104,11 @@ fun contentReportClient()=ContentReportClient(BuildConfig.CONTENT_REPORTS_URL,Bu
             var received by remember {mutableStateOf<PhoneIncoming?>(null)}
             LaunchedEffect(incomingIntent,state.loading) {
                 if(!state.loading&&incomingIntent!=null) {
+                    val failure=vm.failureHandler()
                     try {PhoneIncoming.read(context,incomingIntent)?.let {payload ->
                         received=payload
                         nav.navigate(if(payload.text==null&&payload.file==null) payload.route ?: "incoming" else "incoming") {launchSingleTop=true}
-                    }} catch(e:Exception) {vm.fail(e)}
+                    }} catch(e:Exception) {failure(e)}
                     onIncomingConsumed()
                 }
             }

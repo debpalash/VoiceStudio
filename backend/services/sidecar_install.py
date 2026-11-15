@@ -1463,8 +1463,11 @@ def start_install(engine_id: str) -> dict:
         job["_expected_env"] = os.environ.get(spec.env_var)
         job["_preserve_existing"] = _healthy(spec, check_rocm=False)
         _jobs[engine_id] = job
+    from core import diagnostic_reports
+    # The user-started install owns its observed grant through subprocess
+    # completion and output-drain cleanup, including an explicitly OFF owner.
     th = threading.Thread(
-        target=_run_install, args=(spec, job),
+        target=diagnostic_reports.bind_callable(_run_install), args=(spec, job),
         name=f"sidecar-install-{engine_id}", daemon=True,
     )
     th.start()

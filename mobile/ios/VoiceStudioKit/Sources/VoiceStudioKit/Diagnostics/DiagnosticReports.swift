@@ -195,6 +195,7 @@ private actor DiagnosticWorker {
     var storageDeferred: Bool { storageRetryAt != nil }
     var retryWake: (id: UUID, epoch: String, generation: UInt64, deadline: Int64, task: Task<Void, Never>)?
     var revocationPending = false
+    var consentReadRetryAt: Int64?
     var revocationWake: (id: UUID, generation: UInt64, deadline: Int64, task: Task<Void, Never>)?
     var waiters: [CheckedContinuation<Void, Never>] = []
     init(gate: DiagnosticGate, projector: DiagnosticProjector, destination: DiagnosticDestination, transport: any DiagnosticTransport, clock: any DiagnosticClock, storage: any DiagnosticStorage) {
@@ -205,6 +206,7 @@ private actor DiagnosticWorker {
         guard !state.0 else { return }
         let revoked = diagnosticRevocationPresent(storage)
         guard !state.1 || gate.disabled() || revoked else { return }
+        if let deadline = consentReadRetryAt, deadline > clock.nowMs(), !gate.disabled(), !revoked { return }
         cancelRetryWake()
         cancelRevocationWake()
         storageRetryAt = nil
@@ -212,16 +214,17 @@ private actor DiagnosticWorker {
         let generation = gate.lock.withLock { gate.generation }
         var hadGrant = gate.lock.withLock { gate.consent != nil }
         var consent: DiagnosticConsent?
+        var unread = false
         do {
             if let data = try storage.read("consent.json", maxBytes: 4096) {
                 hadGrant = true
-                let value = try JSONDecoder().decode(DiagnosticConsent.self, from: data)
-                if value.version == 1, diagnosticMatches(value.epoch, "[a-f0-9]{32}"), diagnosticMatches(value.profile_id, "install_[a-f0-9]{32}") {
+                if let value = try? JSONDecoder().decode(DiagnosticConsent.self, from: data), value.version == 1, diagnosticMatches(value.epoch, "[a-f0-9]{32}"), diagnosticMatches(value.profile_id, "install_[a-f0-9]{32}") {
                     let enabledAt = value.enabled_at_ms.flatMap { $0 > 0 && $0 <= clock.nowMs() + 60000 ? $0 : nil }
                     consent = DiagnosticConsent(version: 1, enabled: value.enabled, epoch: value.epoch, profile_id: value.profile_id, enabled_at_ms: enabledAt)
                 }
             }
-        } catch { consent = nil; hadGrant = true }
+        } catch DiagnosticFailure.corruptStore { hadGrant = true }
+        catch { unread = true; hadGrant = true }
         if gate.disabled() || revoked {
             let current = gate.lock.withLock {
                 guard gate.generation == generation, !gate.closed else { return false }
@@ -234,6 +237,21 @@ private actor DiagnosticWorker {
             _ = performRevocation(generation: generation, recordChoice: revoked, hadGrant: hadGrant)
             return
         }
+        if unread {
+            let current = gate.lock.withLock {
+                guard gate.generation == generation, !gate.closed else { return false }
+                gate.loaded = false; gate.state.enabled = false; gate.state.optedIn = false
+                return true
+            }
+            guard current else { return }
+            // Unknown permission is not withdrawal. Preserve the grant and
+            // outbox, but collect/send nothing until a bounded reread succeeds.
+            transport.cancelAll()
+            consentReadRetryAt = clock.nowMs() + 60000
+            scheduleRevocationWake(generation: generation)
+            return
+        }
+        consentReadRetryAt = nil
         let applied = gate.lock.withLock {
             guard gate.generation == generation, !gate.closed else { return false }
             gate.consent = consent; gate.loaded = true; gate.state.prompted = consent != nil
@@ -256,6 +274,7 @@ private actor DiagnosticWorker {
         cancelRetryWake()
         cancelRevocationWake()
         revocationPending = false
+        consentReadRetryAt = nil
         storageRetryAt = nil; outboxLoaded = true
         gate.lock.withLock { gate.pending.removeAll() }; records.removeAll(); retryAt.removeAll()
         try? storage.remove("outbox.json")
@@ -280,6 +299,7 @@ private actor DiagnosticWorker {
     }
     @discardableResult private func performRevocation(generation: UInt64, recordChoice: Bool, hadGrant: Bool? = nil) -> Bool {
         guard gate.controlCurrent(generation) else { return false }
+        consentReadRetryAt = nil
         cancelRetryWake(); storageRetryAt = nil; outboxLoaded = true
         records.removeAll(); retryAt.removeAll()
         gate.lock.withLock { gate.pending.removeAll() }
@@ -303,8 +323,8 @@ private actor DiagnosticWorker {
         revocationWake?.task.cancel(); revocationWake = nil
     }
     private func scheduleRevocationWake(generation: UInt64) {
-        guard revocationPending, gate.controlCurrent(generation) else { return }
-        let deadline = clock.nowMs() + 60000
+        guard revocationPending || consentReadRetryAt != nil, gate.controlCurrent(generation) else { return }
+        let deadline = consentReadRetryAt ?? (clock.nowMs() + 60000)
         cancelRevocationWake()
         let id = UUID(), clock = self.clock, gate = self.gate
         let task = Task { [weak self] in
@@ -317,10 +337,11 @@ private actor DiagnosticWorker {
         }
         revocationWake = (id, generation, deadline, task)
     }
-    private func revocationWakeFired(_ id: UUID, generation: UInt64) {
+    private func revocationWakeFired(_ id: UUID, generation: UInt64) async {
         guard revocationWake?.id == id, gate.controlCurrent(generation) else { return }
         revocationWake = nil
-        _ = performRevocation(generation: generation, recordChoice: gate.lock.withLock { gate.state.prompted })
+        if consentReadRetryAt != nil { load(); await flush() }
+        else { _ = performRevocation(generation: generation, recordChoice: gate.lock.withLock { gate.state.prompted }) }
     }
     private func deliveryAllowed(_ consent: DiagnosticConsent, generation: UInt64) -> Bool {
         guard gate.allowed(consent.epoch, generation) else { return false }
@@ -472,6 +493,7 @@ private actor DiagnosticWorker {
     func close() {
         cancelRetryWake()
         cancelRevocationWake()
+        consentReadRetryAt = nil
         storageRetryAt = nil
         if revocationPending || gate.disabled() {
             _ = diagnosticRevokeGrant(storage, recordChoice: gate.lock.withLock { gate.state.prompted })

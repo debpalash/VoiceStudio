@@ -6,7 +6,7 @@ import kotlinx.serialization.json.*
 /** Local authority only; never serialized into checkpoints or report properties. */
 data class CompanionDiagnosticObservation(val revision: Long, val epoch: String)
 
-internal class CompanionTaskFailureGate {
+class CompanionTaskFailureGate {
     private var task: String? = null
     private var observation: CompanionDiagnosticObservation? = null
     private var sequence = 0

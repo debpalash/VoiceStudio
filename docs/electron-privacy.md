@@ -92,6 +92,11 @@ submitted under the current grant retain their independent submission proof.
 Changing consent in another window invalidates
 delayed captures. Uncaught startup errors whose reporting permission was unknown
 remain local; a later opt-in cannot authorize them retrospectively.
+Requests, optional installs, native screen actions, uploads and player/picker
+callbacks retain the permission observed before their work starts. Restored
+callbacks without that observation stay local. Python exceptions retain their
+original permission through interpreter/thread hooks after cleanup; delayed
+desktop child-exit recovery follows the same rule.
 A failed consent write is shown with Retry and leaves the current process off.
 Where storage permits, withdrawal replaces the previous grant or writes a
 private revocation marker so restart also remains off. If every write or

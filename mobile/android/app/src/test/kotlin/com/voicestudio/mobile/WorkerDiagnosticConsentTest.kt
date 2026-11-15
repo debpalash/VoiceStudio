@@ -325,7 +325,7 @@ class WorkerDiagnosticConsentTest {
                 reporter.flush()
                 assertEquals("a new consent epoch must not reclassify old history", 0, collector.bodies.size)
                 val live = viewModel()
-                try { live.fail(ClientFailure("mobile.local.inference_failed")) }
+                try { live.failureHandler()(ClientFailure("mobile.local.inference_failed")) }
                 finally { live.viewModelScope.cancel() }
                 reporter.flush()
                 assertEquals("fresh UI failures remain reportable", 1, collector.bodies.size)
