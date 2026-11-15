@@ -675,8 +675,8 @@ test-only PR. Docker Hub overview edits still publish through the small
     (`backend/core/analytics.py`, allowlisted content-free metadata).
   - Automatic failure reports to Supermetry's app intake
     (`https://app.supermetry.com/api/public/v1/app-events`, or the owner-configured
-    packaged destination `https://ana.voicestudio.sh/api/public/v1/app-events`,
-    recorded for approval in PR #4137) when build/runtime app
+    packaged destination `https://app.voicestudio.sh/api/public/v1/app-events`,
+    owner-set 2026-11-16) when build/runtime app
     credentials are configured, otherwise the same existing public events endpoint,
     only after the separate **Automatic error reports** opt-in (owner-approved
     2026-11-14). Off by default, including for existing analytics users; metadata
