@@ -4,6 +4,47 @@ import importlib
 import pytest
 from test_diagnostic_reports import reporter  # noqa: F401
 from test_download_install_integrity import install_origin  # noqa: F401
+from test_dub_batch_engine_selection import dub_job_env, fake_registry  # noqa: F401
+
+
+def test_actual_dub_terminal_error_keeps_one_causal_report(reporter, dub_job_env, fake_registry, monkeypatch):
+    from test_dub_batch_engine_selection import _one_seg_request
+    tasks = importlib.import_module('core.tasks')
+    dg, _job = dub_job_env
+    engine = fake_registry('fake-diagnostic-oom', supports_cloning=True)
+    monkeypatch.setenv('OMNIVOICE_TTS_BACKEND', 'fake-diagnostic-oom')
+    for name in ('create', 'mark_running', 'mark_failed', 'mark_done', 'mark_cancelled'):
+        monkeypatch.setattr(tasks.job_store, name, lambda *args, **kwargs: None)
+    monkeypatch.setattr(tasks.run_sentinel, 'touch_activity', lambda *args, **kwargs: None)
+    published = []
+    monkeypatch.setattr(tasks.job_store, 'append_event', lambda _identity, event: published.append(str(event)) or len(published))
+    reporter.consent(True)
+
+    def fail(self, text, **kwargs):
+        raise MemoryError('private failing allocation')
+
+    monkeypatch.setattr(engine, 'generate', fail)
+
+    async def run():
+        manager = tasks.TaskManager()
+        monkeypatch.setattr(dg, 'task_manager', manager)
+        result = await dg.dub_generate('jobX', _one_seg_request())
+        worker = asyncio.create_task(manager.worker())
+        try:
+            await asyncio.wait_for(manager.queue.join(), 5)
+            assert manager.active_tasks[result['task_id']]['status'] == 'failed'
+        finally:
+            worker.cancel()
+            await asyncio.gather(worker, return_exceptions=True)
+
+    asyncio.run(run())
+    reporter._tick()
+    rows = reporter._files()
+    assert len(rows) == 1
+    assert rows[0]['props']['error_type'] == 'MemoryError'
+    assert rows[0]['props']['occurrences'] == 1
+    assert any('"type": "error"' in event for event in published)
+    assert all('diagnostic' not in event and 'private' not in event for event in published)
 
 @pytest.mark.parametrize('choice',['unchanged','replacement','later_opt_in'])
 @pytest.mark.parametrize('mode',['raise','terminal_frame'])

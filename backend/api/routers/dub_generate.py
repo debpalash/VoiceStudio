@@ -1785,11 +1785,15 @@ async def dub_generate(job_id: str, req: DubRequest):
                 from core.public_errors import stream_generation_failure
 
                 from core import diagnostic_reports
+                reported = False
                 if not task_manager.is_cancelled(task_id):
-                    diagnostic_reports.capture_failure("dub", error=e)
+                    reported = diagnostic_reports.capture_failure("dub", error=e)
                 error_detail = stream_generation_failure(e)["detail"]
                 logger.exception("Dub generation failed for segment %s", seg_id)
-                yield f"data: {json.dumps({'type': 'error', 'segment': i, 'segment_id': seg_id, 'error': error_detail})}\n\n"
+                yield diagnostic_reports.preserve_failure_identity(
+                    f"data: {json.dumps({'type': 'error', 'segment': i, 'segment_id': seg_id, 'error': error_detail})}\n\n",
+                    e, reported=reported,
+                )
                 return
 
         _t_loop_end = time.perf_counter()

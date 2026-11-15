@@ -59,14 +59,12 @@ def failure():
             reporter.consent(True)
 
 if transition in ('fresh-bound', 'fresh-unbound'):
-    # A caught prior error must not contaminate genuinely later work. Retain
-    # its identity in this fixture until the new exception exists, avoiding
-    # allocator-ID reuse without requiring production to retain the Error.
-    older = None
+    # A caught prior error must not contaminate genuinely later work, even
+    # after it is released and the allocator can reuse its object identity.
     try:
         reports.bind_callable(failure)()
-    except ValueError as error:
-        older = error
+    except ValueError:
+        pass
     def fresh():
         raise TypeError('private later main-thread failure')
     if transition == 'fresh-bound':
@@ -180,6 +178,31 @@ def test_thread_hook_same_grant_reports_once(reporter, hooks):
     saved = records(reporter)
     assert len(saved) == 1
     assert saved[0]['props']['error_type'] == 'ValueError'
+
+
+def test_caught_bound_fault_cannot_authorize_an_unbound_fault_with_reused_identity(reporter, hooks, monkeypatch):
+    reports, completed = hooks
+    reporter.consent(True)
+    # Model allocator identity reuse deterministically, without retaining the
+    # caught exception or depending on a particular Python allocator's timing.
+    monkeypatch.setattr(reports, 'id', lambda _error: 17, raising=False)
+
+    def caught():
+        raise ValueError('private caught first failure')
+
+    def target():
+        try:
+            reports.bind_callable(caught)()
+        except ValueError:
+            pass
+        raise TypeError('private unrelated unbound failure')
+
+    thread = threading.Thread(target=target)
+    thread.start()
+    thread.join(5)
+    assert not thread.is_alive()
+    assert completed == [thread.ident]
+    assert records(reporter) == []
 
 
 @pytest.mark.parametrize('transition', ['off-to-on', 'regrant', 'same-grant'])

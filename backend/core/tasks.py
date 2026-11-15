@@ -178,7 +178,7 @@ class TaskManager:
                                 await self._push_event(task_id, update)
                                 stream_error = _stream_failure(update)
                                 if stream_error is not None:
-                                    if diagnostic_epoch is not None:
+                                    if diagnostic_epoch is not None and not diagnostic_reports.failure_already_captured(update, diagnostic_epoch):
                                         diagnostic_reports.capture_failure(diagnostic_reports.route_stage(t.get("type", "")), expected_epoch=diagnostic_epoch)
                                     t["status"] = "failed"
                                     t["error"] = stream_error

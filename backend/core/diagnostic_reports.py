@@ -36,8 +36,36 @@ _CURRENT_APP_VERSION = object()
 _GRANT_UNSET = object()
 _grant_authority = ContextVar('diagnostic_grant_authority', default=_GRANT_UNSET)
 # Python exception hooks run after a bound callable's context has unwound.
-# Keep one identity/control tuple, never the exception or traceback itself.
+# Authority stays on that exception, without retaining it in thread-local state.
 _thread_fault_authority = threading.local()
+_FAULT_EPOCH_KEY = '_voicestudio_diagnostic_fault_epoch'
+_FAULT_EPOCH_MARKER = object()
+
+
+class _CapturedFailureEvent(str):
+    """Wire-identical SSE text with a memory-only captured-cause receipt."""
+    __slots__ = ('_diagnostic_cause',)
+
+
+def preserve_failure_identity(event, error, *, reported):
+    """Never retain an exception or add control fields to the public event."""
+    if reported is not True or not isinstance(event, str):
+        return event
+    try:
+        marker = BaseException.__getattribute__(error, '__dict__').get('_voicestudio_diagnostic_token')
+        if (isinstance(marker, tuple) and len(marker) == 2 and marker[0] == inherited_grant()
+                and isinstance(marker[0], str) and _HEX.fullmatch(marker[0])
+                and type(marker[1]) is int):
+            update = _CapturedFailureEvent(event)
+            update._diagnostic_cause = marker
+            return update
+    except Exception:
+        pass  # Missing evidence leaves the dispatcher's normal capture intact.
+    return event
+
+
+def failure_already_captured(event, epoch):
+    return type(event) is _CapturedFailureEvent and event._diagnostic_cause[0] == epoch
 
 
 @contextmanager
@@ -67,35 +95,36 @@ def bind_callable(function, epoch=_GRANT_UNSET):
         epoch = inherited_grant()
     def run(*args, **kwargs):
         depth = getattr(_thread_fault_authority, 'depth', 0)
-        if depth == 0:
-            _thread_fault_authority.pending = None
         _thread_fault_authority.depth = depth + 1
-        succeeded = False
         try:
             with grant_scope(epoch):
                 try:
                     result = function(*args, **kwargs)
                 except BaseException as error:
-                    pending = getattr(_thread_fault_authority, 'pending', None)
                     # A propagated inner fault keeps its more specific owner,
                     # including across successful nested cleanup in a finally.
-                    if pending is None or pending[0] != id(error):
-                        _thread_fault_authority.pending = (id(error), epoch)
+                    try:
+                        state = BaseException.__getattribute__(error, '__dict__')
+                        marker = state.get(_FAULT_EPOCH_KEY)
+                        if not isinstance(marker, tuple) or len(marker) != 2 or marker[0] is not _FAULT_EPOCH_MARKER:
+                            state[_FAULT_EPOCH_KEY] = (_FAULT_EPOCH_MARKER, epoch)
+                    except Exception:
+                        pass  # Uninspectable exceptions keep unknown authority.
                     raise
-                succeeded = True
                 return result
         finally:
             _thread_fault_authority.depth = depth
-            if depth == 0 and succeeded:
-                # A caught executor/nested error cannot taint later work.
-                _thread_fault_authority.pending = None
     return run
 
 
 def _consume_thread_fault_epoch(error):
-    pending = getattr(_thread_fault_authority, 'pending', None)
-    _thread_fault_authority.pending = None
-    return pending[1] if pending is not None and pending[0] == id(error) else _GRANT_UNSET
+    try:
+        marker = BaseException.__getattribute__(error, '__dict__').pop(_FAULT_EPOCH_KEY, None)
+        if isinstance(marker, tuple) and len(marker) == 2 and marker[0] is _FAULT_EPOCH_MARKER:
+            return marker[1]
+    except Exception:
+        pass  # Never infer authority from an unrelated or uninspectable fault.
+    return _GRANT_UNSET
 
 
 def _app_version(value):
