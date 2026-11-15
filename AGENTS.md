@@ -71,6 +71,17 @@ licence/catalog data. CLA, identity and secret checks remain enabled.
 - Attribution: commits, PR descriptions and comments carry only the submitter's git identity. Never credit an agent (no agent `Co-authored-by:`, "Generated with …", session links) and never add other names/emails. Human co-authors are fine. Enforced by the `commit-identity` check.
 - Issues: absorb or decline — never defer to a future version. Check the open-PR queue before implementing community-reported fixes.
 
+### Diagnostic app intake (owner task, 2026-11-15)
+
+Separately opted-in automatic failure reports may replace the public events
+request with `/api/public/v1/app-events` on the sanctioned Supermetry host
+`https://app.supermetry.com`. App ID and write-only ingest key come only from
+runtime environment or git-ignored build metadata. `SUPERMETRY_APP_HOST` is an
+explicit operator override, unset by default; a different production host must
+be recorded and approved by the owner. This changes no product analytics or
+collection permission. `diagnostics.sessionPings` is default off, requires the
+same separate consent, and is never enabled in release workflow defaults.
+
 ## Shared select controls
 
 - Use `electron/src/shared/components/SearchableSelect.jsx` for all new or redesigned select boxes. Reuse `VoiceSelector` for voice choices. Do not introduce native `<select>` controls.

@@ -131,6 +131,8 @@ def prepare(output, info):
     # Generated from the same reviewed destination/taxonomy as desktop/backend.
     shutil.copy2(ROOT / "config/diagnostics.json", catalogs / "diagnostics.json")
     shutil.copy2(ROOT / "config/analytics.json", catalogs / "diagnostics-destination.json")
+    intake = runpy.run_path(str(ROOT / "scripts/generate_supermetry_config.py"))
+    intake["write_config"](catalogs / "supermetry-app.generated.json")
     source = ROOT / "electron/src/renderer/src/i18n/locales"
     shutil.copy2(ROOT / "electron/src/shared/languages.json", catalogs / "languages.json")
     code_source = (ROOT / "electron/src/shared/utils/languages.js").read_text(encoding="utf-8")

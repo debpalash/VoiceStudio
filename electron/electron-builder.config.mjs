@@ -16,6 +16,9 @@ import { repairSnapArtifacts } from './snap-template-payload.mjs';
 import { signMasRuntime } from './mas-runtime-bundle.mjs';
 import { APP_ID, PRODUCT_NAME } from '../config/app-config.mjs';
 import { DISTRIBUTION_PROFILE, DISTRIBUTION_TARGET } from '../config/distributions.mjs';
+import { writeSupermetryConfig } from '../config/supermetry-app.mjs';
+
+writeSupermetryConfig();
 
 const here = dirname(fileURLToPath(import.meta.url));
 const { version } = JSON.parse(readFileSync(resolve(here, '../package.json'), 'utf-8'));
@@ -208,6 +211,7 @@ export default {
     { from: '../config/app.json', to: 'config/app.json' },
     { from: '../config/analytics.json', to: 'config/analytics.json' },
     { from: '../config/diagnostics.json', to: 'config/diagnostics.json' },
+    { from: '../config/supermetry-app.generated.json', to: 'config/supermetry-app.generated.json' },
     { from: 'T3CODE-LICENSE.txt', to: 'electron/T3CODE-LICENSE.txt' },
     ...(!isMacAppStore ? bundledUvResources : []),
     ...bundledOmnivoiceTtsResources,

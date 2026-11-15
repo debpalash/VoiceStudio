@@ -73,6 +73,9 @@ jobs:
       run:
         shell: bash
     env:
+      SUPERMETRY_APP_ID: ${{ secrets.SUPERMETRY_APP_ID }}
+      SUPERMETRY_INGEST_KEY: ${{ secrets.SUPERMETRY_INGEST_KEY }}
+      SUPERMETRY_APP_HOST: ${{ vars.SUPERMETRY_APP_HOST || secrets.SUPERMETRY_APP_HOST }}
       VOICESTUDIO_RUST_TARGET: ${{ matrix.target }}
       # packaging-contract.mjs requires this runtime in the installer.
       VOICESTUDIO_OMNIVOICE_TTS_PLATFORM: ${{ matrix.gguf_platform }}

@@ -4,7 +4,8 @@ The analytics destination is a public Supermetry site id in
 ``config/analytics.json``; it only names where opted-in events go. Anything
 that grants access (a Supermetry dashboard/API key ``pnl_...``, a PostHog
 project or personal key) must never be committed, and the clients take no
-token from the build environment.
+token from the product-analytics build environment. Diagnostics-only app intake
+uses a write-only key supplied at build time; that key is never committed.
 """
 from __future__ import annotations
 
@@ -15,8 +16,9 @@ from pathlib import Path
 
 _REPO = Path(__file__).resolve().parents[1]
 _SECRET_RE = re.compile(r"\b(?:pnl|phc|phx)_[A-Za-z0-9]{20,}")
+_INGEST_RE = re.compile(r"smk_[a-z2-7]{39}")
 _SKIP_DIRS = {"node_modules", ".git", "target", "dist", "build", ".venv", "zig-out"}
-_SCAN_EXT = {".ts", ".tsx", ".js", ".jsx", ".py", ".rs", ".json", ".yml", ".yaml", ".md", ".env", ".mjs"}
+_SCAN_EXT = {".ts", ".tsx", ".js", ".jsx", ".py", ".rs", ".json", ".yml", ".yaml", ".md", ".env", ".mjs", ".swift", ".kt", ".kts"}
 
 
 def _tracked_files():
@@ -25,23 +27,27 @@ def _tracked_files():
     ).stdout
     for name in (n for n in out.split("\0") if n):
         p = Path(name)
-        if any(part in _SKIP_DIRS for part in p.parts) or p.suffix.lower() not in _SCAN_EXT:
-            continue
         yield name, _REPO / p
 
 
 def test_no_analytics_key_literal_is_committed():
     offenders = []
     for name, path in _tracked_files():
-        if name in {"tests/test_no_committed_analytics_token.py", "tests/test_gitleaks_allowlist.py"}:
-            continue
         try:
             text = path.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
-        if _SECRET_RE.search(text):
+        legacy_fixture = name in {"tests/test_no_committed_analytics_token.py", "tests/test_gitleaks_allowlist.py"}
+        legacy_scanned = path.suffix.lower() in _SCAN_EXT and not any(part in _SKIP_DIRS for part in Path(name).parts)
+        if _INGEST_RE.search(text) or (legacy_scanned and not legacy_fixture and _SECRET_RE.search(text)):
             offenders.append(name)
     assert not offenders, "An analytics key literal is committed in: " + ", ".join(offenders)
+
+
+def test_ingest_key_detection_covers_native_and_desktop_keys():
+    assert _INGEST_RE.search("smk_" + "a" * 39)
+    assert not _INGEST_RE.search("smk_" + "a" * 38)
+    assert not _INGEST_RE.search("smk_" + "0" * 39)
 
 
 def test_the_destination_is_a_public_site_id_only():

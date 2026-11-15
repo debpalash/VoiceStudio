@@ -52,16 +52,26 @@ from a user pressing Cancel. A no-progress observation does not cancel a valid r
 Reporting is best effort: an abruptly terminated or offline process cannot
 guarantee delivery; eligible crash summaries can be recovered on a later launch.
 
-The destination is the configured Supermetry public events endpoint
-(`/api/public/v1/events`, event `diagnostic_report`), using the public site in
-`config/analytics.json`. `config/diagnostics.json` is the shared closed metadata
-policy. Reports contain technical categories/codes, app/build/platform labels,
+Packaged builds configured with an app ID and write-only ingest key send failure
+reports to Supermetry's app intake (`/api/public/v1/app-events`). The key identifies
+the application, never the user, and cannot read reports. It ships in the app's
+private build metadata; it is never committed, logged, or included in stored
+reports. The default host remains `https://app.supermetry.com` from
+`config/analytics.json`. A separately configured `SUPERMETRY_APP_HOST` selects
+an operator's instance; a different production host needs owner approval.
+The app intake stores installation and optional session IDs only as keyed hashes.
+Without valid app credentials, the existing public events request
+(`/api/public/v1/events`, event `diagnostic_report`) and site remain unchanged.
+Usage analytics keeps its existing destination and request format.
+`config/diagnostics.json` is the shared closed metadata policy.
+Reports contain technical categories/codes, app/build/platform labels,
 known first-party source locations, bounded counters and a separately generated
 random installation ID. They never contain audio, text/transcripts, user names,
 filenames or home paths, credentials, URLs, logs, exception messages, source
 lines, local variables, memory dumps, screenshots or manual report bodies.
-Fingerprints use sanitized technical fields only. No cookies, credentials or
-referrer accompany the public request, and redirects are refused. Diagnostic
+Fingerprints use sanitized technical fields only. No cookies, user credentials or
+referrer accompany requests; only app intake uses its write-only app key.
+Redirects are refused. Diagnostic
 destinations require HTTPS; HTTP is allowed only for literal localhost,
 127.0.0.1 or ::1 test collectors.
 
@@ -86,6 +96,11 @@ waits for that cleanup, so a delayed purge cannot delete new reports.
 Completed-delivery bookkeeping stays local and prevents repeated uploads while
 producer files are locked. If completion cannot be saved before an abrupt exit,
 a restart may retry the same stable report ID; exactly-once delivery is not promised.
+App-intake batches contain at most 20 events and 16 KiB of encoded JSON. Acknowledged
+reports and permanent `too_old`, `invalid`, or `duplicate` drops are retired;
+server throttling and transient failures retain stable IDs for bounded retries.
+An unauthorized app key pauses sending for the rest of that app run and retains
+the queue. Delivery results contain only fixed local status codes and counts.
 Temporarily unread consent stops collection and delivery while saved evidence waits
 for a bounded retry. Phone Settings and iOS crash/upload handlers follow the
 recovered current grant; an early Retry never presents unread consent as a saved
@@ -130,15 +145,31 @@ sender before waiting on storage. The Settings request completes only after
 saving that choice, or returns a retryable save error. Slow storage can keep the
 save pending without allowing collection or delivery to resume. Permission-denied
 storage errors are not confused with desktop-managed consent.
-Desktop crash-session correlation uses random local IDs that never enter
-the Supermetry event properties or request body.
+Desktop crash-session recovery uses private local IDs. Separate app-intake session
+pings are implemented behind `diagnostics.sessionPings`, **false by default** in
+generated build metadata. They additionally require diagnostics consent and are
+never enabled by usage-analytics consent. An explicit build setting
+`SUPERMETRY_DIAGNOSTICS_SESSION_PINGS=1` enables this owner-decision flag. When
+enabled, a run sends one random session ID in a session event and its new failure
+reports; queued reports from earlier runs never acquire the new run's ID. Turning
+consent off retires that correlation for the rest of the run. With the flag off,
+there are no session pings or session IDs in failure requests; Supermetry can
+calculate crash-free users, without crash-free sessions. The consent copy is unchanged.
 
 `OMNIVOICE_DIAGNOSTICS_DISABLED` or `OMNIVOICE_ANALYTICS_DISABLED` set to
 `1`, `true`, `yes` or `on` disables automatic reports.
 Loading either hard-disable switch also revokes a previous diagnostics grant
 and purges its queue; removing the switch requires a fresh Settings opt-in.
 The usage-analytics consent choice is not changed.
-`SUPERMETRY_SITE_ID`, `SUPERMETRY_HOST` and, for the desktop/native sender,
+`SUPERMETRY_APP_ID`, `SUPERMETRY_INGEST_KEY`, and `SUPERMETRY_APP_HOST` override
+the diagnostics-only generated configuration at runtime, including explicitly
+empty or invalid values. Invalid app credentials select the unchanged fallback.
+Builds generate git-ignored `config/supermetry-app.generated.json` and bundle it
+with the backend; Electron main embeds the same metadata, and native builds
+generate an equivalent private resource. These values are never exposed through
+renderer configuration or the diagnostics status API. Fork and unconfigured local
+builds need no app credentials. Product analytics does not read them.
+`SUPERMETRY_SITE_ID`, `SUPERMETRY_HOST` and, for the desktop/native fallback sender,
 `SUPERMETRY_APP_URL` support
 developer destinations; an empty site disables reporting. Tests use isolated
 storage and local/fake transports, never the production site.

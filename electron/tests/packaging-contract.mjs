@@ -215,6 +215,7 @@ for (const resource of [
   'config/app.json',
   'config/analytics.json',
   'config/diagnostics.json',
+  'config/supermetry-app.generated.json',
 ]) {
   const entry = config.extraResources.find((item) => item.to === resource);
   assert(entry && existsSync(resolve(root, entry.from)), 'Required resource: ' + resource);
