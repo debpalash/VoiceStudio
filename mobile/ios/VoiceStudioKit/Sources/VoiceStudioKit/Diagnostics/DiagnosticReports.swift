@@ -365,7 +365,7 @@ private actor DiagnosticWorker {
             return
         }
         if sessionStarted || (!enabled && gate.lock.withLock({ gate.consent?.enabled == true })) {
-            sessionInvalidated = true; sessionEvent = nil; sessionEpoch = nil; currentRunIDs.removeAll()
+            sessionInvalidated = true; sessionEvent = nil; sessionEpoch = nil; sessionRetryAt = nil; currentRunIDs.removeAll()
         }
         cancelRetryWake()
         cancelRevocationWake()
@@ -399,7 +399,7 @@ private actor DiagnosticWorker {
         // An initial Keep off has no accepted grant/correlation to retire.
         // A real withdrawal stays retired even before its first flush/ping.
         if sessionStarted || gate.lock.withLock({ gate.consent?.enabled == true }) {
-            sessionInvalidated = true; sessionEvent = nil; sessionEpoch = nil
+            sessionInvalidated = true; sessionEvent = nil; sessionEpoch = nil; sessionRetryAt = nil
         }
         currentRunIDs.removeAll()
         cancelRetryWake(); storageRetryAt = nil; outboxLoaded = true

@@ -5,7 +5,9 @@ import Testing
 private let intakeRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../../../..").standardizedFileURL
 private final class AppIntakeStore: DiagnosticStorage, @unchecked Sendable {
     let lock = NSLock(); var files: [String: Data] = [:]
-    func read(_ name: String, maxBytes: Int) throws -> Data? { try lock.withLock { guard let data = files[name] else { return nil }; guard data.count <= maxBytes else { throw DiagnosticFailure.corruptStore }; return data } }
+    private var markerReads = 0
+    var revocationReadCount: Int { lock.withLock { markerReads } }
+    func read(_ name: String, maxBytes: Int) throws -> Data? { try lock.withLock { if name == "revoked.json" { markerReads += 1 }; guard let data = files[name] else { return nil }; guard data.count <= maxBytes else { throw DiagnosticFailure.corruptStore }; return data } }
     func write(_ name: String, data: Data) { lock.withLock { files[name] = data } }
     func remove(_ name: String) { _ = lock.withLock { files.removeValue(forKey: name) } }
 }
@@ -245,6 +247,33 @@ struct DiagnosticAppIntakeTests {
         #expect(events.filter { $0["kind"] as? String == "session" }.count == 1)
         #expect(events.filter { $0["kind"] as? String != "session" }.allSatisfy { $0["session_id"] != nil })
         await reports.close()
+    }
+
+    @Test(arguments: [false, true]) func retiredSessionRetryCannotKeepTheWorkerFlushing(_ externalWithdrawal: Bool) async throws {
+        let store = AppIntakeStore(), transport = AppIntakeTransport(), clock = AppIntakeClock()
+        transport.setReplies(Array(repeating: DiagnosticTransportReply(status: 503), count: 3))
+        let reports = try reporter(store, transport, pings: true, clock: clock)
+        _ = try await reports.setConsent(true)
+        await reports.flush()
+        #expect(transport.bodies().count == 3)
+        if externalWithdrawal {
+            store.write("revoked.json", data: Data("{\"version\":1}".utf8))
+            await reports.flush()
+        } else { _ = try await reports.setConsent(false) }
+        #expect(!reports.status.enabled)
+        _ = try await reports.setConsent(true)
+        clock.advance(60000)
+        let before = store.revocationReadCount
+        await reports.flush()
+        // A retired ping has no eligible work. A stale retry deadline otherwise
+        // rearms zero-delay flushes, each rereading the marker on the real worker.
+        let deadline = ContinuousClock.now.advanced(by: .milliseconds(100))
+        while store.revocationReadCount - before < 20 && ContinuousClock.now < deadline { await Task.yield() }
+        let after = store.revocationReadCount
+        await reports.close()
+        #expect(after - before == 1)
+        #expect(transport.bodies().count == 3)
+        #expect(!reports.capture(DiagnosticInput(category: "engine_failed")))
     }
 
 }
