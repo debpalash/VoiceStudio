@@ -1341,6 +1341,7 @@
     "terminal_command_conflict": "{{path}} appartient à une autre installation : VoiceStudio ne l'a pas modifié.",
     "close_to_tray": "Continuer en arrière-plan dans la zone de notification",
     "close_to_tray_desc": "Fermer la fenêtre masque VoiceStudio dans la zone de notification au lieu de quitter, et les tâches en cours se poursuivent. Rouvrez-le depuis l’icône de la zone de notification et choisissez Quitter pour fermer.",
+    "close_to_tray_failed": "Impossible d'enregistrer ce réglage. Réessayez.",
     "review_mode_on": "Examen",
     "review_mode_off": "Tir rapide",
     "translate_agent": "Ajustement des agents",

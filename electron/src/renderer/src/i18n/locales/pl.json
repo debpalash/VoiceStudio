@@ -1353,6 +1353,7 @@
     "terminal_command_conflict": "{{path}} należy do innej instalacji, więc VoiceStudio go nie zmienił.",
     "close_to_tray": "Działaj w zasobniku po zamknięciu okna",
     "close_to_tray_desc": "Zamknięcie okna ukrywa VoiceStudio w zasobniku zamiast zamykać aplikację, więc trwające zadania są kontynuowane. Otwórz ją ponownie z ikony w zasobniku i wybierz tam Zakończ, aby wyjść.",
+    "close_to_tray_failed": "Nie udało się zapisać tego ustawienia. Spróbuj ponownie.",
     "review_mode_on": "Recenzja",
     "review_mode_off": "Szybkostrzelny",
     "translate_agent": "Agent pasuje",

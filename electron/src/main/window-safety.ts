@@ -16,11 +16,6 @@ export function isLiveWindow(window: BrowserWindow | null | undefined): window i
   }
 }
 
-/** Hidden (for example to the tray) rather than minimized: the user cannot see it. */
-export function isHiddenWindow(window: BrowserWindow): boolean {
-  return !window.isVisible() && !window.isMinimized();
-}
-
 /** Restore and focus a live window without racing its native teardown. */
 export function activateLiveWindow(window: BrowserWindow | null | undefined): boolean {
   if (!isLiveWindow(window)) return false;

@@ -57,10 +57,60 @@ export function readCloseToTray(userData: string): boolean {
   }
 }
 
+/** Throws when the choice cannot be written, so the caller never confirms an unsaved value. */
 export function saveCloseToTray(userData: string, enabled: boolean): void {
-  try {
-    writeFileSync(join(userData, PREFS_FILE), JSON.stringify({ closeToTray: enabled }));
-  } catch {
-    // Best effort: the choice still applies for this session.
+  writeFileSync(join(userData, PREFS_FILE), JSON.stringify({ closeToTray: enabled }));
+}
+
+/**
+ * Whether the main window is in use, and which close is still pending.
+ *
+ * A window hidden to the tray is live but not in use: `voicestudio stop` may
+ * end the app, and the discovery record says so. A minimized window is still in
+ * use. Any show cancels a close that is still flushing, so reopening from the
+ * tray or a second launch always wins over the late continuation of an earlier
+ * close.
+ */
+export class WindowUse {
+  private hidden = false;
+  private epoch = 0;
+
+  get hiddenToTray(): boolean {
+    return this.hidden;
   }
+
+  /** The window was hidden to the tray. */
+  hide(): void {
+    this.hidden = true;
+  }
+
+  /** The window was shown (or is gone): in use again, and pending closes are void. */
+  show(): void {
+    this.hidden = false;
+    this.epoch++;
+  }
+
+  /** Start a close; the returned check is false once the window was shown after it. */
+  beginClose(): () => boolean {
+    const epoch = this.epoch;
+    return () => this.epoch === epoch;
+  }
+
+  /** The `window` field of the discovery record. */
+  inUse(live: boolean): boolean {
+    return live && !this.hidden;
+  }
+}
+
+/** What `voicestudio stop` does with the app. */
+export function decideTerminalStop(context: { windowLive: boolean; hiddenToTray: boolean }): {
+  /** Begin the orderly quit. False while the user is working in a window. */
+  quit: boolean;
+  /** Flush renderer state first: a live (hidden) window may have queued writes. */
+  flush: boolean;
+} {
+  return {
+    quit: !context.windowLive || context.hiddenToTray,
+    flush: context.windowLive,
+  };
 }

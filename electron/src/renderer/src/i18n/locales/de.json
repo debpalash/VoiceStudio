@@ -1339,6 +1339,7 @@
     "terminal_command_conflict": "{{path}} gehört zu einer anderen Installation, daher hat VoiceStudio es nicht verändert.",
     "close_to_tray": "Beim Schließen im Infobereich weiterlaufen",
     "close_to_tray_desc": "Beim Schließen des Fensters wird VoiceStudio im Infobereich ausgeblendet statt beendet, laufende Aufgaben laufen weiter. Über das Symbol im Infobereich wieder öffnen und dort „Beenden“ wählen.",
+    "close_to_tray_failed": "Diese Einstellung konnte nicht gespeichert werden. Versuche es erneut.",
     "review_mode_on": "Rezension",
     "review_mode_off": "Schnellfeuer",
     "translate_agent": "Agententauglich",

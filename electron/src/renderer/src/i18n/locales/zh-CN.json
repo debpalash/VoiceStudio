@@ -1328,6 +1328,7 @@
     "terminal_command_conflict": "{{path}} 属于另一个安装，因此 VoiceStudio 未作更改。",
     "close_to_tray": "关闭窗口后在托盘中继续运行",
     "close_to_tray_desc": "关闭窗口时 VoiceStudio 会隐藏到托盘而不是退出，正在运行的任务会继续。可从托盘图标重新打开，并在托盘菜单中选择“退出”来真正退出。",
+    "close_to_tray_failed": "无法保存此设置。请重试。",
     "review_mode_on": "审阅",
     "translate_agent": "智能体适配",
     "llmp_cli_help": "通过与代理修复相同的运行器使用已安装的 CLI 及其登录。模型留空将使用 CLI 默认值。响应可能较慢，费用按 CLI 账户计收。",

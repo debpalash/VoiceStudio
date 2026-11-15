@@ -1339,6 +1339,7 @@
     "terminal_command_conflict": "{{path}} 屬於另一個安裝，因此 VoiceStudio 未作變更。",
     "close_to_tray": "關閉視窗後在系統匣中繼續執行",
     "close_to_tray_desc": "關閉視窗時 VoiceStudio 會隱藏到系統匣而不是結束，執行中的工作會繼續。可從系統匣圖示重新開啟，並在系統匣選單中選擇「結束」來真正結束。",
+    "close_to_tray_failed": "無法儲存此設定。請再試一次。",
     "review_mode_on": "評論",
     "review_mode_off": "速射",
     "translate_agent": "代理適配",

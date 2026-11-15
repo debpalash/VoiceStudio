@@ -1,4 +1,10 @@
-import { decideWindowClose, readCloseToTray, saveCloseToTray } from './close-behavior';
+import {
+  decideTerminalStop,
+  decideWindowClose,
+  readCloseToTray,
+  saveCloseToTray,
+  WindowUse,
+} from './close-behavior';
 import { createTrayIcon } from './tray-icon';
 import { MAC_TRAFFIC_LIGHTS } from '../shared/utils/windowChrome';
 import { installWatchFolders } from './watch-folders';
@@ -25,7 +31,7 @@ import {
   MainErrorJournal,
   observeMainProcessTask,
 } from './main-error-journal';
-import { activateLiveWindow, isHiddenWindow, isLiveWindow, sendToLiveWindow } from './window-safety';
+import { activateLiveWindow, isLiveWindow, sendToLiveWindow } from './window-safety';
 import { startAccount } from './account';
 import { installAppIdentity, installMacApplicationMenu } from './app-identity';
 import { APP_ID, PRODUCT_NAME } from '../../../config/app-config.mjs';
@@ -82,6 +88,8 @@ let sessionEnding = false;
 // Settings → General → keep running in the system tray when the window is closed.
 let closeToTray = readCloseToTray(app.getPath('userData'));
 let tray: Tray | null = null;
+// Hidden-to-tray state and pending closes; see WindowUse.
+const windowUse = new WindowUse();
 let closeCapture: (() => void) | null = null;
 let closeDevProxy: (() => Promise<void>) | null = null;
 let closeUpdates: (() => void) | null = null;
@@ -145,7 +153,7 @@ function publishDiscovery(): void {
     pid: process.pid,
     version: __APP_VERSION__,
     headless: headlessOwner,
-    window: isLiveWindow(mainWindow),
+    window: windowUse.inUse(isLiveWindow(mainWindow)),
     remote: backend.connection.remote,
   };
   const serialized = JSON.stringify(record);
@@ -262,8 +270,9 @@ ipcMain.handle('app:get-close-to-tray', (event) => {
 ipcMain.handle('app:set-close-to-tray', (event, enabled: unknown) => {
   assertTrustedMainFrame(event, mainWindow);
   if (typeof enabled !== 'boolean') throw new Error('Invalid close-to-tray setting');
-  closeToTray = enabled;
+  // Throws when the write fails, so the renderer never sees an unsaved value confirmed.
   saveCloseToTray(app.getPath('userData'), enabled);
+  closeToTray = enabled;
   return closeToTray;
 });
 
@@ -301,6 +310,11 @@ function createWindow(): BrowserWindow {
   win.on('enter-full-screen', () => win.webContents.send('app:fullscreen', true));
   win.on('leave-full-screen', () => win.webContents.send('app:fullscreen', false));
   win.on('ready-to-show', () => activateLiveWindow(win));
+  win.on('show', () => {
+    // Any show (tray, dock, second launch, shortcut) wins over a close still flushing.
+    windowUse.show();
+    publishDiscovery();
+  });
   win.on('session-end', () => {
     // Windows is logging off or shutting down: never hide the window instead.
     sessionEnding = true;
@@ -320,14 +334,22 @@ function createWindow(): BrowserWindow {
       observeMainProcessTask(beginOrderlyQuit(), mainErrors, 'Orderly quit');
       return;
     }
-    // Hide keeps the renderer (and its in-progress state) alive for the tray;
-    // destroy is for a terminal-started app, which returns to headless and lets
-    // its idle timer decide.
+    if (action === 'hide') {
+      // Hide first, flush after: the renderer stays alive while hidden, and a
+      // show that arrives mid-flush (tray click, second launch) is never undone.
+      win.hide();
+      windowUse.hide();
+      publishDiscovery();
+      observeMainProcessTask(flushRendererPersistence(), mainErrors, 'Window persistence flush');
+      return;
+    }
+    // Destroy is for a terminal-started app (or macOS), which returns to headless
+    // and lets its idle timer decide. A show during the flush cancels it.
+    const stillClosing = windowUse.beginClose();
     observeMainProcessTask(
       flushRendererPersistence().finally(() => {
-        if (win.isDestroyed()) return;
-        if (action === 'hide') win.hide();
-        else win.destroy();
+        if (win.isDestroyed() || !stillClosing()) return;
+        win.destroy();
       }),
       mainErrors,
       'Window persistence flush',
@@ -335,6 +357,7 @@ function createWindow(): BrowserWindow {
   });
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null;
+    windowUse.show();
     if (headlessOwner) {
       if (process.platform === 'darwin') app.dock?.hide();
       idleShutdown?.touch();
@@ -384,6 +407,7 @@ function showWindow(navigateTo?: string): void {
   if (quitPreparation) return;
   if (!isLiveWindow(mainWindow)) mainWindow = createWindow();
   if (process.platform === 'darwin') void app.dock?.show();
+  windowUse.show();
   activateLiveWindow(mainWindow);
   idleShutdown?.touch();
   publishDiscovery();
@@ -403,9 +427,13 @@ function handleLaunch(intent: LaunchIntent): void {
   }
   if (intent.stop) {
     // `voicestudio stop` never closes a window the user is working in; one
-    // hidden to the tray is not in use.
-    if (!isLiveWindow(mainWindow) || isHiddenWindow(mainWindow))
-      observeMainProcessTask(beginOrderlyQuit(false), mainErrors, 'Terminal stop');
+    // hidden to the tray is not in use, and still flushes its renderer first.
+    const stop = decideTerminalStop({
+      windowLive: isLiveWindow(mainWindow),
+      hiddenToTray: windowUse.hiddenToTray,
+    });
+    if (stop.quit)
+      observeMainProcessTask(beginOrderlyQuit(stop.flush), mainErrors, 'Terminal stop');
     return;
   }
   if (intent.checkUpdates) {

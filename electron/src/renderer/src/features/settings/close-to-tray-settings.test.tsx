@@ -5,7 +5,9 @@ const mock = vi.hoisted(() => ({
   bridge: null as null | { app?: Record<string, unknown> },
   get: vi.fn(),
   set: vi.fn(),
+  toastError: vi.fn(),
 }));
+vi.mock('sonner', () => ({ toast: { error: mock.toastError } }));
 
 vi.mock('@/components/bridge', () => ({ getBridge: () => mock.bridge }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
@@ -40,7 +42,7 @@ it('shows the saved choice and saves a change through the main process', async (
   await waitFor(() => expect(toggle).toBeChecked());
 });
 
-it('reverts the switch when the main process cannot save', async () => {
+it('keeps the confirmed value and tells the user when the main process cannot save', async () => {
   withBridge();
   mock.get.mockResolvedValue(true);
   mock.set.mockRejectedValue(new Error('untrusted'));
@@ -50,4 +52,8 @@ it('reverts the switch when the main process cannot save', async () => {
   fireEvent.click(toggle);
   await waitFor(() => expect(toggle).toBeChecked());
   expect(mock.set).toHaveBeenCalledWith(false);
+  await waitFor(() =>
+    expect(mock.toastError).toHaveBeenCalledWith('settings.close_to_tray_failed'),
+  );
+  expect(toggle).toBeChecked();
 });

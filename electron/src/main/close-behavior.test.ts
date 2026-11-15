@@ -3,9 +3,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  decideTerminalStop,
   decideWindowClose,
   readCloseToTray,
   saveCloseToTray,
+  WindowUse,
   type WindowCloseContext,
 } from './close-behavior';
 
@@ -77,7 +79,56 @@ describe('close-to-tray preference', () => {
     });
   });
 
-  it('survives an unwritable directory without throwing', () => {
-    expect(() => saveCloseToTray(join(fresh(), 'missing', 'deeper'), true)).not.toThrow();
+  it('reports a failed save instead of confirming an unsaved choice', () => {
+    expect(() => saveCloseToTray(join(fresh(), 'missing', 'deeper'), true)).toThrow();
+  });
+});
+
+describe('WindowUse', () => {
+  it('counts a live window as in use until it is hidden to the tray', () => {
+    const use = new WindowUse();
+    expect(use.inUse(true)).toBe(true);
+    use.hide();
+    expect(use.hiddenToTray).toBe(true);
+    // The discovery record then lets `voicestudio stop` through.
+    expect(use.inUse(true)).toBe(false);
+    use.show();
+    expect(use.inUse(true)).toBe(true);
+  });
+
+  it('never counts a missing window, and a window that has not been hidden stays in use', () => {
+    expect(new WindowUse().inUse(false)).toBe(false);
+    // A minimized or still-loading window is never reported hidden.
+    expect(new WindowUse().hiddenToTray).toBe(false);
+  });
+
+  it('lets a show during a pending close cancel it', () => {
+    const use = new WindowUse();
+    const stillClosing = use.beginClose();
+    expect(stillClosing()).toBe(true);
+    use.show();
+    expect(stillClosing()).toBe(false);
+    // A later close is a new close.
+    expect(use.beginClose()()).toBe(true);
+  });
+});
+
+describe('decideTerminalStop', () => {
+  it('never quits an app whose window is in use', () => {
+    expect(decideTerminalStop({ windowLive: true, hiddenToTray: false }).quit).toBe(false);
+  });
+
+  it('quits a window hidden to the tray, flushing its renderer first', () => {
+    expect(decideTerminalStop({ windowLive: true, hiddenToTray: true })).toEqual({
+      quit: true,
+      flush: true,
+    });
+  });
+
+  it('quits a windowless app with nothing to flush', () => {
+    expect(decideTerminalStop({ windowLive: false, hiddenToTray: false })).toEqual({
+      quit: true,
+      flush: false,
+    });
   });
 });

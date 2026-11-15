@@ -1339,6 +1339,7 @@
     "terminal_command_conflict": "{{path}} thuộc về một bản cài đặt khác nên VoiceStudio không thay đổi nó.",
     "close_to_tray": "Tiếp tục chạy trong khay hệ thống khi đóng",
     "close_to_tray_desc": "Đóng cửa sổ sẽ ẩn VoiceStudio vào khay hệ thống thay vì thoát, nên các tác vụ đang chạy vẫn tiếp tục. Mở lại từ biểu tượng khay và chọn Thoát tại đó để đóng hẳn.",
+    "close_to_tray_failed": "Không thể lưu cài đặt này. Hãy thử lại.",
     "review_mode_on": "Xem lại",
     "review_mode_off": "Bắn nhanh",
     "translate_agent": "Điều chỉnh bằng tác nhân",
