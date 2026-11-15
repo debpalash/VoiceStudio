@@ -406,12 +406,12 @@ Do not move or recreate an existing tag.
 
 ## Merge queue (maintainers)
 
-GitHub's merge queue is available only to repositories owned by an organization. This repository is owned by a user account, so the queue cannot be turned on. The current setup instead:
+[GitHub's merge queue](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/configuring-pull-request-merges/managing-a-merge-queue) is available only to repositories owned by an organization. This repository is owned by a user account, so the queue cannot be turned on. The current setup instead:
 
-- The `main` ruleset does **not** require branches to be up to date before merging, so a merge to `main` does not put every other open PR behind.
+- The `main` ruleset requires branches to be up to date before merging. Merge current `main` into a stale PR and wait for its checks again; green checks against an older base do not prove the combined result.
 - **Auto-merge** is on: `gh pr merge N --auto --merge` merges a PR once its required checks pass.
-- The only required CI status is **Tests (backend + frontend)**, which waits for every job in `ci.yml` (Python tests, platform smokes, Electron tests, renderer smokes, UI crawler, Desktop UI, Linux native package, installer contracts and the release smoke). A failure in any of them blocks the merge without listing each job in the ruleset.
-- A PR's CI tests it merged with `main` as `main` stood when the run started. Without the up-to-date requirement, `main` can move before the PR merges, so two PRs that each pass can still break `main` together. `ci.yml` runs in full on every push to `main`; when that run fails, fixing `main` comes before the next merge.
+- The required aggregate CI status is **Tests (backend + frontend)**, which waits for every job in `ci.yml` (Python tests, platform smokes, Electron tests, renderer smokes, UI crawler, Desktop UI, Linux native package, installer contracts and the release smoke). A failure in any of them blocks the merge without listing each job in the ruleset. **CLA gate**, **Commit identities**, **CLA** and **Commit identity policy** are also required.
+- A PR's CI tests it merged with `main` as `main` stood when the run started. The up-to-date requirement prevents accepting that result after the base changes. After every merge, wait for that exact `main` commit's post-merge workflows; when a run fails, fixing `main` comes before the next merge.
 
 Moving the repository to an organization would make the queue available, and the workflow support for it stays in place. The workflows are ready: `ci.yml` runs on `merge_group`, and `merge-queue-checks.yml` reports the PR-level required checks ("CLA gate", "Commit identities", "CLA", "Commit identity policy") on the queue's commit, because they cannot run there. `tests/test_merge_queue.py` keeps those names equal to the ruleset's required list; change both together.
 
