@@ -2,6 +2,7 @@ import { ModelLibrary, PerformanceModelPacks } from '@/features/settings/model-l
 import { ModelStoreShownContext } from '@/features/settings/model-list/model-store-context';
 import { AnalyticsConsent } from './analytics-consent';
 import { AccountConsent } from './account-consent';
+import { DiagnosticConsent } from './diagnostic-consent';
 import { SetupRecovery } from './setup-recovery';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -147,6 +148,7 @@ export function SetupWizard({ onComplete }: { onComplete: () => void }) {
               </div>
               {step === 0 && (
                 <>
+                  <DiagnosticConsent />
                   <SystemPreflight />
                   <SetupMediaEngine />
                   {preflight.data?.checks?.some(

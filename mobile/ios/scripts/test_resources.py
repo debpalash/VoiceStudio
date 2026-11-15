@@ -77,12 +77,15 @@ class BrandResources(unittest.TestCase):
 
     def test_microphone_reason_reuses_shared_local_and_computer_privacy(self):
         catalogs = self.root / "bundle/Catalogs"
-        desktop = json.loads((catalogs / "en.json").read_text())
-        shared = json.loads((catalogs / "strings.mobile.en.json").read_text())
-        expected = "\n".join([desktop["permissions"]["microphone_why"], shared["mobile"]["local"]["privacy"]])
+        desktop = json.loads((catalogs / "en.json").read_text(encoding="utf-8"))
+        expected = "\n".join([desktop["permissions"]["microphone_why"], desktop["mobile"]["local"]["privacy"]])
         info = plistlib.loads((self.root / "Info.plist").read_bytes())
         self.assertEqual(info["NSMicrophoneUsageDescription"], expected)
-        self.assertIn(json.dumps(expected), (self.root / "bundle/en.lproj/InfoPlist.strings").read_text())
+        for source in (resources.ROOT / "electron/src/renderer/src/i18n/locales").glob("*.json"):
+            localized = json.loads((catalogs / source.name).read_text(encoding="utf-8"))
+            description = "\n".join([localized["permissions"]["microphone_why"], localized["mobile"]["local"]["privacy"]])
+            field = f'{json.dumps("NSMicrophoneUsageDescription")} = {json.dumps(description)};'
+            self.assertIn(field, (self.root / f"bundle/{source.stem}.lproj/InfoPlist.strings").read_text(encoding="utf-8"))
 
     def test_native_licences_are_bundled_without_xcode_artifacts(self):
         legal = self.root / "bundle/NativeLicences"
