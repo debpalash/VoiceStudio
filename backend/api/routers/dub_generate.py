@@ -1785,13 +1785,20 @@ async def dub_generate(job_id: str, req: DubRequest):
                 from core.public_errors import stream_generation_failure
 
                 from core import diagnostic_reports
+                from core.failure import licence_required_detail
+                licence = licence_required_detail(e)
                 reported = False
-                if not task_manager.is_cancelled(task_id):
+                if licence is None and not task_manager.is_cancelled(task_id):
                     reported = diagnostic_reports.capture_failure("dub", error=e)
                 error_detail = stream_generation_failure(e)["detail"]
                 logger.exception("Dub generation failed for segment %s", seg_id)
+                error_frame = {'type': 'error', 'segment': i, 'segment_id': seg_id, 'error': error_detail}
+                if licence is not None:
+                    # Keep the expected refusal distinguishable after its
+                    # exception has become a persisted task-stream frame.
+                    error_frame['error_code'] = licence['code']
                 yield diagnostic_reports.preserve_failure_identity(
-                    f"data: {json.dumps({'type': 'error', 'segment': i, 'segment_id': seg_id, 'error': error_detail})}\n\n",
+                    f"data: {json.dumps(error_frame)}\n\n",
                     e, reported=reported,
                 )
                 return

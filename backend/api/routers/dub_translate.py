@@ -467,10 +467,9 @@ async def dub_translate(req: TranslateRequest):
     diagnostic_epoch = diagnostic_reports.inherited_grant()
 
     async def _await_unit(start):
-        # A new translation/refinement unit may observe a fresh choice, but
-        # its delayed failure still belongs to the grant seen before awaiting.
-        nonlocal diagnostic_epoch
-        diagnostic_epoch = diagnostic_reports.observe_grant()
+        # Translation and refinement are descendants of this request/job,
+        # including an inherited known-OFF owner. Only a new operation may
+        # observe a new grant after another unit has awaited.
         with diagnostic_reports.grant_scope(diagnostic_epoch):
             return await start()
 

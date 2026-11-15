@@ -123,13 +123,15 @@ async def _worker():
         with diagnostic_reports.grant_scope(diagnostic_epoch):
             try:
                 await _run_batch_pipeline(job_id, job)
-                if job["status"] != "cancelled":
+                if job["status"] == "running":
                     job["status"] = "done"
                     job["finished_at"] = time.time()
                     logger.info(
                         "Batch job %s completed in %.1fs",
                         job_id, job["finished_at"] - job["started_at"],
                     )
+                elif job["status"] == "failed":
+                    job["finished_at"] = time.time()
             except asyncio.CancelledError:
                 # Task cancellation always means SHUTDOWN: the job-level cancel
                 # endpoint only flips job["status"] — nothing ever cancels this
