@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, render } from '@testing-library/react';
+import { createElement } from 'react';
 
 const openRepairAgent = vi.fn();
 const captureException = vi.fn();
@@ -12,6 +14,8 @@ const diagnosticStatus = vi.fn(async () => ({
 }));
 vi.mock('@/lib/repair-agent-events', () => ({ openRepairAgent }));
 vi.mock('@shared/utils/analytics', () => ({ captureException }));
+vi.mock('@/components/report-bug', () => ({ ReportBug: () => null }));
+vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 
 let removeCapturedListeners = () => {};
 beforeEach(() => {
@@ -33,8 +37,94 @@ beforeEach(() => {
   };
 });
 afterEach(() => {
+  cleanup();
   removeCapturedListeners();
   vi.restoreAllMocks();
+});
+
+it.each(['off-on', 'regrant', 'same-grant'] as const)(
+  'keeps a real unknown window timer fault local across %s',
+  async (transition) => {
+    const timerWindow = window;
+    let timer: number | undefined;
+    let enabled = transition !== 'off-on';
+    let epoch = 1;
+    const state = () => ({
+      enabled,
+      opted_in: enabled,
+      available: true,
+      prompted: true,
+      grant_epoch: enabled ? epoch.toString(16).padStart(32, '0') : null,
+    });
+    Object.assign(timerWindow, {
+      voicestudio: {
+        diagnostics: {
+          getStatus: async () => state(),
+          setConsent: async (choice: boolean) => {
+            if (choice && !enabled) epoch++;
+            enabled = choice;
+            return state();
+          },
+          capture: diagnosticCapture,
+        },
+      },
+    });
+    try {
+      const recovery = await import('./global-error-recovery');
+      const diagnostics = await import('./diagnostic-reports');
+      recovery.installGlobalErrorRecovery();
+      await diagnostics.refreshDiagnosticState();
+      const delivered = new Promise<ErrorEvent>((resolve) =>
+        timerWindow.addEventListener('error', resolve, { once: true }),
+      );
+      // Actual Window timer delivery, not a manually dispatched ErrorEvent.
+      timer = timerWindow.setTimeout(() => {
+        throw new Error(`earlier unknown timer ${transition}`);
+      }, 0);
+      if (transition !== 'same-grant') {
+        await diagnostics.setDiagnosticConsent(false);
+        await diagnostics.setDiagnosticConsent(true);
+      }
+      const event = await delivered;
+      expect(event).toBeInstanceOf(timerWindow.ErrorEvent);
+      expect(event.error.message).toBe(`earlier unknown timer ${transition}`);
+      expect(event.defaultPrevented).toBe(true);
+      expect(openRepairAgent).toHaveBeenCalledOnce();
+      expect(captureException).toHaveBeenCalledWith(event.error, 'renderer:uncaught');
+      expect(diagnosticCapture).not.toHaveBeenCalled();
+
+      // Known new semantic work still reports under the current grant.
+      recovery.runRendererTask('Fresh known renderer action', () => {
+        throw new Error('new known action failure');
+      });
+      expect(diagnosticCapture).toHaveBeenCalledOnce();
+      recovery.runRendererTask('Expected cancellation', () => {
+        throw new DOMException('cancelled', 'AbortError');
+      });
+      expect(diagnosticCapture).toHaveBeenCalledOnce();
+    } finally {
+      if (timer !== undefined) timerWindow.clearTimeout(timer);
+    }
+  },
+);
+
+it('still reports an actual fresh synchronous React render failure', async () => {
+  Object.assign(window, {
+    voicestudio: { diagnostics: { getStatus: diagnosticStatus, capture: diagnosticCapture } },
+  });
+  const diagnostics = await import('./diagnostic-reports');
+  await diagnostics.refreshDiagnosticState();
+  const { ErrorBoundary } = await import('@/components/error-boundary');
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+  function BrokenRender(): never {
+    throw new Error('fresh synchronous render failure');
+  }
+  render(createElement(ErrorBoundary, null, createElement(BrokenRender)));
+  expect(diagnosticCapture).toHaveBeenCalledOnce();
+  expect(diagnosticCapture).toHaveBeenCalledWith(
+    expect.objectContaining({ category: 'renderer_crash', stage: 'render' }),
+    'a'.repeat(32),
+  );
 });
 
 describe('global renderer error recovery', () => {
@@ -89,11 +179,15 @@ describe('global renderer error recovery', () => {
         cancelable: true,
       }),
     );
+    expect(diagnosticCapture).not.toHaveBeenCalled();
+    recovery.runRendererTask('Fresh known startup action', () => {
+      throw new Error('new owned startup failure');
+    });
     expect(diagnosticCapture).toHaveBeenCalledOnce();
     expect(diagnosticCapture).toHaveBeenCalledWith(
       expect.objectContaining({
-        category: 'renderer_crash',
-        stage: 'render',
+        category: 'operation_failed',
+        stage: 'other',
       }),
       'a'.repeat(32),
     );
@@ -148,7 +242,7 @@ describe('global renderer error recovery', () => {
     expect(openRepairAgent).toHaveBeenCalledOnce();
   });
 
-  it('keeps unknown-grant bootstrap faults local and reports live faults while ignoring cancellation and foreign noise', async () => {
+  it('keeps unowned faults local and reports known tasks while ignoring cancellation and foreign noise', async () => {
     Object.assign(window, {
       voicestudio: { diagnostics: { getStatus: diagnosticStatus, capture: diagnosticCapture } },
     });
@@ -203,8 +297,8 @@ describe('global renderer error recovery', () => {
     expect(openRepairAgent.mock.calls[1][0]).not.toContain('C:\\Users\\pal');
     expect(repeatedFailure.defaultPrevented).toBe(true);
     expect(captureException).toHaveBeenCalledWith(failure, 'renderer:uncaught');
-    expect(diagnosticCapture).toHaveBeenCalledOnce();
-    // A second causal error is still counted while the repair panel is throttled.
+    expect(diagnosticCapture).not.toHaveBeenCalled();
+    // Another unowned fault stays local while the repair panel is throttled.
     window.dispatchEvent(
       new ErrorEvent('error', {
         message: failure.message,
@@ -214,7 +308,7 @@ describe('global renderer error recovery', () => {
       }),
     );
     expect(openRepairAgent).toHaveBeenCalledTimes(2);
-    expect(diagnosticCapture).toHaveBeenCalledTimes(2);
+    expect(diagnosticCapture).not.toHaveBeenCalled();
     expect(JSON.stringify(diagnosticCapture.mock.calls)).not.toContain(privatePath);
 
     const cancelled = new Event('unhandledrejection');
@@ -231,7 +325,7 @@ describe('global renderer error recovery', () => {
     );
     expect(openRepairAgent).toHaveBeenCalledTimes(2);
     expect(cancelled.defaultPrevented).toBe(false);
-    expect(diagnosticCapture).toHaveBeenCalledTimes(2);
+    expect(diagnosticCapture).not.toHaveBeenCalled();
 
     const ownFailure = new Error('own async failure');
     ownFailure.stack =
@@ -242,17 +336,20 @@ describe('global renderer error recovery', () => {
     expect(openRepairAgent).toHaveBeenCalledTimes(3);
     expect(ownRejection.defaultPrevented).toBe(true);
     expect(captureException).toHaveBeenCalledWith(ownFailure, 'renderer:rejection');
+    expect(diagnosticCapture).not.toHaveBeenCalled();
 
     runRendererTask('Command action', () => Promise.reject(new Error('route failed')));
     await Promise.resolve();
     expect(openRepairAgent).toHaveBeenCalledTimes(4);
     expect(openRepairAgent.mock.calls[3][0]).toContain('Command action');
     expect(captureException).toHaveBeenCalledWith(expect.any(Error), 'renderer:task');
+    expect(diagnosticCapture).toHaveBeenCalledOnce();
 
     runRendererTask('Immediate action', () => {
       throw new Error('sync failed');
     });
     expect(openRepairAgent).toHaveBeenCalledTimes(5);
+    expect(diagnosticCapture).toHaveBeenCalledTimes(2);
   });
 });
 

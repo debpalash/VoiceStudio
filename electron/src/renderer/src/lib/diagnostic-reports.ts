@@ -189,9 +189,12 @@ export async function setDiagnosticConsent(enabled: boolean): Promise<Diagnostic
     );
     if (started === revision) {
       acknowledgedChoice = true;
-      locallyDisabled = !enabled || !(state.enabled && state.opted_in && state.available);
+      // The local fence protects an in-flight or failed write. Once the choice
+      // is durable, current server state owns consent again, including a fresh
+      // opt-in from another client; the OFF state itself still blocks capture.
+      locallyDisabled = false;
       publish({
-        status: locallyDisabled ? { ...state, enabled: false, opted_in: false } : state,
+        status: state,
         saving: false,
         error: false,
       });

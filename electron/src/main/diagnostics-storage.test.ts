@@ -362,7 +362,7 @@ it('recovers a recent crash after more than a week of active opted-in runtime', 
   expect(saved.timestamp_ms).toBe(now - 1);
 });
 
-it('keeps the session start for journal correlation while refreshing its liveness marker', async () => {
+it('refreshes liveness without promoting raw journal detail into recovered evidence', async () => {
   const initial = await create(false);
   let now = 1_794_640_000_000;
   await initial.reports.close();
@@ -392,8 +392,8 @@ it('keeps the session start for journal correlation while refreshing its livenes
   await reports.flush();
   expect(initial.send).toHaveBeenCalledOnce();
   const body = JSON.parse(String(initial.send.mock.calls[0][1]?.body));
-  expect(body.props).toMatchObject({ reason: 'unhandled_exception', error_type: 'TypeError' });
-  expect(body.ts).toBe(now - 59_001);
+  expect(body.props).toMatchObject({ reason: 'unclean_exit', error_type: 'OtherError' });
+  expect(body.ts).toBe(JSON.parse(marker.toString('utf8')).timestamp_ms);
   expect(JSON.stringify(body)).not.toContain('private words');
 });
 
@@ -461,7 +461,7 @@ it('recovers two crashed sessions even when their clocks share one millisecond',
 });
 
 it.each([false, true])(
-  'expires recovered evidence at its original time (journal=%s)',
+  'expires recovered marker evidence at its original time despite raw journal=%s',
   async (journal) => {
     const initial = await create(false);
     let now = 1_794_640_000_000;
@@ -493,7 +493,7 @@ it.each([false, true])(
     reports = new DiagnosticReports(options);
     await reports.initialize();
     expect(reports.status().pending_count).toBe(1);
-    now = (journal ? journalAt : heartbeatAt) + TTL_MS + 1;
+    now = heartbeatAt + TTL_MS + 1;
     await reports.flush();
     expect(initial.send).not.toHaveBeenCalled();
     expect(reports.status().pending_count).toBe(0);

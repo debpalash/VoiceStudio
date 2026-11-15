@@ -13,6 +13,7 @@ import {
 } from './diagnostics-capture';
 import { sanitizeProperties, sanitizeFrames, validUiInput } from './diagnostics-schema';
 import { runDiagnosticOperation } from './diagnostic-operation';
+import { MainErrorJournal, installMainProcessErrorHandlers } from './main-error-journal';
 import type { BackendStatus } from '../preload/index.d';
 
 let root: string;
@@ -560,7 +561,56 @@ describe('strict data projection and durable recovery', () => {
     expect(await exists('outbox.json')).toBe(false);
   });
 
-  it('recovers only a consent-stamped unclean session and extracts app-owned frames, never raw journal messages', async () => {
+  it('does not upgrade session recovery with an unowned callback journaled after opt-in', async () => {
+    const liveSend = success();
+    const first = reporter({ send: liveSend });
+    await first.initialize();
+    const events = new EventEmitter();
+    const journal = new MainErrorJournal(
+      join(root, 'main-process-errors.json'),
+      identity.app_version,
+    );
+    const stopJournal = installMainProcessErrorHandlers(journal, events, vi.fn());
+    const stopCapture = installDiagnosticProcessCapture(first, events);
+    let release!: () => void;
+    const wait = new Promise<void>((resolve) => (release = resolve));
+    // Unknown async work starts OFF and faults after opt-in. The actual local
+    // and diagnostic fatal hooks must agree about its absent authority.
+    const callback = (async () => {
+      await wait;
+      const error = new TypeError('PRIVATE_UNOWNED_CALLBACK');
+      error.stack =
+        'TypeError: PRIVATE_UNOWNED_CALLBACK\n at load (/home/PRIVATE/electron/src/main/index.ts:123:4)';
+      events.emit('uncaughtExceptionMonitor', error, 'uncaughtException');
+    })();
+    try {
+      await first.setConsent(true);
+      release();
+      await callback;
+      expect(first.status().pending_count).toBe(0);
+      expect(liveSend).not.toHaveBeenCalled();
+      expect(journal.recent()).toContain('PRIVATE_UNOWNED_CALLBACK');
+      const send = success();
+      const second = reporter({ send });
+      // No orderly close: replay the actual still-active consent-stamped marker.
+      await second.initialize();
+      await second.flush();
+      expect(send).toHaveBeenCalledOnce();
+      const event = JSON.parse(String(send.mock.calls[0][1]?.body));
+      expect(event.props).toMatchObject({ category: 'app_crash', reason: 'unclean_exit' });
+      expect(event.props.error_type).not.toBe('TypeError');
+      expect(event.props.frames).toBeUndefined();
+      expect(JSON.stringify(event)).not.toContain('PRIVATE_UNOWNED_CALLBACK');
+      expect(journal.recent()).toContain('PRIVATE_UNOWNED_CALLBACK');
+    } finally {
+      release();
+      await callback;
+      stopCapture();
+      stopJournal();
+    }
+  });
+
+  it('recovers only a consent-stamped unclean session and keeps raw journal details local', async () => {
     const first = reporter();
     await first.initialize();
     await first.setConsent(true);
@@ -583,10 +633,10 @@ describe('strict data projection and durable recovery', () => {
     const event = JSON.parse(String(send.mock.calls[0][1]?.body));
     expect(event.props).toMatchObject({
       category: 'app_crash',
-      error_type: 'TypeError',
-      reason: 'unhandled_exception',
-      frames: 'electron/src/main/index.ts:123:4',
+      reason: 'unclean_exit',
     });
+    expect(event.props.error_type).not.toBe('TypeError');
+    expect(event.props.frames).toBeUndefined();
     expect(JSON.stringify(event)).not.toMatch(/PRIVATE|secret|project\.js/);
   });
 
@@ -755,12 +805,25 @@ it('does not duplicate a fatal report already persisted before the process died'
   await first.initialize();
   await first.setConsent(true);
   const marker = await json('session.json');
-  first.capture({
-    category: 'app_crash',
-    stage: 'other',
-    reason: 'unhandled_exception',
-    error_type: 'TypeError',
-  });
+  const events = new EventEmitter();
+  const journal = new MainErrorJournal(
+    join(root, 'main-process-errors.json'),
+    identity.app_version,
+  );
+  const stopJournal = installMainProcessErrorHandlers(journal, events, vi.fn());
+  const stopCapture = installDiagnosticProcessCapture(first, events);
+  try {
+    runDiagnosticOperation(first, () => {
+      const error = new TypeError('PRIVATE_BOUND_CALLBACK');
+      error.stack =
+        'TypeError: PRIVATE_BOUND_CALLBACK\n at load (/home/PRIVATE/electron/src/main/index.ts:123:4)';
+      events.emit('uncaughtExceptionMonitor', error, 'uncaughtException');
+    });
+    expect(first.status().pending_count).toBe(1);
+  } finally {
+    stopCapture();
+    stopJournal();
+  }
   await first.close();
   // Disk state if the process dies after report commit but before marker removal.
   await writeFile(join(root, 'diagnostics', 'session.json'), JSON.stringify(marker));
@@ -769,6 +832,12 @@ it('does not duplicate a fatal report already persisted before the process died'
   await second.initialize();
   await second.flush();
   expect(send).toHaveBeenCalledTimes(1);
+  expect(JSON.parse(String(send.mock.calls[0][1]?.body)).props).toMatchObject({
+    reason: 'unhandled_exception',
+    error_type: 'TypeError',
+    frames: 'electron/src/main/index.ts:123:4',
+  });
+  expect(JSON.stringify(send.mock.calls)).not.toContain('PRIVATE_BOUND_CALLBACK');
 });
 
 it('uses the real local HTTP intake without a backend or any production event', async () => {

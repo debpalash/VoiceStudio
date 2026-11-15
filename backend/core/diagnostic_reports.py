@@ -994,23 +994,19 @@ def _install_hooks():
     previous = sys.excepthook
     def unhandled(kind, error, trace):
         epoch = _consume_thread_fault_epoch(error)
-        if not issubclass(kind, (KeyboardInterrupt,SystemExit)):
-            if epoch is _GRANT_UNSET:
+        # A global hook cannot infer when unbound work began. Unknown origin
+        # stays local rather than borrowing permission from the current choice.
+        if epoch is not _GRANT_UNSET and not issubclass(kind, (KeyboardInterrupt,SystemExit)):
+            with grant_scope(epoch):
                 capture('backend_crash',stage='other',error=error,reason='unhandled_exception')
-            else:
-                with grant_scope(epoch):
-                    capture('backend_crash',stage='other',error=error,reason='unhandled_exception')
         previous(kind,error,trace)
     sys.excepthook = unhandled
     previous_thread = threading.excepthook
     def thread_unhandled(args):
         epoch = _consume_thread_fault_epoch(args.exc_value)
-        if not issubclass(args.exc_type,(KeyboardInterrupt,SystemExit)):
-            if epoch is _GRANT_UNSET:
+        if epoch is not _GRANT_UNSET and not issubclass(args.exc_type,(KeyboardInterrupt,SystemExit)):
+            with grant_scope(epoch):
                 capture('operation_failed',stage='other',error=args.exc_value,reason='unhandled_exception')
-            else:
-                with grant_scope(epoch):
-                    capture('operation_failed',stage='other',error=args.exc_value,reason='unhandled_exception')
         previous_thread(args)
     threading.excepthook = thread_unhandled
 

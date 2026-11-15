@@ -13,7 +13,6 @@ import {
   sanitizeProperties,
   sanitizeRecord,
   validConsent,
-  projectException,
   TTL_MS,
   type DiagnosticConsent,
   type DiagnosticEvent,
@@ -1011,12 +1010,12 @@ export class DiagnosticReports {
         return true;
       // The marker proves collection was enabled for THIS session. Earlier
       // manual journals are never replayed merely because somebody opts in.
-      let projected: DiagnosticEvent = {
+      const projected: DiagnosticEvent = {
         category: 'app_crash',
         stage: 'startup',
         reason: 'unclean_exit',
       };
-      let evidenceAt = marker.timestamp_ms as number;
+      const evidenceAt = marker.timestamp_ms as number;
       const previousVersion =
         typeof marker.app_version === 'string'
           ? marker.app_version
@@ -1037,43 +1036,10 @@ export class DiagnosticReports {
         )
       )
         return true;
-      try {
-        const local = await readJson(
-          join(dirname(this.options.directory), 'main-process-errors.json'),
-          2 * 1024 * 1024,
-        );
-        if (Array.isArray(local)) {
-          const recent = local
-            .slice(-20)
-            .reverse()
-            .find((entry: unknown) => {
-              if (!entry || typeof entry !== 'object') return false;
-              const r = entry as Record<string, unknown>;
-              const at = typeof r.at === 'string' ? Date.parse(r.at) : NaN;
-              return (
-                r.version === previousVersion &&
-                typeof r.detail === 'string' &&
-                at >= (startedAt as number) &&
-                at >= this.now() - TTL_MS &&
-                at <= this.now() &&
-                r.origin === 'uncaughtException'
-              );
-            }) as Record<string, unknown> | undefined;
-          if (recent) {
-            evidenceAt = Date.parse(recent.at as string);
-            const error = new Error();
-            error.name = /^([A-Za-z]+Error):/.exec(String(recent.detail))?.[1] ?? 'OtherError';
-            error.stack = String(recent.detail).slice(0, 32_768);
-            projected = {
-              ...projected,
-              ...projectException(error),
-              reason: 'unhandled_exception',
-            };
-          }
-        }
-      } catch {
-        /* Raw journals remain local; an unreadable one adds no detail. */
-      }
+      // Raw journal rows have timestamps, not fault-time operation permission.
+      // They cannot upgrade this consent-stamped session marker into a specific
+      // exception report. Bound fatal reports retain their already-projected
+      // trusted outbox records and are deduplicated by session above.
       const previousIdentity = Object.fromEntries(
         Object.entries(this.options.identity).map(([key, value]) => [key, marker[key] ?? value]),
       );

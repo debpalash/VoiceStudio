@@ -260,6 +260,44 @@ it('a failed withdrawal stays locally off through later status refreshes', async
   expect(capture).not.toHaveBeenCalled();
 });
 
+it.each(['desktop', 'browser'] as const)(
+  '%s observes a fresh external grant after its own durable withdrawal',
+  async (transport) => {
+    let server: typeof on | typeof off = on;
+    const capture = vi.fn(async () => {});
+    if (transport === 'desktop') {
+      mock.bridge = {
+        diagnostics: {
+          getStatus: vi.fn(async () => server),
+          setConsent: vi.fn(async () => off),
+          capture,
+        },
+      };
+    } else {
+      mock.api.mockImplementation(async (path, init) => {
+        if (path.endsWith('/event')) return capture();
+        return init?.method === 'PUT' ? off : server;
+      });
+    }
+    const client = await import('./diagnostic-reports');
+    await client.refreshDiagnosticState();
+    const previousOwner = client.observeDiagnosticConsent();
+    await client.setDiagnosticConsent(false);
+    server = off;
+    expect(await client.refreshDiagnosticState()).toBe(false);
+    expect(client.observeDiagnosticConsent()).toBeNull();
+
+    server = { ...on, grant_epoch: 'b'.repeat(32) };
+    expect(await client.refreshDiagnosticState()).toBe(true);
+    expect(client.getDiagnosticState()).toMatchObject({ error: false, saving: false });
+    expect(client.diagnosticConsentStillCurrent(previousOwner)).toBe(false);
+    const freshOwner = client.observeDiagnosticConsent();
+    expect(freshOwner?.grantEpoch).toBe(server.grant_epoch);
+    client.captureDiagnosticException(new Error('fresh work'), 'operation_failed', 'other');
+    expect(capture).toHaveBeenCalledOnce();
+  },
+);
+
 it('a new Yes cannot authorize early faults waiting on an older status read', async () => {
   let finish!: (value: typeof on) => void;
   mock.bridge = {

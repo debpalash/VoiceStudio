@@ -41,7 +41,7 @@ function repair(
   filename = '',
   stage: AnalyticsExceptionStage = 'renderer:task',
   reportDiagnostics = true,
-  observation?: DiagnosticConsentObservation | null,
+  observation: DiagnosticConsentObservation | null = null,
 ): void {
   if (isBenignWindowError(message, error, filename)) return;
   if (reportDiagnostics)
@@ -118,7 +118,9 @@ export function installGlobalErrorRecovery(): void {
     // The fault is now captured in the frontend log and repair-agent report.
     // Mark it handled so Chromium does not add a second noisy "Uncaught" entry.
     event.preventDefault();
-    repair(message, event.error, event.filename, 'renderer:uncaught');
+    // ErrorEvent has no producer identity. A delayed timer/callback fault
+    // cannot acquire current permission merely because it reached this hook.
+    repair(message, event.error, event.filename, 'renderer:uncaught', true, null);
   });
   window.addEventListener('unhandledrejection', (event) => {
     const reason = event.reason;

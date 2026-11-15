@@ -27,7 +27,7 @@ reports._diagnostic_destination = lambda: None
 reporter = reports.Reporter()
 reporter.schema = reports._schema()
 reports._reporter = reporter
-if transition in ('regrant', 'same-grant'):
+if transition in ('regrant', 'same-grant', 'unbound-regrant', 'unbound-same-grant'):
     reporter.consent(True)
 
 previous_calls = 0
@@ -54,7 +54,7 @@ def failure():
     try:
         raise ValueError('private main-thread failure before cleanup')
     finally:
-        if transition != 'same-grant':
+        if transition not in ('same-grant', 'unbound-same-grant'):
             reporter.consent(False)
             reporter.consent(True)
 
@@ -73,12 +73,17 @@ if transition in ('fresh-bound', 'fresh-unbound'):
         reports.bind_callable(fresh)()
     else:
         fresh()
+elif transition.startswith('unbound-'):
+    failure()
 else:
     reports.bind_callable(failure)()
 '''
 
 
-@pytest.mark.parametrize('transition', ['off-to-on', 'regrant', 'same-grant', 'fresh-bound', 'fresh-unbound'])
+@pytest.mark.parametrize('transition', [
+    'off-to-on', 'regrant', 'same-grant', 'fresh-bound', 'fresh-unbound',
+    'unbound-off-to-on', 'unbound-regrant', 'unbound-same-grant',
+])
 def test_actual_main_thread_hook_retains_origin_after_cleanup(tmp_path, transition):
     """Let CPython invoke the installed sys hook for a truly uncaught fault."""
     root = Path(__file__).resolve().parents[1]
@@ -96,8 +101,8 @@ def test_actual_main_thread_hook_retains_origin_after_cleanup(tmp_path, transiti
     assert child.returncode == 1, child.stdout + child.stderr
     result = json.loads((directory / 'hook-result.json').read_text(encoding='utf-8'))
     assert result['previous_calls'] == 1 and result['context_unset']
-    expected = 0 if transition in ('off-to-on', 'regrant') else 1
-    assert len(result['records']) == expected, 'main-thread hook borrowed later consent after bound scope cleanup'
+    expected = 1 if transition in ('same-grant', 'fresh-bound') else 0
+    assert len(result['records']) == expected, 'main-thread hook borrowed consent without a current operation owner'
     assert result['pending_cleared']
     if expected:
         assert result['records'][0]['props']['error_type'] == result['error_type']
@@ -175,6 +180,25 @@ def test_thread_hook_same_grant_reports_once(reporter, hooks):
     saved = records(reporter)
     assert len(saved) == 1
     assert saved[0]['props']['error_type'] == 'ValueError'
+
+
+@pytest.mark.parametrize('transition', ['off-to-on', 'regrant', 'same-grant'])
+def test_unbound_thread_fault_stays_local_and_fresh_bound_work_can_report(reporter, hooks, transition):
+    if transition != 'off-to-on':
+        reporter.consent(True)
+
+    def change():
+        if transition != 'same-grant':
+            reporter.consent(False)
+            reporter.consent(True)
+
+    # An actual Thread target, without bind_callable: no original grant is
+    # known at the later exception hook, even if the current choice is ON.
+    _held_failure(change, hooks, owner=lambda function: function)
+    assert records(reporter) == []
+    hooks[1].clear()
+    _held_failure(lambda: None, hooks)
+    assert len(records(reporter)) == 1
 
 
 def test_thread_hook_withdrawal_suppresses_old_fault(reporter, hooks):
@@ -281,16 +305,20 @@ def test_caught_nested_error_and_successful_followup_cannot_taint_later_fault(re
     def target():
         reports.bind_callable(successful_outer)()
         reports.bind_callable(lambda: None)()
-        # Legacy unbound synchronous faults retain their current-grant behavior.
+        # An unbound synchronous fault is local-only; the cleared old marker
+        # cannot supply authority merely because consent is currently ON.
         raise TypeError('private genuinely later unbound failure')
 
     thread = threading.Thread(target=target)
     thread.start()
     thread.join(5)
     assert completed == [thread.ident]
+    assert records(reporter) == []
+    completed.clear()
+    _held_failure(lambda: None, hooks)
     saved = records(reporter)
     assert len(saved) == 1
-    assert saved[0]['props']['error_type'] == 'TypeError'
+    assert saved[0]['props']['error_type'] == 'ValueError'
 
 
 def test_caught_executor_fault_marker_does_not_retain_exception(reporter, hooks):

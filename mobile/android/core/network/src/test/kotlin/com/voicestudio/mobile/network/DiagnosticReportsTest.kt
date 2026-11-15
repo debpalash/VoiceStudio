@@ -55,6 +55,28 @@ class DiagnosticReportsTest {
         }
         override fun cancelAll() { cancelled++;continuation?.cancel();continuation=null }
     }
+    private class CloseOrderFileStore(directory:File) : DiagnosticStorage {
+        private val disk=FileDiagnosticStorage(directory)
+        val entered=java.util.concurrent.CountDownLatch(1)
+        val release=java.util.concurrent.CountDownLatch(1)
+        val armed=java.util.concurrent.atomic.AtomicBoolean(false)
+        val denyRevocation=java.util.concurrent.atomic.AtomicBoolean(false)
+        val revocationWrites=java.util.concurrent.atomic.AtomicInteger(0)
+        var blockName="outbox.json"
+        override fun read(name:String,maxBytes:Int)=disk.read(name,maxBytes)
+        override fun write(name:String,bytes:ByteArray) {
+            if(name=="revoked.json")revocationWrites.incrementAndGet()
+            if(denyRevocation.get() && name in setOf("consent.json","revoked.json"))throw IOException("Controlled unavailable revocation")
+            disk.write(name,bytes)
+            if(name==blockName && armed.compareAndSet(true,false)) {
+                entered.countDown();check(release.await(10,java.util.concurrent.TimeUnit.SECONDS))
+            }
+        }
+        override fun remove(name:String) {
+            if(denyRevocation.get() && name=="consent.json")throw IOException("Controlled locked grant")
+            disk.remove(name)
+        }
+    }
     private fun policy():DiagnosticPolicy {
         var root=File(System.getProperty("user.dir"))
         repeat(10) {
@@ -68,6 +90,79 @@ class DiagnosticReportsTest {
         File("unused-test-store"),policy(),DiagnosticDestination("localtest123","http://127.0.0.1:1","https://app.test.invalid"),appVersion,
         buildCommit=buildCommit,transport=transport,clock=clock,storage=store,dispatcher=dispatcher,disabled=disabled)
     private fun event(errorType:String="TypeError")=DiagnosticInput("generation_failed","generation",errorType=errorType)
+
+    private fun closeAfterBlockedFlushRetainsTheLatestChoice(withdraw:Boolean,failRevocation:Boolean=false)=runTest {
+        val directory=java.nio.file.Files.createTempDirectory("diagnostic-close-choice-").toFile()
+        val storage=CloseOrderFileStore(directory);val transport=Transport()
+        val reporter=makeReporter(storage,transport,Clock(),Dispatchers.IO)
+        try {
+            reporter.setConsent(true)
+            val grant=storage.read("consent.json",4096)!!
+            storage.armed.set(true);assertTrue(reporter.capture(event()))
+            assertTrue("An actual disk-backed flush must own the worker",storage.entered.await(10,java.util.concurrent.TimeUnit.SECONDS))
+            storage.denyRevocation.set(failRevocation)
+            val off=if(withdraw)async(start=CoroutineStart.UNDISPATCHED){runCatching{reporter.setConsent(false)}}else null
+            if(off!=null)assertFalse("Withdrawal must be waiting for the blocked worker",off.isCompleted)
+            val closing=async(start=CoroutineStart.UNDISPATCHED){reporter.close()}
+            assertFalse(reporter.status.enabled);assertFalse(reporter.capture(event()))
+            assertFalse(closing.isCompleted)
+            storage.release.countDown();closing.await();val offResult=off?.await()
+            assertTrue(transport.bodies.isEmpty())
+            if(failRevocation) {
+                assertTrue("A queued OFF cannot acknowledge a failed final save",offResult!!.isFailure)
+                assertTrue(reporter.status.consentSaveFailed);assertFalse(reporter.capture(event()))
+                return@runTest
+            }
+            if(!withdraw)assertArrayEquals("Ordinary close retains a saved positive choice",grant,storage.read("consent.json",4096))
+            val nextTransport=Transport().apply{code=201}
+            val next=makeReporter(FileDiagnosticStorage(directory),nextTransport,Clock(),Dispatchers.IO)
+            try {
+                next.load();next.flush()
+                assertEquals("Close must not discard a pending withdrawal",!withdraw,next.status.enabled)
+                assertEquals(if(withdraw)0 else 1,nextTransport.bodies.size)
+                if(withdraw)assertFalse(next.capture(event()))
+            }finally{next.close()}
+        }finally{storage.release.countDown();storage.denyRevocation.set(false);reporter.close();directory.deleteRecursively()}
+    }
+    @Test fun queuedOffCompletesBeforeCloseCanPersistAnOldGrant()=closeAfterBlockedFlushRetainsTheLatestChoice(true)
+    @Test fun ordinaryOnCloseRetainsTheGrantedQueue()=closeAfterBlockedFlushRetainsTheLatestChoice(false)
+    @Test fun queuedOffCloseFailureIsNotAcknowledgedAsSaved()=closeAfterBlockedFlushRetainsTheLatestChoice(true,true)
+
+    @Test fun closeCannotPublishAnOnChoiceBlockedAfterItsRename()=runTest {
+        val directory=java.nio.file.Files.createTempDirectory("diagnostic-close-on-").toFile()
+        val storage=CloseOrderFileStore(directory).apply{blockName="consent.json";armed.set(true)}
+        val transport=Transport();val reporter=makeReporter(storage,transport,Clock(),Dispatchers.IO)
+        try {
+            val on=async(Dispatchers.IO){runCatching{reporter.setConsent(true)}}
+            assertTrue(storage.entered.await(10,java.util.concurrent.TimeUnit.SECONDS))
+            val closing=async(start=CoroutineStart.UNDISPATCHED){reporter.close()}
+            assertFalse(reporter.status.enabled);assertFalse(reporter.capture(event()))
+            storage.release.countDown();closing.await();on.await()
+            val next=makeReporter(FileDiagnosticStorage(directory),transport,Clock(),Dispatchers.IO)
+            try{next.load();next.flush();assertFalse("A closed pending ON must not activate after restart",next.status.enabled);assertTrue(transport.bodies.isEmpty())}
+            finally{next.close()}
+        }finally{storage.release.countDown();reporter.close();directory.deleteRecursively()}
+    }
+
+    @Test fun closeRetriesPendingOffBeforeItsStorageCooldownExpires()=runTest {
+        val directory=java.nio.file.Files.createTempDirectory("diagnostic-close-retry-").toFile()
+        val storage=CloseOrderFileStore(directory);val transport=Transport();val clock=Clock()
+        val reporter=makeReporter(storage,transport,clock,Dispatchers.IO)
+        try {
+            reporter.setConsent(true);storage.denyRevocation.set(true)
+            try{reporter.setConsent(false);fail("Expected failed durable withdrawal")}catch(_:IOException){}
+            val attempts=storage.revocationWrites.get()
+            assertTrue(reporter.status.consentSaveFailed);assertFalse(reporter.capture(event()))
+            storage.denyRevocation.set(false)
+            // No clock advance: close must not leave a previous enabled grant
+            // until a retry timer which it is about to cancel could fire.
+            reporter.close()
+            assertTrue(storage.revocationWrites.get()>attempts)
+            val next=makeReporter(FileDiagnosticStorage(directory),transport,clock,Dispatchers.IO)
+            try{next.load();next.flush();assertFalse(next.status.enabled);assertTrue(transport.bodies.isEmpty())}
+            finally{next.close()}
+        }finally{storage.denyRevocation.set(false);reporter.close();directory.deleteRecursively()}
+    }
 
     @Test fun unreadOutboxPreservesReportsAndAutomaticallyRetriesSameGrantOncePerMinute()=runTest {
         val store=Store();val dispatcher=StandardTestDispatcher(testScheduler);val clock=ScheduledClock(testScheduler)

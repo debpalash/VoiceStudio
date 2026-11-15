@@ -75,7 +75,7 @@ network delivery or flush a crash dump.
 The durable queue is limited to 64 records and 512 KiB per installation, expires
 after seven days, coalesces repeated failures and uses bounded retries with
 stable report IDs. Desktop allocates that total between main and the Python
-inbox. Recovered crashes retain the original journal or heartbeat timestamp;
+inbox. Recovered crashes retain the original accepted fault or heartbeat timestamp;
 restarting does not extend their retention. Turning reports off stops delivery
 immediately, cancels active transport, invalidates the consent epoch and purges
 queued reports. A new opt-in creates a
@@ -110,7 +110,9 @@ desktop setup/start attempts and child-exit recovery follow the same rule.
 Runtime/file IPC work observes permission at entry. Its asynchronous descendants
 retain that observation through Node's fatal-error and unhandled-rejection hooks.
 Uncaught faults with unknown provenance remain in the local journal rather than
-borrowing permission at delivery time. Confirmation actions retain the choice
+borrowing permission at delivery time or after restart. A consent-stamped process
+marker can still recover a coarse unclean exit, but raw journal timestamps do not
+authorize fault details or frames. Confirmation actions retain the choice
 observed at the click; an unrelated or rewrapped promise cannot acquire a newer
 grant. Seeking an existing phone playback does not renew its grant.
 A failed consent write is shown with Retry and leaves the current process off.
@@ -118,6 +120,9 @@ Where storage permits, withdrawal replaces the previous grant or writes a
 private revocation marker so restart also remains off. If every write or
 restoration fails, durable withdrawal cannot be guaranteed; the save fails
 instead of acknowledging a persisted choice.
+After a choice is saved successfully, a fresh status read can observe another
+client's new opt-in. Failed or pending writes remain locally closed; an older
+operation cannot acquire that fresh grant.
 
 In source/Docker builds, switching off closes cached permission and cancels the
 sender before waiting on storage. The Settings request completes only after

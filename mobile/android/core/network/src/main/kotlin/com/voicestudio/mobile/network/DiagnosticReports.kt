@@ -363,7 +363,9 @@ class DiagnosticReports(
         records.clear();retryAt.clear();storageRetryAt=null;consentReadRetryAt=null;outboxReadRetryEpoch=null
         val result=revokeGrant(storage,hadGrant,explicit)
         synchronized(stateLock) {
-            if(generation!=sequence || closed)return false
+            // Revocation can finish during close; publishing OFF never restores
+            // authority, and its storage failure must remain visible afterward.
+            if(generation!=sequence)return false
             consent=result.consent;loaded=true;revocationPending=result.failed
             state=state.copy(enabled=false,optedIn=false,prompted=state.prompted || hadGrant || explicit,pendingCount=0,consentSaveFailed=result.failed)
         }
@@ -506,7 +508,15 @@ class DiagnosticReports(
         val generation=invalidateGrant()
         return withContext(scope.coroutineContext) {
             worker.withLock {
-                if(generation!=synchronized(stateLock){sequence} || closed)return@withLock status
+                if(generation!=synchronized(stateLock){sequence} || closed) {
+                    // close invalidates late ON publication, but an already
+                    // requested OFF still owns a durable withdrawal obligation.
+                    if(!enabled && closed && revocationPending) {
+                        val current=synchronized(stateLock){sequence}
+                        if(persistRevocation(current,consent!=null,explicit=true))throw IOException("Could not save diagnostic consent")
+                    }
+                    return@withLock status
+                }
                 if(!enabled) {
                     val failed=persistRevocation(generation,consent!=null,explicit=true)
                     if(failed)throw IOException("Could not save diagnostic consent")
@@ -681,10 +691,17 @@ class DiagnosticReports(
         synchronized(stateLock) { closed = true; sequence++; state = state.copy(enabled = false, optedIn = false);cancelRetryLocked() }
         transport.cancelAll()
         try {
-            withContext(Dispatchers.IO) { worker.withLock { consent?.let {
-                if(!loaded) {restoreOutbox(it.epoch);loaded=true}
-                drain(it.epoch);persist()
-            } } }
+            withContext(Dispatchers.IO) { worker.withLock {
+                val blocked=revoked()
+                if(revocationPending || disabled() || blocked) {
+                    // Do this before persisting any old queue or cancelling the
+                    // worker's scope, even when its retry deadline is later.
+                    persistRevocation(synchronized(stateLock){sequence},consent!=null,explicit=revocationPending || blocked)
+                }else consent?.let {
+                    if(!loaded) {restoreOutbox(it.epoch);loaded=true}
+                    drain(it.epoch);persist()
+                }
+            } }
         } catch (_:Exception) { /* A final best-effort write must not leave the owned scope alive. */ }
         finally { scope.cancel() }
     }
