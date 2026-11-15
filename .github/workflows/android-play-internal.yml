@@ -79,8 +79,8 @@ jobs:
 
       - name: Build signed bundle
         env:
-          SUPERMETRY_APP_ID: ${{ secrets.SUPERMETRY_APP_ID }}
-          SUPERMETRY_INGEST_KEY: ${{ secrets.SUPERMETRY_INGEST_KEY }}
+          SUPERMETRY_APP_ID: ${{ vars.SUPERMETRY_APP_ID || secrets.SUPERMETRY_APP_ID }}
+          SUPERMETRY_INGEST_KEY: ${{ vars.SUPERMETRY_INGEST_KEY || secrets.SUPERMETRY_INGEST_KEY }}
           SUPERMETRY_APP_HOST: ${{ vars.SUPERMETRY_APP_HOST || secrets.SUPERMETRY_APP_HOST }}
           VOICESTUDIO_ANDROID_KEYSTORE: ${{ runner.temp }}/upload.jks
           VOICESTUDIO_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
