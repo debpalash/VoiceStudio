@@ -156,6 +156,48 @@ jobs:
           cp app/build/outputs/apk/release/*.apk "$RUNNER_TEMP/out/VoiceStudio.apk"
           cp app/build/outputs/bundle/release/*.aab "$RUNNER_TEMP/out/VoiceStudio.aab"
 
+      - name: Measure Android APK signing
+        env:
+          REHEARSAL: ${{ inputs.rehearsal == true }}
+        run: |
+          # Inline: a recovery workflow from main may build an older tag that
+          # has no new helper script. Measure the collected bytes, not its name.
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -mindepth 2 -maxdepth 2 -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKSIGNER" || { echo "::error::Android apksigner is unavailable"; exit 1; }
+          APK="$RUNNER_TEMP/out/VoiceStudio.apk"
+          mkdir -p "$RUNNER_TEMP/android-signing"
+          if "$APKSIGNER" verify --min-sdk-version 29 --verbose --print-certs "$APK" > "$RUNNER_TEMP/android-signing/apk-verification.log" 2>&1; then
+            STATUS=signed
+          elif [ "$REHEARSAL" = true ]; then
+            # Failure may mean a corrupt APK or a verifier error, not just an
+            # absent signature. Do not claim unsigned without proving absence.
+            STATUS=unverified
+          else
+            echo "::error::The release APK did not pass signature verification"
+            exit 1
+          fi
+          export APK STATUS
+          python3 - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          digest = hashlib.sha256()
+          with Path(os.environ["APK"]).open("rb") as apk:
+              for chunk in iter(lambda: apk.read(1024 * 1024), b""):
+                  digest.update(chunk)
+          report = {"platform": "android", "arch": "universal", "status": os.environ["STATUS"],
+                    "rehearsal": os.environ["REHEARSAL"] == "true", "apk_sha256": digest.hexdigest()}
+          path = Path(os.environ["RUNNER_TEMP"]) / "android-signing" / "signing-android-universal.json"
+          path.write_text(json.dumps(report) + "\n", encoding="utf-8")
+          PY
+
+      - name: Save Android signing evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: electron-signing-android-universal
+          path: ${{ runner.temp }}/android-signing
+          if-no-files-found: error
+          retention-days: ${{ inputs.rehearsal && 3 || 30 }}
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: VoiceStudio-android-release
