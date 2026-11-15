@@ -1,8 +1,11 @@
 package com.voicestudio.mobile
 
 import android.app.Application
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.core.app.ApplicationProvider
@@ -29,7 +32,9 @@ class DiagnosticConsentFeedbackTest {
             CompositionLocalProvider(LocalL10n provides l) {VoiceStudioTheme {
                 val snackbars=remember {SnackbarHostState()}
                 Scaffold(snackbarHost={SnackbarHost(snackbars)}) {padding->
-                    DiagnosticSaveFailureNotice(AutomaticDiagnosticState(ready=true,status=DiagnosticStatus(enabled=false,prompted=true,consentSaveFailed=failed),saving=saving,saveFailed=failed),snackbars) {retried++}
+                    Box(Modifier.padding(padding)) {
+                        DiagnosticSaveFailureNotice(AutomaticDiagnosticState(ready=true,status=DiagnosticStatus(enabled=false,prompted=true,consentSaveFailed=failed),saving=saving,saveFailed=failed),snackbars) {retried++}
+                    }
                 }
             }}
         }

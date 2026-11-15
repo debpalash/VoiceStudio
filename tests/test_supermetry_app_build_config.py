@@ -98,5 +98,3 @@ def test_release_artifact_jobs_receive_only_build_time_intake_credentials():
                 assert "SUPERMETRY_DIAGNOSTICS_SESSION_PINGS" not in env
                 assert "bun run check:electron" not in step.get("run", "")
                 assert not any(command in step.get("run", "") for command in ("bun run test", "vp test", "pytest", "testDebugUnitTest"))
-                if "electron-builder" in step.get("run", ""):
-                    assert "bun run build" in step["run"]

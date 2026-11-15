@@ -278,7 +278,6 @@ jobs:
           ALLOW_UNSIGNED: ${{ inputs.allow_unsigned }}
         working-directory: electron
         run: |
-          bun run build
           if [ "${{ matrix.platform }}" = darwin ] && [ "$PUBLISH" = true ] && [ "$ALLOW_UNSIGNED" != true ]; then
             if [ -z "${CSC_LINK:-}" ] || [ -z "${CSC_KEY_PASSWORD:-}" ] || [ -z "${APPLE_API_KEY:-}" ] || [ -z "${APPLE_API_KEY_ID:-}" ] || [ -z "${APPLE_API_ISSUER:-}" ]; then
               echo "Signed macOS publication requires Developer ID and Apple notarization credentials"; exit 1

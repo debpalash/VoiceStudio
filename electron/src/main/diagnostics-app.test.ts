@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -40,6 +41,7 @@ const env = {
 };
 let directory: string;
 let instances: DiagnosticReports[];
+const originalResourcesPath = Object.getOwnPropertyDescriptor(process, 'resourcesPath');
 beforeEach(async () => {
   storageGate.unreadConsent = false;
   directory = await mkdtemp(join(tmpdir(), 'voice-app-intake-'));
@@ -50,6 +52,9 @@ afterEach(async () => {
   for (const instance of instances) await instance.close().catch(() => {});
   await rm(directory, { recursive: true, force: true });
   vi.useRealTimers();
+  vi.unstubAllGlobals();
+  if (originalResourcesPath) Object.defineProperty(process, 'resourcesPath', originalResourcesPath);
+  else Reflect.deleteProperty(process, 'resourcesPath');
 });
 function reporter(options: Partial<DiagnosticsOptions> = {}) {
   const instance = new DiagnosticReports({
@@ -637,5 +642,162 @@ it.each([
       'User-Agent',
       `VoiceStudio/0.5.9-beta.3 (${normalizedPlatform}; ${normalizedArch})`,
     );
+  },
+);
+
+async function packagedMetadata(contents?: string | Uint8Array) {
+  const resources = join(directory, 'resources');
+  const config = join(resources, 'config');
+  await mkdir(config, { recursive: true });
+  Object.defineProperty(process, 'resourcesPath', { configurable: true, value: resources });
+  const file = join(config, 'supermetry-app.generated.json');
+  if (contents !== undefined) await writeFile(file, contents);
+  return file;
+}
+const embeddedMetadata = {
+  app_id: 'embedded1',
+  ingest_key: 'smk_' + 'b'.repeat(39),
+  host: 'https://embedded.invalid',
+  diagnostics: { sessionPings: false },
+};
+const packagedConfig = {
+  app_id: 'packaged1',
+  ingest_key: 'smk_' + 'c'.repeat(39),
+  host: 'https://packaged.invalid',
+  diagnostics: { sessionPings: false },
+};
+
+it('loads packaged private metadata once at real reporter construction without copying its key into reports', async () => {
+  vi.stubGlobal('__SUPERMETRY_APP_CONFIG__', embeddedMetadata);
+  const file = await packagedMetadata(JSON.stringify(packagedConfig));
+  const stored: string[] = [];
+  const send = vi.fn(async (_url: unknown, _init?: RequestInit) => {
+    stored.push(await readFile(join(directory, 'outbox.json'), 'utf8'));
+    return accepted(1);
+  });
+  const reports = reporter({ env: {}, send });
+  await writeFile(file, JSON.stringify(embeddedMetadata));
+  await reports.initialize();
+  await reports.setConsent(true);
+  reports.capture({ category: 'engine_failed' });
+  await reports.flush();
+  expect(send).toHaveBeenCalledOnce();
+  expect(send.mock.calls[0][0]).toBe('https://packaged.invalid/api/public/v1/app-events');
+  const request = send.mock.calls[0][1] as RequestInit;
+  expect(request.headers).toMatchObject({ 'X-Supermetry-Key': packagedConfig.ingest_key });
+  expect(JSON.parse(String(request.body)).site).toBe(packagedConfig.app_id);
+  expect(JSON.stringify([reports.status(), stored, request.body])).not.toContain(
+    packagedConfig.ingest_key,
+  );
+});
+
+it.each(['malformed', 'oversized', 'directory', 'invalid-utf8'] as const)(
+  'treats present %s packaged metadata as absent credentials instead of rescuing embedded ones',
+  async (kind) => {
+    vi.stubGlobal('__SUPERMETRY_APP_CONFIG__', embeddedMetadata);
+    const file = await packagedMetadata();
+    if (kind === 'directory') await mkdir(file);
+    else if (kind === 'malformed') await writeFile(file, '{');
+    else if (kind === 'invalid-utf8')
+      await writeFile(
+        file,
+        Buffer.concat([
+          Buffer.from(JSON.stringify(packagedConfig).slice(0, -1) + ',"ignored":"'),
+          Buffer.from([0xff]),
+          Buffer.from('"}'),
+        ]),
+      );
+    else await writeFile(file, JSON.stringify(packagedConfig) + ' '.repeat(4096));
+    expect(diagnosticAppDestination({})).toBeNull();
+    const send = vi.fn(
+      async (_url: unknown, _init?: RequestInit) => new Response('', { status: 202 }),
+    );
+    const reports = reporter({ env: {}, send });
+    await reports.initialize();
+    await reports.setConsent(true);
+    reports.capture({ category: 'engine_failed' });
+    await reports.flush();
+    expect(send).toHaveBeenCalledOnce();
+    expect(send.mock.calls[0][0]).toBe(legacy.host + '/api/public/v1/events');
+    const request = send.mock.calls[0][1] as RequestInit;
+    expect(request.headers).toEqual({
+      'Content-Type': 'application/json',
+      Origin: legacy.appUrl,
+      'User-Agent':
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) VoiceStudio/1.0 Chrome/130.0.0.0 Safari/537.36',
+    });
+    expect(JSON.parse(String(request.body)).name).toBe('diagnostic_report');
+  },
+);
+
+it.runIf(process.platform !== 'win32')(
+  'rejects symlinked packaged metadata including a dangling link',
+  async () => {
+    vi.stubGlobal('__SUPERMETRY_APP_CONFIG__', embeddedMetadata);
+    const file = await packagedMetadata();
+    const target = join(directory, 'other-config.json');
+    await writeFile(target, JSON.stringify(packagedConfig));
+    await symlink(target, file);
+    expect(diagnosticAppDestination({})).toBeNull();
+    await rm(target);
+    expect(diagnosticAppDestination({})).toBeNull();
+  },
+);
+
+it('uses embedded metadata only when packaged metadata is missing and creates no build config', async () => {
+  vi.stubGlobal('__SUPERMETRY_APP_CONFIG__', embeddedMetadata);
+  await packagedMetadata();
+  const before = await readdir(join(directory, 'resources', 'config'));
+  expect(diagnosticAppDestination({})?.appId).toBe(embeddedMetadata.app_id);
+  expect(await readdir(join(directory, 'resources', 'config'))).toEqual(before);
+  Object.defineProperty(process, 'resourcesPath', { configurable: true, value: undefined });
+  expect(diagnosticAppDestination({})?.appId).toBe(embeddedMetadata.app_id);
+  vi.stubGlobal('__SUPERMETRY_APP_CONFIG__', undefined);
+  expect(diagnosticAppDestination({})).toBeNull();
+});
+
+it('preserves environment and explicit-option precedence over packaged metadata', async () => {
+  vi.stubGlobal('__SUPERMETRY_APP_CONFIG__', embeddedMetadata);
+  await packagedMetadata(JSON.stringify(packagedConfig));
+  expect(diagnosticAppDestination(env)).toMatchObject({
+    appId: env.SUPERMETRY_APP_ID,
+    host: env.SUPERMETRY_APP_HOST,
+  });
+  expect(diagnosticAppDestination({ SUPERMETRY_APP_ID: 'invalid!' })).toBeNull();
+  expect(diagnosticAppDestination({ SUPERMETRY_APP_HOST: 'http://public.invalid' })?.host).toBe(
+    analyticsConfig.host,
+  );
+  const send = vi.fn(
+    async (_url: unknown, _init?: RequestInit) => new Response('', { status: 202 }),
+  );
+  const reports = reporter({ env: {}, appConfig: {}, send });
+  await reports.initialize();
+  await reports.setConsent(true);
+  reports.capture({ category: 'engine_failed' });
+  await reports.flush();
+  expect(send.mock.calls[0][0]).toBe(legacy.host + '/api/public/v1/events');
+});
+
+it.runIf(process.platform !== 'win32')(
+  'rejects FIFO packaged metadata without waiting for a writer',
+  async () => {
+    vi.stubGlobal('__SUPERMETRY_APP_CONFIG__', embeddedMetadata);
+    const file = await packagedMetadata();
+    execFileSync('mkfifo', [file]);
+    expect(diagnosticAppDestination({})).toBeNull();
+  },
+);
+
+it.runIf(process.platform !== 'win32' && process.getuid?.() !== 0)(
+  'does not rescue embedded credentials when the packaged file cannot be read',
+  async () => {
+    vi.stubGlobal('__SUPERMETRY_APP_CONFIG__', embeddedMetadata);
+    const file = await packagedMetadata(JSON.stringify(packagedConfig));
+    await chmod(file, 0);
+    try {
+      expect(diagnosticAppDestination({})).toBeNull();
+    } finally {
+      await chmod(file, 0o600);
+    }
   },
 );

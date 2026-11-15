@@ -1,3 +1,5 @@
+import { closeSync, constants, fstatSync, lstatSync, openSync, readSync } from 'node:fs';
+import { join } from 'node:path';
 import analyticsConfig from '../../../config/analytics.json';
 import type { DiagnosticProps } from './diagnostics-schema';
 
@@ -6,6 +8,59 @@ export interface DiagnosticAppDestination {
   ingestKey: string;
   host: string;
   sessionPings: boolean;
+}
+/** Package-time metadata can arrive after the main bundle was built. Read it
+ * only while constructing the reporter, never on capture or delivery paths. */
+function diagnosticBuildConfig(): unknown {
+  const embedded =
+    typeof __SUPERMETRY_APP_CONFIG__ === 'undefined' ? undefined : __SUPERMETRY_APP_CONFIG__;
+  if (typeof process.resourcesPath !== 'string' || !process.resourcesPath) return embedded;
+  const file = join(process.resourcesPath, 'config', 'supermetry-app.generated.json');
+  let before: ReturnType<typeof lstatSync>;
+  try {
+    before = lstatSync(file);
+  } catch (error) {
+    // A missing package file retains old builds' embedded configuration. A
+    // present but unreadable file must never revive stale embedded credentials.
+    return (error as NodeJS.ErrnoException).code === 'ENOENT' ? embedded : {};
+  }
+  if (!before.isFile() || before.size > 4096) return {};
+  let fd: number | undefined;
+  try {
+    fd = openSync(
+      file,
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
+    );
+    const opened = fstatSync(fd);
+    if (
+      !opened.isFile() ||
+      opened.size > 4096 ||
+      opened.dev !== before.dev ||
+      opened.ino !== before.ino
+    )
+      return {};
+    // The extra byte detects concurrent growth without reading an unbounded
+    // file. NOFOLLOW plus the identity check also fails closed on replacement.
+    const bytes = Buffer.alloc(4097);
+    let length = 0;
+    while (length < bytes.length) {
+      const count = readSync(fd, bytes, length, bytes.length - length, null);
+      if (!count) break;
+      length += count;
+    }
+    if (length > 4096) return {};
+    return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes.subarray(0, length)));
+  } catch {
+    return {};
+  } finally {
+    if (fd !== undefined) {
+      try {
+        closeSync(fd);
+      } catch {
+        /* Configuration failures stay local and silent. */
+      }
+    }
+  }
 }
 export function safeDiagnosticUrl(value: string, origin = false): boolean {
   try {
@@ -32,9 +87,7 @@ export function safeDiagnosticUrl(value: string, origin = false): boolean {
 }
 export function diagnosticAppDestination(
   env: NodeJS.ProcessEnv,
-  generated: unknown = typeof __SUPERMETRY_APP_CONFIG__ === 'undefined'
-    ? undefined
-    : __SUPERMETRY_APP_CONFIG__,
+  generated: unknown = diagnosticBuildConfig(),
 ): DiagnosticAppDestination | null {
   const config =
     generated && typeof generated === 'object' && !Array.isArray(generated)

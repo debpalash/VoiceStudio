@@ -133,7 +133,6 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.ELECTRON_WINDOWS_CSC_KEY_PASSWORD }}
         working-directory: electron
         run: |
-          bun run build
           test -n "$CSC_LINK" && test -n "$CSC_KEY_PASSWORD" || {
             echo "Microsoft Store packages require Authenticode credentials"; exit 1;
           }

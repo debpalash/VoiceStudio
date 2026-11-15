@@ -114,7 +114,6 @@ jobs:
           CSC_INSTALLER_LINK: ${{ secrets.ELECTRON_MAC_APP_STORE_INSTALLER_LINK }}
           CSC_INSTALLER_KEY_PASSWORD: ${{ secrets.ELECTRON_MAC_APP_STORE_INSTALLER_KEY_PASSWORD }}
         run: |
-          bun run build
           bun x electron-builder --config electron-builder.config.mjs --mac mas ${{ matrix.flag }} --publish never
           node tests/packaging-contract.mjs --artifact
       - name: Verify Apple Distribution signatures and sandbox

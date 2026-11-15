@@ -165,7 +165,8 @@ The usage-analytics consent choice is not changed.
 the diagnostics-only generated configuration at runtime, including explicitly
 empty or invalid values. Invalid app credentials select the unchanged fallback.
 Builds generate git-ignored `config/supermetry-app.generated.json` and bundle it
-with the backend; Electron main embeds the same metadata, and native builds
+with the backend; Electron main reads that packaged metadata, falling back to
+embedded build metadata when the file is absent, and native builds
 generate an equivalent private resource. These values are never exposed through
 renderer configuration or the diagnostics status API. Fork and unconfigured local
 builds need no app credentials. Product analytics does not read them.
