@@ -132,7 +132,12 @@ def prepare(output, info):
     shutil.copy2(ROOT / "config/diagnostics.json", catalogs / "diagnostics.json")
     shutil.copy2(ROOT / "config/analytics.json", catalogs / "diagnostics-destination.json")
     intake = runpy.run_path(str(ROOT / "scripts/generate_supermetry_config.py"))
-    intake["write_config"](catalogs / "supermetry-app.generated.json")
+    packaged_intake = catalogs / "supermetry-app.generated.json"
+    intake["write_config"](packaged_intake)
+    # Written directly into the app, outside Xcode's resource-copy mode fixup.
+    # Only this public, write-only ingest metadata is distributable; the shared
+    # build-source writer and user consent/outbox files retain private modes.
+    packaged_intake.chmod(0o644)
     source = ROOT / "electron/src/renderer/src/i18n/locales"
     shutil.copy2(ROOT / "electron/src/shared/languages.json", catalogs / "languages.json")
     code_source = (ROOT / "electron/src/shared/utils/languages.js").read_text(encoding="utf-8")
