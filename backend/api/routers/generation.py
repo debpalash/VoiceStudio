@@ -44,6 +44,7 @@ from core import event_bus
 from core.render_trace import call as trace_call
 from core.logging_utils import log_safe
 from core.browser_guard import reject_cross_site_get
+from core.scrub import scrub_text
 
 router = APIRouter()
 logger = logging.getLogger("omnivoice.generate")
@@ -198,7 +199,7 @@ async def generated_mp3(audio_id: str, request: Request):
         logger.warning("MP3 encoding failed: %s", log_safe(exc))
         raise HTTPException(
             status_code=503,
-            detail=f"{exc}. Check ffmpeg in Settings → Audio tools, then try again.",
+            detail=f"{scrub_text(str(exc))}. Check ffmpeg in Settings → Audio tools, then try again.",
         ) from exc
     return Response(encoded, media_type="audio/mpeg")
 

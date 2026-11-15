@@ -200,13 +200,22 @@ def _scrub_url_queries(text: str) -> str:
 # IGNORECASE because Windows is case-insensitive and tools routinely emit the
 # lowercase `c:\users\<name>` form, which the CLAUDE.md redaction spec still
 # requires to become `~`. `Users`/`users`, `Home`/`home` all match.
+# A home-directory name. It may contain a space (`C:\Users\Mary Jane`), but only
+# when another separator follows, so the match cannot run into the sentence after
+# a path: `/home/bob: Permission denied` keeps its words and redacts `/home/bob`.
+_HOME_NAME = r"(?:[^\\/\s\"':]+(?:\s[^\\/\s\"':]+)?(?=[\\/])|[^\\/\s\"':]+)"
+
 _HOME_PATTERNS = (
+    # repr() and JSON escape the separators, so an OSError or a log line can carry
+    # `C:\\Users\\<name>`. Those doubled forms must be matched before the single
+    # one, which does not match them anyway: the extra backslash breaks its shape.
+    re.compile(r"[A-Za-z]:\\\\Users\\\\" + _HOME_NAME, re.IGNORECASE),  # repr-escaped
     # Windows-with-forward-slashes must run BEFORE the bare macOS shape, or
     # `/Users/<name>` inside `C:/Users/<name>` gets eaten first, leaving `C:~`.
-    re.compile(r"[A-Za-z]:/Users/[^/\s\"']+", re.IGNORECASE),   # Windows, forward slashes
-    re.compile(r"/Users/[^/\s\"']+", re.IGNORECASE),           # macOS
-    re.compile(r"/home/[^/\s\"']+", re.IGNORECASE),            # Linux
-    re.compile(r"[A-Za-z]:\\Users\\[^\\\s\"']+", re.IGNORECASE),  # Windows, backslashes
+    re.compile(r"[A-Za-z]:/Users/" + _HOME_NAME, re.IGNORECASE),   # Windows, forward slashes
+    re.compile(r"/Users/" + _HOME_NAME, re.IGNORECASE),           # macOS
+    re.compile(r"/home/" + _HOME_NAME, re.IGNORECASE),            # Linux
+    re.compile(r"[A-Za-z]:\\Users\\" + _HOME_NAME, re.IGNORECASE),  # Windows, backslashes
 )
 
 # Lookahead that ends this machine's home path: the next character must not

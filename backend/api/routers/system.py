@@ -697,10 +697,10 @@ async def system_logs(tail: int = 200):
             # report can then say whether it crossed a rollover.
             "paths": paths,
         }
-    except Exception as e:
+    except Exception:
         raise HTTPException(
             status_code=500,
-            detail=f"Could not read log at {path}: {e}. Check file permissions or delete it manually.",
+            detail="Could not read the log file. Check its permissions or delete it manually.",
         )
 
 
@@ -823,10 +823,13 @@ async def clear_system_logs():
             try:
                 await asyncio.to_thread(_truncate_file, p)
                 cleared_any = True
-            except Exception as e:
+            except Exception:
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Could not clear log at {p}: {e}. The file may be open in another process or read-only — close tailing tools and retry.",
+                    detail=(
+                        "Could not clear the log file. It may be open in another program or "
+                        "read-only; close anything tailing it and try again."
+                    ),
                 )
     if cleared_any:
         # The crash log just shrank to zero — drop any stored ack so a stale

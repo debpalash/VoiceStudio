@@ -59,6 +59,7 @@ from services.segmentation import (
 from services.onset_align import snap_segment_starts, trim_segment_ends
 from services import dub_pipeline
 from core.browser_guard import reject_cross_site_get
+from core.scrub import scrub_text
 
 router = APIRouter()
 logger = logging.getLogger("omnivoice.api")
@@ -310,7 +311,7 @@ async def dub_import_srt(job_id: str, file: UploadFile = File(...)):
     try:
         raw_bytes = await file.read()
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Could not read uploaded file: {e}") from e
+        raise HTTPException(status_code=400, detail=f"Could not read uploaded file: {scrub_text(str(e))}") from e
     if not raw_bytes:
         raise HTTPException(status_code=400, detail="Uploaded SRT file is empty.")
     # Most SRT files are UTF-8, but Windows subtitle tools also save UTF-16

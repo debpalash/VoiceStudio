@@ -47,6 +47,7 @@ from services.video_retime import (
 from api.routers.dub_core import _get_job, _safe_lang_or_400
 from schemas.requests import ProsodyMirrorRequest
 from core.browser_guard import reject_cross_site_get
+from core.scrub import scrub_text
 
 router = APIRouter()
 logger = logging.getLogger("omnivoice.api")
@@ -258,9 +259,17 @@ def _native_save(source: str, destination: str, display_name: str, media_type: s
         os.makedirs(os.path.dirname(dest) or ".", exist_ok=True)
         shutil.copy2(source, dest)
     except PermissionError as e:
-        raise HTTPException(status_code=403, detail=f"Permission denied: {e}")
+        # Fixed text on purpose: an OS error names the path, and Windows escapes
+        # its separators, which is the one shape scrub_text cannot match.
+        raise HTTPException(
+            status_code=403,
+            detail="Permission denied writing to the export folder. Choose one you can write to.",
+        ) from e
     except OSError as e:
-        raise HTTPException(status_code=500, detail=f"Copy failed: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="The file could not be copied. Check the destination folder and free space.",
+        ) from e
     if not os.path.exists(dest) or os.path.getsize(dest) == 0:
         raise HTTPException(status_code=500, detail="Copy produced empty file at destination")
     logger.info("Native save completed (%d bytes)", os.path.getsize(dest))
@@ -1460,7 +1469,7 @@ async def dub_preview_video(
             _discard_tmp()
             raise HTTPException(
                 status_code=500,
-                detail=f"ffmpeg failed to build the preview stream: {str(e)[:300]}. This usually means the source video can't be re-encoded on the fly — try downloading the MP4 instead.",
+                detail=f"ffmpeg failed to build the preview stream: {scrub_text(str(e))[:300]}. This usually means the source video can't be re-encoded on the fly — try downloading the MP4 instead.",
             )
         finally:
             if retime_decision is not None and retime_decision.mode == "file":
@@ -1560,7 +1569,7 @@ async def dub_get_onsets(job_id: str):
     except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail=f"Onset analysis failed: {str(e)[:200]}",
+            detail=f"Onset analysis failed: {scrub_text(str(e))[:200]}",
         )
 
     payload = {"onsets": onsets, "peaks": peaks, "source": source, "channel_analysis": "max_abs_v1"}
@@ -1795,7 +1804,7 @@ async def dub_qc_pass(job_id: str, lang: str = Query(None), drift_threshold: flo
         if isinstance(e, ModelLicenceNotAccepted):
             raise  # typed 403 via the app handler (#2689)
         logger.exception("dub QC ASR pass failed")
-        raise HTTPException(status_code=500, detail=f"QC transcription failed: {e}")
+        raise HTTPException(status_code=500, detail=f"QC transcription failed: {scrub_text(str(e))}")
 
     seg_ids = job.get("seg_order") or [s.get("id", i) for i, s in enumerate(segments)]
     scored = dub_qc.score_dub(scored_segments, recognized, drift_threshold=drift_threshold, seg_ids=seg_ids)
