@@ -205,7 +205,7 @@ describe('CPU-only runtime install', () => {
 
     const calls = run.mock.calls.map(([, args]) => args);
     const syncIndex = calls.findIndex((args) => args[0] === 'sync');
-    const pipIndex = calls.findIndex((args) => args[0] === 'pip');
+    const pipIndex = calls.findIndex((args) => args[0] === 'pip' && args[1] === 'install');
     expect(syncIndex).toBeGreaterThanOrEqual(0);
     expect(pipIndex).toBeGreaterThan(syncIndex);
     const sync = calls[syncIndex]!;
@@ -267,7 +267,7 @@ describe('CPU-only runtime install', () => {
     await interpreter(project);
     let repaired = false;
     const run = vi.fn(async (command: string, args: string[]) => {
-      if (args[0] === 'pip') repaired = true;
+      if (args[0] === 'pip' && args[1] === 'install') repaired = true;
       if (!repaired && command === runtimePython(project) && args[0] === '-c') {
         if (String(args[1]).includes('torch')) throw new Error('missing libtorch_cpu');
       }
@@ -275,7 +275,7 @@ describe('CPU-only runtime install', () => {
     await installRuntime(bundle, project, 'uv', run, new AbortController().signal);
     const sync = run.mock.calls.find(([, args]) => args[0] === 'sync')?.[1];
     expect(sync).not.toContain('--reinstall-package');
-    const pip = run.mock.calls.find(([, args]) => args[0] === 'pip')?.[1];
+    const pip = run.mock.calls.find(([, args]) => args[0] === 'pip' && args[1] === 'install')?.[1];
     expect(pip).toEqual(expect.arrayContaining(['--reinstall-package', 'torch', 'torchaudio']));
   });
 });
