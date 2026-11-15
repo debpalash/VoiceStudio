@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""List contributors whose code is in the tree but who have not signed the CLA.
+"""Audit required CLA signatures and contributor provenance at HEAD.
 
 Blames every tracked text file at HEAD (excluding submodules), credits each line to its commit's
 author and co-authors, maps them to GitHub accounts, and compares the result
@@ -21,6 +21,12 @@ authors are then listed by email. Needs full history (not a shallow clone).
 Blame follows moves within a file only, so code copied between files is
 credited to whoever moved it, and squash commits that fold in other people's
 pull requests are listed separately for manual review.
+
+Configured account-ID exemptions use the existing PR checker's policy. An
+exempt submitter credited through a tool/placeholder identity still retains
+their provenance-review row, without being labelled as missing a required
+signature. JSON distinguishes actual signature presence, signing requirement
+and provenance review; the legacy `signed` field means signature presence only.
 """
 from __future__ import annotations
 
@@ -239,10 +245,28 @@ def attribute(credits: collections.Counter, accounts: dict, submitters: dict, na
     return people, folded
 
 
+def contributor_status(person: dict, signed: set[int]) -> dict[str, bool]:
+    """Separate store evidence, the existing signing policy and provenance notes."""
+    account_id = person["id"]
+    return {
+        "signature_present": account_id in signed,
+        "signing_required": account_id is None or not cla.exempt(cla.Person(person["login"] or "", account_id)),
+        "provenance_review_required": bool(person["notes"]),
+    }
+
+
+def markdown_row(key: str, person: dict) -> str:
+    label = f"@{person['login']}" if person["login"] else f"`{key}`"
+    if person["notes"]:
+        label += " (" + "; ".join(sorted(person["notes"])) + ")"
+    top = ", ".join(f"`{path}` ({n})" for path, n in person["files"].most_common(3))
+    return f"| {label} | {person['lines']} | {top} |"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--json", type=Path, help="also write the full report as JSON")
-    parser.add_argument("--no-signatures", action="store_true", help="report everyone as unsigned")
+    parser.add_argument("--no-signatures", action="store_true", help="ignore stored signatures for contributors required to sign")
     args = parser.parse_args()
     require_full_history()
     signed = signed_ids(args.no_signatures)
@@ -266,19 +290,29 @@ def main() -> None:
         submitters = dict(zip(per_commit, pool.map(pr_author_for, per_commit)))
 
     people, folded = attribute(credits, accounts, submitters, names_to_logins(), messages)
+    statuses = {key: contributor_status(person, signed) for key, person in people.items()}
 
     unsigned = sorted(
-        ((key, p) for key, p in people.items() if p["id"] not in signed),
+        ((key, p) for key, p in people.items()
+         if statuses[key]["signing_required"] and not statuses[key]["signature_present"]),
         key=lambda item: -item[1]["lines"],
     )
     print(f"# CLA audit — {len(unsigned)} unsigned of {len(people)} contributors with code at HEAD\n")
+    print("Unsigned means a required signature is absent from the inspected store; provenance review is separate.\n")
     print("| Contributor | Lines at HEAD | Largest files |\n|---|---:|---|")
     for key, p in unsigned:
-        label = f"@{p['login']}" if p["login"] else f"`{key}`"
-        if p["notes"]:
-            label += " (" + "; ".join(sorted(p["notes"])) + ")"
-        top = ", ".join(f"`{f}` ({n})" for f, n in p["files"].most_common(3))
-        print(f"| {label} | {p['lines']} | {top} |")
+        print(markdown_row(key, p))
+    exempt_review = sorted(
+        ((key, p) for key, p in people.items()
+         if not statuses[key]["signing_required"] and statuses[key]["provenance_review_required"]),
+        key=lambda item: -item[1]["lines"],
+    )
+    if exempt_review:
+        print("\n## Exempt contributors requiring provenance review\n")
+        print("These account IDs are exempt from signing; their attribution warnings still require review.\n")
+        print("| Contributor | Lines at HEAD | Largest files |\n|---|---:|---|")
+        for key, person in exempt_review:
+            print(markdown_row(key, person))
     if folded:
         print("\n## Maintainer commits that fold in other people's work (review by hand)\n")
         for commit, n in folded.most_common():
@@ -288,10 +322,10 @@ def main() -> None:
     if args.json:
         args.json.write_text(json.dumps({
             "people": {key: {"login": p["login"], "id": p["id"], "lines": p["lines"], "emails": sorted(p["emails"]),
-                             "signed": p["id"] in signed, "notes": sorted(p["notes"]),
+                             "signed": statuses[key]["signature_present"], **statuses[key], "notes": sorted(p["notes"]),
                              "files": p["files"].most_common()} for key, p in people.items()},
             "folded_commits": dict(folded),
-        }, indent=1))
+        }, indent=1), encoding="utf-8")
 
 
 if __name__ == "__main__":
