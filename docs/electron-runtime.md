@@ -13,6 +13,11 @@ The top bar keeps its shortcuts quiet so the work area leads: Get Pro, the GitHu
 
 Low-disk warnings in the notification menu open Settings > Storage, where users can inspect disk use and clear temporary files.
 
+Native file-opening and reveal actions require the primary app window's trusted
+main frame. Utility windows retain their own window-state controls, read-only
+backend access and explicit user-dialog exports. Subframes and missing caller
+windows cannot substitute the primary window for a window-state query.
+
 The development launcher watches main-process and preload source changes as well as renderer changes, rebuilding and restarting or reloading Electron to keep IPC contracts synchronized. After changing the launcher itself, stop and restart `bun run dev` once; a renderer refresh alone cannot update the running main process.
 
 The development shell keeps DevTools closed by default. Open it with the normal
