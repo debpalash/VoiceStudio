@@ -1568,6 +1568,67 @@ it.each(['off', 'new-grant', 'explicit-off', 'explicit-on', 'hard-kill'])(
   },
 );
 
+it('rotates an explicitly enabled suspended grant before accepting later reports', async () => {
+  const initial = await create();
+  const consentPath = join(initial.options.directory, 'consent.json');
+  const old = JSON.parse(await readFile(consentPath, 'utf8'));
+  gate.failReadTarget = 'consent.json';
+  await initial.reports.flush();
+  expect(initial.reports.status().enabled).toBe(false);
+  gate.failReadTarget = '';
+  await initial.reports.setConsent(true);
+  const current = JSON.parse(await readFile(consentPath, 'utf8'));
+  expect.soft(current.epoch).not.toBe(old.epoch);
+  expect.soft(current.profile_id).not.toBe(old.profile_id);
+  expect(initial.reports.status().grant_epoch).toBe(current.epoch);
+
+  // A callback observed before suspension cannot use the new explicit choice.
+  initial.reports.capture({ category: 'generation_failed' }, old.epoch);
+  await initial.reports.flush();
+  expect.soft(initial.send).not.toHaveBeenCalled();
+
+  const inbox = join(initial.options.directory, 'inbox');
+  await mkdir(inbox, { recursive: true });
+  const producer = (recordID: string, epoch: string, category: string) => ({
+    version: 1,
+    id: recordID,
+    timestamp_ms: Date.now(),
+    epoch,
+    props: sanitizeProperties({ ...initial.options.identity, category, source: 'backend' }),
+  });
+  const oldID = 'a'.repeat(32);
+  const beforeOldInbox = initial.send.mock.calls.length;
+  // The old process publishes after ON, so the earlier purge cannot hide the bug.
+  await writeFile(
+    join(inbox, oldID + '.json'),
+    JSON.stringify(producer(oldID, old.epoch, 'operation_failed')),
+  );
+  await initial.reports.flush();
+  expect.soft(initial.send.mock.calls.slice(beforeOldInbox)).toHaveLength(0);
+
+  const beforeFresh = initial.send.mock.calls.length;
+  initial.reports.capture({ category: 'engine_failed' }, current.epoch);
+  await initial.reports.flush();
+  const freshID = 'b'.repeat(32);
+  await writeFile(
+    join(inbox, freshID + '.json'),
+    JSON.stringify(producer(freshID, current.epoch, 'download_failed')),
+  );
+  await initial.reports.flush();
+  const fresh = initial.send.mock.calls
+    .slice(beforeFresh)
+    .map((call) => JSON.parse(call[1]!.body as string));
+  expect(fresh.map((body) => body.props.category).sort()).toEqual([
+    'download_failed',
+    'engine_failed',
+  ]);
+  expect(fresh.every((body) => body.profile_id === current.profile_id)).toBe(true);
+  expect(fresh.map((body) => body.id)).toContain(freshID);
+  const all = initial.send.mock.calls.map((call) => JSON.parse(call[1]!.body as string));
+  expect.soft(all.map((body) => body.id)).not.toContain(oldID);
+  expect.soft(all).toHaveLength(2);
+});
+
 it.each([false, true])(
   'keeps a newer choice authoritative over an in-progress active grant read (regrant: %s)',
   async (regrant) => {

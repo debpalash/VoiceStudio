@@ -348,7 +348,7 @@ export class DiagnosticReports {
       return this.status();
     }
     if (enabled && this.enabled) return this.status();
-    const freshGrant = enabled && this.killObserved;
+    const freshGrant = enabled && (this.killObserved || this.consentReadPending);
     if (enabled) {
       this.killObserved = false;
       this.killPurged = false;
