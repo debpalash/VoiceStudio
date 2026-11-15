@@ -74,10 +74,12 @@ licence/catalog data. CLA, identity and secret checks remain enabled.
 ### Diagnostic app intake (owner task, 2026-11-15)
 
 Separately opted-in automatic failure reports may replace the public events
-request with `/api/public/v1/app-events` on the sanctioned Supermetry host
-`https://app.supermetry.com`. App ID and write-only ingest key come only from
+request with `/api/public/v1/app-events` on the sanctioned Supermetry hosts
+`https://app.supermetry.com` (unconfigured host default) or
+`https://ana.voicestudio.sh` (the owner-configured packaged app intake, recorded
+for approval in PR #4137). App ID and write-only ingest key come only from
 runtime environment or git-ignored build metadata. `SUPERMETRY_APP_HOST` is an
-explicit operator override, unset by default; a different production host must
+explicit operator override, unset by default; any other production host must
 be recorded and approved by the owner. This changes no product analytics or
 collection permission. `diagnostics.sessionPings` is default off, requires the
 same separate consent, and is never enabled in release workflow defaults.

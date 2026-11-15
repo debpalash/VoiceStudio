@@ -58,7 +58,9 @@ the application, never the user, and cannot read reports. It ships in the app's
 private build metadata; it is never committed, logged, or included in stored
 reports. The default host remains `https://app.supermetry.com` from
 `config/analytics.json`. A separately configured `SUPERMETRY_APP_HOST` selects
-an operator's instance; a different production host needs owner approval.
+an operator's instance. The owner-configured packaged destination is
+`https://ana.voicestudio.sh/api/public/v1/app-events`, recorded as an owner
+decision for approval in PR #4137; any other production host needs owner approval.
 The app intake stores installation and optional session IDs only as keyed hashes.
 Without valid app credentials, the existing public events request
 (`/api/public/v1/events`, event `diagnostic_report`) and site remain unchanged.

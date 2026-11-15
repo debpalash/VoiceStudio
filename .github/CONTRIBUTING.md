@@ -674,14 +674,16 @@ test-only PR. Docker Hub overview edits still publish through the small
     runtime setup on a fresh install so setup stage and failure code can be counted
     (`backend/core/analytics.py`, allowlisted content-free metadata).
   - Automatic failure reports to Supermetry's app intake
-    (`https://app.supermetry.com/api/public/v1/app-events`) when build/runtime app
+    (`https://app.supermetry.com/api/public/v1/app-events`, or the owner-configured
+    packaged destination `https://ana.voicestudio.sh/api/public/v1/app-events`,
+    recorded for approval in PR #4137) when build/runtime app
     credentials are configured, otherwise the same existing public events endpoint,
     only after the separate **Automatic error reports** opt-in (owner-approved
     2026-11-14). Off by default, including for existing analytics users; metadata
     follows `config/diagnostics.json`. Electron main owns desktop uploads even
     when setup/backend fails; source/Docker and both native phones own their
     respective consent. `SUPERMETRY_APP_HOST` is an explicit, default-unset operator
-    override; a different production host needs owner approval and documentation.
+    override; any other production host needs owner approval and documentation.
     The separate `diagnostics.sessionPings` build flag remains off by default and
     still requires diagnostics consent. Withdrawal stops delivery and invalidates queued reports.
     No audio, text, exception messages, logs, user paths, credentials, screenshots
