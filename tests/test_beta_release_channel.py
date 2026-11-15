@@ -162,8 +162,13 @@ def test_publish_proves_where_latest_points(tmp_path, channel, latest, ok):
     import subprocess
 
     git_bash = Path(os.environ.get("ProgramFiles", "")) / "Git/bin/bash.exe"
-    bash = str(git_bash) if git_bash.is_file() else shutil.which("bash")
-    if not bash or Path(bash.replace("\\", "/")).parent.name.casefold() in {"system32", "sysnative"}:
+    bash = None
+    for directory in [str(git_bash.parent), *os.environ.get("PATH", os.defpath).split(os.pathsep)]:
+        candidate = shutil.which("bash", path=directory)
+        if candidate and Path(candidate.replace("\\", "/")).parent.name.casefold() not in {"system32", "sysnative"}:
+            bash = candidate
+            break
+    if bash is None:
         pytest.skip("Native Bash required; the WSL launcher does not preserve the test environment")
 
     workflow = yaml.safe_load((ROOT / ".github/workflows/electron-release.yml").read_text(encoding="utf-8"))
