@@ -118,49 +118,52 @@ async def _worker():
         from core import diagnostic_reports
         diagnostic_epoch = diagnostic_reports.observe_grant()
 
-        try:
-            await _run_batch_pipeline(job_id, job)
-            if job["status"] != "cancelled":
-                job["status"] = "done"
+        # Each new job owns its grant independently of the request that
+        # created this long-lived worker. Delayed failures keep that owner.
+        with diagnostic_reports.grant_scope(diagnostic_epoch):
+            try:
+                await _run_batch_pipeline(job_id, job)
+                if job["status"] != "cancelled":
+                    job["status"] = "done"
+                    job["finished_at"] = time.time()
+                    logger.info(
+                        "Batch job %s completed in %.1fs",
+                        job_id, job["finished_at"] - job["started_at"],
+                    )
+            except asyncio.CancelledError:
+                # Task cancellation always means SHUTDOWN: the job-level cancel
+                # endpoint only flips job["status"] — nothing ever cancels this
+                # task to abort a single job. Swallowing the CancelledError here
+                # made the worker unkillable (the while-loop re-entered
+                # _queue.get() and event-loop teardown hung forever in
+                # _cancel_all_tasks waiting on a task that never finishes). Mark
+                # the in-flight job, then let the cancellation propagate.
+                job["status"] = "cancelled"
                 job["finished_at"] = time.time()
-                logger.info(
-                    "Batch job %s completed in %.1fs",
-                    job_id, job["finished_at"] - job["started_at"],
-                )
-        except asyncio.CancelledError:
-            # Task cancellation always means SHUTDOWN: the job-level cancel
-            # endpoint only flips job["status"] — nothing ever cancels this
-            # task to abort a single job. Swallowing the CancelledError here
-            # made the worker unkillable (the while-loop re-entered
-            # _queue.get() and event-loop teardown hung forever in
-            # _cancel_all_tasks waiting on a task that never finishes). Mark
-            # the in-flight job, then let the cancellation propagate.
-            job["status"] = "cancelled"
-            job["finished_at"] = time.time()
-            raise
-        except Exception as e:
-            if job["status"] == "cancelled":
-                continue
-            if diagnostic_epoch is not None:
-                diagnostic_reports.capture_failure("batch", error=e, expected_epoch=diagnostic_epoch)
-            job["status"] = "failed"
-            # plan-04 (#131): guaranteed non-empty, structured reason.
-            failed = failure.build_failure(e, stage="batch", include_diagnostic=False)
-            job["error"] = failed["reason"]
-            # Lets the client show its localized message for a known class
-            # (e.g. NO_AUDIO_TRACK) while `error` keeps the English reason.
-            job["docs_topic"] = failed["docs_topic"] or None
-            from services.model_acceptance import ModelLicenceNotAccepted
-            if isinstance(e, ModelLicenceNotAccepted):
-                # Typed, like argos_packs: the client offers acceptance (#2689).
-                job["setup_required"] = {"kind": e.detail()["code"], **e.detail()}
-            job["finished_at"] = time.time()
-            logger.error("Batch job %s failed: %s", job_id, e, exc_info=True)
-        finally:
-            _processing_job_ids.discard(job_id)
-            if job["status"] == "cancelled":
-                job["retry_ready"] = True
-            _queue.task_done()
+                raise
+            except Exception as e:
+                if job["status"] == "cancelled":
+                    continue
+                if diagnostic_epoch is not None:
+                    diagnostic_reports.capture_failure("batch", error=e, expected_epoch=diagnostic_epoch)
+                job["status"] = "failed"
+                # plan-04 (#131): guaranteed non-empty, structured reason.
+                failed = failure.build_failure(e, stage="batch", include_diagnostic=False)
+                job["error"] = failed["reason"]
+                # Lets the client show its localized message for a known class
+                # (e.g. NO_AUDIO_TRACK) while `error` keeps the English reason.
+                job["docs_topic"] = failed["docs_topic"] or None
+                from services.model_acceptance import ModelLicenceNotAccepted
+                if isinstance(e, ModelLicenceNotAccepted):
+                    # Typed, like argos_packs: the client offers acceptance (#2689).
+                    job["setup_required"] = {"kind": e.detail()["code"], **e.detail()}
+                job["finished_at"] = time.time()
+                logger.error("Batch job %s failed: %s", job_id, e, exc_info=True)
+            finally:
+                _processing_job_ids.discard(job_id)
+                if job["status"] == "cancelled":
+                    job["retry_ready"] = True
+                _queue.task_done()
 
 
 _BUSY_BACKOFF_S = (0.5, 1.0, 2.0, 4.0)

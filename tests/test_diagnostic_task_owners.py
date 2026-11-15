@@ -290,6 +290,55 @@ def test_actual_batch_worker_completed_fault_cannot_borrow_new_grant(reporter, m
     assert len(reporter._files())==int(choice=='unchanged'), 'Old batch completion borrowed a later grant'
 
 
+@pytest.mark.parametrize('initial_owner', ['off', 'replaced'])
+def test_reused_batch_worker_observes_each_new_job_grant(reporter, monkeypatch, initial_owner):
+    batch = importlib.import_module('api.routers.batch')
+    reports = importlib.import_module('core.diagnostic_reports')
+    reporter.consent(initial_owner == 'replaced')
+
+    async def run():
+        queue = asyncio.Queue()
+        jobs = {identity: {'status': 'pending', 'filename': 'fixture.wav'}
+                for identity in ('first-owner', 'fresh-owner')}
+        monkeypatch.setattr(batch, '_queue', queue)
+        monkeypatch.setattr(batch, '_jobs', jobs)
+        monkeypatch.setattr(batch, '_processing_job_ids', set())
+        observed = []
+
+        async def pipeline(job_id, _job):
+            if job_id == 'fresh-owner':
+                observed.append(reports.inherited_grant())
+                reports.capture('engine_failed', stage='engine')
+                raise RuntimeError('controlled fresh job failure')
+
+        monkeypatch.setattr(batch, '_run_batch_pipeline', pipeline)
+        await queue.put('first-owner')
+        # The production long-lived worker inherits its creating request's
+        # context. Finishing that request must not pin all later jobs to it.
+        with reports.grant_scope(reports.observe_grant()):
+            worker = asyncio.create_task(batch._worker())
+        try:
+            await asyncio.wait_for(queue.join(), 2)
+            assert jobs['first-owner']['status'] == 'done'
+            if initial_owner == 'replaced':
+                reporter.consent(False)
+            reporter.consent(True)
+            fresh = reports.observe_grant()
+            await queue.put('fresh-owner')
+            await asyncio.wait_for(queue.join(), 2)
+            assert jobs['fresh-owner']['status'] == 'failed'
+            assert observed == [fresh]
+        finally:
+            worker.cancel()
+            await asyncio.gather(worker, return_exceptions=True)
+
+    asyncio.run(run())
+    reporter._tick()
+    assert {row['props']['category'] for row in reporter._files()} == {
+        'engine_failed', 'generation_failed',
+    }
+
+
 @pytest.mark.parametrize('choice',['unchanged','replacement','later_opt_in','fresh_asr'])
 def test_batch_empty_asr_result_uses_its_unit_grant_not_job_lifetime(reporter,monkeypatch,tmp_path,choice):
     import subprocess
