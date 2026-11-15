@@ -173,6 +173,11 @@ inference are reported as different scopes. On RDNA 1 (`gfx1010`) there is no
 verified HIP CTranslate2, so
 the speech-scope smoke is unavailable and the model-free report says so with
 `ct2_supported: false`.
+Windows HIP skips the generic startup GPU self-test because its plain child
+does not initialize HIP DLL search paths. Opt-in Windows ROCm setup uses its
+own bounded, recipe-specific probe instead. The generic self-test fallback
+does not add a Windows HIP check or certify speech inference.
+
 ## Engine boundaries
 
 | Path | Windows ROCm behavior |

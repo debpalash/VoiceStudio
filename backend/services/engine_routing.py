@@ -1,11 +1,11 @@
-"""Pure, host-aware routing resolver — maps an engine's declared ``gpu_compat``
+"""Host-aware routing resolver — maps an engine's declared ``gpu_compat``
 against the cached host capabilities to "where will this engine *actually* run
 on this machine, and is that a problem the user should hear about?"
 
 No model load, no probe (the caller passes the cached ``HostCaps``), no I/O.
-Deterministic and byte-identical for a given ``(gpu_compat, HostCaps)`` across
-macOS/Windows/Linux — that cross-OS determinism is the whole point of the
-no-silent-fallback contract.
+The completed parent-Torch GPU self-test verdict is read on each call: it can
+arrive after the immutable host enumeration was cached. The same capabilities,
+health verdict and overrides produce the same routing across macOS/Windows/Linux.
 
 Reason strings are author-controlled English (interpolating only family/device
 names) but are **still** scrubbed by the caller (``core.scrub.scrub_text``)
@@ -26,6 +26,7 @@ from core.device_caps import (
 )
 
 RoutingStatus = Literal["accelerated", "cpu_fallback", "cpu_only", "unavailable", "n/a", "unknown"]
+SelfTestPolicy = Literal["independent", "fallback", "forceable"]
 
 
 class RoutingResult(TypedDict):
@@ -35,8 +36,7 @@ class RoutingResult(TypedDict):
 
 
 def uses_parent_torch(cls) -> bool:
-    """Whether an engine loads its model through this process's PyTorch and
-    ``model_manager.get_best_device()``, so it gets the loader's CPU fallback.
+    """Whether an engine shares this process's PyTorch build for arch metadata.
 
     True for in-process engines and for sidecars that run the parent's own
     interpreter (``shares_parent_torch()``, e.g. ``omnivoice-subprocess``,
@@ -51,6 +51,18 @@ def uses_parent_torch(cls) -> bool:
         return bool(probe()) if callable(probe) else False
     except Exception:  # noqa: BLE001 - unknown interpreter: assume separate
         return False
+
+
+def parent_self_test_policy(cls) -> SelfTestPolicy:
+    """Only explicit loader consumers inherit the completed parent GPU test.
+
+    Importing Torch, sharing an interpreter or declaring CUDA support does not
+    mean a loader calls get_best_device/failure_warning. Children also have
+    their own verdict state, even when their interpreter is the same.
+    """
+    if getattr(cls, "_is_subprocess_isolated", False):
+        return "independent"
+    return getattr(cls, "gpu_self_test_policy", "independent")
 
 
 def runtime_compute_profile(engine_or_cls, caps: HostCaps) -> dict:
@@ -73,7 +85,11 @@ def runtime_compute_profile(engine_or_cls, caps: HostCaps) -> dict:
     return {
         "gpu_compat": compat,
         "min_vram_gb": floor,
-        **resolve_routing(compat, caps, floor, parent_torch=parent_torch),
+        **resolve_routing(
+            compat, caps, floor, parent_torch=parent_torch,
+            parent_process=not getattr(cls, "_is_subprocess_isolated", False),
+            self_test_policy=parent_self_test_policy(cls),
+        ),
         "runtime_backend": None,
         "runtime_device_index": None,
         "runtime_device_name": None,
@@ -172,6 +188,8 @@ def resolve_routing(
     caps: HostCaps,
     min_vram_gb: float = 0.0,
     parent_torch: bool = True,
+    parent_process: bool = True,
+    self_test_policy: SelfTestPolicy = "independent",
 ) -> RoutingResult:
     """Resolve the effective device + status for an engine on this host.
 
@@ -181,7 +199,10 @@ def resolve_routing(
     every existing caller keeps its exact behaviour. ``parent_torch=False``
     marks an engine that runs its own PyTorch in a sidecar venv: the parent
     loader's CPU fallback (rule 2a) does not reach it, so a kernel mismatch
-    stays a caveat there."""
+    stays a caveat there. ``parent_process=False`` also excludes same-build
+    children from this process's in-memory self-test verdict. The self-test
+    policy separately declares actual loader behavior; independent is the
+    default, not a presumption that every in-process engine uses this test."""
     targets = tuple(gpu_compat or ())
     fam = caps.family
 
@@ -192,6 +213,19 @@ def resolve_routing(
             "routing_status": "cpu_only",
             "routing_reason": "engine declares no compute targets",
         }
+
+    # Enumeration can succeed while real GPU work fails. The parent loader
+    # already falls back in this case; separate native/sidecar runtimes own
+    # their health checks. Never join the background self-test from a status
+    # request, and do not freeze its eventual verdict in cached HostCaps.
+    failure = None
+    if (
+        parent_process and parent_torch and self_test_policy != "independent"
+        and fam in ("cuda", "rocm") and fam in targets
+    ):
+        from core.gpu_self_test import failure_reason
+
+        failure = failure_reason()
 
     # 2a. The installed wheel has no kernels for this card (an sm_52 Maxwell on
     #     torch 2.8+cu128, #3067). The loader (model_manager.get_best_device)
@@ -216,8 +250,26 @@ def resolve_routing(
                     "routing_reason": (
                         f"{note}; running on CPU (set OMNIVOICE_FORCE_CUDA=1 "
                         "to use the GPU anyway)"
-                    ),
+                    ) + (f" {failure}" if failure else ""),
                 }
+
+    if failure is not None:
+        if self_test_policy == "forceable" and cuda_forced():
+            caveat = _caveat(caps, min_vram_gb)
+            return {
+                "effective_device": fam,
+                "routing_status": "accelerated",
+                "routing_reason": failure + (f" {caveat}" if caveat else "")
+                + " GPU use is explicitly forced by OMNIVOICE_FORCE_CUDA.",
+            }
+        return {
+            "effective_device": "cpu" if "cpu" in targets else fam,
+            "routing_status": "cpu_fallback" if "cpu" in targets else "unavailable",
+            "routing_reason": failure + (
+                " Running on CPU (slower)." if "cpu" in targets
+                else " This engine requires a working GPU."
+            ),
+        }
 
     # 2. Host accelerator is one the engine supports → accelerated.
     if fam != "cpu" and fam in targets:

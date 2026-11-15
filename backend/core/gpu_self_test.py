@@ -204,18 +204,27 @@ def _on_event_loop() -> bool:
     return True
 
 
+def failure_reason() -> str | None:
+    """Read only the completed verdict; status displays must not wait or run GPU work."""
+    verdict = _verdict
+    if verdict is None or verdict.status != "failed":
+        return None
+    from core.scrub import scrub_text
+
+    return f"The GPU failed a self-test ({scrub_text(verdict.detail)})."
+
+
 def failure_warning() -> str | None:
     """Why the GPU can't be used, or None. Waits for a test still running, because this
     decides where a model loads and a wrong answer can crash the app. Not on the event
     loop, where waiting would stop every request, health checks included."""
     if _thread is not None and not _on_event_loop():
         _thread.join(TIMEOUT_S + 5)
-    if _verdict is None or _verdict.status != "failed":
+    reason = failure_reason()
+    if reason is None:
         return None
-    from core.scrub import scrub_text
-
     return (
-        f"The GPU failed a self-test ({scrub_text(_verdict.detail)}), so VoiceStudio is "
+        f"{reason} VoiceStudio is "
         "using the CPU, which is slower. Update your GPU driver and restart the app. "
         "To try the GPU anyway, set OMNIVOICE_FORCE_CUDA=1."
     )

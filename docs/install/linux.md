@@ -429,6 +429,18 @@ report the GPU device instead of `cpu`. Verify the wheel sees your card:
 uv run python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
 ```
 
+Device enumeration does not prove that GPU work succeeds. VoiceStudio also
+runs a bounded GPU self-test in a child process. If that test fails, System
+check warns. The VoiceStudio (OmniVoice), PyTorch Whisper and WhisperX loaders
+follow this test's CPU fallback, so their routing reports the failure.
+Independent loaders, including CTranslate2/faster-whisper, ONNX, external
+servers and child processes, retain their own routing; the parent test does
+not verify them. A pending or inconclusive test does not disable acceleration.
+Explicitly forcing the GPU retains the choice with a warning only for loaders
+that honor that override; WhisperX still follows its existing CPU fallback.
+Missing-kernel warnings retain their architecture-specific recovery advice.
+These checks identify a failed test, not its hardware or driver cause.
+
 Notes:
 - ROCm is exercised far less than the default CUDA/MPS/CPU paths — it works,
   but expect rough edges on consumer cards and report what you hit.

@@ -562,6 +562,8 @@ class ASRBackend(ABC):
     # conservative default is CPU-only; installed native runtimes may narrow
     # or extend their metadata through runtime_gpu_compat().
     gpu_compat: tuple[str, ...] = ("cpu",)
+    # Explicit loader policy, not inferred from imports or accelerator support.
+    gpu_self_test_policy = "independent"
 
     @classmethod
     def runtime_gpu_compat(cls):
@@ -800,6 +802,7 @@ class WhisperXBackend(ASRBackend):
     # Windows HIP heavy pipelines remain gated pending MIOpen validation.
     # CPU execution remains available independently of basic HIP CT2 support.
     gpu_compat = ("cuda", "cpu")
+    gpu_self_test_policy = "fallback"  # _pick_device always honors failure_warning()
 
     def __init__(self):
         self._model_name = os.environ.get("ASR_MODEL_WHISPERX", "large-v3")
@@ -929,6 +932,12 @@ class WhisperXBackend(ASRBackend):
             raise PipelineCompatibilityError(reason)
         if self._asr is not None:
             return
+        # Construction can precede completion of the background GPU test.
+        # Recheck at the actual load boundary; alignment uses this same device.
+        from core.gpu_self_test import failure_warning
+
+        if self._device == "cuda" and failure_warning():
+            self._device, self._compute_type = "cpu", "int8"
         # Patch speechbrain's lazy-import guard BEFORE whisperx pulls in pyannote
         # → speechbrain, or a stray k2_fsa redirect import aborts ASR on Windows
         # (#630/#611/#647). No-op on macOS/Linux and when speechbrain is absent.
@@ -1629,6 +1638,7 @@ class MLXWhisperBackend(ASRBackend):
 
 
 class PyTorchWhisperBackend(ASRBackend):
+    gpu_self_test_policy = "forceable"  # _pick_device uses get_best_device()
     id = "pytorch-whisper"
     display_name = "PyTorch Whisper (CUDA / CPU via transformers pipeline)"
     # Pure transformers pipeline → runs wherever torch does. A ROCm (HIP)
