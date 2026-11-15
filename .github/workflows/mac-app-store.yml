@@ -43,9 +43,6 @@ jobs:
             target: x86_64-apple-darwin
             flag: --x64
     env:
-      SUPERMETRY_APP_ID: ${{ secrets.SUPERMETRY_APP_ID }}
-      SUPERMETRY_INGEST_KEY: ${{ secrets.SUPERMETRY_INGEST_KEY }}
-      SUPERMETRY_APP_HOST: ${{ vars.SUPERMETRY_APP_HOST || secrets.SUPERMETRY_APP_HOST }}
       VOICESTUDIO_RUST_TARGET: ${{ matrix.target }}
       VOICESTUDIO_UPDATE_CHANNEL: electron-stable-darwin-${{ matrix.arch }}
     steps:
@@ -109,11 +106,15 @@ jobs:
       - name: Build signed sandbox packages
         working-directory: electron
         env:
+          SUPERMETRY_APP_ID: ${{ secrets.SUPERMETRY_APP_ID }}
+          SUPERMETRY_INGEST_KEY: ${{ secrets.SUPERMETRY_INGEST_KEY }}
+          SUPERMETRY_APP_HOST: ${{ vars.SUPERMETRY_APP_HOST || secrets.SUPERMETRY_APP_HOST }}
           CSC_LINK: ${{ secrets.ELECTRON_MAC_APP_STORE_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.ELECTRON_MAC_APP_STORE_CSC_KEY_PASSWORD }}
           CSC_INSTALLER_LINK: ${{ secrets.ELECTRON_MAC_APP_STORE_INSTALLER_LINK }}
           CSC_INSTALLER_KEY_PASSWORD: ${{ secrets.ELECTRON_MAC_APP_STORE_INSTALLER_KEY_PASSWORD }}
         run: |
+          bun run build
           bun x electron-builder --config electron-builder.config.mjs --mac mas ${{ matrix.flag }} --publish never
           node tests/packaging-contract.mjs --artifact
       - name: Verify Apple Distribution signatures and sandbox

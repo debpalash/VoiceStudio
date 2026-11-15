@@ -36,9 +36,6 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 75
     env:
-      SUPERMETRY_APP_ID: ${{ secrets.SUPERMETRY_APP_ID }}
-      SUPERMETRY_INGEST_KEY: ${{ secrets.SUPERMETRY_INGEST_KEY }}
-      SUPERMETRY_APP_HOST: ${{ vars.SUPERMETRY_APP_HOST || secrets.SUPERMETRY_APP_HOST }}
       VOICESTUDIO_DISTRIBUTION: snap-store
       VOICESTUDIO_RUST_TARGET: x86_64-unknown-linux-gnu
       CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -111,7 +108,12 @@ jobs:
           node electron/tests/packaging-contract.mjs
       - name: Package without publishing
         working-directory: electron
+        env:
+          SUPERMETRY_APP_ID: ${{ secrets.SUPERMETRY_APP_ID }}
+          SUPERMETRY_INGEST_KEY: ${{ secrets.SUPERMETRY_INGEST_KEY }}
+          SUPERMETRY_APP_HOST: ${{ vars.SUPERMETRY_APP_HOST || secrets.SUPERMETRY_APP_HOST }}
         run: |
+          bun run build
           bun x electron-builder --config electron-builder.config.mjs --linux snap --x64 --publish never
           node tests/packaging-contract.mjs --artifact
           node ../scripts/verify_snap_artifact.mjs

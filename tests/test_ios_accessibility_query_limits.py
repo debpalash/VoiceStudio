@@ -14,7 +14,7 @@ QUERY = re.compile(r'\.(?:staticTexts|buttons|textFields|textViews|navigationBar
 def test_literal_xctest_identifier_queries_fit_framework_limit():
     failures = []
     for path in sorted((ROOT / "mobile/ios/VoiceStudioUITests").glob("*.swift")):
-        source = path.read_text()
+        source = path.read_text(encoding="utf-8")
         for match in QUERY.finditer(source):
             raw = match[1]
             if "\\(" in raw:

@@ -60,9 +60,9 @@ def test_cli_never_prints_key_and_credential_free_rebuild_erases_old_metadata(tm
     key = "smk_" + "b" * 39
     with_key = subprocess.run([shutil.which("python3") or "python", str(ROOT / "scripts/generate_supermetry_config.py"), "--output", str(output)], env={**env, "SUPERMETRY_APP_ID": "fixtureapp123", "SUPERMETRY_INGEST_KEY": key}, capture_output=True, text=True, check=True)
     assert not with_key.stdout and not with_key.stderr
-    assert json.loads(output.read_text())["ingest_key"] == key
+    assert json.loads(output.read_text(encoding="utf-8"))["ingest_key"] == key
     build.write_config(output, {})
-    assert json.loads(output.read_text()) == {"diagnostics": {"sessionPings": False}}
+    assert json.loads(output.read_text(encoding="utf-8")) == {"diagnostics": {"sessionPings": False}}
     if os.name != "nt":
         assert output.stat().st_mode & 0o777 == 0o600
 
@@ -70,8 +70,8 @@ def test_cli_never_prints_key_and_credential_free_rebuild_erases_old_metadata(tm
 def test_generated_config_is_git_ignored_and_excluded_from_web_and_preload_defines():
     ignored = subprocess.run(["git", "check-ignore", "config/supermetry-app.generated.json"], cwd=ROOT, capture_output=True, text=True)
     assert ignored.returncode == 0
-    assert "config/supermetry-app.generated.json" in (ROOT / ".dockerignore").read_text().splitlines()
-    source = (ROOT / "electron/electron.vite.config.ts").read_text()
+    assert "config/supermetry-app.generated.json" in (ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
+    source = (ROOT / "electron/electron.vite.config.ts").read_text(encoding="utf-8")
     shared = source.split("const define = {", 1)[1].split("};", 1)[0]
     assert "SUPERMETRY" not in shared
     assert "__SUPERMETRY_APP_CONFIG__" in source.split("main: {", 1)[1].split("preload: {", 1)[0]
@@ -84,10 +84,19 @@ def test_release_artifact_jobs_receive_only_build_time_intake_credentials():
         "android-play-internal.yml": ["play-internal"], "mac-app-store.yml": ["package"],
         "microsoft-store.yml": ["package"], "snap-store.yml": ["package"]}
     for filename, names in jobs.items():
-        workflow = yaml.safe_load((ROOT / ".github/workflows" / filename).read_text())
+        workflow = yaml.safe_load((ROOT / ".github/workflows" / filename).read_text(encoding="utf-8"))
         for name in names:
-            env = workflow["jobs"][name]["env"]
-            assert env["SUPERMETRY_APP_ID"] == "${{ secrets.SUPERMETRY_APP_ID }}"
-            assert env["SUPERMETRY_INGEST_KEY"] == "${{ secrets.SUPERMETRY_INGEST_KEY }}"
-            assert "vars.SUPERMETRY_APP_HOST" in env["SUPERMETRY_APP_HOST"]
-            assert "SUPERMETRY_DIAGNOSTICS_SESSION_PINGS" not in env
+            job = workflow["jobs"][name]
+            assert not any(key.startswith("SUPERMETRY_") for key in job.get("env", {}))
+            configured = [step for step in job["steps"] if "SUPERMETRY_APP_ID" in step.get("env", {})]
+            assert configured, (filename, name)
+            for step in configured:
+                env = step["env"]
+                assert env["SUPERMETRY_APP_ID"] == "${{ secrets.SUPERMETRY_APP_ID }}"
+                assert env["SUPERMETRY_INGEST_KEY"] == "${{ secrets.SUPERMETRY_INGEST_KEY }}"
+                assert "vars.SUPERMETRY_APP_HOST" in env["SUPERMETRY_APP_HOST"]
+                assert "SUPERMETRY_DIAGNOSTICS_SESSION_PINGS" not in env
+                assert "bun run check:electron" not in step.get("run", "")
+                assert not any(command in step.get("run", "") for command in ("bun run test", "vp test", "pytest", "testDebugUnitTest"))
+                if "electron-builder" in step.get("run", ""):
+                    assert "bun run build" in step["run"]
