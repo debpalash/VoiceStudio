@@ -124,6 +124,38 @@ Largest chunks (gzip): `add-scalar-classes` 1120 KB (lazy), `index` 449 KB
 
 ## Changes measured against this baseline
 
+### Community Gallery: bounded card mounting (2026-11-15)
+
+With 1,000 voices retained in ten cached 100-item pages, Community Gallery
+mounted every card. It now mounts a viewport window, keeping the current
+preview and focused control mounted while scrolling. Search still covers all
+cached voices, Load more retains its pagination, and catalogues of at most
+100 items still render fully. The one/two/three-column responsive layout is
+unchanged.
+
+The same local component fixture, production styles and cached pages were
+checked before and after in headless Chromium at 1440 × 900:
+
+| Metric | before | after |
+|---|---|---|
+| Mounted voice cards | 1,000 | 24 |
+| DOM elements, including fixture controls | 19,043 | 531 |
+
+The first twelve visible cards kept identical positions and dimensions. Real
+audio playback and its paused position survived scrolling and column changes;
+keyboard focus, favourite toggles, search and the final paginated voice also
+passed the browser check without page errors. These are component-fixture
+measurements, not whole-app memory, cross-platform timing or inference claims.
+
+The offline regression uses the same cached-page pattern with a deterministic
+JSDOM viewport and verifies positive bounded mounting, real later rows,
+preview ownership across the 100-item threshold and responsive focus retention.
+Run from `electron/`:
+
+```bash
+./node_modules/.bin/vp test --run src/renderer/src/features/gallery/community-virtualization.test.tsx
+```
+
 ### Setup wizard loaded on demand
 
 `SetupGate` now only decides whether setup is needed; the wizard is

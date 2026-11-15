@@ -12,6 +12,8 @@ interface PreviewProps {
   activity?: AppActivityKind;
   /** Called once playback of a successfully loaded clip stops (pause or end). */
   onReady?: () => void;
+  /** Called only by a user click, so virtualized lists can retain the current preview. */
+  onInteract?: () => void;
   disabled?: boolean;
   disabledLabel?: string;
 }
@@ -33,6 +35,7 @@ function PreviewButton({
   fallbackSrc,
   activity,
   onReady,
+  onInteract,
   disabled,
   disabledLabel,
 }: PreviewProps) {
@@ -64,6 +67,7 @@ function PreviewButton({
     setStatus('loading');
   };
   const click = () => {
+    onInteract?.();
     if (status === 'idle' || status === 'error') start();
     else if (status === 'loading') {
       // Unmounting drops the request; the backend keeps rendering into its
