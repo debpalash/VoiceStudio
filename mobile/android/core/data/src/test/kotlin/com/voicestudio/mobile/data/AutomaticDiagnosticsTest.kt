@@ -20,9 +20,11 @@ class AutomaticDiagnosticsTest {
     private class Store : DiagnosticStorage {
         val files = ConcurrentHashMap<String, ByteArray>()
         @Volatile var failOutboxRead = false
+        @Volatile var failConsentRead = false
         @Volatile var beforeOutboxRead: (() -> Unit)? = null
         var outboxReads = 0
         override fun read(name: String, maxBytes: Int): ByteArray? {
+            if(name=="consent.json" && failConsentRead)throw IOException("controlled consent read failure")
             if (name == "outbox.json") {
                 outboxReads++
                 beforeOutboxRead?.invoke()
@@ -49,14 +51,43 @@ class AutomaticDiagnosticsTest {
         }
         error("Canonical policy missing")
     }
-    private fun reports(store: Store, transport: Transport, dispatcher: CoroutineDispatcher) = DiagnosticReports(
+    private fun reports(store: Store, transport: Transport, dispatcher: CoroutineDispatcher, clock:DiagnosticClock?=null) = DiagnosticReports(
         File("unused-diagnostic-test"), policy(),
         DiagnosticDestination("localtest123", "http://127.0.0.1:1", "https://app.test.invalid"), "0.5.9-beta.2",
         storage = store, transport = transport, dispatcher = dispatcher,
-        clock = object : DiagnosticClock {
+        clock = clock ?: object : DiagnosticClock {
             override fun nowMs() = 1_794_640_000_000L
             override suspend fun sleep(ms: Long) { delay(ms) }
         })
+
+    @Test fun earlyManualRetryKeepsUnknownConsentPendingUntilActualRecovery() = runTest {
+        val store=Store();val transport=Transport();val dispatcher=StandardTestDispatcher(testScheduler)
+        val clock=object:DiagnosticClock {
+            override fun nowMs()=1_794_640_000_000L+testScheduler.currentTime
+            override suspend fun sleep(ms:Long) {delay(ms)}
+        }
+        reports(store,transport,dispatcher,clock).let {it.setConsent(true);it.close()}
+        store.failConsentRead=true
+        val reports=reports(store,transport,dispatcher,clock)
+        var state=AutomaticDiagnosticState();var loaded=0
+        val owner=AutomaticDiagnosticInitialization(backgroundScope,{reports},{},{loaded++},{state=it},{0},{null})
+        try {
+            owner.start();runCurrent()
+            assertTrue(owner.failed);assertTrue(owner.blocksCapture)
+            advanceTimeBy(1000);runCurrent();owner.retry();runCurrent()
+            val early=state
+            store.failConsentRead=false
+            // The reporter's own wake may recover first; an unresolved UI must
+            // remain unavailable/Retry rather than publish a false OFF success.
+            advanceTimeBy(60_000);runCurrent()
+            assertTrue("Exercise real reporter self-recovery",reports.status.enabled)
+            assertTrue("Settings must reflect the recovered grant",state.status.enabled)
+            assertFalse("Early Retry must not publish unknown permission as usable OFF",early.status.available)
+            assertTrue(early.saveFailed)
+            assertFalse(owner.failed);assertFalse(owner.blocksCapture)
+            assertEquals(1,loaded);assertEquals(0,transport.sends)
+        }finally{owner.cancel();reports.close()}
+    }
 
     @Test fun failedInitialOutboxReadRetainsReporterAndExposesManualRetry() = runTest {
         val store = Store(); val transport = Transport(); val dispatcher = StandardTestDispatcher(testScheduler)
@@ -83,21 +114,26 @@ class AutomaticDiagnosticsTest {
 
     @Test fun blockedStorageRetriesAtMostOncePerMinuteAndRecoversAfterRepeatedFailure() = runTest {
         val store = Store(); val transport = Transport(); val dispatcher = StandardTestDispatcher(testScheduler)
-        reports(store, transport, dispatcher).let { it.setConsent(true); it.close() }
+        val clock=object:DiagnosticClock {
+            override fun nowMs()=1_794_640_000_000L+testScheduler.currentTime
+            override suspend fun sleep(ms:Long) {delay(ms)}
+        }
+        reports(store, transport, dispatcher, clock).let { it.setConsent(true); it.close() }
         store.failOutboxRead = true
-        val reports = reports(store, transport, dispatcher)
+        val reports = reports(store, transport, dispatcher, clock)
         val before = store.outboxReads
         var loaded = 0
         val owner = AutomaticDiagnosticInitialization(backgroundScope, { reports }, {}, { loaded++ }, {}, { 0 }, { null })
-        owner.start(); runCurrent()
-        assertEquals(before + 1, store.outboxReads)
-        advanceTimeBy(59_999); runCurrent(); assertEquals(before + 1, store.outboxReads)
-        advanceTimeBy(1); runCurrent(); assertEquals(before + 2, store.outboxReads)
-        store.failOutboxRead = false
-        advanceTimeBy(60_000); runCurrent()
-        assertEquals(before + 3, store.outboxReads); assertEquals(1, loaded)
-        advanceTimeBy(120_000); runCurrent(); assertEquals(before + 3, store.outboxReads)
-        reports.close()
+        try {
+            owner.start(); runCurrent()
+            assertEquals(before + 1, store.outboxReads)
+            advanceTimeBy(59_999); runCurrent(); assertEquals(before + 1, store.outboxReads)
+            advanceTimeBy(1); runCurrent(); assertEquals(before + 2, store.outboxReads)
+            store.failOutboxRead = false
+            advanceTimeBy(60_000); runCurrent()
+            assertEquals(before + 3, store.outboxReads); assertEquals(1, loaded)
+            advanceTimeBy(120_000); runCurrent(); assertEquals(before + 3, store.outboxReads)
+        } finally {owner.cancel();reports.close()}
     }
 
     @Test fun cancelledInitializationDoesNotPublishFailureOrScheduleRetry() = runTest {

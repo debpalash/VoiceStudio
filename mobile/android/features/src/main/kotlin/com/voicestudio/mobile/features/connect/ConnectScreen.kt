@@ -21,7 +21,7 @@ import java.util.Date
     var more by rememberSaveable {mutableStateOf(false)}
     var scanner by remember {mutableStateOf(false)}
     var scannerFailure by remember {mutableStateOf<((Throwable)->Unit)?>(null)}
-    val cameraPermission=permissionAction(Manifest.permission.CAMERA,"mobile.permissions.camera",vm::failureHandler) {scanner=true}
+    val cameraPermission=permissionAction(Manifest.permission.CAMERA,"mobile.permissions.camera",vm::failureHandler,vm::restoreFailure) {scanner=true}
     val camera:()->Unit={scannerFailure=vm.failureHandler();cameraPermission()}
     Screen {
         ScreenTitle("mobile.connect.title")

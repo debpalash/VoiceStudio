@@ -254,6 +254,7 @@ class DiagnosticReports(
     private var retryWakeAt: Long? = null
     private var storageRetryAt: Long? = null
     private var consentReadRetryAt: Long? = null
+    private var outboxReadRetryEpoch: String? = null
     private var revocationPending = false
     private var revocationRetryAt: Long? = null
     private val retryAt = mutableMapOf<String,Long>()
@@ -347,7 +348,8 @@ class DiagnosticReports(
     }
     private fun revoked():Boolean = try { storage.read("revoked.json",4096)!=null }catch(_:Exception){ true }
     private fun retryAllowed(epoch:String?,generation:Long):Boolean = synchronized(stateLock) {
-        !closed && sequence==generation && (revocationPending || consentReadRetryAt!=null || epoch!=null && allowed(epoch,generation))
+        !closed && sequence==generation && (revocationPending || consentReadRetryAt!=null || epoch!=null &&
+            (allowed(epoch,generation) || outboxReadRetryEpoch==epoch && consent?.epoch==epoch && !disabled()))
     }
     private fun invalidateGrant():Long {
         val generation=synchronized(stateLock) {
@@ -358,7 +360,7 @@ class DiagnosticReports(
     }
     /** Worker-owned durable OFF, with one bounded wake even while collection is disabled. */
     private fun persistRevocation(generation:Long,hadGrant:Boolean,explicit:Boolean):Boolean {
-        records.clear();retryAt.clear();storageRetryAt=null;consentReadRetryAt=null
+        records.clear();retryAt.clear();storageRetryAt=null;consentReadRetryAt=null;outboxReadRetryEpoch=null
         val result=revokeGrant(storage,hadGrant,explicit)
         synchronized(stateLock) {
             if(generation!=sequence || closed)return false
@@ -387,7 +389,7 @@ class DiagnosticReports(
                     else { retryJob=null;retryWakeAt=null;true }
                 }
                 if(owned && retryAllowed(epoch,generation)) {
-                    try { if(consentReadRetryAt!=null)load() else flush() }catch(_:Exception){ /* The failed read/publication scheduled its next bounded retry. */ }
+                    try { if(consentReadRetryAt!=null || outboxReadRetryEpoch!=null)load() else flush() }catch(_:Exception){ /* The failed read/publication scheduled its next bounded retry. */ }
                 }
             }
             retryJob=job;retryWakeAt=next;job.start()
@@ -410,7 +412,7 @@ class DiagnosticReports(
             Consent(enabled, epoch, profile, enabledAt)
         }
     } catch (_: Exception) { null }
-    suspend fun load(): DiagnosticStatus {
+    suspend fun load(forceRead: Boolean = false): DiagnosticStatus {
         if (disabled()) {
             synchronized(stateLock) { sequence++; state=state.copy(enabled=false,optedIn=false);intake.clear();cancelRetryLocked() }
             transport.cancelAll()
@@ -420,8 +422,12 @@ class DiagnosticReports(
             if (closed) return@withLock status
             val blocked=revoked()
             if(loaded && !disabled() && !blocked && !revocationPending)return@withLock status
-            if((consentReadRetryAt ?: 0)>clock.nowMs() && !disabled() && !blocked && !revocationPending)return@withLock status
             val generation = synchronized(stateLock) { sequence }
+            val pendingReadAt=consentReadRetryAt ?: storageRetryAt?.takeIf {outboxReadRetryEpoch!=null}
+            if(!forceRead && (pendingReadAt ?: 0)>clock.nowMs() && !disabled() && !blocked && !revocationPending) {
+                scheduleRetry(outboxReadRetryEpoch,generation)
+                throw IOException("Diagnostic consent read is pending retry")
+            }
             var hadGrant=synchronized(stateLock) { consent!=null }
             var unread:Exception?=null
             val saved = try { storage.read("consent.json",4096).let { hadGrant=hadGrant || it!=null;parseConsent(it) } } catch (error: Exception) {
@@ -448,6 +454,7 @@ class DiagnosticReports(
                 }
                 if(!current)return@withLock status
                 transport.cancelAll()
+                outboxReadRetryEpoch=null;storageRetryAt=null
                 // Retain identity and queue without borrowing permission from
                 // an unread file. The existing owned wake retries this load.
                 consentReadRetryAt=clock.nowMs()+60000
@@ -471,10 +478,22 @@ class DiagnosticReports(
                     // An unreadable file is not proven corrupt. Preserve it and
                     // permit a later explicit load without collecting meanwhile.
                     synchronized(stateLock) { loaded=false;state=state.copy(enabled=false) }
+                    transport.cancelAll()
+                    outboxReadRetryEpoch=saved!!.epoch
+                    storageRetryAt=clock.nowMs()+60000
+                    scheduleRetry(saved.epoch,generation)
                     throw error
                 }
+                if(outboxReadRetryEpoch!=null) {
+                    outboxReadRetryEpoch=null;storageRetryAt=null
+                    synchronized(stateLock) {cancelRetryLocked()}
+                }
                 persistOrRetry(saved!!.epoch,generation)
-            } else { try { storage.remove("outbox.json") } catch (_: Exception) {} }
+            } else {
+                outboxReadRetryEpoch=null;storageRetryAt=null
+                synchronized(stateLock) {cancelRetryLocked()}
+                try { storage.remove("outbox.json") } catch (_: Exception) {}
+            }
             updateCount()
             if (status.enabled && records.isNotEmpty()) schedule()
             status
@@ -494,7 +513,7 @@ class DiagnosticReports(
                     return@withLock status
                 }
                 val fresh=Consent(true,id(),"install_${id()}",clock.nowMs())
-                records.clear();retryAt.clear();storageRetryAt=null;consentReadRetryAt=null
+                records.clear();retryAt.clear();storageRetryAt=null;consentReadRetryAt=null;outboxReadRetryEpoch=null
                 try {
                     storage.remove("outbox.json")
                     storage.write("consent.json",consentJson(fresh).toString().toByteArray())

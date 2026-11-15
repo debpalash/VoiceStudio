@@ -2,6 +2,11 @@ import type { BackendStatus } from '../preload/index.d';
 import { diagnosticLimit, projectException, type DiagnosticEvent } from './diagnostics-schema';
 import type { DiagnosticReports } from './diagnostics';
 import type { MainProcessErrorSource } from './main-error-journal';
+import {
+  diagnosticOperationOwner,
+  diagnosticRejectionEpoch,
+  trackDiagnosticOperations,
+} from './diagnostic-operation';
 
 const incompatible = new Set([
   'WINDOWS_APP_CONTROL_BLOCKED',
@@ -30,18 +35,20 @@ export class DiagnosticStatusObserver {
   private previousStage = '';
   private previousElapsed = 0;
   private reported = new Set<string>();
-  private attachingOwner: { epoch: string | null } | null = null;
+  private attemptOwner: { epoch: string | null } | null = null;
 
   constructor(private readonly reports: Pick<DiagnosticReports, 'capture' | 'status'>) {}
 
   observe(status: BackendStatus): void {
     if (status.remote) return;
-    if (status.stage === 'attaching' && this.previousStage !== 'attaching') {
-      // Child-exit recovery publishes this synchronously before its probe or
-      // grace awaits. Repeated status updates must not borrow a later choice.
-      this.attachingOwner = { epoch: this.reports.status().grant_epoch ?? null };
-    } else if (['idle', 'starting', 'installing', 'ready'].includes(status.stage)) {
-      this.attachingOwner = null;
+    const activeAttempt = ['attaching', 'starting', 'installing'];
+    if (activeAttempt.includes(status.stage) && !activeAttempt.includes(this.previousStage)) {
+      // Setup/start and child-exit recovery publish before their first await.
+      // Progress and installing → starting → attaching are one owned attempt;
+      // none may acquire permission granted while that attempt was running.
+      this.attemptOwner = { epoch: this.reports.status().grant_epoch ?? null };
+    } else if (['idle', 'ready'].includes(status.stage)) {
+      this.attemptOwner = null;
     }
     if (
       (['installing', 'starting'].includes(status.stage) && status.stage !== this.previousStage) ||
@@ -92,11 +99,10 @@ export class DiagnosticStatusObserver {
   private once(key: string, event: DiagnosticEvent): void {
     if (this.reported.has(key)) return;
     this.reported.add(key);
-    if (this.attachingOwner) {
+    if (this.attemptOwner) {
       // An observed OFF is distinct from an immediate failure whose owner
       // needed no asynchronous recovery observation.
-      if (this.attachingOwner.epoch !== null)
-        this.reports.capture(event, this.attachingOwner.epoch);
+      if (this.attemptOwner.epoch !== null) this.reports.capture(event, this.attemptOwner.epoch);
       return;
     }
     this.reports.capture(event);
@@ -104,10 +110,11 @@ export class DiagnosticStatusObserver {
 }
 
 export function installDiagnosticProcessCapture(
-  reports: Pick<DiagnosticReports, 'capture' | 'enabled'>,
+  reports: Pick<DiagnosticReports, 'capture' | 'enabled' | 'status'>,
   source: MainProcessErrorSource = process,
 ): () => void {
-  const capture = (error: unknown, reason: string) => {
+  const stopTracking = trackDiagnosticOperations();
+  const capture = (error: unknown, reason: string, expectedEpoch?: string) => {
     try {
       if (!reports.enabled) return;
       if (
@@ -115,23 +122,32 @@ export function installDiagnosticProcessCapture(
         ['AbortError', 'CanceledError', 'CancelledError'].includes(error.name)
       )
         return;
-      reports.capture({
-        category: 'app_crash',
-        stage: 'other',
-        reason,
-        ...projectException(error),
-      });
+      reports.capture(
+        { category: 'app_crash', stage: 'other', reason, ...projectException(error) },
+        expectedEpoch,
+      );
     } catch {
       /* Even a hostile exception getter must not break a fatal hook. */
     }
   };
-  const fatal = (error: Error) => capture(error, 'unhandled_exception');
-  const rejected = (error: unknown) => capture(error, 'unhandled_rejection');
+  const fatal = (error: Error, origin: NodeJS.UncaughtExceptionOrigin) => {
+    // Strict-mode rejection escalation has no Promise argument. The local
+    // journal still records it; this hook cannot manufacture its permission.
+    if (origin === 'unhandledRejection') return;
+    const owner = diagnosticOperationOwner(reports);
+    if (owner?.epoch === null) return;
+    capture(error, 'unhandled_exception', owner?.epoch);
+  };
+  const rejected = (error: unknown, promise?: Promise<unknown>) => {
+    const epoch = diagnosticRejectionEpoch(promise, reports);
+    if (epoch !== null) capture(error, 'unhandled_rejection', epoch);
+  };
   source.on('uncaughtExceptionMonitor', fatal);
   source.on('unhandledRejection', rejected);
   return () => {
     source.removeListener('uncaughtExceptionMonitor', fatal);
     source.removeListener('unhandledRejection', rejected);
+    stopTracking();
   };
 }
 

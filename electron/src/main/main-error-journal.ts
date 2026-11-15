@@ -18,12 +18,18 @@ export interface MainProcessErrorSource {
     event: 'uncaughtExceptionMonitor',
     listener: (error: Error, origin: NodeJS.UncaughtExceptionOrigin) => void,
   ): unknown;
-  on(event: 'unhandledRejection', listener: (reason: unknown) => void): unknown;
+  on(
+    event: 'unhandledRejection',
+    listener: (reason: unknown, promise?: Promise<unknown>) => void,
+  ): unknown;
   removeListener(
     event: 'uncaughtExceptionMonitor',
     listener: (error: Error, origin: NodeJS.UncaughtExceptionOrigin) => void,
   ): unknown;
-  removeListener(event: 'unhandledRejection', listener: (reason: unknown) => void): unknown;
+  removeListener(
+    event: 'unhandledRejection',
+    listener: (reason: unknown, promise?: Promise<unknown>) => void,
+  ): unknown;
 }
 
 function errorDetail(error: unknown): string {

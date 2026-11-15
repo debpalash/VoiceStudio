@@ -78,7 +78,7 @@ import java.io.File
         delay(1000);seconds++
         if(seconds>=29) {val failure=recordingFailure ?: vm::restoreFailure;try {sample=recorder.stop().absolutePath} catch(e:Exception) {sample=null;failure(e)} finally {recording=false;recordingFailure=null}}
     }}
-    val recordPermission=permissionAction(Manifest.permission.RECORD_AUDIO,"mobile.permissions.microphone",vm::failureHandler) {
+    val recordPermission=permissionAction(Manifest.permission.RECORD_AUDIO,"mobile.permissions.microphone",vm::failureHandler,vm::restoreFailure) {
         val failure=recordingFailure ?: vm::restoreFailure
         try {sample?.let {File(it).delete()};sample=recorder.start().absolutePath;recording=true} catch(e:Exception) {recordingFailure=null;failure(e)}
     }

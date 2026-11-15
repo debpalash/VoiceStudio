@@ -152,7 +152,8 @@ private class PlaybackListenerOwner(private val player:Player) {
                 IconAction(if(playing) "player.pause" else "player.play",if(playing) VSIcons.Pause else Icons.Default.PlayArrow) {
                     if(playing) player.pause() else {observePlayback();if(error) player.prepare();if(player.playbackState==Player.STATE_ENDED) player.seekTo(0);player.play()}
                 }
-                PlaybackSeek(position,duration,Modifier.weight(1f)) {observePlayback();player.seekTo(it)}
+                // Seeking does not start a new load or replace its diagnostic owner.
+                PlaybackSeek(position,duration,Modifier.weight(1f)) {player.seekTo(it)}
             }
             Text(tr("mobile.android.playback_time",mapOf("position" to formatDuration(position),"duration" to formatDuration(duration))),style=MaterialTheme.typography.bodySmall,color=role("textMuted"))
         }
@@ -198,7 +199,8 @@ val LocalAudioPlayerFactory=staticCompositionLocalOf<(Context)->Player> {
                 IconAction(if(playing) "player.pause" else "player.play",if(playing) VSIcons.Pause else Icons.Default.PlayArrow) {
                     if(playing) player.pause() else {observePlayback();if(player.playbackState==Player.STATE_ENDED) player.seekTo(0);player.play()}
                 }
-                PlaybackSeek(position,duration,Modifier.weight(1f)) {observePlayback();player.seekTo(it)}
+                // Seeking does not start a new load or replace its diagnostic owner.
+                PlaybackSeek(position,duration,Modifier.weight(1f)) {player.seekTo(it)}
             }
             Text(tr("mobile.android.playback_time",mapOf("position" to formatDuration(position),"duration" to formatDuration(duration))),
                 style=MaterialTheme.typography.bodySmall,color=role("textMuted"))

@@ -6,6 +6,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.test.core.app.ApplicationProvider
@@ -69,6 +71,45 @@ class LocalVideoPlaybackTest {
     }
     @Test fun localPlaybackBindsEachStartAndRetiresOldCallbacks()=playbackOwner(true)
     @Test fun hostPlaybackBindsEachStartAndRetiresOldCallbacks()=playbackOwner(false)
+
+    private fun seekingKeepsTheLoadOwner(local:Boolean) {
+        val player=mock(Player::class.java)
+        `when`(player.duration).thenReturn(10000L)
+        val app=ApplicationProvider.getApplicationContext<Application>()
+        val api=VoiceStudioApi(PairingAddress.parse("http://127.0.0.1:8765"))
+        var grant=0
+        val observed=mutableListOf<Int>()
+        val failure:()->(Throwable)->Unit={val original=grant;{observed+=original}}
+        compose.setContent {
+            CompositionLocalProvider(LocalAudioPlayerFactory provides {player},LocalHostPlayerFactory provides {_,_->player},LocalL10n provides L10n.load(app,"en")) {
+                VoiceStudioTheme {
+                    if(local) LocalAudioPlayer(File("fixture.wav"),failure) else HostPlayer(api,"fixture.wav",failure)
+                }
+            }
+        }
+        compose.waitForIdle()
+        val callbacks=ArgumentCaptor.forClass(Player.Listener::class.java)
+        verify(player,atLeastOnce()).addListener(callbacks.capture())
+        val original=callbacks.allValues.last()
+        compose.runOnIdle {grant=1}
+        compose.onNodeWithContentDescription("Seek").performSemanticsAction(SemanticsActions.SetProgress) {it(0.5f)}
+        compose.waitForIdle()
+        verify(player).seekTo(5000L)
+        verify(player,atLeastOnce()).addListener(callbacks.capture())
+        val afterSeek=callbacks.allValues.last()
+        val error=PlaybackException("private pending load fault",null,PlaybackException.ERROR_CODE_IO_UNSPECIFIED)
+        compose.runOnIdle {afterSeek.onPlayerError(error)}
+        assertEquals("Seeking must not replace an unfinished load's authority",listOf(0),observed)
+        assertSame(original,afterSeek)
+        compose.onNodeWithContentDescription("Play").performClick()
+        compose.waitForIdle()
+        verify(player,atLeastOnce()).addListener(callbacks.capture())
+        val fresh=callbacks.allValues.last()
+        compose.runOnIdle {original.onPlayerError(error);fresh.onPlayerError(error)}
+        assertEquals("A genuinely new play still uses its own authority",listOf(0,1),observed)
+    }
+    @Test fun localSeekCannotReplacePendingLoadConsent()=seekingKeepsTheLoadOwner(true)
+    @Test fun hostSeekCannotReplacePendingLoadConsent()=seekingKeepsTheLoadOwner(false)
 
     @Test fun repeatedPreviewPlayRequestsRestartTheExistingPlayer() {
         val player=mock(Player::class.java)

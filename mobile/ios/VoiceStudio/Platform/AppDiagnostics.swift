@@ -15,6 +15,7 @@ import VoiceStudioKit
     private(set) var stallThresholdMs: Int64 = 600_000
     @ObservationIgnored private var reporter: DiagnosticReports?
     @ObservationIgnored private var subscriber: AppDiagnosticSubscriber?
+    @ObservationIgnored private var statusTask: Task<Void, Never>?
     @ObservationIgnored private var started = false
     @ObservationIgnored private let disabled: Bool
     @ObservationIgnored private let injectedFixture: Bool
@@ -25,6 +26,7 @@ import VoiceStudioKit
         self.disabled = disabled; self.reporter = reporter; self.injectedFixture = reporter != nil
         if disabled { ready = true; prompted = true }
     }
+    deinit { statusTask?.cancel() }
     private var environmentKilled: Bool { !injectedFixture && Self.environmentDisabled() }
     var needsChoice: Bool { ready && available && !prompted }
     func load() async {
@@ -34,6 +36,7 @@ import VoiceStudioKit
             reporter = configuration.reporter; stallThresholdMs = configuration.stallMs
         }
         guard let reporter else { ready = true; prompted = true; return }
+        observeStatus(reporter)
         await reporter.load(); refresh(); ready = true; observationRevision += 1; updateSubscription()
     }
     func setConsent(_ choice: Bool) async {
@@ -70,7 +73,23 @@ import VoiceStudioKit
             errorKey = success ? nil : "diagnostics.save_failed"
         } else { errorKey = "diagnostics.save_failed" }
     }
-    func flush() async { guard let reporter, !disabled else { return }; await reporter.flush(); refresh() }
+    func flush() async { guard let reporter, !disabled else { return }; await reporter.flush(); refresh(); updateSubscription() }
+    private func observeStatus(_ reporter: DiagnosticReports) {
+        guard statusTask == nil else { return }
+        let changes = reporter.statusChanges()
+        statusTask = Task { [weak self, reporter] in
+            for await _ in changes {
+                guard !Task.isCancelled, let self, self.reporter === reporter else { return }
+                // The explicit choice owns its intermediate invalidation and
+                // completion UI. An old save-error signal cannot resurrect it
+                // while a successful retry is still publishing its new grant.
+                if self.saving { continue }
+                // The signal may have queued before a newer OFF. The owner gate
+                // is the authority, never the event's previously observed state.
+                self.refresh(); self.updateSubscription()
+            }
+        }
+    }
     private func refresh() {
         guard let reporter else { return }
         let state = reporter.status

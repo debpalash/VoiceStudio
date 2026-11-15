@@ -18,6 +18,65 @@ import { BackendSupervisor } from './backend';
 import { DiagnosticReports } from './diagnostics';
 import { DiagnosticStatusObserver } from './diagnostics-capture';
 
+it.each(['installing', 'starting'] as const)(
+  'retains the original %s attempt permission through progress, stalls and terminal failure',
+  async (initialStage) => {
+    directory = await mkdtemp(join(tmpdir(), 'voice-diagnostic-attempt-owner-'));
+    fixture.root = directory;
+    const send = vi.fn(
+      async (_url: unknown, _options?: RequestInit) => new Response('', { status: 202 }),
+    );
+    reports = new DiagnosticReports({
+      directory: join(directory, 'diagnostics'),
+      identity: { app_version: '1.0.0', build_commit: '0000000', platform: 'linux', arch: 'x64' },
+      env: {},
+      destination: {
+        site: 'fixture',
+        host: 'https://fixture.invalid',
+        appUrl: 'https://fixture-app.invalid',
+      },
+      send,
+      automatic: false,
+    });
+    await reports.initialize();
+    supervisor = new BackendSupervisor();
+    const observer = new DiagnosticStatusObserver(reports);
+    supervisor.subscribe((status) => observer.observe(status));
+    const owner = supervisor as unknown as {
+      setStage(stage: string, patch?: { message?: string }): void;
+    };
+    for (const control of ['off-to-on', 'a-to-b', 'same-grant'] as const) {
+      if (control !== 'off-to-on') {
+        await reports.setConsent(false);
+        await reports.setConsent(true);
+      }
+      owner.setStage(initialStage);
+      if (control === 'off-to-on') await reports.setConsent(true);
+      if (control === 'a-to-b') {
+        await reports.setConsent(false);
+        await reports.setConsent(true);
+      }
+      owner.setStage(initialStage);
+      if (initialStage === 'installing') {
+        observer.observe({
+          ...supervisor.status,
+          setupProgress: { completedDownloads: 0, stalled: true, stalledSeconds: 700 },
+        });
+        owner.setStage('starting');
+      }
+      owner.setStage('setup_required', {
+        message: 'Failed to download a package: connection reset; PRIVATE_KEY',
+      });
+      await reports.flush();
+      expect(send).toHaveBeenCalledTimes(
+        control === 'same-grant' ? (initialStage === 'installing' ? 2 : 1) : 0,
+      );
+      owner.setStage('idle');
+    }
+    expect(String(send.mock.calls[0][1]?.body)).not.toContain('PRIVATE_KEY');
+  },
+);
+
 let reports: DiagnosticReports | undefined;
 let supervisor: BackendSupervisor | undefined;
 let directory: string | undefined;

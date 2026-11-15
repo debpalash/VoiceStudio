@@ -79,7 +79,10 @@ Completed-delivery bookkeeping stays local and prevents repeated uploads while
 producer files are locked. If completion cannot be saved before an abrupt exit,
 a restart may retry the same stable report ID; exactly-once delivery is not promised.
 Temporarily unread consent stops collection and delivery while saved evidence waits
-for a bounded retry. Saving a choice never replaces unread shared preferences;
+for a bounded retry. Phone Settings and iOS crash/upload handlers follow the
+recovered current grant; an early Retry never presents unread consent as a saved
+OFF choice. Automatic read retries wait one minute, while a user-clicked Retry
+may reread sooner. Saving a choice never replaces unread shared preferences;
 a hard-disabled launch still invalidates an unread old grant before it can resume.
 Reopening a saved failed job only displays its old error; it does not create a
 new report under a later consent choice. Resumed operations report only failures
@@ -96,7 +99,12 @@ Requests, optional installs, native screen actions, uploads and player/picker
 callbacks retain the permission observed before their work starts. Restored
 callbacks without that observation stay local. Python exceptions retain their
 original permission through interpreter/thread hooks after cleanup; delayed
-desktop child-exit recovery follows the same rule.
+desktop setup/start attempts and child-exit recovery follow the same rule.
+Main-process IPC work observes permission at entry. Its asynchronous descendants
+retain that observation through Node's fatal-error and unhandled-rejection hooks.
+Rejections with unknown provenance remain in the local journal rather than
+borrowing permission at delivery time. Seeking an existing phone playback does
+not renew its grant.
 A failed consent write is shown with Retry and leaves the current process off.
 Where storage permits, withdrawal replaces the previous grant or writes a
 private revocation marker so restart also remains off. If every write or

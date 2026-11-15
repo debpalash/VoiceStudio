@@ -16,6 +16,7 @@ import {
   captureProcessGone,
 } from './diagnostics-capture';
 import { registerDiagnosticIpc } from './diagnostics-ipc';
+import { runDiagnosticOperation } from './diagnostic-operation';
 import { applySavedTorchVariant } from './torch-choice';
 import { assertTrustedMainFrame, registerIpc, wireWindowMaximizeEvents } from './ipc';
 import { APP_ORIGIN, installAppProtocol, registerAppScheme } from './protocol';
@@ -527,6 +528,7 @@ if (singleInstance && !app.requestSingleInstanceLock()) {
           await tearDownNativeResources();
           app.exit(0);
         },
+        (work) => runDiagnosticOperation(reports, work),
       );
       // Before backend.start(): the backend inherits the token-bridge env.
       closeAccount = await startAccount({
@@ -597,7 +599,11 @@ if (singleInstance && !app.requestSingleInstanceLock()) {
       tray.setToolTip(PRODUCT_NAME);
       closeCapture = installNativeCapture(PRELOAD_PATH, tray, () => mainWindow);
       tray.on('click', () => showWindow());
-      observeMainProcessTask(backend.start(), mainErrors, 'Backend startup');
+      observeMainProcessTask(
+        runDiagnosticOperation(reports, () => backend.start()),
+        mainErrors,
+        'Backend startup',
+      );
       if (headlessOwner) {
         idleShutdown = new IdleShutdown({
           idleMs: idleShutdownMs(),

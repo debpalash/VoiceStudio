@@ -71,7 +71,7 @@ private data class VoiceToolResult(val titleKey: String,val file: File,val subje
     LaunchedEffect(recording) {val failure=recordingFailure;seconds=0;while(recording) {delay(1000);seconds++;if(seconds>=29) {
         try {source=recorder.stop()} catch(e:Exception) {source=null;failure(e)} finally {recording=false}
     }}}
-    val record=permissionAction(Manifest.permission.RECORD_AUDIO,"mobile.permissions.microphone",vm::failureHandler) {
+    val record=permissionAction(Manifest.permission.RECORD_AUDIO,"mobile.permissions.microphone",vm::failureHandler,vm::restoreFailure) {
         if(mode=="convert"&&recordingConsent&&!running) {
             val failure=vm.failureHandler()
             recordingFailure=failure

@@ -19,8 +19,14 @@ class DiagnosticReportsTest {
         var failOutboxWrite=false;var outboxWriteAttempts=0
         val blockedWrites=mutableSetOf<String>();val blockedRemoves=mutableSetOf<String>()
         var unreadableRevocation=false;var revocationWriteAttempts=0;var unreadableOutbox=false
-        var unreadableConsent=false;var consentReads=0
-        override fun read(name:String,maxBytes:Int):ByteArray? { reads++;if(name=="consent.json"){consentReads++;if(unreadableConsent)throw IOException("controlled consent EIO")};if(name=="revoked.json" && unreadableRevocation || name=="outbox.json" && unreadableOutbox)throw IOException("private path");return files[name]?.clone()?.also { require(it.size<=maxBytes) } }
+        var unreadableConsent=false;var consentReads=0;var outboxReads=0
+        override fun read(name:String,maxBytes:Int):ByteArray? {
+            reads++
+            if(name=="consent.json"){consentReads++;if(unreadableConsent)throw IOException("controlled consent EIO")}
+            if(name=="outbox.json"){outboxReads++;if(unreadableOutbox)throw IOException("controlled outbox EIO")}
+            if(name=="revoked.json" && unreadableRevocation)throw IOException("private path")
+            return files[name]?.clone()?.also { require(it.size<=maxBytes) }
+        }
         override fun write(name:String,bytes:ByteArray) {
             if(name=="outbox.json")outboxWriteAttempts++
             if(name=="revoked.json")revocationWriteAttempts++
@@ -62,6 +68,50 @@ class DiagnosticReportsTest {
         File("unused-test-store"),policy(),DiagnosticDestination("localtest123","http://127.0.0.1:1","https://app.test.invalid"),appVersion,
         buildCommit=buildCommit,transport=transport,clock=clock,storage=store,dispatcher=dispatcher,disabled=disabled)
     private fun event(errorType:String="TypeError")=DiagnosticInput("generation_failed","generation",errorType=errorType)
+
+    @Test fun unreadOutboxPreservesReportsAndAutomaticallyRetriesSameGrantOncePerMinute()=runTest {
+        val store=Store();val dispatcher=StandardTestDispatcher(testScheduler);val clock=ScheduledClock(testScheduler)
+        val first=makeReporter(store,Transport(),clock,dispatcher)
+        first.setConsent(true);first.capture(event());runCurrent();first.close()
+        val saved=store.files.getValue("outbox.json").clone();val grant=store.files.getValue("consent.json").clone()
+        val original=store.json("outbox.json").jsonArray.single().jsonObject
+        store.unreadableOutbox=true
+        val transport=Transport().apply {code=201};val next=makeReporter(store,transport,clock,dispatcher)
+        try {
+            try {next.load()}catch(_:IOException){}
+            assertFalse(next.status.enabled);assertFalse(next.capture(event()))
+            assertArrayEquals(saved,store.files.getValue("outbox.json"));assertArrayEquals(grant,store.files.getValue("consent.json"))
+            val reads=store.outboxReads
+            advanceTimeBy(59_999);runCurrent();assertEquals(reads,store.outboxReads)
+            advanceTimeBy(1);runCurrent();assertEquals("One failed background retry per minute",reads+1,store.outboxReads)
+            assertTrue(transport.bodies.isEmpty())
+            store.unreadableOutbox=false;advanceTimeBy(59_999);runCurrent();assertTrue(transport.bodies.isEmpty())
+            advanceTimeBy(1);runCurrent()
+            assertTrue(next.status.enabled);assertEquals(1,transport.bodies.size)
+            assertEquals(original["id"],transport.bodies.single()["id"])
+            assertEquals(original["timestamp_ms"],transport.bodies.single()["ts"])
+            assertArrayEquals(grant,store.files.getValue("consent.json"))
+        }finally{next.close()}
+    }
+
+    @Test fun unreadOutboxRecoveryCannotCrossWithdrawalNewGrantOrClose()=runTest {
+        for(control in listOf("off","regrant","close")) {
+            val store=Store();val dispatcher=StandardTestDispatcher(testScheduler);val clock=ScheduledClock(testScheduler)
+            val first=makeReporter(store,Transport(),clock,dispatcher)
+            first.setConsent(true);first.capture(event());runCurrent();first.close()
+            store.unreadableOutbox=true
+            val transport=Transport().apply {code=201};val next=makeReporter(store,transport,clock,dispatcher)
+            try {
+                try {next.load()}catch(_:IOException){}
+                if(control=="close")next.close() else next.setConsent(control=="regrant")
+                store.unreadableOutbox=false;advanceTimeBy(60_000);runCurrent()
+                assertTrue(transport.bodies.isEmpty())
+                if(control=="regrant") {
+                    assertTrue(next.capture(event("ValueError")));runCurrent();assertEquals(1,transport.bodies.size)
+                } else assertFalse(next.capture(event()))
+            }finally{next.close()}
+        }
+    }
 
     @Test fun unreadConsentPreservesReportsAndSchedulesSameGrantRecovery()=runTest {
         val store=Store();val dispatcher=StandardTestDispatcher(testScheduler);val clock=ScheduledClock(testScheduler)

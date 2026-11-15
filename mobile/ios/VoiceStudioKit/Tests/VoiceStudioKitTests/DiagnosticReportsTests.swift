@@ -135,6 +135,26 @@ private func diagnosticRecords(_ store: DiagnosticTestStore) throws -> [[String:
 }
 private func diagnosticEvent() -> DiagnosticInput { DiagnosticInput(category: "generation_failed", stage: "generation", errorType: "TypeError") }
 
+private func diagnosticBlockedIntake(recovered: Bool) async throws -> (DiagnosticTestStore, DiagnosticTestTransport, DiagnosticTestClock, DiagnosticReports, Int64) {
+    let store = DiagnosticTestStore(), transport = DiagnosticTestTransport(), clock = DiagnosticTestClock()
+    transport.set(code: 201)
+    let first = try diagnosticTestReporter(store, transport, clock)
+    try await first.setConsent(true); await first.close()
+    store.failingOutboxReads(true)
+    let reports = try diagnosticTestReporter(store, transport, clock)
+    await reports.load()
+    let stamp = clock.nowMs()
+    if recovered {
+        let context = try #require(reports.recoveryContext)
+        #expect(reports.captureRecovered(DiagnosticInput(category: "app_crash", reason: "crashed"), occurredAtMs: stamp,
+            consentEpoch: context.epoch, recoveryKey: "ios:\(stamp):crashed", reportedAppVersion: "0.5.8-beta.1"))
+    } else { #expect(reports.capture(diagnosticEvent())) }
+    await reports.flush()
+    #expect(reports.status.pendingCount == 1)
+    #expect(transport.bodies().isEmpty)
+    return (store, transport, clock, reports, stamp)
+}
+
 private final class DiagnosticFileCommitProbe: DiagnosticFileSynchronizing, @unchecked Sendable {
     let directory: URL
     private let lock = NSLock()
@@ -153,6 +173,31 @@ private final class DiagnosticFileCommitProbe: DiagnosticFileSynchronizing, @unc
 }
 
 @Suite("DiagnosticReports") struct DiagnosticReportsTests {
+    @Test(arguments: [false, true], [false, true]) func pendingIntakeHonorsTTLBeforePublicationAndDelivery(_ recovered: Bool, _ expired: Bool) async throws {
+        let (store, transport, clock, reports, stamp) = try await diagnosticBlockedIntake(recovered: recovered)
+        let writes = store.outboxWriteAttempts
+        clock.advance(604800000 + (expired ? 1 : 0))
+        store.failingOutboxReads(false)
+        await reports.flush()
+        #expect(transport.bodies().count == (expired ? 0 : 1))
+        #expect(store.outboxWriteAttempts == writes + (expired ? 0 : 1))
+        #expect(!store.has("outbox.json")); #expect(reports.status.pendingCount == 0)
+        if !expired {
+            let body = try #require(transport.bodies().first)
+            #expect(try diagnosticObject(body)["ts"] as? Int64 == stamp)
+        }
+        await reports.close()
+    }
+    @Test(arguments: [false, true]) func expiredPendingIntakeCannotBePersistedDuringClose(_ recovered: Bool) async throws {
+        let (store, transport, clock, reports, _) = try await diagnosticBlockedIntake(recovered: recovered)
+        let writes = store.outboxWriteAttempts
+        clock.advance(604800001)
+        store.failingOutboxReads(false)
+        await reports.close()
+        #expect(transport.bodies().isEmpty)
+        #expect(store.outboxWriteAttempts == writes)
+        #expect(!store.has("outbox.json")); #expect(reports.status.pendingCount == 0)
+    }
     @Test func defaultOffIndependentAndNoPreConsentPersistence() async throws {
         let store = DiagnosticTestStore(), transport = DiagnosticTestTransport()
         let reports = try diagnosticTestReporter(store, transport)

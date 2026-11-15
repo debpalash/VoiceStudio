@@ -46,7 +46,7 @@ internal class AutomaticDiagnosticInitialization(
 
     fun retry() = synchronized(lock) {
         attempt?.cancel()
-        launchLocked()
+        launchLocked(forceRead = true)
     }
 
     /** OFF and newer choices retire pending loads as well as delayed retries. */
@@ -58,12 +58,13 @@ internal class AutomaticDiagnosticInitialization(
         blocksCapture = false
     }
 
-    private fun launchLocked() {
+    private fun launchLocked(forceRead: Boolean = false) {
         blocksCapture = true
         val token = ++generation
         val choice = revision()
         fun current() = token == generation && choice == revision()
         val job = scope.launch(start = CoroutineStart.LAZY) {
+            var forceNextRead=forceRead
             while (true) {
                 try {
                     synchronized(lock) {
@@ -82,7 +83,10 @@ internal class AutomaticDiagnosticInitialization(
                     }
                     // An OFF made before resources loaded must never restore a
                     // prior grant, even briefly, during initialization retry.
-                    if (requested() == false) currentReports.setConsent(false) else currentReports.load()
+                    if (requested() == false) currentReports.setConsent(false) else {
+                        val force=forceNextRead;forceNextRead=false
+                        currentReports.load(forceRead=force)
+                    }
                     currentCoroutineContext().ensureActive()
                     synchronized(lock) { if (!current()) return@launch }
                     // Android binder calls and recovery callbacks must never

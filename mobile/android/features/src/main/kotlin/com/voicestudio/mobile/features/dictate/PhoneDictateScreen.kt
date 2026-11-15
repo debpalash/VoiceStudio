@@ -69,8 +69,8 @@ internal class PhoneDictation(private val engine: LocalEngine, private val scope
         onDispose {lifecycle.lifecycle.removeObserver(observer);controller.close()}
     }
     var holding by remember {mutableStateOf(false)}
-    val start=permissionAction(Manifest.permission.RECORD_AUDIO,"mobile.permissions.microphone",vm::failureHandler) {if(ready&&model!=null) controller.start(model)}
-    val holdStart=permissionAction(Manifest.permission.RECORD_AUDIO,"mobile.permissions.microphone",vm::failureHandler) {if(holding&&ready&&model!=null) controller.start(model)}
+    val start=permissionAction(Manifest.permission.RECORD_AUDIO,"mobile.permissions.microphone",vm::failureHandler,vm::restoreFailure) {if(ready&&model!=null) controller.start(model)}
+    val holdStart=permissionAction(Manifest.permission.RECORD_AUDIO,"mobile.permissions.microphone",vm::failureHandler,vm::restoreFailure) {if(holding&&ready&&model!=null) controller.start(model)}
     DictationLayout(content={
         ScreenTitle("mobile.tabs.dictate")
         com.voicestudio.mobile.features.models.ModelRamWarning(vm,listOfNotNull(model))

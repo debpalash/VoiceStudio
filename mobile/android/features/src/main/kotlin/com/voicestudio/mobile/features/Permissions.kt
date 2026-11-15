@@ -15,14 +15,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.voicestudio.mobile.network.ClientFailure
 
-@Composable fun permissionAction(permission:String,rationale:String,failure:()->(Throwable)->Unit,granted:()->Unit):()->Unit {
+@Composable fun permissionAction(permission:String,rationale:String,failure:()->(Throwable)->Unit,restoreFailure:(Throwable)->Unit,granted:()->Unit):()->Unit {
     val context=LocalContext.current
     var rationaleOpen by remember {mutableStateOf(false)}
     val latest by rememberUpdatedState(granted)
     val observeFailure by rememberUpdatedState(failure)
-    var pendingFailure by remember {mutableStateOf<(Throwable)->Unit>({})}
+    val restoredFailure by rememberUpdatedState(restoreFailure)
+    var pendingFailure by remember {mutableStateOf<((Throwable)->Unit)?>(null)}
     val launcher=rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {allowed ->
-        if(allowed) latest() else pendingFailure(ClientFailure("mobile.permissions.denied"))
+        // Activity-result delivery survives recreation, whereas its original
+        // consent observation does not. Restore feedback without a new grant.
+        val failed=pendingFailure ?: restoredFailure
+        pendingFailure=null
+        if(allowed) latest() else failed(ClientFailure("mobile.permissions.denied"))
     }
     if(rationaleOpen) AlertDialog(shape=MaterialTheme.shapes.large,onDismissRequest={rationaleOpen=false},text={
         // Match the iOS microphone purpose and routing explanation, using the same translated keys.

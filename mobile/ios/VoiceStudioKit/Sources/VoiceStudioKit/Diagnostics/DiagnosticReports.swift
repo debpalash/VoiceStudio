@@ -62,6 +62,7 @@ private final class DiagnosticGate: @unchecked Sendable {
     var closed = false
     var wakeScheduled = false
     var pending: [DiagnosticPending] = []
+    private var statusObserver: (id: UUID, continuation: AsyncStream<Void>.Continuation)?
     let disabled: @Sendable () -> Bool
     init(disabled: @escaping @Sendable () -> Bool) { self.disabled = disabled }
     func snapshot(expectedEpoch: String? = nil) -> (DiagnosticConsent, UInt64)? { lock.withLock {
@@ -73,9 +74,37 @@ private final class DiagnosticGate: @unchecked Sendable {
         let killed = disabled()
         var value = state; value.enabled = value.enabled && !killed; value.optedIn = value.optedIn && !killed; value.available = !killed; return value
     } }
-    func invalidate(closing: Bool = false) -> UInt64 { lock.withLock {
-        generation &+= 1; state.enabled = false; state.optedIn = false; closed = closed || closing; return generation
-    } }
+    func invalidate(closing: Bool = false) -> UInt64 {
+        let current = lock.withLock {
+            generation &+= 1; state.enabled = false; state.optedIn = false; closed = closed || closing; return generation
+        }
+        publishStatusChange()
+        return current
+    }
+    /// One app-owned observer; replacement/cancellation cannot accumulate a queue.
+    func statusChanges() -> AsyncStream<Void> {
+        let id = UUID(), pair = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        pair.continuation.onTermination = { [weak self] _ in
+            guard let self else { return }
+            self.lock.withLock { if self.statusObserver?.id == id { self.statusObserver = nil } }
+        }
+        let previous = lock.withLock { () -> AsyncStream<Void>.Continuation? in
+            guard !closed else { return nil }
+            let previous = statusObserver?.continuation
+            statusObserver = (id, pair.continuation)
+            return previous
+        }
+        // Finishing invokes onTermination; never do it while holding the gate.
+        previous?.finish()
+        if lock.withLock({ closed }) { pair.continuation.finish() }
+        else { pair.continuation.yield(()) }
+        return pair.stream
+    }
+    func publishStatusChange() { lock.withLock { statusObserver?.continuation }?.yield(()) }
+    func finishStatusChanges() {
+        let previous = lock.withLock { let previous = statusObserver?.continuation; statusObserver = nil; return previous }
+        previous?.finish()
+    }
     func controlCurrent(_ generation: UInt64) -> Bool { lock.withLock { !closed && self.generation == generation } }
     func revokeIfCurrent(_ epoch: String, _ generation: UInt64) -> UInt64? { lock.withLock {
         guard !closed, state.enabled, consent?.epoch == epoch, self.generation == generation else { return nil }
@@ -106,6 +135,9 @@ public final class DiagnosticReports: @unchecked Sendable {
         return await Task.detached(priority: .utility) { !diagnosticRevokeGrant(owned).failed }.value
     }
     public var status: DiagnosticStatus { gate.status() }
+    /// Coalesced local consent/readiness signal. Read current status rather than
+    /// retaining a queued permission snapshot across a newer OFF or grant.
+    public func statusChanges() -> AsyncStream<Void> { gate.statusChanges() }
     public var recoveryContext: DiagnosticRecoveryContext? {
         guard let (consent, _) = gate.snapshot(), let enabled = consent.enabled_at_ms else { return nil }
         return DiagnosticRecoveryContext(epoch: consent.epoch, enabledAtMs: enabled, appVersion: projector.appVersion)
@@ -166,6 +198,7 @@ public final class DiagnosticReports: @unchecked Sendable {
         await worker.load(); wake(); return status
     }
     @discardableResult public func setConsent(_ enabled: Bool) async throws -> DiagnosticStatus {
+        defer { gate.publishStatusChange() }
         if enabled && gate.disabled() { _ = try await setConsent(false); throw DiagnosticFailure.disabled }
         if enabled && status.enabled { return status }
         let generation = gate.invalidate(); transport.cancelAll()
@@ -177,6 +210,7 @@ public final class DiagnosticReports: @unchecked Sendable {
     public func close() async {
         _ = gate.invalidate(closing: true); transport.cancelAll()
         await worker.close()
+        gate.finishStatusChanges()
     }
 }
 
@@ -202,6 +236,7 @@ private actor DiagnosticWorker {
         self.gate = gate; self.projector = projector; self.destination = destination; self.transport = transport; self.clock = clock; self.storage = storage
     }
     func load() {
+        defer { gate.publishStatusChange() }
         let state = gate.lock.withLock { (gate.closed, gate.loaded) }
         guard !state.0 else { return }
         let revoked = diagnosticRevocationPresent(storage)
@@ -386,6 +421,10 @@ private actor DiagnosticWorker {
     private func drain(_ epoch: String) throws {
         let intake = gate.lock.withLock { let result = gate.pending; gate.pending.removeAll(); return result }
         for pending in intake where pending.epoch == epoch {
+            // Intake can age while durable storage is unavailable. Apply the
+            // same time window as restored records before publishing or merging.
+            guard pending.timestamp >= clock.nowMs() - Int64(projector.policy.limit("ttl_ms", 604800000)),
+                pending.timestamp <= clock.nowMs() + 60000 else { continue }
             if let identity = pending.id, let index = records.firstIndex(where: { $0.id == identity }) {
                 records[index].props["occurrences"] = .integer(max(records[index].props["occurrences"]?.integer ?? 1, pending.props["occurrences"]?.integer ?? 1))
                 continue

@@ -13,8 +13,13 @@ private final class DiagnosticControllerStore: DiagnosticStorage, @unchecked Sen
     private let lock=NSLock()
     private var files: [String:Data]=[:]
     private var fail=true
+    private var unreadableConsent=false
     func allowWrites() { lock.withLock { fail=false } }
-    func read(_ name: String,maxBytes: Int) throws -> Data? { lock.withLock { files[name] } }
+    func failConsentReads(_ value:Bool) {lock.withLock {unreadableConsent=value}}
+    func read(_ name: String,maxBytes: Int) throws -> Data? {try lock.withLock {
+        if name=="consent.json",unreadableConsent {throw DiagnosticFailure.storageUnavailable}
+        return files[name]
+    }}
     func remove(_ name: String) throws { _ = lock.withLock { files.removeValue(forKey: name) } }
     func write(_ name: String,data: Data) throws {
         try lock.withLock { if fail { throw DiagnosticFailure.storageUnavailable };files[name]=data }
@@ -26,6 +31,76 @@ private final class DiagnosticControllerTransport: DiagnosticTransport, @uncheck
     var count: Int { lock.withLock { sends } }
     func send(destination: DiagnosticDestination,body: Data,allowed: @escaping @Sendable () -> Bool) async throws -> Int { lock.withLock { sends += 1 };return 201 }
     func cancelAll() {}
+}
+private final class DiagnosticControllerRecoveryClock:DiagnosticClock,@unchecked Sendable {
+    private let lock=NSLock()
+    private var time:Int64=1_794_640_000_000
+    private var sleepers:[UUID:(Int64,CheckedContinuation<Void,any Error>)]=[:]
+    private let scheduled=DispatchSemaphore(value:0)
+    func nowMs()->Int64 {lock.withLock {time}}
+    func sleep(milliseconds:Int) async throws {
+        let id=UUID()
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation {(continuation:CheckedContinuation<Void,any Error>) in
+                lock.withLock {
+                    guard !Task.isCancelled else {continuation.resume(throwing:CancellationError());return}
+                    sleepers[id]=(time+Int64(milliseconds),continuation);scheduled.signal()
+                }
+            }
+        } onCancel: {
+            self.lock.withLock {self.sleepers.removeValue(forKey:id)}?.1.resume(throwing:CancellationError())
+        }
+    }
+    func advance(_ milliseconds:Int64) {
+        let ready=lock.withLock {
+            time += milliseconds
+            let ready=sleepers.filter {$0.value.0<=time}
+            for id in ready.keys {sleepers.removeValue(forKey:id)}
+            return Array(ready.values)
+        }
+        for value in ready {value.1.resume()}
+    }
+    func waitForSchedule() async -> Bool {
+        await withCheckedContinuation {continuation in
+            DispatchQueue.global().async {continuation.resume(returning:self.scheduled.wait(timeout: .now() + 5) == .success)}
+        }
+    }
+}
+@MainActor private func diagnosticControllerWait(_ condition:()->Bool) async -> Bool {
+    let deadline=ContinuousClock.now.advanced(by:.seconds(5))
+    while !condition(),ContinuousClock.now<deadline {await Task.yield()}
+    return condition()
+}
+@MainActor @Test func diagnosticAppControllerFollowsAutonomousConsentRecoveryWhileActive() async throws {
+    var root=URL(fileURLWithPath:#filePath);for _ in 0..<6 {root.deleteLastPathComponent()}
+    let policy=try DiagnosticPolicy(data:Data(contentsOf:root.appendingPathComponent("config/diagnostics.json")))
+    let store=DiagnosticControllerStore(),transport=DiagnosticControllerTransport(),clock=DiagnosticControllerRecoveryClock()
+    store.allowWrites()
+    let destination=try DiagnosticDestination(site:"localtest123",host:"http://127.0.0.1:1",appUrl:"https://app.test.invalid")
+    let previous=try DiagnosticReports(directory:URL(fileURLWithPath:"/unused-test-store"),policy:policy,destination:destination,appVersion:"0.5.9-beta.2",clock:clock,storage:store,disabled:{false})
+    try await previous.setConsent(true);await previous.close()
+    store.failConsentReads(true)
+    let reports=try DiagnosticReports(directory:URL(fileURLWithPath:"/unused-test-store"),policy:policy,destination:destination,appVersion:"0.5.9-beta.2",transport:transport,clock:clock,storage:store,disabled:{false})
+    let controller=AppDiagnostics(reporter:reports)
+    await controller.load()
+    let unknownOwner=controller.failureHandler(stage:"generation")
+    #expect(!controller.enabled);#expect(transport.count==0)
+    try #require(await clock.waitForSchedule())
+    store.failConsentReads(false);clock.advance(60000)
+    try #require(await diagnosticControllerWait {reports.status.enabled})
+    // No controller.load(), flush(), scene transition or new consent choice.
+    let recovered=await diagnosticControllerWait {controller.enabled}
+    #expect(recovered,"The active app must learn its reporter's recovered grant")
+    if recovered {
+        unknownOwner(ClientError("mobile.local.inference_failed"));await controller.flush()
+        #expect(transport.count==0,"Unknown-permission failures cannot replay on recovery")
+        controller.failureHandler(stage:"generation")(ClientError("mobile.local.inference_failed"));await controller.flush()
+        #expect(transport.count==1)
+        await controller.setConsent(false)
+        controller.failureHandler(stage:"generation")(ClientError("mobile.local.inference_failed"));await controller.flush()
+        #expect(!controller.enabled);#expect(transport.count==1)
+    }
+    await reports.close()
 }
 @MainActor @Test func diagnosticAppControllerRetriesTheDesiredEnabledChoice() async throws {
     var root=URL(fileURLWithPath: #filePath)

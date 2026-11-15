@@ -25,7 +25,7 @@ import com.voicestudio.mobile.data.AutomaticDiagnostics
     var editUrl by remember {mutableStateOf<String?>(null)}
     var editName by remember {mutableStateOf("")}
     var licenses by remember {mutableStateOf(false)}
-    val notification=permissionAction(Manifest.permission.POST_NOTIFICATIONS,"mobile.settings.notifications_help",vm::failureHandler) {vm.preference {it.copy(notifications=true)}}
+    val notification=permissionAction(Manifest.permission.POST_NOTIFICATIONS,"mobile.settings.notifications_help",vm::failureHandler,vm::restoreFailure) {vm.preference {it.copy(notifications=true)}}
     Screen {
         ScreenTitle("mobile.tabs.settings")
         Group {

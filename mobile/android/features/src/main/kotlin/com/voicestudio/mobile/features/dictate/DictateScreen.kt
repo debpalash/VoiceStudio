@@ -47,8 +47,8 @@ import kotlinx.coroutines.CancellationException
         onDispose {lifecycle.lifecycle.removeObserver(observer);controller.close()}
     }
     var holding by remember {mutableStateOf(false)}
-    val holdStart=permissionAction(Manifest.permission.RECORD_AUDIO,"mobile.permissions.microphone",vm::failureHandler) {if(holding) controller.start()}
-    val start=permissionAction(Manifest.permission.RECORD_AUDIO,"mobile.permissions.microphone",vm::failureHandler,controller::start)
+    val holdStart=permissionAction(Manifest.permission.RECORD_AUDIO,"mobile.permissions.microphone",vm::failureHandler,vm::restoreFailure) {if(holding) controller.start()}
+    val start=permissionAction(Manifest.permission.RECORD_AUDIO,"mobile.permissions.microphone",vm::failureHandler,vm::restoreFailure,controller::start)
     DictationLayout(content={
         ScreenTitle("mobile.tabs.dictate")
         if(checking) {Text(tr("common.loading"));LinearProgressIndicator()}
