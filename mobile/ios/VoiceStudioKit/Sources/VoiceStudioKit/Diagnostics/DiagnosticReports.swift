@@ -121,6 +121,7 @@ private final class DiagnosticGate: @unchecked Sendable {
 }
 
 /// Portable reporter; the app owns OS crash/lifecycle adapters and supplies the shared policy.
+/// One live reporter owns each directory; app extensions do not share its outbox.
 public final class DiagnosticReports: @unchecked Sendable {
     private let gate: DiagnosticGate
     private let worker: DiagnosticWorker
@@ -277,12 +278,12 @@ private actor DiagnosticWorker {
     }
     func load(retryUnread: Bool = false) {
         defer { gate.publishStatusChange() }
-        let state = gate.lock.withLock { (gate.closed, gate.loaded) }
-        guard !state.0 else { return }
+        let state = gate.lock.withLock { (closed: gate.closed, loaded: gate.loaded, generation: gate.generation) }
+        guard !state.closed else { return }
         // An accepted withdrawal remains authoritative even when neither OFF
         // file could be committed. Rereading the old ON file is not recovery.
         if revocationPending || gate.lock.withLock({ gate.withdrawalPending }) {
-            let generation = gate.lock.withLock { gate.generation }
+            let generation = state.generation
             if revocationWake?.generation != generation || (revocationWake?.deadline ?? 0) <= clock.nowMs() {
                 _ = performRevocation(generation: generation, recordChoice: gate.lock.withLock { gate.state.prompted || gate.withdrawalPending })
             }
@@ -291,13 +292,14 @@ private actor DiagnosticWorker {
         if retryUnread { consentReadRetryAt = nil }
         let marker = try? diagnosticRevocationPresent(storage)
         let revoked = marker == true
-        guard !state.1 || gate.disabled() || revoked || marker == nil else { return }
+        guard !state.loaded || gate.disabled() || revoked || marker == nil else { return }
         if let deadline = consentReadRetryAt, deadline > clock.nowMs(), !gate.disabled(), !revoked { return }
         cancelRetryWake()
         cancelRevocationWake()
-        storageRetryAt = nil
-        outboxLoaded = false
-        let generation = gate.lock.withLock { gate.generation }
+        // Bind every publication to the authority observed before the first
+        // storage call; OFF/close/new choices may invalidate during that IO.
+        let generation = state.generation
+        let previousConsent = gate.lock.withLock { gate.consent }
         var hadGrant = gate.lock.withLock { gate.consent != nil }
         var consent: DiagnosticConsent?
         var unread = marker == nil
@@ -340,19 +342,32 @@ private actor DiagnosticWorker {
         consentReadRetryAt = nil
         let applied = gate.lock.withLock {
             guard gate.generation == generation, !gate.closed else { return false }
+            gate.pending.removeAll { consent?.enabled != true || $0.epoch != consent?.epoch }
             gate.consent = consent; gate.loaded = true; gate.state.prompted = consent != nil
             gate.state.enabled = consent?.enabled == true && !gate.disabled(); gate.state.optedIn = gate.state.enabled
             return true
         }
         guard applied else { return }
-        records.removeAll()
+        let sameGrant = consent?.enabled == true && previousConsent?.enabled == true
+            && consent?.epoch == previousConsent?.epoch && consent?.profile_id == previousConsent?.profile_id
+        if !sameGrant {
+            records.removeAll(); retryAt.removeAll(); currentRunIDs.removeAll(); outboxLoaded = false
+            if sessionStarted {
+                sessionInvalidated = true; sessionEvent = nil; sessionEpoch = nil; sessionRetryAt = nil
+            }
+        }
         if let consent, consent.enabled, !gate.disabled() {
+            records = records.compactMap { sanitized($0, epoch: consent.epoch) }
             do {
-                try restoreOutbox(epoch: consent.epoch)
+                // An already-restored same-grant snapshot includes accepted
+                // unpublished records and terminal removals. Replaying stale
+                // disk contents here would lose the former or resurrect ACKs.
+                if !outboxLoaded { try restoreOutbox(epoch: consent.epoch) }
                 try persist()
+                storageRetryAt = nil
             } catch { deferStorageRetry() }
             scheduleRetryWake(epoch: consent.epoch, generation: generation)
-        } else { outboxLoaded = true; try? storage.remove("outbox.json") }
+        } else { storageRetryAt = nil; outboxLoaded = true; try? storage.remove("outbox.json") }
         gate.count(records.count)
     }
     func setConsent(_ enabled: Bool, generation: UInt64) throws {
@@ -471,16 +486,25 @@ private actor DiagnosticWorker {
     private func restoreOutbox(epoch: String) throws {
         let data: Data?
         do { data = try storage.read("outbox.json", maxBytes: projector.policy.limit("queue_bytes", 524288)) }
-        catch DiagnosticFailure.corruptStore {
-            records.removeAll(); outboxLoaded = true; return
-        }
+        catch DiagnosticFailure.corruptStore { data = nil }
         // An IO read failure above leaves the existing file untouched and keeps
         // intake bounded in memory until it can be merged with saved records.
+        var saved: [DiagnosticRecord] = []
         if let data {
             do {
-                records = try JSONDecoder().decode([DiagnosticRecord].self, from: data).prefix(projector.policy.limit("queue_count", 64)).compactMap { sanitized($0, epoch: epoch) }
-            } catch is DecodingError { records.removeAll() }
-        } else { records.removeAll() }
+                saved = try JSONDecoder().decode([DiagnosticRecord].self, from: data).prefix(projector.policy.limit("queue_count", 64)).compactMap { sanitized($0, epoch: epoch) }
+            } catch is DecodingError { /* Invalid saved data cannot erase valid same-grant memory. */ }
+        }
+        var merged = Array(records.compactMap { sanitized($0, epoch: epoch) }.prefix(projector.policy.limit("queue_count", 64)))
+        for record in saved {
+            var candidate = merged
+            if let index = candidate.firstIndex(where: { $0.id == record.id }) {
+                candidate[index].props["occurrences"] = .integer(max(candidate[index].props["occurrences"]?.integer ?? 1, record.props["occurrences"]?.integer ?? 1))
+            } else if candidate.count < projector.policy.limit("queue_count", 64) { candidate.append(record) }
+            else { continue }
+            if try diagnosticEncode(candidate).count <= projector.policy.limit("queue_bytes", 524288) { merged = candidate }
+        }
+        records = merged
         outboxLoaded = true
     }
     private func deferStorageRetry() {

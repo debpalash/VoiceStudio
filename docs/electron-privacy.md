@@ -98,6 +98,8 @@ waits for that cleanup, so a delayed purge cannot delete new reports.
 Completed-delivery bookkeeping stays local and prevents repeated uploads while
 producer files are locked. If completion cannot be saved before an abrupt exit,
 a restart may retry the same stable report ID; exactly-once delivery is not promised.
+Within a run, rereading the same grant after a storage error preserves unsaved
+reports and completed-delivery bookkeeping.
 App-intake batches contain at most 20 events and 16 KiB of encoded JSON. Acknowledged
 reports and permanent `too_old`, `invalid`, or `duplicate` drops are retired;
 server throttling and transient failures retain stable IDs for bounded retries.
