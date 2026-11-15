@@ -33,6 +33,7 @@ try {
     localStorage.setItem('voicestudio.locale', 'en');
     globalThis.__dubAgentRequests = [];
     globalThis.__nativeSaveRequests = [];
+    globalThis.__nativeSavedBodies = [];
     const bridge = {
       app: {
         platform: 'win32',
@@ -61,6 +62,9 @@ try {
         saveAudio: async (request) => {
           const response = await fetch(request.url);
           if (!response.ok) throw new Error('Export failed');
+          globalThis.__nativeSavedBodies.push(
+            Array.from(new Uint8Array(await response.arrayBuffer())),
+          );
           globalThis.__nativeSaveRequests.push(request);
           return { canceled: false, path: `C:\\Exports\\${request.suggestedName}` };
         },
@@ -372,7 +376,10 @@ try {
   await page.getByRole('button', { name: 'Redo', exact: true }).click();
   assert.equal(await segmentRows.count(), 3);
   await segmentRows.first().locator('[data-segment-options-trigger]').click();
-  await segmentRows.first().getByRole('spinbutton', { name: 'Start', exact: true }).press('Control+z');
+  await segmentRows
+    .first()
+    .getByRole('spinbutton', { name: 'Start', exact: true })
+    .press('Control+z');
   assert.equal(await segmentRows.count(), 3);
   await segmentRows.first().locator('[data-segment-options-trigger]').click();
   await segmentRows.nth(1).getByRole('button', { name: 'Delete', exact: true }).click();
@@ -529,9 +536,7 @@ try {
   assert.equal(await page.getByRole('button', { name: 'Export', exact: true }).isEnabled(), true);
   if (video) {
     assert.equal(
-      await page
-        .getByRole('switch', { name: 'Burn into video', exact: true })
-        .isDisabled(),
+      await page.getByRole('switch', { name: 'Burn into video', exact: true }).isDisabled(),
       true,
     );
     await page.getByText('Stretch Video: export subtitles separately.', { exact: true }).waitFor();
@@ -597,6 +602,31 @@ try {
     await page
       .getByRole('switch', { name: 'Translation + original', exact: true })
       .getAttribute('aria-checked'),
+    'true',
+  );
+  let plainRequest;
+  const plainText = 'Hola & <literal>\nÀ bientôt\n';
+  await page.route('**/api/dub/txt/fixture?*', (route) => {
+    plainRequest = route.request();
+    return route.fulfill({ contentType: 'text/plain; charset=utf-8', body: plainText });
+  });
+  await page.getByRole('button', { name: 'Save plain text', exact: true }).click();
+  await page.getByRole('button', { name: 'Export', exact: true }).click();
+  // addInitScript resets the native-save fixture on the reload above.
+  await page.waitForFunction(() => globalThis.__nativeSaveRequests.length === 1);
+  savedExport = await page.evaluate(() => globalThis.__nativeSaveRequests.at(-1));
+  assert.match(savedExport.suggestedName, /-es-txt\.txt$/);
+  assert.equal(plainRequest.method(), 'GET');
+  assert.equal(new URL(plainRequest.url()).search, '?lang=es');
+  assert.deepEqual(await page.evaluate(() => globalThis.__nativeSavedBodies.at(-1)), [
+    ...Buffer.from(plainText),
+  ]);
+  await page.reload();
+  await page.locator('summary').filter({ hasText: 'Export options' }).click();
+  assert.equal(
+    await page
+      .getByRole('button', { name: 'Save plain text', exact: true })
+      .getAttribute('aria-pressed'),
     'true',
   );
   await page.getByRole('button', { name: 'MP3 · compressed', exact: true }).click();
@@ -817,7 +847,9 @@ try {
   await page.evaluate(() => sessionStorage.setItem('voicestudio.test.reset-dub', '1'));
   await page.reload();
   failTranscription = true;
-  await page.getByRole('textbox', { name: /paste a video URL/ }).fill('https://example.com/movie.mp4');
+  await page
+    .getByRole('textbox', { name: /paste a video URL/ })
+    .fill('https://example.com/movie.mp4');
   await page
     .locator('summary')
     .filter({ hasText: /^Advanced$/ })
