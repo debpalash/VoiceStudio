@@ -169,6 +169,16 @@ It does not prove the publishing steps themselves, the Android repository update
 release-signed Android or App Store builds, SignPath release approval, or Docker
 images (`docker.yml` builds those on `main`).
 
+Android download notes use the mobile job's APK signature-verification report,
+bound to the collected APK's SHA256. Rehearsals show an explicit warning rather
+than release-signing proof. A failed rehearsal verification is **unverified**,
+not proof of an absent signature: corrupt packages and verifier failures can
+also fail the check. A missing, unsigned, unverified or mismatched APK report
+stops tagged release notes. AAB links identify the Play upload bundle, whose signature
+is not verified by the APK check. Existing release-keystore requirements remain
+mandatory. Verification runs inline in the workflow, so recovery builds from
+`main` can still check out older tags without needing a new helper in that tag.
+
 ## Build a release draft
 
 ```bash
