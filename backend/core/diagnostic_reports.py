@@ -548,7 +548,7 @@ class Reporter:
             now = time.monotonic()
             self.seen_errors = [(value,stamp) for value,stamp in self.seen_errors[-63:] if now-stamp < _limit(self.schema,'dedupe_ms',60000)/1000]
             if any(value == token for value,stamp in self.seen_errors):
-                return
+                return True  # This causal failure was already durably spooled.
         if self.publication is not None and self.publication[0] is item:
             self._publish(item, self.publication[1], records)
             if token is not None:
