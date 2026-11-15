@@ -25,7 +25,9 @@ const renderButton = () =>
   );
 
 beforeEach(() => {
-  mock.api.mockResolvedValue({});
+  mock.api.mockImplementation((path: string) =>
+    Promise.resolve(path === '/models/install/status' ? { jobs: [] } : {}),
+  );
 });
 afterEach(() => vi.clearAllMocks());
 
@@ -40,7 +42,7 @@ it('downloads the first recommended speech-to-text model that is not installed',
               { repo_id: 'asr/wanted', role: 'ASR', installed: false },
             ],
           }
-        : {},
+        : path === '/models/install/status' ? { jobs: [] } : {},
     ),
   );
   renderButton();
@@ -53,7 +55,10 @@ it('downloads the first recommended speech-to-text model that is not installed',
 });
 
 it('opens the Model Catalogue when every recommended model is already installed', async () => {
-  mock.api.mockResolvedValue({ models: [{ repo_id: 'asr/a', role: 'ASR', installed: true }] });
+  mock.api.mockImplementation((path: string) => Promise.resolve(
+    path === '/models/install/status' ? { jobs: [] }
+      : { models: [{ repo_id: 'asr/a', role: 'ASR', installed: true }] },
+  ));
   renderButton();
   fireEvent.click(screen.getByRole('button', { name: /speech-to-text/i }));
   await waitFor(() => expect(mock.navigate).toHaveBeenCalledWith({
