@@ -54,4 +54,6 @@ internal fun JsonObjectBuilder.putRenderSettings(segment: Segment) {
     @SerialName("refined_text") val refinedText: String? = null)
 
 @Serializable data class JobEvent(val seq: Int, val payload: String, @SerialName("created_at") val createdAt: Double? = null)
-@Serializable data class JobEvents(val job: Job, val events: List<JobEvent>)
+@Serializable data class JobEventWatermark(val seq: Int, @SerialName("created_at") val createdAt: Double? = null)
+@Serializable data class JobEvents(val job: Job, val events: List<JobEvent>,
+    @SerialName("event_watermark") val eventWatermark: JobEventWatermark? = null)

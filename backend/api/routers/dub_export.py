@@ -14,7 +14,7 @@ import zipfile
 from functools import partial
 from pathlib import Path, PureWindowsPath
 from tempfile import TemporaryFile
-from typing import Annotated, BinaryIO, Optional
+from typing import Annotated, Any, BinaryIO, Optional
 
 from core.config import DUB_DIR
 from core.http_headers import content_disposition
@@ -22,6 +22,7 @@ from core.logging_utils import log_safe
 from core.path_security import UnsafePath, portable_filename, resolve_within
 from core.tasks import task_manager
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response, Depends
+from pydantic import BaseModel
 from fastapi.responses import FileResponse, StreamingResponse
 from starlette.concurrency import iterate_in_threadpool, run_in_threadpool
 from starlette.types import Receive, Scope, Send
@@ -355,23 +356,38 @@ async def get_job(job_id: str):
     return row
 
 
+class PersistedJobEvent(BaseModel):
+    seq: int
+    created_at: float
+    payload: str
+
+
+class JobEventWatermark(BaseModel):
+    seq: int
+    created_at: Optional[float]
+
+
+class PersistedJobEvents(BaseModel):
+    job: dict[str, Any]
+    events: list[PersistedJobEvent]
+    event_watermark: JobEventWatermark
+
+
 @router.get("/jobs/{job_id}/events")
-async def list_job_events(job_id: str, after_seq: int = 0, limit: int = 500):
-    """Persisted SSE tail. Strict ascending seq so the client can stitch
-    it onto a live feed (which starts above the last returned seq).
+async def list_job_events(job_id: str, after_seq: int = 0, limit: int = 500) -> PersistedJobEvents:
+    """A bounded ascending SSE page and true retained-tail watermark.
+
+    Job, page and watermark share one read snapshot. The watermark is not
+    limited by the page, so it can fence older history before a live feed.
     """
     from core import job_store
-    row = job_store.get(job_id)
-    if not row:
+    page = await run_in_threadpool(job_store.event_page, job_id, after_seq, limit)
+    if page is None:
         raise HTTPException(
             status_code=404,
             detail="No job with that id. It may have expired, been deleted, or the server restarted before it was persisted — check the dub history in the sidebar.",
         )
-    limit = max(1, min(2000, int(limit)))
-    return {
-        "job": row,
-        "events": job_store.events_since(job_id, after_seq=after_seq, limit=limit),
-    }
+    return PersistedJobEvents(**page)
 
 
 @router.post("/tasks/cancel/{task_id}")

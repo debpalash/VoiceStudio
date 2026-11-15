@@ -62,7 +62,19 @@ public struct JobEvent: Codable, Sendable {
     public let seq: Int; public let payload: String; public let created_at: Double?
     public init(seq: Int,payload: String,created_at: Double? = nil) {self.seq=seq;self.payload=payload;self.created_at=created_at}
 }
-public struct JobEvents: Codable, Sendable { public let job: Job; public let events: [JobEvent] }
+public struct JobEventWatermark: Codable, Sendable {
+    public let seq: Int
+    public let created_at: Double?
+    public init(seq: Int,created_at: Double? = nil) {self.seq=seq;self.created_at=created_at}
+}
+public struct JobEvents: Codable, Sendable {
+    public let job: Job
+    public let events: [JobEvent]
+    public let event_watermark: JobEventWatermark?
+    public init(job: Job,events: [JobEvent],event_watermark: JobEventWatermark? = nil) {
+        self.job=job;self.events=events;self.event_watermark=event_watermark
+    }
+}
 public struct Segment: Codable, Sendable {
     public let id: String
     public var start: Double

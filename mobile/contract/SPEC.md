@@ -332,6 +332,13 @@ All tabs work without pairing once on-device models are installed (see M2); the 
   tasks require a newer persisted event than the consent-bound observation
   baseline; archived events alone stay display-only. Grant tokens and sequence/
   timestamp evidence remain local and never enter report properties.
+  `GET /jobs/{id}/events` keeps its existing ascending `after_seq`/`limit`
+  behavior and adds `event_watermark: {seq, created_at}` for the true retained
+  tail, read atomically with the job/page. A missing, inconsistent or unreadable
+  watermark cannot arm a resumed-task diagnostic baseline; UI progress and new
+  task submissions remain compatible. Current writers retain 500 events, while
+  older/imported histories can be larger; the watermark is an indexed bounded
+  lookup, not a scan of all pages.
   A failed write remains off in memory and offers Retry for that same choice.
   Crash recovery accepts only evidence from the current enabled epoch, within
   its opt-in window and TTL, and retains the diagnosed build's version instead

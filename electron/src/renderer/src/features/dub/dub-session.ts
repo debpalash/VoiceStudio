@@ -994,6 +994,7 @@ function taskFailureKey(event: TaskEvent): string {
 interface PersistedTaskEvents {
   job: { id: string; status: string; created_at: number; updated_at: number };
   events: { seq: number; created_at: number; payload: string }[];
+  event_watermark?: { seq: number; created_at: number | null };
 }
 function taskDiagnosticProof(
   taskId: string,
@@ -1021,10 +1022,22 @@ function resumedTaskDiagnosticProof(
         !Array.isArray(saved.events)
       )
         return null;
-      const sequence = Math.max(0, ...saved.events.map((event) => event.seq));
+      const watermark = saved.event_watermark;
+      const visibleSequence = Math.max(0, ...saved.events.map((event) => event.seq));
+      // Missing old-server metadata cannot prove that a capped page is history's tail.
+      if (
+        !watermark ||
+        !Number.isSafeInteger(watermark.seq) ||
+        watermark.seq < visibleSequence ||
+        !Number.isSafeInteger(visibleSequence) ||
+        (watermark.seq > 0 && !Number.isFinite(watermark.created_at))
+      )
+        return null;
+      const sequence = watermark.seq;
       const timestamp = Math.max(
         saved.job.created_at,
         saved.job.updated_at,
+        watermark.created_at ?? 0,
         ...saved.events.map((event) => event.created_at),
       );
       return Number.isSafeInteger(sequence) && Number.isFinite(timestamp)
@@ -1062,7 +1075,11 @@ function reportTaskDiagnostic(
       )
         return false;
       const saved = await apiJson<PersistedTaskEvents>(
-        '/jobs/' + encodeURIComponent(proof.taskId) + '/events?limit=2000',
+        '/jobs/' +
+          encodeURIComponent(proof.taskId) +
+          '/events?after_seq=' +
+          baseline.sequence +
+          '&limit=2000',
         { signal: AbortSignal.any([signal, AbortSignal.timeout(2000)]) },
       );
       if (saved.job?.id !== proof.taskId || !Array.isArray(saved.events)) return false;

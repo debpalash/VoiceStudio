@@ -16,9 +16,14 @@ internal class CompanionTaskFailureGate {
         if(before == null || before != after) { observation = null; return null }
         if(submitted == after) return after // This POST was submitted under the unchanged grant.
         if(task != taskID || observation != after) {
+            val watermark=page.eventWatermark
+            if(watermark==null || watermark.seq<0 || watermark.seq<(page.events.maxOfOrNull {it.seq}?:0) ||
+                (watermark.seq>0 && watermark.createdAt?.let {it.isFinite() && it>0}!=true)) {
+                observation=null;return null
+            }
             task = taskID; observation = after
-            sequence = page.events.maxOfOrNull {it.seq} ?: 0
-            serverFloor = (page.events.mapNotNull {it.createdAt} + listOfNotNull(page.job.updatedAt,page.job.createdAt))
+            sequence = watermark.seq
+            serverFloor = (page.events.mapNotNull {it.createdAt} + listOfNotNull(page.job.updatedAt,page.job.createdAt,watermark.createdAt))
                 .filter {it.isFinite() && it > 0}.maxOrNull()
             return null // The first page is history, even if the task is already terminal.
         }

@@ -791,13 +791,26 @@ class Reporter:
         try:
             self.schema = _schema()
             self.intake.maxsize = _limit(self.schema,'queue_count',64)
-        except Exception:return  # Missing/corrupt policy fails closed.
+        except Exception:
+            # Reporting stays unavailable, but withdrawal must outlive a
+            # transient storage failure even when policy cannot be loaded.
+            with self.ack_lock:
+                self.schema = None
+                self.enabled = False
+                transport, self.transport = self.transport, None
+            if transport:
+                transport.shutdown()
         while not self.stop.is_set():
             try:
                 with self.lock:
                     if self.stop.is_set():
                         break
-                    self._tick()
+                    if self.schema is not None:
+                        self._tick()
+                    elif self._hard_killed():
+                        # refresh owns the bounded revocation retry. Without
+                        # policy, never parse, send or purge unknown evidence.
+                        self.refresh()
             except Exception:
                 # Never log raw input, and never let diagnostics stop the app.
                 pass

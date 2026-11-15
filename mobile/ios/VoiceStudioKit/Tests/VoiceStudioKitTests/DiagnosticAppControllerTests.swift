@@ -103,7 +103,7 @@ func companionFailureRequiresNewServerEventAndTheSameObservedGrant(_ scenario: S
     let storage=DiagnosticControllerStore(),transport=DiagnosticControllerTransport();storage.allowWrites()
     let reports=try DiagnosticReports(directory:URL(fileURLWithPath:"/unused-test-store"),policy:DiagnosticPolicy(data:Data(contentsOf:root.appendingPathComponent("config/diagnostics.json"))),destination:DiagnosticDestination(site:"localtest123",host:"http://127.0.0.1:1",appUrl:"https://app.test.invalid"),appVersion:"0.5.9-beta.2",transport:transport,storage:storage,disabled:{false})
     let controller=AppDiagnostics(reporter:reports);await controller.load();await controller.setConsent(true)
-    let running = #"{"job":{"id":"old-prep","status":"running","created_at":100,"updated_at":100},"events":[{"seq":7,"created_at":100,"payload":"data: {\"type\":\"progress\",\"percent\":50}\n\n"}]}"#
+    let running = #"{"job":{"id":"old-prep","status":"running","created_at":100,"updated_at":100},"events":[{"seq":7,"created_at":100,"payload":"data: {\"type\":\"progress\",\"percent\":50}\n\n"}],"event_watermark":{"seq":7,"created_at":100}}"#
     var failure = #"{"job":{"id":"old-prep","status":"failed","created_at":100,"updated_at":101},"events":[{"seq":8,"created_at":101,"payload":"data: {\"type\":\"error\"}\n\n"}]}"#
     if scenario=="old-sequence" {failure=failure.replacingOccurrences(of:"\"seq\":8",with:"\"seq\":7")}
     if scenario=="old-time" {failure=failure.replacingOccurrences(of:"\"created_at\":101",with:"\"created_at\":99")}

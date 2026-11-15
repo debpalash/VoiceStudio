@@ -612,16 +612,29 @@ def test_enable_while_killed_creates_no_new_grant_profile_or_directory(reporter,
 
 
 @pytest.mark.parametrize('kill',['OMNIVOICE_DIAGNOSTICS_DISABLED','OMNIVOICE_ANALYTICS_DISABLED'])
-def test_killed_startup_revokes_before_a_missing_policy_stops_the_worker(reporter,monkeypatch,kill):
+def test_killed_startup_revokes_without_a_reporting_policy(reporter,monkeypatch,kill):
     reports = importlib.import_module("core.diagnostic_reports")
     from core import prefs
     reporter.consent(True)
     monkeypatch.setenv(kill,'1')
     monkeypatch.setattr(reports,'_schema',lambda:(_ for _ in ()).throw(ValueError('policy unavailable')))
     restarted=reports.Reporter()
-    restarted._run()
-    assert (restarted.root/'revoked.json').exists() or prefs._load()['diagnostics_enabled'] is False
-    assert not restarted.capture('backend_crash')
+    attempted=threading.Event()
+    refresh=restarted.refresh
+    def observed_refresh():
+        try:return refresh()
+        finally:attempted.set()
+    monkeypatch.setattr(restarted,'refresh',observed_refresh)
+    restarted.start()
+    try:
+        assert attempted.wait(5)
+        with restarted.lock:
+            assert (restarted.root/'revoked.json').exists() or prefs._load()['diagnostics_enabled'] is False
+            assert not restarted.capture('backend_crash')
+    finally:
+        restarted.stop.set()
+        restarted.thread.join(2)
+    assert not restarted.thread.is_alive()
 
 
 @pytest.mark.parametrize('cancelled',[False,True])

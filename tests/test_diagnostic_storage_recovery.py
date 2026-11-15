@@ -1184,6 +1184,98 @@ def test_hard_kill_without_any_preferences_does_not_create_a_grant(reporter, mon
     assert not reporter.capture("engine_failed")
 
 
+@pytest.mark.parametrize("policy_error", [FileNotFoundError, ValueError])
+def test_worker_retries_killed_revocation_without_a_reporting_policy(reporter, monkeypatch, policy_error):
+    reports = importlib.import_module("core.diagnostic_reports")
+    from core import prefs
+    from types import SimpleNamespace
+    reporter.consent(True)
+    clock, attempts = [100.0], []
+    failed, recovered, writable = threading.Event(), threading.Event(), threading.Event()
+    atomic, save, schema = reports._atomic, prefs._save, reporter.schema
+    monkeypatch.setattr(reports, "time", SimpleNamespace(time=reports.time.time, monotonic=lambda: clock[0]))
+
+    def policy():
+        raise policy_error("controlled unavailable reporting policy")
+
+    def fence(path, value):
+        if path.name == "revoked.json":
+            attempts.append(clock[0])
+            if not writable.is_set():
+                raise PermissionError(errno.EACCES, "controlled unavailable fence storage")
+        result = atomic(path, value)
+        if path.name == "revoked.json":
+            recovered.set()
+        return result
+
+    def preferences(value):
+        if not writable.is_set():
+            failed.set()
+            raise OSError(errno.EIO, "controlled unavailable preference storage")
+        return save(value)
+
+    monkeypatch.setattr(reports, "_schema", policy)
+    monkeypatch.setattr(reports, "_atomic", fence)
+    monkeypatch.setattr(prefs, "_save", preferences)
+    monkeypatch.setenv("OMNIVOICE_DIAGNOSTICS_DISABLED", "1")
+    instance = reports.Reporter()
+    instance.start()
+    try:
+        assert failed.wait(5)
+        with instance.lock:
+            assert attempts == [100.0]
+            assert not instance.capture("backend_crash") and instance.transport is None
+            writable.set()
+            clock[0] = 160.0
+        assert recovered.wait(5), "policy failure terminated the durable withdrawal retry worker"
+        with instance.lock:
+            assert attempts == [100.0, 160.0]
+            assert not instance.enabled and not instance.capture("backend_crash")
+    finally:
+        instance.stop.set()
+        instance.thread.join(2)
+    assert not instance.thread.is_alive()
+    monkeypatch.delenv("OMNIVOICE_DIAGNOSTICS_DISABLED")
+    monkeypatch.setattr(reports, "_schema", lambda: schema)
+    restarted = reports.Reporter()
+    restarted.schema = schema
+    restarted.refresh()
+    assert not restarted.enabled and not restarted.capture("backend_crash")
+    assert prefs.get("diagnostics_enabled") is False
+
+
+@pytest.mark.parametrize("existing_grant", [False, True])
+def test_policy_failure_worker_preserves_unknown_evidence_without_creating_authority(reporter, monkeypatch, existing_grant):
+    reports = importlib.import_module("core.diagnostic_reports")
+    from core import prefs
+    if existing_grant:
+        reporter.consent(True)
+        assert reporter.capture("engine_failed")
+        reporter._tick()
+    else:
+        monkeypatch.setenv("OMNIVOICE_DIAGNOSTICS_DISABLED", "1")
+    before = {path: path.read_bytes() for path in reporter.root.rglob("*") if path.is_file()}
+    loaded = threading.Event()
+
+    def policy():
+        loaded.set()
+        raise ValueError("controlled corrupt reporting policy")
+
+    monkeypatch.setattr(reports, "_schema", policy)
+    instance = reports.Reporter()
+    instance.start()
+    try:
+        assert loaded.wait(5)
+        assert not instance.capture("backend_crash") and instance.transport is None
+        assert {path: path.read_bytes() for path in reporter.root.rglob("*") if path.is_file()} == before
+        if not existing_grant:
+            assert not Path(prefs._PREFS_PATH).exists()
+    finally:
+        instance.stop.set()
+        instance.thread.join(2)
+    assert not instance.thread.is_alive()
+
+
 @pytest.mark.parametrize("unread", [False, True])
 def test_hard_kill_retries_failed_durable_fence_at_bounded_cadence(reporter, monkeypatch, unread):
     import builtins

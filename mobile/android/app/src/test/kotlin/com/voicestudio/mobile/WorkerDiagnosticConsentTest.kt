@@ -465,7 +465,7 @@ class WorkerDiagnosticConsentTest {
             val secondPage = java.util.concurrent.CountDownLatch(1)
             val release = java.util.concurrent.CountDownLatch(1)
             val polls = java.util.concurrent.atomic.AtomicInteger()
-            val running = """{"job":{"status":"running","created_at":100,"updated_at":100},"events":[{"seq":7,"created_at":100,"payload":"data: {\"type\":\"progress\",\"percent\":50}"}]}"""
+            val running = """{"job":{"status":"running","created_at":100,"updated_at":100},"events":[{"seq":7,"created_at":100,"payload":"data: {\"type\":\"progress\",\"percent\":50}"}],"event_watermark":{"seq":7,"created_at":100}}"""
             var failed = """{"job":{"status":"failed","created_at":100,"updated_at":101},"events":[{"seq":8,"created_at":101,"payload":"data: {\"type\":\"error\"}"}]}"""
             if (scenario == "old-sequence") failed = failed.replace("\"seq\":8", "\"seq\":7")
             if (scenario == "old-time") failed = failed.replace("\"created_at\":101", "\"created_at\":99")

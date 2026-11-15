@@ -83,7 +83,13 @@ for a bounded retry. Saving a choice never replaces unread shared preferences;
 a hard-disabled launch still invalidates an unread old grant before it can resume.
 Reopening a saved failed job only displays its old error; it does not create a
 new report under a later consent choice. Resumed operations report only failures
-proved fresh under the same grant. Changing consent in another window invalidates
+proved fresh under the same grant. The existing job-events API supplies an
+indexed `event_watermark` (true retained-tail sequence and server time) from the
+same read snapshot as its bounded ascending page. Verification starts after that
+watermark; it never scans all history. Older servers without the watermark still
+show job progress, but cannot authorize resumed-history diagnostics. Fresh tasks
+submitted under the current grant retain their independent submission proof.
+Changing consent in another window invalidates
 delayed captures. Uncaught startup errors whose reporting permission was unknown
 remain local; a later opt-in cannot authorize them retrospectively.
 A failed consent write is shown with Retry and leaves the current process off.

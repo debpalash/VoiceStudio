@@ -16,9 +16,14 @@ public struct CompanionTaskFailureGate: Sendable {
         guard let before,before==after else {observation=nil;return nil}
         if submitted==after {return after}
         if task != taskID || observation != after {
+            guard let watermark=page.event_watermark,
+                  watermark.seq >= (page.events.map(\.seq).max() ?? 0),watermark.seq >= 0,
+                  watermark.seq == 0 || watermark.created_at.map {$0.isFinite && $0>0} == true else {
+                observation=nil;return nil
+            }
             task=taskID;observation=after
-            sequence=page.events.map(\.seq).max() ?? 0
-            serverFloor=(page.events.compactMap(\.created_at)+[page.job.created_at,page.job.updated_at].compactMap {$0})
+            sequence=watermark.seq
+            serverFloor=(page.events.compactMap(\.created_at)+[page.job.created_at,page.job.updated_at,watermark.created_at].compactMap {$0})
                 .filter {$0.isFinite && $0>0}.max()
             return nil // The first page is history, including an already-terminal task.
         }

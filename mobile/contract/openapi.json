@@ -2737,6 +2737,31 @@
     "title": "InstallModelRequest",
     "type": "object"
    },
+   "JobEventWatermark": {
+    "properties": {
+     "created_at": {
+      "anyOf": [
+       {
+        "type": "number"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Created At"
+     },
+     "seq": {
+      "title": "Seq",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "seq",
+     "created_at"
+    ],
+    "title": "JobEventWatermark",
+    "type": "object"
+   },
    "LocalValue": {
     "properties": {
      "key": {
@@ -3201,6 +3226,55 @@
      "text"
     ],
     "title": "ParseSubtitleTextRequest",
+    "type": "object"
+   },
+   "PersistedJobEvent": {
+    "properties": {
+     "created_at": {
+      "title": "Created At",
+      "type": "number"
+     },
+     "payload": {
+      "title": "Payload",
+      "type": "string"
+     },
+     "seq": {
+      "title": "Seq",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "seq",
+     "created_at",
+     "payload"
+    ],
+    "title": "PersistedJobEvent",
+    "type": "object"
+   },
+   "PersistedJobEvents": {
+    "properties": {
+     "event_watermark": {
+      "$ref": "#/components/schemas/JobEventWatermark"
+     },
+     "events": {
+      "items": {
+       "$ref": "#/components/schemas/PersistedJobEvent"
+      },
+      "title": "Events",
+      "type": "array"
+     },
+     "job": {
+      "additionalProperties": true,
+      "title": "Job",
+      "type": "object"
+     }
+    },
+    "required": [
+     "job",
+     "events",
+     "event_watermark"
+    ],
+    "title": "PersistedJobEvents",
     "type": "object"
    },
    "PreflightCheck": {
@@ -16008,7 +16082,7 @@
   },
   "/jobs/{job_id}/events": {
    "get": {
-    "description": "Persisted SSE tail. Strict ascending seq so the client can stitch\nit onto a live feed (which starts above the last returned seq).",
+    "description": "A bounded ascending SSE page and true retained-tail watermark.\n\nJob, page and watermark share one read snapshot. The watermark is not\nlimited by the page, so it can fence older history before a live feed.",
     "operationId": "list_job_events_jobs__job_id__events_get",
     "parameters": [
      {
@@ -16045,7 +16119,9 @@
      "200": {
       "content": {
        "application/json": {
-        "schema": {}
+        "schema": {
+         "$ref": "#/components/schemas/PersistedJobEvents"
+        }
        }
       },
       "description": "Successful Response"
