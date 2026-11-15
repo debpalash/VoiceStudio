@@ -555,6 +555,67 @@ func realAuxiliaryPhoneDubOfflineAndResume() async throws {
     #expect(try pcm.read(start: 13000,count: 100).samples.allSatisfy { $0 == 0 })
 }
 
+@Test(arguments: [PhoneDubPackage.clips,.stems], ["important","ordinary","filesystem","missing","low-important","low-ordinary","negative-important"])
+func nativeDubPackageUsesAvailableCapacityWithoutBypassingLowSpace(_ kind: PhoneDubPackage,_ probe: String) async throws {
+    let root = try fixtureRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appendingPathComponent("source.wav"); try Data("natural recording".utf8).write(to: source)
+    let store = try PhoneDubStore(root: root.appendingPathComponent("jobs")), engine = FixtureEngine()
+    let models = try [fixtureModel(.asr),fixtureModel(.translate),fixtureModel(.clone)]
+    let request = try await store.create(source: source,title: "Source",targets: [PhoneDubTarget(code: "fr",name: "French")],models: models,consent: true,audioOnly: true)
+    let pipeline = PhoneDubPipeline(store: store,engine: engine,decoder: FixtureDecoder(),media: FixtureMedia())
+    let complete = try await pipeline.run(id: request.id,models: models)
+    let frames = kind == .stems ? complete.frames*2 : complete.renders.filter { $0.target == "fr" }.reduce(0) { $0+$1.frames }
+    let required = Int64(frames)*4+16_000_000
+    let workspace = root.appendingPathComponent("exports"); try PrivateFiles.directory(workspace)
+    let capacity: PhoneDubStorageCapacity
+    switch probe {
+    case "ordinary": capacity = PhoneDubStorageCapacity(important: 0,ordinary: required)
+    case "filesystem": capacity = PhoneDubStorageCapacity(important: 0,ordinary: 0,filesystem: required)
+    case "missing": capacity = PhoneDubStorageCapacity()
+    case "low-important": capacity = PhoneDubStorageCapacity(important: required-1,ordinary: required,filesystem: required)
+    case "low-ordinary": capacity = PhoneDubStorageCapacity(important: 0,ordinary: required-1,filesystem: required)
+    case "negative-important": capacity = PhoneDubStorageCapacity(important: -1,ordinary: required)
+    default: capacity = PhoneDubStorageCapacity(important: required)
+    }
+    let allowed = ["important","ordinary","filesystem","negative-important"].contains(probe)
+    if allowed {
+        let package = try await store.exportPackage(request.id,target: "fr",kind: kind,workspace: workspace,availableStorage: { _ in capacity })
+        #expect(try ProjectArchive.entries(package).contains { $0.path == "manifest.json" })
+    } else {
+        do {
+            _ = try await store.exportPackage(request.id,target: "fr",kind: kind,workspace: workspace,availableStorage: { _ in capacity })
+            Issue.record("Export ignored insufficient or unknown capacity")
+        } catch let error as ClientError { #expect(error.key == "mobile.local.storage_required") }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: workspace.path).isEmpty)
+    }
+    #expect(try await store.checkpoint(request.id).outputs.map(\.file) == complete.outputs.map(\.file))
+}
+
+@Test(arguments: [PhoneDubPackage.clips,.stems], [false,true])
+func nativeDubPackageRequiresActualWorkspaceCapacity(_ kind: PhoneDubPackage,_ existingWorkspace: Bool) async throws {
+    let root = try fixtureRoot(); defer { try? FileManager.default.removeItem(at: root) }
+    let source = root.appendingPathComponent("source.wav"); try Data("natural recording".utf8).write(to: source)
+    let store = try PhoneDubStore(root: root.appendingPathComponent("jobs")), engine = FixtureEngine()
+    let models = try [fixtureModel(.asr),fixtureModel(.translate),fixtureModel(.clone)]
+    let request = try await store.create(source: source,title: "Source",targets: [PhoneDubTarget(code: "fr",name: "French")],models: models,consent: true,audioOnly: true)
+    let complete = try await PhoneDubPipeline(store: store,engine: engine,decoder: FixtureDecoder(),media: FixtureMedia()).run(id: request.id,models: models)
+    let workspace = root.appendingPathComponent("exports")
+    if existingWorkspace { try PrivateFiles.directory(workspace) }
+    do {
+        _ = try await store.exportPackage(request.id,target: "fr",kind: kind,workspace: workspace,availableStorage: { url in
+            PhoneDubStorageCapacity(important: url == workspace ? 1 : Int64.max)
+        })
+        Issue.record("Export checked the saved job volume instead of its output workspace")
+    } catch let error as ClientError { #expect(error.key == "mobile.local.storage_required") }
+    #expect(try FileManager.default.contentsOfDirectory(atPath: workspace.path).isEmpty)
+    if !existingWorkspace { try FileManager.default.removeItem(at: workspace) }
+    let package = try await store.exportPackage(request.id,target: "fr",kind: kind,workspace: workspace,availableStorage: { url in
+        PhoneDubStorageCapacity(important: url == workspace ? Int64.max : 1)
+    })
+    #expect(try ProjectArchive.entries(package).contains { $0.path == "manifest.json" })
+    #expect(try await store.checkpoint(request.id).outputs.map(\.file) == complete.outputs.map(\.file))
+}
+
 @Test func nativeDubPackagesShareCastReferencesAndExportVerifiedMarkedClipsWithoutReferenceAssets() async throws {
     let root = try fixtureRoot(); defer { try? FileManager.default.removeItem(at: root) }
     let source = root.appendingPathComponent("source.wav"); try Data("natural recording".utf8).write(to: source)
