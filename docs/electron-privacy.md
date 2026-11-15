@@ -17,6 +17,13 @@ known-name bound so malformed log lines cannot trigger repeated suffix scans.
 Enclosing URL bounds are verified from structured JSON or the complete URI
 token; ambiguous quoted tails are redacted conservatively.
 
+Manual bug reports prioritize the existing scrubbed, bounded faulting-thread
+excerpt for the current native backend exit ahead of verbose status tails. This
+keeps useful crash context within the issue URL's size budget; it does not fix
+or infer the native crash's cause. Ordinary reports retain their section order.
+The report still opens for review before submission, with no automatic raw-log
+upload or additional network request.
+
 Watermark controls appear when the backend reports AudioSeal available and affect new audio through the existing marking path. No audio producer bypasses `mark_synthetic`. Analytics consent uses the existing backend opt-in endpoint and remains unchanged until the user explicitly switches it. After consent, the renderer records fixed screen labels and workflow action labels (clone, design, dubbing, transcription); the backend records lifecycle/error events. Privacy-safe pageviews use fixed app paths under `app.voicestudio.sh`, giving aggregate screen counts without sending renderer URLs or dynamic route segments. The renderer never contacts the analytics service itself: it hands allowlisted events to the local backend, which forwards them only while consent is on. Uncaught renderer errors are reduced to a coarse class and stage; no message, stack, credential, home path, text, audio, filename, or user-named content is sent. Raw exception autocapture, DOM autocapture, automatic pageviews, and session recordings remain disabled. Unavailable features do not display inert toggles, and failed saves preserve confirmed state.
 
 The analytics destination is the public Supermetry site id in `config/analytics.json` (host `https://app.supermetry.com`); every build uses it, and `SUPERMETRY_SITE_ID` / `SUPERMETRY_HOST` override it for developers. Nothing is baked in at build time.
