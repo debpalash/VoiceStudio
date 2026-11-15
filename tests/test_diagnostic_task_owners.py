@@ -1,13 +1,15 @@
 """Delayed completed faults keep their pre-await authority; new units can opt in."""
 import asyncio
 import importlib
+import json
 import pytest
 from test_diagnostic_reports import reporter  # noqa: F401
 from test_download_install_integrity import install_origin  # noqa: F401
 from test_dub_batch_engine_selection import dub_job_env, fake_registry  # noqa: F401
 
 
-def test_actual_dub_terminal_error_keeps_one_causal_report(reporter, dub_job_env, fake_registry, monkeypatch):
+@pytest.mark.parametrize("kind", ["memory", "compute", "subclass"])
+def test_actual_dub_terminal_error_keeps_one_causal_report(reporter, dub_job_env, fake_registry, monkeypatch, kind):
     from test_dub_batch_engine_selection import _one_seg_request
     tasks = importlib.import_module('core.tasks')
     dg, _job = dub_job_env
@@ -20,8 +22,15 @@ def test_actual_dub_terminal_error_keeps_one_causal_report(reporter, dub_job_env
     monkeypatch.setattr(tasks.job_store, 'append_event', lambda _identity, event: published.append(str(event)) or len(published))
     reporter.consent(True)
 
+    from services.model_manager import GpuJobTimeoutError
+
+    class ComputeDeadline(GpuJobTimeoutError):
+        pass
+
+    error = {"memory": MemoryError, "compute": GpuJobTimeoutError, "subclass": ComputeDeadline}[kind]
+
     def fail(self, text, **kwargs):
-        raise MemoryError('private failing allocation')
+        raise error('private failing allocation')
 
     monkeypatch.setattr(engine, 'generate', fail)
 
@@ -41,7 +50,8 @@ def test_actual_dub_terminal_error_keeps_one_causal_report(reporter, dub_job_env
     reporter._tick()
     rows = reporter._files()
     assert len(rows) == 1
-    assert rows[0]['props']['error_type'] == 'MemoryError'
+    assert rows[0]['props']['error_type'] == ('MemoryError' if kind == 'memory' else 'TimeoutError')
+    assert rows[0]['props']['error_code'] == ('HOST_MEMORY_EXHAUSTED' if kind == 'memory' else 'UNKNOWN')
     assert rows[0]['props']['occurrences'] == 1
     assert any('"type": "error"' in event for event in published)
     assert all('diagnostic' not in event and 'private' not in event for event in published)
@@ -65,7 +75,8 @@ def test_actual_task_runner_failure_stays_with_its_initial_grant(reporter, monke
             return 1
         monkeypatch.setattr(tasks.job_store,'append_event',append_event)
         async def raised():
-            entered.set();await completed_failure
+            entered.set()
+            await completed_failure
         async def terminal():
             yield 'data: {"type":"error","reason":"controlled technical failure"}\n\n'
         manager=tasks.TaskManager()
@@ -78,13 +89,19 @@ def test_actual_task_runner_failure_stays_with_its_initial_grant(reporter, monke
                 # Completion is already a fault under A/OFF; the dispatcher
                 # cannot process its scheduled continuation until we yield.
                 completed_failure.set_exception(RuntimeError('controlled technical failure'))
-            if choice=='replacement':reporter.consent(False);reporter.consent(True)
-            elif choice=='later_opt_in':reporter.consent(True)
+            if choice=='replacement':
+                reporter.consent(False)
+                reporter.consent(True)
+            elif choice=='later_opt_in':
+                reporter.consent(True)
             release.set()
-            while await asyncio.wait_for(events.get(),2) is not None:pass
+            while await asyncio.wait_for(events.get(),2) is not None:
+                pass
             assert manager.active_tasks['isolated-diagnostic-review']['status']=='failed'
         finally:
-            release.set();worker.cancel();await asyncio.gather(worker,return_exceptions=True)
+            release.set()
+            worker.cancel()
+            await asyncio.gather(worker,return_exceptions=True)
     asyncio.run(run())
     reporter._tick()
     rows=reporter._files()
@@ -618,3 +635,37 @@ def test_actual_dub_native_exception_after_cancel_stays_local(reporter, dub, can
     assert any(event['type'] == 'error' for event in dub.run())
     reporter._tick()
     assert len(reporter._files()) == int(not cancelled)
+
+
+@pytest.mark.parametrize("code", ["dub_source_changed", "dub_timing_overflow", "UNKNOWN", "NETWORK_ERROR", ["dub_source_changed"], {"code": "dub_source_changed"}])
+@pytest.mark.parametrize("choice", ["current", "off", "regrant"])
+def test_expected_dub_refusal_frames_stay_local_without_changing_task_failure(reporter, monkeypatch, code, choice):
+    tasks = importlib.import_module("core.tasks")
+    for name in ("create", "mark_running", "mark_failed", "mark_done", "mark_cancelled", "append_event"):
+        monkeypatch.setattr(tasks.job_store, name, lambda *args, **kwargs: None)
+    monkeypatch.setattr(tasks.run_sentinel, "touch_activity", lambda *args, **kwargs: None)
+    reporter.consent(choice != "off")
+    frame = 'data: ' + json.dumps({"type": "error", "error_code": code, "reason": "private user-actionable detail"}) + '\n\n'
+
+    async def run():
+        async def stream():
+            if choice == "regrant":
+                reporter.consent(False)
+                reporter.consent(True)
+            yield frame
+        manager = tasks.TaskManager()
+        await manager.add_task("refusal", "dub_generate", stream)
+        worker = asyncio.create_task(manager.worker())
+        try:
+            await asyncio.wait_for(manager.queue.join(), 2)
+            task = manager.active_tasks["refusal"]
+            assert task["status"] == "failed"
+            assert task["history"] == [frame]
+            assert task["error"] == "private user-actionable detail"
+        finally:
+            worker.cancel()
+            await asyncio.gather(worker, return_exceptions=True)
+    asyncio.run(run())
+    reporter._tick()
+    expected = choice == "current" and code not in ("dub_source_changed", "dub_timing_overflow")
+    assert len(reporter._files()) == int(expected)

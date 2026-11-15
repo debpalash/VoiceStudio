@@ -219,3 +219,58 @@ def test_disk_preflight_reports_terminal_download_under_its_original_worker_gran
     assert any(event.get("phase") == ("install_cancelled" if change == "cancel" else "install_error") for event in events)
     assert not download._active_installs
     assert not download._install_cooldowns
+
+
+@pytest.mark.parametrize("entry", ["task", "preload", "capture"])
+@pytest.mark.parametrize("kind", ["compute", "subclass", "spoof", "timeout", "connection"])
+def test_local_compute_timeout_classification_is_central(
+    reporter, preload, monkeypatch, entry, kind,
+):
+    from core import diagnostic_reports, tasks
+    from services import model_manager
+
+    class ComputeDeadline(model_manager.GpuJobTimeoutError):
+        pass
+
+    spoof = type("GpuJobTimeoutError", (TimeoutError,), {"__module__": "services.model_manager"})
+    error = {"compute": model_manager.GpuJobTimeoutError, "subclass": ComputeDeadline,
+             "spoof": spoof, "timeout": TimeoutError, "connection": ConnectionError}[kind]("private detail")
+    reporter.consent(True)
+    if entry == "capture":
+        import builtins
+        original_import = builtins.__import__
+
+        def no_engine_import(name, *args, **kwargs):
+            assert name not in {"services", "services.model_manager"}, "capture imported engine code"
+            return original_import(name, *args, **kwargs)
+
+        with monkeypatch.context() as capture_guard:
+            capture_guard.setattr(builtins, "__import__", no_engine_import)
+            assert diagnostic_reports.capture_failure("dub", error=error)
+    elif entry == "preload":
+        async def fail():
+            raise error
+        monkeypatch.setattr(preload, "_load_model_with_timeout", fail)
+        asyncio.run(preload.preload_model())
+    else:
+        for name in ("create", "mark_running", "mark_failed", "mark_done", "mark_cancelled", "append_event"):
+            monkeypatch.setattr(tasks.job_store, name, lambda *args, **kwargs: None)
+        monkeypatch.setattr(tasks.run_sentinel, "touch_activity", lambda *args, **kwargs: None)
+
+        async def run():
+            async def fail():
+                raise error
+            manager = tasks.TaskManager()
+            await manager.add_task("compute-timeout", "dub_generate", fail)
+            worker = asyncio.create_task(manager.worker())
+            try:
+                await asyncio.wait_for(manager.queue.join(), 2)
+                assert manager.active_tasks["compute-timeout"]["status"] == "failed"
+            finally:
+                worker.cancel()
+                await asyncio.gather(worker, return_exceptions=True)
+        asyncio.run(run())
+    saved = records(reporter)
+    assert len(saved) == 1
+    assert saved[0]["props"]["error_type"] == ("ConnectionError" if kind == "connection" else "TimeoutError")
+    assert saved[0]["props"]["error_code"] == ("UNKNOWN" if kind in {"compute", "subclass"} else "NETWORK_ERROR")

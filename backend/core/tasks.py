@@ -9,6 +9,7 @@ from core import failure
 from core import run_sentinel
 
 logger = logging.getLogger("omnivoice.tasks")
+_EXPECTED_STREAM_ERRORS = ("dub_source_changed", "dub_timing_overflow")
 
 
 def _stream_payload(update):
@@ -178,7 +179,14 @@ class TaskManager:
                                 await self._push_event(task_id, update)
                                 stream_error = _stream_failure(update)
                                 if stream_error is not None:
-                                    if diagnostic_epoch is not None and not diagnostic_reports.failure_already_captured(update, diagnostic_epoch):
+                                    frame, _ = _stream_payload(update)
+                                    code = frame.get("error_code") if frame is not None else None
+                                    expected_refusal = isinstance(code, str) and code in _EXPECTED_STREAM_ERRORS
+                                    if (
+                                        diagnostic_epoch is not None
+                                        and not expected_refusal
+                                        and not diagnostic_reports.failure_already_captured(update, diagnostic_epoch)
+                                    ):
                                         diagnostic_reports.capture_failure(diagnostic_reports.route_stage(t.get("type", "")), expected_epoch=diagnostic_epoch)
                                     t["status"] = "failed"
                                     t["error"] = stream_error

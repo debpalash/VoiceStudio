@@ -22,6 +22,7 @@ import sys
 import tempfile
 import threading
 import time
+from types import ModuleType
 import uuid
 from urllib.parse import urlsplit
 
@@ -244,8 +245,16 @@ def _exception_fields(error, schema):
             result['error_type'] = cls.__name__
             break
     result.setdefault('error_type','OtherError')
+    # Capture must not import engine code. Match the actual already-loaded
+    # class by identity so lookalike module/name metadata cannot spoof it.
+    manager = sys.modules.get('services.model_manager')
+    compute_timeout = (
+        manager.__dict__.get('GpuJobTimeoutError') if type(manager) is ModuleType else None
+    )
     if MemoryError in kinds:
         result['error_code'] = 'HOST_MEMORY_EXHAUSTED'
+    elif any(cls is compute_timeout for cls in kinds):
+        result['error_code'] = 'UNKNOWN'
     elif TimeoutError in kinds or ConnectionError in kinds:
         result['error_code'] = 'NETWORK_ERROR'
     elif OSError in kinds:
