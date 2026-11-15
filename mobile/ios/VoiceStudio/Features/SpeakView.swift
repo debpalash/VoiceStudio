@@ -213,7 +213,7 @@ struct SpeakView: View {
                 let submittedText = text
                 generation = Task {
                     generating = true; defer { generating = false; localProgress = nil }
-                    await model.perform(onPhone: route == .phone) {
+                    await model.perform(onPhone: route == .phone, diagnosticStage: "generation") {
                         if route == .phone {
                             guard let phoneModel, let engine = model.phone.engine else { throw ClientError("mobile.local.model_required") }
                             let audio: LocalAudio

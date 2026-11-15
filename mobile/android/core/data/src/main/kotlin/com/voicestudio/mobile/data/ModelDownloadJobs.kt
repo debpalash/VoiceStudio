@@ -13,6 +13,7 @@ import androidx.work.*
 import com.voicestudio.mobile.l10n.L10n
 import com.voicestudio.mobile.local.*
 import com.voicestudio.mobile.network.ClientFailure
+import com.voicestudio.mobile.network.DiagnosticInput
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.Serializable
@@ -141,12 +142,37 @@ object ModelDownloadJobs {
     internal suspend fun run(context: Context,id: String) {
         val job=currentCoroutineContext().job
         active.putIfAbsent(id,job)?.let {previous -> previous.join();run(context,id);return}
+        val diagnosticConsent=AutomaticDiagnostics.observeConsent()
         try {
             val item=read(context).firstOrNull {it.model==id&&!it.paused} ?: return
             val model=withContext(Dispatchers.IO) {context.assets.open("models.json").bufferedReader().use {ModelCatalog.decode(it.readText()).models.firstOrNull {m->m.id==id&&modelPin(m).identity==item.pin}}}
                 ?: throw ClientFailure("mobile.local.catalogue_failed")
             currentCoroutineContext().ensureActive()
-            PhoneRuntime.get(context).downloads.download(model,item.mobile);finished(context,id)
+            coroutineScope {
+                val downloads = PhoneRuntime.get(context).downloads
+                val stalls = DownloadStallObservation()
+                val observer = launch {
+                    var previousConsent = AutomaticDiagnostics.observeConsent()
+                    while(isActive) {
+                        val observation = AutomaticDiagnostics.observeConsent()
+                        if(observation != previousConsent) {
+                            stalls.observe(null,android.os.SystemClock.elapsedRealtime())
+                            previousConsent = observation
+                        }
+                        val progress = downloads.progress.value[id]
+                        if(stalls.observe(progress.takeIf {observation != null},android.os.SystemClock.elapsedRealtime()))
+                            AutomaticDiagnostics.capture(DiagnosticInput(category="install_stalled",
+                                stage="download",reason="no_progress"), observation)
+                        delay(30_000)
+                    }
+                }
+                try {downloads.download(model,item.mobile);finished(context,id)}
+                finally {observer.cancel()}
+            }
+        } catch(e:CancellationException) {throw e}
+        catch(e:Exception) {
+            AutomaticDiagnostics.captureObservedFailure(e,diagnosticConsent,stage="download")
+            throw e
         } finally {active.remove(id,job)}
     }
     internal suspend fun notification(context: Context,id: String): Notification {

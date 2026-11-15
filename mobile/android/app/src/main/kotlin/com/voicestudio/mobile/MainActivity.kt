@@ -41,12 +41,19 @@ import com.voicestudio.mobile.features.dub.DubScreen
 import com.voicestudio.mobile.features.dictate.DictateScreen
 import com.voicestudio.mobile.features.settings.SettingsScreen
 import com.voicestudio.mobile.network.ContentReportClient
+import com.voicestudio.mobile.data.AutomaticDiagnostics
+import com.voicestudio.mobile.data.AutomaticDiagnosticState
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.util.Locale
 
-class VoiceStudioApplication:Application()
+class VoiceStudioApplication:Application() {
+    override fun onCreate() {
+        super.onCreate()
+        AutomaticDiagnostics.initialize(this, BuildConfig.VERSION_NAME)
+    }
+}
 class MainActivity:ComponentActivity() {
     private var incoming by mutableStateOf<Intent?>(null)
     override fun onNewIntent(intent: Intent) {super.onNewIntent(intent);incoming=intent}
@@ -70,9 +77,24 @@ class MainActivity:ComponentActivity() {
 /** Reports go to VoiceStudio's app API: the dev server for debug builds, production for release. */
 fun contentReportClient()=ContentReportClient(BuildConfig.CONTENT_REPORTS_URL,BuildConfig.VERSION_NAME)
 
+/** Local retry feedback remains available after a declined choice closes its prompt. */
+@Composable internal fun DiagnosticSaveFailureNotice(state:AutomaticDiagnosticState,snackbars:SnackbarHostState,onRetry:()->Unit) {
+    val message=tr("diagnostics.save_failed");val retry=tr("common.retry")
+    val retryChoice by rememberUpdatedState(onRetry)
+    LaunchedEffect(state.saveFailed,state.saving,snackbars,message,retry) {
+        if(state.saveFailed && !state.saving) {
+            // A failed Keep off remains OFF and does not reopen the question or
+            // block other app actions. Retry saves the same desired choice.
+            val result=snackbars.showSnackbar(message,actionLabel=retry,withDismissAction=true,duration=SnackbarDuration.Indefinite)
+            if(result==SnackbarResult.ActionPerformed)retryChoice()
+        }
+    }
+}
+
 @Composable fun StudioApp(vm:StudioViewModel = viewModel(), reportClient:ContentReportClient? = remember {contentReportClient()},incomingIntent: Intent?=null,onIncomingConsumed: ()->Unit={}) {
     val prefs by vm.preferences.collectAsStateWithLifecycle()
     val state by vm.state.collectAsStateWithLifecycle()
+    val diagnostics by AutomaticDiagnostics.state.collectAsStateWithLifecycle()
     val context=LocalContext.current
     val configuration=LocalConfiguration.current
     val locale=if(prefs.locale=="system") configuration.locales[0].toLanguageTag() else prefs.locale
@@ -90,6 +112,7 @@ fun contentReportClient()=ContentReportClient(BuildConfig.CONTENT_REPORTS_URL,Bu
     val snackbars=remember {SnackbarHostState()}
     CompositionLocalProvider(LocalL10n provides l,LocalLayoutDirection provides direction,LocalContentReportClient provides reportClient) {
         VoiceStudioTheme(ThemePreferences(prefs.mode,prefs.lightPalette,prefs.darkPalette)) {
+            DiagnosticSaveFailureNotice(diagnostics,snackbars,AutomaticDiagnostics::retryConsent)
             CompositionLocalProvider(LocalScreenTitleProvided provides true) {
             key(state.connectionId) {
             val initialRoute=remember {if(state.error?.key=="mobile.connect.error_session_expired") "connect" else "home"}
@@ -97,10 +120,11 @@ fun contentReportClient()=ContentReportClient(BuildConfig.CONTENT_REPORTS_URL,Bu
             var received by remember {mutableStateOf<PhoneIncoming?>(null)}
             LaunchedEffect(incomingIntent,state.loading) {
                 if(!state.loading&&incomingIntent!=null) {
+                    val failure=vm.failureHandler()
                     try {PhoneIncoming.read(context,incomingIntent)?.let {payload ->
                         received=payload
                         nav.navigate(if(payload.text==null&&payload.file==null) payload.route ?: "incoming" else "incoming") {launchSingleTop=true}
-                    }} catch(e:Exception) {vm.fail(e)}
+                    }} catch(e:Exception) {failure(e)}
                     onIncomingConsumed()
                 }
             }
@@ -186,6 +210,15 @@ fun contentReportClient()=ContentReportClient(BuildConfig.CONTENT_REPORTS_URL,Bu
                 text={Column(Modifier.verticalScroll(rememberScrollState()),verticalArrangement=Arrangement.spacedBy(VSTheme.gap)) {Text(tr("consent.body"));Text(tr("mobile.consent.phone_note"))}},
                 confirmButton={TextButton(shape=MaterialTheme.shapes.small,onClick={vm.consent(true)}) {Text(tr("consent.yes"))}},
                 dismissButton={TextButton(shape=MaterialTheme.shapes.small,onClick={vm.consent(false)}) {Text(tr("consent.no"))}})
+            else if(!state.loading && diagnostics.ready && diagnostics.status.available && !diagnostics.status.prompted)
+                AlertDialog(shape=MaterialTheme.shapes.large,onDismissRequest={AutomaticDiagnostics.setConsent(false)},
+                    title={Text(tr("diagnostics.title"))},
+                    text={Column(Modifier.verticalScroll(rememberScrollState())) {
+                        Text(tr("diagnostics.body"))
+                        if(diagnostics.saveFailed) Text(tr("diagnostics.save_failed"),color=MaterialTheme.colorScheme.error)
+                    }},
+                    confirmButton={TextButton(enabled=!diagnostics.saving,onClick={AutomaticDiagnostics.setConsent(true)}) {Text(tr("diagnostics.allow"))}},
+                    dismissButton={TextButton(enabled=!diagnostics.saving,onClick={AutomaticDiagnostics.setConsent(false)}) {Text(tr("diagnostics.keep_off"))}})
             ContentReportHost(vm,snackbars)
         }
     }

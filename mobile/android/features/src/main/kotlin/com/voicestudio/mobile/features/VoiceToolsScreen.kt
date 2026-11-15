@@ -45,6 +45,8 @@ private data class VoiceToolResult(val titleKey: String,val file: File,val subje
     var work by remember {mutableStateOf<Job?>(null)}
     var progress by remember {mutableStateOf(0f)}
     val running=work?.isActive==true
+    var importFailure by remember {mutableStateOf<((Throwable)->Unit)?>(null)}
+    var recordingFailure by remember {mutableStateOf<(Throwable)->Unit>({})}
     fun selected(task: String,capability: String)=phone.preferredModel(phone.models.filter {it.capability==capability},vm.phone.ramBytes,prefs.phoneModels[task])
     val tts=selected("production-tts","tts")
     val clone=selected("production-clone","clone")
@@ -53,20 +55,28 @@ private data class VoiceToolResult(val titleKey: String,val file: File,val subje
     val choices=(0 until speakers).map {Choice("preset:$it",tr("mobile.local.preset_voice",mapOf("number" to it+1)))}+phone.voices.map {Choice("phone:"+it.id,it.name)}
     val needed=if(mode=="convert") listOfNotNull(asr,clone) else listOfNotNull(tts.takeIf {listOf(voiceA,voiceB).any {it.startsWith("preset:")}},clone.takeIf {listOf(voiceA,voiceB).any {it.startsWith("phone:")}})
     val ready=!running&&!recording&&needed.isNotEmpty()&&needed.all {phone.canRun(it)}&&if(mode=="convert") source!=null&&phone.voices.any {it.id==voice}&&asr!=null&&clone!=null else text.isNotBlank()&&text.length<=2000&&listOf(voiceA,voiceB).all {selection -> choices.any {it.id==selection}}
-    val importer=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {uri -> if(uri!=null) scope.launch {
-        try {val file=copyMedia(context,uri,"wav");source?.delete();source=file} catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)}
-    }}
-    LaunchedEffect(Unit) {try {vm.phone.refresh()} catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)}}
+    val importer=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {uri ->
+        val failure=importFailure ?: vm::restoreFailure
+        importFailure=null
+        if(uri!=null) scope.launch {
+            try {val file=copyMedia(context,uri,"wav");source?.delete();source=file} catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}
+        }
+    }
+    LaunchedEffect(Unit) {val failure=vm.failureHandler();try {vm.phone.refresh()} catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}}
     DisposableEffect(lifecycle) {
         val observer=LifecycleEventObserver {_,event ->if(event==Lifecycle.Event.ON_STOP&&recording) {recorder.discard();recording=false;source=null}}
         lifecycle.lifecycle.addObserver(observer)
         onDispose {lifecycle.lifecycle.removeObserver(observer);recorder.discard();source?.delete()}
     }
-    LaunchedEffect(recording) {seconds=0;while(recording) {delay(1000);seconds++;if(seconds>=29) {
-        try {source=recorder.stop()} catch(e:Exception) {source=null;vm.fail(e)} finally {recording=false}
+    LaunchedEffect(recording) {val failure=recordingFailure;seconds=0;while(recording) {delay(1000);seconds++;if(seconds>=29) {
+        try {source=recorder.stop()} catch(e:Exception) {source=null;failure(e)} finally {recording=false}
     }}}
-    val record=permissionAction(Manifest.permission.RECORD_AUDIO,"mobile.permissions.microphone",vm::fail) {
-        if(mode=="convert"&&recordingConsent&&!running) try {val file=recorder.start();source?.delete();source=file;recording=true;results=emptyList();transcript=""} catch(e:Exception) {vm.fail(e)}
+    val record=permissionAction(Manifest.permission.RECORD_AUDIO,"mobile.permissions.microphone",vm::failureHandler,vm::restoreFailure) {
+        if(mode=="convert"&&recordingConsent&&!running) {
+            val failure=vm.failureHandler()
+            recordingFailure=failure
+            try {val file=recorder.start();source?.delete();source=file;recording=true;results=emptyList();transcript=""} catch(e:Exception) {failure(e)}
+        }
     }
     if(mode=="edit") {AudioEditorScreen(vm) {mode="convert"};return}
     Screen {
@@ -75,11 +85,11 @@ private data class VoiceToolResult(val titleKey: String,val file: File,val subje
         Text(tr("mobile.local.this_phone"),color=role("textMuted"))
         if(mode=="convert") {
             Text(tr("mobile.production.conversion_hint"),style=MaterialTheme.typography.bodyMedium,color=role("textMuted"))
-            Secondary("convert.source_kicker",!running&&!recording) {importer.launch(arrayOf("audio/*"))}
+            Secondary("convert.source_kicker",!running&&!recording) {importFailure=vm.failureHandler();importer.launch(arrayOf("audio/*"))}
             Row(Modifier.fillMaxWidth()) {Text(tr("mobile.processing.record_consent"),Modifier.weight(1f));Switch(recordingConsent,{recordingConsent=it},enabled=!running&&!recording)}
             if(recording) {
                 Text(tr("mobile.voices.recording",mapOf("seconds" to seconds)))
-                Secondary("common.stop") {try {source=recorder.stop()} catch(e:Exception) {source=null;vm.fail(e)} finally {recording=false}}
+                Secondary("common.stop") {try {source=recorder.stop()} catch(e:Exception) {source=null;recordingFailure(e)} finally {recording=false}}
             } else Secondary("mobile.voices.record",recordingConsent&&!running,record)
             source?.let {Text(it.name,style=MaterialTheme.typography.bodySmall)}
             if(!running) ChoicePicker("convert.target_voice",voice,phone.voices.map {Choice(it.id,it.name)}) {voice=it}
@@ -99,6 +109,7 @@ private data class VoiceToolResult(val titleKey: String,val file: File,val subje
             LinearProgressIndicator(progress={progress},modifier=Modifier.fillMaxWidth())
             Secondary("common.cancel") {work?.cancel()}
         } else Action(if(mode=="convert") "convert.convert" else "compare.compare_btn",ready) {
+            val failure=vm.failureHandler()
             val directory=File(context.cacheDir,"voice-tools/${UUID.randomUUID()}")
             val snapshotVoices=phone.voices
             val snapshotText=text
@@ -131,14 +142,14 @@ private data class VoiceToolResult(val titleKey: String,val file: File,val subje
                             progress=(index+1)/2f
                         }
                     }
-                } catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)}
+                } catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}
             }
         }
         if(transcript.isNotEmpty()) {Heading("convert.transcript");Text(transcript)}
         results.forEach {result ->
             Heading(result.titleKey)
-            LocalAudioPlayer(result.file,vm::fail)
-            Secondary("mobile.speak.share") {scope.launch {try {shareLocalFile(context,result.file,"audio/wav")} catch(e:Exception) {vm.fail(e)}}}
+            LocalAudioPlayer(result.file,vm::failureHandler)
+            Secondary("mobile.speak.share") {val failure=vm.failureHandler();scope.launch {try {shareLocalFile(context,result.file,"audio/wav")} catch(e:Exception) {failure(e)}}}
             ReportButton(vm) {result.subject}
         }
     }

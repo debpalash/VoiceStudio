@@ -26,14 +26,15 @@ private data class HandoffImport(val file: File,val preview: HandoffPreview)
     var permission by rememberSaveable {mutableStateOf(false)}
     var busy by remember {mutableStateOf(false)};var work by remember {mutableStateOf<Job?>(null)}
     var notice by remember {mutableStateOf<String?>(null)}
+    var importFailure by remember {mutableStateOf<((Throwable)->Unit)?>(null)}
     val configuration=listOf("tts","clone").mapNotNull {capability->
         val options=phone.models.filter {it.capability==capability};val key=if(capability=="tts") "production-tts" else "production-clone"
         phone.preferredModel(options,vm.phone.ramBytes,preferences.phoneModels[key])
     }.joinToString("|") {modelPin(it).identity}
     suspend fun refresh() {vm.phone.refresh();projects=vm.phone.production.list()}
-    fun run(action: suspend ()->Unit) {
+    fun run(failure:(Throwable)->Unit=vm.failureHandler(),action: suspend ()->Unit) {
         if(busy) return;busy=true
-        work=scope.launch {try {action()} catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(if(e is ClientFailure) e else ClientFailure("mobile.handoff.failed"))} finally {busy=false;work=null}}
+        work=scope.launch {try {action()} catch(e:CancellationException) {throw e} catch(e:Exception) {failure(if(e is ClientFailure) e else ClientFailure("mobile.handoff.failed"))} finally {busy=false;work=null}}
     }
     fun export(project: ProductionProject?=null,dub: String?=null,send: Boolean) {
         val allow=permission;val config=configuration
@@ -46,17 +47,20 @@ private data class HandoffImport(val file: File,val preview: HandoffPreview)
             } else shareLocalFile(context,file,"application/zip")
         }
     }
-    val importer=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {uri->if(uri!=null) run {
+    val importer=rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {uri->
+        val failure=importFailure ?: vm::restoreFailure
+        importFailure=null
+        if(uri!=null) run(failure) {
         val file=File(context.cacheDir,"handoff-${UUID.randomUUID()}.vsproject")
         try {
             withContext(Dispatchers.IO) {requireNotNull(context.contentResolver.openInputStream(uri)).use {input->file.outputStream().use {out->val bytes=ByteArray(262144);var total=0L;while(true) {currentCoroutineContext().ensureActive();val n=input.read(bytes);if(n<0) break;total+=n;require(total<=ProjectArchive.MAX_BYTES+8_388_608);out.write(bytes,0,n)}}}}
             permission=false;pending=HandoffImport(file,withContext(Dispatchers.IO) {PhoneProjectHandoff.preview(file)})
         } catch(e:Exception) {file.delete();throw e}
     }}
-    LaunchedEffect(Unit) {try {refresh();if(vm.api!=null) remote=vm.api!!.handoffInbox()} catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)}}
+    LaunchedEffect(Unit) {val failure=vm.failureHandler();try {refresh();if(vm.api!=null) remote=vm.api!!.handoffInbox()} catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}}
     Screen {
         ScreenTitle("mobile.handoff.title");Text(tr("mobile.handoff.hint"));Text(tr("mobile.handoff.compatibility"),style=MaterialTheme.typography.bodySmall)
-        Secondary("mobile.handoff.import",!busy) {importer.launch(arrayOf("application/zip","application/octet-stream","*/*"))}
+        Secondary("mobile.handoff.import",!busy) {importFailure=vm.failureHandler();importer.launch(arrayOf("application/zip","application/octet-stream","*/*"))}
         Row(Modifier.fillMaxWidth()) {Checkbox(permission,{if(!busy) permission=it});Text(tr("mobile.handoff.permission"),Modifier.weight(1f))}
         if(busy) {CircularProgressIndicator();Secondary("common.cancel") {work?.cancel()}}
         for(project in projects) {
