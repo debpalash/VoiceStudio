@@ -110,6 +110,7 @@ GET /dub/srt/{job_id}/{filename}
 GET /dub/thumb/{job_id}
 GET /dub/tracks/{job_id}
 GET /dub/transcribe-stream/{job_id}
+GET /dub/txt/{job_id}
 GET /dub/vtt/{job_id}
 GET /dub/vtt/{job_id}/{filename}
 GET /engines

@@ -22,7 +22,7 @@ from core.logging_utils import log_safe
 from core.path_security import UnsafePath, portable_filename, resolve_within
 from core.tasks import task_manager
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response, Depends
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from starlette.concurrency import iterate_in_threadpool, run_in_threadpool
 from starlette.types import Receive, Scope, Send
 from services.ffmpeg_utils import (
@@ -2060,6 +2060,30 @@ def _fitted_cue_times(job: dict, lang: str | None) -> list | None:
         return None
     from services.fitted_subtitles import fitted_cues
     return fitted_cues(job.get("segments", []), entry["plan"])
+
+
+@router.get("/dub/txt/{job_id}", response_class=PlainTextResponse)
+def dub_export_txt(
+    job_id: str,
+    lang: str = Query(None, description="Track language code; uses the same stored transcript as SRT, without cue numbers or timestamps."),
+) -> PlainTextResponse:
+    _job_dir_or_400(job_id)
+    lang = _safe_lang_or_400(lang)
+    job = _get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    # Preserve the editor's stored text before generation and each generated
+    # language afterward, exactly as subtitle exports do. No ASR/TTS is run.
+    lines = [(segment.get("text") or "").strip() for segment in _segments_for_lang(job, lang)]
+    lines = [line for line in lines if line]
+    if not lines:
+        raise HTTPException(status_code=400, detail="No transcript segments available")
+    base_name = os.path.splitext(job.get("filename", "video"))[0]
+    return PlainTextResponse(
+        content="\n".join(lines) + "\n",
+        media_type="text/plain",
+        headers={"Content-Disposition": content_disposition(portable_filename(f"transcript_{base_name}.txt", "transcript"))},
+    )
 
 
 @router.get("/dub/srt/{job_id}")

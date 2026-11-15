@@ -166,3 +166,29 @@ it.each([CHANNELS.backendSetupDiagnostics, CHANNELS.backendCheckSetupConnection]
     );
   },
 );
+
+it('writes exact timestamp-free UTF-8 transcript bytes with GET and keeps cancellation free of requests', async () => {
+  const { net, dialog } = await import('electron');
+  const content = 'Bonjour & <monde>\nÀ bientôt\n';
+  vi.mocked(net.fetch).mockResolvedValueOnce(
+    new Response(content, { headers: { 'Content-Type': 'text/plain; charset=utf-8' } }),
+  );
+  native.savePath = join(directory, 'transcript.txt');
+  const request = { url: '/api/dub/txt/job?lang=fr', suggestedName: 'transcript.txt' };
+  await expect(native.handlers.get(CHANNELS.filesSaveAudio)!(event, request)).resolves.toEqual({
+    canceled: false,
+    path: native.savePath,
+  });
+  expect(await readFile(native.savePath)).toEqual(Buffer.from(content, 'utf8'));
+  expect(net.fetch).toHaveBeenLastCalledWith(
+    'http://127.0.0.1:3900/dub/txt/job?lang=fr',
+    expect.objectContaining({ method: 'GET' }),
+  );
+  const sent = vi.mocked(net.fetch).mock.calls.length;
+  vi.mocked(dialog.showSaveDialog).mockResolvedValueOnce({ canceled: true, filePath: '' });
+  await expect(native.handlers.get(CHANNELS.filesSaveAudio)!(event, request)).resolves.toEqual({
+    canceled: true,
+  });
+  expect(net.fetch).toHaveBeenCalledTimes(sent);
+  expect(await readFile(native.savePath)).toEqual(Buffer.from(content, 'utf8'));
+});
