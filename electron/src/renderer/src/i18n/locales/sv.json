@@ -1731,6 +1731,8 @@
     "lineVoice": "Radens röst",
     "chapterHeading": "Kapiteltitel",
     "lineActions": "Radåtgärder",
+    "mergeNext": "Slå samman med nästa",
+    "mergeNextHint": "Slå ihop intilliggande rader med samma talare, åsidosättning av röst och hastighetsinställning.",
     "autocastDone_one": "{{lines}} rader tilldelade {{count}} röst",
     "autocastDone_other": "{{lines}} rader fördelade på {{count}} röster",
     "recovery_title": "Avbruten berättelse",

@@ -1732,6 +1732,8 @@
     "lineVoice": "行の音声",
     "chapterHeading": "章タイトル",
     "lineActions": "行の操作",
+    "mergeNext": "次と結合",
+    "mergeNextHint": "話者、音声の個別指定、速度設定が同じ隣接行を結合します。",
     "autocastDone_one": "{{lines}} 行を {{count}} 個の音声に自動割り当てしました",
     "autocastDone_other": "{{lines}} 行を {{count}} 個の音声に自動割り当てしました",
     "recovery_title": "中断したストーリー",

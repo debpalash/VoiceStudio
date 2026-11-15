@@ -1733,6 +1733,8 @@
     "lineVoice": "Voz da linha",
     "chapterHeading": "Título do capítulo",
     "lineActions": "Ações da linha",
+    "mergeNext": "Mesclar com o próximo",
+    "mergeNextHint": "Una linhas adjacentes com o mesmo falante, a mesma substituição de voz e a mesma configuração de velocidade.",
     "autocastDone_one": "{{lines}} linhas distribuídas para {{count}} voz",
     "autocastDone_other": "{{lines}} linhas distribuídas entre {{count}} vozes",
     "recovery_title": "História interrompida",

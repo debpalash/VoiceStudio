@@ -1723,6 +1723,8 @@
     "lineVoice": "줄 음성",
     "chapterHeading": "챕터 제목",
     "lineActions": "줄 작업",
+    "mergeNext": "다음과 병합",
+    "mergeNextHint": "화자, 개별 음성 지정, 속도 설정이 같은 인접한 줄을 합칩니다.",
     "autocastDone_one": "{{lines}}줄을 음성 {{count}}개에 자동 배정했습니다",
     "autocastDone_other": "{{lines}}줄을 음성 {{count}}개에 자동 배정했습니다",
     "recovery_title": "중단된 스토리",

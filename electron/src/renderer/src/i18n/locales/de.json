@@ -1731,6 +1731,8 @@
     "lineVoice": "Zeilenstimme",
     "chapterHeading": "Kapiteltitel",
     "lineActions": "Zeilenaktionen",
+    "mergeNext": "Mit dem nächsten zusammenführen",
+    "mergeNextHint": "Benachbarte Zeilen mit gleichem Sprecher, gleicher Stimmüberschreibung und gleicher Geschwindigkeit zusammenführen.",
     "autocastDone_one": "{{lines}} Zeilen mit {{count}} Stimme besetzt",
     "autocastDone_other": "{{lines}} Zeilen auf {{count}} Stimmen verteilt",
     "recovery_title": "Unterbrochene Geschichte",

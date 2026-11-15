@@ -1913,6 +1913,8 @@
     "lineVoice": "Line voice",
     "chapterHeading": "Chapter title",
     "lineActions": "Line actions",
+    "mergeNext": "Merge with next",
+    "mergeNextHint": "Merge adjacent lines with the same speaker, voice override and speed setting.",
     "autocastDone_one": "Auto-cast {{lines}} lines with {{count}} voice",
     "autocastDone_other": "Auto-cast {{lines}} lines across {{count}} voices",
     "recovery_title": "Interrupted story"

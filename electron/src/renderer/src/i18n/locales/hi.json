@@ -1732,6 +1732,8 @@
     "lineVoice": "पंक्ति की आवाज़",
     "chapterHeading": "अध्याय शीर्षक",
     "lineActions": "पंक्ति क्रियाएँ",
+    "mergeNext": "अगले के साथ विलय करें",
+    "mergeNextHint": "एक ही वक्ता, वॉइस ओवरराइड और गति सेटिंग वाली आस-पास की पंक्तियाँ जोड़ें।",
     "autocastDone_one": "{{lines}} पंक्तियाँ {{count}} आवाज़ को सौंपी गईं",
     "autocastDone_other": "{{lines}} पंक्तियाँ {{count}} आवाज़ों में बाँटी गईं",
     "recovery_title": "रुकी हुई कहानी",

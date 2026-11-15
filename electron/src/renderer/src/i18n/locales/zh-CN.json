@@ -1731,6 +1731,8 @@
     "lineVoice": "本行声音",
     "chapterHeading": "章节标题",
     "lineActions": "行操作",
+    "mergeNext": "与下一段合并",
+    "mergeNextHint": "合并说话人、单独指定的音色和速度设置相同的相邻行。",
     "autocastDone_one": "已将 {{lines}} 行自动分配给 {{count}} 个声音",
     "autocastDone_other": "已将 {{lines}} 行自动分配给 {{count}} 个声音",
     "recovery_title": "中断的故事",
