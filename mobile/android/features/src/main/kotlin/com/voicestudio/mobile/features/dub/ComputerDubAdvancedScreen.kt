@@ -33,18 +33,53 @@ internal suspend fun monitorComputerDubTask(api: VoiceStudioApi,id: String,
     pause:suspend()->Unit={delay(2000)}) {
     var sequence=0
     val diagnosticGate=CompanionTaskFailureGate()
+    var sampled=false
+    var sampledObservation:CompanionDiagnosticObservation?=null
+    var terminalWatermark:Int?=null
+    var terminalPages=0
+    var failed=false
+    var cancelled=false
+    var done=false
+    var reportable:CompanionDiagnosticObservation?=null
     while(currentCoroutineContext().isActive) {
         val observation=observe()
-        val page=api.jobEvents(id,sequence);var failed=page.job.status in listOf("failed","cancelled")
-        val reportable=diagnosticGate.observe(id,page,observation,observe(),submitted)
-        var cancelled=page.job.status=="cancelled"
+        val page=api.jobEvents(id,sequence)
+        val after=observe()
+        val fresh=diagnosticGate.observe(id,page,observation,after,submitted)
+        if(reportable!=after) reportable=null
+        if(fresh!=null) reportable=fresh
+        val previous=sequence
+        failed=failed || page.job.status in listOf("failed","cancelled")
+        cancelled=cancelled || page.job.status=="cancelled"
+        done=done || page.job.status=="done"
         page.events.forEach {event ->sequence=maxOf(sequence,event.seq)
             val type=runCatching {api.json.parseToJsonElement(event.payload.removePrefix("data: ").trim()).jsonObject["type"]?.jsonPrimitive?.content}.getOrNull()
             if(type in listOf("error","failed","cancelled")) failed=true
             if(type=="cancelled") cancelled=true
         }
-        if(failed) {persistTask(null);throw ComputerDubRemoteTaskFailure(if(cancelled) null else reportable)}
-        if(page.job.status=="done") {persistTask(null);completed();return}
+        val watermark=page.eventWatermark?.takeIf {it.seq>=sequence && it.seq>=0 &&
+            (it.seq==0 || it.createdAt?.let {stamp ->stamp.isFinite() && stamp>0}==true)}?.seq
+        if((!sampled || sampledObservation!=observation) && observation==after &&
+            (submitted==null || submitted!=after) && watermark!=null) {
+            // A resumed/new grant starts after the tail from this read snapshot;
+            // never scan old history to manufacture current failure evidence.
+            sequence=maxOf(sequence,watermark)
+        }
+        sampled=observation==after
+        sampledObservation=after
+        if(failed || done) {
+            if(terminalWatermark==null) terminalWatermark=watermark
+            val target=terminalWatermark
+            if(target!=null && sequence<target) {
+                // A terminal status can precede its terminal event in a bounded
+                // ascending page. Keep the receipt until that frozen tail is read.
+                terminalPages++
+                if(sequence<=previous || terminalPages>=8) throw ClientFailure("mobile.android.invalid_response")
+                continue
+            }
+            if(failed) {persistTask(null);throw ComputerDubRemoteTaskFailure(if(cancelled) null else reportable)}
+            persistTask(null);completed();return
+        }
         pause()
     };currentCoroutineContext().ensureActive()
 }
@@ -68,10 +103,11 @@ internal suspend fun monitorComputerDubTask(api: VoiceStudioApi,id: String,
     suspend fun monitor(id: String,submitted:CompanionDiagnosticObservation?=null) {
         monitorComputerDubTask(api,id,::persistTask,{tracks=api.computerDubTracks(jobID).tracks},submitted)
     }
-    fun launch(action: suspend ()->Unit) {
+    fun launch(action: suspend (CompanionDiagnosticObservation?)->Unit) {
         if(busy) return
+        val submission=AutomaticDiagnostics.observeConsent()
         val failure=vm.failureHandler()
-        work=scope.launch {try {action()} catch(e:CancellationException) {throw e} catch(e:Exception) {
+        work=scope.launch {try {action(submission)} catch(e:CancellationException) {throw e} catch(e:Exception) {
             deliverComputerDubFailure(e,failure) {observation ->
                 val displayed=ClientFailure("mobile.errors.dub_failed")
                 AutomaticDiagnostics.captureObservedFailure(displayed,observation,stage="dub")
@@ -79,11 +115,10 @@ internal suspend fun monitorComputerDubTask(api: VoiceStudioApi,id: String,
             }
         } finally {work=null}}
     }
-    suspend fun startRender(provider: TranslationEngine,confirmed: Boolean) {
+    suspend fun startRender(provider: TranslationEngine,confirmed: Boolean,submission:CompanionDiagnosticObservation?) {
         val source=requireNotNull(analysis)
         val authorization=provider.authorize(confirmed) ?: throw ClientFailure("mobile.dub.translation_setup")
         val name=tracks[options.language]?.language ?: options.language
-        val submission=AutomaticDiagnostics.observeConsent()
         val result=api.computerDubCast(jobID,source,options.language,name,cast,authorization,timing)
         persistTask(result.taskId);monitor(result.taskId,submission)
     }
@@ -136,13 +171,13 @@ internal suspend fun monitorComputerDubTask(api: VoiceStudioApi,id: String,
             }
             Toggle("mobile.dub_advanced.cast_checked",reviewed) {if(!busy&&task==null) reviewed=it}
             if(!busy&&task==null) ChoicePicker("mobile.dub_advanced.timing",timing,listOf(Choice("concise",tr("dub.timing_concise")),Choice("smart_fit",tr("dub.timing_smart_fit")),Choice("stretch_video",tr("dub.timing_stretch_video")))) {timing=it}
-            Action("dub.generate_dub",!busy&&reviewed&&options.language.isNotEmpty()&&task==null) {launch {
-                val provider=api.translationEngine();if(provider.requiresConsent) pending=provider else startRender(provider,false)
+            Action("dub.generate_dub",!busy&&reviewed&&options.language.isNotEmpty()&&task==null) {launch {submission ->
+                val provider=api.translationEngine();if(provider.requiresConsent) pending=provider else startRender(provider,false,submission)
             }}
         }
         if(task!=null&&!busy) Secondary("mobile.simple.resume") {task?.let {id ->launch {monitor(id)}}}
         task?.let {id ->Secondary("mobile.dub.abort") {val failure=vm.failureHandler();work?.cancel();scope.launch {try {api.cancelComputerDubTask(id);persistTask(null)} catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}}}}
         if(busy) {LinearProgressIndicator(Modifier.fillMaxWidth());if(task==null) Secondary("common.cancel") {work?.cancel()}}
     }
-    pending?.let {provider ->AlertDialog(onDismissRequest={pending=null},title={Text(tr("mobile.dub.translation_online_title"))},text={Text(tr("mobile.dub.translation_online_body",mapOf("service" to provider.consentName)))},confirmButton={TextButton(onClick={pending=null;launch {startRender(provider,true)}}) {Text(tr("mobile.dub.translation_allow"))}},dismissButton={TextButton(onClick={pending=null}) {Text(tr("mobile.dub.translation_decline"))}})}
+    pending?.let {provider ->AlertDialog(onDismissRequest={pending=null},title={Text(tr("mobile.dub.translation_online_title"))},text={Text(tr("mobile.dub.translation_online_body",mapOf("service" to provider.consentName)))},confirmButton={TextButton(onClick={pending=null;launch {submission ->startRender(provider,true,submission)}}) {Text(tr("mobile.dub.translation_allow"))}},dismissButton={TextButton(onClick={pending=null}) {Text(tr("mobile.dub.translation_decline"))}})}
 }

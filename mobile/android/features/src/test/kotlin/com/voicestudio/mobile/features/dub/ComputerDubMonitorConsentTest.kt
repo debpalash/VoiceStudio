@@ -13,10 +13,10 @@ import java.util.concurrent.TimeUnit
 class ComputerDubMonitorConsentTest {
     private val a=CompanionDiagnosticObservation(1,"a".repeat(32))
     private val b=CompanionDiagnosticObservation(2,"b".repeat(32))
-    private fun page(seq:Int,type:String="progress",status:String="running",watermark:Boolean=true,time:Double=100.0)=buildJsonObject {
+    private fun page(seq:Int,type:String="progress",status:String="running",watermark:Boolean=true,time:Double=100.0,watermarkSeq:Int=seq)=buildJsonObject {
         putJsonObject("job") {put("id","task");put("status",status);put("created_at",100.0);put("updated_at",time)}
         putJsonArray("events") {addJsonObject {put("seq",seq);put("created_at",time);put("payload","data: {\"type\":\"$type\"}")}}
-        if(watermark) putJsonObject("event_watermark") {put("seq",seq);put("created_at",time)}
+        if(watermark) putJsonObject("event_watermark") {put("seq",watermarkSeq);put("created_at",time)}
     }.toString()
 
     private suspend fun observedFailure(server:MockWebServer,submitted:CompanionDiagnosticObservation?=null,
@@ -30,8 +30,9 @@ class ComputerDubMonitorConsentTest {
                     {assertNull(it);cleared=true},{fail("Failed task must not complete")},submitted,observe,pause)
             }
             error("Expected terminal failure")
-        } catch(error:Throwable) {error}
+        } catch(error:Throwable) {if(error is AssertionError)throw error;error}
         if(error is CancellationException) throw error
+        assertTrue("Terminal task failure must not be an assertion/API fallback",error is ComputerDubRemoteTaskFailure)
         deliverComputerDubFailure(error,{if(operation!=null && operation==observe()) reported+=operation},
             {if(it!=null && it==observe()) reported+=it})
         assertTrue("Terminal failure retires its saved receipt",cleared)
@@ -107,14 +108,53 @@ class ComputerDubMonitorConsentTest {
     @Test fun callerCancellationRetainsTheReceiptAndDoesNotBecomeARemoteFailure():Unit=runBlocking {
         val server=MockWebServer().apply {start()}
         var cleared=false
+        val identity=IllegalStateException("controlled caller identity")
+        val cancellation=CancellationException("controlled caller cancellation").apply {initCause(identity)}
         try {
             server.enqueue(MockResponse().setBody(page(6)))
             val error=runCatching {withTimeout(5000) {
                 monitorComputerDubTask(VoiceStudioApi(PairingAddress.parse(server.url("/").toString())),"task",
-                    {cleared=true},{fail("Unexpected completion")},observe={a},pause={throw CancellationException()})
+                    {cleared=true},{fail("Unexpected completion")},observe={a},pause={throw cancellation})
             }}.exceptionOrNull()
-            assertTrue(error is CancellationException)
+            assertTrue("Watchdog timeout is not caller cancellation",error is CancellationException && error !is TimeoutCancellationException)
+            assertTrue("Coroutine exception copies must preserve the caller identity",
+                generateSequence(error) {it.cause}.any {it===cancellation || it===identity})
             assertFalse(cleared)
+        } finally {server.shutdown()}
+    }
+    @Test fun terminalStatusDrainsThroughItsWatermarkBeforeRetiringTheReceipt():Unit=runBlocking {
+        val server=MockWebServer().apply {start()}
+        try {
+            server.enqueue(MockResponse().setBody(page(7)))
+            server.enqueue(MockResponse().setBody(page(8,status="failed",time=101.0,watermarkSeq=10)))
+            server.enqueue(MockResponse().setBody(page(10,"error","failed",time=102.0)))
+            assertEquals(listOf(a),observedFailure(server))
+            server.takeRequest(1,TimeUnit.SECONDS);server.takeRequest(1,TimeUnit.SECONDS)
+            assertEquals("/jobs/task/events?after_seq=8",server.takeRequest(1,TimeUnit.SECONDS)?.path)
+        } finally {server.shutdown()}
+    }
+
+    @Test fun stalledTerminalPaginationKeepsTheReceipt():Unit=runBlocking {
+        val server=MockWebServer().apply {start()}
+        var cleared=false
+        try {
+            server.enqueue(MockResponse().setBody(page(7)))
+            server.enqueue(MockResponse().setBody(page(8,status="failed",watermarkSeq=10)))
+            server.enqueue(MockResponse().setBody(page(8,status="failed",watermarkSeq=10)))
+            val error=runCatching {withTimeout(5000) {monitorComputerDubTask(
+                VoiceStudioApi(PairingAddress.parse(server.url("/").toString())),"task",{cleared=true},{fail("Unexpected completion")},observe={a},pause={})}}.exceptionOrNull()
+            assertTrue(error is ClientFailure)
+            assertEquals("mobile.android.invalid_response",(error as ClientFailure).key)
+            assertFalse(cleared)
+            assertEquals(3,server.requestCount)
+        } finally {server.shutdown()}
+    }
+    @Test fun historicalTerminalPrefixUsesWatermarkWithoutScanningAllHistory():Unit=runBlocking {
+        val server=MockWebServer().apply {start()}
+        try {
+            server.enqueue(MockResponse().setBody(page(1,"error","failed",watermarkSeq=10000)))
+            assertTrue(observedFailure(server).isEmpty())
+            assertEquals(1,server.requestCount)
         } finally {server.shutdown()}
     }
 }

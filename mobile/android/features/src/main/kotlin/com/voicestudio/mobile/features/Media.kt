@@ -109,7 +109,15 @@ val LocalHostPlayerFactory=staticCompositionLocalOf<(Context,VoiceStudioApi)->Pl
 private class PlaybackListenerOwner(private val player:Player) {
     private var listener:Player.Listener?=null
     private var generation=0L
-    fun bind(create:(()->Boolean)->Player.Listener) {
+    var preparing=false
+        private set
+    fun stateChanged(state:Int) {
+        if(state==Player.STATE_READY || state==Player.STATE_ENDED) preparing=false
+        else if(state==Player.STATE_BUFFERING) preparing=true
+    }
+    fun failed() {preparing=false}
+    fun bind(preparation:Boolean=false,create:(()->Boolean)->Player.Listener) {
+        preparing=preparation
         val owner=++generation
         listener?.let(player::removeListener)
         listener=create {owner==generation}.also(player::addListener)
@@ -121,18 +129,19 @@ private class PlaybackListenerOwner(private val player:Player) {
 @Composable fun HostPlayer(api: VoiceStudioApi, path: String, failure: ()->(Throwable)->Unit) {
     val context=LocalContext.current
     val factory=LocalHostPlayerFactory.current
-    val player=remember(api) {factory(context,api)}
+    val player=remember(api,path) {factory(context,api)}
     val observeFailure by rememberUpdatedState(failure)
     val listeners=remember(player) {PlaybackListenerOwner(player)}
-    var playing by remember { mutableStateOf(false) }
-    var duration by remember { mutableLongStateOf(0L) }
-    var position by remember { mutableLongStateOf(0L) }
-    var error by remember { mutableStateOf(false) }
-    fun observePlayback(): (Throwable)->Unit {
+    var playing by remember(player) { mutableStateOf(false) }
+    var duration by remember(player) { mutableLongStateOf(0L) }
+    var position by remember(player) { mutableLongStateOf(0L) }
+    var error by remember(player) { mutableStateOf(false) }
+    fun observePlayback(preparation:Boolean=false): (Throwable)->Unit {
         val failed=observeFailure()
-        listeners.bind {current ->object: Player.Listener {
+        listeners.bind(preparation) {current ->object: Player.Listener {
             override fun onIsPlayingChanged(isPlaying:Boolean) {if(current()) playing=isPlaying}
-            override fun onPlayerError(e:androidx.media3.common.PlaybackException) {if(current()) {error=true;failed(generateSequence(e as Throwable?) {it.cause}.filterIsInstance<ClientFailure>().firstOrNull() ?: ClientFailure("mobile.android.playback_failed"))}}
+            override fun onPlaybackStateChanged(state:Int) {if(current()) listeners.stateChanged(state)}
+            override fun onPlayerError(e:androidx.media3.common.PlaybackException) {if(current()) {listeners.failed();error=true;failed(generateSequence(e as Throwable?) {it.cause}.filterIsInstance<ClientFailure>().firstOrNull() ?: ClientFailure("mobile.android.playback_failed"))}}
         }}
         return failed
     }
@@ -140,9 +149,9 @@ private class PlaybackListenerOwner(private val player:Player) {
         onDispose {listeners.close();player.release()}
     }
     LaunchedEffect(path,api) {
-        val failed=observePlayback()
+        val failed=observePlayback(preparation=true)
         try {error=false;player.setMediaItem(MediaItem.fromUri(api.url(path).toString()));player.prepare()}
-        catch(e:Exception) {failed(e)}
+        catch(e:Exception) {listeners.failed();error=true;failed(e)}
     }
     LaunchedEffect(player) {while(isActive) {duration=player.duration.coerceAtLeast(0);position=player.currentPosition.coerceAtLeast(0);delay(250)}}
     Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=role("surface")),shape=MaterialTheme.shapes.large) {
@@ -150,7 +159,15 @@ private class PlaybackListenerOwner(private val player:Player) {
             Text(tr("player.generated_audio"),style=MaterialTheme.typography.titleMedium)
             Row(verticalAlignment=Alignment.CenterVertically) {
                 IconAction(if(playing) "player.pause" else "player.play",if(playing) VSIcons.Pause else Icons.Default.PlayArrow) {
-                    if(playing) player.pause() else {observePlayback();if(error) player.prepare();if(player.playbackState==Player.STATE_ENDED) player.seekTo(0);player.play()}
+                    if(playing) player.pause() else {
+                        // Play during prepare continues that load; it cannot
+                        // replace the owner of a later Media3 prepare error.
+                        val retry=error
+                        if(!listeners.preparing) observePlayback(preparation=retry)
+                        if(retry) {error=false;player.prepare()}
+                        if(player.playbackState==Player.STATE_ENDED) player.seekTo(0)
+                        player.play()
+                    }
                 }
                 // Seeking does not start a new load or replace its diagnostic owner.
                 PlaybackSeek(position,duration,Modifier.weight(1f)) {player.seekTo(it)}
@@ -175,20 +192,31 @@ val LocalAudioPlayerFactory=staticCompositionLocalOf<(Context)->Player> {
     var position by remember(file) {mutableLongStateOf(0)}
     var duration by remember(file) {mutableLongStateOf(0)}
     var videoRatio by remember(file) {mutableFloatStateOf(16f/9)}
-    fun observePlayback() {
+    var failedPreparation by remember(file) {mutableStateOf(false)}
+    fun observePlayback(preparation:Boolean=false): (Throwable)->Unit {
         val failed=observeFailure()
-        listeners.bind {current ->object: Player.Listener {
+        listeners.bind(preparation) {current ->object: Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {if(current()) playing=isPlaying}
-            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {if(current()) failed(ClientFailure("mobile.android.playback_failed"))}
+            override fun onPlaybackStateChanged(state:Int) {if(current()) listeners.stateChanged(state)}
+            override fun onPlayerError(error: androidx.media3.common.PlaybackException) {if(current()) {listeners.failed();failedPreparation=true;failed(ClientFailure("mobile.android.playback_failed"))}}
             override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {if(current()&&videoSize.width>0&&videoSize.height>0) videoRatio=videoSize.width*videoSize.pixelWidthHeightRatio/videoSize.height}
         }}
+        return failed
+    }
+    fun play(restart:Boolean=false) {
+        val retry=failedPreparation
+        if(!listeners.preparing) observePlayback(preparation=retry)
+        if(retry) {failedPreparation=false;player.prepare()}
+        if(restart || player.playbackState==Player.STATE_ENDED) player.seekTo(0)
+        player.play()
     }
     DisposableEffect(player) {
-        observePlayback()
-        player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)));player.prepare()
+        val failed=observePlayback(preparation=true)
+        try {player.setMediaItem(MediaItem.fromUri(Uri.fromFile(file)));player.prepare()}
+        catch(e:Exception) {listeners.failed();failedPreparation=true;failed(e)}
         onDispose {listeners.close();player.release()}
     }
-    LaunchedEffect(player,autoPlay,playRequest) {if(autoPlay) {observePlayback();player.seekTo(0);player.play()}}
+    LaunchedEffect(player,autoPlay,playRequest) {if(autoPlay) play(restart=true)}
     LaunchedEffect(player) {while(isActive) {position=player.currentPosition.coerceAtLeast(0);duration=player.duration.coerceAtLeast(0);delay(250)}}
     Group {
         Column(Modifier.fillMaxWidth().padding(VSTheme.inset)) {
@@ -197,7 +225,7 @@ val LocalAudioPlayerFactory=staticCompositionLocalOf<(Context)->Player> {
             }
             Row(verticalAlignment=Alignment.CenterVertically,horizontalArrangement=Arrangement.spacedBy(8.dp)) {
                 IconAction(if(playing) "player.pause" else "player.play",if(playing) VSIcons.Pause else Icons.Default.PlayArrow) {
-                    if(playing) player.pause() else {observePlayback();if(player.playbackState==Player.STATE_ENDED) player.seekTo(0);player.play()}
+                    if(playing) player.pause() else play()
                 }
                 // Seeking does not start a new load or replace its diagnostic owner.
                 PlaybackSeek(position,duration,Modifier.weight(1f)) {player.seekTo(it)}
