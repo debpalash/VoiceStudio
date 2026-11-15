@@ -922,6 +922,12 @@ class WhisperXBackend(ASRBackend):
             raise PipelineCompatibilityError(reason)
         if self._asr is not None:
             return
+        # Construction can precede completion of the background GPU test.
+        # Recheck at the actual load boundary; alignment uses this same device.
+        from core.gpu_self_test import failure_warning
+
+        if self._device == "cuda" and failure_warning():
+            self._device, self._compute_type = "cpu", "int8"
         # Patch speechbrain's lazy-import guard BEFORE whisperx pulls in pyannote
         # → speechbrain, or a stray k2_fsa redirect import aborts ASR on Windows
         # (#630/#611/#647). No-op on macOS/Linux and when speechbrain is absent.

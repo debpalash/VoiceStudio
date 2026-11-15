@@ -278,3 +278,60 @@ def test_legacy_kernel_guidance_survives_failed_self_test(monkeypatch, tmp_path,
         assert "driver update will not help" in rows[key]["fix"].lower()
         assert "Vulkan" in rows[key]["fix"]
 
+
+@pytest.mark.parametrize("verdict", [None, "passed", "inconclusive", "failed"])
+@pytest.mark.parametrize("force", [False, True])
+def test_whisperx_rechecks_completed_verdict_before_loading_and_alignment(monkeypatch, verdict, force):
+    import asyncio
+    import sys
+
+    from core import gpu_self_test
+    from core.windows_rocm import pipelines
+    from services import asr_backend
+
+    selected = {"asr": [], "alignment": []}
+    result = {"segments": [{"start": 0.0, "end": 1.0, "text": "Owned fixture"}], "language": "en"}
+
+    def load_asr(*args, **kwargs):
+        selected["asr"].append((kwargs["device"], kwargs["compute_type"]))
+        return SimpleNamespace(transcribe=lambda *args, **kwargs: result)
+
+    def load_alignment(**kwargs):
+        selected["alignment"].append(kwargs["device"])
+        return object(), {}
+
+    monkeypatch.delenv("OMNIVOICE_FORCE_CUDA", raising=False)
+    if force:
+        monkeypatch.setenv("OMNIVOICE_FORCE_CUDA", "1")
+    monkeypatch.setattr(gpu_self_test, "_thread", None)
+    monkeypatch.setattr(gpu_self_test, "_verdict", None)
+    monkeypatch.setattr(asr_backend, "_ctranslate2_cuda_ok", lambda: True)
+    monkeypatch.setattr(asr_backend, "_ctranslate2_execstack_ok", lambda: (True, ""))
+    monkeypatch.setattr(asr_backend, "_harden_speechbrain_lazy_imports", lambda: None)
+    monkeypatch.setattr(asr_backend, "_local_model_source", lambda _: "owned-installed-model")
+    monkeypatch.setattr(asr_backend, "_decode_audio_16k_mono", lambda _: [0.0] * 16)
+    monkeypatch.setattr(asr_backend, "_ALIGN_CACHE", {})
+    monkeypatch.setattr(pipelines, "whisperx_error", lambda *args: None)
+    monkeypatch.setattr(pipelines, "pipeline_error", lambda *args: None)
+    monkeypatch.setattr(pipelines, "prepare_audio_imports", lambda: None)
+    monkeypatch.setattr(asr_backend.WhisperXBackend, "_degrade_for_vram", lambda self, d, c: (d, c))
+    monkeypatch.setattr(asr_backend.WhisperXBackend, "_allow_vad_pickle_globals", lambda self: None)
+    monkeypatch.setitem(sys.modules, "whisperx", SimpleNamespace(
+        load_model=load_asr, load_align_model=load_alignment,
+        align=lambda *args, **kwargs: result,
+    ))
+
+    async def construct_while_verdict_unknown():
+        return asr_backend.WhisperXBackend()
+
+    backend = asyncio.run(construct_while_verdict_unknown())
+    assert (backend._device, backend._compute_type) == ("cuda", "float16")
+    if verdict is not None:
+        monkeypatch.setattr(gpu_self_test, "_verdict", gpu_self_test.Verdict(verdict, "Owned late verdict"))
+    assert backend.transcribe("owned-audio.wav")["segments"]
+    expected = "cpu" if verdict == "failed" else "cuda"
+    assert selected == {
+        "asr": [(expected, "int8" if expected == "cpu" else "float16")],
+        "alignment": [expected],
+    }
+
