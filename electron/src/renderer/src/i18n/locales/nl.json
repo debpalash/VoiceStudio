@@ -1732,6 +1732,8 @@
     "lineVoice": "Regelstem",
     "chapterHeading": "Hoofdstuktitel",
     "lineActions": "Regelacties",
+    "mergeNext": "Samenvoegen met volgende",
+    "mergeNextHint": "Voeg aangrenzende regels samen met dezelfde spreker, stemoverschrijving en snelheidsinstelling.",
     "autocastDone_one": "{{lines}} regels toegewezen aan {{count}} stem",
     "autocastDone_other": "{{lines}} regels verdeeld over {{count}} stemmen",
     "recovery_title": "Onderbroken verhaal",

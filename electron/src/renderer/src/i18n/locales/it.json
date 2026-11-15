@@ -1733,6 +1733,8 @@
     "lineVoice": "Voce della riga",
     "chapterHeading": "Titolo del capitolo",
     "lineActions": "Azioni della riga",
+    "mergeNext": "Unisci con il successivo",
+    "mergeNextHint": "Unisci righe adiacenti con lo stesso parlante, la stessa voce sostitutiva e la stessa impostazione di velocità.",
     "autocastDone_one": "{{lines}} righe assegnate a {{count}} voce",
     "autocastDone_other": "{{lines}} righe assegnate a {{count}} voci",
     "recovery_title": "Storia interrotta",

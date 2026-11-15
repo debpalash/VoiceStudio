@@ -8,6 +8,7 @@ import {
   CircleQuestionMarkIcon,
   FingerprintIcon,
   LaughIcon,
+  MergeIcon,
   PauseIcon,
   PlayIcon,
   SlidersHorizontalIcon,
@@ -53,11 +54,13 @@ function BlockAction({
   icon: Icon,
   disabled,
   onClick,
+  hint,
 }: {
   label: string;
   icon: ComponentType;
   disabled?: boolean;
   onClick: () => void;
+  hint?: string;
 }) {
   return (
     <Tooltip>
@@ -69,13 +72,15 @@ function BlockAction({
             aria-label={label}
             disabled={disabled}
             onClick={onClick}
+            focusableWhenDisabled={Boolean(hint)}
+            className={hint ? 'aria-disabled:opacity-50' : undefined}
           />
         }
       >
         <Icon />
       </TooltipTrigger>
       <TooltipContent surface="theme" side="top">
-        {label}
+        {hint ?? label}
       </TooltipContent>
     </Tooltip>
   );
@@ -94,6 +99,7 @@ export function StoryBlock({
   draft,
   profiles,
   disabled,
+  canMerge,
   canPreview,
   previewing,
   previewUrl,
@@ -105,6 +111,7 @@ export function StoryBlock({
   onInlineVoice,
   onMove,
   onRemove,
+  onMerge,
 }: {
   line: Line;
   index: number;
@@ -112,6 +119,7 @@ export function StoryBlock({
   draft: Draft;
   profiles: Profile[];
   disabled: boolean;
+  canMerge: boolean;
   canPreview: boolean;
   previewing: boolean;
   previewUrl: string | null;
@@ -123,6 +131,7 @@ export function StoryBlock({
   onInlineVoice: (profileId: string) => void;
   onMove: (direction: -1 | 1) => void;
   onRemove: () => void;
+  onMerge: () => void;
 }) {
   const { t } = useTranslation();
   const heading = isChapterLine(line.text);
@@ -337,6 +346,13 @@ export function StoryBlock({
               icon={PauseIcon}
               disabled={disabled}
               onClick={() => onInsert('[pause 0.5s]')}
+            />
+            <BlockAction
+              label={t('stories.mergeNext')}
+              hint={!canMerge ? t('stories.mergeNextHint') : undefined}
+              icon={MergeIcon}
+              disabled={disabled || !canMerge}
+              onClick={onMerge}
             />
           </>
         )}

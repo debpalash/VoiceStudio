@@ -1913,6 +1913,8 @@
     "lineVoice": "Voz de liña",
     "chapterHeading": "Título do capítulo",
     "lineActions": "Accións de liña",
+    "mergeNext": "Combina co seguinte",
+    "mergeNextHint": "Combina liñas contiguas co mesmo falante, a mesma voz substitutiva e o mesmo axuste de velocidade.",
     "autocastDone_one": "Emite automaticamente {{lines}} liñas con {{count}} voz",
     "autocastDone_other": "Transmite automaticamente {{lines}} liñas en {{count}} voces",
     "recovery_title": "Historia interrompida"

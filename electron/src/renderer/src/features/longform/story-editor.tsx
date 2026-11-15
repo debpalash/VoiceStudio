@@ -13,6 +13,7 @@ import { SplitPresetPicker } from './split-preset-picker';
 import { PipelineFailure } from '@/components/pipeline-failure';
 import { describeError } from '@/lib/api/client';
 import { reorder } from '@shared/utils/storyReorder';
+import { canMergeStoryLines, mergeStoryLineWithNext } from './story-merge';
 import type { Draft } from './longform-session';
 interface Props {
   draft: Draft;
@@ -290,6 +291,7 @@ export function StoryEditor({
               line={line}
               index={index}
               count={draft.lines.length}
+              canMerge={canMergeStoryLines(line, draft.lines[index + 1]) && !previewing}
               draft={draft}
               profiles={profiles}
               disabled={disabled}
@@ -314,6 +316,11 @@ export function StoryEditor({
                 })
               }
               onRemove={() => onChange({ lines: draft.lines.filter((l) => l.id !== line.id) })}
+              onMerge={() => {
+                if (disabled || controller.current) return;
+                const lines = mergeStoryLineWithNext(draft.lines, line.id);
+                if (lines) onChange({ lines });
+              }}
             />
           ))}
         </div>

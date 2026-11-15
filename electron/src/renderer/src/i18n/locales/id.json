@@ -1732,6 +1732,8 @@
     "lineVoice": "Suara baris",
     "chapterHeading": "Judul bab",
     "lineActions": "Tindakan baris",
+    "mergeNext": "Gabungkan dengan berikutnya",
+    "mergeNextHint": "Gabungkan baris bersebelahan dengan pembicara, penggantian suara, dan pengaturan kecepatan yang sama.",
     "autocastDone_one": "{{lines}} baris dibagikan ke {{count}} suara",
     "autocastDone_other": "{{lines}} baris dibagikan ke {{count}} suara",
     "recovery_title": "Cerita terputus",

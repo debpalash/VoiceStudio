@@ -1732,6 +1732,8 @@
     "lineVoice": "Giọng của dòng",
     "chapterHeading": "Tiêu đề chương",
     "lineActions": "Thao tác dòng",
+    "mergeNext": "Hợp nhất với tiếp theo",
+    "mergeNextHint": "Gộp các dòng liền kề có cùng người nói, lựa chọn giọng riêng và cài đặt tốc độ.",
     "autocastDone_one": "Đã phân {{lines}} dòng cho {{count}} giọng",
     "autocastDone_other": "Đã phân {{lines}} dòng cho {{count}} giọng",
     "recovery_title": "Truyện bị gián đoạn",
