@@ -93,6 +93,10 @@ def _android_signing(report: dict | None, assets: Path | None, rehearsal: bool) 
         if not rehearsal:
             raise ValueError("Unsigned Android APK cannot be described as a signed release")
         return "⚠️ Unsigned rehearsal APK; not a release-signing check"
+    if report["status"] == "unverified":
+        if not rehearsal:
+            raise ValueError("Unverified Android APK cannot be described as a signed release")
+        return "⚠️ Rehearsal APK; signing unverified; not release-signing proof"
     if rehearsal:
         return "⚠️ APK signature verified for rehearsal; not release-signing proof"
     # This checks the APK only. An AAB link identifies the Play upload format;
@@ -109,7 +113,7 @@ def render(
     for path in sorted(reports_dir.glob("signing-*.json")):
         report = json.loads(path.read_text(encoding="utf-8"))
         if report.get("platform") == "android" and report.get("arch") == "universal":
-            if android is not None or report.get("status") not in {"signed", "unsigned"}:
+            if android is not None or report.get("status") not in {"signed", "unsigned", "unverified"}:
                 raise ValueError(f"Invalid Android signing report: {path.name}")
             android = report
             continue

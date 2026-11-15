@@ -125,6 +125,8 @@ def test_one_table_links_every_download_present_and_marks_missing_ones(tmp_path)
     (False, "signed", "✅ Signed APK (signature verified)", True),
     (False, "unsigned", "Unsigned Android APK", False),
     (True, "unsigned", "Unsigned rehearsal APK", True),
+    (False, "unverified", "Unverified Android APK", False),
+    (True, "unverified", "signing unverified", True),
     (True, "signed", "not release-signing proof", True),
 ])
 def test_phone_caption_uses_the_verified_apk_report(tmp_path, rehearsal, status, caption, accepted):
@@ -165,7 +167,7 @@ def test_phone_report_cannot_verify_a_second_apk_or_another_mode(tmp_path):
 
 @pytest.mark.parametrize("rehearsal,verify_rc,accepted,status", [
     (False, 0, True, "signed"), (False, 1, False, None),
-    (True, 1, True, "unsigned"), (True, 0, True, "signed"),
+    (True, 1, True, "unverified"), (True, 0, True, "signed"),
 ])
 def test_actual_android_measurement_shell_works_from_an_old_checkout(
     tmp_path, rehearsal, verify_rc, accepted, status,

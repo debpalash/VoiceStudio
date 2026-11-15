@@ -169,9 +169,9 @@ jobs:
           if "$APKSIGNER" verify --min-sdk-version 29 --verbose --print-certs "$APK" > "$RUNNER_TEMP/android-signing/apk-verification.log" 2>&1; then
             STATUS=signed
           elif [ "$REHEARSAL" = true ]; then
-            # No release key is supplied in rehearsal. A failed verification
-            # is never described as a signed or install-verified APK.
-            STATUS=unsigned
+            # Failure may mean a corrupt APK or a verifier error, not just an
+            # absent signature. Do not claim unsigned without proving absence.
+            STATUS=unverified
           else
             echo "::error::The release APK did not pass signature verification"
             exit 1
