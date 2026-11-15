@@ -1749,6 +1749,8 @@
     "lineVoice": "Голос рядка",
     "chapterHeading": "Назва розділу",
     "lineActions": "Дії з рядком",
+    "mergeNext": "Об'єднати з наступним",
+    "mergeNextHint": "Об’єднайте сусідні рядки з однаковим мовцем, перевизначенням голосу й налаштуванням швидкості.",
     "autocastDone_one": "{{lines}} рядків розподілено на {{count}} голос",
     "autocastDone_few": "{{lines}} рядків розподілено на {{count}} голоси",
     "autocastDone_many": "{{lines}} рядків розподілено на {{count}} голосів",

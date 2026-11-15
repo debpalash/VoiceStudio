@@ -1731,6 +1731,8 @@
     "lineVoice": "Satır sesi",
     "chapterHeading": "Bölüm başlığı",
     "lineActions": "Satır işlemleri",
+    "mergeNext": "Sonrakiyle birleştir",
+    "mergeNextHint": "Aynı konuşmacı, ses geçersiz kılma ve hız ayarına sahip bitişik satırları birleştirin.",
     "autocastDone_one": "{{lines}} satır {{count}} sese dağıtıldı",
     "autocastDone_other": "{{lines}} satır {{count}} sese dağıtıldı",
     "recovery_title": "Yarıda kalan hikâye",

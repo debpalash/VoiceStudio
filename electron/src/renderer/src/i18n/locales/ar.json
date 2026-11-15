@@ -1761,6 +1761,8 @@
     "lineVoice": "صوت السطر",
     "chapterHeading": "عنوان الفصل",
     "lineActions": "إجراءات السطر",
+    "mergeNext": "دمج مع التالي",
+    "mergeNextHint": "ادمج الأسطر المتجاورة التي لها المتحدث نفسه وتجاوز الصوت وإعداد السرعة نفسيهما.",
     "autocastDone_zero": "تم توزيع {{lines}} سطرًا دون أصوات",
     "autocastDone_one": "تم توزيع {{lines}} سطرًا على {{count}} صوت",
     "autocastDone_two": "تم توزيع {{lines}} سطرًا على {{count}} صوت",

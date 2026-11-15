@@ -1745,6 +1745,8 @@
     "lineVoice": "Głos linii",
     "chapterHeading": "Tytuł rozdziału",
     "lineActions": "Akcje linii",
+    "mergeNext": "Połącz z następnym",
+    "mergeNextHint": "Połącz sąsiednie wiersze z tym samym mówcą, takim samym nadpisaniem głosu i ustawieniem szybkości.",
     "autocastDone_one": "Przydzielono {{lines}} linii do {{count}} głosu",
     "autocastDone_few": "Przydzielono {{lines}} linii do {{count}} głosów",
     "autocastDone_many": "Przydzielono {{lines}} linii do {{count}} głosów",
