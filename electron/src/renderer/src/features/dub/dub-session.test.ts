@@ -6,6 +6,11 @@ import { apiJson } from '@/lib/api/client';
 import { consumeTaskStream, IncompleteTaskStreamError } from '@/lib/api/event-stream';
 const diagnosticCapture = vi.hoisted(() => vi.fn());
 const preparedCapture = vi.hoisted(() => vi.fn());
+const cookiePolicy = vi.hoisted(() => ({ allowed: true }));
+vi.mock('@shared/utils/cookieExport', async (load) => ({
+  ...(await load<typeof import('@shared/utils/cookieExport')>()),
+  _cookieTransportAllowed: () => cookiePolicy.allowed,
+}));
 const diagnosticGrant = vi.hoisted(() => ({
   active: false,
   observation: { revision: 1, observedAtMs: 1, grantEpoch: 'a'.repeat(32) },
@@ -23,9 +28,27 @@ vi.mock('@/lib/diagnostic-reports', () => ({
     diagnosticGrant.active && observation === diagnosticGrant.observation,
 }));
 beforeEach(() => {
+  cookiePolicy.allowed = true;
   diagnosticGrant.active = false;
   diagnosticCapture.mockClear();
   preparedCapture.mockClear();
+});
+it.each(['transport', 'too-large'] as const)('does not report local cookie %s validation as an operation failure', async (kind) => {
+  const previous = dubSession.state;
+  const text = vi.fn(async () => 'private fixture cookies');
+  const cookieFile = { size: kind === 'too-large' ? 10_000_000 : 1, text } as unknown as File;
+  cookiePolicy.allowed = kind !== 'transport';
+  vi.mocked(apiJson).mockClear();
+  diagnosticGrant.active = true;
+  try {
+    dubSession.setState((current) => ({ ...current, phase: 'idle', recovery: null }));
+    await ingestDubUrl('https://fixture.invalid/video', cookieFile);
+    expect(dubSession.state.error).toBe(kind === 'too-large' ? 'DUB_COOKIE_TOO_LARGE' : 'DUB_COOKIE_TRANSPORT');
+    expect(diagnosticCapture).not.toHaveBeenCalled();
+    expect(preparedCapture).not.toHaveBeenCalled();
+    expect(text).not.toHaveBeenCalled();
+    expect(apiJson).not.toHaveBeenCalled();
+  } finally { dubSession.setState(() => previous); }
 });
 import {
   applyDubTranslationRows,
