@@ -14,6 +14,7 @@ const gate = vi.hoisted(() => ({
   removeBlocker: null as null | ((path: string) => Promise<void>),
   sessionWrites: 0,
   sessionReads: 0,
+  consentReads: 0,
   failReadTarget: '',
   failReadCode: 'EACCES',
   removeOnReadTarget: '',
@@ -23,6 +24,7 @@ const gate = vi.hoisted(() => ({
   publications: [] as string[],
   failDirectorySync: false,
   blockedRead: null as null | { entered: () => void; wait: Promise<void> },
+  blockedConsentRead: null as null | { entered: () => void; wait: Promise<void> },
 }));
 vi.mock('node:fs/promises', async (original) => {
   const fs = await original<typeof import('node:fs/promises')>();
@@ -47,12 +49,19 @@ vi.mock('node:fs/promises', async (original) => {
     open: async (...args: Parameters<typeof fs.open>) => {
       if (String(args[0]).endsWith('outbox.json')) gate.outboxReads++;
       if (String(args[0]).endsWith('session.json')) gate.sessionReads++;
+      if (String(args[0]).endsWith('consent.json')) gate.consentReads++;
       const name = basename(String(args[0]));
       if (/^[a-f0-9]{32}\.json$/.test(name))
         gate.recordReads.set(name, (gate.recordReads.get(name) ?? 0) + 1);
       if (gate.removeOnReadTarget && String(args[0]).endsWith(gate.removeOnReadTarget)) {
         gate.removeOnReadTarget = '';
         await fs.rm(String(args[0]), { force: true });
+      }
+      if (String(args[0]).endsWith('consent.json') && gate.blockedConsentRead) {
+        const blocked = gate.blockedConsentRead;
+        gate.blockedConsentRead = null;
+        blocked.entered();
+        await blocked.wait;
       }
       if (gate.failReadTarget && String(args[0]).endsWith(gate.failReadTarget))
         throw Object.assign(new Error('Temporary read lock'), { code: gate.failReadCode });
@@ -103,6 +112,7 @@ afterEach(async () => {
   gate.removeBlocker = null;
   gate.sessionWrites = 0;
   gate.sessionReads = 0;
+  gate.consentReads = 0;
   gate.failReadTarget = '';
   gate.failReadCode = 'EACCES';
   gate.removeOnReadTarget = '';
@@ -112,6 +122,7 @@ afterEach(async () => {
   gate.publications = [];
   gate.failDirectorySync = false;
   gate.blockedRead = null;
+  gate.blockedConsentRead = null;
   await reports?.close();
   if (root) await rm(root, { recursive: true, force: true });
 });
@@ -1263,6 +1274,63 @@ it('retries durable hard-kill revocation after storage becomes writable without 
   expect(initial.send).not.toHaveBeenCalled();
 });
 
+it.each(['EACCES', 'EIO'])(
+  'revokes an unread saved grant during a hard-disabled launch (%s)',
+  async (code) => {
+    const initial = await create();
+    await initial.reports.close();
+    gate.failReadTarget = 'consent.json';
+    gate.failReadCode = code;
+    // A separate fence must still work if the unread grant is also locked
+    // against replacement/removal, rather than relying on its known contents.
+    gate.failRenameTarget = 'consent.json';
+    gate.failRemoveTarget = 'consent.json';
+    reports = new DiagnosticReports({
+      ...initial.options,
+      env: { OMNIVOICE_DIAGNOSTICS_DISABLED: '1' },
+    });
+    await reports.initialize();
+    expect(reports.status().enabled).toBe(false);
+    await reports.close();
+    gate.failReadTarget = gate.failRenameTarget = gate.failRemoveTarget = '';
+    reports = new DiagnosticReports(initial.options);
+    await reports.initialize();
+    await reports.flush();
+    expect(reports.status()).toMatchObject({ enabled: false, opted_in: false, prompted: true });
+    expect(initial.send).not.toHaveBeenCalled();
+  },
+);
+
+it.each(['EACCES', 'EIO'])(
+  'retains unread-consent evidence and retries authority at a bounded cadence (%s)',
+  async (code) => {
+    const initial = await create();
+    initial.reports.capture({ category: 'operation_failed' });
+    await initial.reports.close();
+    const outbox = join(initial.options.directory, 'outbox.json');
+    const original = await readFile(outbox);
+    let now = Date.now();
+    gate.failReadTarget = 'consent.json';
+    gate.failReadCode = code;
+    reports = new DiagnosticReports({ ...initial.options, now: () => now });
+    await reports.initialize();
+    expect(reports.status().enabled).toBe(false);
+    expect(await readFile(outbox)).toEqual(original);
+    reports.capture({ category: 'generation_failed' });
+    await reports.flush();
+    gate.failReadTarget = '';
+    await reports.flush();
+    expect(initial.send).not.toHaveBeenCalled();
+    now += 60_001;
+    await reports.flush();
+    expect(reports.status().enabled).toBe(true);
+    expect(initial.send).toHaveBeenCalledOnce();
+    expect(JSON.parse(initial.send.mock.calls[0][1]!.body as string).props.category).toBe(
+      'operation_failed',
+    );
+  },
+);
+
 it('retires the session marker before waiting for an active worker during intentional close', async () => {
   const initial = await create();
   let release!: (response: Response) => void;
@@ -1376,5 +1444,171 @@ it.each(['OMNIVOICE_DIAGNOSTICS_DISABLED', 'OMNIVOICE_ANALYTICS_DISABLED'])(
     );
     expect(current.epoch).not.toBe(old.epoch);
     expect(current.profile_id).not.toBe(old.profile_id);
+  },
+);
+
+it.each(['EACCES', 'EIO'])(
+  'suspends an active unread grant without losing accepted reports or inventing a crash (%s)',
+  async (code) => {
+    const initial = await create();
+    initial.reports.capture({ category: 'operation_failed' });
+    await initial.reports.close();
+    let now = Date.now();
+    reports = new DiagnosticReports({ ...initial.options, now: () => now });
+    await reports.initialize();
+    const outbox = join(initial.options.directory, 'outbox.json');
+    const marker = join(initial.options.directory, 'session.json');
+    const oldOutbox = await readFile(outbox),
+      oldMarker = await readFile(marker);
+    const epoch = reports.status().grant_epoch;
+    reports.capture({ category: 'generation_failed' });
+    gate.failReadTarget = 'consent.json';
+    gate.failReadCode = code;
+    const reads = gate.consentReads;
+    await reports.flush();
+    expect(reports.status()).toMatchObject({
+      enabled: false,
+      opted_in: false,
+      grant_epoch: null,
+      pending_count: 2,
+    });
+    expect(await readFile(outbox)).toEqual(oldOutbox);
+    expect(await readFile(marker)).toEqual(oldMarker);
+    reports.capture({ category: 'download_failed' });
+    expect(reports.status().pending_count).toBe(2);
+    expect(gate.consentReads).toBe(reads + 1);
+    await reports.flush();
+    now += 59_999;
+    await reports.flush();
+    expect(gate.consentReads).toBe(reads + 1);
+    gate.failReadTarget = '';
+    now++;
+    await reports.flush();
+    expect(reports.status()).toMatchObject({ enabled: true, opted_in: true, grant_epoch: epoch });
+    expect(initial.send).toHaveBeenCalledTimes(2);
+    expect(
+      initial.send.mock.calls
+        .map((call) => JSON.parse(call[1]!.body as string).props.category)
+        .sort(),
+    ).toEqual(['generation_failed', 'operation_failed']);
+  },
+);
+
+it.each(['EACCES', 'EIO'])(
+  'keeps an active unread grant queue through intentional close and restart (%s)',
+  async (code) => {
+    const initial = await create();
+    initial.reports.capture({ category: 'operation_failed' });
+    await initial.reports.close();
+    reports = new DiagnosticReports(initial.options);
+    await reports.initialize();
+    reports.capture({ category: 'generation_failed' });
+    gate.failReadTarget = 'consent.json';
+    gate.failReadCode = code;
+    await reports.flush();
+    await reports.close();
+    gate.failReadTarget = '';
+    reports = new DiagnosticReports(initial.options);
+    await reports.initialize();
+    await reports.flush();
+    expect(initial.send).toHaveBeenCalledTimes(2);
+    expect(
+      initial.send.mock.calls
+        .map((call) => JSON.parse(call[1]!.body as string).props.category)
+        .sort(),
+    ).toEqual(['generation_failed', 'operation_failed']);
+  },
+);
+
+it.each(['off', 'new-grant', 'explicit-off', 'explicit-on', 'hard-kill'])(
+  'does not lend suspended accepted reports to a later authority: %s',
+  async (choice) => {
+    const initial = await create();
+    initial.reports.capture({ category: 'operation_failed' });
+    await initial.reports.close();
+    let now = Date.now();
+    const env: NodeJS.ProcessEnv = {};
+    reports = new DiagnosticReports({ ...initial.options, env, now: () => now });
+    await reports.initialize();
+    const path = join(initial.options.directory, 'consent.json');
+    const old = JSON.parse(await readFile(path, 'utf8'));
+    gate.failReadTarget = 'consent.json';
+    await reports.flush();
+    expect(reports.status().enabled).toBe(false);
+    if (choice === 'hard-kill') {
+      env.OMNIVOICE_DIAGNOSTICS_DISABLED = '1';
+      await reports.flush();
+      await reports.close();
+      gate.failReadTarget = '';
+      reports = new DiagnosticReports(initial.options);
+      await reports.initialize();
+      await reports.flush();
+      expect(reports.status().enabled).toBe(false);
+    } else {
+      gate.failReadTarget = '';
+      if (choice === 'explicit-off' || choice === 'explicit-on')
+        await reports.setConsent(choice === 'explicit-on');
+      else
+        await writeFile(
+          path,
+          JSON.stringify({
+            ...old,
+            enabled: choice !== 'off',
+            ...(choice === 'new-grant'
+              ? { epoch: 'a'.repeat(32), profile_id: 'install_' + 'b'.repeat(32) }
+              : {}),
+          }),
+        );
+      now += 60_001;
+      await reports.flush();
+      expect(reports.status().enabled).toBe(choice === 'explicit-on');
+    }
+    expect(initial.send).not.toHaveBeenCalled();
+    expect(reports.status().pending_count).toBe(0);
+  },
+);
+
+it.each([false, true])(
+  'keeps a newer choice authoritative over an in-progress active grant read (regrant: %s)',
+  async (regrant) => {
+    const initial = await create();
+    initial.reports.capture({ category: 'operation_failed' });
+    let entered = false,
+      release!: () => void;
+    gate.blockedConsentRead = {
+      entered: () => {
+        entered = true;
+      },
+      wait: new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+    };
+    const flushing = initial.reports.flush();
+    try {
+      await vi.waitFor(() => expect(entered).toBe(true));
+      const off = initial.reports.setConsent(false);
+      const on = regrant ? initial.reports.setConsent(true) : Promise.resolve();
+      expect(initial.reports.status().enabled).toBe(false);
+      gate.failReadTarget = 'consent.json';
+      release();
+      await Promise.all([flushing, off, on]);
+      gate.failReadTarget = '';
+      expect(initial.reports.status().enabled).toBe(regrant);
+      expect(initial.send).not.toHaveBeenCalled();
+      await initial.reports.flush();
+      expect(initial.reports.status().enabled).toBe(regrant);
+      if (regrant) {
+        initial.reports.capture({ category: 'generation_failed' });
+        await initial.reports.flush();
+        expect(initial.send).toHaveBeenCalledOnce();
+        expect(JSON.parse(initial.send.mock.calls[0][1]!.body as string).props.category).toBe(
+          'generation_failed',
+        );
+      }
+    } finally {
+      release();
+      gate.failReadTarget = '';
+      await flushing;
+    }
   },
 );

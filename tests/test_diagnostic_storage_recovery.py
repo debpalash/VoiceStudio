@@ -1,4 +1,5 @@
 """Transient storage faults preserve accepted diagnostics until durable publication."""
+import errno
 import importlib
 import json
 import os
@@ -128,6 +129,89 @@ def worker_tick(instance):
         pass
 
 
+@pytest.mark.parametrize("fail_after_rename", [False, True])
+def test_recovered_crash_keeps_its_marker_until_durable_publication(reporter, monkeypatch, fail_after_rename):
+    reports = importlib.import_module("core.diagnostic_reports")
+    from core import run_sentinel
+    reporter.consent(True)
+    monkeypatch.setattr(run_sentinel, "_previous_run_alive", lambda *args: False)
+    previous = {"version": 1, "epoch": reporter.epoch, "pid": 42,
+                "started_at": reports.time.time() - 15, "last_active_at": reports.time.time() - 5,
+                "app_version": "0.5.8"}
+    marker = reporter.root / "session.json"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(json.dumps(previous), encoding="utf-8")
+    original = marker.read_bytes()
+    atomic = reports._atomic
+    blocked = True
+    attempts = []
+
+    def fail_outbox(path, value):
+        if path.parent == reporter.directory and blocked:
+            attempts.append(path)
+            if fail_after_rename:
+                atomic(path, value)
+            raise OSError("controlled recovered-crash publication failure")
+        return atomic(path, value)
+
+    monkeypatch.setattr(reports, "_atomic", fail_outbox)
+    worker_tick(reporter)
+    assert attempts, "recovery must reach actual durable publication"
+    assert marker.read_bytes() == original, "unsaved crash evidence was replaced"
+    assert not reporter.marker_owned
+    worker_tick(reporter)
+    assert len(attempts) == 1, "recovery must respect the storage retry deadline"
+
+    # A new reporter has none of the previous process's in-memory capture state.
+    blocked = False
+    restarted = reports.Reporter()
+    restarted.schema = reports._schema()
+    try:
+        worker_tick(restarted)
+        saved = restarted._files()
+        assert len(saved) == 1
+        assert saved[0]["props"]["category"] == "backend_crash"
+        assert saved[0]["props"]["occurrences"] == 1
+        assert saved[0]["props"]["app_version"] == previous["app_version"]
+        assert saved[0]["timestamp_ms"] == int(previous["last_active_at"] * 1000)
+        if fail_after_rename:
+            assert saved[0]["id"] == attempts[0].stem
+        assert json.loads(marker.read_text(encoding="utf-8"))["pid"] == os.getpid()
+        assert restarted.marker_owned
+    finally:
+        restarted.shutdown()
+
+
+def test_full_outbox_defers_recovered_marker_without_exceeding_capacity(reporter, monkeypatch):
+    reports = importlib.import_module("core.diagnostic_reports")
+    from core import run_sentinel
+    reporter.consent(True)
+    assert reporter.capture("download_failed", stage="download")
+    reporter._tick()
+    first, = reporter._files()
+    monkeypatch.setattr(run_sentinel, "_previous_run_alive", lambda *args: False)
+    marker = reporter.root / "session.json"
+    previous = {"epoch": reporter.epoch, "pid": 42, "started_at": reports.time.time() - 15}
+    marker.write_text(json.dumps(previous), encoding="utf-8")
+    original = marker.read_bytes()
+    restarted = reports.Reporter()
+    restarted.schema = reports._schema()
+    restarted.schema["limits"]["queue_count"] = 1
+    try:
+        worker_tick(restarted)
+        assert restarted._files() == [first]
+        assert marker.read_bytes() == original
+        assert not restarted.marker_owned
+        (restarted.directory / (first["id"] + ".json")).unlink()
+        worker_tick(restarted)
+        recovered, = restarted._files()
+        assert recovered["props"]["category"] == "backend_crash"
+        assert recovered["props"]["occurrences"] == 1
+        assert restarted.marker_owned
+    finally:
+        restarted.shutdown()
+
+
 def choice_thread(instance, enabled):
     results, failures, completed = [], [], threading.Event()
 
@@ -251,12 +335,12 @@ def test_withdrawal_fences_a_worker_consent_read_already_in_progress(reporter, m
     load = prefs._load
     saved = load()
 
-    def blocked_load():
+    def blocked_load(**options):
         if threading.current_thread().name == "blocked-diagnostic-read":
             entered.set()
             assert release.wait(5)
             return dict(saved)
-        return load()
+        return load(**options)
 
     def tick():
         with reporter.lock:
@@ -894,3 +978,248 @@ def test_storage_retry_does_not_survive_revocation_or_close(reporter, monkeypatc
     reporter._tick()
     saved, = reporter._files()
     assert saved["props"]["category"] == "download_failed"
+
+
+@pytest.mark.parametrize("managed", [False, True])
+@pytest.mark.parametrize("number", [errno.EIO, errno.EACCES])
+def test_unread_consent_closes_delivery_preserves_evidence_and_retries(request, monkeypatch, managed, number):
+    import builtins
+    instance = request.getfixturevalue("managed_reporter" if managed else "reporter")
+    reports = importlib.import_module("core.diagnostic_reports")
+    from core import prefs
+    clock = [100.0]
+    monkeypatch.setattr(reports.time, "monotonic", lambda: clock[0])
+    if not managed:
+        instance.consent(True)
+    assert instance.capture("engine_failed", stage="engine")
+    instance._tick()
+    report, = instance.directory.glob("*.json")
+    original = report.read_bytes()
+    marker = instance.root / "session.json"
+    marker_bytes = marker.read_bytes() if not managed else None
+    old_epoch = instance.epoch
+    assert instance.capture("download_failed", stage="download")
+    target = instance.root / "consent.json" if managed else Path(prefs._PREFS_PATH)
+    attempts, cancelled = [], []
+    unlocked = False
+    read_text, open_file = Path.read_text, builtins.open
+
+    class Transport:
+        def shutdown(self):
+            cancelled.append(True)
+
+    if not managed:
+        instance.transport = Transport()
+
+    def fail_read():
+        attempts.append(clock[0])
+        raise OSError(number, "controlled authority read failure")
+
+    def controlled_text(path, *args, **kwargs):
+        if path == target and not unlocked:
+            fail_read()
+        return read_text(path, *args, **kwargs)
+
+    def controlled_open(path, mode="r", *args, **kwargs):
+        if str(path) == str(target) and mode == "r" and not unlocked:
+            fail_read()
+        return open_file(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", controlled_text)
+    monkeypatch.setattr(builtins, "open", controlled_open)
+    instance._tick()
+    assert not instance.enabled and not instance.capture("generation_failed")
+    assert report.exists() and report.read_bytes() == original
+    if not managed:
+        assert marker.read_bytes() == marker_bytes and cancelled == [True]
+    for now in (100.0, 101.0, 159.9):
+        clock[0] = now
+        instance._tick()
+    assert attempts == [100.0], "unread consent was retried on every worker tick"
+    unlocked = True
+    clock[0] = 160.0
+    instance._tick()
+    assert instance.enabled and instance.epoch == old_epoch
+    rows = instance._files()
+    assert {row["props"]["category"] for row in rows} == {"engine_failed", "download_failed"}
+    assert any(row["id"] == report.stem for row in rows)
+    assert instance.intake.empty()
+
+
+@pytest.mark.parametrize("number", [errno.EIO, errno.EACCES])
+@pytest.mark.parametrize("operation", ["on", "off", "set", "mapping", "delete"])
+def test_unread_preferences_abort_mutations_without_replacing_other_settings(reporter, monkeypatch, number, operation):
+    import builtins
+    from core import prefs
+    prefs.set_("tts_backend", "user_engine")
+    prefs.set_("engine_options", {"keep": True})
+    if operation == "off":
+        reporter.consent(True)
+    target = Path(prefs._PREFS_PATH)
+    original = target.read_bytes()
+    open_file = builtins.open
+
+    def denied(path, mode="r", *args, **kwargs):
+        if str(path) == str(target) and mode == "r":
+            raise OSError(number, "controlled shared prefs read failure")
+        return open_file(path, mode, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(builtins, "open", denied)
+        action = {"on": lambda: reporter.consent(True), "off": lambda: reporter.consent(False),
+                  "set": lambda: prefs.set_("new", True), "mapping": lambda: prefs.update_mapping("engine_options", {"new": True}),
+                  "delete": lambda: prefs.delete("tts_backend")}[operation]
+        with pytest.raises(OSError):
+            action()
+        assert target.read_bytes() == original
+        # Ordinary read-only preferences remain forgiving, as before.
+        assert prefs.get("tts_backend", "fallback") == "fallback"
+        if operation in {"on", "off"}:
+            assert not reporter.enabled and reporter.consent_failed
+        if operation == "off":
+            assert (reporter.root / "revoked.json").exists()
+    if operation == "off":
+        reports = importlib.import_module("core.diagnostic_reports")
+        restarted = reports.Reporter(); restarted.schema = reports._schema()
+        try:
+            restarted._tick()
+            assert not restarted.enabled
+        finally:
+            restarted.shutdown()
+
+
+@pytest.mark.parametrize("number", [errno.EIO, errno.EACCES])
+def test_hard_kill_with_unread_preferences_retires_grant_before_read_recovery(reporter, monkeypatch, number):
+    import builtins
+    reports = importlib.import_module("core.diagnostic_reports")
+    from core import prefs
+    reporter.consent(True)
+    assert reporter.capture("engine_failed")
+    reporter._tick()
+    target = Path(prefs._PREFS_PATH)
+    original = target.read_bytes()
+    open_file = builtins.open
+    with monkeypatch.context() as patch:
+        def denied(path, mode="r", *args, **kwargs):
+            if str(path) == str(target) and mode == "r":
+                raise OSError(number, "controlled killed grant read failure")
+            return open_file(path, mode, *args, **kwargs)
+        patch.setattr(builtins, "open", denied)
+        patch.setenv("OMNIVOICE_DIAGNOSTICS_DISABLED", "1")
+        reporter._tick()
+        assert not reporter.enabled and (reporter.root / "revoked.json").exists()
+        assert target.read_bytes() == original
+        assert not list(reporter.directory.glob("*.json"))
+    restarted = reports.Reporter(); restarted.schema = reports._schema()
+    try:
+        restarted._tick()
+        assert not restarted.enabled and not restarted.capture("engine_failed")
+    finally:
+        restarted.shutdown()
+
+
+@pytest.mark.parametrize("body", [None, "{broken", "[]"])
+def test_missing_or_proven_corrupt_preferences_still_allow_explicit_initialization(reporter, body):
+    from core import prefs
+    target = Path(prefs._PREFS_PATH)
+    if body is not None:
+        target.write_text(body, encoding="utf-8")
+    reporter._tick()
+    assert not reporter.enabled and reporter.epoch is None
+    assert not target.exists() if body is None else target.read_text(encoding="utf-8") == body
+    prefs.set_("unrelated", "keep")
+    reporter.consent(True)
+    assert reporter.enabled and prefs.get("unrelated") == "keep"
+
+
+def test_unread_consent_recovery_retains_exact_pending_publication(reporter, monkeypatch):
+    import builtins
+    reports = importlib.import_module("core.diagnostic_reports")
+    from core import prefs
+    clock = [100.0]
+    monkeypatch.setattr(reports.time, "monotonic", lambda: clock[0])
+    reporter.consent(True)
+    reporter._tick()
+    atomic = reports._atomic
+    failed = False
+
+    def committed_but_sync_failed(path, value):
+        nonlocal failed
+        atomic(path, value)
+        if path.parent == reporter.directory and not failed:
+            failed = True
+            raise OSError(errno.EIO, "controlled post-rename publication error")
+
+    monkeypatch.setattr(reports, "_atomic", committed_but_sync_failed)
+    assert reporter.capture("engine_failed", stage="engine")
+    reporter._tick()
+    saved, = reporter.directory.glob("*.json")
+    assert reporter.publication is not None and reporter.intake.qsize() == 1
+    publication = reporter.publication
+    target = Path(prefs._PREFS_PATH)
+    open_file = builtins.open
+    with monkeypatch.context() as patch:
+        def denied(path, mode="r", *args, **kwargs):
+            if str(path) == str(target) and mode == "r":
+                raise PermissionError(errno.EACCES, "controlled consent suspension")
+            return open_file(path, mode, *args, **kwargs)
+        patch.setattr(builtins, "open", denied)
+        reporter._tick()
+        assert not reporter.enabled and reporter.publication is publication
+        assert saved.exists()
+    clock[0] = 160.0
+    reporter._tick()
+    rows = reporter._files()
+    assert len(rows) == 1 and rows[0]["id"] == saved.stem
+    assert rows[0]["props"]["occurrences"] == 1
+    assert reporter.publication is None and reporter.intake.empty()
+
+
+def test_hard_kill_without_any_preferences_does_not_create_a_grant(reporter, monkeypatch):
+    from core import prefs
+    monkeypatch.setenv("OMNIVOICE_DIAGNOSTICS_DISABLED", "1")
+    reporter._tick()
+    assert not reporter.enabled and reporter.epoch is None and reporter.profile is None
+    assert not Path(prefs._PREFS_PATH).exists()
+    assert not reporter.capture("engine_failed")
+
+
+def test_unread_hard_kill_retries_failed_durable_fence_at_bounded_cadence(reporter, monkeypatch):
+    import builtins
+    reports = importlib.import_module("core.diagnostic_reports")
+    from core import prefs
+    reporter.consent(True)
+    clock, attempts = [100.0], []
+    monkeypatch.setattr(reports.time, "monotonic", lambda: clock[0])
+    target = Path(prefs._PREFS_PATH)
+    original = target.read_bytes()
+    open_file, atomic = builtins.open, reports._atomic
+    writable = False
+
+    def denied_read(path, mode="r", *args, **kwargs):
+        if str(path) == str(target) and mode == "r" and not writable:
+            raise OSError(errno.EIO, "controlled unread grant")
+        return open_file(path, mode, *args, **kwargs)
+
+    def denied_fence(path, value):
+        if path.name == "revoked.json":
+            attempts.append(clock[0])
+            if not writable:
+                raise PermissionError(errno.EACCES, "controlled unavailable fence storage")
+        return atomic(path, value)
+
+    monkeypatch.setattr(builtins, "open", denied_read)
+    monkeypatch.setattr(reports, "_atomic", denied_fence)
+    monkeypatch.setenv("OMNIVOICE_DIAGNOSTICS_DISABLED", "1")
+    for value in (100.0, 101.0, 159.9):
+        clock[0] = value
+        reporter._tick()
+        assert not reporter.enabled and not reporter.capture("engine_failed")
+    assert attempts == [100.0], "unread withdrawal hammered unavailable fence storage"
+    assert target.read_bytes() == original  # No successful durable write was possible yet.
+    writable = True
+    clock[0] = 160.0
+    reporter._tick()
+    assert attempts == [100.0, 160.0]
+    assert (reporter.root / "revoked.json").exists()
+    assert prefs.get("diagnostics_enabled") is False

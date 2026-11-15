@@ -172,6 +172,8 @@ export class DiagnosticReports {
   private cleanupPending = false;
   private cleanupRetryAt = 0;
   private cleanupWork: Promise<void> | null = null;
+  private consentReadPending = false;
+  private consentReadRetryAt = 0;
   private revocationQueued = false;
   private work: Promise<void> | null = null;
   private control: Promise<unknown> = Promise.resolve();
@@ -226,6 +228,7 @@ export class DiagnosticReports {
       !this.stopped &&
       this.initialized &&
       Boolean(this.consent?.enabled) &&
+      !this.consentReadPending &&
       Boolean(this.destination) &&
       !this.killObserved
     );
@@ -234,7 +237,11 @@ export class DiagnosticReports {
     return {
       available: Boolean(this.destination) && !killed(this.env),
       enabled: this.enabled,
-      opted_in: this.initialized && this.consent?.enabled === true && !this.killObserved,
+      opted_in:
+        this.initialized &&
+        this.consent?.enabled === true &&
+        !this.consentReadPending &&
+        !this.killObserved,
       grant_epoch: this.enabled ? this.consent!.epoch : null,
       prompted: this.consent !== null,
       pending_count: this.records.filter((record) => !record.completed).length,
@@ -243,12 +250,8 @@ export class DiagnosticReports {
   }
 
   async initialize(): Promise<void> {
-    try {
-      const consent = await readJson(this.consentPath, 4096);
-      if (validConsent(consent)) this.consent = consent;
-    } catch {
-      /* Missing or unreadable consent never grants collection. */
-    }
+    await this.restoreConsent();
+    if (this.consentReadPending) this.sessionRecoveryPending = true;
     if (await this.revoked()) {
       if (this.consent) this.consent = { ...this.consent, enabled: false };
       this.revocationPending = true;
@@ -261,7 +264,7 @@ export class DiagnosticReports {
     } else if (this.enabled) {
       this.sessionRecoveryPending = true;
       if (await this.restoreOutbox()) await this.recoverPendingSession();
-    } else {
+    } else if (!this.consentReadPending) {
       await this.purge();
     }
     if (this.options.automatic !== false) {
@@ -269,6 +272,42 @@ export class DiagnosticReports {
       this.timer.unref();
       this.schedule();
     }
+  }
+
+  private async restoreConsent(): Promise<boolean> {
+    const revision = this.revision;
+    try {
+      const consent = await readJson(this.consentPath, 4096);
+      if (revision !== this.revision || this.stopped) return false;
+      // A running authority cannot borrow a different saved ON grant. This
+      // matches granted(): retire old reports and require an explicit choice.
+      const changed =
+        this.consent?.enabled &&
+        validConsent(consent) &&
+        consent.enabled &&
+        (this.consent.epoch !== consent.epoch || this.consent.profile_id !== consent.profile_id);
+      this.consent = validConsent(consent) && !changed ? consent : null;
+    } catch (error) {
+      if (revision !== this.revision || this.stopped) return false;
+      // Absence and proven invalid JSON are not an unread saved choice.
+      // IO failures close capture without destroying unexamined evidence.
+      if (!discardableReadFailure(error)) {
+        this.suspendConsentRead();
+        return false;
+      }
+      this.consent = null;
+    }
+    this.consentReadPending = false;
+    this.consentReadRetryAt = 0;
+    return true;
+  }
+
+  private suspendConsentRead(): void {
+    // Retain the cached identity and accepted records for same-grant recovery;
+    // this memory flag closes capture/status/send without destroying evidence.
+    this.consentReadPending = true;
+    this.consentReadRetryAt = this.now() + 60_000;
+    this.abort();
   }
 
   /** No disk, configuration reads, networking or waiting on fatal/error paths. */
@@ -316,6 +355,8 @@ export class DiagnosticReports {
     }
     // Revoke immediately, before any pending write, connection or backoff can progress.
     const revision = ++this.revision;
+    this.consentReadPending = false;
+    this.consentReadRetryAt = 0;
     this.abort();
     this.sessionStartedAt = null;
     this.sessionWriteAttemptAt = null;
@@ -441,7 +482,7 @@ export class DiagnosticReports {
     this.records = [];
     this.dirty = false;
     let operation: Promise<unknown>;
-    if (this.consent?.enabled || this.revocationPending) {
+    if (this.consent?.enabled || this.revocationPending || this.consentReadPending) {
       // Reuse the private OFF write and old-grant removal fallback. Do not
       // await from run(): setConsent itself waits for the current worker.
       operation = this.setConsent(false);
@@ -679,8 +720,13 @@ export class DiagnosticReports {
     let current: unknown;
     try {
       current = await readJson(this.consentPath, 4096);
-    } catch {
-      /* Missing/unreadable permission revokes the cached grant. */
+    } catch (error) {
+      if (revision !== this.revision || this.stopped) return false;
+      if (!discardableReadFailure(error)) {
+        this.suspendConsentRead();
+        return false;
+      }
+      // Only proven absence/invalid authority is a confirmed loss of grant.
     }
     if (revision !== this.revision) return false;
     if (
@@ -761,6 +807,22 @@ export class DiagnosticReports {
     if (this.revocationPending) {
       this.requestRevocation();
       return;
+    }
+    if (this.consentReadPending) {
+      if (this.now() < this.consentReadRetryAt || !(await this.restoreConsent())) return;
+      if (await this.revoked()) {
+        this.revocationPending = true;
+        this.requestRevocation();
+        return;
+      }
+      if (!this.enabled) {
+        this.records = [];
+        this.dirty = false;
+        await this.purge();
+        return;
+      }
+      // Preserve the existing recovery state. An active-read interruption
+      // must not reinterpret this process's live marker as a prior crash.
     }
     if (!this.enabled || !this.consent || !this.destination) return;
     const epoch = this.consent.epoch;

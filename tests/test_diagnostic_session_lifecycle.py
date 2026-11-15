@@ -202,6 +202,7 @@ def test_storage_retry_cannot_renew_recovered_evidence(session_reporter, monkeyp
     value = json.loads(marker.read_text(encoding='utf-8'))
     value['last_active_at'] = now[0] - 60
     marker.write_text(json.dumps(value), encoding='utf-8')
+    previous_marker = marker.read_bytes()
     atomic = reports._atomic
     failed = True
     def controlled_atomic(path, record):
@@ -213,13 +214,15 @@ def test_storage_retry_cannot_renew_recovered_evidence(session_reporter, monkeyp
     recovered = reports.Reporter(); recovered.schema = reports._schema()
     try:
         recovered._tick()
-        assert recovered.intake.qsize() == 1
+        assert marker.read_bytes() == previous_marker
+        assert not recovered.marker_owned
         failed = False
         now[0] += 8 * 86400
         recovered.storage_retry_at = 0
         recovered._tick()
         assert saved(recovered) == []
         assert recovered.intake.empty()
+        assert recovered.session_recovery is None
     finally:
         recovered.shutdown()
         old.marker_owned = False

@@ -272,6 +272,8 @@ class Reporter:
         self.stop = threading.Event()
         self.enabled = False
         self.consent_failed = False
+        self.consent_read_failed = False
+        self.consent_read_retry_at = 0
         self.kill_observed = False
         self.prompted = False
         self.epoch = None
@@ -290,6 +292,7 @@ class Reporter:
         self.marker_owned = False
         self.marker_active_at = None
         self.recovered_marker = None
+        self.session_recovery = None
         self.session_retired = False
         self.seen_errors = []
         self.started = time.time()
@@ -378,13 +381,18 @@ class Reporter:
             from core import prefs
             if (self.root / 'revoked.json').exists():
                 return {'version':1, 'enabled':False, 'prompted':True}
-            data = prefs._load()
+            data = prefs._load(strict=True)
             return {'version':1,'enabled':data.get('diagnostics_enabled') is True,'prompted':data.get('diagnostics_prompted') is True,
                     'epoch':data.get('diagnostics_epoch'),'profile_id':data.get('diagnostics_profile_id')}
-        except Exception:
-            return {}
+        except FileNotFoundError:
+            return {}  # Normal absence is known OFF, not an unread grant.
+        except OSError:
+            raise
+        except (ValueError, TypeError, RecursionError):
+            return {}  # Proven invalid authority remains fail-closed.
 
     def _purge(self):
+        self.session_recovery = None
         self.ack_cleanup_at.clear()
         self.ack_cleanup_count = self.ack_cleanup_bytes = 0
         for folder in (self.root / 'outbox', self.root / 'inbox') if not self.managed else (self.directory,):
@@ -402,7 +410,45 @@ class Reporter:
             with self.ack_lock:
                 revision = self.consent_revision
             hard_killed = self._hard_killed()
-            data = self._consent()
+            recovering = self.consent_read_failed
+            if recovering and time.monotonic() < self.consent_read_retry_at:
+                # A newly observed kill still attempts OFF immediately. Once
+                # that choice failed, retry its IO at the same bounded cadence.
+                if not hard_killed or self.managed or self.consent_failed:
+                    return
+            try:
+                data = self._consent()
+            except OSError:
+                with self.ack_lock:
+                    if revision != self.consent_revision:
+                        return
+                    self.enabled = False
+                    self.consent_read_failed = True
+                    self.consent_read_retry_at = time.monotonic()+60
+                    transport, self.transport = self.transport, None
+                # Cancel sending without erasing unread authority's evidence or
+                # an accepted publication/session recovery awaiting durable IO.
+                self.inflight = {key:value for key,value in self.inflight.items() if key in self.ack_cleanup_at}
+                if transport:
+                    transport.shutdown()
+                if hard_killed and not self.managed:
+                    with self.ack_lock:
+                        withdrawal_revision = self.consent_revision+1
+                    try:
+                        # Kill is withdrawal even when shared prefs are unread:
+                        # the existing OFF seam writes its fence before reading.
+                        self.consent(False)
+                    except OSError:
+                        with self.ack_lock:
+                            if self.consent_revision == withdrawal_revision:
+                                self.consent_read_failed = True
+                                self.consent_read_retry_at = time.monotonic()+60
+                return
+            with self.ack_lock:
+                if revision != self.consent_revision:
+                    return
+                self.consent_read_failed = False
+                self.consent_read_retry_at = 0
             if hard_killed and not self.managed and data.get('enabled') is True:
                 try:
                     # Preserve analytics/shared prefs, and retain the existing
@@ -418,7 +464,8 @@ class Reporter:
             valid = data.get('enabled') is True and isinstance(epoch,str) and _HEX.fullmatch(epoch) and isinstance(profile,str) and _PROFILE.fullmatch(profile)
             enabled = bool(valid and not hard_killed and not self.consent_failed)
             self.prompted = data.get('prompted', bool(data)) is True
-            if self.epoch != epoch or self.enabled != enabled:
+            resume_same_grant = recovering and enabled and self.epoch == epoch and self.profile == profile
+            if self.epoch != epoch or (not resume_same_grant and (self.enabled != enabled or recovering)):
                 with self.ack_lock:
                     self.enabled = False
                 if self.transport:
@@ -431,6 +478,7 @@ class Reporter:
                 self.ack_cleanup_count = self.ack_cleanup_bytes = 0
                 self.storage_retry_at = 0
                 self.publication = None
+                self.session_recovery = None
                 if not enabled:
                     try:
                         self._purge()
@@ -489,13 +537,13 @@ class Reporter:
         self.pending = len(records)
         return records
 
-    def _spool(self, item, records):
+    def _spool(self, item, records, record_id=None):
         epoch, fields, token, reported_version, timestamp = item
         if epoch != self.epoch or not self.enabled:
-            return
+            return False
         if not self._recent(timestamp):
             self.dropped += 1
-            return
+            return False
         if token is not None:
             now = time.monotonic()
             self.seen_errors = [(value,stamp) for value,stamp in self.seen_errors[-63:] if now-stamp < _limit(self.schema,'dedupe_ms',60000)/1000]
@@ -505,7 +553,14 @@ class Reporter:
             self._publish(item, self.publication[1], records)
             if token is not None:
                 self.seen_errors.append((token,now))
-            return
+            return True
+        if record_id is not None:
+            existing = next((row for row in records if row['id'] == record_id), None)
+            if existing is not None:
+                # Recovery can restart after rename but before the marker is
+                # replaced. Commit the same ID without adding an occurrence.
+                self._publish(item, existing, records)
+                return True
         fields = dict(fields)
         fields.pop('app_version', None)
         if reported_version is not None:
@@ -516,26 +571,29 @@ class Reporter:
         # commits and removes that ID. Rewriting it here would lose the new
         # occurrence at that unlink, so managed records stay immutable. The
         # standalone worker owns its outbox and can safely coalesce there.
-        if not self.managed:
+        if not self.managed and record_id is None:
             for existing in records:
                 if existing['props']['fingerprint'] == props['fingerprint'] and existing['id'] not in self.inflight and abs(timestamp-existing['timestamp_ms']) <= _limit(self.schema,'dedupe_ms',60000):
                     updated = {**existing, 'props': {**existing['props'], 'occurrences': min(1000000,existing['props']['occurrences']+1)}}
                     self._publish(item, updated, records)
                     if token is not None:
                         self.seen_errors.append((token,now))
-                    return
+                    return True
         if len(records)+self.ack_cleanup_count >= self._capacity('count'):
-            self.dropped += 1
-            return
-        record = {'version':1,'id':uuid.uuid4().hex,'timestamp_ms':timestamp,'epoch':epoch,'props':props}
+            if record_id is None:
+                self.dropped += 1
+            return False
+        record = {'version':1,'id':record_id or uuid.uuid4().hex,'timestamp_ms':timestamp,'epoch':epoch,'props':props}
         size = len(json.dumps(record,allow_nan=False,separators=(',',':')).encode())
         existing_size = self.ack_cleanup_bytes+sum(len(json.dumps(r,allow_nan=False,separators=(',',':')).encode()) for r in records)
         if existing_size + size > self._capacity('bytes'):
-            self.dropped += 1
-            return
+            if record_id is None:
+                self.dropped += 1
+            return False
         self._publish(item, record, records)
         if token is not None:
             self.seen_errors.append((token,now))
+        return True
 
     def _publish(self, item, record, records):
         # A rename may become visible before its directory fsync fails. Retain
@@ -556,7 +614,7 @@ class Reporter:
             return None
         try:
             records = self._files()
-            self._session()
+            self._session(records)
             for _ in range(64):
                 try:item = self.intake.peek_nowait()
                 except queue.Empty:break
@@ -572,7 +630,7 @@ class Reporter:
         self.storage_retry_at = 0
         return records
 
-    def _session(self):
+    def _session(self, records):
         if self.managed or self.session_retired:
             return
         path = self.root / 'session.json'
@@ -589,8 +647,18 @@ class Reporter:
                 active = previous.get('last_active_at', started)
                 identity = (previous.get('epoch'), pid, started)
                 if previous.get('epoch') == self.epoch and type(pid) is int and previous.get('clean') is not True and identity != self.recovered_marker and type(active) in (int,float) and math.isfinite(active) and self._recent(active*1000):
-                    if self.capture('backend_crash', stage='startup', reason='unclean_exit', _reported_app_version=previous.get('app_version'), _reported_timestamp_ms=int(active*1000)):
-                        self.recovered_marker = identity
+                    if self.session_recovery is None or self.session_recovery[0] != identity:
+                        fields = sanitize_props({'category':'backend_crash','stage':'startup','reason':'unclean_exit','source':'backend'},self.schema)
+                        item = (self.epoch, fields, None, _app_version(previous.get('app_version')), int(active*1000))
+                        self.session_recovery = (identity, item)
+                    # The marker stays authoritative through capacity or disk
+                    # failure. Use one bounded recovery slot and a stable ID so
+                    # a restart after publication cannot count it twice.
+                    record_id = hashlib.sha256(json.dumps(identity,separators=(',',':')).encode()).hexdigest()[:32]
+                    if not self._spool(self.session_recovery[1], records, record_id):
+                        return
+                    self.recovered_marker = identity
+                    self.session_recovery = None
             except FileNotFoundError:
                 pass  # A removed marker is normal absence, not a storage fault.
             except OSError:
@@ -600,6 +668,7 @@ class Reporter:
             except (ValueError, TypeError, AttributeError, OverflowError, RecursionError):
                 pass  # Proven malformed evidence can be replaced; unread IO cannot.
         _atomic(path, {'version':1,'epoch':self.epoch,'pid':os.getpid(),'started_at':self.started,'last_active_at':now,'app_version':self.app_version})
+        self.session_recovery = None
         self.marker_owned = True
         self.marker_active_at = now
 
@@ -624,6 +693,8 @@ class Reporter:
 
     def _tick(self):
         self.refresh()
+        if self.consent_read_failed and not self._hard_killed():
+            return  # Unknown authority closes intake/delivery, not durable evidence.
         if not self.enabled:
             self._purge()
             while not self.intake.empty():
@@ -755,6 +826,8 @@ class Reporter:
             self.enabled = False
             self.epoch = self.profile = None
             self.consent_failed = True
+            self.consent_read_failed = False
+            self.consent_read_retry_at = 0
             self.prompted = True
             transport, self.transport = self.transport, None
             while not self.acks.empty():
@@ -783,7 +856,7 @@ class Reporter:
                 except OSError:
                     pass  # A successful prefs write below still persists OFF.
             with prefs._MUTATE_LOCK:
-                data = prefs._load()
+                data = prefs._load(strict=True)
                 data.update(diagnostics_enabled=enabled,diagnostics_prompted=True,diagnostics_epoch=uuid.uuid4().hex,diagnostics_profile_id='install_'+uuid.uuid4().hex)
                 prefs._save(data)
             with self.ack_lock:

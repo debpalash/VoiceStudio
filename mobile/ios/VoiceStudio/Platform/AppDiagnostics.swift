@@ -101,11 +101,14 @@ import VoiceStudioKit
         guard collecting,let context=reporter?.recoveryContext else {return nil}
         return CompanionDiagnosticObservation(revision:observationRevision,epoch:context.epoch)
     }
+    /// A delayed completion may only use the grant owned by its original operation.
+    func captureObservedFailure(_ error: any Error, observation: CompanionDiagnosticObservation?, stage: String) {
+        guard let observation,observation==failureObservation else {return}
+        captureFailure(error,stage:stage,expectedEpoch:observation.epoch)
+    }
     func captureCompanionFailure(_ error: any Error, observation: CompanionDiagnosticObservation?, remoteTask: Bool) {
-        if remoteTask {
-            guard let observation,observation==failureObservation else {return}
-            captureFailure(error,stage:"dub",expectedEpoch:observation.epoch)
-        } else {captureFailure(error,stage:"dub")}
+        if remoteTask {captureObservedFailure(error,observation:observation,stage:"dub")}
+        else {captureFailure(error,stage:"dub")}
     }
     func captureFailure(_ error: any Error, stage: String = "other", engineID: String? = nil, file: String = #filePath, line: Int = #line,expectedEpoch: String? = nil) {
         guard let reporter, collecting else { return }

@@ -37,7 +37,8 @@ struct PhoneJobState: Sendable {
     var allowCPUFallback = UserDefaults.standard.bool(forKey: "jobs.cpu-fallback") {
         didSet { UserDefaults.standard.set(allowCPUFallback,forKey: "jobs.cpu-fallback") }
     }
-    @ObservationIgnored var onFailure: (@MainActor (String, any Error) -> Void)?
+    @ObservationIgnored var diagnosticFailureObservation: (@MainActor () -> CompanionDiagnosticObservation?)?
+    @ObservationIgnored var onFailure: (@MainActor (String, any Error, CompanionDiagnosticObservation?) -> Void)?
     @ObservationIgnored private var tasks: [String:Task<Void,Never>] = [:]
     @ObservationIgnored private var recipes: [String:Recipe] = [:]
     @ObservationIgnored private var modes: [String:NativeComputeMode] = [:]
@@ -96,6 +97,8 @@ struct PhoneJobState: Sendable {
     private func launch(id: String,mode: NativeComputeMode) {
         guard let recipe = recipes[id] else { return }
         modes[id] = mode
+        // Every native execution owns the grant observed before any engine/cleanup await.
+        let observation = diagnosticFailureObservation?()
         tasks[id] = Task {
             var cancelled = false
             do {
@@ -108,7 +111,7 @@ struct PhoneJobState: Sendable {
             catch {
                 let head = id.split(separator: ":", maxSplits: 1).first
                 let stage = states[id]?.engineStage == .loading ? "model_load" : (head == "dub" ? "dub" : (head == "transcript" ? "transcription" : (head == "production" ? "batch" : "generation")))
-                onFailure?(stage, error)
+                onFailure?(stage, error, observation)
                 states[id]?.error = error as? ClientError ?? ClientError("mobile.errors.file")
             }
             // NativeLocalEngine waits for the detached worker and its leases to be

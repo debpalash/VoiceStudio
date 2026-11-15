@@ -69,6 +69,9 @@ waits for that cleanup, so a delayed purge cannot delete new reports.
 Completed-delivery bookkeeping stays local and prevents repeated uploads while
 producer files are locked. If completion cannot be saved before an abrupt exit,
 a restart may retry the same stable report ID; exactly-once delivery is not promised.
+Temporarily unread consent stops collection and delivery while saved evidence waits
+for a bounded retry. Saving a choice never replaces unread shared preferences;
+a hard-disabled launch still invalidates an unread old grant before it can resume.
 Reopening a saved failed job only displays its old error; it does not create a
 new report under a later consent choice. Resumed operations report only failures
 proved fresh under the same grant. Changing consent in another window invalidates

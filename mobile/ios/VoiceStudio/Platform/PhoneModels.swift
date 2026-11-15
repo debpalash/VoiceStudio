@@ -37,7 +37,8 @@ final class WifiState: @unchecked Sendable {
     @ObservationIgnored private var diagnosticForeground = true
     @ObservationIgnored private var diagnosticActivityRevision: Int64 = 0
     func diagnosticsActivityChanged(active: Bool) { diagnosticForeground = active; diagnosticActivityRevision += 1 }
-    @ObservationIgnored var onFailure: (@MainActor (String, any Error) -> Void)?
+    @ObservationIgnored var diagnosticFailureObservation: (@MainActor () -> CompanionDiagnosticObservation?)?
+    @ObservationIgnored var onFailure: (@MainActor (String, any Error, CompanionDiagnosticObservation?) -> Void)?
     @ObservationIgnored private var downloads: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var downloadTokens: [String: UUID] = [:]
     @ObservationIgnored private let wifi = WifiState()
@@ -77,11 +78,12 @@ final class WifiState: @unchecked Sendable {
             self.error = ClientError("mobile.simple.checkpoint_failed"); return false
         }
     }
-    init(bundle: Bundle = .main) {
+    init(bundle: Bundle = .main, modelStore suppliedStore: (root: URL, store: ModelStore)? = nil) {
         allowMobileData = UserDefaults.standard.bool(forKey: "models.mobile-data")
         pendingDubs = (UserDefaults.standard.stringArray(forKey: "dub.queue") ?? []).compactMap(UUID.init(uuidString:))
         do {
             let root: URL = try {
+                if let suppliedStore { return suppliedStore.root }
                 #if DEBUG
                 if ProcessInfo.processInfo.arguments.contains("--ui-smoke") {
                     return FileManager.default.temporaryDirectory.appendingPathComponent("PhoneModels-smoke-" + UUID().uuidString, isDirectory: true)
@@ -90,7 +92,7 @@ final class WifiState: @unchecked Sendable {
                 return try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true).appendingPathComponent("PhoneModels", isDirectory: true)
             }()
             queueURL = root.appendingPathComponent(".download-queue.json")
-            let store = try ModelStore(root: root)
+            let store = try suppliedStore?.store ?? ModelStore(root: root)
             self.store = store; engine = NativeLocalEngine(store: store)
             guard let url = bundle.url(forResource: "models", withExtension: "json", subdirectory: "Catalogs") else { throw ClientError("mobile.local.catalogue_failed") }
             models = try ModelCatalogue.decode(Data(contentsOf: url)).models
@@ -185,6 +187,7 @@ final class WifiState: @unchecked Sendable {
         progress[model.id] = 0
         let token = UUID(); downloadTokens[model.id] = token
         let policy = DownloadPolicy(allowMobileData: mobile); let wifi = wifi
+        let observation = diagnosticFailureObservation?()
         downloads[model.id] = Task {
             let monitor = Task {
                 var stall = AppDiagnosticDownloadStall()
@@ -232,7 +235,7 @@ final class WifiState: @unchecked Sendable {
                 }
             } catch is CancellationError {} catch {
                 if !Task.isCancelled {
-                    onFailure?("download", error)
+                    onFailure?("download", error, observation)
                     let failure = error as? ClientError ?? ClientError("mobile.local.download_failed")
                     self.error = failure; downloadFailures[model.id] = failure
                     for index in intents.indices where intents[index].id == model.id {

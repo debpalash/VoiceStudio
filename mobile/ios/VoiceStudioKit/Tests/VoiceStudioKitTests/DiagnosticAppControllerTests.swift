@@ -1,6 +1,12 @@
 #if VS_DIAGNOSTICS_APP_TESTS
 import Foundation
 import Testing
+#if canImport(UIKit)
+import CryptoKit
+#endif
+#if VS_DIAGNOSTICS_APP_HOST_TESTS
+@testable import VoiceStudio
+#endif
 @testable import VoiceStudioKit
 
 private final class DiagnosticControllerStore: DiagnosticStorage, @unchecked Sendable {
@@ -134,5 +140,273 @@ func companionFailureRequiresNewServerEventAndTheSameObservedGrant(_ scenario: S
     do {try await workflow.monitor(api:api);Issue.record("Expected terminal failure")}
     catch {controller.captureCompanionFailure(error,observation:workflow.failureDiagnosticObservation,remoteTask:workflow.failureWasRemoteTask)}
     await reports.flush();#expect(transport.count==1);await reports.close()
+}
+#endif
+
+#if canImport(UIKit)
+/// Holds an existing ModelStore actor operation, so the real native worker must
+/// await invalidateVerification/release after its body has already failed.
+private final class PhoneDiagnosticCleanupGate: @unchecked Sendable {
+    let entered: AsyncStream<Void>
+    private let signal: AsyncStream<Void>.Continuation
+    private let release = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
+    private var token: NativeCancellation?
+    private var heldOnce = false
+    var nativeFinished: Bool { lock.withLock {token?.done == true} }
+    init() { (entered,signal) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(1)) }
+    func hold(token: NativeCancellation? = nil) { lock.withLock {self.token=token};signal.yield(()); _ = release.wait(timeout: .now() + 60) }
+    func holdOnce() {
+        let first=lock.withLock {if heldOnce {return false};heldOnce=true;return true}
+        if first {hold()}
+    }
+    func finish() { release.signal() }
+    func waitUntilEntered() async { for await _ in entered { return } }
+}
+private func phoneDiagnosticFixture(root: URL,id: String) throws -> PhoneModel {
+    let bytes=Data("fixture".utf8)
+    let hash=SHA256.hash(data:bytes).map {String(format:"%02x",$0)}.joined()
+    let object: [String:Any] = ["schema_version":1,"models":[[
+        "id":id,"name":"Fixture","capability":"tts","runtime":"sherpa-onnx",
+        "repo":"owner/model","revision":String(repeating:"b",count:40),
+        "files":[["path":"model.bin","size":bytes.count,"sha256":hash,"role":"model"]],
+        "total_bytes":bytes.count,"languages":["en"],"min_ram_gb":1,
+        "licence":["id":"test","category":"commercial-ok","requires_acceptance":false,
+                   "credit":"Fixture","rights_holder":"Fixture","terms_fingerprint":String(repeating:"a",count:64)],
+        "config":["model_type":"kitten"]
+    ]]]
+    let model=try ModelCatalogue.decode(JSONSerialization.data(withJSONObject:object)).models[0]
+    let directory=root.appendingPathComponent(id)
+    try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true)
+    try bytes.write(to:directory.appendingPathComponent("model.bin"))
+    try JSONEncoder().encode(["model.bin":hash]).write(to:directory.appendingPathComponent("verified.json"))
+    return model
+}
+@Suite(.serialized) struct PhoneJobDiagnosticConsentTests {
+    @MainActor @Test(.timeLimit(.minutes(1)),arguments:["off-on","regrant","same-grant","cancel"])
+    func nativeCleanupCannotAttributeAnEarlierFailureToLaterConsent(_ scenario: String) async throws {
+        var repository=URL(fileURLWithPath:#filePath);for _ in 0..<6 {repository.deleteLastPathComponent()}
+        let storage=DiagnosticControllerStore(),transport=DiagnosticControllerTransport();storage.allowWrites()
+        let reports=try DiagnosticReports(directory:URL(fileURLWithPath:"/unused-test-store"),policy:DiagnosticPolicy(data:Data(contentsOf:repository.appendingPathComponent("config/diagnostics.json"))),destination:DiagnosticDestination(site:"localtest123",host:"http://127.0.0.1:1",appUrl:"https://app.test.invalid"),appVersion:"0.5.9-beta.2",transport:transport,storage:storage,disabled:{false})
+        let controller=AppDiagnostics(reporter:reports);await controller.load()
+        if scenario != "off-on" {await controller.setConsent(true)}
+        let directory=FileManager.default.temporaryDirectory.appendingPathComponent("phone-cleanup-"+UUID().uuidString)
+        defer {try? FileManager.default.removeItem(at:directory)}
+        let model=try phoneDiagnosticFixture(root:directory,id:"native-failure")
+        let holder=try phoneDiagnosticFixture(root:directory,id:"cleanup-holder")
+        let body=PhoneDiagnosticCleanupGate(),cleanup=PhoneDiagnosticCleanupGate()
+        defer {body.finish();cleanup.finish()}
+        let store=try ModelStore(root:directory,fileHash:{url in
+            if url.deletingLastPathComponent().lastPathComponent==holder.id {cleanup.hold()}
+            return try ModelHash.file(url)
+        },available:{_ in 100_000_000})
+        let engine=NativeLocalEngine(store:store),jobs=PhoneJobs.shared
+        let id="generate:"+UUID().uuidString
+        let originalFailure=jobs.onFailure,originalObservation=jobs.diagnosticFailureObservation
+        jobs.diagnosticFailureObservation={controller.failureObservation}
+        jobs.onFailure={stage,error,observation in controller.captureObservedFailure(error,observation:observation,stage:stage)}
+        defer {jobs.onFailure=originalFailure;jobs.diagnosticFailureObservation=originalObservation;jobs.cancel(id:id)}
+        #expect(jobs.start(id:id,title:"Fixture",requiresGPU:false) {_ in
+            let _: Bool = try await engine.execute(model,capability:.tts,progress:{_ in}) {_,_,_,token in
+                body.hold(token:token)
+                if scenario=="cancel" {throw CancellationError()}
+                throw ClientError("mobile.local.inference_failed")
+            }
+            return PhoneJobResult(file:nil)
+        })
+        await body.waitUntilEntered()
+        let blockedStore=Task.detached {try await store.authorize(holder)}
+        await cleanup.waitUntilEntered()
+        // execute's native body now fails while its cleanup cannot enter ModelStore.
+        body.finish()
+        while !body.nativeFinished {await Task.yield()}
+        if scenario=="regrant" {await controller.setConsent(false)}
+        if scenario=="off-on" || scenario=="regrant" {await controller.setConsent(true)}
+        if scenario=="cancel" {jobs.cancel(id:id)}
+        cleanup.finish();_ = try await blockedStore.value
+        while jobs.states[id]?.running==true {await Task.yield()}
+        #expect(jobs.states[id]?.error != nil || scenario=="cancel")
+        await reports.flush()
+        #expect(transport.count == (scenario=="same-grant" ? 1 : 0))
+        // A genuinely new semantic unit observes the current grant normally.
+        let fresh="transcript:"+UUID().uuidString
+        #expect(jobs.start(id:fresh,title:"Fresh fixture",requiresGPU:false) {_ in
+            let _: Bool = try await engine.execute(model,capability:.tts,progress:{_ in}) {_,_,_,_ in throw ClientError("mobile.local.runtime_failed")}
+            return PhoneJobResult(file:nil)
+        })
+        while jobs.states[fresh]?.running==true {await Task.yield()}
+        await reports.flush()
+        #expect(transport.count == (scenario=="same-grant" ? 2 : 1))
+        await reports.close()
+    }
+    @MainActor @Test(.timeLimit(.minutes(1)),arguments:["off-on","regrant","same-grant"])
+    func downloadAwaitCannotBorrowLaterConsent(_ scenario: String) async throws {
+        var repository=URL(fileURLWithPath:#filePath);for _ in 0..<6 {repository.deleteLastPathComponent()}
+        let storage=DiagnosticControllerStore(),transport=DiagnosticControllerTransport();storage.allowWrites()
+        let reports=try DiagnosticReports(directory:URL(fileURLWithPath:"/unused-test-store"),policy:DiagnosticPolicy(data:Data(contentsOf:repository.appendingPathComponent("config/diagnostics.json"))),destination:DiagnosticDestination(site:"localtest123",host:"http://127.0.0.1:1",appUrl:"https://app.test.invalid"),appVersion:"0.5.9-beta.2",transport:transport,storage:storage,disabled:{false})
+        let controller=AppDiagnostics(reporter:reports);await controller.load()
+        if scenario != "off-on" {await controller.setConsent(true)}
+        let directory=FileManager.default.temporaryDirectory.appendingPathComponent("phone-download-owner-"+UUID().uuidString)
+        defer {try? FileManager.default.removeItem(at:directory)}
+        let fixture=try phoneDiagnosticFixture(root:directory,id:"download-failure")
+        try FileManager.default.removeItem(at:directory.appendingPathComponent(fixture.id))
+        let held=PhoneDiagnosticCleanupGate();defer {held.finish()}
+        let store=try ModelStore(root:directory,available:{_ in held.holdOnce();return 0})
+        let phone=PhoneModels(modelStore:(directory,store)),originalMobileData=UserDefaults.standard.bool(forKey:"models.mobile-data")
+        phone.allowMobileData=true
+        defer {phone.allowMobileData=originalMobileData}
+        phone.diagnosticFailureObservation={controller.failureObservation}
+        phone.onFailure={stage,error,observation in controller.captureObservedFailure(error,observation:observation,stage:stage)}
+        phone.download(fixture)
+        await held.waitUntilEntered()
+        if scenario=="regrant" {await controller.setConsent(false)}
+        if scenario=="off-on" || scenario=="regrant" {await controller.setConsent(true)}
+        held.finish()
+        while phone.progress[fixture.id] != nil {await Task.yield()}
+        #expect(phone.downloadFailures[fixture.id]?.key=="mobile.local.storage_required")
+        await reports.flush()
+        #expect(transport.count == (scenario=="same-grant" ? 1 : 0))
+        if scenario != "same-grant" {
+            phone.download(fixture)
+            while phone.progress[fixture.id] != nil {await Task.yield()}
+            await reports.flush()
+            #expect(transport.count==1)
+        }
+        await reports.close()
+    }
+    #if VS_DIAGNOSTICS_APP_HOST_TESTS
+    @MainActor @Test(.timeLimit(.minutes(1)),arguments:["phone-off-on","phone-regrant","host-off-on","host-regrant","phone-same-grant","host-same-grant","phone-cancel","host-cancel"])
+    func appAwaitedWorkKeepsItsOriginalConsent(_ scenario: String) async throws {
+        var repository=URL(fileURLWithPath:#filePath);for _ in 0..<6 {repository.deleteLastPathComponent()}
+        let storage=DiagnosticControllerStore(),transport=DiagnosticControllerTransport();storage.allowWrites()
+        let reports=try DiagnosticReports(directory:URL(fileURLWithPath:"/unused-test-store"),policy:DiagnosticPolicy(data:Data(contentsOf:repository.appendingPathComponent("config/diagnostics.json"))),destination:DiagnosticDestination(site:"localtest123",host:"http://127.0.0.1:1",appUrl:"https://app.test.invalid"),appVersion:"0.5.9-beta.2",transport:transport,storage:storage,disabled:{false})
+        // The application module's real controller and AppModel own this path.
+        let controller=VoiceStudio.AppDiagnostics(reporter:reports);await controller.load()
+        if !scenario.hasSuffix("off-on") {await controller.setConsent(true)}
+        let directory=FileManager.default.temporaryDirectory.appendingPathComponent("phone-operation-owner-"+UUID().uuidString)
+        defer {try? FileManager.default.removeItem(at:directory)}
+        let originalFailure=VoiceStudio.PhoneJobs.shared.onFailure,originalObservation=VoiceStudio.PhoneJobs.shared.diagnosticFailureObservation
+        defer {VoiceStudio.PhoneJobs.shared.onFailure=originalFailure;VoiceStudio.PhoneJobs.shared.diagnosticFailureObservation=originalObservation}
+        let model=VoiceStudio.AppModel(mock:false,diagnostics:controller,phone:VoiceStudio.PhoneModels(modelStore:(directory,try ModelStore(root:directory))))
+        let held=PhoneDiagnosticAsyncGate()
+        let operation=Task {
+            let work: @MainActor () async throws -> Void = {
+                await held.hold()
+                try Task.checkCancellation()
+                throw ClientError("mobile.local.inference_failed")
+            }
+            if scenario.hasPrefix("phone") {await model.performPhone(diagnosticStage:"generation",work)}
+            else {await model.perform(connectionChange:true,diagnosticStage:"generation",work)}
+        }
+        await held.waitUntilEntered()
+        if scenario.hasSuffix("regrant") {await controller.setConsent(false)}
+        if scenario.hasSuffix("off-on") || scenario.hasSuffix("regrant") {await controller.setConsent(true)}
+        if scenario.hasSuffix("cancel") {operation.cancel()}
+        held.finish();await operation.value
+        await reports.flush()
+        #expect(transport.count == (scenario.hasSuffix("same-grant") ? 1 : 0))
+        let fresh: @MainActor () async throws -> Void = {throw ClientError("mobile.local.runtime_failed")}
+        if scenario.hasPrefix("phone") {await model.performPhone(diagnosticStage:"generation",fresh)}
+        else {await model.perform(connectionChange:true,diagnosticStage:"generation",fresh)}
+        await reports.flush()
+        #expect(transport.count == (scenario.hasSuffix("same-grant") ? 2 : 1))
+        await reports.close()
+    }
+    @MainActor @Test(.timeLimit(.minutes(1)),arguments:["off-on","regrant","same-grant","cancel","submitted-off-on","submitted-regrant"])
+    func monitorHTTPFailuresKeepTheirOwnerAndFreshSubmittedTasksKeepTheirOwnProof(_ scenario: String) async throws {
+        var repository=URL(fileURLWithPath:#filePath);for _ in 0..<6 {repository.deleteLastPathComponent()}
+        let storage=DiagnosticControllerStore(),transport=DiagnosticControllerTransport();storage.allowWrites()
+        let reports=try DiagnosticReports(directory:URL(fileURLWithPath:"/unused-test-store"),policy:DiagnosticPolicy(data:Data(contentsOf:repository.appendingPathComponent("config/diagnostics.json"))),destination:DiagnosticDestination(site:"localtest123",host:"http://127.0.0.1:1",appUrl:"https://app.test.invalid"),appVersion:"0.5.9-beta.2",transport:transport,storage:storage,disabled:{false})
+        let controller=VoiceStudio.AppDiagnostics(reporter:reports);await controller.load()
+        if !scenario.hasSuffix("off-on") {await controller.setConsent(true)}
+        let directory=FileManager.default.temporaryDirectory.appendingPathComponent("phone-monitor-owner-"+UUID().uuidString)
+        defer {try? FileManager.default.removeItem(at:directory)}
+        let suite="phone-monitor-"+UUID().uuidString
+        let defaults=UserDefaults(suiteName:suite)!
+        defer {defaults.removePersistentDomain(forName:suite)}
+        let previousCheckpoint=UserDefaults.standard.data(forKey:"dubCheckpoint")
+        defer {UserDefaults.standard.set(previousCheckpoint,forKey:"dubCheckpoint")}
+        let held=PhoneDiagnosticAsyncGate(),submitted=scenario.hasPrefix("submitted-")
+        let host=PhoneMonitorDiagnosticTransport(held:held,submitted:submitted)
+        let connection=ConnectionStore(defaults:defaults,vault:PhoneMonitorDiagnosticVault(),transport:host)
+        let api=try await connection.connect(address:PairingAddress("http://127.0.0.1:3900"))
+        let originalFailure=VoiceStudio.PhoneJobs.shared.onFailure,originalObservation=VoiceStudio.PhoneJobs.shared.diagnosticFailureObservation
+        defer {VoiceStudio.PhoneJobs.shared.onFailure=originalFailure;VoiceStudio.PhoneJobs.shared.diagnosticFailureObservation=originalObservation}
+        let model=VoiceStudio.AppModel(mock:false,diagnostics:controller,phone:VoiceStudio.PhoneModels(modelStore:(directory,try ModelStore(root:directory))),connection:connection)
+        try model.dub.begin(DubUpload(job_id:"monitor-job",task_id:"monitor-prep",filename:"fixture.wav"),api:api,languages:[DubLanguage(code:"fr",name:"French")],profile:"")
+        model.monitor();let first=model.monitorTask
+        try #require(first != nil)
+        await held.waitUntilEntered()
+        if scenario.hasSuffix("regrant") {await controller.setConsent(false)}
+        if scenario.hasSuffix("off-on") || scenario.hasSuffix("regrant") {await controller.setConsent(true)}
+        if scenario=="cancel" {model.pauseMonitor()}
+        held.finish();await first?.value
+        #expect(model.dub.failureWasRemoteTask==submitted)
+        if submitted {
+            #expect(model.dub.failureDiagnosticObservation==controller.failureObservation)
+            #expect(await host.renderSubmissions==1)
+        }
+        await reports.flush()
+        #expect(transport.count == (scenario=="same-grant" || submitted ? 1 : 0))
+        if !submitted {
+            // The next monitor execution owns the now-current grant. A different
+            // mapped HTTP failure also proves delivery rather than coalescing.
+            model.monitor();await model.monitorTask?.value
+            await reports.flush()
+            #expect(transport.count == (scenario=="same-grant" ? 2 : 1))
+        }
+        await reports.close()
+    }
+    #endif
+}
+#if VS_DIAGNOSTICS_APP_HOST_TESTS
+private actor PhoneMonitorDiagnosticVault: CredentialVault {
+    func read(host:String) -> Credentials? {nil}
+    func write(_ credentials:Credentials?,host:String) {}
+}
+private actor PhoneMonitorDiagnosticTransport: HTTPTransport {
+    private let held: PhoneDiagnosticAsyncGate
+    private let submitted: Bool
+    private var eventRequests=0
+    private(set) var renderSubmissions=0
+    init(held:PhoneDiagnosticAsyncGate,submitted:Bool) {self.held=held;self.submitted=submitted}
+    func send(_ request:URLRequest) async throws -> HTTPReply {
+        let path=request.url?.path ?? ""
+        if path=="/health" {return reply(#"{"status":"ok","device":"cpu","version":"test"}"#,headers:["x-omnivoice-backend":"test"])}
+        if path=="/jobs/monitor-prep/events" {
+            eventRequests += 1
+            if eventRequests==1 {await held.hold()}
+            try Task.checkCancellation()
+            if submitted {return reply(#"{"job":{"id":"monitor-prep","status":"done"},"events":[]}"#)}
+            if eventRequests>1 {throw URLError(.cannotConnectToHost)}
+            return HTTPReply(data:Data(#"{"detail":"fixture failure"}"#.utf8),status:500)
+        }
+        if submitted {
+            switch path {
+            case "/dub/transcribe/monitor-job":return reply(#"{"segments":[{"id":"1","start":0,"end":1,"text":"Fixture"}]}"#)
+            case "/engines/translation":return reply(#"{"active":"argos","engines":[{"id":"argos","display_name":"Argos","category":"offline","installed":true,"ready":true}]}"#)
+            case "/dub/translate":return reply(#"{"translated":[{"id":"1","text":"Fixture"}]}"#)
+            case "/dub/generate/monitor-job":renderSubmissions += 1;return reply(#"{"task_id":"monitor-render"}"#)
+            case "/jobs/monitor-render/events":return reply(#"{"job":{"id":"monitor-render","status":"failed","created_at":100,"updated_at":101},"events":[{"seq":1,"created_at":101,"payload":"data: {\"type\":\"error\"}\n\n"}]}"#)
+            default:break
+            }
+        }
+        throw ClientError("mobile.errors.invalid_response")
+    }
+    private func reply(_ json:String,headers:[String:String]=[:]) -> HTTPReply {HTTPReply(data:Data(json.utf8),headers:headers)}
+}
+#endif
+private final class PhoneDiagnosticAsyncGate: Sendable {
+    private let entered: AsyncStream<Void>
+    private let enteredSignal: AsyncStream<Void>.Continuation
+    private let released: AsyncStream<Void>
+    private let releaseSignal: AsyncStream<Void>.Continuation
+    init() {
+        (entered,enteredSignal)=AsyncStream.makeStream(bufferingPolicy:.bufferingNewest(1))
+        (released,releaseSignal)=AsyncStream.makeStream(bufferingPolicy:.bufferingNewest(1))
+    }
+    func hold() async {enteredSignal.yield(());for await _ in released {return}}
+    func waitUntilEntered() async {for await _ in entered {return}}
+    func finish() {releaseSignal.yield(())}
 }
 #endif
