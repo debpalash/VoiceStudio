@@ -3,6 +3,7 @@ import asyncio
 import json
 import threading
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -44,19 +45,22 @@ def render_dub(monkeypatch, tmp_path):
     monkeypatch.setattr(dg, 'get_effect_chain', lambda _: None)
     monkeypatch.setattr(dg, 'normalize_audio', lambda a, **kw: a)
 
-    async def run_async(**kwargs):
+    async def run_async(**kwargs: Any) -> list[dict[str, Any]]:
         body = dict(segments=[dict(start=0, end=1, text='hello')], segment_ids=['a'], language_code='en', num_step=4)
         body.update(kwargs)
         await dg.dub_generate("job", DubRequest(**body))
         return events
 
-    def run(**kwargs):
+    def run(**kwargs: Any) -> list[dict[str, Any]]:
         return asyncio.run(run_async(**kwargs))
 
     return SimpleNamespace(run=run, run_async=run_async, output=output, job=job, path=path, generated=generated)
 
 
-def test_segment_watermark_does_not_block_the_event_loop(render_dub, monkeypatch):
+def test_segment_watermark_does_not_block_the_event_loop(
+    render_dub: SimpleNamespace,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     import api.routers.dub_generate as dg
     from services import watermark
     from services.model_manager import begin_watermark_pool_lifecycle
@@ -65,11 +69,11 @@ def test_segment_watermark_does_not_block_the_event_loop(render_dub, monkeypatch
     callbacks = []
     marks = []
 
-    async def scenario():
+    async def scenario() -> list[dict[str, Any]]:
         loop = asyncio.get_running_loop()
         ticked = threading.Event()
 
-        def mark(audio, sr, *, context, **_kwargs):
+        def mark(audio: torch.Tensor, sr: int, *, context: str, **_kwargs: Any) -> torch.Tensor:
             marks.append((sr, context))
             loop.call_soon_threadsafe(ticked.set)
             # An event-loop caller cannot service this callback while blocked.
