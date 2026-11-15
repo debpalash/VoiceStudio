@@ -265,6 +265,13 @@ export function prepareDiagnosticException(
       !schema.stages.includes(stage)
     )
       return null;
+    const errorName = error && typeof error === 'object' && 'name' in error ? error.name : null;
+    if (
+      errorName === 'AbortError' ||
+      errorName === 'CanceledError' ||
+      errorName === 'CancelledError'
+    )
+      return null;
     const code = errorCodeOf(error);
     // A classified compatibility failure may use HTTP 400; routine 4xx stays local.
     if (
@@ -281,7 +288,7 @@ export function prepareDiagnosticException(
       if (seenErrors.has(error)) return null;
       seenErrors.add(error);
     }
-    const observedName = error instanceof Error ? error.name : 'OtherError';
+    const observedName = error instanceof Error ? errorName : 'OtherError';
     const name =
       typeof observedName === 'string' && observedName.length <= 64 && errorTypes.has(observedName)
         ? observedName

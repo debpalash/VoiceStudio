@@ -101,6 +101,8 @@ interface DiagnosticStorage {
     fun write(name: String, bytes: ByteArray)
     fun remove(name: String)
 }
+/** A completed bounded read proved the stored payload is too large, not temporarily unreadable. */
+internal class DiagnosticStorageLimitExceeded : IllegalArgumentException("Diagnostic store exceeded its bound")
 internal fun interface DiagnosticFileSynchronizer {
     fun synchronize(path: java.nio.file.Path)
 }
@@ -128,7 +130,7 @@ class FileDiagnosticStorage internal constructor(
                 if (count < 0) break
                 output.write(buffer, 0, count)
             }
-            require(output.size() <= maxBytes) { "Diagnostic store exceeded its bound" }
+            if(output.size() > maxBytes)throw DiagnosticStorageLimitExceeded()
             return output.toByteArray()
         }
     }
@@ -571,7 +573,13 @@ class DiagnosticReports(
     private fun restoreOutbox(epoch:String) {
         // A failed read is not an empty/corrupt queue. Do not mutate or publish
         // the in-memory queue until the previous durable contents are known.
-        val data=storage.read("outbox.json",policy.limit("queue_bytes",524288))
+        val data=try { storage.read("outbox.json",policy.limit("queue_bytes",524288)) }
+        catch(_:DiagnosticStorageLimitExceeded) {
+            // A proven size violation is corrupt data. The caller's existing
+            // persist path retires it, with bounded retry if deletion fails.
+            // All other read errors must preserve the unknown file and retry.
+            records.clear();return
+        }
         records.clear()
         try {
             data?.let {Json.parseToJsonElement(diagnosticUTF8(it)).jsonArray}?.take(policy.limit("queue_count",64))?.forEach {element->

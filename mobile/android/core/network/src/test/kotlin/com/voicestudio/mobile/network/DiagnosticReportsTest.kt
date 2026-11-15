@@ -164,6 +164,36 @@ class DiagnosticReportsTest {
         }finally{storage.denyRevocation.set(false);reporter.close();directory.deleteRecursively()}
     }
 
+    private fun corruptFileOutboxRecoversWithoutChangingGrant(oversized:Boolean)=runTest {
+        val directory=java.nio.file.Files.createTempDirectory("diagnostic-corrupt-outbox-").toFile()
+        val storage=FileDiagnosticStorage(directory);val dispatcher=StandardTestDispatcher(testScheduler)
+        val clock=ScheduledClock(testScheduler)
+        val first=makeReporter(storage,Transport(),clock,dispatcher)
+        first.setConsent(true);first.close()
+        val grant=storage.read("consent.json",4096)!!
+        val bytes=if(oversized)ByteArray(policy().limit("queue_bytes",524288)+1){32}else "{invalid".toByteArray()
+        File(directory,"outbox.json").writeBytes(bytes)
+        if(oversized) {
+            val read=runCatching { storage.read("outbox.json",policy().limit("queue_bytes",524288)) }
+            assertTrue("The actual file reader must enforce its byte bound",read.isFailure)
+        }
+        val transport=Transport().apply{code=201}
+        val next=makeReporter(storage,transport,clock,dispatcher)
+        try {
+            val loaded=runCatching {next.load()}
+            assertTrue("Proven corrupt outbox must recover without an endless read retry",loaded.isSuccess)
+            assertTrue(next.status.enabled);assertEquals(0,next.status.pendingCount)
+            assertFalse(File(directory,"outbox.json").exists())
+            assertArrayEquals("Corruption recovery must not renew consent",grant,storage.read("consent.json",4096))
+            assertTrue(transport.bodies.isEmpty())
+            assertTrue(next.capture(event()));runCurrent()
+            assertEquals("Fresh failures can report after corrupt storage is retired",1,transport.bodies.size)
+            assertArrayEquals(grant,storage.read("consent.json",4096))
+        }finally{next.close();directory.deleteRecursively()}
+    }
+    @Test fun oversizedFileOutboxRecoversWithoutChangingGrant()=corruptFileOutboxRecoversWithoutChangingGrant(true)
+    @Test fun malformedFileOutboxStillRecoversWithoutChangingGrant()=corruptFileOutboxRecoversWithoutChangingGrant(false)
+
     @Test fun unreadOutboxPreservesReportsAndAutomaticallyRetriesSameGrantOncePerMinute()=runTest {
         val store=Store();val dispatcher=StandardTestDispatcher(testScheduler);val clock=ScheduledClock(testScheduler)
         val first=makeReporter(store,Transport(),clock,dispatcher)

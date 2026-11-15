@@ -18,6 +18,47 @@ beforeEach(() => {
   mock.api.mockReset();
 });
 
+it.each([
+  ['desktop', 'AbortError'],
+  ['desktop', 'CanceledError'],
+  ['desktop', 'CancelledError'],
+  ['browser', 'AbortError'],
+  ['browser', 'CanceledError'],
+  ['browser', 'CancelledError'],
+] as const)('%s keeps %s cancellation out of diagnostic dispatch', async (transport, name) => {
+  const capture = vi.fn(async () => {});
+  if (transport === 'desktop') {
+    mock.bridge = { diagnostics: { getStatus: vi.fn(async () => on), capture } };
+  } else {
+    mock.api.mockImplementation(async (path) => (path.endsWith('/event') ? capture() : on));
+  }
+  const client = await import('./diagnostic-reports');
+  await client.refreshDiagnosticState();
+  const abort = new AbortController();
+  abort.abort();
+  const error =
+    name === 'AbortError' ? abort.signal.reason : Object.assign(new Error('private'), { name });
+  client.captureDiagnosticException(error, 'operation_failed', 'other');
+  expect(capture).not.toHaveBeenCalled();
+  expect(client.prepareDiagnosticException(error, 'operation_failed', 'other')).toBeNull();
+});
+
+it.each(['Error', 'TimeoutError'])(
+  'still reports %s failures mentioning cancellation',
+  async (name) => {
+    const capture = vi.fn(async () => {});
+    mock.bridge = { diagnostics: { getStatus: vi.fn(async () => on), capture } };
+    const client = await import('./diagnostic-reports');
+    await client.refreshDiagnosticState();
+    client.captureDiagnosticException(
+      Object.assign(new Error('Cancel failed: private details'), { name }),
+      'operation_failed',
+      'other',
+    );
+    expect(capture).toHaveBeenCalledOnce();
+  },
+);
+
 it('collects nothing with unanswered diagnostics even when analytics was enabled', async () => {
   const capture = vi.fn(async () => {});
   mock.bridge = {
