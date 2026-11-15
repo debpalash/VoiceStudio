@@ -47,7 +47,8 @@ Reports cover observed app/backend/renderer crashes, failed or stalled setup and
 downloads, incompatibilities, model loading, engine execution, speech generation
 and other failed operations. Normal cancellation, validation prompts, waiting
 for a network or scheduled retry, and an intentionally paused download are not
-failures. A no-progress observation does not cancel a valid running operation.
+failures. An internal generation deadline remains a reportable timeout, distinct
+from a user pressing Cancel. A no-progress observation does not cancel a valid running operation.
 Reporting is best effort: an abruptly terminated or offline process cannot
 guarantee delivery; eligible crash summaries can be recovered on a later launch.
 
