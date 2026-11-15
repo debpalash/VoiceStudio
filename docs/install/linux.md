@@ -368,7 +368,8 @@ the frozen dependency sync. That sync skips the locked CUDA Torch wheels and
 their NVIDIA runtime packages instead of downloading them before replacing
 Torch. Shared dependencies, including `nvidia-ml-py` for hardware metadata,
 stay on the locked regular index. The sync preserves a matching ROCm overlay
-on resume or repair; switching from CUDA removes its old runtime packages.
+on resume or repair; switching from CUDA removes its old runtime packages,
+including after an earlier switch stopped before verification.
 The ROCm wheels are matched to the app's pinned `torch==2.10.0` (the rocm6.2 index
 only ever published up to torch 2.5.1). **Settings → Performance → GPU
 acceleration** reports which PyTorch build is installed. The option is ignored

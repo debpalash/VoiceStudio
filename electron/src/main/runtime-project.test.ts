@@ -155,6 +155,8 @@ describe('Linux ROCm install dependency selection', () => {
     const planned: string[] = [];
     const downloaded: string[] = [];
     let synced = false;
+    let syncRuns = 0;
+    let interruptVerificationAt = -1;
     const run = vi.fn(async (_command: string, args: string[]) => {
       if (args.includes('sync')) {
         const omitted = new Set(
@@ -178,11 +180,20 @@ describe('Linux ROCm install dependency selection', () => {
           installed.set(name, torchStack.includes(name) ? 'cuda' : 'locked');
         }
         synced = true;
+        syncRuns++;
         await interpreter(project);
       } else if (args[0] === 'pip' && args[1] === 'install') {
         if (args.some((arg) => arg.includes('+rocm')))
           for (const name of torchStack) installed.set(name, 'rocm');
+        if (args.some((arg) => arg.includes('+cpu')))
+          for (const name of torchStack) installed.set(name, 'cpu');
+      } else if (args[0] === 'pip' && args[1] === 'uninstall') {
+        for (const name of cudaRuntime) if (args.includes(name)) installed.delete(name);
       } else if (args[0] === '-c') {
+        if (args[1] === RUNTIME_IMPORT_PROBE && syncRuns === interruptVerificationAt) {
+          interruptVerificationAt = -1;
+          throw new Error('controlled interrupted post-sync verification');
+        }
         if (
           broken &&
           !synced &&
@@ -194,7 +205,18 @@ describe('Linux ROCm install dependency selection', () => {
       }
       return undefined;
     });
-    return { bundle, project, lock, installed, planned, downloaded, run };
+    return {
+      bundle,
+      project,
+      lock,
+      installed,
+      planned,
+      downloaded,
+      run,
+      interruptNextVerification: () => {
+        interruptVerificationAt = syncRuns + 1;
+      },
+    };
   }
 
   it.each(['fresh', 'rocm', 'cuda'] as const)(
@@ -253,6 +275,48 @@ describe('Linux ROCm install dependency selection', () => {
       )![1];
       expect(overlay).toEqual(expect.arrayContaining(rocmTorchInstallArgs(ROCM_TORCH_INDEX)));
       expect(await runtimeInstallInterrupted(f.project)).toBe(false);
+      expect(await runtimeReady(f.bundle, f.project)).toBe(true);
+    },
+  );
+
+  it.each([['linux', 'rocm'], ['linux', 'cpu'], ['win32', 'cpu']] as const)(
+    'cleans CUDA packages after an interrupted switch away from %s/%s',
+    async (platform, variant) => {
+      const f = await setup('fresh');
+      forcePlatform(platform);
+      vi.stubEnv('OMNIVOICE_TORCH_VARIANT', variant);
+      const install = () =>
+        installRuntime(
+          f.bundle,
+          f.project,
+          'uv',
+          f.run,
+          new AbortController().signal,
+          undefined,
+          'global',
+        );
+      await install();
+      for (const name of torchStack) expect(f.installed.get(name)).toBe(variant);
+      vi.stubEnv('OMNIVOICE_TORCH_VARIANT', 'cuda');
+      f.interruptNextVerification();
+      await expect(install()).rejects.toThrow('controlled interrupted post-sync verification');
+      // The last successful marker is stale, while the actual sync completed.
+      expect(await readFile(join(f.project, '.runtime-torch'), 'utf8')).toBe(variant);
+      for (const name of cudaRuntime) expect(f.installed.has(name)).toBe(true);
+      for (const name of torchStack) expect(f.installed.get(name)).toBe('cuda');
+      vi.stubEnv('OMNIVOICE_TORCH_VARIANT', variant);
+      f.downloaded.length = 0;
+      f.planned.length = 0;
+      await install();
+      for (const name of cudaRuntime) expect(f.installed.has(name)).toBe(false);
+      for (const name of torchStack) expect(f.installed.get(name)).toBe(variant);
+      for (const name of sharedDependencies) expect(f.installed.get(name)).toBe('locked');
+      expect(
+        f.planned.filter((name) => torchStack.includes(name) || cudaRuntime.includes(name)),
+      ).toEqual([]);
+      expect(
+        f.downloaded.filter((name) => torchStack.includes(name) || cudaRuntime.includes(name)),
+      ).toEqual([]);
       expect(await runtimeReady(f.bundle, f.project)).toBe(true);
     },
   );

@@ -1543,6 +1543,26 @@ export async function installRuntime(
     await run(uv, ['cache', 'clean', ...repairPackages], project, env);
     signal.throwIfAborted();
   }
+  const cudaPackages = overlayTorch
+    ? cudaOnlyPackages(await readFile(join(project, 'uv.lock'), 'utf8'))
+    : [];
+  if (overlayTorch && existingPython && cudaPackages.length) {
+    // A CUDA sync may finish before verification updates .runtime-torch.
+    // Remove its runtime payloads independently of that historical marker,
+    // keeping matching CPU/ROCm torch and shared locked dependencies intact.
+    signal.throwIfAborted();
+    await run(
+      uv,
+      ['pip', 'uninstall', '--python', runtimePython(project), ...cudaPackages],
+      project,
+      env,
+    );
+    signal.throwIfAborted();
+  }
+  const keepTorchOverlay =
+    overlayTorch &&
+    existingPython &&
+    (await readFile(join(project, RUNTIME_TORCH_MARKER), 'utf8').catch(() => '')) === torch.variant;
   // The lock resolves torch to the CUDA build (and, on Linux, ~3 GB of nvidia-*
   // runtime wheels) for every Linux/Windows x64 host. CPU and Linux ROCm lay
   // down their own torch wheels after syncing the remaining locked dependencies.
@@ -1553,14 +1573,8 @@ export async function installRuntime(
           // Exact sync uninstalls every skipped package, so each Resume or
           // Repair would remove the matching CPU/ROCm overlay (#3475). A
           // switch from CUDA must still remove its multi-GB runtime wheels.
-          ...((await readFile(join(project, RUNTIME_TORCH_MARKER), 'utf8').catch(() => '')) ===
-          torch.variant
-            ? ['--inexact']
-            : []),
-          ...[
-            ...torchPackages,
-            ...cudaOnlyPackages(await readFile(join(project, 'uv.lock'), 'utf8')),
-          ].flatMap((name) => ['--no-install-package', name]),
+          ...(keepTorchOverlay ? ['--inexact'] : []),
+          ...[...torchPackages, ...cudaPackages].flatMap((name) => ['--no-install-package', name]),
         ]
       : [];
   const syncArgs = ['sync', '--frozen', '--no-dev', ...pythonArgs, ...repairArgs, ...skipArgs];
