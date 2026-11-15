@@ -129,6 +129,135 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
+describe('Linux ROCm install dependency selection', () => {
+  const torchStack = ['torch', 'torchaudio', 'torchvision'];
+  const cudaRuntime = ['nvidia-cublas-cu12', 'nvidia-cudnn-cu12'];
+  const sharedDependencies = ['numpy', 'sympy', 'networkx', 'fsspec', 'nvidia-ml-py'];
+  const locked = [...torchStack, ...cudaRuntime, ...sharedDependencies];
+
+  async function setup(previous: 'fresh' | 'rocm' | 'cuda', broken = false) {
+    forcePlatform('linux');
+    vi.spyOn(process, 'arch', 'get').mockReturnValue('x64');
+    vi.stubEnv('OMNIVOICE_TORCH_VARIANT', 'rocm');
+    const { bundle, project } = await fixture();
+    const lock = locked
+      .map((name) => `[[package]]\nname = "${name}"\nversion = "1.0.0"\n`)
+      .join('\n');
+    await writeFile(join(bundle, 'uv.lock'), lock);
+    const installed = new Map<string, string>();
+    if (previous !== 'fresh') {
+      await interpreter(project);
+      for (const name of locked)
+        if (previous === 'cuda' || !cudaRuntime.includes(name))
+          installed.set(name, torchStack.includes(name) ? previous : 'locked');
+      await writeFile(join(project, '.runtime-torch'), previous === 'rocm' ? 'rocm' : 'default');
+    }
+    const planned: string[] = [];
+    const downloaded: string[] = [];
+    let synced = false;
+    const run = vi.fn(async (_command: string, args: string[]) => {
+      if (args.includes('sync')) {
+        const omitted = new Set(
+          args.flatMap((arg, index) => (arg === '--no-install-package' ? [args[index + 1]!] : [])),
+        );
+        const desired = locked.filter((name) => !omitted.has(name));
+        // Model uv's exact/inexact package-set semantics at the actual runner:
+        // omitted wheel payloads are not downloaded, but transitive deps remain.
+        const changes = desired.filter(
+          (name) =>
+            !installed.has(name) || (torchStack.includes(name) && installed.get(name) !== 'cuda'),
+        );
+        if (args.includes('--dry-run')) {
+          planned.push(...changes);
+          return undefined;
+        }
+        if (!args.includes('--inexact'))
+          for (const name of installed.keys()) if (!desired.includes(name)) installed.delete(name);
+        for (const name of changes) {
+          downloaded.push(name);
+          installed.set(name, torchStack.includes(name) ? 'cuda' : 'locked');
+        }
+        synced = true;
+        await interpreter(project);
+      } else if (args[0] === 'pip' && args[1] === 'install') {
+        if (args.some((arg) => arg.includes('+rocm')))
+          for (const name of torchStack) installed.set(name, 'rocm');
+      } else if (args[0] === '-c') {
+        if (
+          broken &&
+          !synced &&
+          (args[1] === RUNTIME_IMPORT_PROBE || args[1] === RUNTIME_NATIVE_IMPORT_PROBE)
+        )
+          throw new Error('controlled broken native torch');
+        if (args[1] === ROCM_TORCH_PROBE && installed.get('torch') !== 'rocm')
+          throw new Error('expected installed HIP torch');
+      }
+      return undefined;
+    });
+    return { bundle, project, lock, installed, planned, downloaded, run };
+  }
+
+  it.each(['fresh', 'rocm', 'cuda'] as const)(
+    'never downloads a throwaway CUDA stack during a %s ROCm installation',
+    async (previous) => {
+      const f = await setup(previous);
+      await installRuntime(
+        f.bundle,
+        f.project,
+        'uv',
+        f.run,
+        new AbortController().signal,
+        undefined,
+        'global',
+      );
+      expect(
+        f.planned.filter((name) => torchStack.includes(name) || cudaRuntime.includes(name)),
+      ).toEqual([]);
+      expect(
+        f.downloaded.filter((name) => torchStack.includes(name) || cudaRuntime.includes(name)),
+      ).toEqual([]);
+      for (const name of torchStack) expect(f.installed.get(name)).toBe('rocm');
+      for (const name of cudaRuntime) expect(f.installed.has(name)).toBe(false);
+      for (const name of sharedDependencies) expect(f.installed.get(name)).toBe('locked');
+      const sync = f.run.mock.calls.find(([, args]) => args[0] === 'sync')![1];
+      expect(sync).toContain('--frozen');
+      expect(sync.includes('--inexact')).toBe(previous === 'rocm');
+      expect(await readFile(join(f.project, 'uv.lock'), 'utf8')).toBe(f.lock);
+      expect(await runtimeReady(f.bundle, f.project)).toBe(true);
+    },
+  );
+
+  it.each([false, true])(
+    'repairs native ROCm wheels through the overlay (interrupted=%s)',
+    async (interrupted) => {
+      const f = await setup('rocm', true);
+      if (interrupted)
+        await writeFile(join(f.project, '.runtime-installing'), new Date().toISOString());
+      await installRuntime(
+        f.bundle,
+        f.project,
+        'uv',
+        f.run,
+        new AbortController().signal,
+        undefined,
+        'global',
+      );
+      expect(
+        f.downloaded.filter((name) => torchStack.includes(name) || cudaRuntime.includes(name)),
+      ).toEqual([]);
+      const sync = f.run.mock.calls.find(([, args]) => args[0] === 'sync')![1];
+      expect(sync).not.toContain('--reinstall-package');
+      expect(f.run.mock.calls.some(([, args]) => args[0] === 'cache')).toBe(!interrupted);
+      const overlay = f.run.mock.calls.find(
+        ([, args]) => args[0] === 'pip' && args[1] === 'install',
+      )![1];
+      expect(overlay).toEqual(expect.arrayContaining(rocmTorchInstallArgs(ROCM_TORCH_INDEX)));
+      expect(await runtimeInstallInterrupted(f.project)).toBe(false);
+      expect(await runtimeReady(f.bundle, f.project)).toBe(true);
+    },
+  );
+});
+
 it('estimates disk space without accepting unsupported Windows ARM64 ROCm installs', async () => {
   forcePlatform('win32');
   vi.spyOn(process, 'arch', 'get').mockReturnValue('arm64');

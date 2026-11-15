@@ -364,7 +364,12 @@ launches and app updates keep ROCm without the variable. To leave ROCm, launch
 once with `OMNIVOICE_TORCH_VARIANT=cpu`.
 Runtime setup then reinstalls `torch`/`torchaudio`/`torchvision` from the ROCm
 wheel index (`https://download.pytorch.org/whl/rocm7.1` by default) right after
-the dependency sync, leaving every other package on the regular index, matched to the app's pinned `torch==2.10.0` (the rocm6.2 index
+the frozen dependency sync. That sync skips the locked CUDA Torch wheels and
+their NVIDIA runtime packages instead of downloading them before replacing
+Torch. Shared dependencies, including `nvidia-ml-py` for hardware metadata,
+stay on the locked regular index. The sync preserves a matching ROCm overlay
+on resume or repair; switching from CUDA removes its old runtime packages.
+The ROCm wheels are matched to the app's pinned `torch==2.10.0` (the rocm6.2 index
 only ever published up to torch 2.5.1). **Settings → Performance → GPU
 acceleration** reports which PyTorch build is installed. The option is ignored
 on macOS; on Windows it selects the opt-in stack in
