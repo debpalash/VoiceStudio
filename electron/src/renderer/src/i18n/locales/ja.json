@@ -1337,6 +1337,8 @@
     "terminal_command_added": "追加しました。voicestudio を使うには新しいターミナルウィンドウを開いてください。",
     "terminal_command_failed": "voicestudio をターミナルに追加できませんでした。ホームフォルダーが読み取り専用でないことを確認して、もう一度お試しください。",
     "terminal_command_conflict": "{{path}} は別のインストールのものなので、VoiceStudio は変更しませんでした。",
+    "close_to_tray": "閉じてもトレイで実行を続ける",
+    "close_to_tray_desc": "ウィンドウを閉じると、VoiceStudio は終了せずトレイに隠れ、実行中のジョブは続行されます。トレイのアイコンから再度開き、終了するにはそこで「終了」を選びます。",
     "review_mode_on": "レビュー",
     "review_mode_off": "連射",
     "translate_agent": "エージェント調整",

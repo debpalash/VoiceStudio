@@ -1337,6 +1337,8 @@
     "terminal_command_added": "Hinzugefügt. Öffne ein neues Terminalfenster, um voicestudio zu verwenden.",
     "terminal_command_failed": "voicestudio konnte nicht zum Terminal hinzugefügt werden. Prüfe, ob dein Home-Ordner schreibgeschützt ist, und versuche es erneut.",
     "terminal_command_conflict": "{{path}} gehört zu einer anderen Installation, daher hat VoiceStudio es nicht verändert.",
+    "close_to_tray": "Beim Schließen im Infobereich weiterlaufen",
+    "close_to_tray_desc": "Beim Schließen des Fensters wird VoiceStudio im Infobereich ausgeblendet statt beendet, laufende Aufgaben laufen weiter. Über das Symbol im Infobereich wieder öffnen und dort „Beenden“ wählen.",
     "review_mode_on": "Rezension",
     "review_mode_off": "Schnellfeuer",
     "translate_agent": "Agententauglich",

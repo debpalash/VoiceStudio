@@ -1,3 +1,4 @@
+import { decideWindowClose, readCloseToTray, saveCloseToTray } from './close-behavior';
 import { createTrayIcon } from './tray-icon';
 import { MAC_TRAFFIC_LIGHTS } from '../shared/utils/windowChrome';
 import { installWatchFolders } from './watch-folders';
@@ -24,7 +25,7 @@ import {
   MainErrorJournal,
   observeMainProcessTask,
 } from './main-error-journal';
-import { activateLiveWindow, isLiveWindow, sendToLiveWindow } from './window-safety';
+import { activateLiveWindow, isHiddenWindow, isLiveWindow, sendToLiveWindow } from './window-safety';
 import { startAccount } from './account';
 import { installAppIdentity, installMacApplicationMenu } from './app-identity';
 import { APP_ID, PRODUCT_NAME } from '../../../config/app-config.mjs';
@@ -76,6 +77,10 @@ let mainWindow: BrowserWindow | null = null;
 let closeWatch: (() => void) | null = null;
 let supervisor: BackendSupervisor | null = null;
 let quitting = false;
+// Set when the OS ends the session (Windows log off or shutdown).
+let sessionEnding = false;
+// Settings → General → keep running in the system tray when the window is closed.
+let closeToTray = readCloseToTray(app.getPath('userData'));
 let tray: Tray | null = null;
 let closeCapture: (() => void) | null = null;
 let closeDevProxy: (() => Promise<void>) | null = null;
@@ -250,6 +255,18 @@ ipcMain.handle('terminal:add-to-path', (event) => {
   return addTerminalCommandToPath(terminalCommandOptions());
 });
 
+ipcMain.handle('app:get-close-to-tray', (event) => {
+  assertTrustedMainFrame(event, mainWindow);
+  return closeToTray;
+});
+ipcMain.handle('app:set-close-to-tray', (event, enabled: unknown) => {
+  assertTrustedMainFrame(event, mainWindow);
+  if (typeof enabled !== 'boolean') throw new Error('Invalid close-to-tray setting');
+  closeToTray = enabled;
+  saveCloseToTray(app.getPath('userData'), enabled);
+  return closeToTray;
+});
+
 ipcMain.handle(
   'app:is-fullscreen',
   (event) => BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false,
@@ -284,21 +301,37 @@ function createWindow(): BrowserWindow {
   win.on('enter-full-screen', () => win.webContents.send('app:fullscreen', true));
   win.on('leave-full-screen', () => win.webContents.send('app:fullscreen', false));
   win.on('ready-to-show', () => activateLiveWindow(win));
+  win.on('session-end', () => {
+    // Windows is logging off or shutting down: never hide the window instead.
+    sessionEnding = true;
+  });
   win.on('close', (event) => {
-    if (quitting) return;
+    const action = decideWindowClose({
+      platform: process.platform,
+      headlessOwner,
+      quitting,
+      quitRequested: sessionEnding || quitPreparation !== null,
+      closeToTray,
+      trayAvailable: tray !== null,
+    });
+    if (action === 'allow') return;
     event.preventDefault();
-    // A terminal-started app returns to headless; its idle timer then decides.
-    if (process.platform === 'darwin' || headlessOwner) {
-      observeMainProcessTask(
-        flushRendererPersistence().finally(() => {
-          if (!win.isDestroyed()) win.destroy();
-        }),
-        mainErrors,
-        'Window persistence flush',
-      );
+    if (action === 'quit') {
+      observeMainProcessTask(beginOrderlyQuit(), mainErrors, 'Orderly quit');
       return;
     }
-    observeMainProcessTask(beginOrderlyQuit(), mainErrors, 'Orderly quit');
+    // Hide keeps the renderer (and its in-progress state) alive for the tray;
+    // destroy is for a terminal-started app, which returns to headless and lets
+    // its idle timer decide.
+    observeMainProcessTask(
+      flushRendererPersistence().finally(() => {
+        if (win.isDestroyed()) return;
+        if (action === 'hide') win.hide();
+        else win.destroy();
+      }),
+      mainErrors,
+      'Window persistence flush',
+    );
   });
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null;
@@ -369,8 +402,9 @@ function handleLaunch(intent: LaunchIntent): void {
     return;
   }
   if (intent.stop) {
-    // `voicestudio stop` never closes a window the user is working in.
-    if (!isLiveWindow(mainWindow))
+    // `voicestudio stop` never closes a window the user is working in; one
+    // hidden to the tray is not in use.
+    if (!isLiveWindow(mainWindow) || isHiddenWindow(mainWindow))
       observeMainProcessTask(beginOrderlyQuit(false), mainErrors, 'Terminal stop');
     return;
   }
@@ -558,7 +592,8 @@ if (singleInstance && !app.requestSingleInstanceLock()) {
       }
 
       app.on('activate', () => {
-        if (!isLiveWindow(mainWindow)) showWindow();
+        // A window hidden to the tray is live but not visible.
+        if (!isLiveWindow(mainWindow) || !mainWindow.isVisible()) showWindow();
       });
     })
     .catch((error) => {

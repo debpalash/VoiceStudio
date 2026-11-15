@@ -1365,6 +1365,8 @@
     "terminal_command_added": "تمت الإضافة. افتح نافذة طرفية جديدة لاستخدام voicestudio.",
     "terminal_command_failed": "تعذّرت إضافة voicestudio إلى الطرفية. تأكّد من أن مجلد المنزل ليس للقراءة فقط، ثم حاول مرة أخرى.",
     "terminal_command_conflict": "{{path}} يخص تثبيتًا آخر، لذا تركه VoiceStudio دون تغيير.",
+    "close_to_tray": "البقاء قيد التشغيل في الشريط عند الإغلاق",
+    "close_to_tray_desc": "يؤدي إغلاق النافذة إلى إخفاء VoiceStudio في علبة النظام بدلاً من الإنهاء، فتستمر المهام الجارية. أعد فتحه من أيقونة العلبة واختر إنهاء من هناك للخروج.",
     "review_mode_on": "مراجعة",
     "review_mode_off": "سريع النيران",
     "translate_agent": "صالح الوكيل",

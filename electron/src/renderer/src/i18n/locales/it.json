@@ -1339,6 +1339,8 @@
     "terminal_command_added": "Aggiunto. Apri una nuova finestra del terminale per usare voicestudio.",
     "terminal_command_failed": "Impossibile aggiungere voicestudio al terminale. Verifica che la cartella home non sia di sola lettura, poi riprova.",
     "terminal_command_conflict": "{{path}} appartiene a un'altra installazione, quindi VoiceStudio non l'ha modificato.",
+    "close_to_tray": "Continua in esecuzione nell’area di notifica alla chiusura",
+    "close_to_tray_desc": "Chiudendo la finestra VoiceStudio si nasconde nell’area di notifica invece di uscire, quindi le attività in corso continuano. Riaprilo dall’icona nell’area di notifica e scegli Esci da lì per chiuderlo.",
     "review_mode_on": "Recensione",
     "review_mode_off": "Fuoco rapido",
     "translate_agent": "Agente in forma",

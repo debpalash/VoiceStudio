@@ -1337,6 +1337,8 @@
     "terminal_command_added": "Eklendi. voicestudio kullanmak için yeni bir terminal penceresi açın.",
     "terminal_command_failed": "voicestudio terminale eklenemedi. Ana klasörünüzün salt okunur olmadığını kontrol edip yeniden deneyin.",
     "terminal_command_conflict": "{{path}} başka bir kuruluma ait, bu yüzden VoiceStudio onu değiştirmedi.",
+    "close_to_tray": "Kapatınca tepside çalışmaya devam et",
+    "close_to_tray_desc": "Pencereyi kapatmak VoiceStudio’yu çıkmak yerine tepsiye gizler, böylece süren işler devam eder. Tepsi simgesinden yeniden açın ve kapatmak için orada Çık’ı seçin.",
     "review_mode_on": "İncele",
     "review_mode_off": "Hızlı ateş",
     "translate_agent": "Ajanla uyarlama",

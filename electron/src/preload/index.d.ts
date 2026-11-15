@@ -498,6 +498,9 @@ export interface VoiceStudioBridge {
     /** Native fullscreen state (macOS hides the traffic lights there); the callback fires on every change. */
     isFullScreen(): Promise<boolean>;
     onFullScreen(callback: (fullscreen: boolean) => void): () => void;
+    /** Whether closing the window hides it to the system tray instead of quitting (off by default). */
+    getCloseToTray(): Promise<boolean>;
+    setCloseToTray(enabled: boolean): Promise<boolean>;
     onPersistenceFlush(callback: () => void | Promise<void>): () => void;
   };
   backend: {
