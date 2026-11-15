@@ -9,6 +9,7 @@ at files present in the release assets; a missing one shows "—".
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -27,12 +28,13 @@ DESKTOP = [
     ),
 ]
 
-# Phone builds carry no signing report: Android is always release-signed, iOS never is.
+# Android APK claims require the mobile job's digest-bound verification report.
+# The iOS sideload artifact is deliberately built without signing.
 PHONES = [
     (
         "Android",
         [("APK", "VoiceStudio-*-android.apk"), ("AAB", "VoiceStudio-*-android.aab")],
-        "✅ Signed APK; the AAB is the Play Store bundle",
+        None,
     ),
     (
         "iPhone",
@@ -67,13 +69,50 @@ def _links(assets: Path | None, base_url: str, files: list[tuple[str, str]]) -> 
     return " · ".join(links) or "—"
 
 
+def _android_signing(report: dict | None, assets: Path | None, rehearsal: bool) -> str:
+    apks = sorted(assets.glob("VoiceStudio-*-android.apk")) if assets else []
+    if not apks:
+        return "— No APK supplied; APK signing is not verified"
+    if len(apks) != 1:
+        raise ValueError("Expected exactly one Android APK for its signing report")
+    if report is None:
+        if rehearsal:
+            # A missing measurement cannot establish even unsigned status from
+            # the caller's rehearsal flag or the expected workflow alone.
+            return "⚠️ Rehearsal APK; signing unverified; not release-signing proof"
+        raise ValueError("Android signing report is required for the supplied APK")
+    if type(report.get("rehearsal")) is not bool or report["rehearsal"] != rehearsal:
+        raise ValueError("Android signing report does not match the release/rehearsal mode")
+    digest = hashlib.sha256()
+    with apks[0].open("rb") as apk:
+        for chunk in iter(lambda: apk.read(1024 * 1024), b""):
+            digest.update(chunk)
+    if report.get("apk_sha256") != digest.hexdigest():
+        raise ValueError("Android signing report APK checksum does not match the supplied APK")
+    if report["status"] == "unsigned":
+        if not rehearsal:
+            raise ValueError("Unsigned Android APK cannot be described as a signed release")
+        return "⚠️ Unsigned rehearsal APK; not a release-signing check"
+    if rehearsal:
+        return "⚠️ APK signature verified for rehearsal; not release-signing proof"
+    # This checks the APK only. An AAB link identifies the Play upload format;
+    # do not imply that apksigner verified the separate bundle's signature.
+    return "✅ Signed APK (signature verified); AAB is the Play upload bundle"
+
+
 def render(
     reports_dir: Path, rehearsal: bool = False, assets: Path | None = None, base_url: str = ""
 ) -> str:
     known = {**STATUS, **REHEARSAL_STATUS} if rehearsal else STATUS
     reports = {}
+    android = None
     for path in sorted(reports_dir.glob("signing-*.json")):
-        report = json.loads(path.read_text())
+        report = json.loads(path.read_text(encoding="utf-8"))
+        if report.get("platform") == "android" and report.get("arch") == "universal":
+            if android is not None or report.get("status") not in {"signed", "unsigned"}:
+                raise ValueError(f"Invalid Android signing report: {path.name}")
+            android = report
+            continue
         if report["status"] not in known:
             raise ValueError(f"Unknown signing status in {path.name}: {report['status']}")
         reports[(report["platform"], report["arch"])] = report["status"]
@@ -89,6 +128,8 @@ def render(
         if (platform, arch) in reports:
             lines.append(f"| {label} | {_links(assets, base_url, files)} | {known[reports[(platform, arch)]]} |")
     for label, files, signing in PHONES:
+        if label == "Android":
+            signing = _android_signing(android, assets, rehearsal)
         lines.append(f"| {label} | {_links(assets, base_url, files)} | {signing} |")
     return "\n".join(lines) + "\n"
 

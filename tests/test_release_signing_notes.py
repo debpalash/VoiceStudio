@@ -1,6 +1,7 @@
 """Release notes describe the signing each platform leg measured (v0.5.7-beta.1 follow-up)."""
 
 import importlib.util
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -20,6 +21,62 @@ def write(tmp_path, platform, arch, status):
     )
 
 
+def write_android_report(reports, apk, *, status="signed", rehearsal=False):
+    (reports / "signing-android-universal.json").write_text(json.dumps({
+        "platform": "android", "arch": "universal", "status": status,
+        "rehearsal": rehearsal, "apk_sha256": hashlib.sha256(apk.read_bytes()).hexdigest(),
+    }), encoding="utf-8")
+
+
+def test_rehearsal_phone_row_does_not_claim_release_signing_without_measurement(tmp_path):
+    reports, assets = tmp_path / "reports", tmp_path / "assets"
+    reports.mkdir()
+    assets.mkdir()
+    write(reports, "linux", "x64", "not-applicable")
+    (assets / "VoiceStudio-1.2.3-android.apk").write_bytes(b"owned unsigned rehearsal fixture")
+    text = notes.render(reports, rehearsal=True, assets=assets, base_url="https://example.invalid")
+    row = next(line for line in text.splitlines() if line.startswith("| Android |"))
+    assert "signing unverified" in row and "rehearsal" in row.lower()
+    assert "✅" not in row and "Signed APK" not in row and "Unsigned" not in row
+
+
+@pytest.mark.parametrize("aab_present", [False, True])
+def test_phone_row_without_an_apk_never_claims_an_apk_signature(tmp_path, aab_present):
+    reports, assets = tmp_path / "reports", tmp_path / "assets"
+    reports.mkdir()
+    assets.mkdir()
+    write(reports, "linux", "x64", "not-applicable")
+    if aab_present:
+        (assets / "VoiceStudio-1.2.3-android.aab").write_bytes(b"owned bundle fixture")
+    row = next(line for line in notes.render(reports, assets=assets).splitlines()
+               if line.startswith("| Android |"))
+    assert "✅" not in row and "Signed APK" not in row
+
+
+def test_tagged_phone_claim_requires_a_digest_bound_android_report(tmp_path):
+    reports, assets = tmp_path / "reports", tmp_path / "assets"
+    reports.mkdir()
+    assets.mkdir()
+    write(reports, "linux", "x64", "not-applicable")
+    (assets / "VoiceStudio-1.2.3-android.apk").write_bytes(b"filename is not signing proof")
+    with pytest.raises(ValueError, match="Android signing report"):
+        notes.render(reports, assets=assets)
+
+
+def test_android_signature_report_must_match_the_supplied_apk(tmp_path):
+    reports, assets = tmp_path / "reports", tmp_path / "assets"
+    reports.mkdir()
+    assets.mkdir()
+    write(reports, "linux", "x64", "not-applicable")
+    (assets / "VoiceStudio-1.2.3-android.apk").write_bytes(b"owned replacement fixture")
+    (reports / "signing-android-universal.json").write_text(json.dumps({
+        "platform": "android", "arch": "universal", "status": "signed",
+        "rehearsal": False, "apk_sha256": "0" * 64,
+    }), encoding="utf-8")
+    with pytest.raises(ValueError, match="APK checksum"):
+        notes.render(reports, assets=assets)
+
+
 def test_table_lists_each_platform_with_its_measured_status(tmp_path):
     write(tmp_path, "linux", "x64", "not-applicable")
     write(tmp_path, "win32", "x64", "unsigned")
@@ -33,7 +90,7 @@ def test_table_lists_each_platform_with_its_measured_status(tmp_path):
     assert "SmartScreen" in rows[0]
     assert "✅ Signed with Developer ID and notarized" in rows[1]
     assert rows[2].count("⚠️") == 1 and "shell installer" in rows[2]
-    assert "Signed APK" in rows[4] and "own Apple ID" in rows[5]
+    assert "No APK supplied" in rows[4] and "own Apple ID" in rows[5]
     assert "### Download" in text and "| Platform | Download | Signing |" in text
 
 
@@ -49,6 +106,7 @@ def test_one_table_links_every_download_present_and_marks_missing_ones(tmp_path)
     for name in ["win-x64.exe", "win-x64.exe.blockmap", "win-arm64.exe", "mac-arm64.dmg", "mac-x64.dmg",
                  "linux-x64.AppImage", "android.apk", "android.aab", "ios-unsigned.ipa"]:
         (assets / f"VoiceStudio-1.2.3-{name}").write_text("x")
+    write_android_report(reports, assets / "VoiceStudio-1.2.3-android.apk")
     base = "https://github.com/o/r/releases/download/v1.2.3"
     text = notes.render(reports, assets=assets, base_url=base)
     rows = {line.split(" | ")[0][2:]: line for line in text.splitlines() if line.startswith("| ") and "Platform" not in line}
@@ -61,6 +119,100 @@ def test_one_table_links_every_download_present_and_marks_missing_ones(tmp_path)
     assert f"[APK]({base}/VoiceStudio-1.2.3-android.apk) · [AAB]({base}/VoiceStudio-1.2.3-android.aab)" in rows["Android"]
     assert f"[Unsigned IPA]({base}/VoiceStudio-1.2.3-ios-unsigned.ipa)" in rows["iPhone"]
     assert "Installer signing" not in text and "Phone downloads" not in text
+
+
+@pytest.mark.parametrize("rehearsal,status,caption,accepted", [
+    (False, "signed", "✅ Signed APK (signature verified)", True),
+    (False, "unsigned", "Unsigned Android APK", False),
+    (True, "unsigned", "Unsigned rehearsal APK", True),
+    (True, "signed", "not release-signing proof", True),
+])
+def test_phone_caption_uses_the_verified_apk_report(tmp_path, rehearsal, status, caption, accepted):
+    reports, assets = tmp_path / "reports", tmp_path / "assets"
+    reports.mkdir()
+    assets.mkdir()
+    write(reports, "linux", "x64", "not-applicable")
+    apk = assets / "VoiceStudio-1.2.3-android.apk"
+    apk.write_bytes(b"owned measured APK fixture")
+    (assets / "VoiceStudio-1.2.3-android.aab").write_bytes(b"separate unverified AAB")
+    write_android_report(reports, apk, status=status, rehearsal=rehearsal)
+    if not accepted:
+        with pytest.raises(ValueError, match=caption):
+            notes.render(reports, assets=assets, rehearsal=rehearsal)
+        return
+    row = next(line for line in notes.render(reports, assets=assets, rehearsal=rehearsal).splitlines()
+               if line.startswith("| Android |"))
+    assert caption in row
+    assert "AAB signature verified" not in row
+    if rehearsal:
+        assert "✅" not in row
+
+
+def test_phone_report_cannot_verify_a_second_apk_or_another_mode(tmp_path):
+    reports, assets = tmp_path / "reports", tmp_path / "assets"
+    reports.mkdir()
+    assets.mkdir()
+    write(reports, "linux", "x64", "not-applicable")
+    apk = assets / "VoiceStudio-1.2.3-android.apk"
+    apk.write_bytes(b"owned APK fixture")
+    write_android_report(reports, apk, rehearsal=True)
+    with pytest.raises(ValueError, match="mode"):
+        notes.render(reports, assets=assets)
+    (assets / "VoiceStudio-9.9.9-android.apk").write_bytes(b"unreported extra APK")
+    with pytest.raises(ValueError, match="exactly one Android APK"):
+        notes.render(reports, assets=assets, rehearsal=True)
+
+
+@pytest.mark.parametrize("rehearsal,verify_rc,accepted,status", [
+    (False, 0, True, "signed"), (False, 1, False, None),
+    (True, 1, True, "unsigned"), (True, 0, True, "signed"),
+])
+def test_actual_android_measurement_shell_works_from_an_old_checkout(
+    tmp_path, rehearsal, verify_rc, accepted, status,
+):
+    import os
+    import subprocess
+    workflow = yaml.load((ROOT / ".github/workflows/mobile-release.yml").read_text(encoding="utf-8"),
+                         Loader=yaml.BaseLoader)
+    steps = workflow["jobs"]["android"]["steps"]
+    measure = next(step for step in steps if step.get("name") == "Measure Android APK signing")
+    # No repository helper or source file exists in this older-tag checkout.
+    old_tag = tmp_path / "old-tag"
+    old_tag.mkdir()
+    sdk = tmp_path / "sdk" / "build-tools" / "36.0.0"
+    sdk.mkdir(parents=True)
+    signer = sdk / "apksigner"
+    signer.write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > "$CALL_LOG"\nexit {verify_rc}\n',
+                      encoding="utf-8")
+    signer.chmod(0o755)
+    runner = tmp_path / "runner"
+    (runner / "out").mkdir(parents=True)
+    apk = runner / "out" / "VoiceStudio.apk"
+    apk.write_bytes(b"owned exact collected APK bytes")
+    calls = tmp_path / "calls"
+    result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", measure["run"]], cwd=old_tag,
+                            env=dict(os.environ, ANDROID_HOME=str(tmp_path / "sdk"), RUNNER_TEMP=str(runner),
+                                     REHEARSAL=str(rehearsal).lower(), CALL_LOG=str(calls)),
+                            capture_output=True, text=True)
+    assert (result.returncode == 0) is accepted, result.stdout + result.stderr
+    assert calls.read_text(encoding="utf-8").splitlines() == [
+        "verify", "--min-sdk-version", "29", "--verbose", "--print-certs", str(apk),
+    ]
+    report = runner / "android-signing" / "signing-android-universal.json"
+    if accepted:
+        assert json.loads(report.read_text(encoding="utf-8")) == {
+            "platform": "android", "arch": "universal", "status": status,
+            "rehearsal": rehearsal, "apk_sha256": hashlib.sha256(apk.read_bytes()).hexdigest(),
+        }
+    else:
+        assert not report.exists()
+    assert list(old_tag.iterdir()) == []
+    upload = next(step for step in steps if step.get("name") == "Save Android signing evidence")
+    assert upload["with"]["name"] == "electron-signing-android-universal"
+    # Existing protected release credentials are still required before building.
+    decode = next(step for step in steps if step.get("name") == "Decode keystore")
+    assert decode["if"] == "${{ !inputs.rehearsal }}"
+    assert 'test -n "$KEYSTORE"' in decode["run"]
 
 
 def test_a_platform_with_no_file_shows_a_dash(tmp_path):
