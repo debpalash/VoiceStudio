@@ -20,6 +20,7 @@ so it can afford the env-var sweep.
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 from urllib.parse import unquote_plus
@@ -69,42 +70,79 @@ _URL_SECRET_RE = re.compile(
 _MAX_QUERY_NAME_CHARS = 3 * max(map(len, _URL_SECRET_NAMES))
 
 
-def _raw_quote_end(text: str, start: int) -> int:
+def _raw_quote_end(text: str, start: int, limit: int | None = None) -> int:
     quote = text[start]
     end = start + 1
-    while end < len(text):
+    limit = len(text) if limit is None else limit
+    while end < limit:
         char = text[end]
         end += 1
-        if char == "\\" and end < len(text):
+        if char == "\\" and end < limit:
             end += 1
         elif char == quote:
             break
     return end
 
 
-def _log_quote_closes(text: str, position: int) -> bool:
-    after = position + 1
-    if after == len(text) or text[after].isspace():
-        return True
-    next_char = text[after + 1] if after + 1 < len(text) else ""
-    if text[after] == ",":
-        return not next_char or next_char.isspace() or next_char == '"'
-    if text[after] in "}]":
-        return not next_char or next_char.isspace() or next_char in ",}]"
-    return False
+def _quoted_url_end(text: str, position: int, cache: dict) -> int | None:
+    # Validate each structured log line once. A real JSON string has an exact
+    # end, unlike punctuation embedded in an opaque HTTP credential.
+    if position >= cache.get('line_end', -1):
+        start = text.rfind('\n', 0, position) + 1
+        end = text.find('\n', position)
+        cache['line_start'], cache['line_end'] = start, len(text) if end < 0 else end
+        try:
+            json.loads(text[start:cache['line_end']])
+            cache['json'] = True
+        except (ValueError, RecursionError):
+            cache['json'] = False
+    slash_start = position
+    while slash_start > cache['line_start'] and text[slash_start - 1] == '\\':
+        slash_start -= 1
+    if text[position] == '"' and cache['json'] and (position - slash_start) % 2 == 0:
+        return _raw_quote_end(text, position, cache['line_end']) - 1
+
+    # Other log literals must end their whole URI token. Cache one scan per
+    # token, including its final quotes and query continuation, rather than
+    # repeatedly testing every bracket/quote suffix in attacker-controlled text.
+    if position >= cache.get('token_end', -1):
+        end = position + 1
+        quotes = {"'": -1, '"': -1}
+        last_query = -1
+        while end < len(text) and not text[end].isspace():
+            if text[end] in quotes:
+                quotes[text[end]] = end
+            if text[end] in '?&':
+                last_query = end
+            end += 1
+        bounds = {}
+        for quote, candidate in quotes.items():
+            if candidate < 0 or candidate < last_query:
+                bounds[quote] = None
+                continue
+            tail = candidate + 1
+            while tail < end and text[tail] in '}]':
+                tail += 1
+            if tail < end and text[tail] == ',':
+                tail += 1
+            bounds[quote] = candidate if candidate >= last_query and tail == end else None
+        cache['token_end'], cache['bounds'] = end, bounds
+    bound = cache['bounds'][text[position]]
+    return bound if bound is not None and bound > position else None
 
 
 def _scrub_url_queries(text: str) -> str:
     parts = []
     copied = position = 0
     length = len(text)
-    url_quote = None
+    url_end = None
+    quote_cache = {}
     while position < length:
         char = text[position]
-        if url_quote is None and char in "\"'" and text.startswith(("http://", "https://"), position + 1):
-            url_quote = char
-        elif char.isspace() or char == url_quote and _log_quote_closes(text, position):
-            url_quote = None
+        if url_end is not None and position >= url_end:
+            url_end = None
+        if url_end is None and char in "\"'" and text.startswith(("http://", "https://"), position + 1):
+            url_end = _quoted_url_end(text, position, quote_cache)
         if text[position] not in "?&":
             position += 1
             continue
@@ -118,40 +156,37 @@ def _scrub_url_queries(text: str) -> str:
             position += 1
             continue
         value_start = name_end + 1
+        value_limit = url_end if url_end is not None else length
         end = value_start
         quote_start = end
-        while quote_start < length and text[quote_start] == "\\":
+        while quote_start < value_limit and text[quote_start] == "\\":
             quote_start += 1
-        if quote_start > end and quote_start < length and text[quote_start] in "\"'":
+        if quote_start > end and quote_start < value_limit and text[quote_start] in "\"'":
             # JSON/log repr can escape the enclosing quotes. Match that
             # same delimiter depth; more deeply escaped quotes are content.
             escape_depth = quote_start - end
             quote = text[quote_start]
             end = quote_start + 1
-            while end < length:
+            while end < value_limit:
                 slash_start = end
-                while end < length and text[end] == "\\":
+                while end < value_limit and text[end] == "\\":
                     end += 1
-                closes = end - slash_start == escape_depth and end < length and text[end] == quote
-                if end < length:
+                closes = end - slash_start == escape_depth and end < value_limit and text[end] == quote
+                if end < value_limit:
                     end += 1
                 if closes:
                     break
-        elif end < length and text[end] in "\"'":
-            end = _raw_quote_end(text, end)
+        elif end < value_limit and text[end] in "\"'":
+            end = _raw_quote_end(text, end, value_limit)
         # Quoted fragments may be adjacent parts of the same HTTP credential.
-        while end < length and text[end] not in "&#" and not text[end].isspace():
+        while end < value_limit and text[end] not in "&#" and not text[end].isspace():
             if text[end] in "\"'":
                 after = end + 1
-                # Only an observed quote around the URL may end a comma/brace
-                # log field. Opaque credential punctuation is not that proof.
-                if text[end] == url_quote and _log_quote_closes(text, end):
-                    break
                 # Preserve terminal log quotes; otherwise consume the entire
                 # fragment, failing closed if its closing quote is missing.
                 if after == length or text[after].isspace() or text[after] in "&#":
                     break
-                end = _raw_quote_end(text, end)
+                end = _raw_quote_end(text, end, value_limit)
             else:
                 end += 1
         parts.extend((text[copied:value_start], REDACTED))

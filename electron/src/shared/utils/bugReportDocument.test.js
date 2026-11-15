@@ -195,12 +195,45 @@ describe('credential query privacy in the live report builder', () => {
       expect(params.get('body')).toContain(piece);
   });
 
+  test.each([
+    "prefix'],PRIVATE_FIXTURE'&x=1",
+    "prefix']]],PRIVATE_FIXTURE'&x=1",
+    "prefix']},PRIVATE_FIXTURE'&x=1",
+    'prefix\'],"status":PRIVATE_FIXTURE\'&x=1',
+    "prefix'],PRIVATE_FIXTURE'?continue=1",
+    "prefix'],PRIVATE_FIXTURE'",
+  ])('opaque key punctuation cannot close the quoted report URL: %s', (value) => {
+    const raw = `Request: 'https://h/?api_key=${value}', status=500\nTraceback: decoder failed`;
+    const params = issueParams({ error: { message: raw }, crashSection: [raw] });
+    expect(params.get('title')).not.toContain('PRIVATE_FIXTURE');
+    expect(params.get('body')).not.toContain('PRIVATE_FIXTURE');
+    expect(params.get('body')).toContain('status=500');
+    expect(params.get('body')).toContain('Traceback: decoder failed');
+  });
+
+  test('JSON URL fields keep unrelated string fields and other URLs', () => {
+    const raw = JSON.stringify({
+      request: 'https://h/?api_key=PRIVATE_FIXTURE',
+      status: 'decoder failed',
+      other: 'https://h/?view=models',
+    });
+    expect(issueBody({ crashSection: [raw] })).toContain(
+      raw.replace('PRIVATE_FIXTURE', '***REDACTED***'),
+    );
+  });
+
   test('finishes malformed-query scrubbing within a process bound', () => {
     const source = pathToFileURL(resolve('src/shared/utils/scrub.js')).href;
     const script = `import {scrubText} from ${JSON.stringify(source)};
-      for (const value of ['?'.repeat(100000),'&'+'?!'.repeat(50000)]) {
+      for (const value of ['?'.repeat(100000),'&'+'?!'.repeat(50000),
+        '"https://h/?view=models'.repeat(5000),
+        JSON.stringify(Object.fromEntries(Array.from({length:5000},(_,i)=>[i,'https://h/?view=models'])))]) {
         if (scrubText(value)!==value) throw new Error('benign input changed');
-      }`;
+      }
+      const quote=String.fromCharCode(39);
+      const value='Request: '+quote+'https://h/?api_key=prefix'+quote+']'.repeat(100000)+',PRIVATE_FIXTURE'+quote+'&x=1'+quote+', status=500';
+      const out=scrubText(value);
+      if(out.includes('PRIVATE_FIXTURE') || !out.includes('status=500')) throw new Error('opaque quote boundary');`;
     execFileSync(process.execPath, ['--input-type=module', '-e', script], { timeout: 5000 });
   }, 10000);
 });

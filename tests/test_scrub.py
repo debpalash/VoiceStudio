@@ -253,15 +253,57 @@ def test_outer_log_quote_does_not_expose_an_opaque_internal_credential_quote():
     assert '&x=1' in out and 'status=500' in out and 'Traceback: decoder failed' in out
 
 
+@pytest.mark.parametrize('secret,tail',[
+    ("prefix'],PRIVATE_FIXTURE'",'&x=1'),
+    ("prefix']]],PRIVATE_FIXTURE'",'&x=1'),
+    ("prefix']},PRIVATE_FIXTURE'",'&x=1'),
+    ('prefix\'],"status":PRIVATE_FIXTURE\'','&x=1'),
+    ("prefix'],PRIVATE_FIXTURE'?continue=1",''),
+    ("prefix'],PRIVATE_FIXTURE'",''),
+])
+def test_opaque_http_credential_brackets_cannot_close_the_log_url(secret,tail):
+    import httpx
+    from starlette.requests import Request
+    from core.auth import _credential_candidate
+    url=httpx.URL(f'https://h/?api_key={secret}{tail}')
+    request=Request({'type':'http','scheme':'https','server':('h',443),
+                     'path':'/','headers':[],'query_string':url.query})
+    assert _credential_candidate(request).value==secret
+    raw=f"Request: '{request.url}', status=500\nTraceback: decoder failed"
+    out=scrub_text(raw)
+    assert 'PRIVATE_FIXTURE' not in out
+    assert 'status=500' in out and 'Traceback: decoder failed' in out
+    if tail:assert '&x=1' in out
+
+
+def test_json_url_field_keeps_other_string_fields_and_urls():
+    import json
+    raw=json.dumps({'request':'https://h/?api_key=PRIVATE_FIXTURE',
+                    'status':'decoder failed','other':'https://h/?view=models'})
+    assert scrub_text(raw)==raw.replace('PRIVATE_FIXTURE',REDACTED)
+
+
 def test_malformed_query_stress_finishes_within_a_process_bound():
     import subprocess
     import sys
     from pathlib import Path
     # A stalled diagnostic scrub must not stall the test process. The old
     # overlapping suffix regex exceeds this generous bound on either input.
-    script=('from core.scrub import scrub_text; '
-            'cases=("?"*100000,"&"+"?!"*50000); '
-            'assert all(scrub_text(value)==value for value in cases)')
+    script = """
+import json
+from core.scrub import scrub_text
+cases = (
+    "?" * 100000,
+    "&" + "?!" * 50000,
+    '\"https://h/?view=models' * 5000,
+    json.dumps({str(i): "https://h/?view=models" for i in range(5000)}),
+)
+assert all(scrub_text(value) == value for value in cases)
+quote = chr(39)
+value = "Request: " + quote + "https://h/?api_key=prefix" + quote + "]" * 100000 + ",PRIVATE_FIXTURE" + quote + "&x=1" + quote + ", status=500"
+out = scrub_text(value)
+assert "PRIVATE_FIXTURE" not in out and "status=500" in out
+"""
     subprocess.run([sys.executable,'-c',script],check=True,timeout=5,
                    cwd=Path(scrub_module.__file__).resolve().parents[1],capture_output=True)
 
