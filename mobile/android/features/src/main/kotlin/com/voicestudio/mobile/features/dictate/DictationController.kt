@@ -22,9 +22,9 @@ class DictationController(private val api:VoiceStudioApi,private val scope:Corou
     private var committed=""
     @Volatile private var generation=0L
     @Suppress("MissingPermission")
-    fun start() {
+    fun start(ownedFailure:((Throwable)->Unit)?=null) {
         if(mutableActive.value) return
-        val failure=this.failure()
+        val failure=ownedFailure ?: this.failure()
         val session=++generation
         mutableActive.value=true;committed="";mutableText.value="";recording=true
         capture=scope.launch {

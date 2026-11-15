@@ -18,6 +18,7 @@ import androidx.test.core.app.ApplicationProvider
 import com.voicestudio.mobile.designsystem.VoiceStudioTheme
 import com.voicestudio.mobile.features.LocalL10n
 import com.voicestudio.mobile.features.permissionAction
+import com.voicestudio.mobile.features.permissionActionWithFailure
 import com.voicestudio.mobile.l10n.L10n
 import com.voicestudio.mobile.network.ClientFailure
 import org.junit.Assert.*
@@ -37,6 +38,7 @@ class PermissionRestorationTest {
             pending=requestCode
         }
         fun deny() {dispatchResult(checkNotNull(pending),false);pending=null}
+        fun allow() {dispatchResult(checkNotNull(pending),true);pending=null}
     }
     private fun denial(restore:Boolean) {
         val app=ApplicationProvider.getApplicationContext<Application>()
@@ -80,4 +82,45 @@ class PermissionRestorationTest {
     }
     @Test fun restoredDenialShowsLocalFeedbackWithoutAcquiringLaterConsent()=denial(true)
     @Test fun ordinaryDenialKeepsTheRequestHandlerAndLaterRequestsCanBindAgain()=denial(false)
+
+    private fun success(restore:Boolean) {
+        val app=ApplicationProvider.getApplicationContext<Application>()
+        val registry=Registry()
+        val owner=object:ActivityResultRegistryOwner {override val activityResultRegistry=registry}
+        val saved=StateRestorationTester(compose)
+        var grant=0
+        var observations=0
+        val callbacks=mutableListOf<Int>()
+        val feedback=mutableListOf<String>()
+        saved.setContent {
+            CompositionLocalProvider(LocalActivityResultRegistryOwner provides owner,LocalL10n provides L10n.load(app,"en")) {
+                VoiceStudioTheme {
+                    val action=permissionActionWithFailure(Manifest.permission.RECORD_AUDIO,"mobile.permissions.microphone",
+                        failure={observations++;val original=grant;{error ->callbacks+=original;feedback+=(error as ClientFailure).key}},
+                        restoreFailure={feedback+=(it as ClientFailure).key}) {failed ->
+                            failed(ClientFailure("mobile.local.recording_failed"))
+                        }
+                    Button(onClick=action) {Text("Request fixture recording")}
+                }
+            }
+        }
+        fun request() {
+            compose.onNodeWithText("Request fixture recording").performClick()
+            compose.onNodeWithText("Continue").performClick()
+            compose.waitForIdle()
+            assertNotNull(registry.pending)
+        }
+        request()
+        if(restore) {saved.emulateSavedInstanceStateRestore();compose.waitForIdle()}
+        compose.runOnIdle {grant=1;registry.allow()}
+        compose.waitForIdle()
+        assertEquals("Recording must not observe consent again after permission returns",1,observations)
+        assertEquals(if(restore) emptyList<Int>() else listOf(0),callbacks)
+        assertEquals(listOf("mobile.local.recording_failed"),feedback)
+        request();compose.runOnIdle {registry.allow()};compose.waitForIdle()
+        assertEquals(if(restore) listOf(1) else listOf(0,1),callbacks)
+        assertEquals(2,observations)
+    }
+    @Test fun grantedMicrophoneKeepsTheOriginalRequestOwner()=success(false)
+    @Test fun restoredMicrophoneSuccessIsLocalAndFreshRequestsStillReport()=success(true)
 }

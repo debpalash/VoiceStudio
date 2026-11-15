@@ -987,4 +987,62 @@ class DiagnosticReportsTest {
         }
     }
 
+
+    @Test fun sameGrantConsentReadRecoveryPreservesUnpublishedAcceptedReports()=runTest {
+        val store=Store();val transport=Transport().apply{code=204}
+        val clock=ScheduledClock(testScheduler)
+        val reporter=makeReporter(store,transport,clock,StandardTestDispatcher(testScheduler))
+        try {
+            reporter.setConsent(true)
+            store.failOutboxWrite=true
+            assertTrue(reporter.capture(event()))
+            assertTrue(reporter.capture(event()))
+            runCurrent()
+            assertEquals(1,reporter.status.pendingCount)
+            assertTrue(transport.bodies.isEmpty())
+            store.unreadableRevocation=true
+            assertTrue(runCatching{reporter.load(forceRead=true)}.isFailure)
+            assertFalse(reporter.capture(event()))
+            store.unreadableRevocation=false;store.failOutboxWrite=false
+            reporter.load(forceRead=true);reporter.flush()
+            assertEquals("An accepted same-grant report must survive an unread consent pause",1,transport.bodies.size)
+            assertEquals(2,transport.bodies.single().getValue("props").jsonObject.getValue("occurrences").jsonPrimitive.int)
+            assertEquals(0,reporter.status.pendingCount)
+        } finally {reporter.close()}
+    }
+    @Test fun sameGrantConsentReadRecoveryDoesNotResurrectAcknowledgedDiskRecords()=runTest {
+        val store=Store();val transport=Transport().apply{code=204}
+        val reporter=makeReporter(store,transport,ScheduledClock(testScheduler),StandardTestDispatcher(testScheduler))
+        try {
+            reporter.setConsent(true)
+            store.blockedRemoves.add("outbox.json")
+            assertTrue(reporter.capture(event()));runCurrent()
+            assertEquals(1,transport.bodies.size)
+            assertTrue(store.files.containsKey("outbox.json"))
+            store.unreadableRevocation=true
+            assertTrue(runCatching{reporter.load(forceRead=true)}.isFailure)
+            store.unreadableRevocation=false;store.blockedRemoves.clear()
+            reporter.load(forceRead=true);reporter.flush()
+            assertEquals("An ACK must remain authoritative when stale outbox cleanup failed",1,transport.bodies.size)
+            assertFalse(store.files.containsKey("outbox.json"))
+        } finally {store.blockedRemoves.clear();reporter.close()}
+    }
+    @Test fun unreadConsentRecoveryNeverCarriesMemoryIntoAnOffOrDifferentGrant()=runTest {
+        for(enabled in listOf(false,true)) {
+            val store=Store();val transport=Transport().apply{code=204}
+            val reporter=makeReporter(store,transport,ScheduledClock(testScheduler),StandardTestDispatcher(testScheduler))
+            try {
+                reporter.setConsent(true);store.failOutboxWrite=true
+                assertTrue(reporter.capture(event()));runCurrent()
+                store.unreadableRevocation=true
+                assertTrue(runCatching{reporter.load(forceRead=true)}.isFailure)
+                val consent=store.json("consent.json").jsonObject
+                store.files["consent.json"]=JsonObject(consent+mapOf("enabled" to JsonPrimitive(enabled),"epoch" to JsonPrimitive("b".repeat(32)),"profile_id" to JsonPrimitive("install_"+"b".repeat(32)))).toString().toByteArray(Charsets.UTF_8)
+                store.unreadableRevocation=false;store.failOutboxWrite=false
+                reporter.load(forceRead=true);reporter.flush()
+                assertTrue("Old accepted work cannot cross a changed or withdrawn grant",transport.bodies.isEmpty())
+                assertEquals(enabled,reporter.status.enabled)
+            } finally {reporter.close()}
+        }
+    }
 }
