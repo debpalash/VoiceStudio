@@ -16,6 +16,17 @@ on:
     # Daily 03:30 UTC — after most merges, before EU morning triage.
     - cron: "30 3 * * *"
   workflow_dispatch:
+  # A documentation-only pull request skips the runtime suite, so the inventory
+  # check would otherwise never see the edits most likely to break it. Run it
+  # directly for the files it reads; the rolling issue is only touched by the
+  # scheduled and manual runs.
+  pull_request:
+    paths:
+      - "docs/features.yaml"
+      - "docs/**"
+      - "README.md"
+      - "scripts/check-docs-drift.py"
+      - ".github/workflows/docs-drift.yml"
 
 permissions:
   contents: read
@@ -40,6 +51,7 @@ jobs:
         run: python scripts/check-docs-drift.py --output drift-report.md
 
       - name: Update rolling docs-drift issue
+        if: github.event_name != 'pull_request'
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         env:
           DRIFT_OUTCOME: ${{ steps.drift.outcome }}
