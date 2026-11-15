@@ -49,9 +49,13 @@ let package = Package(name: "PhoneJobDiagnosticProof", platforms: [.macOS(.v14)]
 """.replace("path: KIT", "path: " + kit), encoding="utf-8")
     env = dict(os.environ, HF_HUB_OFFLINE="1", HF_HUB_CACHE=str(tmp_path / "empty-hf"),
         CLANG_MODULE_CACHE_PATH=str(tmp_path / "modules"), SWIFT_MODULECACHE_PATH=str(tmp_path / "modules"),
+        OMNIVOICE_DIAGNOSTICS_DISABLED="0", OMNIVOICE_ANALYTICS_DISABLED="0",
         VOICE_JOB_POLICY_PATH=str(ROOT / "config/diagnostics.json"))
     result = subprocess.run(["swift", "test", "--disable-sandbox", "--package-path", str(package),
-        "--scratch-path", str(tmp_path / "build"), "--filter", "PhoneJobDiagnosticOwnerTests"],
+        "--scratch-path", str(tmp_path / "build"), "--filter", "PhoneJobDiagnosticOwnerTests|IncomingPrivacyGateTests"],
         env=env, capture_output=True, text=True, timeout=180)
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert "5 test cases passed" in result.stdout + result.stderr
+    transcript = result.stdout + result.stderr
+    (tmp_path / "swift-test.log").write_text(transcript, encoding="utf-8")
+    assert result.returncode == 0, transcript
+    assert "Test automaticCPUHandoffRetainsTheUserStartedDiagnosticOwner(_:) with 5 test cases passed" in transcript
+    assert "Suite IncomingPrivacyGateTests passed" in transcript

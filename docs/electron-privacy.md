@@ -134,6 +134,9 @@ authorize fault details or frames. Confirmation actions retain the choice
 observed at the click; an unrelated or rewrapped promise cannot acquire a newer
 grant. Seeking an existing phone playback does not renew its grant.
 A failed consent write is shown with Retry and leaves the current process off.
+On iOS, unread diagnostics consent also keeps reporting off and offers Retry.
+After the initial privacy check finishes, that read failure does not block
+opening shared files, shared text, or workspace shortcuts.
 Where storage permits, withdrawal replaces the previous grant or writes a
 private revocation marker so restart also remains off. If every write or
 restoration fails, durable withdrawal cannot be guaranteed; the save fails

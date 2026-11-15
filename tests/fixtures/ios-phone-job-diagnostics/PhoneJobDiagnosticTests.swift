@@ -7,7 +7,13 @@ struct L10n { func t(_ key: String) -> String { key } }
 private final class JobOwnerStore: DiagnosticStorage, @unchecked Sendable {
     private let lock = NSLock()
     private var files: [String: Data] = [:]
-    func read(_ name: String, maxBytes: Int) -> Data? { lock.withLock { files[name] } }
+    private var unreadConsent = false
+    func failConsentReads(_ value: Bool) { lock.withLock { unreadConsent = value } }
+    func saved(_ name: String) -> Data? { lock.withLock { files[name] } }
+    func read(_ name: String, maxBytes: Int) throws -> Data? { try lock.withLock {
+        if name == "consent.json", unreadConsent { throw DiagnosticFailure.storageUnavailable }
+        return files[name]
+    } }
     func write(_ name: String, data: Data) { lock.withLock { files[name] = data } }
     func remove(_ name: String) { _ = lock.withLock { files.removeValue(forKey: name) } }
 }
@@ -79,5 +85,77 @@ private actor JobOwnerExecution {
         await reporter.flush()
         #expect(transport.count == expected + 1)
         await reporter.close()
+    }
+}
+
+@Suite struct IncomingPrivacyGateTests {
+    @MainActor private func reporter(_ store: JobOwnerStore, _ transport: JobOwnerTransport) throws -> DiagnosticReports {
+        let policy = try DiagnosticPolicy(data: Data(contentsOf: URL(fileURLWithPath: ProcessInfo.processInfo.environment["VOICE_JOB_POLICY_PATH"]!)))
+        return try DiagnosticReports(directory: URL(fileURLWithPath: "/unused-owned-gate-fixture"), policy: policy, destination: DiagnosticDestination(site: "fixture01", host: "http://127.0.0.1:1", appUrl: "https://app.test.invalid"), appVersion: "0.5.9-beta.3", transport: transport, storage: store, disabled: { false })
+    }
+    @MainActor @Test(arguments: [false, true])
+    func unreadSavedConsentDoesNotBlockIncomingContentOrOpenReporting(_ savedOn: Bool) async throws {
+        let store = JobOwnerStore(), transport = JobOwnerTransport()
+        let previous = try reporter(store, transport)
+        _ = try await previous.setConsent(true)
+        await previous.close()
+        if !savedOn {
+            let bytes = try #require(store.saved("consent.json"))
+            var saved = try #require(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
+            saved["enabled"] = false
+            store.write("consent.json", data: try JSONSerialization.data(withJSONObject: saved))
+        }
+        let original = try #require(store.saved("consent.json"))
+        store.failConsentReads(true)
+        let reports = try reporter(store, transport), diagnostics = AppDiagnostics(reporter: reports)
+        #expect(!diagnostics.allowsIncomingContent(analyticsAnswered: true), "Initial privacy check has not run")
+        await diagnostics.load()
+        #expect(diagnostics.allowsIncomingContent(analyticsAnswered: true), "An optional diagnostics read failure must not block shared content or shortcuts")
+        #expect(!diagnostics.allowsIncomingContent(analyticsAnswered: false))
+        #expect(!diagnostics.ready); #expect(!diagnostics.needsChoice); #expect(!diagnostics.collecting)
+        diagnostics.failureHandler(stage: "generation")(ClientError("mobile.local.inference_failed"))
+        #expect(!reports.capture(DiagnosticInput(category: "generation_failed")))
+        await reports.flush()
+        #expect(transport.count == 0)
+        await diagnostics.setConsent(true)
+        #expect(store.saved("consent.json") == original)
+        #expect(!diagnostics.ready)
+        store.failConsentReads(false)
+        await diagnostics.retryConsent()
+        #expect(diagnostics.ready); #expect(diagnostics.enabled == savedOn)
+        #expect(diagnostics.allowsIncomingContent(analyticsAnswered: true))
+        #expect(!diagnostics.allowsIncomingContent(analyticsAnswered: false))
+        #expect(store.saved("consent.json") == original); #expect(transport.count == 0)
+        await reports.close()
+    }
+    @MainActor @Test(arguments: [false, true])
+    func startupAndTheRealFirstChoiceStillGateIncomingContent(_ allow: Bool) async throws {
+        let store = JobOwnerStore(), transport = JobOwnerTransport(), reports = try reporter(store, transport)
+        let diagnostics = AppDiagnostics(reporter: reports)
+        #expect(!diagnostics.allowsIncomingContent(analyticsAnswered: true))
+        await diagnostics.load()
+        #expect(diagnostics.needsChoice)
+        #expect(!diagnostics.allowsIncomingContent(analyticsAnswered: true))
+        await diagnostics.setConsent(allow)
+        #expect(!diagnostics.needsChoice)
+        #expect(diagnostics.allowsIncomingContent(analyticsAnswered: true))
+        #expect(!diagnostics.allowsIncomingContent(analyticsAnswered: false))
+        #expect(diagnostics.collecting == allow)
+        #expect(transport.count == 0)
+        await reports.close()
+    }
+    @MainActor @Test func disabledAndUnavailableReportingDoNotBlockIncomingContent() async {
+        let disabled = AppDiagnostics(disabled: true)
+        #expect(disabled.allowsIncomingContent(analyticsAnswered: true))
+        #expect(!disabled.allowsIncomingContent(analyticsAnswered: false))
+        #expect(!disabled.collecting)
+        let unavailable = AppDiagnostics()
+        #expect(!unavailable.allowsIncomingContent(analyticsAnswered: true))
+        // This test bundle has no app Catalogs. No destination or owned store is
+        // opened, and the explicit fixture environment rules out ambient kills.
+        await unavailable.load()
+        #expect(!unavailable.available); #expect(!unavailable.collecting)
+        #expect(unavailable.allowsIncomingContent(analyticsAnswered: true))
+        #expect(!unavailable.allowsIncomingContent(analyticsAnswered: false))
     }
 }

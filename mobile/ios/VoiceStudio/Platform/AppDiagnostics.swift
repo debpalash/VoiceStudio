@@ -8,6 +8,8 @@ import VoiceStudioKit
     private(set) var enabled = false
     private(set) var prompted = false
     private(set) var ready = false
+    // Completing the optional startup check does not grant reporting authority.
+    private(set) var initialCheckCompleted = false
     private(set) var available = false
     private(set) var saving = false
     private(set) var errorKey: String?
@@ -25,13 +27,17 @@ import VoiceStudioKit
     @ObservationIgnored private var choiceGeneration: UInt64 = 0
     init(disabled: Bool = false, reporter: DiagnosticReports? = nil) {
         self.disabled = disabled; self.reporter = reporter; self.injectedFixture = reporter != nil
-        if disabled { ready = true; prompted = true }
+        if disabled { ready = true; prompted = true; initialCheckCompleted = true }
     }
     deinit { statusTask?.cancel(); hardKillCleanupTask?.cancel() }
     private var environmentKilled: Bool { !injectedFixture && Self.environmentDisabled() }
     var needsChoice: Bool { ready && available && !prompted }
+    func allowsIncomingContent(analyticsAnswered: Bool) -> Bool {
+        analyticsAnswered && initialCheckCompleted && !needsChoice
+    }
     func load() async {
         guard !started, !disabled else { return }; started = true
+        defer { initialCheckCompleted = true }
         if environmentKilled { await revokeForHardKill(); return }
         if reporter == nil, let configuration = await Task.detached(priority: .utility, operation: { Self.configuredReporter() }).value {
             reporter = configuration.reporter; stallThresholdMs = configuration.stallMs
@@ -78,7 +84,7 @@ import VoiceStudioKit
     private func revokeForHardKill() async {
         hardKillCleanupTask?.cancel(); hardKillCleanupTask = nil
         saving = true; defer { saving = false }
-        enabled = false; available = false; prompted = true; ready = true
+        enabled = false; available = false; prompted = true; ready = true; initialCheckCompleted = true
         lastChoice = false; observationRevision += 1; updateSubscription()
         // Cleanup precedes policy/destination loading: broken resources or a
         // blank destination must not preserve an earlier ON grant.

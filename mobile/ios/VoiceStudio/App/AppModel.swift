@@ -80,7 +80,7 @@ import BackgroundTasks
     @ObservationIgnored private let translator = L10n()
     var l10n: L10n { var value = translator; value.locale = (language.isEmpty ? Locale.current.identifier : language).replacingOccurrences(of: "_", with: "-"); return value }
     func t(_ key: String, _ params: [String: String] = [:]) -> String { l10n.t(key, params) }
-    var privacyChoicesAnswered: Bool { consentAnswered && diagnostics.ready && !diagnostics.needsChoice }
+    var privacyChoicesAnswered: Bool { diagnostics.allowsIncomingContent(analyticsAnswered: consentAnswered) }
     func chooseConsent(_ choice: Bool) { analytics = choice; consentAnswered = true; UserDefaults.standard.set(true, forKey: "consentAnswered") }
     func api() throws -> APIClient { guard let api = connection.client else { throw ClientError("mobile.errors.offline") }; return api }
     func perform(connectionChange: Bool = false, diagnosticStage: String = "other", companionFailure: (() -> (remoteTask: Bool, observation: CompanionDiagnosticObservation?))? = nil, _ work: @escaping @MainActor () async throws -> Void) async {
