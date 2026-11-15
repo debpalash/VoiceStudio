@@ -16,6 +16,7 @@ private final class DiagnosticControllerStore: DiagnosticStorage, @unchecked Sen
     private var unreadableConsent=false
     func allowWrites() { lock.withLock { fail=false } }
     func failConsentReads(_ value:Bool) {lock.withLock {unreadableConsent=value}}
+    func saved(_ name:String)->Data? {lock.withLock {files[name]}}
     func read(_ name: String,maxBytes: Int) throws -> Data? {try lock.withLock {
         if name=="consent.json",unreadableConsent {throw DiagnosticFailure.storageUnavailable}
         return files[name]
@@ -100,6 +101,51 @@ private final class DiagnosticControllerRecoveryClock:DiagnosticClock,@unchecked
         controller.failureHandler(stage:"generation")(ClientError("mobile.local.inference_failed"));await controller.flush()
         #expect(!controller.enabled);#expect(transport.count==1)
     }
+    await reports.close()
+}
+@MainActor @Test(arguments:[false,true])
+func diagnosticAppControllerDoesNotReplaceUnreadConsentAndRetryRereadsIt(_ previouslyEnabled:Bool) async throws {
+    var root=URL(fileURLWithPath:#filePath);for _ in 0..<6 {root.deleteLastPathComponent()}
+    let policy=try DiagnosticPolicy(data:Data(contentsOf:root.appendingPathComponent("config/diagnostics.json")))
+    let store=DiagnosticControllerStore(),transport=DiagnosticControllerTransport(),clock=DiagnosticControllerRecoveryClock()
+    store.allowWrites()
+    let destination=try DiagnosticDestination(site:"localtest123",host:"http://127.0.0.1:1",appUrl:"https://app.test.invalid")
+    let previous=try DiagnosticReports(directory:URL(fileURLWithPath:"/unused-test-store"),policy:policy,destination:destination,appVersion:"0.5.9-beta.2",clock:clock,storage:store,disabled:{false})
+    try await previous.setConsent(true)
+    let context=previouslyEnabled ? previous.recoveryContext : nil
+    await previous.close()
+    // Valid saved OFF choices from before durable revocation markers still
+    // require a successful read; no cached grant authority is available.
+    if !previouslyEnabled {
+        let bytes=try #require(store.saved("consent.json"))
+        var saved=try #require(JSONSerialization.jsonObject(with:bytes) as? [String:Any])
+        saved["enabled"]=false
+        try store.write("consent.json",data:JSONSerialization.data(withJSONObject:saved))
+    }
+    if let context {
+        let projector=DiagnosticProjector(policy:policy,appVersion:"0.5.9-beta.2",buildCommit:nil,arch:"arm64")
+        let props=projector.props(DiagnosticInput(category:"engine_failed"),version:"0.5.9-beta.2",commit:nil)
+        let record:[String:Any]=["version":1,"id":String(repeating:"a",count:32),"timestamp_ms":clock.nowMs(),"epoch":context.epoch,"props":try JSONSerialization.jsonObject(with:diagnosticEncode(props))]
+        try store.write("outbox.json",data:JSONSerialization.data(withJSONObject:[record]))
+    }
+    let consentBefore=try #require(store.saved("consent.json")),outboxBefore=store.saved("outbox.json")
+    store.failConsentReads(true)
+    let reports=try DiagnosticReports(directory:URL(fileURLWithPath:"/unused-test-store"),policy:policy,destination:destination,appVersion:"0.5.9-beta.2",transport:transport,clock:clock,storage:store,disabled:{false})
+    let controller=AppDiagnostics(reporter:reports)
+    await controller.load()
+    #expect(!controller.ready);#expect(!controller.needsChoice);#expect(!controller.enabled)
+    #expect(controller.errorKey != nil)
+    await controller.setConsent(true)
+    #expect(store.saved("consent.json")==consentBefore)
+    #expect(store.saved("outbox.json")==outboxBefore)
+    store.failConsentReads(false)
+    // Explicit Retry must reread now, without waiting for the automatic60s timer
+    // or interpreting the previous unknown state as a new ON/OFF choice.
+    await controller.retryConsent()
+    #expect(controller.ready);#expect(controller.enabled==previouslyEnabled)
+    #expect(controller.prompted);#expect(controller.errorKey==nil)
+    #expect(store.saved("consent.json")==consentBefore)
+    await reports.flush();#expect(transport.count==(previouslyEnabled ? 1:0))
     await reports.close()
 }
 @MainActor @Test func diagnosticAppControllerRetriesTheDesiredEnabledChoice() async throws {

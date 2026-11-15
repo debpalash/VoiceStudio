@@ -85,20 +85,21 @@ struct PhoneJobState: Sendable {
         guard UIApplication.shared.applicationState != .background else {
             states[id] = PhoneJobState(running: false,error: ClientError("mobile.jobs.background_paused"),paused: true,phase: .paused); return false
         }
+        let observation = diagnosticFailureObservation?()
         states[id] = PhoneJobState(); stops[id] = PhoneJobRestartGate(); modes[id] = .automatic
         grants[id] = UIApplication.shared.beginBackgroundTask(withName: id) { Task { @MainActor in self.expireGrant(id: id) } }
         // Foreground acceleration remains the default. A CPU grant can be held ready
         // for the explicit fallback without allowing foreground GPU work in background.
-        launch(id: id,mode: .automatic)
+        launch(id: id,mode: .automatic,observation: observation)
         if recipe.requiresGPU && supportsGPU { requestContinuation(id: id,gpu: true) }
         else if !recipe.requiresGPU || (recipe.allowCPU && recipe.cpuAvailable) { requestContinuation(id: id,gpu: false) }
         return true
     }
-    private func launch(id: String,mode: NativeComputeMode) {
+    private func launch(id: String,mode: NativeComputeMode,observation: CompanionDiagnosticObservation?) {
         guard let recipe = recipes[id] else { return }
         modes[id] = mode
-        // Every native execution owns the grant observed before any engine/cleanup await.
-        let observation = diagnosticFailureObservation?()
+        // Automatic CPU handoff belongs to the same user-started job. Only an
+        // explicit start/resume in begin observes a new diagnostic grant.
         tasks[id] = Task {
             var cancelled = false
             do {
@@ -121,7 +122,7 @@ struct PhoneJobState: Sendable {
             if cancelled && restart && safePower && grant(id: id) != .none {
                 states[id]?.paused = false; states[id]?.error = nil
                 states[id]?.phase = continued[id] == nil ? .foreground : .continuedCPU
-                launch(id: id,mode: .cpuOnly)
+                launch(id: id,mode: .cpuOnly,observation: observation)
                 return
             }
             if cancelled { states[id]?.paused = true; states[id]?.phase = .paused }

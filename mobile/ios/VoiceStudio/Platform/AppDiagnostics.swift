@@ -38,10 +38,13 @@ import VoiceStudioKit
         }
         guard let reporter else { ready = true; prompted = true; return }
         observeStatus(reporter)
-        await reporter.load(); refresh(); ready = true; observationRevision += 1; updateSubscription()
+        await reporter.load(); refresh(); observationRevision += 1; updateSubscription()
     }
     func setConsent(_ choice: Bool) async {
         guard let reporter, !disabled else { return }
+        // Unknown saved permission is not a new choice. Explicit withdrawal
+        // remains available, but enabling must wait for a successful reread.
+        guard !choice || reporter.consentReady else { refresh(); return }
         choiceGeneration &+= 1
         let generation = choiceGeneration
         saving = true; errorKey = nil; lastChoice = choice; observationRevision += 1
@@ -61,6 +64,15 @@ import VoiceStudioKit
     }
     func retryConsent() async {
         if reporter == nil && environmentKilled { await revokeForHardKill() }
+        else if let reporter, !reporter.consentReady, !declinedThisRun {
+            guard !saving else { return }
+            choiceGeneration &+= 1
+            let generation = choiceGeneration
+            saving = true; errorKey = nil; observationRevision += 1
+            await reporter.load(retryUnread: true)
+            guard generation == choiceGeneration else { return }
+            refresh(); saving = false; updateSubscription()
+        }
         else { await setConsent(lastChoice) }
     }
     private func revokeForHardKill() async {
@@ -103,7 +115,10 @@ import VoiceStudioKit
     private func refresh() {
         guard let reporter else { return }
         let state = reporter.status
-        if state.consentSaveFailed { errorKey = "diagnostics.save_failed" }
+        ready = reporter.consentReady || declinedThisRun
+        if !ready { errorKey = "diagnostics.unavailable" }
+        else if state.consentSaveFailed { errorKey = "diagnostics.save_failed" }
+        else if errorKey == "diagnostics.unavailable" { errorKey = nil }
         available = state.available && !environmentKilled
         enabled = state.enabled && available
         prompted = state.prompted || declinedThisRun || !available
