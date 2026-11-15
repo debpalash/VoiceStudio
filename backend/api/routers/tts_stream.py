@@ -467,7 +467,6 @@ async def ws_tts(websocket: WebSocket):
                     backend, kw, text, data.get("language"), native=native, profile_id=data.get("voice"),
                 )) as chunks:
                     while True:
-                        diagnostic_epoch = diagnostic_reports.observe_grant()
                         try:
                             pcm_bytes, sr, chunk_synth_s = await diagnostic_reports.await_owned(anext(chunks), diagnostic_epoch)
                         except StopAsyncIteration:

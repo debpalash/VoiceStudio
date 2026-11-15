@@ -468,6 +468,8 @@ assert r.marker_owned
 
 
 def test_withdrawal_cleanup_denial_never_reenables_old_prefs(reporter,monkeypatch):
+    clock = [100.0]
+    monkeypatch.setattr(time,'monotonic',lambda:clock[0])
     reporter.consent(True);reporter.capture('generation_failed');records(reporter)
     old=reporter.epoch
     original=Path.unlink
@@ -483,6 +485,8 @@ def test_withdrawal_cleanup_denial_never_reenables_old_prefs(reporter,monkeypatc
     from core import prefs
     assert prefs.get('diagnostics_enabled') is False
     monkeypatch.setattr(Path,'unlink',original)
+    # Automatic cleanup waits one minute after a failed unlink; authority stays OFF.
+    clock[0] += 60
     assert records(reporter)==[]
 
 

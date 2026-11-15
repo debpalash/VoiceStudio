@@ -11,6 +11,7 @@ explicit override that the UI cannot silently undo.
 """
 from __future__ import annotations
 
+import errno
 import json
 import logging
 import os
@@ -38,7 +39,13 @@ def _load(*, strict: bool = False) -> dict:
         with open(_PREFS_PATH, "r", encoding="utf-8") as f:
             value = json.load(f)
             return value if isinstance(value, dict) else {}
-    except (FileNotFoundError, json.JSONDecodeError, UnicodeError, RecursionError):
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+    except (UnicodeError, RecursionError) as e:
+        if strict:
+            # The file may be readable by another tool/version. A mutation
+            # must not replace undecodable or unbounded existing preferences.
+            raise OSError(errno.EILSEQ, "Preferences could not be decoded") from e
         return {}
     except Exception as e:
         if strict:

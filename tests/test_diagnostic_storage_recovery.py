@@ -1426,3 +1426,50 @@ def test_hard_kill_retries_failed_durable_fence_at_bounded_cadence(reporter, mon
     assert attempts == [100.0, 160.0]
     assert (reporter.root / "revoked.json").exists()
     assert prefs.get("diagnostics_enabled") is False
+
+
+@pytest.mark.parametrize('body', [b'\xff', b'[' * 1500 + b']' * 1500], ids=['invalid-utf8', 'excessive-nesting'])
+@pytest.mark.parametrize('operation', ['on', 'off', 'set', 'mapping', 'delete'])
+def test_strict_unparseable_preferences_are_not_replaced(reporter, body, operation):
+    from core import prefs
+    target = Path(prefs._PREFS_PATH)
+    target.write_bytes(body)
+    action = {'on': lambda: reporter.consent(True), 'off': lambda: reporter.consent(False),
+              'set': lambda: prefs.set_('new', True), 'mapping': lambda: prefs.update_mapping('engine_options', {'new': True}),
+              'delete': lambda: prefs.delete('tts_backend')}[operation]
+    with pytest.raises(OSError):
+        action()
+    assert target.read_bytes() == body
+    assert prefs.get('tts_backend', 'fallback') == 'fallback'
+    if operation in {'on', 'off'}:
+        assert not reporter.enabled and reporter.consent_failed
+    if operation == 'off':
+        assert (reporter.root / 'revoked.json').exists()
+
+
+def test_withdrawal_cleanup_continues_and_retries_locked_files_at_bounded_cadence(reporter, monkeypatch):
+    reports = importlib.import_module('core.diagnostic_reports')
+    clock = [100.0]
+    monkeypatch.setattr(reports.time, 'monotonic', lambda: clock[0])
+    reporter.consent(True)
+    reporter.capture('engine_failed'); reporter.capture('download_failed'); reporter._tick()
+    locked, healthy = sorted(reporter.directory.glob('*.json'))
+    marker = reporter.root / 'session.json'
+    assert marker.exists()
+    original = Path.unlink
+    attempts = []
+    writable = [False]
+    def remove(path, *args, **kwargs):
+        if path == locked:
+            attempts.append(clock[0])
+            if not writable[0]:
+                raise PermissionError('controlled withdrawal cleanup')
+        return original(path, *args, **kwargs)
+    monkeypatch.setattr(Path, 'unlink', remove)
+    reporter.consent(False)
+    assert not healthy.exists() and not marker.exists()
+    reporter._tick(); reporter._tick()
+    assert attempts == [100.0]
+    writable[0] = True; clock[0] = 160.0
+    reporter._tick()
+    assert not locked.exists() and attempts == [100.0, 160.0]

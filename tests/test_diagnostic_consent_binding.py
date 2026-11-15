@@ -21,8 +21,9 @@ def test_consent_write_failure_is_retryable_and_not_desktop_management(reporter,
     app.include_router(router)
     def failed_save(data):
         raise failure('PRIVATE_STORAGE_PATH')
-    with TestClient(app, base_url='http://127.0.0.1', client=('127.0.0.1', 50000),
-                    raise_server_exceptions=False) as client:
+    client = TestClient(app, base_url='http://127.0.0.1', client=('127.0.0.1', 50000),
+                        raise_server_exceptions=False)
+    try:
         with monkeypatch.context() as fault:
             fault.setattr(prefs, '_save', failed_save)
             result = client.put('/api/settings/diagnostics', json={'enabled': False})
@@ -31,6 +32,8 @@ def test_consent_write_failure_is_retryable_and_not_desktop_management(reporter,
             assert 'PRIVATE_STORAGE_PATH' not in result.text
             assert not reporter.enabled and not reporter.capture('generation_failed')
         assert client.put('/api/settings/diagnostics', json={'enabled': False}).status_code == 200
+    finally:
+        client.close()
 
 
 def test_managed_desktop_consent_refusal_is_still_a_conflict(reporter, monkeypatch):
@@ -41,10 +44,13 @@ def test_managed_desktop_consent_refusal_is_still_a_conflict(reporter, monkeypat
     reporter.managed = True
     app = FastAPI()
     app.include_router(router)
-    with TestClient(app, base_url='http://127.0.0.1', client=('127.0.0.1', 50000)) as client:
+    client = TestClient(app, base_url='http://127.0.0.1', client=('127.0.0.1', 50000))
+    try:
         result = client.put('/api/settings/diagnostics', json={'enabled': True})
         assert result.status_code == 409
         assert result.json()['detail'] == 'Desktop controls diagnostic consent'
+    finally:
+        client.close()
 
 
 def test_unbound_ui_failure_cannot_borrow_later_opt_in(reporter):

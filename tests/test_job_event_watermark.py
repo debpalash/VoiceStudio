@@ -15,8 +15,11 @@ def events_client(tmp_path, monkeypatch):
     from api.routers.dub_export import router
     app = FastAPI()
     app.include_router(router)
-    with TestClient(app) as client:
+    client = TestClient(app)
+    try:
         yield client, db, job_store
+    finally:
+        client.close()
 
 
 def seed_history(db, job_store, count):

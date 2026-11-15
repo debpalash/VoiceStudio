@@ -74,10 +74,10 @@ def test_progressive_openai_fault_completed_before_new_grant_cannot_borrow_it(re
             await stream.aclose()
     asyncio.run(run())
     reporter._tick()
-    assert len(reporter._files())==int(choice in ('unchanged','fresh_later_unit')), 'Completed progressive fault borrowed a later grant'
+    assert len(reporter._files())==int(choice == 'unchanged'), 'Completed progressive fault borrowed a later grant'
 
 
-def test_fresh_task_iteration_after_opt_in_keeps_reporting(reporter, monkeypatch):
+def test_same_task_iteration_after_opt_in_does_not_borrow_consent(reporter, monkeypatch):
     tasks=importlib.import_module('core.tasks')
     for name in ('create','mark_running','mark_failed','mark_done','mark_cancelled'):
         monkeypatch.setattr(tasks.job_store,name,lambda *args,**kwargs:None)
@@ -107,7 +107,7 @@ def test_fresh_task_iteration_after_opt_in_keeps_reporting(reporter, monkeypatch
             worker.cancel();await asyncio.gather(worker,return_exceptions=True)
     asyncio.run(run())
     reporter._tick()
-    assert len(reporter._files())==1
+    assert len(reporter._files())==0
 
 
 @pytest.mark.parametrize('choice',['unchanged','replacement','later_opt_in'])
@@ -451,3 +451,80 @@ def test_translation_outer_failure_keeps_awaited_unit_grant(reporter,monkeypatch
             if not task.done():task.cancel();await asyncio.gather(task,return_exceptions=True)
     asyncio.run(run());reporter._tick()
     assert len(reporter._files())==int(choice in ('unchanged','fresh_later_unit'))
+
+
+@pytest.mark.parametrize('initially_enabled', [False, True])
+def test_queued_task_keeps_submission_owner_before_worker_starts(reporter, monkeypatch, initially_enabled):
+    tasks = importlib.import_module('core.tasks')
+    reports = importlib.import_module('core.diagnostic_reports')
+    for name in ('create', 'mark_running', 'mark_failed', 'mark_done', 'mark_cancelled'):
+        monkeypatch.setattr(tasks.job_store, name, lambda *a, **kw: None)
+    monkeypatch.setattr(tasks.job_store, 'append_event', lambda *a, **kw: 1)
+    monkeypatch.setattr(tasks.run_sentinel, 'touch_activity', lambda *a, **kw: None)
+    reporter.consent(initially_enabled)
+    async def run():
+        async def work():
+            raise RuntimeError('synthetic queued failure')
+        manager = tasks.TaskManager()
+        await manager.add_task('queued-owner', 'batch', work)
+        reporter.consent(False); reporter.consent(True)
+        worker = asyncio.create_task(manager.worker())
+        try:
+            await asyncio.wait_for(manager.queue.join(), 2)
+            assert reporter.intake.empty(), 'queued work borrowed a later grant'
+            await manager.add_task('fresh-owner', 'batch', work)
+            await asyncio.wait_for(manager.queue.join(), 2)
+            assert reporter.intake.qsize() == 1
+        finally:
+            worker.cancel(); await asyncio.gather(worker, return_exceptions=True)
+    asyncio.run(run())
+
+
+def test_known_off_expected_epoch_differs_from_omitted_epoch(reporter):
+    reports = importlib.import_module('core.diagnostic_reports')
+    off = reports.observe_grant()
+    reporter.consent(True)
+    assert off is None
+    assert not reports.capture_failure('generation', expected_epoch=off)
+    assert not reporter.capture('engine_failed', _expected_epoch=off)
+    assert reports.capture_failure('generation')
+
+
+@pytest.mark.parametrize('old_grant', [False, True])
+def test_openai_upload_keeps_request_owner_for_nested_asr(reporter, monkeypatch, old_grant):
+    reports = importlib.import_module('core.diagnostic_reports')
+    openai = importlib.import_module('api.routers.openai_compat')
+    asr = importlib.import_module('services.asr_backend')
+    ffmpeg = importlib.import_module('services.ffmpeg_utils')
+    monkeypatch.setattr(asr, 'asr_model_missing_error', lambda: None)
+    monkeypatch.setattr(ffmpeg, 'raise_for_audio_extract_failure', lambda *a, **kw: None)
+    reporter.consent(old_grant)
+    owner = reports.observe_grant()
+    class Upload:
+        filename = 'fixture.wav'
+        async def read(self):
+            reporter.consent(False); reporter.consent(True)
+            return b'RIFF-fixture'
+    async def guarded(*args, **kwargs):
+        reports.capture_failure('transcription', error=RuntimeError('synthetic nested ASR fault'))
+        raise RuntimeError('synthetic ASR fault')
+    monkeypatch.setattr(asr, 'run_transcribe_guarded', guarded)
+    async def run():
+        with reports.grant_scope(owner):
+            with pytest.raises(Exception):
+                await openai._transcribe_request(task='transcribe', file=Upload(), language=None, prompt=None, response_format='json', temperature=None)
+    asyncio.run(run())
+    assert reporter.intake.empty()
+
+
+from test_dub_crash_resume import dub  # noqa: E402,F401
+
+
+@pytest.mark.parametrize('cancelled', [False, True])
+def test_actual_dub_native_exception_after_cancel_stays_local(reporter, dub, cancelled):
+    reporter.consent(True)
+    dub.state['fail_on_call'] = 1
+    dub.state['cancel_after'] = 1 if cancelled else None
+    assert any(event['type'] == 'error' for event in dub.run())
+    reporter._tick()
+    assert len(reporter._files()) == int(not cancelled)

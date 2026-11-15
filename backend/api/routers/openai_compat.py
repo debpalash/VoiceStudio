@@ -657,11 +657,11 @@ def _sse_events(audio: bytes):
 
 async def _stream_speech_pcm(first: bytes, sentences: list[str], render, *, sse: bool):
     """Render on demand so a disconnected client does not queue more speech."""
+    from core import diagnostic_reports
+    diagnostic_epoch = diagnostic_reports.inherited_grant()
     for chunk in _audio_chunks(first):
         yield _speech_delta(chunk) if sse else chunk
-    from core import diagnostic_reports
     for sentence in sentences:
-        diagnostic_epoch = diagnostic_reports.observe_grant()
         try:
             audio = await diagnostic_reports.await_owned(render(sentence), diagnostic_epoch)
         except Exception as exc:
@@ -768,7 +768,6 @@ async def _native_pcm_stream(backend, text, kw, *, sse, timed=False):
         entered = True
         iterator = backend.stream_audio(text, **kw)
         while True:
-            diagnostic_epoch = diagnostic_reports.observe_grant()
             chunk = await diagnostic_reports.await_owned(run_on_gpu_pool_guarded(
                 encode_mlx_next if mlx else encode_next,
                 what="Native TTS generate" if timed else "Native OpenAI TTS generate",
@@ -1006,7 +1005,7 @@ async def create_speech(req: SpeechRequest):
     # this is a per-request no-op.
     from services.model_manager import _model_load_timeout
     from core import diagnostic_reports
-    diagnostic_epoch = diagnostic_reports.observe_grant()
+    diagnostic_epoch = diagnostic_reports.inherited_grant()
     try:
         await diagnostic_reports.await_owned(run_on_gpu_pool_guarded(
             backend.ensure_ready,
@@ -1101,7 +1100,7 @@ async def create_speech(req: SpeechRequest):
 
     # Finish the first segment before sending headers so validation and
     # first-render errors retain their normal HTTP status.
-    diagnostic_epoch = diagnostic_reports.observe_grant()
+    diagnostic_epoch = diagnostic_reports.inherited_grant()
     try:
         if native:
             sse = req.stream_format == "sse"
@@ -1277,6 +1276,8 @@ async def _transcribe_request(
     response_format: str, temperature: Optional[float],
     timestamp_granularities: Optional[list[str]] = None, stream: Optional[bool] = None,
 ):
+    from core import diagnostic_reports
+    diagnostic_epoch = diagnostic_reports.inherited_grant()
     from services.asr_backend import (
         ASRModelMissingError,
         asr_model_missing_detail,
@@ -1332,8 +1333,6 @@ async def _transcribe_request(
     except Exception as e:
         raise OpenAIError(400, f"Could not read audio file: {e}", param="file")
 
-    from core import diagnostic_reports
-    diagnostic_epoch = diagnostic_reports.observe_grant()
     options = {
         "language": language or None,
         "initial_prompt": prompt or None,

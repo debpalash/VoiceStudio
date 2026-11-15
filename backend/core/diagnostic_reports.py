@@ -106,6 +106,10 @@ def _app_version(value):
 
 def _diagnostic_destination():
     """Diagnostic transport requires TLS, except exact loopback development URLs."""
+    from core.diagnostic_app_transport import app_destination
+    app = app_destination()
+    if app:
+        return app
     from core.analytics import _destination
     from core.analytics_transport import valid_url
     destination = _destination()
@@ -318,6 +322,7 @@ class Reporter:
         self.ack_cleanup_count = 0
         self.ack_cleanup_bytes = 0
         self.storage_retry_at = 0
+        self.purge_retry_at = 0
         self.publication = None
         self.schema = None
         self.marker_owned = False
@@ -327,6 +332,19 @@ class Reporter:
         self.session_retired = False
         self.seen_errors = []
         self.started = time.time()
+        self.app_delivery_paused = False
+        self.last_delivery_reason = None
+        # Correlation is per run, in memory only, and never labels restored files.
+        self.current_run_records = set()
+        self.correlation_retired = False
+        self.run_session_id = None
+        self.run_session_event_id = None
+        self.run_session_epoch = None
+        self.run_session_profile = None
+        self.run_session_submitted = False
+        self.run_session_terminal = False
+        self.run_session_retry_at = 0
+        self.run_session_timestamp_ms = None
         self.thread = threading.Thread(target=self._run, name='diagnostic-reports', daemon=True)
 
     def start(self):
@@ -348,7 +366,7 @@ class Reporter:
             self.kill_observed = True
         return current or self.kill_observed
 
-    def capture(self, category, *, stage='other', error=None, error_code=None, engine_id=None, _reported_app_version=_CURRENT_APP_VERSION, _expected_epoch=None, _reported_timestamp_ms=None, **metadata):
+    def capture(self, category, *, stage='other', error=None, error_code=None, engine_id=None, _reported_app_version=_CURRENT_APP_VERSION, _expected_epoch=_GRANT_UNSET, _reported_timestamp_ms=None, **metadata):
         try:
             # Only bounded projection against cached policy here; no retained
             # exceptions, file reads or waits on the diagnostic worker.
@@ -359,7 +377,7 @@ class Reporter:
             bound = _grant_authority.get()
             if bound is not _GRANT_UNSET and (bound is None or bound != epoch):
                 return False
-            if _expected_epoch is not None and (type(_expected_epoch) is not str or _expected_epoch != epoch):
+            if _expected_epoch is not _GRANT_UNSET and (type(_expected_epoch) is not str or _expected_epoch != epoch):
                 return False
             schema = self.schema
             if schema is None:
@@ -385,7 +403,7 @@ class Reporter:
             # Only local session recovery can supply a prior runtime version.
             # Keep it separate from caller/UI metadata and from later spool IO.
             reported_version = self.app_version if _reported_app_version is _CURRENT_APP_VERSION else _app_version(_reported_app_version)
-            item = (epoch,sanitize_props(fields,schema),token,reported_version,timestamp)
+            item = (epoch,sanitize_props(fields,schema),token,reported_version,timestamp,_reported_timestamp_ms is None)
             try:
                 self.intake.put_nowait(item)
                 return True
@@ -422,19 +440,38 @@ class Reporter:
         except (ValueError, TypeError, RecursionError):
             return {}  # Proven invalid authority remains fail-closed.
 
-    def _purge(self):
+    def _purge(self, *, force=False):
         self.session_recovery = None
+        self.current_run_records.clear()
         self.ack_cleanup_at.clear()
         self.ack_cleanup_count = self.ack_cleanup_bytes = 0
-        for folder in (self.root / 'outbox', self.root / 'inbox') if not self.managed else (self.directory,):
-            if folder.is_dir() and not folder.is_symlink():
-                for path in folder.iterdir():
-                    if path.is_file() and (_HEX.fullmatch(path.stem) or path.name.startswith('.diagnostic-')):
-                        path.unlink(missing_ok=True)
-        if not self.managed:
-            (self.root / 'session.json').unlink(missing_ok=True)
         self.marker_owned = False
         self.pending = 0
+        if not force and time.monotonic() < self.purge_retry_at:
+            return
+        failed = False
+        for folder in (self.root / 'outbox', self.root / 'inbox') if not self.managed else (self.directory,):
+            try:
+                if not folder.is_dir() or folder.is_symlink():
+                    continue
+                paths = list(folder.iterdir())
+            except OSError:
+                failed = True
+                continue
+            for path in paths:
+                try:
+                    if path.is_file() and (_HEX.fullmatch(path.stem) or path.name.startswith('.diagnostic-')):
+                        path.unlink(missing_ok=True)
+                except OSError:
+                    # One locked report must not protect later reports or the
+                    # crash marker from a successful withdrawal cleanup.
+                    failed = True
+        if not self.managed:
+            try:
+                (self.root / 'session.json').unlink(missing_ok=True)
+            except OSError:
+                failed = True
+        self.purge_retry_at = time.monotonic()+60 if failed else 0
 
     def refresh(self):
         with self.lock:
@@ -457,6 +494,9 @@ class Reporter:
                     self.consent_read_failed = True
                     self.consent_read_retry_at = time.monotonic()+60
                     transport, self.transport = self.transport, None
+                    if self.run_session_epoch is not None and self.run_session_epoch == self.epoch and not self.run_session_terminal and not self.correlation_retired:
+                        self.run_session_submitted = False
+                        self.run_session_retry_at = self.consent_read_retry_at
                 # Cancel sending without erasing unread authority's evidence or
                 # an accepted publication/session recovery awaiting durable IO.
                 self.inflight = {key:value for key,value in self.inflight.items() if key in self.ack_cleanup_at}
@@ -503,6 +543,8 @@ class Reporter:
             self.prompted = data.get('prompted', bool(data)) is True
             resume_same_grant = recovering and enabled and self.epoch == epoch and self.profile == profile
             if self.epoch != epoch or (not resume_same_grant and (self.enabled != enabled or recovering)):
+                if self.epoch and (not enabled or self.epoch != epoch):
+                    self._retire_correlation()
                 with self.ack_lock:
                     self.enabled = False
                 if self.transport:
@@ -537,6 +579,8 @@ class Reporter:
         records = []
         self.ack_cleanup_count = self.ack_cleanup_bytes = 0
         if not self.directory.exists() or self.directory.is_symlink():
+            pending_id = {self.publication[1]['id']} if self.publication is not None else set()
+            self.current_run_records.intersection_update(pending_id)
             return records
         total = 0
         for path in sorted(self.directory.iterdir())[:256]:
@@ -570,12 +614,20 @@ class Reporter:
                 raise
             except (ValueError, TypeError, KeyError, RecursionError):
                 path.unlink(missing_ok=True)
+                self.current_run_records.discard(path.stem)
                 self.dropped += 1
+        # Keep correlation bounded by the existing durable capacity, including
+        # accepted ACKs and a rename awaiting commit. External removals cannot
+        # leave a growing history of this run's opaque IDs in memory.
+        current = {record['id'] for record in records} | self.ack_cleanup_at.keys()
+        if self.publication is not None:
+            current.add(self.publication[1]['id'])
+        self.current_run_records.intersection_update(current)
         self.pending = len(records)
         return records
 
     def _spool(self, item, records, record_id=None):
-        epoch, fields, token, reported_version, timestamp = item
+        epoch, fields, token, reported_version, timestamp = item[:5]
         if epoch != self.epoch or not self.enabled:
             return False
         if not self._recent(timestamp):
@@ -627,6 +679,8 @@ class Reporter:
             if record_id is None:
                 self.dropped += 1
             return False
+        if record_id is None and len(item) > 5 and item[5] is True:
+            self.current_run_records.add(record['id'])
         self._publish(item, record, records)
         if token is not None:
             self.seen_errors.append((token,now))
@@ -761,6 +815,7 @@ class Reporter:
                         self.acks.defer_nowait(ack)
                     continue
                 self.ack_cleanup_at.pop(identity,None)
+                self.current_run_records.discard(identity)
                 self.retry_at.pop(identity,None)
                 # Delivery cleanup can release capacity while intake writes
                 # remain blocked by a full disk. Do not wait out that cooldown.
@@ -781,26 +836,68 @@ class Reporter:
             destination = _diagnostic_destination()
             if destination:
                 from core.analytics_transport import SupermetryTransport
+                from core.diagnostic_app_transport import AppDiagnosticTransport
                 with self.ack_lock:
-                    if self.enabled and self.epoch:
+                    if self.enabled and self.epoch and not self.app_delivery_paused:
                         epoch = self.epoch
-                        self.transport = SupermetryTransport(destination,lambda:self.enabled and self.epoch == epoch and not self.stop.is_set() and not self._hard_killed(),on_result=lambda identity,status:self._delivery_result(epoch,identity,status))
+                        allowed = lambda:self.enabled and self.epoch == epoch and not self.app_delivery_paused and not self.stop.is_set() and not self._hard_killed()
+                        if destination.get('app_id'):
+                            self.transport = AppDiagnosticTransport(destination, allowed, on_result=lambda identity,status,reason:self._app_delivery_result(epoch,identity,status,reason),ttl_ms=_limit(self.schema,'ttl_ms',604800000))
+                        else:
+                            self.transport = SupermetryTransport(destination,allowed,on_result=lambda identity,status:self._delivery_result(epoch,identity,status))
         with self.ack_lock:
             transport, epoch, profile = self.transport, self.epoch, self.profile
         if transport:
+            from core.diagnostic_app_transport import AppDiagnosticTransport
+            app_transport = isinstance(transport, AppDiagnosticTransport)
+            if app_transport and transport.destination.get('sessionPings') and not self.correlation_retired:
+                if self.run_session_epoch is None:
+                    self.run_session_id, self.run_session_event_id = uuid.uuid4().hex, uuid.uuid4().hex
+                    self.run_session_epoch, self.run_session_profile = epoch, profile
+                    self.run_session_timestamp_ms = int(time.time()*1000)
+                if (self.run_session_epoch == epoch and not self.run_session_submitted and not self.run_session_terminal
+                        and self.run_session_retry_at <= time.monotonic()):
+                    # Reserve before enqueue: a fast result may arrive before
+                    # capture_session returns, and owns the retry/terminal flag.
+                    self.run_session_submitted = True
+                    if not transport.capture_session(profile,self.run_session_id,self.run_session_event_id,self.run_session_timestamp_ms,self.app_version):
+                        self.run_session_submitted = False
             for record in records:
                 identity = record['id']
                 if identity in self.inflight or self.retry_at.get(identity,0) > time.monotonic():
                     continue
-                if not self.enabled or self.epoch != epoch or self.transport is not transport:
+                if not self.enabled or self.epoch != epoch or self.transport is not transport or self.app_delivery_paused:
                     return
                 safe = validate_record(record,epoch,self.schema)
-                if not self.enabled or self.epoch != epoch or self.transport is not transport:
+                if not self.enabled or self.epoch != epoch or self.transport is not transport or self.app_delivery_paused:
                     return
                 # A withdrawal after this check stops the detached transport;
                 # its own cached authority check also refuses queued sends.
-                if transport.capture('diagnostic_report',safe['props'],profile,path='/diagnostics',event_id=identity,timestamp_ms=safe['timestamp_ms']):
+                correlation = {}
+                if app_transport and not self.correlation_retired and self.run_session_epoch == epoch and identity in self.current_run_records:
+                    correlation['session_id'] = self.run_session_id
+                if transport.capture('diagnostic_report',safe['props'],profile,path='/diagnostics',event_id=identity,timestamp_ms=safe['timestamp_ms'],**correlation):
                     self.inflight[identity] = True
+
+    def _retire_correlation(self):
+        self.correlation_retired = True
+        self.current_run_records.clear()
+
+    def _app_delivery_result(self, epoch, identity, status, reason):
+        # Never log collector response text or credentials. A 401 lasts until
+        # process restart, even if the user makes a later consent choice.
+        if status == 401:
+            self.app_delivery_paused = True
+        self.last_delivery_reason = reason
+        if identity == self.run_session_event_id:
+            with self.ack_lock:
+                if self.enabled and self.epoch == epoch and not self.correlation_retired:
+                    self.run_session_terminal = status is not None and 0 < status < 500 and status not in {401,429}
+                    if not self.run_session_terminal:
+                        self.run_session_submitted = False
+                        self.run_session_retry_at = time.monotonic()+60
+            return
+        self._delivery_result(epoch,identity,None if status == 401 else status)
 
     def _delivery_result(self, epoch, identity, status):
         # A late callback cannot consume the new epoch's bounded ack capacity.
@@ -873,6 +970,8 @@ class Reporter:
                 return self._cached_status()
             if enabled and self.enabled and not self.kill_observed and not _killed():
                 return self._cached_status()
+            if not enabled and self.epoch:
+                self._retire_correlation()
             self.consent_revision += 1
             revision = self.consent_revision
             self.enabled = False
@@ -951,7 +1050,7 @@ class Reporter:
                     _atomic(self.root / 'revoked.json', {'version':1})
                 return self._cached_status()
             try:
-                self._purge()
+                self._purge(force=True)
             except OSError:
                 # Disabled worker retries cleanup; persisted new epoch makes
                 # undeletable old reports ineligible even after a restart.
@@ -1084,7 +1183,7 @@ def capture_from_ui(body):
     return capture(_expected_epoch=expected, **fields)
 
 
-def capture_failure(stage, *, error=None, error_code=None, engine_id=None, expected_epoch=None):
+def capture_failure(stage, *, error=None, error_code=None, engine_id=None, expected_epoch=_GRANT_UNSET):
     """Terminal owners pass a coarse fixed stage, never their raw context."""
     # HTTP validation/auth/licence refusals and explicit user cancellation are
     # expected outcomes. Do not classify by arbitrary exception messages.

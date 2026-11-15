@@ -117,3 +117,48 @@ def test_stream_failure_keeps_the_pre_await_grant(reporter, monkeypatch, owner, 
     assert len(saved) == int(choice == "unchanged"), "an old awaited failure borrowed a new grant"
     if saved:
         assert "expected_epoch" not in saved[0]["props"] and "grant_epoch" not in saved[0]["props"]
+
+
+def test_ws_tts_chunks_keep_message_owner_but_next_message_is_fresh(reporter, monkeypatch):
+    from contextlib import nullcontext
+    from starlette.websockets import WebSocketDisconnect
+    reports = importlib.import_module('core.diagnostic_reports')
+    route = importlib.import_module('api.routers.tts_stream')
+    from services import tts_backend, engine_routing, engine_memory
+    from core import device_caps
+    reporter.consent(False)
+    async def allow(*args): return True
+    async def resolve(*args): return SimpleNamespace(id='omnivoice', sample_rate=24000)
+    async def routing(*args): return {'routing_status': 'accelerated'}
+    async def evict(*args): pass
+    monkeypatch.setattr(route, 'require_ws_access', allow)
+    monkeypatch.setattr(route, '_resolve_stream_backend', resolve)
+    monkeypatch.setattr(route, 'build_stream_kwargs', lambda data: {})
+    monkeypatch.setattr(tts_backend, 'engine_in_use', lambda *a, **kw: nullcontext())
+    monkeypatch.setattr(device_caps, 'detect_host_caps', lambda: None)
+    monkeypatch.setattr(engine_routing, 'runtime_compute_profile_async', routing)
+    monkeypatch.setattr(engine_routing, 'routing_notice', lambda value: None)
+    monkeypatch.setattr(engine_memory, 'evict_other_tts_engines', evict)
+    messages = [0]
+    async def chunks(*args, **kwargs):
+        if messages[0] == 1:
+            yield b'\0\0', 24000, 0.01
+        error = RuntimeError('synthetic current-message failure')
+        reports.capture_failure('generation', error=error)
+        raise error
+    monkeypatch.setattr(route, '_ws_pcm_chunks', chunks)
+    class Socket:
+        async def accept(self): pass
+        async def close(self): pass
+        async def receive_json(self):
+            messages[0] += 1
+            if messages[0] == 2:
+                assert reporter.intake.empty(), 'a later automatic chunk borrowed opt-in'
+            if messages[0] > 2: raise WebSocketDisconnect(1000)
+            return {'text': 'Neutral fixture', 'engine': 'omnivoice'}
+        async def send_json(self, value): pass
+        async def send_bytes(self, value):
+            reporter.consent(True)
+    asyncio.run(route.ws_tts(Socket()))
+    reporter._tick()
+    assert len(reporter._files()) == 1, 'a distinct later text request must still report'
