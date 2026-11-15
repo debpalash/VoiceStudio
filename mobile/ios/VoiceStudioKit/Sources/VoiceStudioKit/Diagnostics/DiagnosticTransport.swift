@@ -80,7 +80,13 @@ public struct FileDiagnosticStorage: DiagnosticStorage {
 }
 public protocol DiagnosticTransport: Sendable {
     func send(destination: DiagnosticDestination, body: Data, allowed: @escaping @Sendable () -> Bool) async throws -> Int
+    func sendApp(destination: DiagnosticDestination, body: Data, userAgent: String, allowed: @escaping @Sendable () -> Bool) async throws -> DiagnosticTransportReply
     func cancelAll()
+}
+public extension DiagnosticTransport {
+    func sendApp(destination: DiagnosticDestination, body: Data, userAgent: String, allowed: @escaping @Sendable () -> Bool) async throws -> DiagnosticTransportReply {
+        DiagnosticTransportReply(status: try await send(destination: destination, body: body, allowed: allowed))
+    }
 }
 private final class DiagnosticSessionDelegate: NSObject, URLSessionTaskDelegate, Sendable {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) { completionHandler(nil) }
@@ -97,15 +103,25 @@ public final class URLSessionDiagnosticTransport: DiagnosticTransport, @unchecke
         session = URLSession(configuration: configuration, delegate: DiagnosticSessionDelegate(), delegateQueue: nil)
     }
     public func send(destination: DiagnosticDestination, body: Data, allowed: @escaping @Sendable () -> Bool) async throws -> Int {
+        try await request(destination: destination, body: body, userAgent: nil, allowed: allowed).status
+    }
+    public func sendApp(destination: DiagnosticDestination, body: Data, userAgent: String, allowed: @escaping @Sendable () -> Bool) async throws -> DiagnosticTransportReply {
+        try await request(destination: destination, body: body, userAgent: userAgent, allowed: allowed)
+    }
+    private func request(destination: DiagnosticDestination, body: Data, userAgent: String?, allowed: @escaping @Sendable () -> Bool) async throws -> DiagnosticTransportReply {
         var request = URLRequest(url: destination.endpoint); request.httpMethod = "POST"; request.httpBody = body
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type"); request.setValue(destination.origin, forHTTPHeaderField: "Origin")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let app = destination.app {
+            request.setValue(app.ingestKey, forHTTPHeaderField: "X-Supermetry-Key")
+            request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        } else { request.setValue(destination.origin, forHTTPHeaderField: "Origin") }
         let identifier = UUID()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                let task = session.dataTask(with: request) { [weak self] _, response, error in
+                let task = session.dataTask(with: request) { [weak self] data, response, error in
                     _ = self?.lock.withLock { self?.tasks.removeValue(forKey: identifier) }
                     if let error { continuation.resume(throwing: error) }
-                    else { continuation.resume(returning: (response as? HTTPURLResponse)?.statusCode ?? 0) }
+                    else { continuation.resume(returning: DiagnosticTransportReply(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: (data?.count ?? 0) <= 16384 ? (data ?? Data()) : Data())) }
                 }
                 lock.withLock {
                     guard allowed(), !Task.isCancelled else { continuation.resume(throwing: DiagnosticFailure.cancelled); return }

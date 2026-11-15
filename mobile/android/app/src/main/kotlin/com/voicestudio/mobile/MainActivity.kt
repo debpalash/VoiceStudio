@@ -42,6 +42,7 @@ import com.voicestudio.mobile.features.dictate.DictateScreen
 import com.voicestudio.mobile.features.settings.SettingsScreen
 import com.voicestudio.mobile.network.ContentReportClient
 import com.voicestudio.mobile.data.AutomaticDiagnostics
+import com.voicestudio.mobile.data.AutomaticDiagnosticState
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -76,6 +77,20 @@ class MainActivity:ComponentActivity() {
 /** Reports go to VoiceStudio's app API: the dev server for debug builds, production for release. */
 fun contentReportClient()=ContentReportClient(BuildConfig.CONTENT_REPORTS_URL,BuildConfig.VERSION_NAME)
 
+/** Local retry feedback remains available after a declined choice closes its prompt. */
+@Composable internal fun DiagnosticSaveFailureNotice(state:AutomaticDiagnosticState,snackbars:SnackbarHostState,onRetry:()->Unit) {
+    val message=tr("diagnostics.save_failed");val retry=tr("common.retry")
+    val retryChoice by rememberUpdatedState(onRetry)
+    LaunchedEffect(state.saveFailed,state.saving,snackbars,message,retry) {
+        if(state.saveFailed && !state.saving) {
+            // A failed Keep off remains OFF and does not reopen the question or
+            // block other app actions. Retry saves the same desired choice.
+            val result=snackbars.showSnackbar(message,actionLabel=retry,withDismissAction=true,duration=SnackbarDuration.Indefinite)
+            if(result==SnackbarResult.ActionPerformed)retryChoice()
+        }
+    }
+}
+
 @Composable fun StudioApp(vm:StudioViewModel = viewModel(), reportClient:ContentReportClient? = remember {contentReportClient()},incomingIntent: Intent?=null,onIncomingConsumed: ()->Unit={}) {
     val prefs by vm.preferences.collectAsStateWithLifecycle()
     val state by vm.state.collectAsStateWithLifecycle()
@@ -97,6 +112,7 @@ fun contentReportClient()=ContentReportClient(BuildConfig.CONTENT_REPORTS_URL,Bu
     val snackbars=remember {SnackbarHostState()}
     CompositionLocalProvider(LocalL10n provides l,LocalLayoutDirection provides direction,LocalContentReportClient provides reportClient) {
         VoiceStudioTheme(ThemePreferences(prefs.mode,prefs.lightPalette,prefs.darkPalette)) {
+            DiagnosticSaveFailureNotice(diagnostics,snackbars,AutomaticDiagnostics::retryConsent)
             CompositionLocalProvider(LocalScreenTitleProvided provides true) {
             key(state.connectionId) {
             val initialRoute=remember {if(state.error?.key=="mobile.connect.error_session_expired") "connect" else "home"}

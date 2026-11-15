@@ -249,7 +249,7 @@ final class PhoneScreenshotTour: XCTestCase {
     }
     @MainActor func testPhoneFirstScreens() {
         let app = XCUIApplication(); app.launchArguments = ["--ui-smoke","-AppleLanguages","(en)"]
-        app.launch(); XCTAssertTrue(app.buttons["consent.no"].waitForExistence(timeout: uiReadyTimeout)); XCTAssertTrue(app.staticTexts["Usage analytics are not sent from this phone; your choice is stored locally. Automatic diagnostic reports have a separate opt-in."].exists); capture("Consent",app); app.declineConsent(); capture("Home",app); app.openSpeak()
+        app.launch(); XCTAssertTrue(app.buttons["consent.no"].waitForExistence(timeout: uiReadyTimeout)); XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label == %@", "Usage analytics are not sent from this phone; your choice is stored locally. Automatic diagnostic reports have a separate opt-in.")).firstMatch.exists); capture("Consent",app); app.declineConsent(); capture("Home",app); app.openSpeak()
         XCTAssertTrue(app.textViews["speak.text"].waitForExistence(timeout: uiReadyTimeout)); capture("Speak-phone",app)
         app.tabButton("Voices").tapReady(); capture("Voices-phone",app)
         app.buttons["voices.create"].tapReady(); XCTAssertTrue(app.textFields["voices.clone.name"].waitForExistence(timeout: uiReadyTimeout)); capture("Clone-phone",app); app.buttons["Cancel"].tapReady()

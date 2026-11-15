@@ -12,9 +12,9 @@ private struct DiagnosticRevocation {
     let failed: Bool
     let prompted: Bool
 }
-private func diagnosticRevocationPresent(_ storage: any DiagnosticStorage) -> Bool {
+private func diagnosticRevocationPresent(_ storage: any DiagnosticStorage) throws -> Bool {
     do { return try storage.read("revoked.json", maxBytes: 4096) != nil }
-    catch { return true }
+    catch DiagnosticFailure.corruptStore { return true }
 }
 // Runs only on the owned worker or detached bootstrap task, never capture.
 private func diagnosticRevokeGrant(_ storage: any DiagnosticStorage, hadGrant hint: Bool? = nil, recordChoice: Bool = false) -> DiagnosticRevocation {
@@ -25,7 +25,7 @@ private func diagnosticRevokeGrant(_ storage: any DiagnosticStorage, hadGrant hi
         catch { hadGrant = true }
     }
     var failed = false
-    let prompted = hadGrant || recordChoice || diagnosticRevocationPresent(storage)
+    let prompted = hadGrant || recordChoice || ((try? diagnosticRevocationPresent(storage)) ?? true)
     if prompted {
         // This independent anonymous file still revokes a locked old grant.
         do { try storage.write("revoked.json", data: Data("{\"version\":1}".utf8)) } catch { failed = true }
@@ -52,6 +52,7 @@ private struct DiagnosticPending: Sendable {
     let id: String?
     let timestamp: Int64
 }
+enum DiagnosticWorkerObservation: Sendable { case flushJoined }
 /// This lock never encloses disk, network, actor waits or exception inspection.
 private final class DiagnosticGate: @unchecked Sendable {
     let lock = NSLock()
@@ -122,17 +123,36 @@ public final class DiagnosticReports: @unchecked Sendable {
     private let transport: any DiagnosticTransport
     private let projector: DiagnosticProjector
     private let clock: any DiagnosticClock
-    public init(directory: URL, policy: DiagnosticPolicy, destination: DiagnosticDestination, appVersion: String, buildCommit: String? = nil, arch: String = "unknown", transport: any DiagnosticTransport = URLSessionDiagnosticTransport(), clock: any DiagnosticClock = SystemDiagnosticClock(), storage: (any DiagnosticStorage)? = nil, disabled: (@Sendable () -> Bool)? = nil) {
+    public convenience init(directory: URL, policy: DiagnosticPolicy, destination: DiagnosticDestination, appVersion: String, buildCommit: String? = nil, arch: String = "unknown", transport: any DiagnosticTransport = URLSessionDiagnosticTransport(), clock: any DiagnosticClock = SystemDiagnosticClock(), storage: (any DiagnosticStorage)? = nil, disabled: (@Sendable () -> Bool)? = nil, onDeliveryResult: @escaping @Sendable (DiagnosticDeliveryResult) -> Void = { _ in }) {
+        self.init(directory: directory, policy: policy, destination: destination, appVersion: appVersion, buildCommit: buildCommit, arch: arch, transport: transport, clock: clock, storage: storage, disabled: disabled, onDeliveryResult: onDeliveryResult, observation: nil)
+    }
+    // Internal lifecycle observations make actor boundaries inspectable without
+    // changing public reporting controls, payloads or adding IO to capture.
+    init(directory: URL, policy: DiagnosticPolicy, destination: DiagnosticDestination, appVersion: String, buildCommit: String? = nil, arch: String = "unknown", transport: any DiagnosticTransport = URLSessionDiagnosticTransport(), clock: any DiagnosticClock = SystemDiagnosticClock(), storage: (any DiagnosticStorage)? = nil, disabled: (@Sendable () -> Bool)? = nil, onDeliveryResult: @escaping @Sendable (DiagnosticDeliveryResult) -> Void = { _ in }, observation: (@Sendable (DiagnosticWorkerObservation) -> Void)?) {
         self.transport = transport; self.clock = clock
         let gate = DiagnosticGate(disabled: disabled ?? { diagnosticKillSwitch(getenv("OMNIVOICE_DIAGNOSTICS_DISABLED").map { String(cString: $0) }) || diagnosticKillSwitch(getenv("OMNIVOICE_ANALYTICS_DISABLED").map { String(cString: $0) }) }); self.gate = gate
         let projector = DiagnosticProjector(policy: policy, appVersion: appVersion, buildCommit: buildCommit, arch: arch); self.projector = projector
-        worker = DiagnosticWorker(gate: gate, projector: projector, destination: destination, transport: transport, clock: clock, storage: storage ?? FileDiagnosticStorage(directory: directory))
+        worker = DiagnosticWorker(gate: gate, projector: projector, destination: destination, transport: transport, clock: clock, storage: storage ?? FileDiagnosticStorage(directory: directory), onDeliveryResult: onDeliveryResult, observation: observation)
     }
     /// Bootstrap hard-kill cleanup does not require valid destination/policy
     /// resources. Live reporters must invalidate their gate before this helper.
     public static func revokeStoredConsent(directory: URL, storage: (any DiagnosticStorage)? = nil) async -> Bool {
         let owned = storage ?? FileDiagnosticStorage(directory: directory)
         return await Task.detached(priority: .utility) { !diagnosticRevokeGrant(owned).failed }.value
+    }
+    /// A failed bootstrap withdrawal still owns cleanup when resource parsing
+    /// cannot create a reporter. The app owns/cancels this task; no networking.
+    public static func retryStoredRevocation(directory: URL, storage: (any DiagnosticStorage)? = nil,
+                                            clock: any DiagnosticClock = SystemDiagnosticClock(),
+                                            onAttempt: @escaping @Sendable (Bool) async -> Void) async {
+        while !Task.isCancelled {
+            do { try await clock.sleep(milliseconds: 60000) } catch { return }
+            guard !Task.isCancelled else { return }
+            let success = await revokeStoredConsent(directory: directory, storage: storage)
+            guard !Task.isCancelled else { return }
+            await onAttempt(success)
+            if success { return }
+        }
     }
     public var status: DiagnosticStatus { gate.status() }
     /// Coalesced local consent/readiness signal. Read current status rather than
@@ -221,6 +241,8 @@ private actor DiagnosticWorker {
     let transport: any DiagnosticTransport
     let clock: any DiagnosticClock
     let storage: any DiagnosticStorage
+    let onDeliveryResult: @Sendable (DiagnosticDeliveryResult) -> Void
+    let observation: (@Sendable (DiagnosticWorkerObservation) -> Void)?
     var records: [DiagnosticRecord] = []
     var sending = false
     var retryAt: [String: Int64] = [:]
@@ -232,15 +254,26 @@ private actor DiagnosticWorker {
     var consentReadRetryAt: Int64?
     var revocationWake: (id: UUID, generation: UInt64, deadline: Int64, task: Task<Void, Never>)?
     var waiters: [CheckedContinuation<Void, Never>] = []
-    init(gate: DiagnosticGate, projector: DiagnosticProjector, destination: DiagnosticDestination, transport: any DiagnosticTransport, clock: any DiagnosticClock, storage: any DiagnosticStorage) {
+    var appPaused = false
+    let sessionID = diagnosticID()
+    var sessionStarted = false
+    var sessionInvalidated = false
+    var sessionEpoch: String?
+    var sessionEvent: (id: String, stamp: Int64)?
+    var sessionRetryAt: Int64?
+    var currentRunIDs = Set<String>()
+    init(gate: DiagnosticGate, projector: DiagnosticProjector, destination: DiagnosticDestination, transport: any DiagnosticTransport, clock: any DiagnosticClock, storage: any DiagnosticStorage, onDeliveryResult: @escaping @Sendable (DiagnosticDeliveryResult) -> Void, observation: (@Sendable (DiagnosticWorkerObservation) -> Void)?) {
         self.gate = gate; self.projector = projector; self.destination = destination; self.transport = transport; self.clock = clock; self.storage = storage
+        self.onDeliveryResult = onDeliveryResult
+        self.observation = observation
     }
     func load() {
         defer { gate.publishStatusChange() }
         let state = gate.lock.withLock { (gate.closed, gate.loaded) }
         guard !state.0 else { return }
-        let revoked = diagnosticRevocationPresent(storage)
-        guard !state.1 || gate.disabled() || revoked else { return }
+        let marker = try? diagnosticRevocationPresent(storage)
+        let revoked = marker == true
+        guard !state.1 || gate.disabled() || revoked || marker == nil else { return }
         if let deadline = consentReadRetryAt, deadline > clock.nowMs(), !gate.disabled(), !revoked { return }
         cancelRetryWake()
         cancelRevocationWake()
@@ -249,7 +282,7 @@ private actor DiagnosticWorker {
         let generation = gate.lock.withLock { gate.generation }
         var hadGrant = gate.lock.withLock { gate.consent != nil }
         var consent: DiagnosticConsent?
-        var unread = false
+        var unread = marker == nil
         do {
             if let data = try storage.read("consent.json", maxBytes: 4096) {
                 hadGrant = true
@@ -306,6 +339,7 @@ private actor DiagnosticWorker {
     }
     func setConsent(_ enabled: Bool, generation: UInt64) throws {
         guard gate.lock.withLock({ !gate.closed && gate.generation == generation }) else { return }
+        if !enabled || sessionStarted { sessionInvalidated = true; sessionEvent = nil; sessionEpoch = nil; currentRunIDs.removeAll() }
         cancelRetryWake()
         cancelRevocationWake()
         revocationPending = false
@@ -335,6 +369,7 @@ private actor DiagnosticWorker {
     @discardableResult private func performRevocation(generation: UInt64, recordChoice: Bool, hadGrant: Bool? = nil) -> Bool {
         guard gate.controlCurrent(generation) else { return false }
         consentReadRetryAt = nil
+        sessionInvalidated = true; sessionEvent = nil; sessionEpoch = nil; currentRunIDs.removeAll()
         cancelRetryWake(); storageRetryAt = nil; outboxLoaded = true
         records.removeAll(); retryAt.removeAll()
         gate.lock.withLock { gate.pending.removeAll() }
@@ -380,7 +415,15 @@ private actor DiagnosticWorker {
     }
     private func deliveryAllowed(_ consent: DiagnosticConsent, generation: UInt64) -> Bool {
         guard gate.allowed(consent.epoch, generation) else { return false }
-        if diagnosticRevocationPresent(storage) {
+        let revoked: Bool
+        do { revoked = try diagnosticRevocationPresent(storage) }
+        catch {
+            gate.lock.withLock { if gate.generation == generation { gate.loaded = false; gate.state.enabled = false; gate.state.optedIn = false } }
+            transport.cancelAll(); consentReadRetryAt = clock.nowMs() + 60000
+            scheduleRevocationWake(generation: generation); gate.publishStatusChange()
+            return false
+        }
+        if revoked {
             if let next = gate.revokeIfCurrent(consent.epoch, generation) {
                 transport.cancelAll()
                 _ = performRevocation(generation: next, recordChoice: true, hadGrant: true)
@@ -430,12 +473,18 @@ private actor DiagnosticWorker {
                 continue
             }
             var candidate = records
+            var currentIdentity: String?
             if pending.id == nil, let index = records.firstIndex(where: { $0.props["fingerprint"] == pending.props["fingerprint"] && abs(pending.timestamp - $0.timestamp_ms) <= Int64(projector.policy.limit("dedupe_ms", 60000)) }) {
                 candidate[index].props["occurrences"] = .integer(min((candidate[index].props["occurrences"]?.integer ?? 1) + 1, 1_000_000))
             } else if records.count < projector.policy.limit("queue_count", 64) {
-                candidate.append(DiagnosticRecord(version: 1, id: pending.id ?? diagnosticID(), timestamp_ms: pending.timestamp, epoch: epoch, props: pending.props))
+                let identity = pending.id ?? diagnosticID()
+                candidate.append(DiagnosticRecord(version: 1, id: identity, timestamp_ms: pending.timestamp, epoch: epoch, props: pending.props))
+                if pending.id == nil { currentIdentity = identity }
             } else { gate.drop(); continue }
-            if try diagnosticEncode(candidate).count <= projector.policy.limit("queue_bytes", 524288) { records = candidate } else { gate.drop() }
+            if try diagnosticEncode(candidate).count <= projector.policy.limit("queue_bytes", 524288) {
+                records = candidate
+                if let identity = currentIdentity, destination.app?.sessionPings == true, !sessionInvalidated { currentRunIDs.insert(identity) }
+            } else { gate.drop() }
         }
         gate.count(records.count)
     }
@@ -445,7 +494,10 @@ private actor DiagnosticWorker {
     }
     private func scheduleRetryWake(epoch: String, generation: UInt64) {
         guard gate.allowed(epoch, generation) else { return }
-        guard let deadline = storageRetryAt ?? records.compactMap({ retryAt[$0.id] }).min() else { cancelRetryWake(); return }
+        // A 401 pauses the network for this run, not publication of newly
+        // accepted reports after a transient storage failure.
+        let deliveryDeadline = appPaused ? nil : (records.compactMap({ retryAt[$0.id] }) + [sessionRetryAt].compactMap { $0 }).min()
+        guard let deadline = storageRetryAt ?? deliveryDeadline else { cancelRetryWake(); return }
         if let wake = retryWake, wake.epoch == epoch, wake.generation == generation, wake.deadline == deadline { return }
         cancelRetryWake()
         let id = UUID(), clock = self.clock, gate = self.gate
@@ -469,7 +521,7 @@ private actor DiagnosticWorker {
         guard let (consent, generation) = expected ?? gate.snapshot(), gate.allowed(consent.epoch, generation) else { return }
         if sending {
             let pendingAtJoin = gate.lock.withLock { gate.pending.contains { $0.epoch == consent.epoch } }
-            await withCheckedContinuation { waiters.append($0) }
+            await withCheckedContinuation { waiters.append($0); observation?(.flushJoined) }
             // Joining a burst must also service intake accepted before this
             // call. One follow-up covers that snapshot without chasing later
             // captures, bypassing storage cooldown or borrowing another grant.
@@ -499,6 +551,8 @@ private actor DiagnosticWorker {
             storageRetryAt = nil
             let remainingIDs = Set(records.map(\.id))
             retryAt = retryAt.filter { remainingIDs.contains($0.key) }
+            currentRunIDs.formIntersection(remainingIDs)
+            if destination.app != nil { try await flushApp(consent, generation: generation); return }
             for record in records {
                 if (retryAt[record.id] ?? 0) > clock.nowMs() { continue }
                 guard deliveryAllowed(consent, generation: generation) else { break }
@@ -508,6 +562,7 @@ private actor DiagnosticWorker {
                 var terminal = false
                 for attempt in 0..<projector.policy.limit("max_attempts", 3) {
                     guard deliveryAllowed(consent, generation: generation) else { break }
+                    guard sanitized(record, epoch: consent.epoch) != nil else { terminal = true; break }
                     do {
                         let status = try await transport.send(destination: destination, body: body, allowed: { [gate] in gate.allowed(consent.epoch, generation) })
                         terminal = (200...499).contains(status) && status != 429
@@ -527,6 +582,79 @@ private actor DiagnosticWorker {
             }
         } catch {
             if gate.allowed(consent.epoch, generation) { deferStorageRetry() }
+        }
+    }
+    private func flushApp(_ consent: DiagnosticConsent, generation: UInt64) async throws {
+        guard let app = destination.app, !appPaused else { return }
+        if app.sessionPings, !sessionStarted, !sessionInvalidated {
+            sessionStarted = true; sessionEpoch = consent.epoch
+            sessionEvent = (diagnosticID(), clock.nowMs())
+        }
+        struct Item { let id: String; let stamp: Int64; let event: Data; let session: Bool }
+        var candidates: [Item] = []
+        if let ping = sessionEvent, sessionEpoch == consent.epoch, (sessionRetryAt ?? 0) <= clock.nowMs() {
+            let props: [String: DiagnosticValue] = ["app_version": .string(projector.appVersion), "platform": .string("ios"), "arch": .string(projector.arch)]
+            candidates.append(Item(id: ping.id, stamp: ping.stamp, event: try diagnosticAppEvent(props, id: ping.id, timestamp: ping.stamp, installID: consent.profile_id, sessionID: sessionID, session: true), session: true))
+        }
+        for record in records where (retryAt[record.id] ?? 0) <= clock.nowMs() {
+            let correlation = sessionEpoch == consent.epoch && !sessionInvalidated && currentRunIDs.contains(record.id) ? sessionID : nil
+            candidates.append(Item(id: record.id, stamp: record.timestamp_ms, event: try diagnosticAppEvent(projector.sanitize(record.props), id: record.id, timestamp: record.timestamp_ms, installID: consent.profile_id, sessionID: correlation), session: false))
+        }
+        while !candidates.isEmpty, deliveryAllowed(consent, generation: generation), !appPaused {
+            var batch: [Item] = []
+            while let next = candidates.first, batch.count < 20 {
+                let proposed = try diagnosticAppBody(site: app.appID, events: (batch + [next]).map(\.event))
+                if proposed.count > 16384 {
+                    if batch.isEmpty { candidates.removeFirst(); records.removeAll { $0.id == next.id }; currentRunIDs.remove(next.id); gate.drop(); try persist() }
+                    break
+                }
+                batch.append(candidates.removeFirst())
+            }
+            if batch.isEmpty { continue }
+            for attempt in 0..<projector.policy.limit("max_attempts", 3) {
+                guard deliveryAllowed(consent, generation: generation), !appPaused else { return }
+                let expired = batch.filter { $0.stamp < clock.nowMs() - Int64(projector.policy.limit("ttl_ms", 604800000)) }
+                if !expired.isEmpty {
+                    let ids = Set(expired.map(\.id)); records.removeAll { ids.contains($0.id) }; currentRunIDs.subtract(ids)
+                    if expired.contains(where: \.session) { sessionEvent = nil; sessionRetryAt = nil }
+                    batch.removeAll { ids.contains($0.id) }; try persist()
+                }
+                if batch.isEmpty { break }
+                let body = try diagnosticAppBody(site: app.appID, events: batch.map(\.event))
+                let userAgent = "VoiceStudio/\(projector.appVersion) (ios; \(projector.arch))"
+                let reply = (try? await transport.sendApp(destination: destination, body: body, userAgent: userAgent, allowed: { [gate] in gate.allowed(consent.epoch, generation) })) ?? DiagnosticTransportReply(status: 0)
+                guard gate.allowed(consent.epoch, generation) else { return }
+                if reply.status == 401 {
+                    appPaused = true; cancelRetryWake()
+                    for item in batch { onDeliveryResult(DiagnosticDeliveryResult(id: item.id, status: 401, reason: "unauthorized", warningTag: nil)) }
+                    return
+                }
+                let acknowledgement = diagnosticAppAcknowledgement(reply, count: batch.count)
+                for (index, reason) in acknowledgement?.reasons ?? [:] { onDeliveryResult(DiagnosticDeliveryResult(id: batch[index].id, status: reply.status, reason: reason, warningTag: nil)) }
+                for warning in acknowledgement?.warnings ?? [] { onDeliveryResult(DiagnosticDeliveryResult(id: batch[warning.index].id, status: reply.status, reason: "tag_not_allowed", warningTag: warning.tag)) }
+                let completed = acknowledgement?.completed ?? []
+                let finished = batch.enumerated().filter { completed.contains($0.offset) }.map(\.element)
+                let ids = Set(finished.map(\.id))
+                records.removeAll { ids.contains($0.id) }; currentRunIDs.subtract(ids)
+                for id in ids { retryAt.removeValue(forKey: id) }
+                if finished.contains(where: \.session) { sessionEvent = nil; sessionRetryAt = nil }
+                batch.removeAll { ids.contains($0.id) }
+                if !ids.isEmpty { try persist() }
+                if batch.isEmpty { break }
+                // A well-formed partial acknowledgement may retain rate-limited
+                // records; do not hammer that same response in the current burst.
+                if reply.status == 202 || reply.status == 400 { break }
+                if attempt + 1 < projector.policy.limit("max_attempts", 3) {
+                    var remaining = 500 << attempt
+                    while remaining > 0, gate.allowed(consent.epoch, generation) {
+                        try await clock.sleep(milliseconds: min(remaining, 25)); remaining -= 25
+                    }
+                }
+            }
+            for retained in batch {
+                if retained.session { sessionRetryAt = clock.nowMs() + 60000 }
+                else { retryAt[retained.id] = clock.nowMs() + 60000 }
+            }
         }
     }
     func close() {

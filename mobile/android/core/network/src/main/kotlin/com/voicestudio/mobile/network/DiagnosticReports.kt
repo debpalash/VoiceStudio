@@ -75,23 +75,30 @@ data class DiagnosticStatus(val enabled: Boolean = false, val optedIn: Boolean =
     val available: Boolean = true, val pendingCount: Int = 0, val droppedCount: Int = 0, val consentSaveFailed: Boolean = false)
 data class DiagnosticRecoveryContext(val epoch: String, val enabledAtMs: Long, val appVersion: String)
 
-data class DiagnosticDestination(val site: String, val host: String, val appUrl: String) {
+data class DiagnosticDestination(val site: String, val host: String, val appUrl: String, val app: DiagnosticAppConfiguration? = null) {
     internal val endpoint: HttpUrl
     internal val origin: String
     internal val eventUrl: String
     init {
-        require(Regex("[a-z0-9]{6,32}").matches(site))
-        val server = diagnosticDestinationURL(host); val app = diagnosticDestinationURL(appUrl)
-        for (url in listOf(server, app)) {
-            require(url.username.isEmpty() && url.password.isEmpty() && url.query == null && url.fragment == null)
-            // Literal loopback exceptions need no DNS and cannot expose metadata
-            // to a LAN/public collector over an unencrypted connection.
-            require(url.isHttps || url.host in setOf("localhost", "127.0.0.1", "::1"))
+        if(app!=null) {
+            // The app envelope uses app.appID. These legacy inputs are unused
+            // and cannot invalidate the independently validated app transport.
+            endpoint=diagnosticDestinationURL(app.host).newBuilder().encodedPath("/api/public/v1/app-events").build()
+            origin="";eventUrl=""
+        }else {
+            require(Regex("[a-z0-9]{6,32}").matches(site))
+            val server = diagnosticDestinationURL(host); val appUrlValue = diagnosticDestinationURL(appUrl)
+            for (url in listOf(server, appUrlValue)) {
+                require(url.username.isEmpty() && url.password.isEmpty() && url.query == null && url.fragment == null)
+                // Literal loopback exceptions need no DNS and cannot expose metadata
+                // to a LAN/public collector over an unencrypted connection.
+                require(url.isHttps || url.host in setOf("localhost", "127.0.0.1", "::1"))
+            }
+            require(server.encodedPath == "/")
+            endpoint = server.newBuilder().encodedPath("/api/public/v1/events").build()
+            origin = "${appUrlValue.scheme}://${appUrlValue.host.let { if (':' in it) "[$it]" else it }}" + if (appUrlValue.port == if (appUrlValue.isHttps) 443 else 80) "" else ":${appUrlValue.port}"
+            eventUrl = appUrlValue.toString().trimEnd('/') + "/diagnostics"
         }
-        require(server.encodedPath == "/")
-        endpoint = server.newBuilder().encodedPath("/api/public/v1/events").build()
-        origin = "${app.scheme}://${app.host.let { if (':' in it) "[$it]" else it }}" + if (app.port == if (app.isHttps) 443 else 80) "" else ":${app.port}"
-        eventUrl = app.toString().trimEnd('/') + "/diagnostics"
     }
 }
 
@@ -167,6 +174,7 @@ object SystemDiagnosticClock : DiagnosticClock {
 }
 interface DiagnosticTransport {
     suspend fun send(destination: DiagnosticDestination, body: ByteArray, allowed: () -> Boolean): Int
+    suspend fun sendApp(destination: DiagnosticDestination, body: ByteArray, userAgent: String, allowed: () -> Boolean): DiagnosticTransportReply = DiagnosticTransportReply(send(destination,body,allowed))
     fun cancelAll()
 }
 /** Dedicated client: paired-host headers, cookies, authentication and redirects never participate. */
@@ -178,9 +186,12 @@ class OkHttpDiagnosticTransport : DiagnosticTransport {
         .callTimeout(2, TimeUnit.SECONDS).build()
     private val lock = Any()
     private val calls = mutableSetOf<Call>()
-    override suspend fun send(destination: DiagnosticDestination, body: ByteArray, allowed: () -> Boolean): Int = suspendCancellableCoroutine { continuation ->
-        val request = Request.Builder().url(destination.endpoint).header("Origin", destination.origin)
-            .post(body.toRequestBody("application/json".toMediaType())).build()
+    override suspend fun send(destination: DiagnosticDestination, body: ByteArray, allowed: () -> Boolean): Int = request(destination,body,null,allowed).status
+    override suspend fun sendApp(destination: DiagnosticDestination, body: ByteArray, userAgent: String, allowed: () -> Boolean): DiagnosticTransportReply = request(destination,body,userAgent,allowed)
+    private suspend fun request(destination: DiagnosticDestination, body: ByteArray, userAgent: String?, allowed: () -> Boolean): DiagnosticTransportReply = suspendCancellableCoroutine { continuation ->
+        val builder = Request.Builder().url(destination.endpoint).post(body.toRequestBody("application/json".toMediaType()))
+        destination.app?.let { builder.header("X-Supermetry-Key",it.ingestKey);userAgent?.let {agent->builder.header("User-Agent",agent)} } ?: builder.header("Origin",destination.origin)
+        val request = builder.build()
         val call = client.newCall(request)
         continuation.invokeOnCancellation { call.cancel() }
         synchronized(lock) {
@@ -192,10 +203,14 @@ class OkHttpDiagnosticTransport : DiagnosticTransport {
                     if (continuation.isActive) continuation.resumeWithException(e)
                 }
                 override fun onResponse(call: Call, response: Response) {
-                    response.use {
-                        synchronized(lock) { calls.remove(call) }
-                        if (continuation.isActive) continuation.resume(response.code)
-                    }
+                    try {
+                        response.use {
+                            synchronized(lock) { calls.remove(call) }
+                            val source=response.body?.source()
+                            val bytes=if(source!=null && !source.request(16385))source.readByteArray() else byteArrayOf()
+                            if (continuation.isActive) continuation.resume(DiagnosticTransportReply(response.code,bytes))
+                        }
+                    } catch(error: IOException) { if(continuation.isActive)continuation.resumeWithException(error) }
                 }
             })
         }
@@ -215,6 +230,7 @@ class DiagnosticReports(
     private val storage: DiagnosticStorage = FileDiagnosticStorage(directory),
     dispatcher: CoroutineDispatcher = Dispatchers.IO,
     private val disabled: () -> Boolean = { diagnosticKillSwitch(System.getenv("OMNIVOICE_DIAGNOSTICS_DISABLED")) || diagnosticKillSwitch(System.getenv("OMNIVOICE_ANALYTICS_DISABLED")) },
+    private val onDeliveryResult: (DiagnosticDeliveryResult) -> Unit = {},
 ) {
     private data class Consent(val enabled: Boolean, val epoch: String, val profile: String, val enabledAt: Long?)
     private data class Revocation(val consent:Consent?,val failed:Boolean,val saveFailed:Boolean)
@@ -222,6 +238,15 @@ class DiagnosticReports(
         /** Bootstrap cleanup, independent of resources/config. Invalidate live reporters first. */
         suspend fun revokeStoredConsent(directory: File, storage: DiagnosticStorage = FileDiagnosticStorage(directory)): Boolean =
             withContext(Dispatchers.IO) { !revokeGrant(storage).failed }
+        /** The app owns/cancels this bounded wake when resources cannot create a reporter. */
+        suspend fun retryStoredRevocation(directory:File,storage:DiagnosticStorage=FileDiagnosticStorage(directory),clock:DiagnosticClock=SystemDiagnosticClock,onAttempt:suspend(Boolean)->Unit) {
+            while(currentCoroutineContext().isActive) {
+                clock.sleep(60000);currentCoroutineContext().ensureActive()
+                val saved=revokeStoredConsent(directory,storage)
+                currentCoroutineContext().ensureActive();onAttempt(saved)
+                if(saved)return
+            }
+        }
         private fun revokeGrant(storage: DiagnosticStorage, hint: Boolean? = null, explicit: Boolean = false): Revocation {
             val hadGrant=hint==true || try { storage.read("consent.json",4096)!=null }catch(_:Exception){ hint!=false }
             var failed=false
@@ -260,6 +285,14 @@ class DiagnosticReports(
     private var revocationPending = false
     private var revocationRetryAt: Long? = null
     private val retryAt = mutableMapOf<String,Long>()
+    private var appPaused=false
+    private val sessionID=UUID.randomUUID().toString().replace("-","")
+    private var sessionStarted=false
+    private var sessionInvalidated=false
+    private var sessionEpoch:String?=null
+    private var sessionEvent:Pair<String,Long>?=null
+    private var sessionRetryAt:Long?=null
+    private val currentRunIDs=mutableSetOf<String>()
     val status: DiagnosticStatus get() = synchronized(stateLock) {
         val killed=disabled()
         state.copy(enabled = state.enabled && !killed, optedIn = state.optedIn && !killed, available = !killed)
@@ -348,7 +381,21 @@ class DiagnosticReports(
     private fun cancelRetryLocked() {
         retryJob?.cancel();retryJob=null;retryWakeAt=null
     }
-    private fun revoked():Boolean = try { storage.read("revoked.json",4096)!=null }catch(_:Exception){ true }
+    private fun revoked():Boolean = try { storage.read("revoked.json",4096)!=null }catch(_:DiagnosticStorageLimitExceeded){true}
+    private fun deferConsentRead(generation:Long) {
+        synchronized(stateLock) {
+            if(sequence!=generation || closed)return
+            loaded=false;state=state.copy(enabled=false,optedIn=false)
+        }
+        transport.cancelAll();consentReadRetryAt=clock.nowMs()+60000;scheduleRetry(null,generation)
+    }
+    /** Unknown marker IO suspends permission; only a present marker revokes. */
+    private fun deliveryAllowed(epoch:String,generation:Long):Boolean {
+        if(!allowed(epoch,generation))return false
+        val present=try {revoked()}catch(_:Exception){deferConsentRead(generation);return false}
+        if(present) {val changed=invalidateGrant();persistRevocation(changed,consent!=null,explicit=true);return false}
+        return allowed(epoch,generation)
+    }
     private fun retryAllowed(epoch:String?,generation:Long):Boolean = synchronized(stateLock) {
         !closed && sequence==generation && (revocationPending || consentReadRetryAt!=null || epoch!=null &&
             (allowed(epoch,generation) || outboxReadRetryEpoch==epoch && consent?.epoch==epoch && !disabled()))
@@ -362,6 +409,7 @@ class DiagnosticReports(
     }
     /** Worker-owned durable OFF, with one bounded wake even while collection is disabled. */
     private fun persistRevocation(generation:Long,hadGrant:Boolean,explicit:Boolean):Boolean {
+        sessionInvalidated=true;sessionEvent=null;sessionEpoch=null;sessionRetryAt=null;currentRunIDs.clear()
         records.clear();retryAt.clear();storageRetryAt=null;consentReadRetryAt=null;outboxReadRetryEpoch=null
         val result=revokeGrant(storage,hadGrant,explicit)
         synchronized(stateLock) {
@@ -380,7 +428,7 @@ class DiagnosticReports(
         // Called under worker: retryAt and records belong to that worker.
         // Storage publication blocks all delivery, including already-due
         // network retries. An old network deadline must not cause a busy loop.
-        val next=if(revocationPending)revocationRetryAt else consentReadRetryAt ?: storageRetryAt ?: retryAt.values.minOrNull()
+        val next=if(revocationPending)revocationRetryAt else consentReadRetryAt ?: storageRetryAt ?: if(appPaused)null else (retryAt.values+listOfNotNull(sessionRetryAt)).minOrNull()
         synchronized(stateLock) {
             if(next==null || !retryAllowed(epoch,generation)) { cancelRetryLocked();return }
             if(retryJob?.isActive==true && retryWakeAt==next)return
@@ -424,8 +472,9 @@ class DiagnosticReports(
         return withContext(scope.coroutineContext) {
         worker.withLock {
             if (closed) return@withLock status
-            val blocked=revoked()
-            if(loaded && !disabled() && !blocked && !revocationPending)return@withLock status
+            val marker=runCatching {revoked()}
+            val blocked=marker.getOrNull()==true
+            if(loaded && !disabled() && !blocked && !revocationPending && marker.isSuccess)return@withLock status
             val generation = synchronized(stateLock) { sequence }
             val pendingReadAt=consentReadRetryAt ?: storageRetryAt?.takeIf {outboxReadRetryEpoch!=null}
             if(!forceRead && (pendingReadAt ?: 0)>clock.nowMs() && !disabled() && !blocked && !revocationPending) {
@@ -433,7 +482,7 @@ class DiagnosticReports(
                 throw IOException("Diagnostic consent read is pending retry")
             }
             var hadGrant=synchronized(stateLock) { consent!=null }
-            var unread:Exception?=null
+            var unread:Exception?=marker.exceptionOrNull() as? Exception
             val saved = try { storage.read("consent.json",4096).let { hadGrant=hadGrant || it!=null;parseConsent(it) } } catch (error: Exception) {
                 if(error is CancellationException)throw error
                 hadGrant=true
@@ -506,7 +555,7 @@ class DiagnosticReports(
     }
     suspend fun setConsent(enabled: Boolean): DiagnosticStatus {
         if (enabled && disabled()) { setConsent(false);throw IllegalStateException("Diagnostic reports are disabled") }
-        if (enabled && status.enabled && !revoked()) return status
+        if (enabled && status.enabled && runCatching {!revoked()}.getOrDefault(false)) return status
         val generation=invalidateGrant()
         return withContext(scope.coroutineContext) {
             worker.withLock {
@@ -524,6 +573,7 @@ class DiagnosticReports(
                     if(failed)throw IOException("Could not save diagnostic consent")
                     return@withLock status
                 }
+                if(sessionStarted) {sessionInvalidated=true;sessionEvent=null;sessionEpoch=null;currentRunIDs.clear()}
                 val fresh=Consent(true,id(),"install_${id()}",clock.nowMs())
                 records.clear();retryAt.clear();storageRetryAt=null;consentReadRetryAt=null;outboxReadRetryEpoch=null
                 try {
@@ -626,7 +676,10 @@ class DiagnosticReports(
                 records[index] = JsonObject(old + ("props" to JsonObject(fields + ("occurrences" to JsonPrimitive(count)))))
             } else if (records.size < policy.limit("queue_count", 64)) {
                 val record = buildJsonObject { put("version", 1); put("id", item.id ?: id()); put("timestamp_ms", item.timestamp); put("epoch", epoch); put("props", item.props) }
-                if (JsonArray(records + record).toString().toByteArray().size <= policy.limit("queue_bytes", 524288)) records.add(record)
+                if (JsonArray(records + record).toString().toByteArray().size <= policy.limit("queue_bytes", 524288)) {
+                    records.add(record)
+                    if(item.id==null && destination.app?.sessionPings==true && !sessionInvalidated)currentRunIDs.add(record.getValue("id").jsonPrimitive.content)
+                }
                 else synchronized(stateLock) { state = state.copy(droppedCount = state.droppedCount + 1) }
             } else synchronized(stateLock) { state = state.copy(droppedCount = state.droppedCount + 1) }
         }
@@ -640,9 +693,11 @@ class DiagnosticReports(
                 else scheduleRetry(null,generation)
                 return@withLock
             }
-            if(disabled() || revoked()) {
+            val killed=disabled()
+            val present=if(killed)false else try{revoked()}catch(_:Exception){deferConsentRead(synchronized(stateLock){sequence});return@withLock}
+            if(killed || present) {
                 val generation=invalidateGrant()
-                persistRevocation(generation,consent!=null,explicit=revoked())
+                persistRevocation(generation,consent!=null,explicit=present)
                 return@withLock
             }
             val snapshot = synchronized(stateLock) { consent?.let { it to sequence } } ?: return@withLock
@@ -657,10 +712,12 @@ class DiagnosticReports(
             }
             if(!persistOrRetry(current.epoch,generation))return@withLock
             retryAt.keys.retainAll(records.map { it["id"]!!.jsonPrimitive.content }.toSet())
+            currentRunIDs.retainAll(records.map {it.getValue("id").jsonPrimitive.content}.toSet())
+            if(destination.app!=null) {flushApp(current,generation);scheduleRetry(current.epoch,generation);return@withLock}
             for (record in records.toList()) {
                 val identity=record["id"]!!.jsonPrimitive.content
                 if ((retryAt[identity] ?: 0)>clock.nowMs()) continue
-                if (!allowed(current.epoch, generation)) break
+                if (!deliveryAllowed(current.epoch, generation)) break
                 val body = buildJsonObject {
                     put("v", 1); put("id", record["id"]!!); put("ts", record["timestamp_ms"]!!); put("site", destination.site)
                     put("name", "diagnostic_report"); put("url", destination.eventUrl); put("profile_id", current.profile); put("props", record["props"]!!)
@@ -673,10 +730,8 @@ class DiagnosticReports(
                 var terminal = false
                 repeat(policy.limit("max_attempts", 3)) { attempt ->
                     if (terminal || !allowed(current.epoch, generation)) return@repeat
-                    if(revoked()) {
-                        val changed=invalidateGrant();persistRevocation(changed,consent!=null,explicit=true)
-                        return@withLock
-                    }
+                    if(sanitizeRecord(record,current.epoch)==null) {terminal=true;return@repeat}
+                    if(!deliveryAllowed(current.epoch,generation))return@withLock
                     val code = try { transport.send(destination, body) { allowed(current.epoch, generation) } } catch (_: Exception) { null }
                     terminal = code != null && code in 200..499 && code != 429
                     if (!terminal && attempt < policy.limit("max_attempts", 3) - 1) {
@@ -695,12 +750,74 @@ class DiagnosticReports(
             scheduleRetry(current.epoch,generation)
         }
     }
+    private suspend fun flushApp(current: Consent, generation: Long) {
+        val app=destination.app ?: return
+        if(appPaused)return
+        if(app.sessionPings && !sessionStarted && !sessionInvalidated) {
+            sessionStarted=true;sessionEpoch=current.epoch;sessionEvent=id() to clock.nowMs()
+        }
+        data class Item(val id:String,val stamp:Long,val event:JsonObject,val session:Boolean=false)
+        val candidates=ArrayDeque<Item>()
+        sessionEvent?.takeIf {sessionEpoch==current.epoch && (sessionRetryAt ?: 0)<=clock.nowMs()}?.let {(identity,stamp)->
+            val props=buildJsonObject {put("app_version",appVersion);put("platform","android");put("arch",arch)}
+            candidates.add(Item(identity,stamp,diagnosticAppEvent(props,identity,stamp,current.profile,sessionID,true),true))
+        }
+        for(record in records) {
+            val identity=record.getValue("id").jsonPrimitive.content
+            if((retryAt[identity] ?: 0)>clock.nowMs())continue
+            val stamp=record.getValue("timestamp_ms").jsonPrimitive.long
+            val correlation=if(sessionEpoch==current.epoch && !sessionInvalidated && identity in currentRunIDs)sessionID else null
+            candidates.add(Item(identity,stamp,diagnosticAppEvent(record.getValue("props").jsonObject,identity,stamp,current.profile,correlation)))
+        }
+        while(candidates.isNotEmpty() && deliveryAllowed(current.epoch,generation) && !appPaused) {
+            val batch=mutableListOf<Item>()
+            while(candidates.isNotEmpty() && batch.size<20) {
+                val next=candidates.first()
+                if(diagnosticAppBody(app.appID,(batch+next).map {it.event}).size>16384) {
+                    if(batch.isEmpty()) {candidates.removeFirst();records.removeAll {it["id"]?.jsonPrimitive?.content==next.id};currentRunIDs.remove(next.id);synchronized(stateLock){state=state.copy(droppedCount=state.droppedCount+1)};if(!persistOrRetry(current.epoch,generation))return}
+                    break
+                }
+                batch.add(candidates.removeFirst())
+            }
+            if(batch.isEmpty())continue
+            for(attempt in 0 until policy.limit("max_attempts",3)) {
+                if(!allowed(current.epoch,generation))return
+                if(!deliveryAllowed(current.epoch,generation))return
+                val expired=batch.filter {it.stamp<clock.nowMs()-policy.limit("ttl_ms",604800000)}.map {it.id}.toSet()
+                if(expired.isNotEmpty()) {
+                    records.removeAll {it["id"]?.jsonPrimitive?.content in expired};currentRunIDs.removeAll(expired)
+                    if(batch.any {it.session && it.id in expired}) {sessionEvent=null;sessionRetryAt=null}
+                    batch.removeAll {it.id in expired};if(!persistOrRetry(current.epoch,generation))return
+                }
+                if(batch.isEmpty())break
+                val reply=try {transport.sendApp(destination,diagnosticAppBody(app.appID,batch.map {it.event}),"VoiceStudio/$appVersion (android; $arch)") {allowed(current.epoch,generation)}}catch(error:Exception){if(error is CancellationException)throw error;DiagnosticTransportReply(0)}
+                if(!allowed(current.epoch,generation))return
+                if(reply.status==401) {appPaused=true;synchronized(stateLock){cancelRetryLocked()};batch.forEach {onDeliveryResult(DiagnosticDeliveryResult(it.id,401,"unauthorized"))};return}
+                val acknowledgement=diagnosticAppAcknowledgement(reply,batch.size)
+                acknowledgement?.reasons?.forEach {(index,reason)->onDeliveryResult(DiagnosticDeliveryResult(batch[index].id,reply.status,reason))}
+                acknowledgement?.warnings?.forEach {(index,tag)->onDeliveryResult(DiagnosticDeliveryResult(batch[index].id,reply.status,"tag_not_allowed",tag))}
+                val completed=acknowledgement?.completed.orEmpty()
+                val finished=batch.filterIndexed {index,_->index in completed}
+                val ids=finished.map {it.id}.toSet()
+                records.removeAll {it["id"]?.jsonPrimitive?.content in ids};currentRunIDs.removeAll(ids);ids.forEach {retryAt.remove(it)}
+                if(finished.any {it.session}) {sessionEvent=null;sessionRetryAt=null}
+                batch.removeAll {it.id in ids}
+                if(ids.isNotEmpty() && !persistOrRetry(current.epoch,generation))return
+                if(batch.isEmpty() || reply.status==202 || reply.status==400)break
+                if(attempt+1<policy.limit("max_attempts",3)) {
+                    var remaining=500L shl attempt
+                    while(remaining>0 && allowed(current.epoch,generation)) {clock.sleep(minOf(remaining,25));remaining-=25}
+                }
+            }
+            batch.forEach {if(it.session)sessionRetryAt=clock.nowMs()+60000 else retryAt[it.id]=clock.nowMs()+60000}
+        }
+    }
     suspend fun close() {
         synchronized(stateLock) { closed = true; sequence++; state = state.copy(enabled = false, optedIn = false);cancelRetryLocked() }
         transport.cancelAll()
         try {
             withContext(Dispatchers.IO) { worker.withLock {
-                val blocked=revoked()
+                val blocked=if(revocationPending || disabled())false else revoked()
                 if(revocationPending || disabled() || blocked) {
                     // Do this before persisting any old queue or cancelling the
                     // worker's scope, even when its retry deadline is later.

@@ -136,6 +136,7 @@ object AutomaticDiagnostics {
     private val choices = AtomicLong()
     @Volatile private var requestedConsent: Boolean? = null
     @Volatile private var declinedThisRun = false
+    @Volatile private var hardKillCleanupJob:kotlinx.coroutines.Job?=null
     val observationRevision: Long get() = choices.get()
 
     @Synchronized fun initialize(app: Application, version: String) {
@@ -152,18 +153,20 @@ object AutomaticDiagnostics {
                     if(Build.VERSION.SDK_INT >= 30) runCatching {app.getSystemService(ActivityManager::class.java).setProcessStateSummary(null)}
                     mutable.value = AutomaticDiagnosticState(ready = true,
                         status = DiagnosticStatus(available = false, consentSaveFailed = !saved), saveFailed = !saved)
+                    if(!saved)scheduleHardKillCleanup(app,choices.get())
                     return@launch
                 }
                 val owner = AutomaticDiagnosticInitialization(scope, create = {
                     fun asset(name: String) = app.assets.open(name).bufferedReader(Charsets.UTF_8).use { it.readText() }
                     val config = Json.parseToJsonElement(asset("diagnostics-destination.json")).jsonObject
+                    val appConfig = DiagnosticAppConfiguration.resolve(runCatching { asset("supermetry-app.generated.json") }.getOrNull(), System.getenv(), config.getValue("host").jsonPrimitive.content)
                     val destination = DiagnosticDestination(System.getenv("SUPERMETRY_SITE_ID") ?: config.getValue("site").jsonPrimitive.content,
                         System.getenv("SUPERMETRY_HOST") ?: config.getValue("host").jsonPrimitive.content,
-                        System.getenv("SUPERMETRY_APP_URL") ?: config.getValue("appUrl").jsonPrimitive.content)
+                        System.getenv("SUPERMETRY_APP_URL") ?: config.getValue("appUrl").jsonPrimitive.content, app = appConfig)
                     DiagnosticReports(File(app.noBackupFilesDir, "diagnostics"),
                         DiagnosticPolicy(asset("diagnostics.json")), destination, version,
                         arch = when (Build.SUPPORTED_ABIS.firstOrNull()) { "arm64-v8a" -> "arm64"; "x86_64" -> "x64"; else -> "unknown" })
-                }, retain = { reporter = it }, onLoaded = { reports ->
+                }, retain = { reporter = it;hardKillCleanupJob?.cancel();hardKillCleanupJob=null }, onLoaded = { reports ->
                     recoverExits(app, reports)
                     publishProcessConsent(app, reports)
                     if(reports.status.consentSaveFailed) requestedConsent = false
@@ -184,11 +187,13 @@ object AutomaticDiagnostics {
         initialization?.cancel()
         val reports = reporter
         if(reports == null) {
+            if(!enabled) {hardKillCleanupJob?.cancel();hardKillCleanupJob=null}
             if(!enabled) application?.let {app -> scope.launch {
                 if (choice != choices.get()) return@launch
                 mutable.update {it.copy(saving = true, status = it.status.copy(enabled = false, optedIn = false, prompted = true))}
                 val saved = DiagnosticReports.revokeStoredConsent(File(app.noBackupFilesDir, "diagnostics"))
                 if (choice == choices.get()) mutable.update {it.copy(saving = false, saveFailed = !saved, status = it.status.copy(consentSaveFailed = !saved))}
+                if(!saved)scheduleHardKillCleanup(app,choice)
             }}
             return
         }
@@ -212,6 +217,14 @@ object AutomaticDiagnostics {
         val owner = initialization
         if (owner != null && (owner.failed || reporter == null)) owner.retry()
         else requestedConsent?.let(::setConsent)
+    }
+    @Synchronized private fun scheduleHardKillCleanup(app:Application,choice:Long) {
+        hardKillCleanupJob?.cancel()
+        hardKillCleanupJob=scope.launch {
+            DiagnosticReports.retryStoredRevocation(File(app.noBackupFilesDir,"diagnostics")) {saved->
+                if(choice==choices.get())mutable.update {it.copy(saveFailed=!saved,status=it.status.copy(consentSaveFailed=!saved))}
+            }
+        }
     }
 
     // Retention permits OFF during IO, but a partially loaded grant cannot

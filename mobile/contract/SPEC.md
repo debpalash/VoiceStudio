@@ -317,8 +317,30 @@ All tabs work without pairing once on-device models are installed (see M2); the 
   offline/paired functionality. The application owns consent and delivery, not
   a screen or ViewModel; OS-owned download jobs can report terminal failures.
   Failures are projected immediately to `config/diagnostics.json`'s closed
-  technical metadata and sent as `diagnostic_report` to the public Supermetry
-  destination bundled from `config/analytics.json`. HTTPS is required except
+  technical metadata. With valid build/runtime `SUPERMETRY_APP_ID` and
+  `SUPERMETRY_INGEST_KEY` configuration, the native owners map that same closed
+  projection to `/api/public/v1/app-events` (batches of at most 20 events and
+  16 KiB). Generated `supermetry-app.generated.json` is optional; runtime values
+  override individual fields, and an invalid selected credential disables app
+  intake. `SUPERMETRY_APP_HOST` selects its HTTPS base; a missing or invalid host
+  falls back to the analytics host. Otherwise the existing `diagnostic_report`
+  `/api/public/v1/events` request is unchanged. App-intake credentials remain
+  transport configuration and never enter stored reports or event metadata.
+  The mapper emits fixed kinds/levels, normalized platform/architecture,
+  release/build and allowlisted tags in canonical order; it copies no arbitrary
+  properties. A valid 202 response completes accepted and terminal-drop indices,
+  retains rate-limited indices, and never clears unspecified/ambiguous records.
+  400 drops the batch, 401 pauses delivery for the run without deleting its
+  queue, and network/429/5xx retries keep IDs and original times. Fixed local
+  delivery outcomes and tag warnings are not sent back as diagnostics.
+  Optional generated `diagnostics.sessionPings` defaults to false. If explicitly
+  enabled, diagnostic consent permits one session ping per application run;
+  only failures created in that same run/grant may share its session ID.
+  Correlation is bounded in memory, never added to the closed stored schema,
+  and never applied to restored failures. Withdrawal ends that run's session
+  correlation; a later grant in the same process creates neither another ping
+  nor a new link to earlier failures. Product analytics is unchanged.
+  HTTPS is required except
   literal localhost/127.0.0.1/::1 HTTP test collectors. No audio, text, filenames,
   URLs, user/account names, credentials, logs, exception messages, raw stacks or
   manual content-report bodies are included. Only known app source locations

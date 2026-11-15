@@ -238,6 +238,45 @@ class DiagnosticReportsTest {
         }
     }
 
+    @Test fun unreadRevocationPreservesGrantAndOutboxUntilItsBoundedReread()=runTest {
+        val store=Store();val dispatcher=StandardTestDispatcher(testScheduler);val clock=ScheduledClock(testScheduler)
+        val first=makeReporter(store,Transport(),clock,dispatcher)
+        first.setConsent(true);first.capture(event());runCurrent();first.close()
+        val saved=store.files.getValue("outbox.json").clone();val grant=store.files.getValue("consent.json").clone()
+        val original=store.json("outbox.json").jsonArray.single().jsonObject
+        store.unreadableRevocation=true
+        val transport=Transport().apply {code=201};val next=makeReporter(store,transport,clock,dispatcher)
+        try {
+            try {next.load()}catch(_:IOException){}
+            assertFalse(next.status.enabled);assertFalse(next.capture(event()))
+            assertArrayEquals("An unknown marker is not withdrawal",saved,store.files["outbox.json"])
+            assertArrayEquals(grant,store.files["consent.json"]);assertFalse(store.files.containsKey("revoked.json"));assertTrue(transport.bodies.isEmpty())
+            store.unreadableRevocation=false;advanceTimeBy(59999);runCurrent();assertTrue(transport.bodies.isEmpty())
+            advanceTimeBy(1);runCurrent();assertEquals(1,transport.bodies.size)
+            assertEquals(original["id"],transport.bodies.single()["id"]);assertArrayEquals(grant,store.files["consent.json"]);assertTrue(next.status.enabled)
+        }finally{store.unreadableRevocation=false;next.close()}
+    }
+    @Test fun bootstrapHardKillCleanupRetriesWithoutReporterAndHonorsCancellation()=runTest {
+        for(cancel in listOf(false,true)) {
+            val store=Store();val dispatcher=StandardTestDispatcher(testScheduler);val clock=ScheduledClock(testScheduler)
+            val first=makeReporter(store,Transport(),clock,dispatcher)
+            first.setConsent(true);first.close()
+            store.blockedWrites.addAll(listOf("consent.json","revoked.json"));store.blockedRemoves.add("consent.json")
+            assertFalse(DiagnosticReports.revokeStoredConsent(File("unused"),store))
+            val attempts=store.revocationWriteAttempts
+            val results=mutableListOf<Boolean>()
+            val retry=launch {DiagnosticReports.retryStoredRevocation(File("unused"),store,clock) {results.add(it)}}
+            runCurrent();advanceTimeBy(59999);runCurrent();assertEquals(attempts,store.revocationWriteAttempts)
+            store.blockedWrites.clear();store.blockedRemoves.clear()
+            if(cancel)retry.cancel()
+            advanceTimeBy(1);runCurrent();retry.join()
+            if(cancel) {assertTrue(results.isEmpty());assertEquals(attempts,store.revocationWriteAttempts)}
+            else {
+                assertEquals(listOf(true),results);assertTrue(store.files.containsKey("revoked.json"))
+                val next=makeReporter(store,Transport(),clock,dispatcher);next.load();assertFalse(next.status.enabled);assertFalse(next.capture(event()));next.close()
+            }
+        }
+    }
     @Test fun unreadConsentPreservesReportsAndSchedulesSameGrantRecovery()=runTest {
         val store=Store();val dispatcher=StandardTestDispatcher(testScheduler);val clock=ScheduledClock(testScheduler)
         val first=makeReporter(store,Transport(),clock,dispatcher)
@@ -645,7 +684,11 @@ class DiagnosticReportsTest {
             val first=makeReporter(store,Transport(),clock,dispatcher);first.setConsent(true);first.close()
             store.files["revoked.json"]="{corrupt".toByteArray();store.unreadableRevocation=unreadable
             val transport=Transport().also{it.code=201};val reporter=makeReporter(store,transport,clock,dispatcher)
-            try{reporter.load();assertFalse(reporter.status.enabled);assertFalse(reporter.capture(event()));runCurrent();assertTrue(transport.bodies.isEmpty())}
+            try{
+                if(unreadable) {try{reporter.load();fail("Unread permission must remain a retryable IO failure")}catch(_:IOException){}}
+                else reporter.load()
+                assertFalse(reporter.status.enabled);assertFalse(reporter.capture(event()));runCurrent();assertTrue(transport.bodies.isEmpty())
+            }
             finally{store.unreadableRevocation=false;reporter.close()}
         }
     }

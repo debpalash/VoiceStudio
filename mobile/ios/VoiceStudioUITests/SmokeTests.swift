@@ -172,7 +172,7 @@ final class SmokeTests: XCTestCase {
         XCTAssertEqual(no.label, "No thanks")
         XCTAssertEqual(yes.frame.width, no.frame.width, accuracy: 1)
         XCTAssertFalse(app.buttons["consent.dismiss"].exists)
-        XCTAssertTrue(app.staticTexts["Usage analytics are not sent from this phone; your choice is stored locally. Automatic diagnostic reports have a separate opt-in."].exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label == %@", "Usage analytics are not sent from this phone; your choice is stored locally. Automatic diagnostic reports have a separate opt-in.")).firstMatch.exists)
         // First opt in, then prove passive dismissal replaces a prior Yes with No.
         yes.tap()
         XCTAssertTrue(app.tabBars.buttons["Settings"].waitForExistence(timeout: uiReadyTimeout))

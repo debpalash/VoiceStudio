@@ -16,6 +16,7 @@ import VoiceStudioKit
     @ObservationIgnored private var reporter: DiagnosticReports?
     @ObservationIgnored private var subscriber: AppDiagnosticSubscriber?
     @ObservationIgnored private var statusTask: Task<Void, Never>?
+    @ObservationIgnored private var hardKillCleanupTask: Task<Void, Never>?
     @ObservationIgnored private var started = false
     @ObservationIgnored private let disabled: Bool
     @ObservationIgnored private let injectedFixture: Bool
@@ -26,7 +27,7 @@ import VoiceStudioKit
         self.disabled = disabled; self.reporter = reporter; self.injectedFixture = reporter != nil
         if disabled { ready = true; prompted = true }
     }
-    deinit { statusTask?.cancel() }
+    deinit { statusTask?.cancel(); hardKillCleanupTask?.cancel() }
     private var environmentKilled: Bool { !injectedFixture && Self.environmentDisabled() }
     var needsChoice: Bool { ready && available && !prompted }
     func load() async {
@@ -63,6 +64,7 @@ import VoiceStudioKit
         else { await setConsent(lastChoice) }
     }
     private func revokeForHardKill() async {
+        hardKillCleanupTask?.cancel(); hardKillCleanupTask = nil
         saving = true; defer { saving = false }
         enabled = false; available = false; prompted = true; ready = true
         lastChoice = false; observationRevision += 1; updateSubscription()
@@ -71,8 +73,16 @@ import VoiceStudioKit
         if let directory = Self.ownedDirectory() {
             let success = await DiagnosticReports.revokeStoredConsent(directory: directory)
             errorKey = success ? nil : "diagnostics.save_failed"
+            if !success {
+                hardKillCleanupTask = Task { [weak self] in
+                    await DiagnosticReports.retryStoredRevocation(directory: directory) { [weak self] success in
+                        await self?.hardKillCleanupFinished(success)
+                    }
+                }
+            }
         } else { errorKey = "diagnostics.save_failed" }
     }
+    private func hardKillCleanupFinished(_ success: Bool) { errorKey = success ? nil : "diagnostics.save_failed" }
     func flush() async { guard let reporter, !disabled else { return }; await reporter.flush(); refresh(); updateSubscription() }
     private func observeStatus(_ reporter: DiagnosticReports) {
         guard statusTask == nil else { return }
@@ -177,7 +187,8 @@ import VoiceStudioKit
             let configuredSite = getenv("SUPERMETRY_SITE_ID").map { String(cString: $0) } ?? site
             let configuredHost = getenv("SUPERMETRY_HOST").map { String(cString: $0) } ?? host
             let configuredApp = getenv("SUPERMETRY_APP_URL").map { String(cString: $0) } ?? appURL
-            let reporter = try DiagnosticReports(directory: directory, policy: DiagnosticPolicy(data: policyData), destination: DiagnosticDestination(site: configuredSite, host: configuredHost, appUrl: configuredApp), appVersion: version, arch: arch)
+            let appConfig = DiagnosticAppConfiguration.resolve(generated: bundle.url(forResource: "supermetry-app.generated", withExtension: "json", subdirectory: "Catalogs").flatMap { try? Data(contentsOf: $0) }, environment: ProcessInfo.processInfo.environment, fallbackHost: host)
+            let reporter = try DiagnosticReports(directory: directory, policy: DiagnosticPolicy(data: policyData), destination: DiagnosticDestination(site: configuredSite, host: configuredHost, appUrl: configuredApp, app: appConfig), appVersion: version, arch: arch)
             return (reporter, stallMs)
         } catch { return nil } // Corrupt/missing policy is unavailable, never implicit consent.
     }

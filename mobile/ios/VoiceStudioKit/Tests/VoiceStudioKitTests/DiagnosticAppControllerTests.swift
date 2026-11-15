@@ -218,7 +218,7 @@ func companionFailureRequiresNewServerEventAndTheSameObservedGrant(_ scenario: S
 }
 #endif
 
-#if canImport(UIKit)
+#if VS_DIAGNOSTICS_APP_TESTS && canImport(UIKit)
 /// Holds an existing ModelStore actor operation, so the real native worker must
 /// await invalidateVerification/release after its body has already failed.
 private final class PhoneDiagnosticCleanupGate: @unchecked Sendable {

@@ -84,7 +84,19 @@ public struct DiagnosticDestination: Sendable {
     public let endpoint: URL
     public let origin: String
     public let eventURL: String
-    public init(site: String, host: String, appUrl: String) throws {
+    public let app: DiagnosticAppConfiguration?
+    public init(site: String, host: String, appUrl: String, app: DiagnosticAppConfiguration? = nil) throws {
+        self.app = app
+        if let app {
+            // App configuration has its own validated identity/destination;
+            // unused legacy runtime overrides cannot disable this transport.
+            guard var endpoint = URLComponents(string: app.host) else { throw DiagnosticFailure.invalidDestination }
+            endpoint.path = "/api/public/v1/app-events"
+            guard let url = endpoint.url else { throw DiagnosticFailure.invalidDestination }
+            self.site = app.appID; self.endpoint = url
+            self.origin = ""; self.eventURL = ""
+            return
+        }
         guard diagnosticMatches(site, "[a-z0-9]{6,32}"), let server = URLComponents(string: host), let app = URLComponents(string: appUrl) else { throw DiagnosticFailure.invalidDestination }
         for item in [server, app] {
             // HTTP is only for literal loopback fixtures. Inspect the encoded
