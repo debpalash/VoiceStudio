@@ -59,7 +59,13 @@ async def prewarm(
         if hasattr(exc, "retry_after"):
             raise
         if diagnostic_epoch is not None:
-            diagnostic_reports.capture_failure("model_load", error=exc, engine_id=engine, expected_epoch=diagnostic_epoch)
+            from services.model_manager import GpuJobTimeoutError
+            # A started compute deadline says nothing about the connection.
+            diagnostic_reports.capture_failure(
+                "model_load", error=exc,
+                error_code="UNKNOWN" if isinstance(exc, GpuJobTimeoutError) else None,
+                engine_id=engine, expected_epoch=diagnostic_epoch,
+            )
         raise ModelLoadTimeout(
             f"{call.what} did not finish within its budget. The first load of an "
             "engine can include a multi-GB download; check the connection or set "
@@ -84,7 +90,12 @@ async def run(
         return await diagnostic_reports.await_owned(_run_local(local, admit=admit, executor=executor), diagnostic_epoch)
     except Exception as exc:
         if not hasattr(exc, "retry_after") and diagnostic_epoch is not None:
-            diagnostic_reports.capture_failure("engine", error=exc, expected_epoch=diagnostic_epoch)
+            from services.model_manager import GpuJobTimeoutError
+            diagnostic_reports.capture_failure(
+                "engine", error=exc,
+                error_code="UNKNOWN" if isinstance(exc, GpuJobTimeoutError) else None,
+                expected_epoch=diagnostic_epoch,
+            )
         raise
 
 

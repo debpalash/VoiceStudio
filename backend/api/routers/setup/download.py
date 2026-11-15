@@ -793,6 +793,8 @@ async def install_model(req: InstallModelRequest):
                     # A disk-full is not a transient network failure — don't set
                     # a cooldown (freeing space, not waiting, is the fix). The
                     # outer finally still cleans up the aggregator + context.
+                    from core import diagnostic_reports
+                    diagnostic_reports.capture_failure("download", error_code="DISK_FULL")
                     return
                 download_aggregator.start(
                     req.repo_id,

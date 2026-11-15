@@ -1060,6 +1060,20 @@ async def _await_profile_reconcile(app: FastAPI) -> None:
             raise asyncio.CancelledError
 
 
+def _start_tts_preload(app: FastAPI) -> None:
+    """Own this boot's TTS warm-up, including its reconciliation dependency."""
+    from core import diagnostic_reports
+
+    epoch = diagnostic_reports.inherited_grant()
+
+    async def _preload_after_reconcile():
+        with diagnostic_reports.grant_scope(epoch):
+            await _await_profile_reconcile(app)
+            await preload_model()
+
+    app.state.preload_task = asyncio.create_task(_preload_after_reconcile())
+
+
 async def _phase_b(app: FastAPI) -> None:
     """The old lifespan startup body: DB init + background services. Handles
     land on app.state so the shutdown block (which may run after a startup
@@ -1143,11 +1157,7 @@ async def _phase_b(app: FastAPI) -> None:
     app.state.idle_task = asyncio.create_task(idle_worker())
     app.state.worker_task = asyncio.create_task(task_manager.worker())
     # Warm the TTS model in the background so first /generate is instant.
-    async def _preload_after_reconcile():
-        await _await_profile_reconcile(app)
-        await preload_model()
-
-    app.state.preload_task = asyncio.create_task(_preload_after_reconcile())
+    _start_tts_preload(app)
     # Dictation v2: capture ASR warms in the background BY DEFAULT (~30s
     # post-boot, skipped under 4 GB free RAM at warm time).
     app.state.capture_preload_task = None  # only assigned when it runs (#1000 class)
