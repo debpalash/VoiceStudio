@@ -88,20 +88,109 @@ public extension DiagnosticTransport {
         DiagnosticTransportReply(status: try await send(destination: destination, body: body, allowed: allowed))
     }
 }
-private final class DiagnosticSessionDelegate: NSObject, URLSessionTaskDelegate, Sendable {
+private final class DiagnosticSessionDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    private final class Transfer {
+        let identifier: UUID
+        let task: URLSessionDataTask
+        let allowed: @Sendable () -> Bool
+        let continuation: CheckedContinuation<DiagnosticTransportReply, any Error>
+        var status = 0
+        var body = Data()
+        init(_ identifier: UUID, task: URLSessionDataTask, allowed: @escaping @Sendable () -> Bool, continuation: CheckedContinuation<DiagnosticTransportReply, any Error>) {
+            self.identifier = identifier; self.task = task; self.allowed = allowed; self.continuation = continuation
+        }
+    }
+    private let lock = NSLock()
+    private var transfers: [Int: Transfer] = [:]
+    private var identifiers: [UUID: Int] = [:]
+    private let responseLimit = 16384
+
+    func start(_ task: URLSessionDataTask, identifier: UUID, allowed: @escaping @Sendable () -> Bool, continuation: CheckedContinuation<DiagnosticTransportReply, any Error>) {
+        let started = lock.withLock {
+            guard allowed(), !Task.isCancelled else { return false }
+            transfers[task.taskIdentifier] = Transfer(identifier, task: task, allowed: allowed, continuation: continuation)
+            identifiers[identifier] = task.taskIdentifier
+            task.resume()
+            return true
+        }
+        if !started { task.cancel(); continuation.resume(throwing: DiagnosticFailure.cancelled) }
+    }
+    /// Call only under lock. Removing before resuming makes cancellation and
+    /// URLSession completion races resolve each continuation exactly once.
+    private func take(_ taskID: Int) -> Transfer? {
+        guard let transfer = transfers.removeValue(forKey: taskID) else { return nil }
+        identifiers.removeValue(forKey: transfer.identifier)
+        return transfer
+    }
+    func cancel(_ identifier: UUID) {
+        let transfer = lock.withLock { identifiers[identifier].flatMap { take($0) } }
+        if let transfer { transfer.task.cancel(); transfer.continuation.resume(throwing: DiagnosticFailure.cancelled) }
+    }
+    func cancelAll() {
+        let pending = lock.withLock {
+            let pending = Array(transfers.values)
+            transfers.removeAll(); identifiers.removeAll()
+            return pending
+        }
+        for transfer in pending { transfer.task.cancel(); transfer.continuation.resume(throwing: DiagnosticFailure.cancelled) }
+    }
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) { completionHandler(nil) }
+
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse, completionHandler: @escaping @Sendable (URLSession.ResponseDisposition) -> Void) {
+        var disposition = URLSession.ResponseDisposition.allow
+        let finished: (Transfer, Result<DiagnosticTransportReply, any Error>)? = lock.withLock {
+            guard let transfer = transfers[dataTask.taskIdentifier] else { disposition = .cancel; return nil }
+            transfer.status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            if !transfer.allowed() {
+                disposition = .cancel; _ = take(dataTask.taskIdentifier)
+                return (transfer, .failure(DiagnosticFailure.cancelled))
+            }
+            if response.expectedContentLength > Int64(responseLimit) {
+                disposition = .cancel; _ = take(dataTask.taskIdentifier)
+                return (transfer, .success(DiagnosticTransportReply(status: transfer.status)))
+            }
+            return nil
+        }
+        completionHandler(disposition)
+        if let (transfer, result) = finished { transfer.task.cancel(); transfer.continuation.resume(with: result) }
+    }
+    func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) {
+        let finished: (Transfer, Result<DiagnosticTransportReply, any Error>)? = lock.withLock {
+            guard let transfer = transfers[dataTask.taskIdentifier] else { return nil }
+            if !transfer.allowed() {
+                _ = take(dataTask.taskIdentifier)
+                return (transfer, .failure(DiagnosticFailure.cancelled))
+            }
+            // Foundation delivers chunks instead of retaining the full response.
+            // Test the remaining capacity before appending any bytes.
+            if data.count > responseLimit - transfer.body.count {
+                _ = take(dataTask.taskIdentifier)
+                return (transfer, .success(DiagnosticTransportReply(status: transfer.status)))
+            }
+            transfer.body.append(data)
+            return nil
+        }
+        if let (transfer, result) = finished { transfer.task.cancel(); transfer.continuation.resume(with: result) }
+    }
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?) {
+        guard let transfer = lock.withLock({ take(task.taskIdentifier) }) else { return }
+        if !transfer.allowed() { transfer.continuation.resume(throwing: DiagnosticFailure.cancelled) }
+        else if let error { transfer.continuation.resume(throwing: error) }
+        else { transfer.continuation.resume(returning: DiagnosticTransportReply(status: transfer.status, body: transfer.body)) }
+    }
 }
 /// Isolated from paired-host sessions, cookies, authentication and redirects.
 public final class URLSessionDiagnosticTransport: DiagnosticTransport, @unchecked Sendable {
-    private let lock = NSLock()
-    private var tasks: [UUID: URLSessionDataTask] = [:]
+    private let delegate: DiagnosticSessionDelegate
     private let session: URLSession
     public init() {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpCookieStorage = nil; configuration.httpShouldSetCookies = false; configuration.urlCache = nil
         configuration.urlCredentialStorage = nil; configuration.timeoutIntervalForRequest = 2; configuration.timeoutIntervalForResource = 2
-        session = URLSession(configuration: configuration, delegate: DiagnosticSessionDelegate(), delegateQueue: nil)
+        let delegate = DiagnosticSessionDelegate(); self.delegate = delegate
+        session = URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
     }
+    deinit { session.invalidateAndCancel() }
     public func send(destination: DiagnosticDestination, body: Data, allowed: @escaping @Sendable () -> Bool) async throws -> Int {
         try await request(destination: destination, body: body, userAgent: nil, allowed: allowed).status
     }
@@ -118,19 +207,9 @@ public final class URLSessionDiagnosticTransport: DiagnosticTransport, @unchecke
         let identifier = UUID()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                let task = session.dataTask(with: request) { [weak self] data, response, error in
-                    _ = self?.lock.withLock { self?.tasks.removeValue(forKey: identifier) }
-                    if let error { continuation.resume(throwing: error) }
-                    else { continuation.resume(returning: DiagnosticTransportReply(status: (response as? HTTPURLResponse)?.statusCode ?? 0, body: (data?.count ?? 0) <= 16384 ? (data ?? Data()) : Data())) }
-                }
-                lock.withLock {
-                    guard allowed(), !Task.isCancelled else { continuation.resume(throwing: DiagnosticFailure.cancelled); return }
-                    tasks[identifier] = task; task.resume()
-                }
+                delegate.start(session.dataTask(with: request), identifier: identifier, allowed: allowed, continuation: continuation)
             }
-        } onCancel: {
-            self.lock.withLock { self.tasks.removeValue(forKey: identifier)?.cancel() }
-        }
+        } onCancel: { self.delegate.cancel(identifier) }
     }
-    public func cancelAll() { lock.withLock { for task in tasks.values { task.cancel() }; tasks.removeAll() } }
+    public func cancelAll() { delegate.cancelAll() }
 }
