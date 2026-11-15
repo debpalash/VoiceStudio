@@ -11,6 +11,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import shutil
 
 import pytest
 import yaml
@@ -60,7 +61,8 @@ def test_beta_release_uses_beta_notes_and_skips_sunset_feeds(release_module, mon
     Path("package.json").write_text(json.dumps({"version": "1.2.3-beta.2"}))
     Path("CHANGELOG.md").write_text(
         "## [Unreleased]\n\n- Later\n\n## [1.2.3-beta.2] — 2026-10-22\n\n- Beta fix\n\n"
-        "## [1.2.2] — 2026-10-01\n\n- Older\n"
+        "## [1.2.2] — 2026-10-01\n\n- Older\n",
+        encoding="utf-8",
     )
     assets = tmp_path / "assets"
     assets.mkdir()
@@ -159,14 +161,25 @@ def test_publish_proves_where_latest_points(tmp_path, channel, latest, ok):
     import os
     import subprocess
 
+    git_bash = Path(os.environ.get("ProgramFiles", "")) / "Git/bin/bash.exe"
+    bash = str(git_bash) if git_bash.is_file() else shutil.which("bash")
+    if not bash or Path(bash.replace("\\", "/")).parent.name.casefold() in {"system32", "sysnative"}:
+        pytest.skip("Native Bash required; the WSL launcher does not preserve the test environment")
+
     workflow = yaml.safe_load((ROOT / ".github/workflows/electron-release.yml").read_text(encoding="utf-8"))
     step = next(s for s in workflow["jobs"]["release"]["steps"] if s.get("name") == "Publish only when explicitly requested")
     fake = tmp_path / "bin"
     fake.mkdir()
-    (fake / "gh").write_text(f'#!/bin/sh\ncase "$*" in *releases/latest*) echo "{latest}";; esac\nexit 0\n')
+    (fake / "gh").write_text(
+        f'#!/bin/sh\ncase "$*" in *releases/latest*) echo "{latest}";; esac\nexit 0\n',
+        encoding="utf-8",
+        newline="\n",
+    )
     (fake / "gh").chmod(0o755)
     tag = "v0.5.8-beta.2" if channel == "beta" else "v0.5.8"
     env = dict(os.environ, PATH=f"{fake}{os.pathsep}{os.environ['PATH']}", CHANNEL=channel, TAG=tag,
                GITHUB_REPOSITORY="debpalash/VoiceStudio", REHEARSAL="false")
-    result = subprocess.run(["bash", "-e", "-c", step["run"]], env=env, capture_output=True, text=True)
+    script = tmp_path / "publish.sh"
+    script.write_text(step["run"], encoding="utf-8", newline="\n")
+    result = subprocess.run([bash, "-e", script.as_posix()], env=env, capture_output=True, text=True)
     assert (result.returncode == 0) is ok, result.stdout + result.stderr
