@@ -100,7 +100,9 @@ Supermetry and Spicrawl with explicit sponsor credits and individual links.
   and keeps the previous completed output until replacement succeeds. Volume
   changes remix existing speech without running the model again. Sources
   stay on the phone until you delete the job. Older Android jobs whose sources
-  were already removed must be imported again.
+  were already removed must be imported again. Clip/stem package exports check
+  available space on the output volume and stop before writing package media
+  when space is insufficient or cannot be determined.
 - **Advanced computer dubbing**: use installed speaker-analysis models, review
   the cast, regenerate a language with the chosen voices and timing mode, and
   export selected tracks, background-preserving mixes, burned subtitles, dual

@@ -82,6 +82,8 @@ The screen layout uses short labels and semantic icons with one primary action, 
 
 The app icon and launch logo are generated from `docs/logo.png` by `scripts/generate-brand-assets.swift` through `prepare_resources.py`. The icon is opaque; its canvas and the light/dark launch background come from shared tokens. XcodeGen prepares the ignored asset catalog before discovering resources, and each app build refreshes it. No generated artwork is committed. First-run consent says the choice is saved on this phone and sends nothing.
 
+Clip/stem package exports check the output workspace's volume before writing media. A positive important-usage capacity takes priority, followed by ordinary volume capacity and filesystem free space. Insufficient or unknown capacity stops export; a lower positive estimate is not bypassed by a larger fallback reading.
+
 ## Computer workflows
 
 Connect accepts the desktop Network QR or manual URL/PIN/API key. Health validation rejects unrelated services. API keys are exchanged once for bearer sessions and never saved. Keychain uses `AfterFirstUnlockThisDeviceOnly`; host metadata and job checkpoints use local preferences. PIN-only pairing authorizes HTTP consumption, not remote dictation. Disconnect revokes bearer sessions and clears local credentials even when the host is unavailable. Failed pairing preserves the current host; host changes cancel old operations and clear host-scoped media/data. Redirects are rejected for every paired-host request. Public hosts require HTTPS and system certificate validation; private/LAN/Tailnet hosts may use HTTP.

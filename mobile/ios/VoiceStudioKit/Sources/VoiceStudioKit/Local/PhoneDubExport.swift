@@ -44,14 +44,36 @@ public enum PhoneDubASS {
     }
 }
 public enum PhoneDubPackage: String, Sendable { case clips, stems }
+internal struct PhoneDubStorageCapacity: Sendable {
+    var important: Int64? = nil
+    var ordinary: Int64? = nil
+    var filesystem: Int64? = nil
+    var availableBytes: Int64 {
+        [important,ordinary,filesystem].compactMap { $0 }.first { $0 > 0 } ?? 0
+    }
+}
+private func phoneDubAvailableStorage(_ url: URL) throws -> PhoneDubStorageCapacity {
+    // Match ModelStore's established capacity policy: a zero/nonexistent
+    // important-usage reading need not mean this writable volume is full.
+    let values = try url.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey,.volumeAvailableCapacityKey])
+    let important = values.volumeAvailableCapacityForImportantUsage
+    let ordinary = values.volumeAvailableCapacity.map(Int64.init)
+    let filesystem: Int64?
+    if (important ?? 0) > 0 || (ordinary ?? 0) > 0 { filesystem = nil }
+    else { filesystem = (try FileManager.default.attributesOfFileSystem(forPath: url.path)[.systemFreeSize] as? NSNumber)?.int64Value }
+    return PhoneDubStorageCapacity(important: important,ordinary: ordinary,filesystem: filesystem)
+}
 public extension PhoneDubStore {
     /// Export a verified saved generation under the same job lock as rendering and deletion.
     func exportPackage(_ id: UUID,target: String,kind: PhoneDubPackage,workspace: URL) async throws -> URL {
+        try await exportPackage(id,target: target,kind: kind,workspace: workspace,availableStorage: phoneDubAvailableStorage)
+    }
+    internal func exportPackage(_ id: UUID,target: String,kind: PhoneDubPackage,workspace: URL,availableStorage: @Sendable (URL) throws -> PhoneDubStorageCapacity) async throws -> URL {
         try await acquire(id)
-        do { let result = try await writePackage(id,target: target,kind: kind,workspace: workspace); release(id); return result }
+        do { let result = try await writePackage(id,target: target,kind: kind,workspace: workspace,availableStorage: availableStorage); release(id); return result }
         catch { release(id); throw error }
     }
-    private func writePackage(_ id: UUID,target: String,kind: PhoneDubPackage,workspace: URL) async throws -> URL {
+    private func writePackage(_ id: UUID,target: String,kind: PhoneDubPackage,workspace: URL,availableStorage: @Sendable (URL) throws -> PhoneDubStorageCapacity) async throws -> URL {
         let request = try request(id), cp = try checkpoint(id)
         guard cp.done, request.targets.contains(where: { $0.code == target }), !cp.segments.isEmpty else { throw ClientError("mobile.dub_advanced.generate_first") }
         var byIndex: [Int:PhoneDubRender] = [:]
@@ -66,8 +88,12 @@ public extension PhoneDubStore {
         let sampleCount = kind == .stems ? cp.frames*2 : byIndex.values.reduce(0) { $0+$1.frames }
         guard sampleCount <= 500_000_000, kind != .stems || cp.frames*2 <= 536_870_000 else { throw ClientError("mobile.dub_advanced.export_limit") }
         let required = Int64(sampleCount)*4+16_000_000
-        let volume = try directory(id).resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]).volumeAvailableCapacityForImportantUsage ?? Int64.max
-        guard volume >= required else { throw ClientError("mobile.local.storage_required") }
+        // Create a new destination before probing it, so even a workspace on
+        // a different volume is checked where package media will be written.
+        try FileManager.default.createDirectory(at: workspace,withIntermediateDirectories: true)
+        // Unknown capacity is not unlimited space; keep the existing byte
+        // requirement and reject before publishing any package files.
+        guard try availableStorage(workspace).availableBytes >= required else { throw ClientError("mobile.local.storage_required") }
         let root = workspace.appendingPathComponent("dub-package-"+UUID().uuidString)
         try PrivateFiles.directory(root)
         do {
