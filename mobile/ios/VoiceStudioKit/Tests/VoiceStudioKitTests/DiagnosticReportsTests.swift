@@ -1370,4 +1370,85 @@ extension DiagnosticReportsTests {
         if !invalid { #expect(!store.has("consent.json")) }
         await reports.close()
     }
+    @Test func failedWithdrawalRemainsOffAcrossConsentReadRecovery() async throws {
+        let store = DiagnosticTestStore(), clock = DiagnosticRetryClock(), transport = DiagnosticTestTransport()
+        let reports = try diagnosticRetryReporter(store, transport, clock)
+        try await reports.setConsent(true)
+        let original = try #require(store.data("consent.json"))
+        store.failing(true); store.failingConsentChanges(true)
+        do { try await reports.setConsent(false); Issue.record("Failed OFF must surface its save failure") } catch {}
+        #expect(store.data("consent.json") == original)
+        store.failingRevocationReads(true)
+        await reports.load()
+        try #require(await clock.waitForSchedule())
+        store.failingRevocationReads(false)
+        clock.advance(60000)
+        await reports.load()
+        #expect(!reports.status.enabled && !reports.status.optedIn)
+        #expect(!reports.capture(diagnosticEvent()))
+        #expect(reports.status.consentSaveFailed)
+        await reports.flush(); #expect(transport.bodies().isEmpty)
+        store.failing(false); store.failingConsentChanges(false)
+        clock.advance(60000); await reports.load()
+        #expect(!reports.status.enabled)
+        await reports.close()
+        let restarted = try diagnosticTestReporter(store, DiagnosticTestTransport())
+        await restarted.load(); #expect(!restarted.status.enabled)
+        await restarted.close()
+    }
+
+    @Test(arguments: [false, true]) func queuedWithdrawalSurvivesCloseActorHop(_ failPersistence: Bool) async throws {
+        let store = DiagnosticTestStore(), transport = DiagnosticTestTransport()
+        let closed = DispatchSemaphore(value: 0)
+        let reports = try diagnosticTestReporter(store, transport, observation: { event in
+            if case .closeInvalidated = event { closed.signal() }
+        })
+        try await reports.setConsent(true)
+        store.lock.withLock { store.blockOutbox = true }
+        #expect(reports.capture(diagnosticEvent()))
+        try #require(await store.waitForEntry())
+        let off = Task { () -> Bool in
+            do { try await reports.setConsent(false); return true } catch { return false }
+        }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        while reports.status.enabled && ContinuousClock.now < deadline { await Task.yield() }
+        #expect(!reports.status.enabled && !reports.capture(diagnosticEvent()))
+        if failPersistence { store.failing(true); store.failingConsentChanges(true) }
+        let closing = Task { await reports.close() }
+        // Wait for the actual close gate before releasing the blocked actor.
+        try #require(await diagnosticWaitForEvent(closed))
+        store.lock.withLock { store.blockOutbox = false }; store.release.signal()
+        await closing.value
+        #expect(await off.value == !failPersistence)
+        #expect(!reports.status.enabled && !reports.capture(diagnosticEvent()))
+        #expect(transport.bodies().isEmpty)
+        if failPersistence { #expect(reports.status.consentSaveFailed) }
+        else {
+            let restarted = try diagnosticTestReporter(store, DiagnosticTestTransport())
+            await restarted.load(); #expect(!restarted.status.enabled)
+            #expect(!restarted.capture(diagnosticEvent())); await restarted.close()
+        }
+    }
+
+    @Test func explicitUnreadConsentRetryRestoresOnlyReadableAuthority() async throws {
+        let store = DiagnosticTestStore(), clock = DiagnosticRetryClock(), transport = DiagnosticTestTransport()
+        _ = try await diagnosticSeedSavedOutbox(store)
+        let original = try #require(store.data("consent.json"))
+        store.failingConsentReads(13)
+        let reports = try diagnosticRetryReporter(store, transport, clock)
+        await reports.load()
+        #expect(!reports.consentReady && !reports.status.enabled)
+        #expect(!reports.capture(diagnosticEvent()))
+        try #require(await clock.waitForSchedule())
+        let reads = store.consentReadAttempts
+        await reports.load(); #expect(store.consentReadAttempts == reads)
+        store.failingConsentReads(nil)
+        await reports.load(retryUnread: true)
+        #expect(reports.consentReady && reports.status.enabled)
+        #expect(store.data("consent.json") == original)
+        try await reports.setConsent(false)
+        #expect(reports.consentReady && !reports.status.enabled)
+        await reports.close(); #expect(!reports.consentReady)
+    }
+
 }

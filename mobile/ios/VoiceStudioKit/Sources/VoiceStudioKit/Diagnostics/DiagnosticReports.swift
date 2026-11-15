@@ -52,7 +52,7 @@ private struct DiagnosticPending: Sendable {
     let id: String?
     let timestamp: Int64
 }
-enum DiagnosticWorkerObservation: Sendable { case flushJoined }
+enum DiagnosticWorkerObservation: Sendable { case flushJoined, closeInvalidated }
 /// This lock never encloses disk, network, actor waits or exception inspection.
 private final class DiagnosticGate: @unchecked Sendable {
     let lock = NSLock()
@@ -60,6 +60,7 @@ private final class DiagnosticGate: @unchecked Sendable {
     var consent: DiagnosticConsent?
     var generation: UInt64 = 0
     var loaded = false
+    var withdrawalPending = false
     var closed = false
     var wakeScheduled = false
     var pending: [DiagnosticPending] = []
@@ -75,9 +76,12 @@ private final class DiagnosticGate: @unchecked Sendable {
         let killed = disabled()
         var value = state; value.enabled = value.enabled && !killed; value.optedIn = value.optedIn && !killed; value.available = !killed; return value
     } }
-    func invalidate(closing: Bool = false) -> UInt64 {
+    func invalidate(closing: Bool = false, withdrawing: Bool? = nil) -> UInt64 {
         let current = lock.withLock {
-            generation &+= 1; state.enabled = false; state.optedIn = false; closed = closed || closing; return generation
+            generation &+= 1; state.enabled = false; state.optedIn = false
+            // A late ON cannot cancel a withdrawal owned by terminal close.
+            if let withdrawing, withdrawing || !closed { withdrawalPending = withdrawing }
+            closed = closed || closing; return generation
         }
         publishStatusChange()
         return current
@@ -123,13 +127,14 @@ public final class DiagnosticReports: @unchecked Sendable {
     private let transport: any DiagnosticTransport
     private let projector: DiagnosticProjector
     private let clock: any DiagnosticClock
+    private let observation: (@Sendable (DiagnosticWorkerObservation) -> Void)?
     public convenience init(directory: URL, policy: DiagnosticPolicy, destination: DiagnosticDestination, appVersion: String, buildCommit: String? = nil, arch: String = "unknown", transport: any DiagnosticTransport = URLSessionDiagnosticTransport(), clock: any DiagnosticClock = SystemDiagnosticClock(), storage: (any DiagnosticStorage)? = nil, disabled: (@Sendable () -> Bool)? = nil, onDeliveryResult: @escaping @Sendable (DiagnosticDeliveryResult) -> Void = { _ in }) {
         self.init(directory: directory, policy: policy, destination: destination, appVersion: appVersion, buildCommit: buildCommit, arch: arch, transport: transport, clock: clock, storage: storage, disabled: disabled, onDeliveryResult: onDeliveryResult, observation: nil)
     }
     // Internal lifecycle observations make actor boundaries inspectable without
     // changing public reporting controls, payloads or adding IO to capture.
     init(directory: URL, policy: DiagnosticPolicy, destination: DiagnosticDestination, appVersion: String, buildCommit: String? = nil, arch: String = "unknown", transport: any DiagnosticTransport = URLSessionDiagnosticTransport(), clock: any DiagnosticClock = SystemDiagnosticClock(), storage: (any DiagnosticStorage)? = nil, disabled: (@Sendable () -> Bool)? = nil, onDeliveryResult: @escaping @Sendable (DiagnosticDeliveryResult) -> Void = { _ in }, observation: (@Sendable (DiagnosticWorkerObservation) -> Void)?) {
-        self.transport = transport; self.clock = clock
+        self.transport = transport; self.clock = clock; self.observation = observation
         let gate = DiagnosticGate(disabled: disabled ?? { diagnosticKillSwitch(getenv("OMNIVOICE_DIAGNOSTICS_DISABLED").map { String(cString: $0) }) || diagnosticKillSwitch(getenv("OMNIVOICE_ANALYTICS_DISABLED").map { String(cString: $0) }) }); self.gate = gate
         let projector = DiagnosticProjector(policy: policy, appVersion: appVersion, buildCommit: buildCommit, arch: arch); self.projector = projector
         worker = DiagnosticWorker(gate: gate, projector: projector, destination: destination, transport: transport, clock: clock, storage: storage ?? FileDiagnosticStorage(directory: directory), onDeliveryResult: onDeliveryResult, observation: observation)
@@ -155,6 +160,8 @@ public final class DiagnosticReports: @unchecked Sendable {
         }
     }
     public var status: DiagnosticStatus { gate.status() }
+    /// Unknown permission stays distinct from a completed OFF choice.
+    public var consentReady: Bool { gate.lock.withLock { gate.loaded && !gate.closed } }
     /// Coalesced local consent/readiness signal. Read current status rather than
     /// retaining a queued permission snapshot across a newer OFF or grant.
     public func statusChanges() -> AsyncStream<Void> { gate.statusChanges() }
@@ -213,15 +220,15 @@ public final class DiagnosticReports: @unchecked Sendable {
             if again { self.wake() }
         } }
     }
-    @discardableResult public func load() async -> DiagnosticStatus {
+    @discardableResult public func load(retryUnread: Bool = false) async -> DiagnosticStatus {
         if gate.disabled() { _ = gate.invalidate(); transport.cancelAll() }
-        await worker.load(); wake(); return status
+        await worker.load(retryUnread: retryUnread); wake(); return status
     }
     @discardableResult public func setConsent(_ enabled: Bool) async throws -> DiagnosticStatus {
         defer { gate.publishStatusChange() }
         if enabled && gate.disabled() { _ = try await setConsent(false); throw DiagnosticFailure.disabled }
         if enabled && status.enabled { return status }
-        let generation = gate.invalidate(); transport.cancelAll()
+        let generation = gate.invalidate(withdrawing: !enabled); transport.cancelAll()
         do { try await worker.setConsent(enabled, generation: generation) }
         catch { gate.lock.withLock { if gate.generation == generation { gate.state.consentSaveFailed = true } }; throw error }
         return status
@@ -229,6 +236,7 @@ public final class DiagnosticReports: @unchecked Sendable {
     public func flush() async { await worker.flush() }
     public func close() async {
         _ = gate.invalidate(closing: true); transport.cancelAll()
+        observation?(.closeInvalidated)
         await worker.close()
         gate.finishStatusChanges()
     }
@@ -267,10 +275,20 @@ private actor DiagnosticWorker {
         self.onDeliveryResult = onDeliveryResult
         self.observation = observation
     }
-    func load() {
+    func load(retryUnread: Bool = false) {
         defer { gate.publishStatusChange() }
         let state = gate.lock.withLock { (gate.closed, gate.loaded) }
         guard !state.0 else { return }
+        // An accepted withdrawal remains authoritative even when neither OFF
+        // file could be committed. Rereading the old ON file is not recovery.
+        if revocationPending || gate.lock.withLock({ gate.withdrawalPending }) {
+            let generation = gate.lock.withLock { gate.generation }
+            if revocationWake?.generation != generation || (revocationWake?.deadline ?? 0) <= clock.nowMs() {
+                _ = performRevocation(generation: generation, recordChoice: gate.lock.withLock { gate.state.prompted || gate.withdrawalPending })
+            }
+            return
+        }
+        if retryUnread { consentReadRetryAt = nil }
         let marker = try? diagnosticRevocationPresent(storage)
         let revoked = marker == true
         guard !state.1 || gate.disabled() || revoked || marker == nil else { return }
@@ -338,7 +356,14 @@ private actor DiagnosticWorker {
         gate.count(records.count)
     }
     func setConsent(_ enabled: Bool, generation: UInt64) throws {
-        guard gate.lock.withLock({ !gate.closed && gate.generation == generation }) else { return }
+        guard gate.lock.withLock({ !gate.closed && gate.generation == generation }) else {
+            // OFF closes capture before this actor hop. Close must not turn a
+            // queued withdrawal into a successful no-op.
+            if !enabled, gate.lock.withLock({ gate.closed && gate.withdrawalPending }), completeClosedRevocation() {
+                throw DiagnosticFailure.storageUnavailable
+            }
+            return
+        }
         if sessionStarted || (!enabled && gate.lock.withLock({ gate.consent?.enabled == true })) {
             sessionInvalidated = true; sessionEvent = nil; sessionEpoch = nil; currentRunIDs.removeAll()
         }
@@ -387,7 +412,7 @@ private actor DiagnosticWorker {
         revocationPending = result.failed
         gate.lock.withLock {
             guard gate.generation == generation, !gate.closed else { return }
-            gate.consent = result.consent; gate.loaded = true
+            gate.consent = result.consent; gate.loaded = true; gate.withdrawalPending = result.failed
             gate.state.enabled = false; gate.state.optedIn = false
             gate.state.prompted = result.prompted; gate.state.pendingCount = 0
             gate.state.consentSaveFailed = result.failed
@@ -664,13 +689,25 @@ private actor DiagnosticWorker {
             }
         }
     }
+    @discardableResult private func completeClosedRevocation() -> Bool {
+        let result = diagnosticRevokeGrant(storage, recordChoice: gate.lock.withLock { gate.state.prompted || gate.withdrawalPending })
+        revocationPending = result.failed
+        records.removeAll(); retryAt.removeAll(); currentRunIDs.removeAll()
+        gate.lock.withLock {
+            gate.consent = result.consent; gate.loaded = true; gate.withdrawalPending = result.failed
+            gate.pending.removeAll(); gate.state.pendingCount = 0
+            gate.state.enabled = false; gate.state.optedIn = false
+            gate.state.prompted = result.prompted; gate.state.consentSaveFailed = result.failed
+        }
+        return result.failed
+    }
     func close() {
         cancelRetryWake()
         cancelRevocationWake()
         consentReadRetryAt = nil
         storageRetryAt = nil
-        if revocationPending || gate.disabled() {
-            _ = diagnosticRevokeGrant(storage, recordChoice: gate.lock.withLock { gate.state.prompted })
+        if revocationPending || gate.disabled() || gate.lock.withLock({ gate.withdrawalPending }) {
+            completeClosedRevocation()
             return
         }
         if let consent = gate.lock.withLock({ gate.consent }) {
