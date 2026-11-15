@@ -41,7 +41,7 @@ def previous(kind, error, trace):
         'records': saved,
         'previous_calls': previous_calls,
         'context_unset': context_before and reports._grant_authority.get() is reports._GRANT_UNSET,
-        'pending_cleared': getattr(reports._thread_fault_authority, 'pending', None) is None,
+        'marker_consumed': reports._FAULT_EPOCH_KEY not in BaseException.__getattribute__(error, '__dict__') and reports._consume_thread_fault_epoch(error) is reports._GRANT_UNSET,
         'error_type': kind.__name__,
     }
     (directory / 'hook-result.json').write_text(json.dumps(result), encoding='utf-8')
@@ -101,7 +101,7 @@ def test_actual_main_thread_hook_retains_origin_after_cleanup(tmp_path, transiti
     assert result['previous_calls'] == 1 and result['context_unset']
     expected = 1 if transition in ('same-grant', 'fresh-bound') else 0
     assert len(result['records']) == expected, 'main-thread hook borrowed consent without a current operation owner'
-    assert result['pending_cleared']
+    assert result['marker_consumed']
     if expected:
         assert result['records'][0]['props']['error_type'] == result['error_type']
 
@@ -112,7 +112,13 @@ def hooks(reporter, monkeypatch):
     completed = []
     monkeypatch.setattr(reports, '_hooks_installed', False)
     monkeypatch.setattr(sys, 'excepthook', sys.excepthook)
-    monkeypatch.setattr(threading, 'excepthook', lambda args: completed.append(args.thread.ident))
+    def previous(args):
+        # The installed hook must destructively consume the actual exception
+        # marker before chaining, rather than checking nonexistent thread state.
+        assert reports._FAULT_EPOCH_KEY not in BaseException.__getattribute__(args.exc_value, '__dict__')
+        assert reports._consume_thread_fault_epoch(args.exc_value) is reports._GRANT_UNSET
+        completed.append(args.thread.ident)
+    monkeypatch.setattr(threading, 'excepthook', previous)
     reports._install_hooks()
     return reports, completed
 
@@ -367,10 +373,8 @@ def test_caught_executor_fault_marker_does_not_retain_exception(reporter, hooks)
             return dict(reports._thread_fault_authority.__dict__)
 
         state = executor.submit(reports.bind_callable(fresh)).result(timeout=5)
-        assert state.get('pending') is None
         assert state.get('depth') == 1  # Currently inside this fresh bound call.
         state = executor.submit(fresh).result(timeout=5)
-        assert state.get('pending') is None
         assert state.get('depth') == 0
     gc.collect()
     assert references[0]() is None
