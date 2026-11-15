@@ -110,7 +110,11 @@ function discardableReadFailure(error: unknown): boolean {
 
 /** Inspect and read the same bounded file, including a concurrent writer growing it. */
 async function readJson(path: string, limit: number): Promise<unknown> {
-  const file = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  // Inspect special files without waiting for a FIFO peer before fstat can reject them.
+  const file = await open(
+    path,
+    constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0),
+  );
   try {
     const info = await file.stat();
     if (!info.isFile() || info.size > limit)

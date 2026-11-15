@@ -1,5 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { basename, join } from 'node:path';
 import { tmpdir } from 'node:os';
 const gate = vi.hoisted(() => ({
@@ -1784,5 +1786,46 @@ it.each([false, true])(
       gate.failReadTarget = '';
       await flushing;
     }
+  },
+);
+
+it.skipIf(process.platform === 'win32').each(['consent.json', 'revoked.json'])(
+  'rejects a real %s FIFO without blocking initialization',
+  async (name) => {
+    const initial = await create(false);
+    await initial.reports.close();
+    await mkdir(initial.options.directory, { recursive: true });
+    const fifo = join(initial.options.directory, name);
+    await rm(fifo, { force: true });
+    execFileSync('mkfifo', [fifo]);
+    reports = new DiagnosticReports(initial.options);
+    const initialization = reports.initialize();
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
+    let completedInTime = false;
+    try {
+      completedInTime = await Promise.race([
+        initialization.then(() => true),
+        new Promise<boolean>((resolve) => {
+          watchdog = setTimeout(() => resolve(false), 500);
+        }),
+      ]);
+    } finally {
+      if (watchdog) clearTimeout(watchdog);
+      // Release the baseline's blocked read-open before asserting. Once fixed,
+      // the descriptor has already closed and nonblocking writer-open is ENXIO.
+      try {
+        const writer = await open(fifo, constants.O_WRONLY | constants.O_NONBLOCK);
+        await writer.close();
+      } catch (error) {
+        if (!['ENXIO', 'ENOENT'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error;
+      }
+      await initialization;
+    }
+    expect(completedInTime).toBe(true);
+    expect(reports.status().enabled).toBe(false);
+    reports.capture({ category: 'app_crash', reason: 'unhandled_exception' });
+    await reports.flush();
+    expect(reports.status().pending_count).toBe(0);
+    expect(initial.send).not.toHaveBeenCalled();
   },
 );
