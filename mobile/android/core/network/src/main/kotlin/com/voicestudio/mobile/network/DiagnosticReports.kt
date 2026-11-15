@@ -409,7 +409,12 @@ class DiagnosticReports(
     }
     /** Worker-owned durable OFF, with one bounded wake even while collection is disabled. */
     private fun persistRevocation(generation:Long,hadGrant:Boolean,explicit:Boolean):Boolean {
-        sessionInvalidated=true;sessionEvent=null;sessionEpoch=null;sessionRetryAt=null;currentRunIDs.clear()
+        // Initial Keep off has no accepted grant/correlation to retire. An
+        // actual withdrawal stays retired even before its first flush/ping.
+        if(sessionStarted || consent?.enabled==true) {
+            sessionInvalidated=true;sessionEvent=null;sessionEpoch=null;sessionRetryAt=null
+        }
+        currentRunIDs.clear()
         records.clear();retryAt.clear();storageRetryAt=null;consentReadRetryAt=null;outboxReadRetryEpoch=null
         val result=revokeGrant(storage,hadGrant,explicit)
         synchronized(stateLock) {

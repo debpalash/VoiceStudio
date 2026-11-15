@@ -339,7 +339,9 @@ private actor DiagnosticWorker {
     }
     func setConsent(_ enabled: Bool, generation: UInt64) throws {
         guard gate.lock.withLock({ !gate.closed && gate.generation == generation }) else { return }
-        if !enabled || sessionStarted { sessionInvalidated = true; sessionEvent = nil; sessionEpoch = nil; currentRunIDs.removeAll() }
+        if sessionStarted || (!enabled && gate.lock.withLock({ gate.consent?.enabled == true })) {
+            sessionInvalidated = true; sessionEvent = nil; sessionEpoch = nil; currentRunIDs.removeAll()
+        }
         cancelRetryWake()
         cancelRevocationWake()
         revocationPending = false
@@ -369,7 +371,12 @@ private actor DiagnosticWorker {
     @discardableResult private func performRevocation(generation: UInt64, recordChoice: Bool, hadGrant: Bool? = nil) -> Bool {
         guard gate.controlCurrent(generation) else { return false }
         consentReadRetryAt = nil
-        sessionInvalidated = true; sessionEvent = nil; sessionEpoch = nil; currentRunIDs.removeAll()
+        // An initial Keep off has no accepted grant/correlation to retire.
+        // A real withdrawal stays retired even before its first flush/ping.
+        if sessionStarted || gate.lock.withLock({ gate.consent?.enabled == true }) {
+            sessionInvalidated = true; sessionEvent = nil; sessionEpoch = nil
+        }
+        currentRunIDs.removeAll()
         cancelRetryWake(); storageRetryAt = nil; outboxLoaded = true
         records.removeAll(); retryAt.removeAll()
         gate.lock.withLock { gate.pending.removeAll() }

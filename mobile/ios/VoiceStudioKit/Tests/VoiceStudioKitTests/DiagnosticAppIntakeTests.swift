@@ -198,4 +198,53 @@ struct DiagnosticAppIntakeTests {
             await reports.close()
         }
     }
+    @Test(arguments: [false, true]) func initialDeclineDoesNotRetireFirstSessionGrant(_ pings: Bool) async throws {
+        let store = AppIntakeStore(), transport = AppIntakeTransport(), reports = try reporter(store, transport, pings: pings)
+        await reports.load()
+        _ = try await reports.setConsent(false)
+        _ = try await reports.setConsent(false)
+        #expect(transport.bodies().isEmpty)
+        #expect(try store.read("consent.json", maxBytes: 4096) == nil)
+        _ = try await reports.setConsent(true)
+        #expect(reports.capture(DiagnosticInput(category: "engine_failed")))
+        await reports.flush(); await reports.flush()
+        let events = try transport.bodies().flatMap { data -> [[String: Any]] in
+            let body = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            return try #require(body["events"] as? [[String: Any]])
+        }
+        #expect(events.filter { $0["kind"] as? String == "session" }.count == (pings ? 1 : 0))
+        #expect(events.filter { $0["kind"] as? String != "session" }.allSatisfy { ($0["session_id"] != nil) == pings })
+        await reports.close()
+    }
+    @Test func withdrawalBeforeFirstFlushStillRetiresRunSession() async throws {
+        let store = AppIntakeStore(), transport = AppIntakeTransport(), reports = try reporter(store, transport, pings: true)
+        _ = try await reports.setConsent(true)
+        _ = try await reports.setConsent(false)
+        _ = try await reports.setConsent(true)
+        #expect(reports.capture(DiagnosticInput(category: "engine_failed")))
+        await reports.flush()
+        let events = try transport.bodies().flatMap { data -> [[String: Any]] in
+            let body = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            return try #require(body["events"] as? [[String: Any]])
+        }
+        #expect(events.count == 1)
+        #expect(events.allSatisfy { $0["kind"] as? String != "session" && $0["session_id"] == nil })
+        await reports.close()
+    }
+    @Test func priorRunOffChoiceDoesNotRetireANewRunsFirstGrant() async throws {
+        let store = AppIntakeStore(), firstTransport = AppIntakeTransport(), first = try reporter(store, firstTransport, pings: true)
+        _ = try await first.setConsent(true); _ = try await first.setConsent(false); await first.close()
+        let transport = AppIntakeTransport(), reports = try reporter(store, transport, pings: true)
+        await reports.load(); _ = try await reports.setConsent(true)
+        #expect(reports.capture(DiagnosticInput(category: "engine_failed")))
+        await reports.flush()
+        let events = try transport.bodies().flatMap { data -> [[String: Any]] in
+            let body = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            return try #require(body["events"] as? [[String: Any]])
+        }
+        #expect(events.filter { $0["kind"] as? String == "session" }.count == 1)
+        #expect(events.filter { $0["kind"] as? String != "session" }.allSatisfy { $0["session_id"] != nil })
+        await reports.close()
+    }
+
 }

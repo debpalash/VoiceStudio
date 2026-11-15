@@ -131,4 +131,37 @@ class DiagnosticAppIntakeTest {
             assertEquals("/api/public/v1/app-events",request.path);assertEquals(config.ingestKey,request.getHeader("X-Supermetry-Key"));assertNull(request.getHeader("Origin"));assertEquals("VoiceStudio/0.5.9-beta.3 (android; arm64)",request.getHeader("User-Agent"))
         }finally {transport.cancelAll();server.shutdown()}
     }
+    @Test fun initialDeclineDoesNotRetireFirstSessionGrant()=runTest {
+        for(pings in listOf(false,true)) {
+            val store=Store();val transport=Transport();val reports=reports(store,transport,testScheduler,pings=pings)
+            reports.load();reports.setConsent(false);reports.setConsent(false)
+            assertTrue(transport.bodies.isEmpty());assertFalse(store.files.containsKey("consent.json"))
+            reports.setConsent(true);assertTrue(reports.capture(DiagnosticInput("engine_failed")))
+            reports.flush();reports.flush()
+            val events=transport.bodies.flatMap {it.getValue("events").jsonArray}.map {it.jsonObject}
+            assertEquals(if(pings)1 else 0,events.count {it["kind"]==JsonPrimitive("session")})
+            assertTrue(events.filter {it["kind"]!=JsonPrimitive("session")}.all {("session_id" in it)==pings})
+            reports.close()
+        }
+    }
+    @Test fun withdrawalBeforeFirstFlushStillRetiresRunSession()=runTest {
+        val store=Store();val transport=Transport();val reports=reports(store,transport,testScheduler,pings=true)
+        reports.setConsent(true);reports.setConsent(false);reports.setConsent(true)
+        assertTrue(reports.capture(DiagnosticInput("engine_failed")));reports.flush()
+        val events=transport.bodies.flatMap {it.getValue("events").jsonArray}.map {it.jsonObject}
+        assertEquals(1,events.size)
+        assertTrue(events.all {it["kind"]!=JsonPrimitive("session") && "session_id" !in it})
+        reports.close()
+    }
+    @Test fun priorRunOffChoiceDoesNotRetireANewRunsFirstGrant()=runTest {
+        val store=Store();val firstTransport=Transport();val first=reports(store,firstTransport,testScheduler,pings=true)
+        first.setConsent(true);first.setConsent(false);first.close()
+        val transport=Transport();val reports=reports(store,transport,testScheduler,pings=true)
+        reports.load();reports.setConsent(true);assertTrue(reports.capture(DiagnosticInput("engine_failed")));reports.flush()
+        val events=transport.bodies.flatMap {it.getValue("events").jsonArray}.map {it.jsonObject}
+        assertEquals(1,events.count {it["kind"]==JsonPrimitive("session")})
+        assertTrue(events.filter {it["kind"]!=JsonPrimitive("session")}.all {"session_id" in it})
+        reports.close()
+    }
+
 }
