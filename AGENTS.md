@@ -76,8 +76,8 @@ licence/catalog data. CLA, identity and secret checks remain enabled.
 Separately opted-in automatic failure reports may replace the public events
 request with `/api/public/v1/app-events` on the sanctioned Supermetry hosts
 `https://app.supermetry.com` (unconfigured host default) or
-`https://ana.voicestudio.sh` (the owner-configured packaged app intake, recorded
-for approval in PR #4137). App ID and write-only ingest key come only from
+`https://app.voicestudio.sh` (the owner-configured packaged app intake, owner-set
+2026-11-16). App ID and write-only ingest key come only from
 runtime environment or git-ignored build metadata. `SUPERMETRY_APP_HOST` is an
 explicit operator override, unset by default; any other production host must
 be recorded and approved by the owner. This changes no product analytics or

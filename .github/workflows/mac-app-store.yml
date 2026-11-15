@@ -106,8 +106,8 @@ jobs:
       - name: Build signed sandbox packages
         working-directory: electron
         env:
-          SUPERMETRY_APP_ID: ${{ secrets.SUPERMETRY_APP_ID }}
-          SUPERMETRY_INGEST_KEY: ${{ secrets.SUPERMETRY_INGEST_KEY }}
+          SUPERMETRY_APP_ID: ${{ vars.SUPERMETRY_APP_ID || secrets.SUPERMETRY_APP_ID }}
+          SUPERMETRY_INGEST_KEY: ${{ vars.SUPERMETRY_INGEST_KEY || secrets.SUPERMETRY_INGEST_KEY }}
           SUPERMETRY_APP_HOST: ${{ vars.SUPERMETRY_APP_HOST || secrets.SUPERMETRY_APP_HOST }}
           CSC_LINK: ${{ secrets.ELECTRON_MAC_APP_STORE_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.ELECTRON_MAC_APP_STORE_CSC_KEY_PASSWORD }}
