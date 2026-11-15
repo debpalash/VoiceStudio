@@ -6,7 +6,7 @@ import Testing
 private func boundedDiagnosticHost(_ mode: String) throws -> TestProcess {
     let script = """
 import http.server,socket,sys
-socket.getfqdn=lambda host:host
+socket.getfqdn = lambda host: host
 mode=sys.argv[1]
 requests=0
 class Host(http.server.BaseHTTPRequestHandler):
