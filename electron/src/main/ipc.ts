@@ -859,13 +859,17 @@ export function registerIpc(
     return { canceled: false, path: picked.filePath };
   });
 
-  ipcMain.handle(CHANNELS.filesRevealPath, (_event, raw: unknown) => {
+  ipcMain.handle(CHANNELS.filesRevealPath, (event, raw: unknown) => {
+    const owner = windowFor(event) ?? getMainWindow();
+    assertTrustedMainFrame(event, owner);
     const path = assertString(raw, 'path');
     if (!isAbsolute(path)) throw new Error('revealPath needs an absolute path');
     shell.showItemInFolder(path);
   });
 
-  ipcMain.handle(CHANNELS.filesOpenExternal, async (_event, raw: unknown) => {
+  ipcMain.handle(CHANNELS.filesOpenExternal, async (event, raw: unknown) => {
+    const owner = windowFor(event) ?? getMainWindow();
+    assertTrustedMainFrame(event, owner);
     const target = assertString(raw, 'url');
     if (isAbsolute(target)) {
       const failure = await shell.openPath(target);
@@ -892,7 +896,9 @@ export function registerIpc(
     (windowFor(event) ?? getMainWindow())?.close();
   });
   ipcMain.handle(CHANNELS.windowIsMaximized, (event) => {
-    return (windowFor(event) ?? getMainWindow())?.isMaximized() ?? false;
+    const owner = windowFor(event) ?? getMainWindow();
+    assertTrustedMainFrame(event, owner);
+    return owner.isMaximized();
   });
 }
 
