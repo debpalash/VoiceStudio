@@ -1,6 +1,15 @@
 import { apiJson } from '@/lib/api/client';
 import { cueSourceId } from '@shared/utils/segments';
-export type DubExportFormat = 'mp4' | 'wav' | 'mp3' | 'srt' | 'vtt' | 'ass' | 'stems' | 'clips';
+export type DubExportFormat =
+  | 'mp4'
+  | 'wav'
+  | 'mp3'
+  | 'txt'
+  | 'srt'
+  | 'vtt'
+  | 'ass'
+  | 'stems'
+  | 'clips';
 export interface DubExportOptions {
   jobId: string;
   format: DubExportFormat;
@@ -55,7 +64,7 @@ export function dubExportRequest(options: DubExportOptions) {
     extension = 'zip';
   } else {
     endpoint = format;
-    if (format !== 'ass') query.set('dual', String(dual));
+    if (format === 'srt' || format === 'vtt') query.set('dual', String(dual));
   }
   return {
     path: `/dub/${endpoint}/${encodeURIComponent(jobId)}?${query}`,
@@ -78,7 +87,11 @@ export function restoreExportPreferences(raw: unknown): DubExportPreferences {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
   const value = raw as Record<string, unknown>;
   const result: DubExportPreferences = {};
-  if (['mp4', 'wav', 'mp3', 'srt', 'vtt', 'ass', 'stems', 'clips'].includes(String(value.format)))
+  if (
+    ['mp4', 'wav', 'mp3', 'txt', 'srt', 'vtt', 'ass', 'stems', 'clips'].includes(
+      String(value.format),
+    )
+  )
     result.format = value.format as DubExportFormat;
   if (typeof value.track === 'string') result.track = value.track;
   if (Array.isArray(value.excluded))

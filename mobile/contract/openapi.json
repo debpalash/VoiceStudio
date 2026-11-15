@@ -13384,6 +13384,56 @@
     "summary": "Dub Translate"
    }
   },
+  "/dub/txt/{job_id}": {
+   "get": {
+    "operationId": "dub_export_txt_dub_txt__job_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "job_id",
+      "required": true,
+      "schema": {
+       "title": "Job Id",
+       "type": "string"
+      }
+     },
+     {
+      "description": "Track language code; uses the same stored transcript as SRT, without cue numbers or timestamps.",
+      "in": "query",
+      "name": "lang",
+      "required": false,
+      "schema": {
+       "description": "Track language code; uses the same stored transcript as SRT, without cue numbers or timestamps.",
+       "title": "Lang",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "text/plain": {
+        "schema": {
+         "type": "string"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Dub Export Txt"
+   }
+  },
   "/dub/upload": {
    "post": {
     "description": "Accept a media upload, write to disk, queue background prep task.\n\n`input_type` is \"video\" (default) or \"audio\". Audio-only jobs (#119) skip\nscene detection, thumbnailing, and the final video mux \u2014 the transcribe \u2192\ntranslate \u2192 TTS core is identical.\n\nReturns 202 with {job_id, task_id, filename}. Client should open SSE on\n/tasks/stream/{task_id} to monitor extract/demucs stages and wait for the\n'ready' event before starting transcription.",

@@ -63,7 +63,7 @@ import java.util.UUID
         Text(tr("mobile.dub_advanced.computer_hint"),style=MaterialTheme.typography.bodySmall)
         if(tracks.isNotEmpty()) Group {Column(Modifier.padding(VSTheme.inset),verticalArrangement=Arrangement.spacedBy(VSTheme.gap)) {
             if(!busy) {
-                val kinds=listOf("media" to "mobile.dub_advanced.multi_audio","srt" to "mobile.editing.export_srt","vtt" to "mobile.editing.export_vtt","ass" to "mobile.dub_advanced.ass","clips" to "mobile.dub_advanced.clips","stems" to "mobile.dub_advanced.stems")
+                val kinds=listOf("media" to "mobile.dub_advanced.multi_audio","txt" to "transcriptions.export_plain","srt" to "mobile.editing.export_srt","vtt" to "mobile.editing.export_vtt","ass" to "mobile.dub_advanced.ass","clips" to "mobile.dub_advanced.clips","stems" to "mobile.dub_advanced.stems")
                 ChoicePicker("mobile.dub_advanced.exports",options.kind,kinds.map {Choice(it.first,tr(it.second))}) {options=options.copy(kind=it)}
                 ChoicePicker("exportModal.default_audio_track",options.language,tracks.keys.sorted().map {Choice(it,tracks[it]?.language ?: it)}) {options=options.copy(language=it,tracks=(options.tracks+it).distinct())}
             }
@@ -85,8 +85,8 @@ import java.util.UUID
                 if(!busy) ChoicePicker("audiobook.format",options.audioFormat,listOf(Choice("m4a","AAC / M4A"),Choice("wav","WAV"),Choice("mp3","MP3"),Choice("flac","FLAC"))) {options=options.copy(audioFormat=it)}
             } else if(options.kind in listOf("srt","vtt")) Toggle("exportModal.dual_subs",options.dual) {if(!busy) options=options.copy(dual=it)}
             Action("mobile.speak.share",!busy&&options.language.isNotEmpty()) {val snapshot=options;launch {
-                val file=sharedDownload(context,api,snapshot.path(jobID),when(snapshot.kind) {"srt"->"srt";"vtt"->"vtt";"ass"->"ass";"clips","stems"->"zip";else->snapshot.audioFormat})
-                try {if(vm.api!==api) throw CancellationException();shareFile(context,file,when(snapshot.kind) {"srt","vtt","ass"->"text/plain";"clips","stems"->"application/zip";else->"application/octet-stream"})} catch(e:Exception) {file.delete();throw e}
+                val file=sharedDownload(context,api,snapshot.path(jobID),when(snapshot.kind) {"txt"->"txt";"srt"->"srt";"vtt"->"vtt";"ass"->"ass";"clips","stems"->"zip";else->snapshot.audioFormat})
+                try {if(vm.api!==api) throw CancellationException();shareFile(context,file,when(snapshot.kind) {"txt","srt","vtt","ass"->"text/plain";"clips","stems"->"application/zip";else->"application/octet-stream"})} catch(e:Exception) {file.delete();throw e}
             }}
         }}
         Heading("dub.cast");Text(tr("mobile.dub_advanced.detect_hint"),style=MaterialTheme.typography.bodySmall)

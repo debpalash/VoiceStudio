@@ -136,3 +136,19 @@ private actor AdvancedDubHost: HTTPTransport {
     #expect(ComputerDubAnalysis.sourceVoiceID("SPEAKER-2!") == "auto:speaker_2")
     #expect(ComputerDubAnalysis.sourceVoiceID("___") == "auto:speaker")
 }
+
+@Test func pairedPlainTextExportKeepsSelectedLanguageWithoutSubtitleFormatting() throws {
+    var options = ComputerDubExport(); options.kind = .txt; options.language = "fr"; options.dual = true
+    #expect(try options.path(job: "job-1") == "/dub/txt/job-1?lang=fr")
+    options.language = "original"
+    #expect(try options.path(job: "job-1") == "/dub/txt/job-1?lang=original")
+}
+@Test func pairedPlainTextExportIgnoresOptionsRetainedFromEarlierMediaAndSubtitles() throws {
+    var options=ComputerDubExport();options.language="fr";options.tracks=["fr"];options.karaoke=true
+    options.kind = .srt;options.dual=true
+    #expect(try options.path(job:"job-1")=="/dub/srt/job-1?lang=fr&dual=1")
+    options.kind = .txt
+    #expect(try options.path(job:"job-1")=="/dub/txt/job-1?lang=fr")
+    options.kind = .media
+    #expect(throws:(any Error).self) {try options.path(job:"job-1")}
+}

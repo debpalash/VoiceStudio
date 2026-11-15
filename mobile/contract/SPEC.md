@@ -469,6 +469,8 @@ Workflows on both platforms. These are native screens; no embedded desktop UI.
   provider before regeneration; resumed events validate original source text.
   Host export supports selected/default/original tracks, separated background,
   subtitle burn, dual/karaoke captions and existing audio/subtitle/package formats.
+  Both paired apps also share generated-track transcripts as UTF-8 TXT, without
+  timestamps or subtitle markup added, through the same host text-selection path.
   Acoustic diarization, isolated background separation and subtitle burn remain
   explicit computer tasks.
 - **Editable project handoff** uses a version-1 `.vsproject` stored ZIP with a
