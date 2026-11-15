@@ -130,7 +130,8 @@ final class PhoneScreens: XCTestCase {
         let app = launch()
         app.buttons["Models"].tapReady(); app.buttons["choice.option.kokoro-multi-int8"].tapReady()
         app.buttons["Voice"].tapReady()
-        let search = app.textFields.firstMatch
+        XCTAssertTrue(app.navigationBars["Voice"].waitForExistence(timeout: uiReadyTimeout))
+        let search = app.textFields["search.field"]
         XCTAssertTrue(search.waitForExistence(timeout: uiReadyTimeout)); search.tapReady(); search.typeText("Voice 103")
         app.buttons["choice.option.102"].tapReady()
         XCTAssertEqual(app.buttons["Voice"].value as? String,"Voice 103")
@@ -182,6 +183,8 @@ final class PhoneScreens: XCTestCase {
     }
     @MainActor func testCompactDownloadsUseProductNamesAndOneDubAction() {
         let app = launch()
+        // A previous test may leave a different persisted model, including on failure.
+        app.buttons["Models"].tapReady(); app.buttons["choice.option.kitten-mini-en-fp16"].tapReady()
         XCTAssertEqual(app.buttons.matching(identifier: "models.get").count, 1)
         XCTAssertFalse(app.staticTexts["kitten-mini-en-fp16"].exists)
         XCTAssertTrue(app.buttons["models.open"].label.contains("Kitten"))
