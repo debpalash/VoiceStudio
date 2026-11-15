@@ -559,6 +559,19 @@ class OmniVoice(PreTrainedModel):
 
                 if load_asr:
                     model.load_asr_model(model_name=asr_model_name)
+        except Exception as e:
+            # Enhanced error handling for Windows access violations
+            # Log the error and re-raise with more context
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to load OmniVoice model: {type(e).__name__}: {e}")
+            # For Windows access violations, provide additional diagnostic info
+            if "Windows fatal exception: access violation" in str(e) or "STATUS_ACCESS_VIOLATION" in str(e):
+                logger.error("Windows access violation detected during model loading. This may be caused by:")
+                logger.error("1. Mismatched PyTorch/Triton versions")
+                logger.error("2. Corrupted model cache files")
+                logger.error("3. Memory corruption during initialization")
+                logger.error("4. Invalid model files or incomplete downloads")
+            raise
         finally:
             for _lg, _lvl in _prev_levels:
                 _lg.setLevel(_lvl)
