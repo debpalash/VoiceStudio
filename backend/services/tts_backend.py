@@ -562,6 +562,9 @@ class TTSBackend(ABC):
     #: implementation supports (cuda / mps / rocm / cpu). This is metadata,
     #: not enforced — actual device selection lives in the engine's loader.
     gpu_compat: tuple[str, ...] = ("cpu",)
+    # Opt in only when the actual loader consumes the parent GPU self-test.
+    # Native libraries, upstream auto-device loaders and remote servers do not.
+    gpu_self_test_policy = "independent"
 
     #: Approximate VRAM (GB) the engine needs to render comfortably on a
     #: dedicated GPU. Metadata, like ``gpu_compat`` — never enforced, because a
@@ -588,7 +591,7 @@ class TTSBackend(ABC):
         installed executable determines both the available runtimes and the
         device actually selected.
         """
-        from services.engine_routing import resolve_routing, uses_parent_torch
+        from services.engine_routing import parent_self_test_policy, resolve_routing, uses_parent_torch
 
         gpu_compat = tuple(getattr(cls, "gpu_compat", ("cpu",)))
         min_vram_gb = float(getattr(cls, "min_vram_gb", 0.0) or 0.0)
@@ -599,6 +602,7 @@ class TTSBackend(ABC):
                 gpu_compat, caps, min_vram_gb,
                 parent_torch=uses_parent_torch(cls),
                 parent_process=not getattr(cls, "_is_subprocess_isolated", False),
+                self_test_policy=parent_self_test_policy(cls),
             ),
             "runtime_backend": None,
             "runtime_device_index": None,
@@ -1881,6 +1885,7 @@ class OmniVoiceBackend(TTSBackend):
     # get_best_device(); without it routing reported a CPU fallback (and gave
     # CPU budgets) for a model that was actually on the GPU.
     gpu_compat = ("cuda", "rocm", "xpu", "mps", "cpu")
+    gpu_self_test_policy = "forceable"  # model_manager.get_best_device()
     # Derived from the pool's own per-job budget (_GPU_VRAM_PER_JOB_GB = 5.0 in
     # model_manager, itself measured from the ~1.6 GB forward + autoregressive
     # decode and the co-loaded WhisperX on the clone path), plus room for the
@@ -4478,7 +4483,7 @@ def list_backends(*, include_hidden: bool = False) -> list[dict]:
             isolation = "subprocess"
         else:
             isolation = "in-process"
-        from services.engine_routing import resolve_routing, runtime_compute_profile, uses_parent_torch
+        from services.engine_routing import parent_self_test_policy, resolve_routing, runtime_compute_profile, uses_parent_torch
         try:
             profile = runtime_compute_profile(cls, caps)
         except Exception:
@@ -4494,6 +4499,7 @@ def list_backends(*, include_hidden: bool = False) -> list[dict]:
                     compat, caps, floor,
                     parent_torch=uses_parent_torch(cls),
                     parent_process=not getattr(cls, "_is_subprocess_isolated", False),
+                    self_test_policy=parent_self_test_policy(cls),
                 ),
                 "runtime_backend": None,
                 "runtime_device_index": None,
