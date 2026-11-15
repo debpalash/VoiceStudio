@@ -299,6 +299,71 @@ class PhoneDubTest {
         assertTrue(muted.peaks.all {it==0f});muted.file.delete()
     }
 
+    @Test fun packageRejectsLowOutputSpaceEvenWhenTheJobVolumeHasRoom()=runTest {
+        val store=store();val request=request(store,targets.take(1))
+        val complete=PhoneDubPipeline(store,Engine(),decoder,media).run(request.id,models)
+        val checkpoint=store.file(request.id,"checkpoint.json").readBytes()
+        for(kind in DubPackage.entries) for(existing in listOf(false,true)) {
+            val workspace=File(temporary.root,"low-${kind.name}-$existing")
+            if(existing)check(workspace.mkdirs())
+            val count=if(kind==DubPackage.STEMS)complete.frames*2 else complete.renders.filter {it.target=="fr"}.sumOf {it.frames}
+            val required=count*4+16_000_000
+            try {
+                store.exportPackage(request.id,"fr",kind,workspace) {path ->
+                    if(path.canonicalFile==workspace.canonicalFile)required-1 else Long.MAX_VALUE
+                }
+                fail("Package used the roomy job volume instead of its low-space output volume")
+            }catch(error:ClientFailure){assertEquals("mobile.local.storage_required",error.key)}
+            assertTrue(workspace.listFiles().orEmpty().isEmpty())
+            assertArrayEquals(checkpoint,store.file(request.id,"checkpoint.json").readBytes())
+        }
+    }
+
+    @Test fun packageUsesExistingAndNewOutputVolumesForVerifiedArchives()=runTest {
+        val store=store();val request=request(store,targets.take(1))
+        val complete=PhoneDubPipeline(store,Engine(),decoder,media).run(request.id,models)
+        val checkpoint=store.file(request.id,"checkpoint.json").readBytes()
+        for(kind in DubPackage.entries) for(existing in listOf(false,true)) {
+            val workspace=File(temporary.root,"healthy-${kind.name}-$existing")
+            if(existing)check(workspace.mkdirs())
+            val count=if(kind==DubPackage.STEMS)complete.frames*2 else complete.renders.filter {it.target=="fr"}.sumOf {it.frames}
+            val required=count*4+16_000_000
+            val checked=mutableListOf<File>()
+            val archive=store.exportPackage(request.id,"fr",kind,workspace) {path ->
+                checked+=path.canonicalFile
+                assertTrue("Capacity must be read from an actual created directory",path.isDirectory)
+                if(path.canonicalFile==workspace.canonicalFile)required else 0
+            }
+            assertEquals(listOf(workspace.canonicalFile),checked)
+            assertTrue(ProjectArchive.entries(archive).any {it.path=="manifest.json"})
+            val files=ProjectArchive.extract(archive,File(temporary.root,"verified-${kind.name}-$existing"))
+            val audio=if(kind==DubPackage.CLIPS)"segments/00001.wav" else "dubbed.wav"
+            assertTrue(PhoneAudioProcessing.containsSyntheticMarker(files.getValue(audio)))
+            if(kind==DubPackage.STEMS)assertFalse(PhoneAudioProcessing.containsSyntheticMarker(files.getValue("original.wav")))
+            for(key in listOf("voiceID","referenceFile","referenceText","referenceOrigin"))assertFalse(files.getValue("manifest.json").readText().contains("\"$key\""))
+            assertArrayEquals(checkpoint,store.file(request.id,"checkpoint.json").readBytes())
+        }
+    }
+
+    @Test fun packageKeepsLowAndUnknownCapacityClosedBeforePublishingFiles()=runTest {
+        val store=store();val request=request(store,targets.take(1))
+        val complete=PhoneDubPipeline(store,Engine(),decoder,media).run(request.id,models)
+        val checkpoint=store.file(request.id,"checkpoint.json").readBytes()
+        for(kind in DubPackage.entries) for(existing in listOf(false,true)) {
+            val count=if(kind==DubPackage.STEMS)complete.frames*2 else complete.renders.filter {it.target=="fr"}.sumOf {it.frames}
+            for(capacity in listOf(-1L,0L,count*4+16_000_000-1)) {
+                val workspace=File(temporary.root,"unavailable-${kind.name}-$existing-$capacity")
+                if(existing)check(workspace.mkdirs())
+                try {
+                    store.exportPackage(request.id,"fr",kind,workspace) {_ ->capacity}
+                    fail("Package bypassed its low/unknown storage guard")
+                }catch(error:ClientFailure){assertEquals("mobile.local.storage_required",error.key)}
+                assertTrue(workspace.listFiles().orEmpty().isEmpty())
+                assertArrayEquals(checkpoint,store.file(request.id,"checkpoint.json").readBytes())
+            }
+        }
+    }
+
     @Test fun castReferenceDedupAndVerifiedClipPackagesPreserveMarkersAndPublishedOutputs()=runTest {
         val store=store();val request=request(store,targets.take(1));val engine=Engine();val pipeline=PhoneDubPipeline(store,engine,decoder,media)
         val first=pipeline.run(request.id,models)

@@ -40,7 +40,9 @@ object PhoneDubASS {
 }
 enum class DubPackage { CLIPS, STEMS }
 @Serializable private data class DubExportManifest(val format: String="voicestudio-dub-export",val version: Int=1,val kind: String,val sourceHash: String?,val language: String,val modelPins: List<DubModelPin>,val segments: List<DubSegmentState>,val originalIsIsolatedBackground: Boolean=false)
-suspend fun PhoneDubStore.exportPackage(id: String,target: String,kind: DubPackage,workspace: File): File = exclusive(id) {withContext(Dispatchers.IO) {
+suspend fun PhoneDubStore.exportPackage(id: String,target: String,kind: DubPackage,workspace: File): File =
+    exportPackage(id,target,kind,workspace) {it.usableSpace}
+internal suspend fun PhoneDubStore.exportPackage(id: String,target: String,kind: DubPackage,workspace: File,availableStorage: (File)->Long): File = exclusive(id) {withContext(Dispatchers.IO) {
     val request=request(id);val cp=checkpoint(id)
     if(!cp.done||request.targets.none {it.code==target}||cp.segments.isEmpty()) throw ClientFailure("mobile.dub_advanced.generate_first")
     val rendered=cp.renders.filter {it.target==target}.associateBy {it.index}
@@ -53,7 +55,10 @@ suspend fun PhoneDubStore.exportPackage(id: String,target: String,kind: DubPacka
     }
     val count=if(kind==DubPackage.STEMS) cp.frames*2 else rendered.values.sumOf {it.frames}
     if(count>500_000_000||kind==DubPackage.STEMS&&cp.frames*2>536_870_000) throw ClientFailure("mobile.dub_advanced.export_limit")
-    if(directory(id).usableSpace<count*4+16_000_000) throw ClientFailure("mobile.local.storage_required")
+    // Space belongs to the actual output volume, not necessarily the saved
+    // job's volume. Create a valid new destination before asking usableSpace.
+    if(!workspace.mkdirs()&&!workspace.isDirectory) throw ClientFailure("mobile.errors.file")
+    if(availableStorage(workspace)<count*4+16_000_000) throw ClientFailure("mobile.local.storage_required")
     val root=File(workspace,"dub-package-${UUID.randomUUID()}").apply {mkdirs()}
     try {
         val entries=mutableListOf<ProjectArchiveFile>()
