@@ -229,6 +229,30 @@ def test_internal_quote_in_parsed_http_credential_does_not_leak(name,quote,leadi
     assert '&x=1' in out
 
 
+@pytest.mark.parametrize('raw',[
+    "Request: 'http://h/?pin=1234', status=500\nTraceback: decoder failed",
+    '{"request":"http://h/?pin=1234"}\nTraceback: decoder failed',
+    '{"request":"http://h/?pin=1234","status":500}\nTraceback: decoder failed',
+])
+def test_outer_url_quote_keeps_comma_and_brace_diagnostic_tail(raw):
+    assert scrub_text(raw)==raw.replace('1234',REDACTED)
+
+
+def test_outer_log_quote_does_not_expose_an_opaque_internal_credential_quote():
+    import httpx
+    from starlette.requests import Request
+    from core.auth import _credential_candidate
+    secret="prefix',PRIVATE_FIXTURE'"
+    url=httpx.URL(f'https://h/?api_key={secret}&x=1')
+    request=Request({'type':'http','scheme':'https','server':('h',443),
+                     'path':'/','headers':[],'query_string':url.query})
+    assert _credential_candidate(request).value==secret
+    raw=f"Request: '{request.url}', status=500\nTraceback: decoder failed"
+    out=scrub_text(raw)
+    assert 'PRIVATE_FIXTURE' not in out
+    assert '&x=1' in out and 'status=500' in out and 'Traceback: decoder failed' in out
+
+
 def test_malformed_query_stress_finishes_within_a_process_bound():
     import subprocess
     import sys

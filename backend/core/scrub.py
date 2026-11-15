@@ -82,11 +82,29 @@ def _raw_quote_end(text: str, start: int) -> int:
     return end
 
 
+def _log_quote_closes(text: str, position: int) -> bool:
+    after = position + 1
+    if after == len(text) or text[after].isspace():
+        return True
+    next_char = text[after + 1] if after + 1 < len(text) else ""
+    if text[after] == ",":
+        return not next_char or next_char.isspace() or next_char == '"'
+    if text[after] in "}]":
+        return not next_char or next_char.isspace() or next_char in ",}]"
+    return False
+
+
 def _scrub_url_queries(text: str) -> str:
     parts = []
     copied = position = 0
     length = len(text)
+    url_quote = None
     while position < length:
+        char = text[position]
+        if url_quote is None and char in "\"'" and text.startswith(("http://", "https://"), position + 1):
+            url_quote = char
+        elif char.isspace() or char == url_quote and _log_quote_closes(text, position):
+            url_quote = None
         if text[position] not in "?&":
             position += 1
             continue
@@ -125,6 +143,10 @@ def _scrub_url_queries(text: str) -> str:
         while end < length and text[end] not in "&#" and not text[end].isspace():
             if text[end] in "\"'":
                 after = end + 1
+                # Only an observed quote around the URL may end a comma/brace
+                # log field. Opaque credential punctuation is not that proof.
+                if text[end] == url_quote and _log_quote_closes(text, end):
+                    break
                 # Preserve terminal log quotes; otherwise consume the entire
                 # fragment, failing closed if its closing quote is missing.
                 if after == length or text[after].isspace() or text[after] in "&#":

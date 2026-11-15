@@ -175,6 +175,26 @@ describe('credential query privacy in the live report builder', () => {
     },
   );
 
+  test.each([
+    "Request: 'http://h/?pin=1234', status=500\nTraceback: decoder failed",
+    '{"request":"http://h/?pin=1234"}\nTraceback: decoder failed',
+    '{"request":"http://h/?pin=1234","status":500}\nTraceback: decoder failed',
+  ])('preserves the comma/brace-delimited log tail for %s', (raw) => {
+    const params = issueParams({ error: { message: raw }, crashSection: [raw] });
+    expect(params.get('title')).not.toContain('1234');
+    expect(params.get('body')).toContain(raw.replace('1234', '***REDACTED***'));
+  });
+
+  test('an outer URL quote does not expose internal credential punctuation', () => {
+    const raw =
+      "Request: 'https://h/?api_key=prefix',PRIVATE_FIXTURE'&x=1', status=500\nTraceback: decoder failed";
+    const params = issueParams({ error: { message: raw }, crashSection: [raw] });
+    expect(params.get('title')).not.toContain('PRIVATE_FIXTURE');
+    expect(params.get('body')).not.toContain('PRIVATE_FIXTURE');
+    for (const piece of ['&x=1', 'status=500', 'Traceback: decoder failed'])
+      expect(params.get('body')).toContain(piece);
+  });
+
   test('finishes malformed-query scrubbing within a process bound', () => {
     const source = pathToFileURL(resolve('src/shared/utils/scrub.js')).href;
     const script = `import {scrubText} from ${JSON.stringify(source)};

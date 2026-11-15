@@ -66,11 +66,32 @@ function rawQuoteEnd(text, start) {
   return end;
 }
 
+function logQuoteCloses(text, position) {
+  const after = position + 1;
+  if (after === text.length || /\s/.test(text[after])) return true;
+  const next = text[after + 1];
+  if (text[after] === ',') return next === undefined || /\s/.test(next) || next === '"';
+  if ('}]'.includes(text[after]))
+    return next === undefined || /\s/.test(next) || ',}]'.includes(next);
+  return false;
+}
+
 function scrubUrlQueries(text) {
   const parts = [];
   let copied = 0;
   let position = 0;
+  let urlQuote = null;
   while (position < text.length) {
+    const char = text[position];
+    if (
+      urlQuote === null &&
+      (char === '"' || char === "'") &&
+      (text.startsWith('http://', position + 1) || text.startsWith('https://', position + 1))
+    ) {
+      urlQuote = char;
+    } else if (/\s/.test(char) || (char === urlQuote && logQuoteCloses(text, position))) {
+      urlQuote = null;
+    }
     if (text[position] !== '?' && text[position] !== '&') {
       position++;
       continue;
@@ -118,6 +139,9 @@ function scrubUrlQueries(text) {
     while (end < text.length && !'&#'.includes(text[end]) && !/\s/.test(text[end])) {
       if (text[end] === '"' || text[end] === "'") {
         const after = end + 1;
+        // Comma/brace field boundaries require the observed enclosing URL
+        // quote, not just punctuation inside an opaque credential.
+        if (text[end] === urlQuote && logQuoteCloses(text, end)) break;
         // Preserve terminal log quotes; otherwise consume the entire
         // fragment, failing closed if its closing quote is missing.
         if (after === text.length || /\s/.test(text[after]) || '&#'.includes(text[after])) break;
