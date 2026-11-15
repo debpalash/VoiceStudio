@@ -32,8 +32,168 @@ const TOKEN_PATTERNS = [
 ];
 
 // Secrets in a URL query string — redact the value, keep the param name.
-const URL_SECRET_RE =
-  /((?:access[_-]?token|api[_-]?key|apikey|auth[_-]?token|token|secret|password|passwd|pwd)=)([^&\s"'#]{6,})/gi;
+const URL_SECRET_NAMES = new Set([
+  'access_token',
+  'access-token',
+  'accesstoken',
+  'api_key',
+  'api-key',
+  'apikey',
+  'auth_token',
+  'auth-token',
+  'authtoken',
+  'token',
+  'secret',
+  'password',
+  'passwd',
+  'pwd',
+  'pin',
+]);
+const URL_SECRET_NAME = `(?:${[...URL_SECRET_NAMES].join('|')})`;
+const URL_SECRET_RE = new RegExp(`(?<![\\w%+.-])(${URL_SECRET_NAME}=)([^&\\s"'#]{6,})`, 'gi');
+// Each known ASCII name needs at most three source characters per encoded
+// byte. Name probes have this fixed bound, and matched values are scanned once.
+const MAX_QUERY_NAME_CHARS = 3 * Math.max(...[...URL_SECRET_NAMES].map((name) => name.length));
+
+function rawQuoteEnd(text, start, limit = text.length) {
+  const quote = text[start];
+  let end = start + 1;
+  while (end < limit) {
+    const char = text[end++];
+    if (char === '\\' && end < limit) end++;
+    else if (char === quote) break;
+  }
+  return end;
+}
+
+function quotedUrlEnd(text, position, cache) {
+  // Validate each structured line once; its real JSON-string end is stronger
+  // evidence than bracket/comma punctuation inside an opaque credential.
+  if (position >= (cache.lineEnd ?? -1)) {
+    cache.lineStart = text.lastIndexOf('\n', position - 1) + 1;
+    const end = text.indexOf('\n', position);
+    cache.lineEnd = end < 0 ? text.length : end;
+    try {
+      JSON.parse(text.slice(cache.lineStart, cache.lineEnd));
+      cache.json = true;
+    } catch {
+      cache.json = false;
+    }
+  }
+  let slashStart = position;
+  while (slashStart > cache.lineStart && text[slashStart - 1] === '\\') slashStart--;
+  if (text[position] === '"' && cache.json && (position - slashStart) % 2 === 0)
+    return rawQuoteEnd(text, position, cache.lineEnd) - 1;
+
+  // Other literals must end their whole URI token. Cache one forward scan
+  // per token, so failed candidates never rescan the remaining suffix.
+  if (position >= (cache.tokenEnd ?? -1)) {
+    let end = position + 1;
+    const quotes = { "'": -1, '"': -1 };
+    let lastQuery = -1;
+    while (end < text.length && !/\s/.test(text[end])) {
+      if (text[end] === '"' || text[end] === "'") quotes[text[end]] = end;
+      if (text[end] === '?' || text[end] === '&') lastQuery = end;
+      end++;
+    }
+    const bounds = {};
+    for (const [quote, candidate] of Object.entries(quotes)) {
+      if (candidate < 0 || candidate < lastQuery) {
+        bounds[quote] = null;
+        continue;
+      }
+      let tail = candidate + 1;
+      while (tail < end && '}]'.includes(text[tail])) tail++;
+      if (tail < end && text[tail] === ',') tail++;
+      bounds[quote] = tail === end ? candidate : null;
+    }
+    cache.tokenEnd = end;
+    cache.bounds = bounds;
+  }
+  const bound = cache.bounds[text[position]];
+  return bound !== null && bound > position ? bound : null;
+}
+
+function scrubUrlQueries(text) {
+  const parts = [];
+  let copied = 0;
+  let position = 0;
+  let urlEnd = null;
+  const quoteCache = {};
+  while (position < text.length) {
+    const char = text[position];
+    if (urlEnd !== null && position >= urlEnd) urlEnd = null;
+    if (
+      urlEnd === null &&
+      (char === '"' || char === "'") &&
+      (text.startsWith('http://', position + 1) || text.startsWith('https://', position + 1))
+    ) {
+      urlEnd = quotedUrlEnd(text, position, quoteCache);
+    }
+    if (text[position] !== '?' && text[position] !== '&') {
+      position++;
+      continue;
+    }
+    const nameStart = position + 1;
+    let nameEnd = nameStart;
+    const limit = Math.min(text.length, nameStart + MAX_QUERY_NAME_CHARS);
+    while (nameEnd < limit && !'=?&#"\''.includes(text[nameEnd]) && !/\s/.test(text[nameEnd]))
+      nameEnd++;
+    let known = false;
+    if (text[nameEnd] === '=') {
+      try {
+        known = URL_SECRET_NAMES.has(
+          decodeURIComponent(text.slice(nameStart, nameEnd).replace(/\+/g, ' ')).toLowerCase(),
+        );
+      } catch {
+        // A malformed encoded name cannot be an accepted credential parameter.
+      }
+    }
+    if (!known) {
+      position++;
+      continue;
+    }
+    const valueStart = nameEnd + 1;
+    const valueLimit = urlEnd ?? text.length;
+    let end = valueStart;
+    let quoteStart = end;
+    while (quoteStart < valueLimit && text[quoteStart] === '\\') quoteStart++;
+    if (
+      quoteStart > end &&
+      quoteStart < valueLimit &&
+      (text[quoteStart] === '"' || text[quoteStart] === "'")
+    ) {
+      // Match the enclosing JSON/log quote depth. More deeply escaped
+      // quotes belong to the credential, rather than ending its value.
+      const escapeDepth = quoteStart - end;
+      const quote = text[quoteStart];
+      end = quoteStart + 1;
+      while (end < valueLimit) {
+        const slashStart = end;
+        while (end < valueLimit && text[end] === '\\') end++;
+        const closes = end - slashStart === escapeDepth && end < valueLimit && text[end] === quote;
+        if (end < valueLimit) end++;
+        if (closes) break;
+      }
+    } else if (end < valueLimit && (text[end] === '"' || text[end] === "'")) {
+      end = rawQuoteEnd(text, end, valueLimit);
+    }
+    // Quoted fragments may be adjacent parts of the same HTTP credential.
+    while (end < valueLimit && !'&#'.includes(text[end]) && !/\s/.test(text[end])) {
+      if (text[end] === '"' || text[end] === "'") {
+        const after = end + 1;
+        // Preserve terminal log quotes; otherwise consume the entire
+        // fragment, failing closed if its closing quote is missing.
+        if (after === text.length || /\s/.test(text[after]) || '&#'.includes(text[after])) break;
+        end = rawQuoteEnd(text, end, valueLimit);
+      } else end++;
+    }
+    parts.push(text.slice(copied, valueStart), REDACTED);
+    copied = position = end;
+  }
+  parts.push(text.slice(copied));
+  return parts.join('');
+}
 
 // A home folder name can contain spaces ("Alice Smith"). Where the path goes on
 // past the name, the name is everything up to that separator; the spaced form
@@ -77,6 +237,8 @@ export function scrubText(text) {
   if (text == null) return '';
   let s = String(text);
   for (const pat of TOKEN_PATTERNS) s = s.replace(pat, REDACTED);
+  // Preserve escaped quote delimiters before the free-text fallback runs.
+  s = scrubUrlQueries(s);
   s = s.replace(URL_SECRET_RE, (_m, name) => `${name}${REDACTED}`);
   for (const pat of [...realHomePatterns(), ...HOME_PATTERNS]) s = s.replace(pat, '~');
   return s;
