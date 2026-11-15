@@ -49,6 +49,7 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { WaveformPlayer } from '@/components/waveform-player';
 import { SyncedAudiobookPlayer } from './synced-audiobook-player';
 import { GeneratePanel } from './generate-panel';
+import { LongformResultRecovery } from './result-recovery';
 import { generateBlocker } from './generate-blocker';
 import { EngineNotice } from '@/components/engine-notice';
 import { ValidationWarnings, type ScriptWarning } from './validation-warnings';
@@ -63,6 +64,9 @@ import {
   editLongform,
   dismissLongformError,
   renderLongform,
+  getLongformResultState,
+  recoverLegacyLongformResult,
+  replaceLongformDraft,
   stopLongform,
   useLongformSession,
   storiesImportEpoch,
@@ -147,6 +151,11 @@ export function LongformPage({ mode }: { mode: Mode }) {
   // One element, rendered either pinned in the setup pane or, once that is folded away, over the editor.
   const generatePanel = (
     <div className="flex min-h-0 flex-col gap-2">
+      <LongformResultRecovery
+        state={getLongformResultState(mode)}
+        disabled={locked}
+        onRecover={() => void recoverLegacyLongformResult(mode)}
+      />
       <RenderRecovery
         mode={mode}
         active={session.active !== null}
@@ -253,6 +262,7 @@ export function LongformPage({ mode }: { mode: Mode }) {
                 draft={draft}
                 disabled={locked}
                 onChange={set}
+                onReplace={(draft) => replaceLongformDraft(mode, draft)}
                 onBusy={setImporting}
               />
             </div>

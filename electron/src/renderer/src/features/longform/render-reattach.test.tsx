@@ -5,7 +5,11 @@ import '@/i18n';
 
 const fetchMock = vi.hoisted(() => vi.fn());
 const apiJsonMock = vi.hoisted(() => vi.fn());
-vi.mock('@/lib/api/client', () => ({ apiFetch: fetchMock, apiJson: apiJsonMock }));
+vi.mock('@/lib/api/client', async (original) => ({
+  ...(await original<object>()),
+  apiFetch: fetchMock,
+  apiJson: apiJsonMock,
+}));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ to, children, className }: { to: string; children: unknown; className?: string }) => (
     <a href={to} className={className}>

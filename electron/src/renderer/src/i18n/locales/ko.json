@@ -1870,7 +1870,12 @@
     "insert_pause": "일시 정지",
     "preview_plan": "계획 미리 보기",
     "ready": "오디오북 준비 완료",
-    "title": "오디오북"
+    "title": "오디오북",
+    "result_other_connection": "이 저장된 오디오는 다른 VoiceStudio 연결에 속합니다. 재생하려면 해당 연결로 돌아가세요.",
+    "result_connection_unknown": "저장된 오디오를 표시하려면 로컬 엔진이나 원격 컴퓨터에 연결하세요.",
+    "result_legacy": "이전에 저장된 이 결과에는 연결 정보가 없습니다. 이 연결에서 파일 이름을 찾아보세요. 이름이 같아도 다른 파일일 수 있습니다.",
+    "result_check_audio": "이 연결에서 저장된 오디오 확인",
+    "result_recovery_failed": "이 연결에서는 저장된 오디오를 사용할 수 없습니다. 원래 연결로 돌아가거나 오디오를 다시 생성하세요."
   },
   "credentials": {
     "microsoft_key": "마이크로소프트 번역기 키",

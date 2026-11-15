@@ -1870,7 +1870,12 @@
     "failed_note": "{{count}} 个章节失败 — 再次点击“创建”即可只重试这些章节。",
     "loudness_podcast": "响度标准化（播客）",
     "ready": "有声书已就绪",
-    "synthesizing": "正在合成第 {{current}}/{{total}} 章 {{title}}"
+    "synthesizing": "正在合成第 {{current}}/{{total}} 章 {{title}}",
+    "result_other_connection": "此已保存的音频属于另一个 VoiceStudio 连接。请切换回该连接以播放音频。",
+    "result_connection_unknown": "请连接本地引擎或远程电脑，以显示已保存的音频。",
+    "result_legacy": "此较早保存的结果没有连接记录。请在此连接中查找它的文件名；找到的可能是另一个文件。",
+    "result_check_audio": "检查此连接中的已保存音频",
+    "result_recovery_failed": "此连接中没有该已保存的音频。请切换回原来的连接，或重新生成音频。"
   },
   "credentials": {
     "region": "区域",

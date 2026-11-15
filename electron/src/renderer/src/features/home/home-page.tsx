@@ -23,7 +23,7 @@ import { useProfiles } from '@/hooks/use-profiles';
 import { brandArtwork } from '@/lib/brand';
 import { patchCloneSettings } from '@/lib/store/clone-settings';
 import { selectCloneProfile } from '@/lib/store/reference';
-import { blankLongformDraft, editLongform } from '@/features/longform/longform-session';
+import { blankLongformDraft, replaceLongformDraft } from '@/features/longform/longform-session';
 import { projectLibrary, type LongformProject } from '@/features/longform/project-library';
 import { openDubProject } from '@/features/dub/dub-session';
 import type { DubProject } from '@/features/projects/project-format';
@@ -174,7 +174,7 @@ export function HomePage() {
       if (openDubProject(project)) await navigate({ to: '/dub' });
       return;
     }
-    editLongform(item.project.mode, {
+    replaceLongformDraft(item.project.mode, {
       ...blankLongformDraft(),
       ...structuredClone(item.project.draft),
       projectId: item.project.id,

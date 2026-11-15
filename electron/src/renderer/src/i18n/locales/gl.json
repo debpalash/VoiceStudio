@@ -2048,7 +2048,12 @@
     "untitled": "Sen título",
     "recovery_busy": "Outro renderizado está en execución. Retoma cando remate.",
     "cast_note_one": "{{names}} aínda non se emitiu, polo que se le na voz principal. Escolle unha voz para ela en Cast.",
-    "cast_note_other": "{{names}} aínda non se emitiron, polo que len coa voz principal. Escolle voces para eles en Cast."
+    "cast_note_other": "{{names}} aínda non se emitiron, polo que len coa voz principal. Escolle voces para eles en Cast.",
+    "result_other_connection": "Este audio gardado pertence a outra conexión de VoiceStudio. Volve a esa conexión para reproducilo.",
+    "result_connection_unknown": "Conecta o teu motor local ou o teu ordenador remoto para mostrar o audio gardado.",
+    "result_legacy": "Este resultado gardado antigo non ten información de conexión. Busca o seu nome de ficheiro nesta conexión; podería ser un ficheiro diferente.",
+    "result_check_audio": "Comprobar o audio gardado nesta conexión",
+    "result_recovery_failed": "O audio gardado non está dispoñible nesta conexión. Volve á súa conexión orixinal ou xérao de novo."
   },
   "credentials": {
     "microsoft_key": "Chave de Microsoft Translator",

@@ -1870,7 +1870,12 @@
     "cast_note_other": "{{names}} için henüz ses seçilmedi, ana sesle okunurlar. Oyuncular bölümünden ses seçin.",
     "line_gap": "Satırların arasındaki duraklama",
     "paragraph_gap": "Paragrafların arasındaki duraklama",
-    "trim_edges": "Motorun sessiz kısımlarını kes"
+    "trim_edges": "Motorun sessiz kısımlarını kes",
+    "result_other_connection": "Bu kayıtlı ses başka bir VoiceStudio bağlantısına aittir. Oynatmak için o bağlantıya geri dönün.",
+    "result_connection_unknown": "Kayıtlı sesi göstermek için yerel motorunuza veya uzak bilgisayarınıza bağlanın.",
+    "result_legacy": "Bu eski kayıtlı sonuçta bağlantı bilgisi yok. Bu bağlantıda dosya adını arayın; farklı bir dosya olabilir.",
+    "result_check_audio": "Bu bağlantıda kayıtlı sesi kontrol et",
+    "result_recovery_failed": "Kayıtlı ses bu bağlantıda kullanılamıyor. Özgün bağlantısına geri dönün veya sesi yeniden oluşturun."
   },
   "credentials": {
     "microsoft_key": "Microsoft Çevirmen Anahtarı",

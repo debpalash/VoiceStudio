@@ -1892,7 +1892,12 @@
     "cast_note_many": "{{names}} nie mają jeszcze głosów, więc czyta je główny głos. Wybierz głosy w sekcji Obsada.",
     "line_gap": "Odstęp między wierszami",
     "paragraph_gap": "Odstęp między akapitami",
-    "trim_edges": "Usuń ciszę generowaną przez silnik"
+    "trim_edges": "Usuń ciszę generowaną przez silnik",
+    "result_other_connection": "Ten zapisany plik audio pochodzi z innego połączenia VoiceStudio. Wróć do tamtego połączenia, aby go odtworzyć.",
+    "result_connection_unknown": "Połącz się z lokalnym silnikiem lub zdalnym komputerem, aby wyświetlić zapisane pliki audio.",
+    "result_legacy": "Ten starszy zapisany wynik nie zawiera informacji o połączeniu. Poszukaj jego nazwy pliku w tym połączeniu; może to być inny plik.",
+    "result_check_audio": "Sprawdź zapisany plik audio w tym połączeniu",
+    "result_recovery_failed": "Zapisany plik audio nie jest dostępny w tym połączeniu. Wróć do pierwotnego połączenia lub wygeneruj go ponownie."
   },
   "credentials": {
     "microsoft_key": "Klucz tłumacza Microsoft",

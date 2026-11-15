@@ -13,6 +13,7 @@ export function ProjectSettings({
   disabled,
   bare = false,
   onChange,
+  onReplace,
   onBusy,
 }: {
   mode: Mode;
@@ -21,6 +22,7 @@ export function ProjectSettings({
   /** Rendered as the Projects tab of the section pane instead of a disclosure. */
   bare?: boolean;
   onChange: (value: Partial<Draft>) => void;
+  onReplace: (value: Draft) => void;
   onBusy: (busy: boolean) => void;
 }) {
   const { t } = useTranslation();
@@ -79,7 +81,7 @@ export function ProjectSettings({
         // Re-read after confirmation so an outdated list never opens a deleted record.
         const project = (await projectLibrary.list()).find((p) => p.id === confirmation.project.id);
         if (!project) throw new Error('Project no longer exists');
-        onChange({
+        onReplace({
           ...blankLongformDraft(),
           ...structuredClone(project.draft),
           projectId: project.id,
@@ -92,7 +94,7 @@ export function ProjectSettings({
   // A new project only replaces the open draft; saved projects are never touched.
   const startNew = () => {
     if (locked || pending.current) return;
-    onChange(blankLongformDraft());
+    onReplace(blankLongformDraft());
     dirtyName.current = false;
     setName('');
     setSaved(false);

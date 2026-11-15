@@ -25,6 +25,33 @@ Generation is separate from playback and export. Vidstack provides the player, w
 
 Draft writes reuse the coalesced persistence helper and flush on lifecycle events. Working drafts currently use browser storage. Named Stories and Audiobook projects use the shared native IndexedDB adapter in a separate Electron database. Saves await the committed transaction, concurrent writes are serialized, and opening or deleting a project requires confirmation. Projects include script/lines, voices, settings and the last output reference. Storage failures are surfaced. Book details include author, narrator, year, genre, description and an uploaded JPEG/PNG cover. Loudness offers off, ACX and podcast presets. Audiobook pronunciation rows reach the existing lexicon engine; duplicate words are flagged before rendering. These settings persist with the draft. Full cast management and other advanced controls remain tracked in `electron/PARITY.md`.
 
+### Saved audio and connections
+
+Completed Stories and Audiobook results stay with the VoiceStudio connection
+that rendered them. Switching to another local data directory or remote computer
+keeps the editable text and each connection's latest result; its player appears
+only when that connection is selected and ready. Local port changes retain the
+same local result. Opening or starting another project replaces the current
+workspace's result slots without deleting saved projects or rendered files.
+
+Older results and imported projects whose connection is unknown keep their
+saved details without automatically requesting audio. Use **Check saved audio on
+this connection** to check that filename through the current authenticated
+connection. This checks availability only: a matching filename may contain a
+different file. The warning and original saved details remain available after a
+successful check, including after reopening the app. No request goes directly
+to a previous connection. A connection change, authentication reset, new project
+or data reset cancels a pending check, and its late reply cannot adopt the result.
+
+Connection records stay in private local draft persistence. Named projects carry
+only an opaque result-owner token, not connection endpoints, local data paths,
+credentials or other connections' cached results. Availability-only results carry
+no ownership token in a named project; reopening that project requires another
+explicit availability check. The app's private working session keeps its checked
+state and warning across reloads. An unknown token requires the same explicit
+availability check. This behavior does not establish the cause of
+an interrupted render or a slow generation.
+
 `electron/tests/longform-smoke.mjs` verifies the main flows with mocked generation and real audio playback. Runtime tests cover stop, duplicate prevention, truncated responses, explicit resume and shared Stories compilation. Real installed-model verification passed for one English chapter: MP3 rendering, cached WAV chapter audition, and Electron-driven M4B rendering/playback. Multi-voice, multi-chapter, cancellation/recovery and other engines still require real runtime coverage.
 
 Script voice tags now expose saved-profile assignments in the Cast section. Only names present in the current script are sent as `voice_map`; assignments persist for reuse if a tag is reintroduced. An assignment to a removed profile blocks rendering until changed or reset to Default. Chapter, word and estimated runtime counts reuse the Tauri script helpers.

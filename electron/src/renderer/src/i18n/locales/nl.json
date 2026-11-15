@@ -1870,7 +1870,12 @@
     "recovery_busy": "Er loopt al een andere render. Hervat zodra die klaar is.",
     "cast_note_one": "{{names}} heeft nog geen stem en wordt met de hoofdstem gelezen. Kies er een onder Cast.",
     "cast_note_other": "{{names}} hebben nog geen stem en worden met de hoofdstem gelezen. Kies stemmen onder Cast.",
-    "line_gap": "Stilte tussen regels"
+    "line_gap": "Stilte tussen regels",
+    "result_other_connection": "Dit opgeslagen audiobestand hoort bij een andere VoiceStudio-verbinding. Schakel terug naar die verbinding om het af te spelen.",
+    "result_connection_unknown": "Verbind je lokale engine of externe computer om opgeslagen audio te tonen.",
+    "result_legacy": "Bij dit oudere opgeslagen resultaat is geen verbinding vastgelegd. Zoek op deze verbinding naar de bestandsnaam; het kan om een ander bestand gaan.",
+    "result_check_audio": "Opgeslagen audio op deze verbinding controleren",
+    "result_recovery_failed": "De opgeslagen audio is niet beschikbaar op deze verbinding. Schakel terug naar de oorspronkelijke verbinding of genereer de audio opnieuw."
   },
   "credentials": {
     "microsoft_key": "Microsoft Translator-sleutel",

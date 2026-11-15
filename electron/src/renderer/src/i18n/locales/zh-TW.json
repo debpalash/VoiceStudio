@@ -1870,7 +1870,12 @@
     "cast_note_one": "{{names}} 尚未分配聲音，將使用主要聲音朗讀。請在「角色」中選擇聲音。",
     "cast_note_other": "{{names}} 尚未分配聲音，將使用主要聲音朗讀。請在「角色」中選擇聲音。",
     "line_gap": "行間停頓",
-    "paragraph_gap": "段落間停頓"
+    "paragraph_gap": "段落間停頓",
+    "result_other_connection": "此已儲存的音訊屬於另一個 VoiceStudio 連線。請切換回該連線以播放音訊。",
+    "result_connection_unknown": "請連接本機引擎或遠端電腦，以顯示已儲存的音訊。",
+    "result_legacy": "此較早儲存的結果沒有連線記錄。請在此連線中尋找它的檔案名稱；找到的可能是另一個檔案。",
+    "result_check_audio": "檢查此連線中的已儲存音訊",
+    "result_recovery_failed": "此連線中沒有該已儲存的音訊。請切換回原本的連線，或重新產生音訊。"
   },
   "credentials": {
     "microsoft_key": "微軟翻譯金鑰",

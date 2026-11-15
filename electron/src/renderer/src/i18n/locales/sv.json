@@ -1870,7 +1870,12 @@
     "cast_note_other": "{{names}} har inga röster än och läses med huvudrösten. Välj röster under Rollbesättning.",
     "line_gap": "Tystnad mellan rader",
     "paragraph_gap": "Tystnad mellan stycken",
-    "trim_edges": "Ta bort tystnad som motorn skapar"
+    "trim_edges": "Ta bort tystnad som motorn skapar",
+    "result_other_connection": "Det här sparade ljudet hör till en annan VoiceStudio-anslutning. Byt tillbaka till den anslutningen för att spela upp det.",
+    "result_connection_unknown": "Anslut till din lokala motor eller fjärrdator för att visa sparat ljud.",
+    "result_legacy": "Det här äldre sparade resultatet saknar anslutningsinformation. Leta efter filnamnet på den här anslutningen; det kan vara en annan fil.",
+    "result_check_audio": "Kontrollera sparat ljud på den här anslutningen",
+    "result_recovery_failed": "Det sparade ljudet är inte tillgängligt på den här anslutningen. Byt tillbaka till den ursprungliga anslutningen eller generera ljudet igen."
   },
   "credentials": {
     "microsoft_key": "Microsoft Translator-nyckel",

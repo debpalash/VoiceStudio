@@ -1870,7 +1870,12 @@
     "cast_note_other": "{{names}} belum diberi suara, jadi dibacakan dengan suara utama. Pilih suara di Pemeran.",
     "line_gap": "Durasi jeda antarbaris",
     "paragraph_gap": "Durasi jeda antarparagraf",
-    "trim_edges": "Hapus bagian senyap dari mesin"
+    "trim_edges": "Hapus bagian senyap dari mesin",
+    "result_other_connection": "Audio tersimpan ini berasal dari koneksi VoiceStudio lain. Kembali ke koneksi tersebut untuk memutarnya.",
+    "result_connection_unknown": "Hubungkan mesin lokal atau komputer jarak jauh Anda untuk menampilkan audio tersimpan.",
+    "result_legacy": "Hasil tersimpan lama ini tidak memiliki informasi koneksi. Cari nama filenya pada koneksi ini; file tersebut mungkin berbeda.",
+    "result_check_audio": "Periksa audio tersimpan pada koneksi ini",
+    "result_recovery_failed": "Audio tersimpan tidak tersedia pada koneksi ini. Kembali ke koneksi asalnya atau buat ulang audio tersebut."
   },
   "credentials": {
     "microsoft_key": "Kunci Penerjemah Microsoft",
