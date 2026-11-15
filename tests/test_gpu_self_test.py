@@ -29,6 +29,8 @@ def _child(stdout="", returncode=0, stderr=""):
 
 @pytest.fixture(autouse=True)
 def _isolated(monkeypatch, tmp_path):
+    # Load the host's native ABI before emulating Linux self-test behavior.
+    __import__("psutil")
     monkeypatch.setattr(gpu_self_test, "RESULT_PATH", str(tmp_path / "gpu_self_test.json"))
     monkeypatch.setattr(gpu_self_test, "_thread", None)
     monkeypatch.setattr(gpu_self_test, "_verdict", None)
