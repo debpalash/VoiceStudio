@@ -125,6 +125,14 @@ version only after validation.
    `scripts/cla_audit.py` are on `main`. The audit aborts if Git cannot read
    any file’s history; restore access to missing objects and rerun before
    treating its contributor list as complete.
+   The unsigned count includes only contributors required to sign by the existing
+   checker. Exempt account IDs attributed through tool/placeholder commits keep
+   a separate provenance-review row; no signature is invented for them. JSON
+   reports `signature_present`, `signing_required` and
+   `provenance_review_required`; legacy `signed` means actual signature-store
+   presence only. Review other unsigned and unresolved identities independently.
+   A successful audit exit means the inventory completed, not that every
+   signature or provenance question is resolved.
 7. Confirm the version matches the intended tag.
 8. [Rehearse the release](#rehearse-a-release) from the commit you will tag.
 
