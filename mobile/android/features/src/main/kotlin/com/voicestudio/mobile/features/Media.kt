@@ -208,9 +208,9 @@ val LocalAudioPlayerFactory=staticCompositionLocalOf<(Context)->Player> {
         }}
         return failed
     }
-    fun play(restart:Boolean=false) {
+    fun play(restart:Boolean=false,ownedFailure:((Throwable)->Unit)?=null) {
         val retry=failedPreparation
-        if(!listeners.preparing) observePlayback(preparation=retry)
+        if(!listeners.preparing) observePlayback(preparation=retry,ownedFailure=ownedFailure)
         if(retry) {failedPreparation=false;player.prepare()}
         if(restart || player.playbackState==Player.STATE_ENDED) player.seekTo(0)
         player.play()
@@ -221,7 +221,7 @@ val LocalAudioPlayerFactory=staticCompositionLocalOf<(Context)->Player> {
         catch(e:Exception) {listeners.failed();failedPreparation=true;failed(e)}
         onDispose {listeners.close();player.release()}
     }
-    LaunchedEffect(player,autoPlay,playRequest) {if(autoPlay) play(restart=true)}
+    LaunchedEffect(player,autoPlay,playRequest) {if(autoPlay) play(restart=true,ownedFailure=initialFailure)}
     LaunchedEffect(player) {while(isActive) {position=player.currentPosition.coerceAtLeast(0);duration=player.duration.coerceAtLeast(0);delay(250)}}
     Group {
         Column(Modifier.fillMaxWidth().padding(VSTheme.inset)) {

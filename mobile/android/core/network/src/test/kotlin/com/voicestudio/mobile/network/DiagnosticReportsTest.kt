@@ -1045,4 +1045,45 @@ class DiagnosticReportsTest {
             } finally {reporter.close()}
         }
     }
+    @Test fun closeAfterUnreadConsentPreservesAcceptedUnpublishedReports()=runTest {
+        val store=Store();val transport=Transport().apply {code=204}
+        val dispatcher=StandardTestDispatcher(testScheduler)
+        val reporter=makeReporter(store,transport,ScheduledClock(testScheduler),dispatcher)
+        try {
+            reporter.setConsent(true);store.failOutboxWrite=true
+            assertTrue(reporter.capture(event()));assertTrue(reporter.capture(event()));runCurrent()
+            assertEquals(1,reporter.status.pendingCount);assertTrue(transport.bodies.isEmpty())
+            store.unreadableRevocation=true
+            assertTrue(runCatching {reporter.load(forceRead=true)}.isFailure)
+            store.unreadableRevocation=false;store.failOutboxWrite=false
+            reporter.close()
+            val reopened=makeReporter(store,transport,ScheduledClock(testScheduler),dispatcher)
+            try {
+                reopened.load();reopened.flush()
+                assertEquals("Closing an unread same-grant owner must publish its accepted memory",1,transport.bodies.size)
+                assertEquals(2,transport.bodies.single().getValue("props").jsonObject.getValue("occurrences").jsonPrimitive.int)
+            } finally {reopened.close()}
+        } finally {store.unreadableRevocation=false;store.failOutboxWrite=false;reporter.close()}
+    }
+    @Test fun closeAfterUnreadConsentCannotResurrectAcknowledgedDiskRecords()=runTest {
+        val store=Store();val transport=Transport().apply {code=204}
+        val dispatcher=StandardTestDispatcher(testScheduler)
+        val reporter=makeReporter(store,transport,ScheduledClock(testScheduler),dispatcher)
+        try {
+            reporter.setConsent(true);store.blockedRemoves.add("outbox.json")
+            assertTrue(reporter.capture(event()));runCurrent()
+            assertEquals(1,transport.bodies.size);assertTrue(store.files.containsKey("outbox.json"))
+            store.unreadableRevocation=true
+            assertTrue(runCatching {reporter.load(forceRead=true)}.isFailure)
+            store.unreadableRevocation=false;store.blockedRemoves.clear()
+            reporter.close()
+            val reopened=makeReporter(store,transport,ScheduledClock(testScheduler),dispatcher)
+            try {
+                reopened.load();reopened.flush()
+                assertEquals("Shutdown must preserve the authoritative ACK removal",1,transport.bodies.size)
+                assertFalse(store.files.containsKey("outbox.json"))
+            } finally {reopened.close()}
+        } finally {store.unreadableRevocation=false;store.blockedRemoves.clear();reporter.close()}
+    }
+
 }

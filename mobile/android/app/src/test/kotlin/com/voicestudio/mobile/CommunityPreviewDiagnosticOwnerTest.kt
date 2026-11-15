@@ -38,7 +38,7 @@ import java.util.concurrent.TimeUnit
 @Config(sdk=[34],application=Application::class)
 class CommunityPreviewDiagnosticOwnerTest {
     @get:Rule val compose=createComposeRule()
-    private fun preview(startEnabled:Boolean,changeGrant:Boolean,expected:Int)=runBlocking {
+    private fun preview(startEnabled:Boolean,changeGrant:Boolean,expected:Int,readyBeforeAutoplay:Boolean=false)=runBlocking {
         val app=ApplicationProvider.getApplicationContext<Application>()
         WorkManagerTestInitHelper.initializeTestWorkManager(app)
         val directory=Files.createTempDirectory("gallery-preview-owner").toFile()
@@ -74,6 +74,13 @@ class CommunityPreviewDiagnosticOwnerTest {
         File(galleryRoot,"manifest.json").writeText(manifest,Charsets.UTF_8)
         val gallery=CommunityGallery(galleryRoot,client)
         val player=mock(Player::class.java)
+        if(readyBeforeAutoplay) doAnswer {
+            // A cache-backed player may become READY during prepare, before
+            // Compose launches the automatic play request from the same click.
+            val listener=mockingDetails(player).invocations.last {it.method.name=="addListener"}.arguments[0] as Player.Listener
+            listener.onPlaybackStateChanged(Player.STATE_READY)
+            null
+        }.`when`(player).prepare()
         try {
             if(startEnabled)reporter.setConsent(true)
             compose.setContent {
@@ -126,4 +133,7 @@ class CommunityPreviewDiagnosticOwnerTest {
     @Test fun previewStartedOffCannotBorrowLaterOptIn()=preview(false,true,0)
     @Test fun previewCannotBorrowReplacementGrant()=preview(true,true,0)
     @Test fun sameGrantPreviewStillReports()=preview(true,false,1)
+    @Test fun readyPreviewStartedOffCannotBorrowAutoplayGrant()=preview(false,true,0,true)
+    @Test fun readyPreviewCannotBorrowAutoplayReplacementGrant()=preview(true,true,0,true)
+
 }

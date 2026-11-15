@@ -845,7 +845,8 @@ class DiagnosticReports(
                     // worker's scope, even when its retry deadline is later.
                     persistRevocation(synchronized(stateLock){sequence},consent!=null,explicit=revocationPending || blocked)
                 }else consent?.let {
-                    if(!loaded) {restoreOutbox(it.epoch);loaded=true}
+                    if(!outboxLoaded) {restoreOutbox(it.epoch);outboxLoaded=true}
+                    loaded=true
                     drain(it.epoch);persist()
                 }
             } }
