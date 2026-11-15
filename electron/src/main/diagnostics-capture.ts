@@ -134,12 +134,12 @@ export function installDiagnosticProcessCapture(
     // Strict-mode rejection escalation has no Promise argument. The local
     // journal still records it; this hook cannot manufacture its permission.
     if (origin === 'unhandledRejection') return;
-    const owner = diagnosticOperationOwner(reports);
+    const owner = diagnosticOperationOwner(reports, error);
     if (!owner || owner.epoch === null) return;
     capture(error, 'unhandled_exception', owner.epoch);
   };
   const rejected = (error: unknown, promise?: Promise<unknown>) => {
-    const epoch = diagnosticRejectionEpoch(promise, reports);
+    const epoch = diagnosticRejectionEpoch(promise, reports, error);
     if (epoch !== null) capture(error, 'unhandled_rejection', epoch);
   };
   source.on('uncaughtExceptionMonitor', fatal);

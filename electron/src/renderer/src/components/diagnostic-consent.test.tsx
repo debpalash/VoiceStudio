@@ -2,7 +2,13 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 const mock = vi.hoisted(() => ({
-  state: { enabled: false, opted_in: false, available: true, prompted: false },
+  state: {
+    enabled: false,
+    opted_in: false,
+    available: true,
+    prompted: false,
+    grant_epoch: null as string | null,
+  },
   capture: vi.fn(async () => {}),
   save: vi.fn(),
   read: vi.fn(),
@@ -29,10 +35,22 @@ let setDiagnosticConsent: typeof import('@/lib/diagnostic-reports').setDiagnosti
 beforeEach(async () => {
   vi.resetModules();
   vi.clearAllMocks();
-  mock.state = { enabled: false, opted_in: false, available: true, prompted: false };
+  mock.state = {
+    enabled: false,
+    opted_in: false,
+    available: true,
+    prompted: false,
+    grant_epoch: null,
+  };
   mock.read.mockImplementation(async () => mock.state);
   mock.save.mockImplementation(async (enabled: boolean) => {
-    mock.state = { ...mock.state, enabled, opted_in: enabled, prompted: true };
+    mock.state = {
+      ...mock.state,
+      enabled,
+      opted_in: enabled,
+      prompted: true,
+      grant_epoch: enabled ? 'a'.repeat(32) : null,
+    };
     return mock.state;
   });
   ({ DiagnosticConsent, DiagnosticPrivacySetting } = await import('./diagnostic-consent'));
@@ -86,8 +104,17 @@ it('a failed Yes keeps collection off and the choice retryable', async () => {
 });
 
 it('Privacy withdraws collection immediately before its save completes', async () => {
-  mock.state = { enabled: true, opted_in: true, available: true, prompted: true };
+  mock.state = {
+    enabled: true,
+    opted_in: true,
+    available: true,
+    prompted: true,
+    grant_epoch: 'a'.repeat(32),
+  };
   await setDiagnosticConsent(true);
+  captureDiagnosticException(new TypeError('fixture'), 'renderer_crash', 'render');
+  await waitFor(() => expect(mock.capture).toHaveBeenCalledOnce());
+  mock.capture.mockClear();
   let finish!: (value: typeof mock.state) => void;
   mock.save.mockImplementation(
     () =>
@@ -102,7 +129,7 @@ it('Privacy withdraws collection immediately before its save completes', async (
   await waitFor(() => expect(toggle).not.toBeChecked());
   captureDiagnosticException(new Error('private text'), 'renderer_crash', 'render');
   expect(mock.capture).not.toHaveBeenCalled();
-  finish({ enabled: false, opted_in: false, available: true, prompted: true });
+  finish({ enabled: false, opted_in: false, available: true, prompted: true, grant_epoch: null });
   await waitFor(() => expect(toggle).toBeEnabled());
 });
 
@@ -118,12 +145,17 @@ it('keeps an off control available after Yes while the backend is unavailable', 
 
 it('Retry persists a failed withdrawal instead of merely reading old consent', async () => {
   await setDiagnosticConsent(true);
+  captureDiagnosticException(new TypeError('fixture'), 'renderer_crash', 'render');
+  await waitFor(() => expect(mock.capture).toHaveBeenCalledOnce());
+  mock.capture.mockClear();
   mock.save.mockClear().mockRejectedValueOnce(new Error('disk full'));
   render(<DiagnosticPrivacySetting />);
   const toggle = screen.getByRole('switch', { name: 'diagnostics.title' });
   await waitFor(() => expect(toggle).toBeChecked());
   fireEvent.click(toggle);
   await screen.findByRole('alert');
+  captureDiagnosticException(new Error('withdrawn fixture'), 'renderer_crash', 'render');
+  expect(mock.capture).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'common.retry' }));
   await waitFor(() => expect(mock.save).toHaveBeenCalledTimes(2));
   expect(mock.save).toHaveBeenNthCalledWith(1, false);

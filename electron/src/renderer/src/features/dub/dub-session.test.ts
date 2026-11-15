@@ -1,18 +1,32 @@
 import { translationActivity } from './translation-activity';
 import { ingestDubUrl, isDubUrl } from './dub-session';
-import { expect, it, vi } from 'vitest';
+import { beforeEach, expect, it, vi } from 'vitest';
 import { toast } from 'sonner';
 import { apiJson } from '@/lib/api/client';
 import { consumeTaskStream, IncompleteTaskStreamError } from '@/lib/api/event-stream';
 const diagnosticCapture = vi.hoisted(() => vi.fn());
+const preparedCapture = vi.hoisted(() => vi.fn());
+const diagnosticGrant = vi.hoisted(() => ({
+  active: false,
+  observation: { revision: 1, observedAtMs: 1, grantEpoch: 'a'.repeat(32) },
+}));
 vi.mock('@/lib/diagnostic-reports', () => ({
   captureDiagnosticException: diagnosticCapture,
-  prepareDiagnosticException: () => null,
-  capturePreparedDiagnostic: vi.fn(),
+  prepareDiagnosticException: (_error: unknown, category: string, stage: string) =>
+    diagnosticGrant.active
+      ? { input: { category, stage, source: 'renderer' }, observation: diagnosticGrant.observation }
+      : null,
+  capturePreparedDiagnostic: preparedCapture,
   initializeDiagnosticReporting: vi.fn(),
-  observeDiagnosticConsent: () => null,
-  diagnosticConsentStillCurrent: () => false,
+  observeDiagnosticConsent: () => (diagnosticGrant.active ? diagnosticGrant.observation : null),
+  diagnosticConsentStillCurrent: (observation: unknown) =>
+    diagnosticGrant.active && observation === diagnosticGrant.observation,
 }));
+beforeEach(() => {
+  diagnosticGrant.active = false;
+  diagnosticCapture.mockClear();
+  preparedCapture.mockClear();
+});
 import {
   applyDubTranslationRows,
   replaceDubSegmentTexts,
@@ -692,6 +706,7 @@ it('preserves a disconnected generation and blocks edits and duplicate generatio
   expect(apiJson).toHaveBeenCalledTimes(1);
 });
 it('a terminal backend failure releases recovery instead of trapping the draft', async () => {
+  diagnosticGrant.active = true;
   diagnosticCapture.mockClear();
   dubSession.setState((current) => ({
     ...current,
@@ -701,7 +716,13 @@ it('a terminal backend failure releases recovery instead of trapping the draft',
     phase: 'editing',
     segments: [{ id: '1', start: 0, end: 2, text: 'Hello', text_original: 'Hello' }],
   }));
-  vi.mocked(apiJson).mockResolvedValueOnce({ status: 'error' });
+  vi.mocked(apiJson)
+    .mockResolvedValueOnce({ status: 'error' })
+    .mockResolvedValueOnce({
+      job: { id: 'diagnostic-task', status: 'error', created_at: 1, updated_at: 2 },
+      events: [],
+      event_watermark: { seq: 1, created_at: 2 },
+    });
   vi.mocked(consumeTaskStream).mockImplementationOnce(async (_path, emit) => {
     emit({ type: 'error', reason: 'fixture failure' });
   });
@@ -713,9 +734,11 @@ it('a terminal backend failure releases recovery instead of trapping the draft',
     error: 'fixture failure',
   });
   expect(diagnosticCapture).not.toHaveBeenCalled();
+  expect(preparedCapture).not.toHaveBeenCalled();
 });
 
 it('does not capture a backend-cancelled dub task as a diagnostic failure', async () => {
+  diagnosticGrant.active = true;
   diagnosticCapture.mockClear();
   dubSession.setState((current) => ({
     ...current,
@@ -724,11 +747,41 @@ it('does not capture a backend-cancelled dub task as a diagnostic failure', asyn
     recovery: 'generating',
     phase: 'editing',
   }));
-  vi.mocked(apiJson).mockResolvedValueOnce({ status: 'cancelled' });
+  vi.mocked(apiJson)
+    .mockResolvedValueOnce({ status: 'cancelled' })
+    .mockResolvedValueOnce({
+      job: { id: 'cancelled-task', status: 'cancelled', created_at: 1, updated_at: 2 },
+      events: [],
+      event_watermark: { seq: 1, created_at: 2 },
+    });
   vi.mocked(consumeTaskStream).mockImplementationOnce(async (_path, emit) => {
     emit({ type: 'cancelled' });
   });
   await resumeDub();
+  expect(diagnosticCapture).not.toHaveBeenCalled();
+  expect(preparedCapture).not.toHaveBeenCalled();
+});
+
+it('reports a fresh submitted terminal failure under the same active diagnostic grant', async () => {
+  diagnosticGrant.active = true;
+  dubSession.setState((current) => ({
+    ...current,
+    jobId: 'fresh-job',
+    taskId: null,
+    recovery: null,
+    phase: 'editing',
+    segments: [{ id: '1', start: 0, end: 2, text: 'Hello', text_original: 'Hello' }],
+  }));
+  vi.mocked(apiJson).mockReset().mockResolvedValueOnce({ task_id: 'fresh-task' });
+  vi.mocked(consumeTaskStream).mockImplementationOnce(async (_path, emit) => {
+    emit({ type: 'error', reason: 'fixture failure' });
+  });
+  await generateDub('English', 'en');
+  await vi.waitFor(() => expect(preparedCapture).toHaveBeenCalledOnce());
+  expect(preparedCapture.mock.calls[0][0]).toMatchObject({
+    input: { category: 'generation_failed', stage: 'dub' },
+    observation: diagnosticGrant.observation,
+  });
   expect(diagnosticCapture).not.toHaveBeenCalled();
 });
 

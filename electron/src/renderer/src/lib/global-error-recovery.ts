@@ -91,10 +91,14 @@ export function runRendererTask(label: string, task: () => void | Promise<void>)
   const observation = observeDiagnosticConsent();
   try {
     const result = task();
-    if (result)
+    if (result) {
+      const owner = taskObservations.has(result)
+        ? (taskObservations.get(result) ?? null)
+        : observation;
       void Promise.resolve(result).catch((error) =>
-        repair(label, error, '', 'renderer:task', true, observation),
+        repair(label, error, '', 'renderer:task', true, owner),
       );
+    }
   } catch (error) {
     repair(label, error, '', 'renderer:task', true, observation);
   }

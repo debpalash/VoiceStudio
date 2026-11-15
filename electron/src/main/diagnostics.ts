@@ -6,6 +6,14 @@ import destinationConfig from '../../../config/analytics.json';
 import type { DiagnosticState } from '../preload/diagnostics';
 import { FILE_RENAME, renameWithRetry } from './rename-retry';
 import {
+  diagnosticAppDestination,
+  diagnosticAppFields,
+  diagnosticAppReply,
+  appPlatform,
+  appArch,
+  type DiagnosticAppDestination,
+} from './diagnostics-app';
+import {
   diagnosticLimit,
   HEX_ID,
   MAX_QUEUE_BYTES,
@@ -30,6 +38,10 @@ export interface DiagnosticsOptions {
   identity: DiagnosticIdentity;
   env?: NodeJS.ProcessEnv;
   destination?: Destination | null;
+  /** Generated app-intake configuration; omitted builds retain the legacy transport. */
+  appConfig?: unknown;
+  /** Local fixed outcomes only; never server text, credentials or event payloads. */
+  onDeliveryResult?: (result: { reason: string; count: number }) => void;
   send?: typeof fetch;
   now?: () => number;
   /** Disable the periodic worker in deterministic tests; flush() runs the same worker. */
@@ -178,6 +190,13 @@ export class DiagnosticReports {
   private control: Promise<unknown> = Promise.resolve();
   private active: AbortController | null = null;
   private activeId: string | null = null;
+  private activeIds = new Set<string>();
+  private appPaused = false;
+  private appSessionRevoked = false;
+  private appSessionSent = false;
+  private appSessionEpoch: string | null = null;
+  private appSessionEvent: { id: string; session_id: string; ts: number } | null = null;
+  private appRunRecordIds = new Set<string>();
   private completionRetryAt = new Map<string, number>();
   private timer?: NodeJS.Timeout;
   private retryAt = 0;
@@ -194,6 +213,7 @@ export class DiagnosticReports {
   private sessionId = id();
   private wakeRetry: (() => void) | null = null;
   private readonly destination: Destination | null;
+  private readonly appDestination: DiagnosticAppDestination | null;
   private readonly env: NodeJS.ProcessEnv;
   private readonly now: () => number;
   private readonly send: typeof fetch;
@@ -207,6 +227,7 @@ export class DiagnosticReports {
     this.env = options.env ?? process.env;
     this.destination =
       options.destination === undefined ? diagnosticDestination(this.env) : options.destination;
+    this.appDestination = diagnosticAppDestination(this.env, options.appConfig);
     this.now = options.now ?? Date.now;
     this.send = options.send ?? fetch;
     this.outbox = join(options.directory, 'outbox.json');
@@ -228,13 +249,13 @@ export class DiagnosticReports {
       this.initialized &&
       Boolean(this.consent?.enabled) &&
       !this.consentReadPending &&
-      Boolean(this.destination) &&
+      Boolean(this.appDestination || this.destination) &&
       !this.killObserved
     );
   }
   status(): DiagnosticState {
     return {
-      available: Boolean(this.destination) && !killed(this.env),
+      available: Boolean(this.appDestination || this.destination) && !killed(this.env),
       enabled: this.enabled,
       opted_in:
         this.initialized &&
@@ -256,6 +277,7 @@ export class DiagnosticReports {
       this.revocationPending = true;
     }
     this.initialized = true;
+    if (this.enabled) this.bindAppSession(this.consent!.epoch);
     if (killed(this.env)) this.killObserved = true;
     if (this.killObserved || this.revocationPending) {
       this.requestRevocation();
@@ -285,7 +307,13 @@ export class DiagnosticReports {
         validConsent(consent) &&
         consent.enabled &&
         (this.consent.epoch !== consent.epoch || this.consent.profile_id !== consent.profile_id);
-      this.consent = validConsent(consent) && !changed ? consent : null;
+      const restored = validConsent(consent) && !changed ? consent : null;
+      if (
+        this.appSessionEpoch !== null &&
+        (!restored?.enabled || restored.epoch !== this.appSessionEpoch)
+      )
+        this.retireAppSession();
+      this.consent = restored;
     } catch (error) {
       if (revision !== this.revision || this.stopped) return false;
       // Absence and proven invalid JSON are not an unread saved choice.
@@ -294,6 +322,7 @@ export class DiagnosticReports {
         this.suspendConsentRead();
         return false;
       }
+      this.retireAppSession();
       this.consent = null;
     }
     this.consentReadPending = false;
@@ -307,6 +336,20 @@ export class DiagnosticReports {
     this.consentReadPending = true;
     this.consentReadRetryAt = this.now() + 60_000;
     this.abort();
+  }
+
+  private bindAppSession(epoch: string): void {
+    if (!this.appDestination?.sessionPings || this.appSessionRevoked) return;
+    if (this.appSessionEpoch === null) this.appSessionEpoch = epoch;
+    else if (this.appSessionEpoch !== epoch) this.retireAppSession();
+  }
+  private retireAppSession(): void {
+    // Initial OFF/absence has no earlier run grant to retire. Temporary IO
+    // failures keep this authority until a successful read proves a change.
+    if (this.appSessionEpoch === null) return;
+    this.appSessionRevoked = true;
+    this.appSessionEvent = null;
+    this.appRunRecordIds.clear();
   }
 
   /** No disk, configuration reads, networking or waiting on fatal/error paths. */
@@ -324,14 +367,22 @@ export class DiagnosticReports {
         source: event.source ?? 'electron_main',
       });
       if (!props) return;
-      this.add({
+      const record: DiagnosticRecord = {
         version: 1,
         id: id(),
         timestamp_ms: this.now(),
         epoch: this.consent.epoch,
         session_id: this.sessionId,
         props,
-      });
+      };
+      this.bindAppSession(this.consent.epoch);
+      this.add(record);
+      if (this.appDestination?.sessionPings && !this.appSessionRevoked) {
+        this.appRunRecordIds.add(record.id);
+        const retained = new Set(this.records.map((item) => item.id));
+        for (const identity of this.appRunRecordIds)
+          if (!retained.has(identity)) this.appRunRecordIds.delete(identity);
+      }
       this.schedule();
     } catch {
       /* Failure reporting must never alter the operation. */
@@ -348,6 +399,9 @@ export class DiagnosticReports {
     }
     if (enabled && this.enabled) return this.status();
     const freshGrant = enabled && (this.killObserved || this.consentReadPending);
+    if (!enabled && this.consent?.enabled) {
+      this.retireAppSession();
+    }
     if (enabled) {
       this.killObserved = false;
       this.killPurged = false;
@@ -441,7 +495,10 @@ export class DiagnosticReports {
         this.initialized = true;
         // Consent is already durable. Optional crash-recovery bookkeeping must
         // not reject the choice while collection remains enabled.
-        if (this.enabled) await this.writeSession().catch(() => {});
+        if (this.enabled) {
+          this.bindAppSession(this.consent!.epoch);
+          await this.writeSession().catch(() => {});
+        }
       });
     await this.control;
     if (revision === this.revision && this.enabled) this.schedule();
@@ -546,6 +603,7 @@ export class DiagnosticReports {
       coalesce &&
       this.records.find(
         (old) =>
+          !this.activeIds.has(old.id) &&
           old.id !== this.activeId &&
           !old.completed &&
           old.props.fingerprint === record.props.fingerprint &&
@@ -571,7 +629,8 @@ export class DiagnosticReports {
       ) > MAX_QUEUE_BYTES
     ) {
       const discard = this.records.findIndex(
-        (record) => !record.completed && record.id !== this.activeId,
+        (record) =>
+          !record.completed && record.id !== this.activeId && !this.activeIds.has(record.id),
       );
       if (discard < 0) break;
       this.records.splice(discard, 1);
@@ -755,6 +814,7 @@ export class DiagnosticReports {
     )
       return true;
     this.revision++;
+    this.retireAppSession();
     this.abort();
     this.records = [];
     this.dirty = false;
@@ -841,7 +901,7 @@ export class DiagnosticReports {
       // Preserve the existing recovery state. An active-read interruption
       // must not reinterpret this process's live marker as a prior crash.
     }
-    if (!this.enabled || !this.consent || !this.destination) return;
+    if (!this.enabled || !this.consent || (!this.destination && !this.appDestination)) return;
     const epoch = this.consent.epoch;
     const revision = this.revision;
     if (!(await this.granted(epoch, revision))) return;
@@ -857,6 +917,11 @@ export class DiagnosticReports {
     if (this.dirty) await this.tryPersist();
     await this.cleanupCompleted(epoch, revision);
     if (this.now() < this.retryAt) return;
+    if (this.appDestination) {
+      await this.deliverAppEvents(epoch, revision);
+      return;
+    }
+    if (!this.destination) return;
     while (await this.granted(epoch, revision)) {
       const next = this.records.findIndex((record) => !record.completed);
       if (next < 0) break;
@@ -937,6 +1002,194 @@ export class DiagnosticReports {
     }
     if (this.dirty && revision === this.revision) await this.tryPersist();
   }
+  private deliveryResult(reason: string, count: number): void {
+    try {
+      this.options.onDeliveryResult?.({ reason, count });
+    } catch {
+      /* Local observers cannot affect delivery. */
+    }
+  }
+
+  private async deliverAppEvents(epoch: string, revision: number): Promise<void> {
+    const destination = this.appDestination;
+    if (!destination || this.appPaused) return;
+    this.bindAppSession(epoch);
+    const current = () =>
+      this.enabled && this.revision === revision && this.consent?.epoch === epoch;
+    while (await this.granted(epoch, revision)) {
+      if (!current() || this.appPaused) return;
+      const pendingSession =
+        destination.sessionPings && !this.appSessionRevoked && !this.appSessionSent;
+      if (pendingSession) this.appSessionEvent ??= { id: id(), session_id: id(), ts: this.now() };
+      const events: Record<string, unknown>[] = [];
+      const identities: (string | null)[] = [];
+      if (pendingSession && this.appSessionEvent) {
+        const identity = sanitizeProperties({
+          ...this.options.identity,
+          category: 'operation_failed',
+          source: 'electron_main',
+        })!;
+        events.push({
+          ...this.appSessionEvent,
+          kind: 'session',
+          install_id: this.consent!.profile_id,
+          ...(identity.app_version ? { release: identity.app_version } : {}),
+          platform: appPlatform(identity.platform),
+          arch: appArch(identity.arch),
+          runtime: 'electron',
+        });
+        identities.push(null);
+      }
+      for (const value of this.records) {
+        if (value.completed) continue;
+        const record = sanitizeRecord(value, epoch, this.now(), true);
+        if (!record) continue;
+        const event = {
+          ...diagnosticAppFields(record.props),
+          id: record.id,
+          ts: record.timestamp_ms,
+          install_id: this.consent!.profile_id,
+          runtime: 'electron',
+          ...(destination.sessionPings &&
+          !this.appSessionRevoked &&
+          this.appRunRecordIds.has(record.id) &&
+          this.appSessionEvent
+            ? { session_id: this.appSessionEvent.session_id }
+            : {}),
+        };
+        if (
+          events.length >= 20 ||
+          Buffer.byteLength(
+            JSON.stringify({ site: destination.appId, events: [...events, event] }),
+          ) > 16_384
+        )
+          break;
+        events.push(event);
+        identities.push(record.id);
+      }
+      if (!events.length) break;
+      // Never deliver a newly accepted failure until its durable replay identity
+      // is committed; an app-session ping itself is intentionally run-local.
+      this.activeIds = new Set(identities.filter((value): value is string => value !== null));
+      this.activeId =
+        identities.find((value) => value !== null) ?? this.appSessionEvent?.id ?? null;
+      if (this.dirty && !(await this.tryPersist())) {
+        this.activeIds.clear();
+        this.activeId = null;
+        return;
+      }
+      let body = JSON.stringify({ site: destination.appId, events });
+      let terminal: number[] = [];
+      attempts: for (let attempt = 0; attempt < diagnosticLimit('max_attempts', 3); attempt++) {
+        // Every pass either prepares the send or removes at least one event.
+        // Reauthorize after persistence, then recheck TTL after that await;
+        // a long first request/backoff must not resend an expired snapshot.
+        while (true) {
+          if (!(await this.granted(epoch, revision)) || !current()) break attempts;
+          const cutoff = this.now() - TTL_MS;
+          const expired = identities.flatMap((identity, index) =>
+            identity !== null && Number(events[index].ts) < cutoff ? [index] : [],
+          );
+          if (!expired.length) break;
+          for (const index of expired.reverse()) {
+            const identity = identities[index]!;
+            this.appRunRecordIds.delete(identity);
+            identities.splice(index, 1);
+            events.splice(index, 1);
+          }
+          this.deliveryResult('too_old', expired.length);
+          this.expireRecords();
+          this.activeIds = new Set(identities.filter((value): value is string => value !== null));
+          this.activeId = identities.find((value) => value !== null) ?? null;
+          if (this.dirty && !(await this.tryPersist())) break attempts;
+          if (!events.length) break attempts;
+          body = JSON.stringify({ site: destination.appId, events });
+        }
+        const controller = new AbortController();
+        this.active = controller;
+        const timer = setTimeout(
+          () => controller.abort(),
+          diagnosticLimit('request_timeout_ms', 2000),
+        );
+        timer.unref();
+        try {
+          const response = await this.send(`${destination.host}/api/public/v1/app-events`, {
+            method: 'POST',
+            body,
+            redirect: 'manual',
+            credentials: 'omit',
+            referrerPolicy: 'no-referrer',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Supermetry-Key': destination.ingestKey,
+              'User-Agent': `VoiceStudio/${this.options.identity.app_version} (${appPlatform(this.options.identity.platform)}; ${appArch(this.options.identity.arch)})`,
+            },
+            signal: controller.signal,
+          });
+          if (response.status === 202) {
+            const reply = await diagnosticAppReply(response, events.length);
+            if (reply) {
+              terminal = reply.terminal;
+              this.deliveryResult(
+                'accepted',
+                terminal.length -
+                  reply.dropped.filter((drop) => drop.reason !== 'rate_limited').length,
+              );
+              for (const reason of ['too_old', 'invalid', 'duplicate', 'rate_limited'] as const) {
+                const count = reply.dropped.filter((drop) => drop.reason === reason).length;
+                if (count) this.deliveryResult(reason, count);
+              }
+              if (reply.warnings) this.deliveryResult('tag_not_allowed', reply.warnings);
+              break;
+            }
+            this.deliveryResult('invalid_response', events.length);
+          } else {
+            await response.body?.cancel().catch(() => {});
+            if (response.status === 401) {
+              this.appPaused = true;
+              this.deliveryResult('unauthorized', events.length);
+              break;
+            }
+            if (response.status === 400) {
+              terminal = events.map((_, index) => index);
+              this.deliveryResult('bad_request', events.length);
+              break;
+            }
+          }
+        } catch {
+          /* Offline or aborted requests preserve the exact batch IDs. */
+        } finally {
+          clearTimeout(timer);
+          this.active = null;
+        }
+        if (!current()) break;
+        if (attempt + 1 < diagnosticLimit('max_attempts', 3))
+          await this.backoff(500 * 2 ** attempt);
+      }
+      this.activeIds.clear();
+      this.activeId = null;
+      if (!current()) return;
+      for (const index of terminal) {
+        const identity = identities[index];
+        if (identity === null) this.appSessionSent = true;
+        else {
+          const record = this.records.find((item) => item.id === identity);
+          if (record) {
+            record.completed = true;
+            this.dirty = true;
+          }
+          this.appRunRecordIds.delete(identity!);
+        }
+      }
+      if (terminal.length) await this.cleanupCompleted(epoch, revision);
+      if (terminal.length !== events.length) {
+        this.retryAt = this.now() + (this.options.retryMs ?? 60_000);
+        break;
+      }
+    }
+    if (this.dirty && current()) await this.tryPersist();
+  }
+
   private async cleanupCompleted(epoch: string, revision: number): Promise<void> {
     const current = () =>
       this.enabled && revision === this.revision && this.consent?.epoch === epoch;
@@ -1031,7 +1284,8 @@ export class DiagnosticReports {
             record.session_id === previousSession &&
             record.props.category === 'app_crash' &&
             record.props.source === 'electron_main' &&
-            (record.props.reason === 'unhandled_exception' || record.props.reason === 'unclean_exit') &&
+            (record.props.reason === 'unhandled_exception' ||
+              record.props.reason === 'unclean_exit') &&
             record.props.app_version === previousVersion,
         )
       )

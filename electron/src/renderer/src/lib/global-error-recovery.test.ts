@@ -413,3 +413,55 @@ it.each(['off-on', 'regrant', 'same-grant'] as const)(
     expect(diagnosticCapture).toHaveBeenCalledOnce();
   },
 );
+
+it.each(['off-on', 'regrant', 'same-grant'] as const)(
+  'uses the first owner when runRendererTask receives a known promise: %s',
+  async (transition) => {
+    let enabled = transition !== 'off-on',
+      epoch = 1;
+    const status = () => ({
+      enabled,
+      opted_in: enabled,
+      available: true,
+      prompted: true,
+      grant_epoch: enabled ? epoch.toString(16).padStart(32, '0') : null,
+    });
+    Object.assign(window, {
+      voicestudio: {
+        diagnostics: {
+          getStatus: async () => status(),
+          capture: diagnosticCapture,
+          setConsent: async (choice: boolean) => {
+            enabled = choice;
+            if (choice) epoch++;
+            return status();
+          },
+        },
+      },
+    });
+    const diagnostics = await import('./diagnostic-reports');
+    const recovery = await import('./global-error-recovery');
+    await diagnostics.refreshDiagnosticState();
+    let reject!: (error: Error) => void;
+    const original = recovery.rendererTask(
+      () =>
+        new Promise<void>((_, fail) => {
+          reject = fail;
+        }),
+    );
+    if (transition !== 'same-grant') {
+      await diagnostics.setDiagnosticConsent(false);
+      await diagnostics.setDiagnosticConsent(true);
+    }
+    recovery.runRendererTask('Known previous operation', () => original);
+    reject(new Error('PRIVATE_OLD_FAULT'));
+    await vi.waitFor(() => expect(captureException).toHaveBeenCalledOnce());
+    expect(diagnosticCapture).toHaveBeenCalledTimes(transition === 'same-grant' ? 1 : 0);
+    diagnosticCapture.mockClear();
+    recovery.runRendererTask('Fresh operation', () =>
+      Promise.reject(new TypeError('PRIVATE_NEW_FAULT')),
+    );
+    await vi.waitFor(() => expect(captureException).toHaveBeenCalledTimes(2));
+    expect(diagnosticCapture).toHaveBeenCalledOnce();
+  },
+);
