@@ -8,7 +8,7 @@ import pytest
 @pytest.fixture
 def destination_reporter(monkeypatch, tmp_path):
     reports = importlib.import_module('core.diagnostic_reports')
-    from core import analytics, analytics_transport, config, prefs
+    from core import analytics, analytics_transport, config, prefs, diagnostic_app_transport
     for key in ('OMNIVOICE_DIAGNOSTICS_DIR', 'OMNIVOICE_DIAGNOSTICS_DISABLED', 'OMNIVOICE_ANALYTICS_DISABLED'):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setattr(config, 'DATA_DIR', str(tmp_path))
@@ -23,6 +23,7 @@ def destination_reporter(monkeypatch, tmp_path):
             pass
     monkeypatch.setattr(analytics_transport, 'SupermetryTransport', Transport)
     monkeypatch.setattr(analytics, '_destination', lambda: {})
+    monkeypatch.setattr(diagnostic_app_transport, 'app_destination', lambda: {})
     reporter = reports.Reporter()
     reporter.schema = reports._schema()
     yield reporter, transports

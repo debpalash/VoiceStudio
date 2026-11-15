@@ -13,13 +13,14 @@ import pytest
 @pytest.fixture
 def reporter(monkeypatch,tmp_path):
     reports = importlib.import_module("core.diagnostic_reports")
-    from core import prefs,config,analytics
+    from core import prefs,config,analytics,diagnostic_app_transport
     monkeypatch.delenv('OMNIVOICE_DIAGNOSTICS_DIR',raising=False)
     monkeypatch.delenv('OMNIVOICE_DIAGNOSTICS_DISABLED',raising=False)
     monkeypatch.delenv('OMNIVOICE_ANALYTICS_DISABLED',raising=False)
     monkeypatch.setattr(prefs,'_PREFS_PATH',str(tmp_path/'prefs.json'))
     monkeypatch.setattr(config,'DATA_DIR',str(tmp_path))
     monkeypatch.setattr(analytics,'_destination',lambda:{})
+    monkeypatch.setattr(diagnostic_app_transport,'app_destination',lambda:{})
     instance=reports.Reporter()
     instance.schema=reports._schema()
     monkeypatch.setattr(reports,'_reporter',instance)
@@ -30,6 +31,34 @@ def reporter(monkeypatch,tmp_path):
 def records(reporter):
     reporter._tick()
     return [json.loads(path.read_text(encoding='utf-8')) for path in reporter.directory.glob('*.json')]
+
+
+def test_fixture_cannot_deliver_to_ambient_app_intake_configuration(reporter, monkeypatch):
+    transport = importlib.import_module('core.diagnostic_app_transport')
+    attempted = []
+
+    class UnexpectedTransport:
+        def __init__(self, destination, *_args, **_kwargs):
+            self.destination = destination
+            self.paused = False
+            attempted.append('created')
+        def capture(self, *_args, **_kwargs):
+            attempted.append('captured')
+            return False
+        def shutdown(self):
+            pass
+
+    # Never contact even this fixture host. A local developer's real runtime
+    # or packaged configuration must be isolated by the shared reporter fixture.
+    monkeypatch.setenv('SUPERMETRY_APP_ID', 'ambient123')
+    monkeypatch.setenv('SUPERMETRY_INGEST_KEY', 'smk_' + 'a' * 39)
+    monkeypatch.setenv('SUPERMETRY_APP_HOST', 'https://ambient.invalid')
+    monkeypatch.setattr(transport, 'AppDiagnosticTransport', UnexpectedTransport)
+    reporter.consent(True)
+    reporter.capture('engine_failed')
+    reporter._tick()
+    assert attempted == []
+    assert reporter.transport is None
 
 
 def test_analytics_consent_does_not_enable_diagnostics(reporter):

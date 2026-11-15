@@ -16,7 +16,7 @@ import pytest
 @pytest.fixture
 def session_reporter(monkeypatch, tmp_path):
     reports = importlib.import_module('core.diagnostic_reports')
-    from core import analytics, config, prefs, run_sentinel, version
+    from core import analytics, config, prefs, run_sentinel, version, diagnostic_app_transport
     monkeypatch.delenv('OMNIVOICE_DIAGNOSTICS_DIR', raising=False)
     monkeypatch.delenv('OMNIVOICE_DIAGNOSTICS_DISABLED', raising=False)
     monkeypatch.delenv('OMNIVOICE_ANALYTICS_DISABLED', raising=False)
@@ -25,6 +25,7 @@ def session_reporter(monkeypatch, tmp_path):
     monkeypatch.setattr(prefs, '_PREFS_PATH', str(tmp_path / 'prefs.json'))
     monkeypatch.setattr(config, 'DATA_DIR', str(tmp_path))
     monkeypatch.setattr(analytics, '_destination', lambda: {})
+    monkeypatch.setattr(diagnostic_app_transport, 'app_destination', lambda: {})
     monkeypatch.setattr(run_sentinel, '_previous_run_alive', lambda *_: False)
     monkeypatch.setattr(version, 'APP_VERSION', '0.5.8-beta.1')
     instance = reports.Reporter()
