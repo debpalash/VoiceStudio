@@ -55,8 +55,9 @@ guarantee delivery; eligible crash summaries can be recovered on a later launch.
 Packaged builds configured with an app ID and write-only ingest key send failure
 reports to Supermetry's app intake (`/api/public/v1/app-events`). The key identifies
 the application, never the user, and cannot read reports. It ships in the app's
-private build metadata; it is never committed, logged, or included in stored
-reports. The default host remains `https://app.supermetry.com` from
+private build metadata; it is never committed, logged by the app, or included in
+stored reports. Because it is write-only and ships in every build, it is not
+treated as a secret: when read from a repository variable, CI build logs may show it. The default host remains `https://app.supermetry.com` from
 `config/analytics.json`. A separately configured `SUPERMETRY_APP_HOST` selects
 an operator's instance. The owner-configured packaged destination is
 `https://app.voicestudio.sh/api/public/v1/app-events`, owner-set
