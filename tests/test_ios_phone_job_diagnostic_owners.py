@@ -5,7 +5,7 @@ background entitlements, simulator behavior, native inference, or model executio
 """
 from __future__ import annotations
 
-import json
+import base64
 import os
 from pathlib import Path
 import platform
@@ -17,6 +17,39 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURES = ROOT / "tests/fixtures/ios-phone-job-diagnostics"
 pytestmark = pytest.mark.skipif(platform.system() != "Darwin", reason="The app adapter uses Apple's MetricKit module")
+
+
+def _swift_path_literal(value):
+    # JSON's Unicode, backspace and form-feed escapes are not Swift escapes.
+    escapes = {'"': '\\"', '\\': '\\\\', '\n': '\\n', '\r': '\\r', '\t': '\\t'}
+    pieces = []
+    for character in value:
+        if character in escapes:
+            pieces.append(escapes[character])
+        elif ord(character) < 0x20 or 0x7f <= ord(character) <= 0x9f or character in '\u2028\u2029':
+            pieces.append(f'\\u{{{ord(character):x}}}')
+        else:
+            pieces.append(character)
+    return '"' + ''.join(pieces) + '"'
+
+
+@pytest.mark.parametrize("value", [
+    "a café/😀/VoiceStudioKit",
+    'quotes"and\\backslash/VoiceStudioKit',
+    "control\x00\b\f\n\r\t\x1f\x7f/VoiceStudioKit",
+    "literal \\u00e9 \\n \\(notInterpolation)/VoiceStudioKit",
+])
+def test_swift_path_literal_roundtrips_through_the_actual_compiler(tmp_path, value):
+    source = tmp_path / "literal.swift"
+    executable = tmp_path / "literal-proof"
+    source.write_text("import Foundation\nlet value = " + _swift_path_literal(value)
+        + "\nprint(Data(value.utf8).base64EncodedString())\n", encoding="utf-8")
+    compile_result = subprocess.run([shutil.which("swiftc"), str(source), "-o", str(executable)],
+        capture_output=True, text=True, timeout=60)
+    assert compile_result.returncode == 0, compile_result.stdout + compile_result.stderr
+    result = subprocess.run([str(executable)], capture_output=True, text=True, timeout=15)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == base64.b64encode(value.encode("utf-8")).decode("ascii")
 
 
 def test_actual_phone_job_cpu_handoff_keeps_original_diagnostic_consent(tmp_path):
@@ -34,7 +67,7 @@ def test_actual_phone_job_cpu_handoff_keeps_original_diagnostic_consent(tmp_path
         shutil.copyfile(original, copied)
         assert copied.read_bytes() == original.read_bytes(), "Production Swift must be tested unchanged"
     shutil.copyfile(FIXTURES / "PhoneJobDiagnosticTests.swift", sources / "PhoneJobDiagnosticTests.swift")
-    kit = json.dumps(str(ROOT / "mobile/ios/VoiceStudioKit"))
+    kit = _swift_path_literal(str(ROOT / "mobile/ios/VoiceStudioKit"))
     (package / "Package.swift").write_text("""// swift-tools-version: 6.0
 import PackageDescription
 let package = Package(name: "PhoneJobDiagnosticProof", platforms: [.macOS(.v14)],
