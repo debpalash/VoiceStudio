@@ -148,6 +148,9 @@ installed revisions are not deleted, revoked or deemed accepted by this change.
   and `target: local`. It rechecks the current plan, stores the local receipt
   before transfer and verifies every downloaded file. It does not call the
   ordinary model installer or SDK fallback.
+  Both endpoints require an authenticated consumer, the same gate as
+  `POST /models/install`; on the desktop build that means the app's own
+  loopback process.
 - `GET /models/licenses/receipts/{plan_digest}` exports an existing local
   receipt with its archived evidence, without network access. Responses are
   `no-store` and subject to the app's browser-origin protections.
