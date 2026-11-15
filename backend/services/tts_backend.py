@@ -598,6 +598,7 @@ class TTSBackend(ABC):
             **resolve_routing(
                 gpu_compat, caps, min_vram_gb,
                 parent_torch=uses_parent_torch(cls),
+                parent_process=not getattr(cls, "_is_subprocess_isolated", False),
             ),
             "runtime_backend": None,
             "runtime_device_index": None,
@@ -4492,6 +4493,7 @@ def list_backends(*, include_hidden: bool = False) -> list[dict]:
                 **resolve_routing(
                     compat, caps, floor,
                     parent_torch=uses_parent_torch(cls),
+                    parent_process=not getattr(cls, "_is_subprocess_isolated", False),
                 ),
                 "runtime_backend": None,
                 "runtime_device_index": None,

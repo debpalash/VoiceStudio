@@ -644,7 +644,22 @@ def preflight():
     # ── GPU
     gpu = _detect_gpu()
     legacy_gpu = False
-    if gpu["vendor"] == "apple" and gpu["available"]:
+    from core.device_caps import cuda_forced
+    from core.gpu_self_test import failure_reason
+
+    gpu_failure = (
+        failure_reason()
+        if gpu["available"] and gpu["backend"] in ("cuda", "rocm")
+        else None
+    )
+    if gpu_failure is not None:
+        gpu_status = "warn"
+        gpu_detail = f"{gpu['device_name'] or 'GPU'} — {gpu_failure} " + (
+            "GPU use is explicitly forced by OMNIVOICE_FORCE_CUDA."
+            if cuda_forced() else "In-process PyTorch engines are running on CPU."
+        )
+        gpu_fix = "Update your GPU driver and restart the app, or choose CPU (slower)."
+    elif gpu["vendor"] == "apple" and gpu["available"]:
         gpu_status, gpu_fix = "pass", None
         gpu_detail = f"{gpu['device_name']} — Metal (MPS) ready"
     elif gpu["vendor"] == "nvidia" and gpu["available"] and gpu.get("kernels_missing"):
