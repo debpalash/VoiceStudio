@@ -15,6 +15,8 @@ vi.mock('@/hooks/use-backend-status', () => ({
 }));
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import type { NativeCrashRecord } from '../../../preload/index.d';
+import { nativeFaultSummary } from '@shared/utils/crashReport';
 import { addBreadcrumb, clearBreadcrumbs } from '@shared/utils/breadcrumbs';
 import {
   _resetBackendContactForTests,
@@ -190,6 +192,153 @@ it('includes the durable native crash journal when the backend API is unavailabl
   expect(body).toContain('Exit code: 23');
   expect(body).toContain('Uptime (seconds): 4');
   expect(body).toContain('durable native failure');
+});
+
+it.each([false, true])(
+  'keeps the actual journal faulting thread ahead of verbose exit tails (error prop: %s)',
+  async (withError) => {
+    // Exercise real Node-owned journal/storage code through the test runner's
+    // fixture loader, without importing it into the browser TypeScript project.
+    const { mkdtempSync, rmSync } = await vi.importActual<{
+      mkdtempSync(prefix: string): string;
+      rmSync(path: string, options: { recursive: boolean; force: boolean }): void;
+    }>('node:fs');
+    const { tmpdir } = await vi.importActual<{ tmpdir(): string }>('node:os');
+    const { join } = await vi.importActual<{ join(...parts: string[]): string }>('node:path');
+    const { CrashJournal } = await vi.importActual<{
+      CrashJournal: new (
+        path: string,
+        version: string,
+      ) => {
+        startProcess(): void;
+        captureLine(line: string): void;
+        record(
+          exitCode: number,
+          signal: null,
+          uptimeMs: number,
+          logTail: string[],
+        ): NativeCrashRecord | undefined;
+        latest(): NativeCrashRecord | undefined;
+      };
+    }>('../../../main/crash-journal');
+    const directory = mkdtempSync(join(tmpdir(), 'native-report-context-'));
+    try {
+      const journal = new CrashJournal(join(directory, 'crashes.json'), '0.5.8');
+      journal.startProcess();
+      journal.captureLine(
+        'VOICESTUDIO_CRASH_CONTEXT=' +
+          JSON.stringify({
+            kind: 'model_load',
+            engine: 'omnivoice',
+            device: 'cpu',
+            ram_total_gb: 32,
+            ram_free_gb: 8,
+          }),
+      );
+      const prefix = String.raw`C:\Users\private-user\VoiceStudio\runtime\project`;
+      const dump = [
+        'Windows fatal exception: access violation',
+        'Thread 0x111 (most recent call first):',
+        `  File "${prefix}\\.venv\\Lib\\threading.py", line 324 in wait`,
+        'Current thread 0x222 (most recent call first):',
+        `  File "${prefix}\\.venv\\Lib\\site-packages\\torch\\storage.py", line 468 in __getitem__`,
+        `  File "${prefix}\\.venv\\Lib\\site-packages\\transformers\\core_model_loading.py", line 186 in _materialize_copy`,
+        `  File "${prefix}\\omnivoice\\models\\omnivoice.py", line 583 in from_pretrained`,
+        `  File "${prefix}\\backend\\services\\model_manager.py", line 1607 in _load_model_sync`,
+        ...Array.from({ length: 30 }, (_, index) => [
+          `Thread 0x${index + 300} (most recent call first):`,
+          `  File "${prefix}\\.venv\\Lib\\threading.py", line 324 in wait`,
+          `  File "${prefix}\\.venv\\Lib\\site-packages\\uvicorn\\server.py", line 77 in run`,
+          `  File "${prefix}\\.venv\\Lib\\asyncio\\runners.py", line 190 in run`,
+        ]).flat(),
+        'Extension modules: torch._C, numpy.core',
+      ];
+      for (const line of dump) journal.captureLine(line);
+      const lastCrash = journal.record(0xc0000005, null, 120_000, dump)!;
+      const restored = new CrashJournal(join(directory, 'crashes.json'), '0.5.8').latest()!;
+      expect(restored).toEqual(lastCrash);
+      expect(restored.logTail.join('\n')).toContain('_materialize_copy');
+      // The supervisor's existing failure message quotes only the newest20
+      // stderr lines, whereas the durable journal already keeps the fault first.
+      const tail = dump.slice(-20).join('\n').slice(-3000);
+      expect(tail).not.toContain('_materialize_copy');
+      const message = `Backend exited unexpectedly (exit code 3221225477). Last output: ${nativeFaultSummary(restored.logTail.join('\n'))}\nLast stderr:\n${tail}`;
+      mock.backendStatus.mockResolvedValue({
+        stage: 'crashed',
+        managed: true,
+        remote: false,
+        exitCode: 0xc0000005,
+        message,
+        logTail: dump.slice(-40),
+        lastCrash: restored,
+        failure: { code: 'NATIVE_ACCESS_VIOLATION', stage: 'crashed', exitCode: 0xc0000005 },
+      });
+      mock.api.mockImplementation((path: string) =>
+        Promise.resolve(
+          path === '/system/info'
+            ? { platform: 'win32', arch: 'x64', device: 'cpu', ram_total_gb: 32 }
+            : path === '/engines'
+              ? { tts: { active: 'omnivoice' } }
+              : path.startsWith('/system/logs')
+                ? { lines: dump.slice(-40) }
+                : {},
+        ),
+      );
+      render(<ReportBug error={withError ? message : undefined} />);
+      await submitReport('Local engine stops while loading');
+      await waitFor(() => expect(mock.open).toHaveBeenCalledTimes(1));
+      const url = new URL(mock.open.mock.calls[0]![0]);
+      const body = url.searchParams.get('body')!;
+      expect(body).toContain('Current thread 0x222');
+      expect(body).toContain('transformers/core_model_loading.py');
+      expect(body).toContain('_materialize_copy');
+      expect(body).toContain('from_pretrained');
+      expect(body).toContain('NATIVE_ACCESS_VIOLATION');
+      expect(body).toContain('Version: 0.5.8');
+      expect(body).toContain('Device: cpu');
+      expect(body).toContain('**App:** VoiceStudio');
+      expect(body.indexOf('_materialize_copy')).toBeLessThan(
+        body.indexOf('## Current backend failure'),
+      );
+      expect(body).not.toContain('private-user');
+      expect(url.toString().length).toBeLessThan(8000);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  },
+);
+
+it('retains ordinary error, environment and failure section ordering', async () => {
+  mock.api.mockResolvedValue({});
+  mock.backendStatus.mockResolvedValue({
+    stage: 'crashed',
+    managed: true,
+    remote: false,
+    exitCode: 1,
+    message: 'ordinary failure',
+    logTail: ['ordinary traceback'],
+    lastCrash: {
+      timestamp: 1000000,
+      version: '0.5.8',
+      exitCode: 1,
+      signal: null,
+      uptimeMs: 1000,
+      logTail: ['previous ordinary traceback'],
+    },
+  });
+  render(<ReportBug error="Current ordinary error" />);
+  await submitReport();
+  await waitFor(() => expect(mock.open).toHaveBeenCalledTimes(1));
+  const body = new URL(mock.open.mock.calls[0]![0]).searchParams.get('body')!;
+  const sections = [
+    '## Error',
+    '## Environment',
+    '## Current backend failure',
+    '## Last native backend exit',
+  ];
+  expect(sections.map((section) => body.indexOf(section))).toEqual(
+    [...sections.map((section) => body.indexOf(section))].sort((a, b) => a - b),
+  );
 });
 
 it('names the exact build, not just the version', async () => {
