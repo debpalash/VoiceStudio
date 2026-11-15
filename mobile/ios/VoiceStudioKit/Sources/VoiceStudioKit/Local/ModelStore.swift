@@ -381,9 +381,14 @@ public actor ModelStore {
                         }
                         lastFailure = URLError(.badServerResponse)
                         if reply.status == 429 { sourceCooldowns[host] = Date().addingTimeInterval(Double(min(3600,max(1,retryAfter ?? 1)))) ; break }
-                    } else { throw ClientError("mobile.local.download_failed") }
+                    } else {
+                        let failure = ClientError("mobile.local.download_failed")
+                        if reply.origin == .recovered { throw HistoricalModelDownloadFailure(failure) }
+                        throw failure
+                    }
                 } catch is ModelRangeUnsupported { throw ModelRangeUnsupported() }
                 catch is CancellationError { throw CancellationError() }
+                catch let error as HistoricalModelDownloadFailure { if lastFailure == nil { lastFailure = error }; permanent.insert(host) }
                 catch let error as ClientError { if lastFailure == nil { lastFailure = error }; permanent.insert(host) }
                 catch { if Task.isCancelled { throw CancellationError() }; lastFailure = error }
             }
