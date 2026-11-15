@@ -104,6 +104,7 @@ metadata and the backend fallback mirror it.
 
 ### CI
 
+- Release workflows read Supermetry app-intake settings from repository variables, with secrets as fallback (#4204)
 - Fixed Android screenshot capture waiting behind the optional error-report prompt (#4202) — thanks @velixio!
 - Keep iOS voice-search and download checks reliable across saved model choices (#4171)
 - The iPhone smoke test waits for typed text to reach the editor instead of reading it once, removing a CI flake (#4100)
@@ -113,7 +114,7 @@ metadata and the backend fallback mirror it.
 - Removed unused scripts, the old Tauri MSI tooling and leftover Turborepo ignore lines (#4046)
 - Accessibility smoke timeouts now name the requests still pending, so a flaky CI failure points at its cause (#4036)
 
-## [0.5.9-beta.4] — 2026-11-16
+## [0.5.9-beta.5] — 2026-11-16
 
 This beta adds separately opted-in automatic error reports, so failures can reach the maintainers without a manual bug report. Reports stay off unless you allow them, and never include audio, text, files, names, credentials or logs.
 
@@ -147,6 +148,7 @@ This beta adds separately opted-in automatic error reports, so failures can reac
 
 ### CI
 
+- Release workflows read Supermetry app-intake settings from repository variables, with secrets as fallback (#4204)
 - Fixed Android screenshot capture waiting behind the optional error-report prompt (#4202) — thanks @velixio!
 - Keep iOS voice-search and download checks reliable across saved model choices (#4171)
 
