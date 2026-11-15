@@ -114,6 +114,11 @@ export function CommunityView({
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLElement>(null);
   const [previewKey, setPreviewKey] = useState<string | null>(null);
+  const [playingKey, setPlayingKey] = useState<string | null>(null);
+  const pinnedKeys = useMemo(
+    () => [...new Set([playingKey, previewKey].filter((key): key is string => key !== null))],
+    [playingKey, previewKey],
+  );
   const columns = useSyncExternalStore(subscribeColumns, galleryColumns, () => 1);
   const active = useRef(false);
   const mounted = useRef(false);
@@ -331,7 +336,7 @@ export function CommunityView({
           scrollRef={scrollRef}
           getKey={communityKey}
           columnCount={columns}
-          pinnedKey={previewKey}
+          pinnedKeys={pinnedKeys}
           renderCard={(item) => (
             <article className="flex h-full flex-col gap-3 rounded-xl border border-border/50 p-4">
               <div className="flex items-center gap-2">
@@ -359,6 +364,7 @@ export function CommunityView({
               <div className="flex flex-wrap items-center gap-2">
                 <AudioPreviewButton
                   onInteract={() => setPreviewKey(communityKey(item))}
+                  onPlaying={() => setPlayingKey(communityKey(item))}
                   src={apiPath('/community/items/' + encodeURIComponent(item.id) + '/preview')}
                   fallbackSrc={
                     item.type === 'preset'

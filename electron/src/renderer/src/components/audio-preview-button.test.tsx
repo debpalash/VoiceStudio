@@ -78,14 +78,22 @@ it('defers onReady until playback stops so a refetch cannot cut the clip', async
 });
 it('notifies the virtual owner only for user interaction, not playback events or rerenders', async () => {
   const onInteract = vi.fn();
-  const view = render(<AudioPreviewButton src="/a" source="s" onInteract={onInteract} />);
+  const onPlaying = vi.fn();
+  const view = render(
+    <AudioPreviewButton src="/a" source="s" onInteract={onInteract} onPlaying={onPlaying} />,
+  );
   expect(onInteract).not.toHaveBeenCalled();
   await start(screen.getByRole('button'));
   expect(onInteract).toHaveBeenCalledTimes(1);
+  expect(onPlaying).not.toHaveBeenCalled();
   fire('onPlaying');
+  expect(onPlaying).toHaveBeenCalledTimes(1);
   fire('onPause');
-  view.rerender(<AudioPreviewButton src="/a" source="s" onInteract={onInteract} />);
+  view.rerender(
+    <AudioPreviewButton src="/a" source="s" onInteract={onInteract} onPlaying={onPlaying} />,
+  );
   expect(onInteract).toHaveBeenCalledTimes(1);
+  expect(onPlaying).toHaveBeenCalledTimes(1);
   fireEvent.click(screen.getByRole('button'));
   expect(onInteract).toHaveBeenCalledTimes(2);
 });

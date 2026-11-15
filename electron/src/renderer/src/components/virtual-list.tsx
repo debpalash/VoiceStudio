@@ -130,25 +130,19 @@ interface VirtualGridProps<T> {
   items: readonly T[];
   scrollRef: RefObject<HTMLElement | null>;
   getKey: (item: T) => Key;
-  /** Card content; the wrapper supplies the list item. */
   renderCard: (item: T, index: number) => ReactNode;
-  /** Must match the CSS grid it replaces: min card width and gap, in px. */
   minCardWidth?: number;
   gap?: number;
   estimateRowSize?: number;
   threshold?: number;
-  /** Optional viewport-driven column count; keeps the same row DOM for short and long lists. */
+  /** Optional viewport-driven columns; controlled cards keep stable sibling keys. */
   columnCount?: number;
-  /** Retain the current media/control owner even outside the visible window. */
-  pinnedKey?: Key | null;
+  /** Bounded live media owners; callers do not retain every visited card. */
+  pinnedKeys?: readonly Key[];
   'aria-label'?: string;
 }
 
-/**
- * A responsive card grid that mounts only the visible rows once it grows past
- * `threshold`. Columns follow the container width with the same rule as the
- * `auto-fill` CSS grid it stands in for; rows are measured so cards keep their height.
- */
+/** Responsive cards with a windowed long-list mode and measured row heights. */
 export function VirtualGrid<T>({
   items,
   scrollRef,
@@ -159,27 +153,21 @@ export function VirtualGrid<T>({
   estimateRowSize = 180,
   threshold = VIRTUALIZE_LIST_ABOVE,
   columnCount,
-  pinnedKey,
+  pinnedKeys,
   'aria-label': ariaLabel,
 }: VirtualGridProps<T>) {
   const virtual = items.length > threshold;
-  const controlled = columnCount !== undefined || pinnedKey !== undefined;
+  const controlled = columnCount !== undefined || pinnedKeys !== undefined;
   const listRef = useRef<HTMLDivElement>(null);
+  const cardNodes = useRef(new Map<Key, HTMLDivElement>());
   const [width, setWidth] = useState(0);
   const [margin, setMargin] = useState(0);
   const [mounted, setMounted] = useState(false);
   const [focusedKey, setFocusedKey] = useState<Key | null>(null);
-  const focusOwner = useRef<{ key: Key; node: HTMLElement; path: number[] } | null>(null);
-  const priorLayout = useRef({
-    columns: 0,
-    keys: [] as Key[],
-    generation: 0,
-    rows: new Map<number, Key>(),
-  });
   useLayoutEffect(() => {
     if (virtual || !controlled) setMounted(true);
-    const scroller = scrollRef.current;
-    const list = listRef.current;
+    const scroller = scrollRef.current,
+      list = listRef.current;
     if (!scroller || !list) return;
     const next = Math.round(
       list.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop,
@@ -198,55 +186,33 @@ export function VirtualGrid<T>({
     });
     observer.observe(list);
     return () => observer.disconnect();
-    // The root element changes (ul ↔ div) when the list crosses the threshold:
-    // observe the one now mounted.
   }, [virtual, columnCount]);
-
   const columns =
     columnCount === undefined
       ? gridColumns(width, minCardWidth, gap)
       : Math.max(1, Math.floor(columnCount));
   const keys = useMemo(() => (controlled ? items.map(getKey) : []), [controlled, items, getKey]);
-  const previous = priorLayout.current;
-  const generation =
-    previous.columns === columns &&
-    previous.keys.length === keys.length &&
-    previous.keys.every((key, index) => key === keys[index])
-      ? previous.generation
-      : previous.generation + 1;
+  const rowCount = Math.ceil(items.length / columns);
   const retainedRows = useMemo(() => {
     const rows = new Set<number>();
-    for (const key of [pinnedKey, focusedKey]) {
-      if (key == null) continue;
+    for (const key of pinnedKeys || []) {
       const index = keys.indexOf(key);
       if (index >= 0) rows.add(Math.floor(index / columns));
     }
-    return [...rows].sort((a, b) => a - b);
-  }, [keys, columns, pinnedKey, focusedKey]);
-  // The media-owning row keeps its React identity when appending pages or
-  // changing columns moves it to another row. Nothing keeps visited cards alive.
-  const retainedIdentities = new Map<number, Key>();
-  const usedIdentities = new Set<Key>();
-  for (const key of [pinnedKey, focusedKey]) {
-    if (key == null) continue;
-    const index = keys.indexOf(key),
-      oldIndex = previous.keys.indexOf(key);
-    if (index < 0 || oldIndex < 0) continue;
-    const row = Math.floor(index / columns),
-      oldRow = Math.floor(oldIndex / previous.columns);
-    const identity = previous.rows.get(oldRow);
-    if (identity !== undefined && !retainedIdentities.has(row) && !usedIdentities.has(identity)) {
-      retainedIdentities.set(row, identity);
-      usedIdentities.add(identity);
+    const focus = focusedKey == null ? -1 : keys.indexOf(focusedKey);
+    if (focus >= 0) {
+      const row = Math.floor(focus / columns);
+      // Tab and Shift+Tab need the next/previous card before focus moves there.
+      for (const index of [row - 1, row, row + 1])
+        if (index >= 0 && index < rowCount) rows.add(index);
     }
-  }
-  const rowIdentity = (row: number) => retainedIdentities.get(row) ?? `grid-${generation}-${row}`;
+    return [...rows].sort((a, b) => a - b);
+  }, [keys, columns, pinnedKeys, focusedKey, rowCount]);
   const rangeExtractor = useCallback(
     (range: Parameters<typeof defaultRangeExtractor>[0]) =>
       [...new Set([...defaultRangeExtractor(range), ...retainedRows])].sort((a, b) => a - b),
     [retainedRows],
   );
-  const rowCount = Math.ceil(items.length / columns);
   const virtualizer = useVirtualizer({
     count: virtual ? rowCount : 0,
     getScrollElement: () => (mounted ? scrollRef.current : null),
@@ -265,38 +231,132 @@ export function VirtualGrid<T>({
           index,
           key: `row-${index}-${columns}`,
           start: margin + index * (estimateRowSize + gap),
+          end: margin + index * (estimateRowSize + gap) + estimateRowSize,
         }))
     : Array.from({ length: rowCount }, (_, index) => ({
         index,
-        key: rowIdentity(index),
+        key: `row-${index}`,
         start: 0,
+        end: 0,
       }));
   useLayoutEffect(() => {
-    if (controlled)
-      priorLayout.current = {
-        columns,
-        keys,
-        generation,
-        rows: new Map(rows.map((row) => [row.index, rowIdentity(row.index)])),
-      };
-    const focus = focusOwner.current;
-    // Two retained cards can split out of one row on resize. Keep the media
-    // row's identity, and restore the same control in the other card without
-    // moving scroll or taking focus from another user-selected element.
-    if (
-      controlled &&
-      focus &&
-      !focus.node.isConnected &&
-      document.activeElement === document.body
-    ) {
-      const index = keys.indexOf(focus.key);
-      let node = listRef.current?.querySelector<HTMLElement>(`[data-grid-item="${index}"]`) ?? null;
-      for (const child of focus.path) node = node?.children.item(child) as HTMLElement | null;
-      node?.focus({ preventScroll: true });
+    if (!controlled || !virtual) return;
+    const elements = new Map<Element, number>();
+    for (const row of rows) {
+      const item = items[row.index * columns];
+      if (item === undefined) continue;
+      const node = cardNodes.current.get(getKey(item));
+      if (node) elements.set(node, row.index);
     }
+    // Grid items stretch to the tallest card in each row. Measuring one
+    // stretched card keeps row heights without reparenting any media owner.
+    const measure = (node: Element, index: number) => {
+      // Browser focus/click preparation can scroll before its scroll event is
+      // delivered. A size correction now would write the virtualizer's stale
+      // offset and move the control between pointerdown and pointerup. The
+      // observed scroll triggers another render/measurement with the new offset.
+      const scroller = scrollRef.current;
+      if (
+        scroller &&
+        virtualizer.scrollOffset !== null &&
+        Math.abs(scroller.scrollTop - virtualizer.scrollOffset) > 0.5
+      )
+        return;
+      const height = node.getBoundingClientRect().height;
+      if (height > 0) virtualizer.resizeItem(index, height);
+    };
+    elements.forEach((index, node) => measure(node, index));
+    if (typeof ResizeObserver === 'undefined') return;
+    let active = true;
+    const observer = new ResizeObserver((entries) => {
+      if (!active) return;
+      for (const entry of entries) {
+        const index = elements.get(entry.target);
+        if (index !== undefined) measure(entry.target, index);
+      }
+    });
+    elements.forEach((_, node) => observer.observe(node));
+    return () => {
+      active = false;
+      observer.disconnect();
+    };
   });
 
-  if (!virtual && !controlled) {
+  if (controlled) {
+    const children: ReactNode[] = [];
+    let previousRow = -1,
+      previousEnd = 0;
+    for (const row of rows) {
+      if (virtual && row.index > previousRow + 1) {
+        const height = row.start - margin - previousEnd - (previousRow < 0 ? gap : 2 * gap);
+        children.push(
+          <div
+            key={`gap-${row.index}`}
+            role="presentation"
+            aria-hidden="true"
+            style={{ gridColumn: '1 / -1', height: Math.max(0, height) }}
+          />,
+        );
+      }
+      const start = row.index * columns;
+      for (let index = start; index < Math.min(items.length, start + columns); index++) {
+        const item = items[index] as T,
+          key = getKey(item);
+        children.push(
+          <div
+            key={`card-${typeof key}-${key}`}
+            role="listitem"
+            aria-setsize={items.length}
+            aria-posinset={index + 1}
+            data-grid-item={index}
+            className="min-w-0"
+            ref={(node) => {
+              if (node) cardNodes.current.set(key, node);
+              else cardNodes.current.delete(key);
+            }}
+          >
+            {renderCard(item, index)}
+          </div>,
+        );
+      }
+      previousRow = row.index;
+      previousEnd = row.end - margin;
+    }
+    if (virtual && rows.length && previousRow < rowCount - 1)
+      children.push(
+        <div
+          key="gap-tail"
+          role="presentation"
+          aria-hidden="true"
+          style={{
+            gridColumn: '1 / -1',
+            height: Math.max(0, virtualizer.getTotalSize() - previousEnd - gap),
+          }}
+        />,
+      );
+    return (
+      <div
+        ref={listRef}
+        role="list"
+        aria-label={ariaLabel}
+        className="grid w-full"
+        style={{ gap, gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+        onFocusCapture={(event) => {
+          const item = (event.target as HTMLElement).closest<HTMLElement>('[data-grid-item]');
+          const index = Number(item?.dataset.gridItem);
+          if (item && index >= 0 && index < items.length) setFocusedKey(getKey(items[index] as T));
+        }}
+        onBlurCapture={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+            setFocusedKey(null);
+        }}
+      >
+        {children}
+      </div>
+    );
+  }
+  // Existing uncontrolled callers retain their original markup and layout.
+  if (!virtual)
     return (
       <ul
         ref={listRef as unknown as RefObject<HTMLUListElement>}
@@ -310,73 +370,36 @@ export function VirtualGrid<T>({
         ))}
       </ul>
     );
-  }
   return (
     <div
       ref={listRef}
       role="list"
       aria-label={ariaLabel}
-      className={virtual ? 'relative w-full' : 'grid gap-3'}
-      style={virtual ? { height: virtualizer.getTotalSize() } : undefined}
-      onFocusCapture={
-        controlled
-          ? (event) => {
-              const item = (event.target as HTMLElement).closest<HTMLElement>('[data-grid-item]');
-              const index = Number(item?.dataset.gridItem);
-              if (item && index >= 0 && index < items.length) {
-                const key = getKey(items[index] as T),
-                  target = event.target as HTMLElement,
-                  path: number[] = [];
-                for (
-                  let node = target;
-                  node !== item && node.parentElement;
-                  node = node.parentElement
-                )
-                  path.unshift([...node.parentElement.children].indexOf(node));
-                focusOwner.current = { key, node: target, path };
-                setFocusedKey(key);
-              }
-            }
-          : undefined
-      }
-      onBlurCapture={
-        controlled
-          ? (event) => {
-              if (
-                !event.currentTarget.contains(event.relatedTarget as Node | null) &&
-                (event.target as HTMLElement).isConnected
-              ) {
-                focusOwner.current = null;
-                setFocusedKey(null);
-              }
-            }
-          : undefined
-      }
+      className="relative w-full"
+      style={{ height: virtualizer.getTotalSize() }}
     >
-      {rows.map((row) => {
+      {visibleRows.map((row) => {
         const start = row.index * columns;
         if (start >= items.length) return null;
-        const slice = items.slice(start, start + columns);
         return (
           <div
-            key={controlled ? rowIdentity(row.index) : row.key}
+            key={row.key}
             role="presentation"
-            ref={virtual ? virtualizer.measureElement : undefined}
+            ref={virtualizer.measureElement}
             data-index={row.index}
-            className={virtual ? 'absolute top-0 left-0 grid w-full' : 'grid w-full'}
+            className="absolute top-0 left-0 grid w-full"
             style={{
               gap,
               gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
-              transform: virtual ? `translateY(${row.start - margin}px)` : undefined,
+              transform: `translateY(${row.start - margin}px)`,
             }}
           >
-            {slice.map((item, offset) => (
+            {items.slice(start, start + columns).map((item, offset) => (
               <div
                 key={getKey(item)}
                 role="listitem"
                 aria-setsize={items.length}
                 aria-posinset={start + offset + 1}
-                data-grid-item={start + offset}
                 className="min-w-0"
               >
                 {renderCard(item, start + offset)}

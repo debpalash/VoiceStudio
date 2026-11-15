@@ -128,7 +128,8 @@ Largest chunks (gzip): `add-scalar-classes` 1120 KB (lazy), `index` 449 KB
 
 With 1,000 voices retained in ten cached 100-item pages, Community Gallery
 mounted every card. It now mounts a viewport window, keeping the current
-preview and focused control mounted while scrolling. Search still covers all
+playing or paused preview and a pending replacement mounted while scrolling,
+with adjacent rows available for Tab and Shift+Tab. Search still covers all
 cached voices, Load more retains its pagination, and catalogues of at most
 100 items still render fully. The one/two/three-column responsive layout is
 unchanged.
@@ -139,7 +140,7 @@ checked before and after in headless Chromium at 1440 × 900:
 | Metric | before | after |
 |---|---|---|
 | Mounted voice cards | 1,000 | 24 |
-| DOM elements, including fixture controls | 19,043 | 531 |
+| DOM elements, including fixture controls | 19,043 | 524 |
 
 The first twelve visible cards kept identical positions and dimensions. Real
 audio playback and its paused position survived scrolling and column changes;
@@ -149,11 +150,23 @@ measurements, not whole-app memory, cross-platform timing or inference claims.
 
 The offline regression uses the same cached-page pattern with a deterministic
 JSDOM viewport and verifies positive bounded mounting, real later rows,
-preview ownership across the 100-item threshold and responsive focus retention.
+preview ownership across the 100-item threshold, pending replacements, delayed
+scroll observation and responsive focus retention.
 Run from `electron/`:
 
 ```bash
 ./node_modules/.bin/vp test --run src/renderer/src/features/gallery/community-virtualization.test.tsx
+```
+
+The offline renderer-smoke inventory also runs
+`electron/tests/community-virtualization-smoke.mjs` against the actual app. It
+loads ten catalogue pages and checks native Tab/Shift+Tab, pointer clicks after
+scrolling, current and pending audio identity across column changes, cancelled
+previews, paused position, cached search and the final page. With the existing
+smoke server running, run just this case from the repository root:
+
+```bash
+node electron/tests/run-renderer-smokes.mjs community-virtualization
 ```
 
 ### Setup wizard loaded on demand
