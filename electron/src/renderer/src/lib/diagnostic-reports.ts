@@ -253,10 +253,11 @@ export function prepareDiagnosticException(
   error: unknown,
   category: DiagnosticCategory,
   stage: DiagnosticStage,
+  observation: DiagnosticConsentObservation | null = observeDiagnosticConsent(),
 ): PreparedDiagnostic | null {
   try {
     if (
-      !diagnosticsAllowed() ||
+      !diagnosticConsentStillCurrent(observation) ||
       !schema.categories.includes(category) ||
       !schema.stages.includes(stage)
     )
@@ -291,7 +292,6 @@ export function prepareDiagnosticException(
       ...(code ? { error_code: code } : {}),
       ...(frames ? { frames } : {}),
     };
-    const observation = observeDiagnosticConsent();
     return observation ? Object.freeze({ observation, input: Object.freeze(input) }) : null;
   } catch {
     return null;
@@ -341,6 +341,7 @@ export function captureDiagnosticException(
   error: unknown,
   category: DiagnosticCategory,
   stage: DiagnosticStage,
+  observation: DiagnosticConsentObservation | null = observeDiagnosticConsent(),
 ): void {
-  capturePreparedDiagnostic(prepareDiagnosticException(error, category, stage));
+  capturePreparedDiagnostic(prepareDiagnosticException(error, category, stage, observation));
 }

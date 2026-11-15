@@ -274,6 +274,7 @@ class Reporter:
         self.consent_failed = False
         self.consent_read_failed = False
         self.consent_read_retry_at = 0
+        self.revocation_retry_at = 0
         self.kill_observed = False
         self.prompted = False
         self.epoch = None
@@ -449,13 +450,19 @@ class Reporter:
                     return
                 self.consent_read_failed = False
                 self.consent_read_retry_at = 0
-            if hard_killed and not self.managed and data.get('enabled') is True:
+            if hard_killed and not self.managed and data.get('enabled') is True and time.monotonic() >= self.revocation_retry_at:
+                with self.ack_lock:
+                    withdrawal_revision = self.consent_revision+1
                 try:
                     # Preserve analytics/shared prefs, and retain the existing
                     # private revocation tombstone if saving OFF fails.
                     self.consent(False)
                 except OSError:
-                    pass
+                    # Cached delivery is already closed. Retry failed OFF
+                    # storage without hammering it or delaying a newer choice.
+                    with self.ack_lock:
+                        if self.consent_revision == withdrawal_revision:
+                            self.revocation_retry_at = time.monotonic()+60
                 data = self._consent()
             with self.ack_lock:
                 if revision != self.consent_revision:
@@ -778,6 +785,8 @@ class Reporter:
             try:
                 self.refresh()
             except Exception:
+                # A bootstrap storage fault must not terminate the optional
+                # worker; its normal loop retries while the kill gate stays shut.
                 pass
         try:
             self.schema = _schema()
@@ -828,6 +837,7 @@ class Reporter:
             self.consent_failed = True
             self.consent_read_failed = False
             self.consent_read_retry_at = 0
+            self.revocation_retry_at = 0
             self.prompted = True
             transport, self.transport = self.transport, None
             while not self.acks.empty():

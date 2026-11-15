@@ -18,6 +18,7 @@ import { acquireSynthesis } from '@/lib/synthesis-lock';
 const diagnosticCapture = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/diagnostic-reports', () => ({
   captureDiagnosticException: diagnosticCapture,
+  observeDiagnosticConsent: () => null,
   initializeDiagnosticReporting: vi.fn(),
 }));
 const modelStatus = vi.hoisted(() => ({
@@ -110,6 +111,7 @@ describe('shared generation lifecycle', () => {
       expect.any(Error),
       'generation_failed',
       'generation',
+      null,
     );
     expect(toast.error).not.toHaveBeenCalled();
     vi.mocked(generateClone).mockClear();
@@ -137,7 +139,12 @@ describe('shared generation lifecycle', () => {
     fireEvent.click(screen.getByText('deadline'));
     await screen.findByText(tr('tts_errors.timeout'));
     expect(vi.mocked(generateClone).mock.calls[0]?.[1]?.signal?.aborted).toBe(false);
-    expect(diagnosticCapture).toHaveBeenCalledWith(timeout, 'generation_failed', 'generation');
+    expect(diagnosticCapture).toHaveBeenCalledWith(
+      timeout,
+      'generation_failed',
+      'generation',
+      null,
+    );
   });
   it('shares progress across consumers and survives a view unmount', async () => {
     patchCloneSettings({ text: 'Hello', selectedProfileId: 'voice-1', autoPlay: false });

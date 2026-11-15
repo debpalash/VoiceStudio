@@ -1043,7 +1043,7 @@ function reportTaskDiagnostic(
   // Copy only local provenance; do not retain the exception across metadata IO.
   const { proof, observed, eventKey } = error;
   if (!proof || !diagnosticConsentStillCurrent(proof.consent)) return;
-  const prepared = prepareDiagnosticException(error, category, stage);
+  const prepared = prepareDiagnosticException(error, category, stage, observed);
   if (
     !prepared ||
     !observed ||
@@ -1106,9 +1106,10 @@ function reportTaskDiagnostic(
     })
     .catch(() => {});
 }
+type ObserveDiagnosticRequest = () => DiagnosticConsentObservation | null;
 async function run(
   phase: DubSession['phase'],
-  work: (signal: AbortSignal) => Promise<void>,
+  work: (signal: AbortSignal, observeRequest: ObserveDiagnosticRequest) => Promise<void>,
 ): Promise<boolean> {
   if (controller || cancelling) return false;
   const active = new AbortController();
@@ -1130,8 +1131,10 @@ async function run(
           ? 'generate'
           : null;
   if (reportPhase) recordActionBreadcrumb(`dub:${reportPhase}:start`);
+  let diagnosticConsent = observeDiagnosticConsent();
+  const observeRequest = () => (diagnosticConsent = observeDiagnosticConsent());
   try {
-    await work(active.signal);
+    await work(active.signal, observeRequest);
     if (reportPhase) recordActionBreadcrumb(`dub:${reportPhase}:complete`);
     return true;
   } catch (error) {
@@ -1156,7 +1159,7 @@ async function run(
             : 'dub';
       if (error instanceof DubTaskEventError)
         reportTaskDiagnostic(error, active.signal, category, stage);
-      else captureDiagnosticException(error, category, stage);
+      else captureDiagnosticException(error, category, stage, diagnosticConsent);
     }
     if (inputIssue) {
       // The same file fails the same way on every retry: show it on the file
@@ -1201,16 +1204,25 @@ function taskEvent(
     patch({ failure });
     const message = `${failure.stage ? failure.stage + ': ' : ''}${failure.reason}`;
     if (task)
-      throw new DubTaskEventError(message, task.proof, taskFailureKey(event), taskFailureCode(event));
+      throw new DubTaskEventError(
+        message,
+        task.proof,
+        taskFailureKey(event),
+        taskFailureCode(event),
+      );
     throw new Error(message);
   }
   return event.type === terminal;
 }
-async function transcribeJob(jobId: string, signal: AbortSignal) {
+async function transcribeJob(
+  jobId: string,
+  signal: AbortSignal,
+  observeRequest: ObserveDiagnosticRequest,
+) {
   const finishActivity = beginAppActivity('transcription');
   recordActionBreadcrumb('dub:transcribe:start');
   try {
-    await readTranscript(jobId, signal);
+    await readTranscript(jobId, signal, observeRequest);
     patch({ recovery: null });
     recordActionBreadcrumb('dub:transcribe:complete');
   } catch (error) {
@@ -1234,9 +1246,14 @@ export function announceTranscriptWarning(event: TaskEvent) {
   }
   if (typeof event.detail === 'string' && event.detail) toast.warning(event.detail);
 }
-async function readTranscript(jobId: string, signal: AbortSignal) {
+async function readTranscript(
+  jobId: string,
+  signal: AbortSignal,
+  observeRequest: ObserveDiagnosticRequest,
+) {
   patch({ phase: 'transcribing', taskId: null });
   let receivedTranscript = false;
+  observeRequest();
   await consumeTaskStream(
     '/dub/transcribe-stream/' +
       encodeURIComponent(jobId) +
@@ -1269,7 +1286,12 @@ async function readTranscript(jobId: string, signal: AbortSignal) {
   patch({ phase: 'editing' });
 }
 
-async function useDownloadedCaptions(jobId: string, signal: AbortSignal) {
+async function useDownloadedCaptions(
+  jobId: string,
+  signal: AbortSignal,
+  observeRequest: ObserveDiagnosticRequest,
+) {
+  observeRequest();
   const result = await apiJson<{
     segments: DubSegment[];
     source_lang?: string;
@@ -1298,9 +1320,11 @@ async function finishPreparation(
   jobId: string,
   taskId: string,
   signal: AbortSignal,
-  proof: TaskDiagnosticProof | null = null,
+  proof: TaskDiagnosticProof | null,
+  observeRequest: ObserveDiagnosticRequest,
 ) {
   let hasDownloadedCaptions = false;
+  observeRequest();
   await consumeTaskStream(
     '/tasks/stream/' + encodeURIComponent(taskId),
     (event) => {
@@ -1317,7 +1341,7 @@ async function finishPreparation(
   );
   if (hasDownloadedCaptions) {
     try {
-      await useDownloadedCaptions(jobId, signal);
+      await useDownloadedCaptions(jobId, signal, observeRequest);
       return;
     } catch (error) {
       if (signal.aborted) throw error;
@@ -1325,7 +1349,7 @@ async function finishPreparation(
       // The ordinary ASR path remains the transparent fallback.
     }
   }
-  await transcribeJob(jobId, signal);
+  await transcribeJob(jobId, signal, observeRequest);
 }
 
 export async function uploadDub(file: File) {
@@ -1364,25 +1388,26 @@ export async function uploadDub(file: File) {
   }));
   // An empty file has nothing to upload; the file row asks for another one.
   if (file.size === 0) return;
-  await run('preparing', async (signal) => {
+  await run('preparing', async (signal, observeRequest) => {
     const body = new FormData();
     body.set('video', file);
     body.set('job_id', jobId);
     body.set('input_type', inputType);
     if (dubSession.state.sourceLanguage) body.set('source_lang', dubSession.state.sourceLanguage);
-    const consent = observeDiagnosticConsent();
+    const consent = observeRequest();
     const upload = await apiJson<{ job_id: string; task_id: string }>('/dub/upload', {
       method: 'POST',
       body,
       signal,
     });
-    await prepareAndTranscribe(upload, signal, consent);
+    await prepareAndTranscribe(upload, signal, consent, observeRequest);
   });
 }
 async function prepareAndTranscribe(
   job: { job_id: string; task_id: string },
   signal: AbortSignal,
   consent: DiagnosticConsentObservation | null,
+  observeRequest: ObserveDiagnosticRequest,
 ) {
   patch({ jobId: job.job_id, taskId: job.task_id });
   await finishPreparation(
@@ -1390,6 +1415,7 @@ async function prepareAndTranscribe(
     job.task_id,
     signal,
     taskDiagnosticProof(job.task_id, consent),
+    observeRequest,
   );
 }
 export function isDubUrl(value: string) {
@@ -1429,7 +1455,7 @@ export async function ingestDubUrl(value: string, cookieFile?: File, fetchSubs =
     filename: url,
     inputType: 'video',
   }));
-  await run('preparing', async (signal) => {
+  await run('preparing', async (signal, observeRequest) => {
     if (
       cookieFile &&
       !(window.location.protocol === 'app:' && window.location.hostname === 'voicestudio') &&
@@ -1439,7 +1465,7 @@ export async function ingestDubUrl(value: string, cookieFile?: File, fetchSubs =
     if (cookieFile && cookieFile.size > MAX_COOKIE_EXPORT_BYTES)
       throw new Error('DUB_COOKIE_TOO_LARGE');
     const cookieText = cookieFile ? await cookieFile.text() : undefined;
-    const consent = observeDiagnosticConsent();
+    const consent = observeRequest();
     const job = await apiJson<{ job_id: string; task_id: string }>('/dub/ingest-url', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1452,7 +1478,7 @@ export async function ingestDubUrl(value: string, cookieFile?: File, fetchSubs =
         fetch_subs: fetchSubs,
       }),
     });
-    await prepareAndTranscribe(job, signal, consent);
+    await prepareAndTranscribe(job, signal, consent, observeRequest);
   });
 }
 
@@ -1515,11 +1541,13 @@ export async function translateDubWithAgent(
   if (!snapshot.jobId || !snapshot.segments.length || snapshot.recovery) return false;
   const finishActivity = beginAppActivity('translation');
   try {
-    return await run('translating', async (signal) => {
+    return await run('translating', async (signal, observeRequest) => {
+      observeRequest();
       const glossary = await apiJson<Array<{ source: string; target: string; note?: string }>>(
         `/glossary/${encodeURIComponent(snapshot.jobId!)}`,
         { signal },
       );
+      observeRequest();
       const translated = await runLocalTranslationAgent(
         {
           agent,
@@ -1598,7 +1626,7 @@ export async function translateDub(
   let activityId: string | undefined;
   let activityAborted = false;
   try {
-    const completed = await run('translating', async (signal) => {
+    const completed = await run('translating', async (signal, observeRequest) => {
       activityId = startTranslationRun({
         jobId: snapshot.jobId!,
         agent: provider,
@@ -1623,10 +1651,12 @@ export async function translateDub(
         { once: true },
       );
 
+      observeRequest();
       const glossary = await apiJson<Array<{ source: string; target: string; note?: string }>>(
         `/glossary/${encodeURIComponent(snapshot.jobId!)}`,
         { signal },
       );
+      observeRequest();
       const translated = await apiJson<{
         cinematic_skipped?: string;
         dialect?: string;
@@ -1844,7 +1874,7 @@ export async function generateDub(
   if (!snapshot.jobId || !snapshot.segments.length || snapshot.recovery) return false;
   const finishActivity = beginAppActivity('synthesis');
   try {
-    return await run('generating', async (signal) => {
+    return await run('generating', async (signal, observeRequest) => {
       let regenOnly = options.regenOnly;
       const agentEnabled = snapshot.quality === 'agent';
       const maxAgentPasses = 2;
@@ -1876,7 +1906,7 @@ export async function generateDub(
             : undefined,
         });
         const segmentIds = current.segments.map((segment) => segment.id);
-        const consent = observeDiagnosticConsent();
+        const consent = observeRequest();
         const job = await apiJson<{ task_id: string }>(
           '/dub/generate/' + encodeURIComponent(current.jobId!),
           {
@@ -1914,6 +1944,7 @@ export async function generateDub(
           taskId: job.task_id,
           pendingTiming: current.timingStrategy || 'strict_slot',
         });
+        observeRequest();
         const measured = await watchGeneration(
           job.task_id,
           signal,
@@ -1955,6 +1986,7 @@ export async function generateDub(
             remaining: misses.length,
           },
         });
+        observeRequest();
         const fitted = current.agentCli
           ? await runLocalTranslationAgent(
               {
@@ -2341,13 +2373,16 @@ export async function resumeDub() {
   const { recovery, taskId, jobId } = dubSession.state;
   if (!recovery || !jobId || (recovery !== 'transcribing' && !taskId)) return;
   if (recovery === 'transcribing') {
-    await run('transcribing', (signal) => transcribeJob(jobId, signal));
+    await run('transcribing', (signal, observeRequest) =>
+      transcribeJob(jobId, signal, observeRequest),
+    );
     return;
   }
   if (!taskId) return;
-  await run(recovery, async (signal) => {
+  await run(recovery, async (signal, observeRequest) => {
     // Read and replay the existing persisted task. Never POST a replacement generation.
     try {
+      observeRequest();
       await apiJson('/jobs/' + encodeURIComponent(taskId), { signal });
     } catch (error) {
       if (error instanceof ApiError && error.status === 404)
@@ -2356,9 +2391,10 @@ export async function resumeDub() {
     }
     const proof = resumedTaskDiagnosticProof(taskId, signal);
     if (recovery === 'generating') {
+      observeRequest();
       await watchGeneration(taskId, signal, undefined, proof);
       patch({ phase: 'done' });
-    } else await finishPreparation(jobId, taskId, signal, proof);
+    } else await finishPreparation(jobId, taskId, signal, proof, observeRequest);
     patch({ recovery: null });
   });
 }
@@ -2366,9 +2402,10 @@ export async function resumeDub() {
 export async function importDubSubtitles(file: File) {
   const snapshot = dubSession.state;
   if (!snapshot.jobId || snapshot.recovery || controller || cancelling) return;
-  await run('importing', async (signal) => {
+  await run('importing', async (signal, observeRequest) => {
     const body = new FormData();
     body.set('file', file);
+    observeRequest();
     const result = await apiJson<{
       segments: DubSegment[];
       stats: Record<string, number>;
@@ -2406,7 +2443,8 @@ export async function cleanupDubSegments(): Promise<number | null> {
   if (!job || start.segments.length === 0 || !editingAllowed()) return null;
   const origin = start.phase;
   let received: DubSegment[] | undefined;
-  const finished = await run('cleaning', async (signal) => {
+  const finished = await run('cleaning', async (signal, observeRequest) => {
+    observeRequest();
     const reply = await apiJson<{ segments: DubSegment[] }>(
       `/dub/cleanup-segments/${encodeURIComponent(job)}`,
       { method: 'POST', body: JSON.stringify({ segments: start.segments }), signal },
@@ -2453,7 +2491,8 @@ export async function mirrorDubSourceDelivery(): Promise<ProsodyMirrorOutcome | 
     })),
   });
   let answer: MirrorReply | undefined;
-  const finished = await run('mirroring', async (signal) => {
+  const finished = await run('mirroring', async (signal, observeRequest) => {
+    observeRequest();
     const reply = await apiJson<MirrorReply>(`/dub/prosody-mirror/${encodeURIComponent(job)}`, {
       method: 'POST',
       body: payload,

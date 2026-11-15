@@ -1,7 +1,12 @@
 import { isBenignWindowError } from '@shared/utils/foreignErrors';
 import { scrubText } from '@shared/utils/scrub';
 import { openRepairAgent } from '@/lib/repair-agent-events';
-import { captureDiagnosticException, initializeDiagnosticReporting } from './diagnostic-reports';
+import {
+  captureDiagnosticException,
+  initializeDiagnosticReporting,
+  observeDiagnosticConsent,
+  type DiagnosticConsentObservation,
+} from './diagnostic-reports';
 import { captureException, type AnalyticsExceptionStage } from '@shared/utils/analytics';
 
 const THROTTLE_MS = 30_000;
@@ -35,6 +40,7 @@ function repair(
   filename = '',
   stage: AnalyticsExceptionStage = 'renderer:task',
   reportDiagnostics = true,
+  observation?: DiagnosticConsentObservation | null,
 ): void {
   if (isBenignWindowError(message, error, filename)) return;
   if (reportDiagnostics)
@@ -42,6 +48,7 @@ function repair(
       error,
       stage === 'renderer:task' ? 'operation_failed' : 'renderer_crash',
       stage === 'renderer:task' ? 'other' : 'render',
+      observation,
     );
   if (!shouldRepair(message, error, filename)) return;
   captureException(error, stage);
@@ -61,12 +68,15 @@ function repair(
 
 /** Run an event-triggered task without letting sync throws or promise rejections escape React. */
 export function runRendererTask(label: string, task: () => void | Promise<void>): void {
+  const observation = observeDiagnosticConsent();
   try {
     const result = task();
     if (result)
-      void Promise.resolve(result).catch((error) => repair(label, error, '', 'renderer:task'));
+      void Promise.resolve(result).catch((error) =>
+        repair(label, error, '', 'renderer:task', true, observation),
+      );
   } catch (error) {
-    repair(label, error, '', 'renderer:task');
+    repair(label, error, '', 'renderer:task', true, observation);
   }
 }
 

@@ -255,3 +255,64 @@ describe('global renderer error recovery', () => {
     expect(openRepairAgent).toHaveBeenCalledTimes(5);
   });
 });
+
+it.each(['off-on', 'regrant', 'same-grant'] as const)(
+  'keeps an event-triggered renderer task with its original consent: %s',
+  async (transition) => {
+    let enabled = false,
+      grants = 0;
+    const state = () => ({
+      enabled,
+      opted_in: enabled,
+      available: true,
+      prompted: true,
+      grant_epoch: enabled ? (++grants).toString(16).padStart(32, '0') : null,
+    });
+    let acknowledged = state();
+    Object.assign(window, {
+      voicestudio: {
+        diagnostics: {
+          getStatus: async () => acknowledged,
+          setConsent: async (choice: boolean) => {
+            enabled = choice;
+            acknowledged = state();
+            return acknowledged;
+          },
+          capture: diagnosticCapture,
+        },
+      },
+    });
+    const recovery = await import('./global-error-recovery');
+    const diagnostics = await import('./diagnostic-reports');
+    await diagnostics.refreshDiagnosticState();
+    if (transition !== 'off-on') await diagnostics.setDiagnosticConsent(true);
+    let fail!: (reason: Error) => void;
+    recovery.runRendererTask(
+      'Earlier renderer task',
+      () =>
+        new Promise<void>((_, reject) => {
+          fail = reject;
+        }),
+    );
+    if (transition !== 'same-grant') {
+      await diagnostics.setDiagnosticConsent(false);
+      await diagnostics.setDiagnosticConsent(true);
+    }
+    fail(new Error('private old task failure'));
+    await vi.waitFor(() => expect(captureException).toHaveBeenCalledOnce());
+    expect(diagnosticCapture).toHaveBeenCalledTimes(transition === 'same-grant' ? 1 : 0);
+    expect(openRepairAgent).toHaveBeenCalledOnce();
+    diagnosticCapture.mockClear();
+    recovery.runRendererTask('Fresh renderer task', () =>
+      Promise.reject(new Error('fresh private failure')),
+    );
+    await vi.waitFor(() => expect(captureException).toHaveBeenCalledTimes(2));
+    expect(diagnosticCapture).toHaveBeenCalledOnce();
+    recovery.runRendererTask('Cancelled renderer task', () =>
+      Promise.reject(new DOMException('expected cancellation', 'AbortError')),
+    );
+    await Promise.resolve();
+    expect(captureException).toHaveBeenCalledTimes(2);
+    expect(diagnosticCapture).toHaveBeenCalledOnce();
+  },
+);

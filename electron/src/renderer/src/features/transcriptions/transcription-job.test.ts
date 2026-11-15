@@ -6,6 +6,7 @@ const toast = { success: vi.fn(), error: vi.fn(), warning: vi.fn() };
 const diagnosticCapture = vi.fn();
 vi.mock('@/lib/diagnostic-reports', () => ({
   captureDiagnosticException: diagnosticCapture,
+  observeDiagnosticConsent: () => null,
   initializeDiagnosticReporting: vi.fn(),
 }));
 vi.mock('@/lib/api/client', async (importOriginal) => ({
@@ -80,6 +81,7 @@ it('reports a failure while away and keeps it for the page', async () => {
     expect.any(Error),
     'operation_failed',
     'transcription',
+    null,
   );
 });
 

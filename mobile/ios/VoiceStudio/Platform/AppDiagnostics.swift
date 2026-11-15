@@ -101,6 +101,11 @@ import VoiceStudioKit
         guard collecting,let context=reporter?.recoveryContext else {return nil}
         return CompanionDiagnosticObservation(revision:observationRevision,epoch:context.epoch)
     }
+    /// One callback belongs to one user-started recording, including its async producers.
+    func failureHandler(stage: String) -> @MainActor (any Error) -> Void {
+        let observation = failureObservation
+        return { [weak self] error in self?.captureObservedFailure(error,observation:observation,stage:stage) }
+    }
     /// A delayed completion may only use the grant owned by its original operation.
     func captureObservedFailure(_ error: any Error, observation: CompanionDiagnosticObservation?, stage: String) {
         guard let observation,observation==failureObservation else {return}

@@ -357,9 +357,96 @@ private func phoneDiagnosticFixture(root: URL,id: String) throws -> PhoneModel {
         }
         await reports.close()
     }
+    @MainActor @Test(.timeLimit(.minutes(1)),arguments:["native-off-on","native-regrant","native-same-grant","native-cancel","ticket-off-on","ticket-regrant","ticket-same-grant","ticket-cancel","socket-off-on","socket-regrant","socket-same-grant","socket-cancel"])
+    func directDictationCallbacksKeepRecordingConsentThroughProducerCleanup(_ scenario: String) async throws {
+        var repository=URL(fileURLWithPath:#filePath);for _ in 0..<6 {repository.deleteLastPathComponent()}
+        let storage=DiagnosticControllerStore(),transport=DiagnosticControllerTransport();storage.allowWrites()
+        let reports=try DiagnosticReports(directory:URL(fileURLWithPath:"/unused-test-store"),policy:DiagnosticPolicy(data:Data(contentsOf:repository.appendingPathComponent("config/diagnostics.json"))),destination:DiagnosticDestination(site:"localtest123",host:"http://127.0.0.1:1",appUrl:"https://app.test.invalid"),appVersion:"0.5.9-beta.2",transport:transport,storage:storage,disabled:{false})
+        let controller=VoiceStudio.AppDiagnostics(reporter:reports);await controller.load()
+        if !scenario.hasSuffix("off-on") {await controller.setConsent(true)}
+        // This is the exact callback factory used by both production recording starts.
+        let reportFailure=controller.failureHandler(stage:"transcription")
+        let directory=FileManager.default.temporaryDirectory.appendingPathComponent("direct-dictation-owner-"+UUID().uuidString)
+        defer {try? FileManager.default.removeItem(at:directory)}
+        let fixture=try phoneDiagnosticFixture(root:directory,id:"dictation-failure")
+        let holder=try phoneDiagnosticFixture(root:directory,id:"dictation-cleanup")
+        let body=PhoneDiagnosticCleanupGate(),cleanup=PhoneDiagnosticCleanupGate(),held=PhoneDiagnosticAsyncGate()
+        defer {body.finish();cleanup.finish();held.finish()}
+        let store=try ModelStore(root:directory,fileHash:{url in
+            if url.deletingLastPathComponent().lastPathComponent==holder.id {cleanup.hold()}
+            return try ModelHash.file(url)
+        },available:{_ in 100_000_000})
+        let engine=NativeLocalEngine(store:store)
+        let socket=PhoneDiagnosticSocket(held:held)
+        let stream=DictationStream(socketFactory:{_ in socket})
+        let credentials=Credentials(session:scenario.hasPrefix("ticket") ? "fixture-session" : nil)
+        let api=APIClient(address:try PairingAddress("http://127.0.0.1:3900"),credentials:credentials,transport:PhoneDictationTicketFailure(held:held))
+        let recording=Task {
+            if scenario.hasPrefix("native") {
+                do {
+                    let _: Bool = try await engine.execute(fixture,capability:.tts,progress:{_ in}) {_,_,_,token in
+                        body.hold(token:token)
+                        if scenario.hasSuffix("cancel") {throw CancellationError()}
+                        throw ClientError("mobile.local.inference_failed")
+                    }
+                } catch {reportFailure(error)}
+            } else {
+                do {
+                    let messages=try await stream.start(api:api)
+                    for try await _ in messages {try Task.checkCancellation()}
+                } catch {
+                    // Paired startup currently awaits socket cleanup before the UI catch.
+                    await stream.close()
+                    reportFailure(error)
+                }
+            }
+        }
+        var blockedStore: Task<URL,any Error>?
+        if scenario.hasPrefix("native") {
+            await body.waitUntilEntered()
+            blockedStore=Task.detached {try await store.authorize(holder)}
+            await cleanup.waitUntilEntered();body.finish()
+            while !body.nativeFinished {await Task.yield()}
+        } else {await held.waitUntilEntered()}
+        if scenario.hasSuffix("regrant") {await controller.setConsent(false)}
+        if scenario.hasSuffix("off-on") || scenario.hasSuffix("regrant") {await controller.setConsent(true)}
+        if scenario.hasSuffix("cancel") {recording.cancel()}
+        cleanup.finish();held.finish();_ = try await blockedStore?.value;await recording.value
+        await stream.close();await reports.flush()
+        #expect(transport.count == (scenario.hasSuffix("same-grant") ? 1 : 0))
+        // A later user-started recording obtains a fresh callback and can report.
+        let freshRecording=controller.failureHandler(stage:"transcription")
+        do {
+            let _: Bool = try await engine.execute(fixture,capability:.tts,progress:{_ in}) {_,_,_,_ in throw ClientError("mobile.local.runtime_failed")}
+        } catch {freshRecording(error)}
+        await reports.flush()
+        #expect(transport.count == (scenario.hasSuffix("same-grant") ? 2 : 1))
+        await reports.close()
+    }
     #endif
 }
 #if VS_DIAGNOSTICS_APP_HOST_TESTS
+private struct PhoneDictationTicketFailure: HTTPTransport {
+    let held: PhoneDiagnosticAsyncGate
+    func send(_ request:URLRequest) async throws -> HTTPReply {
+        guard request.url?.path=="/api/auth/ws-ticket" else {throw ClientError("mobile.errors.invalid_response")}
+        // The server failure exists before its delayed body is released.
+        let failed=HTTPReply(data:Data(#"{"detail":"fixture failure"}"#.utf8),status:500)
+        await held.hold();try Task.checkCancellation();return failed
+    }
+}
+private final class PhoneDiagnosticSocket: DictationSocket, @unchecked Sendable {
+    let closeCode=URLSessionWebSocketTask.CloseCode.invalid
+    private let held: PhoneDiagnosticAsyncGate
+    init(held:PhoneDiagnosticAsyncGate) {self.held=held}
+    func resume() {}
+    func receive() async throws -> URLSessionWebSocketTask.Message {
+        let failure=ClientError("mobile.errors.dictation")
+        await held.hold();try Task.checkCancellation();throw failure
+    }
+    func send(_ message:URLSessionWebSocketTask.Message) async throws {}
+    func cancel(with closeCode:URLSessionWebSocketTask.CloseCode,reason:Data?) {held.finish()}
+}
 private actor PhoneMonitorDiagnosticVault: CredentialVault {
     func read(host:String) -> Credentials? {nil}
     func write(_ credentials:Credentials?,host:String) {}

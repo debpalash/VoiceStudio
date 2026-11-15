@@ -170,6 +170,8 @@ class SupermetryTransport:
                     try:
                         self.on_result(json.loads(body)["id"], status)
                     except Exception:
+                        # Optional result bookkeeping must not terminate delivery
+                        # or prevent this transport queue slot from being released.
                         pass
                 self._queue.task_done()
 

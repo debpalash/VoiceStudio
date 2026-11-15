@@ -43,7 +43,7 @@ import { isPresetOnly, useTtsReadiness } from './use-tts-readiness';
 import { useEngines } from './use-engines';
 import { expressionCaps } from '@/lib/expression';
 import { recordActionBreadcrumb } from '@/lib/report-breadcrumb';
-import { captureDiagnosticException } from '@/lib/diagnostic-reports';
+import { captureDiagnosticException, observeDiagnosticConsent } from '@/lib/diagnostic-reports';
 import { useResolvedLicenceError } from './use-resolved-licence-error';
 import { announceDroppedSpeech } from '@/lib/dropped-speech';
 import { recordTakeSpeed } from '@/lib/store/quality-offer';
@@ -596,6 +596,7 @@ function useGenerateController(): UseGenerateClone {
       }, TIMER_TICK_MS);
       const controller = new AbortController();
       abortRef.current = controller;
+      let diagnosticConsent = observeDiagnosticConsent();
       try {
         if (take.voiceFingerprint) {
           // An edit, lock or unlock still in flight has reached (or may reach) the
@@ -619,6 +620,7 @@ function useGenerateController(): UseGenerateClone {
           )
             throw new QueuedVoiceChangedError(tr('generationQueue.voice_changed'));
         }
+        diagnosticConsent = observeDiagnosticConsent();
         const result = await generateClone(input, {
           signal: controller.signal,
           onProgress: (pct) => onProgress(take.id, pct),
@@ -672,7 +674,7 @@ function useGenerateController(): UseGenerateClone {
         } else {
           recordActionBreadcrumb(`generate:${reportMode}:error`);
           if (!isModelNotDownloaded(err) && !(err instanceof QueuedVoiceChangedError))
-            captureDiagnosticException(err, 'generation_failed', 'generation');
+            captureDiagnosticException(err, 'generation_failed', 'generation', diagnosticConsent);
           const message = isAbortError(err)
             ? tr('tts_errors.timeout')
             : isModelNotDownloaded(err)

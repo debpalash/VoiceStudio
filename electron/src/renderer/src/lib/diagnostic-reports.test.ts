@@ -359,3 +359,32 @@ it('a synchronous bridge failure does not poison later consent retries', async (
   expect(status).toHaveBeenCalledTimes(2);
   expect(client.getDiagnosticState().status?.enabled).toBe(true);
 });
+
+it('keeps explicit known-OFF and old request observations from borrowing the current grant', async () => {
+  const capture = vi.fn(async () => {});
+  mock.bridge = {
+    diagnostics: {
+      getStatus: vi.fn(async () => off),
+      setConsent: vi.fn(async (enabled: boolean) => (enabled ? on : off)),
+      capture,
+    },
+  };
+  const client = await import('./diagnostic-reports');
+  await client.refreshDiagnosticState();
+  const knownOff = client.observeDiagnosticConsent();
+  await client.setDiagnosticConsent(true);
+  const earlier = client.observeDiagnosticConsent();
+  await client.setDiagnosticConsent(false);
+  await client.setDiagnosticConsent(true);
+  const error = new Error('private earlier failure');
+  client.captureDiagnosticException(error, 'generation_failed', 'generation', knownOff);
+  client.captureDiagnosticException(error, 'generation_failed', 'generation', earlier);
+  expect(capture).not.toHaveBeenCalled();
+  client.captureDiagnosticException(
+    error,
+    'generation_failed',
+    'generation',
+    client.observeDiagnosticConsent(),
+  );
+  expect(capture).toHaveBeenCalledOnce();
+});

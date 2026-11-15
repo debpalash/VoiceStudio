@@ -6,7 +6,7 @@ import { apiJson } from '@/lib/api/client';
 import { beginAppActivity } from '@/lib/app-activity';
 import { recordActionBreadcrumb } from '@/lib/report-breadcrumb';
 import { runRendererTask } from '@/lib/global-error-recovery';
-import { captureDiagnosticException } from '@/lib/diagnostic-reports';
+import { captureDiagnosticException, observeDiagnosticConsent } from '@/lib/diagnostic-reports';
 import { addTranscription, type TranscriptEntry } from '@shared/utils/transcriptionsStore';
 import { transcriptionFailureFrom, type TranscriptionFailureState } from './transcription-failure';
 
@@ -72,6 +72,7 @@ export async function startTranscription(
   transcriptionJob.setState((state) => ({ ...state, running: true, file: audio, error: null }));
   const finishActivity = beginAppActivity(mode === 'accurate' ? 'transcription' : 'dictation');
   let outcome: TranscriptionOutcome = 'failed';
+  let diagnosticConsent = observeDiagnosticConsent();
   try {
     const ready = await apiJson<{ ready: boolean }>(
       mode === 'accurate' ? '/dictation/readiness?purpose=transcribe' : '/dictation/readiness',
@@ -86,11 +87,13 @@ export async function startTranscription(
     body.set('mode', mode);
     // Speaker identification needs the segment timings only accurate mode produces.
     if (options.diarize && mode === 'accurate') body.set('diarize', 'true');
+    diagnosticConsent = observeDiagnosticConsent();
     const refinement = await apiJson<{ auto: boolean }>('/api/settings/dictation-refinement', {
       signal: ctl.signal,
     }).catch(() => ({ auto: false }));
     if (ctl.signal.aborted) return (outcome = 'cancelled');
     body.set('refine', String(refinement.auto));
+    diagnosticConsent = observeDiagnosticConsent();
     const result = await apiJson<Partial<TranscriptEntry> & { diarization_error?: string }>(
       '/transcribe',
       {
@@ -113,7 +116,7 @@ export async function startTranscription(
     return outcome;
   } catch (error) {
     if (ctl.signal.aborted) return (outcome = 'cancelled');
-    captureDiagnosticException(error, 'operation_failed', 'transcription');
+    captureDiagnosticException(error, 'operation_failed', 'transcription', diagnosticConsent);
     const failure = transcriptionFailureFrom(error);
     transcriptionJob.setState((state) => ({ ...state, error: failure }));
     if (!viewing) {

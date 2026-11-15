@@ -1184,20 +1184,22 @@ def test_hard_kill_without_any_preferences_does_not_create_a_grant(reporter, mon
     assert not reporter.capture("engine_failed")
 
 
-def test_unread_hard_kill_retries_failed_durable_fence_at_bounded_cadence(reporter, monkeypatch):
+@pytest.mark.parametrize("unread", [False, True])
+def test_hard_kill_retries_failed_durable_fence_at_bounded_cadence(reporter, monkeypatch, unread):
     import builtins
     reports = importlib.import_module("core.diagnostic_reports")
     from core import prefs
     reporter.consent(True)
     clock, attempts = [100.0], []
-    monkeypatch.setattr(reports.time, "monotonic", lambda: clock[0])
+    from types import SimpleNamespace
+    monkeypatch.setattr(reports, "time", SimpleNamespace(time=reports.time.time, monotonic=lambda: clock[0]))
     target = Path(prefs._PREFS_PATH)
     original = target.read_bytes()
-    open_file, atomic = builtins.open, reports._atomic
+    open_file, atomic, save = builtins.open, reports._atomic, prefs._save
     writable = False
 
     def denied_read(path, mode="r", *args, **kwargs):
-        if str(path) == str(target) and mode == "r" and not writable:
+        if unread and str(path) == str(target) and mode == "r" and not writable:
             raise OSError(errno.EIO, "controlled unread grant")
         return open_file(path, mode, *args, **kwargs)
 
@@ -1210,6 +1212,11 @@ def test_unread_hard_kill_retries_failed_durable_fence_at_bounded_cadence(report
 
     monkeypatch.setattr(builtins, "open", denied_read)
     monkeypatch.setattr(reports, "_atomic", denied_fence)
+    def denied_save(value):
+        if not writable:
+            raise PermissionError(errno.EACCES, "controlled unavailable preference storage")
+        return save(value)
+    monkeypatch.setattr(prefs, "_save", denied_save)
     monkeypatch.setenv("OMNIVOICE_DIAGNOSTICS_DISABLED", "1")
     for value in (100.0, 101.0, 159.9):
         clock[0] = value
