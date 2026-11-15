@@ -49,7 +49,7 @@ public struct ComputerDubExport: Sendable {
     public init() {}
     public func path(job: String) throws -> String {
         let id = try APIClient.component(job)
-        guard !language.isEmpty, Self.safe(language), tracks.allSatisfy(Self.safe), ["wav","m4a","mp3","flac"].contains(audioFormat), !(dual && karaoke) else { throw ClientError("mobile.dub_advanced.invalid_export") }
+        guard !language.isEmpty, Self.safe(language), tracks.allSatisfy(Self.safe), ["wav","m4a","mp3","flac"].contains(audioFormat), !(kind == .media && dual && karaoke) else { throw ClientError("mobile.dub_advanced.invalid_export") }
         let endpoint: String
         switch kind { case .media: endpoint = "download"; case .txt: endpoint = "txt"; case .srt: endpoint = "srt"; case .vtt: endpoint = "vtt"; case .ass: endpoint = "ass"; case .clips: endpoint = "export-segments"; case .stems: endpoint = "export-stems" }
         var query = [URLQueryItem(name: "lang",value: language)]

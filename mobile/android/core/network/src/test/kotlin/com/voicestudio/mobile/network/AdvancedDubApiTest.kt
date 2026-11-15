@@ -94,6 +94,13 @@ class AdvancedDubApiTest {
         assertEquals("/dub/txt/job-1?lang=fr",options.path("job-1"))
         assertEquals("/dub/txt/job-1?lang=original",options.copy(language="original").path("job-1"))
     }
+    @Test fun plainTextExportIgnoresOptionsRetainedFromEarlierMediaAndSubtitles() {
+        val media=ComputerDubExport(language="fr",tracks=listOf("fr"),karaoke=true)
+        val subtitles=media.copy(kind="srt",dual=true)
+        assertEquals("/dub/srt/job-1?lang=fr&dual=1",subtitles.path("job-1"))
+        assertEquals("/dub/txt/job-1?lang=fr",subtitles.copy(kind="txt").path("job-1"))
+        assertThrows(IllegalArgumentException::class.java) {subtitles.copy(kind="media").path("job-1")}
+    }
     @Test fun exportOptionsExplicitlySelectTracksBackgroundAndRealBurnWithoutPathInjection() {
         val options=ComputerDubExport(language="fr",tracks=listOf("fr","de"),original=true,preserveBackground=true,burn=true,karaoke=true)
         val url=okhttp3.HttpUrl.Builder().scheme("http").host("localhost").build().resolve(options.path("job-1"))!!

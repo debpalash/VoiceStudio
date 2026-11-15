@@ -28,8 +28,12 @@ def client():
     from main import app
     from core.db import init_db
     init_db()
-    with TestClient(app, client=("127.0.0.1", 50000)) as instance:
+    # These route assertions inject saved jobs; no runtime workers are needed.
+    instance = TestClient(app, client=("127.0.0.1", 50000))
+    try:
         yield instance
+    finally:
+        instance.close()
 
 
 @pytest.mark.parametrize("lang,expected", [
