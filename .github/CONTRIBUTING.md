@@ -536,6 +536,15 @@ test-only PR. Docker Hub overview edits still publish through the small
   `docs/RELEASING.md` → Merge queue), a queue run applies the same rule to the
   queue commit against its base (300 files or more run everything). The rule is
   the `changes` job in `.github/workflows/ci.yml`.
+- **Nix build scope:** the optional flake workflow uses the shared
+  `.github/scripts/ci_scope.py` detector on pull requests, main pushes and merge
+  groups. Documentation and test-only edits, including inline tests and
+  `docs/install/nix.md`, produce an explicit successful skip. Runtime/mixed
+  changes, flake/config/lockfiles, bundled logos, license data and the shared
+  runtime CI harness still build; unknown, failed or truncated change detection
+  runs the build. Merge groups retain the package's mobile and unrelated
+  `.github/` exclusions; the Nix workflow itself always qualifies. Explicit
+  manual/release events remain full, and the existing unsigned-CLA hold remains.
 - **Pass cache:** the heavy jobs in `ci.yml` (Python tests, the Electron jobs,
   UI crawler, Desktop UI, release smoke, smokes) and in `mobile.yml` (iOS, Android and their
   inference tests) skip their steps, and still pass, when their exact inputs
@@ -547,7 +556,16 @@ test-only PR. Docker Hub overview edits still publish through the small
   `main`'s runs save the markers pull requests reuse. Each job lists its
   inputs next to its `ci-pass` step; when a job starts reading a new file
   outside them, add it there. To force a full run, use **Run workflow** on the
-  branch. `tests/test_ci_pass_cache.py` checks the gating.
+  branch. `tests/test_ci_pass_cache.py` checks the gating. Mobile pass keys also
+  include the shared diagnostics policy, destination and golden event fixture.
+  The two iOS pass keys exclude only Android implementation/build subtrees;
+  iOS, shared contracts, native pins and resource-generator inputs still
+  invalidate them. This reuses a prior green result only for pull-request and
+  merge-group runs; the cache never skips main pushes, manual verification or
+  release builds. The iOS screenshot tour waits for a hittable native tab,
+  its selected state and its destination before capturing a screen. A failed
+  navigation records a test failure and stops that tour, rather than collecting
+  screenshots of the previous page; it never retries the tap.
   The `Security` workflow works the same way: CodeQL, bandit and the dependency
   audits are skipped for a PR that only edits files under `docs/` or `mobile/` or
   Markdown, while the secret scan always runs (rule: its own `changes` job).
@@ -557,7 +575,37 @@ test-only PR. Docker Hub overview edits still publish through the small
   running pull-request workflows (`.github/workflows/cancel-closed-pr-runs.yml`);
   the repository is capped at 20 concurrent jobs, so they would only delay others.
   Maintainers can run the same cleanup for the whole repository from the Actions
-  tab (`cancel-closed-pr-runs`, dry run by default).
+  tab (`cancel-closed-pr-runs`, dry run by default). The sweep requests cancellation
+  incrementally within a four-minute work budget, leaving time for its final
+  bounded request before the five-minute job limit. Accepted requests are not
+  proof of completed cancellation; HTTP 409 refusals are reported as skipped.
+  Capped searches use a bounded 30-day recovery window. Saturated or truncated
+  discovery, lookup failures and failed cancellation requests return a nonzero result
+  after preserving eligible partial progress; no force-cancel is issued. Short
+  searches with missing rows get one bounded rescan for delayed cancellations;
+  the retry's own count must cover its reported total even when new arrivals
+  increase the combined ID count. Unresolved totals remain incomplete.
+  Each day window is checked against its own reported total, so new arrivals
+  elsewhere cannot hide a truncated window; its retry counts toward the window
+  budget. Both close-event cleanup and the repository sweep freshly paginate
+  the repository's open PRs before each otherwise eligible cancellation: the
+  commit-association API can omit an open PR whose SHA is already on the default
+  branch. An open head/merge SHA, associated PR number, or matching head repository
+  and branch keeps the run, including a reopened PR whose head has advanced.
+  Each refresh needs two consecutive complete matching ownership inventories,
+  bounded to three reads of at most ten pages each; duplicate PR numbers or an
+  unstable inventory preserve that candidate and report incomplete inspection
+  while later candidates remain inspectable. Cosmetic PR updates do not affect
+  this identity comparison. Missing ownership evidence or an incomplete
+  open/closure lookup keeps the run. A positive open-PR match can preserve a run
+  without branch metadata; otherwise its head repository and branch are required,
+  even when it lists a PR number. Cached closures never bypass this refresh.
+  A run must predate the earliest initially known associated PR closure,
+  protecting work started by either close event.
+  Direct cleanup uses the requested PR's own closure for empty commit associations
+  only when its API response explicitly says closed and `merged: false`. A merged
+  or unknown merge state cannot supply that fallback; an empty result alone never
+  authorizes repository-wide cleanup.
 - **Cross-platform parity (hard rule):** anything that ships in default mode
   must behave identically on macOS, Windows, and Linux. Platform-specific
   *implementation* is fine; platform-divergent *default behavior* is a P0.
@@ -682,7 +730,10 @@ test-only PR. Docker Hub overview edits still publish through the small
     2026-11-14). Off by default, including for existing analytics users; metadata
     follows `config/diagnostics.json`. Electron main owns desktop uploads even
     when setup/backend fails; source/Docker and both native phones own their
-    respective consent. `SUPERMETRY_APP_HOST` is an explicit, default-unset operator
+    respective consent. Release CI receives the app ID and ingest key only from
+    GitHub Actions Secrets, never public repository variables or logged values;
+    fork builds receive no upstream app credentials.
+    `SUPERMETRY_APP_HOST` is an explicit, default-unset operator
     override; any other production host needs owner approval and documentation.
     The separate `diagnostics.sessionPings` build flag remains off by default and
     still requires diagnostics consent. Withdrawal stops delivery and invalidates queued reports.

@@ -62,6 +62,23 @@ extension XCUIApplication {
         let symbols = ["Home": "house", "Voices": "person.wave.2", "Dub": "film", "Dictate": "mic", "Settings": "gearshape"]
         return buttons.matching(NSPredicate(format: "label == %@ AND identifier == %@", label, symbols[label] ?? label)).firstMatch
     }
+    /// A tab can exist before its native hit target is ready. Activate it once,
+    /// then confirm selection and arrival before recording or using the page.
+    @MainActor @discardableResult func selectTab(_ label: String, timeout: TimeInterval = uiReadyTimeout, file: StaticString = #filePath, line: UInt = #line) -> Bool {
+        let tab = tabButton(label)
+        guard tab.waitReady(timeout: timeout, file: file, line: line) else { return false }
+        guard tab.wait(for: \.isHittable, toEqual: true, timeout: timeout) else {
+            XCTFail("Tab \(label) did not become hittable", file: file, line: line); return false
+        }
+        tab.tap()
+        guard tab.wait(for: \.isSelected, toEqual: true, timeout: timeout) else {
+            XCTFail("Tab \(label) was not selected", file: file, line: line); return false
+        }
+        guard navigationBars[label].wait(for: \.isHittable, toEqual: true, timeout: timeout) else {
+            XCTFail("Destination \(label) did not appear", file: file, line: line); return false
+        }
+        return true
+    }
     /// Scrolls until `element` sits wholly between the navigation bar and the tab bar.
     /// Content scrolled under those translucent bars can still report `isHittable`,
     /// and a tap there lands on the bar instead of the element. Once the element is on

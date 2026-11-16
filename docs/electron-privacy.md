@@ -56,15 +56,17 @@ Packaged builds configured with an app ID and write-only ingest key send failure
 reports to Supermetry's app intake (`/api/public/v1/app-events`). The key identifies
 the application, never the user, and cannot read reports. It ships in the app's
 private build metadata; it is never committed, logged by the app, or included in
-stored reports. Because it is write-only and ships in every build, it is not
-treated as a secret: when read from a repository variable, CI build logs may show it. The default host remains `https://app.supermetry.com` from
+stored reports. Release builds receive the app ID and ingest key only through
+GitHub Actions Secrets, never public repository variables; build commands must
+not print either value. The default host remains `https://app.supermetry.com` from
 `config/analytics.json`. A separately configured `SUPERMETRY_APP_HOST` selects
 an operator's instance. The owner-configured packaged destination is
 `https://app.voicestudio.sh/api/public/v1/app-events`, owner-set
 2026-11-16; any other production host needs owner approval.
-Release workflows read the repository variables `SUPERMETRY_APP_ID`,
-`SUPERMETRY_INGEST_KEY` and `SUPERMETRY_APP_HOST`, falling back to repository
-secrets of the same names; the ingest key is write-only and ships in the app.
+Release workflows read the repository secrets `SUPERMETRY_APP_ID` and
+`SUPERMETRY_INGEST_KEY`. The destination's existing `SUPERMETRY_APP_HOST`
+variable/secret override is separate and unchanged. Fork builds receive no
+upstream app credentials; unconfigured builds remain credential-free.
 The app intake stores installation and optional session IDs only as keyed hashes.
 Without valid app credentials, the existing public events request
 (`/api/public/v1/events`, event `diagnostic_report`) and site remain unchanged.
@@ -131,6 +133,9 @@ callbacks retain the permission observed before their work starts. Restored
 callbacks without that observation stay local. Python exceptions retain their
 original permission through interpreter/thread hooks after cleanup; delayed
 desktop setup/start attempts and child-exit recovery follow the same rule.
+Restarts keep their original permission even while waiting for the previous
+backend to stop; observing failures does not change promise results or whether
+an error is handled.
 Runtime/file IPC work observes permission at entry. Its asynchronous descendants
 retain that observation through Node's fatal-error and unhandled-rejection hooks.
 Uncaught faults with unknown provenance remain in the local journal rather than
@@ -140,9 +145,12 @@ authorize fault details or frames. Confirmation actions retain the choice
 observed at the click; an unrelated or rewrapped promise cannot acquire a newer
 grant. Seeking an existing phone playback does not renew its grant.
 Permission dialogs, voice-edit waits, gallery loading and stalled transfers do
-not renew an operation's permission. A cached phone download failure from an
-earlier transfer remains local, including after Pause and Resume; a genuinely
-new transfer retains the permission observed when that transfer starts.
+not renew an operation's permission. The initial phone action owns its entire
+permission rationale and OS prompt; confirmation cannot acquire a later grant,
+and cancelling or dismissing the rationale discards that action's observation.
+A cached phone download failure from an earlier transfer remains local, including
+after Pause and Resume; a genuinely new transfer retains the permission observed
+when that transfer starts.
 Temporary queue-read failures preserve current in-memory reports and completed
 delivery decisions. Crash recovery retains its report until the prior session
 marker can be replaced; orderly close removes only a marker owned by that process.

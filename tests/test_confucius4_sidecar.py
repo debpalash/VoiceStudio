@@ -347,7 +347,7 @@ def test_home_relative_cache_survives_chdir(monkeypatch, tmp_path):
     monkeypatch.setenv('XDG_CACHE_HOME', '~/xdg')
     expected = os.path.expanduser('~/xdg')
     sc._chdir_to_clone_if_available()
-    assert os.environ['XDG_CACHE_HOME'] == expected
+    assert os.path.normpath(os.environ["XDG_CACHE_HOME"]) == os.path.normpath(expected)
 
 
 @pytest.mark.parametrize("ref_audio", [None, "", 42])
