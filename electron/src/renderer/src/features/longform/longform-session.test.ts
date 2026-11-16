@@ -1,6 +1,9 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 const fetchMock = vi.hoisted(() => vi.fn());
-vi.mock('@/lib/api/client', () => ({ apiFetch: fetchMock }));
+vi.mock('@/lib/api/client', async (original) => ({
+  ...(await original<object>()),
+  apiFetch: fetchMock,
+}));
 import {
   editLongform,
   longformSession,
@@ -12,9 +15,11 @@ import {
 } from './longform-session';
 const eventResponse = (events: object[]) =>
   new Response(events.map((e) => 'data: ' + JSON.stringify(e) + '\n\n').join(''));
-beforeEach(() => {
+beforeEach(async () => {
+  editLongform('audiobook', { script: 'Hello', voice: 'voice', output: '' });
+  fetchMock.mockResolvedValue(eventResponse([{ type: 'done', output: 'old.m4b' }]));
+  await renderLongform('audiobook');
   fetchMock.mockReset();
-  editLongform('audiobook', { script: 'Hello', voice: 'voice', output: 'old.m4b' });
 });
 it('preserves the last output when the stream ends without completion', async () => {
   fetchMock.mockResolvedValue(eventResponse([{ type: 'started', chapters: 2 }]));

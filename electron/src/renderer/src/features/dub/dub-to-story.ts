@@ -8,7 +8,8 @@
  */
 import { dubToStory } from '@shared/utils/dubToStory';
 import {
-  editLongform,
+  replaceLongformDraft,
+  snapshotLongformDraft,
   longformSession,
   storiesImportEpoch,
   type Draft,
@@ -49,11 +50,12 @@ export function canCreateStoryFromDub(session: { phase: string; segments: unknow
  * the dub replaces the draft, even if the current script has no lines.
  */
 export function storiesDraftOccupied(draft: Draft): boolean {
+  const saved = snapshotLongformDraft('stories', draft);
   return (
     scriptSize('stories', draft) > 0 ||
     draft.cast.length > 0 ||
     Object.keys(draft.voiceCast).length > 0 ||
-    Boolean(draft.output || draft.outputScript || draft.outputChapters.length)
+    Boolean(saved.output || saved.outputScript || saved.outputChapters.length)
   );
 }
 
@@ -84,7 +86,8 @@ export function loadDubIntoStories(
   if (tracks.length === 0) return false;
   const newLineId = options.newLineId ?? (() => crypto.randomUUID());
   storiesImportEpoch.current += 1;
-  editLongform('stories', {
+  replaceLongformDraft('stories', {
+    ...longformSession.state.drafts.stories,
     // Clearing the script the same way "Clear script" does, so a pending import
     // cannot survive underneath the lines that just replaced it.
     ...clearedScriptPatch('stories'),

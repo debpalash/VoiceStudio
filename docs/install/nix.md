@@ -51,7 +51,13 @@ nix run .   # launch it straight from this checkout
 - **Updates come from Nix.** The package is a read-only store path, so its launcher sets `VOICESTUDIO_DISABLE_UPDATER=1`; update it with Nix.
 - **No installer artifacts.** `bun run dist` cannot run under Nix: electron-builder downloads its own tool binaries (the AppImage runtime and `fpm`) from GitHub at build time, which the Nix sandbox blocks. Release AppImage and `.deb` artifacts come from CI.
 
-`nix flake check` builds the app and verifies the packaged resources, the dictation helper's `libxdo` link, the launcher and the pruned runtime `node_modules`.
+`nix flake check --no-build` first checks that every regular JavaScript and
+TypeScript module survives the app's source filter. Dependency and VCS directories
+are excluded before traversal, and symlinks are not followed. Nix `result*`
+symlinks are excluded, while regular source files with those names are retained.
+
+`nix flake check` also builds the app and verifies the packaged resources, the
+dictation helper's `libxdo` link, the launcher and the pruned runtime `node_modules`.
 
 ## Building and Testing
 

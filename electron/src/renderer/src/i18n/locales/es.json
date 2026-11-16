@@ -1872,7 +1872,12 @@
     "cast_note_one": "{{names}} aún no tiene voz asignada, así que se lee con la voz principal. Elige una en Reparto.",
     "cast_note_other": "{{names}} aún no tienen voz asignada, así que se leen con la voz principal. Elige voces en Reparto.",
     "line_gap": "Pausa al cambiar de línea",
-    "paragraph_gap": "Pausa al cambiar de párrafo"
+    "paragraph_gap": "Pausa al cambiar de párrafo",
+    "result_other_connection": "Este audio guardado pertenece a otra conexión de VoiceStudio. Vuelve a esa conexión para reproducirlo.",
+    "result_connection_unknown": "Conecta tu motor local o tu ordenador remoto para mostrar el audio guardado.",
+    "result_legacy": "Este resultado guardado antiguo no tiene información de conexión. Busca su nombre de archivo en esta conexión; podría ser un archivo diferente.",
+    "result_check_audio": "Comprobar el audio guardado en esta conexión",
+    "result_recovery_failed": "El audio guardado no está disponible en esta conexión. Vuelve a su conexión original o genéralo de nuevo."
   },
   "credentials": {
     "microsoft_key": "Clave del traductor de Microsoft",

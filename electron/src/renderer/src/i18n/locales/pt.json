@@ -1872,7 +1872,12 @@
     "cast_note_one": "{{names}} ainda não tem voz e será lido com a voz principal. Escolha uma em Elenco.",
     "cast_note_other": "{{names}} ainda não têm voz e serão lidos com a voz principal. Escolha vozes em Elenco.",
     "line_gap": "Intervalo entre linhas",
-    "paragraph_gap": "Intervalo entre parágrafos"
+    "paragraph_gap": "Intervalo entre parágrafos",
+    "result_other_connection": "Este áudio guardado pertence a outra ligação do VoiceStudio. Volte a essa ligação para o reproduzir.",
+    "result_connection_unknown": "Ligue o seu motor local ou computador remoto para mostrar o áudio guardado.",
+    "result_legacy": "Este resultado guardado mais antigo não tem informações sobre a ligação. Procure o nome do ficheiro nesta ligação; poderá ser um ficheiro diferente.",
+    "result_check_audio": "Verificar o áudio guardado nesta ligação",
+    "result_recovery_failed": "O áudio guardado não está disponível nesta ligação. Volte à ligação original ou gere-o novamente."
   },
   "credentials": {
     "microsoft_key": "Chave do Microsoft Tradutor",
