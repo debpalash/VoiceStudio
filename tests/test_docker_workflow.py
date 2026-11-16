@@ -218,3 +218,25 @@ def test_rocm_base_rejects_a_constraints_file_without_an_exact_torch_pin(tmp_pat
     result = subprocess.run(["bash", "-e", "-c", step["run"]], cwd=tmp_path,
                             env={"GITHUB_OUTPUT": str(tmp_path / "out"), "PATH": "/usr/bin:/bin"})
     assert result.returncode != 0
+
+
+def test_registry_write_is_granted_to_publishing_jobs_only():
+    """`packages: write` can overwrite ghcr.io tags, so it is not granted workflow-wide.
+
+    The grant lives on the three jobs that push images. Steps inside those jobs,
+    including the ones that only validate a release ref or resolve a source
+    commit, still run with the job's token: the scope is the job, not the step.
+    What this prevents is a fourth job, or a future read-only job, inheriting the
+    write token by sitting under a workflow-level grant. The repository's other
+    publishers scope it the same way (`electron-release.yml` keeps
+    `contents: read` at the top and opts into `contents: write` on the release
+    job; `security.yml` has uploading jobs opt into `security-events`).
+    """
+    workflow = _load(_DOCKER)
+    assert workflow["permissions"] == {"contents": "read"}, (
+        "docker.yml must not grant packages: write workflow-wide; grant it on the jobs that push"
+    )
+    for job in _JOBS:
+        permissions = workflow["jobs"][job].get("permissions") or {}
+        assert permissions.get("packages") == "write", f"{job} publishes images and needs packages: write"
+        assert permissions.get("contents") == "read", f"{job} only reads the repository"
