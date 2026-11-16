@@ -8,8 +8,6 @@ metadata and the backend fallback mirror it.
 
 ## [Unreleased]
 
-This beta adds separately opted-in automatic error reports, so failures can reach the maintainers without a manual bug report. Reports stay off unless you allow them, and never include audio, text, files, names, credentials or logs.
-
 **Highlights**
 
 - Optional automatic error reports stay off until separately allowed in Privacy
@@ -17,8 +15,6 @@ This beta adds separately opted-in automatic error reports, so failures can reac
 - Stories can merge adjacent lines with compatible speaker and voice settings
 - Linux ROCm setup preserves its installed PyTorch stack, and GPU readiness reflects failed self-tests
 - Phone dub exports check available space and avoid false low-space errors on iOS
-
-**Upgrading:** install over the existing app or use Settings → Updates → Beta. Voices, projects, settings and installed models stay in place.
 
 ### Changed
 
@@ -135,6 +131,17 @@ This beta adds separately opted-in automatic error reports, so failures can reac
 - Docker's web build no longer fails the unused-key check when only `electron/` is copied, and the iPhone CI job allows for a native-runtime cache miss (#4052)
 - Removed unused scripts, the old Tauri MSI tooling and leftover Turborepo ignore lines (#4046)
 - Accessibility smoke timeouts now name the requests still pending, so a flaky CI failure points at its cause (#4036)
+
+### Bug reporters
+
+- @gaino-svg — long Android manuscripts (#4201)
+- @renaldyramadani123-code and @freemood36-svg — native-crash evidence that improved manual reports; the underlying Windows crash remains unresolved (#4142, #4158, #4162)
+- @rockziepromax — MOSS-TTS-Nano voice cloning (#4063)
+- @MeinLive — GGUF GPU crashes and the relocated runtime lookup (#4050, #4051)
+- @user555gtb — directions that interrupted full dubs (#4054)
+- @dimfk001git — audiobook MP3 playback and downloads (#4071)
+- [hugotriunfa18 on Discord](https://discord.com/channels/1497926884707799144/1571229026138325102/1571229026138325102) — the installed-model licence action (#4143)
+- [vinhson on Discord](https://discord.com/channels/1497926884707799144/1567177140007608350/1567177140007608350) — VoxCPM2 installation evidence retained in the tracker; this report remains unresolved (#4154)
 
 ## [0.5.9-beta.5] — 2026-11-16
 
@@ -265,6 +272,17 @@ This beta adds separately opted-in automatic error reports, so failures can reac
 - Docker's web build no longer fails the unused-key check when only `electron/` is copied, and the iPhone CI job allows for a native-runtime cache miss (#4052)
 - Removed unused scripts, the old Tauri MSI tooling and leftover Turborepo ignore lines (#4046)
 - Accessibility smoke timeouts now name the requests still pending, so a flaky CI failure points at its cause (#4036)
+
+### Bug reporters
+
+- @gaino-svg — long Android manuscripts (#4201)
+- @renaldyramadani123-code and @freemood36-svg — native-crash evidence that improved manual reports; the underlying Windows crash remains unresolved (#4142, #4158, #4162)
+- @rockziepromax — MOSS-TTS-Nano voice cloning (#4063)
+- @MeinLive — GGUF GPU crashes and the relocated runtime lookup (#4050, #4051)
+- @user555gtb — directions that interrupted full dubs (#4054)
+- @dimfk001git — audiobook MP3 playback and downloads (#4071)
+- [hugotriunfa18 on Discord](https://discord.com/channels/1497926884707799144/1571229026138325102/1571229026138325102) — the installed-model licence action (#4143)
+- [vinhson on Discord](https://discord.com/channels/1497926884707799144/1567177140007608350/1567177140007608350) — VoxCPM2 installation evidence retained in the tracker; this report remains unresolved (#4154)
 
 ## [0.5.9-beta.4] — 2026-11-16
 
