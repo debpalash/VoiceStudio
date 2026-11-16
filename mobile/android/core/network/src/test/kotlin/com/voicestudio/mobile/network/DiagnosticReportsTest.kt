@@ -19,12 +19,16 @@ class DiagnosticReportsTest {
         var failOutboxWrite=false;var outboxWriteAttempts=0
         val blockedWrites=mutableSetOf<String>();val blockedRemoves=mutableSetOf<String>()
         var unreadableRevocation=false;var revocationWriteAttempts=0;var unreadableOutbox=false
+        var revocationReads=0;var failRevocationReadAt:Int?=null
         var unreadableConsent=false;var consentReads=0;var outboxReads=0
         override fun read(name:String,maxBytes:Int):ByteArray? {
             reads++
             if(name=="consent.json"){consentReads++;if(unreadableConsent)throw IOException("controlled consent EIO")}
             if(name=="outbox.json"){outboxReads++;if(unreadableOutbox)throw IOException("controlled outbox EIO")}
-            if(name=="revoked.json" && unreadableRevocation)throw IOException("private path")
+            if(name=="revoked.json") {
+                revocationReads++
+                if(unreadableRevocation || revocationReads==failRevocationReadAt)throw IOException("private path")
+            }
             return files[name]?.clone()?.also { require(it.size<=maxBytes) }
         }
         override fun write(name:String,bytes:ByteArray) {
@@ -985,6 +989,160 @@ class DiagnosticReportsTest {
                 if(action!="close")assertFalse(store.files.containsKey("outbox.json"))
             }finally{reporter.close()}
         }
+    }
+
+
+    @Test fun sameGrantConsentReadRecoveryPreservesUnpublishedAcceptedReports()=runTest {
+        val store=Store();val transport=Transport().apply{code=204}
+        val clock=ScheduledClock(testScheduler)
+        val reporter=makeReporter(store,transport,clock,StandardTestDispatcher(testScheduler))
+        try {
+            reporter.setConsent(true)
+            store.failOutboxWrite=true
+            assertTrue(reporter.capture(event()))
+            assertTrue(reporter.capture(event()))
+            runCurrent()
+            assertEquals(1,reporter.status.pendingCount)
+            assertTrue(transport.bodies.isEmpty())
+            store.unreadableRevocation=true
+            assertTrue(runCatching{reporter.load(forceRead=true)}.isFailure)
+            assertFalse(reporter.capture(event()))
+            store.unreadableRevocation=false;store.failOutboxWrite=false
+            reporter.load(forceRead=true);reporter.flush()
+            assertEquals("An accepted same-grant report must survive an unread consent pause",1,transport.bodies.size)
+            assertEquals(2,transport.bodies.single().getValue("props").jsonObject.getValue("occurrences").jsonPrimitive.int)
+            assertEquals(0,reporter.status.pendingCount)
+        } finally {reporter.close()}
+    }
+    @Test fun sameGrantConsentReadRecoveryDoesNotResurrectAcknowledgedDiskRecords()=runTest {
+        val store=Store();val transport=Transport().apply{code=204}
+        val reporter=makeReporter(store,transport,ScheduledClock(testScheduler),StandardTestDispatcher(testScheduler))
+        try {
+            reporter.setConsent(true)
+            store.blockedRemoves.add("outbox.json")
+            assertTrue(reporter.capture(event()));runCurrent()
+            assertEquals(1,transport.bodies.size)
+            assertTrue(store.files.containsKey("outbox.json"))
+            store.unreadableRevocation=true
+            assertTrue(runCatching{reporter.load(forceRead=true)}.isFailure)
+            store.unreadableRevocation=false;store.blockedRemoves.clear()
+            reporter.load(forceRead=true);reporter.flush()
+            assertEquals("An ACK must remain authoritative when stale outbox cleanup failed",1,transport.bodies.size)
+            assertFalse(store.files.containsKey("outbox.json"))
+        } finally {store.blockedRemoves.clear();reporter.close()}
+    }
+    @Test fun unreadConsentRecoveryNeverCarriesMemoryIntoAnOffOrDifferentGrant()=runTest {
+        for(enabled in listOf(false,true)) {
+            val store=Store();val transport=Transport().apply{code=204}
+            val reporter=makeReporter(store,transport,ScheduledClock(testScheduler),StandardTestDispatcher(testScheduler))
+            try {
+                reporter.setConsent(true);store.failOutboxWrite=true
+                assertTrue(reporter.capture(event()));runCurrent()
+                store.unreadableRevocation=true
+                assertTrue(runCatching{reporter.load(forceRead=true)}.isFailure)
+                val consent=store.json("consent.json").jsonObject
+                store.files["consent.json"]=JsonObject(consent+mapOf("enabled" to JsonPrimitive(enabled),"epoch" to JsonPrimitive("b".repeat(32)),"profile_id" to JsonPrimitive("install_"+"b".repeat(32)))).toString().toByteArray(Charsets.UTF_8)
+                store.unreadableRevocation=false;store.failOutboxWrite=false
+                reporter.load(forceRead=true);reporter.flush()
+                assertTrue("Old accepted work cannot cross a changed or withdrawn grant",transport.bodies.isEmpty())
+                assertEquals(enabled,reporter.status.enabled)
+            } finally {reporter.close()}
+        }
+    }
+    @Test fun closeAfterUnreadConsentPreservesAcceptedUnpublishedReports()=runTest {
+        val store=Store();val transport=Transport().apply {code=204}
+        val dispatcher=StandardTestDispatcher(testScheduler)
+        val reporter=makeReporter(store,transport,ScheduledClock(testScheduler),dispatcher)
+        try {
+            reporter.setConsent(true);store.failOutboxWrite=true
+            assertTrue(reporter.capture(event()));assertTrue(reporter.capture(event()));runCurrent()
+            assertEquals(1,reporter.status.pendingCount);assertTrue(transport.bodies.isEmpty())
+            store.unreadableRevocation=true
+            assertTrue(runCatching {reporter.load(forceRead=true)}.isFailure)
+            store.unreadableRevocation=false;store.failOutboxWrite=false
+            reporter.close()
+            val reopened=makeReporter(store,transport,ScheduledClock(testScheduler),dispatcher)
+            try {
+                reopened.load();reopened.flush()
+                assertEquals("Closing an unread same-grant owner must publish its accepted memory",1,transport.bodies.size)
+                assertEquals(2,transport.bodies.single().getValue("props").jsonObject.getValue("occurrences").jsonPrimitive.int)
+            } finally {reopened.close()}
+        } finally {store.unreadableRevocation=false;store.failOutboxWrite=false;reporter.close()}
+    }
+    @Test fun closeAfterUnreadConsentCannotResurrectAcknowledgedDiskRecords()=runTest {
+        val store=Store();val transport=Transport().apply {code=204}
+        val dispatcher=StandardTestDispatcher(testScheduler)
+        val reporter=makeReporter(store,transport,ScheduledClock(testScheduler),dispatcher)
+        try {
+            reporter.setConsent(true);store.blockedRemoves.add("outbox.json")
+            assertTrue(reporter.capture(event()));runCurrent()
+            assertEquals(1,transport.bodies.size);assertTrue(store.files.containsKey("outbox.json"))
+            store.unreadableRevocation=true
+            assertTrue(runCatching {reporter.load(forceRead=true)}.isFailure)
+            store.unreadableRevocation=false;store.blockedRemoves.clear()
+            reporter.close()
+            val reopened=makeReporter(store,transport,ScheduledClock(testScheduler),dispatcher)
+            try {
+                reopened.load();reopened.flush()
+                assertEquals("Shutdown must preserve the authoritative ACK removal",1,transport.bodies.size)
+                assertFalse(store.files.containsKey("outbox.json"))
+            } finally {reopened.close()}
+        } finally {store.unreadableRevocation=false;store.blockedRemoves.clear();reporter.close()}
+    }
+
+    @Test fun automaticConsentReadRecoveryDrainsAcceptedIntakeWithoutAnotherAction()=runTest {
+        val store=Store();val transport=Transport().apply {code=204}
+        val reporter=makeReporter(store,transport,ScheduledClock(testScheduler),StandardTestDispatcher(testScheduler))
+        try {
+            reporter.setConsent(true)
+            store.unreadableRevocation=true
+            // Cached consent accepts both failures; the first actual flush
+            // loses marker readability before it can drain that intake.
+            assertTrue(reporter.capture(event()));assertTrue(reporter.capture(event()))
+            runCurrent()
+            assertFalse(reporter.status.enabled);assertTrue(transport.bodies.isEmpty())
+            store.unreadableRevocation=false
+            advanceTimeBy(59999);runCurrent();assertTrue(transport.bodies.isEmpty())
+            advanceTimeBy(1);runCurrent()
+            assertTrue(reporter.status.enabled)
+            assertEquals("The automatic read-recovery wake must also drain accepted intake",1,transport.bodies.size)
+            assertEquals(2,transport.bodies.single().getValue("props").jsonObject.getValue("occurrences").jsonPrimitive.int)
+            assertEquals(0,reporter.status.pendingCount)
+            advanceTimeBy(180000);runCurrent();assertEquals(1,transport.bodies.size)
+        } finally {reporter.close()}
+    }
+
+    @Test fun automaticConsentReadRecoveryRetriesAnAlreadyCreatedOptionalSession()=runTest {
+        val store=Store();val bodies=mutableListOf<JsonObject>()
+        val transport=object:DiagnosticTransport {
+            override suspend fun send(destination:DiagnosticDestination,body:ByteArray,allowed:()->Boolean):Int=error("App session must not use legacy transport")
+            override suspend fun sendApp(destination:DiagnosticDestination,body:ByteArray,userAgent:String,allowed:()->Boolean):DiagnosticTransportReply {
+                check(allowed())
+                val parsed=Json.parseToJsonElement(body.toString(Charsets.UTF_8)).jsonObject
+                bodies.add(parsed)
+                return DiagnosticTransportReply(202,"{\"accepted\":${parsed.getValue("events").jsonArray.size},\"dropped\":[]}".toByteArray(Charsets.UTF_8))
+            }
+            override fun cancelAll()=Unit
+        }
+        val destination=DiagnosticDestination("localtest123","https://legacy.invalid","https://app.invalid",
+            DiagnosticAppConfiguration("native01","smk_"+"a".repeat(39),"https://intake.invalid",sessionPings=true))
+        val reporter=DiagnosticReports(File("unused-test-store"),policy(),destination,"0.5.9-beta.3",
+            transport=transport,clock=ScheduledClock(testScheduler),storage=store,dispatcher=StandardTestDispatcher(testScheduler),disabled={false})
+        try {
+            reporter.setConsent(true)
+            // The initial flush marker read succeeds. The delivery-time marker
+            // read then fails, after the opt-in session already exists.
+            store.failRevocationReadAt=store.revocationReads+2
+            reporter.flush();runCurrent()
+            assertFalse(reporter.status.enabled);assertEquals(0,reporter.status.pendingCount);assertTrue(bodies.isEmpty())
+            advanceTimeBy(59999);runCurrent();assertTrue(bodies.isEmpty())
+            advanceTimeBy(1);runCurrent()
+            assertTrue(reporter.status.enabled)
+            assertEquals("An accepted session-only ping needs the same recovery wake",1,bodies.size)
+            val events=bodies.single().getValue("events").jsonArray
+            assertEquals(1,events.size);assertEquals("session",events.single().jsonObject.getValue("kind").jsonPrimitive.content)
+            advanceTimeBy(180000);runCurrent();assertEquals(1,bodies.size)
+        } finally {reporter.close()}
     }
 
 }

@@ -24,6 +24,16 @@ def test_ci_cancels_superseded_pr_runs_but_never_main_commits():
     assert concurrency["cancel-in-progress"] == "${{ github.event_name == 'pull_request' }}"
 
 
+def test_mobile_preserves_each_main_and_manual_validation():
+    concurrency = _load("mobile.yml")["concurrency"]
+    # A shared main group retains only one pending run even when cancellation
+    # is false. Each push/dispatch needs its own group; only PRs supersede.
+    assert concurrency["group"] == (
+        "mobile-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}"
+    )
+    assert concurrency["cancel-in-progress"] == "${{ github.event_name == 'pull_request' }}"
+
+
 def test_docker_cancels_only_older_main_pushes_never_releases_or_backfills():
     concurrency = _load("docker.yml")["concurrency"]
     assert "run_id" in concurrency["group"], "release/dispatch runs must get their own group"

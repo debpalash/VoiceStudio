@@ -15,7 +15,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import com.voicestudio.mobile.network.ClientFailure
 
-@Composable fun permissionAction(permission:String,rationale:String,failure:()->(Throwable)->Unit,restoreFailure:(Throwable)->Unit,granted:()->Unit):()->Unit {
+@Composable fun permissionActionWithFailure(permission:String,rationale:String,failure:()->(Throwable)->Unit,restoreFailure:(Throwable)->Unit,granted:((Throwable)->Unit)->Unit):()->Unit {
     val context=LocalContext.current
     var rationaleOpen by remember {mutableStateOf(false)}
     val latest by rememberUpdatedState(granted)
@@ -27,7 +27,7 @@ import com.voicestudio.mobile.network.ClientFailure
         // consent observation does not. Restore feedback without a new grant.
         val failed=pendingFailure ?: restoredFailure
         pendingFailure=null
-        if(allowed) latest() else failed(ClientFailure("mobile.permissions.denied"))
+        if(allowed) latest(failed) else failed(ClientFailure("mobile.permissions.denied"))
     }
     if(rationaleOpen) AlertDialog(shape=MaterialTheme.shapes.large,onDismissRequest={rationaleOpen=false},text={
         // Match the iOS microphone purpose and routing explanation, using the same translated keys.
@@ -36,6 +36,10 @@ import com.voicestudio.mobile.network.ClientFailure
     },
         confirmButton={TextButton(shape=MaterialTheme.shapes.small,onClick={rationaleOpen=false;pendingFailure=observeFailure();launcher.launch(permission)}) {Text(tr("mobile.android.continue"))}},
         dismissButton={TextButton(shape=MaterialTheme.shapes.small,onClick={rationaleOpen=false}) {Text(tr("common.cancel"))}})
-    return { if(ContextCompat.checkSelfPermission(context,permission)==PackageManager.PERMISSION_GRANTED) latest() else rationaleOpen=true }
+    return { if(ContextCompat.checkSelfPermission(context,permission)==PackageManager.PERMISSION_GRANTED) latest(observeFailure()) else rationaleOpen=true }
 }
+/** Permission-gated work can retain its diagnostic owner through recording. */
+@Composable fun permissionAction(permission:String,rationale:String,failure:()->(Throwable)->Unit,restoreFailure:(Throwable)->Unit,granted:()->Unit):()->Unit =
+    permissionActionWithFailure(permission,rationale,failure,restoreFailure) {granted()}
+
 fun openSystemSettings(context:android.content.Context) {context.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:${context.packageName}")))}

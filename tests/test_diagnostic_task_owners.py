@@ -107,18 +107,20 @@ def test_actual_task_runner_failure_stays_with_its_initial_grant(reporter, monke
     rows=reporter._files()
     assert len(rows)==int(choice=='unchanged'), 'Awaited runner failure borrowed a later grant'
 
-@pytest.mark.parametrize('choice',['unchanged','replacement','later_opt_in','fresh_later_unit'])
+@pytest.mark.parametrize('choice',['unchanged','replacement','later_opt_in','consent_during_operation'])
 def test_progressive_openai_fault_completed_before_new_grant_cannot_borrow_it(reporter, choice):
     openai=importlib.import_module('api.routers.openai_compat')
-    reporter.consent(choice not in ('later_opt_in','fresh_later_unit'))
+    reporter.consent(choice not in ('later_opt_in','consent_during_operation'))
     async def run():
         entered=asyncio.Event()
         failure=asyncio.get_running_loop().create_future()
         async def render(sentence):
+            if choice == 'consent_during_operation':
+                assert importlib.import_module('core.diagnostic_reports').observe_grant() is not None
             entered.set();return await failure
         stream=openai._stream_speech_pcm(b'\0\0',['first','second'],render,sse=True)
         await stream.__anext__()
-        if choice=='fresh_later_unit':reporter.consent(True)
+        if choice=='consent_during_operation':reporter.consent(True)
         pending=asyncio.create_task(stream.__anext__())
         try:
             await asyncio.wait_for(entered.wait(),2)
@@ -525,20 +527,22 @@ def test_cancelled_task_late_exception_does_not_report_failure(reporter,monkeypa
     assert len(reporter._files())==int(not cancelled)
 
 
-@pytest.mark.parametrize('choice',['unchanged','replacement','later_opt_in','fresh_later_unit'])
+@pytest.mark.parametrize('choice',['unchanged','replacement','later_opt_in','consent_during_operation'])
 def test_translation_outer_failure_keeps_awaited_unit_grant(reporter,monkeypatch,choice):
     from test_dub_translate import _install_fake_argos
     translation=importlib.import_module('api.routers.dub_translate')
     _install_fake_argos(monkeypatch)
-    reporter.consent(choice not in ('later_opt_in','fresh_later_unit'))
+    reporter.consent(choice not in ('later_opt_in','consent_during_operation'))
     async def run():
         entered=asyncio.Event();failure=asyncio.get_running_loop().create_future()
         async def cinematic(*args,**kwargs):
+            if choice == 'consent_during_operation':
+                assert importlib.import_module('core.diagnostic_reports').observe_grant() is not None
             entered.set();return await failure
         monkeypatch.setattr(translation,'_maybe_cinematic',cinematic)
-        if choice=='fresh_later_unit':
-            # Translation was submitted while OFF; the distinct cinematic
-            # unit starts only after the user explicitly grants consent.
+        if choice=='consent_during_operation':
+            # Cinematic refinement is still part of the OFF-started
+            # translation operation, even if consent changes between units.
             real_translate=importlib.import_module('argostranslate.translate').translate
             def translate(*args):
                 reporter.consent(True)
@@ -557,7 +561,7 @@ def test_translation_outer_failure_keeps_awaited_unit_grant(reporter,monkeypatch
         finally:
             if not task.done():task.cancel();await asyncio.gather(task,return_exceptions=True)
     asyncio.run(run());reporter._tick()
-    assert len(reporter._files())==int(choice in ('unchanged','fresh_later_unit'))
+    assert len(reporter._files())==int(choice=='unchanged')
 
 
 @pytest.mark.parametrize('initially_enabled', [False, True])
@@ -607,20 +611,26 @@ def test_openai_upload_keeps_request_owner_for_nested_asr(reporter, monkeypatch,
     monkeypatch.setattr(ffmpeg, 'raise_for_audio_extract_failure', lambda *a, **kw: None)
     reporter.consent(old_grant)
     owner = reports.observe_grant()
+    calls = []
     class Upload:
         filename = 'fixture.wav'
         async def read(self):
             reporter.consent(False); reporter.consent(True)
+            calls.append('upload_changed_consent')
             return b'RIFF-fixture'
     async def guarded(*args, **kwargs):
+        assert calls == ['upload_changed_consent']
+        calls.append('guarded_asr')
         reports.capture_failure('transcription', error=RuntimeError('synthetic nested ASR fault'))
         raise RuntimeError('synthetic ASR fault')
     monkeypatch.setattr(asr, 'run_transcribe_guarded', guarded)
     async def run():
         with reports.grant_scope(owner):
-            with pytest.raises(Exception):
+            with pytest.raises(openai.HTTPException) as raised:
                 await openai._transcribe_request(task='transcribe', file=Upload(), language=None, prompt=None, response_format='json', temperature=None)
+            assert raised.value.status_code == 500
     asyncio.run(run())
+    assert calls == ['upload_changed_consent', 'guarded_asr']
     assert reporter.intake.empty()
 
 
