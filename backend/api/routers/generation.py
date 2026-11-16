@@ -2494,6 +2494,7 @@ async def generate_speech(
         async def _stream_events():
             """Yield progress, marked audio chunks, and final generation metadata."""
             import json
+            from core.failure import ReferenceTranscriptRequiredError
 
             def _line(obj) -> bytes:
                 """Encode one streaming synthesis event as a compact NDJSON line."""
@@ -2678,6 +2679,15 @@ async def generate_speech(
                 )
                 failure["retry_after"] = 30
                 yield _line({"type": "error", **failure})
+            except ReferenceTranscriptRequiredError:
+                # A transcript-less clone reached an engine whose runtime
+                # hard-requires one (#4223). The owned remedy is fixed text
+                # from core.failure, so the frame never echoes the exception.
+                logger.error("Streaming generation request lacks a clone transcript")
+                from core.public_errors import stream_failure
+                yield _line({
+                    "type": "error", **stream_failure("reference_transcript_required"),
+                })
             except ValueError as e:
                 logger.error("Streaming generation request rejected")
                 from core.public_errors import stream_failure

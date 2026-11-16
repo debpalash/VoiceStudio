@@ -376,10 +376,12 @@ def test_a_reference_without_a_transcript_is_refused_before_the_cli(rig, tmp_pat
     """The resident server refuses transcript-less clones ("tts-server needs
     a transcript to register a cloned voice"), and the CLI they used to fall
     back to dies on "--ref-wav requires --ref-text" (exit 1) — so the engine
-    refuses with the remedy and never spawns anything."""
+    refuses with the owned remedy and never spawns anything."""
+    from core.failure import ReferenceTranscriptRequiredError
+
     clip = tmp_path / "ref.wav"
     _write_wav(clip, 2400)
-    with pytest.raises(ValueError, match="transcript"):
+    with pytest.raises(ReferenceTranscriptRequiredError):
         rig.instance.generate("x", ref_audio=str(clip))
     assert rig.cli_argvs == [] and rig.events("start") == []
 

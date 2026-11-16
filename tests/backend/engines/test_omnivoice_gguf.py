@@ -438,12 +438,19 @@ def test_transcript_without_ref_audio_is_ignored(monkeypatch, tmp_path):
 def test_clone_without_transcript_is_refused_before_spawn(monkeypatch, tmp_path):
     """The pinned CLI exits 1 on "--ref-wav requires --ref-text", and the
     route's auto-transcribe is best-effort — so a transcript-less clone must
-    be refused with the remedy before anything is spawned or decoded."""
+    be refused with the owned remedy before anything is spawned or decoded."""
+    from core.failure import (
+        REFERENCE_TRANSCRIPT_REQUIRED_MESSAGE,
+        ReferenceTranscriptRequiredError,
+    )
+
     clip = tmp_path / "prompt.wav"
     _write_3s_wav(clip)
     rig = _GgufRig(monkeypatch, tmp_path)
-    with pytest.raises(ValueError, match="transcript"):
+    with pytest.raises(ReferenceTranscriptRequiredError) as caught:
         rig.instance.generate("x", ref_audio=str(clip))
+    # The 400 detail and the stream frame carry the same owned wording.
+    assert str(caught.value) == REFERENCE_TRANSCRIPT_REQUIRED_MESSAGE
     assert rig.argvs == []
 
 

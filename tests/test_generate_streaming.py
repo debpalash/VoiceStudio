@@ -84,13 +84,15 @@ def _tts_mod():
 
 
 def _make_deterministic_engine(engine_id="stream-fake", *, delay_s=0.0,
-                               fail_on_call=None, fail_message=None):
+                               fail_on_call=None, fail_message=None,
+                               fail_exception=None):
     """TTSBackend stub whose output is a pure function of the input text, so
     the streamed per-chunk renders and the classic whole-request render can be
     compared bit-for-bit. Optional per-call delay (to observe incrementality)
     and fail-on-Nth-call (to drive the mid-stream error path). ``fail_message``
     overrides the default secret-bearing failure text, e.g. to raise an error
-    that classifies to a known failure class (#1607)."""
+    that classifies to a known failure class (#1607); ``fail_exception`` raises
+    that exception type instead (its message still comes from ``fail_message``)."""
 
     class _Engine(_tts_mod().TTSBackend):
         id = engine_id
@@ -113,6 +115,10 @@ def _make_deterministic_engine(engine_id="stream-fake", *, delay_s=0.0,
         def generate(self, text, **kw) -> torch.Tensor:
             type(self).calls.append((text, time.monotonic()))
             if fail_on_call is not None and len(type(self).calls) == fail_on_call:
+                if fail_exception is not None:
+                    if fail_message:
+                        raise fail_exception(fail_message)
+                    raise fail_exception()
                 raise RuntimeError(
                     fail_message
                     or "TOKEN=stream-secret /home/alice/private-reference.wav"
@@ -322,6 +328,38 @@ def test_stream_midstream_error_yields_error_event(
 
     after_ids = {h["id"] for h in client.get("/history").json()}
     assert after_ids == before_ids     # nothing was recorded for the failure
+
+
+def test_stream_transcript_less_clone_carries_the_owned_remedy(
+    client, monkeypatch, no_omnivoice_model
+):
+    """#4223: an engine that hard-requires a clone transcript (OmniVoice GGUF
+    CLI exits 1 on "--ref-wav requires --ref-text") raises
+    ReferenceTranscriptRequiredError mid-stream. The frame must carry the
+    owned remedy instead of the generic invalid_request floor, and never the
+    raw exception text."""
+    from core.failure import (
+        REFERENCE_TRANSCRIPT_REQUIRED_MESSAGE,
+        ReferenceTranscriptRequiredError,
+    )
+
+    fake = _make_deterministic_engine(
+        fail_on_call=2, fail_exception=ReferenceTranscriptRequiredError,
+    )
+    monkeypatch.setitem(_tts_mod()._REGISTRY, "stream-fake", fake)
+
+    events = _stream_events(client, {
+        "text": LONG_TEXT, "engine": "stream-fake",
+        "seed": "7", "max_chunk_chars": "60",
+    })
+    types = [e["type"] for e, _ in events]
+    assert types[-1] == "error"
+    error = events[-1][0]
+    assert error["code"] == "reference_transcript_required"
+    assert error["detail"] == REFERENCE_TRANSCRIPT_REQUIRED_MESSAGE
+    assert error["detail"] != "The generation request could not be processed."
+    assert "ReferenceTranscriptRequiredError" not in repr(error)
+    assert "Traceback" not in repr(error)
 
 
 def test_stream_error_names_recognized_cause_and_journals(
