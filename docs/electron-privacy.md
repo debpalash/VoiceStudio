@@ -131,6 +131,9 @@ callbacks retain the permission observed before their work starts. Restored
 callbacks without that observation stay local. Python exceptions retain their
 original permission through interpreter/thread hooks after cleanup; delayed
 desktop setup/start attempts and child-exit recovery follow the same rule.
+Restarts keep their original permission even while waiting for the previous
+backend to stop; observing failures does not change promise results or whether
+an error is handled.
 Runtime/file IPC work observes permission at entry. Its asynchronous descendants
 retain that observation through Node's fatal-error and unhandled-rejection hooks.
 Uncaught faults with unknown provenance remain in the local journal rather than
