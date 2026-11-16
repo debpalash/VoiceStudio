@@ -3,8 +3,8 @@ name: Nix flake
 # The community flake (flake.nix, docs/install/nix.md) is not part of the
 # required gate, but it must still evaluate and build: fixed-output hashes,
 # nixpkgs attribute names and the packaged resource contract drift silently
-# otherwise. Path filters keep it off docs/test/mobile-only PRs; merge_group
-# ignores `paths`, so the first step applies the same scope itself.
+# otherwise. Broad path filters exclude unrelated inputs; the shared CI scope
+# detector handles docs/test-only changes, including inline tests, on every event.
 
 on:
   pull_request:
@@ -22,6 +22,9 @@ on:
       - '!changelog.d/**'
       - '!.github/**'
       - 'docs/install/nix.md'
+      - 'docs/logo.svg'
+      - 'docs/logo.png'
+      - 'docs/licensing/model-license-data.json'
       - '.github/workflows/nix.yml'
   push:
     branches: [main]
@@ -36,11 +39,15 @@ on:
       - '!changelog.d/**'
       - '!.github/**'
       - 'docs/install/nix.md'
+      - 'docs/logo.svg'
+      - 'docs/logo.png'
+      - 'docs/licensing/model-license-data.json'
       - '.github/workflows/nix.yml'
   merge_group:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: nix-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
@@ -65,36 +72,68 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python3 .github/scripts/ci_scope.py --cla
 
-      - name: Skip merge-queue entries without flake changes
+      - name: Detect changes that need the flake build
         id: scope
         env:
           EVENT: ${{ github.event_name }}
           CLA_HOLD: ${{ steps.cla.outputs.cla }}
-          BASE_SHA: ${{ github.event.merge_group.base_sha }}
-          HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [ "$CLA_HOLD" = held ]; then
             echo "CLA not signed yet: skipping. Signing re-runs this check."
             echo "run=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if [ "$EVENT" != merge_group ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          git fetch --no-tags --depth=1 origin "$BASE_SHA"
-          # Same scope as the pull_request filter above.
-          changed=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" | {
-            grep -Ev '\.md$|^(docs|mobile|tests|backend/tests|changelog\.d|\.github)/' || true
-          })
-          changed="$changed$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- \
-            docs/install/nix.md .github/workflows/nix.yml)"
-          if [ -n "$changed" ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "No flake inputs changed; skipping."
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          fi
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path, PurePosixPath
+          import re
+          import subprocess
+          import sys
+
+          sys.path.insert(0, ".github/scripts")
+          import ci_scope
+
+
+          def outside_package(file: object) -> bool:
+              # Merge queues ignore workflow path filters. Retain only Nix's own
+              # mobile/.github exclusions; docs/test classification stays shared.
+              if not isinstance(file, dict) or file.get("status") not in {"added", "modified", "removed", "renamed"}:
+                  return False
+              paths = [file.get("filename")]
+              if file["status"] == "renamed":
+                  paths.append(file.get("previous_filename"))
+              return all(isinstance(path, str) and path and not PurePosixPath(path).is_absolute()
+                         and not any(part in {".", ".."} for part in path.split("/"))
+                         and path.startswith(("mobile/", ".github/"))
+                         and path != ".github/workflows/nix.yml" for path in paths)
+
+
+          needed = True
+          try:
+              event_name = os.environ["GITHUB_EVENT_NAME"]
+              event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text(encoding="utf-8"))
+              repo = os.environ["GITHUB_REPOSITORY"]
+              needed = ci_scope.detect(event_name, event, repo)
+              if needed and event_name == "merge_group":
+                  base, head = (event["merge_group"][key] for key in ("base_sha", "head_sha"))
+                  if all(isinstance(sha, str) and re.fullmatch(r"[0-9a-f]{40}", sha) and sha != "0" * 40 for sha in (base, head)):
+                      response = subprocess.run(["gh", "api", f"repos/{repo}/compare/{base}...{head}", "--jq", ".files"],
+                                                check=True, capture_output=True, text=True)
+                      files = json.loads(response.stdout)
+                      # Empty, truncated or malformed evidence must never become a skip.
+                      if isinstance(files, list) and 0 < len(files) < 300:
+                          remaining = [file for file in files if not outside_package(file)]
+                          needed = bool(remaining) and ci_scope.runtime_needed(remaining, 300)
+          except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
+              needed = True
+              print("Nix change detection unavailable; running the full build.")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write(f"run={str(needed).lower()}\n")
+          print("Flake inputs changed; building." if needed else "Only documentation/tests or excluded package inputs changed; skipping the flake build.")
+          PY
 
       - name: Free runner disk space
         if: steps.scope.outputs.run == 'true'
