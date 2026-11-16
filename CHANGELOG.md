@@ -152,6 +152,10 @@ This beta adds separately opted-in automatic error reports, so failures can reac
 - Fixed Android screenshot capture waiting behind the optional error-report prompt (#4202) — thanks @velixio!
 - Keep iOS voice-search and download checks reliable across saved model choices (#4171)
 
+## [0.5.9-beta.4] — 2026-11-16
+
+Tagged but never published; every change it contained ships in 0.5.9-beta.5.
+
 ## [0.5.9-beta.3] — 2026-11-15
 
 Setup and model downloads recover more reliably after interrupted transfers, low-space retries and transient connection failures. This beta also improves low-VRAM generation, pronunciation, long-recording transcription, plain-text exports in Dubbing and Transcriptions, and Android downloads.
