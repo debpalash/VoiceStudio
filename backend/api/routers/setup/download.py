@@ -29,6 +29,7 @@ from services.hf_auth import token_for_endpoint
 from services.hf_revisions import revision_for
 from services.segmented_download import DownloadIntegrityError
 from core.url_safety import UnsafeURLError
+from core.scrub import scrub_text
 from utils import hf_progress
 from utils import download_aggregator
 # Weight floors and package files live in ``services/model_catalogue.py`` (via
@@ -1234,7 +1235,7 @@ def delete_model(repo_id: str):
         raise HTTPException(
             status_code=500,
             detail=(
-                f"Could not delete {repo_id}: {e}. "
+                f"Could not delete {repo_id}: {scrub_text(str(e))}. "
                 "Close any process using the model (e.g. the app's main dub job) and retry."
             ),
         )

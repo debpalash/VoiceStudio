@@ -1085,7 +1085,7 @@ async def _materialize_design_sample(profile_id: str, row) -> Optional[str]:
             detail=(
                 "The voice engine isn't ready yet, so this designed voice's "
                 "preview sample can't be rendered. Finish setup / download a "
-                f"model, then try again. ({e})"
+                f"model, then try again. ({scrub_text(str(e))})"
             ),
         ) from e
     return audio_filename
