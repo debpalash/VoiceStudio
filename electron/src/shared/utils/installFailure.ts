@@ -173,7 +173,6 @@ export function classifyInstallFailure(evidence: FailureEvidence): InstallFailur
     if (
       /Smart App Control/.test(message) ||
       evidence.smartAppControl === 'on' ||
-      evidence.smartAppControl === 'evaluation' ||
       evidence.blockedFiles?.length
     )
       return 'WINDOWS_APP_CONTROL_BLOCKED';
@@ -386,9 +385,7 @@ export function failureGuidance(
   if (message) message = withoutBackendLogEvidence(message);
   if (
     code === 'WINDOWS_APP_CONTROL_BLOCKED' &&
-    (smartAppControl === 'on' ||
-      smartAppControl === 'evaluation' ||
-      /Smart App Control/.test(message ?? ''))
+    (smartAppControl === 'on' || /Smart App Control/.test(message ?? ''))
   ) {
     guidance = {
       cause: 'smart_app_control',
