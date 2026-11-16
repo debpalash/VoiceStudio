@@ -35,12 +35,15 @@ private final class RestoredModelReceiptTransport: HTTPTransport, @unchecked Sen
     private let signal:AsyncStream<Void>.Continuation
     private let lock=NSLock()
     private var fresh=0
+    private let status:Int
+    private let payload:String
     var freshTransfers:Int {lock.withLock {fresh}}
-    init(root:URL,held:Bool=false) throws {
+    init(root:URL,held:Bool=false,status:Int=404,payload:String="missing") throws {
+        self.status=status;self.payload=payload
         receipt=root.appendingPathComponent("receipt.json");body=root.appendingPathComponent("receipt.body")
         if !held {
-            try Data("missing".utf8).write(to:body)
-            try JSONEncoder().encode(["status":404]).write(to:receipt)
+            try Data(payload.utf8).write(to:body)
+            try JSONEncoder().encode(["status":status]).write(to:receipt)
         }
         gate=held ? RestoredModelTransferGate() : nil
         (entered,signal)=AsyncStream.makeStream(bufferingPolicy:.bufferingNewest(1))
@@ -53,12 +56,12 @@ private final class RestoredModelReceiptTransport: HTTPTransport, @unchecked Sen
         if !recovered {
             // A real ModelStore removes a consumed permanent receipt body.
             // This later explicit attempt receives a fresh fixture response.
-            try Data("missing".utf8).write(to:body)
-            try JSONEncoder().encode(["status":404]).write(to:receipt)
+            try Data(payload.utf8).write(to:body)
+            try JSONEncoder().encode(["status":status]).write(to:receipt)
             lock.withLock {fresh+=1}
         }
         let saved=try JSONDecoder().decode([String:Int].self,from:Data(contentsOf:receipt))
-        return DownloadReply(file:body,status:try #require(saved["status"]),headers:[:],origin:recovered ? .recovered : .currentRequest)
+        return DownloadReply(file:body,status:try #require(saved["status"]),headers:status==206 ? ["content-range":"bytes 0-6/7"] : [:],origin:recovered ? .recovered : .currentRequest)
     }
     func waitForEntry() async {for await _ in entered {return}}
 }
@@ -81,6 +84,26 @@ private final class RestoredModelFirstCapacity: @unchecked Sendable {
     private let lock=NSLock()
     private var first=true
     func capacity()->Int64 {lock.withLock {if first {first=false;return 0};return Int64.max}}
+}
+@MainActor private final class ModelStallTestClock {
+    var now:Int64=0
+    private var continuation:CheckedContinuation<Void,any Error>?
+    private let sleeping:AsyncStream<Void>
+    private let signal:AsyncStream<Void>.Continuation
+    init() {(sleeping,signal)=AsyncStream.makeStream(bufferingPolicy:.bufferingNewest(1))}
+    func sleep() async throws {
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation {(next:CheckedContinuation<Void,any Error>) in
+                if Task.isCancelled {next.resume(throwing:CancellationError());return}
+                continuation=next;signal.yield(())
+            }
+        } onCancel: {Task {@MainActor in self.wake(cancelled:true)}}
+    }
+    func wake(by:Int64=0,cancelled:Bool=false) {
+        now+=by;let next=continuation;continuation=nil
+        if cancelled {next?.resume(throwing:CancellationError())} else {next?.resume()}
+    }
+    func waitForSleep() async {for await _ in sleeping {return}}
 }
 
 @MainActor @Suite(.serialized) struct PhoneModelDownloadDiagnosticTests {
@@ -135,11 +158,72 @@ private final class RestoredModelFirstCapacity: @unchecked Sendable {
         let controller=AppDiagnostics(reporter:reporter);await controller.load()
         return (reporter,controller,transport)
     }
-    private func waitForFailure(_ phone:PhoneModels,id:String) async throws {
+    private func waitForFailure(_ phone:PhoneModels,id:String,key:String="mobile.local.download_failed") async throws {
         let deadline=ContinuousClock.now.advanced(by:.seconds(5))
         while phone.downloadFailures[id]==nil || phone.progress[id] != nil,ContinuousClock.now<deadline {await Task.yield()}
-        #expect(phone.downloadFailures[id]?.key=="mobile.local.download_failed")
+        #expect(phone.downloadFailures[id]?.key==key)
         #expect(phone.paused.contains(id))
+    }
+
+    @Test(.timeLimit(.minutes(1)),arguments:["recovered-200","fresh-200","recovered-206","fresh-206"])
+    func checksumFailureRetainsTheResponseOrigin(_ scenario:String) async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent("phone-checksum-origin-"+UUID().uuidString)
+        try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true)
+        defer {try? FileManager.default.removeItem(at:root)}
+        let (model,bundle)=try fixture(root:root)
+        let (reporter,controller,sink)=try await reports(root:root)
+        let recovered=scenario.hasPrefix("recovered")
+        let receipt=try RestoredModelReceiptTransport(root:root,held:!recovered,status:scenario.hasSuffix("200") ? 200 : 206,payload:"broken!")
+        await controller.setConsent(true)
+        let storeRoot=root.appendingPathComponent("models"),store=try ModelStore(root:storeRoot,available:{_ in Int64.max})
+        let phone=PhoneModels(bundle:bundle,modelStore:(storeRoot,store),downloadTransport:receipt)
+        let previous=phone.allowMobileData;phone.allowMobileData=true
+        defer {phone.allowMobileData=previous}
+        phone.diagnosticFailureObservation={controller.failureObservation}
+        phone.onFailure={stage,error,owner in controller.captureObservedFailure(error,observation:owner,stage:stage)}
+        phone.download(model)
+        await receipt.gate?.release()
+        try await waitForFailure(phone,id:model.id,key:"mobile.local.checksum_failed")
+        await reporter.flush()
+        #expect(sink.sends==(recovered ? 0 : 1))
+        await reporter.close()
+    }
+
+    @Test(.timeLimit(.minutes(1)),arguments:["off-on","regrant","same-grant","withdrawn","restored"])
+    func actualStallLoopKeepsTheDownloadStartPermission(_ scenario:String) async throws {
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent("phone-stall-owner-"+UUID().uuidString)
+        try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true)
+        defer {try? FileManager.default.removeItem(at:root)}
+        let (model,bundle)=try fixture(root:root)
+        let (reporter,controller,sink)=try await reports(root:root)
+        if scenario != "off-on" {await controller.setConsent(true)}
+        let storeRoot=root.appendingPathComponent("models"),store=try ModelStore(root:storeRoot,available:{_ in Int64.max})
+        if scenario=="restored" {
+            let intent:[[String:Any]]=[["id":model.id,"pin":try phoneModelPin(model),"mobile":true,"paused":false]]
+            try JSONSerialization.data(withJSONObject:intent).write(to:storeRoot.appendingPathComponent(".download-queue.json"))
+        }
+        let clock=ModelStallTestClock(),receipt=try RestoredModelReceiptTransport(root:root,held:true)
+        let phone=PhoneModels(bundle:bundle,modelStore:(storeRoot,store),downloadTransport:receipt,
+            downloadMonitorSample:{(clock.now,true,true)},downloadMonitorSleep:{try await clock.sleep()})
+        let previous=phone.allowMobileData;phone.allowMobileData=true
+        defer {phone.allowMobileData=previous}
+        phone.diagnosticFailureObservation={controller.failureObservation}
+        phone.diagnosticObservation={(controller.collecting,controller.observationRevision,600_000)}
+        phone.onDiagnosticStall={controller.captureStall(observation:$0)}
+        if scenario != "restored" {phone.download(model)}
+        await receipt.waitForEntry();await clock.waitForSleep()
+        clock.wake();await clock.waitForSleep()
+        if scenario=="regrant" || scenario=="withdrawn" {await controller.setConsent(false)}
+        if scenario=="off-on" || scenario=="regrant" {await controller.setConsent(true)}
+        clock.wake();await clock.waitForSleep()
+        clock.wake(by:600_001);await clock.waitForSleep()
+        await reporter.flush()
+        #expect(sink.sends==(scenario=="same-grant" ? 1 : 0))
+        phone.pause(model);await receipt.gate?.release();clock.wake(cancelled:true)
+        let deadline=ContinuousClock.now.advanced(by:.seconds(5))
+        while phone.progress[model.id] != nil,ContinuousClock.now<deadline {await Task.yield()}
+        #expect(phone.progress[model.id]==nil)
+        await reporter.close()
     }
     @Test(.timeLimit(.minutes(1)),arguments:[false,true])
     func restoredPermanentReceiptStaysDisplayOnlyUnderANewGrant(explicitBeforeReconcile:Bool) async throws {
