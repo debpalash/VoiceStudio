@@ -92,8 +92,8 @@ def test_release_artifact_jobs_receive_only_build_time_intake_credentials():
             assert configured, (filename, name)
             for step in configured:
                 env = step["env"]
-                assert env["SUPERMETRY_APP_ID"] == "${{ secrets.SUPERMETRY_APP_ID }}"
-                assert env["SUPERMETRY_INGEST_KEY"] == "${{ secrets.SUPERMETRY_INGEST_KEY }}"
+                assert env["SUPERMETRY_APP_ID"] == "${{ vars.SUPERMETRY_APP_ID || secrets.SUPERMETRY_APP_ID }}"
+                assert env["SUPERMETRY_INGEST_KEY"] == "${{ vars.SUPERMETRY_INGEST_KEY || secrets.SUPERMETRY_INGEST_KEY }}"
                 assert "vars.SUPERMETRY_APP_HOST" in env["SUPERMETRY_APP_HOST"]
                 assert "SUPERMETRY_DIAGNOSTICS_SESSION_PINGS" not in env
                 assert "bun run check:electron" not in step.get("run", "")
