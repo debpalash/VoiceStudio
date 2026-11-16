@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
+import { rendererTask } from '@/lib/global-error-recovery';
 import {
   Dialog,
   DialogClose,
@@ -42,15 +43,19 @@ export function ConfirmDialog({
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <DialogClose render={<Button variant="outline" onClick={() => void onCancel?.()} />}>
+          <DialogClose
+            render={<Button variant="outline" onClick={() => rendererTask(() => onCancel?.())} />}
+          >
             {cancelLabel ?? t('common.cancel')}
           </DialogClose>
           <Button
             variant={destructive ? 'destructive' : 'default'}
-            onClick={async () => {
-              await onConfirm();
-              onOpenChange(false);
-            }}
+            onClick={() =>
+              rendererTask(async () => {
+                await onConfirm();
+                onOpenChange(false);
+              })
+            }
           >
             {confirmLabel ?? t('common.confirm')}
           </Button>

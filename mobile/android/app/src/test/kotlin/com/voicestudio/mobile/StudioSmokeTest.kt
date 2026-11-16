@@ -8,6 +8,7 @@ import androidx.media3.common.Player
 import androidx.test.core.app.ApplicationProvider
 import com.voicestudio.mobile.data.*
 import com.voicestudio.mobile.features.*
+import com.voicestudio.mobile.l10n.L10n
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.*
 import org.junit.*
@@ -34,7 +35,8 @@ class StudioSmokeTest {
             override fun read(host:String)=secrets[host]
             override fun write(host:String,secret:Secret?) {if(secret==null) secrets.remove(host) else secrets[host]=secret}
         })
-        runBlocking {store.update {Preferences()}}
+        runBlocking {store.update {Preferences(locale="en")}}
+        val strings=L10n.load(app,"en")
         val engineRead=java.util.concurrent.CountDownLatch(1)
         val releaseEngines=java.util.concurrent.CountDownLatch(1)
         val server=MockWebServer()
@@ -59,9 +61,17 @@ class StudioSmokeTest {
         try {
             compose.setContent {CompositionLocalProvider(LocalHostPlayerFactory provides {_,_->player}) {StudioApp(vm)}}
             awaitCondition {!vm.state.value.loading}
-            compose.onNodeWithText("Saved on this phone. Nothing is sent.").assertExists()
-            compose.onNodeWithText("No thanks").assertExists().performClick()
-            awaitCondition {vm.preferences.value.consent==false}
+            compose.onNodeWithText(strings.t("mobile.consent.phone_note")).assertExists()
+            compose.onNodeWithText(strings.t("consent.no")).assertExists().performClick()
+            awaitCondition {vm.preferences.value.consent==false && AutomaticDiagnostics.state.value.ready}
+            assertTrue(AutomaticDiagnostics.state.value.status.available)
+            assertFalse(AutomaticDiagnostics.state.value.status.optedIn)
+            compose.onNodeWithText(strings.t("diagnostics.title")).assertExists()
+            compose.onNodeWithText(strings.t("diagnostics.keep_off")).assertExists().performClick()
+            awaitCondition {AutomaticDiagnostics.state.value.status.prompted && !AutomaticDiagnostics.state.value.saving}
+            assertFalse(AutomaticDiagnostics.state.value.status.enabled)
+            assertFalse(AutomaticDiagnostics.state.value.status.optedIn)
+            assertFalse(vm.preferences.value.consent!!)
             compose.onNodeWithText("Settings").performClick()
             compose.onNodeWithText("Connect").performScrollTo().performClick()
             compose.onNodeWithText("Enter address").performClick()

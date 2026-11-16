@@ -5,6 +5,13 @@ import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:net';
+import { scrubText } from '../src/shared/utils/scrub.js';
+import { ROUTES } from './fixtures/routes.mjs';
+let lastBackendObservation = { stage: 'unknown', at: null };
+function observeBackendStatus(status) {
+  lastBackendObservation = { stage: status.stage, at: new Date().toISOString() };
+  return status;
+}
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const targetArch = process.env.VOICESTUDIO_RUST_TARGET?.startsWith('aarch64')
   ? 'arm64'
@@ -141,7 +148,25 @@ try {
   assert.deepEqual(native, { id: 1, result: { protocol: 1 } });
   const window = await app.firstWindow();
   const errors = [];
-  window.on('pageerror', (error) => errors.push(error.message));
+  let loggedErrors = 0;
+  window.on('pageerror', (error) => {
+    errors.push(error.message);
+    if (loggedErrors++ >= 10) return;
+    const path = new URL(window.url()).hash.replace(/^#/, '').split(/[?#]/, 1)[0] || '/';
+    // Project synchronously: no retained Error or delayed route/permission read.
+    // The sample time distinguishes the last observed backend state from the
+    // error occurrence, without adding IPC/network work to a failing renderer.
+    console.error('[packaged renderer pageerror]', JSON.stringify({
+      at: new Date().toISOString(),
+      hash: ROUTES.includes(path) ? '#' + path : '#/<other>',
+      backendStage: lastBackendObservation.stage,
+      backendObservedAt: lastBackendObservation.at,
+      stack: scrubText(String(error.stack ?? '').slice(0, 16384))
+        .replace(/smk_[a-z2-7]{39}/g, '<REDACTED>')
+        .replace(/((?:https?|app|file):\/\/[^\s?#)]*)[?#][^\s)]*/g, '$1')
+        .slice(0, 8192),
+    }));
+  });
   await window.waitForURL('app://voicestudio/**');
   if (firstSound) {
     const resumed = await window.evaluate(() => {
@@ -293,7 +318,7 @@ try {
         (Number(process.env.VOICESTUDIO_RUNTIME_TIMEOUT_MS) || (firstSound ? 1_800_000 : 600_000));
       let lastStage = '';
       for (;;) {
-        state = await window.evaluate(async () => window.voicestudio.backend.getStatus());
+        state = observeBackendStatus(await window.evaluate(async () => window.voicestudio.backend.getStatus()));
         if (state.stage !== lastStage) {
           console.log('Runtime:', state.stage);
           lastStage = state.stage;
@@ -408,7 +433,7 @@ try {
     if (existing) {
       const deadline = Date.now() + 120_000;
       for (;;) {
-        const current = await window.evaluate(async () => window.voicestudio.backend.getStatus());
+        const current = observeBackendStatus(await window.evaluate(async () => window.voicestudio.backend.getStatus()));
         if (current.stage === 'ready') break;
         if (['setup_required', 'failed', 'crashed', 'port_in_use'].includes(current.stage))
           throw new Error(JSON.stringify(current));
@@ -499,7 +524,7 @@ async function assertEventually(check, timeout, message) {
 async function waitForRuntimeGate(window, timeout) {
   const deadline = Date.now() + timeout;
   for (;;) {
-    const state = await window.evaluate(async () => window.voicestudio.backend.getStatus());
+    const state = observeBackendStatus(await window.evaluate(async () => window.voicestudio.backend.getStatus()));
     if (state.stage === 'ready' || state.stage === 'setup_required') return state;
     if (['failed', 'crashed', 'port_in_use'].includes(state.stage)) {
       throw new Error(JSON.stringify(state));

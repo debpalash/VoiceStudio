@@ -542,10 +542,12 @@ async def ws_transcribe(websocket: WebSocket):
 
     # Final transcription on complete buffer — skip if client already gone.
     if total_bytes > MIN_FINAL_BUFFER_BYTES:
+        from core import diagnostic_reports
+        diagnostic_epoch = diagnostic_reports.observe_grant()
         try:
-            result = await _transcribe_buffer_full(
+            result = await diagnostic_reports.await_owned(_transcribe_buffer_full(
                 audio_chunks, pcm_sr=pcm_sr, dictation=not is_platform_stream,
-            )
+            ), diagnostic_epoch)
             # Dictation v2: deterministic polish so the pasted final reads
             # like typed text (leading capital, terminal punctuation).
             if is_platform_stream:
@@ -577,6 +579,8 @@ async def ws_transcribe(websocket: WebSocket):
                 # Accepted at session start, revoked since: keep it typed.
                 await _safe_send({"type": "error", "kind": e.detail()["code"], **e.detail()})
             else:
+                if diagnostic_epoch is not None:
+                    diagnostic_reports.capture_failure("transcription", error=e, expected_epoch=diagnostic_epoch)
                 logger.exception("Final transcription failed")
                 await _safe_send({"type": "error", "message": str(e),
                                   "kind": "transcribe", "detail": str(e)})
@@ -835,9 +839,13 @@ async def _sherpa_load_with_status(websocket: WebSocket, backend, spec) -> bool:
     except Exception:
         logger.warning("Sherpa load status could not be delivered; stopping stream setup")
         return False
+    from core import diagnostic_reports
+    diagnostic_epoch = diagnostic_reports.observe_grant()
     try:
-        await asyncio.to_thread(backend.ensure_loaded)
+        await diagnostic_reports.await_owned(asyncio.to_thread(backend.ensure_loaded), diagnostic_epoch)
     except Exception as e:
+        if diagnostic_epoch is not None:
+            diagnostic_reports.capture_failure("model_load", error=e, engine_id="sherpa-onnx-asr", expected_epoch=diagnostic_epoch)
         logger.exception("sherpa dictation load failed (%s)", spec.id)
         try:
             await websocket.send_json({"type": "error", "message": str(e),

@@ -257,3 +257,87 @@ def test_services_read_the_catalogue_without_importing_a_router():
         assert getattr(router, name) is getattr(catalogue, name)
     assert catalogue.catalogue_entry("audio-cpp/audio.cpp-gguf:dots-tts-soar-q8_0")["repo_id"] == \
         "audio-cpp/audio.cpp-gguf"
+
+
+COSYVOICE_REPO = "FunAudioLLM/Fun-CosyVoice3-0.5B-2512"
+
+
+def test_cosyvoice_catalogue_matches_managed_weight_selection(models):
+    import fnmatch
+    from services import hf_revisions, sidecar_install
+
+    model = models.get_model_catalog().get(COSYVOICE_REPO)
+    spec = sidecar_install.SPECS["cosyvoice"]
+    assert model.get("allow_patterns") == list(spec.weights_allow_patterns)
+    assert hf_revisions.revision_for(COSYVOICE_REPO) == spec.weights_revision
+    assert all(any(fnmatch.fnmatchcase(name, pattern) for pattern in model["allow_patterns"])
+               for name in model["required_files"])
+    for alternative in ("llm.rl.pt", "flow.decoder.estimator.fp32.onnx", "speech_tokenizer_v3.batch.onnx"):
+        assert not any(fnmatch.fnmatchcase(alternative, pattern) for pattern in model["allow_patterns"])
+
+
+def test_cosyvoice_catalogue_install_filters_preflight_and_transfer(download, monkeypatch, tmp_path):
+    import fnmatch
+    import huggingface_hub
+    from services import hf_revisions, performance_profiles, sidecar_install, token_resolver
+
+    spec = sidecar_install.SPECS["cosyvoice"]
+    files = ["cosyvoice3.yaml", "llm.pt", "flow.pt", "hift.pt", "campplus.onnx",
+             "speech_tokenizer_v3.onnx", "CosyVoice-BlankEN/model.safetensors",
+             "CosyVoice-BlankEN/tokenizer_config.json", "llm.rl.pt",
+             "flow.decoder.estimator.fp32.onnx", "speech_tokenizer_v3.batch.onnx"]
+    calls, remembered = [], []
+
+    def snapshot(**kwargs):
+        calls.append(kwargs)
+        if kwargs.get("dry_run"):
+            return []
+        for name in files:
+            if not kwargs.get("allow_patterns") or any(fnmatch.fnmatchcase(name, p) for p in kwargs["allow_patterns"]):
+                path = tmp_path / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"controlled model fixture")
+        return str(tmp_path)
+
+    def segmented(repo_id, **kwargs):
+        calls.append({"repo_id": repo_id, **kwargs, "segmented": True})
+        for name in files:
+            path = tmp_path / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b"controlled model fixture")
+        return str(tmp_path)
+
+    monkeypatch.setattr(huggingface_hub, "snapshot_download", snapshot)
+    monkeypatch.setattr(download, "_segmented_snapshot", segmented)
+    monkeypatch.setattr(download, "_segmented_enabled", lambda: True)
+    monkeypatch.setattr(download, "_xet_active", lambda: False)
+    monkeypatch.setattr(download, "_download_endpoint", lambda **_kw: None)
+    monkeypatch.setattr(download, "compute_plan", lambda _: {"total_bytes": 1, "cached_bytes": 0,
+                        "to_download_bytes": 1, "n_files": 1, "n_cached": 0})
+    monkeypatch.setattr(download, "disk_space_error", lambda _: None)
+    monkeypatch.setattr(download, "_validate_snapshot_has_weights", lambda *_: None)
+    monkeypatch.setattr(download, "_active_installs", set())
+    monkeypatch.setattr(download, "_install_cooldowns", {})
+    monkeypatch.setattr(download, "_install_failures", {})
+    monkeypatch.setattr(download, "_cancelled", set())
+    monkeypatch.setattr(download, "_install_tasks", set())
+    monkeypatch.setattr(download, "_install_tasks_by_repo", {})
+    monkeypatch.setattr(hf_revisions, "remember_revision", lambda *args: remembered.append(args))
+    monkeypatch.setattr(performance_profiles, "reconcile_active_profile", lambda: {})
+    monkeypatch.setattr(token_resolver, "resolve", lambda: None)
+
+    async def install():
+        result = await download.install_model(download.InstallModelRequest(repo_id=COSYVOICE_REPO))
+        assert result == {"status": "install_started", "repo_id": COSYVOICE_REPO}
+        await download._install_tasks_by_repo[COSYVOICE_REPO]
+
+    asyncio.run(install())
+    assert len(calls) == 2
+    assert calls[0].get("dry_run") is True
+    assert all(call.get("allow_patterns") == list(spec.weights_allow_patterns) for call in calls)
+    assert all(call["revision"] == spec.weights_revision for call in calls)
+    assert (tmp_path / "CosyVoice-BlankEN/model.safetensors").is_file()
+    assert not any((tmp_path / name).exists() for name in
+                   ("llm.rl.pt", "flow.decoder.estimator.fp32.onnx", "speech_tokenizer_v3.batch.onnx"))
+    assert remembered and remembered[0][:2] == (COSYVOICE_REPO, spec.weights_revision)
+    assert COSYVOICE_REPO not in download._install_failures

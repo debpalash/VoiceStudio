@@ -29,22 +29,23 @@ import kotlinx.coroutines.*
     var confirm by remember(host.connectionId) {mutableStateOf(false)}
     var busy by remember {mutableStateOf(false)}
     val authenticated=api?.sessionToken!=null
-    suspend fun load() {
+    suspend fun load(failure:(Throwable)->Unit=vm.failureHandler()) {
         if(api==null||!authenticated) return
         try {
             val calls=CallsApi(api)
             val ready=calls.readiness();val options=calls.options();val records=calls.recent();val profiles=calls.voices().filter {it.eligible}
             if(vm.api===api) {readiness=ready;disclosure=options.disclosure;history=records;voices=profiles;loaded=true;if(profiles.none {it.id==voice}) voice=profiles.firstOrNull()?.id.orEmpty()}
-        } catch(e:CancellationException) {throw e} catch(e:Exception) {if(vm.api===api) vm.fail(e)}
+        } catch(e:CancellationException) {throw e} catch(e:Exception) {if(vm.api===api) failure(e)}
     }
     fun control(action:String,text:String="",enabled:Boolean=false) {
         val selected=current ?: return
         if(api==null||busy) return
         busy=true
+        val failure=vm.failureHandler()
         scope.launch {try {
             val calls=CallsApi(api);calls.control(selected.id,action,text,enabled);val updated=calls.call(selected.id)
             if(vm.api===api) {current=updated;if(action=="say") say=""}
-        } catch(e:CancellationException) {throw e} catch(e:Exception) {if(vm.api===api) vm.fail(e)} finally {busy=false}}
+        } catch(e:CancellationException) {throw e} catch(e:Exception) {if(vm.api===api) failure(e)} finally {busy=false}}
     }
     DisposableEffect(lifecycle) {
         val observer=LifecycleEventObserver {_,event -> if(event==Lifecycle.Event.ON_STOP) active=false else if(event==Lifecycle.Event.ON_START) active=true}
@@ -54,20 +55,22 @@ import kotlinx.coroutines.*
     LaunchedEffect(current?.id,active,host.connectionId) {
         val id=current?.id
         if(api==null||id==null||!active) return@LaunchedEffect
+        var failure=vm.failureHandler()
         try {while(isActive) {
+            failure=vm.failureHandler()
             val record=CallsApi(api).call(id)
             if(vm.api!==api) break
             current=record
             if(!record.live) {load();break}
             delay(2000)
-        }} catch(e:CancellationException) {throw e} catch(e:Exception) {if(vm.api===api) vm.fail(e)}
+        }} catch(e:CancellationException) {throw e} catch(e:Exception) {if(vm.api===api) failure(e)}
     }
     val valid=authenticated&&loaded&&!busy&&readiness.isNotEmpty()&&readiness.all {it.ok}&&number.matches(Regex("\\+[1-9][0-9]{6,14}"))&&brief.isNotBlank()&&brief.length<=4000&&voices.any {it.id==voice}
     Screen {
         ScreenTitle("calls.title")
         Text(tr("mobile.calls.hint"))
         if(!authenticated) Text(tr("mobile.calls.authentication")) else {
-            Secondary("calls.recheck",!busy) {scope.launch {load()}}
+            Secondary("calls.recheck",!busy) {val failure=vm.failureHandler();scope.launch {load(failure)}}
             readiness.filterNot {it.ok}.forEach {Text(tr("calls.ready_"+it.id)+": "+it.detail)}
             Field("calls.number_label",number,{number=it})
             Field("calls.brief_label",brief,{brief=it},multiline=true)
@@ -94,7 +97,8 @@ import kotlinx.coroutines.*
     if(confirm) AlertDialog(onDismissRequest={confirm=false},title={Text(tr("calls.confirm_title",mapOf("number" to number)))},text={Text(tr("calls.confirm_body",mapOf("voice" to voices.firstOrNull {it.id==voice}?.name.orEmpty(),"minutes" to minutes))+"\n"+disclosure+"\n"+tr("mobile.calls.billing"))},dismissButton={TextButton(onClick={confirm=false}) {Text(tr("common.cancel"))}},confirmButton={TextButton(enabled=valid,onClick={
         confirm=false
         if(api!=null&&valid) {val to=number;val task=brief;val selected=voice;val opening=disclosure;val duration=minutes.toInt();busy=true
-            scope.launch {try {val record=CallsApi(api).start(to,task,selected,opening,duration);if(vm.api===api) current=record} catch(e:CancellationException) {throw e} catch(e:Exception) {if(vm.api===api) vm.fail(e)} finally {busy=false}}
+            val failure=vm.failureHandler()
+            scope.launch {try {val record=CallsApi(api).start(to,task,selected,opening,duration);if(vm.api===api) current=record} catch(e:CancellationException) {throw e} catch(e:Exception) {if(vm.api===api) failure(e)} finally {busy=false}}
         }
     }) {Text(tr("calls.confirm_call"))}})
 }
