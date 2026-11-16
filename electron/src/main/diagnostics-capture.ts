@@ -42,15 +42,20 @@ export class DiagnosticStatusObserver {
   observe(status: BackendStatus): void {
     if (status.remote) return;
     const activeAttempt = ['attaching', 'starting', 'installing'];
-    if (activeAttempt.includes(status.stage) && !activeAttempt.includes(this.previousStage)) {
-      // Setup/start and child-exit recovery publish before their first await.
-      // Progress and installing → starting → attaching are one owned attempt;
-      // none may acquire permission granted while that attempt was running.
-      this.attemptOwner = { epoch: this.reports.status().grant_epoch ?? null };
+    const newAttempt =
+      activeAttempt.includes(status.stage) && !activeAttempt.includes(this.previousStage);
+    if (newAttempt) {
+      // Restart may publish its first active status only after stopping a child.
+      // Inherit that operation's owner, including OFF; independent lifecycle
+      // attempts without an operation observe permission at their first status.
+      this.attemptOwner = diagnosticOperationOwner(this.reports) ?? {
+        epoch: this.reports.status().grant_epoch ?? null,
+      };
     } else if (['idle', 'ready'].includes(status.stage)) {
       this.attemptOwner = null;
     }
     if (
+      newAttempt ||
       (['installing', 'starting'].includes(status.stage) && status.stage !== this.previousStage) ||
       status.elapsedMs < this.previousElapsed
     )
