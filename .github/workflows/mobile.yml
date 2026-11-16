@@ -90,6 +90,7 @@ jobs:
           job: mobile-android
           content: |
             mobile package.json LICENSE docs/logo.svg docs/logo.png scripts electron/public electron/src/shared electron/src/renderer/src/i18n electron/src/renderer/src/components/brand-icons.tsx electron/src/renderer/src/features/home/contributors
+            config/analytics.json config/diagnostics.json tests/fixtures/diagnostic-app-events.json
 
       - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         if: steps.pass.outputs.hit != 'true'
@@ -167,7 +168,9 @@ jobs:
         with:
           job: mobile-ios
           content: |
-            mobile package.json LICENSE docs/logo.svg docs/logo.png scripts electron/public electron/src/shared electron/src/renderer/src/i18n electron/src/renderer/src/components/brand-icons.tsx electron/src/renderer/src/features/home/contributors
+            mobile :(exclude)mobile/android :(exclude)mobile/native/android
+            package.json LICENSE docs/logo.svg docs/logo.png scripts electron/public electron/src/shared electron/src/renderer/src/i18n electron/src/renderer/src/components/brand-icons.tsx electron/src/renderer/src/features/home/contributors
+            config/analytics.json config/diagnostics.json tests/fixtures/diagnostic-app-events.json
 
       - name: Bundle and validate iOS resources
         if: steps.pass.outputs.hit != 'true'
@@ -332,7 +335,9 @@ jobs:
         with:
           job: mobile-ios-inference
           content: |
-            mobile package.json LICENSE docs/logo.svg docs/logo.png scripts electron/public electron/src/shared electron/src/renderer/src/i18n electron/src/renderer/src/components/brand-icons.tsx electron/src/renderer/src/features/home/contributors
+            mobile :(exclude)mobile/android :(exclude)mobile/native/android
+            package.json LICENSE docs/logo.svg docs/logo.png scripts electron/public electron/src/shared electron/src/renderer/src/i18n electron/src/renderer/src/components/brand-icons.tsx electron/src/renderer/src/features/home/contributors
+            config/analytics.json config/diagnostics.json tests/fixtures/diagnostic-app-events.json
 
       - name: Cache native runtimes and smoke models
         if: steps.pass.outputs.hit != 'true'
@@ -418,6 +423,7 @@ jobs:
           job: mobile-android-inference
           content: |
             mobile package.json LICENSE docs/logo.svg docs/logo.png scripts electron/public electron/src/shared electron/src/renderer/src/i18n electron/src/renderer/src/components/brand-icons.tsx electron/src/renderer/src/features/home/contributors
+            config/analytics.json config/diagnostics.json tests/fixtures/diagnostic-app-events.json
 
       - uses: actions/setup-java@77dd5b2ce225ea11469928ac317850245a74ae78 # v6.2.0
         if: steps.pass.outputs.hit != 'true'
