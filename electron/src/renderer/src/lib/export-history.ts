@@ -1,5 +1,6 @@
 import { getBridge } from '@/components/bridge';
-import { apiJson } from '@/lib/api/client';
+import { API_BASE, apiFetch, apiJson } from '@/lib/api/client';
+import { saveLocalFile } from '@/lib/local-export';
 import { saveBackendFile } from '@/lib/native-save';
 import { queryClient } from '@/lib/query';
 import type { SaveAudioResult } from '../../../preload/index.d';
@@ -15,18 +16,15 @@ function exportMode(filename: string): 'audio' | 'video' | 'file' {
 }
 
 /**
- * The browser build (Docker/web) has no native bridge: hand the backend URL to
- * the browser's own download, which streams it to disk without buffering a
- * large render in memory (#4222).
+ * The browser build (Docker/web) has no native bridge. Fetch through `apiFetch`
+ * so the share PIN, admin bearer session and cross-origin API bases all apply,
+ * then save the blob: a plain link would drop those headers and, cross-origin,
+ * open inline media instead of downloading it (#4222).
  */
-function browserDownload(url: string, suggestedName: string): SaveAudioResult {
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = suggestedName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  return { canceled: false };
+async function browserDownload(url: string, suggestedName: string): Promise<SaveAudioResult> {
+  const path = API_BASE && url.startsWith(API_BASE) ? url.slice(API_BASE.length) : url;
+  const response = await apiFetch(path);
+  return saveLocalFile(await response.blob(), suggestedName);
 }
 
 /**
