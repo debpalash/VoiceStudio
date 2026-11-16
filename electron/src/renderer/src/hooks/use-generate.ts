@@ -596,7 +596,7 @@ function useGenerateController(): UseGenerateClone {
       }, TIMER_TICK_MS);
       const controller = new AbortController();
       abortRef.current = controller;
-      let diagnosticConsent = observeDiagnosticConsent();
+      const diagnosticConsent = observeDiagnosticConsent();
       try {
         if (take.voiceFingerprint) {
           // An edit, lock or unlock still in flight has reached (or may reach) the
@@ -620,7 +620,6 @@ function useGenerateController(): UseGenerateClone {
           )
             throw new QueuedVoiceChangedError(tr('generationQueue.voice_changed'));
         }
-        diagnosticConsent = observeDiagnosticConsent();
         const result = await generateClone(input, {
           signal: controller.signal,
           onProgress: (pct) => onProgress(take.id, pct),
