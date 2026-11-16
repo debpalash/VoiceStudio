@@ -143,7 +143,10 @@ request with `/api/public/v1/app-events` on the sanctioned Supermetry hosts
 `https://app.supermetry.com` (unconfigured host default) or
 `https://app.voicestudio.sh` (the owner-configured packaged app intake, owner-set
 2026-11-16). App ID and write-only ingest key come only from
-runtime environment or git-ignored build metadata. `SUPERMETRY_APP_HOST` is an
+runtime environment or git-ignored build metadata. Release CI must use GitHub
+Actions Secrets for the app ID and ingest key, never public repository variables,
+and must not log their values; fork builds receive no upstream credentials.
+`SUPERMETRY_APP_HOST` is an
 explicit operator override, unset by default; any other production host must
 be recorded and approved by the owner. Product analytics and the closed failure
 schema stay unchanged. `diagnostics.sessionPings` is default off, additionally
