@@ -14,9 +14,12 @@ import java.util.UUID
 internal val LocalJson=Json {ignoreUnknownKeys=true}
 internal fun atomicText(file: File, text: String) {
     file.parentFile!!.mkdirs()
-    val pending=File(file.parentFile,file.name+".pending")
-    java.io.FileOutputStream(pending).use {it.write(text.toByteArray(Charsets.UTF_8));it.fd.sync()}
-    Files.move(pending.toPath(),file.toPath(),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING)
+    // Separate stores and overlapping autosaves must never share staging bytes.
+    val pending=File.createTempFile(".${file.name}.",".pending",file.parentFile)
+    try {
+        java.io.FileOutputStream(pending).use {it.write(text.toByteArray(Charsets.UTF_8));it.fd.sync()}
+        Files.move(pending.toPath(),file.toPath(),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING)
+    } finally {pending.delete()}
 }
 /** [modelRepo]/[modelRevision] name the model that made the voice, for reports; older voices have none. */
 @Serializable data class PhoneVoice(val id: String, val name: String, val transcript: String, val createdAt: Long, val consentAt: Long, val sampleRate: Int = 24000,
