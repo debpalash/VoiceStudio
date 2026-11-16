@@ -132,9 +132,23 @@ jobs:
           grep -qE '^versionName=[0-9]+\.[0-9]+\.[0-9]+-beta\.1 versionCode=[0-9]+$' "$RUNNER_TEMP/version.txt"
           git checkout -- ../../package.json
 
+      # The artifact SDK can fail immediately on transient DNS errors. Each
+      # upload gets one delayed retry; a failed retry keeps the job red.
       - name: Upload reports on failure
+        id: android_reports_upload
+        continue-on-error: true
         if: failure() && steps.pass.outputs.hit != 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-reports
+          path: mobile/android/**/build/reports/
+          retention-days: 7
+      - name: Wait before retrying android-reports upload
+        if: steps.pass.outputs.hit != 'true' && !cancelled() && steps.android_reports_upload.outcome == 'failure'
+        run: sleep 10
+      - name: Retry android-reports upload
+        if: steps.pass.outputs.hit != 'true' && !cancelled() && steps.android_reports_upload.outcome == 'failure'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-reports
           path: mobile/android/**/build/reports/
@@ -275,8 +289,21 @@ jobs:
           mkdir -p "$RUNNER_TEMP/shots"
           xcrun xcresulttool export attachments --path "$RUNNER_TEMP/ui.xcresult" --output-path "$RUNNER_TEMP/shots"
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - id: ios_screenshots_upload
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always() && steps.pass.outputs.hit != 'true'
+        with:
+          name: ios-screenshots
+          path: ${{ runner.temp }}/shots
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Wait before retrying ios-screenshots upload
+        if: steps.pass.outputs.hit != 'true' && !cancelled() && steps.ios_screenshots_upload.outcome == 'failure'
+        run: sleep 10
+      - name: Retry ios-screenshots upload
+        if: steps.pass.outputs.hit != 'true' && !cancelled() && steps.ios_screenshots_upload.outcome == 'failure'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ios-screenshots
           path: ${{ runner.temp }}/shots
@@ -298,8 +325,20 @@ jobs:
           cp -R "$RUNNER_TEMP/device/Build/Products/Release-iphoneos/VoiceStudio.app" "$RUNNER_TEMP/ipa/Payload/"
           (cd "$RUNNER_TEMP/ipa" && zip -qry "$RUNNER_TEMP/VoiceStudio-unsigned.ipa" Payload)
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - id: ios_unsigned_upload
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: steps.pass.outputs.hit != 'true'
+        with:
+          name: VoiceStudio-ios-unsigned
+          path: ${{ runner.temp }}/VoiceStudio-unsigned.ipa
+          retention-days: 7
+      - name: Wait before retrying VoiceStudio-ios-unsigned upload
+        if: steps.pass.outputs.hit != 'true' && !cancelled() && steps.ios_unsigned_upload.outcome == 'failure'
+        run: sleep 10
+      - name: Retry VoiceStudio-ios-unsigned upload
+        if: steps.pass.outputs.hit != 'true' && !cancelled() && steps.ios_unsigned_upload.outcome == 'failure'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: VoiceStudio-ios-unsigned
           path: ${{ runner.temp }}/VoiceStudio-unsigned.ipa
@@ -529,8 +568,21 @@ jobs:
           script: |
             ./gradlew --no-daemon connectedDebugAndroidTest -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true -Pandroid.testInstrumentationRunnerArguments.class=com.voicestudio.mobile.PlayScreenshotTour -Pandroid.testInstrumentationRunnerArguments.playScreenshots=true -Pandroid.testInstrumentationRunnerArguments.downloadSmokeModels=true -Pandroid.testInstrumentationRunnerArguments.acceptModelLicencesForSmoke=true; status=$?; adb pull /sdcard/Android/data/sh.voicestudio.mobile/files/play-screenshots "$RUNNER_TEMP"; exit $status
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - id: android_screenshots_upload
+        continue-on-error: true
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
+        with:
+          name: android-play-screenshots
+          path: ${{ runner.temp }}/play-screenshots/*.png
+          if-no-files-found: error
+          retention-days: 30
+      - name: Wait before retrying android-play-screenshots upload
+        if: ${{ !cancelled() && steps.android_screenshots_upload.outcome == 'failure' }}
+        run: sleep 10
+      - name: Retry android-play-screenshots upload
+        if: ${{ !cancelled() && steps.android_screenshots_upload.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-play-screenshots
           path: ${{ runner.temp }}/play-screenshots/*.png

@@ -191,7 +191,11 @@ jobs:
       - name: Run bandit
         continue-on-error: true
         run: |
-          pipx run --spec 'bandit[sarif]' bandit -r backend/ -ll -ii -f sarif -o bandit.sarif
+          # Pinned deliberately: `pipx run` resolves the analyser from PyPI at run
+          # time, so an unpinned spec lets a newer (or compromised) bandit release
+          # change the findings silently, or execute in a job that holds
+          # security-events: write. Bump the pin in a reviewed PR.
+          pipx run --spec 'bandit[sarif]==1.9.4' bandit -r backend/ -ll -ii -f sarif -o bandit.sarif
 
       # continue-on-error: this job is reporting-only. If bandit can't write a
       # SARIF for any reason (no findings dir, pipx hiccup), don't fail the job.

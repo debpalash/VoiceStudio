@@ -1195,6 +1195,9 @@
     "terminal_command_added": "추가했습니다. voicestudio를 사용하려면 새 터미널 창을 여세요.",
     "terminal_command_failed": "voicestudio를 터미널에 추가하지 못했습니다. 홈 폴더가 읽기 전용이 아닌지 확인한 후 다시 시도하세요.",
     "terminal_command_conflict": "{{path}}은(는) 다른 설치에 속해 있어 VoiceStudio가 변경하지 않았습니다.",
+    "close_to_tray": "닫아도 트레이에서 계속 실행",
+    "close_to_tray_desc": "창을 닫으면 VoiceStudio가 종료되지 않고 트레이로 숨겨져 실행 중인 작업이 계속됩니다. 트레이 아이콘에서 다시 열고, 종료하려면 거기서 종료를 선택하세요. 일부 Linux 데스크톱에서는 트레이 아이콘에 AppIndicator 지원이 필요하며, VoiceStudio를 다시 실행해도 창이 다시 열립니다.",
+    "close_to_tray_failed": "이 설정을 저장하지 못했습니다. 다시 시도해 주세요.",
     "review_mode_on": "검토",
     "translate_agent": "에이전트 적합성",
     "llmp_cli_help": "설치된 CLI와 로그인 정보를 에이전트 복구와 같은 실행기로 사용합니다. CLI 기본값을 쓰려면 모델을 비워 두세요. 응답이 느릴 수 있으며 요금은 CLI 계정에 적용됩니다.",
@@ -1870,7 +1873,12 @@
     "insert_pause": "일시 정지",
     "preview_plan": "계획 미리 보기",
     "ready": "오디오북 준비 완료",
-    "title": "오디오북"
+    "title": "오디오북",
+    "result_other_connection": "이 저장된 오디오는 다른 VoiceStudio 연결에 속합니다. 재생하려면 해당 연결로 돌아가세요.",
+    "result_connection_unknown": "저장된 오디오를 표시하려면 로컬 엔진이나 원격 컴퓨터에 연결하세요.",
+    "result_legacy": "이전에 저장된 이 결과에는 연결 정보가 없습니다. 이 연결에서 파일 이름을 찾아보세요. 이름이 같아도 다른 파일일 수 있습니다.",
+    "result_check_audio": "이 연결에서 저장된 오디오 확인",
+    "result_recovery_failed": "이 연결에서는 저장된 오디오를 사용할 수 없습니다. 원래 연결로 돌아가거나 오디오를 다시 생성하세요."
   },
   "credentials": {
     "microsoft_key": "마이크로소프트 번역기 키",

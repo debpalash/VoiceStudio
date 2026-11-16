@@ -275,8 +275,10 @@ class MyEngineBackend(TTSBackend):
    an engine that lives in its own `backend/engines/<name>` module goes in
    `_LAZY_REGISTRY` as `"id": ("engines.<name>", "ClassName")`
 4. Add the same id under `tts_engines` in `docs/features.yaml` with its README
-   string (`readme:`) or a doc page (`doc:`) — the daily docs-drift job
-   (`python scripts/check-docs-drift.py`) flags registry ids missing from it
+   string (`readme:`) or a doc page (`doc:`) — the Python suite and relevant
+   documentation PRs run `python scripts/check-docs-drift.py` to flag missing
+   registry ids in a read-only job; only the daily/manual maintenance job gets
+   issue-write permission to maintain the rolling docs-drift issue
 5. It then appears in Settings → TTS Engine
 
 ---
@@ -545,6 +547,11 @@ test-only PR. Docker Hub overview edits still publish through the small
   runs the build. Merge groups retain the package's mobile and unrelated
   `.github/` exclusions; the Nix workflow itself always qualifies. Explicit
   manual/release events remain full, and the existing unsigned-CLA hold remains.
+- **Mobile artifacts:** uploads retry once after ten seconds when the first
+  attempt fails and the run is not cancelled. Both attempts use the same
+  artifact name and inputs; a failed retry still fails the job, and pass-cache
+  markers remain after the terminal upload. Native tests are never skipped
+  because an upload failed.
 - **Pass cache:** the heavy jobs in `ci.yml` (Python tests, the Electron jobs,
   UI crawler, Desktop UI, release smoke, smokes) and in `mobile.yml` (iOS, Android and their
   inference tests) skip their steps, and still pass, when their exact inputs

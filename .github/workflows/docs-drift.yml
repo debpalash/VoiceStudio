@@ -1,8 +1,8 @@
-# Docs drift — daily inventory-vs-docs check with a single rolling issue.
+# Docs drift — relevant PR checks plus daily checks with one rolling issue.
 #
 # docs/features.yaml is the canonical inventory; scripts/check-docs-drift.py
 # diffs it against README.md, docs/, and the engine registries. On drift the
-# job updates (or creates) ONE issue labeled `docs-drift` in place — no issue
+# scheduled/manual job updates (or creates) ONE `docs-drift` issue — no issue
 # spam — and closes it automatically when the check is clean again.
 #
 # Scheduled documentation-link and structure audit.
@@ -16,14 +16,27 @@ on:
     # Daily 03:30 UTC — after most merges, before EU morning triage.
     - cron: "30 3 * * *"
   workflow_dispatch:
+  # A documentation-only pull request skips the runtime suite, so the inventory
+  # check would otherwise never see the edits most likely to break it. Run it
+  # directly for the files it reads; the rolling issue is only touched by the
+  # scheduled and manual runs.
+  pull_request:
+    paths:
+      - "docs/features.yaml"
+      - "docs/**"
+      - "README.md"
+      - "scripts/check-docs-drift.py"
+      - ".github/workflows/docs-drift.yml"
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
-  drift:
+  pull-request:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-22.04
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -32,7 +45,26 @@ jobs:
           python-version: "3.11"
 
       - name: Install checker deps
-        run: pip install "pyyaml>=6"
+        run: pip install "pyyaml==6.0.3"
+
+      - name: Check inventory vs README/docs/registries
+        run: python scripts/check-docs-drift.py
+
+  drift:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.11"
+
+      - name: Install checker deps
+        run: pip install "pyyaml==6.0.3"
 
       - name: Check inventory vs README/docs/registries
         id: drift
@@ -40,6 +72,7 @@ jobs:
         run: python scripts/check-docs-drift.py --output drift-report.md
 
       - name: Update rolling docs-drift issue
+        if: github.event_name != 'pull_request'
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
         env:
           DRIFT_OUTCOME: ${{ steps.drift.outcome }}
@@ -93,5 +126,5 @@ jobs:
       - name: Surface drift as a failed run
         if: steps.drift.outcome == 'failure'
         run: |
-          echo "Docs drift detected — see the rolling docs-drift issue."
+          echo "Docs drift detected — see the checker output above; scheduled/manual runs also update the rolling issue."
           exit 1

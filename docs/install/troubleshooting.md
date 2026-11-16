@@ -69,7 +69,7 @@ Your antivirus quarantined or refused an engine file. Restore the file, add the 
 
 ### `EXEC_REFUSED`
 
-The OS refused to run the engine and left no evidence of what refused it. Add the runtime folder to your security software's exclusions, make sure it is not in a cloud-synced folder, then retry. If it persists, send the in-app report: it records the program, its signature and any blocks Windows logged.
+The OS refused to run the engine and left no evidence of what refused it. Smart App Control in Evaluation mode only audits launches, so that setting alone leaves this failure under `EXEC_REFUSED`. Add the runtime folder to your security software's exclusions, make sure it is not in a cloud-synced folder, then retry. If it persists, send the in-app report: it records the program, its signature and any blocks Windows logged.
 
 ### `GATEKEEPER_QUARANTINE`
 

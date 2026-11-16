@@ -4,9 +4,8 @@ import { ChevronDownIcon, DownloadIcon, LoaderCircleIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
-import { getBridge } from '@/components/bridge';
 import { PipelineFailure } from '@/components/pipeline-failure';
-import { apiPath, describeError, errorFromResponse } from '@/lib/api/client';
+import { apiPath, describeError } from '@/lib/api/client';
 import { saveExport } from '@/lib/export-history';
 import {
   BED_LEVEL_MAX,
@@ -97,18 +96,7 @@ export function DubExportPanel({ session, disabled }: { session: DubSession; dis
         bitrate,
       });
       const url = apiPath(request.path);
-      const bridge = getBridge();
-      if (bridge) await saveExport(url, request.name);
-      else {
-        const response = await fetch(url);
-        if (!response.ok) throw await errorFromResponse(response);
-        const objectUrl = URL.createObjectURL(await response.blob());
-        const anchor = document.createElement('a');
-        anchor.href = objectUrl;
-        anchor.download = request.name;
-        anchor.click();
-        setTimeout(() => URL.revokeObjectURL(objectUrl), 30_000);
-      }
+      await saveExport(url, request.name);
     } catch (error) {
       setError(describeError(error));
     } finally {

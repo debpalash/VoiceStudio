@@ -1337,6 +1337,9 @@
     "terminal_command_added": "追加しました。voicestudio を使うには新しいターミナルウィンドウを開いてください。",
     "terminal_command_failed": "voicestudio をターミナルに追加できませんでした。ホームフォルダーが読み取り専用でないことを確認して、もう一度お試しください。",
     "terminal_command_conflict": "{{path}} は別のインストールのものなので、VoiceStudio は変更しませんでした。",
+    "close_to_tray": "閉じてもトレイで実行を続ける",
+    "close_to_tray_desc": "ウィンドウを閉じると、VoiceStudio は終了せずトレイに隠れ、実行中のジョブは続行されます。トレイのアイコンから再度開き、終了するにはそこで「終了」を選びます。一部の Linux デスクトップではトレイのアイコンに AppIndicator の対応が必要です。VoiceStudio をもう一度起動してもウィンドウが再表示されます。",
+    "close_to_tray_failed": "この設定を保存できませんでした。もう一度お試しください。",
     "review_mode_on": "レビュー",
     "review_mode_off": "連射",
     "translate_agent": "エージェント調整",
@@ -1870,7 +1873,12 @@
     "resume_failed": "このオーディオブックを再開できませんでした: {{message}}",
     "recovery_busy": "別のレンダリングを実行中です。終わってから再開してください。",
     "cast_note_one": "{{names}} はまだ配役されていないため、メインの音声で読み上げます。キャストで音声を選んでください。",
-    "cast_note_other": "{{names}} はまだ配役されていないため、メインの音声で読み上げます。キャストで音声を選んでください。"
+    "cast_note_other": "{{names}} はまだ配役されていないため、メインの音声で読み上げます。キャストで音声を選んでください。",
+    "result_other_connection": "この保存済み音声は、別の VoiceStudio 接続のものです。再生するには、その接続に戻ってください。",
+    "result_connection_unknown": "ローカルエンジンまたはリモートコンピューターに接続すると、保存済み音声が表示されます。",
+    "result_legacy": "この古い保存結果には接続情報がありません。この接続でファイル名を探してください。同じ名前でも別のファイルの可能性があります。",
+    "result_check_audio": "この接続で保存済み音声を確認",
+    "result_recovery_failed": "この接続では保存済み音声を利用できません。元の接続に戻るか、音声を再生成してください。"
   },
   "credentials": {
     "microsoft_key": "Microsoft トランスレータ キー",

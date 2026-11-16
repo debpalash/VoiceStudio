@@ -20,7 +20,6 @@
 /electron/scripts/embed-appimage-update.mjs @debpalash
 /scripts/prepare_electron_release.py   @debpalash
 /scripts/check_electron_release_assets.py @debpalash
-/scripts/clear-release-rerun-assets.py @debpalash
 /scripts/verify-macos-signing.sh       @debpalash
 /deploy/                               @debpalash
 /docs/RELEASING.md                     @debpalash

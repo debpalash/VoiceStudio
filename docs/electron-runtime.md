@@ -13,6 +13,11 @@ The top bar keeps its shortcuts quiet so the work area leads: Get Pro, the GitHu
 
 Low-disk warnings in the notification menu open Settings > Storage, where users can inspect disk use and clear temporary files.
 
+Native file-opening and reveal actions require the primary app window's trusted
+main frame. Utility windows retain their own window-state controls, read-only
+backend access and explicit user-dialog exports. Subframes and missing caller
+windows cannot substitute the primary window for a window-state query.
+
 The development launcher watches main-process and preload source changes as well as renderer changes, rebuilding and restarting or reloading Electron to keep IPC contracts synchronized. After changing the launcher itself, stop and restart `bun run dev` once; a renderer refresh alone cannot update the running main process.
 
 The development shell keeps DevTools closed by default. Open it with the normal
@@ -80,6 +85,8 @@ Ubuntu 26.04 under WSL completed the current frozen dependency graph from an emp
 Remaining verification: fully uncached packaged installation through first generated sound on macOS, plus native directory-picker interaction. Use `--install` only for an explicit integration run: it installs real dependencies into an isolated profile. `--first-sound` continues through required-model setup and verifies a valid paused WAV. Set `VOICESTUDIO_TEST_PROFILE` to that profile to verify a subsequent launch.
 
 Deliberate shutdown remains available during deferred native and ML imports. Electron can therefore retire the backend run sentinel before Windows performs its bounded process-tree termination, so closing during “Preparing GPU libraries” does not become a false crash warning on the next launch. A packaged Windows acceptance quits inside that gated startup phase and verifies the sentinel is gone.
+
+Closing the window quits the app on Windows and Linux and keeps it running on macOS. Settings → General → "Keep running in the tray when closed" (off by default, saved in `window-prefs.json` in the user-data folder) makes the close button hide the window to the system tray on every platform instead, so running jobs and the backend keep going; the tray icon reopens the window and its Quit entry exits through the normal orderly shutdown. Explicit quits (tray Quit, Cmd+Q, installing an update, Windows log off or shutdown) are never turned into a hide, and a terminal-started app without a window keeps its own idle shutdown. On Linux desktops that hide tray icons (for example GNOME without an AppIndicator extension), launching VoiceStudio again also reopens the hidden window.
 
 The backend's default desktop origins include `app://voicestudio` alongside the Tauri origins. HTTP CORS and WebSocket checks share this list. An explicit `OMNIVOICE_ALLOWED_ORIGINS` overrides the defaults; deployments using it must include the Electron origin to allow native live dictation. Non-loopback WebSocket connections still require remote authorization.
 
