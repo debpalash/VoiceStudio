@@ -9,8 +9,9 @@ import { saveExport } from '@/lib/export-history';
 import { cn } from '@/lib/utils';
 
 /**
- * Saves a backend audio file through the native save dialog. One click saves
- * `url` (WAV); with `mp3Url`, a format menu beside it also offers MP3.
+ * Saves a backend audio file through the native save dialog, or the browser's
+ * download in the web build. One click saves `url` (WAV); with `mp3Url`, a
+ * format menu beside it also offers MP3.
  */
 export function SaveAudioButton({
   url,
@@ -33,7 +34,7 @@ export function SaveAudioButton({
   const bridge = getBridge();
 
   const save = async (target = url, name = suggestedName) => {
-    if (!target || !bridge) return;
+    if (!target) return;
     setSaving(true);
     try {
       const saved = await saveExport(target, name);
@@ -41,14 +42,16 @@ export function SaveAudioButton({
       if (!saved.canceled && saved.path) {
         const path = saved.path;
         toast.success(t('clone.saved_to', { path }), {
-          action: {
-            label: t('clone.reveal'),
-            onClick: () =>
-              void bridge.files.revealPath(path).catch((error) => {
-                const message = error instanceof Error ? error.message : String(error);
-                toast.error(t('clone.download_failed', { message }));
-              }),
-          },
+          action: bridge
+            ? {
+                label: t('clone.reveal'),
+                onClick: () =>
+                  void bridge.files.revealPath(path).catch((error) => {
+                    const message = error instanceof Error ? error.message : String(error);
+                    toast.error(t('clone.download_failed', { message }));
+                  }),
+              }
+            : undefined,
         });
       }
     } catch (error) {
@@ -59,7 +62,7 @@ export function SaveAudioButton({
     }
   };
 
-  const off = disabled || saving || !url || !bridge;
+  const off = disabled || saving || !url;
   const button = (
     <Button
       variant="ghost"

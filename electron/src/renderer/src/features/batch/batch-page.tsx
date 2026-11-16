@@ -31,7 +31,6 @@ import { EngineLanguagePicker } from '@/features/clone/engine-language-picker';
 import { Switch } from '@/components/ui/switch';
 import { useProfiles } from '@/hooks/use-profiles';
 import { useTtsReadiness } from '@/hooks/use-tts-readiness';
-import { getBridge } from '@/components/bridge';
 import { apiJson, apiPath, describeError } from '@/lib/api/client';
 import { saveExport } from '@/lib/export-history';
 import { TRANSLATION_TARGET_LABELS, translationTargetCode } from '@/lib/translation-targets';
@@ -177,14 +176,7 @@ export function BatchPage() {
       '/batch/download/' + encodeURIComponent(job.id) + '/' + encodeURIComponent(lang),
     );
     try {
-      const bridge = getBridge();
-      if (bridge) await saveExport(url, job.filename.replace(/\.[^.]+$/, '') + '_' + lang + '.mp4');
-      else {
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = '';
-        link.click();
-      }
+      await saveExport(url, job.filename.replace(/\.[^.]+$/, '') + '_' + lang + '.mp4');
     } catch (cause) {
       setError(t('clone.download_failed', { message: describeError(cause) }));
     }
