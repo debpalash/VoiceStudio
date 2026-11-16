@@ -563,7 +563,9 @@ test-only PR. Docker Hub overview edits still publish through the small
   proof of completed cancellation; HTTP 409 refusals are reported as skipped.
   Capped searches use a bounded 30-day recovery window. Saturated or truncated
   discovery, lookup failures and failed cancellation requests return a nonzero result
-  after preserving eligible partial progress; no force-cancel is issued.
+  after preserving eligible partial progress; no force-cancel is issued. Short
+  searches with missing rows get one bounded rescan for delayed cancellations;
+  unresolved reported totals remain incomplete rather than reporting success.
   Both close-event cleanup and the repository sweep check every associated PR
   through bounded pagination;
   any open PR or incomplete closure lookup keeps the run. A run must predate the

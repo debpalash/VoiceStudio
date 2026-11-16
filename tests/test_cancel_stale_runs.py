@@ -357,3 +357,70 @@ def test_direct_closed_pr_unknown_associations_cannot_authorize_cancellation(mon
     api.requested_pr = _pr()
     assert _main(module, api, monkeypatch, ["--pr", "7"]) == 1
     assert api.cancelled == []
+
+
+def test_delayed_cancellation_does_not_hide_shifted_unseen_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _module()
+    class DelayedApi(FakeApi):
+        repeated = False
+        removed = False
+        run_pages: list[tuple[int, list[int]]]
+
+        def __init__(self) -> None:
+            super().__init__([_run(i) for i in range(1, 201)])
+            self.run_pages = []
+
+        def __call__(self, method: str, path: str, data: dict | None = None) -> Any:
+            query = parse_qs(urlsplit(path).query)
+            queued = method == "GET" and "/actions/runs?" in path and query.get("status") == ["queued"]
+            page = int(query.get("page", ["1"])[0])
+            # Accepted cancellations are still visible for the repeated page1.
+            # Complete them only when the following page2request begins.
+            if queued and self.repeated and not self.removed:
+                assert page == 2
+                for run in self.runs:
+                    if run["id"] in self.cancelled:
+                        run["status"] = "completed"
+                self.removed = True
+            response = super().__call__(method, path, data)
+            if queued:
+                self.run_pages.append((page, [run["id"] for run in response["workflow_runs"]]))
+                if page == 1 and self.cancelled and not self.repeated:
+                    self.repeated = True
+            return response
+
+    api = DelayedApi()
+    assert _main(module, api, monkeypatch) == 0
+    assert api.repeated and api.removed
+    assert api.run_pages[0] == api.run_pages[1]
+    assert api.run_pages[2] == (2, [])
+    assert set(api.cancelled) == set(range(1, 201))
+    assert len(api.cancelled) == 200
+
+
+@pytest.mark.parametrize("dry_run", [False, True])
+def test_stable_multi_page_results_remain_complete_and_truthful(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], dry_run: bool) -> None:
+    module = _module()
+    api = FakeApi([_run(i) for i in range(1, 201)])
+    mode = ["--sweep", "--dry-run"] if dry_run else ["--sweep"]
+    assert _main(module, api, monkeypatch, mode) == 0
+    assert set(api.cancelled) == (set() if dry_run else set(range(1, 201)))
+    assert len(api.cancelled) == (0 if dry_run else 200)
+    output = capsys.readouterr().out
+    assert ("200 run(s) would be cancelled" if dry_run else "200 cancellation request(s) accepted, 0 skipped") in output
+
+
+def test_unaccounted_short_search_remains_incomplete_after_bounded_rescan(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _module()
+    class MissingApi(FakeApi):
+        def __call__(self, method: str, path: str, data: dict | None = None) -> Any:
+            response = super().__call__(method, path, data)
+            query = parse_qs(urlsplit(path).query)
+            if method == "GET" and "/actions/runs?" in path and query.get("status") == ["queued"]:
+                response["total_count"] += 1
+            return response
+    api = MissingApi([_run(i) for i in range(1, 201)])
+    assert _main(module, api, monkeypatch) == 1
+    assert set(api.cancelled) == set(range(1, 201))
+    assert len(api.cancelled) == 200
+    assert len([path for _, path in api.requests if "/actions/runs?" in path and "status=queued" in path]) <= 10

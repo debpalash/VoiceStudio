@@ -181,18 +181,23 @@ def unfinished_runs(call: ApiCall, repo: str, **query: Any) -> Iterator[Run]:
     for status in UNFINISHED:
         status_seen = set()
         found, total = yield from search({**query, "status": status})
-        if found < SEARCH_CAP:
-            continue
-        print(f"::warning::{status}: {SEARCH_CAP} runs is the search cap; re-sweeping day by day", file=sys.stderr)
-        for index, window in enumerate(_day_windows()):
-            if index >= MAX_WINDOW_REQUESTS:
-                errors += 1
-                print(f"::warning::{status}: stopped after {MAX_WINDOW_REQUESTS} day windows; discovery is incomplete", file=sys.stderr)
-                break
-            count, _ = yield from search({**query, "status": status, "created": window})
-            if count >= SEARCH_CAP:
-                errors += 1
-                print(f"::warning::{status} {window} also reached the search cap; discovery is incomplete", file=sys.stderr)
+        if found >= SEARCH_CAP:
+            print(f"::warning::{status}: {SEARCH_CAP} runs is the search cap; re-sweeping day by day", file=sys.stderr)
+            for index, window in enumerate(_day_windows()):
+                if index >= MAX_WINDOW_REQUESTS:
+                    errors += 1
+                    print(f"::warning::{status}: stopped after {MAX_WINDOW_REQUESTS} day windows; discovery is incomplete", file=sys.stderr)
+                    break
+                count, _ = yield from search({**query, "status": status, "created": window})
+                if count >= SEARCH_CAP:
+                    errors += 1
+                    print(f"::warning::{status} {window} also reached the search cap; discovery is incomplete", file=sys.stderr)
+        elif len(status_seen) < total:
+            # Accepted cancellation can finish after its repeated page1 read,
+            # shifting unseen rows behind the next page offset. Revisit once
+            # under the same deadline; an unresolved deficit is not success.
+            _, retried_total = yield from search({**query, "status": status})
+            total = max(total, retried_total)
         if len(status_seen) < total:
             errors += 1
             print(f"::warning::{status}: discovered {len(status_seen)} of {total} reported runs; bounded lookback is incomplete", file=sys.stderr)
