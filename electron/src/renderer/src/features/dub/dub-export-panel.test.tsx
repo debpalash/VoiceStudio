@@ -39,7 +39,7 @@ it('offers plain text before a dub, syncs the complete edited transcript and ope
     'aria-pressed',
     'true',
   );
-  fireEvent.click(screen.getByRole('button', { name: 'exportModal.export' }));
+  fireEvent.click(screen.getByRole('button', { name: 'dub.flow_save' }));
   await waitFor(() => expect(mocks.save).toHaveBeenCalledOnce());
   expect(mocks.api.mock.calls[0][0]).toBe('/dub/sync-transcript/job');
   expect(JSON.parse(mocks.api.mock.calls[0][1].body).segments[0].text).toBe('Edited & complete');
@@ -60,7 +60,7 @@ it('uses the selected generated language without overwriting its persisted text'
       disabled={false}
     />,
   );
-  fireEvent.click(screen.getByRole('button', { name: 'exportModal.export' }));
+  fireEvent.click(screen.getByRole('button', { name: 'dub.flow_save' }));
   await waitFor(() => expect(mocks.save).toHaveBeenCalledOnce());
   expect(mocks.save.mock.calls[0][0].url).toBe('/api/dub/txt/job?lang=fr');
   expect(mocks.api.mock.calls.some(([path]) => path.includes('sync-transcript'))).toBe(false);
@@ -69,14 +69,14 @@ it('uses the selected generated language without overwriting its persisted text'
 it('keeps cancellation quiet, then lets the same transcript be saved on retry', async () => {
   mocks.save.mockResolvedValueOnce({ canceled: true });
   render(<DubExportPanel session={session()} disabled={false} />);
-  fireEvent.click(screen.getByRole('button', { name: 'exportModal.export' }));
+  fireEvent.click(screen.getByRole('button', { name: 'dub.flow_save' }));
   await waitFor(() => expect(mocks.save).toHaveBeenCalledOnce());
   expect(mocks.api.mock.calls.some(([path]) => path === '/export/record')).toBe(false);
   expect(screen.queryByRole('alert')).toBeNull();
   await waitFor(() =>
-    expect(screen.getByRole('button', { name: 'exportModal.export' })).toBeEnabled(),
+    expect(screen.getByRole('button', { name: 'dub.flow_save' })).toBeEnabled(),
   );
-  fireEvent.click(screen.getByRole('button', { name: 'exportModal.export' }));
+  fireEvent.click(screen.getByRole('button', { name: 'dub.flow_save' }));
   await waitFor(() => expect(mocks.save).toHaveBeenCalledTimes(2));
 });
 
@@ -84,7 +84,7 @@ it.each([{ segments: [] }, { jobId: null }])(
   'does not export without a transcript/job: %j',
   (overrides) => {
     render(<DubExportPanel session={session(overrides)} disabled={false} />);
-    expect(screen.getByRole('button', { name: 'exportModal.export' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'dub.flow_save' })).toBeDisabled();
     expect(mocks.save).not.toHaveBeenCalled();
   },
 );

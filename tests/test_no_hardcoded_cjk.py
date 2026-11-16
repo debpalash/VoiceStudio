@@ -49,6 +49,7 @@ _ALLOWED_FILES = {
     "examples/README.md",  # Contains multilingual examples.
     "backend/services/segmentation.py",  # CJK-aware segmentation rules.
     "backend/services/sentence_chunker.py",  # CJK sentence-boundary logic.
+    "electron/src/renderer/src/features/dub/dub-narration.ts",  # Functional sentence-ending punctuation, not UI copy.
     "backend/services/subtitle_segmenter.py",  # CJK subtitle segmentation.
     "backend/services/text_normalization.py",  # CJK normalization patterns.
     "backend/core/http_headers.py",  # Parses localized HTTP filenames.

@@ -103,3 +103,25 @@ it('keeps the placeholder only while nothing is loaded', () => {
   expect(screen.getByText('dub.video_dubbing_studio')).toBeTruthy();
   expect(screen.queryByRole('list')).toBeNull();
 });
+
+it('labels subtitle-first preparation without claiming to transcribe or translate', () => {
+  render(
+    <DubEmptyState
+      session={
+        {
+          jobId: 'srt',
+          filename: 'speech.mp4',
+          inputType: 'video',
+          skipTranscription: true,
+          subtitleTargetLang: 'fr',
+        } as DubSession
+      }
+      busy
+      stage="dub.preparing"
+      onChangeFile={vi.fn()}
+    />,
+  );
+  expect(screen.queryByText('dub.upload_transcribe')).toBeNull();
+  expect(screen.getByText('dub.prepare_project')).toBeTruthy();
+  expect(screen.getByText('dub.srt_in_target')).toBeTruthy();
+});

@@ -605,6 +605,10 @@ it.each([
   { event: { segment: 1, segment_id: 'first' }, expectedId: 'first' },
   { event: { segment: 2 }, expectedId: undefined },
   { event: { segment: -1 }, expectedId: undefined },
+  {
+    event: { segment: 1, error_code: 'dub_timing_overflow', speech_saved: 1 },
+    expectedId: 'second',
+  },
 ])('locates missing speech in the submitted transcript ($event)', async ({ event, expectedId }) => {
   dubSession.setState((current) => ({
     ...current,
@@ -627,6 +631,7 @@ it.each([
 
   await expect(generateDub('Spanish', 'es')).resolves.toBe(false);
   expect(dubSession.state.event?.segment_id).toBe(expectedId);
+  if ('speech_saved' in event) expect(dubSession.state.event?.speech_saved).toBe(1);
   expect(dubSession.state.recovery).toBeNull();
   expect(dubSession.state.phase).toBe('editing');
 });
@@ -1399,4 +1404,226 @@ it('warns when a cached job has no background stem (#3751)', async () => {
   await uploadDub(new File(['audio'], 'voice.wav', { type: 'audio/wav' }));
   expect(warning.mock.calls.map((call) => call[0])).toEqual(['dub.bg_separation_failed']);
   warning.mockRestore();
+});
+
+it('validates supplied subtitles before upload and skips transcription', async () => {
+  resetDubSession();
+  vi.mocked(apiJson)
+    .mockReset()
+    .mockResolvedValueOnce({ imported: 1 })
+    .mockResolvedValueOnce({ job_id: 'with-srt', task_id: 'prep-srt' })
+    .mockResolvedValueOnce({
+      segments: [{ id: 0, start: 2, end: 4, text: 'Hola' }],
+      stats: { imported: 1 },
+    });
+  vi.mocked(consumeTaskStream)
+    .mockReset()
+    .mockImplementationOnce(async (_path, emit) => {
+      emit({ type: 'ready', duration: 6 });
+    });
+  await uploadDub(new File(['video'], 'test.mp4'), new File(['srt'], 'test.srt'));
+  expect(vi.mocked(apiJson).mock.calls.map(([path]) => path)).toEqual([
+    '/dub/validate-srt',
+    '/dub/upload',
+    '/dub/import-srt/with-srt',
+  ]);
+  expect(vi.mocked(consumeTaskStream).mock.calls.map(([path]) => path)).toEqual([
+    '/tasks/stream/prep-srt',
+  ]);
+  expect(dubSession.state.segments[0].text).toBe('Hola');
+  expect(dubSession.state.phase).toBe('editing');
+});
+
+it('does not prepare media or start ASR when supplied subtitles are invalid', async () => {
+  resetDubSession();
+  vi.mocked(apiJson).mockReset().mockRejectedValueOnce(new Error('No valid subtitle cues'));
+  vi.mocked(consumeTaskStream).mockReset();
+  await uploadDub(new File(['video'], 'test.mp4'), new File(['bad'], 'bad.srt'));
+  expect(apiJson).toHaveBeenCalledTimes(1);
+  expect(consumeTaskStream).not.toHaveBeenCalled();
+  expect(dubSession.state.error).toContain('No valid subtitle cues');
+});
+
+it('opens an SRT-only audio session with a selected voice without media requests', async () => {
+  resetDubSession();
+  setDubProduction({ sourceLanguage: 'es' });
+  vi.mocked(apiJson)
+    .mockReset()
+    .mockResolvedValueOnce({
+      job_id: 'only-srt',
+      filename: 'test.srt',
+      duration: 9,
+      source_lang: 'es',
+      segments: [{ id: 0, start: 2, end: 4, text: 'Hola' }],
+      stats: { imported: 1 },
+    });
+  vi.mocked(consumeTaskStream).mockReset();
+  await importDubSubtitles(new File(['srt'], 'test.srt'), 'voice');
+  expect(vi.mocked(apiJson).mock.calls[0][0]).toBe('/dub/from-srt');
+  expect(consumeTaskStream).not.toHaveBeenCalled();
+  expect(dubSession.state).toMatchObject({
+    jobId: 'only-srt',
+    subtitleOnly: true,
+    inputType: 'audio',
+    sourceLang: 'es',
+    duration: 9,
+  });
+  expect(dubSession.state.segments[0].profile_id).toBe('voice');
+});
+
+it('imports a target-language SRT as ready translations without calling a translator', async () => {
+  resetDubSession();
+  setDubProduction({ sourceLanguage: 'es' });
+  setDubTarget('English', 'en');
+  vi.mocked(apiJson)
+    .mockReset()
+    .mockResolvedValueOnce({
+      job_id: 'target-srt',
+      filename: 'english.srt',
+      duration: 5,
+      source_lang: 'en',
+      segments: [{ id: 0, start: 1, end: 3, text: 'Hello world' }],
+      stats: { imported: 1 },
+    });
+  await importDubSubtitles(new File(['srt'], 'english.srt'), 'voice', { subtitlesInTarget: true });
+  expect(apiJson).toHaveBeenCalledTimes(1);
+  const [path, request] = vi.mocked(apiJson).mock.calls[0];
+  expect(path).toBe('/dub/from-srt');
+  expect((request?.body as FormData).get('source_lang')).toBe('en');
+  expect(dubSession.state.subtitleTargetLang).toBe('en');
+  expect(dubSession.state.sourceLanguage).toBe('es');
+  expect(dubSession.state.sourceLang).toBe('en');
+  expect(dubSession.state.segments[0]).toMatchObject({
+    text: 'Hello world',
+    translations: { en: 'Hello world' },
+    profile_id: 'voice',
+  });
+});
+
+it('passes voice-only preparation and retains target-language subtitle intent through upload', async () => {
+  resetDubSession();
+  setDubProduction({ sourceLanguage: 'es' });
+  setDubTarget('English', 'en');
+  vi.mocked(apiJson)
+    .mockReset()
+    .mockResolvedValueOnce({ imported: 1 })
+    .mockResolvedValueOnce({ job_id: 'voice-only', task_id: 'prep-voice-only' })
+    .mockResolvedValueOnce({
+      segments: [{ id: 0, start: 1, end: 3, text: 'Already translated' }],
+      stats: { imported: 1 },
+    });
+  vi.mocked(consumeTaskStream)
+    .mockReset()
+    .mockImplementationOnce(async (_path, emit) => {
+      emit({ type: 'demucs_done', has_bg: false, skipped: true });
+      emit({ type: 'ready', duration: 5 });
+    });
+  await uploadDub(new File(['video'], 'video.mp4'), new File(['srt'], 'target.srt'), 'voice', {
+    separateBackground: false,
+    subtitlesInTarget: true,
+  });
+  const request = vi.mocked(apiJson).mock.calls.find(([path]) => path === '/dub/upload')![1];
+  expect((request?.body as FormData).get('separate_background')).toBe('false');
+  expect(dubSession.state).toMatchObject({
+    separateBackground: false,
+    subtitleTargetLang: 'en',
+    phase: 'editing',
+  });
+  expect(dubSession.state.segments[0].translations).toEqual({ en: 'Already translated' });
+  expect(vi.mocked(consumeTaskStream).mock.calls).toHaveLength(1);
+});
+
+it('keeps completed takes playable before the track finishes, including after a later error', async () => {
+  const { speechPreviewFor } = await import('./dub-speech-preview');
+  const segment = { id: 'ready-a', start: 0, end: 1, text: 'Hello', text_original: 'Hola' };
+  const previewUrl = '/dub/speech-preview/job/' + 'a'.repeat(32) + '/' + 'b'.repeat(64);
+  dubSession.setState((current) => ({
+    ...current,
+    jobId: 'job',
+    phase: 'editing',
+    recovery: null,
+    quality: 'fast',
+    target: 'English',
+    segments: [segment],
+    speechPreviews: {},
+    autoFitOverflow: undefined,
+  }));
+  vi.mocked(apiJson).mockReset().mockResolvedValueOnce({ task_id: 'task' });
+  vi.mocked(consumeTaskStream)
+    .mockReset()
+    .mockImplementationOnce(async (_path, emit) => {
+      emit({
+        type: 'segment_ready',
+        segment_id: 'ready-a',
+        language_code: 'en',
+        preview_url: previewUrl,
+      });
+      expect(dubSession.state.phase).toBe('generating');
+      expect(speechPreviewFor(segment, dubSession.state, 'en')).toBe(previewUrl);
+      expect(speechPreviewFor(segment, dubSession.state, 'fr')).toBeUndefined();
+      emit({ type: 'error', error: 'second line failed' });
+    });
+  await expect(generateDub('English', 'en')).resolves.toBe(false);
+  expect(speechPreviewFor(segment, dubSession.state, 'en')).toBe(previewUrl);
+  expect(JSON.parse(vi.mocked(apiJson).mock.calls[0][1]!.body as string).auto_fit_overflow).toBe(
+    true,
+  );
+  editDubSegment('ready-a', { text: 'Changed words' });
+  expect(speechPreviewFor(dubSession.state.segments[0], dubSession.state, 'en')).toBeUndefined();
+});
+
+it('marks only a confirmed export of the current project revision as exported', async () => {
+  const { recordDubExport } = await import('./dub-session');
+  const { dubExportRevision } = await import('./dub-generation-request');
+  dubSession.setState((current) => ({
+    ...current,
+    jobId: 'export-test',
+    target: 'English',
+    phase: 'done',
+    recovery: null,
+    segments: [
+      { id: 'a', start: 0, end: 1, text: 'Hello', text_original: 'Hello', profile_id: 'voice' },
+    ],
+    exportedRequestKeys: {},
+  }));
+  const saved = dubSession.state;
+  recordDubExport(saved, 'en');
+  expect(dubSession.state.exportedRequestKeys?.en).toBe(dubExportRevision(saved, 'en'));
+  dubSession.setState((current) => ({
+    ...current,
+    exportedRequestKeys: {},
+    segments: [{ ...current.segments[0], text: 'Edited while saving' }],
+  }));
+  recordDubExport(saved, 'en');
+  expect(dubSession.state.exportedRequestKeys?.en).toBeUndefined();
+});
+
+it('keeps a stable repair target for an assembly error after a reload', async () => {
+  const { restoreDubDraft } = await import('./dub-draft');
+  dubSession.setState((current) => ({
+    ...current,
+    jobId: 'failed-audio',
+    phase: 'editing',
+    recovery: null,
+    target: 'English',
+    quality: 'fast',
+    segments: [
+      { id: 'row', start: 0, end: 1, text: 'Hello', text_original: 'Hello', profile_id: 'voice' },
+    ],
+  }));
+  vi.mocked(apiJson).mockReset().mockResolvedValueOnce({ task_id: 'failed-task' });
+  vi.mocked(consumeTaskStream)
+    .mockReset()
+    .mockImplementationOnce(async (_path, emit) => {
+      emit({
+        type: 'error',
+        segment: 0,
+        error_code: 'dub_speech_missing',
+        error: 'A speech segment is silent',
+      });
+    });
+  await generateDub('English', 'en');
+  expect(dubSession.state.lastGenerationError?.segment_id).toBe('row');
+  const restored = restoreDubDraft(JSON.stringify(dubSession.state), dubSession.state);
+  expect(restored.lastGenerationError?.reason).toBe('A speech segment is silent');
 });

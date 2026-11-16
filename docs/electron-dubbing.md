@@ -1,5 +1,61 @@
 # Electron dubbing workspace
 
+## Prepare media and subtitles before starting
+
+Local-file preparation offers **Keep music and ambience**, initially off and
+remembered for later uploads. Off skips both Demucs and its HQ stereo extraction;
+the dub replaces the original voice without a background bed. API callers that
+omit `separate_background` keep the existing separation default. Cache identity
+includes the separation choice so stems cannot leak between modes. URL ingest
+keeps its existing behavior. Existing prepared projects are not reprocessed.
+
+The source card guides local preparation through file selection, SRT choice,
+SRT language (source or target), optional background separation, script style,
+and a final summary. Selecting files does not start ASR, separation or TTS.
+SRTs are validated before media upload. Failed/rejected preparation retains the
+selected files and current question in the same window; a confirmed handoff or
+Clear consumes them. A reload requires selecting local files again.
+
+An SRT declared in the target language skips ASR and translation. Its text is
+registered under that target without changing the separately chosen spoken
+language. Source-language SRT skips ASR and requires target text before voice
+generation. Voice choice is deferred until after material import. Subtitle-only
+imports use the same choices without media extraction or separation; a saved
+voice is needed to generate speech because subtitles contain no voice reference.
+
+The five indicators now follow material → target text → voice/script → audio →
+listen/save. A chosen natural-script preference is saved but consolidation is an
+explicit operation after target text is ready. Translator/dialect/quality settings
+remain accessible under Advanced; the voice assignment board starts expanded.
+
+Before generation, an inline plan checks saved takes without synthesizing speech
+and displays new/reused counts. The primary action distinguishes Generate,
+Continue and Assemble saved audio. After a current full track is published,
+Listen and Save replace the generation prompt. Forced regeneration retains its
+scope-confirmation dialog. Generated-block playback reads saved WAVs; live TTS
+preview is a separate opt-in control.
+
+Background playback/export is disabled for subtitle-only projects and for projects
+that explicitly skipped separation, even if a legacy export setting requests it.
+New imports initialize export background consistently and exclude the original
+voice track by default. Legacy projects with unknown separation keep their prior
+behavior. Native Save opens a destination dialog; Cancel does not complete export.
+An optional “I have listened” marker is tied to the audio revision and is never
+required for saving. Narration timing warnings prioritize larger delays and
+recommend listening to the assembled result rather than automatic regeneration.
+
+This UI iteration does not change narration timing or remount existing audio.
+The current narration mode can still shift speech; bounding consolidated blocks
+to their original SRT windows is a separate pending correction.
+
+Subtitle-only speech and consolidated narration use fixed SRT windows. Each clip
+starts at its cue/block onset and finishes by its original end, without borrowing
+the next gap, overlapping the next block, or accumulating drift. Audio that is too
+long is fitted with pitch-preserving time compression; rates above 1.5× are shown
+as quality warnings so the user can shorten the text and regenerate only that
+block. Short speech leaves silence at the end of its window.
+
+
 ![Bundled original and dubbed samples in the default dark theme.](media/electron/dubbing.png)
 
 > **Historical context:** this page was written while the Electron and Tauri apps
@@ -524,3 +580,190 @@ and clearing the reserved job, so the same upload can be retried safely.
 Use **Use link** in the source's File actions menu to replace it with a URL. **Cancel**
 closes the URL form without changing the source; changing the source also closes
 the form. URL ingestion waits until any pending cancellation finishes.
+
+## Recovery checkpoints for speech generation
+
+Valid TTS takes are atomically saved with integrity checks in a private
+`.speech-checkpoints` directory inside the job. They survive render failures,
+cancellation, source replacement and app restart without overwriting the
+published track's segment cache or fingerprints. Default Generate Dub retries
+reuse exact matching takes; explicit segment regeneration still requests new
+speech. Keys include the track language, engine, resolved reference content,
+seed, text, synthesis controls and generation preferences. Corrupt checkpoints
+are cache misses. Saved natural speech can be fitted into strict slots without
+resynthesis. A take synthesized with a duration hint is not reused as natural
+speech. Watermarking occurs before checkpoint persistence; RVC conversion is
+followed by watermarking again.
+
+With automatic overflow fitting disabled, Concise timing validates a
+fresh/recovered line immediately and reports its stable segment ID before
+generating later lines. Terminal events carry saved
+and reused speech counts, and the UI explains how to retry when speech exists.
+No partial final track is published. This cannot recover provisional files
+already discarded by older builds.
+
+### Automatic overflow fitting and completed-take auditions
+
+Timing → **Automatically fit long phrases** is enabled by default. If Concise
+runs out of its cue and available gap, or Smart Fit exhausts its configured
+limits, the mixer fits the **entire** take with pitch-preserving audio speed-up.
+It does not rewrite the subtitle or cut off words; very dense cues can sound
+fast. Disable the switch to retain a blocking timing error and resolve the line
+manually. Existing Strict Slot and Stretch Video choices retain their timing
+semantics. Subtitle-only jobs retain their flexible audio timeline.
+
+Completed spoken rows and timeline cues turn green during rendering. **Play
+generated audio** auditions that completed take immediately, without another
+TTS call or waiting for the final track. The audition is the complete take before
+final timing adjustments. These immutable per-render files survive a later error
+or cancellation and are separate from published tracks and incremental render
+fingerprints. Editing the text/voice or generation settings hides the stale
+ready state; the corresponding take remains on disk until the job is deleted.
+The ready indicators remain available in the current app session; task-stream
+recovery replays them if a render is still running after a reload.
+
+API: `DubRequest.auto_fit_overflow` defaults to `true`. A `segment_ready` task
+event carries `segment_id`, `language_code`, progress counters and a relative
+`preview_url`. GET this URL to audition a finished WAV. Preview paths validate
+both opaque tokens and job-root containment; they never point into mutable
+published-track caches. On filesystems supporting hard links, auditions reuse
+the existing WAV storage; other systems copy it.
+
+### Project guide and generation review
+
+The project guide replaces the dismissible stage banner. It tracks five steps:
+source/script prepared, target language and cast assigned, target text available,
+current audio generated, and audio exported. It highlights the next action and
+links back to the relevant controls. Target text requires every spoken line,
+not merely one translation anywhere. Text availability does not claim a human
+review. A prior track or partial take does not certify a current final render;
+the guide compares the completed request with the editor's current inputs.
+Changing text, voice, synthesis settings or timings makes the audio step pending.
+Native export is completed only after the save result confirms a file path;
+cancellation and changes made during the save cannot complete the wrong revision.
+
+The primary generation action now opens **Review generation** before submitting
+a synthesis task. It shows how many segments need new speech and how many have
+compatible saved audio, including checkpoints from failed runs. When everything
+is reusable, it explicitly describes an assembly-only run. Explicit regeneration
+and fast-preview quality are identified separately. Generation starts only after
+**Start generation**. Errors checking the plan block that action; changing the
+inputs discards old counts and checks again. Final assembly still covers the
+complete track. Agent Fit may perform its existing adaptive follow-up passes.
+Batch languages whose text still requires translation say so instead of giving
+invented reuse counts.
+
+`POST /dub/plan/{job_id}` accepts the same `DubRequest` as generation. It resolves
+the same per-segment inputs, references, synthesis defaults and checkpoint
+integrity checks without calling TTS, submitting a task or publishing audio/job
+metadata. Its scratch directory is outside the job and removed on completion.
+The renderer shares one request builder for planning and execution. Counts
+reflect current files/settings; the normal execution path validates compatibility
+again. The local engine may initialize while inspecting its settings.
+
+### Actionable errors and very short spoken cues
+
+Media-backed cues containing speech with a duration of 50 ms or less must be
+corrected before synthesis. Previously these cues were replaced with silence,
+then the assembler rejected that intentional placeholder as missing speech,
+after generating the rest of a long project. Planning now returns their stable
+IDs/times in `issues`; generation rejects them before engine resolution or task
+submission. Empty intervals remain intentional silence. Subtitle-only narration
+retains its flexible timing and supports very short input cues.
+
+A persistent notice above the transcript identifies each affected cue by number,
+text, timestamp and duration. **Go to segment** opens its editor. **Join with
+next/previous** is offered for adjacent cues with compatible speaker, voice,
+language, direction/effect and gain settings. It retains both phrases and uses
+the existing undoable merge operation. Reviewing the generation plan is blocked
+until these intervals are corrected. The resulting combined take is synthesized
+while compatible takes for other cues are reused.
+
+Assembly errors include stable segment IDs. The renderer preserves the last
+identified generation error across draft/project reloads, with a revision marker
+so editing that segment clears the stale message. Successful generation and
+explicit dismissal clear it too. When planning finds every take reusable, its
+primary action says **Assemble saved audio** rather than **Start generation**.
+
+Local validation of the blocking-cue recovery included a real 39-minute job:
+one new joined-cue take, 1615 reused takes, a complete track and a native MP4
+export. Both source phrases were retained, and the original media/SRT were not
+overwritten. The project guide reached 5/5 after the native file save.
+
+### Review, playback and export destinations
+
+Blocking cue/generation failures are red and take priority over orange quality
+warnings. Warnings include verified timing drift, measured acceleration above
+1.5× and remaining fit overflows; they do not prohibit playback or export.
+The expandable notice gives each cue's number, text, precise times, explanation
+and suggested remedies. Locate opens the editor; regeneration opens the plan
+for that cue only. Transcript and timeline cues share the severity colors.
+
+The full saved track can be opened above the transcript with **Listen to
+complete dub**, including subtitle-only projects. This plays the assembled
+result with timing adjustments and never starts TTS. The source preview attaches
+its native media URL immediately rather than deferring provider loading in a
+hidden sidebar. It offers video/audio views, preserves the playhead when
+switching languages, displays playback errors with Retry, and follows the
+export background-audio setting and gain. Audio-only listening avoids building
+a video preview. Single-playback arbitration and transcript seeking are kept.
+
+Native Export asks for a filename and folder. A confirmed save shows the full
+path and **Show in folder**; Cancel never records a destination or completes
+export. The latest confirmed destination is retained in the draft and project.
+Browser downloads use the browser's normal destination controls and do not
+claim to know its local path.
+
+### Optional natural narration script
+
+After target text is ready, **Prepare natural script** consolidates subtitle
+fragments into speech blocks without a model call or rewriting words. Blocks
+stop at voice/speaker/delivery changes, pauses of at least 1.2 s, and phrase
+boundaries; a 25 s / 500 character limit bounds joins (an already longer single
+cue is retained). Each block links its original subtitle IDs. Edit, split,
+merge, time, audition and regenerate blocks through the existing editor.
+
+Subtitles are retained as a separate caption snapshot, including translated
+text, imported markup and cue timings. **Return to subtitle segments** restores
+that editor; preparing again resumes the edited script when its source is
+unchanged. A language change returns to the subtitle editor. New SRT imports
+clear the old script. Script state persists in drafts and saved projects;
+**Save dubbing script** exports a versioned `.dub.json` with captions, blocks,
+source IDs, voice bindings and, after generation, actual audio positions.
+
+Narration requests carry `timing_strategy=narration` plus `caption_segments` and
+`caption_segment_ids`. Missing/invalid caption snapshots are rejected. TTS uses
+natural durations and consistent voice references, with full-quality synthesis
+also for per-block regeneration. Assembly trims speech padding, measures the
+remaining samples and fits each full take inside its own original start/end using
+pitch-preserving compression. Strong acceleration (>1.5×) is a review warning;
+there is no hidden 8% cap that pushes subsequent blocks. Metadata keeps the
+original script window separate from actual audio positions. A changed timing
+contract invalidates the old complete-track marker without invalidating natural
+speech caches. Original subtitle text and timing remain unchanged.
+
+Per-language narration metadata and render manifests keep audio previews,
+per-block clip export and QC aligned with speech blocks, while SRT/VTT and
+burned subtitles continue to use captions. Failed/canceled renders preserve
+the prior track. Preparing a script never renders or overwrites prior audio;
+the old track cannot be mistaken for a newly generated narration preview or
+export. Translation and source-cleanup actions return to or require captions.
+
+
+### Compare subtitle windows and remove a saved project
+
+Compare SRT and script opens a two-column view: the exact source cues and their
+original text on the left, the grouped speech block on the right. Both show times;
+the last rendered audio interval is listed separately. Navigate by block number,
+Back/Continue or Next issue, and locate a block in the editor. A mismatch is red;
+Restore SRT times restores windows without changing words, voices or subtitle
+cues. Requests whose source-linked windows differ from the original SRT or overlap
+are rejected before synthesis. JSON script exports use version 2 with the fixed
+window timing contract.
+
+The Dub sidebar’s Projects tab now has a visible delete action per saved project,
+with confirmation, running-job protection, double-submit protection and retry on
+failure. This removes the saved project record only; media, voice profiles and
+rendered audio remain. Deleting an open saved record detaches its ID while leaving
+the current draft available. The general Projects library retains its existing
+delete actions.

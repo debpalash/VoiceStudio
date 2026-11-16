@@ -13,6 +13,7 @@ function hasTranscriptIssue(segment: DubSegment, language?: string) {
     segment.plan?.status === 'tight' ||
     segment.plan?.status === 'impossible' ||
     segment.fit_status?.status === 'overflows' ||
+    (segment.fit_status?.audio_rate || 1) > 1.5 ||
     segment.qc_flagged,
   );
 }
