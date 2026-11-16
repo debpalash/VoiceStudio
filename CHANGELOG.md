@@ -8,6 +8,134 @@ metadata and the backend fallback mirror it.
 
 ## [Unreleased]
 
+This beta adds separately opted-in automatic error reports, so failures can reach the maintainers without a manual bug report. Reports stay off unless you allow them, and never include audio, text, files, names, credentials or logs.
+
+**Highlights**
+
+- Optional automatic error reports stay off until separately allowed in Privacy
+- Android Stories and Audiobook keep long manuscripts scrollable and recover drafts through activity recreation
+- Stories can merge adjacent lines with compatible speaker and voice settings
+- Linux ROCm setup preserves its installed PyTorch stack, and GPU readiness reflects failed self-tests
+- Phone dub exports check available space and avoid false low-space errors on iOS
+
+**Upgrading:** install over the existing app or use Settings → Updates → Beta. Voices, projects, settings and installed models stay in place.
+
+### Changed
+
+- Removed an unused legacy update-busy helper while retaining active restart protection (#4149) — thanks @themrbeasley!
+- Retired an unused legacy update toast while preserving the active Electron update controls (#4141) — thanks @themrbeasley!
+- Retired the unreachable legacy shared UI and the guard tests that held it, repointing the live-behaviour guards to the renderer, and dropped 12 unused npm packages (#4095)
+- Smaller install: removed unused leftover images and old helper code from the app source (#4087)
+- Projects grid view stays smooth with thousands of items by drawing only the cards in view (#4079)
+- Long Projects, dub project and Transcribe history lists now render only the rows on screen, so they stay fast with thousands of items (#4074)
+- Idle CPU: a hidden or minimised window no longer runs polling timers or elapsed-time clocks, and they refresh once when it is shown again (#4073)
+- Removed unused renderer files and 477 unused translation strings, and `locale:check` now fails on an English key no code uses (#4047)
+- Removed more unused legacy shared components, utilities and API helpers from the old shared UI folder (#4045)
+- Local-model folder saves no longer unload the engine when the stored folder did not change (#4043)
+- Removed more unused legacy settings, gallery and engine screens from the old shared UI folder (#4042)
+- Idle polling is relaxed: the backend health probe slows when steady, cloud-sync polling pauses while the window is hidden, and the Windows parent watcher polls less often (#4041)
+- Removed more unused legacy dubbing screens and hooks from the old shared UI folder (#4040)
+- Release notes now open with one Download table listing every desktop and phone download with its signing, followed by the Highlights (#4037)
+- Removed about 25,000 lines of unused legacy interface code, two unused font packages and the always-skipped weekly evals job; the app itself is unchanged (#2603, #4032)
+
+### Added
+
+- Stories can merge adjacent lines with the same speaker and compatible voice/speed settings while preserving text and inline directions — thanks [cvak on Discord](https://discord.com/channels/1497926884707799144/1497926886020354102/1566929293853073429)! (#4161)
+- Added separately opted-in failure reporting through Supermetry app intake across desktop, mobile and server installs, with private metadata and consent-controlled retries (#4137)
+- Dubbing exports the selected transcript as plain UTF-8 TXT, including edited text before generating a dub, with native Save As and paired phone sharing. (#4155) — thanks @shivamdhiman999111-source!
+- A dub interrupted by a crash or restart now picks up from its finished segments instead of starting over (#4088)
+- omnivoice-gguf now supports voice design, non-verbal tags and the decode-steps slider (#4084) — thanks @snazzybean!
+- Cebuano is now a dub translation target (#4058, #4072) — thanks @onparr-24!
+- Home shows a What's new link, winter pixel snow, a Christmas-week Santa, two rows of contributor portraits, and an easter egg that hides the credits until the next update after you visit three contributor profiles (#4070)
+- Voice Cloning has a generation queue: takes started while one is rendering wait their turn and run one after another — thanks @ItzSudhan! (#4064)
+- Audiobooks and Stories have a New project button that starts an empty draft without touching saved projects (#4055)
+
+### Docs
+
+- The localization contract no longer exempts the removed legacy shared i18n catalog, which pointed reviewers at a path that does not exist (#4186) — thanks @DeryFerd!
+- Document the enforced up-to-date merge gate while the repository cannot use GitHub merge queues (#4165)
+- Track the unresolved VoxCPM2 installation report separately from GPU fallback fixes, reported by [vinhson](https://discord.com/users/1025270992882376704) (#4154)
+- Track the unresolved Windows model-loading crash and distinguish merged installer repairs from released fixes (#4146) — thanks @renaldyramadani123-code!
+- Installation tracking separates shipped fixes, pending repairs and unresolved report evidence (#4121)
+- Document host-managed Tailscale access for Docker without sharing the host daemon socket (#4111) — thanks @MaverickKB!
+
+### Fixed
+
+- Desktop failure observers retain the original consent during backend restarts and preserve normal Promise behavior. (#4209)
+- CosyVoice catalogue downloads skip unused alternative model files and use the same required assets as managed installs. (#4207)
+- Android keeps large manuscripts editable and recoverable, and retains reporting consent through permission prompts. (#4206) — thanks @gaino-svg!
+- The closed-PR CI sweep requests cancellations incrementally, preserves partial progress and reports incomplete searches or skipped requests accurately (#4189) — thanks @DeryFerd!
+- Kept automatic error reports bound to original consent through delayed work and recovery, and preserved native CI verification (#4184) — thanks @DeryFerd!
+- Windows ROCm setup preserves working-install stamps, verifies the pinned interpreter, and reports native crash exit codes (#4182) — thanks @DeryFerd!
+- Windows checkouts no longer fail the CLI packaging tests: the Debian maintainer-script cases skip when the host has no POSIX shell or symlink privileges (#4178) — thanks @DeryFerd!
+- Phone dubbing clip/stem exports check output space on both platforms and avoid false low-space errors on iOS (#4168)
+- Linux ROCm setup skips CUDA downloads and preserves its installed PyTorch stack on resume (#4167) — thanks @khryztiam!
+- GPU readiness and in-process routing reflect completed self-test failures (#4166) — thanks @khryztiam!
+- CLA audits keep exempt accounts visible for provenance review without reporting a missing required signature (#4164)
+- Release rehearsals show measured Android APK signing, and tagged downloads require matching signature evidence (#4163)
+- Manual Windows crash reports retain the faulting thread ahead of verbose status tails — thanks @renaldyramadani123-code and @freemood36-svg! (#4162)
+- macOS publishing checks Gatekeeper even when Windows installers are explicitly unsigned (#4153)
+- The reviewed model-install steps now require the same authenticated consumer as the rest of the model manager (#4152) — thanks @DeryFerd!
+- Diagnostic bundles and Electron bug reports redact share PINs and encoded credential query parameters (#4151) — thanks @DeryFerd!
+- Make the installed-model licence action open its terms and acknowledgement dialog — thanks [hugotriunfa18 on Discord](https://discord.com/users/1571221621316784260)! (#4147)
+- Android model downloads resume through VPNs while preserving Wi-Fi policy and saved ranges (#4140) — thanks @JerryTimi!
+- Stopped playback errors from incorrectly claiming that generated audio files are missing (#4138) — thanks @AAYUSH-CODER1904!
+- Transcriptions can save clean plain text and timed SRT captions, with an explanation when subtitle timings are unavailable (#4135)
+- Cloud sign-in now rejects a discovery document whose token or revocation endpoint is not on the issuer's own origin (#4133) — thanks @DeryFerd!
+- Segmented model downloads pin public destinations with bounded DNS checks across redirects, ranges and proxies, preventing private-network fallback and CDN credential leaks (#4132) — thanks @DeryFerd!
+- The LM Studio model probe no longer sends the stored API key in clear text to a remote host unless plaintext LAN is allowed (#4131) — thanks @DeryFerd!
+- A deterministic test now fails when a new mutating API route ships without an authorization decision (#4130) — thanks @DeryFerd!
+- Docker deployments now require the administrator API key for the runtime log, log stream, recent errors and crash report, as the install docs already said (#4129) — thanks @DeryFerd!
+- MCP tools preserve remote caller permissions across local and HTTP backends, including failed transport lookups (#4128) — thanks @DeryFerd!
+- TTS and event WebSockets now enforce the same loopback/credential rule as dictation, closing a share-PIN bypass (#4126) — thanks @DeryFerd!
+- Imported project bundles can no longer make ffmpeg fetch remote URLs through a playlist-shaped media file (#4125) — thanks @DeryFerd!
+- Deleting history, rewriting dub scripts and clearing model-licence receipts now require an administrator, as the API docs already promised (#4124) — thanks @DeryFerd!
+- SoniTranslate installation and start/stop now require a local administrator, like every other engine installer (#4123) — thanks @DeryFerd!
+- Model deletion over the API now requires administrator rights (#4122) — thanks @DeryFerd!
+- Crash recurrence reports recognize current Electron version fields and distinguish beta releases (#4120)
+- Reclaim idle GPU models before generation when VRAM or RAM is low (#4117) — thanks @vandyahmad24!
+- Model downloads reject damaged files and retry without reusing corrupt ranges, while cancellation preserves verified work (#4116)
+- Reuse verified setup wheels on low-space retries and handle interrupted size probes without an uncaught error. (#4115)
+- Saved and inline pronunciation choices apply consistently across speech, dubbing, batch and voice-conversion routes (#4114) — thanks @nntloc!
+- Stop cancelled setup retries promptly and keep verbose runtime probes from blocking on their diagnostic output. (#4113)
+- Long recordings use duration-scaled transcription limits across uploads, dubbing, child engines and MCP tools (#4112) — thanks @xabiherdz-svg!
+- URL imports restore their connection guard after temporary DNS resolver changes (#4110)
+- Update the optional Dagger pipeline's OpenTelemetry dependencies to fix excessive CPU use when parsing malformed trace context. (#4109)
+- Optional analytics no longer delays backend readiness, and consent changes invalidate queued startup work (#4108) — thanks @cf3901646!
+- Auto setup can retry PyPI failures through the regional mirror and report the actual failed host (#4107) — thanks @mrkeshi!
+- Malformed model-install status responses keep the interface open and preserve the last valid download state (#4106) — thanks @ftlcustomerservice73-ui!
+- Windows installer process checks skip custom PowerShell profiles, and source installs use shorter build paths to avoid MSVC linker failures (#4099)
+- Restarting to install an update keeps update status available while the local engine shuts down, avoiding missing-handler errors (#4098)
+- Automatic blank-renderer recovery keeps the open workspace instead of returning Stories or Audiobook to Home (#4097)
+- Dubbing keeps the saved recording for cloned and designed voices with style instructions, so each segment uses the selected speaker's reference (#4093)
+- Setup on Auto-detect now retries a stalled Python download (`cpython-… (download)`) once from the other source, GitHub or its mirror, instead of stalling again (#4085)
+- A refused cross-site API request now names its origin and gives the exact `OMNIVOICE_ALLOWED_ORIGINS` line to add, so other local apps such as AIRI can be connected (#4083)
+- Setup no longer crashes with "Cannot set property code" when a runtime download or check is cancelled on Windows (#4082)
+- MOSS-TTS-Nano speaks again on a fresh one-click install: the transformers 5 shim no longer breaks model loads in its pinned transformers 4 environment (#4063, #4078) — thanks @RerankerGuo, and @rockziepromax for the report!
+- OmniVoice GGUF falls back to the CPU when the GPU backend crashes, for example Vulkan on a GTX 1080 (#4050, #4072) — thanks @MeinLive!
+- Full dubs no longer fail when translation fills segments with free-text directions like "slow"; unsupported ones are dropped for that segment (#4054, #4072) — thanks @user555gtb!
+- Audiobook MP3 exports play and download again instead of returning 404 (#4071, #4072) — thanks @dimfk001git!
+- Colab: setup cells show the failing command's output, the security-floor check judges the Mako copy Python imports, and the web UI loads through the new `*.prod.r.colab.dev` proxy — thanks @hkarmoush! (#4069)
+- Turning on LAN sharing no longer crashes the backend with an Internal Server Error — thanks @blutuxyz! (#4059)
+- The OmniVoice GGUF engine finds its bundled runtime again in installed apps instead of reporting it missing — thanks @b84330808! (#4053)
+- When the operating system times out starting the engine (`spawn ETIMEDOUT`, seen on macOS), VoiceStudio retries twice and then says to restart the computer (#4039)
+- Settings → Updates lists only your channel's releases, and Beta suggests switching to Stable when a newer stable is out (#4038)
+- SSML `[spell]` keeps flag, ZWJ-joined and skin-tone emoji whole instead of splitting them (#4020) — thanks @kevin9327!
+
+### CI
+
+- CI reuses unchanged iOS checks, rechecks shared diagnostic inputs and skips Nix builds for documentation and test changes. (#4208)
+- Windows release and optional-engine tests use portable text fixtures, native Bash and normalized cache paths (#4197) — thanks @swax!
+- Release builds load app-intake credentials from GitHub Actions Secrets without public-variable fallbacks (#4204, #4205)
+- Fixed Android screenshot capture waiting behind the optional error-report prompt (#4202) — thanks @velixio!
+- Keep iOS voice-search and download checks reliable across saved model choices (#4171)
+- The iPhone smoke test waits for typed text to reach the editor instead of reading it once, removing a CI flake (#4100)
+- MOSS compatibility tests keep checking the active Transformers version after another test restores imported modules (#4096)
+- The iPhone UI smoke test keeps its slow-inventory case loading for the whole test, so a slow simulator no longer fails it (#4076)
+- Docker's web build no longer fails the unused-key check when only `electron/` is copied, and the iPhone CI job allows for a native-runtime cache miss (#4052)
+- Removed unused scripts, the old Tauri MSI tooling and leftover Turborepo ignore lines (#4046)
+- Accessibility smoke timeouts now name the requests still pending, so a flaky CI failure points at its cause (#4036)
+
 ## [0.5.9-beta.5] — 2026-11-16
 
 This beta adds separately opted-in automatic error reports, so failures can reach the maintainers without a manual bug report. Reports stay off unless you allow them, and never include audio, text, files, names, credentials or logs.
