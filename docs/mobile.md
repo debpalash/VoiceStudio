@@ -177,7 +177,7 @@ explicitly starting or selecting a different project does not carry that old
 snapshot forward. A failed load offers Retry or an
 explicit new draft without deleting the unreadable checkpoint. Retired unsaved
 drafts are removed only after their known recovery references are released;
-unrecognized files are preserved. Deleting a saved project also removes its draft
+unrecognized files are preserved. Autosave and project switching use separate temporary files, preventing save failures when their metadata writes overlap. Deleting a saved project also removes its draft
 checkpoint. Android
 runs these through foreground workers with progress and Cancel. iOS owns running
 jobs independently of screens. On supported iOS 26+ devices, GPU work requests
