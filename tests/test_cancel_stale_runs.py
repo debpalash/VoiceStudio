@@ -27,13 +27,15 @@ def _module() -> ModuleType:
 
 def _run(run_id: int, status: str = "queued", *, created: str | None = None,
          sha: str = "a" * 40, event: str = "pull_request") -> dict[str, Any]:
-    return {"id": run_id, "name": f"CI {run_id}", "head_branch": "feature",
+    return {"id": run_id, "name": f"CI {run_id}", "head_branch": f"feature-{sha}",
+            "head_repository": {"full_name": "contributor/source"}, "pull_requests": [],
             "head_sha": sha, "event": event, "status": status,
             "created_at": created or f"{datetime.date.today().isoformat()}T00:00:00Z"}
 
 
 def _pr(state: str = "closed", closed: str = CLOSED, sha: str = "a" * 40) -> dict[str, Any]:
-    return {"state": state, "closed_at": closed if state == "closed" else None, "head": {"sha": sha}}
+    return {"number": 7, "state": state, "closed_at": closed if state == "closed" else None,
+            "head": {"sha": sha, "ref": f"feature-{sha}", "repo": {"full_name": "contributor/source"}}}
 
 
 class FakeApi:
@@ -162,7 +164,7 @@ def test_cancels_eligible_runs_before_finishing_capped_discovery(monkeypatch: py
     today = datetime.date.today()
     api = FakeApi([_run(i, created=f"{(today-datetime.timedelta(days=i // 500)).isoformat()}T01:00:00Z") for i in range(1001)], latency=4)
     _main(module, api, monkeypatch)
-    # One run page, independent open-PR inventory, commit associations, POST.
+    # One run page, commit associations, fresh open-PR inventory, POST.
     assert api.first_post_at is not None and api.first_post_at <= 16
 
 
@@ -440,7 +442,7 @@ def test_unaccounted_short_search_remains_incomplete_after_bounded_rescan(monkey
 
 @pytest.mark.parametrize("mode", [["--sweep"], ["--pr", "7"]])
 @pytest.mark.parametrize("sha_field", ["head", "merge_commit_sha"])
-def test_independent_open_inventory_protects_default_branch_shared_sha(monkeypatch, mode, sha_field):
+def test_independent_open_inventory_protects_default_branch_shared_sha(monkeypatch: pytest.MonkeyPatch, mode: list[str], sha_field: str) -> None:
     module = _module()
     sha = "a" * 40
     open_pr = _pr(state="open", sha=sha if sha_field == "head" else "other")
@@ -453,7 +455,7 @@ def test_independent_open_inventory_protects_default_branch_shared_sha(monkeypat
     assert api.cancelled == []
 
 
-def test_direct_closed_unmerged_empty_associations_use_requested_closure(monkeypatch):
+def test_direct_closed_unmerged_empty_associations_use_requested_closure(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _module()
     sha = "a" * 40
     api = FakeApi([_run(1, created="2026-10-24T11:00:00Z"),
@@ -465,14 +467,14 @@ def test_direct_closed_unmerged_empty_associations_use_requested_closure(monkeyp
 
 
 @pytest.mark.parametrize("mode", [["--sweep"], ["--pr", "7"]])
-def test_unknown_open_inventory_cannot_authorize_cancellation(monkeypatch, mode):
+def test_unknown_open_inventory_cannot_authorize_cancellation(monkeypatch: pytest.MonkeyPatch, mode: list[str]) -> None:
     module = _module()
     api = FakeApi([_run(1, created="2026-10-24T11:00:00Z")], bad_open=True)
     assert _main(module, api, monkeypatch, mode) == 1
     assert api.cancelled == []
 
 
-def test_open_inventory_later_page_and_exhausted_budget_keep_runs(monkeypatch):
+def test_open_inventory_later_page_and_exhausted_budget_keep_runs(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _module()
     unrelated = [_pr(state="open", sha=f"{i:040x}") for i in range(100)]
     api = FakeApi([_run(1)], open_pulls=[*unrelated, _pr(state="open")])
@@ -485,12 +487,12 @@ def test_open_inventory_later_page_and_exhausted_budget_keep_runs(monkeypatch):
     assert capped.cancelled == []
 
 
-def test_arrivals_cannot_mask_a_short_day_window(monkeypatch, capsys):
+def test_arrivals_cannot_mask_a_short_day_window(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     module = _module()
     today = datetime.date.today().isoformat()
     monkeypatch.setattr(module, "_day_windows", lambda: [f"{today}..{today}"])
     class ArrivingApi(FakeApi):
-        def __call__(self, method, path, data=None):
+        def __call__(self, method: str, path: str, data: dict | None = None) -> Any:
             query = parse_qs(urlsplit(path).query)
             if method == "GET" and query.get("status") == ["queued"] and "created" in query:
                 self.requests.append((method, path))
@@ -507,10 +509,10 @@ def test_arrivals_cannot_mask_a_short_day_window(monkeypatch, capsys):
 @pytest.mark.parametrize("response", [{}, [None], [{"state": "closed", "head": {"sha": "a" * 40}}],
                                       [{"state": "open", "head": None}],
                                       [{"state": "open", "head": {"sha": "a" * 40}, "merge_commit_sha": 1}]])
-def test_malformed_independent_open_inventory_fails_closed(monkeypatch, response):
+def test_malformed_independent_open_inventory_fails_closed(monkeypatch: pytest.MonkeyPatch, response: Any) -> None:
     module = _module()
     class MalformedApi(FakeApi):
-        def __call__(self, method, path, data=None):
+        def __call__(self, method: str, path: str, data: dict | None = None) -> Any:
             if urlsplit(path).path.endswith("/pulls") and "/commits/" not in path:
                 return response
             return super().__call__(method, path, data)
@@ -519,13 +521,13 @@ def test_malformed_independent_open_inventory_fails_closed(monkeypatch, response
     assert api.cancelled == []
 
 
-def test_short_day_window_can_complete_on_one_bounded_rescan(monkeypatch):
+def test_short_day_window_can_complete_on_one_bounded_rescan(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _module()
     today = datetime.date.today().isoformat()
     monkeypatch.setattr(module, "_day_windows", lambda: [f"{today}..{today}"])
     class RecoveringApi(FakeApi):
         attempts = 0
-        def __call__(self, method, path, data=None):
+        def __call__(self, method: str, path: str, data: dict | None = None) -> Any:
             query = parse_qs(urlsplit(path).query)
             if method == "GET" and query.get("status") == ["queued"] and "created" in query:
                 self.requests.append((method, path))
@@ -541,13 +543,13 @@ def test_short_day_window_can_complete_on_one_bounded_rescan(monkeypatch):
     assert len(api.cancelled) == len(set(api.cancelled)) == 1002
 
 
-def test_short_window_retry_stays_within_window_budget(monkeypatch):
+def test_short_window_retry_stays_within_window_budget(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _module()
     today = datetime.date.today().isoformat()
     monkeypatch.setattr(module, "MAX_WINDOW_REQUESTS", 1)
     monkeypatch.setattr(module, "_day_windows", lambda: [f"{today}..{today}"])
     class ShortApi(FakeApi):
-        def __call__(self, method, path, data=None):
+        def __call__(self, method: str, path: str, data: dict | None = None) -> Any:
             query = parse_qs(urlsplit(path).query)
             if method == "GET" and query.get("status") == ["queued"] and "created" in query:
                 self.requests.append((method, path))
@@ -556,3 +558,64 @@ def test_short_window_retry_stays_within_window_budget(monkeypatch):
     api = ShortApi([_run(i) for i in range(1, 1002)])
     assert _main(module, api, monkeypatch) == 1
     assert len([path for _, path in api.requests if "created=" in path]) == 1
+
+
+@pytest.mark.parametrize("mode", [["--sweep"], ["--pr", "7"]])
+@pytest.mark.parametrize("identity", ["sha", "branch", "number"])
+def test_reopened_pr_is_rechecked_before_each_cancellation(
+    monkeypatch: pytest.MonkeyPatch, mode: list[str], identity: str
+) -> None:
+    module = _module()
+    sha = "a" * 40
+    rows = [_run(i, created="2026-10-24T11:00:00Z") for i in (1, 2)]
+    if identity == "number":
+        for row in rows:
+            row["pull_requests"] = [{"number": 7}]
+    class ReopeningApi(FakeApi):
+        def __call__(self, method: str, path: str, data: dict | None = None) -> Any:
+            result = super().__call__(method, path, data)
+            if method == "POST":
+                reopened = _pr(state="open", sha=sha if identity == "sha" else "b" * 40)
+                if identity == "branch":
+                    reopened["head"]["ref"] = f"feature-{sha}"
+                if identity == "number":
+                    reopened["head"]["repo"]["full_name"] = "another/source"
+                self.open_pulls = [reopened]
+            return result
+    api = ReopeningApi(rows)
+    api.requested_pr = _pr()
+    assert _main(module, api, monkeypatch, mode) == 0
+    assert api.cancelled == [2]
+
+
+@pytest.mark.parametrize("mode", [["--sweep"], ["--pr", "7"]])
+def test_failed_open_refresh_preserves_remaining_runs_after_partial_progress(
+    monkeypatch: pytest.MonkeyPatch, mode: list[str]
+) -> None:
+    module = _module()
+    class FailingRefreshApi(FakeApi):
+        def __call__(self, method: str, path: str, data: dict | None = None) -> Any:
+            result = super().__call__(method, path, data)
+            if method == "POST":
+                self.bad_open = True
+            return result
+    api = FailingRefreshApi([_run(i, created="2026-10-24T11:00:00Z") for i in (1, 2)])
+    assert _main(module, api, monkeypatch, mode) == 1
+    assert api.cancelled == [2]
+
+
+def test_new_open_head_on_an_unrelated_branch_does_not_protect_closed_runs(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _module()
+    api = FakeApi([_run(1)], open_pulls=[_pr(state="open", sha="b" * 40)])
+    assert _main(module, api, monkeypatch) == 0
+    assert api.cancelled == [1]
+
+
+@pytest.mark.parametrize("field", ["head_branch", "head_repository"])
+def test_missing_run_ownership_cannot_authorize_cancellation(monkeypatch: pytest.MonkeyPatch, field: str) -> None:
+    module = _module()
+    row = _run(1)
+    del row[field]
+    api = FakeApi([row])
+    assert _main(module, api, monkeypatch) == 1
+    assert api.cancelled == []

@@ -235,14 +235,20 @@ def stale_for_pr(call: ApiCall, repo: str, pr: dict, exclude_run: int = 0) -> It
     closed_before = min(pr["closed_at"], associated_close)
     for run in unfinished_runs(call, repo, head_sha=sha):
         if run["event"] in PR_EVENTS and run["id"] != exclude_run and run["created_at"] < closed_before:
-            yield run
+            if not _has_open_pr(call, repo, run, requested_pr=pr.get("number")):
+                yield run
 
 
-def _open_pr_shas(call: ApiCall, repo: str) -> set[str]:
+def _open_prs(call: ApiCall, repo: str) -> list[dict[str, Any]]:
     """Commit lookup omits open associations once a SHA is on the default branch."""
-    shas: set[str] = set()
+    result: list[dict[str, Any]] = []
     for page in range(1, MAX_OPEN_PR_PAGES + 1):
-        pulls = call("GET", f"/repos/{repo}/pulls?state=open&sort=created&direction=asc&per_page={PER_PAGE}&page={page}")
+        try:
+            pulls = call("GET", f"/repos/{repo}/pulls?state=open&sort=created&direction=asc&per_page={PER_PAGE}&page={page}")
+        except SweepDeadline:
+            raise
+        except Exception as error:
+            raise IncompleteDiscovery("Could not refresh open pull requests") from error
         if not isinstance(pulls, list) or len(pulls) > PER_PAGE:
             raise IncompleteDiscovery("Invalid open-pull-request page")
         for pr in pulls:
@@ -253,22 +259,57 @@ def _open_pr_shas(call: ApiCall, repo: str) -> set[str]:
             merge_sha = pr.get("merge_commit_sha")
             if not isinstance(sha, str) or not sha or (merge_sha is not None and (not isinstance(merge_sha, str) or not merge_sha)):
                 raise IncompleteDiscovery("Open pull-request SHA is unknown")
-            shas.add(sha)
-            if merge_sha is not None:
-                shas.add(merge_sha)
+            if type(pr.get("number")) is not int or pr["number"] <= 0:
+                raise IncompleteDiscovery("Open pull-request number is unknown")
+            _branch_identity(head.get("ref"), head.get("repo"))
+            result.append(pr)
         if len(pulls) < PER_PAGE:
-            return shas
+            return result
     raise IncompleteDiscovery("Open pull-request page budget reached")
 
 
+def _branch_identity(branch: Any, repository: Any) -> tuple[str, str]:
+    name = repository.get("full_name") if isinstance(repository, dict) else None
+    if not isinstance(branch, str) or not branch or not isinstance(name, str) or len(name.split("/")) != 2 or not all(name.split("/")):
+        raise IncompleteDiscovery("Pull-request branch ownership is unknown")
+    return name.casefold(), branch
+
+
+def _has_open_pr(call: ApiCall, repo: str, run: Run, *, requested_pr: int | None = None) -> bool:
+    """Refresh immediately before yielding each cancellation candidate.
+
+    A reopened PR may already have a newer head SHA. Match its original branch
+    and head repository, or the run's explicit PR association, as well as SHA.
+    No positive closure cache can replace this current open-state check.
+    """
+    associations = run.get("pull_requests", [])
+    if not isinstance(associations, list):
+        raise IncompleteDiscovery("Workflow-run pull requests are unknown")
+    numbers: set[int] = set()
+    for pr in associations:
+        number = pr.get("number") if isinstance(pr, dict) else None
+        if type(number) is not int or number <= 0:
+            raise IncompleteDiscovery("Workflow-run pull-request number is unknown")
+        numbers.add(number)
+    if type(requested_pr) is int and requested_pr > 0:
+        numbers.add(requested_pr)
+    try:
+        branch = _branch_identity(run.get("head_branch"), run.get("head_repository"))
+    except IncompleteDiscovery:
+        if not numbers:
+            raise
+        branch = None
+    for pr in _open_prs(call, repo):
+        head = pr["head"]
+        if (pr["number"] in numbers or run["head_sha"] in (head["sha"], pr.get("merge_commit_sha"))
+                or (branch is not None and branch == _branch_identity(head["ref"], head["repo"]))):
+            return True
+    return False
+
+
 def _commit_closed_before(call: ApiCall, repo: str, sha: str, *,
-                          open_shas: set[str] | None = None,
                           known_closed_at: str | None = None) -> str | None:
-    """Protect independent open PRs and every known associated close-event run."""
-    if open_shas is None:
-        open_shas = _open_pr_shas(call, repo)
-    if sha in open_shas:
-        return None
+    """Find the initial associated closure; each candidate also gets a fresh open check."""
     # Closed, unmerged PRs can have no commit-endpoint association. Only direct
     # mode has a separately verified requested PR's closure to use in that case.
     earliest = known_closed_at
@@ -294,22 +335,14 @@ def stale_in_repo(call: ApiCall, repo: str, exclude_run: int = 0) -> Iterator[Ru
     """Inspect candidates incrementally; one failed commit lookup is isolated."""
     closed: dict[str, str | None] = {}
     failures = 0
-    open_shas: set[str] | None = None
     try:
         for run in unfinished_runs(call, repo):
             if run["event"] not in PR_EVENTS or run["id"] == exclude_run:
                 continue
-            if open_shas is None:
-                try:
-                    open_shas = _open_pr_shas(call, repo)
-                except SweepDeadline:
-                    raise
-                except Exception as error:
-                    raise IncompleteDiscovery("Could not inspect open pull requests") from error
             sha = run["head_sha"]
             if sha not in closed:
                 try:
-                    closed[sha] = _commit_closed_before(call, repo, sha, open_shas=open_shas)
+                    closed[sha] = _commit_closed_before(call, repo, sha)
                 except SweepDeadline:
                     raise
                 except Exception as error:
@@ -318,7 +351,8 @@ def stale_in_repo(call: ApiCall, repo: str, exclude_run: int = 0) -> Iterator[Ru
                     print(f"::warning::could not inspect commit {sha}: {error}", file=sys.stderr)
             closed_before = closed[sha]
             if closed_before and run["created_at"] < closed_before:
-                yield run
+                if not _has_open_pr(call, repo, run):
+                    yield run
     except IncompleteDiscovery:
         failures += 1
     if failures:

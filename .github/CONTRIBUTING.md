@@ -568,11 +568,15 @@ test-only PR. Docker Hub overview edits still publish through the small
   unresolved reported totals remain incomplete rather than reporting success.
   Each day window is checked against its own reported total, so new arrivals
   elsewhere cannot hide a truncated window; its retry counts toward the window
-  budget. Both close-event cleanup and the repository sweep separately paginate
-  the repository's open PRs: the commit-association API can omit an open PR whose
-  SHA is already on the default branch. Any matching open head/merge SHA or
-  incomplete open/closure lookup keeps the run. A run must predate the earliest
-  known associated PR closure, protecting work started by either close event.
+  budget. Both close-event cleanup and the repository sweep freshly paginate
+  the repository's open PRs before each otherwise eligible cancellation: the
+  commit-association API can omit an open PR whose SHA is already on the default
+  branch. An open head/merge SHA, associated PR number, or matching head repository
+  and branch keeps the run, including a reopened PR whose head has advanced.
+  Missing ownership evidence or an incomplete open/closure lookup keeps the run
+  and reports incomplete inspection. Cached closures never bypass this refresh.
+  A run must predate the earliest initially known associated PR closure,
+  protecting work started by either close event.
   Direct cleanup of a verified closed, unmerged PR uses that PR's own closure
   when the commit API returns no associations; an empty result alone never
   authorizes repository-wide cleanup.
