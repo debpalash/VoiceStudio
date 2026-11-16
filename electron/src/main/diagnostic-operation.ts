@@ -13,7 +13,21 @@ const context = new AsyncLocalStorage<Owner>();
 const owners = new WeakMap<object, Owner>();
 // Weak keys never keep an exception, its stack, or application objects alive.
 // This is local authority metadata, never an event property.
-const faultOwners = new WeakMap<Error, Owner>();
+interface ParentObservation {
+  owner: Owner;
+  started: boolean;
+  done: boolean;
+}
+interface FaultOwner extends Owner {
+  pending?: ParentObservation;
+}
+const faultOwners = new WeakMap<Error, FaultOwner>();
+// Entries exist only until the child settles or begins its actual reaction.
+let pendingConsumers = new WeakMap<Promise<unknown>, {
+  parent: Promise<unknown>;
+  observation: ParentObservation;
+}>();
+const reactionStack: (ParentObservation | undefined)[] = [];
 const nativePromise = Promise;
 const nativePrototype = Promise.prototype;
 const nativeThen = Promise.prototype.then;
@@ -47,17 +61,26 @@ function isError(error: unknown): error is Error {
     return false;
   }
 }
-function rememberFault(error: unknown, owner: Owner): void {
+function rememberFault(error: unknown, owner: Owner, observed?: ParentObservation): void {
   try {
-    if (isError(error) && !faultOwners.has(error))
+    if (!isError(error)) return;
+    const first = faultOwners.get(error);
+    if (!first || (observed && first.pending === observed)) {
+      // A synchronous AsyncResource escape can throw before the passive
+      // observer microtask runs. Keep that provisional attribution local until
+      // this exact parent confirms whether it supplied the same Error.
+      const pending = observed ? undefined : reactionStack.at(-1);
       faultOwners.set(error, {
         reporter: owner.reporter,
         epoch: owner.ambiguous ? null : owner.epoch,
+        ...(pending && !pending.done ? { pending } : {}),
       });
+    }
   } catch {
     /* A hostile thrown object must preserve the original rejection. */
   }
 }
+
 const hook = createHook({
   init(_id, type, _trigger, resource) {
     const owner = context.getStore();
@@ -67,37 +90,74 @@ const hook = createHook({
 let listeners = 0;
 let stopParents: (() => void) | null = null;
 let observingParent = false;
-const observedParents = new WeakSet<Promise<unknown>>();
-function observeConsumedParent(_promise: Promise<unknown>, parent?: Promise<unknown>): void {
+let observedParents = new WeakMap<Promise<unknown>, ParentObservation>();
+function observeParent(parent: Promise<unknown>, observation: ParentObservation): void {
+  if (observation.started) return;
+  observation.started = true;
   const current = context.getStore();
-  if (observingParent || !parent || !current || observedParents.has(parent)) return;
   if (!plainNativePromise(parent)) {
-    current.ambiguous = true;
+    (current ?? observation.owner).ambiguous = true;
     return;
   }
-  const owner = owners.get(parent) ?? { reporter: current.reporter, epoch: null };
   observingParent = true;
   try {
-    // V8 calls init before registering the actual consumer's reaction. This
-    // passive rejection observer stamps an old/unknown fault before forwarding;
-    // successful old data stamps nothing. Its child always fulfills, and the
-    // parent was already being consumed, so fatal/unhandled policy is unchanged.
-    nativeThen.call(parent, undefined, (error: unknown) => {
-      rememberFault(error, owner);
-    });
-    observedParents.add(parent);
+    // An actual consumer is now registered. Ignore fulfillment data entirely;
+    // returning it would assimilate a user object's then getter a second time.
+    nativeThen.call(
+      parent,
+      () => { observation.done = true; },
+      (error: unknown) => {
+        rememberFault(error, observation.owner, observation);
+        observation.done = true;
+      },
+    );
   } catch {
-    current.ambiguous = true;
+    (current ?? observation.owner).ambiguous = true;
   } finally {
     observingParent = false;
   }
+}
+function observeConsumedParent(promise: Promise<unknown>, parent?: Promise<unknown>): void {
+  if (observingParent || !parent) return;
+  const current = context.getStore();
+  const inherited = owners.get(parent);
+  const owner = inherited ?? (current ? { reporter: current.reporter, epoch: null } : null);
+  if (!owner) return;
+  let observation = observedParents.get(parent);
+  if (!observation) {
+    observation = { owner, started: false, done: false };
+    observedParents.set(parent, observation);
+  }
+  if (current && inherited === current) {
+    // V8 also calls init for await wrappers parented by the outer async
+    // Promise. Only before(child) confirms a real reaction; wrappers settle
+    // without running one and must never handle the unconsumed outer Promise.
+    pendingConsumers.set(promise, { parent, observation });
+    return;
+  }
+  // Cross-owner/outside consumers retain their observer before the consumer's
+  // own reaction is registered, preserving already-proven fault ownership.
+  observeParent(parent, observation);
 }
 
 /** Track only promises created within an explicitly observed main operation. */
 export function trackDiagnosticOperations(): () => void {
   if (listeners++ === 0) {
     hook.enable();
-    stopParents = promiseHooks.createHook({ init: observeConsumedParent }) as () => void;
+    stopParents = promiseHooks.createHook({
+      init: observeConsumedParent,
+      before(promise) {
+        const consumer = pendingConsumers.get(promise);
+        pendingConsumers.delete(promise);
+        reactionStack.push(consumer?.observation);
+        if (consumer) observeParent(consumer.parent, consumer.observation);
+      },
+      after() { reactionStack.pop(); },
+      settled(promise) {
+        // Drop non-consumer await wrappers and their temporary parent reference.
+        pendingConsumers.delete(promise);
+      },
+    }) as () => void;
   }
   let closed = false;
   return () => {
@@ -107,6 +167,11 @@ export function trackDiagnosticOperations(): () => void {
       stopParents?.();
       stopParents = null;
       hook.disable();
+      reactionStack.length = 0;
+      // Disabling hooks also releases temporary parent links whose child never
+      // got a reaction/settlement callback. Fault metadata remains weak/local.
+      pendingConsumers = new WeakMap();
+      observedParents = new WeakMap();
     }
   };
 }
@@ -126,23 +191,15 @@ export function runDiagnosticOperation<T>(reports: Reporter, work: () => T): T {
       rememberFault(error, owner);
       throw error;
     }
-    // Unknown work already in flight cannot be adopted by a new action. Only
-    // promises observed at their actual producer boundary receive a wrapper.
-    if (!types.isPromise(result)) return result;
-    const original = owners.get(result);
-    if (!original) return result;
-    if (!plainNativePromise(result)) {
-      original.ambiguous = true;
-      return result;
+    // Preserve the actual result/Promise. A forwarding Promise would assimilate
+    // fulfilled objects again and can invoke a newly installed then getter.
+    // Actual consumers stamp rejected faults via observeConsumedParent; a direct
+    // unhandled rejection is stamped when its existing owner is looked up.
+    if (types.isPromise(result)) {
+      const original = owners.get(result);
+      if (original && !plainNativePromise(result)) original.ambiguous = true;
     }
-    const observed = nativeThen.call(result, undefined, (error: unknown) => {
-      // A propagated/rethrown old fault keeps its first owner, including OFF.
-      // Successful old data carries no fault authority into a new operation.
-      rememberFault(error, original);
-      throw error;
-    });
-    owners.set(observed, original);
-    return observed as T;
+    return result;
   });
 }
 
@@ -154,10 +211,11 @@ export function diagnosticRejectionEpoch(
   if (arguments.length >= 3) {
     if (!isError(error)) return null;
     const first = faultOwners.get(error);
-    if (first) return first.reporter === reports ? first.epoch : null;
+    if (first) return first.pending && !first.pending.done ? null : first.reporter === reports ? first.epoch : null;
   }
   if (!promise || (typeof promise !== 'object' && typeof promise !== 'function')) return null;
   const owner = owners.get(promise);
+  if (owner && arguments.length >= 3) rememberFault(error, owner);
   return owner?.reporter === reports && !owner.ambiguous ? owner.epoch : null;
 }
 
@@ -168,7 +226,7 @@ export function diagnosticOperationOwner(
   if (arguments.length >= 2) {
     if (!isError(error)) return null;
     const first = faultOwners.get(error);
-    if (first) return { epoch: first.reporter === reports ? first.epoch : null };
+    if (first) return { epoch: first.pending && !first.pending.done ? null : first.reporter === reports ? first.epoch : null };
   }
   const owner = context.getStore();
   if (!owner) return null;

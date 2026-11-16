@@ -109,10 +109,10 @@ def repo(tmp_path: Path) -> Path:
     return repo
 
 
-def _key(repo: Path, event: str = "pull_request", content: str = ".", names: str = "") -> dict[str, str]:
+def _key(repo: Path, event: str = "pull_request", content: str = ".", names: str = "", workflow: str = "ci.yml") -> dict[str, str]:
     output = repo.parent / "output"
     output.write_text("")
-    env = dict(os.environ, GITHUB_WORKFLOW_REF="o/r/.github/workflows/ci.yml@refs/pull/1/merge",
+    env = dict(os.environ, GITHUB_WORKFLOW_REF=f"o/r/.github/workflows/{workflow}@refs/pull/1/merge",
                GITHUB_OUTPUT=str(output), RUNNER_OS="Linux", JOB="job", EVENT=event,
                MARKER=str(repo.parent / "marker"), CONTENT=content, NAMES=names)
     proc = subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", KEY_SCRIPT],
@@ -125,7 +125,7 @@ def _key(repo: Path, event: str = "pull_request", content: str = ".", names: str
 @needs_git
 @pytest.mark.parametrize("event, skip, record", [
     ("pull_request", "true", "true"), ("merge_group", "true", "false"),
-    ("push", "false", "true"), ("workflow_dispatch", "false", "true"), ("schedule", "false", "true"),
+    ("push", "false", "true"), ("workflow_dispatch", "false", "true"), ("schedule", "false", "true"), ("release", "false", "true"),
 ])
 def test_only_pull_requests_and_merge_groups_may_skip(repo, event, skip, record):
     out = _key(repo, event)
@@ -169,3 +169,82 @@ def test_changes_outside_the_inputs_keep_the_key(repo, change):
     before = _key(repo, **ELECTRON_LIKE)["key"]
     change(repo)
     assert _key(repo, **ELECTRON_LIKE)["key"] == before
+
+
+MOBILE_CACHED_JOBS = tuple(job_id for name, _, job_id, _, _ in _cached_jobs() if name == "mobile.yml")
+IOS_CACHED_JOBS = ("ios", "ios-inference")
+DIAGNOSTIC_INPUTS = ("config/diagnostics.json", "config/analytics.json", "tests/fixtures/diagnostic-app-events.json")
+
+
+def _mobile_inputs(job_id: str) -> dict[str, str]:
+    """Use the checked-in job's actual inputs with the action's actual key script."""
+    workflow = yaml.safe_load((ROOT / ".github/workflows/mobile.yml").read_text(encoding="utf-8"))
+    step = next(step for step in workflow["jobs"][job_id]["steps"] if step.get("uses") == USES)
+    return {"content": step["with"].get("content", "."), "names": step["with"].get("names", ""), "workflow": "mobile.yml"}
+
+
+def _mobile_fixture(repo: Path, path: str) -> None:
+    (repo / ".github/workflows/mobile.yml").write_text("mobile fixture workflow\n", encoding="utf-8")
+    target = repo / path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text("fixture\n", encoding="utf-8")
+    _git(repo, "add", ".github/workflows/mobile.yml", path)
+
+
+@needs_git
+@pytest.mark.parametrize("job_id", MOBILE_CACHED_JOBS)
+@pytest.mark.parametrize("path", DIAGNOSTIC_INPUTS)
+def test_all_mobile_jobs_invalidate_for_actual_diagnostic_inputs(repo: Path, job_id: str, path: str) -> None:
+    _mobile_fixture(repo, path)
+    inputs = _mobile_inputs(job_id)
+    before = _key(repo, **inputs)["key"]
+    _edit(repo, path, "changed diagnostic input\n")
+    assert _key(repo, **inputs)["key"] != before, f"{job_id} ignores its real input {path}"
+
+
+@needs_git
+@pytest.mark.parametrize("job_id", IOS_CACHED_JOBS)
+@pytest.mark.parametrize("path", [
+    "mobile/android/core/network/src/main/kotlin/DiagnosticReports.kt",
+    "mobile/android/app/src/test/kotlin/DiagnosticReportsTest.kt",
+    "mobile/android/app/build.gradle.kts",
+    "mobile/native/android/build.sh",
+])
+def test_ios_jobs_reuse_pass_after_android_only_changes(repo: Path, job_id: str, path: str) -> None:
+    _mobile_fixture(repo, path)
+    inputs = _mobile_inputs(job_id)
+    before = _key(repo, **inputs)["key"]
+    _edit(repo, path, "changed Android implementation\n")
+    assert _key(repo, **inputs)["key"] == before, f"{job_id} needlessly includes {path}"
+
+
+@needs_git
+@pytest.mark.parametrize("job_id", IOS_CACHED_JOBS)
+@pytest.mark.parametrize("path", [
+    "mobile/ios/VoiceStudio/App/Fixture.swift",
+    "mobile/ios/VoiceStudioUITests/Fixture.swift",
+    "mobile/ios/VoiceStudioKit/Package.swift",
+    "mobile/ios/scripts/prepare_resources.py",
+    "mobile/native/ios/build.py",
+    "mobile/native/ios/patches/fixture.patch",
+    "mobile/native/pins.json",
+    "mobile/contract/models.json",
+    "mobile/contract/tokens.json",
+    "mobile/contract/strings.android-additions.en.json",
+    "mobile/contract/project-fixtures/fixture.json",
+    "package.json",
+    "LICENSE",
+    "docs/logo.png",
+    "electron/src/renderer/src/i18n/locales/en.json",
+    "electron/src/shared/utils/languages.js",
+    "electron/public/signal-field.webp",
+    "electron/src/renderer/src/components/brand-icons.tsx",
+    "electron/src/renderer/src/features/home/contributors/fixture.json",
+    "scripts/generate_supermetry_config.py",
+])
+def test_ios_jobs_still_invalidate_for_actual_ios_and_shared_inputs(repo: Path, job_id: str, path: str) -> None:
+    _mobile_fixture(repo, path)
+    inputs = _mobile_inputs(job_id)
+    before = _key(repo, **inputs)["key"]
+    _edit(repo, path, "changed iOS or shared input\n")
+    assert _key(repo, **inputs)["key"] != before, f"{job_id} lost input {path}"

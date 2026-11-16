@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 import pytest
+import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 CONTRACT = ROOT / "mobile" / "contract"
@@ -36,6 +37,28 @@ def test_openapi_operation_ids_are_unique():
     schema = json.loads((CONTRACT / "openapi.json").read_text(encoding="utf-8"))
     ids = [op["operationId"] for ops in schema["paths"].values() for op in ops.values() if "operationId" in op]
     assert len(ids) == len(set(ids))
+
+
+def test_workflow_does_not_cancel_a_running_main_build():
+    """A push to main must not cancel the mobile verification that is still running.
+
+    `mobile.yml` is the release gate for both native apps. With an unconditional
+    `cancel-in-progress`, two merges in quick succession cancel the first run's
+    iOS and Android builds: the apps are then unverified, and the run that would
+    have said so is gone rather than failed. Pull requests keep cancelling their
+    own superseded runs.
+    """
+    workflow = yaml.safe_load((ROOT / ".github/workflows/mobile.yml").read_text(encoding="utf-8"))
+    cancel = str(workflow["concurrency"]["cancel-in-progress"]).strip()
+    # Compare the whole expression: a substring check would also accept the
+    # inverted condition, which cancels main builds and keeps superseded pull
+    # request runs alive.
+    assert cancel == "${{ github.event_name == 'pull_request' }}", (
+        "main pushes must not cancel a running mobile build; cancel-in-progress must be "
+        f"exactly the pull-request condition, not {cancel!r}"
+    )
+    assert "github.ref" in workflow["concurrency"]["group"]
+
 
 
 def _bun() -> str | None:

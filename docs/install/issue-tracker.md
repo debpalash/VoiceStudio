@@ -4,7 +4,7 @@ Every known install problem, merged into unique issues and ranked by severity. F
 
 This list covers 523 GitHub reports, merged into 59 unique issues. The base inventory was reviewed on 2026-11-06; follow-up reports and linked fixes were reviewed on 2026-11-14. The latest stable release is v0.5.8.
 
-Release preparation targets v0.5.9-beta.3. The included fixes below remain `Fixed on main` until the packaged release is validated and published; v0.5.9-beta.2 remains the latest published beta. Unresolved reports retain their existing status.
+Release preparation targets v0.5.9-beta.5. The included fixes below remain `Fixed on main` until the packaged release is validated and published; v0.5.9-beta.2 remains the latest published beta. Unresolved reports retain their existing status.
 
 ## How to read this list
 

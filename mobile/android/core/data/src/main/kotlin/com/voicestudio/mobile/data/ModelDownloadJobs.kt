@@ -22,6 +22,29 @@ import kotlinx.serialization.json.Json
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
+/** The production transfer's no-progress observer, separate from network ownership. */
+internal suspend fun monitorModelDownloadStalls(
+    originalConsent:CompanionDiagnosticObservation?,
+    progress:()->DownloadProgress?,
+    observeConsent:()->CompanionDiagnosticObservation?=AutomaticDiagnostics::observeConsent,
+    report:(DiagnosticInput,CompanionDiagnosticObservation?)->Unit=AutomaticDiagnostics::capture,
+    now:()->Long=android.os.SystemClock::elapsedRealtime,
+    pause:suspend ()->Unit={delay(30_000)},
+) {
+    val stalls=DownloadStallObservation()
+    var previousConsent=observeConsent()
+    while(currentCoroutineContext().isActive) {
+        val observation=observeConsent()
+        if(observation!=previousConsent) {
+            stalls.observe(null,now());previousConsent=observation
+        }
+        val owner=originalConsent?.takeIf {it==observation}
+        if(stalls.observe(progress().takeIf {owner!=null},now()))
+            report(DiagnosticInput(category="install_stalled",stage="download",reason="no_progress"),owner)
+        pause()
+    }
+}
+
 /** The UI submits durable intents; services/workers, never a ViewModel, own transfers. */
 object ModelDownloadJobs {
     @Serializable internal data class IntentRecord(val model: String,val pin: String,val mobile: Boolean,val jobID: Int,val paused: Boolean=false,val error: String?=null)
@@ -150,21 +173,8 @@ object ModelDownloadJobs {
             currentCoroutineContext().ensureActive()
             coroutineScope {
                 val downloads = PhoneRuntime.get(context).downloads
-                val stalls = DownloadStallObservation()
                 val observer = launch {
-                    var previousConsent = AutomaticDiagnostics.observeConsent()
-                    while(isActive) {
-                        val observation = AutomaticDiagnostics.observeConsent()
-                        if(observation != previousConsent) {
-                            stalls.observe(null,android.os.SystemClock.elapsedRealtime())
-                            previousConsent = observation
-                        }
-                        val progress = downloads.progress.value[id]
-                        if(stalls.observe(progress.takeIf {observation != null},android.os.SystemClock.elapsedRealtime()))
-                            AutomaticDiagnostics.capture(DiagnosticInput(category="install_stalled",
-                                stage="download",reason="no_progress"), observation)
-                        delay(30_000)
-                    }
+                    monitorModelDownloadStalls(diagnosticConsent,{downloads.progress.value[id]})
                 }
                 try {downloads.download(model,item.mobile);finished(context,id)}
                 finally {observer.cancel()}

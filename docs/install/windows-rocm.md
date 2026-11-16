@@ -134,6 +134,11 @@ processes only. They do not change the system environment. Existing models,
 voices and projects stay in place. Changing the recipe or Python ABI invalidates
 the runtime readiness stamp and requires verification/repair.
 
+Readiness also compares the verifier's reported Python ABI and architecture with
+the staged recipe; missing reports or recipe pins cannot certify the runtime.
+The existing dependency-stamp salt stays unchanged so this verification change
+alone does not require working installations to repeat setup.
+
 This feature must be present in the installed build; older releases do not gain
 it from an environment variable. See the
 [Releases page](https://github.com/debpalash/VoiceStudio/releases) for available builds.
@@ -282,3 +287,28 @@ timeouts, crashes and unclassified failures stop verification without downloadin
 or reinstalling the overlay. CLI diagnostics include a bounded failure category;
 correct the reported host problem before retrying. A successful package repair
 must still pass the complete model-free GPU verification.
+
+
+### Native probe access violations
+
+A failed native probe reports its decimal exit code and Windows status, including
+`0xC0000005` for an access violation, even when it produced no JSON diagnostic.
+The status alone does not identify the faulting DLL, GPU, driver or underlying
+cause. Crashes remain non-repairable verification failures; they do not trigger
+an automatic package reinstall.
+
+The [hybrid-GPU report #4200](https://github.com/debpalash/VoiceStudio/issues/4200)
+describes a ROCm 7.2.1 probe crash on an RX 7900 XTX plus Ryzen integrated GPU.
+That reporter identified `amdhip64_7.dll` 10.0.3581 in Windows Error Reporting and
+reported success after preloading the driver-provided System32 version 10.0.3679
+before Torch. This is evidence from that machine, not a validated general fix.
+Related upstream reports describe [hybrid-device enumeration/crashes](https://github.com/ROCm/legacy-rocm-build/issues/5871)
+and [a HIP availability crash](https://github.com/ROCm/TheRock/issues/9181);
+the same exit status does not establish the same cause on another host.
+
+VoiceStudio does not automatically preload or copy a different system HIP DLL,
+modify installed wheels, or hide an integrated GPU. A newer file version alone
+does not prove compatibility with the pinned runtime. Keep explicit device
+selection unchanged and retain the probe code plus Windows Error Reporting's
+faulting-module/version details when reporting a failure; redact personal paths.
+The clearer diagnostic does not resolve the underlying native crash.

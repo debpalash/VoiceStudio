@@ -64,9 +64,9 @@ import VoiceStudioKit
         refresh(); saving = false; updateSubscription()
     }
     var collecting: Bool { !disabled && enabled && reporter?.status.enabled == true }
-    func captureStall() {
-        guard collecting else { return }
-        reporter?.capture(DiagnosticInput(category: "install_stalled", stage: "download", errorCode: "RUNTIME_DOWNLOAD_STALLED", reason: "no_progress"))
+    func captureStall(observation: CompanionDiagnosticObservation) {
+        guard collecting,observation == failureObservation else { return }
+        reporter?.capture(DiagnosticInput(category: "install_stalled", stage: "download", errorCode: "RUNTIME_DOWNLOAD_STALLED", reason: "no_progress"),expectedEpoch:observation.epoch)
     }
     func retryConsent() async {
         if reporter == nil && environmentKilled { await revokeForHardKill() }

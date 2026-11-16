@@ -11,7 +11,13 @@ The Model Catalogue tracks model weights separately from engine runtime
 availability. A downloaded
 `FunAudioLLM/Fun-CosyVoice3-0.5B-2512` cache means the model files reached the
 machine. It does not prove that the VoiceStudio backend can import and run
-CosyVoice.
+CosyVoice. The catalogue download and managed engine install select the same
+reviewed CosyVoice 3 revision and runtime files (about 5.4 GB), including the
+BlankEN model and tokenizer. Preflight totals and the transfer omit the unused
+RL checkpoint, alternate flow ONNX export and batch speech tokenizer that share
+the upstream repository; previously the catalogue fetched about 9.8 GB. Existing
+cached files and user-managed model directories are not removed or rewritten.
+This download reduction does not diagnose or fix speech-quality problems.
 
 For an existing source installation, the same Python interpreter that runs
 the VoiceStudio backend must import:

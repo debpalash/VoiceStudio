@@ -193,14 +193,19 @@ public actor ModelStore {
             let part = partial(model, f)
             try FileManager.default.createDirectory(at: part.deletingLastPathComponent(), withIntermediateDirectories: true)
             if size(part) > f.size { try FileManager.default.removeItem(at: part) }
+            var recoveredBytes = size(part) > 0
             if let asset = f.bundled {
                 guard ModelAssetSource.validBundled(asset),f.url == nil,let bundledRoot else { throw ClientError("mobile.local.catalogue_failed") }
                 let source = bundledRoot.appendingPathComponent(asset)
                 if FileManager.default.fileExists(atPath: part.path) { try FileManager.default.removeItem(at: part) }
                 try FileManager.default.copyItem(at: source,to: part)
+                recoveredBytes = false
             }
             if f.bundled == nil && f.size-size(part) >= max(16_777_216,transport.preferredRangeBytes)*2 {
-                do { try await downloadParallel(model,file: f,part: part,policy: policy,wifi: wifi,transport: transport,meter: meter) }
+                do {
+                    let recoveredRanges = try await downloadParallel(model,file: f,part: part,policy: policy,wifi: wifi,transport: transport,meter: meter)
+                    recoveredBytes = recoveredBytes || recoveredRanges
+                }
                 catch is ModelRangeUnsupported {
                     try? FileManager.default.removeItem(at: part.appendingPathExtension("ranges"))
                     assemblyReservations[model.id] = max(assemblyReservations[model.id,default: 0],size(part))
@@ -210,6 +215,7 @@ public actor ModelStore {
                     await meter.replaceFile(f.path,rangePrefix: f.sha256+":",bytes: size(part))
                     let whole = try await downloadRange(model,file: f,offset: 0,end: f.size-1,transport: transport,meter: meter,base: 0,wholeFile: true)
                     try await stageWhole(whole,model: model,file: f,part: part,identity: identity,meter: meter)
+                    recoveredBytes = whole.origin == .recovered
                     await meter.replaceFile(f.path,rangePrefix: f.sha256+":",bytes: f.size)
                 }
             }
@@ -231,15 +237,22 @@ public actor ModelStore {
                 }
                 if wholeFile || reply.status == 200 {
                     try await stageWhole(reply,model: model,file: f,part: part,identity: identity,meter: meter)
+                    recoveredBytes = reply.origin == .recovered
                 } else {
                     defer { try? FileManager.default.removeItem(at: reply.file) }
                     try Task.checkCancellation(); try checkPermission(model)
                     try append(reply.file,to: part)
+                    recoveredBytes = recoveredBytes || reply.origin == .recovered
                 }
                 await progress(Double(completed + size(part)) / Double(model.total_bytes))
             }
             await meter.update("",bytes: 0,stage: "verifying")
-            guard try verify(part,file: f,identity: identity) else { try? FileManager.default.removeItem(at: part); throw ClientError("mobile.local.checksum_failed") }
+            guard try verify(part,file: f,identity: identity) else {
+                try? FileManager.default.removeItem(at: part)
+                let failure = ClientError("mobile.local.checksum_failed")
+                if recoveredBytes { throw HistoricalModelDownloadFailure(failure) }
+                throw failure
+            }
             try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
             if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
             try FileManager.default.moveItem(at: part, to: destination)
@@ -253,7 +266,8 @@ public actor ModelStore {
         await progress(1)
     }
     private let connections = ModelDownloadPermits(limit: 4)
-    private func downloadParallel(_ model: PhoneModel,file: PhoneModel.File,part: URL,policy: DownloadPolicy,wifi: @escaping @Sendable () async -> Bool,transport: any HTTPTransport,meter: DownloadMeter) async throws {
+    private func downloadParallel(_ model: PhoneModel,file: PhoneModel.File,part: URL,policy: DownloadPolicy,wifi: @escaping @Sendable () async -> Bool,transport: any HTTPTransport,meter: DownloadMeter) async throws -> Bool {
+        var recoveredBytes = false
         let chunkSize = max(16_777_216,transport.preferredRangeBytes)
         let chunks = part.appendingPathExtension("ranges")
         try FileManager.default.createDirectory(at: chunks,withIntermediateDirectories: true)
@@ -273,13 +287,13 @@ public actor ModelStore {
                 let saved = chunks.appendingPathComponent("\(lower)-\(upper)")
                 if size(saved) == upper-lower+1 { await meter.seed(file.sha256+":\(lower)",bytes: size(saved)) }
             }
-            try await withThrowingTaskGroup(of: Void.self) { group in
+            try await withThrowingTaskGroup(of: Bool.self) { group in
                 for (lower,upper) in ranges {
                     group.addTask {
                         try await self.persistRange(model,file: file,lower: lower,upper: upper,chunks: chunks,transport: transport,meter: meter)
                     }
                 }
-                for try await _ in group {}
+                for try await recovered in group { recoveredBytes = recoveredBytes || recovered }
             }
             try checkDownloadSpace()
             for (lower,upper) in ranges {
@@ -292,15 +306,17 @@ public actor ModelStore {
             previousRate = rate
         }
         try? FileManager.default.removeItem(at: chunks)
+        return recoveredBytes
     }
-    private func persistRange(_ model: PhoneModel,file: PhoneModel.File,lower: Int64,upper: Int64,chunks: URL,transport: any HTTPTransport,meter: DownloadMeter) async throws {
+    private func persistRange(_ model: PhoneModel,file: PhoneModel.File,lower: Int64,upper: Int64,chunks: URL,transport: any HTTPTransport,meter: DownloadMeter) async throws -> Bool {
         let destination = chunks.appendingPathComponent("\(lower)-\(upper)")
-        if size(destination) == upper-lower+1 { return }
+        if size(destination) == upper-lower+1 { return true }
         let reply = try await downloadRange(model,file: file,offset: lower,end: upper,transport: transport,meter: meter,base: 0,meterKey: file.sha256+":\(lower)")
         defer { try? FileManager.default.removeItem(at: reply.file) }
         try Task.checkCancellation(); try checkPermission(model)
         if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
         try FileManager.default.moveItem(at: reply.file,to: destination)
+        return reply.origin == .recovered
     }
     private func promoteWhole(_ whole: URL,to part: URL,identity: String) throws {
         if FileManager.default.fileExists(atPath: part.path) { try FileManager.default.removeItem(at: part) }
@@ -316,7 +332,9 @@ public actor ModelStore {
         await meter.update("",bytes: 0,stage: "verifying")
         guard try verify(whole,file: file,identity: identity) else {
             try? FileManager.default.removeItem(at: whole)
-            throw ClientError("mobile.local.checksum_failed")
+            let failure = ClientError("mobile.local.checksum_failed")
+            if reply.origin == .recovered { throw HistoricalModelDownloadFailure(failure) }
+            throw failure
         }
         try Task.checkCancellation(); try checkPermission(model)
         try promoteWhole(whole,to: part,identity: identity)
@@ -381,9 +399,14 @@ public actor ModelStore {
                         }
                         lastFailure = URLError(.badServerResponse)
                         if reply.status == 429 { sourceCooldowns[host] = Date().addingTimeInterval(Double(min(3600,max(1,retryAfter ?? 1)))) ; break }
-                    } else { throw ClientError("mobile.local.download_failed") }
+                    } else {
+                        let failure = ClientError("mobile.local.download_failed")
+                        if reply.origin == .recovered { throw HistoricalModelDownloadFailure(failure) }
+                        throw failure
+                    }
                 } catch is ModelRangeUnsupported { throw ModelRangeUnsupported() }
                 catch is CancellationError { throw CancellationError() }
+                catch let error as HistoricalModelDownloadFailure { if lastFailure == nil { lastFailure = error }; permanent.insert(host) }
                 catch let error as ClientError { if lastFailure == nil { lastFailure = error }; permanent.insert(host) }
                 catch { if Task.isCancelled { throw CancellationError() }; lastFailure = error }
             }

@@ -37,4 +37,40 @@ class PhoneDictationTest {
         controller.start(model);runCurrent();assertTrue(controller.active.value)
         controller.close();advanceUntilIdle();assertTrue(released);assertFalse(controller.active.value)
     }
+    @Test fun permissionOwnerSurvivesLocalStartAndExplicitLaterStartIsFresh() = runTest {
+        for (original in listOf<String?>(null,"grant-a")) {
+            var current=original
+            var observations=0
+            val reports=mutableListOf<String>()
+            val feedback=mutableListOf<String?>()
+            val observe:()->(Throwable)->Unit={
+                observations++
+                val owner=current
+                {_:Throwable ->
+                    feedback+=owner
+                    if(owner!=null && owner==current) reports+=owner
+                }
+            }
+            val originalFailure=observe()
+            current="grant-b"
+            val engine=object:Engine() {
+                override fun streamTranscribe(model:PhoneModel,audio:Flow<LocalAudio>):Flow<Transcript> = flow {
+                    throw com.voicestudio.mobile.network.ClientFailure("mobile.local.runtime_failed")
+                }
+            }
+            val controller=PhoneDictation(engine,this,observe,DictationAudioSource {_,_ ->})
+            try {
+                controller.start(model,originalFailure);advanceUntilIdle()
+                assertEquals(1,observations)
+                assertEquals(listOf(original),feedback)
+                assertTrue(reports.isEmpty())
+                assertFalse(controller.active.value)
+                controller.start(model);advanceUntilIdle()
+                assertEquals(2,observations)
+                assertEquals(listOf(original,"grant-b"),feedback)
+                assertEquals(listOf("grant-b"),reports)
+            } finally {controller.close()}
+        }
+    }
+
 }
