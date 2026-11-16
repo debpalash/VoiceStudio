@@ -44,9 +44,38 @@ export async function windowsRocmInstalled(project: string): Promise<boolean> {
   }
 }
 
+/**
+ * Hash input identifying the Windows ROCm recipe a project was installed from:
+ * the exact recipe bytes.
+ *
+ * It used to prepend a hardcoded `:python=cp312:win-amd64:` triple, which read
+ * as if the interpreter were being verified. Both sides of
+ * {@link windowsRocmRecipeMatches} call this function, so that constant appeared
+ * on both sides and cancelled out: a recipe bumped to another CPython ABI still
+ * compared equal, and nothing could detect it. Whether the staged interpreter
+ * really is the pinned one is settled by the backend's own verification
+ * (`backend.core.windows_rocm.install --verify-only`, reached through
+ * {@link windowsRocmReady}), which fails closed; this stamp only answers "same
+ * recipe bytes as the bundle?".
+ */
+/**
+ * Stable salt for the dependency stamp of a Windows ROCm install.
+ *
+ * `dependencyStamp` folds `windowsRocmStamp` into the hash that
+ * `runtimeCompatible` compares against the stamp saved at install time, so these
+ * bytes are part of an on-disk contract: changing them marks every existing
+ * install incompatible and forces its owner through setup again. Treat the value
+ * as frozen and bump it only with a migration.
+ *
+ * It is not what verifies the interpreter. `windowsRocmReady` runs the backend's
+ * `--verify-only` check, which reports the ABI and architecture it actually ran
+ * on, and compares those with the recipe's `python` pin.
+ */
+const WINDOWS_ROCM_STAMP_SALT = ':python=cp312:win-amd64:';
+
 export async function windowsRocmStamp(bundle: string): Promise<Buffer> {
   return Buffer.concat([
-    Buffer.from(':python=cp312:win-amd64:'),
+    Buffer.from(WINDOWS_ROCM_STAMP_SALT),
     await readFile(join(bundle, 'scripts/windows-rocm-recipe.json')),
   ]);
 }
@@ -57,6 +86,22 @@ export async function windowsRocmRecipeMatches(bundle: string, project: string):
     windowsRocmStamp(project),
   ]);
   return expected.equals(staged);
+}
+
+/** The interpreter triple `scripts/windows-rocm-recipe.json` pins, or null. */
+async function pinnedInterpreter(
+  root: string,
+): Promise<{ abi: string; platform: string } | null> {
+  try {
+    const parsed = JSON.parse(
+      await readFile(join(root, 'scripts/windows-rocm-recipe.json'), 'utf8'),
+    ) as { python?: { abi?: unknown; platform?: unknown } };
+    const abi = String(parsed.python?.abi ?? '').trim();
+    const platform = String(parsed.python?.platform ?? '').trim();
+    return abi && platform ? { abi, platform } : null;
+  } catch {
+    return null; // an unreadable recipe cannot certify an environment
+  }
 }
 
 // A result lives only for one read-only readiness decision. Install/repair and
@@ -83,7 +128,11 @@ export async function windowsRocmReady(
 }
 
 /** Verification fails closed; launch refusals propagate without triggering a reinstall. */
-function probeWindowsRocmReady(project: string): Promise<boolean> {
+async function probeWindowsRocmReady(project: string): Promise<boolean> {
+  // The interpreter triple the recipe pins. `windowsRocmRecipeMatches` has
+  // already shown the staged recipe equals the bundle's, so the check below can
+  // read the staged copy and still speak for what was shipped.
+  const pinned = await pinnedInterpreter(project);
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     HF_HUB_OFFLINE: '1',
@@ -103,7 +152,16 @@ function probeWindowsRocmReady(project: string): Promise<boolean> {
       let ready = false;
       try {
         const report = JSON.parse(stdout.trim().split(/\r?\n/).at(-1) ?? '');
-        ready = !error && report.ready === true && report.scope === 'model-free';
+        // The verifier reports the interpreter it actually ran on; compare it
+        // with the recipe instead of trusting `ready` alone, so a project built
+        // against another CPython ABI is not certified for this recipe.
+        ready =
+          !error &&
+          report.ready === true &&
+          report.scope === 'model-free' &&
+          pinned !== null &&
+          report.abi === pinned.abi &&
+          report.architecture === pinned.platform;
       } catch {
         /* Missing/malformed output cannot certify a native environment. */
       }
