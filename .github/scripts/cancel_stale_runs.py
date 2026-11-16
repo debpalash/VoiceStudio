@@ -49,6 +49,7 @@ MAX_WINDOW_REQUESTS = 45
 MAX_ASSOCIATED_PR_PAGES = 10
 # A bounded independent open-PR inventory protects SHAs omitted by commit lookup.
 MAX_OPEN_PR_PAGES = 10
+MAX_OPEN_PR_SWEEPS = 3
 # Leave room for the last bounded 30-second API request and summary before the five-minute job.
 WORK_SECONDS = 240
 SKIPPED = object()
@@ -210,7 +211,10 @@ def unfinished_runs(call: ApiCall, repo: str, **query: Any) -> Iterator[Run]:
             # Accepted cancellation can finish after its repeated page1 read,
             # shifting unseen rows behind the next page offset. Revisit once
             # under the same deadline; an unresolved deficit is not success.
-            _, retried_total = yield from search({**query, "status": status})
+            retried_count, retried_total = yield from search({**query, "status": status})
+            if retried_count < retried_total:
+                errors += 1
+                print(f"::warning::{status}: retry discovered {retried_count} of {retried_total} reported runs; discovery is incomplete", file=sys.stderr)
             total = max(total, retried_total)
         if len(status_seen) < total:
             errors += 1
@@ -225,7 +229,9 @@ def stale_for_pr(call: ApiCall, repo: str, pr: dict, exclude_run: int = 0) -> It
         return
     sha = pr["head"]["sha"]
     try:
-        associated_close = _commit_closed_before(call, repo, sha, known_closed_at=pr["closed_at"])
+        associated_close = _commit_closed_before(
+            call, repo, sha, known_closed_at=pr["closed_at"] if pr.get("merged") is False else None,
+        )
     except SweepDeadline:
         raise
     except Exception as error:
@@ -250,9 +256,10 @@ def stale_for_pr(call: ApiCall, repo: str, pr: dict, exclude_run: int = 0) -> It
         raise IncompleteDiscovery(f"{failures} candidate ownership check(s) failed")
 
 
-def _open_prs(call: ApiCall, repo: str) -> list[dict[str, Any]]:
-    """Commit lookup omits open associations once a SHA is on the default branch."""
+def _read_open_prs(call: ApiCall, repo: str) -> list[dict[str, Any]]:
+    """One bounded read; copy identity immediately, never retain mutable API rows."""
     result: list[dict[str, Any]] = []
+    numbers: set[int] = set()
     for page in range(1, MAX_OPEN_PR_PAGES + 1):
         try:
             pulls = call("GET", f"/repos/{repo}/pulls?state=open&sort=created&direction=asc&per_page={PER_PAGE}&page={page}")
@@ -272,11 +279,32 @@ def _open_prs(call: ApiCall, repo: str) -> list[dict[str, Any]]:
                 raise IncompleteDiscovery("Open pull-request SHA is unknown")
             if type(pr.get("number")) is not int or pr["number"] <= 0:
                 raise IncompleteDiscovery("Open pull-request number is unknown")
-            _branch_identity(head.get("ref"), head.get("repo"))
-            result.append(pr)
+            number = pr["number"]
+            if number in numbers:
+                raise IncompleteDiscovery("Duplicate open pull-request number")
+            numbers.add(number)
+            repository, branch = _branch_identity(head.get("ref"), head.get("repo"))
+            result.append({"number": number, "state": "open", "merge_commit_sha": merge_sha,
+                           "head": {"sha": sha, "ref": branch, "repo": {"full_name": repository}}})
         if len(pulls) < PER_PAGE:
             return result
     raise IncompleteDiscovery("Open pull-request page budget reached")
+
+
+def _open_prs(call: ApiCall, repo: str) -> list[dict[str, Any]]:
+    """A short page can omit shifted rows; require two complete matching reads."""
+    previous: tuple[tuple[int, str, str | None, str, str], ...] | None = None
+    for _ in range(MAX_OPEN_PR_SWEEPS):
+        current = _read_open_prs(call, repo)
+        # Only ownership matters. Cosmetic updated_at/title changes must not
+        # strand cleanup, and earlier snapshots must survive mutable fixtures.
+        fingerprint = tuple(sorted((pr["number"], pr["head"]["sha"], pr["merge_commit_sha"],
+                                    pr["head"]["repo"]["full_name"], pr["head"]["ref"])
+                                   for pr in current))
+        if fingerprint == previous:
+            return current
+        previous = fingerprint
+    raise IncompleteDiscovery("Open pull-request inventory did not stabilize")
 
 
 def _branch_identity(branch: Any, repository: Any) -> tuple[str, str]:
@@ -304,16 +332,16 @@ def _has_open_pr(call: ApiCall, repo: str, run: Run, *, requested_pr: int | None
         numbers.add(number)
     if type(requested_pr) is int and requested_pr > 0:
         numbers.add(requested_pr)
-    try:
-        branch = _branch_identity(run.get("head_branch"), run.get("head_repository"))
-    except IncompleteDiscovery:
-        if not numbers:
-            raise
-        branch = None
-    for pr in _open_prs(call, repo):
+    inventory = _open_prs(call, repo)
+    for pr in inventory:
+        if pr["number"] in numbers or run["head_sha"] in (pr["head"]["sha"], pr.get("merge_commit_sha")):
+            return True
+    # Positive matches can safely keep an open run even without branch data.
+    # A closed PR number never proves which branch/repository the run used.
+    branch = _branch_identity(run.get("head_branch"), run.get("head_repository"))
+    for pr in inventory:
         head = pr["head"]
-        if (pr["number"] in numbers or run["head_sha"] in (head["sha"], pr.get("merge_commit_sha"))
-                or (branch is not None and branch == _branch_identity(head["ref"], head["repo"]))):
+        if branch == _branch_identity(head["ref"], head["repo"]):
             return True
     return False
 

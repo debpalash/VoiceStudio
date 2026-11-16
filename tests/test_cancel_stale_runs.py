@@ -33,8 +33,8 @@ def _run(run_id: int, status: str = "queued", *, created: str | None = None,
             "created_at": created or f"{datetime.date.today().isoformat()}T00:00:00Z"}
 
 
-def _pr(state: str = "closed", closed: str = CLOSED, sha: str = "a" * 40) -> dict[str, Any]:
-    return {"number": 7, "state": state, "closed_at": closed if state == "closed" else None,
+def _pr(state: str = "closed", closed: str = CLOSED, sha: str = "a" * 40, merged: bool | None = False) -> dict[str, Any]:
+    return {"number": 7, "state": state, "merged": merged, "closed_at": closed if state == "closed" else None,
             "head": {"sha": sha, "ref": f"feature-{sha}", "repo": {"full_name": "contributor/source"}}}
 
 
@@ -164,8 +164,8 @@ def test_cancels_eligible_runs_before_finishing_capped_discovery(monkeypatch: py
     today = datetime.date.today()
     api = FakeApi([_run(i, created=f"{(today-datetime.timedelta(days=i // 500)).isoformat()}T01:00:00Z") for i in range(1001)], latency=4)
     _main(module, api, monkeypatch)
-    # One run page, commit associations, fresh open-PR inventory, POST.
-    assert api.first_post_at is not None and api.first_post_at <= 16
+    # One run page, commit associations, two matching open-PR reads, POST.
+    assert api.first_post_at is not None and api.first_post_at <= 5 * api.latency
 
 
 def test_deadline_keeps_partial_progress_and_returns_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -476,7 +476,7 @@ def test_unknown_open_inventory_cannot_authorize_cancellation(monkeypatch: pytes
 
 def test_open_inventory_later_page_and_exhausted_budget_keep_runs(monkeypatch: pytest.MonkeyPatch) -> None:
     module = _module()
-    unrelated = [_pr(state="open", sha=f"{i:040x}") for i in range(100)]
+    unrelated = [dict(_pr(state="open", sha=f"{i:040x}"), number=i + 8) for i in range(100)]
     api = FakeApi([_run(1)], open_pulls=[*unrelated, _pr(state="open")])
     assert _main(module, api, monkeypatch) == 0
     assert api.cancelled == []
@@ -642,3 +642,159 @@ def test_unknown_candidate_does_not_strand_later_eligible_runs(
     api = FakeApi([unknown, _run(1)])
     assert _main(module, api, monkeypatch, mode) == 1
     assert api.cancelled == [1]
+
+
+def test_retry_arrivals_cannot_cover_an_unseen_original_page(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _module()
+    class ShiftingRuns(FakeApi):
+        passes = 0
+        def __call__(self, method: str, path: str, data: dict | None = None) -> Any:
+            query = parse_qs(urlsplit(path).query)
+            if method == 'GET' and '/actions/runs?' in path and query.get('status') == ['queued']:
+                self.requests.append((method, path))
+                if query['page'] == ['1']:
+                    self.passes += 1
+                    # Original IDs1..100 remain queued and unseen. The first
+                    # visible100 complete; new arrivals replace them on retry.
+                    start = 101 if self.passes == 1 else 301
+                    return {'workflow_runs': [_run(i) for i in range(start, start + 100)], 'total_count': 200}
+                return {'workflow_runs': [], 'total_count': 200}
+            return super().__call__(method, path, data)
+    api = ShiftingRuns([])
+    observed: list[dict[str, Any]] = []
+    with pytest.raises(module.IncompleteDiscovery):
+        observed.extend(module.unfinished_runs(api, 'owner/repo'))
+    assert {run['id'] for run in observed} == set(range(101, 201)) | set(range(301, 401))
+    assert api.passes == 2
+
+
+@pytest.mark.parametrize('mode', [['--sweep'], ['--pr', '7']])
+def test_open_inventory_closure_shift_cannot_hide_the_last_active_pr(
+    monkeypatch: pytest.MonkeyPatch, mode: list[str],
+) -> None:
+    module = _module()
+    unrelated = [dict(_pr(state='open', sha=f'{i:040x}'), number=i + 10) for i in range(100)]
+    active = _pr(state='open')
+    class ClosingPr(FakeApi):
+        shifted = False
+        def __call__(self, method: str, path: str, data: dict | None = None) -> Any:
+            if '/commits/' not in path and urlsplit(path).path.endswith('/pulls'):
+                query = parse_qs(urlsplit(path).query)
+                if query.get('page') == ['2'] and not self.shifted:
+                    self.open_pulls.pop(0)
+                    self.shifted = True
+            return super().__call__(method, path, data)
+    api = ClosingPr([_run(1)], open_pulls=[*unrelated, active])
+    assert _main(module, api, monkeypatch, mode) == 0
+    assert api.shifted and api.cancelled == []
+
+
+@pytest.mark.parametrize('mode', [['--sweep'], ['--pr', '7']])
+def test_unstable_mutable_open_rows_preserve_candidate_but_not_strand_later_runs(
+    monkeypatch: pytest.MonkeyPatch, mode: list[str],
+) -> None:
+    module = _module()
+    class ChurningPr(FakeApi):
+        reads = 0
+        row = dict(_pr(state='open', sha='unrelated'), number=19)
+        def __call__(self, method: str, path: str, data: dict | None = None) -> Any:
+            if '/commits/' not in path and urlsplit(path).path.endswith('/pulls'):
+                self.requests.append((method, path))
+                self.reads += 1
+                if self.reads <= 3:
+                    self.row['head']['sha'] = f'changing-{self.reads}'
+                    return [self.row]  # Same mutable object, distinct identity each read.
+                return []
+            return super().__call__(method, path, data)
+    api = ChurningPr([_run(1), _run(2)])
+    assert _main(module, api, monkeypatch, mode) == 1
+    assert api.cancelled == [1]
+    assert api.reads == 5
+
+
+def test_duplicate_pr_number_across_pages_is_not_a_complete_inventory(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _module()
+    open_prs = [dict(_pr(state='open', sha=f'{i:040x}'), number=i + 10) for i in range(100)]
+    open_prs.append(dict(_pr(state='open', sha='unrelated'), number=109))
+    api = FakeApi([_run(1)], open_pulls=open_prs)
+    assert _main(module, api, monkeypatch) == 1
+    assert api.cancelled == []
+
+
+def test_non_identity_open_pr_churn_does_not_prevent_stability(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = _module()
+    class CosmeticChurn(FakeApi):
+        reads = 0
+        def __call__(self, method: str, path: str, data: dict | None = None) -> Any:
+            result = super().__call__(method, path, data)
+            if '/commits/' not in path and urlsplit(path).path.endswith('/pulls'):
+                self.reads += 1
+                for pr in result:
+                    pr['updated_at'] = str(self.reads)
+            return result
+    api = CosmeticChurn([_run(1)], open_pulls=[dict(_pr(state='open', sha='unrelated'), number=19)])
+    assert _main(module, api, monkeypatch) == 0
+    assert api.cancelled == [1]
+    assert api.reads == 2
+
+
+@pytest.mark.parametrize('merged', [True, None, 'missing'])
+def test_empty_associations_cannot_borrow_a_merged_or_unknown_requested_closure(
+    monkeypatch: pytest.MonkeyPatch, merged: bool | None | str,
+) -> None:
+    module = _module()
+    api = FakeApi([_run(1, created='2026-10-24T11:00:00Z')], pulls={'a' * 40: []})
+    api.requested_pr = _pr()
+    if merged == 'missing':
+        api.requested_pr.pop('merged')
+    else:
+        api.requested_pr['merged'] = merged
+    assert _main(module, api, monkeypatch, ['--pr', '7']) == 0
+    assert api.cancelled == []
+
+
+@pytest.mark.parametrize('merged', [False, True, None])
+def test_present_associations_still_preserve_initial_minimum_closure(
+    monkeypatch: pytest.MonkeyPatch, merged: bool | None,
+) -> None:
+    module = _module()
+    api = FakeApi([_run(1, created='2026-10-24T09:00:00Z'),
+                   _run(2, created='2026-10-24T10:00:00Z')],
+                  pulls={'a' * 40: [_pr(closed='2026-10-24T10:00:00Z')]})
+    api.requested_pr = _pr(merged=merged)
+    assert _main(module, api, monkeypatch, ['--pr', '7']) == 0
+    assert api.cancelled == [1]
+
+
+@pytest.mark.parametrize('mode', [['--sweep'], ['--pr', '7']])
+@pytest.mark.parametrize('field', ['head_repository', 'head_branch'])
+def test_pr_numbers_cannot_replace_missing_branch_proof_or_strand_valid_runs(
+    monkeypatch: pytest.MonkeyPatch, mode: list[str], field: str,
+) -> None:
+    module = _module()
+    unknown = _run(2)
+    unknown['pull_requests'] = [{'number': 7}]
+    unknown.pop(field)
+    # This different open PR has moved to a newer SHA on the same source branch.
+    # Missing ownership must not prevent checking that possibility before cancel.
+    unrelated = dict(_pr(state='open', sha='other'), number=8)
+    api = FakeApi([unknown, _run(1)], open_pulls=[unrelated])
+    assert _main(module, api, monkeypatch, mode) == 1
+    assert api.cancelled == [1]
+
+
+@pytest.mark.parametrize('mode', [['--sweep'], ['--pr', '7']])
+@pytest.mark.parametrize('match', ['number', 'sha'])
+def test_positive_open_association_preserves_incomplete_run_without_requiring_branch(
+    monkeypatch: pytest.MonkeyPatch, mode: list[str], match: str,
+) -> None:
+    module = _module()
+    row = _run(1)
+    row.pop('head_repository')
+    row['pull_requests'] = [{'number': 7}] if match == 'number' else []
+    opened = _pr(state='open', sha='other' if match == 'number' else 'a' * 40)
+    if match == 'sha':
+        opened['number'] = 8
+    api = FakeApi([row], open_pulls=[opened])
+    assert _main(module, api, monkeypatch, mode) == 0
+    assert api.cancelled == []

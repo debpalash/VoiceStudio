@@ -565,7 +565,8 @@ test-only PR. Docker Hub overview edits still publish through the small
   discovery, lookup failures and failed cancellation requests return a nonzero result
   after preserving eligible partial progress; no force-cancel is issued. Short
   searches with missing rows get one bounded rescan for delayed cancellations;
-  unresolved reported totals remain incomplete rather than reporting success.
+  the retry's own count must cover its reported total even when new arrivals
+  increase the combined ID count. Unresolved totals remain incomplete.
   Each day window is checked against its own reported total, so new arrivals
   elsewhere cannot hide a truncated window; its retry counts toward the window
   budget. Both close-event cleanup and the repository sweep freshly paginate
@@ -573,12 +574,19 @@ test-only PR. Docker Hub overview edits still publish through the small
   commit-association API can omit an open PR whose SHA is already on the default
   branch. An open head/merge SHA, associated PR number, or matching head repository
   and branch keeps the run, including a reopened PR whose head has advanced.
-  Missing ownership evidence or an incomplete open/closure lookup keeps the run
-  and reports incomplete inspection. Cached closures never bypass this refresh.
+  Each refresh needs two consecutive complete matching ownership inventories,
+  bounded to three reads of at most ten pages each; duplicate PR numbers or an
+  unstable inventory preserve that candidate and report incomplete inspection
+  while later candidates remain inspectable. Cosmetic PR updates do not affect
+  this identity comparison. Missing ownership evidence or an incomplete
+  open/closure lookup keeps the run. A positive open-PR match can preserve a run
+  without branch metadata; otherwise its head repository and branch are required,
+  even when it lists a PR number. Cached closures never bypass this refresh.
   A run must predate the earliest initially known associated PR closure,
   protecting work started by either close event.
-  Direct cleanup of a verified closed, unmerged PR uses that PR's own closure
-  when the commit API returns no associations; an empty result alone never
+  Direct cleanup uses the requested PR's own closure for empty commit associations
+  only when its API response explicitly says closed and `merged: false`. A merged
+  or unknown merge state cannot supply that fallback; an empty result alone never
   authorizes repository-wide cleanup.
 - **Cross-platform parity (hard rule):** anything that ships in default mode
   must behave identically on macOS, Windows, and Linux. Platform-specific
