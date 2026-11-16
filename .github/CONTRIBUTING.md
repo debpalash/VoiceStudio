@@ -576,7 +576,37 @@ test-only PR. Docker Hub overview edits still publish through the small
   running pull-request workflows (`.github/workflows/cancel-closed-pr-runs.yml`);
   the repository is capped at 20 concurrent jobs, so they would only delay others.
   Maintainers can run the same cleanup for the whole repository from the Actions
-  tab (`cancel-closed-pr-runs`, dry run by default).
+  tab (`cancel-closed-pr-runs`, dry run by default). The sweep requests cancellation
+  incrementally within a four-minute work budget, leaving time for its final
+  bounded request before the five-minute job limit. Accepted requests are not
+  proof of completed cancellation; HTTP 409 refusals are reported as skipped.
+  Capped searches use a bounded 30-day recovery window. Saturated or truncated
+  discovery, lookup failures and failed cancellation requests return a nonzero result
+  after preserving eligible partial progress; no force-cancel is issued. Short
+  searches with missing rows get one bounded rescan for delayed cancellations;
+  the retry's own count must cover its reported total even when new arrivals
+  increase the combined ID count. Unresolved totals remain incomplete.
+  Each day window is checked against its own reported total, so new arrivals
+  elsewhere cannot hide a truncated window; its retry counts toward the window
+  budget. Both close-event cleanup and the repository sweep freshly paginate
+  the repository's open PRs before each otherwise eligible cancellation: the
+  commit-association API can omit an open PR whose SHA is already on the default
+  branch. An open head/merge SHA, associated PR number, or matching head repository
+  and branch keeps the run, including a reopened PR whose head has advanced.
+  Each refresh needs two consecutive complete matching ownership inventories,
+  bounded to three reads of at most ten pages each; duplicate PR numbers or an
+  unstable inventory preserve that candidate and report incomplete inspection
+  while later candidates remain inspectable. Cosmetic PR updates do not affect
+  this identity comparison. Missing ownership evidence or an incomplete
+  open/closure lookup keeps the run. A positive open-PR match can preserve a run
+  without branch metadata; otherwise its head repository and branch are required,
+  even when it lists a PR number. Cached closures never bypass this refresh.
+  A run must predate the earliest initially known associated PR closure,
+  protecting work started by either close event.
+  Direct cleanup uses the requested PR's own closure for empty commit associations
+  only when its API response explicitly says closed and `merged: false`. A merged
+  or unknown merge state cannot supply that fallback; an empty result alone never
+  authorizes repository-wide cleanup.
 - **Cross-platform parity (hard rule):** anything that ships in default mode
   must behave identically on macOS, Windows, and Linux. Platform-specific
   *implementation* is fine; platform-divergent *default behavior* is a P0.
