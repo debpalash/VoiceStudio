@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { getBridge } from '@/components/bridge';
@@ -16,6 +16,8 @@ export function CloseToTraySettings() {
   const app = getBridge()?.app;
   const supported = typeof app?.getCloseToTray === 'function';
   const [enabled, setEnabled] = useState<boolean | null>(null);
+  // Last value the main process confirmed: overlapping saves roll back to it, not to an optimistic toggle.
+  const confirmedRef = useRef<boolean | null>(null);
 
   useEffect(() => {
     const bridge = getBridge()?.app;
@@ -23,7 +25,11 @@ export function CloseToTraySettings() {
     let live = true;
     bridge
       .getCloseToTray()
-      .then((value) => live && setEnabled(value))
+      .then((value) => {
+        if (!live) return;
+        confirmedRef.current = value;
+        setEnabled(value);
+      })
       .catch(() => live && setEnabled(null));
     return () => {
       live = false;
@@ -33,14 +39,16 @@ export function CloseToTraySettings() {
   if (!app || !supported || enabled === null) return null;
 
   const change = (next: boolean) => {
-    const confirmed = enabled;
     setEnabled(next);
     app
       .setCloseToTray(next)
-      .then(setEnabled)
+      .then((value) => {
+        confirmedRef.current = value;
+        setEnabled(value);
+      })
       .catch(() => {
         // The main process could not save it: keep the last confirmed value.
-        setEnabled(confirmed);
+        setEnabled(confirmedRef.current);
         toast.error(t('settings.close_to_tray_failed'));
       });
   };

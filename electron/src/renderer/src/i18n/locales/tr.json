@@ -1338,7 +1338,7 @@
     "terminal_command_failed": "voicestudio terminale eklenemedi. Ana klasörünüzün salt okunur olmadığını kontrol edip yeniden deneyin.",
     "terminal_command_conflict": "{{path}} başka bir kuruluma ait, bu yüzden VoiceStudio onu değiştirmedi.",
     "close_to_tray": "Kapatınca tepside çalışmaya devam et",
-    "close_to_tray_desc": "Pencereyi kapatmak VoiceStudio’yu çıkmak yerine tepsiye gizler, böylece süren işler devam eder. Tepsi simgesinden yeniden açın ve kapatmak için orada Çık’ı seçin.",
+    "close_to_tray_desc": "Pencereyi kapatmak VoiceStudio’yu çıkmak yerine tepsiye gizler, böylece süren işler devam eder. Tepsi simgesinden yeniden açın ve kapatmak için orada Çık’ı seçin. Bazı Linux masaüstlerinde tepsi simgesi AppIndicator desteği gerektirir; VoiceStudio’yu yeniden açmak da pencereyi geri getirir.",
     "close_to_tray_failed": "Bu ayar kaydedilemedi. Lütfen tekrar deneyin.",
     "review_mode_on": "İncele",
     "review_mode_off": "Hızlı ateş",

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   decideTerminalStop,
   decideWindowClose,
+  needsRestore,
   readCloseToTray,
   saveCloseToTray,
   WindowUse,
@@ -130,5 +131,38 @@ describe('decideTerminalStop', () => {
       quit: true,
       flush: false,
     });
+  });
+});
+
+describe('recovery when the tray icon is missing', () => {
+  it('restores a hidden or missing window on a Dock click, leaves a visible one alone', () => {
+    expect(needsRestore({ live: true, visible: false })).toBe(true);
+    expect(needsRestore({ live: false, visible: false })).toBe(true);
+    expect(needsRestore({ live: true, visible: true })).toBe(false);
+  });
+
+  const source = readFileSync(join(__dirname, 'index.ts'), 'utf8');
+
+  it('shows the hidden window on a second launch and on activate', () => {
+    expect(source).toMatch(/app\.on\('second-instance'[\s\S]*?handleLaunch\(intent\)/);
+    expect(source).toMatch(/app\.on\('activate'[\s\S]*?needsRestore\([\s\S]*?showWindow\(\)/);
+    // A plain relaunch ends in showWindow(), which show()s and focuses the window.
+    expect(source).toMatch(/idleShutdown\?\.touch\(\);\s*return;\s*}\s*showWindow\(\);\s*}/);
+  });
+
+  it('never lets the hide handler swallow an explicit quit', () => {
+    // before-quit starts the orderly quit, which marks quitPreparation before the
+    // window's close event runs; the close handler then decides "quit", never "hide".
+    expect(source).toMatch(/app\.on\('before-quit'[\s\S]*?beginOrderlyQuit\(\)/);
+    expect(source).toMatch(/quitRequested: sessionEnding \|\| quitPreparation !== null/);
+    expect(source).toMatch(/win\.on\('session-end'[\s\S]*?sessionEnding = true/);
+    expect(decide({ closeToTray: true, quitRequested: true })).toBe('quit');
+    expect(decide({ closeToTray: true, quitting: true })).toBe('allow');
+    expect(decide({ closeToTray: true, quitRequested: true, platform: 'darwin' })).toBe('quit');
+  });
+
+  it('keeps the update install path on the app quit flow', () => {
+    const updater = readFileSync(join(__dirname, 'updater.ts'), 'utf8');
+    expect(updater).toMatch(/autoUpdater\.quitAndInstall\(/);
   });
 });

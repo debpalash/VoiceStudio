@@ -1,6 +1,7 @@
 import {
   decideTerminalStop,
   decideWindowClose,
+  needsRestore,
   readCloseToTray,
   saveCloseToTray,
   WindowUse,
@@ -682,7 +683,8 @@ if (singleInstance && !app.requestSingleInstanceLock()) {
 
       app.on('activate', () => {
         // A window hidden to the tray is live but not visible.
-        if (!isLiveWindow(mainWindow) || !mainWindow.isVisible()) showWindow();
+        if (needsRestore({ live: isLiveWindow(mainWindow), visible: !!mainWindow?.isVisible() }))
+          showWindow();
       });
     })
     .catch((error) => {

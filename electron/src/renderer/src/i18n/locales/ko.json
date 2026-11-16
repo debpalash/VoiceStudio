@@ -1196,7 +1196,7 @@
     "terminal_command_failed": "voicestudio를 터미널에 추가하지 못했습니다. 홈 폴더가 읽기 전용이 아닌지 확인한 후 다시 시도하세요.",
     "terminal_command_conflict": "{{path}}은(는) 다른 설치에 속해 있어 VoiceStudio가 변경하지 않았습니다.",
     "close_to_tray": "닫아도 트레이에서 계속 실행",
-    "close_to_tray_desc": "창을 닫으면 VoiceStudio가 종료되지 않고 트레이로 숨겨져 실행 중인 작업이 계속됩니다. 트레이 아이콘에서 다시 열고, 종료하려면 거기서 종료를 선택하세요.",
+    "close_to_tray_desc": "창을 닫으면 VoiceStudio가 종료되지 않고 트레이로 숨겨져 실행 중인 작업이 계속됩니다. 트레이 아이콘에서 다시 열고, 종료하려면 거기서 종료를 선택하세요. 일부 Linux 데스크톱에서는 트레이 아이콘에 AppIndicator 지원이 필요하며, VoiceStudio를 다시 실행해도 창이 다시 열립니다.",
     "close_to_tray_failed": "이 설정을 저장하지 못했습니다. 다시 시도해 주세요.",
     "review_mode_on": "검토",
     "translate_agent": "에이전트 적합성",

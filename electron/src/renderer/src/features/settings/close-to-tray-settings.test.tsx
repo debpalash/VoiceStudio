@@ -57,3 +57,17 @@ it('keeps the confirmed value and tells the user when the main process cannot sa
   );
   expect(toggle).toBeChecked();
 });
+
+it('rolls overlapping failed saves back to the confirmed value, not an optimistic toggle', async () => {
+  withBridge();
+  mock.get.mockResolvedValue(false);
+  const rejects: Array<(e: Error) => void> = [];
+  mock.set.mockImplementation(() => new Promise((_, reject) => rejects.push(reject)));
+  render(<CloseToTraySettings />);
+  const toggle = await screen.findByRole('switch', { name: 'settings.close_to_tray' });
+  fireEvent.click(toggle);
+  fireEvent.click(toggle);
+  rejects.forEach((reject) => reject(new Error('disk')));
+  await waitFor(() => expect(mock.toastError).toHaveBeenCalledTimes(2));
+  expect(toggle).not.toBeChecked();
+});

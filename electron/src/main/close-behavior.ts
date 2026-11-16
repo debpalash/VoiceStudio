@@ -114,3 +114,11 @@ export function decideTerminalStop(context: { windowLive: boolean; hiddenToTray:
     flush: context.windowLive,
   };
 }
+
+/**
+ * Whether a Dock click (macOS `activate`) must bring the window back: it is gone,
+ * or hidden to the tray where a missing tray icon would leave no other way in.
+ */
+export function needsRestore(window: { live: boolean; visible: boolean }): boolean {
+  return !window.live || !window.visible;
+}
