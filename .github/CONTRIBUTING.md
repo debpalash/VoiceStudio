@@ -732,7 +732,10 @@ test-only PR. Docker Hub overview edits still publish through the small
     2026-11-14). Off by default, including for existing analytics users; metadata
     follows `config/diagnostics.json`. Electron main owns desktop uploads even
     when setup/backend fails; source/Docker and both native phones own their
-    respective consent. `SUPERMETRY_APP_HOST` is an explicit, default-unset operator
+    respective consent. Release CI receives the app ID and ingest key only from
+    GitHub Actions Secrets, never public repository variables or logged values;
+    fork builds receive no upstream app credentials.
+    `SUPERMETRY_APP_HOST` is an explicit, default-unset operator
     override; any other production host needs owner approval and documentation.
     The separate `diagnostics.sessionPings` build flag remains off by default and
     still requires diagnostics consent. Withdrawal stops delivery and invalidates queued reports.
