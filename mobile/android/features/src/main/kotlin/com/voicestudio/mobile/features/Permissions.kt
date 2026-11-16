@@ -29,14 +29,21 @@ import com.voicestudio.mobile.network.ClientFailure
         pendingFailure=null
         if(allowed) latest(failed) else failed(ClientFailure("mobile.permissions.denied"))
     }
-    if(rationaleOpen) AlertDialog(shape=MaterialTheme.shapes.large,onDismissRequest={rationaleOpen=false},text={
+    if(rationaleOpen) AlertDialog(shape=MaterialTheme.shapes.large,onDismissRequest={rationaleOpen=false;pendingFailure=null},text={
         // Match the iOS microphone purpose and routing explanation, using the same translated keys.
         val purpose=if(rationale=="mobile.permissions.microphone") tr("permissions.microphone_why")+"\n\n"+tr("mobile.local.privacy") else tr(rationale)
         Text(purpose,Modifier.verticalScroll(rememberScrollState()))
     },
-        confirmButton={TextButton(shape=MaterialTheme.shapes.small,onClick={rationaleOpen=false;pendingFailure=observeFailure();launcher.launch(permission)}) {Text(tr("mobile.android.continue"))}},
-        dismissButton={TextButton(shape=MaterialTheme.shapes.small,onClick={rationaleOpen=false}) {Text(tr("common.cancel"))}})
-    return { if(ContextCompat.checkSelfPermission(context,permission)==PackageManager.PERMISSION_GRANTED) latest(observeFailure()) else rationaleOpen=true }
+        confirmButton={TextButton(shape=MaterialTheme.shapes.small,onClick={rationaleOpen=false;launcher.launch(permission)}) {Text(tr("mobile.android.continue"))}},
+        dismissButton={TextButton(shape=MaterialTheme.shapes.small,onClick={rationaleOpen=false;pendingFailure=null}) {Text(tr("common.cancel"))}})
+    return {
+        // The rationale is part of this action, not a new permission to report.
+        // Keep even an observed OFF until the OS result; recreation falls back
+        // to restoreFailure without acquiring the user's later diagnostics grant.
+        val failed=observeFailure()
+        if(ContextCompat.checkSelfPermission(context,permission)==PackageManager.PERMISSION_GRANTED) latest(failed)
+        else {pendingFailure=failed;rationaleOpen=true}
+    }
 }
 /** Permission-gated work can retain its diagnostic owner through recording. */
 @Composable fun permissionAction(permission:String,rationale:String,failure:()->(Throwable)->Unit,restoreFailure:(Throwable)->Unit,granted:()->Unit):()->Unit =
