@@ -330,7 +330,7 @@ jobs:
       - name: Upload the unsigned Windows installer for SignPath
         id: upload-unsigned-installer
         if: env.SIGNPATH_ENABLED == 'true'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: signpath-unsigned-${{ matrix.platform }}-${{ matrix.arch }}
           retention-days: ${{ inputs.rehearsal && 3 || 7 }}
@@ -462,7 +462,7 @@ jobs:
           mkdir -p electron/release-signing
           printf '{"platform":"linux","arch":"%s","status":"not-applicable"}\n' "${{ matrix.arch }}" > "electron/release-signing/signing-linux-${{ matrix.arch }}.json"
       - name: Save the signing report
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: electron-signing-${{ matrix.platform }}-${{ matrix.arch }}
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
@@ -482,7 +482,7 @@ jobs:
             node tests/packaged-smoke.mjs --setup
           fi
       - name: Save installers and updater metadata for review
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: electron-release-${{ matrix.platform }}-${{ matrix.arch }}
           retention-days: ${{ env.ARTIFACT_RETENTION_DAYS }}
@@ -624,7 +624,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Rehearsal - save the release notes and checksums
         if: inputs.rehearsal == true
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: electron-rehearsal-notes
           retention-days: 3
