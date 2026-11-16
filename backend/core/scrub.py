@@ -203,8 +203,9 @@ def _scrub_url_queries(text: str) -> str:
 # A home-directory name. It may contain spaces (`C:\Users\Mary Jane Smith`), but
 # only when a separator or a closing quote follows (`'C:\\Users\\Mary Jane'` in an
 # OSError), so the match cannot run into the sentence after a path:
-# `/home/bob: Permission denied` keeps its words and redacts `/home/bob`.
-_HOME_NAME = r"(?:[^\\/\s\"':]+(?:\s[^\\/\s\"':]+)*(?=[\\/\"'])|[^\\/\s\"':]+)"
+# `/home/bob: Permission denied` keeps its words and redacts `/home/bob`. Only
+# spaces and tabs join words: a line break always ends the name.
+_HOME_NAME = r"(?:[^\\/\s\"':]+(?:[ \t][^\\/\s\"':]+)*(?=[\\/\"'])|[^\\/\s\"':]+)"
 
 _HOME_PATTERNS = (
     # repr() and JSON escape the separators, so an OSError or a log line can carry
