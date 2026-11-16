@@ -154,7 +154,40 @@ This beta adds separately opted-in automatic error reports, so failures can reac
 
 ## [0.5.9-beta.4] — 2026-11-16
 
-Tagged but never published; every change it contained ships in 0.5.9-beta.5.
+This beta was tagged but never published; its changes ship in 0.5.9-beta.5. It adds separately opted-in automatic error reports, so failures can reach the maintainers without a manual bug report. Reports stay off unless you allow them, and never include audio, text, files, names, credentials or logs.
+
+**Highlights**
+
+- Optional automatic error reports on desktop, phones and server installs, asked once with equal Allow / Keep off choices and switchable any time in Privacy
+- Stories can merge adjacent lines that share a speaker and compatible voice settings
+- Linux ROCm setup no longer downloads CUDA packages and keeps its installed PyTorch when resuming
+- GPU readiness reflects a failed self-test instead of reporting the GPU ready
+- Phone dub exports check free space first, avoiding false low-space errors on iOS
+
+**Upgrading:** install over the existing app or use Settings → Updates → Beta. Voices, projects, settings and installed models stay in place.
+
+### Added
+
+- Stories can merge adjacent lines with the same speaker and compatible voice/speed settings while preserving text and inline directions — thanks [cvak on Discord](https://discord.com/channels/1497926884707799144/1497926886020354102/1566929293853073429)! (#4161)
+- Added separately opted-in failure reporting through Supermetry app intake across desktop, mobile and server installs, with private metadata and consent-controlled retries (#4137)
+
+### Docs
+
+- Document the enforced up-to-date merge gate while the repository cannot use GitHub merge queues (#4165)
+
+### Fixed
+
+- Phone dubbing clip/stem exports check output space on both platforms and avoid false low-space errors on iOS (#4168)
+- Linux ROCm setup skips CUDA downloads and preserves its installed PyTorch stack on resume (#4167) — thanks @khryztiam!
+- GPU readiness and in-process routing reflect completed self-test failures (#4166) — thanks @khryztiam!
+- CLA audits keep exempt accounts visible for provenance review without reporting a missing required signature (#4164)
+- Release rehearsals show measured Android APK signing, and tagged downloads require matching signature evidence (#4163)
+- Manual Windows crash reports retain the faulting thread ahead of verbose status tails — thanks @renaldyramadani123-code and @freemood36-svg! (#4162)
+
+### CI
+
+- Fixed Android screenshot capture waiting behind the optional error-report prompt (#4202) — thanks @velixio!
+- Keep iOS voice-search and download checks reliable across saved model choices (#4171)
 
 ## [0.5.9-beta.3] — 2026-11-15
 
