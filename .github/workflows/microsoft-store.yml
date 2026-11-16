@@ -126,8 +126,8 @@ jobs:
         run: bun run check:electron
       - name: Build signed Microsoft Store installer
         env:
-          SUPERMETRY_APP_ID: ${{ vars.SUPERMETRY_APP_ID || secrets.SUPERMETRY_APP_ID }}
-          SUPERMETRY_INGEST_KEY: ${{ vars.SUPERMETRY_INGEST_KEY || secrets.SUPERMETRY_INGEST_KEY }}
+          SUPERMETRY_APP_ID: ${{ secrets.SUPERMETRY_APP_ID }}
+          SUPERMETRY_INGEST_KEY: ${{ secrets.SUPERMETRY_INGEST_KEY }}
           SUPERMETRY_APP_HOST: ${{ vars.SUPERMETRY_APP_HOST || secrets.SUPERMETRY_APP_HOST }}
           CSC_LINK: ${{ secrets.ELECTRON_WINDOWS_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.ELECTRON_WINDOWS_CSC_KEY_PASSWORD }}
