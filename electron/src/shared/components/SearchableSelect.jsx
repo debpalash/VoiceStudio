@@ -427,9 +427,12 @@ function ClassicSearchableSelect({
                         ].join(' ')}
                         onMouseEnter={() => setHighlight(idx)}
                         onMouseDown={(e) => {
+                          // Keep the search focused, but leave the menu mounted
+                          // until click. Committing on press unmounted the row
+                          // before release and did not support click activation.
                           e.preventDefault();
-                          commit(it.o);
                         }}
+                        onClick={() => commit(it.o)}
                         role="option"
                         aria-selected={selected}
                       >
