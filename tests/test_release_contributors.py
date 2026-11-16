@@ -156,3 +156,100 @@ def test_the_release_workflow_passes_the_repository_to_both_prepare_calls():
     calls = [l for l in workflow.splitlines() if "prepare_electron_release.py --assets" in l]
     assert len(calls) == 4  # tag and rehearsal variants of both calls
     assert all('--repo "$GITHUB_REPOSITORY"' in l for l in calls)
+
+
+@pytest.mark.parametrize("answer", ["", "\n", "v0.5.6\n", "v0.5.6 \n"])
+def test_an_answer_without_a_previous_release_skips_credits_instead_of_crashing(
+    release, answer, capsys
+):
+    """Credits must never block a release, whatever `gh api --jq` answers.
+
+    The helper split the answer and indexed `latest[1]`, so an empty result (no
+    published release yet) or a null `published_at` raised IndexError. That is
+    outside the caller's `(CalledProcessError, OSError)` guard, so the release
+    preparation aborted even though the intent is documented in the caller.
+    """
+
+    class Gh(FakeGh):
+        def __call__(self, *args):
+            if str(args[1]).endswith("/releases/latest"):
+                return answer
+            return super().__call__(*args)
+
+    assert release.contributors_section("debpalash/VoiceStudio", "v0.5.9", Gh()) == ""
+    assert "Contributors section skipped" in capsys.readouterr().err
+
+
+NOTES = "## [1.2.3] — 2099-01-01\n\n### Fixed\n\n- A fix (#1)\n"
+
+
+def test_any_credits_failure_warns_instead_of_blocking_the_notes(release, monkeypatch, capsys):
+    """The guard covers every failure, not only the ones the GitHub CLI raises.
+
+    Assembling the block can also fail on an unexpected answer shape or a parsing
+    bug, and a release whose notes are ready must still be prepared: the omission
+    is reported as a warning instead.
+    """
+
+    def boom(*args, **kwargs):
+        raise ValueError("unexpected gh answer")
+
+    monkeypatch.setattr(release, "contributors_section", boom)
+
+    assert release.notes_with_contributors(NOTES, "owner/repo", "v1.2.3") == NOTES
+    assert "Contributors section skipped" in capsys.readouterr().err
+
+
+def test_a_hand_written_contributors_block_wins(release, monkeypatch, capsys):
+    def unexpected(*args, **kwargs):
+        raise AssertionError("the automatic block must not be assembled")
+
+    monkeypatch.setattr(release, "contributors_section", unexpected)
+    written = NOTES + "\n### Contributors\n\nThanks @someone for the report.\n"
+
+    assert release.notes_with_contributors(written, "owner/repo", "v1.2.3") == written
+    assert capsys.readouterr().err == ""
+
+
+def test_a_successful_block_is_appended_after_the_notes(release, monkeypatch):
+    monkeypatch.setattr(release, "contributors_section", lambda *a, **k: "### Contributors\n\nThanks @dev.\n")
+
+    assert release.notes_with_contributors(NOTES, "owner/repo", "v1.2.3") == (
+        NOTES + "\n### Contributors\n\nThanks @dev.\n"
+    )
+
+
+def test_prepare_writes_its_outputs_when_credits_fail(release, monkeypatch, tmp_path, capsys):
+    """End to end: a credits failure leaves the notes and the sums intact.
+
+    `prepare` is the entry point the release workflow calls, so the guard has to
+    hold there and not only in the helper: the notes keep the changelog text, the
+    checksum file is still written, and the omission is reported as a warning.
+    """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "package.json").write_text('{"version": "0.5.9"}', encoding="utf-8")
+    (tmp_path / "CHANGELOG.md").write_text(
+        "# Changelog\n\n## [0.5.9] — 2026-11-15\n\n### Fixed\n\n- A fix (#1)\n", encoding="utf-8"
+    )
+    assets = tmp_path / "assets"
+    assets.mkdir()
+    installer = assets / "VoiceStudio-0.5.9-mac-arm64.dmg"
+    installer.write_bytes(b"installer")
+
+    monkeypatch.setattr(release, "verify_release", lambda *args, **kwargs: None)
+
+    def boom(*args, **kwargs):
+        raise ValueError("unexpected gh answer")
+
+    monkeypatch.setattr(release, "contributors_section", boom)
+
+    missing: list[str] = []
+    release.prepare(assets, "v0.5.9", repo="owner/repo", missing=missing)
+
+    notes = (assets / "RELEASE_NOTES.md").read_text(encoding="utf-8")
+    assert "A fix (#1)" in notes
+    assert "Contributors" not in notes
+    sums = (assets / "SHA256SUMS.txt").read_text(encoding="utf-8")
+    assert "VoiceStudio-0.5.9-mac-arm64.dmg" in sums
+    assert "Contributors section skipped" in capsys.readouterr().err
+    assert "installer mac-x64.dmg" in missing

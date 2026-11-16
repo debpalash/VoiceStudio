@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib.util
+import json
 import os
 import re
 import secrets
@@ -18,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "check_commit_identities.py"
 HASH_FILE = ROOT / "scripts" / "blocked_identity_hashes.txt"
 WORKFLOW = ROOT / ".github" / "workflows" / "commit-identity.yml"
+IDENTITY_CHECK = ROOT / ".github" / "scripts" / "identity_check.py"
 CLEAN = ("Clean Dev", "12345+clean@users.noreply.github.com")
 
 
@@ -372,3 +374,50 @@ def test_bot_suffixed_first_names_remain_blocked(repo, name, identity):
     result = check(*_only(sha))
     assert result.returncode == 1
     assert "AI agent identity" in result.stdout
+
+
+def test_failed_evaluation_resolves_the_required_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`Commit identity policy` must never be left `pending` by a failed evaluation.
+
+    `identity_check.run` writes `pending` before it evaluates, and GitHub does not
+    retry a failed job. An exception on a recoverable race (the pull request base
+    or head moved while the checkout was taken) would therefore leave a required
+    status pending forever: the merge stays blocked and the only hint is a log.
+    """
+    spec = importlib.util.spec_from_file_location("identity_check", IDENTITY_CHECK)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    recorded: list[tuple] = []
+    monkeypatch.setattr(
+        module, "set_status",
+        lambda gh, sha, state, description, **kwargs: recorded.append((sha, state, description)),
+    )
+
+    def boom(gh: object, event: dict, root: Path | None = None) -> None:
+        raise RuntimeError("PR base changed since this policy checkout; run a fresh target workflow")
+
+    monkeypatch.setattr(module, "run", boom)
+    monkeypatch.setattr(module, "GitHub", lambda *args, **kwargs: object())
+
+    head = "b" * 40
+    event_file = tmp_path / "event.json"
+    event_file.write_text(json.dumps({"pull_request": {"number": 7, "head": {"sha": head}}}), encoding="utf-8")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "pull_request_target")
+    monkeypatch.setenv("GITHUB_EVENT_PATH", str(event_file))
+    monkeypatch.setenv("GITHUB_TOKEN", "token")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+
+    with pytest.raises(RuntimeError):
+        module.main()
+
+    assert recorded, "the failed evaluation wrote no status at all"
+    sha, state, description = recorded[-1]
+    assert sha == head
+    assert state == "error", f"a failed evaluation must not leave a pending required status: {recorded}"
+    # A re-run replays the same event payload, including the base commit that
+    # already lost the race, so the status has to ask for a new commit instead.
+    assert "new commit" in description.lower(), description
+    assert "re-run" not in description.lower(), description

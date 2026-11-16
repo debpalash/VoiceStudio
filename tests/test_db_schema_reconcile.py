@@ -9,6 +9,8 @@ table — so without reconciliation the new columns never land.
 """
 import sqlite3
 
+import pytest
+
 from core.db import _BASE_SCHEMA, _reconcile_additive_columns
 
 
@@ -87,3 +89,43 @@ def test_reconcile_is_idempotent_and_additive_only(tmp_path):
     assert after_first == after_second
     # additive only — the original legacy columns are never dropped
     assert {"id", "name", "instruct", "language"} <= after_second
+
+
+def _indexes(db, table="voice_profiles"):
+    with sqlite3.connect(str(db)) as conn:
+        return {row[1] for row in conn.execute(f"PRAGMA index_list({table})")}
+
+
+def test_schema_only_path_creates_the_voice_sync_id_index(tmp_path, monkeypatch):
+    """Both schema paths must enforce one cloud-sync identity per voice.
+
+    Alembic 0015 creates `idx_voice_profiles_sync_id`; a bundled install whose
+    interpreter cannot run alembic only gets `_BASE_SCHEMA` plus the reconciler.
+    The index cannot live in `_BASE_SCHEMA` (an index over a column that a
+    legacy table has not been given yet aborts the whole `executescript`), so
+    the schema-only path has to create it after the additive reconcile — without
+    this, duplicate sync ids are accepted locally and only surface later as a
+    cloud-sync conflict.
+    """
+    db = tmp_path / "sync-index.db"
+    with sqlite3.connect(str(db)) as conn:
+        conn.executescript(_LEGACY_PROFILES)
+        # alembic stamped at a revision that no longer exists → upgrade raises
+        conn.execute("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)")
+        conn.execute("INSERT INTO alembic_version VALUES ('0003_preview_removed_rev')")
+        conn.commit()
+
+    monkeypatch.setattr("core.db.DB_PATH", str(db))
+    from core.db import init_db
+
+    init_db()
+
+    assert "idx_voice_profiles_sync_id" in _indexes(db)
+    with sqlite3.connect(str(db)) as conn:
+        # partial index: unassigned identities (NULL) may repeat…
+        conn.execute("INSERT INTO voice_profiles(id, name, sync_id) VALUES ('a', 'A', NULL)")
+        conn.execute("INSERT INTO voice_profiles(id, name, sync_id) VALUES ('b', 'B', NULL)")
+        # …but a claimed one may not
+        conn.execute("INSERT INTO voice_profiles(id, name, sync_id) VALUES ('c', 'C', 'sync-1')")
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute("INSERT INTO voice_profiles(id, name, sync_id) VALUES ('d', 'D', 'sync-1')")

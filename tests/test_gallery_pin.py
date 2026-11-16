@@ -7,6 +7,10 @@ import importlib.util
 import subprocess
 from pathlib import Path
 
+import yaml
+
+_ROOT = Path(__file__).resolve().parents[1]
+
 _SPEC = importlib.util.spec_from_file_location(
     "gallery_pin", Path(__file__).resolve().parents[1] / ".github" / "scripts" / "gallery_pin.py"
 )
@@ -60,3 +64,30 @@ def test_unmerged_branch_commit_is_refused(tmp_path):
 def test_unknown_commit_is_refused(tmp_path):
     repo, (seed, mid, tip), _ = _repo(tmp_path)
     assert "not a commit" in gallery_pin.check(seed, "f" * 40, str(repo), "main")
+
+
+def test_workflow_validates_with_the_base_commit_checker():
+    """A pull request must not be able to vouch for its own pin.
+
+    `gallery-pin.yml` triggers on `.github/scripts/gallery_pin.py` itself, so a
+    single commit could move the submodule and weaken `check()` together — and
+    the weakened copy would be the code that validates the move. The workflow
+    therefore runs the checker as it exists at the pull request's base commit;
+    `cla.yml` gets the same property by sparse-checking `.github/scripts` from the
+    base tree.
+    """
+    workflow = yaml.safe_load((_ROOT / ".github/workflows/gallery-pin.yml").read_text(encoding="utf-8"))
+    run = workflow["jobs"]["pin"]["steps"][-1]["run"]
+    assert 'git show "$BASE:.github/scripts/gallery_pin.py"' in run, (
+        "the checker must be read from the pull request's base commit"
+    )
+    assert "python3 .github/scripts/gallery_pin.py" not in run, (
+        "running the worktree copy lets a PR edit the checker that validates it"
+    )
+    assert 'python3 "$RUNNER_TEMP/gallery_pin.py"' in run
+    # Shell redirection truncates the target even when the command fails, so an
+    # extraction failure would leave an empty script that exits 0 and validates
+    # nothing. The step has to stop instead.
+    assert "cannot validate the pin" in run, (
+        "a missing base copy of the checker must fail the step, not validate nothing"
+    )

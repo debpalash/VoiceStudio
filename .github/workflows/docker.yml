@@ -102,9 +102,13 @@ on:
         type: boolean
         default: false
 
+# Least privilege: the registry-write token is granted on the three publishing
+# jobs below instead of workflow-wide, so a job that never pushes does not hold it.
+# Steps inside those jobs, such as release-ref validation and source-commit
+# resolution, still run with the job's token; a new job that only reads belongs at
+# the workflow default.
 permissions:
   contents: read
-  packages: write
 
 # Only the newest main push needs to build the rolling :latest/:main images, so a
 # newer push cancels an older one. Releases and manual backfills never cancel
@@ -128,6 +132,9 @@ jobs:
     # Only version releases publish images; other release tags are ignored.
     if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -294,6 +301,9 @@ jobs:
     # Only version releases publish images; other release tags are ignored.
     if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -458,6 +468,9 @@ jobs:
     # Only version releases publish images; other release tags are ignored.
     if: github.event_name != 'release' || startsWith(github.event.release.tag_name, 'v')
     runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

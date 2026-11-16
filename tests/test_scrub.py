@@ -26,6 +26,27 @@ from core.scrub import REDACTED, scrub_provider_error, scrub_text
         # Windows paths normalized to forward slashes (file URLs, traces)
         ("C:/Users/erin/AppData/Local/OmniVoice/app.log", "~/AppData/Local/OmniVoice/app.log"),
         ("file:///D:/Users/frank/voice.wav", "file:///~/voice.wav"),
+        # repr()/JSON escaping doubles the separators, which is how an OSError
+        # message and a JSON log line render a Windows path.
+        (
+            r"[Errno 13] Permission denied: 'C:\\Users\\grace\\models\\weights.bin'",
+            r"[Errno 13] Permission denied: '~\\models\\weights.bin'",
+        ),
+        # A Windows account name can contain a space.
+        (r"C:\Users\Mary Jane\Documents\out.wav", r"~\Documents\out.wav"),
+        ("/Users/Mary Jane/Library/Logs/app.log", "~/Library/Logs/app.log"),
+        # ...or several, and an escaped OSError path can end at the home itself.
+        (r"C:\\Users\\Mary Jane Smith\\models", r"~\\models"),
+        (r"[Errno 2] No such file: 'C:\\Users\\Mary Jane'", r"[Errno 2] No such file: '~'"),
+        ('"/home/Mary Jane Smith" is read-only', '"~" is read-only'),
+        ("/Users/Mary\u00a0Jane/file", "~/file"),
+        (r"C:\\Users\\O'Brien\\x", r"~\\x"),
+        ("'/home/o'brien'", "'~'"),
+        # A line break ends the name, so the next log line keeps its start.
+        ("/home/bob\nRetry/path", "~\nRetry/path"),
+        # The words after a short path stay: only the path is redacted.
+        ("/home/bob: Permission denied", "~: Permission denied"),
+        (r"C:\Users\Mary was not found", r"~ was not found"),
     ],
 )
 def test_home_paths_redacted(raw, expected):
