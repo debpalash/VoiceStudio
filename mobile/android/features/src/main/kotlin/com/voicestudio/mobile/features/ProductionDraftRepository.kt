@@ -10,14 +10,25 @@ import java.util.UUID
 /** Private editor checkpoints, separate from named projects and rendered audio. */
 class ProductionDraftRepository(private val root: File) {
     private val json=Json {ignoreUnknownKeys=true;encodeDefaults=true}
+    // AtomicFile itself does not synchronize separate instances. A recreated
+    // editor must not open/delete the replacement an old IO writer is finishing.
+    private companion object {val ioLock=Any()}
 
     private fun checkpoint(id: String): AtomicFile {
         require(UUID.fromString(id).toString()==id)
         return AtomicFile(File(root,"$id.json"))
     }
 
-    @Synchronized
-    fun save(project: ProductionProject): String {
+    fun save(project: ProductionProject): String = synchronized(ioLock) {
+        saveCheckpoint(project)
+    }
+
+    /** Recheck editor ownership after waiting for an earlier disk operation. */
+    fun saveIfCurrent(project: ProductionProject,isCurrent: ()->Boolean): String? = synchronized(ioLock) {
+        if(isCurrent()) saveCheckpoint(project) else null
+    }
+
+    private fun saveCheckpoint(project: ProductionProject): String {
         val file=checkpoint(project.id)
         val bytes=json.encodeToString(ProductionProject.serializer(),project).toByteArray(Charsets.UTF_8)
         if(!root.isDirectory&&!root.mkdirs()&&!root.isDirectory) throw IOException("Draft directory is unavailable")
@@ -36,8 +47,7 @@ class ProductionDraftRepository(private val root: File) {
         return project.id
     }
 
-    @Synchronized
-    fun restore(saved: String): ProductionProject {
+    fun restore(saved: String): ProductionProject = synchronized(ioLock) {
         // Existing saved instances used the complete JSON value. Keep those
         // edits intact; their next successful save migrates to the UUID form.
         val project=if(saved.trimStart().startsWith("{")) {
@@ -47,11 +57,10 @@ class ProductionDraftRepository(private val root: File) {
             json.decodeFromString(ProductionProject.serializer(),value).also {require(it.id==saved)}
         }
         require(UUID.fromString(project.id).toString()==project.id)
-        return project
+        project
     }
 
-    @Synchronized
-    fun delete(id: String) {
+    fun delete(id: String) = synchronized(ioLock) {
         val file=checkpoint(id)
         file.delete()
         val base=file.baseFile
