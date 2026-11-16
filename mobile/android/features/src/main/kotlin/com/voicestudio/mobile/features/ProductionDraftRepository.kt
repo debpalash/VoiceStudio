@@ -23,7 +23,7 @@ class ProductionDraftRepository(private val root: File) {
         var generation=0L
         val owners=mutableMapOf<String,OwnerRecord>()
     }
-    data class EditorSnapshot(val project: ProductionProject,val durable: String?,val activityReference: String?,val retired: Set<String>)
+    data class EditorSnapshot(val project: ProductionProject,val durable: String?,val activityReference: String?,val retired: Set<String>,val legacyRecovery: String?=null)
     class Owner internal constructor(internal val key: String,internal val generation: Long,internal val kind: String,var previous: EditorSnapshot?)
     private class OwnerRecord(val generation: Long,var snapshot: ()->EditorSnapshot?,var references: ()->Set<String>)
 

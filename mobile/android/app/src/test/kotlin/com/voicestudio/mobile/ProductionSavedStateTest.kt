@@ -605,7 +605,7 @@ class ProductionSavedStateTest {
                 session.attach {failures+=it}
                 session.initialize(Json.encodeToString(ProductionProject.serializer(),project))
                 assertTrue(session.state.loading)
-                assertNull("Legacy manuscript JSON must never be republished in the Bundle",session.savedHandle())
+                assertEquals("Existing inline recovery data stays until migration is durable",Json.encodeToString(ProductionProject.serializer(),project),session.savedHandle())
             }
             compose.waitUntil(5000) {compose.waitForIdle();!session.state.loading&&session.state.value==project}
             awaitCheckpoint(temporary.root,project)
@@ -778,7 +778,7 @@ class ProductionSavedStateTest {
         } finally {compose.runOnIdle {coldStore.clear()}}
     }
 
-    @Test fun legacyLoadWithNullActivityReferenceRecoversAfterMigrationCompletes() {
+    @Test fun legacyLoadKeepsItsActivityRecoverySourceUntilMigrationCompletes() {
         val directory=temporary.newFolder("legacy-null-reference")
         val repository=ProductionDraftRepository(directory)
         val project=fixture("stories").copy(title="")
@@ -815,9 +815,8 @@ class ProductionSavedStateTest {
             compose.runOnIdle {
                 assertTrue("The legacy parse must still be waiting on IO",state.loading)
                 val values=savedStrings(registry.performSave())
-                captured=values.firstOrNull {it==project.id}
-                assertNull("Pre-decode Activity state has no known UUID",captured)
-                assertFalse(legacy in values)
+                captured=values.firstOrNull {it==legacy||it==project.id}
+                assertEquals("Pre-decode state must retain the existing legacy recovery source",legacy,captured)
                 assertFalse(project.script in values)
             }
         } finally {release.countDown();disk.join(5000)}
@@ -832,7 +831,7 @@ class ProductionSavedStateTest {
                 coldStore.put("cold-legacy",cold);cold.initialize(captured)
             }
             compose.waitUntil(5000) {compose.waitForIdle();!cold.state.loading}
-            assertTrue("A completed migration must survive loss of every RAM owner and a null Activity reference",cold.state.value==project)
+            assertTrue("A completed migration must survive loss of every RAM owner",cold.state.value==project)
         } finally {compose.runOnIdle {oldStore.clear();coldStore.clear()}}
     }
 
@@ -953,4 +952,164 @@ class ProductionSavedStateTest {
         assertEquals(project,state.value)
         assertTrue(invalidRoot.isFile)
     }
+
+    @Test fun editBackToEarlierValueRewritesPartlyCommittedSameIdCheckpoint() {
+        val directory=temporary.newFolder("same-id-edit-back")
+        val repository=ProductionDraftRepository(directory)
+        val store=androidx.lifecycle.ViewModelStore()
+        val failures=mutableListOf<Throwable>()
+        lateinit var session:ProductionDraftSession
+        compose.setContent {}
+        val first=fixture("stories").copy(title="")
+        try {
+            compose.runOnIdle {
+                session=ProductionDraftSession(repository,"stories","Untitled")
+                store.put("edit-back",session);session.attach {failures+=it};session.initialize(null)
+            }
+            awaitEditor(session.state)
+            compose.runOnIdle {session.state.value=first}
+            awaitCheckpoint(directory,first)
+            // Checkpoint publication succeeds, then the independent active
+            // pointer fails. The last acknowledged cache is still first.
+            val pending=File(directory,".active-stories.new").apply {mkdirs()}
+            val blocker=File(pending,"preserve").apply {writeText("Controlled publication failure")}
+            val replacement=first.copy(script="A replacement committed under the same UUID.")
+            compose.runOnIdle {session.state.value=replacement}
+            compose.waitUntil(5000) {compose.waitForIdle();failures.isNotEmpty()}
+            assertTrue("The failed save really replaced the same-ID checkpoint",repository.restore(first.id)==replacement)
+            assertTrue(blocker.delete());assertTrue(pending.delete())
+            compose.runOnIdle {session.state.value=first}
+            // This is a genuine cold-disk assertion, not a live state echo.
+            awaitCheckpoint(directory,first)
+            assertTrue("Cold recovery must match the visible edit-back",ProductionDraftRepository(directory).restore(first.id)==first)
+        } finally {compose.runOnIdle {store.clear()}}
+    }
+
+    private fun legacyProcessLossBeforeDurability(afterDecode:Boolean,switchProject:Boolean=false) {
+        val directory=temporary.newFolder("legacy-interrupted-$afterDecode-$switchProject")
+        val entered=CountDownLatch(1)
+        val release=CountDownLatch(1)
+        val block=AtomicBoolean(afterDecode)
+        val draftRoot=object:File(directory.path) {
+            override fun isDirectory():Boolean {
+                if(block.compareAndSet(true,false)) {
+                    entered.countDown()
+                    if(!release.await(10,TimeUnit.SECONDS)) throw java.io.IOException("Controlled migration write was not released")
+                }
+                return super.isDirectory()
+            }
+        }
+        val repository=ProductionDraftRepository(draftRoot)
+        val project=fixture("stories").copy(title="")
+        val legacy=Json.encodeToString(ProductionProject.serializer(),project)
+        val oldStore=androidx.lifecycle.ViewModelStore()
+        val oldOwner=object:ViewModelStoreOwner {override val viewModelStore=oldStore}
+        var captured:String?=null
+        lateinit var registry:SaveableStateRegistry
+        lateinit var state:ProductionProjectState
+        val failures=mutableListOf<Throwable>()
+        val disk=if(afterDecode) null else Thread {
+            val heldRoot=object:File(temporary.root,"hold-legacy-parse") {
+                override fun isDirectory():Boolean {
+                    entered.countDown()
+                    if(!release.await(10,TimeUnit.SECONDS)) throw java.io.IOException("Controlled parse wait was not released")
+                    return super.isDirectory()
+                }
+            }
+            ProductionDraftRepository(heldRoot).save(fixture("audiobook"))
+        }.apply {isDaemon=true;start()}
+        if(!afterDecode) assertTrue(entered.await(5,TimeUnit.SECONDS))
+        val coldStore=androidx.lifecycle.ViewModelStore()
+        lateinit var cold:ProductionDraftSession
+        try {
+            compose.setContent {
+                CompositionLocalProvider(LocalViewModelStoreOwner provides oldOwner) {
+                    remember {
+                        ProductionDraftSession(repository,"stories","Untitled").also {
+                            oldStore.put("production-draft:stories:${draftRoot.absolutePath}",it)
+                            it.initialize(legacy)
+                        }
+                    }
+                    registry=LocalSaveableStateRegistry.current!!
+                    state=rememberProductionProject("stories","Untitled",draftRoot,{failures+=it})
+                }
+            }
+            if(afterDecode) compose.waitUntil(5000) {compose.waitForIdle();entered.count==0L && !state.loading}
+            val replacement=fixture("stories").copy(title="",script="A genuinely new explicit draft.")
+            compose.runOnIdle {
+                assertEquals(!afterDecode,state.loading)
+                if(switchProject) state.value=replacement
+                val saved=savedStrings(registry.performSave())
+                captured=saved.firstOrNull {it==legacy||it==project.id||it==replacement.id}
+                if(switchProject) {
+                    assertEquals("New must never carry the old legacy manuscript",replacement.id,captured)
+                    assertFalse(legacy in saved)
+                }
+                oldStore.clear()
+                // Simulate losing every RAM owner/handoff while IO is still
+                // held. Superseded writers cannot finish recovery for us.
+                repository.release(repository.acquireOwner("stories") {null})
+            }
+            release.countDown();disk?.join(5000)
+            if(switchProject) return
+            compose.runOnIdle {
+                cold=ProductionDraftSession(ProductionDraftRepository(directory),"stories","Untitled")
+                coldStore.put("cold-interrupted-legacy",cold);cold.attach {failures+=it};cold.initialize(captured)
+            }
+            compose.waitUntil(5000) {compose.waitForIdle();!cold.state.loading||cold.state.loadFailed}
+            assertFalse("Legacy recovery cannot depend on a cancelled migration finishing",cold.state.loadFailed)
+            assertTrue("The pre-existing manuscript must survive process loss before migration is durable",cold.state.value==project)
+            awaitCheckpoint(directory,project)
+            compose.waitUntil(5000) {compose.waitForIdle();cold.savedHandle()==project.id}
+        } finally {
+            release.countDown();disk?.join(5000)
+            compose.runOnIdle {oldStore.clear();coldStore.clear()}
+        }
+    }
+
+    @Test fun legacyActivitySaveSurvivesProcessLossWhileParseWaits()=legacyProcessLossBeforeDurability(false)
+    @Test fun legacyActivitySaveSurvivesProcessLossWhileFirstWriteWaits()=legacyProcessLossBeforeDurability(true)
+    @Test fun explicitNewDoesNotSavePreviousLegacyPayload()=legacyProcessLossBeforeDurability(true,true)
+
+
+    @Test fun pendingLegacyMigrationKeepsRecoverySourceThroughLiveOwnerHandoff() {
+        val entered=CountDownLatch(1)
+        val release=CountDownLatch(1)
+        val block=AtomicBoolean(true)
+        val directory=object:File(temporary.root,"legacy-live-handoff") {
+            override fun isDirectory():Boolean {
+                if(block.compareAndSet(true,false)) {
+                    entered.countDown()
+                    if(!release.await(10,TimeUnit.SECONDS)) throw java.io.IOException("Controlled legacy handoff was not released")
+                }
+                return super.isDirectory()
+            }
+        }
+        val repository=ProductionDraftRepository(directory)
+        val project=fixture("stories").copy(title="")
+        val legacy=Json.encodeToString(ProductionProject.serializer(),project)
+        val oldStore=androidx.lifecycle.ViewModelStore()
+        val nextStore=androidx.lifecycle.ViewModelStore()
+        lateinit var old:ProductionDraftSession
+        lateinit var next:ProductionDraftSession
+        compose.setContent {}
+        try {
+            compose.runOnIdle {
+                old=ProductionDraftSession(repository,"stories","Untitled")
+                oldStore.put("legacy-old",old);old.initialize(legacy)
+            }
+            compose.waitUntil(5000) {compose.waitForIdle();entered.count==0L && !old.state.loading}
+            compose.runOnIdle {
+                oldStore.clear()
+                next=ProductionDraftSession(repository,"stories","Untitled")
+                nextStore.put("legacy-new",next);next.initialize(null)
+                assertTrue("A live owner keeps the complete decoded draft",next.state.value==project)
+                assertEquals("A handoff cannot retire the only recovery source before IO commits",legacy,next.savedHandle())
+            }
+            release.countDown()
+            awaitCheckpoint(directory,project)
+            compose.waitUntil(5000) {compose.waitForIdle();next.savedHandle()==project.id}
+        } finally {release.countDown();compose.runOnIdle {oldStore.clear();nextStore.clear()}}
+    }
+
 }

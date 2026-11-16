@@ -170,7 +170,11 @@ keeps long Stories and Audiobook manuscripts in a scrolling editor and retains
 the complete local draft and its settings across activity recreation. Checkpoints
 are read and written off the UI thread. Rotation keeps pending edits and retries
 failed writes; after process death, the last complete checkpoint remains
-recoverable through a small local reference. A failed load offers Retry or an
+recoverable through a small local reference. New drafts save only that reference.
+An older app's existing inline recovery snapshot is retained temporarily while
+its checkpoint migration is pending, then replaced by the durable reference;
+explicitly starting or selecting a different project does not carry that old
+snapshot forward. A failed load offers Retry or an
 explicit new draft without deleting the unreadable checkpoint. Retired unsaved
 drafts are removed only after their known recovery references are released;
 unrecognized files are preserved. Deleting a saved project also removes its draft

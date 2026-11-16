@@ -44,7 +44,7 @@ class ProductionProjectState internal constructor(initial: ProductionProject,pri
     override fun component2(): (ProductionProject)->Unit = {value=it}
 }
 
-/** Only a reference enters the Activity Bundle; manuscripts stay in the session or on disk. */
+/** New drafts save a reference; existing legacy JSON stays until migration is durable. */
 private data class DraftReference(val saved: String?)
 
 class ProductionDraftSession(private val repository: ProductionDraftRepository,private val kind: String,private val untitled: String): ViewModel() {
@@ -57,6 +57,7 @@ class ProductionDraftSession(private val repository: ProductionDraftRepository,p
     @Volatile private var initialized=false
     @Volatile private var selected=false
     private var saved: String?=null
+    private var legacyRecovery: String?=null
     private var loadRunning=false
     private var closed=false
     private var failure: Pair<Any,(Throwable)->Unit>?=null
@@ -73,10 +74,16 @@ class ProductionDraftSession(private val repository: ProductionDraftRepository,p
                 val project=state.value
                 try {
                     if(project!=written) {
+                        // A checkpoint can commit before active publication fails
+                        // or ownership changes. The old ACK no longer proves disk.
+                        written=null
                         val handle=withContext(Dispatchers.IO) {
                             repository.saveOwned(project,owner) {state.value==project}
                         }
-                        if(handle!=null&&repository.owns(owner)) {durable=handle;written=project;activeReferenceReady=true}
+                        if(handle!=null&&repository.owns(owner)) {
+                            durable=handle;written=project;activeReferenceReady=true
+                            if(legacyRecovery!=null) {saved=handle;legacyRecovery=null}
+                        }
                     } else if(!activeReferenceReady) {
                         activeReferenceReady=withContext(Dispatchers.IO) {
                             repository.activateOwned(project,owner) {state.value==project}
@@ -90,15 +97,18 @@ class ProductionDraftSession(private val repository: ProductionDraftRepository,p
     }
 
     private fun snapshot(): ProductionDraftRepository.EditorSnapshot? =
-        if(initialized&&selected&&!state.loading) ProductionDraftRepository.EditorSnapshot(state.value,durable,activityReference,retired.toSet()) else null
+        if(initialized&&selected&&!state.loading) ProductionDraftRepository.EditorSnapshot(state.value,durable,activityReference,retired.toSet(),legacyRecovery) else null
     private fun referenceIds()=if(initialized&&selected&&!state.loading) setOfNotNull(state.value.id,durable,activityReference) else setOfNotNull(durable,activityReference)
 
     fun initialize(reference: String?) {
         if(initialized) return
         initialized=true;saved=reference
+        legacyRecovery=reference?.takeIf {it.trimStart().startsWith("{")}
         val inherited=owner.previous
         owner.previous=null
         if(inherited!=null) {
+            legacyRecovery=inherited.legacyRecovery
+            saved=legacyRecovery ?: inherited.durable
             state.replace(inherited.project);durable=inherited.durable;activityReference=inherited.activityReference
             retired.addAll(inherited.retired);selected=true;state.loading=false;flush();return
         }
@@ -135,7 +145,7 @@ class ProductionDraftSession(private val repository: ProductionDraftRepository,p
         if(closed||loadRunning||!state.loadFailed||!repository.owns(owner)) return
         // Explicit recovery starts another UUID. The unreadable old file is
         // not a retirement candidate and is never overwritten or deleted.
-        saved=null;durable=null;written=null;activeReferenceReady=false
+        saved=null;legacyRecovery=null;durable=null;written=null;activeReferenceReady=false
         state.replace(ProductionProject(kind=kind,title=untitled))
         selected=true;state.loadFailed=false;state.loading=false;flush()
     }
@@ -144,12 +154,17 @@ class ProductionDraftSession(private val repository: ProductionDraftRepository,p
         if(closed||!repository.owns(owner)) return
         require(project.kind==kind)
         val old=state.value
+        if(old.id!=project.id&&legacyRecovery!=null) {legacyRecovery=null;saved=null}
         if(old.id!=project.id&&old.title.isBlank()) retired.add(old.id)
         retired.remove(project.id)
         selected=true;state.replace(project);flush()
     }
 
     fun savedHandle(): String? {
+        // Older apps already placed this exact JSON in Activity state. Keep
+        // that recovery source through parse/write waits and live handoffs;
+        // dropping it before the first owned checkpoint ACK loses the old draft.
+        legacyRecovery?.let {flush();return it}
         // A selected project's UUID stays stable even if its first write is
         // still pending. After that write finishes, a cold process can recover
         // it without a live ViewModel. The reference is not a durability ACK;
@@ -200,7 +215,7 @@ class ProductionDraftSession(private val repository: ProductionDraftRepository,p
                         repository.deleteOwned(id,owner) {id!=latest.project.id&&id!=latest.activityReference}
                     }
                     if(latest.activityReference==latest.project.id) repository.release(owner)
-                    else repository.handoff(owner,latest.copy(durable=handle))
+                    else repository.handoff(owner,latest.copy(durable=handle,legacyRecovery=null))
                 }
             } catch(_:Exception) { /* Keep the bounded handoff for a later editor. */ }
         } else repository.release(owner)
