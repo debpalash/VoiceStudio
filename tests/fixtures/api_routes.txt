@@ -106,6 +106,7 @@ GET /dub/onsets/{job_id}
 GET /dub/preview-video/{job_id}
 GET /dub/preview/{job_id}/{segment_index}
 GET /dub/segments-text/{job_id}
+GET /dub/speech-preview/{job_id}/{render_id}/{token}
 GET /dub/srt/{job_id}
 GET /dub/srt/{job_id}/{filename}
 GET /dub/thumb/{job_id}
@@ -249,6 +250,7 @@ POST /dub/generate/{job_id}
 POST /dub/import-srt/{job_id}
 POST /dub/ingest-url
 POST /dub/parse-subtitle-text
+POST /dub/plan/{job_id}
 POST /dub/preview-segment/{job_id}
 POST /dub/prosody-mirror/{job_id}
 POST /dub/qc/{job_id}

@@ -1,0 +1,30 @@
+# Planned speech generation and fixed SRT windows
+
+POST /dub/plan/{job_id} resolves the same inputs as generation and counts new,
+reusable and silent segments without synthesis, publication or recovery-file
+mutation. Invalid tiny spoken media cues are identified before a long render.
+Explicit regeneration takes precedence over reuse.
+
+Completed natural takes are retained privately with integrity checks. Both
+private checkpoint keys and upstream crash-resume require immutable model proof,
+resolved voice content, synthesis settings and provenance policy. An active
+interrupted-render journal takes precedence; a corrupt entry cannot be masked
+by a second private copy. Existing explicit partial-render behavior is retained.
+Read-only planning verifies recovery payloads without discarding invalid files.
+
+The generation stream emits immutable completed-take audition URLs and saved /
+reused counts. Auditioning a completed take never invokes TTS. Published tracks
+and fingerprints remain atomic on error, cancellation or changed source cues.
+
+The optional narration strategy accepts original caption cues separately from
+speech blocks linked by source_ids. Every linked block must retain its original
+SRT start/end envelope and blocks must not overlap. SRT-only and narration audio
+are placed within those exact windows, using pitch-preserving compression when
+needed. Later blocks never slide to compensate for an overlong phrase. Natural
+cached takes retain every word; acceleration above 1.5x needs listening review.
+There is no automatic text rewrite or promise of natural speech at any rate.
+
+For ordinary Concise/Smart Fit, auto_fit_overflow (default true) fits the entire
+remaining take instead of failing at the end of a long job. It can be disabled
+to retain a blocking timing error. Per-language speech manifests drive preview,
+QC and clip export while subtitle exports retain the separate captions.
