@@ -13,6 +13,7 @@ import androidx.work.*
 import com.voicestudio.mobile.l10n.L10n
 import com.voicestudio.mobile.local.*
 import com.voicestudio.mobile.network.ClientFailure
+import com.voicestudio.mobile.network.DiagnosticInput
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.serialization.Serializable
@@ -20,6 +21,29 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
+
+/** The production transfer's no-progress observer, separate from network ownership. */
+internal suspend fun monitorModelDownloadStalls(
+    originalConsent:CompanionDiagnosticObservation?,
+    progress:()->DownloadProgress?,
+    observeConsent:()->CompanionDiagnosticObservation?=AutomaticDiagnostics::observeConsent,
+    report:(DiagnosticInput,CompanionDiagnosticObservation?)->Unit=AutomaticDiagnostics::capture,
+    now:()->Long=android.os.SystemClock::elapsedRealtime,
+    pause:suspend ()->Unit={delay(30_000)},
+) {
+    val stalls=DownloadStallObservation()
+    var previousConsent=observeConsent()
+    while(currentCoroutineContext().isActive) {
+        val observation=observeConsent()
+        if(observation!=previousConsent) {
+            stalls.observe(null,now());previousConsent=observation
+        }
+        val owner=originalConsent?.takeIf {it==observation}
+        if(stalls.observe(progress().takeIf {owner!=null},now()))
+            report(DiagnosticInput(category="install_stalled",stage="download",reason="no_progress"),owner)
+        pause()
+    }
+}
 
 /** The UI submits durable intents; services/workers, never a ViewModel, own transfers. */
 object ModelDownloadJobs {
@@ -141,12 +165,24 @@ object ModelDownloadJobs {
     internal suspend fun run(context: Context,id: String) {
         val job=currentCoroutineContext().job
         active.putIfAbsent(id,job)?.let {previous -> previous.join();run(context,id);return}
+        val diagnosticConsent=AutomaticDiagnostics.observeConsent()
         try {
             val item=read(context).firstOrNull {it.model==id&&!it.paused} ?: return
             val model=withContext(Dispatchers.IO) {context.assets.open("models.json").bufferedReader().use {ModelCatalog.decode(it.readText()).models.firstOrNull {m->m.id==id&&modelPin(m).identity==item.pin}}}
                 ?: throw ClientFailure("mobile.local.catalogue_failed")
             currentCoroutineContext().ensureActive()
-            PhoneRuntime.get(context).downloads.download(model,item.mobile);finished(context,id)
+            coroutineScope {
+                val downloads = PhoneRuntime.get(context).downloads
+                val observer = launch {
+                    monitorModelDownloadStalls(diagnosticConsent,{downloads.progress.value[id]})
+                }
+                try {downloads.download(model,item.mobile);finished(context,id)}
+                finally {observer.cancel()}
+            }
+        } catch(e:CancellationException) {throw e}
+        catch(e:Exception) {
+            AutomaticDiagnostics.captureObservedFailure(e,diagnosticConsent,stage="download")
+            throw e
         } finally {active.remove(id,job)}
     }
     internal suspend fun notification(context: Context,id: String): Notification {

@@ -1463,8 +1463,11 @@ def start_install(engine_id: str) -> dict:
         job["_expected_env"] = os.environ.get(spec.env_var)
         job["_preserve_existing"] = _healthy(spec, check_rocm=False)
         _jobs[engine_id] = job
+    from core import diagnostic_reports
+    # The user-started install owns its observed grant through subprocess
+    # completion and output-drain cleanup, including an explicitly OFF owner.
     th = threading.Thread(
-        target=_run_install, args=(spec, job),
+        target=diagnostic_reports.bind_callable(_run_install), args=(spec, job),
         name=f"sidecar-install-{engine_id}", daemon=True,
     )
     th.start()
@@ -1586,6 +1589,8 @@ def _run_install(spec: SidecarSpec, job: dict) -> None:
         job["state"] = "succeeded"
         _log(job, f"{spec.display_name} installed successfully.")
     except _StepError as exc:
+        from core import diagnostic_reports
+        diagnostic_reports.capture_failure("install", error=exc, engine_id=spec.engine_id)
         job["state"] = "failed"
         job["error"] = str(exc)
         job["remediation"] = exc.remediation

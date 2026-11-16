@@ -64,7 +64,8 @@ import com.voicestudio.mobile.data.modelDownloadDescription
                 Secondary("common.cancel") {vm.phone.cancelDownload(model)}
             }
             else if(!installed) Secondary(if(progress[model.id]?.error!=null) "mobile.simple.retry" else if(progress[model.id]?.stage=="paused") "mobile.simple.resume" else if(fits) "mobile.local.download" else "mobile.local.try_anyway") {
-                try {if(!vm.phone.licence.accepted(model)) {downloadAfterAccept=true;terms=true} else vm.phone.download(model,preferences.allowMobileModels)} catch(e:Exception) {vm.fail(e)}
+                val failure=vm.failureHandler()
+                try {if(!vm.phone.licence.accepted(model)) {downloadAfterAccept=true;terms=true} else vm.phone.download(model,preferences.allowMobileModels)} catch(e:Exception) {failure(e)}
             } else Secondary("common.delete") {vm.phone.delete(model)}
         }
     }

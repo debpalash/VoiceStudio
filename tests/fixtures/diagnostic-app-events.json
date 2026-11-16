@@ -1,0 +1,1470 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "category-app_crash",
+      "props": {
+        "category": "app_crash",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "crash",
+        "level": "fatal",
+        "handled": false,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "app_crash",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "category-backend_crash",
+      "props": {
+        "category": "backend_crash",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "crash",
+        "level": "fatal",
+        "handled": false,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "backend_crash",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "category-renderer_crash",
+      "props": {
+        "category": "renderer_crash",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "crash",
+        "level": "fatal",
+        "handled": false,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "renderer_crash",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "category-install_failed",
+      "props": {
+        "category": "install_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "install_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "install_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "category-install_stalled",
+      "props": {
+        "category": "install_stalled",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "install_stalled",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "install_stalled",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "category-incompatibility",
+      "props": {
+        "category": "incompatibility",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "incompatibility",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "incompatibility",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "category-generation_failed",
+      "props": {
+        "category": "generation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "generation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "category-model_load_failed",
+      "props": {
+        "category": "model_load_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "model_load_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "category-engine_failed",
+      "props": {
+        "category": "engine_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "engine_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "category-download_failed",
+      "props": {
+        "category": "download_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "download_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "category-operation_failed",
+      "props": {
+        "category": "operation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "category-unknown",
+      "props": {
+        "category": "unknown",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "error",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "unknown",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "platform-darwin",
+      "props": {
+        "category": "operation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "darwin",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "macos",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "platform-mac",
+      "props": {
+        "category": "operation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "mac",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "macos",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "platform-osx",
+      "props": {
+        "category": "operation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "osx",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "macos",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "platform-win32",
+      "props": {
+        "category": "operation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "win32",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "windows",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "platform-win",
+      "props": {
+        "category": "operation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "win",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "windows",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "platform-windows",
+      "props": {
+        "category": "operation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "windows",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "windows",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "platform-macos",
+      "props": {
+        "category": "operation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "macos",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "macos",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "platform-linux",
+      "props": {
+        "category": "operation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "platform-ios",
+      "props": {
+        "category": "operation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "ios",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "ios",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "platform-android",
+      "props": {
+        "category": "operation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "android",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "android",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "platform-web",
+      "props": {
+        "category": "operation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "web",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "web",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "platform-unknown",
+      "props": {
+        "category": "operation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "unknown",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "other",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "platform-plan9",
+      "props": {
+        "category": "operation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "plan9",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "other",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "arch-x64",
+      "props": {
+        "category": "operation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "arch-amd64",
+      "props": {
+        "category": "operation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "amd64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "arch-x86_64",
+      "props": {
+        "category": "operation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "x86_64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "arch-arm64",
+      "props": {
+        "category": "operation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "arm64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "arm64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "arch-aarch64",
+      "props": {
+        "category": "operation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "aarch64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "arm64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "arch-ia32",
+      "props": {
+        "category": "operation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "ia32",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "x86",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "arch-x86",
+      "props": {
+        "category": "operation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "x86",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "x86",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "arch-arm",
+      "props": {
+        "category": "operation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "arm",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "arm",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "arch-armv7l",
+      "props": {
+        "category": "operation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "armv7l",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "arm",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "arch-unknown",
+      "props": {
+        "category": "operation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "unknown",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "other",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "arch-mips",
+      "props": {
+        "category": "operation_failed",
+        "source": "backend",
+        "stage": "generation",
+        "error_code": "UNKNOWN",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "mips",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "other",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "source": "backend",
+          "stage": "generation",
+          "error_code": "UNKNOWN",
+          "schema_version": 1
+        }
+      }
+    },
+    {
+      "name": "all-closed-fields-and-tag-order",
+      "props": {
+        "category": "engine_failed",
+        "source": "electron_main",
+        "stage": "engine",
+        "error_code": "GPU_OOM",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1,
+        "engine_id": "omnivoice",
+        "uptime_bucket": "lt_1m",
+        "elapsed_bucket": "lt_10s",
+        "memory_bucket": "lt_8gb",
+        "disk_bucket": "lt_32gb",
+        "exit_code": -11,
+        "signal": "SIGSEGV",
+        "frames": "backend/main.py:123",
+        "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "arbitrary": "never-copy-this"
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "engine_failed",
+          "source": "electron_main",
+          "stage": "engine",
+          "error_code": "GPU_OOM",
+          "engine_id": "omnivoice",
+          "uptime_bucket": "lt_1m",
+          "elapsed_bucket": "lt_10s",
+          "memory_bucket": "lt_8gb",
+          "disk_bucket": "lt_32gb",
+          "schema_version": 1
+        },
+        "exit_code": -11,
+        "signal": "SIGSEGV",
+        "frames": "backend/main.py:123",
+        "fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    {
+      "name": "omit-empty-tags",
+      "props": {
+        "category": "operation_failed",
+        "source": "",
+        "stage": "",
+        "error_code": "",
+        "app_version": "0.5.9-beta.3",
+        "build_commit": "1234567",
+        "platform": "linux",
+        "arch": "x64",
+        "device_family": "cpu",
+        "reason": "unknown",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "schema_version": 1,
+        "engine_id": "",
+        "uptime_bucket": "",
+        "elapsed_bucket": "",
+        "memory_bucket": "",
+        "disk_bucket": ""
+      },
+      "expected": {
+        "kind": "operation_failed",
+        "level": "error",
+        "handled": true,
+        "release": "0.5.9-beta.3",
+        "build": "1234567",
+        "device_class": "cpu",
+        "exit_reason": "unknown",
+        "platform": "linux",
+        "arch": "x64",
+        "error_type": "RuntimeError",
+        "occurrences": 1,
+        "tags": {
+          "category": "operation_failed",
+          "schema_version": 1
+        }
+      }
+    }
+  ]
+}

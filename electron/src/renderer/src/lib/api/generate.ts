@@ -427,10 +427,11 @@ export async function generateClone(
   // budget read still in flight (just after connecting) is awaited briefly so
   // an operator-raised timeout is not missed.
   if (generateBudgetPending()) await generateBudgetSettled(2_000);
-  const backstop = setTimeout(
-    forwardAbort,
-    generateAbortMs(input.text.length, reportedGenerateBudget()),
-  );
+  let deadlineReached = false;
+  const backstop = setTimeout(() => {
+    deadlineReached = true;
+    controller.abort();
+  }, generateAbortMs(input.text.length, reportedGenerateBudget()));
   const finishActivity = beginAppActivity('synthesis');
   try {
     const res = await apiFetch('/generate', {
@@ -440,6 +441,15 @@ export async function generateClone(
     });
     const blob = await readAudioBody(res, opts.onProgress);
     return { blob, ...parseGenerateHeaders(res.headers) };
+  } catch (error) {
+    // Fetch uses AbortError for both cancellation and our internal deadline.
+    // Keep actual caller cancellation local while reporting a stalled request.
+    if (deadlineReached && !opts.signal?.aborted && isAbortError(error)) {
+      const timeout = new Error(i18next.t('tts_errors.timeout'));
+      timeout.name = 'TimeoutError';
+      throw timeout;
+    }
+    throw error;
   } finally {
     finishActivity();
     clearTimeout(backstop);

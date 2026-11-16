@@ -59,7 +59,8 @@ private val destinations = listOf(
     }
     var audioSource by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
-        try { vm.phone.refresh() } catch(e: kotlinx.coroutines.CancellationException) {throw e} catch(e: Exception) {vm.fail(e)}
+        val failure=vm.failureHandler()
+        try { vm.phone.refresh() } catch(e: kotlinx.coroutines.CancellationException) {throw e} catch(e: Exception) {failure(e)}
     }
     Screen {
         Column(Modifier.widthIn(max=900.dp).fillMaxWidth().align(Alignment.CenterHorizontally), verticalArrangement=Arrangement.spacedBy(VSTheme.gap)) {
@@ -95,8 +96,8 @@ private val destinations = listOf(
                         vm.api?.let {audioSource="computer";vm.play(it.audioPath(item.audioPath))}
                     }
                 }
-                if(audioSource=="phone") phone.audio?.let {LocalAudioPlayer(it,vm::fail)}
-                if(audioSource=="computer") vm.api?.let {api -> host.audio?.let {HostPlayer(api,it,vm::fail)} }
+                if(audioSource=="phone") phone.audio?.let {LocalAudioPlayer(it,vm::failureHandler)}
+                if(audioSource=="computer") vm.api?.let {api -> host.audio?.let {HostPlayer(api,it,vm::failureHandler)} }
             }
             HomeSection("projects.title") {
                 if(phone.dubs.isEmpty()&&host.dubHistory.isEmpty()) HomeEmpty("projects.empty")

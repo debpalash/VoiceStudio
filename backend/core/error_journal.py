@@ -228,6 +228,13 @@ def record(exc: BaseException, route: str = "", trace: str = "") -> dict:
     second failure would shadow the one being reported.
     """
     try:
+        from core import diagnostic_reports
+        diagnostic_reports.capture_failure(diagnostic_reports.route_stage(route), error=exc)
+    except Exception:
+        # Optional reporting must neither replace the original fault nor
+        # prevent the independent local journal from recording it.
+        pass
+    try:
         error_class = classify_exception(exc, trace)
         fp = _fingerprint(error_class, exc)
         now = time.strftime("%Y-%m-%dT%H:%M:%S")

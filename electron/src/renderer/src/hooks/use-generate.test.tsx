@@ -15,6 +15,16 @@ import { queryKeys } from '@/lib/query';
 import type { Profile } from '@/lib/api/types';
 import { tr } from '@/lib/i18n-text';
 import { acquireSynthesis } from '@/lib/synthesis-lock';
+const diagnosticCapture = vi.hoisted(() => vi.fn());
+const diagnosticObservation = vi.hoisted(() => ({
+  value: null as null | { revision: number; observedAtMs: number; grantEpoch: string },
+}));
+vi.mock('@/lib/diagnostic-reports', () => ({
+  captureDiagnosticException: diagnosticCapture,
+  observeDiagnosticConsent: () => diagnosticObservation.value,
+  initializeDiagnosticReporting: vi.fn(),
+}));
+beforeEach(() => { diagnosticObservation.value = null; });
 const modelStatus = vi.hoisted(() => ({
   value: { status: 'loading', loading: true } as {
     status: string;
@@ -101,8 +111,44 @@ describe('shared generation lifecycle', () => {
     );
     fireEvent.click(screen.getByText('retry test'));
     await screen.findByText('write failed');
+    expect(diagnosticCapture).toHaveBeenCalledWith(
+      expect.any(Error),
+      'generation_failed',
+      'generation',
+      null,
+    );
     expect(toast.error).not.toHaveBeenCalled();
     vi.mocked(generateClone).mockClear();
+  });
+  it('still reports a genuine request deadline when the owner was not cancelled', async () => {
+    patchCloneSettings({ text: 'Hello', selectedProfileId: 'voice-1', autoPlay: false });
+    const timeout = new DOMException('request deadline', 'AbortError');
+    vi.mocked(generateClone).mockRejectedValueOnce(timeout);
+    function DeadlineConsumer() {
+      const state = useGenerateClone();
+      return (
+        <>
+          <button onClick={() => void state.generate()}>deadline</button>
+          <span>{state.error}</span>
+        </>
+      );
+    }
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <GenerationProvider>
+          <DeadlineConsumer />
+        </GenerationProvider>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByText('deadline'));
+    await screen.findByText(tr('tts_errors.timeout'));
+    expect(vi.mocked(generateClone).mock.calls[0]?.[1]?.signal?.aborted).toBe(false);
+    expect(diagnosticCapture).toHaveBeenCalledWith(
+      timeout,
+      'generation_failed',
+      'generation',
+      null,
+    );
   });
   it('shares progress across consumers and survives a view unmount', async () => {
     patchCloneSettings({ text: 'Hello', selectedProfileId: 'voice-1', autoPlay: false });
@@ -1031,7 +1077,62 @@ describe('generation queue', () => {
     await act(async () => renders[0]!.resolve(take('a')));
     await waitFor(() => expect(statuses()).toEqual(['done', 'failed']));
     expect(generateClone).toHaveBeenCalledTimes(1);
+    expect(diagnosticCapture).not.toHaveBeenCalled();
   });
+
+  it('does not report cancellation when the owner unmounts while waiting for a voice edit', async () => {
+    deferredRenders();
+    const client = new QueryClient();
+    client.setQueryData(queryKeys.profiles, [
+      { id: 'voice-1', name: 'Narrator', ref_audio_path: 'a.wav' } as Profile,
+    ]);
+    const settled = beginVoiceChange('voice-1');
+    const view = render(
+      <QueryClientProvider client={client}>
+        <GenerationProvider>
+          <QueueConsumer />
+        </GenerationProvider>
+      </QueryClientProvider>,
+    );
+    try {
+      patchCloneSettings({ text: 'Line', selectedProfileId: 'voice-1', autoPlay: false });
+      fireEvent.click(screen.getByText('go'));
+      await waitFor(() => expect(statuses()).toEqual(['running']));
+      expect(generateClone).not.toHaveBeenCalled();
+      await act(async () => view.unmount());
+      expect(diagnosticCapture).not.toHaveBeenCalled();
+    } finally {
+      settled();
+      view.unmount();
+    }
+  });
+
+  it.each([null, { revision: 1, observedAtMs: 1, grantEpoch: 'a'.repeat(32) }])(
+    'retains the original diagnostics observation while a voice edit settles (%s)',
+    async (original) => {
+      diagnosticObservation.value = original;
+      const client = new QueryClient();
+      client.setQueryData(queryKeys.profiles, [
+        { id: 'voice-1', name: 'Narrator', ref_audio_path: 'a.wav' } as Profile,
+      ]);
+      const settled = beginVoiceChange('voice-1');
+      const failure = new Error('fixture engine failure');
+      vi.mocked(generateClone).mockRejectedValueOnce(failure);
+      const view = render(
+        <QueryClientProvider client={client}><GenerationProvider><QueueConsumer /></GenerationProvider></QueryClientProvider>,
+      );
+      try {
+        patchCloneSettings({ text: 'Neutral fixture', selectedProfileId: 'voice-1', autoPlay: false });
+        fireEvent.click(screen.getByText('go'));
+        await waitFor(() => expect(statuses()).toEqual(['running']));
+        expect(generateClone).not.toHaveBeenCalled();
+        diagnosticObservation.value = { revision: 2, observedAtMs: 2, grantEpoch: 'b'.repeat(32) };
+        await act(async () => settled());
+        await waitFor(() => expect(statuses()).toEqual(['failed']));
+        expect(diagnosticCapture).toHaveBeenCalledWith(failure, 'generation_failed', 'generation', original);
+      } finally { settled(); view.unmount(); }
+    },
+  );
 
   it('holds a waiting take while an unlock is in flight, then skips it once the voice changed', async () => {
     const renders = deferredRenders();
