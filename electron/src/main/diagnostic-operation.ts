@@ -71,8 +71,13 @@ const observedParents = new WeakSet<Promise<unknown>>();
 function observeConsumedParent(_promise: Promise<unknown>, parent?: Promise<unknown>): void {
   if (observingParent || !parent || observedParents.has(parent)) return;
   const current = context.getStore();
-  const owner =
-    owners.get(parent) ?? (current ? { reporter: current.reporter, epoch: null } : null);
+  const inherited = owners.get(parent);
+  // V8 also supplies the outer async Promise as a non-Promise await wrapper's
+  // parent. That ancestry is not proof of a consumer: observing it would handle
+  // an otherwise unhandled rejection. Same-operation work already has this
+  // exact authority; only crossing ownership needs an extra fault stamp.
+  if (current && inherited === current) return;
+  const owner = inherited ?? (current ? { reporter: current.reporter, epoch: null } : null);
   if (!owner) return;
   if (!plainNativePromise(parent)) {
     (current ?? owner).ambiguous = true;

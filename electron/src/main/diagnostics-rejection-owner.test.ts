@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { build } from 'vite';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -340,3 +340,53 @@ it.each(['returned','consumed'])(
     expect(JSON.parse(output)).toEqual({output:42,failed:false,reads:0,unhandled:0,warnings:0,pending:0,samePromise:true});
   },
 );
+
+
+beforeAll(async () => {
+  await writeFile(join(directory, 'unconsumed.mjs'), String.raw`
+    import { DiagnosticReports, installDiagnosticProcessCapture, runDiagnosticOperation } from './capture.mjs';
+    import { join } from 'node:path';
+    const reports = new DiagnosticReports({
+      directory: join(import.meta.dirname, 'unconsumed-' + process.argv[2]),
+      identity: { app_version: '1.0.0', build_commit: '0000000', platform: 'linux', arch: 'x64' },
+      automatic: false, env: {},
+      destination: { site: 'fixture', host: 'https://fixture.invalid', appUrl: 'https://fixture.invalid' },
+    });
+    await reports.initialize(); await reports.setConsent(true);
+    const stop = installDiagnosticProcessCapture(reports);
+    let unhandled = 0, warnings = 0, original, seen;
+    process.on('unhandledRejection', (_error, promise) => { unhandled++; seen = promise; });
+    process.on('warning', () => warnings++);
+    process.on('uncaughtExceptionMonitor', (_error, origin) => {
+      console.log(JSON.stringify({ fatal: origin }));
+    });
+    original = runDiagnosticOperation(reports, async () => {
+      await 0;
+      throw new Error('SYNTHETIC_UNCONSUMED_FAILURE');
+    });
+    // Deliberately never attach a Promise consumer. A timer keeps the process
+    // alive long enough to observe missing events without a hanging RED test.
+    await new Promise(resolve => setTimeout(resolve, 50));
+    console.log(JSON.stringify({ unhandled, warnings, pending: reports.status().pending_count, samePromise: seen === original }));
+    stop(); await reports.close();
+  `);
+});
+
+it('preserves an unconsumed rejection after a non-Promise await', () => {
+  const child = spawnSync(process.execPath, [join(directory, 'unconsumed.mjs'), 'normal'], {
+    encoding: 'utf8', timeout: 15_000,
+  });
+  expect(child.error).toBeUndefined();
+  expect(child.status, child.stderr).toBe(0);
+  expect(JSON.parse(child.stdout.trim())).toEqual({ unhandled: 1, warnings: 0, pending: 1, samePromise: true });
+});
+
+it('preserves strict-mode fatal policy for an unconsumed non-Promise await', () => {
+  const child = spawnSync(process.execPath, ['--unhandled-rejections=strict', join(directory, 'unconsumed.mjs'), 'strict'], {
+    encoding: 'utf8', timeout: 15_000,
+  });
+  expect(child.error).toBeUndefined();
+  expect(child.status).toBe(1);
+  expect(child.stdout.trim()).toBe(JSON.stringify({ fatal: 'unhandledRejection' }));
+  expect(child.stderr).toContain('SYNTHETIC_UNCONSUMED_FAILURE');
+});
