@@ -24,8 +24,9 @@ const BENIGN_MESSAGE = [
 const EXTENSION_URL = /\b(?:chrome|moz|safari-web|safari|ms-browser)-extension:\/\//i;
 // A stack FRAME, not the header: V8 writes "    at fn (url)", while JSC and
 // SpiderMonkey write "fn@url". JSC also labels top-level frames with a space
-// ("global code@url", "eval code@url", "module code@url"), which is where an
-// injected extension script throws from on WKWebView and Safari (#1901, #2148).
+// ("global code@url", "eval code@url", "module code@url"), including top-level
+// Safari/WebKit extension execution. These formats are separate from
+// the Chromium stacks reported in #1901 and #2148.
 // Those labels are listed explicitly; allowing spaces generally would let a V8
 // header whose message contains "user@chrome-extension://..." pass as a frame.
 const FRAME_LINE = /^\s*at\s|^\s*(?:(?:global|eval|module) code|[^\s@]*)@[a-z-]+:\/\//i;
