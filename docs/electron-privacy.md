@@ -143,9 +143,12 @@ authorize fault details or frames. Confirmation actions retain the choice
 observed at the click; an unrelated or rewrapped promise cannot acquire a newer
 grant. Seeking an existing phone playback does not renew its grant.
 Permission dialogs, voice-edit waits, gallery loading and stalled transfers do
-not renew an operation's permission. A cached phone download failure from an
-earlier transfer remains local, including after Pause and Resume; a genuinely
-new transfer retains the permission observed when that transfer starts.
+not renew an operation's permission. The initial phone action owns its entire
+permission rationale and OS prompt; confirmation cannot acquire a later grant,
+and cancelling or dismissing the rationale discards that action's observation.
+A cached phone download failure from an earlier transfer remains local, including
+after Pause and Resume; a genuinely new transfer retains the permission observed
+when that transfer starts.
 Temporary queue-read failures preserve current in-memory reports and completed
 delivery decisions. Crash recovery retains its report until the prior session
 marker can be replaced; orderly close removes only a marker owned by that process.
