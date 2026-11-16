@@ -1,8 +1,8 @@
-# Docs drift — daily inventory-vs-docs check with a single rolling issue.
+# Docs drift — relevant PR checks plus daily checks with one rolling issue.
 #
 # docs/features.yaml is the canonical inventory; scripts/check-docs-drift.py
 # diffs it against README.md, docs/, and the engine registries. On drift the
-# job updates (or creates) ONE issue labeled `docs-drift` in place — no issue
+# scheduled/manual job updates (or creates) ONE `docs-drift` issue — no issue
 # spam — and closes it automatically when the check is clean again.
 #
 # Scheduled documentation-link and structure audit.
@@ -105,5 +105,5 @@ jobs:
       - name: Surface drift as a failed run
         if: steps.drift.outcome == 'failure'
         run: |
-          echo "Docs drift detected — see the rolling docs-drift issue."
+          echo "Docs drift detected — see the checker output above; scheduled/manual runs also update the rolling issue."
           exit 1

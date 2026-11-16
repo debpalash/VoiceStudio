@@ -275,8 +275,9 @@ class MyEngineBackend(TTSBackend):
    an engine that lives in its own `backend/engines/<name>` module goes in
    `_LAZY_REGISTRY` as `"id": ("engines.<name>", "ClassName")`
 4. Add the same id under `tts_engines` in `docs/features.yaml` with its README
-   string (`readme:`) or a doc page (`doc:`) — the daily docs-drift job
-   (`python scripts/check-docs-drift.py`) flags registry ids missing from it
+   string (`readme:`) or a doc page (`doc:`) — the Python suite and relevant
+   documentation PRs run `python scripts/check-docs-drift.py` to flag missing
+   registry ids; daily/manual runs also maintain the rolling docs-drift issue
 5. It then appears in Settings → TTS Engine
 
 ---
