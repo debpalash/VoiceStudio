@@ -637,7 +637,10 @@ async def _run_dub(job_id: str, req: DubRequest, *, planning: bool = False):
                             payload = json.loads(event[6:])
                             if payload.get("type") in ("error", "cancelled", "done", "assembling"):
                                 payload.update(speech_saved=cache.saved, speech_reused=cache.reused)
-                                event = f"data: {json.dumps(payload)}\n\n"
+                                from core import diagnostic_reports
+                                event = diagnostic_reports.carry_failure_identity(
+                                    event, f"data: {json.dumps(payload)}\n\n",
+                                )
                         yield event
         finally:
             await _run_journal_io(_drop_resume_journal_if_withdrawn, job_id, lang_code)
