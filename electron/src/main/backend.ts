@@ -1048,6 +1048,19 @@ async function startupEnvPreservesDataRoot(
 
 /** Python loads saved settings after dotenv, overriding launcher data defaults. */
 async function launchDataRootEstablished(launch: BackendLaunchLog): Promise<string | undefined> {
+  // Windows environment names are case-insensitive, so Python honours
+  // `omnivoice_env_file` or `appdata` where the exact-case lookups below would
+  // miss them and prove the wrong root. Leave the identity unknown instead.
+  if (
+    process.platform === 'win32' &&
+    Object.keys(launch.env).some(
+      (key) =>
+        /^(?:OMNIVOICE_DATA_DIR|OMNIVOICE_ENV_FILE|USERPROFILE|HOMEDRIVE|HOMEPATH|APPDATA)$/i.test(
+          key,
+        ) && key !== key.toUpperCase(),
+    )
+  )
+    return;
   const raw = launch.env.OMNIVOICE_DATA_DIR;
   // Python uses this string verbatim; backendDataDir's log-only trim must not
   // manufacture authority for a different directory.

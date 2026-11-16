@@ -252,6 +252,21 @@ it.each(['attached', 'source', 'custom', 'saved-env', 'dotenv'])(
   },
 );
 
+it('leaves identity unknown when Windows env names differ only by case', async () => {
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+  Object.defineProperty(process, 'platform', { value: 'win32' });
+  try {
+    const result = await launch(true, (log) => {
+      log.env.omnivoice_env_file = join(fixture.root, 'other-env');
+    });
+    await result.proof;
+    await result.internal.markReady(1, {}, false);
+    expect(identity(result.supervisor)).toBeUndefined();
+  } finally {
+    Object.defineProperty(process, 'platform', platform);
+  }
+});
+
 it('retains the same-child identity while unresponsive without getter I/O', async () => {
   const result = await launch();
   await result.proof;
