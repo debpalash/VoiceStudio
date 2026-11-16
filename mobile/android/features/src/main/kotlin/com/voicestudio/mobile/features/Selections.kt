@@ -79,14 +79,15 @@ fun languageCode(name:String):String? = languageCodes[name.lowercase(Locale.ROOT
 val LocalLanguageCatalogLoader=staticCompositionLocalOf<suspend (Context)->LanguageCatalog> {
     {context -> withContext(Dispatchers.IO) {LanguageCatalog.load(context)}}
 }
-@Composable fun rememberLanguageCatalog(failure: (Throwable)->Unit): LanguageCatalog? {
+@Composable fun rememberLanguageCatalog(failure: ()->(Throwable)->Unit): LanguageCatalog? {
     val context=LocalContext.current.applicationContext
     val loader=LocalLanguageCatalogLoader.current
     val fail by rememberUpdatedState(failure)
     val catalog by produceState<LanguageCatalog?>(null,context,loader) {
+        val failed=fail()
         try {value=loader(context)}
         catch(cancelled: CancellationException) {throw cancelled}
-        catch(error: Exception) {fail(error)}
+        catch(error: Exception) {failed(error)}
     }
     return catalog
 }

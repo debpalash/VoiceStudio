@@ -148,10 +148,10 @@ class ReviewUiRegressionTest {
         try {
             compose.setContent {StudioApp(vm)}
             await {!vm.state.value.loading}
-            vm.fail(com.voicestudio.mobile.network.ClientFailure("mobile.local.ram_required",mapOf("ram" to "6")))
+            vm.failureHandler()(com.voicestudio.mobile.network.ClientFailure("mobile.local.ram_required",mapOf("ram" to "6")))
             compose.onNodeWithText(l.t("mobile.simple.models_error")).assertExists()
             compose.onNodeWithText(l.t("mobile.local.ram_required",mapOf("ram" to "6"))).assertExists()
-            vm.fail(com.voicestudio.mobile.network.ClientFailure("mobile.connect.error_pin"))
+            vm.failureHandler()(com.voicestudio.mobile.network.ClientFailure("mobile.connect.error_pin"))
             compose.onNodeWithText(l.t("mobile.connect.error_pin")).assertExists()
         } finally {vm.viewModelScope.cancel()}
     }

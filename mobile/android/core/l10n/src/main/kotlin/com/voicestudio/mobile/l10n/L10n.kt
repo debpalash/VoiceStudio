@@ -78,9 +78,13 @@ class L10n(private val catalogs: Map<String, JsonObject>, val locale: String) {
                         languages.firstOrNull { it.equals(candidate, true) }
                     }.associateWith { language ->
                         parsed.getOrPut(language) {
-                            var catalog = read("locales/$language.json")
-                            if(language == "en") for(name in additions) catalog = merge(catalog, read(name))
-                            catalog
+                            val renderer = read("locales/$language.json")
+                            if(language == "en") {
+                                var fallback = JsonObject(emptyMap())
+                                for(name in additions) fallback = merge(fallback, read(name))
+                                // Legacy additions only fill missing renderer keys.
+                                merge(fallback, renderer)
+                            } else renderer
                         }
                     }
                     L10n(catalogs, tag)

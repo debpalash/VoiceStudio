@@ -26,7 +26,7 @@ import kotlinx.coroutines.flow.*
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-internal class PhoneDictation(private val engine: LocalEngine, private val scope: CoroutineScope, private val failure: (Throwable)->Unit,
+internal class PhoneDictation(private val engine: LocalEngine, private val scope: CoroutineScope, private val failure: ()->(Throwable)->Unit,
     private val microphone: DictationAudioSource = MicrophoneSource(), private val completed: (String)->Unit = {}) : AutoCloseable {
     private val mutableText=MutableStateFlow("")
     val text=mutableText.asStateFlow()
@@ -36,6 +36,7 @@ internal class PhoneDictation(private val engine: LocalEngine, private val scope
     private var capture: Job?=null
     fun start(model: PhoneModel) {
         if(mutableActive.value) return
+        val failure=this.failure()
         mutableActive.value=true;mutableText.value="";recording=true
         capture=scope.launch {
             try {
@@ -47,7 +48,7 @@ internal class PhoneDictation(private val engine: LocalEngine, private val scope
                     }
                 }.buffer(64,BufferOverflow.SUSPEND)
                 engine.streamTranscribe(model,samples).collect {mutableText.value=it.text}
-            } catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}
+            } catch(e:CancellationException) {throw e} catch(e:Exception) {ensureActive();failure(e)}
             finally {recording=false;completed(mutableText.value);mutableActive.value=false}
         }
     }
@@ -58,7 +59,7 @@ internal class PhoneDictation(private val engine: LocalEngine, private val scope
 @Composable internal fun PhoneDictateScreen(vm: StudioViewModel, model: PhoneModel?, ready: Boolean) {
     val context=LocalContext.current
     val scope=rememberCoroutineScope()
-    val controller=remember(model?.id) {PhoneDictation(vm.phone.engine,scope,vm::fail,completed={vm.phone.saveTranscript(it,model?.id)})}
+    val controller=remember(model?.id) {PhoneDictation(vm.phone.engine,scope,vm::failureHandler,completed={vm.phone.saveTranscript(it,model?.id)})}
     val text by controller.text.collectAsState()
     val active by controller.active.collectAsState()
     val lifecycle=LocalLifecycleOwner.current
@@ -68,8 +69,8 @@ internal class PhoneDictation(private val engine: LocalEngine, private val scope
         onDispose {lifecycle.lifecycle.removeObserver(observer);controller.close()}
     }
     var holding by remember {mutableStateOf(false)}
-    val start=permissionAction(Manifest.permission.RECORD_AUDIO,"mobile.permissions.microphone",vm::fail) {if(ready&&model!=null) controller.start(model)}
-    val holdStart=permissionAction(Manifest.permission.RECORD_AUDIO,"mobile.permissions.microphone",vm::fail) {if(holding&&ready&&model!=null) controller.start(model)}
+    val start=permissionAction(Manifest.permission.RECORD_AUDIO,"mobile.permissions.microphone",vm::failureHandler,vm::restoreFailure) {if(ready&&model!=null) controller.start(model)}
+    val holdStart=permissionAction(Manifest.permission.RECORD_AUDIO,"mobile.permissions.microphone",vm::failureHandler,vm::restoreFailure) {if(holding&&ready&&model!=null) controller.start(model)}
     DictationLayout(content={
         ScreenTitle("mobile.tabs.dictate")
         com.voicestudio.mobile.features.models.ModelRamWarning(vm,listOfNotNull(model))

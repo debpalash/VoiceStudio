@@ -49,7 +49,7 @@ import java.util.UUID
         lifecycle.lifecycle.addObserver(observer)
         onDispose {lifecycle.lifecycle.removeObserver(observer);stop()}
     }
-    LaunchedEffect(Unit) {try {vm.phone.refresh()} catch(e:CancellationException) {throw e} catch(e:Exception) {vm.fail(e)}}
+    LaunchedEffect(Unit) {val failure=vm.failureHandler();try {vm.phone.refresh()} catch(e:CancellationException) {throw e} catch(e:Exception) {failure(e)}}
     LaunchedEffect(item?.id) {speaker="0"}
     suspend fun marked(audio:LocalAudio):ByteArray=withContext(Dispatchers.IO) {
         val file=File.createTempFile("phone-api-",".wav",context.cacheDir)
@@ -90,6 +90,7 @@ import java.util.UUID
             if(translation&&!starting) TaskModelPicker(vm,"phone-api-translate",setOf("translate"),translator)
             if(needed.any {!phone.canRun(it)}) MissingModelsCard(vm,"mobile.host.title",needed)
             Action("mobile.host.start",!starting&&ready) {
+                val failure=vm.failureHandler()
                 val selected=item;val voice=speaker.toInt();val localNetwork=lan;val useSaved=source=="saved";val saved=savedVoice
                 val features=PhoneServerCapabilities(
                     speech=speech,
@@ -120,7 +121,7 @@ import java.util.UUID
                         }
                         withContext(Dispatchers.IO) {candidate.start(localNetwork)}
                         ensureActive();server=candidate
-                    } catch(e:CancellationException) {candidate?.close();throw e} catch(e:Exception) {candidate?.close();vm.fail(e)} finally {starting=false}
+                    } catch(e:CancellationException) {candidate?.close();throw e} catch(e:Exception) {candidate?.close();failure(e)} finally {starting=false}
                 }
             }
         }

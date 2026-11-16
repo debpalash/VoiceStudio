@@ -401,7 +401,7 @@ describe('generateClone', () => {
     const pending = generateClone({ ...BASE_INPUT, profileId: 'p1' });
     let settled = false;
     pending.catch(() => {}).finally(() => (settled = true));
-    const assertion = expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    const assertion = expect(pending).rejects.toMatchObject({ name: 'TimeoutError' });
     // Still waiting where the old 21-minute backstop gave up on a job the
     // backend was legitimately queueing (30 min) or cold-loading.
     await vi.advanceTimersByTimeAsync(generateAbortMs(BASE_INPUT.text.length) - 1);
