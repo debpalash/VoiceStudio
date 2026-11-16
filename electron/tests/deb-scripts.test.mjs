@@ -73,7 +73,8 @@ const shellReason = (() => {
   }
   return null;
 })();
-const needsShell = { skip: shellReason };
+// Node treats an explicitly null skip option as skipped in its TAP summary.
+const needsShell = { skip: shellReason ?? false };
 
 test('deb scripts keep electron-builder behaviour and add the legacy name', () => {
   const scripts = debMaintainerScripts();
