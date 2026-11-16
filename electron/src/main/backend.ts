@@ -2619,7 +2619,7 @@ export class BackendSupervisor extends EventEmitter<{
       !/the specified module could not be found|could not find module/i.test(
         this.childErrorLog.slice(-20).join('\n'),
       ) &&
-      ['on', 'evaluation'].includes(readSmartAppControl())
+      readSmartAppControl() === 'on'
         ? 'application_control'
         : null);
     if (loadBlock) {
